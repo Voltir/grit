@@ -107,11 +107,11 @@ object TurnRelevanceTests extends TestSuite {
       )
     }
 
-    test("grounds: a passed candidate at QuietAt or more, never an unjudged one") {
-      val at = Probability.value(TurnRelevance.QuietAt)
+    test("grounds: a passed candidate at GroundsAt or more, never an unjudged one") {
+      val at = Probability.value(TurnRelevance.GroundsAt)
       def one(v: Verdict): Boolean = TurnRelevance.grounds(Vector(found(0) -> v))
       (
-        one(Verdict.Passed(TurnRelevance.QuietAt)),
+        one(Verdict.Passed(TurnRelevance.GroundsAt)),
         one(Verdict.Passed(Probability.clamped(at - 0.01))),
         one(Verdict.Unjudged("down")),
         one(Verdict.Rejected(Probability.clamped(0.1))),

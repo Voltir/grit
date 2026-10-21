@@ -28,7 +28,7 @@ object TurnRelevance {
     */
   // A recorded heard turn's branch after its last batch is read against this: changing it
   // changes which way a history taken past `heard-quiet-exit` replays, so it needs a patch.
-  val QuietAt: Probability = Probability.clamped(0.7)
+  val GroundsAt: Probability = Probability.clamped(0.7)
 
   /** How many characters of the turn's message, and of each candidate, the judge is shown. */
   val Chars = 800
@@ -122,10 +122,10 @@ object TurnRelevance {
     Results(results.ranked.take(Judged).filterNot(found => rejected.contains(found._1)))
   }
 
-  /** Whether any of `verdicts` passed at [[QuietAt]] or more; an unjudged one never does. */
+  /** Whether any of `verdicts` passed at [[GroundsAt]] or more; an unjudged one never does. */
   def grounds(verdicts: Vector[(Retrieved, Verdict)]): Boolean =
     verdicts.exists {
-      case (_, Verdict.Passed(p)) => p >= QuietAt
+      case (_, Verdict.Passed(p)) => p >= GroundsAt
       case _ => false
     }
 

@@ -236,7 +236,7 @@ object RecordTurnHistories {
       )
       recorded(durable, w.turn)
     }
-    // A heard message whose search found candidates passing under QuietAt alone: it takes the
+    // A heard message whose search found candidates passing under GroundsAt alone: it takes the
     // patch `heard-quiet-exit` and keeps nothing recalled, nothing drafted.
     val heardQuiet = {
       val w = speechWorld()

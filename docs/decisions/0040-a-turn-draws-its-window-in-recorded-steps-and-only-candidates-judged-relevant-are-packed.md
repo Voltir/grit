@@ -39,7 +39,7 @@ Decision:
   call, gone before it was briefed) is packed as if it passed. That fail-open is the window's
   rule only: anything else gating on relevance reads a candidate's verdict, passed alone.
 - **A heard turn drafts only on a candidate that grounds it.** After the last batch, a heard
-  turn none of whose candidates passed at 0.7 or more (`TurnRelevance.QuietAt`) ends as the
+  turn none of whose candidates passed at 0.7 or more (`TurnRelevance.GroundsAt`) ends as the
   needs gate's "no" does: nothing recalled, no window, draft or judge. Unjudged never grounds,
   so a failed classifier ends it (fails closed). Said to grit, a turn always drafts. It came
   in by the patch `heard-quiet-exit` (ADR 0004); the bound is read on replay, so changing it is

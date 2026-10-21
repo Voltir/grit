@@ -743,14 +743,14 @@ object TurnTests extends TestSuite {
     }
 
     test(
-      "a heard turn none of whose candidates passed at QuietAt ends before its draft, nothing recalled, no window drawn"
+      "a heard turn none of whose candidates passed at GroundsAt ends before its draft, nothing recalled, no window drawn"
     ) {
       val w = speechWorld()
       val provider = new RecordingProvider
       val durable = new InMemoryDurable
-      // Its even candidates pass at the pass mark, under QuietAt; the odd ones are rejected.
+      // Its even candidates pass at the pass mark, under GroundsAt; the odd ones are rejected.
       val passed = (Probability.value(TurnRelevance.Pass) + Probability.value(
-        TurnRelevance.QuietAt
+        TurnRelevance.GroundsAt
       )) / 2
       durable.run(w.turn.workflowId)(
         turnBodyWith(
@@ -791,7 +791,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       val durable = new InMemoryDurable
       val passed = (Probability.value(TurnRelevance.Pass) + Probability.value(
-        TurnRelevance.QuietAt
+        TurnRelevance.GroundsAt
       )) / 2
       val turn = say(entries, "when is the freeze?")
       durable.run(turn.workflowId)(
