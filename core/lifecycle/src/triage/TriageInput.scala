@@ -52,25 +52,19 @@ object TriageInput {
       // The strand before the heard message, read from the horizon before the thread began.
       read <- db
         .read { (tx: grit.core.store.Tx^) ?=>
-          for {
-            conversation <- reads.conversations.get(turn.conversationId)
-            settings <- reads.lifecycle.current()
-            read <- conversation.fold[Either[StoreError, Strand.Read]](Right(Strand.Read.empty)) {
-              c =>
-                val began = all.minByOption(_.seq).fold(heard.createdAt)(_.createdAt)
-                Along.read(
-                  reads.stitches,
-                  c,
-                  settings.locality.scope,
-                  began.minusNanos(tuning.horizon.toNanos),
-                  heard.createdAt
-                )
-            }
-          } yield (read, conversation, settings.locality.scope)
+          Along.read(
+            reads.stitches,
+            reads.lifecycle,
+            reads.conversations,
+            turn.conversationId,
+            all,
+            tuning.horizon,
+            heard.createdAt
+          )
         }
         .left
         .map(e => s"strand unread: ${describe(e)}")
-      (strand, conversation, scope) = read
+      Along.Read(conversation, strand, scope) = read
       position =
         if (all.minByOption(_.seq).exists(_.id == heard.id)) Position.Opening else Position.Reply
       focus = conversation.fold(Focus.Focused)(_.origin.focus(position))

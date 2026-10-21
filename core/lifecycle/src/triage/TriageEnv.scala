@@ -3,13 +3,22 @@ package grit.lifecycle.triage
 import grit.act.moves.MovesEnv
 import grit.act.phase.Placing
 import grit.core.clock.Clock
+import grit.core.document.DocumentSearch
 import grit.core.edge.{Acknowledgements, Deliveries}
 import grit.core.id.TurnRef
 import grit.core.recipe.RoomReads
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{StitchStore, Tuning}
-import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
+import grit.core.store.{
+  ConversationStore,
+  Db,
+  EntrySearch,
+  EntryStore,
+  LifecycleStore,
+  PeriodStore,
+  Principals
+}
 import grit.core.triage.{Corpora, TriageStore}
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
@@ -41,7 +50,8 @@ final case class TriageEnv(
   * ([[grit.core.speech.Decision.Answering]]), the mark it wants while its turn runs
   * (`acknowledgements`) and its reply awaited (`deliveries`); where a heard first message is stitched: its room's
   * exchanges and strands (`stitches`), searched (`search`), in the scope in force
-  * (`lifecycle`); and what its room said before it (`rooms`).
+  * (`lifecycle`); what its room said before it (`rooms`); the conversations' periods
+  * (`periods`); and the team's records, searched near the message (`documents`).
   */
 final case class TriageRecords(
     entries: EntryStore,
@@ -55,7 +65,9 @@ final case class TriageRecords(
     stitches: StitchStore,
     search: EntrySearch,
     lifecycle: LifecycleStore,
-    rooms: RoomReads
+    rooms: RoomReads,
+    periods: PeriodStore,
+    documents: DocumentSearch
 )
 
 /** Whether and within what grit speaks where it was not addressed (`speaking`, read when a

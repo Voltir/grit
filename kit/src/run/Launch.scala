@@ -301,7 +301,9 @@ private[grit] object Launch {
             runtime.stitches,
             runtime.search,
             runtime.lifecycle,
-            runtime.rooms
+            runtime.rooms,
+            runtime.periods,
+            runtime.documents
           ),
           moves,
           d.budget,

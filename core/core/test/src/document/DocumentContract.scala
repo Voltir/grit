@@ -485,6 +485,54 @@ abstract class DocumentContract extends TestSuite {
         .sortBy(s => (PluginName.value(s.plugin), s.place.written)) ==>
         Vector(Shelved(p, place("x")), Shelved(q, place("z")))
     }
+    test(
+      "nearby: the best matches among enabled plugins' documents current at its time that the transaction reads, best first, at most limit"
+    ) {
+      val (p, q, r) = (name("doc-nearby"), name("doc-nearby-q"), name("doc-nearby-r"))
+      transaction(ok(store.declare(Vector(p -> terms(), q -> terms()))))
+      val kp = keeper(p, terms())
+      put(kp, "a", "apple apple pear", 1, where = place("here"))
+      put(kp, "b", "apple pear plum", 1, where = place("elsewhere"))
+      put(kp, "late", "apple apple apple", 6)
+      put(keeper(q, terms()), "theirs", "apple apple apple", 1, where = place("there"))
+      put(keeper(r, terms()), "undeclared", "apple apple apple", 1)
+      def near(query: String, limit: Int) =
+        keys(transaction(ok(search.nearby(query, limit, at(5)))).map(_.document))
+      (near("apple", 5), near("apple", 2), near("quince", 5), near("apple", 0)) ==> (
+        Vector("theirs", "a", "b"),
+        Vector("theirs", "a"),
+        Vector(),
+        Vector()
+      )
+    }
+    test(
+      "a document the transaction does not read is never returned by nearby and never displaces one it does"
+    ) {
+      val p = name("doc-nearby-above")
+      transaction(ok(store.declare(Vector(p -> terms()))))
+      val k = keeper(p, terms())
+      put(k, "low", "apple low", 1)
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("apple apple high"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
+      )
+      def near(clearance: Clearance) =
+        keys(opened(clearance)(ok(search.nearby("apple", 1, at(5)))).map(_.document))
+      (near(Clearance.of(Label.Public)), near(Clearance.of(TestLabels.Trial))) ==> (
+        Vector("low"),
+        Vector("high")
+      )
+    }
 
     test("newest is a plugin's current documents, latest written first, at most n") {
       val (p, q) = (name("doc-newest"), name("doc-newest-other"))

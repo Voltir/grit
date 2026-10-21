@@ -121,7 +121,9 @@ object PullTests extends TestSuite {
                 engine.stitches,
                 engine.search,
                 engine.lifecycle,
-                engine.rooms
+                engine.rooms,
+                engine.periods,
+                engine.documents
               ),
               moves,
               engine.budget,

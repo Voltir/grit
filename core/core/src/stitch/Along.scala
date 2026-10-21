@@ -2,11 +2,42 @@ package grit.core.stitch
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
+import grit.core.id.ConversationId
 import grit.core.place.Scope
-import grit.core.store.{Conversation, StoreError, Tx}
+import grit.core.store.{Conversation, ConversationStore, Entry, LifecycleStore, StoreError, Tx}
 
 /** The one way a reader reads its conversation's strand. */
 object Along {
+
+  /** What a reader read of a conversation's strand: the conversation, the strand, and the scope
+    * in force it was read in.
+    */
+  final case class Read(conversation: Option[Conversation], strand: Strand.Read, scope: Scope)
+
+  /** What `conversation`'s strand said, read from `horizon` before `all`'s first entry (`until`
+    * when `all` is empty) until before `until`, in the scope in force; with the conversation and
+    * that scope. An empty strand, and no conversation, for one not found.
+    */
+  def read(
+      stitches: StitchStore,
+      lifecycle: LifecycleStore,
+      conversations: ConversationStore,
+      conversation: ConversationId,
+      all: Vector[Entry],
+      horizon: FiniteDuration,
+      until: Instant
+  )(using Tx^): Either[StoreError, Read] =
+    for {
+      found <- conversations.get(conversation)
+      settings <- lifecycle.current()
+      scope = settings.locality.scope
+      strand <- found.fold[Either[StoreError, Strand.Read]](Right(Strand.Read.empty)) { c =>
+        val began = all.minByOption(_.seq).fold(until)(_.createdAt)
+        read(stitches, c, scope, began.minusNanos(horizon.toNanos), until)
+      }
+    } yield Read(found, strand, scope)
 
   /** What the other conversations of `conversation`'s strand said from `from` until before
     * `until`, oldest first, and its root's opening message however old, read through

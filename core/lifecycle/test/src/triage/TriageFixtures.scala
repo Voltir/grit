@@ -193,6 +193,7 @@ object TriageFixtures {
     val search = new NoSearch
     val lifecycle = new InMemoryLifecycleStore
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
+    val documents = new grit.core.document.InMemoryDocuments
 
     // The conversation is c1: the first a fresh store creates.
     conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), Account.Local, Label.Public)(using
@@ -359,7 +360,9 @@ object TriageFixtures {
             stitches,
             search,
             lifecycle,
-            rooms
+            rooms,
+            periods,
+            documents
           ),
           TestMoves.of(ledger, classifier, db, clock),
           Budget(ZoneOffset.UTC, cap),

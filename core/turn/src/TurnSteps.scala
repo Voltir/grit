@@ -891,20 +891,17 @@ private[turn] object TurnSteps {
       all: Vector[Entry],
       until: Instant
   )(using Tx^): Either[StoreError, Strand.Read] =
-    for {
-      conversation <- conversations.get(turn.conversationId)
-      settings <- stitching.lifecycle.current()
-      read <- conversation.fold[Either[StoreError, Strand.Read]](Right(Strand.Read.empty)) { c =>
-        val began = all.minByOption(_.seq).fold(until)(_.createdAt)
-        Along.read(
-          stitching.stitches,
-          c,
-          settings.locality.scope,
-          began.minusNanos(stitching.tuning.horizon.toNanos),
-          until
-        )
-      }
-    } yield read
+    Along
+      .read(
+        stitching.stitches,
+        stitching.lifecycle,
+        conversations,
+        turn.conversationId,
+        all,
+        stitching.tuning.horizon,
+        until
+      )
+      .map(_.strand)
 
   /** The `record-speech` step: what becomes of `turn`'s draft, as `settling` and the
     * speaking in force say (an unprompted draft by [[Speech.post]], a named one, unless it

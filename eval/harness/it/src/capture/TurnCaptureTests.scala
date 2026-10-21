@@ -297,7 +297,9 @@ object TurnCaptureTests extends TestSuite {
             engine.stitches,
             engine.search,
             engine.lifecycle,
-            engine.rooms
+            engine.rooms,
+            engine.periods,
+            engine.documents
           ),
           grit.kit.run.Launch.moves(
             engine,

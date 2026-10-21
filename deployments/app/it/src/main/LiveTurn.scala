@@ -263,7 +263,9 @@ object LiveTurn {
               engine.stitches,
               engine.search,
               engine.lifecycle,
-              engine.rooms
+              engine.rooms,
+              engine.periods,
+              engine.documents
             ),
             moves,
             uncapped,
