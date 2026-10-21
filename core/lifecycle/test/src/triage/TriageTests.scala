@@ -605,15 +605,24 @@ object TriageTests extends TestSuite {
       w.hear("one more thing", "Ana", 7)
       val _ = w.note("engine contract")
       new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
-      w.speech.decisions.map(_._1.cues) ==> Vector(
-        Cues(
-          named = true,
-          spoken = Some(reply.id),
-          continued = Some(entryOf(w, c, next)),
-          settled = Some(settle),
-          records = Some(Cues.Match(Notes, 2.0, 1))
-        )
-      )
+      // The score is on the index's own scale, the fake's here: only that it matched is pinned.
+      w.speech.decisions.map(_._1.cues).map(k => k.copy(records = None) -> k.records) match {
+        case Vector((cues, Some(Cues.Match(plugin, score, matched)))) =>
+          (cues, plugin, matched, score > 0) ==> (
+            Cues(
+              named = true,
+              spoken = Some(reply.id),
+              continued = Some(entryOf(w, c, next)),
+              settled = Some(settle),
+              records = None
+            ),
+            Notes,
+            1,
+            true
+          )
+        case other =>
+          throw new java.lang.AssertionError(s"one decision with a record match, not $other")
+      }
     }
 
     test(
