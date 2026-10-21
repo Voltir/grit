@@ -6,6 +6,8 @@ import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.id.{ToolCallId, TurnRef}
+import grit.core.identity.Account
+import grit.core.inbox.InboxError
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Payload}
@@ -97,8 +99,11 @@ object ApprovalLiveTests extends TestSuite {
           assert(asks.forall(_.shown.startsWith("Edit notes.txt")))
           // Nothing has run while it waits.
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
-          engine.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
-          engine.inbox.answer(turn.workflowId, call, Approval.Declined(None)) ==> Right(())
+          engine.inbox.answer(turn.workflowId, call, Approval.Approved, Account.Local) ==> Right(())
+          // Sent before the turn reads the first it is ignored; after the call settles, Closed.
+          val second =
+            engine.inbox.answer(turn.workflowId, call, Approval.Declined(None), Account.Local)
+          assert(second == Right(()) || second == Left(InboxError.Closed(turn.workflowId, call)))
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a final\n"
           results(engine, turn).map(_._2) ==> Vector(false)
@@ -114,7 +119,8 @@ object ApprovalLiveTests extends TestSuite {
           launchIn(engine, engine.entries, new Editing, root, all = true)
           val turn = say(engine, "edit it")
           val _ = asked(engine, turn)
-          engine.inbox.answer(turn.workflowId, call, Approval.Declined(Some("not yet"))) ==>
+          engine.inbox
+            .answer(turn.workflowId, call, Approval.Declined(Some("not yet")), Account.Local) ==>
             Right(())
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
@@ -156,7 +162,7 @@ object ApprovalLiveTests extends TestSuite {
         val after = LiveEngine.open(config, Turn.Epoch)
         try {
           launchIn(after, after.entries, new Editing, root, all = true)
-          after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
+          after.inbox.answer(turn.workflowId, call, Approval.Approved, Account.Local) ==> Right(())
           val _ = after.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a final\n"
           // Asked once: the recovered turn replayed its ask, and did not ask again.

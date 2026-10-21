@@ -51,8 +51,10 @@ outside any step, up to the call's own wait: its tool's (`Gate.Ask`'s `within`, 
 when that wait ends (`until`), and the approve step how long it is; the wait is labelled
 `call:n:j:wait`. DBOS records the wait's end and the answer, so a restarted turn
 waits only for what is left, and a replay gets the same answer. An edge answers with
-`Inbox.answer`, under an idempotency key fixed by the workflow and call: only the first answer
-counts. It fails closed: no answer in time is `TimedOut`, an answer that does not decode is
+`Inbox.answer`, naming the account that answered: only an account of the turn's asker
+(`Askers.of`) may answer (`NotAsker`), and only while the ask is open, its call unsettled and
+its `until` ahead by the database's clock (`Closed`). The answer goes under an idempotency key
+fixed by the workflow and call: only the first answer counts. It fails closed: no answer in time is `TimedOut`, an answer that does not decode is
 `Declined`, and both deny the call.
 
 Consequences: a crash mid-loop reruns at most one read, never a change; an interrupted change

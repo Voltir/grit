@@ -87,7 +87,7 @@ final class InMemoryInbox(
   @caps.unsafe.untrackedCaptures
   var started = Vector.empty[TurnRef]
 
-  /** The answers sent, in order. */
+  /** The answers that reached their turns, in order: none [[answer]] refused. */
   @caps.unsafe.untrackedCaptures
   var answers = Vector.empty[(WorkflowId, ToolCallId, Approval)]
 
@@ -483,12 +483,32 @@ final class InMemoryInbox(
         }
       }
 
-  def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit] =
+  def answer(
+      workflow: WorkflowId,
+      call: ToolCallId,
+      approval: Approval,
+      by: Account
+  ): Either[InboxError, Unit] =
     if (down) unavailable
-    else {
-      answers = answers :+ ((workflow, call, approval))
-      Right(())
-    }
+    else
+      TurnRef.fromWorkflowId(workflow).toRight(InboxError.NoSuchTurn(workflow)).flatMap { turn =>
+        inTx(for {
+          kept <- entries.ofTurn(turn)
+          conversation <- conversations.get(turn.conversationId)
+        } yield {
+          // The asker by the SQL opener's one rule (Opener.asker).
+          val asker = conversation.map(_.origin).flatMap {
+            case Origin.Direct(account, _) => Some(person(account))
+            case Origin.Task(_, _) => Some(Principal.Grit)
+            case Origin.Tui(_, _) | Origin.Slack(_, _, _) =>
+              kept.headOption.map(first => principals.author(first.id).fold(Principal.Grit)(person))
+          }
+          InboxError.answering(workflow, call, by, kept, asker, ledger.now)
+        }).left
+          .map(InboxError.stored)
+          .flatMap(_.toLeft(()))
+          .map(_ => answers = answers :+ ((workflow, call, approval)))
+      }
 }
 
 object InMemoryInbox {

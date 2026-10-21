@@ -34,6 +34,11 @@ private[dbos] object SqlStatements {
     }
   }
 
+  /** The database's clock now, read in the transaction open (`clock_timestamp()`). */
+  def now(using Tx^): Either[StoreError, java.time.Instant] =
+    one("SELECT clock_timestamp()")(_ => ())(_.getTimestamp(1).toInstant)
+      .flatMap(_.toRight(StoreError.Invalid("the database's clock read no row")))
+
   /** The first row of [[many]] for the same statement, if any. */
   def one[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
       tx: Tx^

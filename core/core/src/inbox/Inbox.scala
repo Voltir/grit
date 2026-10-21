@@ -4,12 +4,12 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, EntryId, Href, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Principal}
 import grit.core.job.Slot
 import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
-import grit.core.store.{Origin, StoreError}
+import grit.core.store.{Entry, Origin, Payload, StoreError}
 
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
   * that is unsure whether one happened repeats it.
@@ -137,13 +137,22 @@ trait Inbox extends caps.SharedCapability {
       now: Instant
   ): Either[InboxError, Slotted]
 
-  /** Answers the gated call `call` of the turn whose workflow is `workflow`, which asked
-    * with a [[grit.core.store.Payload.Ask]] entry; the call runs only when `approval` is
-    * [[Approval.Approved]]. Only the first answer to a call counts: any later one is
-    * ignored, as is one sent after the turn stopped waiting. [[InboxError.NoSuchTurn]] when
-    * no turn has that workflow.
+  /** Answers the gated call `call` of the turn whose workflow is `workflow`, which asked with a
+    * [[grit.core.store.Payload.Ask]] entry, as `by`; the call runs only when `approval` is
+    * [[Approval.Approved]]. Refused [[InboxError.NotAsker]] unless `by` is an account of the
+    * turn's asker ([[grit.core.store.Askers.of]]); [[InboxError.Closed]] when the call has no
+    * open ask: it was settled, or its ask's `until` has passed by the database's clock;
+    * [[InboxError.NoSuchTurn]] when no turn has that workflow. Of two answers sent before the
+    * turn reads either, only the first counts, and the second is still `Right`, so an edge that
+    * reports "confirmed" on `Right` says so to a second click whatever the first was. Its reads
+    * (the ask entry, the asker) are opened for `Subject.Turn` of the workflow's turn.
     */
-  def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit]
+  def answer(
+      workflow: WorkflowId,
+      call: ToolCallId,
+      approval: Approval,
+      by: Account
+  ): Either[InboxError, Unit]
 }
 
 /** A failure an edge is expected to handle. */
@@ -171,9 +180,40 @@ enum InboxError {
     * they are now: it takes no more messages ([[InboxError.SealedReply]] says so to them).
     */
   case Sealed(origin: Origin.Direct)
+
+  /** `by` is no account of the turn's asker: only the person a turn answers may answer its asks. */
+  case NotAsker(by: Account)
+
+  /** The call `call` of `workflow` has no open ask: it was answered and settled, or its wait ran out. */
+  case Closed(workflow: WorkflowId, call: ToolCallId)
 }
 
 object InboxError {
+
+  /** Why `by` may not answer the gated call `call` of `workflow`'s turn, whose entries are
+    * `entries`, as its transaction reads them, and whose asker is `asker`, at `now`, as
+    * [[Inbox.answer]] refuses it: [[NoSuchTurn]] for a turn with no entries, [[NotAsker]] for
+    * an account not among the asker's, [[Closed]] for a call with no ask waiting at `now`
+    * ([[grit.core.store.Payload.waiting]]); `None` when they may.
+    */
+  def answering(
+      workflow: WorkflowId,
+      call: ToolCallId,
+      by: Account,
+      entries: Vector[Entry],
+      asker: Option[Principal],
+      now: Instant
+  ): Option[InboxError] = {
+    val theirs = asker match {
+      case Some(Principal.Person(_, accounts)) => accounts.exists(_.account == by)
+      case Some(Principal.Grit) | None => false
+    }
+    if (entries.isEmpty) Some(NoSuchTurn(workflow))
+    else if (!theirs) Some(NotAsker(by))
+    else if (!Payload.waiting(entries.map(_.payload), now).exists(_.call == call))
+      Some(Closed(workflow, call))
+    else None
+  }
 
   /** What an inbox reports for its store's failure `e`: [[Invalid]] for what the store holds
     * or is asked and cannot make good, which no retry changes; [[Unavailable]] for a database

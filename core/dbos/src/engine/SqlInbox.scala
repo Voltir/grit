@@ -37,7 +37,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{Integrity, Label, Visibility}
+import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.sql.{SqlSchedules, SqlStatements}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
@@ -420,38 +420,62 @@ final class SqlInbox(
       case NonFatal(e) => Left(SqlInbox.unavailable(e))
     }
 
-  /** `DBOSClient.send` to the turn's workflow on [[Approval.topic]], under an idempotency
-    * key fixed by the workflow and the call: DBOS keeps one notification per key
-    * (`ON CONFLICT (message_uuid) DO NOTHING`, NotificationsDAO.sendBulk), so a second
-    * answer never reaches the turn.
+  /** Checked in one transaction opened for the turn ([[InboxError.answering]], the asker by
+    * [[grit.dbos.sql.Opener.asker]]'s one rule, now by the database's clock), then
+    * `DBOSClient.send` to the turn's workflow on [[Approval.topic]], under an idempotency key
+    * fixed by the workflow and the call: DBOS keeps one notification per key
+    * (`ON CONFLICT (message_uuid) DO NOTHING`, NotificationsDAO.sendBulk), so a second answer
+    * never reaches the turn.
     */
   def answer(
       workflow: WorkflowId,
       call: ToolCallId,
-      approval: Approval
+      approval: Approval,
+      by: Account
   ): Either[InboxError, Unit] =
-    try {
-      client.send(
-        WorkflowId.value(workflow),
-        Approval.encode(approval),
-        Approval.topic(call),
-        SqlInbox.answerKey(workflow, call)
-      )
-      Right(())
-    } catch {
-      case _: DBOSNonExistentWorkflowException => Left(InboxError.NoSuchTurn(workflow))
-      case NonFatal(e) => Left(SqlInbox.unavailable(e))
+    TurnRef.fromWorkflowId(workflow).toRight(InboxError.NoSuchTurn(workflow)).flatMap { turn =>
+      inTransactionAs(Some(Subject.Turn(turn))) {
+        for {
+          kept <- entries.ofTurn(turn)
+          asker <- opener.asker(turn)
+          now <- SqlStatements.now
+        } yield InboxError.answering(workflow, call, by, kept, asker, now)
+      }.flatMap(_.toLeft(())).flatMap { _ =>
+        try {
+          client.send(
+            WorkflowId.value(workflow),
+            Approval.encode(approval),
+            Approval.topic(call),
+            SqlInbox.answerKey(workflow, call)
+          )
+          Right(())
+        } catch {
+          case _: DBOSNonExistentWorkflowException => Left(InboxError.NoSuchTurn(workflow))
+          case NonFatal(e) => Left(SqlInbox.unavailable(e))
+        }
+      }
     }
 
   /** Runs `body` in its own transaction at maintenance's clearance, committing on `Right` and
     * rolling back otherwise.
     */
   private def inTransaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[InboxError, A] =
+    inTransactionAs(None)(body)
+
+  /** Runs `body` in its own transaction, opened for `subject`, or at maintenance's clearance
+    * for none, committing on `Right` and rolling back otherwise.
+    */
+  private def inTransactionAs[A](subject: Option[Subject])(
+      body: (Tx^) ?=> Either[StoreError, A]
+  ): Either[InboxError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try opener.maintained(conn).flatMap(tx => body(using tx))
+          try
+            subject
+              .fold(opener.maintained(conn))(opener.open(_, conn))
+              .flatMap(tx => body(using tx))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         result match {
           case Right(_) => conn.commit()

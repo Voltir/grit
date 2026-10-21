@@ -6,6 +6,7 @@ import java.util.UUID
 import scala.util.Using
 
 import grit.core.admin.{Answer, Command}
+import grit.core.approval.Approval
 import grit.core.durable.Durable
 import grit.core.id.{
   CallSlot,
@@ -13,6 +14,7 @@ import grit.core.id.{
   ConversationId,
   EntryId,
   Href,
+  ToolCallId,
   TurnRef,
   TurnSeq,
   WorkflowId
@@ -252,6 +254,37 @@ object SqlInboxContractTests extends InboxContract {
               )
           )
           .fold(e => sys.error(e.toString), identity)
+      def append(turn: TurnRef, id: EntryId, payload: Payload): Unit =
+        engine.jot
+          .write(Subject.Turn(turn))(for {
+            next <- engine.entries.lockNext(turn.conversationId)
+            _ <- engine.entries.insert(
+              Entry(
+                id,
+                turn.conversationId,
+                turn.turnSeq,
+                None,
+                next.seq,
+                payload,
+                Instant.now(),
+                Integrity.Member
+              )
+            )
+          } yield ())
+          .fold(e => sys.error(e.toString), identity)
+      def answers(turn: TurnRef, call: ToolCallId): Int =
+        LiveDb.transaction(db) { (tx: Tx^) ?=>
+          val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+          Using.resource(
+            conn.prepareStatement(
+              "SELECT count(*) FROM dbos.notifications WHERE destination_uuid = ? AND topic = ?"
+            )
+          ) { ps =>
+            ps.setString(1, WorkflowId.value(turn.workflowId))
+            ps.setString(2, Approval.topic(call))
+            Using.resource(ps.executeQuery())(rs => if (rs.next()) rs.getInt(1) else 0)
+          }
+        }
       body(
         engine.inbox,
         InboxContract.Store(
@@ -303,7 +336,9 @@ object SqlInboxContractTests extends InboxContract {
               )
               .fold(e => sys.error(e.toString), _ => ()),
           room => quieted(engine, room),
-          linked
+          linked,
+          append,
+          answers
         )
       )
     } finally engine.close()

@@ -8,7 +8,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Origin, Payload, StoreError}
+import grit.core.store.{Entry, InMemoryVoucher, Origin, Payload, StoreError}
 import grit.core.visibility.{Integrity, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -125,6 +125,24 @@ object InMemoryInboxTests extends InboxContract {
       inbox.principals
         .name(account, name)(using TestTx.fake)
         .fold(e => sys.error(e.toString), identity)
+    def append(turn: TurnRef, id: EntryId, payload: Payload): Unit = {
+      val tx = TestTx.fake
+      (for {
+        next <- inbox.entries.lockNext(turn.conversationId)(using tx)
+        _ <- inbox.entries.insert(
+          Entry(
+            id,
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq,
+            payload,
+            Instant.EPOCH,
+            Integrity.Member
+          )
+        )(using tx)
+      } yield ()).fold(e => sys.error(e.toString), identity)
+    }
     (
       inbox,
       InboxContract.Store(
@@ -166,7 +184,9 @@ object InMemoryInboxTests extends InboxContract {
           val _ = voucher.vouch(v)(using TestTx.fake)
         },
         room => inbox.quiet(room),
-        linked
+        linked,
+        append,
+        (turn, call) => inbox.answers.count((w, c, _) => w == turn.workflowId && c == call)
       )
     )
   }

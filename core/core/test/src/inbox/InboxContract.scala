@@ -2,14 +2,17 @@ package grit.core.inbox
 
 import java.time.{Instant, ZoneOffset}
 
+import grit.core.approval.Approval
 import grit.core.id.{
   CallSlot,
   ConversationId,
   Declarer,
+  EntryId,
   Href,
   ScheduleId,
   ScheduleKey,
   SourceId,
+  ToolCallId,
   TurnRef,
   TurnSeq
 }
@@ -79,6 +82,9 @@ abstract class InboxContract extends TestSuite {
     CallSlot
       .of(TurnRef(ConversationId("0190a000-0000-7000-8000-000000000001"), TurnSeq.First), 0, 1)
       .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
+
+  /** An ask's `until` no test reaches. */
+  private val Later: Instant = Instant.parse("2999-01-01T00:00:00Z")
 
   private val remind = new Counting("remind")
 
@@ -531,6 +537,63 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
+      "an answer by an account not the turn's asker's is refused NotAsker, and the call waits on"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Slack("T1", "C-asks", "1.0")
+        val ana = TestAccounts.account("slack:T1/U-ana")
+        val bob = TestAccounts.account("slack:T1/U-bob")
+        val turn = inbox
+          .ingest(here, SourceId("m1"), said("edit it"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        inbox.startTurn(turn) ==> Right(())
+        store.append(
+          turn,
+          EntryId("ask:c1"),
+          Payload.Ask(ToolCallId("c1"), "Edit a.txt", Some(Later))
+        )
+        (
+          inbox.answer(turn.workflowId, ToolCallId("c1"), Approval.Approved, bob),
+          store.answers(turn, ToolCallId("c1")),
+          inbox.answer(turn.workflowId, ToolCallId("c1"), Approval.Approved, ana),
+          store.answers(turn, ToolCallId("c1"))
+        ) ==> (Left(InboxError.NotAsker(bob)), 0, Right(()), 1)
+      }
+    }
+
+    test("an answer to a settled ask, or one past its until, is refused Closed") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Slack("T1", "C-asks", "2.0")
+        val ana = TestAccounts.account("slack:T1/U-ana")
+        val turn = inbox
+          .ingest(here, SourceId("m1"), said("edit both"), ana, None)
+          .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        inbox.startTurn(turn) ==> Right(())
+        val (settled, lapsed) = (ToolCallId("c1"), ToolCallId("c2"))
+        store.append(turn, EntryId("ask:c1"), Payload.Ask(settled, "Edit a.txt", Some(Later)))
+        store.append(
+          turn,
+          EntryId("result:c1"),
+          Payload.Result(Message.ToolResult(settled, "edited", false), "edit a.txt")
+        )
+        store.append(
+          turn,
+          EntryId("ask:c2"),
+          Payload.Ask(lapsed, "Edit b.txt", Some(Instant.EPOCH))
+        )
+        (
+          inbox.answer(turn.workflowId, settled, Approval.Approved, ana),
+          inbox.answer(turn.workflowId, lapsed, Approval.Approved, ana),
+          store.answers(turn, settled) + store.answers(turn, lapsed)
+        ) ==> (
+          Left(InboxError.Closed(turn.workflowId, settled)),
+          Left(InboxError.Closed(turn.workflowId, lapsed)),
+          0
+        )
+      }
+    }
+
+    test(
       "a post begins a new conversation as its first entry, grit's own, dated when it was posted, opening its period then, made by the call it names; its source addresses nothing"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
@@ -872,7 +935,10 @@ object InboxContract {
     * reads as `Invalid`; `vouch` records what an account's realm says of it now, by a voucher of
     * [[T1]] and [[T2]] claiming [[Claimed]], as an edge attesting it would; `quiet` makes a
     * room quiet, as a person's command would; `linked`, the link each of an origin's
-    * conversation's entries was recorded with, in order, as its speakers read it.
+    * conversation's entries was recorded with, in order, as its speakers read it; `append`
+    * adds an entry holding a payload to a turn, after everything in its conversation, as the
+    * turn itself would write it; `answers`, how many answers have reached a turn's workflow
+    * for a call.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -894,6 +960,8 @@ object InboxContract {
       unreadable: Origin => Unit,
       vouch: Vouched => Unit,
       quiet: Place => Unit,
-      linked: Origin => Vector[Option[Href]]
+      linked: Origin => Vector[Option[Href]],
+      append: (TurnRef, EntryId, Payload) => Unit,
+      answers: (TurnRef, ToolCallId) => Int
   )
 }

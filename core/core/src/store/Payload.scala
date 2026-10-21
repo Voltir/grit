@@ -103,6 +103,17 @@ enum Payload {
 
 object Payload {
 
+  /** The asks among `payloads`, a turn's in order, still waiting for an answer at `now`: each
+    * whose call has no [[Result]] among them, and whose `until` has not passed (one recorded
+    * with none waits until its turn stops waiting).
+    */
+  def waiting(payloads: Vector[Payload], now: Instant): Vector[Ask] = {
+    val settled = payloads.collect { case Result(result, _) => result.callId }.toSet
+    payloads.collect {
+      case ask: Ask if !settled.contains(ask.call) && ask.until.forall(now.isBefore) => ask
+    }
+  }
+
   /** How a person's words name a file they shared with them: `[file: {name}]`. */
   def attached(name: String): String = s"[file: $name]"
 

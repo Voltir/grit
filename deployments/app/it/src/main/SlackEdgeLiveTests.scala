@@ -195,8 +195,9 @@ object SlackEdgeLiveTests extends TestSuite {
     def answer(
         workflow: WorkflowId,
         call: ToolCallId,
-        approval: Approval
-    ): Either[InboxError, Unit] = inner.answer(workflow, call, approval)
+        approval: Approval,
+        by: Account
+    ): Either[InboxError, Unit] = inner.answer(workflow, call, approval, by)
   }
 
   /** Each row `sql` reads with `params`, as its columns' text. */

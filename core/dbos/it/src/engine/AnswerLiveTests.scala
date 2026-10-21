@@ -1,15 +1,18 @@
 package grit.dbos.engine
 
+import java.time.Instant
+
 import scala.annotation.unused
 import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.durable.Durable
-import grit.core.id.{SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.id.{EntryId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InboxError
 import grit.core.message.Message
-import grit.core.store.Origin
+import grit.core.store.{Entry, Origin, Payload}
+import grit.core.visibility.{Integrity, Subject}
 import grit.dbos.sql.TestPostgres
 
 import utest.*
@@ -22,6 +25,9 @@ object AnswerLiveTests extends TestSuite {
   private val call = ToolCallId("call-1")
 
   private val approved = Approval.encode(Approval.Approved)
+
+  /** Whose message each turn here answers, and so who may answer its ask. */
+  private val asker: Account = TestAccounts.account("slack:T1/U-asker")
 
   /** Waits `within` for the answer to `call`, then a second before looking again; what each
     * look found.
@@ -36,13 +42,41 @@ object AnswerLiveTests extends TestSuite {
   /** A close, or a post, that does nothing: none is enqueued here. */
   private def noClose(id: WorkflowId)(using @unused d: Durable^): String = WorkflowId.value(id)
 
+  /** A turn of [[asker]]'s message `source`, asking about `call` until an hour from now as a
+    * gated call's turn does, then started.
+    */
   private def started(engine: Engine^, source: String): TurnRef = {
-    val origin = Origin.Task("answer", source)
-    val turn = for {
-      t <- engine.inbox.ingest(origin, SourceId(source), Message.User(source), Account.Local, None)
-      _ <- engine.inbox.startTurn(t)
-    } yield t
-    turn.fold(e => sys.error(s"inbox: $e"), identity)
+    val turn = recorded(engine, source)
+    engine.inbox.startTurn(turn).fold(e => sys.error(s"inbox: $e"), identity)
+    turn
+  }
+
+  /** A turn of [[asker]]'s message `source`, asking about `call` until an hour from now, not
+    * yet started.
+    */
+  private def recorded(engine: Engine^, source: String): TurnRef = {
+    val origin = Origin.Slack("T1", "C-answer", source)
+    val turn = engine.inbox
+      .ingest(origin, SourceId(source), Message.User(source), asker, None)
+      .fold(e => sys.error(s"inbox: $e"), identity)
+    engine.jot
+      .write(Subject.Turn(turn))(for {
+        next <- engine.entries.lockNext(turn.conversationId)
+        _ <- engine.entries.insert(
+          Entry(
+            EntryId(s"ask:$source"),
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq,
+            Payload.Ask(call, "Answer?", Some(Instant.now().plusSeconds(3600))),
+            Instant.now(),
+            Integrity.Member
+          )
+        )
+      } yield ())
+      .fold(e => sys.error(s"ask: $e"), identity)
+    turn
   }
 
   /** Waits until `turn`'s workflow has begun its first wait: DBOS records the wait's end as
@@ -70,8 +104,8 @@ object AnswerLiveTests extends TestSuite {
         )
         val turn = started(engine, "once")
         waitingNow(engine, turn)
-        engine.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
-        engine.inbox.answer(turn.workflowId, call, Approval.Declined(None)) ==> Right(())
+        engine.inbox.answer(turn.workflowId, call, Approval.Approved, asker) ==> Right(())
+        engine.inbox.answer(turn.workflowId, call, Approval.Declined(None), asker) ==> Right(())
         engine.awaitTurn(turn) ==> s"Some($approved);None"
       } finally engine.close()
     }
@@ -88,13 +122,10 @@ object AnswerLiveTests extends TestSuite {
           LiveEngine.Unplaced,
           Vector.empty
         )
-        val origin = Origin.Task("answer", "early")
-        val turn = engine.inbox
-          .ingest(origin, SourceId("early"), Message.User("early"), Account.Local, None)
-          .fold(e => sys.error(s"inbox: $e"), identity)
+        val turn = recorded(engine, "early")
         // The workflow must exist to be sent to: enqueued, then answered before it runs.
         engine.inbox.startTurn(turn) ==> Right(())
-        engine.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
+        engine.inbox.answer(turn.workflowId, call, Approval.Approved, asker) ==> Right(())
         engine.awaitTurn(turn) ==> s"Some($approved);None"
       } finally engine.close()
     }
@@ -129,7 +160,7 @@ object AnswerLiveTests extends TestSuite {
           Vector.empty
         )
         val nobody = WorkflowId("no-such-workflow")
-        engine.inbox.answer(nobody, call, Approval.Approved) ==>
+        engine.inbox.answer(nobody, call, Approval.Approved, asker) ==>
           Left(InboxError.NoSuchTurn(nobody))
       } finally engine.close()
     }
@@ -163,7 +194,7 @@ object AnswerLiveTests extends TestSuite {
           LiveEngine.Unplaced,
           Vector.empty
         )
-        after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
+        after.inbox.answer(turn.workflowId, call, Approval.Approved, asker) ==> Right(())
         after.awaitTurn(turn) ==> s"Some($approved);None"
       } finally after.close()
     }
