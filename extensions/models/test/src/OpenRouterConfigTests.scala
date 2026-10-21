@@ -89,8 +89,13 @@ object OpenRouterConfigTests extends TestSuite {
 
     test("policy: a role that names nothing follows the turn's variables; its own win") {
       val followed = overlay("GRIT_MODEL" -> "x/y")
-      followed.map(p => (one(p.summary), one(p.query))) ==>
-        Right((Some(Assignment(ref("x/y"), 1024, None)), Some(Assignment(ref("x/y"), 512, None))))
+      // Following the turn's model follows its effort too.
+      followed.map(p => (one(p.summary), one(p.query))) ==> Right(
+        (
+          Some(Assignment(ref("x/y"), 1024, Some(Effort.Low))),
+          Some(Assignment(ref("x/y"), 512, Some(Effort.Low)))
+        )
+      )
       overlay("GRIT_MODEL" -> "x/y", "GRIT_QUERY_PROVIDER" -> "cerebras").map(p =>
         (one(p.summary).map(_.ref), one(p.query).map(_.ref))
       ) ==>
@@ -189,9 +194,9 @@ object OpenRouterConfigTests extends TestSuite {
         .map(p => one(p.heard)) ==> Right(Some(Assignment(ref("h/m", "groq"), 700, None)))
       overlay("GRIT_SUMMARY_MODEL" -> "s/m", "GRIT_SUMMARY_PROVIDER" -> "groq")
         .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("s/m", "groq")))
-      // The summary follows the turn, so the heard role does too, through it.
+      // The summary follows the turn, so the heard role does too, through it, effort and all.
       overlay("GRIT_MODEL" -> "x/y", "GRIT_PROVIDER" -> "cerebras").map(p => one(p.heard)) ==>
-        Right(Some(Assignment(ref("x/y", "cerebras"), 1024, None)))
+        Right(Some(Assignment(ref("x/y", "cerebras"), 1024, Some(Effort.Low))))
       overlay("GRIT_MODEL" -> "x/y", "GRIT_HEARD_PROVIDER" -> "groq")
         .map(p => one(p.heard).map(_.ref)) ==> Right(Some(ref("small/one", "groq")))
     }
@@ -231,6 +236,43 @@ object OpenRouterConfigTests extends TestSuite {
       OpenRouterConfig
         .forRole(Map("OPENROUTER_API_KEY" -> "k"), ModelRole.Query)
         .map(_.maxTokens) ==> Right(1024)
+    }
+    test(
+      "an effort variable sets its role's standard rungs' effort, and a role following the turn's model follows its effort"
+    ) {
+      overlay("GRIT_EFFORT" -> "high").map(p => one(p.turn)) ==> Right(
+        Some(seedTurn.copy(effort = Some(Effort.High)))
+      )
+      overlay("GRIT_EFFORT" -> "high", "GRIT_SUMMARY_EFFORT" -> "minimal").map(p =>
+        (one(p.turn).flatMap(_.effort), one(p.summary).flatMap(_.effort))
+      ) ==> Right((Some(Effort.High), Some(Effort.Minimal)))
+      // Following the turn's model follows its effort, the summary and the query alike.
+      overlay("GRIT_MODEL" -> "x/y").map(p =>
+        (one(p.summary).flatMap(_.effort), one(p.query).flatMap(_.effort))
+      ) ==> Right((Some(Effort.Low), Some(Effort.Low)))
+      // The role's own effort variable wins over the turn's effort it follows.
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_QUERY_EFFORT" -> "medium").map(p =>
+        one(p.query).flatMap(_.effort)
+      ) ==> Right(Some(Effort.Medium))
+      // The heard role follows the summary's effort, as laid.
+      overlay("GRIT_MODEL" -> "x/y", "GRIT_EFFORT" -> "high").map(p =>
+        one(p.heard).flatMap(_.effort)
+      ) ==> Right(Some(Effort.High))
+      // A blank effort variable is unset.
+      overlay("GRIT_EFFORT" -> " ") ==> Right(seedLike)
+    }
+
+    test(
+      "an effort variable naming no effort is NotAnEffort, naming the variable, never the value"
+    ) {
+      overlay("GRIT_EFFORT" -> "lots") ==> Left(OpenRouterConfig.Invalid.NotAnEffort("GRIT_EFFORT"))
+      overlay("GRIT_QUERY_EFFORT" -> "none") ==>
+        Left(OpenRouterConfig.Invalid.NotAnEffort("GRIT_QUERY_EFFORT"))
+      // Any case is an effort.
+      overlay("GRIT_EFFORT" -> "XHigh").map(p => one(p.turn).flatMap(_.effort)) ==>
+        Right(Some(Effort.XHigh))
+      OpenRouterConfig.Invalid.NotAnEffort("GRIT_EFFORT").message ==>
+        "GRIT_EFFORT is not one of minimal, low, medium, high, xhigh, max"
     }
   }
 }

@@ -4,6 +4,7 @@ import java.net.URI
 import java.time.Duration
 
 import grit.core.model.{
+  Assignment,
   Effort,
   Grade,
   Ladder,
@@ -46,6 +47,7 @@ object OpenRouterConfig {
     case NotPositive(variable: String)
     case NotAModel(variable: String)
     case NotAnUpstream(variable: String)
+    case NotAnEffort(variable: String)
 
     /** Names the variable, never its value. */
     def message: String = this match {
@@ -55,6 +57,7 @@ object OpenRouterConfig {
       case NotAModel(v) => s"$v is not an OpenRouter model id, such as openai/gpt-oss-120b"
       case NotAnUpstream(v) =>
         s"$v is not one OpenRouter upstream slug, such as open-inference/fp8"
+      case NotAnEffort(v) => s"$v is not one of minimal, low, medium, high, xhigh, max"
     }
   }
 
@@ -75,7 +78,10 @@ object OpenRouterConfig {
     * sets neither follows the summary's, as laid, whenever the summary's or the turn's do. The
     * dream role follows no other: only its own variables lay over its ladder. A budget variable
     * replaces only the standard rungs' budget. `Missing` names the model variable when a grade
-    * the ladder has no rung at sets only its upstream or budget.
+    * the ladder has no rung at sets only its upstream or budget. An effort variable replaces the
+    * standard rung's effort, and a role that follows the turn's (or the summary's) standard model
+    * follows its effort too, unless its own effort variable is set; an effort variable on a
+    * ladder with no standard rung changes nothing.
     */
   def policy(env: Map[String, String], policy: Policy): Either[Invalid, Policy] = {
     def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
@@ -108,12 +114,23 @@ object OpenRouterConfig {
           raw.toIntOption.filter(_ > 0).map(Some(_)).toRight(Invalid.NotPositive(role.maxTokensVar))
       }
 
+    def effort(role: ModelRole): Either[Invalid, Option[Effort]] =
+      set(role.effortVar) match {
+        case None => Right(None)
+        case Some(e) =>
+          Effort.values
+            .find(_.toString.equalsIgnoreCase(e))
+            .map(Some(_))
+            .toRight(Invalid.NotAnEffort(role.effortVar))
+      }
+
     def graded(
         role: ModelRole,
         ladder: Ladder,
         grade: Grade,
         pair: (Option[ModelId], Option[Upstream]),
-        max: Option[Int]
+        max: Option[Int],
+        effort: Option[Option[Effort]]
     ): Either[Invalid, Ladder] =
       if (ladder.rungs.exists(_.grade == grade))
         Right(ladder.map { r =>
@@ -122,7 +139,8 @@ object OpenRouterConfig {
             r.copy(assignment =
               r.assignment.copy(
                 ref = laid(r.assignment.ref, pair),
-                maxTokens = max.getOrElse(r.assignment.maxTokens)
+                maxTokens = max.getOrElse(r.assignment.maxTokens),
+                effort = effort.getOrElse(r.assignment.effort)
               )
             )
         })
@@ -133,30 +151,44 @@ object OpenRouterConfig {
             Right(
               ladder :+ Rung(
                 grade,
-                first.copy(ref = ModelRef(m, u), maxTokens = max.getOrElse(first.maxTokens))
+                first.copy(
+                  ref = ModelRef(m, u),
+                  maxTokens = max.getOrElse(first.maxTokens),
+                  effort = effort.getOrElse(first.effort)
+                )
               )
             )
           case (None, None) if max.isEmpty => Right(ladder)
           case _ => Left(Invalid.Missing(role.modelVar(grade)))
         }
 
-    def ladder(role: ModelRole, own: Ladder, turn: Option[ModelRef]): Either[Invalid, Ladder] =
-      Grades.foldLeft[Either[Invalid, Ladder]](Right(own)) { (acc, grade) =>
-        for {
-          l <- acc
-          ownPair <- named(role, grade)
-          pair = (grade, turn) match {
-            case (Grade.Standard, Some(t)) if role != ModelRole.Turn && !names(role) =>
-              (Some(t.model), t.upstream)
-            case _ => ownPair
-          }
-          max <- if (grade == Grade.Standard) budget(role) else Right(None)
-          next <- graded(role, l, grade, pair, max)
-        } yield next
-      }
+    def ladder(role: ModelRole, own: Ladder, turn: Option[Assignment]): Either[Invalid, Ladder] =
+      for {
+        ownEffort <- effort(role)
+        laddered <- Grades.foldLeft[Either[Invalid, Ladder]](Right(own)) { (acc, grade) =>
+          for {
+            l <- acc
+            ownPair <- named(role, grade)
+            followed = (grade, turn) match {
+              case (Grade.Standard, Some(t)) if role != ModelRole.Turn && !names(role) =>
+                Some(t)
+              case _ => None
+            }
+            pair = followed.fold(ownPair)(t => (Some(t.ref.model), t.ref.upstream))
+            max <- if (grade == Grade.Standard) budget(role) else Right(None)
+            // A standard rung's effort: the role's own variable, else the one it follows.
+            setEffort = (grade, ownEffort, followed) match {
+              case (Grade.Standard, Some(e), _) => Some(Some(e))
+              case (Grade.Standard, None, Some(t)) => Some(t.effort)
+              case _ => None
+            }
+            next <- graded(role, l, grade, pair, max, setEffort)
+          } yield next
+        }
+      } yield laddered
 
-    def standard(l: Ladder): Option[ModelRef] =
-      l.rungs.find(_.grade == Grade.Standard).map(_.assignment.ref)
+    def standard(l: Ladder): Option[Assignment] =
+      l.rungs.find(_.grade == Grade.Standard).map(_.assignment)
 
     for {
       turn <- ladder(ModelRole.Turn, policy.turn, None)

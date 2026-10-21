@@ -55,6 +55,11 @@ enum ModelRole(prefix: String) {
     case Grade.Strong => "STRONG_"
   }
 
+  /** `GRIT_EFFORT`, `GRIT_SUMMARY_EFFORT`, `GRIT_QUERY_EFFORT`, `GRIT_HEARD_EFFORT`,
+    * `GRIT_DREAM_EFFORT`: one of `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, any case.
+    */
+  def effortVar: String = s"${prefix}EFFORT"
+
   /** This role's ladder in `policy`. */
   def in(policy: Policy): Ladder = this match {
     case Turn => policy.turn
