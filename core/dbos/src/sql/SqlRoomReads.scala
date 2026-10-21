@@ -17,7 +17,7 @@ final class SqlRoomReads extends RoomReads {
   def said(room: Place, from: Instant, until: Instant, outside: Set[ConversationId], most: Int)(
       using tx: Tx^
   ): Either[StoreError, Vector[Said]] =
-    latest("", room, from, until, outside, most)(_ => ())
+    ordered("", room, from, until, outside, most, latest = true)(_ => ())
 
   def saidBy(
       room: Place,
@@ -27,13 +27,36 @@ final class SqlRoomReads extends RoomReads {
       outside: Set[ConversationId],
       most: Int
   )(using tx: Tx^): Either[StoreError, Vector[Said]] =
-    latest(
+    by(author, room, from, until, outside, most, latest = true)
+
+  def firstBy(
+      room: Place,
+      author: PrincipalId,
+      from: Instant,
+      until: Instant,
+      outside: Set[ConversationId],
+      most: Int
+  )(using tx: Tx^): Either[StoreError, Vector[Said]] =
+    by(author, room, from, until, outside, most, latest = false)
+
+  /** [[ordered]] over the messages written through any account linked to `author` now. */
+  private def by(
+      author: PrincipalId,
+      room: Place,
+      from: Instant,
+      until: Instant,
+      outside: Set[ConversationId],
+      most: Int,
+      latest: Boolean
+  )(using tx: Tx^): Either[StoreError, Vector[Said]] =
+    ordered(
       "JOIN grit.authors a ON a.entry_id = e.id AND a.principal_id = ?",
       room,
       from,
       until,
       outside,
-      most
+      most,
+      latest
     )(_.setString(SqlClearance.Params + 1, PrincipalId.value(author)))
 
   def author(entry: EntryId)(using tx: Tx^): Either[StoreError, Option[PrincipalId]] =
@@ -41,20 +64,23 @@ final class SqlRoomReads extends RoomReads {
       _.setString(1, EntryId.value(entry))
     )(rs => PrincipalIds.stored(rs.getString(1))).map(_.headOption)
 
-  /** The latest `most` messages in `room` its transaction reads, joined by `join`, whose one
-    * parameter, if any, `bind` sets first after the clearance's.
+  /** The `most` messages in `room` its transaction reads, joined by `join`, whose one
+    * parameter, if any, `bind` sets first after the clearance's: the latest first when
+    * `latest`, else the earliest first.
     */
-  private def latest(
+  private def ordered(
       join: String,
       room: Place,
       from: Instant,
       until: Instant,
       outside: Set[ConversationId],
-      most: Int
+      most: Int,
+      latest: Boolean
   )(bind: PreparedStatement => Unit)(using tx: Tx^): Either[StoreError, Vector[Said]] =
     if (most < 1) Right(Vector.empty)
     else {
       val first = SqlClearance.Params + (if (join.isEmpty) 1 else 2)
+      val order = if (latest) "DESC" else "ASC"
       cleared(
         s"""WITH ${SqlClearance.With}
            |SELECT $SaidColumns
@@ -67,7 +93,7 @@ final class SqlRoomReads extends RoomReads {
            |   AND e.created_at >= ? AND e.created_at < ?
            |   AND e.conversation_id NOT IN (SELECT jsonb_array_elements_text(?::jsonb)::uuid)
            |   AND $Spoken AND ${SqlClearance.entry("e")}
-           | ORDER BY e.created_at DESC, e.id COLLATE "C" DESC
+           | ORDER BY e.created_at $order, e.id COLLATE "C" $order
            | LIMIT ?""".stripMargin
       ) { ps =>
         bind(ps)

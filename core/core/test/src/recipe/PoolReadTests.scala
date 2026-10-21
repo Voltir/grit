@@ -354,6 +354,14 @@ object PoolReadTests extends TestSuite {
           outside: Set[ConversationId],
           most: Int
       )(using Tx^) = Left(error)
+      def firstBy(
+          room: Place,
+          author: PrincipalId,
+          from: Instant,
+          until: Instant,
+          outside: Set[ConversationId],
+          most: Int
+      )(using Tx^) = Left(error)
       def author(entry: EntryId)(using Tx^) = Left(error)
     }
 

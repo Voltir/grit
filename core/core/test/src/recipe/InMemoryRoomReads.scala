@@ -33,7 +33,7 @@ final class InMemoryRoomReads(
   def said(room: Place, from: Instant, until: Instant, outside: Set[ConversationId], most: Int)(
       using Tx^
   ): Either[StoreError, Vector[Said]] =
-    Right(latest(room, from, until, outside, most, _ => true))
+    Right(ordered(room, from, until, outside, most, _ => true, latest = true))
 
   def saidBy(
       room: Place,
@@ -44,13 +44,34 @@ final class InMemoryRoomReads(
       most: Int
   )(using Tx^): Either[StoreError, Vector[Said]] =
     Right(
-      latest(
+      ordered(
         room,
         from,
         until,
         outside,
         most,
-        e => principals.author(e.id).map(TestAccounts.principalId).contains(author)
+        wrote(author),
+        latest = true
+      )
+    )
+
+  def firstBy(
+      room: Place,
+      author: PrincipalId,
+      from: Instant,
+      until: Instant,
+      outside: Set[ConversationId],
+      most: Int
+  )(using Tx^): Either[StoreError, Vector[Said]] =
+    Right(
+      ordered(
+        room,
+        from,
+        until,
+        outside,
+        most,
+        wrote(author),
+        latest = false
       )
     )
 
@@ -62,24 +83,31 @@ final class InMemoryRoomReads(
         .filter(_ => entries.everything.exists(_.id == entry))
     )
 
-  private def latest(
+  /** Whether an entry was written through `author`'s account. */
+  private def wrote(author: PrincipalId)(e: Entry): Boolean =
+    principals.author(e.id).map(TestAccounts.principalId).contains(author)
+
+  /** The `most` messages `by` takes, the latest first when `latest`, else the earliest first. */
+  private def ordered(
       room: Place,
       from: Instant,
       until: Instant,
       outside: Set[ConversationId],
       most: Int,
-      by: Entry => Boolean
-  )(using Tx^): Vector[Said] =
-    entries.readable
-      .filter(e =>
-        !e.createdAt.isBefore(from) && e.createdAt.isBefore(until) &&
-          !outside.contains(e.conversationId) && message(e) && by(e)
-      )
-      .map(e => Said(e.conversationId, origin(e.conversationId).place, e))
-      .filter(_.place.within(room))
-      .sortBy(s => (s.entry.createdAt, EntryId.value(s.entry.id)))
-      .reverse
-      .take(math.max(0, most))
+      by: Entry => Boolean,
+      latest: Boolean
+  )(using Tx^): Vector[Said] = {
+    val earliest =
+      entries.readable
+        .filter(e =>
+          !e.createdAt.isBefore(from) && e.createdAt.isBefore(until) &&
+            !outside.contains(e.conversationId) && message(e) && by(e)
+        )
+        .map(e => Said(e.conversationId, origin(e.conversationId).place, e))
+        .filter(_.place.within(room))
+        .sortBy(s => (s.entry.createdAt, EntryId.value(s.entry.id)))
+    (if (latest) earliest.reverse else earliest).take(math.max(0, most))
+  }
 
   private def message(e: Entry): Boolean = e.payload match {
     case Payload.Heard(_) | Payload.Posted(_) | Payload.Message(Message.User(_)) => true

@@ -12,7 +12,7 @@ import grit.core.store.{StoreError, Tx}
   * `room`, in [`from`, `until`), in none of `outside`: each person's message,
   * to grit or heard, and grit's replies and posts, never a draft or a closing. It keeps the
   * latest `most` (none when `most` is under 1), latest first; of two said at once, the greater
-  * entry id first.
+  * entry id first; [[firstBy]] keeps the earliest instead.
   */
 trait RoomReads {
 
@@ -27,6 +27,18 @@ trait RoomReads {
 
   /** The messages written through any account linked to `author` now. */
   def saidBy(
+      room: Place,
+      author: PrincipalId,
+      from: Instant,
+      until: Instant,
+      outside: Set[ConversationId],
+      most: Int
+  )(using Tx^): Either[StoreError, Vector[Said]]
+
+  /** The messages [[saidBy]] reads, but the earliest `most` (none when `most` is under 1),
+    * earliest first; of two said at once, the lesser entry id first.
+    */
+  def firstBy(
       room: Place,
       author: PrincipalId,
       from: Instant,

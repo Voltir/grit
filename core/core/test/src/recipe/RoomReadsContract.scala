@@ -161,6 +161,30 @@ abstract class RoomReadsContract extends TestSuite {
         .map(_.entry) ==> Vector(before)
     }
 
+    test(
+      "firstBy: the author's own across the room's conversations, in [from, until), the earliest first; of two at once the lesser id"
+    ) {
+      val a = thread("first", "1.0")
+      val b = thread("first", "2.0")
+      val elsewhere = thread("first-other", "1.0")
+      heard(elsewhere, From.plusSeconds(1))
+      heard(a, From.minusMillis(1))
+      heard(a, From.plusSeconds(1), by = ben)
+      say(a, Payload.Message(reply), From.plusSeconds(1))
+      val tiedA = heard(a, From.plusSeconds(2))
+      val tiedB = heard(b, From.plusSeconds(2))
+      val later = heard(b, From.plusSeconds(3))
+      heard(b, T)
+      val (lesser, greater) =
+        if (EntryId.value(tiedA.id) < EntryId.value(tiedB.id)) (tiedA, tiedB) else (tiedB, tiedA)
+      right(transaction(rooms.firstBy(room("first"), person(ana), From, T, Set.empty, 10)))
+        .map(_.entry) ==> Vector(lesser, greater, later)
+      right(transaction(rooms.firstBy(room("first"), person(ana), From, T, Set.empty, 1)))
+        .map(_.entry) ==> Vector(lesser)
+      right(transaction(rooms.firstBy(room("first"), person(ana), From, T, Set(a, b), 10))) ==>
+        Vector.empty
+    }
+
     test("author: an inbound entry's; none for one that is not inbound, or not kept") {
       val c = thread("author", "1.0")
       val hers = heard(c, T.minusSeconds(10))
