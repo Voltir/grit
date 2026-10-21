@@ -274,7 +274,7 @@ object DigestTests extends TestSuite {
     }
 
     test(
-      "recent_activity is believed at the least integrity of the documents it read, and as its tool says when it read none"
+      "recent_activity is believed at the least integrity of the documents it read, and as grit's own words when it read none"
     ) {
       val heard = closed(
         4,
@@ -290,7 +290,7 @@ object DigestTests extends TestSuite {
         case other => sys.error(s"not done: $other")
       }
       run(new FakeDb, new Kept) ==> Outcome.Done("No conversation has closed yet.", None)
-      Digest.RecentActivity.described.output ==> Believed.At(Integrity.Untrusted)
+      Digest.RecentActivity.described.output ==> Believed.Own
     }
 
     test("recent_activity shows the newest 10 when not told how many") {

@@ -217,8 +217,8 @@ object Digest {
 
   /** `recent_activity`: the newest lines of the digest it is bound to that the calling turn
     * reads (the [[Reads]] its run is handed, for that turn), newest first, believed at the
-    * least integrity of the documents read ([[grit.core.visibility.Integrity.Untrusted]] when
-    * none). Free: it only reads.
+    * least integrity of the documents read, and as grit's own words when it read none or could
+    * not read ([[grit.core.tool.Believed.Own]]). Free: it only reads.
     */
   val RecentActivity: PluginTool[Int] = new PluginTool[Int] {
     val described: Hosted[Int] =
@@ -239,7 +239,7 @@ object Digest {
         ),
         Gate.Free,
         n => n.toString,
-        Believed.At(Integrity.Untrusted)
+        Believed.Own
       )
 
     def bind(
