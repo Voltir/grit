@@ -343,6 +343,17 @@ object TurnTests extends TestSuite {
       provider.requests.map(_.system) ==> Vector(system)
     }
 
+    test(
+      "a turn's system prompt says, after grit's own words, when the message it answers was said"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      runTurn(new InMemoryDurable, entries, provider, say(entries, "hello")) ==> Done
+      provider.requests.map(_.system.split("\n\n").toVector.lastOption) ==> Vector(
+        Some("The message you are answering was said Thu 1970-01-01 00:00 UTC.")
+      )
+    }
+
     test("each call's usage is recorded once, under the entry it produced") {
       val store = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
@@ -915,11 +926,12 @@ object TurnTests extends TestSuite {
         Vector(
           Message.User(
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
-              "User: the invoice test is flaky\nAssistant: Pin TZ=UTC in the test JVM."
+              "Someone, Thu 1970-01-01 00:00 UTC: the invoice test is flaky\n" +
+              "Assistant, Thu 1970-01-01 00:00 UTC: Pin TZ=UTC in the test JVM."
           ),
           Message.User(
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/web:\n" +
-              "User: the login page is blank"
+              "Someone, Thu 1970-01-01 00:00 UTC: the login page is blank"
           ),
           Message.User(
             "[afar] another conversation's record, written by grit when it closed on 2026-09-27, " +
@@ -972,7 +984,8 @@ object TurnTests extends TestSuite {
             edge,
             person,
             TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
-            reach
+            reach,
+            TurnShown.answering(Instant.EPOCH)
           )
             .mkString("\n\n")
         )
@@ -1028,7 +1041,8 @@ object TurnTests extends TestSuite {
           TurnPrompt.Security.text,
           TurnPrompt.edge(origin).text,
           TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
-          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text
+          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text,
+          TurnShown.answering(Instant.EPOCH)
         ).mkString("\n\n")
       )
     }

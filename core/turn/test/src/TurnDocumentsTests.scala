@@ -212,7 +212,7 @@ object TurnDocumentsTests extends TestSuite {
         Vector(
           Message.User(
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/web:\n" +
-              "User: the login page is blank"
+              "Someone, Thu 1970-01-01 00:00 UTC: the login page is blank"
           ),
           Message.User(
             "[doc] Weekly digest, at slack:T1/C1, 2026-09-30:\n" +

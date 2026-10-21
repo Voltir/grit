@@ -320,7 +320,10 @@ object TurnViewTests extends TestSuite {
         .window
         .getOrElse(sys.error("no window"))
       def shown(at: Place, es: Vector[Entry]) =
-        Shown.nearby(at, es).map(CharEstimate.message).getOrElse(sys.error("not shown"))
+        Shown
+          .nearby(at, es, Speakers.none)
+          .map(CharEstimate.message)
+          .getOrElse(sys.error("not shown"))
       val sections = shown(webAt, fromWeb) + shown(apiAt, fromApi)
       w.nearby ==> sections
       w.total ==> CharEstimate.system("s") + sections + CharEstimate.message(

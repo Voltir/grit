@@ -124,9 +124,8 @@ final class RetrievalAssembler(
       chars: Int
   )(using Db^): Either[AssemblyError, Briefs] =
     based(request).flatMap { base =>
-      val speakers = base.read.speakers
-      val message = Briefs.text(Shown.turn(base.own, speakers), chars)
-      looked(request, base, retrieved).map(found =>
+      val message = Briefs.text(Shown.turn(base.own, base.read.speakers), chars)
+      looked(request, base, retrieved).map((found: Vector[Candidate], speakers: Speakers) =>
         Briefs(message, found.map(c => c.key -> Briefs.text(shownOf(c, speakers), chars)))
       )
     }
@@ -141,25 +140,21 @@ final class RetrievalAssembler(
         case Packing.Searched(Querying.Written(_, queried), _) if !base.searchable =>
           Right(drawn(base, base.linear, Vector(queried)))
         case Packing.Searched(Querying.Written(_, queried), admitted) =>
-          looked(request, base, admitted.ranked.map(_._1)).map { found =>
-            val packed = pack(
-              found,
-              base.used,
-              base.budget,
-              base.read.speakers
-            )
-            val recalled = packed.collect { case Candidate.Own(_, t) => t }
-            val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
-            val notes =
-              if (base.ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
-              else Vector(queried)
-            drawn(
-              base,
-              base.recent ++ recalled,
-              notes,
-              sections(packed),
-              packed.collect { case Candidate.Doc(d, _) => d }
-            )
+          looked(request, base, admitted.ranked.map(_._1)).map {
+            (found: Vector[Candidate], speakers: Speakers) =>
+              val packed = pack(found, base.used, base.budget, speakers)
+              val recalled = packed.collect { case Candidate.Own(_, t) => t }
+              val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
+              val notes =
+                if (base.ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
+                else Vector(queried)
+              drawn(
+                base,
+                base.recent ++ recalled,
+                notes,
+                sections(packed),
+                packed.collect { case Candidate.Doc(d, _) => d }
+              )
           }
       }
     }
@@ -177,18 +172,18 @@ final class RetrievalAssembler(
   /** What `c` shows a judge: as the window shows it. */
   private def shownOf(c: Candidate, speakers: Speakers): Vector[Message] = c match {
     case Candidate.Own(_, t) => t.flatMap(Shown.of(_, speakers))
-    case Candidate.Near(_, place, _, t) => Shown.nearby(place, t).toVector
+    case Candidate.Near(_, place, _, t) => Shown.nearby(place, t, speakers).toVector
     case Candidate.Record(_, place, record) => Vector(Shown.recorded(place, record))
     case Candidate.Doc(document, terms) => Vector(Shown.document(document, terms.label))
   }
 
   /** Each of `wanted`, once, in its order, as a search would find it for `base` now: one no
-    * longer there left out. Its documents are read in one read, and
-    * each conversation elsewhere once.
+    * longer there left out; with the speakers of its turn's own and of the turns from elsewhere
+    * among them. Its documents are read in one read, and each conversation elsewhere once.
     */
   private def looked(request: AssemblyRequest, base: Base, wanted: Vector[Retrieved])(using
       db: Db^
-  ): Either[AssemblyError, Vector[Candidate]] = {
+  ): Either[AssemblyError, (Vector[Candidate], Speakers)] = {
     val read = base.read
     val older = base.turns
       .flatMap(t => t.headOption.filter(e => before(e.turnSeq, base.from)).map(_.turnSeq -> t))
@@ -243,7 +238,13 @@ final class RetrievalAssembler(
         found <- asked.foldLeft[Either[StoreError, Vector[Candidate]]](Right(Vector.empty)) {
           (acc, r) => acc.flatMap(done => one(r, byVersion, theirs).map(done ++ _))
         }
-      } yield found
+        spoken = found.flatMap {
+          case Candidate.Near(_, _, _, t) => t.map(_.id)
+          case _ => Vector.empty
+        }
+        elsewhere <-
+          if (spoken.isEmpty) Right(Speakers.none) else principals.speakers(spoken.distinct)
+      } yield (found, read.speakers ++ elsewhere)
     }.left
       .map(AssemblyError.Store(_))
   }
@@ -658,8 +659,8 @@ final class RetrievalAssembler(
             val before = kept.collect {
               case Candidate.Near(k, _, _, es) if k == conversation => es
             }.flatten
-            val without = shown(place, before)
-            Tokens(Tokens.value(shown(place, before ++ t)) - Tokens.value(without))
+            val without = shown(place, before, speakers)
+            Tokens(Tokens.value(shown(place, before ++ t, speakers)) - Tokens.value(without))
           case Candidate.Record(_, place, record) =>
             estimator.message(Shown.recorded(place, record))
           case Candidate.Doc(document, terms) =>
@@ -671,8 +672,8 @@ final class RetrievalAssembler(
       }
       ._2
 
-  private def shown(place: Place, section: Vector[Entry]): Tokens =
-    Shown.nearby(place, section.sortBy(_.seq)).fold(Tokens.Zero)(estimator.message)
+  private def shown(place: Place, section: Vector[Entry], speakers: Speakers): Tokens =
+    Shown.nearby(place, section.sortBy(_.seq), speakers).fold(Tokens.Zero)(estimator.message)
 
   /** The packed turns from elsewhere as sections: one per conversation, in the order of its
     * first packed turn, its entries in its conversation's order.

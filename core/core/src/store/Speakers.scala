@@ -19,5 +19,8 @@ object Speakers {
 
     /** The name of whoever wrote `entry`, if their account has one. */
     def of(entry: EntryId): Option[String] = s.get(entry)
+
+    /** The union; an entry named by both has one author, so they agree. */
+    def ++(other: Speakers): Speakers = s ++ other
   }
 }

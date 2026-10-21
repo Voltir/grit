@@ -319,7 +319,7 @@ object TurnGateTurnTests extends TestSuite {
         Vector(
           Message.User(
             "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
-              s"User: ${stubOf("h1", "someone")}"
+              s"Someone, Thu 1970-01-01 00:00 UTC: ${stubOf("h1", "someone")}"
           ),
           Message.User(
             "[afar] another conversation's record, written by grit when it closed on " +

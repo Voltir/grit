@@ -346,10 +346,8 @@ object TurnFixtures {
 
   val ToolSets: InMemoryToolSets = new InMemoryToolSets
 
-  /** The system prompt a fixture turn is sent when no edge serves its directory, in the
-    * default voice.
-    */
-  val system: String =
+  /** grit's own words in [[system]], before the line saying when its message was said. */
+  val prompt: String =
     SystemPrompt
       .of(
         Vector(
@@ -364,6 +362,11 @@ object TurnFixtures {
           Voice.fragment(Voice.Default)
       )
       .render
+
+  /** The system prompt a fixture turn is sent when no edge serves its directory, in the
+    * default voice, its message said at the epoch, when every fixture entry is made.
+    */
+  val system: String = s"$prompt\n\n${TurnShown.answering(Instant.EPOCH)}"
 
   /** The stub provider, keeping every request it was sent. */
   final class RecordingProvider(fail: Boolean = false) extends Provider {

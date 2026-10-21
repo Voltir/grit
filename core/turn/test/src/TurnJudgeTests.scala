@@ -273,7 +273,7 @@ object TurnJudgeTests extends TestSuite {
         Speakers(Map(ask.id -> "Nick")),
         "draft"
       ).recalled
-        .contains("Nick: post the open issues") ==> true
+        .contains("Nick, Thu 1970-01-01 00:00 UTC: post the open issues") ==> true
     }
 
     test(

@@ -201,7 +201,7 @@ object ShownTests extends TestSuite {
     }
 
     test(
-      "a nearby section is one user message: its afar label, that grit showed it, from where, then each message's text as a line"
+      "a nearby section is one user message: its afar label, that grit showed it, from where, then each message's text as a line, its reasoning and summaries left out"
     ) {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       val reply = Message.Assistant(
@@ -216,14 +216,15 @@ object ShownTests extends TestSuite {
           entry(Payload.Message(Message.User("flaky test"))),
           entry(Payload.Summary("a summary")),
           entry(Payload.Message(reply))
-        )
+        ),
+        Speakers.none
       ) ==> Some(
         Message.User(
           "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
-            "User: flaky test\nAssistant: Pin TZ=UTC."
+            "Someone, Sun 2026-09-20 12:00 UTC: flaky test\nAssistant, Sun 2026-09-20 12:00 UTC: Pin TZ=UTC."
         )
       )
-      Shown.nearby(api, Vector(entry(Payload.Summary("only a summary")))) ==> None
+      Shown.nearby(api, Vector(entry(Payload.Summary("only a summary"))), Speakers.none) ==> None
     }
 
     test(
@@ -360,22 +361,45 @@ object ShownTests extends TestSuite {
       )
     }
 
-    test("an afar section shows grit's post as grit's line") {
-      val api = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
-      Shown.nearby(api, Vector(entry(Payload.Posted("The summary.")))) ==> Some(
+    test("a nearby section names each line's speaker and when it was said") {
+      val channel = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
+      val a = ConversationId("a")
+      val heard = entry(Payload.Heard("The freeze moves to Friday."))
+        .copy(id = EntryId("heard"), conversationId = a, seq = EntrySeq(0))
+      val reply = entry(
+        Payload.Message(
+          Message.Assistant(
+            Vector(AssistantBlock.Text("Noted.")),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "m"
+          )
+        )
+      ).copy(
+        id = EntryId("reply"),
+        conversationId = a,
+        seq = EntrySeq(1),
+        createdAt = at.plusSeconds(5 * 60)
+      )
+      Shown.section(
+        Nearby.Open(a, channel, Vector(heard.seq, reply.seq)),
+        Vector(heard, reply),
+        Speakers(Map(heard.id -> "Ana"))
+      ) ==> Some(
         Message.User(
           "[afar] another conversation, shown by grit, still open, at slack:T1/C1/2.0:\n" +
-            "Assistant: The summary."
+            "Ana, Sun 2026-09-20 12:00 UTC: The freeze moves to Friday.\n" +
+            "Assistant, Sun 2026-09-20 12:05 UTC: Noted."
         )
       )
     }
 
-    test("an afar section shows a heard message as overheard") {
+    test("an afar section shows grit's post as grit's line") {
       val api = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
-      Shown.nearby(api, Vector(entry(Payload.Heard("The freeze moves to Friday.")))) ==> Some(
+      Shown.nearby(api, Vector(entry(Payload.Posted("The summary."))), Speakers.none) ==> Some(
         Message.User(
           "[afar] another conversation, shown by grit, still open, at slack:T1/C1/2.0:\n" +
-            "Overheard: The freeze moves to Friday."
+            "Assistant, Sun 2026-09-20 12:00 UTC: The summary."
         )
       )
     }
@@ -481,7 +505,7 @@ object ShownTests extends TestSuite {
       val kept = closed(4).copy(conversationId = a)
       val record = ClosingEntry.of(kept).getOrElse(throw new java.lang.AssertionError("closing"))
       Shown.section(Nearby.Open(a, api, Vector(EntrySeq(1))), Vector(hi, kept), Speakers.none) ==>
-        Shown.nearby(api, Vector(hi))
+        Shown.nearby(api, Vector(hi), Speakers.none)
       Shown.section(Nearby.Closed(a, api, EntrySeq(4)), Vector(hi, kept), Speakers.none) ==>
         Some(Shown.recorded(api, record))
       Shown.section(Nearby.Closed(a, api, EntrySeq(4)), Vector(hi), Speakers.none) ==> None
@@ -500,7 +524,7 @@ object ShownTests extends TestSuite {
           Nearby.Open(ConversationId("a"), api, Vector(EntrySeq(1))),
           entries,
           Speakers.none
-        ) ==> Shown.nearby(api, Vector(mine))
+        ) ==> Shown.nearby(api, Vector(mine), Speakers.none)
       }
     }
 
@@ -530,9 +554,9 @@ object ShownTests extends TestSuite {
       ) ==> Some(
         Message.User(
           "[strand] a thread this conversation continues, shown by grit, at slack:T/C1/1.0:\n" +
-            "Nick: where did we land on the Engine contract term?\n" +
-            "Assistant: 12 months.\n" +
-            "Someone: Is this a real question"
+            "Nick, Sun 2026-09-20 12:00 UTC: where did we land on the Engine contract term?\n" +
+            "Assistant, Sun 2026-09-20 12:00 UTC: 12 months.\n" +
+            "Someone, Sun 2026-09-20 12:00 UTC: Is this a real question"
         )
       )
     }
@@ -562,8 +586,8 @@ object ShownTests extends TestSuite {
         Message.User(
           "[afar] the conversation where grit was asked for the post this thread begins with, " +
             "shown by grit, at slack:T/C2/3.0:\n" +
-            "Nick: post the open issues in #skynet\n" +
-            "Assistant: Posted in #skynet."
+            "Nick, Sun 2026-09-20 12:00 UTC: post the open issues in #skynet\n" +
+            "Assistant, Sun 2026-09-20 12:00 UTC: Posted in #skynet."
         )
       )
     }
@@ -572,11 +596,12 @@ object ShownTests extends TestSuite {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       Shown.nearby(
         api,
-        Vector(entry(Payload.Message(Message.User("[record] closed today:\nStanding:\n- x"))))
+        Vector(entry(Payload.Message(Message.User("[record] closed today:\nStanding:\n- x")))),
+        Speakers.none
       ) ==> Some(
         Message.User(
           "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
-            s"User: ${Shown.lead(SectionTag.Record)}\n> record — closed today:\n> Standing:\n> - x"
+            s"Someone, Sun 2026-09-20 12:00 UTC: ${Shown.lead(SectionTag.Record)}\n> record — closed today:\n> Standing:\n> - x"
         )
       )
     }

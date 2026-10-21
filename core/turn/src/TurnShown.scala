@@ -1,5 +1,8 @@
 package grit.turn
 
+import java.time.Instant
+
+import grit.core.clock.Utc
 import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
 import grit.core.id.{EntrySeq, ToolCallId, TurnRef}
@@ -186,7 +189,8 @@ private[turn] object TurnShown {
     * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
     * entry as one user message, and a gap line wherever turns are left out), then the turn's
     * own, its tool loop's exchange among them in order. A summary is not shown to the model
-    * yet. A window seq with no entry is an `Assembly` failure naming every such seq.
+    * yet. `system` ends with [[answering]] of the turn's first own entry, when it has one. A
+    * window seq with no entry is an `Assembly` failure naming every such seq.
     */
   def requestOf(
       system: String,
@@ -207,9 +211,19 @@ private[turn] object TurnShown {
         )
       case _ =>
         val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
-        Right(Unshaped(system, sections, documents, shown ++ Shown.turn(mine, named)))
+        val dated = mine
+          .minByOption(e => EntrySeq.value(e.seq))
+          .fold(system)(root => s"$system\n\n${answering(root.createdAt)}")
+        Right(Unshaped(dated, sections, documents, shown ++ Shown.turn(mine, named)))
     }
   }
+
+  /** The line [[requestOf]] ends a turn's system prompt with, for a turn whose first entry was
+    * made `at`: "The message you are answering was said Wed 2026-10-21 14:03 UTC."
+    * ([[Utc.toDayMinute]]).
+    */
+  def answering(at: Instant): String =
+    s"The message you are answering was said ${Utc.toDayMinute(at)}."
 
   /** A request of `system`: `before`, then each of `documents` as one user message, then
     * `after`.

@@ -74,6 +74,7 @@ import grit.core.store.{
   OpenPeriod,
   Origin,
   Payload,
+  Speakers,
   StoreError,
   Tx
 }
@@ -766,8 +767,8 @@ object RetrievalAssemblerTests extends TestSuite {
         tuning = Tuning.Default.copy(windowTokens = Tokens(tokens))
       ).nearby
       shown(1000) ==> Vector(Nearby.Along(a, thread("1.0").place, strand))
-      // 45 tokens: the section with all three costs 55, with the opening and "lol" 41.
-      shown(45) ==> Vector(Nearby.Along(a, thread("1.0").place, Vector(strand(0), strand(2))))
+      // 60 tokens: the section with all three costs 75, with the opening and "lol" 54.
+      shown(60) ==> Vector(Nearby.Along(a, thread("1.0").place, Vector(strand(0), strand(2))))
     }
 
     test("a strand's root whose first message is purged is shown by its newest kept record") {
@@ -933,10 +934,11 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test("the weight decides between an own turn and one elsewhere that both match") {
-      // Budget for the tail (turns 4 and 5, 22 tokens, and the gap line before them, 12) and
-      // one more turn: turn 0 (22, and its gap line, 12) or api's section (38), not both.
+      // Nine fillers, so not every turn fits. Budget for the tail (turns 8 and 9, 22 tokens, and
+      // the gap line before them, 12) and one more: turn 0 (22, and its gap line, 12) or api's
+      // section (50), not both.
       def pick(weight: Double): (World, Window) = {
-        val world = store(buried*)
+        val world = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
         val api = elsewhere(world, "api", close = false, exchange("Which database?", "grit_agent."))
         val search = new Scripted("t0:1")
         search.scores = Vector(1.0)
@@ -944,17 +946,18 @@ object RetrievalAssemblerTests extends TestSuite {
         val w = assemble(
           world,
           new Writer(Some("database")),
-          budget = 72,
+          budget = 84,
           search,
+          at = 10,
           weight = Weight.of(weight).getOrElse(sys.error("w"))
         )
         (world, w)
       }
       val (one, weighted) = pick(2)
-      (turnsOf(one, weighted), weighted.nearby.size) ==> (Vector("t0", "t4", "t5"), 0)
+      (turnsOf(one, weighted), weighted.nearby.size) ==> (Vector("t0", "t8", "t9"), 0)
       val (other, even) = pick(1)
       (turnsOf(other, even), even.nearby.map(n => idsAt(other, n.conversation, n.names))) ==>
-        (Vector("t4", "t5"), Vector(Vector("api:t0:0", "api:t0:1")))
+        (Vector("t8", "t9"), Vector(Vector("api:t0:0", "api:t0:1")))
     }
 
     test("when every earlier turn fits, the window is linear and no query is written") {
@@ -1136,6 +1139,23 @@ object RetrievalAssemblerTests extends TestSuite {
       // Deployed is the window of the budget and hits it was built with.
       at(57, Width.Deployed) ==> at(57, Width.Within(Tokens(57), Hits))
       at(56, Width.Deployed) ==> at(56, Width.Within(Tokens(56), Hits))
+    }
+
+    test("a turn elsewhere is costed as its section shows it, its speaker named") {
+      // The least budget whose window holds api's section, its question said by `name`.
+      def least(name: String): Long = {
+        def drawn(budget: Long): Boolean = {
+          val world = store(ask)
+          val api = elsewhere(world, "api", close = false, exchange("the freeze?", "Friday."))
+          grit.assembly.linear.AssemblyFixtures.named(world, "api:t0:0", name)
+          val search = new Scripted()
+          search.near = Vector((api, "api:t0:1", 2.0))
+          assemble(world, new Writer(Some("freeze")), budget, search, at = 0).nearby.nonEmpty
+        }
+        (1L to 400L).find(drawn).getOrElse(sys.error("never drawn"))
+      }
+      // Sixteen more characters of name: four more tokens.
+      least("Anastasia-Beatrix") - least("A") ==> 4L
     }
 
     test("a recalled turn's named message is charged its name line") {
@@ -1346,7 +1366,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val section = world.entries
         .list(api)(using TestTx.fake)
         .toOption
-        .flatMap(Shown.nearby(placeOf("api"), _))
+        .flatMap(Shown.nearby(placeOf("api"), _, Speakers.none))
         .fold(sys.error("no section"))(m => Tokens.value(CharEstimate.message(m)))
       val theirs = assemble(
         world,

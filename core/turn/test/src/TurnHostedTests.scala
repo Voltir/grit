@@ -1,5 +1,7 @@
 package grit.turn
 
+import java.time.Instant
+
 import scala.collection.immutable.VectorMap
 
 import grit.core.approval.Approval
@@ -825,8 +827,14 @@ object TurnHostedTests extends TestSuite {
       edge.advertise(Vector(hostedFetch), Vector(file))
       val provider = model()
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
-      provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(2)) ==>
-        Some(Vector("Instructions from /checkout/AGENTS.md:", "Be brief."))
+      provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(3)) ==>
+        Some(
+          Vector(
+            "Instructions from /checkout/AGENTS.md:",
+            "Be brief.",
+            TurnShown.answering(Instant.EPOCH)
+          )
+        )
       // Offered what the edge advertises, not every hosted tool the turn knows.
       provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("fetch"))
     }
@@ -887,7 +895,10 @@ object TurnHostedTests extends TestSuite {
       val ids = offered.toVector
         .flatMap(_("prompt").arr.toVector)
         .flatMap(v => grit.core.prompt.FragmentId.of(v.str).toOption)
-      Prompts.prompt(ids)(using grit.dbos.sql.TestTx.fake).map(_.render) ==>
+      // The line saying when the message was said is the request's, never a kept fragment.
+      Prompts
+        .prompt(ids)(using grit.dbos.sql.TestTx.fake)
+        .map(p => s"${p.render}\n\n${TurnShown.answering(Instant.EPOCH)}") ==>
         Right(provider.requests.headOption.fold("")(_.system))
     }
 

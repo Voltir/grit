@@ -2,6 +2,7 @@ package grit.core.context
 
 import java.time.{Instant, ZoneOffset}
 
+import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, Document}
 import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
@@ -45,25 +46,22 @@ object Shown {
   val PostedLead: String =
     s"${SectionTag.Record.tag} this thread begins with grit's post, made at another conversation's request:"
 
-  /** A nearby section as one user message, "[afar] another conversation, shown by grit,
-    * still open, at {place.written}:", then each message among `entries` as a
-    * `User:`, `Overheard:` or `Assistant:` line of its text, as [[pasted]] shows it. `None` when none of
-    * them has text.
+  /** A nearby section as one user message, "[afar] another conversation, shown by grit, still
+    * open, at {place.written}:", then each message among `entries` as [[strand]] shows them,
+    * under its speaker's name and when it was said. `None` when none of them has text.
     */
-  def nearby(place: Place, entries: Vector[Entry]): Option[Message] = {
-    val lines = entries.flatMap(e => line(e.payload))
-    Option.when(lines.nonEmpty)(
-      Message.User(
-        (s"${SectionTag.Afar.tag} another conversation, shown by grit, still open, at ${place.written}:" +: lines)
-          .mkString("\n")
-      )
+  def nearby(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
+    named(
+      s"${SectionTag.Afar.tag} another conversation, shown by grit, still open, at ${place.written}:",
+      entries,
+      speakers
     )
-  }
 
   /** A strand section as one user message, "[strand] a thread this conversation continues,
     * shown by grit, at {place.written}:", then each message among `entries` as a line of its
-    * text under its speaker's name (`speakers`; "Someone" when it names none, "Assistant" for
-    * grit's replies), as [[pasted]] shows it. `None` when none of them has text.
+    * text, as [[pasted]] shows it, after its speaker's name (`speakers`; "Someone" when it names
+    * none, "Assistant" for grit's) and when it was said ([[Utc.toDayMinute]]): "Ana, Wed
+    * 2026-10-21 14:03 UTC: …". `None` when none of them has text.
     */
   def strand(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
     named(
@@ -72,17 +70,21 @@ object Shown {
       speakers
     )
 
-  /** `header`, then each message among `entries` as a line of its text under its speaker's
-    * name, as [[strand]] and [[asked]] show them; `None` when none of them has text.
+  /** `header`, then each message among `entries` as a line as [[strand]] shows them; `None`
+    * when none of them has text.
     */
   private def named(header: String, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
     val lines = entries.flatMap { e =>
+      def by(who: String, text: String) =
+        Option.when(text.trim.nonEmpty)(s"$who, ${Utc.toDayMinute(e.createdAt)}: ${pasted(text)}")
       val name = speakers.of(e.id).getOrElse("Someone")
       e.payload match {
-        case Payload.Message(Message.User(text)) =>
-          Option.when(text.trim.nonEmpty)(s"$name: ${pasted(text)}")
-        case Payload.Heard(text) => Option.when(text.trim.nonEmpty)(s"$name: ${pasted(text)}")
-        case p => line(p)
+        case Payload.Message(Message.User(text)) => by(name, text)
+        case Payload.Heard(text) => by(name, text)
+        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
+          by("Assistant", blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n"))
+        case Payload.Posted(text) => by("Assistant", text)
+        case _ => None
       }
     }
     Option.when(lines.nonEmpty)(Message.User((header +: lines).mkString("\n")))
@@ -90,9 +92,8 @@ object Shown {
 
   /** An asked section as one user message, "[afar] the conversation where grit was asked for
     * the post this thread begins with, shown by grit, at {place.written}:", then each message
-    * among `entries` as a line of its text under its speaker's name (`speakers`; "Someone"
-    * when it names none, "Assistant" for grit's), as [[pasted]] shows it. `None` when none of
-    * them has text.
+    * among `entries` as [[strand]] shows them, under its speaker's name and when it was said.
+    * `None` when none of them has text.
     */
   def asked(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
     named(
@@ -117,14 +118,14 @@ object Shown {
 
   /** A nearby section as the model is shown it, from those of `entries` in its conversation at
     * the seqs it names: an open one as [[nearby]], a closed one as [[recorded]], a strand's as
-    * [[strand]] and an asked one as [[asked]] with `speakers`.
+    * [[strand]] and an asked one as [[asked]], each with `speakers`.
     * `None` when none of its entries is among `entries`, or none of them has text.
     */
   def section(nearby: Nearby, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
     val bySeq =
       entries.filter(_.conversationId == nearby.conversation).map(e => e.seq -> e).toMap
     nearby match {
-      case Nearby.Open(_, place, seqs) => this.nearby(place, seqs.flatMap(bySeq.get))
+      case Nearby.Open(_, place, seqs) => this.nearby(place, seqs.flatMap(bySeq.get), speakers)
       case Nearby.Along(_, place, seqs) => strand(place, seqs.flatMap(bySeq.get), speakers)
       case Nearby.Asked(_, place, seqs) => asked(place, seqs.flatMap(bySeq.get), speakers)
       case Nearby.Closed(_, place, seq) =>
@@ -310,16 +311,5 @@ object Shown {
         ) ++
         Option.when(agenda.nonEmpty)(s"Topics so far: ${agenda.mkString("; ")}").toVector))
       .mkString("\n")
-  }
-
-  private def line(payload: Payload): Option[String] = payload match {
-    case Payload.Message(Message.User(text)) =>
-      Option.when(text.trim.nonEmpty)(s"User: ${pasted(text)}")
-    case Payload.Heard(text) => Option.when(text.trim.nonEmpty)(s"Overheard: ${pasted(text)}")
-    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-      val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n")
-      Option.when(said.trim.nonEmpty)(s"Assistant: ${pasted(said)}")
-    case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(s"Assistant: ${pasted(text)}")
-    case _ => None
   }
 }
