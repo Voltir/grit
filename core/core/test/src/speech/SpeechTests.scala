@@ -176,6 +176,24 @@ object SpeechTests extends TestSuite {
         )
         assert(decide(l = l) == held(Silence.Unanswered(previous)))
       }
+      test("the assistant's own reply after the message holds it, Spoken, after the gate") {
+        val reply = EntryId("s9")
+        val replied = heard.copy(cues = Cues.Empty.copy(spoken = Some(reply)))
+        assert(decide(replied) == held(Silence.Spoken(reply)))
+        val failing = replied.copy(tags = tags(helps = 0.49))
+        assert(decide(failing) == gated(Gate.Failed(helpful, p(0.49))))
+        val earlier = empty.copy(turns =
+          Vector(
+            Spoken(
+              TurnRef(ConversationId("c"), TurnSeq(3)),
+              room,
+              now.minusSeconds(30),
+              Stage.Drafting
+            )
+          )
+        )
+        assert(decide(replied, l = earlier) == held(Silence.Spoken(reply)))
+      }
       test("posts in this thread within the thread rate") {
         // Posted before this message (at 4 < 10), within 6 hours: answered, but counted.
         val l = empty.copy(turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))))

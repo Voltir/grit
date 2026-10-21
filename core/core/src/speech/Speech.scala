@@ -128,6 +128,11 @@ enum Silence {
   /** It names `other`, not the assistant; the first such, by id, when it names several. */
   case AskedOf(other: Account)
 
+  /** The assistant's own reply to this message, `by`, is already in the conversation: the
+    * message was answered.
+    */
+  case Spoken(by: EntryId)
+
   /** `previous`, an unprompted turn in the same conversation, is drafting, or posted after
     * this message.
     */
@@ -259,6 +264,7 @@ object Speech {
         },
         () => gated(limits, heard),
         () => heard.reach.asked.toVector.sortBy(Account.written).headOption.map(Silence.AskedOf(_)),
+        () => heard.cues.spoken.map(Silence.Spoken(_)),
         () =>
           ledger.turns
             .find(t =>
