@@ -172,6 +172,20 @@ object Cases {
         |grit: Cache the dependency resolution between CI runs.
         |ask
         |you: What fix did I settle on for the flaky invoice test?
+        |""".stripMargin,
+    "note-leaning-back" ->
+      """# A long note naming the assistant, its request leaning on the turn before ("this", "the later one") and sharing no word with the answer: only a query naming the meeting finds planning's word on it.
+        |query: Dana meeting time available Thursday
+        |turn
+        |you: When should I set up a meeting with Dana?
+        |grit: I can't see calendars, so I can't say when Dana is free.
+        |place fs:/home/nick/planning
+        |turn
+        |you: Dana can't make it until Thursday; three o'clock works for her. [must]
+        |grit: Noted.
+        |here
+        |ask
+        |you: A note for later, for when you look back at this: I hoped you would find what was said about this in the other channel, put it together with this, see when it can happen, remind me nearer the time, then ask me a follow-up. A calendar integration would help too, though not on its own. grit, can you also tell me the id of my first message here, so I can find it in the database myself?
         |""".stripMargin
   )
 
