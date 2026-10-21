@@ -158,7 +158,7 @@ object SpeechTests extends TestSuite {
           reach = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1"))),
           cues = Cues.Empty.copy(named = true)
         )
-        val unnamed = Gate.all(Gate.Holds(helpful), Tags.isNot(Fact.Named))
+        val unnamed = Gate.all(Gate.Holds(helpful), Tags.factFails(Fact.Named))
         (
           decide(asked),
           decide(asked, s = Speaking.Within(limits.copy(drafts = unnamed)))

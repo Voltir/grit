@@ -234,8 +234,8 @@ object Tags {
       V2.stillOpen(half),
       Gate.either(
         V3.atGrit(half),
-        Gate.all(isNot(Fact.Named), holds(half)),
-        Gate.all(holds(likely), is(Fact.RecordScore)),
+        Gate.all(factFails(Fact.Named), holds(half)),
+        Gate.all(holds(likely), factHolds(Fact.RecordScore)),
         Gate.all(
           Gate.Holds(Bound.AtLeast(Reading.Fact(Fact.SettledOnPerson), likely)),
           holds(half)
@@ -244,11 +244,11 @@ object Tags {
     )
   }
 
-  /** It holds: `fact` at least one half. */
-  def is(fact: Fact): Gate =
+  /** The gate that passes where `fact` reads at least one half. */
+  def factHolds(fact: Fact): Gate =
     Gate.Holds(Bound.AtLeast(Reading.Fact(fact), Probability.clamped(0.5)))
 
-  /** It does not: `fact` below one half. */
-  def isNot(fact: Fact): Gate =
+  /** The gate that passes where `fact` reads below one half. */
+  def factFails(fact: Fact): Gate =
     Gate.Holds(Bound.Below(Reading.Fact(fact), Probability.clamped(0.5)))
 }
