@@ -7,6 +7,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowName, ShortHash}
 import grit.core.speech.{Outcome, Silence}
+import grit.core.triage.Cues
 
 /** Live triage's decision on a heard message, settled: held, or drafted and what became of
   * the draft.
@@ -24,7 +25,8 @@ enum Reason {
 }
 
 /** A heard message a review may pick: its entry and conversation, when it was said, live's
-  * settled decision on it, and what `shadow` answered of it, under its questions' names.
+  * settled decision on it, what `shadow` answered of it, under its questions' names, and the
+  * cues live's decision kept.
   */
 final case class Candidate(
     entry: EntryId,
@@ -32,7 +34,8 @@ final case class Candidate(
     said: Instant,
     live: Settled,
     shadow: ShadowName,
-    answers: VectorMap[QuestionName, Answer]
+    answers: VectorMap[QuestionName, Answer],
+    cues: Cues
 )
 
 /** What a pick round made of a candidate. */
@@ -74,7 +77,8 @@ object Review {
   }
 
   /** What a pick round makes of each of `candidates`, in their order, under `reviewing`,
-    * `drafts` being the shadow's gate and `earlier` the reasons of the messages picked earlier
+    * `drafts` being the shadow's gate, read over a candidate's answers and the cues live read
+    * ([[grit.core.triage.Gate.drafts]]), and `earlier` the reasons of the messages picked earlier
     * the same day. Every `ShadowOnly` and `Both` is picked. `LiveOnly` and `Neither` share
     * `perDay`, its slots dealt to them in turn from `LiveOnly` (so `LiveOnly`'s share is
     * `perDay` halved rounding up, `Neither`'s rounding down); each picks its earliest said
@@ -84,14 +88,14 @@ object Review {
     */
   def pick(
       candidates: Vector[Candidate],
-      drafts: VectorMap[QuestionName, Answer] -> Option[Boolean],
+      drafts: (VectorMap[QuestionName, Answer], Cues) -> Option[Boolean],
       earlier: Vector[Reason],
       reviewing: Reviewing
   ): Vector[(Candidate, Considered)] = {
     val reasons: Vector[Option[Reason]] = candidates.map { c =>
       for {
         live <- gated(c.live)
-        shadow <- drafts(c.answers)
+        shadow <- drafts(c.answers, c.cues)
       } yield (shadow, live) match {
         case (true, false) => Reason.ShadowOnly
         case (false, true) => Reason.LiveOnly

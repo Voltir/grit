@@ -27,7 +27,8 @@ object Tags {
     * v3).
     */
   def directed(tags: Tags): Boolean = tags match {
-    case Weighed(answers, _, _) => V3.directed.drafts(answers).contains(true)
+    // V3.directed reads no fact, so no cues.
+    case Weighed(answers, _, _) => V3.directed.drafts(answers, Cues.Empty).contains(true)
     case Unanswered(_) => false
   }
 

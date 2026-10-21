@@ -51,7 +51,7 @@ final case class TriageQuestions private (
 
   /** The first of `gate`'s readings ([[Gate.reads]]) this set does not ask with `sources`
     * ([[questions]]) in its kind, or a `Key` or `Chosen` of a key its choice lacks; `None`
-    * when it asks them all.
+    * when it asks them all. A fact is never one: code reads it, not the set.
     */
   def unread(gate: Gate, sources: Corpora): Option[Reading] = {
     val declared = questions(sources)
@@ -65,6 +65,7 @@ final case class TriageQuestions private (
       case Reading.Yes(name) => !asks(name, _ => false, yesNo = true)
       case Reading.Key(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
       case Reading.Chosen(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
+      case Reading.Fact(_) => false
     }
   }
 

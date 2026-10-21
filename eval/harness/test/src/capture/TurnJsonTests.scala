@@ -59,7 +59,9 @@ object TurnJsonTests extends TestSuite {
         ServiceOffer(
           right(Service.of("github")),
           Vector(repo),
-          ServiceOffer.Verdict.Checked(Tags.V2.source(repo, p(0.2)).check(repoAt(0.1).answers))
+          ServiceOffer.Verdict.Checked(
+            Tags.V2.source(repo, p(0.2)).check(repoAt(0.1).answers, grit.core.triage.Cues.Empty)
+          )
         ),
         TurnShape.Via.Workspace,
         Vector(ToolName("search"))

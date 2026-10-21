@@ -7,7 +7,7 @@ import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.Place
-import grit.core.triage.{Bound, Gate, Reading, Tags}
+import grit.core.triage.{Bound, Cues, Fact, Gate, Reading, Tags}
 import grit.core.triage.{Corpora, Corpus}
 import grit.lifecycle.triage.TriageQuestions.{Item, Refusal}
 
@@ -323,7 +323,7 @@ object TriageQuestionsTests extends TestSuite {
         n("to-grit") -> Answer.YesNo(0.9),
         n("anchor-record") -> Answer.YesNo(0.1)
       )
-      (set.speak, TriageQuestions.ShippedSpeak, set.speak.drafts(states)) ==>
+      (set.speak, TriageQuestions.ShippedSpeak, set.speak.drafts(states, Cues.Empty)) ==>
         (Tags.V5.drafts, Tags.V5.drafts, Some(false))
       (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V4.drafts, catalog)) ==>
         (None, None)
@@ -337,7 +337,7 @@ object TriageQuestionsTests extends TestSuite {
         n("durable") -> Answer.YesNo(0.0),
         n("anchor") -> Answer.YesNo(0.49)
       )
-      val drafts = TriageQuestions.V2.speak.drafts
+      val drafts = TriageQuestions.V2.speak.drafts(_, Cues.Empty)
       Vector(
         passing,
         passing.updated(n("to"), Answer.YesNo(0.5)),
@@ -403,7 +403,7 @@ object TriageQuestionsTests extends TestSuite {
         answers(kind(0.3, 0.4), 0.5),
         answers(kind(0.3, 0.4), 0.49),
         answers(kind(0.6, 0.4), 0.9)
-      ).map(TriageQuestions.V1.speak.drafts) ==> Vector(
+      ).map(TriageQuestions.V1.speak.drafts(_, Cues.Empty)) ==> Vector(
         Some(false),
         Some(true),
         Some(false),
@@ -434,6 +434,17 @@ object TriageQuestionsTests extends TestSuite {
         Some(Reading.Chosen(kind, "maybe")),
         Some(Reading.Yes(kind))
       )
+    }
+
+    test("unread never names a fact: code reads it, not the set") {
+      val gate = Gate.all(
+        Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.Named), half)),
+        TriageQuestions.V2.speak
+      )
+      (
+        TriageQuestions.V2.unread(gate, Corpora.Empty),
+        TriageQuestions.V1.unread(gate, Corpora.Empty)
+      ) ==> (None, Some(Reading.Key(n("gap"), "asks")))
     }
 
     test(

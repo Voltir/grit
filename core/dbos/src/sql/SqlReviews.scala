@@ -179,7 +179,7 @@ final class SqlReviews extends ReviewStore {
         conn.prepareStatement(
           s"""SELECT e.id, e.conversation_id, e.created_at, s.drafting,
             |       s.silence::text AS silence, s.outcome::text AS outcome,
-            |       t.answers::text AS answers
+            |       t.answers::text AS answers, s.cues::text AS cues
             |  FROM grit.triage_shadows t
             |  JOIN grit.entries e ON e.id = t.entry_id
             |  JOIN grit.conversations c ON c.id = e.conversation_id
@@ -205,13 +205,15 @@ final class SqlReviews extends ReviewStore {
             rows += (for {
               live <- settled(rs).left.map(why => s"${rs.getString("id")}: $why")
               answers <- named(rs.getString("answers"))
+              cues <- SqlSpeechStore.cuesRead(Option(rs.getString("cues")))
             } yield Candidate(
               EntryId(rs.getString("id")),
               ConversationId(rs.getString("conversation_id")),
               instant(rs, "created_at"),
               live,
               shadow,
-              answers
+              answers,
+              cues
             )).left.map(invalid)
           rows.result()
         }

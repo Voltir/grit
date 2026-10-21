@@ -2,14 +2,14 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx, UsageLedger}
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{Cues, Kind, Tags}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -39,6 +39,11 @@ abstract class SpeechContract extends TestSuite {
 
   /** The day a row [[ledger]] records now falls on. */
   protected def today: Day
+
+  /** The cues [[speech]] kept with its decision on `turn`, read back as its readers read
+    * them; `None` when no decision on `turn` is kept.
+    */
+  protected def cuesKept(turn: TurnRef): Option[Cues]
 
   private val At = Instant.parse("2026-09-30T10:00:00Z")
   private val room = Place.under(Namespace.Slack, Vector("T", "C"))
@@ -70,7 +75,8 @@ abstract class SpeechContract extends TestSuite {
       At,
       Reach(Some("C/1"), Set.empty),
       Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.8)), "jev", usage),
-      Integrity.Member
+      Integrity.Member,
+      Cues.Empty
     )
 
   /** A heard message as `c`'s next turn, decided on at `at` as `decision` does to it. */
@@ -165,6 +171,27 @@ abstract class SpeechContract extends TestSuite {
       mine(c, At.plusSeconds(61)) ==> Vector(
         Spoken(late, room, At.plusSeconds(120), Stage.Drafting)
       )
+    }
+
+    test("a decision keeps its heard message's cues, read back as written") {
+      val c = conversation("speech-cues")
+      val turn = next(c, Payload.Heard("is the build green?"), "speech-cues:h")
+      val plain = next(c, Payload.Heard("and the docs?"), "speech-cues:p")
+      val cues = Cues(
+        named = true,
+        spoken = Some(EntryId("speech-cues:r")),
+        continued = Some(EntryId("speech-cues:n")),
+        settled = Some(Judgement.Unanswered("no settle model")),
+        records = Some(
+          Cues.Match(PluginName.of("notes").getOrElse(sys.error("a name")), 1.5, 2)
+        )
+      )
+      transaction(
+        speech.decided(heardAs(turn).copy(cues = cues), Decision.Held(Silence.Off), At)
+      ) ==> Right(true)
+      transaction(speech.decided(heardAs(plain), Decision.Drafting(plain), At)) ==> Right(true)
+      (cuesKept(turn), cuesKept(plain), cuesKept(TurnRef(c, TurnSeq(99)))) ==>
+        (Some(cues), Some(Cues.Empty), None)
     }
 
     test("a posted outcome keeps its reply's position; any other settles; each kept once") {

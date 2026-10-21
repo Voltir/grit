@@ -33,7 +33,7 @@ object V3GateTests extends TestSuite {
 
   /** (drafts, directed) for `a`. */
   private def read(a: VectorMap[QuestionName, Answer]) =
-    (Tags.V3.drafts.drafts(a), Tags.V3.directed.drafts(a))
+    (Tags.V3.drafts.drafts(a, Cues.Empty), Tags.V3.directed.drafts(a, Cues.Empty))
 
   val tests = Tests {
     test("a question to grit by name drafts as directed, whoever else it reads as to") {
@@ -70,7 +70,10 @@ object V3GateTests extends TestSuite {
       val v2 =
         answers(asks = 1.0, open = 0.93, to = 0.1, toGrit = 0, anchor = 0.13) - Tags.V3.toGrit
       val toSomeone = v2.updated(Tags.V2.to, Answer.YesNo(0.88))
-      (Tags.V3.drafts.drafts(v2), Tags.V3.drafts.drafts(toSomeone)) ==> (Some(true), None)
+      (Tags.V3.drafts.drafts(v2, Cues.Empty), Tags.V3.drafts.drafts(toSomeone, Cues.Empty)) ==> (
+        Some(true),
+        None
+      )
     }
 
     test(
@@ -93,7 +96,8 @@ object V3GateTests extends TestSuite {
       def failed(b: Bound, read: Double) =
         Gate.Failed(b, grit.core.period.Probability.clamped(read))
       Tags.V3.drafts.check(
-        answers(asks = 0.0, open = 0.25, to = 0.9, toGrit = 0.1, anchor = 0.1)
+        answers(asks = 0.0, open = 0.25, to = 0.9, toGrit = 0.1, anchor = 0.1),
+        Cues.Empty
       ) ==>
         Gate.Checked.Fails(
           failed(Bound.AtLeast(Reading.Key(Tags.V2.gap, "asks"), half), 0.0),

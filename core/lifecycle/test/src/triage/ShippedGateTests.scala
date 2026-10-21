@@ -11,7 +11,7 @@ import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Decision, Heard, Ledger, Limits, Reach, Silence, Speaking, Speech}
 import grit.core.spend.{Budget, DailyCap, Spend}
-import grit.core.triage.{Gate, Kind, Reading, Tags}
+import grit.core.triage.{Cues, Gate, Kind, Reading, Tags}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -32,7 +32,8 @@ object ShippedGateTests extends TestSuite {
     now.minusSeconds(60),
     Reach(Some("C/1"), Set.empty),
     tags,
-    Integrity.Member
+    Integrity.Member,
+    Cues.Empty
   )
 
   private def tags(kind: Kind, kindP: Double, helps: Double): Tags =

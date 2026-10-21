@@ -82,14 +82,14 @@ object GateLawsTests extends TestSuite {
       "all fails when any part fails, with every part's failures in order, whatever is unread; otherwise is Unread at its first unread part; otherwise passes"
     ) {
       broken(for { (x, y) <- pairs; a <- answerSets } yield (x, y, a)) { (x, y, a) =>
-        val parts = Vector(x.check(a), y.check(a))
+        val parts = Vector(x.check(a, Cues.Empty), y.check(a, Cues.Empty))
         val expected =
           parts.flatMap(failures) match {
             case first +: rest => Gate.Checked.Fails(first, rest)
             case _ =>
               parts.flatMap(unread).headOption.fold(Gate.Checked.Passes)(Gate.Checked.Unread(_))
           }
-        Gate.all(x, y).check(a) == expected
+        Gate.all(x, y).check(a, Cues.Empty) == expected
       } ==> Vector.empty
     }
 
@@ -97,7 +97,7 @@ object GateLawsTests extends TestSuite {
       "either passes when any part passes; otherwise is Unread at its first unread part; otherwise fails with every part's failures in order"
     ) {
       broken(for { (x, y) <- pairs; a <- answerSets } yield (x, y, a)) { (x, y, a) =>
-        val parts = Vector(x.check(a), y.check(a))
+        val parts = Vector(x.check(a, Cues.Empty), y.check(a, Cues.Empty))
         val expected =
           if (parts.contains(Gate.Checked.Passes)) Gate.Checked.Passes
           else
@@ -109,22 +109,30 @@ object GateLawsTests extends TestSuite {
                   case _ => Gate.Checked.Passes
                 }
             }
-        Gate.either(x, y).check(a) == expected
+        Gate.either(x, y).check(a, Cues.Empty) == expected
       } ==> Vector.empty
     }
 
     test("Open and all() pass everything; all(g) checks as g, and either(g, g) decides as g") {
       broken(for { g <- depthTwo; a <- answerSets } yield (g, a)) { (g, a) =>
-        Gate.Open.check(a) == Gate.Checked.Passes && Gate.all().check(a) == Gate.Checked.Passes &&
-        Gate.all(g).check(a) == g.check(a) && Gate.either(g, g).drafts(a) == g.drafts(a)
+        Gate.Open.check(a, Cues.Empty) == Gate.Checked.Passes && Gate
+          .all()
+          .check(a, Cues.Empty) == Gate.Checked.Passes &&
+        Gate.all(g).check(a, Cues.Empty) == g.check(a, Cues.Empty) && Gate
+          .either(g, g)
+          .drafts(a, Cues.Empty) == g.drafts(a, Cues.Empty)
       } ==> Vector.empty
     }
 
     test("grouping changes no result: all and either are associative") {
       broken(for { x <- leaves; y <- depthOne; z <- leaves; a <- answerSets } yield (x, y, z, a)) {
         (x, y, z, a) =>
-          Gate.all(Gate.all(x, y), z).check(a) == Gate.all(x, Gate.all(y, z)).check(a) &&
-          Gate.either(Gate.either(x, y), z).check(a) == Gate.either(x, Gate.either(y, z)).check(a)
+          Gate.all(Gate.all(x, y), z).check(a, Cues.Empty) == Gate
+            .all(x, Gate.all(y, z))
+            .check(a, Cues.Empty) &&
+          Gate.either(Gate.either(x, y), z).check(a, Cues.Empty) == Gate
+            .either(x, Gate.either(y, z))
+            .check(a, Cues.Empty)
       } ==> Vector.empty
     }
 
@@ -132,16 +140,18 @@ object GateLawsTests extends TestSuite {
       "Unread names a reading the gate reads and the answers do not answer, and every failed bound reads one the gate reads"
     ) {
       broken(for { g <- depthTwo; a <- answerSets } yield (g, a)) { (g, a) =>
-        val checked = g.check(a)
-        unread(checked).forall(r => g.reads.contains(r) && r.in(a).isEmpty) &&
+        val checked = g.check(a, Cues.Empty)
+        unread(checked).forall(r => g.reads.contains(r) && r.in(a, Cues.Empty).isEmpty) &&
         failures(checked).forall(f => g.reads.contains(f.bound.reading))
       } ==> Vector.empty
     }
 
     test("answering more never turns Passes or Fails into anything else") {
       broken(for { g <- depthTwo; a <- answerSets } yield (g, a)) { (g, a) =>
-        g.drafts(a)
-          .forall(decided => extensions(a).forall(more => g.drafts(more).contains(decided)))
+        g.drafts(a, Cues.Empty)
+          .forall(decided =>
+            extensions(a).forall(more => g.drafts(more, Cues.Empty).contains(decided))
+          )
       } ==> Vector.empty
     }
   }

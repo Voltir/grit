@@ -12,6 +12,7 @@ import grit.core.place.Place
 import grit.core.speech.{Decision, Heard, Outcome, Reach, SpeechJson, SpeechStore, Spoken, Stage}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{StoreError, Tx}
+import grit.core.triage.{Cues, CuesJson}
 
 /** [[SpeechStore]] over `grit.heard`, whose rows cascade from `grit.entries`, and
   * `grit.speech`, the ledger of decisions.
@@ -156,8 +157,8 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """INSERT INTO grit.speech (workflow, conversation_id, turn_seq, room, decided_at,
-            |  drafting, silence, answering)
-            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?)
+            |  drafting, silence, answering, cues)
+            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb)
             |ON CONFLICT (workflow) DO NOTHING""".stripMargin
         )
       ) { ps =>
@@ -180,6 +181,7 @@ final class SqlSpeechStore extends SpeechStore {
             ps.setString(7, SpeechJson.writeSilence(why).render())
             ps.setBoolean(8, false)
         }
+        ps.setString(9, CuesJson.write(heard.cues).render())
         ps.executeUpdate() == 1
       }
     }
@@ -300,4 +302,13 @@ final class SqlSpeechStore extends SpeechStore {
       }
     }
   }
+}
+
+object SqlSpeechStore {
+
+  /** The cues a `grit.speech` row's `cues` column holds, as its text (`None` for NULL, a
+    * decision kept before cues: [[Cues.Empty]]); `Left` for a form [[CuesJson]] does not read.
+    */
+  private[dbos] def cuesRead(kept: Option[String]): Either[String, Cues] =
+    CuesJson.read(kept.fold[ujson.Value](ujson.Null)(ujson.read(_)))
 }

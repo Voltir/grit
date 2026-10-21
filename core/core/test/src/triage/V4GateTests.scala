@@ -38,7 +38,7 @@ object V4GateTests extends TestSuite {
 
   /** (drafts, directed) for `a`. */
   private def read(a: VectorMap[QuestionName, Answer]) =
-    (Tags.V4.drafts.drafts(a), Tags.V3.directed.drafts(a))
+    (Tags.V4.drafts.drafts(a, Cues.Empty), Tags.V3.directed.drafts(a, Cues.Empty))
 
   val tests = Tests {
     test("a fact asked of a named person drafts, not as directed at grit") {
@@ -63,14 +63,18 @@ object V4GateTests extends TestSuite {
     test("v3's answers, without anchor-record, are decided by to-grit or unread") {
       val toGrit = answers(to = 0.88, toGrit = 0.9, anchorRecord = 0) - Tags.V4.anchorRecord
       val toBob = answers(to = 0.87, toGrit = 0.04, anchorRecord = 0) - Tags.V4.anchorRecord
-      (Tags.V4.drafts.drafts(toGrit), Tags.V4.drafts.drafts(toBob)) ==> (Some(true), None)
+      (Tags.V4.drafts.drafts(toGrit, Cues.Empty), Tags.V4.drafts.drafts(toBob, Cues.Empty)) ==> (
+        Some(true),
+        None
+      )
     }
 
     test("a message held by the gate is held on each bound it failed, once") {
       val half = Probability.clamped(0.5)
       def failed(b: Bound, read: Double) = Gate.Failed(b, Probability.clamped(read))
       Tags.V4.drafts.check(
-        answers(asks = 0.0, open = 0.25, to = 0.1, toGrit = 0.1, anchorRecord = 0.9)
+        answers(asks = 0.0, open = 0.25, to = 0.1, toGrit = 0.1, anchorRecord = 0.9),
+        Cues.Empty
       ) ==>
         Gate.Checked.Fails(
           failed(Bound.AtLeast(Reading.Key(Tags.V2.gap, "asks"), half), 0.0),

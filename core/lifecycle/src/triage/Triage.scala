@@ -108,6 +108,7 @@ object Triage {
           env.records,
           env.speech.speaking,
           env.speech.budget,
+          env.tuning.horizon,
           t.at.ref,
           t.entry,
           t.tags,

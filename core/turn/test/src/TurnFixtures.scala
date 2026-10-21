@@ -83,7 +83,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{Cues, Kind, Tags}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Cleared,
@@ -1822,7 +1822,8 @@ object TurnFixtures {
         Instant.EPOCH,
         Reach(replyTo, Set.empty),
         Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero),
-        Integrity.Member
+        Integrity.Member,
+        Cues.Empty
       ),
       replyTo.filter(_ => answering).fold(Decision.Drafting(turn))(Decision.Answering(turn, _)),
       Instant.EPOCH

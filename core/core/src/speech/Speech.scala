@@ -11,7 +11,7 @@ import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Tx}
-import grit.core.triage.{Gate, Reading, Tags}
+import grit.core.triage.{Cues, Gate, Reading, Tags}
 import grit.core.visibility.Integrity
 
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
@@ -32,8 +32,8 @@ object Reach {
 }
 
 /** A heard message as [[Speech.decide]] weighs it: its `turn`, its position `seq` in its
-  * conversation, its `room`, when it was `said`, its reach, triage's tags, and the
-  * `integrity` its heard entry is believed at.
+  * conversation, its `room`, when it was `said`, its reach, triage's tags, the `integrity` its
+  * heard entry is believed at, and the `cues` code read around it.
   */
 final case class Heard(
     turn: TurnRef,
@@ -42,7 +42,8 @@ final case class Heard(
     said: Instant,
     reach: Reach,
     tags: Tags,
-    integrity: Integrity
+    integrity: Integrity,
+    cues: Cues
 )
 
 /** Where an unprompted turn has got to. */
@@ -247,7 +248,7 @@ object Speech {
           val age = JDuration.between(heard.said, now).toNanos.nanos
           Option.when(age > limits.fresh)(Silence.Stale(age))
         },
-        () => gated(limits, heard.tags),
+        () => gated(limits, heard),
         () => heard.reach.asked.toVector.sortBy(Account.written).headOption.map(Silence.AskedOf(_)),
         () =>
           ledger.turns
@@ -286,7 +287,7 @@ object Speech {
       case (true, None) => Decision.Held(Silence.NoAddress)
       case (true, Some(to)) =>
         limited
-          .flatMap(gated(_, heard.tags))
+          .flatMap(gated(_, heard))
           .orElse(Option.when(!budget.admits(ledger.all))(Silence.OverBudget))
           .fold(Decision.Answering(heard.turn, to))(Decision.Held(_))
       case (false, _) =>
@@ -296,13 +297,13 @@ object Speech {
     }
   }
 
-  /** Why `tags` fail `limits`' gate: untagged, failing a bound, or unread; `None` when they
-    * pass.
+  /** Why `heard`'s tags and cues fail `limits`' gate: untagged, failing a bound, or unread;
+    * `None` when they pass.
     */
-  private def gated(limits: Limits, tags: Tags): Option[Silence] = tags match {
+  private def gated(limits: Limits, heard: Heard): Option[Silence] = heard.tags match {
     case Tags.Unanswered(why) => Some(Silence.Unweighed(why))
     case Tags.Weighed(answers, _, _) =>
-      limits.drafts.check(answers) match {
+      limits.drafts.check(answers, heard.cues) match {
         case Gate.Checked.Passes => None
         case Gate.Checked.Fails(first, rest) => Some(Silence.Gated(first, rest))
         case Gate.Checked.Unread(reading) => Some(Silence.Unasked(reading))

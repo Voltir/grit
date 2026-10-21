@@ -874,9 +874,11 @@ CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
 -- rate and in no speech spend); and, once the turn settles, what became of it (`outcome`), the
 -- judge's scores and model (an unprompted draft's; a named draft or a reply is not judged, its
 -- `grounded` and `worth` NULL), an excerpt of the draft or reply, and a posted reply's
--- position. Triage's answers are in grit.triage. Forms in
--- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
--- day's speech spend count every decision, and each post can be stated with its approval.
+-- position; and the cues code read around the message when it was decided (`cues`,
+-- grit.core.triage.Cues; NULL on a decision kept before cues, read as none). Triage's answers
+-- are in grit.triage. Forms in SpeechJson and CuesJson. No foreign key: it outlives the heard
+-- entry's purge, so the rates and the day's speech spend count every decision, and each post
+-- can be stated with its approval.
 -- Retention: ledger: with its period's usage (SpeechStore.forget, beside UsageLedger.forget),
 -- or its conversation.
 CREATE TABLE IF NOT EXISTS grit.speech (
@@ -897,6 +899,7 @@ CREATE TABLE IF NOT EXISTS grit.speech (
     posted_seq      BIGINT,
     judged_at       TIMESTAMPTZ,
     answering       BOOLEAN NOT NULL DEFAULT false,
+    cues            JSONB CHECK (cues IS NULL OR jsonb_typeof(cues) = 'object'),
     CHECK (drafting = (silence IS NULL)
        AND (drafting OR NOT answering)
        AND (outcome IS NULL) = (outcome_kind IS NULL)

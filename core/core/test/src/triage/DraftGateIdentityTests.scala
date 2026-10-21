@@ -44,7 +44,7 @@ object DraftGateIdentityTests extends TestSuite {
       case Bound.AtLeast(_, p) => read >= p
       case Bound.Below(_, p) => !(read >= p)
     }
-    val read = bounds.map(b => b -> b.reading.in(answers))
+    val read = bounds.map(b => b -> b.reading.in(answers, Cues.Empty))
     def failed(from: Vector[(Bound, Option[Probability])]) =
       from.collect { case (b, Some(v)) if !holds(b, v) => Gate.Failed(b, v) }
     read.zipWithIndex
@@ -80,11 +80,11 @@ object DraftGateIdentityTests extends TestSuite {
   }
 
   private def partial(answers: VectorMap[QuestionName, Answer]) =
-    Tags.V2.drafts.reads.exists(_.in(answers).isEmpty)
+    Tags.V2.drafts.reads.exists(_.in(answers, Cues.Empty).isEmpty)
 
   /** Whether `answers` answer some of `gate`'s readings and not others. */
   private def someNotAll(gate: Gate, answers: VectorMap[QuestionName, Answer]) = {
-    val answered = gate.reads.count(_.in(answers).isDefined)
+    val answered = gate.reads.count(_.in(answers, Cues.Empty).isDefined)
     answered > 0 && answered < gate.reads.size
   }
 
@@ -94,7 +94,8 @@ object DraftGateIdentityTests extends TestSuite {
     ) {
       val recorded = RecordedAnswers.V2 ++ RecordedAnswers.V1
       recorded.filterNot(a =>
-        Tags.V2.drafts.check(a) == oracle(v2Bounds, a) && Tags.V1.gate.check(a) == oracle(
+        Tags.V2.drafts.check(a, Cues.Empty) == oracle(v2Bounds, a) && Tags.V1.gate
+          .check(a, Cues.Empty) == oracle(
           v1Bounds,
           a
         )
@@ -103,9 +104,14 @@ object DraftGateIdentityTests extends TestSuite {
       // unread on v1's; v1's gate fails and passes on v1's. No recorded set answers some of
       // either gate's readings and not others, where the two rules may give different reasons.
       (
-        RecordedAnswers.V2.groupMapReduce(a => outcome(Tags.V2.drafts.check(a)))(_ => 1)(_ + _),
-        RecordedAnswers.V1.groupMapReduce(a => outcome(Tags.V2.drafts.check(a)))(_ => 1)(_ + _),
-        RecordedAnswers.V1.groupMapReduce(a => outcome(Tags.V1.gate.check(a)))(_ => 1)(_ + _),
+        RecordedAnswers.V2.groupMapReduce(a => outcome(Tags.V2.drafts.check(a, Cues.Empty)))(_ =>
+          1
+        )(_ + _),
+        RecordedAnswers.V1.groupMapReduce(a => outcome(Tags.V2.drafts.check(a, Cues.Empty)))(_ =>
+          1
+        )(_ + _),
+        RecordedAnswers.V1
+          .groupMapReduce(a => outcome(Tags.V1.gate.check(a, Cues.Empty)))(_ => 1)(_ + _),
         recorded.count(a => someNotAll(Tags.V2.drafts, a) || someNotAll(Tags.V1.gate, a))
       ) ==> (
         Map("passes" -> 7, "fails" -> 72),
@@ -119,7 +125,10 @@ object DraftGateIdentityTests extends TestSuite {
       "on every grid point answering each of v2's gate readings, the rebuilt gate checks exactly as the bound list"
     ) {
       val whole = grid.filterNot(partial)
-      (whole.size, whole.filterNot(a => Tags.V2.drafts.check(a) == oracle(v2Bounds, a))) ==>
+      (
+        whole.size,
+        whole.filterNot(a => Tags.V2.drafts.check(a, Cues.Empty) == oracle(v2Bounds, a))
+      ) ==>
         (625, Vector.empty)
     }
 
@@ -127,13 +136,13 @@ object DraftGateIdentityTests extends TestSuite {
       "on every grid point leaving one of v2's gate readings unread, both hold the message, and a reason differs only where a failing bound now decides what an earlier unread one left Unasked"
     ) {
       val partly = grid.filter(partial)
-      val checked = partly.map(a => (Tags.V2.drafts.drafts(a), oracle(v2Bounds, a)))
+      val checked = partly.map(a => (Tags.V2.drafts.drafts(a, Cues.Empty), oracle(v2Bounds, a)))
       (
         partly.size,
         checked.count((now, _) => now.contains(true)),
         checked.count((_, was) => was == Gate.Checked.Passes),
         partly
-          .map(a => (oracle(v2Bounds, a), Tags.V2.drafts.check(a)))
+          .map(a => (oracle(v2Bounds, a), Tags.V2.drafts.check(a, Cues.Empty)))
           .collect { case (was, now) if was != now => (outcome(was), outcome(now)) }
           .distinct
       ) ==> (1776, 0, 0, Vector(("unread", "fails")))

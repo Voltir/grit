@@ -119,7 +119,9 @@ final class InMemoryReviews(
             if !rows.contains(e.id) && conversation.exists(c => receives(to, c.label))
             live <- settled(e)
             a <- answers
-          } yield Candidate(e.id, e.conversationId, e.createdAt, live, shadow, a)).fold(done)(
+          } yield Candidate(e.id, e.conversationId, e.createdAt, live, shadow, a, heard.cues)).fold(
+            done
+          )(
             done :+ _
           )
       }

@@ -9,8 +9,11 @@ import grit.core.period.Probability
   */
 object GateJson {
 
-  /** `{"reads", "name"}`, with its `key` beside them for a `key` or `chosen` reading. */
+  /** `{"reads", "name"}`, with its `key` beside them for a `key` or `chosen` reading;
+    * `{"reads": "fact", "fact"}` for a fact.
+    */
   def writeReading(r: Reading): ujson.Value = r match {
+    case Reading.Fact(fact) => ujson.Obj("reads" -> "fact", "fact" -> factWritten(fact))
     case Reading.Yes(name) => ujson.Obj("reads" -> "yes", "name" -> QuestionName.value(name))
     case Reading.Key(name, key) =>
       ujson.Obj("reads" -> "key", "name" -> QuestionName.value(name), "key" -> key)
@@ -21,14 +24,33 @@ object GateJson {
   def readReading(v: ujson.Value): Either[String, Reading] =
     for {
       o <- obj(v)
-      name <- str(o, "name").flatMap(QuestionName.read)
-      reading <- str(o, "reads").flatMap {
-        case "yes" => Right(Reading.Yes(name))
-        case "key" => str(o, "key").map(Reading.Key(name, _))
-        case "chosen" => str(o, "key").map(Reading.Chosen(name, _))
-        case other => Left(s"reading: unknown reads $other")
+      reads <- str(o, "reads")
+      reading <- reads match {
+        case "fact" =>
+          str(o, "fact").flatMap(f =>
+            Fact.values
+              .find(factWritten(_) == f)
+              .map(Reading.Fact(_))
+              .toRight(s"reading: unknown fact $f")
+          )
+        case _ =>
+          str(o, "name").flatMap(QuestionName.read).flatMap { name =>
+            reads match {
+              case "yes" => Right(Reading.Yes(name))
+              case "key" => str(o, "key").map(Reading.Key(name, _))
+              case "chosen" => str(o, "key").map(Reading.Chosen(name, _))
+              case other => Left(s"reading: unknown reads $other")
+            }
+          }
       }
     } yield reading
+
+  /** A fact as its reading names it. */
+  private def factWritten(fact: Fact): String = fact match {
+    case Fact.Named => "named"
+    case Fact.SettledOnPerson => "settled_on_person"
+    case Fact.RecordScore => "record_score"
+  }
 
   /** `{"reading", "bound", "p", "read"}`: what the bound reads, `at_least` or `below` `p`, and
     * what it read.

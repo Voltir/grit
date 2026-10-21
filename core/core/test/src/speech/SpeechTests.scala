@@ -14,7 +14,7 @@ import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Payload}
-import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
+import grit.core.triage.{Bound, Cues, Gate, Kind, Reading, Tags}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -44,7 +44,8 @@ object SpeechTests extends TestSuite {
     now.minusSeconds(60),
     Reach(Some("C/1"), Set.empty),
     tags(),
-    Integrity.Member
+    Integrity.Member,
+    Cues.Empty
   )
 
   private val empty = Ledger(Vector.empty, Spend.Zero, Spend.Zero)

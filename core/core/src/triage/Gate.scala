@@ -6,7 +6,9 @@ import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.period.Probability
 
-/** What a gate reads of a question set's answers, as a probability in [0, 1]. */
+/** What a gate reads of a question set's answers, or a fact code read ([[Fact]]), as a
+  * probability in [0, 1].
+  */
 enum Reading {
 
   /** A yes/no's probability of yes. */
@@ -20,11 +22,18 @@ enum Reading {
     */
   case Chosen(name: QuestionName, key: String)
 
-  /** Its probability in `answers`; `None` when its question is not answered there, or is
-    * answered in the other kind.
+  /** A fact code read ([[grit.core.triage.Fact.read]]); never unread. */
+  case Fact(fact: grit.core.triage.Fact)
+
+  /** Its probability in `answers`, or a fact's in `cues`; `None` when its question is not
+    * answered there, or is answered in the other kind.
     */
-  private[triage] def in(answers: VectorMap[QuestionName, Answer]): Option[Probability] =
+  private[triage] def in(
+      answers: VectorMap[QuestionName, Answer],
+      cues: Cues
+  ): Option[Probability] =
     this match {
+      case Fact(fact) => Some(fact.read(cues))
       case Yes(name) =>
         answers.get(name).collect { case Answer.YesNo(p) => Probability.clamped(p) }
       case Key(name, key) =>
@@ -61,8 +70,8 @@ enum Bound {
 }
 
 /** A test of a question set's answers that explains every failure: one bound, every one of
-  * some gates, or any one of them. Built only from bounds, it reads nothing but the answers,
-  * and only the readings [[reads]] lists.
+  * some gates, or any one of them. Built only from bounds, it reads nothing but the answers
+  * and the cues ([[Fact]]), and only the readings [[reads]] lists.
   */
 enum Gate {
 
@@ -82,31 +91,34 @@ enum Gate {
     case AnyOf(first, rest) => rest.foldLeft(first.reads)(_ ++ _.reads)
   }
 
-  /** `answers` against it, by one rule at every level. `Holds` is `Unread` when `answers` do
-    * not answer its reading in its question's kind. `All` `Fails` when any part fails, and
+  /** `answers` against it, facts read from `cues` ([[Fact.read]]), never unread, by one rule
+    * at every level. `Holds` is `Unread` when `answers` do not answer its reading in its
+    * question's kind. `All` `Fails` when any part fails, and
     * `AnyOf` when every part fails, with every bound its parts failed, in order, and what
     * each read; `All` `Passes` when every part passes, and `AnyOf` when any part does.
     * Otherwise `Unread`, with its first unread part's reading. Answering more never turns
     * `Passes` or `Fails` into anything else.
     */
-  def check(answers: VectorMap[QuestionName, Answer]): Gate.Checked = this match {
+  def check(answers: VectorMap[QuestionName, Answer], cues: Cues): Gate.Checked = this match {
     case Holds(bound) =>
-      bound.reading.in(answers) match {
+      bound.reading.in(answers, cues) match {
         case None => Gate.Checked.Unread(bound.reading)
         case Some(read) if bound.holds(read) => Gate.Checked.Passes
         case Some(read) => Gate.Checked.Fails(Gate.Failed(bound, read), Vector.empty)
       }
     case All(gates) =>
-      gates.foldLeft[Gate.Checked](Gate.Checked.Passes)((acc, g) => Gate.and(acc, g.check(answers)))
+      gates.foldLeft[Gate.Checked](Gate.Checked.Passes)((acc, g) =>
+        Gate.and(acc, g.check(answers, cues))
+      )
     case AnyOf(first, rest) =>
-      rest.foldLeft(first.check(answers))((acc, g) => Gate.or(acc, g.check(answers)))
+      rest.foldLeft(first.check(answers, cues))((acc, g) => Gate.or(acc, g.check(answers, cues)))
   }
 
   /** [[check]] as a draft: `Some(true)` on `Passes`, `Some(false)` on `Fails`, `None` on
     * `Unread`.
     */
-  def drafts(answers: VectorMap[QuestionName, Answer]): Option[Boolean] =
-    check(answers) match {
+  def drafts(answers: VectorMap[QuestionName, Answer], cues: Cues): Option[Boolean] =
+    check(answers, cues) match {
       case Gate.Checked.Passes => Some(true)
       case Gate.Checked.Fails(_, _) => Some(false)
       case Gate.Checked.Unread(_) => None

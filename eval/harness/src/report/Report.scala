@@ -372,9 +372,10 @@ object Report {
   }
 
   /** What a gate reads, as the report names it: a yes/no's name, a choice key's
-    * `<name>.<key>`, and a key chosen `<name>=<key>`.
+    * `<name>.<key>`, a key chosen `<name>=<key>`, and a fact `fact.<Fact>`.
     */
   private def reading(r: Reading): String = r match {
+    case Reading.Fact(fact) => s"fact.$fact"
     case Reading.Yes(name) => QuestionName.value(name)
     case Reading.Key(name, key) => s"${QuestionName.value(name)}.$key"
     case Reading.Chosen(name, key) => s"${QuestionName.value(name)}=$key"

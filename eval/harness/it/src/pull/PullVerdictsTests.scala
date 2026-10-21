@@ -62,7 +62,8 @@ object PullVerdictsTests extends TestSuite {
                 considered,
                 Settled.Drafted(Outcome.Passed),
                 shadow,
-                VectorMap.empty
+                VectorMap.empty,
+                grit.core.triage.Cues.Empty
               ),
               as,
               considered

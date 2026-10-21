@@ -9,7 +9,7 @@ import grit.core.classify.{Answer, ClassifierError}
 import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, QuestionName, ShadowName, TurnRef}
 import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Decision, Heard, Outcome, Reach, Silence, SpeechStore}
 import grit.core.store.{
@@ -22,7 +22,17 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.triage.{Bound, Gate, Kind, Reading, ShadowAnswers, Shadowed, Tags, TriageShadows}
+import grit.core.triage.{
+  Bound,
+  Cues,
+  Gate,
+  Kind,
+  Reading,
+  ShadowAnswers,
+  Shadowed,
+  Tags,
+  TriageShadows
+}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Compartment,
@@ -86,6 +96,15 @@ abstract class ReviewContract extends TestSuite {
 
   private def p(x: Double) = Probability.clamped(x)
 
+  /** The cues every live decision here keeps: a candidate carries them as kept. */
+  private val cues = Cues(
+    named = true,
+    spoken = None,
+    continued = None,
+    settled = Some(Judgement.Weighed(p(0.1), p(0.8), p(0.1), "jev")),
+    records = None
+  )
+
   /** A question set's answers, in an order that is not their names' sorted order. */
   private val answers: VectorMap[QuestionName, Answer] = VectorMap(
     question("to") -> Answer.YesNo(0.125),
@@ -140,7 +159,8 @@ abstract class ReviewContract extends TestSuite {
       at,
       Reach(Some("C/1"), Set.empty),
       Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
-      Integrity.Member
+      Integrity.Member,
+      cues
     )
     transaction {
       live match {
@@ -173,7 +193,7 @@ abstract class ReviewContract extends TestSuite {
         Live.As(below),
         Vector(shadow -> answered(ShadowAnswers.Named(answers)))
       )
-      Candidate(id, c, At.plusSeconds(i.toLong), below, shadow, answers)
+      Candidate(id, c, At.plusSeconds(i.toLong), below, shadow, answers, cues)
     }
 
   /** `c`'s prompt as the store names one, by its entry alone ([[ReviewStore]]): the rest is
@@ -275,8 +295,8 @@ abstract class ReviewContract extends TestSuite {
         hear(c, "rv-cand:before", At.minusSeconds(10), Live.As(below), set)
       )
       val all = Vector(
-        Candidate(early, c, At.plusSeconds(10), passed, shadow, answers),
-        Candidate(late, c, At.plusSeconds(20), below, shadow, answers)
+        Candidate(early, c, At.plusSeconds(10), passed, shadow, answers, cues),
+        Candidate(late, c, At.plusSeconds(20), below, shadow, answers, cues)
       )
       transaction(
         (reviews.candidates(shadow, At, 10, room), reviews.candidates(shadow, At, 1, room))

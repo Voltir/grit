@@ -17,6 +17,7 @@ import grit.core.speech.{Decision, Heard, Reach, Silence}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{
   Bound,
+  Cues,
   Gate,
   InMemoryTriageShadows,
   InMemoryTriageStore,
@@ -67,14 +68,23 @@ final class PickedPrompts(inbox: InMemoryInbox) {
     val decided: Either[StoreError, Boolean] = live match {
       case Settled.Held(why) =>
         inbox.speech.decided(
-          Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed, Integrity.Member),
+          Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed, Integrity.Member, Cues.Empty),
           Decision.Held(why),
           at
         )
       case Settled.Drafted(outcome) =>
         inbox.speech
           .decided(
-            Heard(turn, EntrySeq(0), Room, at, Reach.Nowhere, Weighed, Integrity.Member),
+            Heard(
+              turn,
+              EntrySeq(0),
+              Room,
+              at,
+              Reach.Nowhere,
+              Weighed,
+              Integrity.Member,
+              Cues.Empty
+            ),
             Decision.Drafting(turn),
             at
           )
@@ -91,7 +101,7 @@ final class PickedPrompts(inbox: InMemoryInbox) {
     )
     right(
       reviews.considered(
-        Candidate(entry, conversation, at, live, Shadow, Answers),
+        Candidate(entry, conversation, at, live, Shadow, Answers, Cues.Empty),
         Considered.Picked(reason),
         at
       )

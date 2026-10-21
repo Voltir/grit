@@ -6,7 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 import grit.core.place.Service
-import grit.core.triage.{Gate, Tags}
+import grit.core.triage.{Cues, Gate, Tags}
 
 /** What a turn's model is offered of the tools of the services its conversation links
   * ([[grit.core.place.WorksIn]], [[grit.core.place.Reaches]]).
@@ -53,7 +53,8 @@ object Offering {
         case None => ServiceOffer.Verdict.Ungated
         case Some(gate) =>
           answers.fold(ServiceOffer.Verdict.Unweighed)(a =>
-            ServiceOffer.Verdict.Checked(gate.check(a))
+            // A service's gate reads no fact, so no cues.
+            ServiceOffer.Verdict.Checked(gate.check(a, Cues.Empty))
           )
       }
       ServiceOffer(service, sources, verdict)

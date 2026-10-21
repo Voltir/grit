@@ -181,7 +181,9 @@ object TurnVariantTests extends TestSuite {
             s.copy(offer =
               s.offer.copy(verdict =
                 ServiceOffer.Verdict.Checked(
-                  Tags.V2.source(source("github"), Probability.clamped(0.2)).check(answers.get)
+                  Tags.V2
+                    .source(source("github"), Probability.clamped(0.2))
+                    .check(answers.get, grit.core.triage.Cues.Empty)
                 )
               )
             )
@@ -203,7 +205,8 @@ object TurnVariantTests extends TestSuite {
         sources.map(s => Tags.V2.source(s, Probability.clamped(0.2))) match {
           case first +: rest =>
             ServiceOffer.Verdict.Checked(
-              (if (rest.isEmpty) first else grit.core.triage.Gate.AnyOf(first, rest)).check(answers)
+              (if (rest.isEmpty) first else grit.core.triage.Gate.AnyOf(first, rest))
+                .check(answers, grit.core.triage.Cues.Empty)
             )
           case _ => ServiceOffer.Verdict.Ungated
         }

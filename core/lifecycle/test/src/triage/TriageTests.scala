@@ -1,19 +1,32 @@
 package grit.lifecycle.triage
 
 import scala.collection.immutable.VectorMap
+import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, Classifier, Question}
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Acknowledgement
-import grit.core.id.{ConversationId, EntryId, QuestionName, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  EntryId,
+  PluginName,
+  QuestionName,
+  TriageRef,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.Probability
+import grit.core.period.{Judgement, Probability, Verdict}
+import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking}
 import grit.core.spend.DailyCap
-import grit.core.stitch.{Stitching, Tuning}
-import grit.core.store.Tx
-import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading, Tags}
-import grit.core.visibility.Subject
+import grit.core.stitch.{Opening, Stitching, Tuning}
+import grit.core.store.{StoreError, Tx}
+import grit.core.triage.{Bound, Corpora, Cues, Earning, Gate, Reading, Tags}
+import grit.core.visibility.{Integrity, Label, Subject}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -84,6 +97,47 @@ object TriageTests extends TestSuite {
   /** What a triage logs of [[decision]]. */
   private val Decided =
     "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, anchor-record 0.375 (jev-1.13.0)"
+
+  /** Someone a heard message may name. */
+  private val Bo = grit.core.identity.TestAccounts.account("test:u-Bo")
+
+  private val Notes = PluginName.of("notes").getOrElse(sys.error("a name"))
+
+  /** `text` kept as the notes plugin's one document, current from before the world began. */
+  private def notes(w: World, text: String)(using Tx): Either[StoreError, Written] = {
+    val terms = DocumentTerms
+      .of(
+        DocLabel.of("notes").getOrElse(sys.error("a label")),
+        DocWeight.Unscaled,
+        30.days,
+        100
+      )
+      .getOrElse(sys.error("terms"))
+    for {
+      _ <- w.documents.declare(Vector(Notes -> terms))
+      written <- w.documents
+        .keeper(Notes, terms)
+        .write(
+          DocKey.of("contract").getOrElse(sys.error("a key")),
+          Label.Public,
+          Integrity.Member,
+          Place.under(Namespace.Task, Vector("documents", "notes")),
+          DocText.of(text).getOrElse(sys.error("a text")),
+          ujson.Obj(),
+          None,
+          at(-60),
+          Set.empty
+        )
+    } yield written
+  }
+
+  /** The heard entry of `triage`, in `in`. */
+  private def entryOf(w: World, in: ConversationId, triage: TriageRef)(using Tx): EntryId =
+    w.entries
+      .list(in)
+      .toOption
+      .flatMap(_.find(_.turnSeq == triage.turn))
+      .fold(sys.error("no entry"))(_.id)
 
   /** What a triage logs of the placement of a room's first opening, which nothing is offered. */
   private val Unoffered = "placed: nothing asked; "
@@ -513,6 +567,62 @@ object TriageTests extends TestSuite {
           (Vector("drafting"), Right(Vector.empty), Right(Vector.empty)),
           (Vector("held"), Right(Vector.empty), Right(Vector.empty))
         )
+    }
+
+    test(
+      "consider records whether the message names someone, the assistant's reply after it, its author's next message, the followed exchange's latest verdict and the best record match"
+    ) {
+      given Tx = TestTx.fake
+      val w = new World
+      val opening = w.hear("where did we land on the engine contract term?", "Nick", 0)
+      val settle = Judgement.Weighed(p(0.125), p(0.75), p(0.125), "settle")
+      w.periods.judged(p1, Verdict(at(1), opening.turn, settle)) ==> Right(true)
+      val t = w.hear("is it in the contract notes?", "Ana", 2, asked = Set(Bo))
+      val reply = w.reply("It is twelve months.", 3)
+      w.hear("same question here", "Bo", 4)
+      val next = w.hear("never mind, found it", "Ana", 5)
+      w.hear("one more thing", "Ana", 7)
+      val _ = notes(w, "engine contract")
+      new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
+      w.speech.decisions.map(_._1.cues) ==> Vector(
+        Cues(
+          named = true,
+          spoken = Some(reply.id),
+          continued = Some(entryOf(w, c, next)),
+          settled = Some(settle),
+          records = Some(Cues.Match(Notes, 2.0, 1))
+        )
+      )
+    }
+
+    test(
+      "an opening placed to follow an exchange records that exchange's latest verdict, and its author's next opening placed to follow it"
+    ) {
+      given Tx = TestTx.fake
+      val w = new World
+      val first = w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val settle = Judgement.Unanswered("settle model down")
+      w.periods.judged(p1, Verdict(at(1), first.turn, settle)) ==> Right(true)
+      val (b, d) = (w.thread("2.0"), w.thread("3.0"))
+      val t = w.hear("Is it twelve months on the Engine contract", "Ana", 2, in = b)
+      val next = w.hear("or six on the Engine contract", "Ana", 3, in = d)
+      // Each opening placed at 0.9 on exchange 1, the one root offered: the message's first,
+      // then its author's next opening, under a deployment that keeps no decision on it.
+      def placing = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      for {
+        conversation <- w.conversations.get(b).toOption.flatten
+        entries <- w.entries.list(b).toOption
+        opening <- Opening.of(conversation, entries, TurnRef(b, t.turn))
+      } w.placements(placing, 2).awaited(opening)
+      new InMemoryDurable().run(next.workflowId)(w.body(placing, 4))
+      new InMemoryDurable().run(t.workflowId)(w.body(placing, 4, within))
+      (
+        w.stitches.links(Vector(b, d)).map(_.map(_.root).distinct),
+        w.speech.decisions.collect { case (h, _, _) if h.turn.conversationId == b => h.cues }
+      ) ==> (
+        Right(Vector(c)),
+        Vector(Cues.Empty.copy(continued = Some(entryOf(w, d, next)), settled = Some(settle)))
+      )
     }
 
     test(

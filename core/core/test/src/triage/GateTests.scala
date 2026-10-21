@@ -25,13 +25,67 @@ object GateTests extends TestSuite {
   private val helps = n("helps")
   private val to = n("to")
 
+  /** What `fact` reads of `cues`, as a failed `Below(fact, 0)` reports it; `None` when unread. */
+  private def read(fact: Fact, cues: Cues): Option[Double] =
+    Gate.bounds(Bound.Below(Reading.Fact(fact), p(0.0))).check(VectorMap.empty, cues) match {
+      case Gate.Checked.Fails(failed, _) => Some(Probability.value(failed.read))
+      case _ => None
+    }
+
+  private val notes = grit.core.id.PluginName.of("notes").getOrElse(sys.error("a name"))
+
   val tests = Tests {
+    test(
+      "a fact reads its cue: Named 1 or 0, SettledOnPerson the verdict's onPerson, RecordScore s/(1+s); each 0 on Empty"
+    ) {
+      import grit.core.period.Judgement
+      val full = Cues(
+        named = true,
+        spoken = None,
+        continued = None,
+        settled = Some(Judgement.Weighed(p(0.125), p(0.75), p(0.125), "jev")),
+        records = Some(Cues.Match(notes, 3.0, 2))
+      )
+      val unanswered = Cues.Empty.copy(settled = Some(Judgement.Unanswered("no model")))
+      val facts = Vector(Fact.Named, Fact.SettledOnPerson, Fact.RecordScore)
+      (
+        facts.map(read(_, full)),
+        facts.map(read(_, Cues.Empty)),
+        read(Fact.SettledOnPerson, unanswered),
+        read(Fact.RecordScore, Cues.Empty.copy(records = Some(Cues.Match(notes, 1.0, 1))))
+      ) ==> (
+        Vector(Some(1.0), Some(0.75), Some(0.75)),
+        Vector(Some(0.0), Some(0.0), Some(0.0)),
+        Some(0.0),
+        Some(0.5)
+      )
+    }
+
+    test("a fact is never unread") {
+      val gate = Gate.either(
+        Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.Named), half)),
+        Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.RecordScore), half))
+      )
+      (
+        gate.check(VectorMap.empty, Cues.Empty),
+        gate.drafts(VectorMap.empty, Cues.Empty.copy(named = true))
+      ) ==> (
+        Gate.Checked.Fails(
+          Gate.Failed(Bound.AtLeast(Reading.Fact(Fact.Named), half), p(0.0)),
+          Vector(Gate.Failed(Bound.AtLeast(Reading.Fact(Fact.RecordScore), half), p(0.0)))
+        ),
+        Some(true)
+      )
+    }
+
     test(
       "Chosen reads 1 for a choice's most weighted key, the first on a tie, whatever choice it reports, and 0 otherwise"
     ) {
       // A gate that fails at Chosen below 0.5 shows what it read there.
       def read(reading: Reading, answer: Answer) =
-        Gate.bounds(Bound.Below(reading, p(0.0))).check(VectorMap(kind -> answer)) match {
+        Gate
+          .bounds(Bound.Below(reading, p(0.0)))
+          .check(VectorMap(kind -> answer), Cues.Empty) match {
           case Gate.Checked.Fails(Gate.Failed(_, v), _) => Some(Probability.value(v))
           case _ => None
         }
@@ -59,14 +113,17 @@ object GateTests extends TestSuite {
         helps -> Answer.YesNo(0.75),
         to -> Answer.YesNo(0.5)
       )
-      gate.check(answers) ==> Gate.Checked.Fails(
+      gate.check(answers, Cues.Empty) ==> Gate.Checked.Fails(
         Gate.Failed(Bound.Below(Reading.Chosen(kind, "chatter"), half), p(1.0)),
         Vector(Gate.Failed(Bound.Below(Reading.Yes(to), half), p(0.5)))
       )
-      gate.check(answers.updated(kind, choice("question", "question" -> 1.0))) ==>
+      gate.check(answers.updated(kind, choice("question", "question" -> 1.0)), Cues.Empty) ==>
         Gate.Checked.Fails(Gate.Failed(Bound.Below(Reading.Yes(to), half), p(0.5)), Vector.empty)
       gate.check(
-        answers.updated(kind, choice("question", "question" -> 1.0)).updated(to, Answer.YesNo(0.49))
+        answers
+          .updated(kind, choice("question", "question" -> 1.0))
+          .updated(to, Answer.YesNo(0.49)),
+        Cues.Empty
       ) ==> Gate.Checked.Passes
     }
 
@@ -83,20 +140,23 @@ object GateTests extends TestSuite {
         kind -> choice("y", "y" -> 1.0)
       )
       val unreadThenPasses = unreadThenFails.updated(kind, choice("x", "x" -> 1.0))
-      (gate.check(unreadThenFails), gate.drafts(unreadThenFails)) ==> (
+      (gate.check(unreadThenFails, Cues.Empty), gate.drafts(unreadThenFails, Cues.Empty)) ==> (
         Gate.Checked.Fails(
           Gate.Failed(Bound.AtLeast(Reading.Key(kind, "x"), half), p(0.0)),
           Vector.empty
         ),
         Some(false)
       )
-      (gate.check(unreadThenPasses), gate.drafts(unreadThenPasses)) ==>
+      (gate.check(unreadThenPasses, Cues.Empty), gate.drafts(unreadThenPasses, Cues.Empty)) ==>
         (Gate.Checked.Unread(Reading.Yes(helps)), None)
       val passing = VectorMap[QuestionName, Answer](
         helps -> Answer.YesNo(0.5),
         kind -> choice("x", "x" -> 0.5, "y" -> 0.5)
       )
-      (gate.check(passing), gate.drafts(passing)) ==> (Gate.Checked.Passes, Some(true))
+      (gate.check(passing, Cues.Empty), gate.drafts(passing, Cues.Empty)) ==> (
+        Gate.Checked.Passes,
+        Some(true)
+      )
     }
   }
 }

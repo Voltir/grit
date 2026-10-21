@@ -406,7 +406,8 @@ object CollectorLiveTests extends TestSuite {
       Instant.now(),
       grit.core.speech.Reach.Nowhere,
       tags,
-      Integrity.Member
+      Integrity.Member,
+      grit.core.triage.Cues.Empty
     )
     LiveDb.transaction(config)(
       new SqlSpeechStore().decided(heard, grit.core.speech.Decision.Drafting(turn), Instant.now())

@@ -6,7 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.period.Probability
 import grit.core.store.Focus
-import grit.core.triage.{Earning, Gate}
+import grit.core.triage.{Cues, Earning, Gate}
 import grit.eval.harness.capture.CaseId
 import grit.eval.harness.log.{Outcome, Row, Suite}
 
@@ -70,8 +70,9 @@ object Drafts {
         (c, liveRow.focus.orElse(setRow.focus), theirs, answers)
       }
     )
+    // The sets' gates read no fact, so no cues.
     val gated = paired.map((c, focus, theirs, answers) =>
-      (c, focus, live.gate.drafts(theirs).zip(set.gate.drafts(answers)))
+      (c, focus, live.gate.drafts(theirs, Cues.Empty).zip(set.gate.drafts(answers, Cues.Empty)))
     )
     val decided = gated.collect { case (c, focus, Some((a, b))) => (c, focus, a, b) }
     Drafts(

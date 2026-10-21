@@ -233,14 +233,36 @@ object TriageFixtures {
       e
     }
 
-    /** `text` heard from `name` as the next turn at `minutes`, with a reply address; its
-      * triage.
+    /** `text` heard from `name` as the next turn at `minutes`, with a reply address, naming
+      * `asked`; its triage.
       */
-    def hear(text: String, name: String, minutes: Long, in: ConversationId = c): TriageRef = {
+    def hear(
+        text: String,
+        name: String,
+        minutes: Long,
+        in: ConversationId = c,
+        asked: Set[Account] = Set.empty
+    ): TriageRef = {
       val e = insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in)
-      speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), Set.empty))(using TestTx.fake)
+      speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), asked))(using TestTx.fake)
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
+
+    /** The assistant's reply `text` as the next turn at `minutes` in `in`: its entry. */
+    def reply(text: String, minutes: Long, in: ConversationId = c): Entry =
+      insert(
+        Payload.Message(
+          Message.Assistant(
+            Vector(grit.core.message.AssistantBlock.Text(text)),
+            grit.core.message.StopReason.EndTurn,
+            Spent,
+            "m"
+          )
+        ),
+        None,
+        minutes,
+        in
+      )
 
     /** `text` said to grit as the next turn at `minutes` in `in`, by `name` when given; its
       * turn.

@@ -7,7 +7,7 @@ import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.triage.{Bound, Gate, Reading, Tags}
+import grit.core.triage.{Bound, Cues, Gate, Reading, Tags}
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 import grit.models.Seed
@@ -39,7 +39,8 @@ object WindowOnly {
       tagged.flatMap { t =>
         val turn = TurnRef(t.triage.period.conversationId, t.triage.turn)
         val asks = t.tags match {
-          case Tags.Weighed(answers, _, _) => Asks.drafts(answers).contains(true)
+          // Asks reads no fact, so no cues.
+          case Tags.Weighed(answers, _, _) => Asks.drafts(answers, Cues.Empty).contains(true)
           case Tags.Unanswered(_) => false
         }
         Option.when(asks && !answered(turn.workflowId))(WindowOnly(turn, t.at))

@@ -37,6 +37,7 @@ import grit.core.store.{
 }
 import grit.core.triage.{
   Bound,
+  Cues,
   Gate,
   InMemoryTriageShadows,
   InMemoryTriageStore,
@@ -172,7 +173,8 @@ object PickingTests extends TestSuite {
         at,
         Reach(Some("C/1"), Set.empty),
         Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
-        Integrity.Member
+        Integrity.Member,
+        Cues.Empty
       )
       live match {
         case Settled.Held(why) => right(speech.decided(heard, Decision.Held(why), at))

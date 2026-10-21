@@ -25,7 +25,7 @@ object PartsTests extends TestSuite {
 
   /** `gate` read at `at` and just under it, as `(reads, at, under)`. */
   private def edge(gate: Gate, answers: Double => VectorMap[QuestionName, Answer]) =
-    (gate.reads, gate.check(answers(0.3)), gate.check(answers(under)))
+    (gate.reads, gate.check(answers(0.3), Cues.Empty), gate.check(answers(under), Cues.Empty))
 
   private def failed(bound: Bound, read: Double) =
     Gate.Checked.Fails(Gate.Failed(bound, p(read)), Vector.empty)

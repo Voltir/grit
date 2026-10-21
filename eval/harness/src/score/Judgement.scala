@@ -6,6 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
+import grit.core.triage.Cues
 import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.{Rated, Verdicts}
 
@@ -53,8 +54,9 @@ object Judgement {
       for {
         theirs <- lives.get(c)
         answers <- sets.get(c)
-        a <- live.gate.drafts(theirs)
-        b <- set.gate.drafts(answers)
+        // The sets' gates read no fact, so no cues.
+        a <- live.gate.drafts(theirs, Cues.Empty)
+        b <- set.gate.drafts(answers, Cues.Empty)
       } yield (
         rated,
         a,

@@ -12,7 +12,7 @@ import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.speech.{Outcome, Silence}
 import grit.core.spend.{DailyCap, Spend}
-import grit.core.triage.{Bound, Gate, Reading, Tags}
+import grit.core.triage.{Bound, Cues, Fact, Gate, Reading, Tags}
 
 import utest.*
 
@@ -23,8 +23,8 @@ object ReviewTests extends TestSuite {
   private val ask = QuestionName.of("ask").getOrElse(sys.error("a name"))
 
   /** The shadow's gate in these tests: drafts when `ask` reads yes at least 0.5. */
-  private val drafts: VectorMap[QuestionName, Answer] -> Option[Boolean] =
-    answers => answers.get(ask).collect { case Answer.YesNo(p) => p >= 0.5 }
+  private val drafts: (VectorMap[QuestionName, Answer], Cues) -> Option[Boolean] =
+    (answers, _) => answers.get(ask).collect { case Answer.YesNo(p) => p >= 0.5 }
 
   private def reviewing(perDay: Int, sampleOneIn: Int = 1): Reviewing =
     Reviewing.of(shadow, perDay, sampleOneIn, 24.hours).getOrElse(sys.error("a review"))
@@ -50,7 +50,8 @@ object ReviewTests extends TestSuite {
       At.plusSeconds(second.toLong),
       live,
       shadow,
-      VectorMap.from(yes.map(p => ask -> Answer.YesNo(p)))
+      VectorMap.from(yes.map(p => ask -> Answer.YesNo(p))),
+      Cues.Empty
     )
 
   private def picked(round: Vector[(Candidate, Considered)]): Vector[(String, Considered)] =
@@ -98,6 +99,23 @@ object ReviewTests extends TestSuite {
         Some(true),
         Some(true),
         Some(true)
+      )
+    }
+
+    test("the shadow's gate reads a candidate's answers and the cues live's decision kept") {
+      val named = Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.Named), Probability.clamped(0.5)))
+      val round = Review.pick(
+        Vector(
+          candidate("n1", 0, chatter, Some(0.9)).copy(cues = Cues.Empty.copy(named = true)),
+          candidate("u1", 1, chatter, Some(0.9))
+        ),
+        named.drafts,
+        Vector.empty,
+        reviewing(perDay = 1)
+      )
+      picked(round) ==> Vector(
+        "n1" -> Considered.Picked(Reason.ShadowOnly),
+        "u1" -> Considered.Passed(Reason.Neither)
       )
     }
 
