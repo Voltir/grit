@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
 import grit.core.flow.TestTainted
-import grit.core.id.{JobName, PluginName, TestCallSlots, ToolCallId, TurnRef}
+import grit.core.id.{ConversationId, JobName, PluginName, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.identity.Principal
 import grit.core.job.{InMemorySchedules, ScheduleDesk}
 import grit.core.message.AssistantBlock
@@ -14,13 +14,14 @@ import grit.core.need.PluginReads
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
 import grit.core.plugin.InMemoryPlugins
-import grit.core.store.{Askers, Db, StoreError, Tx}
+import grit.core.recipe.InMemoryRoomReads
+import grit.core.store.{Askers, Db, InMemoryEntryStore, InMemoryPrincipals, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Desks, PluginBinding, TestPlugins}
 import grit.models.StubModels
-import grit.tools.{Coding, Names}
+import grit.tools.{Coding, MessageIds, Names}
 
 import utest.*
 
@@ -135,8 +136,15 @@ object PluginToolsTests extends TestSuite {
         def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
       }
       val models = new StubModels()
+      val entries = new InMemoryEntryStore
+      val principals = new InMemoryPrincipals
+      val unread = MessageIds.Stores(
+        entries,
+        new InMemoryRoomReads(entries, c => Origin.Task("t", ConversationId.value(c)), principals),
+        principals
+      )
       val offered =
-        Launch.own(Persona.Grit, noOne).map(_.name) ++
+        Launch.own(Persona.Grit, noOne, unread).map(_.name) ++
           Launch.operator(Unkept, models).map(_.name) ++ Coding.hosted.map(_.name)
       (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }

@@ -38,7 +38,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
-import grit.tools.{About, Cleared, Coding, Probes, Tuning}
+import grit.tools.{About, Cleared, Coding, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
   TurnEnv,
@@ -407,7 +407,13 @@ private[grit] object Launch {
     // Offered everywhere: grit's own, and every plugin's tools.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks}]] =
       Toolbox.of[caps.CapSet^{desks}](
-        (Vector[Tool.Offered^{desks}](own(d.persona, runtime.askers)*) ++
+        (Vector[Tool.Offered^{desks}](
+          own(
+            d.persona,
+            runtime.askers,
+            MessageIds.Stores(runtime.entries, runtime.rooms, runtime.principals)
+          )*
+        ) ++
           plugged.map(_.over(desks)))*
       )
     val launching = d.offer.tools match {
@@ -495,19 +501,21 @@ private[grit] object Launch {
     )
 
   /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
-    * ([[About]]), and what the person asking is cleared for, its turn's asker as `askers`
-    * resolves them, explained as read through the reads its turn hands it ([[Cleared]]); the
-    * kit, and the turn it launches, which reads them in its dispatch, alone hold the engine's
-    * askers, so no plugin's tool can read who asked. Throws when
+    * ([[About]]), what the person asking is cleared for, its turn's asker as `askers`
+    * resolves them, explained as read through the reads its turn hands it ([[Cleared]]), and
+    * the ids of this conversation and of the asker's messages, read from `messages`
+    * ([[MessageIds]]); the kit, and the turn it launches, which reads them in its dispatch,
+    * alone hold the engine's askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
     */
   private[run] def own(
       persona: Persona,
-      askers: Askers
+      askers: Askers,
+      messages: MessageIds.Stores
   ): Vector[Tool.Offered] = {
     val about: Tool[Option[About.Section]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
-    Vector[Tool.Offered](about, Cleared.tool(askers))
+    Vector[Tool.Offered](about, Cleared.tool(askers), MessageIds.tool(messages, askers))
   }
 
   /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person
