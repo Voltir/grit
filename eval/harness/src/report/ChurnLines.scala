@@ -115,6 +115,7 @@ private[report] object ChurnLines {
         case Proportion.Interval.TooFewClusters => "too few questions for an interval"
         case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
       }
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in ${r.clusters} questions) $bounds"
+      val questions = if (r.clusters == 1) "1 question" else s"${r.clusters} questions"
+      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $questions) $bounds"
     }
 }

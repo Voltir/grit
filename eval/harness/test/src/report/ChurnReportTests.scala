@@ -139,5 +139,16 @@ object ChurnReportTests extends TestSuite {
         "| q2 | b2:0 unread; 0 calls, no reply | a2:0 1, useful never; 2 calls, right (facts 2/2, never 0) |"
       )
     }
+
+    test("a rate over one question counts it as 1 question") {
+      Report
+        .churn("20261012", churn.copy(followed = Proportion.of(Vector("q1" -> true))))
+        .linesIterator
+        .filter(_.startsWith("after-"))
+        .toVector ==> Vector(
+        "after-turns whose first read followed a card their window held: 1.000 (1/1 in 1 " +
+          "question) too few questions for an interval"
+      )
+    }
   }
 }

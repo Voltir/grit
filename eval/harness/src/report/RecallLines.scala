@@ -77,6 +77,7 @@ private[report] object RecallLines {
         case Proportion.Interval.TooFewClusters => "point estimate"
         case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
       }
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in ${r.clusters} turns) $bounds"
+      val turns = if (r.clusters == 1) "1 turn" else s"${r.clusters} turns"
+      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $turns) $bounds"
     }
 }

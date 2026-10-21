@@ -63,5 +63,20 @@ object RecallReportTests extends TestSuite {
       assert(lines.contains("| w2:0 | 3 github unranked → missed |"))
       assert(lines.contains("- w3:0: the search of w3:0 does not read: no results"))
     }
+
+    test("a share over one turn counts it as 1 turn") {
+      val one = Report.recall(
+        "20261018",
+        Vector(
+          WorkflowId("w1:0") -> Right(
+            Vector(Followed(version(1), Found.Kept(github, Some(4), Rank.At(3))))
+          )
+        )
+      )
+      val all = "1.000 (1/1 in 1 turn) point estimate"
+      one.linesIterator.filter(_.startsWith("| github")).toVector ==> Vector(
+        s"| github | $all | $all | $all | $all | $all |"
+      )
+    }
   }
 }
