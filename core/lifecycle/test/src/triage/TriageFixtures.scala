@@ -202,10 +202,10 @@ object TriageFixtures {
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
     val documents = new grit.core.document.InMemoryDocuments
 
-    /** `text` kept as the [[Notes]] plugin's one document, labelled "notes", current from an
-      * hour before the world began.
+    /** `text` kept as the [[Notes]] plugin's document under `key`, labelled "notes", current
+      * from an hour before the world began.
       */
-    def note(text: String)(using Tx): Either[StoreError, Written] = {
+    def note(text: String, key: String = "contract")(using Tx): Either[StoreError, Written] = {
       val terms = DocumentTerms
         .of(
           DocLabel.of("notes").getOrElse(sys.error("a label")),
@@ -219,7 +219,7 @@ object TriageFixtures {
         written <- documents
           .keeper(Notes, terms)
           .write(
-            DocKey.of("contract").getOrElse(sys.error("a key")),
+            DocKey.of(key).getOrElse(sys.error("a key")),
             Label.Public,
             Integrity.Member,
             Place.under(Namespace.Task, Vector("documents", "notes")),

@@ -656,6 +656,51 @@ object TriageTests extends TestSuite {
     }
 
     test(
+      "a settle verdict made after the message is no cue: on a reply's exchange, one through its turn; on the exchange an opening follows, one made after it was said"
+    ) {
+      given Tx = TestTx.fake
+      val settle = Judgement.Weighed(p(0.125), p(0.75), p(0.125), "settle")
+      val replied = {
+        val w = new World
+        w.hear("where did we land on the engine contract term?", "Nick", 0)
+        val t = w.hear("is it in the contract notes?", "Ana", 2)
+        w.periods.judged(p1, Verdict(at(3), t.turn, settle)) ==> Right(true)
+        new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
+        w.speech.decisions.map(_._1.cues.settled)
+      }
+      val opened = {
+        val w = new World
+        val first = w.hear("where did we land on the Engine contract term?", "Nick", 0)
+        w.periods.judged(p1, Verdict(at(3), first.turn, settle)) ==> Right(true)
+        val b = w.thread("2.0")
+        val t = w.hear("Is it twelve months on the Engine contract", "Ana", 2, in = b)
+        // Placed at 0.9 on exchange 1, the one root offered.
+        def placing = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+        for {
+          conversation <- w.conversations.get(b).toOption.flatten
+          entries <- w.entries.list(b).toOption
+          opening <- Opening.of(conversation, entries, TurnRef(b, t.turn))
+        } w.placements(placing, 2).awaited(opening)
+        new InMemoryDurable().run(t.workflowId)(w.body(placing, 4, within))
+        (
+          w.stitches.links(Vector(b)).map(_.map(_.root)),
+          w.speech.decisions.collect { case (h, _, _) if h.turn.conversationId == b => h.cues.settled }
+        )
+      }
+      (replied, opened) ==> (Vector(None), (Right(Vector(c)), Vector(None)))
+    }
+
+    test("a record cue counts the documents it matched, at most Cues.Searched") {
+      given Tx = TestTx.fake
+      val w = new World
+      val t = w.hear("is the engine contract in the notes?", "Ana", 0)
+      (1 to Cues.Searched + 1).foreach(i => w.note(s"engine contract $i", s"contract-$i"))
+      new InMemoryDurable().run(t.workflowId)(w.body(asking, 1, within))
+      w.speech.decisions.map(_._1.cues.records.map(m => (m.plugin, m.matched))) ==>
+        Vector(Some((Notes, Cues.Searched)))
+    }
+
+    test(
       "a deployment that does not speak keeps no decision on a message not put to grit, and answers one put to grit"
     ) {
       val w = new World
