@@ -44,12 +44,24 @@ trait DocumentSearch {
       Tx^
   ): Either[StoreError, Vector[(DocumentSearch.Hit, DocLabel)]] =
     for {
+      shelves <- shelvesAt(at)
+      hits <-
+        if (shelves.isEmpty) Right(Vector.empty) else search(shelves.map(_._1), text, limit, at)
+      labels = shelves.map((s, t) => s.plugin -> t.label).toMap
+    } yield hits.flatMap(h => labels.get(h.document.plugin).map(h -> _))
+
+  /** Each place where an enabled plugin keeps a document current at `at` that the transaction
+    * reads ([[shelved]] over [[declared]]), with that plugin's terms.
+    */
+  final def shelvesAt(at: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[(Shelved, DocumentTerms)]] =
+    for {
       plugins <- declared()
       shelves <-
         if (plugins.isEmpty) Right(Vector.empty) else shelved(plugins.map(_._1), at)
-      hits <- if (shelves.isEmpty) Right(Vector.empty) else search(shelves, text, limit, at)
-      labels = plugins.toMap
-    } yield hits.flatMap(h => labels.get(h.document.plugin).map(t => h -> t.label))
+      terms = plugins.toMap
+    } yield shelves.flatMap(s => terms.get(s.plugin).map(s -> _))
 
   /** The versions among `versions` still kept, holding something and read by its transaction,
     * in their order.

@@ -47,7 +47,7 @@ import grit.core.visibility.Subject
   * written query finds: the period's earlier turns; the open periods' turns and kept closings
   * of other conversations at places the settings' scope holds (the conversation's room read
   * from its origin, [[grit.core.store.Origin.room]]); and, with the enabled plugins' terms
-  * ([[DocumentSearch.declared]]), the documents current at the turn's root entry's time (its
+  * ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's time (its
   * earliest entry's; none for a turn with no entries) at those places.
   *
   * The closing is paid first and the recent tail next, as in [[LinearAssembler]] (`tail`
@@ -305,11 +305,7 @@ final class RetrievalAssembler(
         )
         // Documents are drawn as of the turn's root: a turn with no entry yet has none.
         root = all.filter(_.turnSeq == turn.turnSeq).map(_.createdAt).minOption
-        declared <- documents.declared()
-        shelved <- root.filter(_ => declared.nonEmpty) match {
-          case Some(at) => documents.shelved(declared.map(_._1), at)
-          case None => Right(Vector.empty)
-        }
+        stocked <- root.fold(Right(Vector.empty))(documents.shelvesAt)
         posted <- conversations.postedBy(turn.conversationId)
         asked <- askedOf(conversation, posted, opening.closing.isEmpty)
         speakers <- principals.speakers(
@@ -319,12 +315,10 @@ final class RetrievalAssembler(
         val locality = settings.locality
         val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
         val held = closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
+        val inScope =
+          stocked.filter((s, _) => locality.scope.holds(conversation.origin.room, s.place))
         val shelves = root.flatMap(at =>
-          Shelves.of(
-            at,
-            shelved.filter(s => locality.scope.holds(conversation.origin.room, s.place)),
-            declared.toMap
-          )
+          Shelves.of(at, inScope.map(_._1), inScope.map((s, t) => s.plugin -> t).toMap)
         )
         Read(
           locality,
