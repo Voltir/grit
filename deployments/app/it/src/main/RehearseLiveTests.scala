@@ -28,7 +28,7 @@ import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.stitch.StrandShelf
+import grit.core.stitch.{StrandShelf, Tuning}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -298,19 +298,19 @@ object RehearseLiveTests extends TestSuite {
           cleared,
           _ => ()
         )
-        // Another thread of the channel, heard and triaged first: what the turn may search.
+        // Another thread of the channel, heard and triaged first: what the turn may search. Said
+        // before the stitch horizon, so the opening is offered nothing to follow (its placement
+        // runs beside the engine's turn, a race the rehearsal does not have), and long past its
+        // triage's quiet, which so waits for nothing and leaves the clock at Now.
         engine.inbox.hear(
           Origin.Slack("T1", "C1", "1.0"),
           SourceId("1.0"),
           "the noodle place on 5th is good for lunch",
           Account.Local,
-          Now,
+          Now.minusNanos((Tuning.Default.horizon + 1.day).toNanos),
           Reach.Nowhere
         ) ==> Right(())
         within(() => settled(config)) ==> true
-        // Its triage's quiet (Triage.Quiet) slept the engine's clock on: set back, so the turn
-        // is said at the other thread's time, as the calls below are pinned.
-        clock.at = Now
         val before = (model.sent.size, classifier.sent.size)
         // Rehearsed beside the running engine, on the database as the engine's run will find it.
         val shown = Rehearse
