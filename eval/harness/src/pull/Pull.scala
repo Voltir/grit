@@ -7,11 +7,12 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError, Question}
 import grit.core.either.Traversal.traverse
-import grit.core.id.{QuestionName, ShadowName, ShadowRef}
+import grit.core.id.{QuestionName, ShadowName, ShadowRef, TurnRef}
 import grit.core.message.Usage
 import grit.core.review.Considered
+import grit.core.speech.{Heard, Reach}
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
-import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Tags, TriageStore}
+import grit.core.triage.{Corpora, Cues, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Case, CaseId, Digest, Failure}
@@ -38,14 +39,19 @@ object Pull {
     * out because their names differ from those (a pull since before live triage changed its
     * question set: pull `since` the change); `unbuilt`, the cases left out because the capture
     * could not rebuild their question; each shadow's log by the form its answers were kept in;
-    * and the Slack messages tagged since that no capture case is, for the next capture.
+    * the Slack messages tagged since that no capture case is, for the next capture; and each
+    * case's message as live's speech decision weighed it (`heard`, in the capture's order): its
+    * entry and conversation, its kept reach ([[Reach.Nowhere]] when none is kept), live
+    * triage's tags and the cues its decision kept ([[Cues.Empty]] when none is kept, or it was
+    * kept before cues), a case whose message or conversation is gone left out.
     */
   final case class Pulled(
       live: Log[VectorMap[QuestionName, Answer]],
       renamed: Int,
       shadows: Vector[Pulled.Shadow],
       uncaptured: Vector[CaseId],
-      unbuilt: Int
+      unbuilt: Int,
+      heard: VectorMap[CaseId, Heard]
   )
 
   object Pulled {
@@ -99,6 +105,9 @@ object Pull {
       built = inCapture.flatMap((t, c, focus) => c.asked.map(a => (t, c, a.input.request, focus)))
       shadowed <- traverse(names)(n =>
         read("shadows")(reader.shadows.of(n, tagged.map(_.entry))).map(n -> _)
+      )
+      heard <- traverse(inCapture)((t, c, _) =>
+        read("heard")(heardOf(reader, t)).map(_.map(c.id -> _))
       )
     } yield {
       val build = starts.filterNot(_.at.isBefore(since)).map(_.build).distinct match {
@@ -176,9 +185,36 @@ object Pull {
           )
         },
         ids.collect { case (_, Some((id, _))) if !byId.contains(id) => id }.distinct.sorted,
-        inCapture.size - built.size
+        inCapture.size - built.size,
+        VectorMap.from(heard.flatten)
       )
     }
+  }
+
+  /** `t`'s message as live's speech decision weighed it ([[Pulled.heard]]); `None` when its
+    * message or conversation is gone.
+    */
+  private def heardOf(reader: Reader^, t: TriageStore.Tagged)(using
+      Tx^
+  ): Either[StoreError, Option[Heard]] = {
+    val turn = TurnRef(t.triage.period.conversationId, t.triage.turn)
+    for {
+      entry <- reader.entries.get(t.entry)
+      conversation <- reader.conversations.get(turn.conversationId)
+      reach <- reader.speech.reach(turn)
+      cues <- reader.cues(turn)
+    } yield
+      for {
+        e <- entry
+        c <- conversation
+      } yield Heard.of(
+        turn,
+        e,
+        c.origin,
+        reach.getOrElse(Reach.Nowhere),
+        t.tags,
+        cues.getOrElse(Cues.Empty)
+      )
   }
 
   /** What [[verdicts]] read: the verdicts standing, by case; and how many stand on a message

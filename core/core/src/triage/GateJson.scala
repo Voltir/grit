@@ -56,25 +56,38 @@ object GateJson {
     * what it read.
     */
   def writeFailed(f: Gate.Failed): ujson.Value = {
-    val (bound, on, p) = f.bound match {
-      case Bound.AtLeast(on, p) => ("at_least", on, p)
-      case Bound.Below(on, p) => ("below", on, p)
-    }
-    ujson.Obj("reading" -> writeReading(on), "bound" -> bound, "p" -> num(p), "read" -> num(f.read))
+    val o = writeBound(f.bound)
+    o("read") = num(f.read)
+    o
   }
 
   def readFailed(v: ujson.Value): Either[String, Gate.Failed] =
     for {
+      bound <- readBound(v)
+      read <- obj(v).flatMap(probability(_, "read"))
+    } yield Gate.Failed(bound, read)
+
+  /** `{"reading", "bound", "p"}`: what `b` reads, `at_least` or `below` `p`. */
+  def writeBound(b: Bound): ujson.Obj = {
+    val (bound, on, p) = b match {
+      case Bound.AtLeast(on, p) => ("at_least", on, p)
+      case Bound.Below(on, p) => ("below", on, p)
+    }
+    ujson.Obj("reading" -> writeReading(on), "bound" -> bound, "p" -> num(p))
+  }
+
+  /** What [[writeBound]] wrote, other fields beside it unread; `Left` for anything else. */
+  def readBound(v: ujson.Value): Either[String, Bound] =
+    for {
       o <- obj(v)
-      on <- o.get("reading").toRight("failed: no reading").flatMap(readReading)
+      on <- o.get("reading").toRight("bound: no reading").flatMap(readReading)
       p <- probability(o, "p")
       bound <- str(o, "bound").flatMap {
         case "at_least" => Right(Bound.AtLeast(on, p))
         case "below" => Right(Bound.Below(on, p))
-        case other => Left(s"failed: unknown bound $other")
+        case other => Left(s"bound: unknown bound $other")
       }
-      read <- probability(o, "read")
-    } yield Gate.Failed(bound, read)
+    } yield bound
 
   /** `"passes"`, `{"fails": [failed, ...]}` (each as [[writeFailed]] writes it, in order), or
     * `{"unread": reading}`.

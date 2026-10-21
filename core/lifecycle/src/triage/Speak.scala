@@ -74,16 +74,7 @@ private[triage] object Speak {
           val reached = reach.getOrElse(Reach.Nowhere)
           for {
             cues <- cuesOf(records, horizon, e, c, reached, now)
-            heard = Heard(
-              turn,
-              e.seq,
-              c.origin.room,
-              e.createdAt,
-              reached,
-              tags,
-              e.integrity,
-              cues
-            )
+            heard = Heard.of(turn, e, c.origin, reached, tags, cues)
             decision = Speech.decide(speaking, heard, Ledger(spoken, speech, all), budget, now)
             kept <- records.speech.decided(heard, decision, now)
             _ <- decision match {

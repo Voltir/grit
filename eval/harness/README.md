@@ -50,7 +50,8 @@ Packages, each importing only those above it:
   cache of answers under their request's key, so an unchanged request is never paid for twice.
   ← `capture`
 - **`pull`**: what a deployment's database kept of a capture's heard messages, read as run logs:
-  live triage's tags, each declared shadow's answers, and the verdicts standing. ← `capture`,
+  live triage's tags, each declared shadow's answers, the verdicts standing, and each case's
+  message rebuilt as live's speech decision weighed it, with the cues it kept. ← `capture`,
   `label`, `log`
 - **`loss`**: the lost-tool measure (`scripts/integrity-loss`): over a window of a database's
   turns, read from their recorded gate steps by the turn's own codec, which conversations had a
@@ -87,7 +88,8 @@ Packages, each importing only those above it:
 - **`score`**: what a run's log says, beside the labels: calibration and cost scorers clustered
   by exchange and by author, adoption rules written before the run they judge, draft and
   review comparisons, a capture's turns read structurally, turn variants against shipped, and
-  churn; and a synthetic room's placings against the truth its topics give. grit records no price, so each model's rates are read by least squares from its priced
+  churn; a synthetic room's placings against the truth its topics give; and the bound sweep,
+  named draft gates each decided by the shipped speech decision itself, never a copy of it. grit records no price, so each model's rates are read by least squares from its priced
   ledger rows. ← `stats`, `capture`, `label`, `log`
 - **`report`**: a run scored, or two compared, as markdown with every mean's and rate's interval;
   text-free. With no case labelled, only what needs no label. ← `stats`, `reply`, `capture`,

@@ -11,12 +11,12 @@ import grit.core.durable.Durable
 import grit.core.id.{QuestionName, ShadowName, SourceId, WorkflowId}
 import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
-import grit.core.speech.{Reach, Speaking}
+import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
-import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Shadowing}
-import grit.dbos.engine.{Build, LiveEngine}
+import grit.core.triage.{Corpora, Cues, Gate, ShadowAnswers, Shadowed, Shadowing}
+import grit.dbos.engine.{Build, Engine, LiveEngine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.capture.{Capture, Captured, CaseId, Digest, Dump}
@@ -57,6 +57,8 @@ object PullTests extends TestSuite {
   private def qn(n: String): QuestionName =
     QuestionName.read(n).getOrElse(throw new java.lang.AssertionError(n))
 
+  private val (words, ghost, set) = (named("words"), named("ghost"), named("set"))
+
   private val foci: Vector[Option[Focus]] = Vector(Some(Focus.Open), Some(Focus.Focused))
 
   /** A pulled shadow's form, variant, questions, and each row's case and focus. */
@@ -77,123 +79,129 @@ object PullTests extends TestSuite {
         (s"mixed $worded worded, $named named", "", None, Vector.empty)
     }
 
+  /** Starts `engine`'s triage under `speaking`, its stitching, and the shadows `words` and
+    * `set` (V1's and V2's), with `ghost` swept but undeclared, each over the stub classifier.
+    */
+  private def launch(engine: Engine^, speaking: Speaking): Unit = {
+    // The triage's and placement's asks; each shadow's asks its variant's classifier
+    // through these.
+    val moves = grit.kit.run.Launch.moves(
+      engine,
+      engine.db,
+      new grit.models.StubModels,
+      grit.core.classify.ClearedClassifier
+        .of(grit.models.StubClassifier.Service, new StubClassifier),
+      Clock.system()
+    )
+    engine.launch(
+      nothing,
+      nothing,
+      nothing,
+      nothing,
+      Triage.body(
+        TriageEnv(
+          TriageRecords(
+            engine.entries,
+            // Kept as before V2: the harness reads v1-era tags only.
+            // The first heard before live triage asked V2.
+            new grit.eval.harness.capture.KeptAsV1(
+              engine.triage,
+              engine.entries,
+              _.contains("day 0")
+            ),
+            engine.principals,
+            engine.conversations,
+            engine.speech,
+            engine.spending,
+            engine.acknowledgements,
+            engine.deliveries,
+            engine.stitches,
+            engine.search,
+            engine.lifecycle,
+            engine.rooms,
+            engine.periods,
+            engine.documents
+          ),
+          moves,
+          engine.budget,
+          engine.db,
+          Clock.system(),
+          TriageSpeech(speaking, engine.budget, _ => Right(())),
+          Tuning.Default,
+          grit.act.phase.Placing
+            .Env(engine.entries, engine.conversations, engine.db, engine.placements),
+          Corpora.Empty,
+          grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
+        )
+      ),
+      Stitch.body(
+        StitchEnv(
+          StitchReads(
+            engine.entries,
+            engine.conversations,
+            engine.lifecycle,
+            engine.stitches,
+            engine.search,
+            engine.principals
+          ),
+          moves,
+          engine.budget,
+          engine.db,
+          Clock.system(),
+          Tuning.Default
+        )
+      ),
+      Vector.empty,
+      Shadow.body(
+        ShadowEnv(
+          StitchReads(
+            engine.entries,
+            engine.conversations,
+            engine.lifecycle,
+            engine.stitches,
+            engine.search,
+            engine.principals
+          ),
+          engine.rooms,
+          engine.shadows,
+          // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
+          Map(
+            words -> ShadowAsking(
+              TriageQuestions.V1,
+              "stub",
+              grit.core.classify.ClearedClassifier
+                .of(grit.models.StubClassifier.Service, new StubClassifier)
+            ),
+            set -> ShadowAsking(
+              TriageQuestions.V2,
+              "stub",
+              grit.core.classify.ClearedClassifier
+                .of(grit.models.StubClassifier.Service, new StubClassifier)
+            )
+          ),
+          Corpora.Empty,
+          engine.db,
+          Clock.system(),
+          Tuning.Default,
+          moves,
+          engine.budget
+        )
+      ),
+      Vector(words, ghost, set).map(
+        Shadowing(_, Instant.EPOCH, DailyCap.of("1").getOrElse(sys.error("a cap")))
+      )
+    )
+  }
+
   val tests = Tests {
     test(
       "pull writes the capture's cases' live tags under the names its first answered row asked, leaving out and counting those of other names, and each shadow's answers, as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no capture holds, and counts shadows that ended keeping nothing"
     ) {
-      val (words, ghost, set, mixed, legacy) =
-        (named("words"), named("ghost"), named("set"), named("mixed"), named("legacy"))
+      val (mixed, legacy) = (named("mixed"), named("legacy"))
       val config = TestPostgres.freshDatabase("harness_pull")
       val engine = LiveEngine.open(config, "test")
       try {
-        // The triage's and placement's asks; each shadow's asks its variant's classifier
-        // through these.
-        val moves = grit.kit.run.Launch.moves(
-          engine,
-          engine.db,
-          new grit.models.StubModels,
-          grit.core.classify.ClearedClassifier
-            .of(grit.models.StubClassifier.Service, new StubClassifier),
-          Clock.system()
-        )
-        engine.launch(
-          nothing,
-          nothing,
-          nothing,
-          nothing,
-          Triage.body(
-            TriageEnv(
-              TriageRecords(
-                engine.entries,
-                // Kept as before V2: the harness reads v1-era tags only.
-                // The first heard before live triage asked V2.
-                new grit.eval.harness.capture.KeptAsV1(
-                  engine.triage,
-                  engine.entries,
-                  _.contains("day 0")
-                ),
-                engine.principals,
-                engine.conversations,
-                engine.speech,
-                engine.spending,
-                engine.acknowledgements,
-                engine.deliveries,
-                engine.stitches,
-                engine.search,
-                engine.lifecycle,
-                engine.rooms,
-                engine.periods,
-                engine.documents
-              ),
-              moves,
-              engine.budget,
-              engine.db,
-              Clock.system(),
-              TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
-              Tuning.Default,
-              grit.act.phase.Placing
-                .Env(engine.entries, engine.conversations, engine.db, engine.placements),
-              Corpora.Empty,
-              grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
-            )
-          ),
-          Stitch.body(
-            StitchEnv(
-              StitchReads(
-                engine.entries,
-                engine.conversations,
-                engine.lifecycle,
-                engine.stitches,
-                engine.search,
-                engine.principals
-              ),
-              moves,
-              engine.budget,
-              engine.db,
-              Clock.system(),
-              Tuning.Default
-            )
-          ),
-          Vector.empty,
-          Shadow.body(
-            ShadowEnv(
-              StitchReads(
-                engine.entries,
-                engine.conversations,
-                engine.lifecycle,
-                engine.stitches,
-                engine.search,
-                engine.principals
-              ),
-              engine.rooms,
-              engine.shadows,
-              // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
-              Map(
-                words -> ShadowAsking(
-                  TriageQuestions.V1,
-                  "stub",
-                  grit.core.classify.ClearedClassifier
-                    .of(grit.models.StubClassifier.Service, new StubClassifier)
-                ),
-                set -> ShadowAsking(
-                  TriageQuestions.V2,
-                  "stub",
-                  grit.core.classify.ClearedClassifier
-                    .of(grit.models.StubClassifier.Service, new StubClassifier)
-                )
-              ),
-              Corpora.Empty,
-              engine.db,
-              Clock.system(),
-              Tuning.Default,
-              moves,
-              engine.budget
-            )
-          ),
-          Vector(words, ghost, set).map(
-            Shadowing(_, Instant.EPOCH, DailyCap.of("1").getOrElse(sys.error("a cap")))
-          )
-        )
+        launch(engine, Speaking.Off)
         val start = now().minusSeconds(3_600)
         // The second is a reply in the first's thread; the others open their own.
         val heard = Vector("2000.1" -> "2000.1", "2000.1" -> "2000.2", "2000.3" -> "2000.3")
@@ -343,6 +351,52 @@ object PullTests extends TestSuite {
           pulled.live.rows.map(_.outcome).collect { case Outcome.Answered(a) =>
             a.get(qn("waiting"))
           } == Vector(Some(Answer.YesNo(0.3)))
+        )
+      } finally engine.close()
+    }
+
+    test("pull reads each case's cues as consider kept them") {
+      val config = TestPostgres.freshDatabase("harness_pull_cues")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        val cap = DailyCap.of("1").getOrElse(sys.error("a cap"))
+        launch(engine, Speaking.Shadow(Limits.suggested(cap, Gate.Open)))
+        val someone = Account.read("slack:T1/U2").getOrElse(sys.error("an account"))
+        // Each opens its own thread in its own room: neither is the other's next message.
+        val heard = Vector(
+          ("C1", "3000.1", Reach(Some("C1/3000.1"), Set(someone))),
+          ("C2", "3000.2", Reach(Some("C2/3000.2"), Set.empty))
+        )
+        heard.zipWithIndex.foreach { case ((channel, ts, reach), i) =>
+          engine.inbox.hear(
+            Origin.Slack("T1", channel, ts),
+            SourceId(ts),
+            s"is the release on day $i? ~back:question ~0.3",
+            Account.Local,
+            now().minusSeconds(60L - i),
+            reach
+          ) ==> Right(())
+          assert(
+            eventually(
+              LiveDb
+                .transaction(config)(engine.triage.tagged(Instant.EPOCH, Far))
+                .map(_.size) == Right[StoreError, Int](i + 1)
+            )
+          )
+        }
+        assert(eventually(engine.unfinished() == Right(0)))
+        val reader = Reader.open(config)
+        val pulled =
+          try {
+            val c: Captured =
+              right(
+                Capture(reader, "source", "restored", Dump(Digest.text("d"), Far), Build.Unknown)
+              )
+            right(Pull(reader, "c", Digest.text("c"), c.cases, Vector.empty, Instant.EPOCH, now()))
+          } finally reader.close()
+        pulled.heard.toVector.map((id, h) => (id.written, h.reach, h.cues)) ==> Vector(
+          ("C1/3000.1", heard(0)._3, Cues(named = true, None, None, None, None)),
+          ("C2/3000.2", heard(1)._3, Cues.Empty)
         )
       } finally engine.close()
     }

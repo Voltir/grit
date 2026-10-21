@@ -8,9 +8,10 @@ import scala.util.control.NonFatal
 
 import grit.core.document.{Document, DocumentSearch}
 import grit.core.durable.StepRecord
-import grit.core.id.WorkflowId
+import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.recipe.RoomReads
 import grit.core.review.ReviewStore
+import grit.core.speech.SpeechStore
 import grit.core.stitch.StitchStore
 import grit.core.store.{
   ConversationStore,
@@ -28,7 +29,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.tool.ToolSets
-import grit.core.triage.{TriageShadows, TriageStore}
+import grit.core.triage.{Cues, TriageShadows, TriageStore}
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.{Build, Link}
 import grit.dbos.sql.{
@@ -47,6 +48,7 @@ import grit.dbos.sql.{
   SqlPromptStore,
   SqlReviews,
   SqlRoomReads,
+  SqlSpeechStore,
   SqlStitchStore,
   SqlTombstones,
   SqlToolSets,
@@ -94,6 +96,13 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val triage: TriageStore
   val shadows: TriageShadows
   val reviews: ReviewStore
+  val speech: SpeechStore
+
+  /** The cues kept with the speech decision on the heard message that is `turn`'s first entry
+    * ([[Cues.Empty]] for one kept before cues); `None` when no decision is kept for it.
+    * `Invalid` when they are of a form [[grit.core.triage.CuesJson]] does not read.
+    */
+  def cues(turn: TurnRef)(using Tx^): Either[StoreError, Option[Cues]]
   val ledger: UsageLedger
   val prompts: PromptStore
   val toolSets: ToolSets
@@ -186,6 +195,9 @@ object Reader {
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows
     val reviews: ReviewStore = new SqlReviews
+    private val speeches = new SqlSpeechStore
+    val speech: SpeechStore = speeches
+    def cues(turn: TurnRef)(using Tx^): Either[StoreError, Option[Cues]] = speeches.cues(turn)
     val ledger: UsageLedger = new SqlUsageLedger
     val prompts: PromptStore = new SqlPromptStore()
     val toolSets: ToolSets = new SqlToolSets()

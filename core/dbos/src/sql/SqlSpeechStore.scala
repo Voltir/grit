@@ -282,6 +282,32 @@ final class SqlSpeechStore extends SpeechStore {
     }
   }
 
+  /** The cues kept with the decision on the heard message that is `turn`'s first entry
+    * ([[Cues.Empty]] for one kept before cues); `None` when none is kept. `Invalid` when they
+    * are of a form [[CuesJson]] does not read.
+    */
+  private[dbos] def cues(turn: TurnRef)(using tx: Tx^): Either[StoreError, Option[Cues]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT cues::text FROM grit.speech WHERE workflow = ?")
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        Using.resource(ps.executeQuery()) { rs =>
+          Option.when(rs.next())(Option(rs.getString(1)))
+        }
+      }
+    }.flatMap(
+      _.fold(Right(None))(kept =>
+        SqlSpeechStore
+          .cuesRead(kept)
+          .map(Some(_))
+          .left
+          .map(why => StoreError.Invalid(s"speech: ${WorkflowId.value(turn.workflowId)}: $why"))
+      )
+    )
+  }
+
   /** Whether `turn` was decided on drafting, and whether it has an outcome; `None` when it
     * was never decided on, or was held.
     */

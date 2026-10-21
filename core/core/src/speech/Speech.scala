@@ -10,7 +10,7 @@ import grit.core.message.{Cost, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
-import grit.core.store.{Entry, Tx}
+import grit.core.store.{Entry, Origin, Tx}
 import grit.core.triage.{Cues, Gate, Reading, Tags}
 import grit.core.visibility.Integrity
 
@@ -45,6 +45,15 @@ final case class Heard(
     integrity: Integrity,
     cues: Cues
 )
+
+object Heard {
+
+  /** `entry`, the heard message that is `turn`'s first entry, said in a conversation of
+    * `origin`, with its `reach`, `tags` and `cues`.
+    */
+  def of(turn: TurnRef, entry: Entry, origin: Origin, reach: Reach, tags: Tags, cues: Cues): Heard =
+    Heard(turn, entry.seq, origin.room, entry.createdAt, reach, tags, entry.integrity, cues)
+}
 
 /** Where an unprompted turn has got to. */
 enum Stage {

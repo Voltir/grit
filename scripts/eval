@@ -143,6 +143,20 @@
 #       id, with the shadow it was picked against, why, the rater's id and when; ids and
 #       times, no text. A file of none is written when there are none.
 #
+#   scripts/eval bounds --capture <yyyymmdd> --since <instant> [--grid <file>]
+#       The bound sweep: each grid point, a named draft gate, decided by the shipped speech
+#       decision over every case of the capture tagged since <instant>, as grit_eval_<date>
+#       kept it (triage's tags, its reach, the cues its decision kept; a case decided before
+#       cues reads every fact 0), as it was said, over an empty ledger and no cap; against
+#       the review verdicts standing on messages considered since <instant>. Per point: the
+#       cases drafted and the welcome among them, each with its interval clustered by room,
+#       the interruptions drafted and the welcome held. The grid is <file>'s,
+#       {"points": [{"name", "gate"}, ...]}, a gate {"all": [gate, ...]}, {"any": [gate, ...]}
+#       or a bound {"reading": {"reads": "yes", "name": "open"}, "bound": "at_least", "p": 0.5}
+#       (a fact reads {"reads": "fact", "fact": "named"}); without --grid, each question set's
+#       draft gate (v1 to v5). Written to .local/eval/reports/bounds-<date>.md and printed;
+#       text-free. Asks no model; only reads grit_eval_<date>.
+#
 #   scripts/eval replies <yyyymmdd> (--case <id>... | --pick <n> [--by <order>]) [--records] [--show]
 #       A review of the capture's replies for a person to label, written, text and all, to
 #       .local/eval/replies/replies-<date>-<stamp>.md (the stamp the time it was written, UTC):
@@ -529,6 +543,29 @@ pull() {
     --runs "$main/.local/eval/runs" "${rest[@]}"
 }
 
+bounds() {
+  local capture= since= grid=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --capture) [ $# -ge 2 ] || usage; capture=$2; shift 2 ;;
+      --since) [ $# -ge 2 ] || usage; since=$2; shift 2 ;;
+      --grid)
+        [ $# -ge 2 ] || usage
+        # The script runs from its checkout: a relative path is the caller's.
+        case $2 in /*) grid=(--grid "$2") ;; *) grid=(--grid "$OLDPWD/$2") ;; esac
+        shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [[ $capture =~ ^[0-9]{8}$ ]] && [ -n "$since" ] || usage
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/cases.jsonl" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  [ ${#grid[@]} -eq 0 ] || [ -f "${grid[1]}" ] || { echo "eval: no grid ${grid[1]}" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
+  harness bounds --eval "$main/.local/eval" --capture "$capture" \
+    --url "jdbc:postgresql://localhost:5432/$restored" --since "$since" "${grid[@]}"
+}
+
 replies() {
   local capture=${1:-}
   [[ $capture =~ ^[0-9]{8}$ ]] || usage
@@ -786,6 +823,7 @@ case $1 in
   reference-build) shift; reference_build "$@" ;;
   lab) shift; lab "$@" ;;
   pull) shift; pull "$@" ;;
+  bounds) shift; bounds "$@" ;;
   order) shift; order "$@" ;;
   score) shift; score "$@" ;;
   compare) shift; compare "$@" ;;

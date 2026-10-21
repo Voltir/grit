@@ -556,6 +556,8 @@ object RebuildTests extends TestSuite {
     val triage: grit.core.triage.TriageStore = reader.triage
     val shadows: grit.core.triage.TriageShadows = reader.shadows
     val reviews: grit.core.review.ReviewStore = reader.reviews
+    val speech: grit.core.speech.SpeechStore = reader.speech
+    def cues(turn: grit.core.id.TurnRef)(using grit.core.store.Tx^) = reader.cues(turn)
     val ledger: grit.core.store.UsageLedger = reader.ledger
     val prompts: grit.core.store.PromptStore = reader.prompts
     val toolSets: grit.core.tool.ToolSets = reader.toolSets

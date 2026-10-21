@@ -22,9 +22,11 @@ import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.Service
 import grit.core.provider.Provider
+import grit.core.speech.Limits
+import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.tool.ToolSet
-import grit.core.triage.Corpora
+import grit.core.triage.{Corpora, Gate}
 import grit.core.visibility.Visibility
 import grit.dbos.engine.{Build, Engine}
 import grit.dbos.internal.Reader
@@ -102,6 +104,7 @@ import grit.eval.harness.report.{CaseJudged, LabRun, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Against,
+  Bounds,
   Churn,
   Decision,
   Drafting,
@@ -152,6 +155,7 @@ object Main {
       case "score" :: rest => exit(flags(rest).flatMap(score))
       case "order" :: rest => exit(flags(rest).flatMap(order(_, clock)))
       case "pull" :: rest => exit(flags(rest).flatMap(pull(_, clock)))
+      case "bounds" :: rest => exit(flags(rest).flatMap(bounds(_, clock)))
       case "replies" :: rest =>
         val switches = Set("--records", "--show")
         exit(
@@ -1658,6 +1662,63 @@ object Main {
         s"${by.count(id => !Target.labelled(q, labels.of(id)))} not yet labelled on it first; " +
         s"written to order/$name"
     )
+
+  /** `bounds --eval <dir> --capture <yyyymmdd> --url <jdbc> --since <instant> [--grid <file>]`:
+    * the bound sweep ([[Bounds.swept]]) over the capture's cases tagged since `<instant>`, each
+    * as the database at `<url>` kept it ([[Pull.Pulled.heard]]), against the verdicts standing
+    * on the messages a review considered since then ([[Pull.verdicts]]). The grid is the one
+    * `<file>` holds ([[Bounds.Grid.read]]), else each question set's draft gate under its name
+    * ([[Sets.all]]); either under [[Limits.suggested]] at a $1 cap. Written to
+    * `<dir>/reports/bounds-<yyyymmdd>.md` and printed; the database's login from
+    * `GRIT_DATABASE_USER` and `_PASSWORD`. Asks no model.
+    */
+  private def bounds(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
+      at = dir.resolve("capture").resolve(capture)
+      url <- need(f, "url")
+      since <- need(f, "since").flatMap(a =>
+        Try(Instant.parse(a)).toOption.toRight(s"--since $a: not an instant")
+      )
+      limits <- DailyCap.of("1").map(Limits.suggested(_, Gate.Open))
+      grid <- f
+        .get("grid")
+        .fold(Right(Bounds.Grid(Sets.all.map(s => s.name -> s.speak), limits)))(g =>
+          read(Path.of(g)).flatMap(Bounds.Grid.read(_, limits))
+        )
+      manifest <- read(at.resolve("capture.json"))
+      casesText <- read(at.resolve("cases.jsonl"))
+      cases <- readCases(at)
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      got <- opened(config)(reader =>
+        for {
+          pulled <- Pull(
+            reader,
+            capture,
+            Digest.text(manifest + casesText),
+            cases,
+            Vector.empty,
+            since,
+            clock.now()
+          )
+          standing <- Pull.verdicts(reader, since)
+        } yield (pulled, standing)
+      )
+      (pulled, standing) = got
+      swept = pulled.heard.toVector.map(Bounds.Case(_, _))
+      _ <- publish(
+        dir,
+        s"bounds-$capture",
+        Report.bounds(
+          capture,
+          since,
+          swept,
+          swept.count(c => standing.verdicts.cases.contains(c.id)),
+          Bounds.swept(grid, swept, standing.verdicts)
+        )
+      )
+    } yield ()
 
   /** `pull --capture <dir> --url <jdbc> --runs <dir> --shadows <name,…> [--since <instant>]`:
     * what the database kept of the heard messages tagged since `<instant>` (default: ever) and
