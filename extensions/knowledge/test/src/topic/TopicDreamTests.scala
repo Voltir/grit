@@ -1049,6 +1049,25 @@ object TopicDreamTests extends TestSuite {
       ok(Aside.read(keeper, Label.Public)) ==> Vector(Aside.Item(Lineage.Tag.Card(card), written))
     }
 
+    test(
+      "a run with nothing to offer drains from its aside a card kept below its label, unchanged"
+    ) {
+      val runs = new Runs(new StrandWorld)
+      given Tx = TestTx.fake(Clearance.of(Internal))
+      runs.card("plan1", "The deploy plan.", Now.minusSeconds(7200))
+      val card = ok(runs.documents.shelf(Knowledge).newest(1)).map(_.version)
+      val keeper = runs.documents.keeper(Plugin, Terms)
+      val aside = card.map(v => Aside.Item(Lineage.Tag.Card(v), Now.minusSeconds(3600)))
+      val _ = ok(Aside.kept(keeper, Internal, aside, Now.minusSeconds(3600)))
+      val line = runs.run(floor = Internal)
+      (card.size, line, runs.asked.size, ok(keeper.current(Aside.Key, Internal))) ==> (
+        1,
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run",
+        0,
+        None
+      )
+    }
+
     test("a card set aside more than asideFor ago is offered again") {
       val w = new StrandWorld
       val runs = new Runs(w)

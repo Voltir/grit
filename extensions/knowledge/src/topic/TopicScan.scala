@@ -306,8 +306,9 @@ private[topic] object TopicScan {
     shelf.fold(Right(Vector.empty))(_.changed(since, until, n, counts))
 
   /** The floor's aside, `all` of it, kept to those `held` (not expired) that are strands of
-    * `recent` and cards of `seen` at the digest or version they are now, less the cards
-    * `linked` pairs: the aside after.
+    * `recent` and cards of `seen` the attach ask may be shown ([[offered]]), at the digest or
+    * version they are now, less the cards `linked` pairs: the aside after. A card kept at
+    * another label or a directory's leaves it, since no run at `floor` asks of it again.
     */
   private def aside(
       keeper: DocumentKeeper,
@@ -322,7 +323,8 @@ private[topic] object TopicScan {
     val paired = linked.flatMap(_.cards.map(_.version)).toSet
     val now = held.filter(_.tag match {
       case t @ Lineage.Tag.Strand(_, _, _) => recent.exists(s => isStrand(s)(t))
-      case Lineage.Tag.Card(v) => seen.exists(_.version == v) && !paired.contains(v)
+      case Lineage.Tag.Card(v) =>
+        seen.exists(c => c.version == v && offered(c, floor)) && !paired.contains(v)
       case Lineage.Tag.Topic(_) => false
     })
     if (now == all) Right(all) else Aside.kept(keeper, floor, now, at).map(_ => now)
