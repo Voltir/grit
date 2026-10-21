@@ -3,7 +3,7 @@ package grit.lifecycle.settle
 import grit.core.durable.Journaled
 import grit.core.durable.Journaled.outcome
 import grit.core.id.TurnSeq
-import grit.core.period.{Judgement, Probability}
+import grit.core.period.{Judgement, JudgementJson}
 
 import Settle.Checked
 
@@ -27,37 +27,8 @@ private[settle] object SettleJournal {
         }
     )
 
-  private val Options: Vector[String] = Vector("nobody", "onPerson", "onOther")
-
   given judged: Journaled[Judgement] =
-    Journaled.json[Judgement](
-      {
-        case Judgement.Weighed(nobody, onPerson, onOther, model) =>
-          val o = ujson.Obj()
-          Options.zip(Vector(nobody, onPerson, onOther)).foreach { (key: String, p: Probability) =>
-            o(key) = Probability.value(p)
-          }
-          o("model") = model
-          o
-        case Judgement.Unanswered(why) => ujson.Obj("unanswered" -> why)
-      },
-      v =>
-        v.objOpt match {
-          case None => Left("judged: expected an object")
-          case Some(o) =>
-            o.get("unanswered") match {
-              case Some(ujson.Str(why)) => Right(Judgement.Unanswered(why))
-              case Some(_) => Left("judged: unanswered is not a string")
-              case None =>
-                val ps = Options.flatMap(k => o.get(k).flatMap(_.numOpt).flatMap(Probability.of))
-                (ps, o.get("model").flatMap(_.strOpt)) match {
-                  case (Vector(n, p, x), Some(model)) =>
-                    Right(Judgement.Weighed(n, p, x, model))
-                  case _ => Left("judged: expected three probabilities and a model")
-                }
-            }
-        }
-    )
+    Journaled.json[Judgement](JudgementJson.write, JudgementJson.read)
 
   given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 }

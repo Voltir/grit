@@ -32,7 +32,7 @@ object CuesJsonTests extends TestSuite {
         CuesJson.read(ujson.Str("named"))
       ) ==> (
         """{"named":true,"spoken":"e-reply","continued":"e-next",""" +
-          """"settled":{"nobody":0.125,"on_person":0.75,"on_other":0.125,"model":"jev-1"},""" +
+          """"settled":{"nobody":0.125,"onPerson":0.75,"onOther":0.125,"model":"jev-1"},""" +
           """"records":{"plugin":"notes","score":2.5,"matched":3}}""",
         """{"named":false,"settled":{"unanswered":"settle model down"}}""",
         Vector(Right(weighed), Right(unanswered), Right(Cues.Empty)),
