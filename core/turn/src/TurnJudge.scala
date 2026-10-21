@@ -75,7 +75,8 @@ object TurnJudge {
 
   // `worth` asks whether the draft answers the message: kept under its name, as `Judged` is.
   private val worth = yesNo(
-    "Read message, thread and draft. Does draft answer what message asks, and is it not " +
+    "Read message, thread and draft. Does draft answer what message, or the thread before " +
+      "it, asks, and is it not " +
       "already answered in thread? A greeting, an aside, or a reply that only restates the " +
       "question is no."
   )

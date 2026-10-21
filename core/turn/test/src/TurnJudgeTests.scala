@@ -396,7 +396,8 @@ object TurnJudgeTests extends TestSuite {
         Vector(
           "Read draft, recalled and thread. Is every fact draft states found in recalled or " +
             "thread? Anything neither contains is no, however true it may be.",
-          "Read message, thread and draft. Does draft answer what message asks, and is it not " +
+          "Read message, thread and draft. Does draft answer what message, or the thread before " +
+            "it, asks, and is it not " +
             "already answered in thread? A greeting, an aside, or a reply that only restates " +
             "the question is no."
         )
