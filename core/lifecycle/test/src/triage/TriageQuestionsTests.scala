@@ -264,8 +264,8 @@ object TriageQuestionsTests extends TestSuite {
         "source:conversations"
       )
       // to-grit and durable keep v4's words: an answer under their names means what it did.
-      Vector("to-grit", "durable").map(q => asked.get(n(q)) == v4.get(n(q))) ==>
-        Vector(true, true)
+      val kept = Set("to-grit", "durable").map(n)
+      asked.filter((q, _) => kept(q)) ==> v4.filter((q, _) => kept(q))
       // gap, open and to read the earlier exchange too: their answers depend on what came before.
       asked.get(n("open")) ==> Some(
         yesNo(
@@ -347,10 +347,8 @@ object TriageQuestionsTests extends TestSuite {
         "source:conversations"
       )
       // Every One but records-hold in v5's words: an answer under a v5 name means what it did.
-      Vector("gap", "open", "to", "to-grit", "durable").map(q =>
-        asked.get(n(q)) == v5.get(n(q))
-      ) ==>
-        Vector(true, true, true, true, true)
+      val kept = Set("gap", "open", "to", "to-grit", "durable").map(n)
+      asked.filter((q, _) => kept(q)) ==> v5.filter((q, _) => kept(q))
       asked.get(n("records-hold")) ==> Some(
         yesNo(
           "Read new_message, thread, exchanges_in_channel and records_near (when present). " +
