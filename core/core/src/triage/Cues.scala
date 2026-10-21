@@ -35,8 +35,9 @@ object Cues {
   val Empty: Cues = Cues(named = false, None, None, None, None)
 }
 
-/** What code read around a message, as a probability a gate reads ([[Reading.Fact]]): always
-  * answered, and 0 where its cue is absent, as for a row kept before cues. So a fact only
+/** A gate's input read from a message's [[Cues]], as a probability ([[Reading.Fact]]); not
+  * an answer's [[grit.core.visibility.Facts]]. Always answered, and 0 where its cue is
+  * absent, as for a row kept before cues. So a fact only
   * raises: written as `AtLeast` within an `AnyOf` branch, or `Below` beside a Jev reading,
   * never as a `Below` that alone would hold every row without it.
   */
