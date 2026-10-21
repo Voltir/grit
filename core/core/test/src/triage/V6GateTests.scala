@@ -9,7 +9,7 @@ import grit.core.period.{Judgement, Probability}
 import utest.*
 
 /** v6's draft gate over Jev's answers and the facts code read: each branch passes alone, and a
-  * fact never holds a message the same gate without that fact's branches would pass.
+  * fact is read only within a branch of its `AnyOf`, so it never holds a message.
   */
 object V6GateTests extends TestSuite {
 
@@ -118,28 +118,26 @@ object V6GateTests extends TestSuite {
       )
     }
 
-    test("a fact never holds a message the gate without that fact's branches would pass") {
+    test(
+      "a fact is read only within a branch of the gate's AnyOf, and each fact's branches draft a message the rest would hold"
+    ) {
       val cases = for {
         asks <- Vector(0.0, 1.0)
         open <- Vector(0.3, 0.9)
         toGrit <- Vector(0.1, 0.9)
         recordsHold <- Vector(0.2, 0.6, 0.8)
         named <- Vector(false, true)
-        settled <- Vector(None, Some(0.5), Some(0.8))
+        settled <- Vector(None, Some(0.5), Some(0.8), Some(0.95))
         score <- Vector(None, Some(0.5), Some(2.0))
       } yield (answers(toGrit, recordsHold, asks, open), cues(named, settled, score))
-      val opened = for {
-        fact <- Fact.values.toVector
-        (a, c) <- cases
-        if without(Tags.V6.drafts, fact).drafts(a, c).contains(true)
-        if !drafts(a, c).contains(true)
-      } yield (fact, a, c)
-      // The gate without facts still passes some of them: the check is not vacuous.
-      (
-        opened,
-        cases.count((a, c) => without(Tags.V6.drafts, Fact.Named).drafts(a, c).contains(true))
-      ) ==>
-        (Vector.empty, 70)
+      val outside =
+        Fact.values.toVector.filter(f => without(Tags.V6.drafts, f).reads.contains(Reading.Fact(f)))
+      val addsNothing = Fact.values.toVector.filterNot(f =>
+        cases.exists((a, c) =>
+          drafts(a, c).contains(true) && !without(Tags.V6.drafts, f).drafts(a, c).contains(true)
+        )
+      )
+      (outside, addsNothing) ==> (Vector.empty, Vector.empty)
     }
   }
 }
