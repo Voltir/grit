@@ -27,16 +27,17 @@ import TurnRelevance.Verdict
 /** The turn's window drawn in recorded steps, from its placed message: `ask:needs`, whether its
   * message needs a search ([[TurnNeeds]]); unless it ends there, `ask:query`, its search query
   * written as a move of its own; on a written query, `search`, then `ask:relevance-0` to
-  * `ask:relevance-2`, each judging a batch of what it found ([[TurnRelevance]]); then
-  * `assemble`, the window packed with what they admitted. A turn resumed between them repeats
-  * none of the calls before.
+  * `ask:relevance-2`, each judging a batch of what it found ([[TurnRelevance]]); then, unless a
+  * heard turn ends there, `assemble`, the window packed with what they admitted. A turn resumed
+  * between them repeats none of the calls before.
   */
 private[turn] object TurnAssembly {
 
   /** From the placed message to its window; `Right(Left(root))` when the needs gate rejected a
-    * heard message, so none is drawn; `Left` why there is none.
+    * heard message, or no candidate of a heard turn's search grounds a draft
+    * ([[TurnRelevance.grounds]]), so none is drawn; `Left` why there is none.
     */
-  def flow: Flow[Env, Placed, Nothing, Either[TurnFailure, Either[TurnNeeds.Unasked, Window]]] =
+  def flow: Flow[Env, Placed, Nothing, Drawn[Window]] =
     needs.andThen(
       Flow.branch((judged: (Placed, Verdict)) =>
         TurnNeeds.after(judged._2, judged._1.at.offer.root) match {
@@ -44,11 +45,13 @@ private[turn] object TurnAssembly {
           case TurnNeeds.After.Searches => Right((judged._1, true))
           case TurnNeeds.After.Unsearched => Right((judged._1, false))
         }
-      )(
-        Flow.pass[Either[TurnFailure, Either[TurnNeeds.Unasked, Window]]],
-        drawn.map(_.map(Right(_)))
-      )
+      )(Flow.pass[Drawn[Window]], drawn)
     )
+
+  /** A window, or what it is packed from (`A`); a heard turn's root when it ends unasked; or why
+    * there is none.
+    */
+  private type Drawn[A] = Either[TurnFailure, Either[TurnNeeds.Unasked, A]]
 
   /** `ask:needs`: the needs gate's verdict on the placed message ([[TurnNeeds]]). */
   private def needs: Flow[Env, Placed, Nothing, (Placed, Verdict)] =
@@ -60,23 +63,28 @@ private[turn] object TurnAssembly {
       .keeping
       .map((p: Placed, judged: Judging.Judged[Verdict]) => (p, judged.made))
 
-  /** From the placed message, searching when `true`, to its window, or why there is none. */
-  private def drawn: Flow[Env, (Placed, Boolean), Nothing, Either[TurnFailure, Window]] =
+  /** From the placed message, searching when `true`, to its window, its root when it ends
+    * unasked, or why there is none.
+    */
+  private def drawn: Flow[Env, (Placed, Boolean), Nothing, Drawn[Window]] =
     query
       .andThen(
         Flow.branch((queried: (Placed, Either[TurnFailure, Querying])) =>
           queried match {
             case (_, Left(f)) => Left(Left(f))
-            case (p, Right(d: Querying.Drawn)) => Left(Right((p, Packing.Drawn(d))))
+            case (p, Right(d: Querying.Drawn)) => Left(Right(Right((p, Packing.Drawn(d)))))
             case (p, Right(w: Querying.Written)) => Right((p, w))
           }
-        )(Flow.pass[Either[TurnFailure, (Placed, Packing)]], sifted)
+        )(Flow.pass[Drawn[(Placed, Packing)]], sifted)
       )
       .andThen(
-        Flow.either(
-          Flow.pass[TurnFailure].map(f => Left(f): Either[TurnFailure, Window]),
-          Flow.step(assemble)
-        )
+        Flow.branch((packed: Drawn[(Placed, Packing)]) =>
+          packed match {
+            case Right(Right(packing)) => Right(packing)
+            case Right(Left(root)) => Left(Right(Left(root)))
+            case Left(f) => Left(Left(f))
+          }: Either[Drawn[Window], (Placed, Packing)]
+        )(Flow.pass[Drawn[Window]], Flow.step(assemble).map(_.map(Right(_))))
       )
 
   /** What a candidate the search found, judged as a batch of the turn's, came to so far. */
@@ -105,11 +113,10 @@ private[turn] object TurnAssembly {
         (at._1, judged.made)
       )
 
-  /** On a written query, `search` then each batch judged: what the window packs, or why the
-    * search failed.
+  /** On a written query, `search` then each batch judged: what the window packs, the root of a
+    * heard turn that ends unasked, or why the search failed.
     */
-  private def sifted
-      : Flow[Env, (Placed, Querying.Written), Nothing, Either[TurnFailure, (Placed, Packing)]] = {
+  private def sifted: Flow[Env, (Placed, Querying.Written), Nothing, Drawn[(Placed, Packing)]] = {
     val none: Flow[Env, Sifting, Nothing, Sifting] = Flow.pass[Sifting]
     val judged = TurnRelevance.Names.indices.foldLeft(none)(
       (done: Flow[Env, Sifting, Nothing, Sifting], n: Int) => done.andThen(batch(n))
@@ -122,15 +129,34 @@ private[turn] object TurnAssembly {
       )
       .andThen(
         Flow.either(
-          Flow.pass[TurnFailure].map(f => Left(f): Either[TurnFailure, (Placed, Packing)]),
-          judged.map((s: Sifting) =>
-            Right(
-              (s.at, Packing.Searched(s.written, TurnRelevance.admitted(s.results, s.verdicts)))
+          Flow.pass[TurnFailure].map(f => Left(f): Drawn[(Placed, Packing)]),
+          judged
+            .andThen(quiet)
+            .map((ended: Either[TurnNeeds.Unasked, Sifting]) =>
+              Right(
+                ended.map(s =>
+                  (s.at, Packing.Searched(s.written, TurnRelevance.admitted(s.results, s.verdicts)))
+                )
+              )
             )
-          )
         )
       )
   }
+
+  /** After the last batch, a heard turn none of whose candidates grounds a draft
+    * ([[TurnRelevance.grounds]]) ends with its root; any other goes on. A history recorded
+    * before the patch `heard-quiet-exit` goes on whatever its verdicts (ADR 0004).
+    */
+  private def quiet: Flow[Env, Sifting, Nothing, Either[TurnNeeds.Unasked, Sifting]] =
+    Flow.patch("heard-quiet-exit")(
+      Flow.pass[Sifting].map(s => Right(s): Either[TurnNeeds.Unasked, Sifting]),
+      Flow
+        .pass[Sifting]
+        .map(s =>
+          if (TurnRelevance.grounds(s.verdicts)) Right(s)
+          else TurnNeeds.unasked(s.at.at.offer.root).toLeft(s)
+        )
+    )
 
   /** `ask:relevance-{n}`, the batch numbered `n` judged, its verdicts added to what came
     * before.

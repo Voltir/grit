@@ -236,6 +236,23 @@ object RecordTurnHistories {
       )
       recorded(durable, w.turn)
     }
+    // A heard message whose search found candidates passing under QuietAt alone: it takes the
+    // patch `heard-quiet-exit` and keeps nothing recalled, nothing drafted.
+    val heardQuiet = {
+      val w = speechWorld()
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider,
+          new Searching(w.entries, 5),
+          w.ledger,
+          new Sifter(relevant = 0.6),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries)
+        )
+      )
+      recorded(durable, w.turn)
+    }
     val recalled = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -660,6 +677,7 @@ object RecordTurnHistories {
       "queried" -> queried,
       "unneeded" -> unneeded,
       "heard-unneeded" -> heardUnneeded,
+      "heard-quiet" -> heardQuiet,
       "summary-failed" -> summaryFailed,
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),

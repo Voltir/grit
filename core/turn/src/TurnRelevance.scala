@@ -23,6 +23,13 @@ object TurnRelevance {
   /** The probability of yes at which a candidate passes. */
   val Pass: Probability = Probability.clamped(0.5)
 
+  /** The probability of yes, 0.7, at which a heard turn's candidate grounds a draft: a heard
+    * turn none of whose candidates passed at it or more ends before its draft, nothing recalled.
+    */
+  // A recorded heard turn's branch after its last batch is read against this: changing it
+  // changes which way a history taken past `heard-quiet-exit` replays, so it needs a patch.
+  val QuietAt: Probability = Probability.clamped(0.7)
+
   /** How many characters of the turn's message, and of each candidate, the judge is shown. */
   val Chars = 800
 
@@ -114,6 +121,13 @@ object TurnRelevance {
     val rejected = verdicts.collect { case (r, Verdict.Rejected(_)) => r }.toSet
     Results(results.ranked.take(Judged).filterNot(found => rejected.contains(found._1)))
   }
+
+  /** Whether any of `verdicts` passed at [[QuietAt]] or more; an unjudged one never does. */
+  def grounds(verdicts: Vector[(Retrieved, Verdict)]): Boolean =
+    verdicts.exists {
+      case (_, Verdict.Passed(p)) => p >= QuietAt
+      case _ => false
+    }
 
   /** The text of the question asked of candidate `n`. */
   private def question(n: Int): Ask[State, Probability] =

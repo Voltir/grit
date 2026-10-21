@@ -42,6 +42,7 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.Search -> 1400,
     Turn.Step.Relevance -> 840, // a batch's verdicts, by reference, and its call's cost
     Turn.Step.RelevanceRecord -> 64, // whether the cost was kept
+    "DBOS.patch-heard-quiet-exit" -> 0, // a taken patch's marker, which records no output
     Turn.Step.Assemble -> 640, // the window's entry seqs and notes
     Turn.Step.RecordWindow -> 128, // the loop's limits
     Turn.Step.Gate -> 800, // a round's level and the items it hid or lowered
@@ -122,8 +123,9 @@ object TurnReplayTests extends TestSuite {
       val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
       def ungated(names: Vector[String]): Vector[String] =
         names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
-      // The shapes the gate's rejection made, which no history before it could have.
-      val rejected = Set("unneeded.json", "heard-unneeded.json")
+      // The shapes the gate's rejection and the quiet exit made, which no history before them
+      // could have.
+      val rejected = Set("unneeded.json", "heard-unneeded.json", "heard-quiet.json")
       (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
       before ==> after.collect {
         case (file, names) if !rejected.contains(file) => file -> ungated(names)

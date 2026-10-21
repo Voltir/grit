@@ -77,11 +77,13 @@ object TurnNeeds {
   def after(verdict: TurnRelevance.Verdict, root: TurnOffer.Root): After =
     verdict match {
       case TurnRelevance.Verdict.Passed(_) | TurnRelevance.Verdict.Unjudged(_) => After.Searches
-      case TurnRelevance.Verdict.Rejected(_) =>
-        root match {
-          case TurnOffer.Root.Heard => After.Ends(TurnOffer.Root.Heard)
-          case TurnOffer.Root.Named => After.Ends(TurnOffer.Root.Named)
-          case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => After.Unsearched
-        }
+      case TurnRelevance.Verdict.Rejected(_) => unasked(root).fold(After.Unsearched)(After.Ends(_))
     }
+
+  /** `root` as an [[Unasked]] one, a turn that ends unasked; `None` when said to grit. */
+  def unasked(root: TurnOffer.Root): Option[Unasked] = root match {
+    case TurnOffer.Root.Heard => Some(TurnOffer.Root.Heard)
+    case TurnOffer.Root.Named => Some(TurnOffer.Root.Named)
+    case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => None
+  }
 }

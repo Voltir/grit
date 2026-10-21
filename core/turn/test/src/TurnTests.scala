@@ -179,6 +179,7 @@ object TurnTests extends TestSuite {
         "record-topic",
         "ask",
         "search",
+        "DBOS.patch-heard-quiet-exit",
         "assemble",
         "record-window",
         "gate",
@@ -739,6 +740,72 @@ object TurnTests extends TestSuite {
       assemblySteps(durable, turn).take(4) ==>
         Vector("ask:needs", "ask:needs:record", "ask:query", "ask:query:record")
       sifter.asked.size ==> 1
+    }
+
+    test(
+      "a heard turn none of whose candidates passed at QuietAt ends before its draft, nothing recalled, no window drawn"
+    ) {
+      val w = speechWorld()
+      val provider = new RecordingProvider
+      val durable = new InMemoryDurable
+      // Its even candidates pass at the pass mark, under QuietAt; the odd ones are rejected.
+      val passed = (Probability.value(TurnRelevance.Pass) + Probability.value(
+        TurnRelevance.QuietAt
+      )) / 2
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          provider,
+          new Searching(w.entries, 5),
+          w.ledger,
+          new Sifter(relevant = passed),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries)
+        )
+      )
+      (
+        w.store.outcomes.get(w.turn).map(_._1),
+        durable.recordedSteps(w.turn.workflowId).dropWhile(_ != "record-topic").drop(1),
+        provider.requests.map(_.system)
+      ) ==> (
+        Some(grit.core.speech.Outcome.NothingRecalled),
+        Vector(
+          "ask:needs",
+          "ask:needs:record",
+          "ask:query",
+          "ask:query:record",
+          "search",
+          "ask:relevance-0",
+          "ask:relevance-0:record",
+          "ask:relevance-1",
+          "ask:relevance-2",
+          "DBOS.patch-heard-quiet-exit",
+          "record-speech"
+        ),
+        // Its query written, and nothing drafted.
+        Vector("Write a search query.")
+      )
+    }
+
+    test("an addressed turn with the same verdicts drafts") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val durable = new InMemoryDurable
+      val passed = (Probability.value(TurnRelevance.Pass) + Probability.value(
+        TurnRelevance.QuietAt
+      )) / 2
+      val turn = say(entries, "when is the freeze?")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          provider,
+          new Searching(entries, 5),
+          new InMemoryUsageLedger,
+          new Sifter(relevant = passed)
+        )
+      ) ==> Done
+      // Its reply, then its summary.
+      (assemblySteps(durable, turn).takeRight(1), provider.requests.size) ==>
+        (Vector("assemble"), 2)
     }
 
     test("a later turn sees earlier turns, then its own message") {

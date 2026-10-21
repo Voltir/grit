@@ -1200,13 +1200,14 @@ object TurnFixtures {
     }
   }
 
-  /** A classifier judging relevance by a candidate's words: yes at 0.9 to each one saying
+  /** A classifier judging relevance by a candidate's words: yes at `relevant` to each one saying
     * `relevant`, 0.1 to the rest; the needs gate's question ([[TurnNeeds.State]], a message and
     * a thread alone) yes at `needs`; any other question as the stub classifier answers it. Each
     * relevance call is counted, its candidates kept, and each gate call's state kept; the
     * relevance call numbered `crashAt` (from 1) dies, once, as a crashed process would.
     */
-  final class Sifter(crashAt: Option[Int] = None, needs: Double = 0.9) extends Classifier {
+  final class Sifter(crashAt: Option[Int] = None, needs: Double = 0.9, relevant: Double = 0.9)
+      extends Classifier {
     // Counted and kept by `answer`, which the turn under test calls on the test's one thread;
     // read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
@@ -1241,7 +1242,7 @@ object TurnFixtures {
           }
           Right(
             Answers(
-              texts.map(t => Answer.YesNo(if (t.contains("relevant")) 0.9 else 0.1)),
+              texts.map(t => Answer.YesNo(if (t.contains("relevant")) relevant else 0.1)),
               Usage(Tokens(10), Tokens(1), Tokens.Zero, None),
               "jev"
             )
