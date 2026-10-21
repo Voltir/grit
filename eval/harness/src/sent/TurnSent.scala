@@ -126,6 +126,7 @@ object TurnSent {
               turn,
               steps,
               TurnRecord.Reads(
+                reader.conversations,
                 reader.entries,
                 reader.principals,
                 reader.documents,

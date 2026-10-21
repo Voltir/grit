@@ -1,5 +1,7 @@
 package grit.core.store
 
+import java.time.ZoneId
+
 import grit.core.id.{EntryId, Href}
 import grit.core.identity.Account
 
@@ -12,6 +14,9 @@ final class InMemoryPrincipals extends Principals {
   // Replaced whole by the store's own methods, which the test calls on its one thread.
   @caps.unsafe.untrackedCaptures
   private var names = Map.empty[Account, String]
+
+  @caps.unsafe.untrackedCaptures
+  private var zones = Map.empty[Account, ZoneId]
 
   @caps.unsafe.untrackedCaptures
   private var authors = Map.empty[EntryId, Account]
@@ -38,6 +43,17 @@ final class InMemoryPrincipals extends Principals {
         names = names.updated(account, name.trim)
         Right(())
     }
+
+  def zoned(account: Account, zone: ZoneId)(using Tx^): Either[StoreError, Unit] =
+    Principals.refusal(account) match {
+      case Some(why) => Left(why)
+      case None =>
+        zones = zones.updated(account, zone)
+        Right(())
+    }
+
+  def zoneOf(entry: EntryId)(using Tx^): Either[StoreError, Option[ZoneId]] =
+    Right(authors.get(entry).flatMap(zones.get))
 
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers] =
     Right(

@@ -70,10 +70,14 @@ object TurnCaptureTests extends TestSuite {
       |  val none = Left(grit.core.store.StoreError.Invalid("none"))
       |  val pure = new grit.core.store.Principals {
       |    def name(account: grit.core.identity.Account, name: String)(using grit.core.store.Tx^) = Right(())
+      |    def zoned(account: grit.core.identity.Account, zone: java.time.ZoneId)(using grit.core.store.Tx^) = Right(())
+      |    def zoneOf(entry: grit.core.id.EntryId)(using grit.core.store.Tx^) = Right(None)
       |    def speakers(entries: Vector[grit.core.id.EntryId])(using grit.core.store.Tx^) = none
       |  }
       |  val spying = new grit.core.store.Principals {
       |    def name(account: grit.core.identity.Account, name: String)(using grit.core.store.Tx^) = Right(())
+      |    def zoned(account: grit.core.identity.Account, zone: java.time.ZoneId)(using grit.core.store.Tx^) = Right(())
+      |    def zoneOf(entry: grit.core.id.EntryId)(using grit.core.store.Tx^) = Right(None)
       |    def speakers(entries: Vector[grit.core.id.EntryId])(using grit.core.store.Tx^) = {
       |      val _ = RelPath.of("x").flatMap(ws.read(_, Lines.All))
       |      none

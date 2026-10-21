@@ -1,6 +1,6 @@
 package grit.slack.edge
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -33,7 +33,17 @@ import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
 import grit.prose.markdown.Markdown
-import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
+import grit.slack.client.{
+  AppToken,
+  BotToken,
+  Member,
+  Root,
+  Self,
+  Slack,
+  SlackError,
+  SocketSlack,
+  Tag
+}
 import grit.slack.event.{ChannelId, Event, Events, MessageLink, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
@@ -58,7 +68,7 @@ final class SlackEdge(
   // is looked up again from Slack or the store when missing, so a reader that races a writer
   // sees either value, and both are right.
   @caps.unsafe.untrackedCaptures
-  private val names = new ConcurrentHashMap[UserId, String]()
+  private val names = new ConcurrentHashMap[UserId, Named]()
 
   @caps.unsafe.untrackedCaptures
   private val channelNames = new ConcurrentHashMap[ChannelId, String]()
@@ -313,14 +323,14 @@ final class SlackEdge(
     * any other's: each user as [[Slack.member]] reads them, an account of another team outside
     * without asking, and the team's listing as [[Slack.members]] reads it, any other realm's
     * empty. A failure to ask is [[Asked.Unreached]]. The name an answer gives is kept as the
-    * user's name ([[nameOf]]), so a new author costs one `users.info`.
+    * user's name and zone ([[namedOf]]), so a new author costs one `users.info`.
     */
   private val source: RealmSource^{slack} = new RealmSource {
     def ask(account: Account): Asked =
       SlackAccounts.user(account, self.team).fold(Asked.Said(Standing.Outside)) { user =>
         slack.member(self.team, user) match {
           case Right(m) =>
-            m.name.foreach(n => names.put(user, n))
+            m.name.foreach(n => names.put(user, Named(n, m.zone)))
             Asked.Said(m.standing)
           case Left(e) => Asked.Unreached(e.toString)
         }
@@ -613,8 +623,9 @@ final class SlackEdge(
       if (!open) Right(None) else voiced(m.author, m.user, m.text).map(Some(_))
     }
 
-  /** The account of `user` of `team`, checked first ([[Attesting.before]]) and named as Slack
-    * names them, and `text`, which they wrote, in their words.
+  /** The account of `user` of `team`, checked first ([[Attesting.before]]), named as Slack
+    * names them and placed in the zone Slack places them in, when it names one; and `text`,
+    * which they wrote, in their words.
     */
   private def voiced(
       team: TeamId,
@@ -629,20 +640,25 @@ final class SlackEdge(
         case Attesting.Unchecked.Store(e) => e.toString
       }
       mentioned = Mentioned.findAllMatchIn(text).map(x => UserId(x.group(1))).toVector
-      known = (user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
+      known = (user +: mentioned).distinct.flatMap(u => namedOf(u).map(u -> _)).toMap
       linked = Incoming
         .channels(text)
         .collect { case (c, None) => c }
         .distinct
         .flatMap(c => channelNameOf(c).map(c -> _))
         .toMap
+      theirs = known.get(user)
       _ <- stores.jot
         .write(Subject.Public)(
-          stores.principals.name(author, known.getOrElse(user, UserId.value(user)))
+          stores.principals
+            .name(author, theirs.fold(UserId.value(user))(_.name))
+            .flatMap(_ =>
+              theirs.flatMap(_.zone).fold(Right(()))(z => stores.principals.zoned(author, z))
+            )
         )
         .left
         .map(_.toString)
-    } yield (author, Incoming.text(text, self.bot, known.get, linked.get))
+    } yield (author, Incoming.text(text, self.bot, known.get(_).map(_.name), linked.get))
 
   /** Records `m` as a turn of its thread's conversation in its author's direct room, as
     * [[receive]] says.
@@ -874,16 +890,17 @@ final class SlackEdge(
         true
     }
 
-  /** `user`'s Slack name, asked of Slack once per user; `None` when they have none, or Slack
-    * could not say (the id stands in, and they are asked again next time).
+  /** `user`'s Slack name and zone, asked of Slack once per user; `None` when they have no name,
+    * or Slack could not say (the id stands in, and they are asked again next time).
     */
-  private def nameOf(user: UserId): Option[String] =
+  private def namedOf(user: UserId): Option[Named] =
     Option(names.get(user)).orElse {
-      slack.member(self.team, user).map(_.name) match {
-        case Right(Some(n)) =>
-          val _ = names.put(user, n)
-          Some(n)
-        case Right(None) => None
+      slack.member(self.team, user) match {
+        case Right(Member(Some(n), _, zone)) =>
+          val named = Named(n, zone)
+          val _ = names.put(user, named)
+          Some(named)
+        case Right(Member(None, _, _)) => None
         case Left(e) =>
           said(s"slack: no name for ${UserId.value(user)}: $e")
           None
@@ -1279,6 +1296,11 @@ final class SlackEdge(
 }
 
 object SlackEdge {
+
+  /** What the edge keeps of a Slack user it has asked about: the name they show, and the zone
+    * Slack places them in, if any.
+    */
+  private final case class Named(name: String, zone: Option[ZoneId])
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in a channel its bot is a member of heard (ADR 0020, 0033), one addressed to

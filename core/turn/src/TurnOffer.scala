@@ -1,12 +1,23 @@
 package grit.turn
 
+import java.time.ZoneId
+
 import grit.core.context.Width
 import grit.core.edge.Advert
 import grit.core.id.TurnRef
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
-import grit.core.store.{EntryStore, Origin, Payload, Position, PromptStore, StoreError, Tx}
+import grit.core.store.{
+  EntryStore,
+  Origin,
+  Payload,
+  Position,
+  Principals,
+  PromptStore,
+  StoreError,
+  Tx
+}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Classification
@@ -16,8 +27,9 @@ import grit.core.visibility.Classification
   * ([[TurnOffer.workspaceOf]]); its tool set; its system prompt; its `root`, what it answers;
   * `advertised`, the tools of its set taken from its workspace's edge's advert
   * ([[TurnOffer.Recorded]]); `reached`, the tools of the set taken from a reached
-  * service's advert, each with the place its calls are addressed to ([[placeOf]]); and the
-  * `width` its window is drawn at.
+  * service's advert, each with the place its calls are addressed to ([[placeOf]]); the
+  * `width` its window is drawn at; and the zones its message is dated in, as
+  * [[TurnOffer.Recorded]] says.
   */
 final case class TurnOffer(
     workspace: Option[Place],
@@ -26,7 +38,8 @@ final case class TurnOffer(
     root: TurnOffer.Root,
     advertised: Vector[ToolName],
     reached: Map[ToolName, Place],
-    width: Width
+    width: Width,
+    zoned: Option[TurnOffer.Zoned]
 ) {
 
   /** The system text every model call of the turn is sent. */
@@ -46,7 +59,8 @@ object TurnOffer {
     * `reached`, those taken from a reached service's, each with its place. [[toolbox]]
     * rebuilds both from the recorded set. `shaped`, what its recipe made of it; `None` for an
     * offer recorded before recipes, which was drawn at the deployed width with nothing
-    * withheld.
+    * withheld. `zoned`, the zone its message is dated in; `None` for an offer recorded before
+    * zones, whose message was dated in UTC.
     */
   final case class Recorded(
       workspace: Option[Place],
@@ -55,11 +69,25 @@ object TurnOffer {
       root: Root,
       advertised: Vector[ToolName] = Vector.empty,
       reached: Map[ToolName, Place] = Map.empty,
-      shaped: Option[TurnShape] = None
+      shaped: Option[TurnShape] = None,
+      zoned: Option[Zoned] = None
   ) {
 
     /** The width the turn's window is drawn at: its shape's, else the deployed width. */
     def width: Width = shaped.fold(Width.Deployed)(_.width)
+  }
+
+  /** The zones a turn's message is dated in ([[TurnShown.answering]]), as its `offer` step found
+    * them: `person`, where the source of the account that wrote its first entry places them
+    * ([[grit.core.store.Principals.zoneOf]]), `None` when no source does (a local session, a job's
+    * run, an account whose source names no zone); and `deployment`, the deployment's
+    * ([[grit.core.spend.Budget.zone]]), in which a person whose zone is not known, and other people in
+    * a channel, are read.
+    */
+  final case class Zoned(person: Option[ZoneId], deployment: ZoneId) {
+
+    /** The zone the message is dated in: the person's, else the deployment's. */
+    def dated: ZoneId = person.getOrElse(deployment)
   }
 
   /** What a turn answers: a message said to grit (`Addressed`); a heard one triage decided to
@@ -113,13 +141,17 @@ object TurnOffer {
     * `weighed`'s answers (none when `weighed` is `None` or `Unanswered`,
     * [[grit.core.recipe.Offering.decide]]). A withheld service's tools are left out of the set,
     * `advertised` and `reached`, and what it may reach there or besides is not said; all of it
-    * is in `shaped`. `TurnFailure.Store` when a store fails, the conversation is gone, or two
-    * tools offered share a name. A stored voice this build does not know is the default,
-    * never a failure.
+    * is in `shaped`. Its message is dated ([[Zoned]]) in the zone `principals` says its first
+    * entry's account is placed in, else in `deployment`, the deployment's
+    * ([[grit.core.spend.Budget.zone]]). `TurnFailure.Store` when a store fails, the conversation
+    * is gone, or two tools offered share a name. A stored voice this build does not know is the
+    * default, never a failure.
     */
   def decide[C^](
       hosting: TurnHosting,
       entries: EntryStore,
+      principals: Principals,
+      deployment: ZoneId,
       tooling: TurnTooling[C]^,
       turn: TurnRef,
       weighed: Option[Tags],
@@ -220,6 +252,9 @@ object TurnOffer {
           Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
+      person <- first.fold[Either[StoreError, Option[ZoneId]]](Right(None))(e =>
+        principals.zoneOf(e.id)
+      )
     } yield Recorded(
       workspace,
       set.id,
@@ -227,7 +262,8 @@ object TurnOffer {
       root,
       if (kept) advertised.map(_.name) else Vector.empty,
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
-      Some(TurnShape(shaping.width, whole.id, took))
+      Some(TurnShape(shaping.width, whole.id, took)),
+      Some(Zoned(person, deployment))
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
@@ -299,7 +335,8 @@ object TurnOffer {
       recorded.root,
       recorded.advertised,
       recorded.reached,
-      recorded.width
+      recorded.width,
+      recorded.zoned
     )
 
   /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator

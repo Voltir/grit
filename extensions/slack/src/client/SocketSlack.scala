@@ -1,9 +1,10 @@
 package grit.slack.client
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
+import scala.util.Try
 import scala.util.control.NonFatal
 
 import grit.core.id.Href
@@ -186,11 +187,13 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
 
   def member(team: TeamId, user: UserId): Either[SlackError, Member] =
     call(methods.usersInfo(UsersInfoRequest.builder().user(UserId.value(user)).build()))
-      .map(r => Option(r.getUser).fold(Member(None, Standing.Outside))(SocketSlack.member(team, _)))
+      .map(r =>
+        Option(r.getUser).fold(Member(None, Standing.Outside, None))(SocketSlack.member(team, _))
+      )
       .left
       .flatMap {
         // Slack's word that there is no such user: outside, never a failure to ask.
-        case SlackError.Refused("user_not_found") => Right(Member(None, Standing.Outside))
+        case SlackError.Refused("user_not_found") => Right(Member(None, Standing.Outside, None))
         case other => Left(other)
       }
 
@@ -476,7 +479,9 @@ object SocketSlack {
     val email =
       if (!user.isEmailConfirmed) None
       else profile.flatMap(p => Option(p.getEmail)).flatMap(Email.of(_).toOption)
-    Member(name, if (full) Standing.Full(email) else Standing.Outside)
+    // An id this JVM's zone rules lack is no zone, as is none.
+    val zone = Option(user.getTz).flatMap(tz => Try(ZoneId.of(tz)).toOption)
+    Member(name, if (full) Standing.Full(email) else Standing.Outside, zone)
   }
 
   /** What `c` is to grit's bot, a `member` of it or not: a channel's kind, else unseen. A

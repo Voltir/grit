@@ -1,6 +1,6 @@
 package grit.slack.client
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import scala.concurrent.duration.Duration
 
@@ -63,6 +63,10 @@ final class FakeSlack extends Slack {
     */
   @caps.unsafe.untrackedCaptures
   var standings: Map[UserId, Standing] = Map.empty
+
+  /** The zone Slack places each person in [[names]] in; none when unsaid. */
+  @caps.unsafe.untrackedCaptures
+  var zones: Map[UserId, ZoneId] = Map.empty
 
   /** When set, `member` and `members` fail so, and nothing else does. */
   @caps.unsafe.untrackedCaptures
@@ -283,10 +287,11 @@ final class FakeSlack extends Slack {
 
   /** `user` as [[member]] reads them in `team`. */
   private def known(team: TeamId, user: UserId): Member =
-    names.get(user).fold(Member(None, Standing.Outside)) { name =>
+    names.get(user).fold(Member(None, Standing.Outside, None)) { name =>
       Member(
         name,
-        if (team == me.team) standings.getOrElse(user, Standing.Full(None)) else Standing.Outside
+        if (team == me.team) standings.getOrElse(user, Standing.Full(None)) else Standing.Outside,
+        zones.get(user)
       )
     }
 

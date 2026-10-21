@@ -104,6 +104,8 @@ private[turn] object TurnSteps {
           TurnOffer.decide(
             turnEnv.hosting,
             turnEnv.records.entries,
+            turnEnv.records.principals,
+            turnEnv.routing.budget.zone,
             tooling,
             turn,
             weighed.flatMap(_.answers),
@@ -494,10 +496,15 @@ private[turn] object TurnSteps {
             offer <- env.hosting.offered(a.offer)
             pins <- a.routed.pickedIn(env.records.profiles)
             (stubs, shape) <- r.sent(rounds, offer, pins)
-          } yield (offer, pins, stubs, shape))
-            .flatMap((offer, pins, stubs, shape) =>
+            direct <- TurnShown
+              .direct(env.hosting.conversations, in.turn)
+              .left
+              .map(TurnFailure.ofStore)
+          } yield (offer, direct, pins, stubs, shape))
+            .flatMap((offer, direct, pins, stubs, shape) =>
               appended(
                 offer,
+                direct,
                 env.records,
                 env.speech.store,
                 in.turn,
@@ -1071,13 +1078,15 @@ private[turn] object TurnSteps {
     * ([[Outcome.Replied]]) with its words; dated `at`, after everything already in the
     * conversation, and what it cost in the ledger beside the estimate of the request that
     * produced it: rebuilt from the same window and the same entries (the turn's own were all
-    * recorded before its call, and the reply is not yet among them), each item `stubs` names
-    * shown as its stub, shaped by `shape`. Each of the window's documents whose pointer one of
-    * the turn's calls followed, and that succeeded, is counted as followed at `at`
+    * recorded before its call, and the reply is not yet among them), its message dated as
+    * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
+    * stub, shaped by `shape`. Each of the window's documents whose pointer one of the turn's
+    * calls followed, and that succeeded, is counted as followed at `at`
     * ([[Pointer.followedIn]]).
     */
   private def appended(
       offer: TurnOffer,
+      direct: Boolean,
       records: TurnRecords,
       speech: SpeechStore,
       turn: TurnRef,
@@ -1099,7 +1108,8 @@ private[turn] object TurnSteps {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- believedAt(entries, turn, believed)
       showing <- shown(records, turn, window).left.map(TurnFailure.ofStore)
-      sent <- requestOf(offer.system, showing, turn, window, stubs).map(_.shaped(shape))
+      sent <- requestOf(offer.system, showing, turn, window, stubs, offer.zoned, direct)
+        .map(_.shaped(shape))
       _ <- entries
         .insert(
           Entry(

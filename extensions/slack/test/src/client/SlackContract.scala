@@ -167,9 +167,9 @@ abstract class SlackContract extends TestSuite {
     ) {
       withSlack() { slack =>
         (slack.member(Team, Ana), slack.member(Team, Bot), slack.member(Team, Nobody)) ==> (
-          Right(Member(Some("Ana"), AnaStanding)),
-          Right(Member(Some("grit"), Standing.Outside)),
-          Right(Member(None, Standing.Outside))
+          Right(Member(Some("Ana"), AnaStanding, None)),
+          Right(Member(Some("grit"), Standing.Outside, None)),
+          Right(Member(None, Standing.Outside, None))
         )
       }
     }
@@ -182,7 +182,7 @@ abstract class SlackContract extends TestSuite {
 
     test("member of another team than the user's is outside, under the same name") {
       withSlack() { slack =>
-        slack.member(OtherTeam, Ana) ==> Right(Member(Some("Ana"), Standing.Outside))
+        slack.member(OtherTeam, Ana) ==> Right(Member(Some("Ana"), Standing.Outside, None))
       }
     }
 
@@ -190,9 +190,9 @@ abstract class SlackContract extends TestSuite {
       withSlack() { slack =>
         slack.members(Team) ==> Right(
           Map(
-            Ana -> Member(Some("Ana"), AnaStanding),
-            Bot -> Member(Some("grit"), Standing.Outside),
-            Gia -> Member(Some("Gia"), Standing.Outside)
+            Ana -> Member(Some("Ana"), AnaStanding, None),
+            Bot -> Member(Some("grit"), Standing.Outside, None),
+            Gia -> Member(Some("Gia"), Standing.Outside, None)
           )
         )
       }

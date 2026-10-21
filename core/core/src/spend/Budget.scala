@@ -4,7 +4,9 @@ import java.time.{Instant, ZoneId}
 
 import grit.core.message.Cost
 
-/** How grit meters its spend: the zone its days begin in, and the cap on each, if any. */
+/** How grit meters its spend, and the deployment's zone: its metered days begin in `zone`, and a
+  * person whose own zone is not known is taken to be in it; `cap`, the cap on each day, if any.
+  */
 final case class Budget(zone: ZoneId, cap: Option[DailyCap]) {
 
   /** The day `now` falls on. */

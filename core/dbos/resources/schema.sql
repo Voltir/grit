@@ -289,15 +289,19 @@ INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'gri
 
 -- Each account an action has come through (grit.core.identity.Account, as Account.written
 -- spells it; never an email address), its home, and the name its source gives it
--- (Principals.name). Its home is the person of its own minted when it was first seen
--- (SqlIdentities.enroll, under an advisory lock on the account, so two first sightings make one
--- person), which holds no other account. Holds PII (`account`, `name`).
+-- (Principals.name), and the zone its source places it in (Principals.zoned): an IANA id as the
+-- account's source reports it, never validated by Postgres (the store writes only one
+-- `ZoneId.of` reads, and reads one it does not as none). Its home is the person of its own
+-- minted when it was first seen (SqlIdentities.enroll, under an advisory lock on the account,
+-- so two first sightings make one person), which holds no other account. Holds PII
+-- (`account`, `name`, `zone`).
 -- Retention: kept; deleted by nothing yet (parked: forgetting a person). One row per account
 -- seen.
 CREATE TABLE IF NOT EXISTS grit.identities (
     account TEXT PRIMARY KEY,
     home    TEXT NOT NULL UNIQUE REFERENCES grit.principals(id),
-    name    TEXT
+    name    TEXT,
+    zone    TEXT
 );
 
 -- A realm's accounts by prefix (`slack:T0123/%`): the key's default collation cannot serve

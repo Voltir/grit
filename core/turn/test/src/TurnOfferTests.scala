@@ -30,6 +30,7 @@ import grit.core.store.{
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
+  InMemoryPrincipals,
   InMemoryVoiceStore,
   Origin,
   Payload,
@@ -114,6 +115,8 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         entries,
+        new InMemoryPrincipals,
+        java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         weighed,
@@ -181,6 +184,8 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         new InMemoryEntryStore,
+        new InMemoryPrincipals,
+        java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         None,
@@ -252,6 +257,8 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         new InMemoryEntryStore,
+        new InMemoryPrincipals,
+        java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         None,
@@ -336,6 +343,8 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         log,
+        new InMemoryPrincipals,
+        java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         weighed,
@@ -498,6 +507,8 @@ object TurnOfferTests extends TestSuite {
       .decide(
         hosting,
         log,
+        new InMemoryPrincipals,
+        java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         None,
@@ -819,7 +830,8 @@ object TurnOfferTests extends TestSuite {
         TurnOffer.Root.Addressed,
         Vector(named("github_search")),
         Map.empty,
-        Width.Deployed
+        Width.Deployed,
+        None
       )
       val tooling = TurnTooling[{}](
         box(tool(ToolName("about"), asks = false)),

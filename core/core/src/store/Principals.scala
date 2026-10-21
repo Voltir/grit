@@ -1,5 +1,7 @@
 package grit.core.store
 
+import java.time.ZoneId
+
 import grit.core.id.EntryId
 import grit.core.identity.Account
 
@@ -21,6 +23,17 @@ trait Principals {
     * one whose account has no name is among them by its link alone, when it has one.
     */
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers]
+
+  /** Records that `account`'s source places it in `zone` now, writing nothing when it already does;
+    * an account not seen before is a new person's one account. `Invalid` for [[Account.Local]] or
+    * [[Account.Grit]], which no source places: a turn they begin is dated in the deployment's zone.
+    */
+  def zoned(account: Account, zone: ZoneId)(using Tx^): Either[StoreError, Unit]
+
+  /** The zone its source last placed the account that wrote `entry` in; `None` for an entry that is
+    * not inbound, or whose account no source has placed.
+    */
+  def zoneOf(entry: EntryId)(using Tx^): Either[StoreError, Option[ZoneId]]
 }
 
 object Principals {
@@ -32,4 +45,12 @@ object Principals {
     if (account == Account.Local || account == Account.Grit)
       Some(StoreError.Invalid(s"${Account.written(account)} is never named"))
     else Option.when(name.trim.isEmpty)(StoreError.Invalid("a person's name is not blank"))
+
+  /** Why `account` may not be placed in a zone, as [[Principals.zoned]] refuses it; `None` when
+    * it may. Every store refuses by this one rule.
+    */
+  def refusal(account: Account): Option[StoreError] =
+    Option.when(account == Account.Local || account == Account.Grit)(
+      StoreError.Invalid(s"${Account.written(account)} is placed by no source")
+    )
 }

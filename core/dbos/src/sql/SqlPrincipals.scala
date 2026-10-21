@@ -1,12 +1,14 @@
 package grit.dbos.sql
 
-import scala.util.Using
+import java.time.ZoneId
+
+import scala.util.{Try, Using}
 
 import grit.core.id.{EntryId, Href}
 import grit.core.identity.Account
 import grit.core.store.{Principals, Speakers, StoreError, Tx}
 
-/** [[Principals]] over `grit.identities` (each account and the name it goes by),
+/** [[Principals]] over `grit.identities` (each account, the name it goes by and its zone),
   * `grit.authors` (who wrote each inbound entry) and `grit.inbound` (the link each was recorded
   * with).
   */
@@ -35,6 +37,51 @@ final class SqlPrincipals extends Principals {
           }
         }
     }
+
+  def zoned(account: Account, zone: ZoneId)(using tx: Tx^): Either[StoreError, Unit] =
+    Principals.refusal(account) match {
+      case Some(why) => Left(why)
+      case None =>
+        val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+        SqlIdentities.enroll(Set(account)).flatMap { _ =>
+          attempt {
+            Using.resource(
+              conn.prepareStatement(
+                """UPDATE grit.identities SET zone = ?
+                  | WHERE account = ? AND zone IS DISTINCT FROM ?""".stripMargin
+              )
+            ) { ps =>
+              ps.setString(1, zone.getId)
+              ps.setString(2, SqlIdentities.written(account))
+              ps.setString(3, zone.getId)
+              ps.executeUpdate()
+              ()
+            }
+          }
+        }
+    }
+
+  def zoneOf(entry: EntryId)(using tx: Tx^): Either[StoreError, Option[ZoneId]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT n.zone
+            |  FROM grit.authors a
+            |  JOIN grit.inbound i ON i.entry_id = a.entry_id
+            |  JOIN grit.identities n ON n.account = a.account
+            | WHERE a.entry_id = ?""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, EntryId.value(entry))
+        Using.resource(ps.executeQuery()) { rs =>
+          // Written from a ZoneId (zoned); one this JVM's zone rules no longer know is none.
+          if (rs.next()) Option(rs.getString(1)).flatMap(z => Try(ZoneId.of(z)).toOption)
+          else None
+        }
+      }
+    }
+  }
 
   def speakers(entries: Vector[EntryId])(using tx: Tx^): Either[StoreError, Speakers] =
     if (entries.isEmpty) Right(Speakers.none)

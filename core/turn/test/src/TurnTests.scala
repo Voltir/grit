@@ -1,6 +1,6 @@
 package grit.turn
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import scala.concurrent.duration.*
 
@@ -349,8 +349,46 @@ object TurnTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
       runTurn(new InMemoryDurable, entries, provider, say(entries, "hello")) ==> Done
-      provider.requests.map(_.system.split("\n\n").toVector.lastOption) ==> Vector(
-        Some("The message you are answering was said Thu 1970-01-01 00:00 UTC.")
+      provider.requests.map(_.system.split("\n\n").toVector.lastOption) ==> Vector(Some(dated))
+    }
+
+    test(
+      "a turn whose first entry's account has a zone is told it; one whose has none is told the deployment's, said as the deployment's"
+    ) {
+      val entries = new InMemoryEntryStore
+      val principals = new InMemoryPrincipals
+      val (ana, gia) = (TestAccounts.account("slack:T1/U1"), TestAccounts.account("slack:T1/U2"))
+      principals.zoned(ana, ZoneId.of("America/Los_Angeles"))(using TestTx.fake)
+      // The first clause of the line its one call's system prompt ends with.
+      def told(text: String, by: grit.core.identity.Account): Vector[Option[String]] = {
+        val asked = say(entries, text)
+        principals.authored(EntryId(s"in:$text"), by)
+        val turn = new RecordingProvider
+        val eastern = ZoneId.of("America/New_York")
+        new InMemoryDurable().run(asked.workflowId)(
+          voicedBody(
+            entries,
+            turn,
+            new RecordingProvider,
+            new InMemoryVoiceStore,
+            principals,
+            eastern
+          )
+        )
+        turn.requests.map(_.system.split("\n\n").toVector.lastOption.map(_.takeWhile(_ != ';')))
+      }
+      // Every fixture entry is made at the epoch.
+      (told("hello", ana), told("thanks", gia)) ==> (
+        Vector(
+          Some(
+            "The message you are answering was said Wed 1969-12-31 16:00 PST, the person's time (America/Los_Angeles)"
+          )
+        ),
+        Vector(
+          Some(
+            "The message you are answering was said Wed 1969-12-31 19:00 EST, this deployment's time (America/New_York)"
+          )
+        )
       )
     }
 
@@ -985,7 +1023,7 @@ object TurnTests extends TestSuite {
             person,
             TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
             reach,
-            TurnShown.answering(Instant.EPOCH)
+            dated
           )
             .mkString("\n\n")
         )
@@ -1042,7 +1080,7 @@ object TurnTests extends TestSuite {
           TurnPrompt.edge(origin).text,
           TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
           TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text,
-          TurnShown.answering(Instant.EPOCH)
+          dated
         ).mkString("\n\n")
       )
     }

@@ -1,5 +1,7 @@
 package grit.turn
 
+import java.time.ZoneId
+
 import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Window}
 import grit.core.durable.Journaled
@@ -365,6 +367,29 @@ object TurnJournalTests extends TestSuite {
       j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
         .map(_.map(_.advertised)) ==>
         Right(Right(Vector.empty))
+    }
+
+    test(
+      "an offer's zones are written by id, the person's only when known; an offer recorded without a zone reads with none"
+    ) {
+      // Pinned: a rebuilt request dates its message in the zones its offer recorded.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      val (pacific, lisbon) = (ZoneId.of("America/Los_Angeles"), ZoneId.of("Europe/Lisbon"))
+      def zoned(z: TurnOffer.Zoned): Either[TurnFailure, TurnOffer.Recorded] =
+        Right(
+          TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed, zoned = Some(z))
+        )
+      val (known, unknown) =
+        (zoned(TurnOffer.Zoned(Some(pacific), lisbon)), zoned(TurnOffer.Zoned(None, lisbon)))
+      (j.encode(known), j.encode(unknown)) ==> (
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"zoned":{"deployment":"Europe/Lisbon","person":"America/Los_Angeles"}}}""",
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"zoned":{"deployment":"Europe/Lisbon"}}}"""
+      )
+      (j.decode(j.encode(known)), j.decode(j.encode(unknown))) ==> (Right(known), Right(unknown))
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
+        .map(_.map(_.zoned)) ==> Right(Right(None))
     }
 
     test(

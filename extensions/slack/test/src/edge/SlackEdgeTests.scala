@@ -647,6 +647,26 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
+      "a message's author is placed in the zone Slack places them in; one it places nowhere is not"
+    ) {
+      val w = new World
+      w.slack.names = w.slack.names.updated(UserId(Ben), Some("Ben"))
+      w.slack.zones = Map(UserId(Ana) -> java.time.ZoneId.of("America/Los_Angeles"))
+      w.slack.deliver(mention("1.0")) ==> true
+      w.slack.deliver(mention("2.0", user = Ben)) ==> true
+      Vector("1.0", "2.0").map(ts =>
+        for {
+          t <- w.turnOf(ts, ts)
+          entry <- w.inbox.entries
+            .list(t.conversationId)(using TestTx.fake)
+            .toOption
+            .flatMap(_.find(_.turnSeq == t.turnSeq))
+          zone <- w.inbox.principals.zoneOf(entry.id)(using TestTx.fake).toOption
+        } yield zone
+      ) ==> Vector(Some(Some(java.time.ZoneId.of("America/Los_Angeles"))), Some(None))
+    }
+
+    test(
       "a channel link reaches the store as the channel's name, asked of Slack once, else its id"
     ) {
       val w = new World

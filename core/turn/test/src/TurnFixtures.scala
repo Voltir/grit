@@ -1,6 +1,6 @@
 package grit.turn
 
-import java.time.Instant
+import java.time.{Instant, ZoneId, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -276,18 +276,22 @@ object TurnFixtures {
     )
 
   /** Routing that finds the task questions unanswered, under no cap: every turn at ample
-    * headroom, and one whose pins span grades routed as if asked nothing.
+    * headroom, and one whose pins span grades routed as if asked nothing; the deployment's
+    * zone `zone`.
     */
-  def noRouting(): TurnRouting^ =
-    routing(new Tasks(Left(grit.core.triage.Weighing.Unweighed.Unavailable)))
+  def noRouting(zone: ZoneId = ZoneOffset.UTC): TurnRouting^ =
+    routing(new Tasks(Left(grit.core.triage.Weighing.Unweighed.Unavailable)), zone = zone)
 
-  /** Routing asking `tasks`, its headroom read from `spending` under `cap`. */
+  /** Routing asking `tasks`, its headroom read from `spending` under `cap`, the deployment's
+    * zone `zone`.
+    */
   def routing(
       tasks: grit.core.allot.Tasking^,
       spending: grit.core.spend.Spending = new InMemoryUsageLedger,
-      cap: Option[grit.core.spend.DailyCap] = None
+      cap: Option[grit.core.spend.DailyCap] = None,
+      zone: ZoneId = ZoneOffset.UTC
   ): TurnRouting^ =
-    TurnRouting(tasks, grit.core.spend.Budget(java.time.ZoneOffset.UTC, cap), spending)
+    TurnRouting(tasks, grit.core.spend.Budget(zone, cap), spending)
 
   /** A [[grit.core.allot.Tasking]] that answers every root with `outcome`, as lifecycle's
     * `Mentions` answers one it asked or could not, counting each call in `calls`.
@@ -367,7 +371,14 @@ object TurnFixtures {
   /** The system prompt a fixture turn is sent when no edge serves its directory, in the
     * default voice, its message said at the epoch, when every fixture entry is made.
     */
-  val system: String = s"$prompt\n\n${TurnShown.answering(Instant.EPOCH)}"
+  lazy val system: String = s"$prompt\n\n$dated"
+
+  /** The line a fixture turn's system prompt ends with: its message said at the epoch, dated
+    * in the fixture deployment's zone, UTC, its account placed by no source, outside a direct
+    * message.
+    */
+  lazy val dated: String =
+    TurnShown.answering(Instant.EPOCH, Some(TurnOffer.Zoned(None, ZoneOffset.UTC)), direct = false)
 
   /** The stub provider, keeping every request it was sent. */
   final class RecordingProvider(fail: Boolean = false) extends Provider {
@@ -1585,14 +1596,15 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
-    * `summary`'s, in the voice `voices` holds.
+    * `summary`'s, in the voice `voices` holds, the deployment's zone `zone`.
     */
   def voicedBody(
       entries: EntryStore,
       turn: Provider^,
       summary: Provider^,
       voices: VoiceStore,
-      principals: Principals = new InMemoryPrincipals
+      principals: Principals = new InMemoryPrincipals,
+      zone: ZoneId = ZoneOffset.UTC
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -1622,7 +1634,7 @@ object TurnFixtures {
         quiet(),
         unstitched(),
         noTriage(),
-        noRouting()
+        noRouting(zone)
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         noTools,

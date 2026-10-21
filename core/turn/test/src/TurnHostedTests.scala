@@ -1,7 +1,5 @@
 package grit.turn
 
-import java.time.Instant
-
 import scala.collection.immutable.VectorMap
 
 import grit.core.approval.Approval
@@ -832,7 +830,7 @@ object TurnHostedTests extends TestSuite {
           Vector(
             "Instructions from /checkout/AGENTS.md:",
             "Be brief.",
-            TurnShown.answering(Instant.EPOCH)
+            dated
           )
         )
       // Offered what the edge advertises, not every hosted tool the turn knows.
@@ -891,14 +889,14 @@ object TurnHostedTests extends TestSuite {
       // The texts are kept by content hash in their own stores: the step names them by id.
       val set = kept.sets.map(s => grit.core.tool.ToolSetId.value(s.id)).mkString
       offered.map(o => (o.obj.keySet.toSet, o("workspace").str, o("tools").str)) ==>
-        Some((Set("workspace", "tools", "prompt", "shaped"), "fs:/checkout", set))
+        Some((Set("workspace", "tools", "prompt", "shaped", "zoned"), "fs:/checkout", set))
       val ids = offered.toVector
         .flatMap(_("prompt").arr.toVector)
         .flatMap(v => grit.core.prompt.FragmentId.of(v.str).toOption)
       // The line saying when the message was said is the request's, never a kept fragment.
       Prompts
         .prompt(ids)(using grit.dbos.sql.TestTx.fake)
-        .map(p => s"${p.render}\n\n${TurnShown.answering(Instant.EPOCH)}") ==>
+        .map(p => s"${p.render}\n\n${dated}") ==>
         Right(provider.requests.headOption.fold("")(_.system))
     }
 

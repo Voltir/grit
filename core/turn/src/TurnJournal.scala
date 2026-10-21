@@ -1,5 +1,9 @@
 package grit.turn
 
+import java.time.ZoneId
+
+import scala.util.Try
+
 import grit.core.agenda.{Agenda, AgendaJson}
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Width, Window}
@@ -523,8 +527,10 @@ private[turn] object TurnJournal {
     * `"advertised": [tool names]` when it took tools from an edge's advert, and `"reached":
     * {tool name: place written}` when it took tools from a reached service's. References
     * only: the texts are kept by id. No `root` reads as addressed and no `advertised` or
-    * `reached` as none, so every offer recorded before them reads as it did; and `"shaped"`
-    * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped.
+    * `reached` as none, so every offer recorded before them reads as it did; `"shaped"`
+    * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped; and
+    * `"zoned": {"person": zone id, "deployment": zone id}` when its message was dated in a zone,
+    * `person` absent when not known, none reading as dated in UTC.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(writeRecorded, readRecorded)
@@ -554,8 +560,20 @@ private[turn] object TurnJournal {
       )
     // Written only when shaped, so every offer recorded before shapes keeps its form.
     r.shaped.foreach(shape => o("shaped") = writeShape(shape))
+    // Written only when zoned, so every offer recorded before zones keeps its form.
+    r.zoned.foreach { z =>
+      val zoned = ujson.Obj("deployment" -> z.deployment.getId)
+      z.person.foreach(p => zoned("person") = p.getId)
+      o("zoned") = zoned
+    }
     o
   }
+
+  /** A zone id as [[writeRecorded]] writes it; `Left` naming `what` when Java knows no such zone. */
+  private def readZone(what: String, v: ujson.Value): Either[String, ZoneId] =
+    v.strOpt
+      .toRight(s"offer: $what is not a string")
+      .flatMap(id => Try(ZoneId.of(id)).toOption.toRight(s"offer: $what names no zone: $id"))
 
   private def readRecorded(v: ujson.Value): Either[String, TurnOffer.Recorded] =
     for {
@@ -625,7 +643,22 @@ private[turn] object TurnJournal {
         case None => Right(None)
         case Some(shape) => readShape(shape).map(Some(_))
       }
-    } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped)
+      zoned <- o.get("zoned") match {
+        case None => Right(None)
+        case Some(z) =>
+          for {
+            zo <- z.objOpt.toRight("offer: zoned is not an object")
+            deployment <- zo
+              .get("deployment")
+              .toRight("offer: zoned names no deployment's zone")
+              .flatMap(readZone("the deployment's zone", _))
+            person <- zo.get("person") match {
+              case None => Right(None)
+              case Some(p) => readZone("the person's zone", p).map(Some(_))
+            }
+          } yield Some(TurnOffer.Zoned(person, deployment))
+      }
+    } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped, zoned)
 
   /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",
     * "hits"}`; each service `{"service", "via": "workspace" | "reached", "tools": [names],

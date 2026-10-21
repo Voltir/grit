@@ -5,12 +5,22 @@ import java.time.Instant
 import grit.core.clock.Utc
 import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
-import grit.core.id.{EntrySeq, ToolCallId, TurnRef}
+import grit.core.id.{EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
-import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Speakers, StoreError, Tx}
+import grit.core.store.{
+  ConversationStore,
+  Entry,
+  EntryStore,
+  Nearby,
+  Payload,
+  Principals,
+  Speakers,
+  StoreError,
+  Tx
+}
 import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.Subject
 
@@ -126,22 +136,28 @@ private[turn] object TurnShown {
   def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
     all.filter(_.turnSeq == turn.turnSeq)
 
-  /** The window's entries, then the turn's own, as one model request under `system`, each
-    * item `stubs` names shown as its stub, to be shaped, read through `env`'s `db`.
+  /** The window's entries, then the turn's own, as one model request under `system`, its
+    * message dated in `zoned` ([[requestOf]]), each item `stubs` names shown as its stub, to be
+    * shaped, read through `env`'s `db`.
     */
   def request(
       env: TurnEnv^,
       system: String,
       turn: TurnRef,
       window: Window,
-      stubs: Map[ItemRef, String]
+      stubs: Map[ItemRef, String],
+      zoned: Option[TurnOffer.Zoned]
   )(using pins: Turn.Bounded): Either[TurnFailure, Unshaped] =
     pins
       .reads(env.db)
-      .read(Subject.Turn(turn))(shown(env.records, turn, window))
+      .read(Subject.Turn(turn))(
+        shown(env.records, turn, window).flatMap(s =>
+          direct(env.hosting.conversations, turn).map(s -> _)
+        )
+      )
       .left
       .map(TurnFailure.ofStore)
-      .flatMap(requestOf(system, _, turn, window, stubs))
+      .flatMap((showing, direct) => requestOf(system, showing, turn, window, stubs, zoned, direct))
 
   /** What a request for `turn` over `window` can show, read from `records`: the entries of
     * its conversation at the window's seqs, the turn's own entries, the nearby sections'
@@ -189,15 +205,18 @@ private[turn] object TurnShown {
     * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
     * entry as one user message, and a gap line wherever turns are left out), then the turn's
     * own, its tool loop's exchange among them in order. A summary is not shown to the model
-    * yet. `system` ends with [[answering]] of the turn's first own entry, when it has one. A
-    * window seq with no entry is an `Assembly` failure naming every such seq.
+    * yet. `system` ends with [[answering]] of the turn's first own entry, when it has one, in
+    * `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct message when `direct`
+    * ([[direct]]). A window seq with no entry is an `Assembly` failure naming every such seq.
     */
   def requestOf(
       system: String,
       showing: Showing,
       turn: TurnRef,
       window: Window,
-      stubs: Map[ItemRef, String]
+      stubs: Map[ItemRef, String],
+      zoned: Option[TurnOffer.Zoned],
+      direct: Boolean
   ): Either[TurnFailure, Unshaped] = {
     val Showing(at, mine, near, named, documents) = hiding(showing, stubs)
     val bySeq = at.map(e => e.seq -> e).toMap
@@ -213,17 +232,56 @@ private[turn] object TurnShown {
         val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
         val dated = mine
           .minByOption(e => EntrySeq.value(e.seq))
-          .fold(system)(root => s"$system\n\n${answering(root.createdAt)}")
+          .fold(system)(root => s"$system\n\n${answering(root.createdAt, zoned, direct)}")
         Right(Unshaped(dated, sections, documents, shown ++ Shown.turn(mine, named)))
     }
   }
 
-  /** The line [[requestOf]] ends a turn's system prompt with, for a turn whose first entry was
-    * made `at`: "The message you are answering was said Wed 2026-10-21 14:03 UTC."
-    * ([[Utc.toDayMinute]]).
+  /** The line [[requestOf]] ends a turn's system prompt with, for a turn whose first entry was made
+    * `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
+    * as before zones: "The message you are answering was said Wed 2026-10-21 15:03 UTC." With one, in
+    * its zone, saying whose, then in UTC, then how to read times:
+    * "The message you are answering was said Wed 2026-10-21 08:03 PDT, the person's time
+    * (America/Los_Angeles); 15:03 UTC. People here give times in their own zone, not UTC: read the
+    * times the person gives as PDT unless they say otherwise, and answer with times in PDT. Times
+    * grit shows you in your view are UTC."
+    * For a deployment's zone the first sentence reads "… 08:03 PDT, this deployment's time
+    * (America/Los_Angeles); the person's own zone is not known; 15:03 UTC.", with the same tail.
+    * Outside a direct message the tail ends "Read times other people here give as PDT, this
+    * deployment's time, unless they say otherwise." (`zoned.deployment`'s short name). A direct
+    * message's line stays short.
     */
-  def answering(at: Instant): String =
-    s"The message you are answering was said ${Utc.toDayMinute(at)}."
+  def answering(at: Instant, zoned: Option[TurnOffer.Zoned], direct: Boolean): String =
+    zoned.fold(s"The message you are answering was said ${Utc.toDayMinute(at)}.") { z =>
+      val short = Utc.shortName(at, z.dated)
+      val whose = z.person.fold(
+        s"this deployment's time (${z.deployment.getId}); the person's own zone is not known"
+      )(p => s"the person's time (${p.getId})")
+      val others =
+        if (direct) ""
+        else
+          s" Read times other people here give as ${Utc.shortName(at, z.deployment)}, this " +
+            "deployment's time, unless they say otherwise."
+      s"The message you are answering was said ${Utc.toDayMinute(at, z.dated)}, $whose; " +
+        s"${Utc.toClock(at)}. People here give times in their own zone, not UTC: read the times " +
+        s"the person gives as $short unless they say otherwise, and answer with times in $short. " +
+        s"Times grit shows you in your view are UTC.$others"
+    }
+
+  /** Whether `turn`'s conversation is held in a direct message's room ([[grit.core.place.Place.direct]]), which
+    * [[answering]] is told; `Invalid` when the conversation is gone.
+    */
+  def direct(conversations: ConversationStore, turn: TurnRef)(using
+      Tx^
+  ): Either[StoreError, Boolean] =
+    conversations
+      .get(turn.conversationId)
+      .flatMap(
+        _.toRight(
+          StoreError.Invalid(s"conversation of ${WorkflowId.value(turn.workflowId)} is gone")
+        )
+      )
+      .map(_.origin.place.direct)
 
   /** A request of `system`: `before`, then each of `documents` as one user message, then
     * `after`.

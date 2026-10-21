@@ -9,7 +9,14 @@ import grit.core.either.Traversal.sequence
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
-import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
+import grit.core.store.{
+  ConversationStore,
+  EntryStore,
+  ModelProfileStore,
+  Principals,
+  PromptStore,
+  Tx
+}
 import grit.core.tool.ToolSets
 import grit.core.visibility.Label
 
@@ -60,6 +67,7 @@ object TurnRecord {
 
   /** The stores a turn's requests are rebuilt from, as a reader sees them. */
   final case class Reads(
+      conversations: ConversationStore,
       entries: EntryStore,
       principals: Principals,
       documents: DocumentSearch,

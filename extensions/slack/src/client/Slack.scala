@@ -1,6 +1,6 @@
 package grit.slack.client
 
-import java.time.Instant
+import java.time.{Instant, ZoneId}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -67,10 +67,11 @@ enum Tag {
   case Prompt(entry: String)
 }
 
-/** A Slack user as [[Slack.member]] and [[Slack.members]] read them: the name they show, if
-  * any, and their standing in the team asked about, as [[Slack.member]] decides it.
+/** A Slack user as [[Slack.member]] and [[Slack.members]] read them: the name they show, if any,
+  * their standing in the team asked about, as [[Slack.member]] decides it, and the zone Slack
+  * places them in (`tz`), `None` when it names none Java knows.
   */
-final case class Member(name: Option[String], standing: Standing)
+final case class Member(name: Option[String], standing: Standing, zone: Option[ZoneId])
 
 /** The message a thread begins with, as [[Slack.root]] reads it: who wrote it (`None` for one
   * with no user), the [[Tag]] grit posted it with, if any, and its text as Slack gives it,

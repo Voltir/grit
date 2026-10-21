@@ -1,5 +1,7 @@
 package grit.core.store
 
+import java.time.ZoneId
+
 import grit.core.id.{EntryId, Href}
 import grit.core.identity.{Account, TestAccounts}
 
@@ -65,6 +67,27 @@ abstract class PrincipalsContract extends TestSuite {
         Left(StoreError.Invalid("local is never named"))
       transaction(principals.name(Account.Grit, "grit")) ==>
         Left(StoreError.Invalid("grit is never named"))
+    }
+
+    test(
+      "an account's zone is kept and read back by the entries it wrote; a second report replaces it; local's and grit's are refused"
+    ) {
+      val principals = fresh()
+      val (pacific, lisbon) = (ZoneId.of("America/Los_Angeles"), ZoneId.of("Europe/Lisbon"))
+      val hers = said(principals, ana, None)
+      val unplaced = said(principals, TestAccounts.account("slack:T1/U2"), None)
+      transaction(principals.zoneOf(hers)) ==> Right(None)
+      transaction(principals.zoned(ana, pacific)) ==> Right(())
+      transaction(principals.zoned(ana, pacific)) ==> Right(())
+      val none = EntryId("reply:nobody:0")
+      transaction(Vector(hers, unplaced, none).map(e => principals.zoneOf(e))) ==>
+        Vector(Right(Some(pacific)), Right(None), Right(None))
+      transaction(principals.zoned(ana, lisbon)) ==> Right(())
+      transaction(principals.zoneOf(hers)) ==> Right(Some(lisbon))
+      transaction(principals.zoned(Account.Local, pacific)) ==>
+        Left(StoreError.Invalid("local is placed by no source"))
+      transaction(principals.zoned(Account.Grit, pacific)) ==>
+        Left(StoreError.Invalid("grit is placed by no source"))
     }
   }
 }

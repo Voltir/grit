@@ -357,6 +357,7 @@ object Turn {
         "window",
         shown(reads.entries, reads.principals, reads.documents, turn, window)
       )
+      direct <- kept("conversation", TurnShown.direct(reads.conversations, turn))
       calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {
         case (acc, (round, name)) =>
           acc.flatMap(done =>
@@ -394,7 +395,9 @@ object Turn {
               showing.copy(mine = before),
               turn,
               window,
-              stubsAt(gates, round, tools.set)
+              stubsAt(gates, round, tools.set),
+              offer.zoned,
+              direct
             )
               .map(
                 _.shaped(

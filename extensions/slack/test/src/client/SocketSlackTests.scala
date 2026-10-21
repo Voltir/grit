@@ -1,5 +1,7 @@
 package grit.slack.client
 
+import java.time.ZoneId
+
 import scala.jdk.CollectionConverters.*
 
 import grit.core.identity.{Email, Standing}
@@ -133,6 +135,14 @@ object SocketSlackTests extends TestSuite {
         SocketSlack.member(Ours, user(_.getProfile.setDisplayName(" "))).name,
         SocketSlack.member(Ours, user(u => { u.setProfile(null); u.setRealName("") })).name
       ) ==> (Some("Ana"), Some("Ana Lima"), None)
+    }
+
+    test("a member's zone is Slack's tz; one Java does not know is none") {
+      (
+        SocketSlack.member(Ours, user(_.setTz("America/Los_Angeles"))).zone,
+        SocketSlack.member(Ours, user(_.setTz("Mars/Olympus_Mons"))).zone,
+        SocketSlack.member(Ours, user()).zone
+      ) ==> (Some(ZoneId.of("America/Los_Angeles")), None, None)
     }
 
     test(

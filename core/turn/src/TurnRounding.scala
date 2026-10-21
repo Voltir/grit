@@ -70,8 +70,10 @@ private[turn] final class Rounding[C^](
         )
       }
       (stubs, shape) <- Rounding.sent(tooling, at, offer, pins)
+      direct <- TurnShown.direct(env.hosting.conversations, l.turn).left.map(TurnFailure.ofStore)
       kept <- Rounding.recordCall(
-        offer.system,
+        offer,
+        direct,
         env.records,
         l.turn,
         l.seen,
@@ -394,11 +396,13 @@ private[turn] object Rounding {
   /** The `ask:n:record` step: `reply`, the reply to `round` that called tools, kept as
     * [[TurnTools.callId]] dated `at` after everything in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`, and what it cost in the ledger beside the
-    * estimate of its request, rebuilt by `shape` from the same window and entries, each item
-    * `stubs` names shown as its stub.
+    * estimate of its request, rebuilt by `shape` from the same window and entries under
+    * `offer`'s system prompt, its message dated as `offer` and `direct` say
+    * ([[TurnShown.requestOf]]), each item `stubs` names shown as its stub.
     */
   private def recordCall(
-      system: String,
+      offer: TurnOffer,
+      direct: Boolean,
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
@@ -416,7 +420,9 @@ private[turn] object Rounding {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- TurnRound.believedAt(entries, turn, believed)
       showing <- shown(records, turn, window).left.map(TurnFailure.ofStore)
-      sent <- TurnShown.requestOf(system, showing, turn, window, stubs).map(_.shaped(shape))
+      sent <- TurnShown
+        .requestOf(offer.system, showing, turn, window, stubs, offer.zoned, direct)
+        .map(_.shaped(shape))
       _ <- entries
         .insert(
           Entry(
@@ -456,7 +462,7 @@ private[turn] object Rounding {
       pins: Turn.Picked,
       offer: TurnOffer
   ): Either[TurnFailure, Message.Assistant] =
-    TurnShown.request(env, offer.system, turn, window, stubs).flatMap { req =>
+    TurnShown.request(env, offer.system, turn, window, stubs, offer.zoned).flatMap { req =>
       val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
       Asking
         .reply(env.models.provider(pins.turn), req.shaped(shape), hearing, env.clock)

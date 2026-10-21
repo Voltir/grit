@@ -45,11 +45,12 @@ Decision:
   source and text. A turn records the ids it was sent; the texts are kept once in
   `grit.prompt_fragments`, unchanged, and a replay reads them back by id. An id with no text
   fails the turn loudly. `grit.turn_prompts` says which fragments each turn used.
-- **A turn's request says when its message was said**, after every fragment ("The message you
-  are answering was said Wed 2026-10-21 14:03 UTC.", `TurnShown.answering`), so "today" and
-  "Friday" can be read against it. It is made from the turn's first entry, which is kept, so
-  a rebuilt request carries the same line. It is never a fragment: fragments are kept forever,
-  and one per turn would grow their table with every turn.
+- **A turn's request says when its message was said**, after every fragment
+  (`TurnShown.answering`), so "today" and "Friday" can be read against it: in the person's zone
+  when known, else the deployment's, then in UTC, with how to read times; the zones recorded by
+  the turn's `offer` step. It is made from the turn's first entry, which is kept, and those
+  zones, so a rebuilt request carries the same line. It is never a fragment: fragments are kept
+  forever, and one per turn would grow their table with every turn.
 - **The system prompt does not draw on the assembly budget.** Its size is bounded by its
   layers' caps.
 
@@ -59,4 +60,5 @@ was sent can be shown exactly. Fragments are never collected, so their table gro
 distinct text; a collection kind for unreferenced ones waits until nothing that can still
 replay names them. Enforced by `SystemPromptTests` (order, the pinned id) and
 `TurnPromptTests` (the base teaches every tag grit writes), `TurnTests` and `TurnHostedTests`
-(the line saying when the message was said, and that no fragment holds it).
+(the line saying when the message was said, and that no fragment holds it), and
+`TurnShownTests` (its forms).

@@ -77,6 +77,7 @@ object TurnRequestsTests extends TestSuite {
       profiles: ModelProfileStore = profilesKept()
   ): TurnRecord.Reads =
     TurnRecord.Reads(
+      hosting().conversations,
       entries,
       new InMemoryPrincipals,
       new InMemoryDocuments,
