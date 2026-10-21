@@ -96,7 +96,6 @@ object Inputs {
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
-      reader.lifecycle,
       reader.stitches,
       reader.search,
       reader.principals

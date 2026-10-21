@@ -59,7 +59,6 @@ object EvalTests extends TestSuite {
         val loaded = Eval.load(engine, c, Variant.Plain)
         loaded.must.map(EntryId.value) ==> Vector("near/plain/p0/t0:0")
         loaded.never.map(EntryId.value) ==> Vector("near/plain/p1/t0:0")
-        loaded.scope.written ==> "fs:/eval/near/plain task:eval/near/plain"
         val open = grit.dbos.sql.LiveDb
           .transaction(config)(engine.periods.openElsewhere(loaded.turn.conversationId))
         open.map(_.map(_.place.written).filter(_.startsWith("fs:/eval/near/"))) ==>

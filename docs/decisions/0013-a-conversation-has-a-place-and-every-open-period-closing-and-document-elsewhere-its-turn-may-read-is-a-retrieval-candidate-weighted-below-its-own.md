@@ -1,6 +1,6 @@
-# 0013. A conversation has a place, and open periods near it in scope are retrieval candidates
+# 0013. A conversation has a place, and every open period, closing and document elsewhere its turn may read is a retrieval candidate, weighted below its own
 
-Status: accepted (2026-09-26); revised (2026-10-16)
+Status: accepted (2026-09-26); revised (2026-10-21)
 
 Context: grit runs in several directories and sessions at once, and in Slack channels and
 threads, and what one conversation is doing is often what another needs. A conversation keyed
@@ -8,7 +8,10 @@ by its origin alone was one conversation in every directory, and a window drew o
 own conversation. The choices: where a local conversation is (the directory, the checkout
 root, the git identity); how places relate (a tree, a graph, a distance); which other
 conversations' entries a window may draw on (any, the recent, the open); and how those
-compete with the conversation's own.
+compete with the conversation's own. A set of place prefixes fencing what a window draws on
+(everywhere, the conversation's room, or none) is turned down: under the label model (ADR
+0030) it only subtracts what a turn is already cleared to read, and fenced to its room a direct
+message, whose room is itself, recalls nothing said in a channel.
 
 Decision:
 
@@ -20,12 +23,13 @@ Decision:
   of the tree.
 - **Places are materialized paths** (`text[]`, segments verbatim). One is within another when
   the other's path is a prefix of its own, defined once, outside SQL.
-- **Near is a scope, not a distance**: a set of place prefixes, each a place or the
-  conversation's own **room** (the place it shares with its neighbours: a session's
-  directory, a thread's channel, a task's name), held as data, everywhere by default. An
-  empty scope turns cross-place recall off.
-- **Open periods and closings.** The raw entries of other conversations' open periods in scope
-  are retrieval candidates. So is each such conversation's kept closings, as one candidate
+- **Nearness only weights, and never fences**: a window draws on every place its turn may read
+  (ADR 0030); its own conversation's candidates are weighted up against those elsewhere. A
+  conversation's **room** (the place it shares with its neighbours: a session's directory, a
+  thread's channel, a task's name) is what stitching reads within (ADR 0023), not a limit on
+  recall.
+- **Open periods and closings.** The raw entries of other conversations' open periods its turn
+  may read are retrieval candidates. So is each such conversation's kept closings, as one candidate
   shown as its newest kept record, under its place and close date, with its Standing lines'
   grounds (ADR 0018). A conversation with open turns among the candidates is shown by those
   alone. Nothing else a close wrote elsewhere is a candidate.
@@ -36,8 +40,8 @@ Decision:
   as turns of its own conversation, ahead of the conversation's closing and turns.
 - **A close is shown what its period drew from elsewhere** as known, and never records it as
   its own: a place's balance holds only what happened there.
-- **Locality is not visibility**: a place, a scope and a room rank what a window holds, and
-  grant or hide nothing. What a turn may read is ADR 0030's.
+- **Locality is not visibility**: a place and a room rank what a window holds, and grant or
+  hide nothing. What a turn may read is ADR 0030's.
 
 Consequences:
 
@@ -53,7 +57,7 @@ Consequences:
   resumes; the turn then shows what remains of them.
 - A balance elsewhere is reached only as a whole record, ranked by its flows, and judged
   whole; judging its lines one by one is deferred, not ruled out.
-- Narrowing the default is a setting, not a migration: a deployment seeds the scope (the
-  reference deployment, serving an edge, seeds `room`).
-- Enforced by `PlaceTests` (scopes and rooms) and `RetrievalAssemblerTests`, over the period
-  store's `openElsewhere` and `closedElsewhere`.
+- A window is fenced only by clearance: no setting narrows what it draws on, so an eval keeps
+  its cases apart by giving each a database of its own.
+- Enforced by `RetrievalAssemblerTests`, over the period store's `openElsewhere` and
+  `closedElsewhere`, and `ClearanceContract` for what they may return.

@@ -1,6 +1,6 @@
 # 0023. A Slack thread is a conversation, its first message may be stitched to an exchange in its room, and a strand is a star
 
-Status: accepted (2026-09-30); revised (2026-10-16)
+Status: accepted (2026-09-30); revised (2026-10-21)
 
 Context: grit's first edge for several people is Slack. A channel is a stream of unrelated
 questions; a thread is one exchange, and Slack already shows it as one; a conversation per
@@ -34,14 +34,14 @@ Decision:
   turn, waits for it before its other classifier calls; a reply waits for nothing. A
   placement reads every link queued before it in its room, so what it is offered depends on
   what was said and the order it reached grit, not on scheduling. A first message is placed
-  once. The exchanges offered are its room's within the horizon, in the scope in force: the
-  most recently spoken in, and the best BM25 matches on its own words. Every placement keeps
-  what the classifier was shown, why each exchange was offered, the probabilities and the
-  tuning in force (`grit.core.stitch.Tuning`).
+  once. The exchanges offered are its room's within the horizon: the most recently spoken in,
+  and the best BM25 matches on its own words. Every placement keeps what the classifier was
+  shown, why each exchange was offered, the probabilities and the tuning in force
+  (`grit.core.stitch.Tuning`).
 - **Kept beside its entry.** A stitch is a row beside the first message, deleted with it or
   with the conversation it follows. It writes no entry, so it moves no deadline; reading a
   strand writes nothing.
-- **Readers read the strand as context, not recall,** through one read that takes the scope
+- **Readers read the strand as context, not recall,** through one read within its room
   (`Along.read`), cut by one rule (`Stitching.excerpt`: the opening, then the messages
   nearest the reader): the window's `[strand]` section, paid before the tail and never
   ranked; triage's thread and the judge's, the strand first. Each thread still closes into

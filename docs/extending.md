@@ -57,7 +57,7 @@ core alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributi
 `DocumentPosting` keeps one document per room where conversations closed and per label
 they were created at, at that room, holding its newest closings' lines, written in the
 transaction that moves its cursor (ADR 0028). Retrieval draws a room's document into a window
-whose scope reaches the room and whose turn reads it, ranked beside entries under the terms
+whose turn reads it, ranked beside entries under the terms
 Digest declares (its label, weight, retention and bound). It exports `Activity`, its lines
 read back, and its tool, `recent_activity`, reads through it for the turn that called it. A
 deployment turns it on as a value,

@@ -166,7 +166,6 @@ object RebuildTests extends TestSuite {
         grit.core.stitch.StitchReads(
           engine.entries,
           engine.conversations,
-          engine.lifecycle,
           engine.stitches,
           engine.search,
           engine.principals
@@ -226,7 +225,6 @@ object RebuildTests extends TestSuite {
           TurnStitching(
             engine.stitches,
             engine.search,
-            engine.lifecycle,
             Tuning.Default,
             grit.act.phase.Placing
               .Env(
@@ -258,7 +256,6 @@ object RebuildTests extends TestSuite {
             engine.deliveries,
             engine.stitches,
             engine.search,
-            engine.lifecycle,
             engine.rooms,
             engine.periods,
             engine.documents
@@ -296,7 +293,6 @@ object RebuildTests extends TestSuite {
           StitchReads(
             engine.entries,
             engine.conversations,
-            engine.lifecycle,
             engine.stitches,
             engine.search,
             engine.principals

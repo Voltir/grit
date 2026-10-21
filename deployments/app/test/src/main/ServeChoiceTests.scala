@@ -4,7 +4,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
-import grit.core.place.{Namespace, Place, Reaches, Scope as PlaceScope, Service, WorksIn}
+import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Accounted, Group, Integrity, Itemised, Label, Party, Provenance, Room}
 import grit.kit.deployment.Offered
@@ -39,15 +39,15 @@ object ServeChoiceTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "serving an edge declares scope room and caps a day at $1.00 when their variables are unset; the chat does neither"
+      "serving an edge caps a day at $1.00 when GRIT_DAILY_USD is unset; the chat does not"
     ) {
       def of(edges: Vector[ServedEdge]) =
         Main
           .deployment(Map.empty, Offered.Read, edges, Vector.empty, java.time.ZoneOffset.UTC)
-          .map(d => (d.lifecycle.locality.scope, d.budget.cap))
+          .map(_.budget.cap)
       (of(Vector(Quiet)), of(Vector.empty)) ==> (
-        Right((PlaceScope.Room, DailyCap.of("1.00").toOption)),
-        Right((grit.core.period.LifecycleSettings.Default.locality.scope, None))
+        Right(DailyCap.of("1.00").toOption),
+        Right(None)
       )
     }
 

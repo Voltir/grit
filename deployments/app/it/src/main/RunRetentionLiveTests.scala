@@ -67,7 +67,7 @@ object RunRetentionLiveTests extends TestSuite {
     val d = LifecycleSettings.Default
     Windows
       .of(2.hours, 3.hours, 4.hours)
-      .flatMap(LifecycleSettings.of(_, d.balance, 30.minutes, d.resolveAt, d.asks, d.locality))
+      .flatMap(LifecycleSettings.of(_, d.balance, 30.minutes, d.resolveAt, d.asks, d.weight))
       .fold(why => sys.error(why), identity)
   }
 

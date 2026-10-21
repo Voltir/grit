@@ -17,8 +17,6 @@ package grit.eval
   *     own root), whose `turn`s follow, its period open; `place … closed` closes it after
   *     them; `carried: …` is a standing line its closing carries (and closes it); `reopen`
   *     starts its second period, open; `here` returns to the case's own turns;
-  *   - `scope …` is the scope a window draws within (places separated by spaces), everywhere
-  *     under the case's root by default;
   *   - a line ending in `[never]` is an entry the window must not hold.
   *
   * Relabelling is editing a line here.
@@ -145,17 +143,6 @@ object Cases {
         |grit: You're welcome.
         |ask
         |you: What fix did I settle on for the flaky invoice test?
-        |""".stripMargin,
-    "out-of-scope" ->
-      """# The answer is in an open period outside the scope (a nightly task, scope fs only).
-        |query: nightly backup failed disk full volume
-        |scope fs:/
-        |place task:nightly/backup
-        |turn
-        |you: Why did the nightly backup fail?
-        |grit: The backup volume was full; old snapshots were pruned and it ran again. [never]
-        |ask
-        |you: Why did the nightly backup fail last night?
         |""".stripMargin,
     "two-open-one-relevant" ->
       """# Two open periods elsewhere: one holds the answer; the other only shares a word.

@@ -110,7 +110,6 @@ private[triage] object Speak {
       all <- records.entries.list(own)
       read <- Along.read(
         records.stitches,
-        records.lifecycle,
         records.conversations,
         own,
         all,

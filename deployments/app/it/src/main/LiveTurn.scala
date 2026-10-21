@@ -138,7 +138,6 @@ object LiveTurn {
         grit.core.stitch.StitchReads(
           engine.entries,
           engine.conversations,
-          engine.lifecycle,
           engine.stitches,
           engine.search,
           engine.principals
@@ -200,7 +199,6 @@ object LiveTurn {
             grit.turn.TurnStitching(
               engine.stitches,
               engine.search,
-              engine.lifecycle,
               grit.core.stitch.Tuning.Default,
               grit.act.phase.Placing
                 .Env(
@@ -269,7 +267,6 @@ object LiveTurn {
               engine.deliveries,
               engine.stitches,
               engine.search,
-              engine.lifecycle,
               engine.rooms,
               engine.periods,
               engine.documents
@@ -301,7 +298,6 @@ object LiveTurn {
             StitchReads(
               entries,
               engine.conversations,
-              engine.lifecycle,
               engine.stitches,
               engine.search,
               engine.principals

@@ -14,8 +14,7 @@ sentence); none for a period closed unearned (ADR 0020) or a job's run's (`Close
 Its data holds the same lines with their close ordinals, so a closing posted again writes
 nothing. A room's document is written as of its newest closing's close, never a clock.
 
-Retrieval draws a room's document into a window whose scope reaches the room and whose turn
-reads it, ranked beside
+Retrieval draws a room's document into a window whose turn reads it, ranked beside
 entries in one pool and budget, headed by Digest's label. Its terms (`Digest.Terms`): the
 label "digest: conversations closed here most recently", weight 1, kept 30 days after a
 version stops being current, at most 1000 documents, every room's and label's together. **Weight 1 is a placeholder, not a ranking

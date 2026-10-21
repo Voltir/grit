@@ -39,9 +39,9 @@ final case class Manifest(
   */
 final case class Dump(sha256: Digest, at: Instant)
 
-/** The lifecycle settings a restored database holds ([[LifecycleSettings]]), as numbers and the
-  * scope's written form: the dump holds only the latest, so a capture assumes they held over its
-  * window.
+/** The lifecycle settings a restored database holds ([[LifecycleSettings]]), as numbers: the
+  * dump holds only the latest, so a capture assumes they held over its window. A field the
+  * reader does not ask for, such as an older capture's `scope`, is read past.
   */
 final case class Settings(
     idle: FiniteDuration,
@@ -51,7 +51,6 @@ final case class Settings(
     settle: FiniteDuration,
     resolveAt: Probability,
     asks: Int,
-    scope: String,
     weight: Double
 )
 
@@ -65,8 +64,7 @@ object Settings {
       s.settle,
       s.resolveAt,
       s.asks,
-      s.locality.scope.written,
-      Weight.value(s.locality.weight)
+      Weight.value(s.weight)
     )
 }
 

@@ -6,7 +6,7 @@ import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
 import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
-import grit.core.place.{Directory, Scope}
+import grit.core.place.Directory
 import grit.core.store.{
   Conversation,
   Entry,
@@ -90,9 +90,9 @@ object AlongTests extends TestSuite {
       entries(periods.purge(period, Now))
     }
 
-    def read(c: Conversation, scope: Scope): Strand.Read = {
+    def read(c: Conversation): Strand.Read = {
       given grit.core.store.Tx = TestTx.fake
-      entries(Along.read(stitches, c, scope, Now.minusSeconds(7 * Day), Now))
+      entries(Along.read(stitches, c, Now.minusSeconds(7 * Day), Now))
     }
   }
 
@@ -110,7 +110,7 @@ object AlongTests extends TestSuite {
       w.follow(w.say(b, "Is this a real question", 50), a)
       val lol = w.say(c, "lol", 40)
       w.follow(lol, a)
-      val read = w.read(b, Scope.Room)
+      val read = w.read(b)
       read.opening.map(_.entry) ==> Some(opening)
       read.said.map(_.entry) ==> Vector(recent, lol)
       read.gone ==> Vector.empty
@@ -124,20 +124,13 @@ object AlongTests extends TestSuite {
       w.say(a, "the Engine contract term?", 10 * Day)
       w.follow(w.say(c, "lol", 8 * Day), a)
       w.follow(w.say(b, "Is this a real question", 50), a)
-      val read = w.read(b, Scope.Room)
+      val read = w.read(b)
       read.said ==> Vector.empty
       read.conversations ==> Set(a.id, c.id)
-      w.read(b, Scope.Off).conversations ==> Set(a.id, c.id)
     }
 
-    test("a member the scope no longer holds is not read; one not stitchable reads nothing") {
+    test("a conversation not stitchable reads nothing") {
       val w = new World
-      val a = w.thread(Origin.Slack("T", "C1", "1.0"))
-      val b = w.thread(Origin.Slack("T", "C1", "2.0"))
-      w.say(a, "the Engine contract term?", 90)
-      w.follow(w.say(b, "Is this a real question", 50), a)
-      val off = w.read(b, Scope.Off)
-      (off.opening, off.said, off.gone) ==> (None, Vector.empty, Vector.empty)
       // A TUI conversation linked to a purged root, which a read would name as gone.
       val dir = Directory.of("/work").getOrElse(throw new java.lang.AssertionError())
       val tui = w.thread(Origin.Tui(dir, "s"))
@@ -145,7 +138,7 @@ object AlongTests extends TestSuite {
       val goneFirst = w.say(gone, "lunch?", 80)
       w.follow(w.say(tui, "and the date?", 40), gone)
       w.purge(gone, goneFirst)
-      w.read(tui, Scope.Everywhere) ==> Strand.Read.empty
+      w.read(tui) ==> Strand.Read.empty
     }
 
     test("a root whose first message is purged is gone, to be shown by its record") {
@@ -155,7 +148,7 @@ object AlongTests extends TestSuite {
       val first = w.say(a, "the Engine contract term?", 3 * Day)
       w.follow(w.say(b, "Is this a real question", 50), a)
       w.purge(a, first)
-      val read = w.read(b, Scope.Room)
+      val read = w.read(b)
       (read.opening, read.said, read.gone) ==> (None, Vector.empty, Vector(a.id))
     }
   }

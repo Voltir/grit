@@ -960,9 +960,7 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     settle      INTERVAL NOT NULL,
     resolve_at DOUBLE PRECISION NOT NULL,
     asks        INTEGER NOT NULL,
-    -- Which places' open periods a window draws on (Place.written of each prefix; '{}' is
-    -- none, '{everywhere}' the default), and how its own conversation's hits are weighted.
-    scope       TEXT[] NOT NULL,
+    -- How far a window's own conversation's hits outweigh those elsewhere.
     weight      DOUBLE PRECISION NOT NULL
 );
 

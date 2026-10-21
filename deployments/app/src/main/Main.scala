@@ -17,7 +17,6 @@ import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Ladder, ModelId, Policy}
-import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
@@ -113,11 +112,10 @@ import grit.turn.TurnLoop
   * `GRIT_GITHUB_REF`, and of each Doc, Sheet and text file of Drive's shared drives at each
   * label `GRIT_DRIVE_CARD_LABELS` lists, synced daily, [[knowledge]]; with standing on, one
   * document of each close's person- and tool-established Standing lines but reminders'). When a period is asked about
-  * and closes, what its balance holds, and which other places' open periods a window draws
-  * on, are data in the database: on every start the engine writes them from
-  * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
-  * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` (under `grit serve`, `room` when unset:
-  * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
+  * and closes, what its balance holds, and how a window weights its own conversation against
+  * what it draws on elsewhere, are data in the database: on every start the engine writes them
+  * from `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
+  * `GRIT_LEDGER`, `GRIT_BALANCE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
   * (or SQL) changes them from the next sweep and turn on, until the next start. The email
   * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; serving
   * Slack, it trusts Slack to say who the people of the workspace its bot token is installed in
@@ -715,10 +713,10 @@ object Main {
     * (`md`), at most 600 cards, read through the GitHub tools [[github]]'s edge serves (`grit
     * serve` with [[GithubTokenVar]] set; a run while none serves them stops at its first call,
     * and its reply says so), kept at public, the corpus `github`, and drawn on where a
-    * conversation's scope holds `service:github` (`GRIT_SCOPE`). With [[DriveKeyVar]] set,
+    * turn may read `service:github`. With [[DriveKeyVar]] set,
     * the shared drives grit is a member of, as [[DriveCards]] reads them through the Drive
     * tools [[drive]]'s edge serves, at most 600 cards at each label [[DriveCardLabelsVar]]
-    * names, the corpus `drive`, drawn on where a scope holds `service:drive`; Drive's place is
+    * names, the corpus `drive`, drawn on where a turn may read `service:drive`; Drive's place is
     * internal, so no label below it is accepted. Why not: neither variable set; a part of the
     * repository unset or blank, or [[DriveCardLabelsVar]] unset, blank or naming no label,
     * naming its variable; or [[DriveCards.of]]'s or [[Knowledge.of]]'s refusal under
@@ -841,8 +839,7 @@ object Main {
   /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
     * the conversations `worksIn` links working in their services and `reaches` links reaching
     * theirs, its days beginning in
-    * `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
-    * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
+    * `zone`. Serving any edge, it caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
     * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
     * ([[SlackAccounts.realm]]), and refuses unless one of `edges` is that attester; its
@@ -869,10 +866,7 @@ object Main {
       rounds <- toolRounds(env)
       models <- policy(env)
       sweep <- sweepEvery(env)
-      lifecycle <- Lifecycle.fromEnv(
-        env,
-        if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
-      )
+      lifecycle <- Lifecycle.fromEnv(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
       domains <- Claimed.fromEnv(env)
       trusted <- slackIn.fold[Either[String, Vector[Vouching]]](Right(Vector.empty))(team =>

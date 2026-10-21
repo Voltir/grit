@@ -46,7 +46,6 @@ object TurnTriage {
       reads = StitchReads(
         view.entries,
         view.conversations,
-        view.lifecycle,
         view.stitches,
         view.search,
         view.principals

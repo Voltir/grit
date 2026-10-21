@@ -15,7 +15,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
-import grit.core.place.Locality
+import grit.core.place.Weight
 
 import utest.*
 
@@ -34,7 +34,7 @@ object PeriodTests extends TestSuite {
   ): LifecycleSettings =
     Windows
       .of(idle, 30.days, 180.days)
-      .flatMap(LifecycleSettings.of(_, 3, settle, p(resolveAt), asks, Locality.Default))
+      .flatMap(LifecycleSettings.of(_, 3, settle, p(resolveAt), asks, Weight.Default))
       .getOrElse(throw new java.lang.AssertionError(idle))
 
   private val hourAndFive = settings()
@@ -118,11 +118,11 @@ object PeriodTests extends TestSuite {
     ) {
       val w = Windows.of(1.hour, 1.day, 1.day).getOrElse(throw new java.lang.AssertionError("w"))
       Vector(
-        LifecycleSettings.of(w, 0, 5.minutes, p(0.8), 3, Locality.Default),
-        LifecycleSettings.of(w, 1, 0.seconds, p(0.8), 3, Locality.Default),
-        LifecycleSettings.of(w, 1, 1.hour, p(0.8), 3, Locality.Default),
-        LifecycleSettings.of(w, 1, 5.minutes, p(0), 3, Locality.Default),
-        LifecycleSettings.of(w, 1, 5.minutes, p(0.8), 0, Locality.Default)
+        LifecycleSettings.of(w, 0, 5.minutes, p(0.8), 3, Weight.Default),
+        LifecycleSettings.of(w, 1, 0.seconds, p(0.8), 3, Weight.Default),
+        LifecycleSettings.of(w, 1, 1.hour, p(0.8), 3, Weight.Default),
+        LifecycleSettings.of(w, 1, 5.minutes, p(0), 3, Weight.Default),
+        LifecycleSettings.of(w, 1, 5.minutes, p(0.8), 0, Weight.Default)
       ) ==> Vector(
         Left("balance must be at least 1"),
         Left("settle must be positive"),
@@ -131,7 +131,7 @@ object PeriodTests extends TestSuite {
         Left("asks must be at least 1")
       )
       LifecycleSettings
-        .of(w, 1, 59.minutes, p(1.0), 1, Locality.Default)
+        .of(w, 1, 59.minutes, p(1.0), 1, Weight.Default)
         .map(s => (s.balance, s.settle, s.asks)) ==>
         Right((1, 59.minutes, 1))
     }

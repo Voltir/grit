@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.document.DocumentSearch
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.Message
-import grit.core.place.{Place, Scope}
+import grit.core.place.Place
 import grit.core.recipe.{Pool, RoomReads, Section}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand, Tuning}
 import grit.core.store.{Conversation, Entry, Focus, Payload, Position, Reads, Speakers, StoreError}
@@ -56,7 +56,6 @@ object TriageInput {
         .read { (tx: grit.core.store.Tx^) ?=>
           Along.read(
             reads.stitches,
-            reads.lifecycle,
             reads.conversations,
             turn.conversationId,
             all,
@@ -66,7 +65,7 @@ object TriageInput {
         }
         .left
         .map(e => s"strand unread: ${describe(e)}")
-      Along.Read(conversation, strand, scope) = read
+      Along.Read(conversation, strand) = read
       position =
         if (all.minByOption(_.seq).exists(_.id == heard.id)) Position.Opening else Position.Reply
       focus = conversation.fold(Focus.Focused)(_.origin.focus(position))
@@ -77,7 +76,6 @@ object TriageInput {
         documents,
         db,
         recipe.at(focus),
-        scope,
         conversation,
         strand,
         heard,
@@ -116,12 +114,12 @@ object TriageInput {
   /** The person's message that is `turn`'s first, heard or said to grit, and the
     * [[TriageQuestion.State]] it is asked about, the same for either: its text, its author's name ("Someone" when not known), its thread as the store
     * stands now, the strand it joins first (read from `tuning.horizon` before its
-    * conversation began, in the scope in force, at most `tuning.strandChars`; its entries
+    * conversation began, at most `tuning.strandChars`; its entries
     * said before the message, its links as they stand now), then its conversation's messages
     * before it, within [[TriageQuestion.ThreadChars]]; and the sections `recipe`'s pool shows
     * at the focus it was said at ([[grit.core.store.Origin.focus]]: its conversation's first
     * message is its `Opening`; `Focused` when the conversation is not found), from what its
-    * room held when it was said, read through `rooms` in the scope in force, and from the
+    * room held when it was said, read through `rooms`, and from the
     * records `documents` finds near it, both through `db` ([[Pool.read]]; none when the
     * conversation is not found). Why not, when the thread, strand or room cannot
     * be read or the turn holds no person's message; these words are journaled.
@@ -137,7 +135,7 @@ object TriageInput {
   ): Either[String, (EntryId, TriageQuestion.State)] =
     read(reads, rooms, documents, db, turn, tuning, recipe).map(r => (r.entry, r.state))
 
-  /** What `pool` shows for `heard` in `conversation` after `before` under `scope`
+  /** What `pool` shows for `heard` in `conversation` after `before`
     * ([[Pool.read]]); nothing, opening no transaction, for a pool without sources or a
     * conversation not found.
     */
@@ -147,7 +145,6 @@ object TriageInput {
       documents: DocumentSearch,
       db: Reads^,
       pool: Pool,
-      scope: Scope,
       conversation: Option[Conversation],
       strand: Strand.Read,
       heard: Entry,
@@ -158,7 +155,6 @@ object TriageInput {
         db.read(
           Pool.read(
             pool,
-            scope,
             rooms,
             reads.stitches,
             reads.principals,

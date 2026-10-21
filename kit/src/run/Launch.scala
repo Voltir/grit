@@ -183,7 +183,6 @@ private[grit] object Launch {
       StitchReads(
         runtime.entries,
         runtime.conversations,
-        runtime.lifecycle,
         runtime.stitches,
         runtime.search,
         runtime.principals
@@ -238,7 +237,6 @@ private[grit] object Launch {
         TurnStitching(
           runtime.stitches,
           runtime.search,
-          runtime.lifecycle,
           StitchTuning.Default,
           placing
         ),
@@ -301,7 +299,6 @@ private[grit] object Launch {
             runtime.deliveries,
             runtime.stitches,
             runtime.search,
-            runtime.lifecycle,
             runtime.rooms,
             runtime.periods,
             runtime.documents
@@ -587,7 +584,7 @@ private[grit] object Launch {
     val w = s.windows
     s"idle ${w.idle.toCoarsest}, retention ${w.retention.toCoarsest}, ledger ${w.ledger.toCoarsest}, balance ${s.balance}, " +
       s"settle ${s.settle.toCoarsest}, resolve at ${Probability.value(s.resolveAt)}, asks ${s.asks}, " +
-      s"scope ${s.locality.scope.written}, weight ${Weight.value(s.locality.weight)}"
+      s"weight ${Weight.value(s.weight)}"
   }
 
   /** The classifier `d` places messages with: Jev over `s`'s settings, which [[Secrets.of]]

@@ -9,7 +9,7 @@ import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTer
 import grit.core.either.Traversal
 import grit.core.id.{ConversationId, PluginName, TurnRef}
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.Weight
 import grit.core.recipe.Rooted
 import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.core.visibility.Subject
@@ -29,16 +29,14 @@ object Synthetic {
   /** One case's turn found in the synthetic database: `name` (`{case}/{variant}`), the case it
     * is a variant `of`, the turn it asks in, each of its conversations' `[must]` entries
     * expected held ([[Expect.Holds]] of a [[Locator.Messages]]) and then its `[never]` entries
-    * expected omitted ([[Expect.Omits]]), the query its window is searched with, and the scope
-    * it is drawn within.
+    * expected omitted ([[Expect.Omits]]), and the query its window is searched with.
     */
   final case class Asked(
       name: String,
       of: String,
       turn: TurnRef,
       expected: ::[Expect],
-      query: String,
-      scope: Scope
+      query: String
   )
 
   /** The cases found: each turn `asked`, and the names (`{case}/{variant}`) of those
@@ -68,7 +66,7 @@ object Synthetic {
         } yield (must ++ never).toList match {
           case first :: rest =>
             Right(
-              Asked(name, c.name, TurnRef(own, layout.ask), ::(first, rest), query, layout.scope)
+              Asked(name, c.name, TurnRef(own, layout.ask), ::(first, rest), query)
             )
           case Nil => Left(name)
         }
@@ -150,7 +148,7 @@ object Synthetic {
 
   /** `asked`'s window, `width` wide, drawn by the shipped retrieval assembler built as
     * `assembled` says ([[Rebuild.window]]) over `reader`'s database as it stands, searched with
-    * its query, within its scope at [[Weight.Default]] under otherwise default lifecycle
+    * its query, at [[Weight.Default]] under otherwise default lifecycle
     * settings, whatever settings the database holds; by part ([[TurnCapture.costed]]). `Left`
     * naming what could not be read.
     */
@@ -169,7 +167,7 @@ object Synthetic {
           d.settle,
           d.resolveAt,
           d.asks,
-          Locality(asked.scope, Weight.Default)
+          Weight.Default
         )
         .left
         .map(why => s"${asked.name}: $why")

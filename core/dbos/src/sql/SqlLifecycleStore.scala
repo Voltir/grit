@@ -4,12 +4,12 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.{Locality, Prefix, Scope, Weight}
+import grit.core.place.Weight
 import grit.core.store.{LifecycleStore, StoreError, Tx}
 
 /** [[LifecycleStore]] over the one row of `grit.lifecycle_settings`. The durations are
   * `interval`s, so they can be changed by hand (`SET idle = '3 minutes'`), and read back to
-  * the millisecond; the scope is its places as written (`SET scope = '{fs:/home/you}'`).
+  * the millisecond.
   */
 final class SqlLifecycleStore extends LifecycleStore {
   import SqlStatements.attempt
@@ -24,7 +24,7 @@ final class SqlLifecycleStore extends LifecycleStore {
             |       (extract(epoch FROM ledger) * 1000)::bigint AS ledger,
             |       balance,
             |       (extract(epoch FROM settle) * 1000)::bigint AS settle,
-            |       resolve_at, asks, to_jsonb(scope)::text AS scope, weight
+            |       resolve_at, asks, weight
             |  FROM grit.lifecycle_settings""".stripMargin
         )
       ) { ps =>
@@ -32,12 +32,7 @@ final class SqlLifecycleStore extends LifecycleStore {
           if (!rs.next()) Right(LifecycleSettings.Default)
           else {
             val resolveAt = rs.getDouble("resolve_at")
-            val written = ujson.read(rs.getString("scope")).arr.toVector.map(_.str)
             (for {
-              // Each place read on its own, so one written by hand may hold a space.
-              prefixes <- written.foldLeft[Either[String, Vector[Prefix]]](Right(Vector.empty)) {
-                (acc, w) => acc.flatMap(done => Prefix.read(w).map(done :+ _))
-              }
               weight <- Weight.of(rs.getDouble("weight"))
               windows <- Windows.of(
                 rs.getLong("idle").millis,
@@ -53,7 +48,7 @@ final class SqlLifecycleStore extends LifecycleStore {
                 rs.getLong("settle").millis,
                 at,
                 rs.getInt("asks"),
-                Locality(Scope(prefixes), weight)
+                weight
               )
             } yield settings).left.map(why => StoreError.Invalid(s"lifecycle settings: $why"))
           }
@@ -69,16 +64,15 @@ final class SqlLifecycleStore extends LifecycleStore {
       Using.resource(
         conn.prepareStatement(
           """INSERT INTO grit.lifecycle_settings
-             |       (idle, retention, ledger, balance, settle, resolve_at, asks, scope, weight)
+             |       (idle, retention, ledger, balance, settle, resolve_at, asks, weight)
              |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond',
              |        ? * interval '1 millisecond', ?,
-             |        ? * interval '1 millisecond', ?, ?,
-             |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?)
+             |        ? * interval '1 millisecond', ?, ?, ?)
              |ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
              |  ledger = EXCLUDED.ledger,
              |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
              |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks,
-             |  scope = EXCLUDED.scope, weight = EXCLUDED.weight""".stripMargin
+             |  weight = EXCLUDED.weight""".stripMargin
         )
       ) { ps =>
         ps.setLong(1, w.idle.toMillis)
@@ -88,12 +82,7 @@ final class SqlLifecycleStore extends LifecycleStore {
         ps.setLong(5, settings.settle.toMillis)
         ps.setDouble(6, Probability.value(settings.resolveAt))
         ps.setInt(7, settings.asks)
-        // The scope's places as written, sent as JSON so no Java array crosses JDBC.
-        ps.setString(
-          8,
-          ujson.Arr.from(settings.locality.scope.prefixes.map(p => ujson.Str(p.written))).render()
-        )
-        ps.setDouble(9, Weight.value(settings.locality.weight))
+        ps.setDouble(8, Weight.value(settings.weight))
         ps.executeUpdate()
         ()
       }

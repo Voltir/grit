@@ -333,7 +333,7 @@ object TriageFixtures {
 
     /** Where a triage's stitch and question read this world. */
     def reads: StitchReads =
-      StitchReads(entries, conversations, lifecycle, stitches, search, principals)
+      StitchReads(entries, conversations, stitches, search, principals)
 
     def tags(triage: TriageRef) =
       entries
@@ -431,7 +431,6 @@ object TriageFixtures {
             deliveries,
             stitches,
             search,
-            lifecycle,
             rooms,
             periods,
             documents

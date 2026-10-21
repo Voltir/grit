@@ -21,7 +21,7 @@ import grit.core.id.{
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, Cited, CloseReason, Closing, Edit, Flows, Ground}
-import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
+import grit.core.place.{Directory, Namespace, Place}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
@@ -46,8 +46,7 @@ object Variant {
 
 /** A case laid out as the eval writes it into a database, one entry per line, before the
   * database names its conversations: its own conversation, found by `own`, its turns and then
-  * the ask (`rows`, the ask's turn `ask`); its other conversations, as written; and the scope a
-  * window for it is drawn within, everywhere under the case's root unless the case writes one.
+  * the ask (`rows`, the ask's turn `ask`); and its other conversations, as written.
   * Ids are `{case}/{variant}/t{turn}:{seq}`, and `{case}/{variant}/p{i}/t{turn}:{seq}` in its
   * `i`-th other conversation; every place is under the case's root (`fs:/eval/{case}/{variant}`,
   * `task:eval/{case}/{variant}`), so two cases share no conversation. Its documents (`documents`)
@@ -60,7 +59,6 @@ final case class Layout(
     rows: Vector[Layout.Row],
     ask: TurnSeq,
     others: Vector[Layout.Other],
-    scope: Scope,
     documents: Vector[Layout.Doc] = Vector.empty
 ) {
 
@@ -167,20 +165,6 @@ object Layout {
       docs <- documents.foldLeft[Either[String, Vector[Doc]]](Right(Vector.empty))((acc, d) =>
         acc.flatMap(done => d.map(done :+ _))
       )
-      within <- c.scope.fold(
-        for {
-          fs <- rooted(root, "fs:/")
-          task <- rooted(root, "task:")
-        } yield Scope(Vector(Prefix.At(fs), Prefix.At(task)))
-      )(written =>
-        written
-          .split("\\s+")
-          .toVector
-          .foldLeft[Either[String, Vector[Prefix]]](Right(Vector.empty))((acc, w) =>
-            acc.flatMap(done => rooted(root, w).map(p => done :+ Prefix.At(p)))
-          )
-          .map(Scope(_))
-      )
     } yield Layout(
       c,
       variant,
@@ -188,7 +172,6 @@ object Layout {
       rows,
       TurnSeq((turns.size - 1).toLong),
       others,
-      within,
       docs
     )
   }

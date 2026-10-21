@@ -26,7 +26,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.{Declared, Grace, SlotRule}
 import grit.core.message.Message
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict, Windows}
-import grit.core.place.Locality
+import grit.core.place.Weight
 import grit.core.store.Origin
 import grit.core.visibility.Subject
 import grit.dbos.sql.{
@@ -54,7 +54,7 @@ object SettleLiveTests extends TestSuite {
   private def settling(config: DbConfig): Unit = {
     val settings = Windows
       .of(10.minutes, 1.day, 1.day)
-      .flatMap(LifecycleSettings.of(_, 4096, 1.minute, p(0.8), 3, Locality.Default))
+      .flatMap(LifecycleSettings.of(_, 4096, 1.minute, p(0.8), 3, Weight.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

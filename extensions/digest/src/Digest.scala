@@ -23,7 +23,7 @@ import grit.core.visibility.Integrity
   * to: [[grit.core.period.Closing.headline]]), newest first, written as of the newest one's
   * close; none for a period whose closing stays in its own conversation
   * ([[CloseReason.Unshown]]: unearned, or a job's run). Retrieval finds a room's document where
-  * a window's scope reaches the room and its turn reads it; `recent_activity` lists the lines
+  * a window's turn reads it; `recent_activity` lists the lines
   * of every one the calling turn reads.
   */
 final class Digest(val name: PluginName) extends Exports[Activity] {

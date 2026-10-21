@@ -5,7 +5,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.Weight
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.dbos.sql.{LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -104,23 +104,12 @@ object SchemaTests extends TestSuite {
       LiveEngine.open(config, "test").close()
       val settings = Windows
         .of(2.minutes, 3.minutes, 6.minutes)
-        .flatMap(LifecycleSettings.of(_, 300, 1.minute, Probability.One, 1, Locality.Default))
+        .flatMap(w =>
+          Weight.of(3).flatMap(LifecycleSettings.of(w, 300, 1.minute, Probability.One, 1, _))
+        )
         .fold(sys.error, identity)
       LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==> Right(settings)
-    }
-
-    test("a scope of the room and places is kept as set") {
-      val config = TestPostgres.freshDatabase("schema_room")
-      LiveEngine.open(config, "test").close()
-      val scope = Scope.read("room slack:T1").fold(sys.error, identity)
-      val d = LifecycleSettings.Default
-      val settings = LifecycleSettings
-        .of(d.windows, d.balance, d.settle, d.resolveAt, d.asks, Locality(scope, Weight.Default))
-        .fold(sys.error, identity)
-      LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
-      LiveDb.transaction(config)(new SqlLifecycleStore().current()).map(_.locality.scope) ==>
-        Right(scope)
     }
 
     test("settings changed by hand to break their rules read as Invalid") {
@@ -129,19 +118,17 @@ object SchemaTests extends TestSuite {
       LiveDb.transaction(config)(
         execute(
           "INSERT INTO grit.lifecycle_settings " +
-            "(idle, retention, ledger, balance, settle, resolve_at, asks, scope, weight) " +
-            "VALUES ('10 minutes', '30 days', '180 days', 4096, '1 hour', 0.8, 3, '{everywhere}', 2)"
+            "(idle, retention, ledger, balance, settle, resolve_at, asks, weight) " +
+            "VALUES ('10 minutes', '30 days', '180 days', 4096, '1 hour', 0.8, 3, 2)"
         )
       )
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==>
         Left(StoreError.Invalid("lifecycle settings: settle must be shorter than idle"))
       LiveDb.transaction(config)(
-        execute("UPDATE grit.lifecycle_settings SET settle = '1 minute', scope = '{fs:/a b, home}'")
+        execute("UPDATE grit.lifecycle_settings SET settle = '1 minute', weight = 0.5")
       )
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==> Left(
-        StoreError.Invalid(
-          "lifecycle settings: no namespace in home: write it as fs:/a/path, slack:team/channel or task:name"
-        )
+        StoreError.Invalid("lifecycle settings: a weight is a number of at least 1, not 0.5")
       )
     }
   }

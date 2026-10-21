@@ -3,7 +3,7 @@ package grit.app.config
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.Weight
 
 import utest.*
 
@@ -20,14 +20,12 @@ object LifecycleTests extends TestSuite {
       settle: FiniteDuration,
       resolveAt: Double,
       asks: Int,
-      locality: Locality = Locality.Default
+      weighted: Weight = Weight.Default
   ): LifecycleSettings =
     Windows
       .of(idle, retention, 180.days)
-      .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks, locality))
+      .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks, weighted))
       .getOrElse(throw new java.lang.AssertionError("settings"))
-
-  private def scope(text: String): Scope = Scope.read(text).fold(e => sys.error(e), identity)
 
   private def weight(w: Double): Weight = Weight.of(w).fold(e => sys.error(e), identity)
 
@@ -84,7 +82,7 @@ object LifecycleTests extends TestSuite {
         Left("resolve: not a probability: write a number from 0 to 1, as 0.8")
       Change.parse("grace 3m") ==>
         Left(
-          "no setting grace: idle, settle, resolve, asks, retention, ledger, balance, scope or weight"
+          "no setting grace: idle, settle, resolve, asks, retention, ledger, balance or weight"
         )
       Change.parse("idle 3") ==>
         Left("idle: not a duration: write a whole number and s, m, h or d, as 30s or 3m")
@@ -119,49 +117,34 @@ object LifecycleTests extends TestSuite {
       Change.Retention(200.days).applied(now) ==> Left("ledger must be at least retention")
     }
 
-    test("grit serve seeds room when GRIT_SCOPE is unset; a set one wins") {
-      Lifecycle.fromEnv(Map.empty, Lifecycle.ServeScope).map(_.locality.scope) ==> Right(Scope.Room)
-      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "none"), Lifecycle.ServeScope).map(_.locality.scope) ==>
-        Right(Scope.Off)
+    test("GRIT_SCOPE set is refused, saying why, whatever it holds") {
+      Vector("none", "room", "everywhere").map(s => Lifecycle.fromEnv(Map("GRIT_SCOPE" -> s))) ==>
+        Vector.fill(3)(
+          Left(
+            "GRIT_SCOPE is no longer read: a window draws on every place its turn may read; unset it"
+          )
+        )
     }
 
-    test("the environment seeds the scope and the weight") {
-      Lifecycle
-        .fromEnv(Map("GRIT_SCOPE" -> "fs:/home/nick slack:acme", "GRIT_WEIGHT" -> "3"))
-        .map(
-          _.locality
-        ) ==> Right(Locality(scope("fs:/home/nick slack:acme"), weight(3)))
-      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "none")).map(_.locality.scope) ==> Right(Scope.Off)
+    test("the environment seeds the weight") {
+      Lifecycle.fromEnv(Map("GRIT_WEIGHT" -> "3")).map(_.weight) ==> Right(weight(3))
+      Lifecycle.fromEnv(Map.empty).map(_.weight) ==> Right(Weight.Default)
       Lifecycle.fromEnv(Map("GRIT_WEIGHT" -> "0.5")) ==>
         Left("GRIT_WEIGHT: a weight is a number of at least 1, not 0.5")
-      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "home")) ==> Left(
-        "GRIT_SCOPE: no namespace in home: write it as fs:/a/path, slack:team/channel or task:name"
-      )
     }
 
-    test("/set scope and weight change the locality, and every other change keeps it") {
-      Vector("scope fs:/home/nick slack:acme", "scope none", "scope room", "weight 3").map(
-        Change.parse
-      ) ==>
-        Vector(
-          Right(Change.Scope(scope("fs:/home/nick slack:acme"))),
-          Right(Change.Scope(Scope.Off)),
-          Right(Change.Scope(Scope.Room)),
-          Right(Change.Weight(weight(3)))
-        )
+    test("/set weight changes the weight, every other change keeps it, and scope is no setting") {
+      Change.parse("weight 3") ==> Right(Change.Weight(weight(3)))
       Change.parse("weight 0.5") ==> Left("weight: a weight is a number of at least 1, not 0.5")
-      Change.parse("scope") ==>
-        Left("scope takes none, everywhere, room, or places such as fs:/home/you")
-      val near = Locality(scope("fs:/home/nick"), weight(3))
-      val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3, near)
-      Change.Idle(10.minutes).applied(now).map(_.locality) ==> Right(near)
-      Change.Scope(Scope.Off).applied(now).map(_.locality) ==> Right(Locality(Scope.Off, weight(3)))
-      Change.Weight(weight(1)).applied(now).map(_.locality) ==>
-        Right(Locality(scope("fs:/home/nick"), weight(1)))
+      Change.parse("scope room") ==>
+        Left("no setting scope: idle, settle, resolve, asks, retention, ledger, balance or weight")
+      val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3, weight(3))
+      Change.Idle(10.minutes).applied(now).map(_.weight) ==> Right(weight(3))
+      Change.Weight(weight(1)).applied(now).map(_.weight) ==> Right(weight(1))
     }
 
     test("a change /set reports says it holds until grit next starts") {
-      val now = settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
+      val now = settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, weight(3))
       Lifecycle.changed(now) ==>
         "set until grit restarts, when its GRIT_ variables apply again: " + Lifecycle.describe(now)
     }
@@ -170,25 +153,10 @@ object LifecycleTests extends TestSuite {
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
         "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
         "more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; draws on open " +
-        "periods and closings everywhere, its own weighted 2"
-      Lifecycle.describe(
-        settings(
-          3.hours,
-          1.day,
-          300,
-          1.hour,
-          0.8,
-          3,
-          Locality(scope("room fs:/a slack:b"), weight(1.5))
-        )
-      ) ==> "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is " +
-        "at 0.8 or more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; " +
-        "draws on open periods and closings in its own room, fs:/a, slack:b, its own weighted 1.5"
-      Lifecycle.describe(
-        settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
-      ) ==>
+        "periods and closings it may read, its own weighted 2"
+      Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, weight(1.5))) ==>
         "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; " +
-        "the balance holds 300 bytes; draws on no other place"
+        "the balance holds 300 bytes; draws on open periods and closings it may read, its own weighted 1.5"
     }
   }
 }

@@ -99,77 +99,9 @@ object Place {
   }
 }
 
-/** One of a [[Scope]]'s prefixes: a place, or the conversation's own room
-  * ([[grit.core.store.Origin.room]]), which differs from one conversation to the next.
-  */
-enum Prefix {
-  case At(place: Place)
-  case Room
-
-  /** A place's written form, or `room`. */
-  def written: String = this match {
-    case At(place) => place.written
-    case Room => Prefix.RoomWritten
-  }
-}
-
-object Prefix {
-  private[place] val RoomWritten = "room"
-
-  /** `room`, or a written place ([[Place.read]]); why not, as [[Place.read]] says. */
-  def read(word: String): Either[String, Prefix] =
-    if (word.trim == RoomWritten) Right(Room) else Place.read(word).map(At(_))
-}
-
-/** The places whose open periods and closings a window may draw on besides its own
-  * conversation's: those within any of `prefixes`, the room standing for the conversation's
-  * own room. No prefixes turns cross-place recall off.
-  */
-final case class Scope(prefixes: Vector[Prefix]) {
-
-  /** Whether a conversation at `place` is in scope for one whose room is `room`. */
-  def holds(room: Place, place: Place): Boolean = prefixes.exists {
-    case Prefix.At(p) => place.within(p)
-    case Prefix.Room => place.within(room)
-  }
-
-  /** `none`, or the prefixes' written forms separated by spaces: [[Scope.read]] reads it
-    * back.
-    */
-  def written: String =
-    if (prefixes.isEmpty) Scope.NoneWritten else prefixes.map(_.written).mkString(" ")
-}
-
-object Scope {
-
-  private val NoneWritten = "none"
-
-  val Everywhere: Scope = Scope(Vector(Prefix.At(Place.Everywhere)))
-
-  val Off: Scope = Scope(Vector.empty)
-
-  /** The conversation's own room alone. */
-  val Room: Scope = Scope(Vector(Prefix.Room))
-
-  /** `none`, or words separated by spaces, each `room` or a written place (so a path with a
-    * space cannot be written here); why not, naming the first word that is neither.
-    */
-  def read(text: String): Either[String, Scope] = {
-    val t = text.trim
-    if (t == NoneWritten) Right(Off)
-    else if (t.isEmpty) Left("a scope is none, everywhere, room, or places such as fs:/home/you")
-    else
-      t.split("\\s+")
-        .toVector
-        .foldLeft[Either[String, Vector[Prefix]]](Right(Vector.empty)) { (acc, w) =>
-          acc.flatMap(done => Prefix.read(w).map(done :+ _))
-        }
-        .map(Scope(_))
-  }
-}
-
 /** How far a conversation's own search hits outweigh those from other places: their scores
-  * are multiplied by it before one pool is ranked. At least 1.
+  * are multiplied by it before one pool is ranked. At least 1. Nearness only weights: a window
+  * draws on every open period, closing and document elsewhere its turn may read.
   */
 opaque type Weight = Double
 
@@ -183,15 +115,4 @@ object Weight {
 
   /** 2: a hit elsewhere must match twice as well to outrank one here. */
   val Default: Weight = 2.0
-}
-
-/** Which places' open periods a turn's window draws on (`scope`), and how much the
-  * conversation's own candidates are weighted up against theirs (`weight`).
-  */
-final case class Locality(scope: Scope, weight: Weight)
-
-object Locality {
-
-  /** Everywhere, [[Weight.Default]]. */
-  val Default: Locality = Locality(Scope.Everywhere, Weight.Default)
 }

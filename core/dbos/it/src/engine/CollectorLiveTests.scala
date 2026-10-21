@@ -40,7 +40,7 @@ import grit.core.period.{
   TestClosings,
   Windows
 }
-import grit.core.place.{Directory, Locality, Namespace, Place}
+import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
@@ -87,7 +87,7 @@ object CollectorLiveTests extends TestSuite {
   ): Unit = {
     val settings = Windows
       .of(idle, 1.minute, ledger)
-      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
+      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Weight.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

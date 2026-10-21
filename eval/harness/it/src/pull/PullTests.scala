@@ -122,7 +122,6 @@ object PullTests extends TestSuite {
             engine.deliveries,
             engine.stitches,
             engine.search,
-            engine.lifecycle,
             engine.rooms,
             engine.periods,
             engine.documents
@@ -150,7 +149,6 @@ object PullTests extends TestSuite {
           StitchReads(
             engine.entries,
             engine.conversations,
-            engine.lifecycle,
             engine.stitches,
             engine.search,
             engine.principals
@@ -168,7 +166,6 @@ object PullTests extends TestSuite {
           StitchReads(
             engine.entries,
             engine.conversations,
-            engine.lifecycle,
             engine.stitches,
             engine.search,
             engine.principals

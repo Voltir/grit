@@ -25,7 +25,6 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   Jot,
-  LifecycleStore,
   ModelProfileStore,
   Principals,
   PromptStore,
@@ -119,14 +118,12 @@ object TurnWeighing {
 }
 
 /** How a conversation's first message is stitched to an exchange in its room, and its strand
-  * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the scope in force
-  * (`lifecycle`), the `tuning`, and what its opening's placement is waited on through
-  * (`placing`).
+  * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the `tuning`, and
+  * what its opening's placement is waited on through (`placing`).
   */
 final case class TurnStitching(
     stitches: StitchStore,
     search: EntrySearch,
-    lifecycle: LifecycleStore,
     tuning: Tuning,
     placing: Placing.Env^
 )

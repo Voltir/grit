@@ -6,7 +6,7 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, StitchRef, Tu
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Probability, TestClosings}
-import grit.core.place.{Directory, Scope}
+import grit.core.place.Directory
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
 import grit.core.visibility.Integrity
 import grit.core.visibility.Label
@@ -92,7 +92,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector(hit(stale, 9.0), hit(engine, 3.0)),
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       offered(es) ==> Vector(
@@ -132,13 +131,12 @@ object StitchingTests extends TestSuite {
           Vector.empty,
           Vector.empty,
           Vector.empty,
-          Scope.Room,
           Tuning.Default
         )
         .map(_.record) ==> Vector(Some("Ana owns it."))
     }
 
-    test("a conversation in another channel is never offered, even under everywhere") {
+    test("a conversation in another channel is never offered") {
       val here = heard("here", "the Engine contract", 60)
       val there = heard("there", "the Engine contract", 30, channel = "C2")
       val es = Stitching.offer(
@@ -148,25 +146,9 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector(hit(there, 5.0), hit(here, 1.0)),
         Vector.empty,
-        Scope.Everywhere,
         Tuning.Default
       )
       offered(es) ==> Vector(here.conversation -> Offered.Recent(1))
-    }
-
-    test("Off offers nothing") {
-      val here = heard("here", "the Engine contract", 60)
-      val es = Stitching.offer(
-        first,
-        room(),
-        Vector(here),
-        Vector.empty,
-        Vector.empty,
-        Vector.empty,
-        Scope.Off,
-        Tuning.Default
-      )
-      es ==> Vector.empty
     }
 
     test("a follower's messages are offered as its root's exchange, opened by the root") {
@@ -179,7 +161,6 @@ object StitchingTests extends TestSuite {
         Vector(root),
         Vector.empty,
         Vector(Link(follower.conversation, root.conversation)),
-        Scope.Room,
         Tuning.Default
       )
       es.map(e => (e.root, e.opening, e.latest)) ==>
@@ -196,7 +177,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       def placed(pEngine: Double, key: String = "exchange 1") = Stitching.place(
@@ -246,7 +226,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       val prior = Tuning.Default.copy(burst = Some(Tuning.Burst(p(0.3), 120.seconds)))
@@ -288,7 +267,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       val tuning = Tuning.Default.copy(burst = Some(Tuning.Burst(p(0.3), 120.seconds)))
@@ -350,7 +328,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       val jev = new Scripted(None)
@@ -374,7 +351,6 @@ object StitchingTests extends TestSuite {
         Vector(engine),
         Vector.empty,
         Vector(Link(follower.conversation, engine.conversation)),
-        Scope.Room,
         Tuning.Default
       )
       val speakers = Speakers(Map(engine.entry.id -> "Nick"))
@@ -452,7 +428,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       val state = Stitching.shown(Offer(opening, "Nick", es, Speakers.none))
@@ -472,7 +447,6 @@ object StitchingTests extends TestSuite {
         Vector.empty,
         Vector.empty,
         Vector.empty,
-        Scope.Room,
         Tuning.Default
       )
       val offer = Offer(first, "Nick", es, Speakers.none)
@@ -506,7 +480,6 @@ object StitchingTests extends TestSuite {
           Vector.empty,
           Vector.empty,
           Vector.empty,
-          Scope.Room,
           Tuning.Default
         )
         val jev = new Scripted(None)

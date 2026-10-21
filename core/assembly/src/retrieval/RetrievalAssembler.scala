@@ -19,7 +19,7 @@ import grit.core.context.{
 import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
 import grit.core.id.{CallSlot, ConversationId, DocumentVersionId, PluginName, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
-import grit.core.place.{Locality, Place, Weight}
+import grit.core.place.{Place, Weight}
 import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Along, Said, StitchStore, Strand, Tuning}
 import grit.core.store.{
@@ -45,10 +45,9 @@ import grit.core.visibility.Subject
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
   * written query finds: the period's earlier turns; the open periods' turns and kept closings
-  * of other conversations at places the settings' scope holds (the conversation's room read
-  * from its origin, [[grit.core.store.Origin.room]]); and, with the enabled plugins' terms
-  * ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's time (its
-  * earliest entry's; none for a turn with no entries) at those places.
+  * of other conversations its turn may read, wherever they are; and, with the enabled plugins'
+  * terms ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's time
+  * (its earliest entry's; none for a turn with no entries) that its turn may read.
   *
   * The closing is paid first and the recent tail next, as in [[LinearAssembler]] (`tail`
   * tokens, or what is left when less). Its query is asked of a writer as [[QueryWriter]] puts
@@ -65,21 +64,21 @@ import grit.core.visibility.Subject
   * candidate, its turns in its own order. A conversation whose closings match is one
   * candidate, shown as its newest kept closing's record ([[Shown.recorded]]), unless any of its
   * open turns is one: then those alone are its section. The own closing is never a candidate.
-  * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches` in the
-  * scope in force, from `tuning.horizon` before its first message until before the turn) is
-  * shown one [[Nearby.Along]] section per other member, after any from afar: its root's
+  * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches`, from
+  * `tuning.horizon` before its first message until before the turn) is shown one
+  * [[Nearby.Along]] section per other member, after any from afar: its root's
   * opening message, then the messages nearest the turn, newest first while they fit in
   * `tuning.windowTokens`, paid after the closing and before the tail; a member whose first
   * message is gone, by its newest kept closing's record. A conversation that begins with
-  * grit's post ([[grit.core.store.ConversationStore.postedBy]]) is shown first, whatever the
-  * scope, the turn that asked for it as one [[Nearby.Asked]] section, while the turn's period is
-  * the conversation's first and both conversations are colleagues' ([[Audience.Colleagues]]):
+  * grit's post ([[grit.core.store.ConversationStore.postedBy]]) is shown first, the turn that
+  * asked for it as one [[Nearby.Asked]] section, while the turn's period is the conversation's
+  * first and both conversations are colleagues' ([[Audience.Colleagues]]):
   * its person's messages and grit's reply from the first, as many as fit in the strand's
   * allowance, paid from it before the strand. Neither a strand member nor the asking
   * conversation is ever also a candidate.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
-  * period and nothing elsewhere and no document is in scope.
+  * period and nothing elsewhere and no document is to be drawn.
   * `AssemblyError.Store` when a store fails or the conversation is gone.
   */
 final class RetrievalAssembler(
@@ -184,7 +183,7 @@ final class RetrievalAssembler(
   }
 
   /** Each of `wanted`, once, in its order, as a search would find it for `base` now: one no
-    * longer there, or no longer in scope, left out. Its documents are read in one read, and
+    * longer there left out. Its documents are read in one read, and
     * each conversation elsewhere once.
     */
   private def looked(request: AssemblyRequest, base: Base, wanted: Vector[Retrieved])(using
@@ -264,7 +263,7 @@ final class RetrievalAssembler(
           older,
           base.read.open.map(o => o.conversation -> o.place).toMap,
           base.read.closed,
-          base.read.locality.weight,
+          base.read.weight,
           base.read.shelves.fold(Map.empty)(_.terms)
         )
       }
@@ -299,7 +298,6 @@ final class RetrievalAssembler(
         strand <- Along.read(
           stitches,
           conversation,
-          settings.locality.scope,
           began.minusNanos(tuning.horizon.toNanos),
           until
         )
@@ -312,26 +310,20 @@ final class RetrievalAssembler(
           (all ++ strand.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
         )
       } yield {
-        val locality = settings.locality
         val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
-        val held = closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
-        val inScope =
-          stocked.filter((s, _) => locality.scope.holds(conversation.origin.room, s.place))
         val shelves = root.flatMap(at =>
-          Shelves.of(at, inScope.map(_._1), inScope.map((s, t) => s.plugin -> t).toMap)
+          Shelves.of(at, stocked.map(_._1), stocked.map((s, t) => s.plugin -> t).toMap)
         )
         Read(
-          locality,
+          settings.weight,
           opening.first,
           opening.closing.map(_.entry).toVector,
           all,
           speakers,
-          open.filter(o =>
-            locality.scope.holds(conversation.origin.room, o.place) && !members(o.conversation)
-          ),
-          held.filterNot(c => members(c.conversation)),
+          open.filterNot(o => members(o.conversation)),
+          closed.filterNot(c => members(c.conversation)),
           strand,
-          held.filter(c => strand.gone.contains(c.conversation)),
+          closed.filter(c => strand.gone.contains(c.conversation)),
           asked,
           shelves
         )
@@ -418,12 +410,12 @@ final class RetrievalAssembler(
       ownToFind || read.open.nonEmpty || read.closed.nonEmpty || read.shelves.nonEmpty
   }
 
-  /** What one read of the store gave: the locality in force, the turn's period's first turn,
+  /** What one read of the store gave: the weight in force, the turn's period's first turn,
     * the closings that open it, every entry of the conversation and who of them is named,
-    * the open periods elsewhere its scope holds, and the places in scope holding documents.
+    * the open periods elsewhere, and the places holding documents.
     */
   private final case class Read(
-      locality: Locality,
+      weight: Weight,
       first: TurnSeq,
       closings: Vector[Entry],
       all: Vector[Entry],
@@ -550,7 +542,7 @@ final class RetrievalAssembler(
 
   /** The searches for `query`, `hits` each, in one read: the period's own earlier turns
     * before `from` when `own`, the open periods elsewhere, their closings, and the documents
-    * in scope; with the turns the nearby hits point into.
+    * shelved; with the turns the nearby hits point into.
     */
   private def find(
       turn: TurnRef,
@@ -754,7 +746,7 @@ object RetrievalAssembler {
       documents: Vector[DocumentSearch.Hit]
   )
 
-  /** The places, all in scope and none empty, whose documents current `at` the turn's root
+  /** The places, none empty, whose documents current `at` the turn's root
     * are candidates, and the terms of each plugin keeping them.
     */
   private final case class Shelves private (

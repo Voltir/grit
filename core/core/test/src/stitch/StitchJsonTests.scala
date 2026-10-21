@@ -26,7 +26,6 @@ object StitchJsonTests extends TestSuite {
           )
       ),
       Vector.empty,
-      grit.core.place.Scope.Room,
       Tuning.Default.copy(recent = 1, lexical = 1)
     )
     Stitching.place(

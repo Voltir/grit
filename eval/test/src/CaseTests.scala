@@ -39,16 +39,16 @@ object CaseTests extends TestSuite {
         Left("x line 2: expected turn, ask, query:, place, here, document, doc:, you: or grit:")
       Case.parse("x", "turn\nask\nturn\n") ==> Left("x line 3: a turn after the ask")
       Case.parse("x", "query: a\nquery: b\n") ==> Left("x line 2: a second query")
-      Case.parse("x", "scope fs:/a\nscope fs:/b\n") ==> Left("x line 2: a second scope")
+      Case.parse("x", "turn\nscope fs:/a\n") ==>
+        Left("x line 2: expected turn, ask, query:, place, here, document, doc:, you: or grit:")
       Case.parse("x", "turn\nyou: a\nask\n") ==> Left("x: the ask must be one unlabelled you: line")
     }
 
     test(
-      "a cross-place case: its other conversations, closed, carried and reopened, and its scope"
+      "a cross-place case: its other conversations, closed, carried and reopened"
     ) {
       val text =
         """query: q
-          |scope fs:/home
           |turn
           |you: mine
           |place fs:/home/api
@@ -68,10 +68,7 @@ object CaseTests extends TestSuite {
           |you: now?
           |""".stripMargin
       val c = parsed(text)
-      (c.turns.map(_.map(_.text)), c.scope) ==> (
-        Vector(Vector("mine"), Vector("mine too")),
-        Some("fs:/home")
-      )
+      c.turns.map(_.map(_.text)) ==> Vector(Vector("mine"), Vector("mine too"))
       c.elsewhere ==> Vector(
         Case.Elsewhere("fs:/home/api", Vector(Vector(Case.Line(true, "theirs", true)))),
         Case.Elsewhere(

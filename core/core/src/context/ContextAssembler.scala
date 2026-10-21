@@ -26,8 +26,9 @@ trait ContextAssembler extends caps.Pure {
       Db^
   ): Either[AssemblyError, Results]
 
-  /** The turn's own messages, and each of `retrieved` still there and in scope, as a judge is
-    * shown them, each cut to `chars` characters; one gone since it was found is left out.
+  /** The turn's own messages, and each of `retrieved` still there and still a candidate, as a
+    * judge is shown them, each cut to `chars` characters; one gone since it was found is left
+    * out.
     */
   def briefs(
       request: AssemblyRequest,
@@ -36,8 +37,8 @@ trait ContextAssembler extends caps.Pure {
   )(using Db^): Either[AssemblyError, Briefs]
 
   /** `request.turn`'s window. Drawn: the window with no search. Searched: that window's recent
-    * part, then each admitted result still there and in scope, in its order, each one that fits
-    * what is left; one not admitted is never shown. Its notes are the query's, then which
+    * part, then each admitted result still there and still a candidate, in its order, each one
+    * that fits what is left; one not admitted is never shown. Its notes are the query's, then which
     * earlier turns of its own it recalled.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using

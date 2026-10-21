@@ -157,7 +157,6 @@ object TurnSentTests extends TestSuite {
           TurnStitching(
             engine.stitches,
             engine.search,
-            engine.lifecycle,
             Tuning.Default,
             grit.act.phase.Placing
               .Env(

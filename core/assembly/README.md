@@ -11,12 +11,12 @@ In dependency order:
   ← `estimate`
 - **`retrieval`**: `RetrievalAssembler`, the same closing entry, the recent tail, plus
   what a query finds, which the turn has a model write from `QueryWriter`'s request: the period's earlier turns, and the
-  turns of other conversations' open periods its scope holds and their kept closings
-  (ADR 0013), and the enabled plugins' documents at places it holds, current at the turn's
+  turns of other conversations' open periods its turn may read and their kept closings
+  (ADR 0013), and the enabled plugins' documents it may read, current at the turn's
   root (ADR 0028), ranked by an `EntrySearch` and a `DocumentSearch` in one pool, its own
   weighted up and each document by its plugin's weight; those from elsewhere shown as their
   own sections, one per conversation; and a thread that begins with grit's post, the turn that
-  asked for it, whatever the scope. ← `linear`
+  asked for it. ← `linear`
 
 Neither makes a call: a `ContextAssembler` is pure, its window drawn in reads a turn records
 apart (`prepare`, `search`, `briefs`, `assemble`), the query written and what it found judged

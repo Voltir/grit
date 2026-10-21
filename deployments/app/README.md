@@ -14,7 +14,7 @@ person sets and sees.
 In dependency order:
 
 - **`config`**: settings as a person writes them. The lifecycle's (`GRIT_IDLE`, `GRIT_SETTLE`,
-  `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`, `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE`,
+  `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`, `GRIT_LEDGER`, `GRIT_BALANCE`,
   `GRIT_WEIGHT`) are written over the database's on every start, logged as they stand, and
   changed one at a time by `/set` until the next start. `GRIT_DAILY_USD` caps a day's model
   spend (`grit serve`'s default $1.00); `GRIT_CLAIMED_DOMAINS` (comma-separated) are the email

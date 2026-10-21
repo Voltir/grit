@@ -31,7 +31,7 @@ import grit.core.period.{
   Verdict,
   Windows
 }
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.Weight
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -701,21 +701,18 @@ abstract class PeriodContract extends TestSuite {
           balance: Int,
           resolveAt: Double,
           asks: Int,
-          locality: Locality
+          weight: Weight
       ) =
         Windows
           .of(idle, 1.day, 1.day)
-          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks, locality))
+          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks, weight))
           .getOrElse(throw new java.lang.AssertionError(idle))
-      def locality(scope: String, weight: Double) =
-        (for {
-          s <- Scope.read(scope)
-          w <- Weight.of(weight)
-        } yield Locality(s, w)).fold(e => throw new java.lang.AssertionError(e), identity)
+      def weight(w: Double) =
+        Weight.of(w).fold(e => throw new java.lang.AssertionError(e), identity)
       val (first, second, later) = (
-        settings(3.minutes, 300, 0.8, 3, locality("fs:/home/nick/Projects slack:acme", 1.5)),
-        settings(5.minutes, 200, 0.9, 2, Locality.Default),
-        settings(7.minutes, 100, 0.75, 1, locality("none", 3))
+        settings(3.minutes, 300, 0.8, 3, weight(1.5)),
+        settings(5.minutes, 200, 0.9, 2, Weight.Default),
+        settings(7.minutes, 100, 0.75, 1, weight(3))
       )
       transaction(lifecycle.current()) ==> Right(LifecycleSettings.Default)
       transaction(lifecycle.set(first)) ==> Right(())

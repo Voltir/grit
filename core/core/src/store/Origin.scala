@@ -74,8 +74,8 @@ enum Origin {
     */
   def stitchable: Boolean = focus(Position.Opening) == Focus.Open
 
-  /** The place its conversation shares with its neighbours, what a scope's `room` stands
-    * for ([[grit.core.place.Scope]]): a TUI session's directory, a Slack thread's channel
+  /** The place its conversation shares with its neighbours, within which it is stitched and
+    * its strand read: a TUI session's directory, a Slack thread's channel
     * (`slack:{team}/{channel}`), a task's name (`task:{name}`), a direct message's person's
     * account (`direct:{namespace}/{name}`).
     */

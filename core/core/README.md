@@ -20,7 +20,7 @@ In dependency order, each with the core packages it imports:
 - **`persona`**: who grit presents as; a deployment declares one (ADR 0021). Imports nothing in
   core.
 - **`place`**: where conversations happen (ADR 0013): one containment tree, one namespace per
-  source, and the scope and weight a window draws on beside its own conversation. Imports
+  source, and the weight a window gives its own conversation against the rest. Imports
   nothing in core.
 - **`identity`**: who someone is across sources (ADR 0032): accounts, the realms that name them,
   what a trusted realm attests, and the person the store resolves them to. An account is never

@@ -1,6 +1,6 @@
 # 0028. A ledger document is versioned, kept at a label, scoped to a place, ranked beside entries, and counted when placed
 
-Status: accepted (2026-10-05); revised (2026-10-18)
+Status: accepted (2026-10-05); revised (2026-10-21)
 
 Context: ADR 0011 gives a plugin cache and ledger documents. A knowledge index needs the
 ledger: short documents (a summary pointing to where the full text lives, a topic, a rule)
@@ -21,7 +21,7 @@ Decision:
   room or none, and believed at the integrity its writer gives (ADR 0036). A plugin reads
   only what its transaction is cleared for (`DocumentShelf`).
 - **A ledger document has a place** (ADR 0013), and a window's candidates include the current
-  documents whose place its scope reaches and whose label the window reads. They rank in the
+  documents whose label the window reads, wherever their place. They rank in the
   entries' pool and budget, their scores multiplied by a weight their plugin declares,
   because a second index has statistics of its own (ADR 0005). The model is shown them as
   documents under their plugin's label, never as turns.

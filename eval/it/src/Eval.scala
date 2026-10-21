@@ -17,7 +17,7 @@ import grit.core.id.{DocumentVersionId, EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.Weight
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Routed
 import grit.core.store.Nearby
@@ -105,9 +105,8 @@ object Eval {
   )
 
   /** A case written into the eval's database as its [[Layout]] lays it out: the turn it asks
-    * in, its `[must]` and `[never]` entries by id, every entry's message, the scope a window
-    * for it is drawn within, its `[must]` documents by version, and each of its documents as a
-    * window shows it.
+    * in, its `[must]` and `[never]` entries by id, every entry's message, its `[must]` documents
+    * by version, and each of its documents as a window shows it.
     */
   final case class Loaded(
       c: Case,
@@ -116,7 +115,6 @@ object Eval {
       must: Vector[EntryId],
       messages: Map[EntryId, Message],
       never: Vector[EntryId] = Vector.empty,
-      scope: Scope = Scope.Off,
       mustDocuments: Vector[DocumentVersionId] = Vector.empty,
       documents: Map[DocumentVersionId, Message] = Map.empty
   )
@@ -148,7 +146,6 @@ object Eval {
         rows.filter(_.line.must).map(_.id),
         rows.map(r => r.id -> Layout.message(r.line)).toMap,
         rows.filter(_.line.never).map(_.id),
-        layout.scope,
         layout.documents.zip(written.documents).collect { case (d, v) if d.must => v },
         kept.map(d => d.version -> Shown.document(d, terms.label)).toMap
       )
@@ -206,8 +203,8 @@ object Eval {
     // first of the writer's pins cleared for what the case's turn knows (ADR 0031).
     val routed =
       engine.db.read(Subject.Turn(loaded.turn))(Right(Routed.of)).left.map(e => s"eval: $e")
-    // The settings are one row for the whole database: each run sets the case's scope, so
-    // no case sees another's conversations, and its strategy's weight.
+    // The settings are one row for the case's own database: each run sets its strategy's
+    // weight.
     val weight = strategy match {
       case Strategy.Retrieval(_, _, w, _) =>
         Weight.of(w).fold(e => sys.error(s"eval: $e"), identity)
@@ -228,7 +225,7 @@ object Eval {
       .write(Subject.Public)(
         engine.lifecycle.set(
           LifecycleSettings
-            .of(d.windows, d.balance, d.settle, d.resolveAt, d.asks, Locality(loaded.scope, weight))
+            .of(d.windows, d.balance, d.settle, d.resolveAt, d.asks, weight)
             .fold(e => sys.error(s"eval: $e"), identity)
         )
       )

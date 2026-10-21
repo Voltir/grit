@@ -882,7 +882,7 @@ private[turn] object TurnSteps {
   )
 
   /** What `turn`'s conversation's strand said from the horizon before its first entry
-    * (`all`'s) until `until`, in the scope in force ([[Along.read]]); nothing for a
+    * (`all`'s) until `until` ([[Along.read]]); nothing for a
     * conversation gone.
     */
   private[turn] def strandOf(
@@ -895,7 +895,6 @@ private[turn] object TurnSteps {
     Along
       .read(
         stitching.stitches,
-        stitching.lifecycle,
         conversations,
         turn.conversationId,
         all,

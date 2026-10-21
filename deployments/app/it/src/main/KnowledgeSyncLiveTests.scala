@@ -16,7 +16,7 @@ import grit.core.job.{Grace, SlotRule}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Locality, Namespace, Place, Prefix, Scope, Service, Weight, WorksIn}
+import grit.core.place.{Namespace, Place, Service, Weight, WorksIn}
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload, Tx}
@@ -74,7 +74,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
   private val internal = Label.at(Level.Internal)
   private val confidential = Label.at(Level.Confidential)
 
-  /** The place the cards are kept at, which every conversation's scope holds. */
+  /** The place the cards are kept at. */
   private val at: Place = github.place
 
   /** The room labelled public; every other is internal. */
@@ -152,7 +152,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
         d.settle,
         d.resolveAt,
         d.asks,
-        Locality(Scope(Vector(Prefix.Room, Prefix.At(at))), Weight.Default)
+        Weight.Default
       )
     )
     Deployment
@@ -440,7 +440,7 @@ object KnowledgeSyncLiveTests extends TestSuite {
       }
     }
 
-    test("a turn in a public room, its scope holding the cards' place, holds no card") {
+    test("a turn in a public room holds no card, though it draws on the cards' place") {
       world("knowledge_public", None, visibility(internal)) { (config, engine, d, first, _, _) =>
         val _ = synced(engine, d, first)
         val _ = asked(engine, publicRoom, "public-1", runbook)

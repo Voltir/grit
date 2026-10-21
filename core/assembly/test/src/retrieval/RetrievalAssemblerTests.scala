@@ -54,11 +54,11 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.Account
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
-import grit.core.place.{Locality, Place, Prefix, Scope, Weight}
+import grit.core.place.{Place, Weight}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{InMemoryStitchStore, StitchJson, StitchStore, Tuning}
 import grit.core.store.{
@@ -377,7 +377,7 @@ object RetrievalAssemblerTests extends TestSuite {
       budget: Long,
       search: EntrySearch = new Scripted(),
       at: Long = 6,
-      locality: Locality = Locality.Default,
+      weight: Weight = Weight.Default,
       origin: Origin = Origin.Task("conversation", "c1"),
       stitches: Option[StitchStore] = None,
       tuning: Tuning = Tuning.Default,
@@ -395,7 +395,7 @@ object RetrievalAssemblerTests extends TestSuite {
           world,
           budget,
           search,
-          locality,
+          weight,
           origin,
           stitches,
           tuning,
@@ -428,7 +428,7 @@ object RetrievalAssemblerTests extends TestSuite {
       world: World,
       budget: Long,
       search: EntrySearch,
-      locality: Locality = Locality.Default,
+      weight: Weight = Weight.Default,
       origin: Origin = Origin.Task("conversation", "c1"),
       stitches: Option[StitchStore] = None,
       tuning: Tuning = Tuning.Default,
@@ -451,7 +451,7 @@ object RetrievalAssemblerTests extends TestSuite {
             LifecycleSettings.Default.settle,
             LifecycleSettings.Default.resolveAt,
             3,
-            locality
+            weight
           )
           .getOrElse(sys.error("settings"))
       )(using TestTx.fake)
@@ -648,7 +648,7 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test(
-      "a closing elsewhere in scope is a candidate: a first turn writes a query, and a match shows the newest kept record"
+      "a closing elsewhere is a candidate: a first turn writes a query, and a match shows the newest kept record"
     ) {
       val world = store(ask)
       val ops = elsewhere(world, "ops", close = true, exchange("when is the freeze?", "Friday"))
@@ -713,34 +713,34 @@ object RetrievalAssemblerTests extends TestSuite {
         Vector(Nearby.Closed(small, placeOf("small"), seqs(world, firstClosing(small))(0)))
     }
 
-    test(
-      "under scope room a thread draws on its own channel's threads, open and closed, and not another channel's"
-    ) {
-      val channel = (c: ConversationId) =>
+    test("a direct message's window draws on an open channel thread's period") {
+      val dm = Origin.Direct(TestAccounts.sourced("slack:T1/U1"), "1.0")
+      val origins = (c: ConversationId) =>
         ConversationId.value(c) match {
-          case "c1" => Origin.Slack("T1", "C1", "1.0")
-          case "ops" => Origin.Slack("T1", "C1", "2.0")
-          case "api" => Origin.Slack("T1", "C1", "3.0")
-          case other => Origin.Slack("T1", "C2", other)
+          case "c1" => dm
+          case other => Origin.Slack("T1", "C1", other)
         }
-      val world = closed(Vector(Vector(ask)), Vector.empty, channel)
-      val ops = elsewhere(world, "ops", close = true, exchange("freeze?", "Friday"))
-      val api = elsewhere(world, "api", close = false, exchange("flaky?", "TZ"))
-      val far = elsewhere(world, "far", close = true, exchange("freeze?", "Monday"))
-      val near = elsewhere(world, "near", close = false, exchange("flaky?", "TZ"))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val standup = elsewhere(world, "standup", close = false, exchange("deploy when?", "at four"))
       val search = new Scripted()
-      assemble(
+      search.near = Vector((standup, "standup:t0:1", 2.0))
+      val w = assemble(
         world,
-        new Writer(Some("freeze")),
+        new Writer(Some("deploy")),
         budget = 1000,
         search,
         at = 0,
-        Locality(Scope.Room, Weight.Default),
-        Origin.Slack("T1", "C1", "1.0")
+        origin = dm
       )
-      (search.nearAsked.map(_.conversations), search.closedAsked) ==>
-        (Vector(List(api)), Vector(List(ops)))
-      val _ = (far, near)
+      assert(
+        w.nearby.contains(
+          Nearby.Open(
+            standup,
+            Origin.Slack("T1", "C1", "standup").place,
+            seqs(world, "standup:t0:0", "standup:t0:1")
+          )
+        )
+      )
     }
 
     test(
@@ -814,7 +814,7 @@ object RetrievalAssemblerTests extends TestSuite {
       Conversation(asker, origin, Account.Local, Instant.EPOCH, Label.Public)
 
     test(
-      "a thread begun by grit's post is shown first the turn that asked for it, out of its room's scope too, and the asker is not also ranked"
+      "a thread begun by grit's post is shown first the turn that asked for it, and the asker is not also ranked"
     ) {
       val world = postThread(Vector(Vector(posted, why)), Vector.empty)
       val search = new Scripted()
@@ -825,7 +825,6 @@ object RetrievalAssemblerTests extends TestSuite {
         budget = 1000,
         search,
         at = 1,
-        locality = Locality(Scope.Everywhere, Weight.Default),
         origin = thread("2.0"),
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
@@ -839,7 +838,6 @@ object RetrievalAssemblerTests extends TestSuite {
         new Writer(Some("unused")),
         budget = 1000,
         at = 1,
-        locality = Locality(Scope.Room, Weight.Default),
         origin = thread("2.0"),
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
@@ -858,7 +856,6 @@ object RetrievalAssemblerTests extends TestSuite {
           new Writer(Some("unused")),
           budget = 1000,
           at = 1,
-          locality = Locality(Scope.Off, Weight.Default),
           origin = thread("2.0"),
           others = Vector(askerAt(origin)),
           posted = Some(askedFor())
@@ -873,7 +870,6 @@ object RetrievalAssemblerTests extends TestSuite {
         new Writer(Some("unused")),
         budget = 1000,
         at = 1,
-        locality = Locality(Scope.Off, Weight.Default),
         origin = thread("2.0"),
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
@@ -896,7 +892,6 @@ object RetrievalAssemblerTests extends TestSuite {
         new Writer(Some("unused")),
         budget = 1000,
         at = 1,
-        locality = Locality(Scope.Off, Weight.Default),
         origin = thread("2.0"),
         tuning = Tuning.Default.copy(windowTokens = oneLine),
         others = Vector(askerAt(askedIn)),
@@ -930,32 +925,11 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
-    test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {
-      val world = store(ask)
-      elsewhere(world, "api", close = false, exchange("flaky", "TZ"))
+    test("with nothing open elsewhere, no query is written for a first turn") {
       val writer = new Writer(None)
-      assemble(
-        world,
-        writer,
-        budget = 1000,
-        new Scripted(),
-        at = 0,
-        Locality(Scope.Off, Weight.Default)
-      ).nearby ==> Vector()
       val alone = store(ask)
       assemble(alone, writer, budget = 1000, new Scripted(), at = 0).nearby ==> Vector()
       writer.requests ==> Vector()
-    }
-
-    test("a place out of scope is never searched") {
-      val world = store(ask)
-      elsewhere(world, "gone", close = true, exchange("flaky", "TZ"))
-      val kept = elsewhere(world, "kept", close = false, exchange("flaky", "TZ"))
-      elsewhere(world, "far", close = false, exchange("flaky", "TZ"))
-      val search = new Scripted()
-      val scope = Scope(Vector(Prefix.At(placeOf("kept"))))
-      assemble(world, new Writer(Some("q")), 1000, search, at = 0, Locality(scope, Weight.Default))
-      search.nearAsked.map(_.conversations) ==> Vector(List(kept))
     }
 
     test("the weight decides between an own turn and one elsewhere that both match") {
@@ -972,7 +946,7 @@ object RetrievalAssemblerTests extends TestSuite {
           new Writer(Some("database")),
           budget = 72,
           search,
-          locality = Locality(Scope.Everywhere, Weight.of(weight).getOrElse(sys.error("w")))
+          weight = Weight.of(weight).getOrElse(sys.error("w"))
         )
         (world, w)
       }
@@ -1048,7 +1022,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val search = new Scripted("t2:5", "t0:1")
       // Search returns t2 before t0, but scores t0 higher: the window's ranking puts it first.
       search.scores = Vector(1.5, 3.0)
-      val w = Weight.value(Locality.Default.weight)
+      val w = Weight.value(Weight.Default)
       retrieval(entries, 80, search).search(
         AssemblyRequest(TurnRef(c1, TurnSeq(10))),
         WrittenQuery
@@ -1235,7 +1209,7 @@ object RetrievalAssemblerTests extends TestSuite {
       } ==> Vector(Some("Fireworks"))
     }
 
-    test("a document in scope is drawn, ranked by its score times its plugin's weight") {
+    test("a document is drawn, ranked by its score times its plugin's weight") {
       val docs = shelf("notes" -> 1.0, "rollup" -> 4.0)
       val alpha = write(docs, "notes", "a", placeOf("api"), "the probe budget, alpha")
       val beta = write(docs, "rollup", "b", placeOf("ops"), "the probe budget, beta")
@@ -1253,10 +1227,10 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
-    test("a conversation with only a document in scope writes a query; with the scope off, not") {
-      def run(scope: Scope): (Writer, Window) = {
+    test("a conversation with only a document to draw writes a query; with none, not") {
+      def run(written: Boolean): (Writer, Window) = {
         val docs = shelf("notes" -> 1.0)
-        write(docs, "notes", "a", placeOf("api"), "the probe budget")
+        if (written) { val _ = write(docs, "notes", "a", placeOf("api"), "the probe budget") }
         val writer = new Writer(Some("probe budget"))
         (
           writer,
@@ -1265,14 +1239,13 @@ object RetrievalAssemblerTests extends TestSuite {
             writer,
             1000,
             at = 0,
-            locality = Locality(scope, Weight.Default),
             documents = docs
           )
         )
       }
-      val (asked, drawn) = run(Scope.Everywhere)
+      val (asked, drawn) = run(written = true)
       (asked.requests.size, drawn.documents.size) ==> (1, 1)
-      val (off, none) = run(Scope.Off)
+      val (off, none) = run(written = false)
       (off.requests.size, none.documents.size) ==> (0, 0)
     }
 
@@ -1296,22 +1269,6 @@ object RetrievalAssemblerTests extends TestSuite {
         (1L, Vector(named), Vector(v))
     }
 
-    test("a document at a place out of scope is never searched") {
-      val docs = shelf("notes" -> 1.0)
-      write(docs, "notes", "a", placeOf("kept"), "the probe budget")
-      write(docs, "notes", "b", placeOf("far"), "the probe budget")
-      val scope = Scope(Vector(Prefix.At(placeOf("kept"))))
-      assemble(
-        store(ask),
-        new Writer(Some("probe budget")),
-        1000,
-        at = 0,
-        locality = Locality(scope, Weight.Default),
-        documents = docs
-      )
-      docs.asked.map(_.shelves) ==> Vector(Vector(Shelved(plugin("notes"), placeOf("kept"))))
-    }
-
     test("a plugin not declared is never searched") {
       val docs = shelf("notes" -> 1.0)
       write(docs, "notes", "a", placeOf("api"), "the probe budget")
@@ -1329,7 +1286,7 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test(
-      "a conversation with no entries draws no document and writes no query, though one is in scope"
+      "a conversation with no entries draws no document and writes no query, though one is shelved"
     ) {
       val docs = shelf("notes" -> 1.0)
       write(docs, "notes", "a", placeOf("api"), "the probe budget")

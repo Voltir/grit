@@ -254,7 +254,6 @@ object TurnFixtures {
     TurnStitching(
       new grit.core.stitch.InMemoryStitchStore(new InMemoryEntryStore, _ => origin),
       NoSearch,
-      new grit.core.store.InMemoryLifecycleStore,
       grit.core.stitch.Tuning.Default,
       grit.act.phase.Placing
         .Env(
@@ -2046,7 +2045,7 @@ object TurnFixtures {
       val placements = new grit.core.stitch.InMemoryPlacements(
         classifier,
         grit.core.stitch
-          .StitchReads(entries, conversations, lifecycle, stitches, NoSearch, principals),
+          .StitchReads(entries, conversations, stitches, NoSearch, principals),
         FakeDb,
         Tuning.Default,
         StitchedAt.plusSeconds(60)
@@ -2079,7 +2078,6 @@ object TurnFixtures {
           stitching = TurnStitching(
             stitches,
             NoSearch,
-            lifecycle,
             Tuning.Default,
             grit.act.phase.Placing.Env(entries, conversations, FakeDb, placements, new NoWait)
           ),

@@ -22,7 +22,7 @@ import grit.core.id.{
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.Locality
+import grit.core.place.Weight
 import grit.core.store.{Entry, Origin, Payload}
 import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
@@ -40,7 +40,7 @@ object CloseLiveTests extends TestSuite {
   private def minuteIdle(config: DbConfig): Unit = {
     val settings = Windows
       .of(1.minute, 1.day, 1.day)
-      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
+      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Weight.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

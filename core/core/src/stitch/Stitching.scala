@@ -18,14 +18,13 @@ import grit.core.id.ConversationId
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cut, Message}
 import grit.core.period.Probability
-import grit.core.place.{Place, Scope}
+import grit.core.place.Place
 import grit.core.store.{
   Conversation,
   ConversationStore,
   Entry,
   EntrySearch,
   EntryStore,
-  LifecycleStore,
   Payload,
   Principals,
   Reads,
@@ -45,14 +44,12 @@ final case class Exchange private[stitch] (
     offered: Offered
 )
 
-/** Where stitching reads: a conversation's `entries` and origin (`conversations`), the scope
-  * in force (`lifecycle`), the placements kept (`stitches`), the room's `search`, and who said
-  * each message (`principals`).
+/** Where stitching reads: a conversation's `entries` and origin (`conversations`), the
+  * placements kept (`stitches`), the room's `search`, and who said each message (`principals`).
   */
 final case class StitchReads(
     entries: EntryStore,
     conversations: ConversationStore,
-    lifecycle: LifecycleStore,
     stitches: StitchStore,
     search: EntrySearch,
     principals: Principals
@@ -90,7 +87,7 @@ object Stitching {
   val Hits = 30
 
   /** What `turn`'s message is offered ([[offer]]) when it is an [[Opening]], read through
-    * `db` from `reads` under `tuning`, in the scope in force, **whether or not a placement is
+    * `db` from `reads` under `tuning`, **whether or not a placement is
     * kept for it**. `None` when it is not one or nothing is offered; `Left` when the store
     * fails.
     */
@@ -102,8 +99,8 @@ object Stitching {
   ): Either[StoreError, Option[Offer]] =
     opening(reads, db, turn, tuning, keptAsks = true).map(_.map(_._2))
 
-  /** `turn`'s message, read through `db` from `reads` under `tuning` in the scope in force, when
-    * it is an [[Opening]] with no placement kept for it: its entry and what it is offered
+  /** `turn`'s message, read through `db` from `reads` under `tuning`, when it is
+    * an [[Opening]] with no placement kept for it: its entry and what it is offered
     * ([[offer]]). `None` when it is not one, a placement is kept for it, or nothing is offered;
     * `Left` when the store fails.
     */
@@ -146,8 +143,7 @@ object Stitching {
       for {
         all <- reads.entries.list(turn.conversationId)
         conversation <- reads.conversations.get(turn.conversationId)
-        settings <- reads.lifecycle.current()
-      } yield Begun(all, conversation, settings.locality.scope)
+      } yield Begun(all, conversation)
     }.flatMap { b =>
       val first = for {
         c <- b.conversation
@@ -156,13 +152,13 @@ object Stitching {
       } yield (c, e)
       first match {
         case Some((c, e)) =>
-          room(reads, db, c, e, b.scope, tuning, keptAsks).map(_.map(e.id -> _))
+          room(reads, db, c, e, tuning, keptAsks).map(_.map(e.id -> _))
         case None => Right(None)
       }
     }
 
-  /** What `first`, `conversation`'s first message, is offered among the exchanges of its room
-    * that `scope` holds, read through `db`; `None` when nothing is, `first` is not its first
+  /** What `first`, `conversation`'s first message, is offered among the exchanges of its room,
+    * read through `db`; `None` when nothing is, `first` is not its first
     * message, or, unless `keptAsks`, a placement is kept for it already.
     */
   private def room(
@@ -170,7 +166,6 @@ object Stitching {
       db: Reads^,
       conversation: Conversation,
       first: Entry,
-      scope: Scope,
       tuning: Tuning,
       keptAsks: Boolean
   ): Either[StoreError, Option[Offer]] = {
@@ -205,7 +200,7 @@ object Stitching {
       } yield Room(said, hits, links, openings, begun, speakers)
     }.map { r =>
       val mine = Said(conversation.id, conversation.origin.place, first)
-      val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, scope, tuning)
+      val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, tuning)
       Option.when(exchanges.nonEmpty)(
         Offer(
           mine,
@@ -230,14 +225,8 @@ object Stitching {
       speakers: Speakers
   )
 
-  /** What [[opening]] reads: the conversation's entries, the conversation, and the scope in
-    * force.
-    */
-  private final case class Begun(
-      entries: Vector[Entry],
-      conversation: Option[Conversation],
-      scope: Scope
-  )
+  /** What [[opening]] reads: the conversation's entries, and the conversation. */
+  private final case class Begun(entries: Vector[Entry], conversation: Option[Conversation])
 
   /** A reader's thread ([[fit]]): the `strand`'s excerpt, then the conversation's own messages,
     * `cut` the oldest it leaves out whole and `shown` the rest. [[text]] is the thread as one
@@ -330,8 +319,8 @@ object Stitching {
     * from `said` (what `room` said within `tuning.horizon` before it,
     * [[StitchStore.spokenIn]]), `openings` (each exchange's first message,
     * [[StitchStore.openings]]), `hits` (its text's BM25 hits in the room, best first,
-    * [[grit.core.store.EntrySearch.room]]) and `links`: only conversations `scope` holds for
-    * `room`, never `first`'s own, keyed by root; the `tuning.recent` most recently spoken in,
+    * [[grit.core.store.EntrySearch.room]]) and `links`: only conversations within `room`,
+    * never `first`'s own, keyed by root; the `tuning.recent` most recently spoken in,
     * then the `tuning.lexical` best matched of the rest, the next most recent filling the
     * lexical slots nothing matched. Most recently spoken in first.
     */
@@ -342,7 +331,6 @@ object Stitching {
       openings: Vector[Said],
       hits: Vector[EntrySearch.Hit],
       links: Vector[Link],
-      scope: Scope,
       tuning: Tuning
   ): Vector[Exchange] = {
     val at = first.entry.createdAt
@@ -350,7 +338,7 @@ object Stitching {
     def rootOf(c: ConversationId): ConversationId =
       links.find(_.conversation == c).fold(c)(_.root)
     val held = said.filter(s =>
-      s.conversation != first.conversation && s.place.within(room) && scope.holds(room, s.place) &&
+      s.conversation != first.conversation && s.place.within(room) &&
         !s.entry.createdAt.isBefore(from) && s.entry.createdAt.isBefore(at)
     )
     val byRoot = held.groupBy(s => rootOf(s.conversation)).filter(_._1 != first.conversation)

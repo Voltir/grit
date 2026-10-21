@@ -222,7 +222,6 @@ object Triage {
             StitchReads(
               r.entries,
               r.conversations,
-              r.lifecycle,
               r.stitches,
               r.search,
               r.principals

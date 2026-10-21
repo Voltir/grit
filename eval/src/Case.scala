@@ -2,8 +2,8 @@ package grit.eval
 
 /** One eval conversation: its turns, the question asked after them, which entries a window
   * for that question must contain (or must not), the search query a model might write for
-  * it, and the other conversations open or closed beside it, with the scope a window may
-  * draw on them within, and the documents a plugin keeps beside it.
+  * it, and the other conversations open or closed beside it, and the documents a plugin keeps
+  * beside it.
   */
 final case class Case(
     name: String,
@@ -12,7 +12,6 @@ final case class Case(
     ask: String,
     query: Option[String],
     elsewhere: Vector[Case.Elsewhere] = Vector.empty,
-    scope: Option[String] = None,
     documents: Vector[Case.Document] = Vector.empty
 )
 
@@ -61,7 +60,6 @@ object Case {
         ask: Option[Vector[Line]],
         query: Option[String],
         elsewhere: Vector[Elsewhere],
-        scope: Option[String],
         into: Into,
         documents: Vector[Document]
     )
@@ -71,7 +69,7 @@ object Case {
     val lines = text.linesIterator.zipWithIndex.map((l, i) => (l.trim, i + 1)).filter(_._1.nonEmpty)
     lines
       .foldLeft[Either[String, Acc]](
-        Right(Acc(Vector(), Vector(), None, None, Vector(), None, Into.Own, Vector()))
+        Right(Acc(Vector(), Vector(), None, None, Vector(), Into.Own, Vector()))
       ) {
         case (Left(e), _) => Left(e)
         case (Right(acc), (line, n)) =>
@@ -86,9 +84,6 @@ object Case {
             case l if l.startsWith("query:") && acc.query.isEmpty =>
               Right(acc.copy(query = Some(l.drop("query:".length).trim)))
             case l if l.startsWith("query:") => fail("a second query")
-            case l if l.startsWith("scope ") && acc.scope.isEmpty =>
-              Right(acc.copy(scope = Some(l.drop(6).trim)))
-            case l if l.startsWith("scope ") => fail("a second scope")
             case l if l.startsWith("place ") && acc.ask.isEmpty =>
               val words = l.drop(6).trim.split("\\s+").toVector
               words.headOption.filter(_.nonEmpty) match {
@@ -183,7 +178,6 @@ object Case {
                 question,
                 acc.query,
                 acc.elsewhere,
-                acc.scope,
                 acc.documents
               )
             )

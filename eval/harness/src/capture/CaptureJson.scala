@@ -360,9 +360,8 @@ object CaptureJson {
       settle <- f.millis("settle_ms")
       resolveAt <- f.probability("resolve_at")
       asks <- f.int("asks")
-      scope <- f.str("scope")
       weight <- f.num("weight")
-    } yield Settings(idle, retention, ledger, balance, settle, resolveAt, asks, scope, weight)
+    } yield Settings(idle, retention, ledger, balance, settle, resolveAt, asks, weight)
   }
 
   private def writeTriaged(t: Triaged): ujson.Value = ujson.Obj(
@@ -480,7 +479,6 @@ object CaptureJson {
     "settle_ms" -> s.settle.toMillis.toDouble,
     "resolve_at" -> Probability.value(s.resolveAt),
     "asks" -> s.asks,
-    "scope" -> s.scope,
     "weight" -> s.weight
   )
 }

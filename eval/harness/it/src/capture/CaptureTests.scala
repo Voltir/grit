@@ -79,7 +79,6 @@ object CaptureTests extends TestSuite {
                 engine.deliveries,
                 engine.stitches,
                 engine.search,
-                engine.lifecycle,
                 engine.rooms,
                 engine.periods,
                 engine.documents
@@ -114,7 +113,6 @@ object CaptureTests extends TestSuite {
               StitchReads(
                 engine.entries,
                 engine.conversations,
-                engine.lifecycle,
                 engine.stitches,
                 engine.search,
                 engine.principals

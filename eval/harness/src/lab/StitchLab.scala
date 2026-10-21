@@ -67,7 +67,6 @@ object StitchLab {
     val reads = StitchReads(
       engine.entries,
       engine.conversations,
-      engine.lifecycle,
       engine.stitches,
       engine.search,
       engine.principals

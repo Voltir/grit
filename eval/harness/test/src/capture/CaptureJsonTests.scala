@@ -91,7 +91,7 @@ object CaptureJsonTests extends TestSuite {
     "grit_example",
     "grit_eval_20261002",
     Dump(d1, Instant.parse("2026-10-02T20:00:00Z")),
-    Settings(2.hours, 30.days, 90.days, 4096, 1.hour, p(0.8), 3, "room slack:T1", 2.0),
+    Settings(2.hours, 30.days, 90.days, 4096, 1.hour, p(0.8), 3, 2.0),
     Tuning.Default,
     2,
     Constants.Shipped,
@@ -115,6 +115,12 @@ object CaptureJsonTests extends TestSuite {
     test("a manifest is read back as it was written") {
       CaptureJson.readManifest(ujson.read(CaptureJson.writeManifest(manifest).render())) ==>
         Right(manifest)
+    }
+
+    test("a manifest whose settings hold a window's scope, as older captures' do, reads past it") {
+      val older = CaptureJson.writeManifest(manifest)
+      older("settings")("scope") = "room slack:T1"
+      CaptureJson.readManifest(ujson.read(older.render())) ==> Right(manifest)
     }
 
     test("a case missing a field is refused, naming the field and where it is missing") {
