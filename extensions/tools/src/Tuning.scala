@@ -1,7 +1,7 @@
 package grit.tools
 
 import grit.core.model.{CatalogJson, ModelId, ModelRef, ModelSetting, ModelSettings, Upstream}
-import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{Args, ArgsError, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
 /** The tool that proposes how grit should call a model: `propose_model_setting`, a measured
   * setting of one (model, upstream) pair, kept once a person approves it.
@@ -14,7 +14,9 @@ object Tuning {
   /** The most runs a proposed setting may claim. */
   val MaxRuns = 10000
 
-  /** `propose_model_setting`, keeping in `book` what a person approves. */
+  /** `propose_model_setting`, keeping in `book` what a person approves; what it answers is
+    * grit's own words.
+    */
   def propose(book: ModelSettings^): Tool[ModelSetting]^{book} =
     Tool(
       ToolSpec(
@@ -68,6 +70,7 @@ object Tuning {
         s"Keep a model setting for ${f.ref}: $name = $value, held in ${f.held} of ${f.runs} runs of ${f.probe}."
       }),
       f => s"${f.ref} ${CatalogJson.spelled(f.setting)(0)}",
+      Believed.Own,
       f =>
         book.keep(f) match {
           case Right(()) =>

@@ -9,7 +9,7 @@ import grit.core.store.{
   InMemoryUsageLedger,
   StoreError
 }
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -45,6 +45,7 @@ object TurnTallyTests extends TestSuite {
       ),
       Gate.Free,
       p => p,
+      Believed.Default,
       _ => Outcome.Done("seen")
     )
 

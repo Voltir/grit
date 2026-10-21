@@ -42,7 +42,7 @@ import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Db, Focus, Origin}
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
 import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
@@ -106,6 +106,7 @@ object TurnCaptureTests extends TestSuite {
       ),
       Gate.Free,
       t => t,
+      Believed.Default,
       _ => Outcome.Done(Echoed)
     )
 

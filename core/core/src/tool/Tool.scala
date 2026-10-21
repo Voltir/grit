@@ -121,17 +121,18 @@ final class Tool[A] private[tool] (
 
 object Tool {
 
-  /** A tool of `spec` and `gate`, a call shown by `shown`, run by `run`, which is not told the
-    * call it runs; it requires nothing, and its results are believed at [[Believed.Default]]
-    * unless a call says.
+  /** A tool of `spec` and `gate`, a call shown by `shown`, its results believed at `output`
+    * when a call does not say, run by `run`, which is not told the call it runs; it requires
+    * nothing.
     */
   def apply[A](
       spec: ToolSpec[A],
       gate: Gate[A],
       shown: A -> String,
+      output: Believed,
       run: A => Outcome
   ): Tool[A]^{run} =
-    new Hosted(spec, gate, shown).over(run)
+    new Hosted(spec, gate, shown, Integrity.Untrusted, output).over(run)
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
     * under its recorded name and schema, asking first when it did, writing to the

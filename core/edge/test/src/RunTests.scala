@@ -7,6 +7,7 @@ import grit.core.id.{CallSlot, ConversationId, PrincipalId, TestCallSlots, TurnR
 import grit.core.place.{Directory, Place}
 import grit.core.tool.{
   Args,
+  Believed,
   Field,
   Gate,
   Hosted,
@@ -60,12 +61,14 @@ object RunTests extends TestSuite {
           ToolSpec(ToolName("echo"), "Echo.", text),
           Gate.Free,
           t => t,
+          Believed.Default,
           t => Outcome.Done(t)
         ),
         Tool(
           ToolSpec(ToolName("shout"), "Shout.", text),
           Gate.Ask(t => t),
           t => t,
+          Believed.Default,
           t => Outcome.Done(t.toUpperCase)
         )
       )

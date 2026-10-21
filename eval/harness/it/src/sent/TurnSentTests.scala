@@ -18,7 +18,7 @@ import grit.core.speech.{Limits, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning
 import grit.core.store.Origin
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Weighing
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
@@ -58,6 +58,7 @@ object TurnSentTests extends TestSuite {
       ),
       Gate.Free,
       t => t,
+      Believed.Default,
       t => Outcome.Done(s"echoed $t")
     )
 

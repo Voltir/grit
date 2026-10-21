@@ -26,6 +26,7 @@ object ToolboxTests extends TestSuite {
     ),
     Gate.Free,
     t => t,
+    Believed.Default,
     t => Outcome.Done(t)
   )
 
@@ -37,6 +38,7 @@ object ToolboxTests extends TestSuite {
     ),
     Gate.Ask(t => s"shout $t"),
     t => s"\n  $t\nloudly ",
+    Believed.Default,
     t => Outcome.Done(t.toUpperCase)
   )
 
@@ -200,6 +202,7 @@ object ToolboxTests extends TestSuite {
         ToolSpec(ToolName("loud"), "Loud.", Args.of((text = Field.text("What."))).map(_.text)),
         Gate.Free,
         _ => " ",
+        Believed.Default,
         t => Outcome.Done(t)
       )
       // Shown with nothing after its name when what it acts on is blank.

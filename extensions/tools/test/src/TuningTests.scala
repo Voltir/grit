@@ -13,7 +13,7 @@ import grit.core.model.{
   Setting,
   Upstream
 }
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
 
 import utest.*
 
@@ -107,6 +107,10 @@ object TuningTests extends TestSuite {
           )
         case other => sys.error(s"not gated: $other")
       }
+    }
+
+    test("propose_model_setting says what it kept, or why not, as grit's own words") {
+      Tuning.propose(new Book).output ==> Believed.Own
     }
   }
 }

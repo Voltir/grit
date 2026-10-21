@@ -72,6 +72,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{
   Args,
+  Believed,
   Field,
   Gate,
   Hosted,
@@ -570,7 +571,13 @@ object TurnFixtures {
 
   /** A free tool: `peek` reads a file of `ws`. */
   def peek(ws: Workspace^): Tool[String]^{ws} =
-    Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, p => p, reading(ws, _))
+    Tool(
+      ToolSpec(ToolName("peek"), "Reads a file.", path),
+      Gate.Free,
+      p => p,
+      Believed.Default,
+      reading(ws, _)
+    )
 
   /** `peek` alone, free, reading every file as "text": a call of it succeeds. */
   def succeeding: Toolbox[caps.CapSet^{NoCheckout}] =
@@ -580,6 +587,7 @@ object TurnFixtures {
           ToolSpec(ToolName("peek"), "Reads a file.", path),
           Gate.Free,
           p => p,
+          Believed.Default,
           _ => Outcome.Done("text")
         )
       )
@@ -591,6 +599,7 @@ object TurnFixtures {
       ToolSpec(ToolName("poke"), "Reads a file, asking first.", path),
       Gate.Ask(p => s"poke $p"),
       p => p,
+      Believed.Default,
       reading(ws, _)
     )
 
@@ -608,6 +617,7 @@ object TurnFixtures {
           ToolSpec(ToolName("peek"), "Reads a file.", path),
           Gate.Ask(p => s"peek $p"),
           p => p,
+          Believed.Default,
           reading(ws, _)
         ),
         poke(ws)

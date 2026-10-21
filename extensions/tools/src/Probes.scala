@@ -3,7 +3,8 @@ package grit.tools
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Assignment, CatalogVersion, Grade, ModelRef, Pinned, Settings}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolSchema, ToolUse}
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.visibility.Integrity
 
 /** The tool that measures how a model behaves at an upstream: `probe_pair`, a small battery
   * of calls to the pair, each check made once per run, reported as counts a model can turn
@@ -55,6 +56,8 @@ object Probes {
           s"$MaxTokens output tokens each."
       ),
       a => a.ref.toString,
+      // Its report quotes an upstream's error when nothing answers: outside words.
+      Believed.At(Integrity.Untrusted),
       a => {
         val provider = models.provider(pinned(a.ref))
         report(a.ref, a.runs, Vector.fill(a.runs)(once(provider)))

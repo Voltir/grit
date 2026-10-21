@@ -37,6 +37,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{
   Args,
+  Believed,
   Bound,
   Field,
   Gate,
@@ -143,6 +144,7 @@ object TurnOfferTests extends TestSuite {
       ),
       if (asks) Gate.Ask(t => t) else Gate.Free,
       t => t,
+      Believed.Default,
       _ => Outcome.Done(ToolName.value(name))
     )
 
