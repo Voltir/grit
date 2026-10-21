@@ -1,7 +1,10 @@
 package grit.core.recipe
 
+import java.time.Instant
+
+import grit.core.document.{DocLabel, DocumentSearch}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, StoreError, Tx}
 
 /** The team's records near a heard message: what they are searched by. */
 object Records {
@@ -19,6 +22,15 @@ object Records {
     val tail = before.flatMap(e => e.payload.said.orElse(replied(e.payload))).mkString("\n\n")
     if (tail.isEmpty) words else s"$words\n\n${tail.takeRight(TailChars)}"
   }
+
+  /** The documents of every enabled plugin, current at `at`, that the transaction reads, best
+    * matching `heard` and `before`'s tail ([[query]]), each with its plugin's label: at most
+    * `most`, as [[DocumentSearch.nearby]] ranks them.
+    */
+  def near(documents: DocumentSearch, heard: Entry, before: Vector[Entry], most: Int, at: Instant)(
+      using Tx^
+  ): Either[StoreError, Vector[(DocumentSearch.Hit, DocLabel)]] =
+    documents.nearby(query(heard, before), most, at)
 
   /** A reply's text; `None` for one with none and every other payload. */
   private def replied(payload: Payload): Option[String] = payload match {

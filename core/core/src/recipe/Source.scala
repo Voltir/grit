@@ -22,9 +22,8 @@ enum Source {
     */
   case Exchanges
 
-  /** The documents best matching the message and its thread's tail ([[grit.core.recipe.Records.query]]) among
-    * those current at t that the read reads ([[grit.core.document.DocumentSearch.nearby]]): the
-    * best `most`, each `{label}: {its text's first line, at most [[Pool.RecordChars]]} ({the
+  /** The documents best matching the message and its thread's tail among those current at t
+    * that the read reads ([[grit.core.recipe.Records.near]]): the best `most`, each `{label}: {its text's first line, at most [[Pool.RecordChars]]} ({the
     * day it was written})`.
     */
   case Records(most: Int)

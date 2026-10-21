@@ -143,8 +143,10 @@ private[triage] object Speak {
         if (!opening) verdictOn(records.periods, heard)
         else if (root != own) rootVerdict(records.periods, root, heard.createdAt)
         else Right(None)
-      hits <- records.documents.nearby(
-        Records.query(heard, all.filter(_.seq < heard.seq)),
+      hits <- Records.near(
+        records.documents,
+        heard,
+        all.filter(_.seq < heard.seq),
         Cues.Searched,
         heard.createdAt
       )

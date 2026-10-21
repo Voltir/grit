@@ -44,9 +44,8 @@ object Pool {
     *     shows its record alone. None when no placement is kept. What was offered depends on
     *     the strand links that stood when it was placed.
     *   - [[Source.Records]]: the documents current at t that the transaction reads, best
-    *     matching `heard` and the tail of `before` ([[Records.query]];
-    *     [[DocumentSearch.nearby]]), the best `most`; one it does not read is neither shown
-    *     nor counted.
+    *     matching `heard` and the tail of `before` ([[Records.near]]), the best `most`; one it
+    *     does not read is neither shown nor counted.
     *   - Kept in `sources` order, a message source's latest first, records best first: a
     *     message's line, a record's, or an exchange's lines together, is kept while every
     *     kept one's text, and one newline each, fits in `budget`; one that does not fit is
@@ -190,8 +189,8 @@ object Pool {
       * `before`'s tail, each with its plugin's label.
       */
     def recorded(most: Int)(using Tx^): Either[StoreError, Vector[Recorded]] =
-      documents
-        .nearby(Records.query(heard, before), most, t)
+      Records
+        .near(documents, heard, before, most, t)
         .map(_.map((h, label) => Recorded(label, h.document.text, h.document.written)))
 
     private def from(within: FiniteDuration): Instant = t.minusNanos(within.toNanos)
