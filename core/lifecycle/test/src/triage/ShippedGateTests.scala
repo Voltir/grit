@@ -94,7 +94,7 @@ object ShippedGateTests extends TestSuite {
 
     test(
       "the shipped gate answers a v3-tagged message put to grit, and holds any other unasked, " +
-        "on anchor-record"
+        "on records-hold"
     ) {
       def v3(toGrit: Double): Tags =
         Tags.Weighed(
@@ -114,7 +114,7 @@ object ShippedGateTests extends TestSuite {
         decide(TriageQuestions.ShippedSpeak, v3(0.1))
       ) ==> (
         Decision.Answering(turn, "C/1"),
-        Decision.Held(Silence.Unasked(Reading.Yes(Tags.V4.anchorRecord)))
+        Decision.Held(Silence.Unasked(Reading.Yes(Tags.V6.recordsHold)))
       )
     }
   }

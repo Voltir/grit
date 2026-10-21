@@ -28,8 +28,8 @@ object TriageTests extends TestSuite {
 
   private def name(text: String) = QuestionName.read(text).getOrElse(sys.error(text))
 
-  /** v5 answered: gap closes at 0.75; open 0.125, to 0.25, to-grit 0.125, durable 0.875,
-    * anchor-record 0.375; any source 0.5.
+  /** v6 answered: gap closes at 0.75; open 0.125, to 0.25, to-grit 0.125, durable 0.875,
+    * records-hold 0.375; any source 0.5.
     */
   private def decided =
     new Scripted(
@@ -37,15 +37,15 @@ object TriageTests extends TestSuite {
       Vector(0.125, 0.25, 0.125, 0.875, 0.375, 0.5)
     )
 
-  /** v5 answered: gap asks at 1.0; open 0.9, to 0.125, to-grit 0.125, durable 0.5,
-    * anchor-record 0.125: past its gate.
+  /** v6 answered: gap asks at 1.0; open 0.9, to 0.125, to-grit 0.125, durable 0.5,
+    * records-hold 0.875: past its gate.
     */
   private def asking =
-    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.125))
+    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.875))
 
-  /** v5 answered as [[asking]], but to-grit 0.875: put to grit by name, past its gate. */
+  /** v6 answered as [[asking]], but to-grit 0.875: put to grit by name, past its gate. */
   private def named =
-    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.875, 0.5, 0.125))
+    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.875, 0.5, 0.875))
 
   private val limits =
     Limits.suggested(
@@ -55,7 +55,7 @@ object TriageTests extends TestSuite {
 
   private val within = Speaking.Within(limits)
 
-  /** What [[decided]] answers v5 with no source: gap a choice weighing every key, then its
+  /** What [[decided]] answers v6 with no source: gap a choice weighing every key, then its
     * yes/nos.
     */
   private val decision: Tags.Weighed = Tags.Weighed(
@@ -75,7 +75,7 @@ object TriageTests extends TestSuite {
       name("to") -> Answer.YesNo(0.25),
       name("to-grit") -> Answer.YesNo(0.125),
       Earning.Durable -> Answer.YesNo(0.875),
-      name("anchor-record") -> Answer.YesNo(0.375)
+      name("records-hold") -> Answer.YesNo(0.375)
     ),
     "jev-1.13.0",
     Spent
@@ -83,7 +83,7 @@ object TriageTests extends TestSuite {
 
   /** What a triage logs of [[decision]]. */
   private val Decided =
-    "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, anchor-record 0.375 (jev-1.13.0)"
+    "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, records-hold 0.375 (jev-1.13.0)"
 
   /** Someone a heard message may name. */
   private val Bo = grit.core.identity.TestAccounts.account("test:u-Bo")
@@ -131,7 +131,7 @@ object TriageTests extends TestSuite {
     }
 
     test(
-      "live asks v5: gap among five, open, to, to-grit, durable and anchor-record, then one yes/no per source covering the conversation"
+      "live asks v6: gap among five, open, to, to-grit, durable and records-hold, then one yes/no per source covering the conversation"
     ) {
       val w = new World
       val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
@@ -160,7 +160,7 @@ object TriageTests extends TestSuite {
           "to",
           "to-grit",
           "durable",
-          "anchor-record",
+          "records-hold",
           "source:github"
         )
       )
@@ -468,7 +468,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor-record 0.125 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
       (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
       val history = durable.history(t.workflowId)
@@ -497,7 +497,7 @@ object TriageTests extends TestSuite {
         w.speech.decisions.map(_._2),
         w.started
       ) ==> (
-        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor-record 0.125 (jev-1.13.0); drafting, not started: the queue is down",
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875 (jev-1.13.0); drafting, not started: the queue is down",
         Vector(
           "stitched",
           "ask:triage",
@@ -519,7 +519,7 @@ object TriageTests extends TestSuite {
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(
         w.body(
-          new Scripted(Vector(0, 0, 0, 1), Vector(0.25, 0.125, 0.125, 0.5, 0.125, 0.125)),
+          new Scripted(Vector(0, 0, 0, 1), Vector(0.25, 0.125, 0.125, 0.5, 0.875, 0.125)),
           1,
           within
         )
@@ -582,7 +582,7 @@ object TriageTests extends TestSuite {
         (kinds, w.deliveries.pending(), w.acknowledgements.standing())
       }
       val heldNamed =
-        new Scripted(Vector(1, 0, 0, 0), Vector(0.125, 0.125, 0.875, 0.5, 0.125, 0.125))
+        new Scripted(Vector(1, 0, 0, 0), Vector(0.125, 0.125, 0.875, 0.5, 0.875, 0.125))
       Vector(wanted(asking, within), wanted(heldNamed, within)) ==>
         Vector(
           (Vector("drafting"), Right(Vector.empty), Right(Vector.empty)),

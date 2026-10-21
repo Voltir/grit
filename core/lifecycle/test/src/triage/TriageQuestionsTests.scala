@@ -247,10 +247,10 @@ object TriageQuestionsTests extends TestSuite {
 
     // The words are what the classifier is asked: pinned.
     test(
-      "v5 asks v4's questions but anchor, gap with states, in plain words, and is shipped"
+      "v5 asks v4's questions but anchor, gap with states, in plain words"
     ) {
       val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.shipped(pip)
+      val set = TriageQuestions.v5(pip)
       val v4 = TriageQuestions.v4(pip).questions(catalog)
       val asked = set.questions(catalog)
       asked.keys.map(QuestionName.value).toVector ==> Vector(
@@ -323,10 +323,52 @@ object TriageQuestionsTests extends TestSuite {
         n("to-grit") -> Answer.YesNo(0.9),
         n("anchor-record") -> Answer.YesNo(0.1)
       )
-      (set.speak, TriageQuestions.ShippedSpeak, set.speak.drafts(states, Cues.Empty)) ==>
-        (Tags.V5.drafts, Tags.V5.drafts, Some(false))
+      (set.speak, set.speak.drafts(states, Cues.Empty)) ==> (Tags.V5.drafts, Some(false))
       (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V4.drafts, catalog)) ==>
         (None, None)
+    }
+
+    // The words are what the classifier is asked: pinned.
+    test(
+      "v6 asks records-hold in place of anchor-record, the rest in v5's order and words, and is shipped"
+    ) {
+      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
+      val set = TriageQuestions.shipped(pip)
+      val v5 = TriageQuestions.v5(pip).questions(catalog)
+      val asked = set.questions(catalog)
+      asked.keys.map(QuestionName.value).toVector ==> Vector(
+        "gap",
+        "open",
+        "to",
+        "to-grit",
+        "durable",
+        "records-hold",
+        "source:github",
+        "source:conversations"
+      )
+      // Every One but records-hold in v5's words: an answer under a v5 name means what it did.
+      Vector("gap", "open", "to", "to-grit", "durable").map(q =>
+        asked.get(n(q)) == v5.get(n(q))
+      ) ==>
+        Vector(true, true, true, true, true)
+      asked.get(n("records-hold")) ==> Some(
+        yesNo(
+          "Read new_message, thread, exchanges_in_channel and records_near (when present). " +
+            "Could something the team has written down, such as the records listed, hold an " +
+            "answer to what new_message asks for?"
+        )
+      )
+      asked.collectFirst { case (q, y) if QuestionName.value(q) == "source:github" => y } ==> Some(
+        yesNo(
+          "Read new_message, thread and records_near (when present). Could the source below " +
+            "supply what new_message asks for? The source is the team's GitHub repository: " +
+            "code, issues and pull requests."
+        )
+      )
+      (set.speak, TriageQuestions.ShippedSpeak, TriageQuestions.v6(Persona.Grit).speak) ==>
+        (Tags.V6.drafts, Tags.V6.drafts, Tags.V6.drafts)
+      // Its gate's facts are code's to read: the set asks every reading of it.
+      set.unread(set.speak, Corpora.Empty) ==> None
     }
 
     test("V2 drafts at its bounds: 0.5 passes at least and fails below; a missing answer is None") {

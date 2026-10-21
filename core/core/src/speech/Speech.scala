@@ -130,7 +130,9 @@ enum Silence {
     */
   case Unasked(reading: Reading)
 
-  /** It names `other`, not the assistant; the first such, by id, when it names several. */
+  /** It names `other`, not the assistant; the first such, by id, when it names several. Kept
+    * on messages decided before naming was a fact of the gate ([[grit.core.triage.Fact.Named]]).
+    */
   case AskedOf(other: Account)
 
   /** The assistant's own reply to this message, `by`, is already in the conversation: the
@@ -269,7 +271,6 @@ object Speech {
         },
         () => heard.cues.continued.map(Silence.Continued(_)),
         () => gated(limits, heard),
-        () => heard.reach.asked.toVector.sortBy(Account.written).headOption.map(Silence.AskedOf(_)),
         () => heard.cues.spoken.map(Silence.Spoken(_)),
         () =>
           ledger.turns

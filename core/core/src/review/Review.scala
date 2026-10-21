@@ -59,8 +59,8 @@ object Review {
 
   /** Whether live triage's gate passed: `Some(true)` for a draft, or a hold after the gate
     * (an unanswered earlier turn, the assistant's own reply already here, a thread, room or
-    * deployment rate, the speech cap, the budget); `Some(false)` for a hold at it (`Gated`,
-    * naming someone else); `None` when it was never reached (speaking off, no address, heard
+    * deployment rate, the speech cap, the budget); `Some(false)` for a hold at it (`Gated`, or
+    * `AskedOf`, kept from before naming was a fact of the gate); `None` when it was never reached (speaking off, no address, heard
     * below `Outside`, stale, continued by its author, untagged, `Unasked`).
     */
   def gated(live: Settled): Option[Boolean] = live match {

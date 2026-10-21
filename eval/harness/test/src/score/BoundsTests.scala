@@ -97,7 +97,7 @@ object BoundsTests extends TestSuite {
         heard("3.0", roomB, Some(0.9)),
         // No address: held before any gate.
         heard("4.0", roomB, Some(0.9), reach = Reach(None, Set.empty)),
-        // Names someone: held after the gate.
+        // Names someone: decided by the gate alone, which reads no fact here.
         heard("5.0", roomB, Some(0.9), reach = Reach(Some("addr"), Set(rater))),
         heard("6.0", roomA, Some(0.1)),
         // Its gate's question unanswered: held as unasked by a gate reading it.
@@ -116,8 +116,8 @@ object BoundsTests extends TestSuite {
         limits
       )
       shape(Bounds.swept(grid, cases, verdicts)) ==> Vector(
-        ("open", (5L, 7L, 2), (1L, 3L), 2, 1),
-        ("yes", (2L, 7L, 2), (1L, 2L), 1, 1)
+        ("open", (6L, 7L, 2), (1L, 3L), 2, 1),
+        ("yes", (3L, 7L, 2), (1L, 2L), 1, 1)
       )
     }
 

@@ -14,7 +14,7 @@ import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Payload}
-import grit.core.triage.{Bound, Cues, Gate, Kind, Reading, Tags}
+import grit.core.triage.{Bound, Cues, Fact, Gate, Kind, Reading, Tags}
 import grit.core.visibility.Integrity
 
 import utest.*
@@ -153,15 +153,19 @@ object SpeechTests extends TestSuite {
             held(Silence.Unasked(Reading.Key(gap, "asks")))
         )
       }
-      test("asked of someone else: the first by id") {
-        val asked =
-          heard.copy(reach =
-            Reach(
-              Some("C/1"),
-              Set(TestAccounts.account("slack:T/U2"), TestAccounts.account("slack:T/U1"))
-            )
-          )
-        assert(decide(asked) == held(Silence.AskedOf(TestAccounts.account("slack:T/U1"))))
+      test("a message naming someone else is weighed by the gate, not held AskedOf") {
+        val asked = heard.copy(
+          reach = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1"))),
+          cues = Cues.Empty.copy(named = true)
+        )
+        val unnamed = Gate.all(Gate.Holds(helpful), Tags.isNot(Fact.Named))
+        (
+          decide(asked),
+          decide(asked, s = Speaking.Within(limits.copy(drafts = unnamed)))
+        ) ==> (
+          Decision.Drafting(turn),
+          gated(Gate.Failed(Bound.Below(Reading.Fact(Fact.Named), half), p(1.0)))
+        )
       }
       test("an earlier unprompted turn here still drafting") {
         val previous = TurnRef(ConversationId("c"), TurnSeq(3))

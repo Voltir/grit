@@ -79,12 +79,12 @@ object GateLawsTests extends TestSuite {
     }
 
     test(
-      "all fails when any part fails, with every part's failures in order, whatever is unread; otherwise is Unread at its first unread part; otherwise passes"
+      "all fails when any part fails, with every part's failures in order, each once, whatever is unread; otherwise is Unread at its first unread part; otherwise passes"
     ) {
       broken(for { (x, y) <- pairs; a <- answerSets } yield (x, y, a)) { (x, y, a) =>
         val parts = Vector(x.check(a, Cues.Empty), y.check(a, Cues.Empty))
         val expected =
-          parts.flatMap(failures) match {
+          parts.flatMap(failures).distinct match {
             case first +: rest => Gate.Checked.Fails(first, rest)
             case _ =>
               parts.flatMap(unread).headOption.fold(Gate.Checked.Passes)(Gate.Checked.Unread(_))
@@ -94,7 +94,7 @@ object GateLawsTests extends TestSuite {
     }
 
     test(
-      "either passes when any part passes; otherwise is Unread at its first unread part; otherwise fails with every part's failures in order"
+      "either passes when any part passes; otherwise is Unread at its first unread part; otherwise fails with every part's failures in order, each once"
     ) {
       broken(for { (x, y) <- pairs; a <- answerSets } yield (x, y, a)) { (x, y, a) =>
         val parts = Vector(x.check(a, Cues.Empty), y.check(a, Cues.Empty))
@@ -104,7 +104,7 @@ object GateLawsTests extends TestSuite {
             parts.flatMap(unread).headOption match {
               case Some(r) => Gate.Checked.Unread(r)
               case None =>
-                parts.flatMap(failures) match {
+                parts.flatMap(failures).distinct match {
                   case first +: rest => Gate.Checked.Fails(first, rest)
                   case _ => Gate.Checked.Passes
                 }
@@ -113,14 +113,17 @@ object GateLawsTests extends TestSuite {
       } ==> Vector.empty
     }
 
-    test("Open and all() pass everything; all(g) checks as g, and either(g, g) decides as g") {
+    test(
+      "Open and all() pass everything; all(g), all(g, g) and either(g, g) check as g: a bound failed twice is named once"
+    ) {
       broken(for { g <- depthTwo; a <- answerSets } yield (g, a)) { (g, a) =>
         Gate.Open.check(a, Cues.Empty) == Gate.Checked.Passes && Gate
           .all()
           .check(a, Cues.Empty) == Gate.Checked.Passes &&
-        Gate.all(g).check(a, Cues.Empty) == g.check(a, Cues.Empty) && Gate
+        Gate.all(g).check(a, Cues.Empty) == g.check(a, Cues.Empty) &&
+        Gate.all(g, g).check(a, Cues.Empty) == g.check(a, Cues.Empty) && Gate
           .either(g, g)
-          .drafts(a, Cues.Empty) == g.drafts(a, Cues.Empty)
+          .check(a, Cues.Empty) == g.check(a, Cues.Empty)
       } ==> Vector.empty
     }
 

@@ -94,8 +94,8 @@ enum Gate {
   /** `answers` against it, facts read from `cues` ([[Fact.read]]), never unread, by one rule
     * at every level. `Holds` is `Unread` when `answers` do not answer its reading in its
     * question's kind. `All` `Fails` when any part fails, and
-    * `AnyOf` when every part fails, with every bound its parts failed, in order, and what
-    * each read; `All` `Passes` when every part passes, and `AnyOf` when any part does.
+    * `AnyOf` when every part fails, with every bound its parts failed, each once, in order, and
+    * what each read; `All` `Passes` when every part passes, and `AnyOf` when any part does.
     * Otherwise `Unread`, with its first unread part's reading. Answering more never turns
     * `Passes` or `Fails` into anything else.
     */
@@ -154,7 +154,7 @@ object Gate {
 
   /** Two parts of an `All`, `earlier` and `later`, as one. */
   private def and(earlier: Checked, later: Checked): Checked = (earlier, later) match {
-    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => Checked.Fails(first, (rest :+ f) ++ r)
+    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => joined(first, rest, f +: r)
     case (fails @ Checked.Fails(_, _), _) => fails
     case (_, fails @ Checked.Fails(_, _)) => fails
     case (unread @ Checked.Unread(_), _) => unread
@@ -166,6 +166,15 @@ object Gate {
     case (Checked.Passes, _) | (_, Checked.Passes) => Checked.Passes
     case (unread @ Checked.Unread(_), _) => unread
     case (_, unread @ Checked.Unread(_)) => unread
-    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => Checked.Fails(first, (rest :+ f) ++ r)
+    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => joined(first, rest, f +: r)
   }
+
+  /** `first` and `rest`, then each of `later` not among them: a bound two parts fail is named
+    * once, where it first failed.
+    */
+  private def joined(first: Failed, rest: Vector[Failed], later: Vector[Failed]): Checked =
+    Checked.Fails(
+      first,
+      later.foldLeft(rest)((kept, f) => if (f == first || kept.contains(f)) kept else kept :+ f)
+    )
 }

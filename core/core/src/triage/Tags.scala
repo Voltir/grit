@@ -201,4 +201,54 @@ object Tags {
       */
     val drafts: Gate = V4.drafts
   }
+
+  /** v6, the question set triage asks since it replaced v5: [[V5]]'s names but `anchor-record`,
+    * with `records-hold` in its place; the gate it drafts by, which reads facts code read
+    * ([[Fact]]) beside the answers.
+    */
+  object V6 {
+
+    /** Whether something the team has written down could hold an answer to what its message
+      * asks. Stored under this name: a pin of recorded answers.
+      */
+    val recordsHold: QuestionName = named("records-hold")
+
+    private val half = Probability.clamped(0.5)
+    private val likely = Probability.clamped(0.7)
+
+    private def holds(at: Probability): Gate =
+      Gate.Holds(Bound.AtLeast(Reading.Yes(recordsHold), at))
+
+    /** v6's draft gate: it asks and is still open, and it is put to grit; or nobody in
+      * particular is asked and records could hold an answer; or a record plainly matches
+      * (record score at least 0.5) and records very likely hold one (0.7); or someone was left
+      * waiting (0.7) and records could hold an answer. Unmarked bounds at one half. A message
+      * failing it is held on each bound it failed, once. Every fact sits in a branch of its
+      * `AnyOf`, and its one bound below a fact, [[Fact.Named]]'s, shares its branch with a
+      * reading of `records-hold`: a branch only adds drafts, so no fact holds a message the
+      * gate without that fact's branches would pass. Answers without `records-hold` (v5's)
+      * are decided by `to-grit`, or unread.
+      */
+    val drafts: Gate = Gate.all(
+      V2.asks(half),
+      V2.stillOpen(half),
+      Gate.either(
+        V3.atGrit(half),
+        Gate.all(isNot(Fact.Named), holds(half)),
+        Gate.all(holds(likely), is(Fact.RecordScore)),
+        Gate.all(
+          Gate.Holds(Bound.AtLeast(Reading.Fact(Fact.SettledOnPerson), likely)),
+          holds(half)
+        )
+      )
+    )
+  }
+
+  /** It holds: `fact` at least one half. */
+  def is(fact: Fact): Gate =
+    Gate.Holds(Bound.AtLeast(Reading.Fact(fact), Probability.clamped(0.5)))
+
+  /** It does not: `fact` below one half. */
+  def isNot(fact: Fact): Gate =
+    Gate.Holds(Bound.Below(Reading.Fact(fact), Probability.clamped(0.5)))
 }

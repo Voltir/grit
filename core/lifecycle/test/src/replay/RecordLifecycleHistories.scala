@@ -156,14 +156,14 @@ object RecordLifecycleHistories {
       val id = run(new TriageFixtures.World, durable)
       name -> History("triage", id, Turn.Epoch, "recorded", durable.history(id))
     }
-    // Live triage's set, v5: gap's five keys, then its yes/nos (open, to, to-grit, durable,
-    // anchor-record) and one per source covering the conversation.
+    // Live triage's set, v6: gap's five keys, then its yes/nos (open, to, to-grit, durable,
+    // records-hold) and one per source covering the conversation.
     def decided = new TriageFixtures.Scripted(
       Vector(0.0, 0.125, 0.75, 0.0, 0.125),
       Vector(0.125, 0.25, 0.125, 0.875, 0.375, 0.5)
     )
     def asking =
-      new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.125))
+      new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.875))
     val triages = Vector(
       triaged("triage-tagged") { (w, d) =>
         val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
