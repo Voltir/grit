@@ -105,13 +105,14 @@ final class Tool[A] private[tool] (
         val line = Bound.line(spec.name, shown(args))
         val ask = gate match {
           case Gate.Free => None
-          case Gate.Ask(describe) => Some(describe(args))
+          case Gate.Ask(describe, within) => Some((describe(args), within))
         }
         Right(run match {
           case plain: Tool.Plain[A] =>
-            ask.fold(new Bound.Free(spec.name, line, output, at => plain(args, at)))(shown =>
-              new Bound.Gated(spec.name, line, shown, output, at => plain(args, at))
-            )
+            ask.fold(new Bound.Free(spec.name, line, output, at => plain(args, at))) {
+              (shown, within) =>
+                new Bound.Gated(spec.name, line, shown, within, output, at => plain(args, at))
+            }
           case reading: Tool.Reading[A] =>
             val run = (at: CallSlot, reads: Reads^) => reading(args, at, reads)
             new Bound.Reading(spec.name, line, ask, output, run)
@@ -333,15 +334,16 @@ object Hosted {
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
-        val ask = gate match {
-          case Gate.Free => None
-          case Gate.Ask(describe) => Some(describe(args))
+        val (ask, within) = gate match {
+          case Gate.Free => (None, Gate.AnswerWithin)
+          case Gate.Ask(describe, within) => (Some(describe(args)), within)
         }
         Right(
           new Bound.Hosted(
             spec.name,
             line,
             ask,
+            within,
             arguments,
             repairs,
             spec.retry,
@@ -419,7 +421,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
   def over(run: (A, D) => Outcome): Tool[(A, D)]^{run} = {
     val aimed: Gate[(A, D)] = gate match {
       case Gate.Free => Gate.Free
-      case Gate.Ask(describe) => Gate.Ask(sent => describe(sent._1))
+      case Gate.Ask(describe, within) => Gate.Ask(sent => describe(sent._1), within)
     }
     new Tool[(A, D)](
       ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry, spec.action),

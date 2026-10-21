@@ -2,8 +2,9 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.act.phase.{Asking, Shaped, Shaping}
-import grit.core.act.{Extraction, Posed}
+import grit.act.phase.Gated as CallGate
+import grit.act.phase.{Asking, Calling, Shaped, Shaping}
+import grit.core.act.{Extraction, Gates, Posed}
 import grit.core.approval.Approval
 import grit.core.context.Window
 import grit.core.durable.StreamWriter
@@ -97,12 +98,19 @@ private[turn] final class Rounding[C^](
       case _ => None
     })
 
-  def shown(call: TurnRound.Call): Either[TurnFailure, String] =
+  def asked(call: TurnRound.Call): Either[TurnFailure, CallGate.Ask] = {
+    val gates = Gates.Asker(call.at.looping.answerWithin)
     rebinding(call.at).flatMap(_.rebind(call.slot, call.pending, Extract.Unasked) {
-      case Right(gated: Bound.Gated) => Some(gated.ask)
-      case Right(hosted: Bound.Hosted) => hosted.ask
+      case Right(gated: Bound.Gated) => asking(Calling.gate(gates, gated))
+      case Right(hosted: Bound.Hosted) => asking(Calling.gate(gates, hosted))
       case _ => None
     })
+  }
+
+  private def asking(gated: CallGate): Option[CallGate.Ask] = gated match {
+    case ask: CallGate.Ask => Some(ask)
+    case CallGate.Free | CallGate.Refused(_) => None
+  }
 
   // A call refused, or one that does not bind, is answered at the turn's level: grit's text
   // and what the call sent.

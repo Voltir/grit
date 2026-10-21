@@ -1,5 +1,7 @@
 package grit.core.tool
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.core.approval.Approval
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.CallSlot
@@ -149,12 +151,14 @@ object Bound {
   }
 
   /** A call of a tool a person approves first; `ask` is what they are shown of it, which
-    * may run to many lines ([[Gate.Ask]]).
+    * may run to many lines, and `within` how long its tool waits for their answer
+    * ([[Gate.Ask]]).
     */
   final class Gated private[tool] (
       val tool: ToolName,
       val shown: String,
       val ask: String,
+      val within: FiniteDuration,
       val output: Believed,
       run: CallSlot => Outcome
   ) extends Runs {
@@ -178,7 +182,7 @@ object Bound {
   final class Reading private[tool] (
       val tool: ToolName,
       val shown: String,
-      ask: Option[String],
+      ask: Option[(String, FiniteDuration)],
       output: Believed,
       run: (CallSlot, Reads^) => Outcome
   ) extends Bound {
@@ -186,7 +190,8 @@ object Bound {
     /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
     def through(reads: Reads^): Runs^{this, reads} = ask match {
       case None => new Free(tool, shown, output, at => run(at, reads))
-      case Some(shownFirst) => new Gated(tool, shown, shownFirst, output, at => run(at, reads))
+      case Some((shownFirst, within)) =>
+        new Gated(tool, shown, shownFirst, within, output, at => run(at, reads))
     }
   }
 
@@ -198,7 +203,8 @@ object Bound {
 
   /** A call of a tool an edge runs ([[Hosted]]), read and checked: `arguments` as the model
     * sent them, to be read again under `repairs` by the edge; `ask` is what a person is shown
-    * first when the tool asks, `None` when it runs without asking; `retry` is its tool's;
+    * first when the tool asks, `None` when it runs without asking, and `within` how long its
+    * tool waits for their answer then ([[Gate.Ask]]); `retry` is its tool's;
     * `destination`, the place a writing tool's call named ([[Writing]]), which `arguments` no
     * longer hold, `None` for a tool that declares none; `output`, its tool's
     * ([[Tool.Offered.output]]), what its results are believed at when it runs at no service.
@@ -207,6 +213,7 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       val ask: Option[String],
+      val within: FiniteDuration,
       val arguments: ujson.Value,
       val repairs: Set[grit.core.model.ArgRepair],
       val retry: Retry,

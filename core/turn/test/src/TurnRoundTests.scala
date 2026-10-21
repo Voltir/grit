@@ -89,7 +89,7 @@ object TurnRoundTests extends TestSuite {
         slot: TurnTools.Slot,
         pending: Pending
     ): Either[TurnFailure, Bound.Hosted] = Left(TurnFailure.Store("nothing is hosted"))
-    def shown(call: TurnRound.Call): Either[TurnFailure, String] =
+    def asked(call: TurnRound.Call): Either[TurnFailure, grit.act.phase.Gated.Ask] =
       Left(TurnFailure.Store("nothing asks"))
     def settle(
         call: TurnRound.Call,
@@ -140,7 +140,7 @@ object TurnRoundTests extends TestSuite {
       Window(Vector.empty),
       None,
       budget(n),
-      TurnTools.AnswerWithin
+      grit.core.tool.Gate.AnswerWithin
     )
     val out = durable.run(turn.workflowId)(_ =>
       Flows.run(TurnRound.flow, env, looping) match {

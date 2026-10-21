@@ -1,5 +1,7 @@
 package grit.core.store
 
+import java.time.Instant
+
 import grit.core.id.{DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing}
@@ -73,12 +75,12 @@ enum Payload {
     */
   case Attempt(call: ToolCallId)
 
-  /** A tool call that asks a person first, waiting for their answer: `shown` is what they
-    * are asked to approve. Answered through [[grit.core.inbox.Inbox.answer]]; the call's
-    * result follows once they answer or the wait runs out. Never shown to the model, never
-    * searched.
+  /** A tool call that asks a person first, waiting for their answer until `until` (`None` for an
+    * ask recorded before asks were dated): `shown` is what they are asked to approve. Answered
+    * through [[grit.core.inbox.Inbox.answer]]; the call's result follows once they answer or
+    * the wait runs out. Never shown to the model, never searched.
     */
-  case Ask(call: ToolCallId, shown: String)
+  case Ask(call: ToolCallId, shown: String, until: Option[Instant] = None)
 
   /** A period's closing entry, written when it closed. Searched by its flows; shown to the
     * model as [[grit.core.context.Shown.of]] shows it when a window includes it.

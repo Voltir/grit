@@ -101,18 +101,18 @@ object TurnTools {
   def callId(turn: TurnRef, round: Round): EntryId =
     EntryId(s"call:${WorkflowId.value(turn.workflowId)}:${round.index}")
 
-  /** How long a gated call waits for a person's answer before it is denied as unanswered: a
-    * day, so a local turn left overnight is still waiting in the morning.
-    */
-  val AnswerWithin: FiniteDuration = 24.hours
-
   /** The `ask:n:j` step: an [[Payload.Ask]] entry at [[Slot.askId]], dated `at`, after
     * everything in the conversation, asking a person about `call`, the gated call at `slot`,
-    * by showing them `shown`.
+    * by showing them `shown`, waiting for their answer until `until`.
     */
-  def ask(entries: EntryStore, slot: Slot, call: ToolCallId, shown: String, at: Instant)(using
-      Tx^
-  ): Either[TurnFailure, EntryId] = {
+  def ask(
+      entries: EntryStore,
+      slot: Slot,
+      call: ToolCallId,
+      shown: String,
+      at: Instant,
+      until: Instant
+  )(using Tx^): Either[TurnFailure, EntryId] = {
     val turn = slot.turn
     (for {
       next <- entries.lockNext(turn.conversationId)
@@ -124,7 +124,7 @@ object TurnTools {
           turn.turnSeq,
           None,
           next.seq,
-          Payload.Ask(call, shown),
+          Payload.Ask(call, shown, Some(until)),
           at,
           level
         )

@@ -32,7 +32,7 @@ import grit.core.store.{
   UsageLedger,
   VoiceStore
 }
-import grit.core.tool.{Tool, ToolSets, Toolbox}
+import grit.core.tool.{Gate, Tool, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
@@ -176,7 +176,8 @@ final case class TurnHosting(
   * ([[grit.core.store.Audience.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
   * `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]); `budget`
   * bounds its model calls, the last made with tools off; a call a person approves first
-  * waits `answerWithin` for their answer. `worksIn` gives a conversation with no directory
+  * waits its tool's own time for their answer ([[grit.core.tool.Gate.Ask]]), at most
+  * `answerWithin`. `worksIn` gives a conversation with no directory
   * its workspace ([[WorksIn.of]]); `reaches` gives an addressed turn the services it reaches
   * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
   * width, and which of those services' tools it is offered, by the corpora
@@ -189,7 +190,7 @@ final case class TurnTooling[C^](
     hosted: Vector[Tool.Offered],
     jot: Jot^,
     budget: TurnLoop.Rounds,
-    answerWithin: FiniteDuration = TurnTools.AnswerWithin,
+    answerWithin: FiniteDuration = Gate.AnswerWithin,
     worksIn: Vector[WorksIn] = Vector.empty,
     reaches: Vector[Reaches] = Vector.empty,
     recipe: TurnRecipe = TurnRecipe.Shipped,

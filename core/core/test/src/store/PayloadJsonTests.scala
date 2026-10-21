@@ -242,6 +242,22 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"ask","call":"c1","shown":"Run ls"}"""
     }
 
+    test("an ask keeps its until as an instant; an ask recorded without until reads with none") {
+      val until = java.time.Instant.parse("2026-10-21T18:30:00Z")
+      PayloadJson.write(Payload.Ask(ToolCallId("c1"), "Run ls", Some(until))).render() ==>
+        """{"kind":"ask","call":"c1","shown":"Run ls","until":"2026-10-21T18:30:00Z"}"""
+      PayloadJson.read(
+        ujson.read("""{"kind":"ask","call":"c1","shown":"Run ls","until":"2026-10-21T18:30:00Z"}""")
+      ) ==> Right(Payload.Ask(ToolCallId("c1"), "Run ls", Some(until)))
+      PayloadJson.read(ujson.read("""{"kind":"ask","call":"c1","shown":"Run ls"}""")) ==>
+        Right(Payload.Ask(ToolCallId("c1"), "Run ls", None))
+      PayloadJson
+        .read(
+          ujson.read("""{"kind":"ask","call":"c1","shown":"Run ls","until":"tomorrow"}""")
+        )
+        .isLeft ==> true
+    }
+
     test("closed") {
       PayloadJson.write(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"lapsed","closing":""" +

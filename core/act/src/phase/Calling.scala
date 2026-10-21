@@ -31,7 +31,9 @@ enum Gated {
   /** Sent as it is: its tool asks no one. */
   case Free
 
-  /** Sent once a person shown `shown` approves it, waiting up to `within`. */
+  /** Sent once a person shown `shown` approves it, waiting up to `within`: the lesser of its tool's
+    * own wait and its acting's ([[grit.core.act.Gates.Asker]]).
+    */
   case Ask(shown: String, within: FiniteDuration)
 
   /** Not sent: answered `outcome`. */
@@ -73,16 +75,25 @@ object Calling {
     */
   val RunWithin: FiniteDuration = 11.minutes
 
-  /** What `gates` makes of a call bound to `hosted`: `Free` when its tool asks no one; else
-    * `Ask` under [[Gates.Asker]], and under [[Gates.Closed]] `Refused` with a `Failed` saying
-    * its tool asks a person first and nobody waits on this call to approve it.
+  /** What `gates` makes of `bound`, a call whose tool may ask first: `Free` when it asks no
+    * one; else `Ask` under [[Gates.Asker]], and under [[Gates.Closed]] `Refused` with a
+    * `Failed` saying its tool asks a person first and nobody waits on this call to approve it.
     */
-  def gate(gates: Gates, hosted: Bound.Hosted): Gated =
-    (hosted.ask, gates) match {
-      case (None, _) => Gated.Free
-      case (Some(shown), Gates.Asker(within)) => Gated.Ask(shown, within)
-      case (Some(_), Gates.Closed) => Gated.Refused(unapproved(hosted.tool))
+  def gate(gates: Gates, bound: (Bound.Gated | Bound.Hosted)^): Gated = {
+    val ask = bound match {
+      case g: Bound.Gated => Some(g.ask)
+      case h: Bound.Hosted => h.ask
     }
+    val own = bound match {
+      case g: Bound.Gated => g.within
+      case h: Bound.Hosted => h.within
+    }
+    (ask, gates) match {
+      case (None, _) => Gated.Free
+      case (Some(shown), Gates.Asker(within)) => Gated.Ask(shown, own.min(within))
+      case (Some(_), Gates.Closed) => Gated.Refused(unapproved(bound.tool))
+    }
+  }
 
   /** What a call of `tool` is answered when its tool asks a person first and nobody waits to
     * approve it: a `Failed` saying so. It is not sent.

@@ -260,6 +260,24 @@ object TurnJournalTests extends TestSuite {
         Right(Right(Window(Vector(EntrySeq(0)), Vector(AssemblyNote.FellBack("why")))))
     }
 
+    test(
+      "an approve keeps its ask and its call's wait; one recorded as its ask's id alone reads with none"
+    ) {
+      val j = summon[Journaled[Either[TurnFailure, TurnRound.Asked]]]
+      val asked = TurnRound.Asked(
+        EntryId("ask:c1:0:0:0"),
+        Some(scala.concurrent.duration.Duration(10, "min"))
+      )
+      (
+        j.encode(Right(asked)),
+        j.decode("""{"ok":"ask:c1:0:0:0"}""")
+      ) ==> (
+        """{"ok":{"ask":"ask:c1:0:0:0","within":600000}}""",
+        Right(Right(TurnRound.Asked(EntryId("ask:c1:0:0:0"), None)))
+      )
+      roundTrip[Either[TurnFailure, TurnRound.Asked]](Right(asked)) ==> Right(Right(asked))
+    }
+
     test("a classification reads back as written") {
       import grit.core.agenda.{Agenda, Placement, Weights}
       val (a, b) = (Agenda.ItemId("a"), Agenda.ItemId("b"))

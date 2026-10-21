@@ -87,7 +87,7 @@ object Follow {
       }
     }.toSet
     own.collectFirst {
-      case Entry(_, _, _, _, _, Payload.Ask(call, shown), _, _) if !moved.contains(call) =>
+      case Entry(_, _, _, _, _, Payload.Ask(call, shown, _), _, _) if !moved.contains(call) =>
         ChatScreen.Asked(turn.workflowId, call, shown)
     }
   }

@@ -217,6 +217,30 @@ private[turn] object TurnJournal {
       v => v.strOpt.map(EntryId(_)).toRight("entry id: expected a string")
     )
 
+  /** A `call:n:j:approve` step's output: `{"ask": entry id, "within": milliseconds}`; the ask's
+    * entry id alone, as it was written before each call kept its own wait, reads with none.
+    */
+  given askKept: Journaled[Either[TurnFailure, TurnRound.Asked]] =
+    outcome(
+      a =>
+        a.within.fold(ujson.Str(EntryId.value(a.entry)))(w =>
+          ujson.Obj("ask" -> EntryId.value(a.entry), "within" -> w.toMillis.toDouble)
+        ),
+      v =>
+        v match {
+          case ujson.Str(id) => Right(TurnRound.Asked(EntryId(id), None))
+          case o: ujson.Obj =>
+            for {
+              id <- o.value.get("ask").flatMap(_.strOpt).toRight("asked: no ask")
+              ms <- o.value.get("within").flatMap(_.numOpt).toRight("asked: no within")
+            } yield TurnRound.Asked(
+              EntryId(id),
+              Some(scala.concurrent.duration.FiniteDuration(ms.toLong, "ms"))
+            )
+          case _ => Left("asked: expected an entry id or an object")
+        }
+    )
+
   /** An `append` step's output: the reply's entry id alone when nothing was followed, as it
     * was written before follows were recorded; else `{"reply": entry id, "followed": [...]}`
     * ([[PayloadJson.writeVersions]]).

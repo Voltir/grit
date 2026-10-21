@@ -90,12 +90,20 @@ object CallingTests extends TestSuite {
   private def spec(name: ToolName): ToolSpec[String] =
     ToolSpec(name, "A tool.", Args.of((path = Field.text("A path."))).map(_.path))
 
-  /** `fetch` asks no one; `prod` asks a person, shown "Prod {path}?". */
+  /** `fetch` asks no one; `prod` asks a person, shown "Prod {path}?"; `poke` asks them, shown
+    * "Poke {path}?", waiting 10 minutes.
+    */
   private val box: Toolbox[{}] =
     Toolbox
       .of(
         new Hosted(spec(ToolName("fetch")), Gate.Free, p => p, Believed.Default),
-        new Hosted(spec(ToolName("prod")), Gate.Ask(p => s"Prod $p?"), p => p, Believed.Default)
+        new Hosted(spec(ToolName("prod")), Gate.Ask(p => s"Prod $p?"), p => p, Believed.Default),
+        new Hosted(
+          spec(ToolName("poke")),
+          Gate.Ask(p => s"Poke $p?", 10.minutes),
+          p => p,
+          Believed.Default
+        )
       )
       .fold(d => throw new java.lang.AssertionError(d.toString), identity)
 
@@ -266,6 +274,18 @@ object CallingTests extends TestSuite {
 
     test("a call whose tool asks waits on its asker's approval, shown what its tool asks") {
       Calling.gate(Gates.Asker(1.minute), bound("prod")) ==> Gated.Ask("Prod a?", 1.minute)
+    }
+
+    test("a gated call waits its tool's within, at most its loop's") {
+      (
+        Calling.gate(Gates.Asker(1.hour), bound("poke")),
+        Calling.gate(Gates.Asker(1.minute), bound("poke")),
+        Calling.gate(Gates.Asker(30.hours), bound("prod"))
+      ) ==> (
+        Gated.Ask("Poke a?", 10.minutes),
+        Gated.Ask("Poke a?", 1.minute),
+        Gated.Ask("Prod a?", Gate.AnswerWithin)
+      )
     }
 
     test("under closed gates a call whose tool asks is refused, saying nobody can approve it") {

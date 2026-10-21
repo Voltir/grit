@@ -1,6 +1,6 @@
 # 0017. A tool call settles in its own step, a hosted one as a durable request to its workspace, and approval is a durable wait that fails closed
 
-Status: accepted (2026-09-27); revised (2026-10-08)
+Status: accepted (2026-09-27); revised (2026-10-21)
 
 Context: a turn's loop runs the tools its model calls: reads, and changes (writing a file,
 running a command). A step cut short by a crash runs again from the start, and its output is
@@ -46,8 +46,10 @@ a store that cannot be written, or a provider that fails, fails the turn.
 
 **Approval.** For a gated call the turn keeps a `Payload.Ask` entry (`call:n:j:approve`), so
 every edge sees what it is asked, then waits with `Durable.recv` on `Approval.topic(call)`,
-outside any step, up to the turn's answer window (`TurnTools.AnswerWithin`, a day); the wait
-is labelled `call:n:j:wait`. DBOS records the wait's end and the answer, so a restarted turn
+outside any step, up to the call's own wait: its tool's (`Gate.Ask`'s `within`, by default
+`Gate.AnswerWithin`, a day), at most its loop's, met in `Calling.gate`. The ask entry records
+when that wait ends (`until`), and the approve step how long it is; the wait is labelled
+`call:n:j:wait`. DBOS records the wait's end and the answer, so a restarted turn
 waits only for what is left, and a replay gets the same answer. An edge answers with
 `Inbox.answer`, under an idempotency key fixed by the workflow and call: only the first answer
 counts. It fails closed: no answer in time is `TimedOut`, an answer that does not decode is

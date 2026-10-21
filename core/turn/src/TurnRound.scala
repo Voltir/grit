@@ -3,6 +3,7 @@ package grit.turn
 import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
+import scala.jdk.DurationConverters.ScalaDurationOps
 
 import grit.act.phase.Calling
 import grit.core.act.Extraction
@@ -67,8 +68,10 @@ private[turn] object TurnRound {
       */
     def hosted(at: Progress, slot: Slot, pending: Pending): Either[TurnFailure, Bound.Hosted]
 
-    /** What a person is shown of `call` when its tool asks them first. */
-    def shown(call: Call): Either[TurnFailure, String]
+    /** What a person is shown of `call`, whose tool asks them first, and how long it waits for
+      * their answer: the lesser of its tool's wait and its loop's ([[Calling.gate]]).
+      */
+    def asked(call: Call): Either[TurnFailure, grit.act.phase.Gated.Ask]
 
     /** The `call:n:j` body of `call`, refused or free: answered with its outcome, unrun, at
       * the turn's level, or run, an extraction it makes made through `raise`.
@@ -103,7 +106,7 @@ private[turn] object TurnRound {
   /** What a turn's loop runs under: `turn`, offering what `offer` names, its calls made as
     * `routed` says over `seen`, its window, as `budget` allows, `asked` the classification its
     * model is asked about when the classifier was unsure; a call that asks a person first
-    * waits `answerWithin`.
+    * waits at most `answerWithin`.
     */
   final case class Looping(
       turn: TurnRef,
@@ -137,8 +140,8 @@ private[turn] object TurnRound {
       copy(gates = gates.updated(round.index, gate))
   }
 
-  /** What a turn's loop is allowed: `budget`, its model calls, and `answerWithin`, how long a
-    * call that asks a person first waits for them. Recorded with the turn's window, so a
+  /** What a turn's loop is allowed: `budget`, its model calls, and `answerWithin`, the longest
+    * a call that asks a person first waits for them. Recorded with the turn's window, so a
     * rerun keeps the limits its turn started under.
     */
   final case class Limits(budget: TurnLoop.Rounds, answerWithin: FiniteDuration)
@@ -298,24 +301,41 @@ private[turn] object TurnRound {
     believed.fold(entries.believed(turn).left.map(TurnFailure.ofStore))(Right(_))
 
   /** A person asked about `call` in `call:n:j:approve`, shown what its tool asks them, then
-    * their answer, waited for as long as its loop gives them ([[Calling.approval]]); why the
-    * ask was not kept, when it was not, and nothing waited for.
+    * their answer, waited for as long as [[Env.asked]] gives them ([[Calling.approval]]); why
+    * the ask was not kept, when it was not, and nothing waited for.
     */
   private[turn] val approved: Flow[Env, Call, Nothing, Either[TurnFailure, Approval]] = {
-    val asked = Step.transact[Env, Call, Either[TurnFailure, EntryId]](
+    val asked = Step.transact[Env, Call, Either[TurnFailure, Asked]](
       Names.approve,
       c => Subject.Turn(c.slot.turn)
     )(r =>
       c =>
-        (tx: Tx^) ?=>
-          r.shown(c)
-            .flatMap(TurnTools.ask(r.settling.entries, c.slot, c.id, _, r.now()))
+        (tx: Tx^) ?=> {
+          val at = r.now()
+          r.asked(c)
+            .flatMap(a =>
+              TurnTools
+                .ask(r.settling.entries, c.slot, c.id, a.shown, at, at.plus(a.within.toJava))
+                .map(Asked(_, Some(a.within)))
+            )
+        }
     )
     Flow
       .step(asked)
       .keeping
-      .map((c, kept) => kept.map(_ => c))
-      .andThen(Calling.approval[Call](Names.answer, _.id, _.at.looping.answerWithin).right)
+      .map((c, kept) => kept.map(a => Waiting(c, a.within.getOrElse(c.at.looping.answerWithin))))
+      .andThen(Calling.approval[Waiting](Names.answer, _.call.id, _.within).right)
+  }
+
+  /** What `call:n:j:approve` kept: the ask entry `entry`, and how long its call waits for an
+    * answer, `None` for an ask recorded before each call kept its own wait, which waits its
+    * loop's ([[Limits.answerWithin]]).
+    */
+  private[turn] final case class Asked(entry: EntryId, within: Option[FiniteDuration])
+
+  /** A gated call, `call`, waiting up to `within` for a person's answer. */
+  private final case class Waiting(call: Call, within: FiniteDuration) extends OfCall {
+    def slot: Slot = call.slot
   }
 
   /** A reply to `at.round` that called tools, its `calls` to settle before the call `next`. */

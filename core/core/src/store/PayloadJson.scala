@@ -38,8 +38,10 @@ object PayloadJson {
     case Payload.Result(result, shown) =>
       ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
-    case Payload.Ask(call, shown) =>
-      ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
+    case Payload.Ask(call, shown, until) =>
+      val o = ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
+      until.foreach(u => o("until") = u.toString)
+      o
     case Payload.Closed(period, reason, closing) =>
       val o = ujson.Obj(
         "kind" -> "closed",
@@ -138,7 +140,10 @@ object PayloadJson {
           for {
             call <- str(o, "call")
             shown <- str(o, "shown")
-          } yield Payload.Ask(ToolCallId(call), shown)
+            until <-
+              if (o.value.contains("until")) str(o, "until").flatMap(instant).map(Some(_))
+              else Right(None)
+          } yield Payload.Ask(ToolCallId(call), shown, until)
         case "closed" =>
           for {
             n <- long(o, "period")
@@ -383,6 +388,12 @@ object PayloadJson {
       case ujson.Str(s) => Right(s)
       case _ => Left(s"$key is not a string")
     }
+
+  private def instant(text: String): Either[String, java.time.Instant] =
+    scala.util
+      .Try(java.time.Instant.parse(text))
+      .toOption
+      .toRight(s"$text is not an instant")
 
   private def bool(o: ujson.Obj, key: String): Either[String, Boolean] =
     field(o, key).flatMap {

@@ -47,7 +47,7 @@ object TurnHosted {
       .map(e => TurnFailure.Store(e.toString))
 
   /** A hosted call settled: asked about first when it asks (`call:n:j:approve`, then the wait
-    * of up to its loop's `answerWithin`), and sent then (`call:n:j:dispatch`); a free one was
+    * of up to its tool's own time, at most its loop's `answerWithin`), and sent then (`call:n:j:dispatch`); a free one was
     * sent with its round, and [[TurnRound.Call.sent]] says whether it went to a serving edge
     * then. Its outcome, the answer, or why there is none, is kept by `call:n:j`; once the edge
     * rang, that step reads the answer from the request ([[Calling.answer]]); a call not sent, it reads

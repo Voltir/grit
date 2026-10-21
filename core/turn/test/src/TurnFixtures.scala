@@ -604,11 +604,16 @@ object TurnFixtures {
       )
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
-  /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
-  def poke(ws: Workspace^): Tool[String]^{ws} =
+  /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves,
+    * waiting `within` for their answer.
+    */
+  def poke(
+      ws: Workspace^,
+      within: scala.concurrent.duration.FiniteDuration = Gate.AnswerWithin
+  ): Tool[String]^{ws} =
     Tool(
       ToolSpec(ToolName("poke"), "Reads a file, asking first.", path),
-      Gate.Ask(p => s"poke $p"),
+      Gate.Ask(p => s"poke $p", within),
       p => p,
       Believed.Default,
       reading(ws, _)
@@ -1135,7 +1140,7 @@ object TurnFixtures {
         case Payload.Result(Message.ToolResult(_, content, isError), _) =>
           Some(s"${if (isError) "error" else "result"}: $content")
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
-        case Payload.Ask(call, shown) =>
+        case Payload.Ask(call, shown, _) =>
           Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>

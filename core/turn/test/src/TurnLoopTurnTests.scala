@@ -1,5 +1,7 @@
 package grit.turn
 
+import scala.concurrent.duration.DurationInt
+
 import grit.assembly.estimate.CharEstimate
 import grit.core.agenda.{Agenda, Placement}
 import grit.core.approval.Approval
@@ -326,13 +328,78 @@ object TurnLoopTurnTests extends TestSuite {
         "replied: reply:c1:0; summarised: summary:c1:0"
       ws.reads ==> 1
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
-      entries.get(slot.askId)(using TestTx.fake).toOption.flatten.map(_.payload) ==>
-        Some(Payload.Ask(ToolCallId("t1"), "poke a.txt"))
+      entries.get(slot.askId)(using TestTx.fake).toOption.flatten.map(_.payload).collect {
+        case Payload.Ask(call, shown, until) => (call, shown, until.nonEmpty)
+      } ==> Some((ToolCallId("t1"), "poke a.txt", true))
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:0:record").take(5) ==>
         Vector("ask:0:record", "call:0:0:approve", "DBOS.recv", "DBOS.sleep", "call:0:0")
       // A watcher is shown the answer's arrival as the wait for it.
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
         Vector("call:0:0:approve", "call:0:0:wait", "call:0:0")
+    }
+
+    test("a gated call waits its tool's within, and its ask is dated until then") {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("", ("t1", "poke", "a.txt")) else calling("poked"))
+      )
+      val turn = say(entries, "poke a")
+      val durable = new InMemoryDurable
+      val box = Toolbox
+        .of[caps.CapSet^{ws}](peek(ws), poke(ws, 10.minutes))
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      val atAsk = crashingAtAsk(entries)
+      assertThrows[InMemoryDurable.Crash](
+        durable.run(turn.workflowId)(
+          tooledBody(
+            atAsk,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            box,
+            5
+          )
+        )
+      )
+      durable.send(
+        turn.workflowId,
+        Approval.topic(ToolCallId("t1")),
+        Approval.encode(Approval.Approved)
+      )
+      val before = java.time.Instant.now()
+      durable.run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          box,
+          5
+        )
+      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      val after = java.time.Instant.now()
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
+      val until = entries
+        .get(slot.askId)(using TestTx.fake)
+        .toOption
+        .flatten
+        .map(_.payload)
+        .collect { case Payload.Ask(_, _, until) =>
+          until
+        }
+        .flatten
+      val ten = java.time.Duration.ofMinutes(10)
+      (
+        until.exists(u => !u.isBefore(before.plus(ten)) && !u.isAfter(after.plus(ten))),
+        durable.history(turn.workflowId).collect {
+          case InMemoryDurable.Step("DBOS.sleep", InMemoryDurable.Outcome.Output(ms)) => ms
+        }
+      ) ==> (true, Vector("600000"))
     }
 
     test("a gated call declined is denied with the reason, and the model reads it") {
