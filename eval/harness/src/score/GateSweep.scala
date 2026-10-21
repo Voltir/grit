@@ -10,11 +10,11 @@ import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.stats.Proportion
 
-/** The bound sweep: draft gates a deployment could ship, each decided by the shipped
+/** The gate sweep: draft gates a deployment could ship, each decided by the shipped
   * [[Speech.decide]] over the messages live's speech decisions weighed, against the review
   * verdicts standing on them.
   */
-object Bounds {
+object GateSweep {
 
   /** Named gates to sweep, each checked under `limits` by [[Speech.decide]] over every case's
     * recorded tags, reach and cues; `limits`' own gate is never read.

@@ -28,8 +28,8 @@ import grit.eval.harness.label.{Rated, Verdicts}
 
 import utest.*
 
-/** The bound sweep: grid points decided by the shipped speech decision. Every id is synthetic. */
-object BoundsTests extends TestSuite {
+/** The gate sweep: grid points decided by the shipped speech decision. Every id is synthetic. */
+object GateSweepTests extends TestSuite {
 
   private val At = Instant.parse("2026-10-20T09:00:00Z")
   private def p(x: Double) = Probability.clamped(x)
@@ -58,8 +58,8 @@ object BoundsTests extends TestSuite {
       yes: Option[Double],
       reach: Reach = Reach(Some("addr"), Set.empty),
       cues: Cues = Cues.Empty
-  ): Bounds.Case =
-    Bounds.Case(
+  ): GateSweep.Case =
+    GateSweep.Case(
       id(s"C1/$ts"),
       Heard(
         TurnRef(ConversationId(s"c$ts"), TurnSeq(1)),
@@ -76,7 +76,7 @@ object BoundsTests extends TestSuite {
   private def rated(v: Verdict): Rated = Rated(shadow, Reason.Both, v, rater, At)
 
   /** Each point's name, drafted hits/n/clusters, welcome hits/n, interrupting and welcome held. */
-  private def shape(points: Vector[Bounds.Point]) =
+  private def shape(points: Vector[GateSweep.Point]) =
     points.map(x =>
       (
         x.name,
@@ -111,11 +111,11 @@ object BoundsTests extends TestSuite {
           id("C1/4.0") -> rated(Verdict.Welcome)
         )
       )
-      val grid = Bounds.Grid(
+      val grid = GateSweep.Grid(
         Vector("open" -> Gate.Open, "yes" -> Gate.bounds(Bound.AtLeast(Reading.Yes(q), p(0.5)))),
         limits
       )
-      shape(Bounds.swept(grid, cases, verdicts)) ==> Vector(
+      shape(GateSweep.swept(grid, cases, verdicts)) ==> Vector(
         ("open", (6L, 7L, 2), (1L, 3L), 2, 1),
         ("yes", (3L, 7L, 2), (1L, 2L), 1, 1)
       )
@@ -134,13 +134,13 @@ object BoundsTests extends TestSuite {
       )
       val cases =
         Vector(heard("1.0", roomA, Some(0.9), cues = cued), heard("2.0", roomB, Some(0.9)))
-      val grid = Bounds.Grid(
+      val grid = GateSweep.Grid(
         Fact.values.toVector.map(f =>
           f.toString -> Gate.bounds(Bound.AtLeast(Reading.Fact(f), p(0.5)))
         ),
         limits
       )
-      shape(Bounds.swept(grid, cases, Verdicts(Map(id("C1/1.0") -> rated(Verdict.Welcome))))) ==>
+      shape(GateSweep.swept(grid, cases, Verdicts(Map(id("C1/1.0") -> rated(Verdict.Welcome))))) ==>
         Fact.values.toVector.map(f => (f.toString, (1L, 2L, 2), (1L, 1L), 0, 0))
     }
 
@@ -153,8 +153,8 @@ object BoundsTests extends TestSuite {
         s"""{"points": [{"name": "b", "gate": {"all": [$bound, {"any": [$fact]}]}}, {"name": "a", "gate": $bound}]}"""
       val atLeast = Bound.AtLeast(Reading.Yes(q), p(0.5))
       (
-        Bounds.Grid.read(text, limits).map(_.points),
-        Bounds.Grid.read(text.replace("\"a\"", "\"b\""), limits).left.map(_.contains("b"))
+        GateSweep.Grid.read(text, limits).map(_.points),
+        GateSweep.Grid.read(text.replace("\"a\"", "\"b\""), limits).left.map(_.contains("b"))
       ) ==> (
         Right(
           Vector(

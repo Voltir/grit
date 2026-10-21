@@ -18,7 +18,6 @@ import grit.eval.harness.score.{
   Agreement,
   Answers,
   Apart,
-  Bounds,
   Brier,
   Cells,
   Changed,
@@ -28,6 +27,7 @@ import grit.eval.harness.score.{
   Cost,
   Decision,
   Drafts,
+  GateSweep,
   Judgement,
   Measure,
   Moved,
@@ -246,7 +246,7 @@ object Report {
   def synthetic(notes: Vector[String], judged: Vector[(String, Vector[CaseJudged])]): String =
     RecipeLines.synthetic(notes, judged)
 
-  /** The bound sweep over `capture`'s `cases` tagged since `since` ([[Bounds.swept]]), as
+  /** The gate sweep over `capture`'s `cases` tagged since `since` ([[GateSweep.swept]]), as
     * markdown, text-free: the cases, their rooms and the `verdicts` standing on them; then one
     * row a grid point, in its order: the cases it drafts and the welcome among them, each with
     * its interval clustered by room (none under [[Proportion.MinClusters]] rooms), the
@@ -255,11 +255,11 @@ object Report {
   def bounds(
       capture: String,
       since: Instant,
-      cases: Vector[Bounds.Case],
+      cases: Vector[GateSweep.Case],
       verdicts: Int,
-      points: Vector[Bounds.Point]
+      points: Vector[GateSweep.Point]
   ): String =
-    BoundLines.of(capture, since, cases, verdicts, points)
+    GateSweepLines.of(capture, since, cases, verdicts, points)
 
   /** One side of a drafts report: its log's `file` name, the `log`, the question set it asks,
     * by name, and that set's `gate`.

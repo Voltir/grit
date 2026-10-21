@@ -104,11 +104,11 @@ import grit.eval.harness.report.{CaseJudged, LabRun, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Against,
-  Bounds,
   Churn,
   Decision,
   Drafting,
   Drafts,
+  GateSweep,
   Given,
   Guarded,
   Judgement,
@@ -1664,10 +1664,10 @@ object Main {
     )
 
   /** `bounds --eval <dir> --capture <yyyymmdd> --url <jdbc> --since <instant> [--grid <file>]`:
-    * the bound sweep ([[Bounds.swept]]) over the capture's cases tagged since `<instant>`, each
+    * the gate sweep ([[GateSweep.swept]]) over the capture's cases tagged since `<instant>`, each
     * as the database at `<url>` kept it ([[Pull.Pulled.heard]]), against the verdicts standing
     * on the messages a review considered since then ([[Pull.verdicts]]). The grid is the one
-    * `<file>` holds ([[Bounds.Grid.read]]), else each question set's draft gate under its name
+    * `<file>` holds ([[GateSweep.Grid.read]]), else each question set's draft gate under its name
     * ([[Sets.all]]); either under [[Limits.suggested]] at a $1 cap. Written to
     * `<dir>/reports/bounds-<yyyymmdd>.md` and printed; the database's login from
     * `GRIT_DATABASE_USER` and `_PASSWORD`. Asks no model.
@@ -1684,8 +1684,8 @@ object Main {
       limits <- DailyCap.of("1").map(Limits.suggested(_, Gate.Open))
       grid <- f
         .get("grid")
-        .fold(Right(Bounds.Grid(Sets.all.map(s => s.name -> s.speak), limits)))(g =>
-          read(Path.of(g)).flatMap(Bounds.Grid.read(_, limits))
+        .fold(Right(GateSweep.Grid(Sets.all.map(s => s.name -> s.speak), limits)))(g =>
+          read(Path.of(g)).flatMap(GateSweep.Grid.read(_, limits))
         )
       manifest <- read(at.resolve("capture.json"))
       casesText <- read(at.resolve("cases.jsonl"))
@@ -1706,7 +1706,7 @@ object Main {
         } yield (pulled, standing)
       )
       (pulled, standing) = got
-      swept = pulled.heard.toVector.map(Bounds.Case(_, _))
+      swept = pulled.heard.toVector.map(GateSweep.Case(_, _))
       _ <- publish(
         dir,
         s"bounds-$capture",
@@ -1715,7 +1715,7 @@ object Main {
           since,
           swept,
           swept.count(c => standing.verdicts.cases.contains(c.id)),
-          Bounds.swept(grid, swept, standing.verdicts)
+          GateSweep.swept(grid, swept, standing.verdicts)
         )
       )
     } yield ()

@@ -2,17 +2,17 @@ package grit.eval.harness.report
 
 import java.time.Instant
 
-import grit.eval.harness.score.Bounds
+import grit.eval.harness.score.GateSweep
 
 /** [[Report.bounds]]'s lines. */
-private[report] object BoundLines {
+private[report] object GateSweepLines {
 
   def of(
       capture: String,
       since: Instant,
-      cases: Vector[Bounds.Case],
+      cases: Vector[GateSweep.Case],
       verdicts: Int,
-      points: Vector[Bounds.Point]
+      points: Vector[GateSweep.Point]
   ): String =
     (Vector(
       s"# bounds: $capture",
