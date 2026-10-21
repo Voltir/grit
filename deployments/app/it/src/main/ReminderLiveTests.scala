@@ -165,7 +165,7 @@ object ReminderLiveTests extends TestSuite {
   private def edge(engine: Engine^, slack: FakeSlack^): SlackEdge^ =
     new SlackEdge(
       slack,
-      Self(TeamId(Team), UserId(Bot)),
+      Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/")),
       EdgeStores(
         engine.inbox,
         engine.administration,

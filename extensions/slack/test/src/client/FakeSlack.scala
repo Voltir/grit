@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
+import grit.core.id.Href
 import grit.core.identity.Standing
 import grit.slack.event.{
   ChannelId,
@@ -49,7 +50,7 @@ final class FakeSlack extends Slack {
 
   /** Who grit is. */
   @caps.unsafe.untrackedCaptures
-  var me = Self(TeamId(Payloads.Team), UserId(Payloads.Bot))
+  var me = Self(TeamId(Payloads.Team), UserId(Payloads.Bot), Href.of(Payloads.Workspace))
 
   /** The people in the workspace, each with the name they show in Slack, if any; anyone else
     * is no such user.

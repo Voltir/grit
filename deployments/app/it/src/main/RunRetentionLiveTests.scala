@@ -142,7 +142,7 @@ object RunRetentionLiveTests extends TestSuite {
         engine,
         new SlackEdge(
           slack,
-          Self(TeamId(Team), UserId(Bot)),
+          Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/")),
           EdgeStores(
             engine.inbox,
             engine.administration,

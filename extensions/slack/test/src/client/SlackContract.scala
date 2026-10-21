@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
+import grit.core.id.Href
 import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
 import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
@@ -47,7 +48,7 @@ abstract class SlackContract extends TestSuite {
   val tests = Tests {
     test("self is the workspace's team and grit's bot user") {
       withSlack() { slack =>
-        slack.self() ==> Right(Self(Team, Bot))
+        slack.self() ==> Right(Self(Team, Bot, Href.of(Address)))
       }
     }
 
@@ -326,6 +327,9 @@ object SlackContract {
 
   /** The workspace's Slack domain, as the recordings name it. */
   val Domain = "grit-contract"
+
+  /** The workspace's address, as `auth.test` names it. */
+  val Address = s"https://$Domain.slack.com/"
   val Ana = UserId("U0000000001")
   val Bot = UserId("U0000000002")
   val Nobody = UserId("U0000000000")

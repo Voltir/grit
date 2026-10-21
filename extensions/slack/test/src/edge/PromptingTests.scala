@@ -155,7 +155,7 @@ object PromptingTests extends TestSuite {
 
     val edge: SlackEdge^ = new SlackEdge(
       slack,
-      Self(TeamId(Team), UserId(Bot)),
+      Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/")),
       EdgeStores(
         inbox,
         InMemoryAdministration.none(),

@@ -8,6 +8,9 @@ object Payloads {
 
   val Team = "T123ABC456"
 
+  /** The workspace's address, as `auth.test` names it. */
+  val Workspace = "https://acme.slack.com/"
+
   /** grit's bot user. */
   val Bot = "U0LAN0Z89"
 

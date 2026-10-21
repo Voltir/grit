@@ -42,7 +42,8 @@ object SlackEdgeLiveTests extends TestSuite {
   import LiveTurn.*
   import Payloads.*
 
-  private val self = Self(TeamId(Team), UserId(Bot))
+  private val self =
+    Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/"))
 
   private def edge(engine: Engine^, slack: FakeSlack): SlackEdge^ =
     new SlackEdge(

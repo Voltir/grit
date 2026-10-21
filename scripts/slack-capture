@@ -75,7 +75,8 @@ def user_kept(u):
 
 
 def kept(body):
-    out = {k: body[k] for k in ["ok", "error", "has_more", "team_id", "user_id", "ts", "permalink"]
+    out = {k: body[k] for k in ["ok", "error", "has_more", "team_id", "user_id", "url", "ts",
+                                "permalink"]
            if k in body}
     if "messages" in body:
         out["messages"] = [{k: m[k] for k in MESSAGE_FIELDS if k in m} for m in body["messages"]]

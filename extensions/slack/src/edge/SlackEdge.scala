@@ -21,7 +21,7 @@ import grit.core.edge.{
   RealmSource,
   ServedEdge
 }
-import grit.core.id.{CallSlot, ConversationId, EntryId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, ConversationId, EntryId, Href, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Realm, Standing}
 import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
@@ -34,7 +34,7 @@ import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
-import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Event, Events, MessageLink, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
@@ -572,9 +572,9 @@ final class SlackEdge(
       }
     }
 
-  /** Records `m`, heard, in its thread's conversation, with whom it names besides grit and,
-    * when it is heard `live`, its thread as where a reply to it would go; nothing in a
-    * conversation grit does not serve.
+  /** Records `m`, heard, in its thread's conversation, with whom it names besides grit, its
+    * link ([[linkTo]]) and, when it is heard `live`, its thread as where a reply to it would
+    * go; nothing in a conversation grit does not serve.
     */
   private def hear(m: Event.Said, origin: Origin, live: Boolean): Either[String, Unit] =
     spoken(m).flatMap {
@@ -591,7 +591,15 @@ final class SlackEdge(
             )
           _ <- opening(m, origin, author)
           _ <- stores.inbox
-            .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked), None)
+            .hear(
+              origin,
+              SourceId(Ts.value(m.ts)),
+              text,
+              author,
+              m.at,
+              Reach(to, asked),
+              linkTo(m.channel, m.thread, m.ts)
+            )
             .left
             .map(_.toString)
         } yield ()
@@ -659,9 +667,10 @@ final class SlackEdge(
         )
     }
 
-  /** Records `message`, the one at `at`, written through `author`, as a turn of `origin`'s
-    * conversation, its reply awaited at `at`, its turn started and the message marked; a
-    * refusal over the cap, or of a sealed thread, answered once in its thread instead.
+  /** Records `message`, the one at `at`, written through `author`, with its link
+    * ([[linkTo]]), as a turn of `origin`'s conversation, its reply awaited at `at`, its turn
+    * started and the message marked; a refusal over the cap, or of a sealed thread, answered
+    * once in its thread instead.
     */
   private def ingest(
       origin: Origin,
@@ -669,7 +678,14 @@ final class SlackEdge(
       message: Message.User,
       author: Account
   ): Either[String, Unit] =
-    stores.inbox.ingest(origin, SourceId(Ts.value(at.answered)), message, author, None) match {
+    stores.inbox
+      .ingest(
+        origin,
+        SourceId(Ts.value(at.answered)),
+        message,
+        author,
+        linkTo(at.channel, at.thread, at.answered)
+      ) match {
       case Left(over @ InboxError.OverCap(_, _, _)) =>
         said(
           s"slack: message ${Ts.value(at.answered)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"
@@ -1042,6 +1058,13 @@ final class SlackEdge(
       using Tx^
   ): Boolean =
     p.label(s).forall(l => Tx.writable(r.place).exists(_.dominates(l)))
+
+  /** The link to message `ts` in the thread rooted at `thread` of `channel`, built from the
+    * workspace's address ([[MessageLink.to]]), never asked of Slack; `None` when Slack gave
+    * grit no address.
+    */
+  private def linkTo(channel: ChannelId, thread: Ts, ts: Ts): Option[Href] =
+    self.workspace.flatMap(MessageLink.to(_, channel, thread, ts))
 
   /** The permalink of the thread `conversation` is, read for `place` ([[Subject.Room]]), when it
     * is a Slack thread of this workspace and Slack links it; `None` otherwise.

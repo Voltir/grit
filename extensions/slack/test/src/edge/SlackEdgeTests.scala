@@ -176,7 +176,7 @@ object SlackEdgeTests extends TestSuite {
     def edge(): SlackEdge^{this} =
       new SlackEdge(
         slack,
-        Self(TeamId(Team), UserId(Bot)),
+        Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/")),
         EdgeStores(
           inbox,
           admin,
@@ -291,6 +291,14 @@ object SlackEdgeTests extends TestSuite {
           .list(c.id)(using TestTx.fake)
           .getOrElse(Vector.empty)
           .map(e => inbox.speech.reach(TurnRef(c.id, e.turnSeq))(using TestTx.fake).getOrElse(None))
+      }
+
+    /** The link each entry of `origin`'s conversation was recorded with, in order. */
+    def linked(origin: Origin): Vector[Option[String]] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
+        val all = inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty)
+        val read = inbox.principals.speakers(all.map(_.id))(using TestTx.fake)
+        all.map(e => read.toOption.flatMap(_.link(e.id)).map(grit.core.id.Href.value))
       }
 
     def pending: Vector[grit.core.edge.Pending] =
@@ -1008,6 +1016,23 @@ object SlackEdgeTests extends TestSuite {
         Vector(t),
         Vector((t, s"$AnasDm/9.0/9.0")),
         Set((ChannelId(AnasDm), Ts("9.0"), "eyes"))
+      )
+    }
+
+    test(
+      "a direct message, a mention and a heard reply are each recorded with the link that opens it in Slack"
+    ) {
+      val w = new World
+      w.slack.deliver(direct("9.0", "what is my first message's id?")) ==> true
+      w.slack.deliver(message("2.0", s"<@$Bot> is the deploy done?")) ==> true
+      w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
+      val dm = Origin.Direct(TestAccounts.sourced(s"slack:$Team/$Ana"), "9.0")
+      (w.linked(dm), w.linked(w.origin("2.0"))) ==> (
+        Vector(Some(s"https://acme.slack.com/archives/$AnasDm/p90")),
+        Vector(
+          Some("https://acme.slack.com/archives/C123ABC456/p20"),
+          Some("https://acme.slack.com/archives/C123ABC456/p21?thread_ts=2.0&cid=C123ABC456")
+        )
       )
     }
 

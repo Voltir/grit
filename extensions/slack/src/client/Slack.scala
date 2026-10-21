@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.core.id.Href
 import grit.core.identity.Standing
 import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
 import grit.slack.text.Post
@@ -44,8 +45,11 @@ object AppToken {
       .toRight("an app-level token starts xapp-")
 }
 
-/** Who grit is in its workspace: the team, and grit's bot user. */
-final case class Self(team: TeamId, bot: UserId)
+/** Who grit is in its workspace: the team, grit's bot user, and the address its messages'
+  * links begin with (`auth.test`'s `url`, [[grit.slack.event.MessageLink.to]]), `None` when
+  * Slack gave none.
+  */
+final case class Self(team: TeamId, bot: UserId, workspace: Option[Href])
 
 /** What a post of grit's carries (Slack message metadata), to be found again. */
 enum Tag {

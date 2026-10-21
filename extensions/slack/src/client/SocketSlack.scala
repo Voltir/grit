@@ -6,6 +6,7 @@ import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
+import grit.core.id.Href
 import grit.core.identity.{Email, Standing}
 import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
 import grit.slack.text.{Post, RichText}
@@ -55,7 +56,7 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
 
   def self(): Either[SlackError, Self] =
     call(methods.authTest(AuthTestRequest.builder().build()))
-      .map(r => Self(TeamId(r.getTeamId), UserId(r.getUserId)))
+      .map(r => Self(TeamId(r.getTeamId), UserId(r.getUserId), Option(r.getUrl).flatMap(Href.of)))
 
   def listen[C^](
       events: String ->{C} Boolean,

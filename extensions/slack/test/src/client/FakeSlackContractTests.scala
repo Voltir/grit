@@ -1,5 +1,6 @@
 package grit.slack.client
 
+import grit.core.id.Href
 import grit.core.identity.Standing
 import grit.slack.event.ResponseUrl
 
@@ -9,7 +10,7 @@ object FakeSlackContractTests extends SlackContract {
 
   private def fake(limited: Int, down: Boolean): FakeSlack = {
     val slack = new FakeSlack
-    slack.me = Self(Team, Bot)
+    slack.me = Self(Team, Bot, Href.of(Address))
     slack.domain = Domain
     slack.names = Map(Ana -> Some("Ana"), Bot -> Some("grit"), Gia -> Some("Gia"))
     slack.standings = Map(Ana -> AnaStanding, Bot -> Standing.Outside, Gia -> Standing.Outside)
