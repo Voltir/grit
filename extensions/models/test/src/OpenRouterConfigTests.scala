@@ -262,6 +262,15 @@ object OpenRouterConfigTests extends TestSuite {
       overlay("GRIT_EFFORT" -> " ") ==> Right(seedLike)
     }
 
+    test("an effort variable on a ladder with no standard rung changes nothing") {
+      val strongOnly = seedLike.copy(turn =
+        Ladder
+          .of(Vector(Rung(Grade.Strong, seedSummary)))
+          .getOrElse(throw new java.lang.AssertionError("ladder"))
+      )
+      OpenRouterConfig.policy(Map("GRIT_EFFORT" -> "high"), strongOnly) ==> Right(strongOnly)
+    }
+
     test(
       "an effort variable naming no effort is NotAnEffort, naming the variable, never the value"
     ) {
