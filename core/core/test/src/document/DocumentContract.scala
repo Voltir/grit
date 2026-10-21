@@ -486,10 +486,10 @@ abstract class DocumentContract extends TestSuite {
         Vector(Shelved(p, place("x")), Shelved(q, place("z")))
     }
     test(
-      "nearby: the best matches among enabled plugins' documents current at its time that the transaction reads, best first, at most limit"
+      "nearby: the best matches among enabled plugins' documents current at its time that the transaction reads, best first, at most limit, each with its plugin's label"
     ) {
       val (p, q, r) = (name("doc-nearby"), name("doc-nearby-q"), name("doc-nearby-r"))
-      transaction(ok(store.declare(Vector(p -> terms(), q -> terms()))))
+      transaction(ok(store.declare(Vector(p -> terms(), q -> terms(label = "decisions")))))
       val kp = keeper(p, terms())
       put(kp, "a", "apple apple pear", 1, where = place("here"))
       put(kp, "b", "apple pear plum", 1, where = place("elsewhere"))
@@ -497,10 +497,12 @@ abstract class DocumentContract extends TestSuite {
       put(keeper(q, terms()), "theirs", "apple apple apple", 1, where = place("there"))
       put(keeper(r, terms()), "undeclared", "apple apple apple", 1)
       def near(query: String, limit: Int) =
-        keys(transaction(ok(search.nearby(query, limit, at(5)))).map(_.document))
+        transaction(ok(search.nearby(query, limit, at(5)))).map((h, l) =>
+          DocKey.value(h.document.key) -> DocLabel.value(l)
+        )
       (near("apple", 5), near("apple", 2), near("quince", 5), near("apple", 0)) ==> (
-        Vector("theirs", "a", "b"),
-        Vector("theirs", "a"),
+        Vector("theirs" -> "decisions", "a" -> "notes", "b" -> "notes"),
+        Vector("theirs" -> "decisions", "a" -> "notes"),
         Vector(),
         Vector()
       )
@@ -527,7 +529,7 @@ abstract class DocumentContract extends TestSuite {
         )
       )
       def near(clearance: Clearance) =
-        keys(opened(clearance)(ok(search.nearby("apple", 1, at(5)))).map(_.document))
+        keys(opened(clearance)(ok(search.nearby("apple", 1, at(5)))).map(_._1.document))
       (near(Clearance.of(Label.Public)), near(Clearance.of(TestLabels.Trial))) ==> (
         Vector("low"),
         Vector("high")

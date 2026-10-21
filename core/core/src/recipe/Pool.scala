@@ -190,16 +190,9 @@ object Pool {
       * `before`'s tail, each with its plugin's label.
       */
     def recorded(most: Int)(using Tx^): Either[StoreError, Vector[Recorded]] =
-      for {
-        hits <- documents.nearby(Records.query(heard, before), most, t)
-        // The terms in force are read only when a document is left to label.
-        terms <- if (hits.isEmpty) Right(Vector.empty) else documents.declared()
-        labels = terms.toMap
-      } yield hits.flatMap(h =>
-        labels
-          .get(h.document.plugin)
-          .map(terms => Recorded(terms.label, h.document.text, h.document.written))
-      )
+      documents
+        .nearby(Records.query(heard, before), most, t)
+        .map(_.map((h, label) => Recorded(label, h.document.text, h.document.written)))
 
     private def from(within: FiniteDuration): Instant = t.minusNanos(within.toNanos)
   }

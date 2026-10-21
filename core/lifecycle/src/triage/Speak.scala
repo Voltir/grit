@@ -153,7 +153,7 @@ private[triage] object Speak {
       spoken = Speech.spoken(heard, all, read.strand.shown).map(_.by),
       continued = (later.filter(theirs) ++ followers).minByOption(_.createdAt).map(_.id),
       settled = settled,
-      records = hits.headOption.map(h => Cues.Match(h.document.plugin, h.score, hits.size))
+      records = hits.headOption.map((h, _) => Cues.Match(h.document.plugin, h.score, hits.size))
     )
   }
 

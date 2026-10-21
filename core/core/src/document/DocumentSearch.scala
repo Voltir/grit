@@ -37,18 +37,19 @@ trait DocumentSearch {
   ): Either[StoreError, Vector[DocumentSearch.Hit]]
 
   /** The documents of every enabled plugin, current at `at`, that its transaction reads and that
-    * match `text`: best first, at most `limit`, as [[search]] ranks them. Empty when `limit` is
-    * not positive or nothing matches.
+    * match `text`, each with its plugin's label: best first, at most `limit`, as [[search]]
+    * ranks them. Empty when `limit` is not positive or nothing matches.
     */
   final def nearby(text: String, limit: Int, at: Instant)(using
       Tx^
-  ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+  ): Either[StoreError, Vector[(DocumentSearch.Hit, DocLabel)]] =
     for {
       plugins <- declared()
       shelves <-
         if (plugins.isEmpty) Right(Vector.empty) else shelved(plugins.map(_._1), at)
       hits <- if (shelves.isEmpty) Right(Vector.empty) else search(shelves, text, limit, at)
-    } yield hits
+      labels = plugins.toMap
+    } yield hits.flatMap(h => labels.get(h.document.plugin).map(t => h -> t.label))
 
   /** The versions among `versions` still kept, holding something and read by its transaction,
     * in their order.
