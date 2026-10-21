@@ -1,6 +1,6 @@
 package grit.core.review
 
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, TurnRef}
 import grit.core.identity.Account
 import grit.core.speech.{InMemorySpeechStore, SpeechStore}
 import grit.core.store.{
@@ -38,6 +38,10 @@ object InMemoryReviewTests extends ReviewContract {
 
   protected def transactionUnder[A](visibility: Visibility)(body: (Tx^) ?=> A): A =
     body(using TestTx.fake(Clearance.of(Label.Public), visibility))
+
+  // The fake keeps a decision's cues as given, so one kept before cues is one given Cues.Empty,
+  // what such a row reads as.
+  protected def uncued(turn: TurnRef): Unit = ()
 
   protected def conversation(origin: Origin, label: Label): ConversationId =
     transaction(kept.findOrCreate(origin, Account.Local, label))

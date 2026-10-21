@@ -1,6 +1,8 @@
 package grit.dbos.engine
 
-import grit.core.id.ConversationId
+import scala.util.Using
+
+import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.review.{ReviewContract, ReviewStore}
 import grit.core.speech.SpeechStore
 import grit.core.store.{ConversationStore, EntryStore, Origin, PeriodStore, Tx}
@@ -40,6 +42,17 @@ object SqlReviewsTests extends ReviewContract {
 
   protected def transactionUnder[A](visibility: Visibility)(body: (Tx^) ?=> A): A =
     LiveDb.under(config, visibility)(body)
+
+  protected def uncued(turn: TurnRef): Unit =
+    transaction { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement("UPDATE grit.speech SET cues = NULL WHERE workflow = ?")
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        val _ = ps.executeUpdate()
+      }
+    }
 
   protected def conversation(origin: Origin, label: Label): ConversationId =
     LiveDb.conversation(config, origin, label).id

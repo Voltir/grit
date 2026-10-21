@@ -96,12 +96,17 @@ abstract class ReviewContract extends TestSuite {
 
   private def p(x: Double) = Probability.clamped(x)
 
-  /** The cues every live decision here keeps: a candidate carries them as kept. */
-  private val cues = Cues(
+  /** Keeps live's decision on `turn` as one kept before cues were: with none at all. */
+  protected def uncued(turn: TurnRef): Unit
+
+  /** The cues live's decision on the message `id` keeps, its own: a candidate carries them as
+    * kept.
+    */
+  private def cues(id: String) = Cues(
     named = true,
     spoken = None,
-    continued = None,
-    settled = Some(Judgement.Weighed(p(0.1), p(0.8), p(0.1), "jev")),
+    continued = Some(EntryId(s"$id:next")),
+    settled = Some(Judgement.Weighed(p(0.1), p(0.8), p(0.1), id)),
     records = None
   )
 
@@ -132,14 +137,16 @@ abstract class ReviewContract extends TestSuite {
   }
 
   /** A heard message `id` as `c`'s next turn, said `at`, in a period opened for it as the
-    * inbox does; live's decision on it as `live`; and `shadowed` kept as each shadow's row.
+    * inbox does; live's decision on it as `live`, keeping its [[cues]], or none unless `cued`;
+    * and `shadowed` kept as each shadow's row.
     */
   private def hear(
       c: ConversationId,
       id: String,
       at: Instant,
       live: Live,
-      shadowed: Vector[(ShadowName, Shadowed)]
+      shadowed: Vector[(ShadowName, Shadowed)],
+      cued: Boolean = true
   ): EntryId = {
     val entry = EntryId(id)
     val turn = transaction {
@@ -160,7 +167,7 @@ abstract class ReviewContract extends TestSuite {
       Reach(Some("C/1"), Set.empty),
       Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
       Integrity.Member,
-      cues
+      if (cued) cues(id) else Cues.Empty
     )
     transaction {
       live match {
@@ -178,6 +185,7 @@ abstract class ReviewContract extends TestSuite {
       }
       shadowed.foreach((n, row) => right(shadows.record(entry, n, row, at)))
     }
+    if (!cued) uncued(turn)
     entry
   }
 
@@ -193,7 +201,7 @@ abstract class ReviewContract extends TestSuite {
         Live.As(below),
         Vector(shadow -> answered(ShadowAnswers.Named(answers)))
       )
-      Candidate(id, c, At.plusSeconds(i.toLong), below, shadow, answers, cues)
+      Candidate(id, c, At.plusSeconds(i.toLong), below, shadow, answers, cues(s"$prefix:$i"))
     }
 
   /** `c`'s prompt as the store names one, by its entry alone ([[ReviewStore]]): the rest is
@@ -266,6 +274,7 @@ abstract class ReviewContract extends TestSuite {
       val set = Vector(shadow -> answered(ShadowAnswers.Named(answers)))
       val late = hear(c, "rv-cand:late", At.plusSeconds(20), Live.As(below), set)
       val early = hear(c, "rv-cand:early", At.plusSeconds(10), Live.As(passed), set)
+      val uncued = hear(c, "rv-cand:uncued", At.plusSeconds(15), Live.As(below), set, cued = false)
       val _ = Vector(
         hear(c, "rv-cand:unsettled", At.plusSeconds(30), Live.Unsettled, set),
         hear(c, "rv-cand:undecided", At.plusSeconds(31), Live.Undecided, set),
@@ -295,8 +304,9 @@ abstract class ReviewContract extends TestSuite {
         hear(c, "rv-cand:before", At.minusSeconds(10), Live.As(below), set)
       )
       val all = Vector(
-        Candidate(early, c, At.plusSeconds(10), passed, shadow, answers, cues),
-        Candidate(late, c, At.plusSeconds(20), below, shadow, answers, cues)
+        Candidate(early, c, At.plusSeconds(10), passed, shadow, answers, cues("rv-cand:early")),
+        Candidate(uncued, c, At.plusSeconds(15), below, shadow, answers, Cues.Empty),
+        Candidate(late, c, At.plusSeconds(20), below, shadow, answers, cues("rv-cand:late"))
       )
       transaction(
         (reviews.candidates(shadow, At, 10, room), reviews.candidates(shadow, At, 1, room))
