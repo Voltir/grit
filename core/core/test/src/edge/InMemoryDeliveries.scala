@@ -15,6 +15,7 @@ final class InMemoryDeliveries(
 ) extends Deliveries {
 
   /** When a turn's asks are read: an ask whose `until` is not after it is closed. */
+  // Set by the test on its one thread, read by asks on the same thread.
   @caps.unsafe.untrackedCaptures
   var now: Instant = Instant.EPOCH
 
