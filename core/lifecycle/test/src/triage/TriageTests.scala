@@ -684,7 +684,9 @@ object TriageTests extends TestSuite {
         new InMemoryDurable().run(t.workflowId)(w.body(placing, 4, within))
         (
           w.stitches.links(Vector(b)).map(_.map(_.root)),
-          w.speech.decisions.collect { case (h, _, _) if h.turn.conversationId == b => h.cues.settled }
+          w.speech.decisions.collect {
+            case (h, _, _) if h.turn.conversationId == b => h.cues.settled
+          }
         )
       }
       (replied, opened) ==> (Vector(None), (Right(Vector(c)), Vector(None)))

@@ -46,11 +46,17 @@ object PlacingTests extends TestSuite {
   }
 
   private given Journaled[Either[String, Option[String]]] = Journaled.json(
-    _.fold(why => ujson.Obj("unplaced" -> why), p => ujson.Obj("placed" -> p.fold(ujson.Null)(ujson.Str(_)))),
+    _.fold(
+      why => ujson.Obj("unplaced" -> why),
+      p => ujson.Obj("placed" -> p.fold(ujson.Null)(ujson.Str(_)))
+    ),
     v =>
       v.objOpt
         .flatMap(o =>
-          o.get("unplaced").flatMap(_.strOpt).map(Left(_)).orElse(o.get("placed").map(p => Right(p.strOpt)))
+          o.get("unplaced")
+            .flatMap(_.strOpt)
+            .map(Left(_))
+            .orElse(o.get("placed").map(p => Right(p.strOpt)))
         )
         .toRight(s"not a placing: $v")
   )
@@ -74,7 +80,16 @@ object PlacingTests extends TestSuite {
       c <- conversations.findOrCreate(Origin.Task("placing", "c"), Account.Local, Label.Public)
       n <- entries.lockNext(c.id)
       _ <- entries.insert(
-        Entry(EntryId("h"), c.id, n.turnSeq, None, n.seq, Payload.Heard("hm"), Said, Integrity.Member)
+        Entry(
+          EntryId("h"),
+          c.id,
+          n.turnSeq,
+          None,
+          n.seq,
+          Payload.Heard("hm"),
+          Said,
+          Integrity.Member
+        )
       )
     } yield TurnRef(c.id, n.turnSeq)).fold(e => throw new java.lang.AssertionError(s"$e"), identity)
     val clock = new SetClock(now)
@@ -84,7 +99,9 @@ object PlacingTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a placing waits Quiet after the message was said; run again within it, only what is left") {
+    test(
+      "a placing waits Quiet after the message was said; run again within it, only what is left"
+    ) {
       Vector(Said, Said.plusSeconds(4), Said.plusSeconds(12)).map(waited) ==>
         Vector(10.seconds, 6.seconds, Duration.Zero)
     }

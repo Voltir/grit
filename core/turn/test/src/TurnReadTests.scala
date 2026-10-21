@@ -49,9 +49,9 @@ object TurnReadTests extends TestSuite {
     // A history recorded before a patch shipped reads, at the patch's point and only there, as
     // naming its marker next: a run resumed there takes the patch (ADR 0004).
     def expected(k: Int, named: String): Boolean =
-      named == label(names, k) || (Patches.get(named).exists(after =>
-        names.lift(k - 1).exists(after)
-      ) && !names.contains(named))
+      named == label(names, k) || (Patches
+        .get(named)
+        .exists(after => names.lift(k - 1).exists(after)) && !names.contains(named))
     val prefixes = records.indices.toVector.flatMap { k =>
       val read = Flows.read(TurnFlow.flow, turn, records.take(k)).map(_.at) match {
         case Right(Flows.Read.Next(step, at)) if at == k && expected(k, step) => None
