@@ -50,8 +50,8 @@ enum Fact {
     */
   case SettledOnPerson
 
-  /** `s / (1 + s)` over the best record match's score `s`: 0.5 at a score of 1; 0 when
-    * nothing matched.
+  /** `s / (PlainMatch + s)` over the best record match's score `s`: one half at
+    * [[Fact.PlainMatch]]; 0 when nothing matched.
     */
   case RecordScore
 
@@ -66,7 +66,20 @@ enum Fact {
     case RecordScore =>
       // The index scores a match above 0; a score that is not is read as no match.
       cues.records.fold(Probability.Zero)(m =>
-        if (m.score > 0) Probability.clamped(m.score / (1 + m.score)) else Probability.Zero
+        if (m.score > 0) Probability.clamped(m.score / (Fact.PlainMatch + m.score))
+        else Probability.Zero
       )
   }
+}
+
+object Fact {
+
+  /** 20: the best record match's score at which [[Fact.RecordScore]] reads one half, where a
+    * record plainly matches. The document index scores BM25 summed over the query's words, so
+    * any shared word scores, and a longer query scores higher. On one deployment's index of
+    * about 140 documents, a heard message's best match (its words and its thread's tail)
+    * scored a median of 7 and a 90th percentile of 18, a line of small talk alone up to 9.5,
+    * and 120 characters quoted from a document at least 31.
+    */
+  val PlainMatch: Double = 20.0
 }

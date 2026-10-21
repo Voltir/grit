@@ -36,7 +36,7 @@ object GateTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a fact reads its cue: Named 1 or 0, SettledOnPerson the verdict's onPerson, RecordScore s/(1+s); each 0 on Empty"
+      "a fact reads its cue: Named 1 or 0, SettledOnPerson the verdict's onPerson, RecordScore s/(PlainMatch+s); each 0 on Empty"
     ) {
       import grit.core.period.Judgement
       val full = Cues(
@@ -44,7 +44,7 @@ object GateTests extends TestSuite {
         spoken = None,
         continued = None,
         settled = Some(Judgement.Weighed(p(0.125), p(0.75), p(0.125), "jev")),
-        records = Some(Cues.Match(notes, 3.0, 2))
+        records = Some(Cues.Match(notes, 3 * Fact.PlainMatch, 2))
       )
       val unanswered = Cues.Empty.copy(settled = Some(Judgement.Unanswered("no model")))
       val facts = Vector(Fact.Named, Fact.SettledOnPerson, Fact.RecordScore)
@@ -52,7 +52,10 @@ object GateTests extends TestSuite {
         facts.map(read(_, full)),
         facts.map(read(_, Cues.Empty)),
         read(Fact.SettledOnPerson, unanswered),
-        read(Fact.RecordScore, Cues.Empty.copy(records = Some(Cues.Match(notes, 1.0, 1))))
+        read(
+          Fact.RecordScore,
+          Cues.Empty.copy(records = Some(Cues.Match(notes, Fact.PlainMatch, 1)))
+        )
       ) ==> (
         Vector(Some(1.0), Some(0.75), Some(0.75)),
         Vector(Some(0.0), Some(0.0), Some(0.0)),

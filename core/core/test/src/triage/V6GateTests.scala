@@ -37,13 +37,16 @@ object V6GateTests extends TestSuite {
       Tags.V6.recordsHold -> Answer.YesNo(recordsHold)
     )
 
-  private def cues(named: Boolean, settled: Option[Double] = None, score: Option[Double] = None) =
+  /** Cues naming someone or not, a verdict's `settled` on the person, and a record match of
+    * `plain` times [[Fact.PlainMatch]].
+    */
+  private def cues(named: Boolean, settled: Option[Double] = None, plain: Option[Double] = None) =
     Cues(
       named,
       None,
       None,
       settled.map(s => Judgement.Weighed(p(0.1), p(s), p(0.1), "jev")),
-      score.map(Cues.Match(notes, _, 1))
+      plain.map(x => Cues.Match(notes, x * Fact.PlainMatch, 1))
     )
 
   private def drafts(a: VectorMap[QuestionName, Answer], c: Cues) = Tags.V6.drafts.drafts(a, c)
@@ -77,9 +80,9 @@ object V6GateTests extends TestSuite {
       "one naming someone drafts when records very likely hold one and a record plainly matches"
     ) {
       (
-        drafts(answers(toGrit = 0.1, recordsHold = 0.8), cues(named = true, score = Some(1.0))),
-        drafts(answers(toGrit = 0.1, recordsHold = 0.8), cues(named = true, score = Some(0.5))),
-        drafts(answers(toGrit = 0.1, recordsHold = 0.6), cues(named = true, score = Some(4.0)))
+        drafts(answers(toGrit = 0.1, recordsHold = 0.8), cues(named = true, plain = Some(1.0))),
+        drafts(answers(toGrit = 0.1, recordsHold = 0.8), cues(named = true, plain = Some(0.5))),
+        drafts(answers(toGrit = 0.1, recordsHold = 0.6), cues(named = true, plain = Some(4.0)))
       ) ==> (Some(true), Some(false), Some(false))
     }
 
@@ -92,7 +95,7 @@ object V6GateTests extends TestSuite {
     }
 
     test("a message that asks nothing, or is answered, is held on every branch") {
-      val c = cues(named = false, settled = Some(0.9), score = Some(4.0))
+      val c = cues(named = false, settled = Some(0.9), plain = Some(4.0))
       (
         drafts(answers(toGrit = 0.9, recordsHold = 0.9, asks = 0.2), c),
         drafts(answers(toGrit = 0.9, recordsHold = 0.9, open = 0.2), c)
@@ -128,8 +131,8 @@ object V6GateTests extends TestSuite {
         recordsHold <- Vector(0.2, 0.6, 0.8)
         named <- Vector(false, true)
         settled <- Vector(None, Some(0.5), Some(0.8), Some(0.95))
-        score <- Vector(None, Some(0.5), Some(2.0))
-      } yield (answers(toGrit, recordsHold, asks, open), cues(named, settled, score))
+        plain <- Vector(None, Some(0.5), Some(2.0))
+      } yield (answers(toGrit, recordsHold, asks, open), cues(named, settled, plain))
       val outside =
         Fact.values.toVector.filter(f => without(Tags.V6.drafts, f).reads.contains(Reading.Fact(f)))
       val addsNothing = Fact.values.toVector.filterNot(f =>

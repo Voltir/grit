@@ -130,7 +130,7 @@ object BoundsTests extends TestSuite {
         None,
         None,
         Some(Judgement.Weighed(p(0.1), p(0.9), p(0), "settle")),
-        Some(Cues.Match(notes, 3.0, 1))
+        Some(Cues.Match(notes, Fact.PlainMatch, 1))
       )
       val cases =
         Vector(heard("1.0", roomA, Some(0.9), cues = cued), heard("2.0", roomB, Some(0.9)))
