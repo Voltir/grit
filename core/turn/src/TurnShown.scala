@@ -249,21 +249,23 @@ private[turn] object TurnShown {
     * (America/Los_Angeles); the person's own zone is not known; 15:03 UTC.", with the same tail.
     * Outside a direct message the tail ends "Read times other people here give as PDT, this
     * deployment's time, unless they say otherwise." (`zoned.deployment`'s short name). A direct
-    * message's line stays short.
+    * message's line stays short. The UTC time carries its UTC date when that is another day
+    * ("06:30 UTC Thu 2026-10-22", [[Utc.toClock]]), and UTC under any name is said as UTC.
     */
   def answering(at: Instant, zoned: Option[TurnOffer.Zoned], direct: Boolean): String =
     zoned.fold(s"The message you are answering was said ${Utc.toDayMinute(at)}.") { z =>
       val short = Utc.shortName(at, z.dated)
       val whose = z.person.fold(
-        s"this deployment's time (${z.deployment.getId}); the person's own zone is not known"
-      )(p => s"the person's time (${p.getId})")
+        s"this deployment's time (${Utc.canonical(z.deployment).getId}); the person's own zone " +
+          "is not known"
+      )(p => s"the person's time (${Utc.canonical(p).getId})")
       val others =
         if (direct) ""
         else
           s" Read times other people here give as ${Utc.shortName(at, z.deployment)}, this " +
             "deployment's time, unless they say otherwise."
       s"The message you are answering was said ${Utc.toDayMinute(at, z.dated)}, $whose; " +
-        s"${Utc.toClock(at)}. People here give times in their own zone, not UTC: read the times " +
+        s"${Utc.toClock(at, z.dated)}. People here give times in their own zone, not UTC: read the times " +
         s"the person gives as $short unless they say otherwise, and answer with times in $short. " +
         s"Times grit shows you in your view are UTC.$others"
     }

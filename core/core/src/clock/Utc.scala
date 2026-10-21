@@ -37,17 +37,30 @@ object Utc {
   /** `at` to the minute after its weekday in `zone`, its zone's short name after: `Wed 2026-10-21
     * 08:03 PDT`.
     */
-  def toDayMinute(at: Instant, zone: ZoneId): String = ZonedDayMinute.withZone(zone).format(at)
+  def toDayMinute(at: Instant, zone: ZoneId): String =
+    ZonedDayMinute.withZone(canonical(zone)).format(at)
 
   private val ShortName = DateTimeFormatter.ofPattern("zzz", Locale.US)
 
   /** `zone`'s short name at `at`, as [[toDayMinute]] writes it after the minute: `PDT`, or `PST`
-    * in winter.
+    * in winter; `UTC` for UTC under any of its names.
     */
-  def shortName(at: Instant, zone: ZoneId): String = ShortName.withZone(zone).format(at)
+  def shortName(at: Instant, zone: ZoneId): String = ShortName.withZone(canonical(zone)).format(at)
+
+  private val Zone: ZoneId = ZoneId.of("UTC")
+
+  /** `zone`, or `UTC` when it is UTC under another name (`Z`, `Etc/UTC`), so it is said as UTC. */
+  def canonical(zone: ZoneId): ZoneId = if (zone.normalized == ZoneOffset.UTC) Zone else zone
 
   private val TimeOfDay = DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
-  /** `at`'s time of day to the minute, without its date: `15:03 UTC`. */
-  def toClock(at: Instant): String = TimeOfDay.format(at)
+  private val DayDate =
+    DateTimeFormatter.ofPattern("EEE yyyy-MM-dd", Locale.ROOT).withZone(ZoneOffset.UTC)
+
+  /** `at`'s time of day to the minute, `15:03 UTC`, beside its time in `beside`: its UTC date
+    * after when that is another day than its date there, `06:30 UTC Thu 2026-10-22`.
+    */
+  def toClock(at: Instant, beside: ZoneId): String =
+    if (at.atZone(beside).toLocalDate == at.atZone(ZoneOffset.UTC).toLocalDate) TimeOfDay.format(at)
+    else s"${TimeOfDay.format(at)} ${DayDate.format(at)}"
 }

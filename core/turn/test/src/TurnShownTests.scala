@@ -1,6 +1,6 @@
 package grit.turn
 
-import java.time.{Instant, ZoneId}
+import java.time.{Instant, ZoneId, ZoneOffset}
 
 import utest.*
 
@@ -36,6 +36,24 @@ object TurnShownTests extends TestSuite {
         "The message you are answering was said Wed 2026-10-21 15:03 UTC.",
         s"$personal Read times other people here give as EDT, this deployment's time, unless " +
           "they say otherwise."
+      )
+    }
+
+    test("the UTC time carries its date when it falls on another day than the dated one") {
+      TurnShown.answering(
+        Instant.parse("2026-10-22T06:30:00Z"),
+        Some(TurnOffer.Zoned(Some(pacific), eastern)),
+        direct = true
+      ) ==> "The message you are answering was said Wed 2026-10-21 23:30 PDT, the person's time " +
+        s"(America/Los_Angeles); 06:30 UTC Thu 2026-10-22. ${tail("PDT")}"
+    }
+
+    test("a deployment in UTC, under any of its names, is said as UTC") {
+      Vector(ZoneOffset.UTC, ZoneId.of("UTC"), ZoneId.of("Etc/UTC")).map(z =>
+        TurnShown.answering(At, Some(TurnOffer.Zoned(None, z)), direct = true)
+      ) ==> Vector.fill(3)(
+        "The message you are answering was said Wed 2026-10-21 15:03 UTC, this deployment's " +
+          "time (UTC); the person's own zone is not known; 15:03 UTC. " + tail("UTC")
       )
     }
   }
