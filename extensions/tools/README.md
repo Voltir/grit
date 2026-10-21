@@ -24,6 +24,6 @@ One package, `grit.tools`:
   the store and the engine's askers, which only the kit holds.
 - `MessageIds` — `message_ids`: this conversation's id, and the asker's first or last message
   in the room (every conversation in it counted: a channel's threads, a person's direct
-  messages), by its entry id, its conversation, when it was said and the link its edge recorded
+  messages), or anyone's message there that best matches a quote, by its entry id, its conversation, when it was said and the link its edge recorded
   it with; over the store and the engine's askers, which only the kit holds.
 - `Names` — every name above, which a plugin's tool may not take (`Deployment.of` refuses it).

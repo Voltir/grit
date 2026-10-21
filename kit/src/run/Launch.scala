@@ -411,7 +411,7 @@ private[grit] object Launch {
           own(
             d.persona,
             runtime.askers,
-            MessageIds.Stores(runtime.entries, runtime.rooms, runtime.principals)
+            MessageIds.Stores(runtime.entries, runtime.rooms, runtime.search, runtime.principals)
           )*
         ) ++
           plugged.map(_.over(desks)))*

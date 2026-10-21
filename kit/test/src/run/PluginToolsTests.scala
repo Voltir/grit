@@ -5,7 +5,15 @@ import java.time.Instant
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
 import grit.core.flow.TestTainted
-import grit.core.id.{ConversationId, JobName, PluginName, TestCallSlots, ToolCallId, TurnRef}
+import grit.core.id.{
+  ConversationId,
+  JobName,
+  PluginName,
+  TestCallSlots,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.Principal
 import grit.core.job.{InMemorySchedules, ScheduleDesk}
 import grit.core.message.AssistantBlock
@@ -13,9 +21,20 @@ import grit.core.model.{ModelSetting, ModelSettings}
 import grit.core.need.PluginReads
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
+import grit.core.place.Place
 import grit.core.plugin.InMemoryPlugins
 import grit.core.recipe.InMemoryRoomReads
-import grit.core.store.{Askers, Db, InMemoryEntryStore, InMemoryPrincipals, Origin, StoreError, Tx}
+import grit.core.store.{
+  Askers,
+  Db,
+  EntrySearch,
+  InMemoryEntryStore,
+  InMemoryPrincipals,
+  OpenPeriod,
+  Origin,
+  StoreError,
+  Tx
+}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -38,6 +57,22 @@ object PluginToolsTests extends TestSuite {
   /** Keeps nothing; only its tool's name is read. */
   private object Unkept extends ModelSettings {
     def keep(setting: ModelSetting): Either[String, Unit] = Right(())
+  }
+
+  /** A search finding nothing: what the own tools' names need. */
+  private object Unsearched extends EntrySearch {
+    def search(c: ConversationId, from: TurnSeq, before: TurnSeq, query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+    def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+    def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+    def room(room: Place, from: Instant, until: Instant, query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
   }
 
   val tests = Tests {
@@ -141,6 +176,7 @@ object PluginToolsTests extends TestSuite {
       val unread = MessageIds.Stores(
         entries,
         new InMemoryRoomReads(entries, c => Origin.Task("t", ConversationId.value(c)), principals),
+        Unsearched,
         principals
       )
       val offered =

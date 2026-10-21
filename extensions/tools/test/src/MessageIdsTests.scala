@@ -3,23 +3,37 @@ package grit.tools
 import java.time.Instant
 
 import grit.core.flow.TestTainted
-import grit.core.id.{ConversationId, EntryId, Href, SourceId, TestCallSlots, ToolCallId, TurnRef}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  Href,
+  PeriodSeq,
+  SourceId,
+  TestCallSlots,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.inbox.InboundId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, TestClosings}
+import grit.core.place.Place
 import grit.core.recipe.InMemoryRoomReads
 import grit.core.store.{
   Askers,
   Db,
   Entry,
+  EntrySearch,
   InMemoryEntryStore,
   InMemoryPrincipals,
+  OpenPeriod,
   Origin,
   Payload,
   StoreError,
   Tx
 }
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, Tool, Toolbox}
 import grit.core.visibility.{Clearance, Integrity, Label, Subject}
 import grit.dbos.sql.TestTx
 
@@ -51,6 +65,36 @@ object MessageIdsTests extends TestSuite {
     // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
     @caps.unsafe.untrackedCaptures
     private var origins = Map.empty[ConversationId, Origin]
+
+    /** What the room's search finds for any query, best first, as a test scripts it. */
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
+    @caps.unsafe.untrackedCaptures
+    var hits: Vector[EntrySearch.Hit] = Vector.empty
+
+    /** The room, range, query and limit each search was asked for. */
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
+    @caps.unsafe.untrackedCaptures
+    var searched: Vector[(Place, Instant, Instant, String, Int)] = Vector.empty
+
+    private val search = new EntrySearch {
+      private def none = Right(Vector.empty)
+      def search(c: ConversationId, from: TurnSeq, before: TurnSeq, query: String, limit: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[EntrySearch.Hit]] = none
+      def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[EntrySearch.Hit]] = none
+      def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[EntrySearch.Hit]] = none
+      def room(room: Place, from: Instant, until: Instant, query: String, limit: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[EntrySearch.Hit]] = {
+        searched = searched :+ (room, from, until, query, limit)
+        Right(hits)
+      }
+    }
+
     val rooms = new InMemoryRoomReads(
       entries,
       c => origins.getOrElse(c, Origin.Task("none", ConversationId.value(c))),
@@ -85,6 +129,27 @@ object MessageIdsTests extends TestSuite {
       e
     }
 
+    /** `payload`, grit's own, in `thread`'s conversation at its turn `turn`, as a search hit. */
+    def kept(thread: String, payload: Payload, minutes: Int, turn: Int): EntrySearch.Hit = {
+      val c = ConversationId(dm(thread).place.written)
+      val e = Entry(
+        EntryId(s"kept:$thread:$turn"),
+        c,
+        TurnSeq(turn.toLong),
+        None,
+        grit.core.id.EntrySeq(turn.toLong + 1),
+        payload,
+        Said.plusSeconds(60L * minutes),
+        Integrity.Member
+      )
+      entries.insert(e)(using TestTx.fake).fold(err => sys.error(err.toString), identity)
+      hitOf(e)
+    }
+
+    /** `e` as the search finds it. */
+    def hitOf(e: Entry): EntrySearch.Hit =
+      EntrySearch.Hit(e.id, TurnRef(e.conversationId, e.turnSeq), 1.0)
+
     /** grit's reply in `thread`'s conversation, at its turn `turn`. */
     def reply(thread: String, minutes: Int, turn: Int): Unit = {
       val c = ConversationId(dm(thread).place.written)
@@ -106,6 +171,19 @@ object MessageIdsTests extends TestSuite {
         .fold(err => sys.error(err.toString), identity)
     }
 
+    /** Whom the askers resolve the turn's asker to; [[ask]] sets it. */
+    // Replaced whole by the test's own calls, on its one thread; nothing else holds it.
+    @caps.unsafe.untrackedCaptures
+    private var asker: Option[Principal] = None
+
+    private val askers: Askers = new Askers {
+      def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(asker)
+    }
+
+    /** `message_ids` over this world's stores. */
+    val tool: Tool[MessageIds.Pointed] =
+      MessageIds.tool(MessageIds.Stores(entries, rooms, search, principals), askers)
+
     /** `message_ids` asked for `message`, in the turn `answering` begins, by `asker`, read in
       * Ana's direct room unless `roomless`, from a store that fails when `down`.
       */
@@ -114,13 +192,11 @@ object MessageIdsTests extends TestSuite {
         answering: Entry,
         asker: Option[Principal] = Some(Principal.Person(TestAccounts.principalId(ana), Set.empty)),
         roomless: Boolean = false,
-        down: Boolean = false
+        down: Boolean = false,
+        quote: Option[String] = None
     ): Outcome = {
       val at = TestCallSlots.at(TurnRef(answering.conversationId, answering.turnSeq))
-      val askers: Askers = new Askers {
-        def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[grit.core.identity.Principal]] =
-          Right(asker)
-      }
+      this.asker = asker
       val clearance =
         if (roomless) Clearance.of(Label.Public)
         else Clearance.inRoom(room, Label.Public, Label.Public)
@@ -132,12 +208,17 @@ object MessageIdsTests extends TestSuite {
           else body(using TestTx.fake(clearance))
       }
       Toolbox
-        .of(MessageIds.tool(MessageIds.Stores(entries, rooms, principals), askers))
+        .of(tool)
         .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
         .bind(
           TestTainted.authority(
-            AssistantBlock
-              .ToolCall(ToolCallId("c1"), "message_ids", ujson.Obj("message" -> message))
+            AssistantBlock.ToolCall(
+              ToolCallId("c1"),
+              "message_ids",
+              ujson.Obj.from(
+                Vector("message" -> ujson.Str(message)) ++ quote.map(q => "quote" -> ujson.Str(q))
+              )
+            )
           ),
           Repairs.All
         ) match {
@@ -218,6 +299,58 @@ object MessageIdsTests extends TestSuite {
           s"$Answering grit keeps no such message of theirs in their direct messages with you " +
             "(every thread counted): older messages are deleted after a while."
         )
+    }
+
+    test(
+      "quoted is the first message among the room's best matches, anyone's, a closing passed over, searched up to the message answered"
+    ) {
+      val w = new World
+      val bens = w.say("0.5", "the deploy moved to Friday", 0, link("p05"), by = ben)
+      val anas = w.say("1.0", "deploy on Friday then", 1, link("p10"))
+      val now = w.say("5.0", "id of Ben's deploy message?", 5, link("p50"))
+      val closed = w.kept(
+        "0.5",
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("deploy moved")),
+        2,
+        1
+      )
+      w.hits = Vector(closed, w.hitOf(bens), w.hitOf(anas))
+      (w.ask("quoted", now, quote = Some("  deploy moved  ")), w.searched) ==> (
+        Outcome.Done(
+          s"$Answering\n" +
+            "Of the messages in their direct messages with you (every thread counted), the one " +
+            "that best matches:\n" +
+            s"entry id: in:${dm("0.5").place.written}:0.5.0\n" +
+            s"conversation id: ${dm("0.5").place.written}\n" +
+            "said: Wed 2026-10-21 14:03 UTC\n" +
+            "link: https://acme.slack.com/archives/D1/p05\n" +
+            "it begins: \"the deploy moved to Friday\"",
+          Some(Integrity.Member)
+        ),
+        Vector((room, Instant.EPOCH, now.createdAt.plusNanos(1000), "deploy moved", 5))
+      )
+    }
+
+    test(
+      "quoted with no message among the matches says none is kept; with no quote it is refused"
+    ) {
+      val w = new World
+      val now = w.say("5.0", "id of the deploy message?", 5, link("p50"))
+      val args = w.tool.spec.args
+      (
+        w.ask("quoted", now, quote = Some("deploy")),
+        args.read(ujson.Obj("message" -> "quoted")).left.map(_.message),
+        args.read(ujson.Obj("message" -> "quoted", "quote" -> " ")).left.map(_.message),
+        args.read(ujson.Obj("message" -> "first", "quote" -> "deploy")).left.map(_.message)
+      ) ==> (
+        Outcome.Done(
+          s"$Answering grit keeps no message in their direct messages with you (every thread " +
+            "counted) that matches those words: older messages are deleted after a while."
+        ),
+        Left("`quote` is missing: it takes the words to look for, for quoted."),
+        Left("`quote` is missing: it takes the words to look for, for quoted."),
+        Left("`quote` is only for `message` quoted.")
+      )
     }
 
     test("a store it cannot read is an error that names nothing of what failed") {

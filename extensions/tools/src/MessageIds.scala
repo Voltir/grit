@@ -5,17 +5,28 @@ import java.time.Instant
 import grit.core.clock.Utc
 import grit.core.id.{ConversationId, EntryId, Href}
 import grit.core.identity.Principal
-import grit.core.message.Message
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Place
 import grit.core.recipe.RoomReads
-import grit.core.stitch.Said
-import grit.core.store.{Askers, EntryStore, Payload, Principals, StoreError, Tx}
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
+import grit.core.store.{Askers, Entry, EntrySearch, EntryStore, Payload, Principals, StoreError, Tx}
+import grit.core.tool.{
+  Args,
+  ArgsError,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSpec
+}
 
 /** `message_ids`: the id grit keeps this conversation under, and the asker's first or last
-  * message in this room, by its entry id, its conversation, when it was said and the link its
-  * edge recorded it with. Each call reads in one transaction of the reads its turn hands it
-  * ([[grit.core.tool.Hosted.reading]]), so it finds only what the turn may read; the room is
+  * message in this room, or the message there whose words best match a quote, by its entry id,
+  * its conversation, when it was said and the link its edge recorded it with. Each call reads
+  * in one transaction of the reads its turn hands it ([[grit.core.tool.Hosted.reading]]), so
+  * it finds only what the turn may read; the room is
   * that transaction's own ([[grit.core.visibility.Clearance.own]]), every conversation in it
   * counted.
   */
@@ -24,21 +35,38 @@ object MessageIds {
   /** Its tool's name, `message_ids`. */
   val Name: ToolName = ToolName("message_ids")
 
-  /** Which message: the asker's first or last in the room. */
+  /** Which message: the asker's first or last in the room, or the one, anyone's, whose words
+    * best match `words`.
+    */
   enum Pointed {
     case First, Last
+    case Quoted(words: String)
   }
 
-  /** Where it reads: the turn's own entries, the room's messages, and their authors' links. */
-  final case class Stores(entries: EntryStore, rooms: RoomReads, principals: Principals)
+  /** Where it reads: the turn's own entries, the room's messages and its search, and their
+    * authors' links.
+    */
+  final case class Stores(
+      entries: EntryStore,
+      rooms: RoomReads,
+      search: EntrySearch,
+      principals: Principals
+  )
+
+  /** 5: the best matches a quote reads, of which the first message is the answer (a closing
+    * among them is passed over).
+    */
+  val Matches: Int = 5
 
   /** The answer when the store cannot be read: it names nothing of what failed. */
   val Unread: String = "I could not read the messages just now. Ask again in a moment."
 
-  /** `message_ids` over `stores`, the asker as `askers` resolves them: the asker's message is
-    * read up to the one the turn answers, so a message said since is not among them. Its answer
-    * is believed at the message's integrity when it shows one. A store it cannot read is an
-    * error [[Outcome]], [[Unread]].
+  /** `message_ids` over `stores`, the asker as `askers` resolves them: a message is read up to
+    * the one the turn answers, so one said since is not among them; a quote is matched as
+    * [[grit.core.store.EntrySearch.room]] ranks, over the room's whole history, the first message
+    * of its best [[Matches]] the answer: a person's, to grit or heard, or grit's reply, never a
+    * closing. Its answer is believed at the message's integrity when it shows one. A store it
+    * cannot read is an error [[Outcome]], [[Unread]].
     */
   def tool(stores: Stores, askers: Askers): Tool[Pointed] =
     described.reading((pointed, at, reads) =>
@@ -53,16 +81,19 @@ object MessageIds {
               for {
                 mine <- stores.entries.ofTurn(at.turn)
                 asker <- askers.of(at.turn)
-                found <- (asker, mine.minByOption(_.seq)) match {
-                  case (Some(Principal.Person(person, _)), Some(answered)) =>
-                    // Past the answered message by a microsecond, the store's resolution.
-                    val until = answered.createdAt.plusNanos(1000)
-                    (pointed match {
-                      case Pointed.First =>
-                        stores.rooms.firstBy(own.room, person, Instant.EPOCH, until, Set.empty, 1)
-                      case Pointed.Last =>
-                        stores.rooms.saidBy(own.room, person, Instant.EPOCH, until, Set.empty, 1)
-                    }).map(s => Some(s.headOption))
+                // Past the answered message by a microsecond, the store's resolution.
+                until = mine.minByOption(_.seq).map(_.createdAt.plusNanos(1000))
+                found <- (pointed, asker, until) match {
+                  case (Pointed.Quoted(words), _, Some(until)) =>
+                    quoted(stores, own.room, words, until).map(Some(_))
+                  case (Pointed.First, Some(Principal.Person(person, _)), Some(until)) =>
+                    stores.rooms
+                      .firstBy(own.room, person, Instant.EPOCH, until, Set.empty, 1)
+                      .map(s => Some(s.headOption.map(_.entry)))
+                  case (Pointed.Last, Some(Principal.Person(person, _)), Some(until)) =>
+                    stores.rooms
+                      .saidBy(own.room, person, Instant.EPOCH, until, Set.empty, 1)
+                      .map(s => Some(s.headOption.map(_.entry)))
                   case _ => Right(None)
                 }
                 answer <- found match {
@@ -77,18 +108,24 @@ object MessageIds {
                   case Some(None) =>
                     Right(
                       (
-                        s"$intro grit keeps no such message of theirs ${here(own.room)}: older " +
-                          "messages are deleted after a while.",
+                        (pointed match {
+                          case Pointed.Quoted(_) =>
+                            s"$intro grit keeps no message ${here(own.room)} that matches those " +
+                              "words: older messages are deleted after a while."
+                          case Pointed.First | Pointed.Last =>
+                            s"$intro grit keeps no such message of theirs ${here(own.room)}: " +
+                              "older messages are deleted after a while."
+                        }),
                         None
                       )
                     )
-                  case Some(Some(said)) =>
+                  case Some(Some(entry)) =>
                     stores.principals
-                      .speakers(Vector(said.entry.id))
+                      .speakers(Vector(entry.id))
                       .map(s =>
                         (
-                          s"$intro\n${shownAs(pointed, own.room, said, s.link(said.entry.id))}",
-                          Some(said.entry.integrity)
+                          s"$intro\n${shownAs(pointed, own.room, entry, s.link(entry.id))}",
+                          Some(entry.integrity)
                         )
                       )
                 }
@@ -107,24 +144,43 @@ object MessageIds {
     else if (room.directory.isDefined) "in this directory (every session counted)"
     else "in this channel (every thread counted)"
 
-  /** `said`, the message `pointed` names, as the answer gives it. */
-  private def shownAs(pointed: Pointed, room: Place, said: Said, link: Option[Href]): String = {
+  /** The first message among the best [[Matches]] of `words` in `room` said before `until`. */
+  private def quoted(stores: Stores, room: Place, words: String, until: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[Entry]] =
+    stores.search
+      .room(room, Instant.EPOCH, until, words, Matches)
+      .flatMap(hits =>
+        hits.foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty))((read, hit) =>
+          read.flatMap(es => stores.entries.get(hit.id).map(es ++ _))
+        )
+      )
+      .map(_.find(e => text(e).isDefined))
+
+  /** The words of `entry` when it is a message: a person's, or grit's reply or post. */
+  private def text(entry: Entry): Option[String] = entry.payload match {
+    case Payload.Heard(t) => Some(t)
+    case Payload.Message(Message.User(t)) => Some(t)
+    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
+      Some(blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n"))
+    case Payload.Posted(t) => Some(t)
+    case _ => None
+  }
+
+  /** `entry`, the message `pointed` names, as the answer gives it. */
+  private def shownAs(pointed: Pointed, room: Place, entry: Entry, link: Option[Href]): String = {
     val which = pointed match {
-      case Pointed.First => "first"
-      case Pointed.Last => "last"
+      case Pointed.First => s"Of their messages ${here(room)}, the first grit still keeps:"
+      case Pointed.Last => s"Of their messages ${here(room)}, the last grit still keeps:"
+      case Pointed.Quoted(_) => s"Of the messages ${here(room)}, the one that best matches:"
     }
-    val text = said.entry.payload match {
-      case Payload.Heard(t) => t
-      case Payload.Message(Message.User(t)) => t
-      case _ => ""
-    }
-    val begins = text.trim.replaceAll("\\s+", " ")
+    val begins = text(entry).getOrElse("").trim.replaceAll("\\s+", " ")
     val shown = if (begins.length > 80) s"${begins.take(80)}…" else begins
     Vector(
-      s"Of their messages ${here(room)}, the $which grit still keeps:",
-      s"entry id: ${EntryId.value(said.entry.id)}",
-      s"conversation id: ${ConversationId.value(said.conversation)}",
-      s"said: ${Utc.toDayMinute(said.entry.createdAt)}",
+      which,
+      s"entry id: ${EntryId.value(entry.id)}",
+      s"conversation id: ${ConversationId.value(entry.conversationId)}",
+      s"said: ${Utc.toDayMinute(entry.createdAt)}",
       link.fold("link: none; the app it came from (Slack, say) gives no link to it")(l =>
         s"link: ${Href.value(l)}"
       ),
@@ -137,23 +193,37 @@ object MessageIds {
     Hosted(
       ToolSpec(
         Name,
-        "The id grit keeps this conversation under, and the person's first or last message " +
-          "here: its id, when it was said, and a link that opens it where it was said, when the " +
-          "app it came from has one. Here means the whole room: in a channel, the channel and " +
-          "every thread in it; in a direct message, all of the person's direct messages with " +
-          "you. Call it when the person asks for a message's id or link, or this conversation's.",
+        "The id grit keeps this conversation under, and a message here: the person's first or " +
+          "last, or the one whose words best match a quote; its id, when it was said, and a " +
+          "link that opens it where it was said, when the app it came from has one. Here means " +
+          "the whole room: in a channel, the channel and every thread in it; in a direct " +
+          "message, all of the person's direct messages with you. Call it when the person asks " +
+          "for a message's id or link, or this conversation's.",
         Args
           .of(
-            (message =
-              Field.oneOf(
-                "Which of the person's messages here: first or last (the last is usually the one " +
-                  "you are answering).",
+            (
+              message = Field.oneOf(
+                "Which message here: the person's first or last (the last is usually the one " +
+                  "you are answering), or quoted: the one, anyone's, whose words best match " +
+                  "`quote`.",
                 "first",
-                "last"
-              )
+                "last",
+                "quoted"
+              ),
+              quote = Field.text("Words from the message, for quoted.").optional
             )
           )
-          .map(a => if (a.message == "first") Pointed.First else Pointed.Last),
+          .refine(a =>
+            (a.message, a.quote.map(_.trim).filter(_.nonEmpty)) match {
+              case ("quoted", Some(words)) => Right(Pointed.Quoted(words))
+              case ("quoted", None) =>
+                Left(ArgsError.Missing("quote", "the words to look for, for quoted"))
+              case (_, Some(_)) =>
+                Left(ArgsError.Refused("quote", "`quote` is only for `message` quoted."))
+              case ("first", None) => Right(Pointed.First)
+              case (_, None) => Right(Pointed.Last)
+            }
+          ),
         retry = Retry.Rerun,
         action = Some("look up a message's id or link")
       ),
@@ -161,6 +231,7 @@ object MessageIds {
       {
         case Pointed.First => "first"
         case Pointed.Last => "last"
+        case Pointed.Quoted(words) => s"quoted \"$words\""
       }
     )
 }
