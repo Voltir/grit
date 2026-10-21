@@ -2,9 +2,7 @@ package grit.dbos.engine
 
 import java.time.{Instant, ZoneOffset}
 
-import scala.util.Using
-
-import grit.core.id.{ConversationId, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, TurnRef}
 import grit.core.speech.{SpeechContract, SpeechStore}
 import grit.core.spend.Day
 import grit.core.store.{EntryStore, Origin, PeriodStore, Tx, UsageLedger}
@@ -44,17 +42,6 @@ object SqlSpeechTests extends SpeechContract {
   protected def today: Day = Day.at(Instant.now(), ZoneOffset.UTC)
 
   protected def cuesKept(turn: TurnRef): Option[Cues] =
-    transaction { (tx: Tx^) ?=>
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement("SELECT cues::text FROM grit.speech WHERE workflow = ?")
-      ) { ps =>
-        ps.setString(1, WorkflowId.value(turn.workflowId))
-        Using.resource(ps.executeQuery()) { rs =>
-          Option.when(rs.next())(Option(rs.getString(1)))
-        }
-      }
-    }.map(kept =>
-      SqlSpeechStore.cuesRead(kept).fold(why => throw new java.lang.AssertionError(why), identity)
-    )
+    transaction(new SqlSpeechStore().cues(turn))
+      .fold(e => throw new java.lang.AssertionError(s"store failed: $e"), identity)
 }
