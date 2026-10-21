@@ -121,7 +121,9 @@ object BoundsTests extends TestSuite {
       )
     }
 
-    test("a row without cues reads every fact 0") {
+    test(
+      "a fact gate reads each case's kept cues: a cued row passes every fact, a row without cues fails each"
+    ) {
       val notes = PluginName.of("notes").fold(sys.error, identity)
       val cued = Cues(
         named = true,
