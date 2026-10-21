@@ -324,15 +324,7 @@ private[report] object TurnLines {
     s"${s.ok}, ${s.failed}, ${s.expired}, ${s.abandoned}, ${s.unsettled}"
   }
 
-  private def rate(r: Proportion): String =
-    r.rate.fold("—") { rate =>
-      val bounds = r.interval match {
-        case Proportion.Interval.TooFewClusters => "too few threads for an interval"
-        case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
-      }
-      val threads = if (r.clusters == 1) "1 thread" else s"${r.clusters} threads"
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $threads) $bounds"
-    }
+  private def rate(r: Proportion): String = RecipeLines.rate(r, none = "—")
 
   private def spread(q: Option[Quantiles], f: Double => String): String =
     q.fold("—")(x => s"${f(x.mean)} / ${f(x.p50)} / ${f(x.p90)}")

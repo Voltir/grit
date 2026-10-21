@@ -257,11 +257,19 @@ private[report] object RecipeLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  /** `r`'s rate, hits of n in its clusters, each a `cluster`, and its interval. */
-  def rate(r: Proportion, cluster: String = "thread"): String =
-    r.rate.fold("— (none)") { rate =>
+  /** `r`'s rate, hits of n in its clusters, each a `cluster`, and its interval, or under too few
+    * clusters `few`, by default that there are too few for one; `none` when `r` has no rate.
+    */
+  def rate(
+      r: Proportion,
+      cluster: String = "thread",
+      none: String = "— (none)",
+      few: Option[String] = None
+  ): String =
+    r.rate.fold(none) { rate =>
       val bounds = r.interval match {
-        case Proportion.Interval.TooFewClusters => s"too few ${cluster}s for an interval"
+        case Proportion.Interval.TooFewClusters =>
+          few.getOrElse(s"too few ${cluster}s for an interval")
         case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
       }
       val clusters = if (r.clusters == 1) s"1 $cluster" else s"${r.clusters} ${cluster}s"

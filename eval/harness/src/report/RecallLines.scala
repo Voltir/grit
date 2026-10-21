@@ -72,12 +72,5 @@ private[report] object RecallLines {
   }
 
   private def rate(r: Proportion): String =
-    r.rate.fold("—") { rate =>
-      val bounds = r.interval match {
-        case Proportion.Interval.TooFewClusters => "point estimate"
-        case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
-      }
-      val turns = if (r.clusters == 1) "1 turn" else s"${r.clusters} turns"
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $turns) $bounds"
-    }
+    RecipeLines.rate(r, "turn", "—", Some("point estimate"))
 }

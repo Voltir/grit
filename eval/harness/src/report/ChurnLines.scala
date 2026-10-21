@@ -109,13 +109,5 @@ private[report] object ChurnLines {
     )).mkString("\n") + "\n"
   }
 
-  private def rate(r: Proportion): String =
-    r.rate.fold("—") { rate =>
-      val bounds = r.interval match {
-        case Proportion.Interval.TooFewClusters => "too few questions for an interval"
-        case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
-      }
-      val questions = if (r.clusters == 1) "1 question" else s"${r.clusters} questions"
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $questions) $bounds"
-    }
+  private def rate(r: Proportion): String = RecipeLines.rate(r, "question", "—")
 }

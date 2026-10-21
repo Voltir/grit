@@ -140,6 +140,19 @@ object ChurnReportTests extends TestSuite {
       )
     }
 
+    test("a rate over ten questions gives Wilson's interval to three places") {
+      // Each question's residual ±0.5: CR1 design effect 10/9, so Wilson's interval on 9 items.
+      val followed = Proportion.of((1 to 10).map(q => s"q$q" -> (q <= 5)).toVector)
+      Report
+        .churn("20261012", churn.copy(followed = followed))
+        .linesIterator
+        .filter(_.startsWith("after-"))
+        .toVector ==> Vector(
+        "after-turns whose first read followed a card their window held: 0.500 (5/10 in 10 " +
+          "questions) [0.227, 0.773]"
+      )
+    }
+
     test("a rate over one question counts it as 1 question") {
       Report
         .churn("20261012", churn.copy(followed = Proportion.of(Vector("q1" -> true))))
