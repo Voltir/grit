@@ -257,7 +257,13 @@ object TurnFixtures {
       new grit.core.store.InMemoryLifecycleStore,
       grit.core.stitch.Tuning.Default,
       grit.act.phase.Placing
-        .Env(new InMemoryEntryStore, new InMemoryConversationStore, FakeDb, new Unplaced)
+        .Env(
+          new InMemoryEntryStore,
+          new InMemoryConversationStore,
+          FakeDb,
+          new Unplaced,
+          new NoWait
+        )
     )
 
   /** No triage kept: every heard root is weighed as unanswered; a message said to grit, when
@@ -2074,7 +2080,7 @@ object TurnFixtures {
             NoSearch,
             lifecycle,
             Tuning.Default,
-            grit.act.phase.Placing.Env(entries, conversations, FakeDb, placements)
+            grit.act.phase.Placing.Env(entries, conversations, FakeDb, placements, new NoWait)
           ),
           hosted = hosted
         )

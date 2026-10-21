@@ -46,7 +46,8 @@ object SpeechJsonTests extends TestSuite {
     Silence.Deployment(10),
     Silence.OverSpeechCap(Spend(3, Cost.AtLeast(BigDecimal("0.25"))), cap),
     Silence.OverBudget,
-    Silence.Spoken(EntryId("in:c:m9"))
+    Silence.Spoken(EntryId("in:c:m9")),
+    Silence.Continued(EntryId("in:c:m10"))
   )
 
   private val outcomes: Vector[Outcome] = Vector(

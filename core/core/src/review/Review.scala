@@ -61,14 +61,14 @@ object Review {
     * (an unanswered earlier turn, the assistant's own reply already here, a thread, room or
     * deployment rate, the speech cap, the budget); `Some(false)` for a hold at it (`Gated`,
     * naming someone else); `None` when it was never reached (speaking off, no address, heard
-    * below `Outside`, stale, untagged, `Unasked`).
+    * below `Outside`, stale, continued by its author, untagged, `Unasked`).
     */
   def gated(live: Settled): Option[Boolean] = live match {
     case Settled.Drafted(_) => Some(true)
     case Settled.Held(why) =>
       why match {
         case Silence.Off | Silence.NoAddress | Silence.Below(_) | Silence.Stale(_) |
-            Silence.Unweighed(_) | Silence.Unasked(_) =>
+            Silence.Continued(_) | Silence.Unweighed(_) | Silence.Unasked(_) =>
           None
         case Silence.Gated(_, _) | Silence.AskedOf(_) => Some(false)
         case Silence.Unanswered(_) | Silence.Thread(_) | Silence.Room(_) | Silence.Deployment(_) |

@@ -390,7 +390,7 @@ private[turn] object TurnSteps {
         }
     )
 
-  /** `stitched`: [[Placing.placed]] of the turn's message, read for the turn;
+  /** `stitched`: [[Placing.placed]] of the turn's message, read for the turn, waiting no quiet;
     * `TurnFailure.Store` when the conversation cannot be read or the placement failed. Never
     * fails the turn.
     */
@@ -403,7 +403,8 @@ private[turn] object TurnSteps {
         {
           case Placing.Unplaced.Unread(e) => TurnFailure.ofStore(e)
           case Placing.Unplaced.Failed(why) => TurnFailure.Store(s"placement: $why")
-        }
+        },
+        scala.concurrent.duration.Duration.Zero
       )
       .over[Env](r => r.placing)
 

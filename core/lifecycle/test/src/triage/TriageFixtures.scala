@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question, Request}
-import grit.core.clock.Clock
+import grit.core.clock.{Clock, SetClock}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{
   CloseRef,
@@ -217,14 +217,16 @@ object TriageFixtures {
         payload: Payload,
         by: Option[(String, String)],
         minutes: Long,
-        in: ConversationId
+        in: ConversationId,
+        seconds: Long = 0
     ): Entry = {
       given Tx = TestTx.fake
       val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
-      periods.openFor(in, next.turnSeq, at(minutes))
+      val said = at(minutes).plusSeconds(seconds)
+      periods.openFor(in, next.turnSeq, said)
       val id = if (in == c) s"e${next.seq}" else s"${ConversationId.value(in)}:e${next.seq}"
       val e =
-        Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, at(minutes), Integrity.Member)
+        Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, said, Integrity.Member)
       entries.insert(e)
       by.foreach { (id, name) =>
         principals.name(TestAccounts.account(id), name)
@@ -233,17 +235,18 @@ object TriageFixtures {
       e
     }
 
-    /** `text` heard from `name` as the next turn at `minutes`, with a reply address, naming
-      * `asked`; its triage.
+    /** `text` heard from `name` as the next turn at `minutes` and `seconds`, with a reply
+      * address, naming `asked`; its triage.
       */
     def hear(
         text: String,
         name: String,
         minutes: Long,
         in: ConversationId = c,
-        asked: Set[Account] = Set.empty
+        asked: Set[Account] = Set.empty,
+        seconds: Long = 0
     ): TriageRef = {
-      val e = insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in)
+      val e = insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in, seconds)
       speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), asked))(using TestTx.fake)
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
@@ -351,7 +354,13 @@ object TriageFixtures {
       }
     }
 
-    /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
+    /** When, by its triage's clock, each classifier call a triage made was asked, in order. */
+    // Replaced whole by the triage's classifier, which the test runs on its one thread.
+    @caps.unsafe.untrackedCaptures
+    var askedAt = Vector.empty[Instant]
+
+    /** The triage's body over this world, with `classifier`, its clock starting at `minutes`
+      * and moved on only by its sleeps (each call's time kept in [[askedAt]]), speaking as
       * `speaking` says, its ask admitted under `cap` against what [[ledger]] recorded that
       * day, the deployment's knowledge `sources` those given, reading through `db`, starting
       * a turn as `start` answers; a turn it starts is kept in [[started]].
@@ -367,7 +376,11 @@ object TriageFixtures {
     )(
         id: WorkflowId
     )(using Durable^): String = {
-      val clock = new Stopped(at(minutes))
+      val clock = new SetClock(at(minutes))
+      val timed = Classifier.around(classifier) { (_, ask) =>
+        askedAt = askedAt :+ clock.now()
+        ask()
+      }
       Triage.body(
         TriageEnv(
           TriageRecords(
@@ -386,7 +399,7 @@ object TriageFixtures {
             periods,
             documents
           ),
-          TestMoves.of(ledger, classifier, db, clock),
+          TestMoves.of(ledger, timed, db, clock),
           Budget(ZoneOffset.UTC, cap),
           db,
           clock,
@@ -396,7 +409,13 @@ object TriageFixtures {
             turn => start(turn).map(_ => started = started :+ turn)
           ),
           Tuning.Default,
-          grit.act.phase.Placing.Env(entries, conversations, db, placements(classifier, minutes)),
+          grit.act.phase.Placing.Env(
+            entries,
+            conversations,
+            db,
+            placements(classifier, minutes),
+            clock
+          ),
           sources,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )

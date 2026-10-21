@@ -308,6 +308,9 @@ object RehearseLiveTests extends TestSuite {
           Reach.Nowhere
         ) ==> Right(())
         within(() => settled(config)) ==> true
+        // Its triage's quiet (Triage.Quiet) slept the engine's clock on: set back, so the turn
+        // is said at the other thread's time, as the calls below are pinned.
+        clock.at = Now
         val before = (model.sent.size, classifier.sent.size)
         // Rehearsed beside the running engine, on the database as the engine's run will find it.
         val shown = Rehearse

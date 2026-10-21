@@ -194,6 +194,16 @@ object SpeechTests extends TestSuite {
         )
         assert(decide(replied, l = earlier) == held(Silence.Spoken(reply)))
       }
+      test("its author's next message holds it, Continued, before the gate and its own reply") {
+        val next = EntryId("e9")
+        val continued = heard.copy(cues = Cues.Empty.copy(continued = Some(next)))
+        val failing = continued.copy(
+          tags = tags(helps = 0.49),
+          cues = continued.cues.copy(spoken = Some(EntryId("s9")))
+        )
+        assert(decide(continued) == held(Silence.Continued(next)))
+        assert(decide(failing) == held(Silence.Continued(next)))
+      }
       test("posts in this thread within the thread rate") {
         // Posted before this message (at 4 < 10), within 6 hours: answered, but counted.
         val l = empty.copy(turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))))

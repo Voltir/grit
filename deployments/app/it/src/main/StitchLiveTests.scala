@@ -10,7 +10,7 @@ import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.speech.{Limits, Reach, Speaking, Stage}
+import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Link, Placed}
 import grit.core.store.{Entry, Nearby, Origin, Payload, StoreError, Tx}
@@ -127,17 +127,16 @@ object StitchLiveTests extends TestSuite {
     right(engine.db.read(Subject.Public)(engine.stitches.links(Vector(c))))
       .filter(_.conversation == c)
 
-  /** The kind of what became of `turn`'s draft, and whose entry settled it, from grit.speech.
-    * Read in SQL because no store reads an outcome back (SpeechStore only writes it), and
-    * kept as the stored JSON on purpose: the test pins its form, `kind` and `by`, which
-    * `SpeechJson.writeOutcome` gives the row and the record-speech step's output alike.
+  /** Why `turn`'s message was held, from grit.speech's `silence`. Read in SQL because no store
+    * reads a silence back, and kept as the stored JSON on purpose: the test pins its form,
+    * `kind` and `by`, as `SpeechJson.writeSilence` gives the row.
     */
-  private def outcome(turn: TurnRef): Option[String] =
+  private def held(turn: TurnRef): Option[String] =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement(
-          "SELECT outcome::text FROM grit.speech WHERE conversation_id = ?::uuid AND turn_seq = ?"
+          "SELECT silence::text FROM grit.speech WHERE conversation_id = ?::uuid AND turn_seq = ?"
         )
       ) { ps =>
         ps.setString(1, ConversationId.value(turn.conversationId))
@@ -148,7 +147,7 @@ object StitchLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "David's top-level replies follow the Engine question, a draft among them is held by grit's reply in the strand, and a mention is shown the strand"
+      "David's top-level replies follow the Engine question, the last of them is held by grit's reply in the strand, and a mention is shown the strand"
     ) {
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
@@ -193,17 +192,17 @@ object StitchLiveTests extends TestSuite {
           })
         }
         // The stub reads each choice's first marker that names one of its keys, and every
-        // yes/no at 0.1: an unprompted draft, not a message put to grit.
-        val real = hear(
-          engine,
-          "3.0",
-          "U0DAVID",
-          "Is this a real question ~0.1 ~back:exchange 1 ~back:asks",
-          120
-        )
+        // yes/no at 0.1: the last of David's burst an unprompted draft, not a message put to
+        // grit; each earlier one his next opening may hold, as weighed in its place.
+        val real = hear(engine, "3.0", "U0DAVID", "Is this a real question ~back:exchange 1", 120)
         val lol = hear(engine, "4.0", "U0DAVID", "lol ~back:exchange 1", 118)
-        val testing =
-          hear(engine, "5.0", "U0DAVID", "Or are you testing bots ~back:exchange 1", 110)
+        val testing = hear(
+          engine,
+          "5.0",
+          "U0DAVID",
+          "Or are you testing bots ~0.1 ~back:exchange 1 ~back:asks",
+          110
+        )
 
         val engineRoot = asked.conversationId
         Vector(real, lol, testing).map(e => links(engine, e.conversationId)) ==>
@@ -220,15 +219,15 @@ object StitchLiveTests extends TestSuite {
           case other => throw new java.lang.AssertionError(s"not follows: $other")
         }
 
-        // The first reply was drafted in its own turn, and held: grit had replied in the strand.
-        val drafted = TurnRef(real.conversationId, real.turnSeq)
-        assert(eventually(outcome(drafted).nonEmpty))
-        // A pin of the stored form (see outcome): its key names and the spoken kind.
-        outcome(drafted).map(ujson.read(_)) ==>
+        // The last reply was held at its decision, past the gate: grit had replied in the strand.
+        val last = TurnRef(testing.conversationId, testing.turnSeq)
+        assert(eventually(held(last).nonEmpty))
+        // A pin of the stored form (see held): its key names and the spoken kind.
+        held(last).map(ujson.read(_)) ==>
           Some(ujson.Obj("kind" -> "spoken", "by" -> EntryId.value(replied.id)))
+        // Held, it drafted nothing, and so counts in no rate.
         right(engine.db.read(Subject.Public)(engine.speech.spoken(Instant.EPOCH)))
-          .find(_.turn == drafted)
-          .map(_.stage) ==> Some(Stage.Settled)
+          .find(_.turn == last) ==> None
 
         // A top-level mention: stitched in its own turn, and shown the strand.
         right(

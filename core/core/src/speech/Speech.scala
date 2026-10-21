@@ -112,6 +112,11 @@ enum Silence {
   /** Said `age` before the decision, longer than `fresh`. */
   case Stale(age: FiniteDuration)
 
+  /** Its author said more after it, `by`, before the decision: that later message, whose thread
+    * shows this one, is weighed in its place. Never reaches the gate.
+    */
+  case Continued(by: EntryId)
+
   /** Triage gave no tags, for `why`. */
   case Unweighed(why: String)
 
@@ -262,6 +267,7 @@ object Speech {
           val age = JDuration.between(heard.said, now).toNanos.nanos
           Option.when(age > limits.fresh)(Silence.Stale(age))
         },
+        () => heard.cues.continued.map(Silence.Continued(_)),
         () => gated(limits, heard),
         () => heard.reach.asked.toVector.sortBy(Account.written).headOption.map(Silence.AskedOf(_)),
         () => heard.cues.spoken.map(Silence.Spoken(_)),

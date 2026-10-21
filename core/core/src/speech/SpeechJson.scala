@@ -52,6 +52,7 @@ object SpeechJson {
     case Silence.NoAddress => kind("no_address")
     case Silence.Below(at) => kind("below_outside", "at" -> ujson.Str(Integrity.written(at)))
     case Silence.Stale(age) => kind("stale", "seconds" -> ujson.Num(age.toSeconds.toDouble))
+    case Silence.Continued(by) => kind("continued", "by" -> ujson.Str(EntryId.value(by)))
     case Silence.Unweighed(why) => kind("unweighed", "why" -> ujson.Str(why))
     case Silence.Gated(first, rest) =>
       kind("gated", "failed" -> ujson.Arr.from((first +: rest).map(GateJson.writeFailed)))
@@ -115,6 +116,7 @@ object SpeechJson {
           )
         case "asked_of" => str(o, "other").flatMap(Account.read).map(Silence.AskedOf(_))
         case "spoken" => str(o, "by").map(b => Silence.Spoken(EntryId(b)))
+        case "continued" => str(o, "by").map(b => Silence.Continued(EntryId(b)))
         case "unanswered" => turn(o, "previous").map(Silence.Unanswered(_))
         case "thread" => int(o, "n").map(Silence.Thread(_))
         case "room" => int(o, "n").map(Silence.Room(_))

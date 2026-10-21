@@ -316,6 +316,67 @@ object TriageTests extends TestSuite {
       w.awaited ==> Vector.empty
     }
 
+    test("a heard message is asked about no sooner than Quiet after it was said") {
+      val w = new World
+      val fresh = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
+      val older = w.hear("and the retro to Friday", "Bo", 1)
+      // Triaged as said, and once its quiet has passed: the first waits 6 s, the second not at all.
+      new InMemoryDurable().run(fresh.workflowId)(w.body(decided, 0))
+      new InMemoryDurable().run(older.workflowId)(w.body(decided, 2))
+      w.askedAt ==> Vector(at(0).plusSeconds(6), at(2))
+    }
+
+    test(
+      "a second heard message in the thread, queued behind the first, holds the first Continued, and is weighed itself"
+    ) {
+      val w = new World
+      val first = w.hear("is the deploy frozen?", "Ana", 0)
+      val second = w.hear("for the release branch, I mean", "Ana", 0, seconds = 2)
+      // The conversation's triages run one at a time, in the order heard.
+      new InMemoryDurable().run(first.workflowId)(w.body(asking, 0, within))
+      new InMemoryDurable().run(second.workflowId)(w.body(asking, 0, within))
+      w.speech.decisions.map((h, d, at) => (h.turn, d, at)) ==> Vector(
+        (
+          first.message,
+          Decision.Held(Silence.Continued(entryOf(w, c, second)(using TestTx.fake))),
+          at(0).plusSeconds(6)
+        ),
+        (second.message, Decision.Drafting(second.message), at(0).plusSeconds(8))
+      )
+    }
+
+    test("a later opening placed to follow its strand holds it; one placed elsewhere does not") {
+      given Tx = TestTx.fake
+      // The opening's decision, its turn and its author's next opening's entry, that next
+      // opening placed on the one exchange offered at 1.0 when it `follows`, else at 0.
+      def outcome(follows: Boolean): (Vector[Decision], TurnRef, EntryId) = {
+        val w = new World
+        w.hear("where did we land on the Engine contract term?", "Nick", 0)
+        val (b, d) = (w.thread("2.0"), w.thread("3.0"))
+        val t = w.hear("Is it twelve months on the Engine contract", "Ana", 2, in = b)
+        val next = w.hear("or six on the Engine contract", "Ana", 3, in = d)
+        for {
+          conversation <- w.conversations.get(b).toOption.flatten
+          entries <- w.entries.list(b).toOption
+          opening <- Opening.of(conversation, entries, TurnRef(b, t.turn))
+        } w.placements(asking, 2).awaited(opening)
+        val later = if (follows) asking else new Scripted(Vector(0, 1, 0, 0, 0), Vector.empty)
+        new InMemoryDurable().run(next.workflowId)(w.body(later, 4))
+        new InMemoryDurable().run(t.workflowId)(w.body(asking, 4, within))
+        (
+          w.speech.decisions.collect { case (h, d, _) if h.turn.conversationId == b => d },
+          t.message,
+          entryOf(w, d, next)
+        )
+      }
+      val (follows, _, next) = outcome(follows = true)
+      val (elsewhere, turn, _) = outcome(follows = false)
+      (follows, elsewhere) ==> (
+        Vector(Decision.Held(Silence.Continued(next))),
+        Vector(Decision.Drafting(turn))
+      )
+    }
+
     test("a kept placement's seen state is what offered shows for its message now") {
       val w = new World
       w.hear("where did we land on the Engine contract term?", "Nick", 0)

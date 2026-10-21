@@ -106,6 +106,10 @@ object ReviewTests extends TestSuite {
       Review.gated(Settled.Held(Silence.Spoken(EntryId("s9")))) ==> Some(true)
     }
 
+    test("Continued never reaches the gate") {
+      Review.gated(Settled.Held(Silence.Continued(EntryId("e9")))) ==> None
+    }
+
     test("the shadow's gate reads a candidate's answers and the cues live's decision kept") {
       val named = Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.Named), Probability.clamped(0.5)))
       val round = Review.pick(

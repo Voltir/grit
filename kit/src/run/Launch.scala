@@ -189,7 +189,7 @@ private[grit] object Launch {
         runtime.principals
       )
     // The one wait for an opening's placement, the turn's and triage's.
-    val placing = Placing.Env(runtime.entries, runtime.conversations, db, runtime.placements)
+    val placing = Placing.Env(runtime.entries, runtime.conversations, db, runtime.placements, clock)
     // What every move is made with: a job's, the lifecycle's and the turn's asks.
     val moves: MovesEnv^{runtime, models, classifier, clock} =
       Launch.moves(runtime, db, models, classifier, clock)

@@ -1,5 +1,7 @@
 package grit.lifecycle.triage
 
+import scala.concurrent.duration.*
+
 import grit.act.moves.Judging
 import grit.act.phase.Placing
 import grit.core.act.MoveName
@@ -20,8 +22,9 @@ import grit.core.visibility.Subject
   *
   *   1. `stitched` — when the heard message is an [[grit.core.stitch.Opening]], its placement
   *      waited for ([[grit.act.phase.Placing.placed]]), so the message is asked about with its
-  *      strand, and only once every opening heard before it in its room is placed; nothing is
-  *      waited for otherwise.
+  *      strand, and only once every opening heard before it in its room is placed; then, opening
+  *      or not, until [[Quiet]] after it was said. Its conversation's later triages queue
+  *      behind it meanwhile, so its author's next message said by then is seen in `consider`.
   *   1. `ask:triage` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
   *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per corpus covering its
@@ -46,6 +49,11 @@ import grit.core.visibility.Subject
   *      ([[grit.core.speech.SpeechStore.drafted]]).
   */
 object Triage {
+
+  /** How long after a heard message was said triage asks about it: its author's next message by
+    * then is weighed in its place ([[grit.core.speech.Silence.Continued]]).
+    */
+  val Quiet: FiniteDuration = 6.seconds
   import TriageInput.describe
   import TriageJournal.given
 
@@ -76,7 +84,8 @@ object Triage {
         {
           case Placing.Unplaced.Unread(e) => s"thread unread: ${describe(e)}"
           case Placing.Unplaced.Failed(why) => why
-        }
+        },
+        Quiet
       )
       .over[TriageEnv](env => env.placing)
 

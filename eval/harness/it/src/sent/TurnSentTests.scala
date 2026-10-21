@@ -160,7 +160,13 @@ object TurnSentTests extends TestSuite {
             engine.lifecycle,
             Tuning.Default,
             grit.act.phase.Placing
-              .Env(engine.entries, engine.conversations, engine.db, engine.placements)
+              .Env(
+                engine.entries,
+                engine.conversations,
+                engine.db,
+                engine.placements,
+                grit.core.clock.Clock.system()
+              )
           ),
           TurnWeighing(engine.triage, Unweighed),
           grit.turn.TurnRouting(Untasked, engine.budget, engine.spending)
