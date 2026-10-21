@@ -6,7 +6,7 @@ import grit.core.identity.{Principal, TestAccounts}
 import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
-import grit.core.tool.{Believed, Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
   Clearance,
   Explained,
@@ -85,13 +85,15 @@ object ClearedTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "clearance reads no row that carries an integrity, so its answers are believed at its declared untrusted"
+      "clearance's answers are grit's own words, kept at the level of the turn that asked, which they never lower"
     ) {
       calledUnder(After, Clearance.of(confidentialTrial)) match {
         case Outcome.Done(_, believed, _, _, _) => believed ==> None
         case other => throw new java.lang.AssertionError(s"not done: $other")
       }
-      Cleared.tool(danaAsks).output ==> Believed.At(Integrity.Untrusted)
+      val output = Cleared.tool(danaAsks).output
+      Vector(Integrity.Member, Integrity.Outside).map(output.at) ==>
+        Vector(Integrity.Member, Integrity.Outside)
     }
 
     test(

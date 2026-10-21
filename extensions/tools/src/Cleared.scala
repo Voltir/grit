@@ -4,7 +4,7 @@ import scala.NamedTuple
 
 import grit.core.store.{Askers, Tx}
 import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec}
-import grit.core.visibility.{Explanation, Integrity, Label}
+import grit.core.visibility.{Explanation, Label}
 
 /** `clearance`: what the person asking is cleared for, and why. It takes no argument, so it
   * concerns only the asker. Each call reads in one transaction of the reads its turn hands it
@@ -15,7 +15,8 @@ import grit.core.visibility.{Explanation, Integrity, Label}
   * thread's label met with the person's clearance now). Anywhere else it tells the model the
   * room's own label, which everyone in the room reads at and so is no secret, then
   * [[OwnClearanceNote]]: the same whoever asks, naming nothing of the asker's clearance, and
-  * recording nothing; a turn with no room of its own is told [[OwnClearanceNote]] alone.
+  * recording nothing; a turn with no room of its own is told [[OwnClearanceNote]] alone. Its
+  * answers are grit's own words ([[grit.core.tool.Believed.Own]]).
   */
 object Cleared {
 
@@ -68,6 +69,7 @@ object Cleared {
       ),
       Gate.Free,
       _ => "",
-      Believed.At(Integrity.Untrusted)
+      // Its answer names declared groups and namespaces, labels and fixed lines: no outside text.
+      Believed.Own
     )
 }
