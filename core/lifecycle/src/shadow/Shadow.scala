@@ -95,6 +95,7 @@ object Shadow {
                 .heard(
                   env.reads,
                   env.rooms,
+                  env.documents,
                   reads,
                   TurnRef(shadow.triage.period.conversationId, shadow.triage.turn),
                   env.tuning,

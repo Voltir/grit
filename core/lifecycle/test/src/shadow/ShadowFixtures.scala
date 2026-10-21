@@ -103,6 +103,7 @@ object ShadowFixtures {
         ShadowEnv(
           triaged.reads,
           triaged.rooms,
+          triaged.documents,
           shadows,
           Map(
             Words -> ShadowAsking(

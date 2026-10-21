@@ -2,6 +2,7 @@ package grit.lifecycle.triage
 
 import scala.collection.immutable.VectorMap
 
+import grit.core.document.DocumentSearch
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.place.{Place, Scope}
@@ -31,6 +32,7 @@ object TriageInput {
   def read(
       reads: StitchReads,
       rooms: RoomReads,
+      documents: DocumentSearch,
       db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
@@ -68,9 +70,20 @@ object TriageInput {
       position =
         if (all.minByOption(_.seq).exists(_.id == heard.id)) Position.Opening else Position.Reply
       focus = conversation.fold(Focus.Focused)(_.origin.focus(position))
-      sections <- pool(rooms, reads, db, recipe.at(focus), scope, conversation, strand, heard)
+      before = all.filter(_.seq < heard.seq)
+      sections <- pool(
+        rooms,
+        reads,
+        documents,
+        db,
+        recipe.at(focus),
+        scope,
+        conversation,
+        strand,
+        heard,
+        before
+      )
     } yield {
-      val before = all.filter(_.seq < heard.seq)
       // Unread names are no names: each line is then its role's.
       val names = PeriodTranscript
         .speakers(db, reads.principals, (before :+ heard) ++ strand.shown)
@@ -108,37 +121,54 @@ object TriageInput {
     * before it, within [[TriageQuestion.ThreadChars]]; and the sections `recipe`'s pool shows
     * at the focus it was said at ([[grit.core.store.Origin.focus]]: its conversation's first
     * message is its `Opening`; `Focused` when the conversation is not found), from what its
-    * room held when it was said, read through `rooms` in the scope in force ([[Pool.read]];
-    * none when the conversation is not found). Why not, when the thread, strand or room cannot
+    * room held when it was said, read through `rooms` in the scope in force, and from the
+    * records `documents` finds near it, both through `db` ([[Pool.read]]; none when the
+    * conversation is not found). Why not, when the thread, strand or room cannot
     * be read or the turn holds no person's message; these words are journaled.
     */
   def build(
       reads: StitchReads,
       rooms: RoomReads,
+      documents: DocumentSearch,
       db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       recipe: TriageRecipe
   ): Either[String, (EntryId, TriageQuestion.State)] =
-    read(reads, rooms, db, turn, tuning, recipe).map(r => (r.entry, r.state))
+    read(reads, rooms, documents, db, turn, tuning, recipe).map(r => (r.entry, r.state))
 
-  /** What `pool` shows for `heard` in `conversation` under `scope` ([[Pool.read]]); nothing,
-    * opening no transaction, for a pool without sources or a conversation not found.
+  /** What `pool` shows for `heard` in `conversation` after `before` under `scope`
+    * ([[Pool.read]]); nothing, opening no transaction, for a pool without sources or a
+    * conversation not found.
     */
   private def pool(
       rooms: RoomReads,
       reads: StitchReads,
+      documents: DocumentSearch,
       db: Reads^,
       pool: Pool,
       scope: Scope,
       conversation: Option[Conversation],
       strand: Strand.Read,
-      heard: Entry
+      heard: Entry,
+      before: Vector[Entry]
   ): Either[String, VectorMap[Section, String]] =
     conversation match {
       case Some(c) if pool.sources.nonEmpty =>
-        db.read(Pool.read(pool, scope, rooms, reads.stitches, reads.principals, c, strand, heard))
-          .left
+        db.read(
+          Pool.read(
+            pool,
+            scope,
+            rooms,
+            reads.stitches,
+            reads.principals,
+            documents,
+            c,
+            strand,
+            heard,
+            before
+          )
+        ).left
           .map(e => s"pool unread: ${describe(e)}")
       case _ => Right(VectorMap.empty)
     }
@@ -149,12 +179,13 @@ object TriageInput {
   private[lifecycle] def heard(
       reads: StitchReads,
       rooms: RoomReads,
+      documents: DocumentSearch,
       db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       recipe: TriageRecipe
   ): Either[String, Read] =
-    read(reads, rooms, db, turn, tuning, recipe).filterOrElse(
+    read(reads, rooms, documents, db, turn, tuning, recipe).filterOrElse(
       _.heard,
       s"no heard message at turn ${TurnSeq.value(turn.turnSeq)}"
     )

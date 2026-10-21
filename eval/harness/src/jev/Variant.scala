@@ -76,6 +76,7 @@ object Variant {
       case Source.Author(within, most) =>
         ujson.Obj("author" -> ujson.Obj("within_ns" -> within.toNanos.toString, "most" -> most))
       case Source.Exchanges => ujson.Str("exchanges")
+      case Source.Records(most) => ujson.Obj("records" -> ujson.Obj("most" -> most))
     }),
     "budget" -> p.budget
   )

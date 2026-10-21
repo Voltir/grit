@@ -35,6 +35,17 @@ object VariantTests extends TestSuite {
       digests.distinct.size ==> digests.size
     }
 
+    test("the digest differs with the records source") {
+      def open(sources: Source*) = TriageRecipe(Pool.empty, Pool(sources.toVector, 600))
+      val digests = Vector(
+        open(Source.Exchanges),
+        open(Source.Exchanges, Source.Records(3)),
+        open(Source.Exchanges, Source.Records(4)),
+        open(Source.Records(3), Source.Exchanges)
+      ).map(Variant.digest)
+      digests.distinct.size ==> digests.size
+    }
+
     test("the open-pool candidates are named, each changing only the open pool, within 600") {
       def open(sources: Source*) = TriageRecipe(Pool.empty, Pool(sources.toVector, 600))
       Vector("nearby-open", "exchanges-open", "nearby-author-open")

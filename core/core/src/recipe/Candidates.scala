@@ -2,6 +2,7 @@ package grit.core.recipe
 
 import java.time.Instant
 
+import grit.core.document.{DocLabel, DocText}
 import grit.core.id.EntryId
 
 /** A message as a pool may show it: its entry, its speaker's name as shown, when it was said,
@@ -14,18 +15,23 @@ private[recipe] final case class Spoken(entry: EntryId, speaker: String, at: Ins
   */
 private[recipe] final case class Offered(opening: Spoken, record: Option[String], followed: Boolean)
 
+/** A record a pool may show: its plugin's label, its text, and when it was written. */
+private[recipe] final case class Recorded(label: DocLabel, text: DocText, written: Instant)
+
 /** What a pool chooses among for one message, read from its room outside the conversations its
   * thread shows: messages said there (`said`), its author's (`byAuthor`), and the exchanges its
-  * conversation's opening was offered (`offered`), in the order offered.
+  * conversation's opening was offered (`offered`), in the order offered; and the records
+  * nearest it (`records`), best first.
   */
 private[recipe] final case class Candidates(
     said: Vector[Spoken],
     byAuthor: Vector[Spoken],
-    offered: Vector[Offered]
+    offered: Vector[Offered],
+    records: Vector[Recorded]
 )
 
 private[recipe] object Candidates {
 
   /** Nothing to choose among. */
-  val none: Candidates = Candidates(Vector.empty, Vector.empty, Vector.empty)
+  val none: Candidates = Candidates(Vector.empty, Vector.empty, Vector.empty, Vector.empty)
 }

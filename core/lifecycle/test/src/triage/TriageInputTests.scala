@@ -30,7 +30,15 @@ object TriageInputTests extends TestSuite {
       recipe: TriageRecipe = TriageRecipe.Shipped
   ) =
     TriageInput
-      .build(w.reads, w.rooms, FakeDb.as(Subject.Public), triage.message, tuning, recipe)
+      .build(
+        w.reads,
+        w.rooms,
+        w.documents,
+        FakeDb.as(Subject.Public),
+        triage.message,
+        tuning,
+        recipe
+      )
       .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
 
   /** A message as the state shows it: `text` under `from`, said `ago` before the message. */
@@ -66,6 +74,7 @@ object TriageInputTests extends TestSuite {
           .build(
             w.reads,
             w.rooms,
+            w.documents,
             FakeDb.as(Subject.Public),
             t,
             Tuning.Default,
@@ -174,6 +183,32 @@ object TriageInputTests extends TestSuite {
       )
     }
 
+    test(
+      "the shipped recipe shows the exchanges stitching offered and the records near the message"
+    ) {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is the Engine contract three years?", "David", 2, in = b)
+      // Exchange 1 (c) at 0.1, a new one at 0.9: offered, not followed.
+      val classifier = new Scripted(Vector(0.1, 0.9), Vector(0.1, 0.1, 0.2))
+      new InMemoryDurable().run(t.workflowId)(w.body(classifier, 3))
+      w.note("Engine contract: three-year term\nRenews each March.")(using TestTx.fake)
+        .isRight ==> true
+      sent(w, t) ==> Right(
+        ujson.write(
+          ujson.Obj(
+            "new_message" -> "Is the Engine contract three years?",
+            "author" -> "David",
+            "thread" -> ujson.Arr(),
+            "exchanges_in_channel" ->
+              "Exchange opened 2 minutes before by Nick: where did we land on the Engine contract term?",
+            "records_near" -> "notes: Engine contract: three-year term (2026-09-28)"
+          )
+        )
+      )
+    }
+
     test("a state's sections follow its thread under their keys, an empty one left out") {
       val state = TriageQuestion.State(
         "standup moves to 10:00",
@@ -228,6 +263,7 @@ object TriageInputTests extends TestSuite {
           .read(
             w.reads,
             w.rooms,
+            w.documents,
             FakeDb.as(Subject.Public),
             t.message,
             Tuning.Default,
@@ -246,6 +282,7 @@ object TriageInputTests extends TestSuite {
           .read(
             w.reads,
             w.rooms,
+            w.documents,
             FakeDb.as(Subject.Public),
             t.message,
             Tuning.Default,

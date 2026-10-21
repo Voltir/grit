@@ -198,6 +198,7 @@ private[grit] object Launch {
       new Mentions(
         reads,
         runtime.rooms,
+        runtime.documents,
         d.knowledge,
         d.triage,
         weighing,
@@ -327,6 +328,7 @@ private[grit] object Launch {
         ShadowEnv(
           reads,
           runtime.rooms,
+          runtime.documents,
           runtime.shadows,
           variants,
           d.knowledge,

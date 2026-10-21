@@ -12,6 +12,7 @@ import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Opening, Placements, Tuning}
 import grit.core.triage.{Corpora, Weighing}
 import grit.core.visibility.Subject
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -55,6 +56,7 @@ object MentionsTests extends TestSuite {
     new Mentions(
       w.reads,
       w.rooms,
+      w.documents,
       Catalog,
       grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
       grit.core.classify.TestClassifiers.cleared(classifier),
@@ -71,6 +73,7 @@ object MentionsTests extends TestSuite {
       .build(
         w.reads,
         w.rooms,
+        w.documents,
         FakeDb.as(Subject.Public),
         turn,
         Tuning.Default,
@@ -86,16 +89,17 @@ object MentionsTests extends TestSuite {
           )
       )
 
-  /** The task questions' request for `turn`'s message in `w`, as live triage's state reads it. */
+  /** The task questions' request for `turn`'s message in `w`, its state read with no pool. */
   private def taskAsked(w: World, turn: TurnRef) =
     TriageInput
       .build(
         w.reads,
         w.rooms,
+        w.documents,
         FakeDb.as(Subject.Public),
         turn,
         Tuning.Default,
-        TriageRecipe.Shipped
+        TriageRecipe.Bare
       )
       .toOption
       .map((_, state) => Request.of(state, TaskQuestions.Shipped))
@@ -118,6 +122,9 @@ object MentionsTests extends TestSuite {
       "a root is asked the task questions about live triage's state with no pool, once its placement ended, saying whether a strand was shown"
     ) {
       val w = new World
+      // A record the shipped recipe would show beside the message.
+      w.note("Signups dropped in March after the pricing change")(using TestTx.fake).isRight ==>
+        true
       val t = w.say("why did signups drop in March?", 0, Some("Ana"))
       val requests = new Requests
       val scripted = tasks
@@ -164,6 +171,7 @@ object MentionsTests extends TestSuite {
       val bounded = new Mentions(
         w.reads,
         w.rooms,
+        w.documents,
         Catalog,
         grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
         grit.core.classify.TestClassifiers.cleared(slow),
@@ -264,6 +272,7 @@ object MentionsTests extends TestSuite {
       val bounded = new Mentions(
         w.reads,
         w.rooms,
+        w.documents,
         Catalog,
         grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
         grit.core.classify.TestClassifiers.cleared(slow),

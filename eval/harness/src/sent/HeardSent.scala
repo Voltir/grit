@@ -84,6 +84,7 @@ object HeardSent {
         .read(
           reads,
           reader.rooms,
+          reader.documents,
           reader.db.as(Subject.Conversation(turn.conversationId)),
           turn,
           tuning,

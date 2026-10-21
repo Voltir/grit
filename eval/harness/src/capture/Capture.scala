@@ -137,6 +137,7 @@ object Capture {
       .build(
         reads,
         reader.rooms,
+        reader.documents,
         reader.db.as(Subject.Conversation(t.triage.period.conversationId)),
         TurnRef(t.triage.period.conversationId, t.triage.turn),
         tuning,

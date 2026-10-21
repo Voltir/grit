@@ -4,4 +4,5 @@ package grit.core.recipe
 enum Section(val key: String) {
   case Nearby extends Section("nearby_in_channel")
   case Exchanges extends Section("exchanges_in_channel")
+  case Records extends Section("records_near")
 }

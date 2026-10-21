@@ -3,6 +3,7 @@ package grit.lifecycle.shadow
 import grit.act.moves.MovesEnv
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
+import grit.core.document.DocumentSearch
 import grit.core.id.ShadowName
 import grit.core.recipe.RoomReads
 import grit.core.spend.Budget
@@ -12,7 +13,8 @@ import grit.core.triage.{Corpora, TriageShadows}
 import grit.lifecycle.triage.TriageQuestions
 
 /** What a shadow works with besides its `Durable`: where it reads the heard message, its
-  * thread and its room (`reads` and `rooms`, through `db` outside a transaction, under
+  * thread, its room and the records near it (`reads`, `rooms` and `documents`, through `db`
+  * outside a transaction, under
   * `tuning`, as triage reads them) and keeps what the variant made of it (`shadows`), each
   * declared variant by name (`variants`; a shadow of a variant not among them asks nothing),
   * the deployment's catalog of corpora a question set's per-source questions are
@@ -23,6 +25,7 @@ import grit.lifecycle.triage.TriageQuestions
 final case class ShadowEnv(
     reads: StitchReads,
     rooms: RoomReads,
+    documents: DocumentSearch,
     shadows: TriageShadows,
     variants: Map[ShadowName, ShadowAsking^],
     sources: Corpora,

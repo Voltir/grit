@@ -2,17 +2,20 @@ package grit.lifecycle.triage
 
 import java.time.{Instant, ZoneOffset}
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question, Request}
 import grit.core.clock.{Clock, SetClock}
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  DocKey,
   EntryId,
   PeriodRef,
   PeriodSeq,
+  PluginName,
   TriageRef,
   TurnRef,
   WorkflowId
@@ -20,6 +23,7 @@ import grit.core.id.{
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
+import grit.core.place.{Namespace, Place}
 import grit.core.recipe.InMemoryRoomReads
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
@@ -57,6 +61,9 @@ object TriageFixtures {
   val p1: PeriodRef = PeriodRef(c, PeriodSeq.First)
 
   val Start: Instant = Instant.parse("2026-09-28T10:00:00Z")
+
+  /** The plugin whose document [[World.note]] keeps. */
+  val Notes: PluginName = PluginName.of("notes").getOrElse(sys.error("a name"))
 
   def at(minutes: Long): Instant = Start.plusSeconds(minutes * 60)
 
@@ -194,6 +201,36 @@ object TriageFixtures {
     val lifecycle = new InMemoryLifecycleStore
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
     val documents = new grit.core.document.InMemoryDocuments
+
+    /** `text` kept as the [[Notes]] plugin's one document, labelled "notes", current from an
+      * hour before the world began.
+      */
+    def note(text: String)(using Tx): Either[StoreError, Written] = {
+      val terms = DocumentTerms
+        .of(
+          DocLabel.of("notes").getOrElse(sys.error("a label")),
+          DocWeight.Unscaled,
+          30.days,
+          100
+        )
+        .getOrElse(sys.error("terms"))
+      for {
+        _ <- documents.declare(Vector(Notes -> terms))
+        written <- documents
+          .keeper(Notes, terms)
+          .write(
+            DocKey.of("contract").getOrElse(sys.error("a key")),
+            Label.Public,
+            Integrity.Member,
+            Place.under(Namespace.Task, Vector("documents", "notes")),
+            DocText.of(text).getOrElse(sys.error("a text")),
+            ujson.Obj(),
+            None,
+            at(-60),
+            Set.empty
+          )
+      } yield written
+    }
 
     // The conversation is c1: the first a fresh store creates.
     conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), Account.Local, Label.Public)(using

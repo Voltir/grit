@@ -169,6 +169,7 @@ object PullTests extends TestSuite {
             engine.principals
           ),
           engine.rooms,
+          engine.documents,
           engine.shadows,
           // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
           Map(

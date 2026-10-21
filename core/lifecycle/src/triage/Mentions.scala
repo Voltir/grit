@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.allot.Tasking
 import grit.core.classify.{ClassifierError, ClearedClassifier, Request}
 import grit.core.clock.Clock
+import grit.core.document.DocumentSearch
 import grit.core.id.TurnRef
 import grit.core.provider.TokenEstimator
 import grit.core.recipe.RoomReads
@@ -18,19 +19,20 @@ import grit.core.visibility.Subject
 
 /** [[Weighing]] as live triage asks: its question set, `questions`, put to the
   * state [[TriageInput.read]] builds for the message, as for one heard (the shipped recipe,
-  * `tuning`), read for the turn through `db`, `reads` and `rooms`, with the corpora of `sources`
+  * `tuning`), read for the turn through `db`, `reads`, `rooms` and `documents`, with the corpora of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
   * `clock`. The classifier is asked only when its service is cleared for what the read knew,
   * and is given `askWithin` to answer, past which the message is `Late`, unweighed. Its request's input is estimated by `estimator`. It writes nothing.
   *
   * As [[Tasking]], it puts [[TaskQuestions.Shipped]] to the state read with
-  * [[TriageRecipe.Shipped]] (no pool) and no corpora, under the same placement wait, clearance
+  * [[TriageRecipe.Bare]] and no corpora, under the same placement wait, clearance
   * check and bound.
   */
 final class Mentions(
     reads: StitchReads,
     rooms: RoomReads,
+    documents: DocumentSearch,
     sources: Corpora,
     questions: TriageQuestions,
     classifier: ClearedClassifier^,
@@ -45,7 +47,7 @@ final class Mentions(
 
   def task(turn: TurnRef): Either[Weighing.Unweighed, Tasking.Asked] =
     for {
-      routedRead <- placedRead(turn)
+      routedRead <- placedRead(turn, TriageRecipe.Bare)
       (routed, read) = routedRead
       answered <- within(classifier.asking(routed).ask(read.state, TaskQuestions.Shipped))
         .flatMap(_.left.map(unweighed))
@@ -59,7 +61,7 @@ final class Mentions(
 
   def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
     for {
-      routedRead <- placedRead(turn)
+      routedRead <- placedRead(turn, TriageRecipe.Shipped)
       (routed, read) = routedRead
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(Corpora.Empty)(sources.at)
@@ -73,17 +75,18 @@ final class Mentions(
       )
     }
 
-  /** Live triage's state for `turn`'s message, read with the shipped recipe (no pool), once
-    * its placement has ended, and what that read was routed for; why not.
+  /** Live triage's state for `turn`'s message, read with `recipe`, once its placement has
+    * ended, and what that read was routed for; why not.
     */
   private def placedRead(
-      turn: TurnRef
+      turn: TurnRef,
+      recipe: TriageRecipe
   ): Either[Weighing.Unweighed, (Routed, TriageInput.Read)] =
     placed(turn).flatMap(_ =>
       Routed
         .reading(db, Subject.Turn(turn))((routed, bounded) =>
           TriageInput
-            .read(reads, rooms, bounded, turn, tuning, TriageRecipe.Shipped)
+            .read(reads, rooms, documents, bounded, turn, tuning, recipe)
             .map(routed -> _)
         )
         .left

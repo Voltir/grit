@@ -23,6 +23,11 @@ search queries a rebuild's window-only cases had written, each kept in the cache
 its request's key and never printed. A capture's text stays in Postgres, in the database the
 capture was restored to.
 
+A rebuilt triage input reads its pool through `Reader`, which reads every row: a restored
+database records no deployment's groups, so the records near a message that it shows may be
+ones the live read was not cleared for. Those lines reach only the review files above; the
+run logs and the bound sweep keep their digests alone.
+
 Its types are the code's (`scripts/outline area eval`); this file holds the package order and
 the rules each package keeps that its signatures cannot state.
 

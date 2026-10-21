@@ -34,6 +34,7 @@ object ShadowTests extends TestSuite {
       .build(
         w.triaged.reads,
         w.triaged.rooms,
+        w.triaged.documents,
         TriageFixtures.FakeDb.as(Subject.Public),
         TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,
@@ -48,6 +49,7 @@ object ShadowTests extends TestSuite {
       .build(
         w.triaged.reads,
         w.triaged.rooms,
+        w.triaged.documents,
         TriageFixtures.FakeDb.as(Subject.Public),
         TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,

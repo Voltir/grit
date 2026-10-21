@@ -1,6 +1,6 @@
 package grit.lifecycle.triage
 
-import grit.core.recipe.Pool
+import grit.core.recipe.{Pool, Source}
 import grit.core.store.Focus
 
 /** What triage's question shows besides the message, its author and its thread: the pool for a
@@ -18,6 +18,14 @@ final case class TriageRecipe(focused: Pool, open: Pool) {
 
 object TriageRecipe {
 
-  /** What triage ships with: no pool at either focus. */
-  val Shipped: TriageRecipe = TriageRecipe(Pool.empty, Pool.empty)
+  /** What triage ships with: the exchanges stitching offered, then the 3 records nearest the
+    * message, within 1,200 characters, at either focus.
+    */
+  val Shipped: TriageRecipe = {
+    val pool = Pool(Vector(Source.Exchanges, Source.Records(3)), 1_200)
+    TriageRecipe(pool, pool)
+  }
+
+  /** No pool at either focus. */
+  val Bare: TriageRecipe = TriageRecipe(Pool.empty, Pool.empty)
 }

@@ -1,32 +1,19 @@
 package grit.lifecycle.triage
 
 import scala.collection.immutable.VectorMap
-import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, Classifier, Question}
-import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Acknowledgement
-import grit.core.id.{
-  ConversationId,
-  DocKey,
-  EntryId,
-  PluginName,
-  QuestionName,
-  TriageRef,
-  TurnRef,
-  TurnSeq,
-  WorkflowId
-}
+import grit.core.id.{ConversationId, EntryId, QuestionName, TriageRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{Judgement, Probability, Verdict}
-import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Opening, Stitching, Tuning}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.Tx
 import grit.core.triage.{Bound, Corpora, Cues, Earning, Gate, Reading, Tags}
-import grit.core.visibility.{Integrity, Label, Subject}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -101,36 +88,6 @@ object TriageTests extends TestSuite {
   /** Someone a heard message may name. */
   private val Bo = grit.core.identity.TestAccounts.account("test:u-Bo")
 
-  private val Notes = PluginName.of("notes").getOrElse(sys.error("a name"))
-
-  /** `text` kept as the notes plugin's one document, current from before the world began. */
-  private def notes(w: World, text: String)(using Tx): Either[StoreError, Written] = {
-    val terms = DocumentTerms
-      .of(
-        DocLabel.of("notes").getOrElse(sys.error("a label")),
-        DocWeight.Unscaled,
-        30.days,
-        100
-      )
-      .getOrElse(sys.error("terms"))
-    for {
-      _ <- w.documents.declare(Vector(Notes -> terms))
-      written <- w.documents
-        .keeper(Notes, terms)
-        .write(
-          DocKey.of("contract").getOrElse(sys.error("a key")),
-          Label.Public,
-          Integrity.Member,
-          Place.under(Namespace.Task, Vector("documents", "notes")),
-          DocText.of(text).getOrElse(sys.error("a text")),
-          ujson.Obj(),
-          None,
-          at(-60),
-          Set.empty
-        )
-    } yield written
-  }
-
   /** The heard entry of `triage`, in `in`. */
   private def entryOf(w: World, in: ConversationId, triage: TriageRef)(using Tx): EntryId =
     w.entries
@@ -156,6 +113,7 @@ object TriageTests extends TestSuite {
         TriageInput.read(
           w.reads,
           w.rooms,
+          w.documents,
           FakeDb.as(Subject.Public),
           t.message,
           Tuning.Default,
@@ -245,6 +203,7 @@ object TriageTests extends TestSuite {
         TriageInput.read(
           w.reads,
           w.rooms,
+          w.documents,
           FakeDb.as(Subject.Public),
           t.message,
           Tuning.Default,
@@ -258,6 +217,7 @@ object TriageTests extends TestSuite {
       read.map(r => (r.entry, r.state)) ==> TriageInput.build(
         w.reads,
         w.rooms,
+        w.documents,
         FakeDb.as(Subject.Public),
         t.message,
         Tuning.Default,
@@ -643,7 +603,7 @@ object TriageTests extends TestSuite {
       w.hear("same question here", "Bo", 4)
       val next = w.hear("never mind, found it", "Ana", 5)
       w.hear("one more thing", "Ana", 7)
-      val _ = notes(w, "engine contract")
+      val _ = w.note("engine contract")
       new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
       w.speech.decisions.map(_._1.cues) ==> Vector(
         Cues(

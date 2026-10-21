@@ -221,6 +221,7 @@ object TurnCaptureTests extends TestSuite {
           engine.principals
         ),
         engine.rooms,
+        engine.documents,
         Corpora.Empty,
         grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
         grit.core.classify.ClearedClassifier.none("no classifier"),

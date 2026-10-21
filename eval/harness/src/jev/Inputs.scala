@@ -125,6 +125,7 @@ object Inputs {
           .read(
             reads,
             reader.rooms,
+            reader.documents,
             reader.db.as(Subject.Conversation(c.conversation)),
             TurnRef(c.conversation, ref.turn),
             under,

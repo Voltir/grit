@@ -4,7 +4,15 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  DocumentSearch,
+  DocumentTerms,
+  InMemoryDocuments
+}
+import grit.core.id.{ConversationId, DocKey, EntryId, PluginName, PrincipalId}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Prefix, Scope}
@@ -29,8 +37,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.Integrity
-import grit.core.visibility.Label
+import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -49,6 +56,9 @@ object PoolReadTests extends TestSuite {
   private def right[A](e: Either[StoreError, A]): A =
     e.fold(x => throw new java.lang.AssertionError(s"store failed: $x"), identity)
 
+  private def got[A](e: Either[String, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(why), identity)
+
   private final class World {
     given Tx = TestTx.fake
     val entries = new InMemoryEntryStore
@@ -60,6 +70,7 @@ object PoolReadTests extends TestSuite {
       origins.getOrElse(c, Origin.Task("unknown", ConversationId.value(c)))
     val stitches = new InMemoryStitchStore(entries, originOf)
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
+    val documents = new InMemoryDocuments
 
     right(principals.name(ana, "Ana"))
     right(principals.name(ben, "Ben"))
@@ -94,16 +105,58 @@ object PoolReadTests extends TestSuite {
     def heard(c: Conversation, text: String, at: Instant, by: Account): Entry =
       say(c, Payload.Heard(text), at, Some(by))
 
-    /** What `pool` shows for `heard` in `c`, its strand `strand`, by section key. */
+    /** `plugin`'s documents, declared with `label`, as it writes them. */
+    def keeper(plugin: String, label: String) = {
+      val name = got(PluginName.of(plugin))
+      val terms =
+        got(DocumentTerms.of(got(DocLabel.of(label)), DocWeight.Unscaled, 30.days, 100))
+      declared = declared :+ (name -> terms)
+      right(documents.declare(declared))
+      documents.keeper(name, terms)
+    }
+    // Replaced whole by `keeper`, on the test's one thread; nothing else holds it.
+    @caps.unsafe.untrackedCaptures
+    private var declared = Vector.empty[(PluginName, DocumentTerms)]
+
+    /** `text` kept under `key` by `keeper`, written `at`, by a transaction cleared for
+      * `clearance`.
+      */
+    def record(
+        keeper: grit.core.document.DocumentKeeper,
+        key: String,
+        text: String,
+        at: Instant,
+        clearance: Clearance = Clearance.of(Label.Public)
+    ): Unit =
+      right(
+        keeper.write(
+          got(DocKey.of(key)),
+          Label.Public,
+          Integrity.Member,
+          Place.under(Namespace.Task, Vector("records")),
+          got(DocText.of(text)),
+          ujson.Obj(),
+          None,
+          at
+        )(using TestTx.fake(clearance))
+      )
+
+    /** What `pool` shows for `heard` in `c`, its strand `strand`, by section key: `heard` read
+      * after `c`'s entries before it.
+      */
     def shown(
         pool: Pool,
         c: Conversation,
         heard: Entry,
         strand: Strand.Read = Strand.Read.empty,
         scope: Scope = Scope.Everywhere
-    ) =
-      right(Pool.read(pool, scope, rooms, stitches, principals, c, strand, heard)).toVector
+    ) = {
+      val before = right(entries.list(c.id)).filter(_.seq < heard.seq)
+      right(
+        Pool.read(pool, scope, rooms, stitches, principals, documents, c, strand, heard, before)
+      ).toVector
         .map((s, text) => (s.key, text))
+    }
   }
 
   private def minutes(n: Long) = T.minusSeconds(n * 60)
@@ -197,6 +250,56 @@ object PoolReadTests extends TestSuite {
       w.shown(pool, unplaced, w.heard(unplaced, "hi", T, ana)) ==> Vector.empty
     }
 
+    test(
+      "Records: the documents best matching the message and its thread's tail, current at t, each `{label}: {first line} ({date})`"
+    ) {
+      val w = new World
+      val own = w.thread("1.0")
+      w.heard(own, "the deploy freeze moved", minutes(3), ben)
+      val heard = w.heard(own, "standup?", T, ana)
+      val notes = w.keeper("records-notes", "Notes")
+      val decisions = w.keeper("records-decisions", "Decisions")
+      w.record(
+        decisions,
+        "freeze",
+        "Deploy freeze on Fridays\nSet after the March outage.",
+        Instant.parse("2026-09-28T09:00:00Z")
+      )
+      w.record(
+        notes,
+        "standup",
+        "\nStandup is at 10:00 in the large room, every weekday except Fridays when it moves " +
+          "online for everyone\nAsk Cy for a link.",
+        Instant.parse("2026-10-01T23:30:00Z")
+      )
+      w.record(notes, "older", "standup notes", Instant.parse("2026-09-01T09:00:00Z"))
+      w.record(notes, "later", "standup deploy freeze the the", T.plusMillis(1))
+      w.record(notes, "lunch", "lunch menu", minutes(60))
+      w.shown(Pool(Vector(Source.Records(2)), 1_000), own, heard) ==> Vector(
+        "records_near" -> Vector(
+          "Decisions: Deploy freeze on Fridays (2026-09-28)",
+          "Notes: Standup is at 10:00 in the large room, every weekday except Fridays when it moves online… (2026-10-01)"
+        ).mkString("\n")
+      )
+    }
+
+    test("Records: a record the read does not read is neither shown nor counted") {
+      val w = new World
+      val own = w.thread("1.0")
+      val heard = w.heard(own, "standup?", T, ana)
+      val notes = w.keeper("records-held", "Notes")
+      w.record(notes, "public", "Standup at 10", minutes(60))
+      w.record(
+        notes,
+        "held",
+        "Standup standup standup, moved",
+        minutes(30),
+        Clearance.of(TestLabels.Trial)
+      )
+      w.shown(Pool(Vector(Source.Records(1)), 1_000), own, heard) ==>
+        Vector("records_near" -> "Notes: Standup at 10 (2026-10-02)")
+    }
+
     test("a pool without sources reads nothing; one with them fails when its store does") {
       val w = new World
       val own = w.thread("1.0")
@@ -209,9 +312,11 @@ object PoolReadTests extends TestSuite {
           Down.rooms(down),
           Down.stitches(down),
           w.principals,
+          Down.documents(down),
           own,
           Strand.Read.empty,
-          heard
+          heard,
+          Vector.empty
         )(using
           TestTx.fake
         )
@@ -219,6 +324,7 @@ object PoolReadTests extends TestSuite {
       read(Pool(Vector(Source.Channel(1.hour, 5)), 100)) ==> Left(down)
       read(Pool(Vector(Source.Author(1.hour, 5)), 100)) ==> Left(down)
       read(Pool(Vector(Source.Exchanges), 100)) ==> Left(down)
+      read(Pool(Vector(Source.Records(3)), 100)) ==> Left(down)
     }
 
     test("a scope that does not hold the heard message's room shows nothing, reading nothing") {
@@ -242,15 +348,31 @@ object PoolReadTests extends TestSuite {
         Down.rooms(down),
         Down.stitches(down),
         w.principals,
+        Down.documents(down),
         own,
         Strand.Read.empty,
-        heard
+        heard,
+        Vector.empty
       )(using TestTx.fake) ==> Right(scala.collection.immutable.VectorMap.empty)
     }
   }
 
   /** Stores that fail every read with `error`. */
   private object Down {
+    def documents(error: StoreError): DocumentSearch = new DocumentSearch {
+      def declared()(using Tx^) = Left(error)
+      def shelved(plugins: Vector[PluginName], at: Instant)(using Tx^) = Left(error)
+      def search(
+          shelves: Vector[grit.core.document.Shelved],
+          query: String,
+          limit: Int,
+          at: Instant
+      )(using
+          Tx^
+      ) = Left(error)
+      def read(versions: Vector[grit.core.id.DocumentVersionId])(using Tx^) = Left(error)
+    }
+
     def rooms(error: StoreError): RoomReads = new RoomReads {
       def said(room: Place, from: Instant, until: Instant, outside: Set[ConversationId], most: Int)(
           using Tx^

@@ -144,6 +144,7 @@ object LiveTurn {
           engine.principals
         ),
         engine.rooms,
+        engine.documents,
         knowledge,
         grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
         grit.core.classify.ClearedClassifier.of(StubClassifier.Service, new StubClassifier),

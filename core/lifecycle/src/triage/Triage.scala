@@ -228,6 +228,7 @@ object Triage {
               r.principals
             ),
             r.rooms,
+            r.documents,
             reads,
             TurnRef(triage.period.conversationId, triage.turn),
             env.tuning,
