@@ -44,9 +44,9 @@ object DriveItems {
     *     [[DriveRest.ListMost]] are listed, and ending as the drives' does), then each file as
     *     a search's hit is, its line its name or that note, its type, its id and when it last
     *     changed, when Drive says;
-    *   - a read: a head that names nothing of the file (for one a format read, it names the
-    *     handle the file area keeps it under, for how long, and that `file_read` reads more of
-    *     it), then one part, its name, when it last changed when Drive says, and its text
+    *   - a read: a head that names nothing of the file (for one a format read, it first says
+    *     the whole file is kept under its handle, for how long, and that `file_read` reads any
+    *     other part of it by that handle), then one part, its name, when it last changed when Drive says, and its text
     *     (cut to whole lines that fit beside the head, saying how many were kept), at the place
     *     it lies within, at the meet over its writers' integrities: the deployment's own
     *     address skipped; a declared writer at its integrity; a person, or everyone, in the
@@ -124,8 +124,9 @@ object DriveItems {
           reading,
           file,
           grants,
-          s"The Drive file asked for, kept here as ${handle.written} ${FileError.span(keeps)}; " +
-            "file_read reads more of it by that handle:",
+          s"The whole file is kept here as ${handle.written} ${FileError.span(keeps)}, not only " +
+            s"the part below: file_read ${handle.written} reads any other part of it (other " +
+            "pages, a section by its heading, or on from an offset). The Drive file asked for:",
           read.shown,
           Some((read, handle))
         )

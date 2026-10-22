@@ -452,8 +452,9 @@ object DriveEdgeTests extends TestSuite {
           val first = read()
           (first, read(), media(fake)) ==> (
             (
-              "The Drive file asked for, kept here as f1 for 24 hours; file_read reads more of " +
-                "it by that handle:",
+              "The whole file is kept here as f1 for 24 hours, not only the part below: " +
+                "file_read f1 reads any other part of it (other pages, a section by its heading, " +
+                "or on from an offset). The Drive file asked for:",
               Some(ujson.Str("f1"))
             ),
             first,

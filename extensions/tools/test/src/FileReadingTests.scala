@@ -118,6 +118,17 @@ object FileReadingTests extends TestSuite {
   }
 
   val tests = Tests {
+    test("the model is told a handle keeps the whole file, not only the part read before") {
+      area { (a, _) =>
+        FileReading.tool(a).spec.does ==>
+          "Read any part of a file kept here, by its handle (such as f41), which the read that " +
+          "kept it named. The whole file is kept, not only the part read then: with no other " +
+          "argument, its outline and its start; ask for pages, a section by its heading, or " +
+          "from an offset to read on. Each read says what it covers. Files are kept a while, " +
+          "then must be read again from where they came from."
+      }
+    }
+
     test(
       "a kept file is read by its handle, a range at a time, shown to the turn as read where it came from"
     ) {
