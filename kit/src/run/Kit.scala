@@ -7,8 +7,9 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
-import grit.core.id.{AttesterName, EdgeName}
+import grit.core.id.{AttesterName, Declarer, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm}
+import grit.core.job.{Declared, Ending}
 import grit.core.message.Cost
 import grit.core.place.Place
 import grit.core.spend.Budget
@@ -17,10 +18,11 @@ import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, Link, Unopened}
 import grit.dbos.sql.DbConfig
 import grit.host.LocalMachine
+import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
 
-/** Why [[Kit.serve]] or [[Kit.catchUp]] could not run, or stopped. */
+/** Why [[Kit.serve]], [[Kit.catchUp]] or [[Kit.runOnce]] could not run, or stopped. */
 enum KitFailure {
 
   /** The environment names no usable database, or a key the deployment needs. */
@@ -38,11 +40,15 @@ enum KitFailure {
   /** The database could not be read or swept partway through a catch-up. */
   case Store(why: String)
 
+  /** Runs [[Kit.runOnce]] was asked for that the deployment cannot run, and why. */
+  case Unrunnable(why: String)
+
   def message: String = this match {
     case Unconfigured(refusal) => refusal.message
     case Edge(edge, refusal) => s"${EdgeName.value(edge)}: ${refusal.message}"
     case Engine(why) => why
     case Store(why) => why
+    case Unrunnable(why) => why
   }
 }
 
@@ -231,6 +237,129 @@ object Kit {
                 say
               )
             } finally engine.close()
+        }
+    }
+
+  /** What one of [[runOnce]]'s runs came to: its schedule's `key`, how it `ended` (`None` when
+    * it had not ended within the wait), the last `reply` its job wrote (`None` when none), and
+    * what the day's recorded spend rose by while it ran, in USD.
+    */
+  final case class Ran(
+      key: ScheduleKey,
+      ended: Option[Ending],
+      reply: Option[String],
+      spent: BigDecimal
+  ) extends caps.Pure {
+
+    /** `{key}: {ended} ({not ended}); {reply} ({no reply}); spent {cents}`. */
+    def line: String =
+      s"${ScheduleKey.value(key)}: ${ended.fold("not ended")(e => s"ended ${e.word}")}; " +
+        s"${reply.getOrElse("no reply")}; spent ${Cost.cents(spent)}"
+  }
+
+  /** Opens `deployment`'s engine over the database `env` names, with no sweep and no edge,
+    * says through `say` the database's endpoint (`database: host:port/name`), and once `agree`
+    * accepts `what`, launches its workflows and runs `runs` one at a time, in order: each
+    * declared as a schedule of `plugin` beside the deployment's own, its slot a once slot due
+    * when it is reached (its own rule is not used), started by a pass of the clock edge, and
+    * waited for, a pass made every [[OnceRuns.Every]], until it ends or `longest` passes (a
+    * slot of the deployment's own that comes due meanwhile runs too). Says each [[Ran]]'s
+    * line as it ends; a run not ended within `longest` finishes when the engine next opens.
+    * Refused before the engine opens ([[KitFailure.Unrunnable]]) when `plugin` is not the
+    * deployment's, a run's job is not `plugin`'s, a run's key is one the deployment declares,
+    * or a run's clearance is none of `plugin`'s own schedules'; and as [[serve]] is refused.
+    * Once it opens, refused while another process holds the database's engine, and when none
+    * of `plugin`'s own schedules is stored there (the deployment has never been served on
+    * that database). Nothing runs when `agree` declines.
+    */
+  def runOnce(
+      deployment: Deployment,
+      plugin: PluginName,
+      runs: Vector[Declared[?]],
+      what: String,
+      longest: FiniteDuration,
+      env: Map[String, String],
+      agree: String => Boolean,
+      say: String => Unit
+  ): Either[KitFailure, Vector[Ran]] =
+    OnceRuns.unrunnable(deployment, plugin, runs).map(KitFailure.Unrunnable(_)) match {
+      case Some(refused) => Left(refused)
+      case None =>
+        preflight(deployment, env, Nil) match {
+          case Left(failure) => Left(failure)
+          case Right(secrets) =>
+            // The process's own time, read here at the run's root and passed down.
+            val clock: Clock^ = Clock.system() // clock-check: the composition root of once runs
+            trusted(deployment, secrets, clock) match {
+              case Left(failure) => Left(failure)
+              case Right(engine) =>
+                try {
+                  OnceRuns.served(engine, deployment, plugin) match {
+                    case Left(e) => Left(KitFailure.Store(s"the schedules are unread: $e"))
+                    case Right(false) =>
+                      Left(
+                        KitFailure.Unrunnable(
+                          s"the plugin ${PluginName.value(plugin)} has never been served on " +
+                            s"${secrets.database.endpoint}: run grit serve on it first"
+                        )
+                      )
+                    case Right(true) =>
+                      say(s"database: ${secrets.database.endpoint}")
+                      if (!agree(what)) Right(Vector.empty)
+                      else {
+                        val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
+                        Launch(
+                          engine,
+                          deployment,
+                          secrets,
+                          Launch.Run.Served,
+                          sweeping = false,
+                          said => turns.info(said)
+                        )
+                        val edge = new ClockEdge(
+                          engine.inbox,
+                          engine.schedules,
+                          engine.db,
+                          engine.clock,
+                          deployment.allJobs
+                        )
+                        runs.foldLeft[Either[KitFailure, Vector[Ran]]](Right(Vector.empty)) {
+                          (acc, run) =>
+                            acc.flatMap { done =>
+                              val at = clock.now()
+                              val dated = OnceRuns.dated(run, at)
+                              val declared = deployment.declared :+ (Declarer.Plugin(plugin), dated)
+                              (for {
+                                before <- spentToday(engine, deployment.budget, at)
+                                _ <- engine.jot
+                                  .write(Subject.Public)(engine.schedules.declare(declared, at))
+                                  .left
+                                  .map(e => s"the run could not be declared: $e")
+                                ended = OnceRuns.waited(
+                                  engine,
+                                  plugin,
+                                  run.key,
+                                  clock,
+                                  at.plusMillis(longest.toMillis),
+                                  () => { val _ = edge.tick() }
+                                )
+                                after <- spentToday(engine, deployment.budget, at)
+                              } yield {
+                                val ran = Ran(
+                                  run.key,
+                                  ended,
+                                  OnceRuns.replied(engine, plugin, run.key, run.job.name, at),
+                                  after - before
+                                )
+                                say(ran.line)
+                                done :+ ran
+                              }).left.map(KitFailure.Store(_))
+                            }
+                        }
+                      }
+                  }
+                } finally engine.close()
+            }
         }
     }
 

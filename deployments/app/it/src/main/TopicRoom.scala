@@ -15,7 +15,7 @@ import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.DbConfig
 import grit.eval.{Room, TopicScore}
-import grit.kit.run.Launch
+import grit.kit.run.{Launch, OnceRuns}
 import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.ref.{CardKey, Ref, TopicKey}
@@ -139,10 +139,14 @@ object TopicRoom {
               if (i > 0) right(Launch.reconcile(engine.schedules, engine.jot, d, Instant.now()))
               println(
                 s"day ${i + 1} (${days(i).plusDays(moved)}): " +
-                  s"${TopicRuns.waited(engine, Topics, key(i), Longest, () => ())}; " +
+                  s"${OnceRuns
+                      .waited(engine, Topics, key(i), engine.clock, Instant.now().plus(Longest), () => ())
+                      .fold("not ended")(e => s"ended ${e.word}")}; " +
                   s"${current(engine, terms).size} topics; spent ${RoomRun.spent(engine)}"
               )
-              println(s"  replied: ${TopicRuns.replied(engine, Topics, key(i), at)}")
+              println(
+                s"  replied: ${OnceRuns.replied(engine, Topics, key(i), TopicDream.Name, at).getOrElse("no reply")}"
+              )
           }
         }
         val truth = TopicScore.truth(room, ZoneOffset.UTC)

@@ -1,9 +1,16 @@
 package grit.kit.run
 
+import java.time.{Instant, LocalTime, ZoneOffset}
+
+import scala.concurrent.duration.*
+
 import grit.core.edge.{EdgeRefusal, ServedEdge, Variable}
-import grit.core.id.{AttesterName, EdgeName}
+import grit.core.id.{AttesterName, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm, Vouching}
-import grit.kit.deployment.{Deployments, Placer}
+import grit.core.job.{Declared, Grace, Job, SlotRule}
+import grit.core.plugin.Plugin
+import grit.core.visibility.{Label, Level}
+import grit.kit.deployment.{Deployments, Placer, TestPlugins}
 import grit.kit.environment.SecretsRefusal
 import grit.models.OpenRouterConfig
 
@@ -21,6 +28,38 @@ object KitTests extends TestSuite {
           .edge("slack", asks = ServedEdge.Asks.Unanswered, needs = Vector("SLACK_BOT_TOKEN"))
       ),
       placer = placer
+    )
+
+  private def key(s: String): ScheduleKey = ScheduleKey.of(s).fold(sys.error, identity)
+
+  private val nightlyJob = new TestPlugins.Named("nightly-job")
+
+  /** A plugin with one job and its nightly schedule. */
+  private object Nightly extends Plugin {
+    val name: PluginName = TestPlugins.name("nightly")
+    val version: Int = 1
+    override val jobs: Vector[Job[?]] = Vector(nightlyJob)
+    override val schedules: Vector[Declared[?]] = Vector(
+      Declared(
+        key("nightly"),
+        nightlyJob,
+        SlotRule.Daily(LocalTime.of(5, 0), ZoneOffset.UTC),
+        TestPlugins.Named.None
+      )
+    )
+  }
+
+  private def once(
+      k: String,
+      job: TestPlugins.Named = nightlyJob,
+      clearance: Label = Label.Public
+  ): Declared[?] =
+    Declared(
+      key(k),
+      job,
+      SlotRule.Once(Instant.EPOCH, Grace.Zero),
+      TestPlugins.Named.None,
+      clearance
     )
 
   // Never reached when refused before the engine opens: nothing listens on port 1.
@@ -60,6 +99,38 @@ object KitTests extends TestSuite {
             SecretsRefusal.Key(OpenRouterConfig.Invalid.Missing("JEV_API_KEY"))
           )
         )
+    }
+
+    test(
+      "runOnce refuses a plugin not the deployment's, a job not its, its own schedule's key, and a clearance none of its schedules hold, before the engine opens"
+    ) {
+      val d = Deployments.of(plugins = Vector(Nightly)).fold(r => sys.error(r.toString), identity)
+      def tried(plugin: String, runs: Declared[?]*) =
+        Kit.runOnce(
+          d,
+          TestPlugins.name(plugin),
+          runs.toVector,
+          "",
+          1.second,
+          nowhere,
+          _ => true,
+          _ => ()
+        )
+      Vector(
+        tried("absent", once("a")),
+        tried("nightly", once("a"), once("b", new TestPlugins.Named("other-job"))),
+        tried("nightly", once("nightly")),
+        tried("nightly", once("c", clearance = Label.at(Level.Internal)))
+      ) ==> Vector(
+        Left(KitFailure.Unrunnable("the deployment has no plugin absent")),
+        Left(KitFailure.Unrunnable("the job other-job is not the plugin nightly's")),
+        Left(KitFailure.Unrunnable("the schedule nightly is one the deployment declares")),
+        Left(
+          KitFailure.Unrunnable(
+            "the schedule c's clearance [level: internal] is none of the plugin nightly's schedules'"
+          )
+        )
+      )
     }
   }
 }

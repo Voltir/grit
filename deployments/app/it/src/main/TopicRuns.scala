@@ -18,8 +18,7 @@ import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.topic.{TopicDream, TopicParams}
 
 /** What a topics run by hand shares ([[TopicRoom]], [[TopicBackfill]]): the topics plugin with
-  * one once schedule, a cards plugin exporting its cards, how a run's schedule ended and what it
-  * replied.
+  * one once schedule, and a cards plugin exporting its cards.
   */
 private[main] object TopicRuns {
 
@@ -76,41 +75,5 @@ private[main] object TopicRuns {
   private def documents(t: DocumentTerms): Documents = new Documents {
     val terms: DocumentTerms = t
     val posting: Option[DocumentPosting] = None
-  }
-
-  /** How the schedule `key` of the plugin `topics` ended, waited for at most `longest`, `tick`
-    * made every two seconds meanwhile (the clock edge's pass, when no sweep makes it).
-    */
-  def waited(
-      engine: Engine^,
-      topics: PluginName,
-      key: ScheduleKey,
-      longest: Duration,
-      tick: () => Unit
-  ): String = {
-    val id = ScheduleId.declared(Declarer.Plugin(topics), key)
-    val until = Instant.now().plus(longest)
-    def ended = right(engine.db.read(Subject.Public)(engine.schedules.read(id))).flatMap(_.ended)
-    while ((ended.isEmpty || !engine.unfinished().contains(0)) && Instant.now().isBefore(until)) {
-      tick()
-      Thread.sleep(2000)
-    }
-    ended.fold("not ended")(e => s"ended ${e.word}")
-  }
-
-  /** The reply of the run of the plugin `topics`' schedule `key`, its once slot due `at`; or
-    * that it has none.
-    */
-  def replied(engine: Engine^, topics: PluginName, key: ScheduleKey, at: Instant): String = {
-    val slot = Slot(ScheduleId.declared(Declarer.Plugin(topics), key), Slot.kept(at))
-    right(engine.db.read(Subject.Public) {
-      engine.conversations
-        .find(slot.origin(TopicDream.Name))
-        .flatMap(_.fold(Right(Vector.empty))(c => engine.entries.list(c.id)))
-    }).reverseIterator
-      .collectFirst { case Entry(_, _, _, _, _, Payload.Message(a: Message.Assistant), _, _) =>
-        a.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-      }
-      .getOrElse("no reply")
   }
 }

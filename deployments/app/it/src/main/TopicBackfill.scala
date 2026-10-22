@@ -1,16 +1,18 @@
 package grit.app.main
 
-import java.time.{Duration, Instant, LocalDate, LocalTime, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalTime, ZoneOffset}
+
+import scala.concurrent.duration.*
 
 import grit.core.id.{PluginName, ScheduleKey}
+import grit.core.job.{Declared, Grace, SlotRule}
+import grit.core.message.Cost
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
-import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
-import grit.kit.environment.Secrets
-import grit.kit.run.Launch
+import grit.kit.run.Kit
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.topic.{TopicDream, TopicParams}
 
@@ -24,11 +26,11 @@ import grit.knowledge.topic.{TopicDream, TopicParams}
   * models' variables come from the environment over `GRIT_ENV_FILE` (`.env` when unset). The
   * engine runs the topics plugin `topics` at public, its cards read from the plugin `knowledge`'s
   * documents, and keeps each other plugin the database declares documents for declared, so its
-  * documents stay searched; it makes no sweep, so it closes, posts and collects nothing, and each
-  * run is started by a clock edge's pass made here. For each day it runs `topics-dream` for that
-  * day, then again, each a once schedule `topics-backfill-{day}-{n}` due a few seconds on, and
-  * prints, by shape alone: how each ended and its reply line, and for the second whether it wrote
-  * nothing and spent nothing (`unchanged`); then the day's spend.
+  * documents stay searched. The runs are [[grit.kit.run.Kit.runOnce]]'s, one at a time: for
+  * each day `topics-dream` for that day, then again, each a once schedule
+  * `topics-backfill-{day}-{n}`; it prints, by shape alone, each run's line (how it ended, its
+  * reply line, its spend), for each day whether its second run wrote nothing and spent nothing
+  * (`unchanged`), then the runs' spend in all.
   */
 object TopicBackfill {
 
@@ -45,7 +47,7 @@ object TopicBackfill {
   private val CardsName = PluginName.of("knowledge").fold(sys.error, identity)
 
   /** The longest one run is waited for. */
-  private val Longest: Duration = Duration.ofMinutes(10)
+  private val Longest: FiniteDuration = 10.minutes
 
   private def key(day: LocalDate, n: Int): ScheduleKey =
     ScheduleKey.of(s"topics-backfill-$day-$n").fold(sys.error, identity)
@@ -79,77 +81,42 @@ object TopicBackfill {
       )
       dream <- topics.jobs.collectFirst { case d: TopicDream => d }.toRight("no topics job")
       first <- RoomRun.deployment(env, Vector(topics, cards), cap)
-    } yield {
-      val engine = LiveEngine.open(
-        config,
-        first._1.runsUnder,
-        first._1.budget,
-        first._1.visibility
+      keeping = kept(config, first._1)
+      deployment <- RoomRun.deployment(env, Vector(topics, cards) ++ keeping, cap)
+      // Each day twice, the second to see it change nothing; each run made due as it is reached.
+      runs = days.flatMap(day =>
+        (0 to 1).map(n =>
+          Declared(
+            key(day, n),
+            dream,
+            SlotRule.Once(Instant.EPOCH, Grace.Zero),
+            TopicParams(perRun, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None),
+            Label.Public
+          )
+        )
       )
-      try {
-        // Every other plugin whose documents the copy declares, kept declared.
-        val keeping = right(engine.db.read(Subject.Public)(engine.documents.declared()))
-          .collect {
-            case (name, terms) if name != Topics && name != CardsName =>
-              new TopicRuns.Keeping(name, terms)
-          }
-        def deployment(day: LocalDate, n: Int, at: Instant): Either[String, (Deployment, Secrets)] =
-          RoomRun.deployment(
-            env,
-            Vector(
-              new TopicRuns.DayRun(
-                topics,
-                dream,
-                key(day, n),
-                at,
-                TopicParams(perRun, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None),
-                Label.Public
-              ),
-              cards
-            ) ++ keeping,
-            cap
-          )
-        // Launched once, with the first day's schedule; each run after declares its own.
-        days.headOption.foreach { day =>
-          deployment(day, 0, Instant.now().plusSeconds(5)) match {
-            case Left(why) => sys.error(why)
-            case Right((d, secrets)) =>
-              val _ = Launch(engine, d, secrets, Launch.Run.Served, sweeping = false, println)
-          }
-        }
-        days.foreach { day =>
-          val lines = (0 to 1).map { n =>
-            val at = Instant.now().plusSeconds(5)
-            deployment(day, n, at) match {
-              case Left(why) => (s"day $day run ${n + 1}: not run: $why", false)
-              case Right((d, _)) =>
-                right(Launch.reconcile(engine.schedules, engine.jot, d, Instant.now()))
-                val edge =
-                  new ClockEdge(engine.inbox, engine.schedules, engine.db, engine.clock, d.allJobs)
-                val before = RoomRun.spent(engine)
-                val ended = TopicRuns.waited(
-                  engine,
-                  Topics,
-                  key(day, n),
-                  Longest,
-                  () => {
-                    val _ = edge.tick()
-                  }
-                )
-                val reply = TopicRuns.replied(engine, Topics, key(day, n), at)
-                val unchanged =
-                  reply.startsWith("topics: 0 written") && RoomRun.spent(engine) == before
-                (s"day $day run ${n + 1}: $ended; $reply", unchanged)
-            }
-          }
-          lines.foreach((line, _) => println(line))
-          println(
-            s"day $day: second run ${
-                if (lines.lift(1).exists(_._2)) "unchanged" else "NOT unchanged"
-              }"
-          )
-        }
-        println(s"spent ${RoomRun.spent(engine)}")
-      } finally engine.close()
+      ran <- Kit
+        .runOnce(deployment._1, Topics, runs, "", Longest, env, _ => true, println)
+        .left
+        .map(_.message)
+    } yield {
+      days.zipWithIndex.foreach { (day, i) =>
+        val unchanged = ran
+          .lift(2 * i + 1)
+          .exists(r => r.reply.exists(_.startsWith("topics: 0 written")) && r.spent.signum == 0)
+        println(s"day $day: second run ${if (unchanged) "unchanged" else "NOT unchanged"}")
+      }
+      println(s"spent ${Cost.cents(ran.map(_.spent).sum)}")
     }
+
+  /** Every other plugin whose documents the copy declares, kept declared. */
+  private def kept(config: DbConfig, d: Deployment): Vector[TopicRuns.Keeping] = {
+    val engine = LiveEngine.open(config, d.runsUnder, d.budget, d.visibility)
+    try
+      right(engine.db.read(Subject.Public)(engine.documents.declared())).collect {
+        case (name, terms) if name != Topics && name != CardsName =>
+          new TopicRuns.Keeping(name, terms)
+      }
+    finally engine.close()
+  }
 }
