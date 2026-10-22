@@ -28,6 +28,7 @@ One package, `grit.tools`:
   it with; over the store and the engine's askers, which only the kit holds.
 - `Administering` — `label_room` and `quiet_room`: the conversation's own room labelled, or
   made quiet or not, once the person who asked approves the change on the ask, then made as
-  them under the slash command's rules; over the engine's administration, which only the kit
-  holds.
+  them under the slash command's rules, re-decided at approval (ADR 0033); offered by the kit
+  only on a turn a person put to grit in a colleagues' room. Over the engine's administration,
+  which only the kit holds.
 - `Names` — every name above, which a plugin's tool may not take (`Deployment.of` refuses it).

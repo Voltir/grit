@@ -34,6 +34,12 @@ schedules that run it, and the `Labeller` of its rooms; beside them it declares,
 `Visibility` and its `Identities` (below). The rest it chooses among grit's
 shipped implementations, by the kit's enums.
 
+A `ServedEdge` says what its people do with an ask that waits for one, in its `asks`
+(`ServedEdge.Asks`): `Answered`, its people answer and send the answers back (`Inbox.answer`);
+`Unanswered`, it holds conversations and shows no ask, so a call that asks there waits its whole
+time, and the kit offers no administering tool; `Never`, it holds no conversation, as a
+service's edge does. Only a turn's asker may answer (ADR 0017).
+
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |

@@ -71,9 +71,13 @@ In dependency order:
     [`docs/extending.md`](../../docs/extending.md) (Identities).
   - **Asks** (ADR 0017): a running turn's gated call that asks first is shown to the turn's
     asker alone, as an ephemeral card in its thread, read for that turn and never in the public
-    pass that finds the turns, once per process. Slack keeps an ephemeral message only in the
-    client it was shown in, so a card is gone once its asker reloads Slack, and a card past its
-    time still shows its buttons until clicked. A click is acknowledged at once and answered on
+    pass that finds the turns, once per process. Each ask is first posted to the thread as a
+    visible reply naming the asker ("Waiting for @… to approve or cancel this; the buttons are
+    shown only to them, in this thread."), once per ask under a tag; a restart shows the card
+    again but not that reply. Slack keeps an ephemeral message only in the client it was shown
+    in, so a card is gone once its asker reloads Slack, and a card past its time still shows its
+    buttons until clicked. After a turn whose ask was shown as a card, the edge refreshes which
+    rooms `slack_post` posts in. A click is acknowledged at once and answered on
     a thread of its own, as its clicker's: Apply lets the call run and Cancel declines it, and
     the card is rewritten in place to say so, or to say it expired; a clicker who is not the
     asker is told, beside it, who alone may answer.
