@@ -152,7 +152,8 @@ final class SlackEdge(
   /** Every channel grit's bot is a member of, by id, as last recorded. */
   def channels: Vector[ChannelId] = members.all
 
-  // Set when a room is made quiet or not through a command, or a re-offer failed, and taken by
+  // Set when a room is made quiet or not through a command, a turn this edge showed an ask's
+  // card for is delivered, or a re-offer failed, and taken by
   // reoffer, each atomically. A set racing a take is seen by this take or the next; which rooms
   // are quiet is read from the store, never from it.
   @caps.unsafe.untrackedCaptures
@@ -160,7 +161,8 @@ final class SlackEdge(
 
   /** When the channels `slack_post` may post in may have changed since this last ran (the
     * first time; a join or leave recorded since; a room made quiet, or not, through
-    * [[command]]), runs `offer` over them: each channel grit's bot is a member of that is not
+    * [[command]]; a turn delivered whose ask this edge showed as a card, which may have changed
+    * it through `quiet_room`), runs `offer` over them: each channel grit's bot is a member of that is not
     * quiet ([[Tx.quiet]]) and that Slack gives a name, by name and id, in the order of their
     * ids; one Slack gives no name is left out. A room made quiet elsewhere is seen at the next
     * such change. When the database cannot be read, or `offer` fails, that is said, and it
@@ -1220,7 +1222,8 @@ final class SlackEdge(
       pending.count { p =>
         stores.inbox.progress(p.turn) match {
           case Right(Progress.Done(reply, outcome)) =>
-            val _ = carded.removeIf(_._1 == p.turn.workflowId)
+            // An ask approved may have quieted its room: label_room and quiet_room ask first.
+            if (carded.removeIf(_._1 == p.turn.workflowId)) requiet.set(true)
             post(p, reply, outcome)
           case Right(Progress.Open) =>
             ask(p)
@@ -1454,8 +1457,8 @@ object SlackEdge {
     * With `posting`, it serves `slack_post` at [[PostsAt]]'s place, in every channel its bot is
     * a member of that is not quiet ([[grit.core.store.Tx.quiet]]) and that Slack gives a name,
     * at most `posting` posts across them, offered again at the next delivery after a join, a
-    * leave, or a room made quiet or not through its slash command (one made quiet elsewhere is
-    * seen at the next such change). Each channel is offered under its name, with and without
+    * leave, a room made quiet or not through its slash command, or a turn delivered whose ask
+    * it showed as a card (one made quiet elsewhere is seen at the next such change). Each channel is offered under its name, with and without
     * `#`, at the place `slack:{team}/{id}`; a turn is offered only those its room may write to.
     * A post is a top-level message, or a reply in a thread its message link names, rendered as
     * a reply is (nothing in it becomes a mention), and one Slack message at most; it never asks

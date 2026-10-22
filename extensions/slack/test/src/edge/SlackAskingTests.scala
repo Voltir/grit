@@ -16,6 +16,7 @@ import grit.core.edge.{
 }
 import grit.core.id.{EntryId, SourceId, ToolCallId, TurnRef}
 import grit.core.inbox.InMemoryInbox
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.InMemoryReviews
 import grit.core.store.{Entry, InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{Subject, Visibility}
@@ -131,6 +132,14 @@ object SlackAskingTests extends TestSuite {
     }
   }
 
+  private def reply(text: String): Message.Assistant =
+    Message.Assistant(
+      Vector(AssistantBlock.Text(text)),
+      StopReason.EndTurn,
+      Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+      "m"
+    )
+
   private val C1 = ToolCallId("c1")
   private val C2 = ToolCallId("c2")
 
@@ -158,6 +167,36 @@ object SlackAskingTests extends TestSuite {
         ),
         true
       )
+    }
+
+    test(
+      "a turn whose ask was shown as a card offers slack_post again once its reply is delivered; one shown none does not"
+    ) {
+      val w = World()
+      val asked = w.mentioned("1.0")
+      val other = w.mentioned("2.0")
+      w.asks(asked, C1, "Make this room quiet: grit posts nothing here unasked.")
+      // Counted by the offers below, each run on this thread.
+      @caps.unsafe.untrackedCaptures
+      var offers = 0
+      val offer: Vector[(String, ChannelId)] -> Either[String, Unit] = _ => {
+        offers += 1
+        Right(())
+      }
+      def done(turn: TurnRef): Unit = w.inbox.finish(turn, Some(reply("ok")), "replied")
+      def pass(): Int = {
+        val _ = w.edge.deliver()
+        w.edge.reoffer(offer)
+        offers
+      }
+      w.edge.reoffer(offer)
+      val first = offers
+      val carded = pass()
+      done(other)
+      val unasked = pass()
+      done(asked)
+      val answered = pass()
+      (first, carded, unasked, answered, w.slack.cards.size) ==> (1, 1, 1, 2, 1)
     }
 
     test("a card's expiry is in its asker's zone when Slack places them in one") {
