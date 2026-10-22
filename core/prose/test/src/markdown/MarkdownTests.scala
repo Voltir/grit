@@ -163,7 +163,7 @@ object MarkdownTests extends TestSuite {
           Block.Paragraph(Text(Vector(Span.plain("one\n"), marked("two\nthree", Mark.Strong))))
         )
       )
-      Markdown.writer.render(doc) ==> "one\\\n**two\\\nthree**"
+      Markdown.write(doc) ==> "one\\\n**two\\\nthree**"
       Markdown.parse(Markdown.write(doc)) ==> doc
     }
 

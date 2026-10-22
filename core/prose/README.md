@@ -9,7 +9,7 @@ library.
 
 In dependency order:
 
-- **`form`** -- the blocks (`Doc`, `Block`, `Item`, `Level`), a table's typed `Column`s and
+- **`form`** -- the blocks (`Doc`, `Block`, `Item`, `Level`), a table's `Column`s and typed
   `Cell`s, their inline text (`Text`, `Span`, `Mark`), and `Renderer`, the trait each
   consumer's output mode implements. A span may carry notes, pure data its writer says of it
   that no renderer shows: a doc with notes of `A` is a `Doc[A]`, and plain prose, which
@@ -17,10 +17,10 @@ In dependency order:
   `Cell.printed` is what every renderer prints for it. Imports nothing in prose.
 - **`markdown`** -- `Markdown.parse` for a whole reply and `Markdown.parsePrefix` for one
   still streaming, which holds back what the next token may still change so that each
-  prefix renders as the start of the whole. `Markdown.write` (`Markdown.writer`, its
-  `Renderer`) is the way back, the model's text: total over any doc, and read back exactly by
-  `parse` for a doc `parse` made. Hand-written, total, and a subset: what it reads and writes
-  is in `Blocks` and `Inlines`. ← `form`
+  prefix renders as the start of the whole. `Markdown.write` is the way back, the model's
+  text: total over any doc, and read back exactly by `parse` for a doc `parse` made.
+  Hand-written, total, and a subset: what it reads and writes is in `Blocks` and `Inlines`.
+  ← `form`
 - **`json`** -- `ProseJson`, the stored form: a flat list of records under a schema version,
   notes written once by the keeper's codec. ← `form`
 

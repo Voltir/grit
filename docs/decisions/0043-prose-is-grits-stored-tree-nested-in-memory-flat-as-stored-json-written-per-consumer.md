@@ -29,10 +29,11 @@ Decision:
   quote it is in ([the module's README](../../core/prose/README.md) has the records). Reading
   rebuilds the nesting, and refuses another version, naming it. A keeper's own data that holds
   prose versions itself and stores each doc this way; it never keeps a codec of its own.
-- **Written per consumer.** `Renderer[Out]` is the one writer trait: `Markdown.writer` for the
-  model, total over any doc, whose output `Markdown.parse` reads back exactly for a doc it
-  made; the terminal's `ProseLook`; Slack's `RichText`. An index's writer joins them with its
-  first caller. A renderer is a function of the doc and what it was built with.
+- **Written per consumer.** `Renderer[Out]` is the one writer trait: the terminal's
+  `ProseLook`; Slack's `RichText`. The model's markdown is `Markdown.write`, total over any
+  doc, whose output `Markdown.parse` reads back exactly for a doc it made; it becomes a
+  `Renderer` value with its first caller that takes one, as an index's writer will. A
+  renderer is a function of the doc and what it was built with.
 - **What is rendered at keep time stays so.** A document's `body` is its text as the model
   sees it, written when it is kept, since search ranks that text; its tree, when it has one,
   is in its data.
