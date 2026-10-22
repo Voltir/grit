@@ -244,12 +244,20 @@ private[markdown] object Inlines {
   private def isPunct(c: Char): Boolean =
     c < 128 && "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(c)
 
-  /** `t` as inline markdown that [[parse]] reads back as `t`, for text [[parse]] makes, the
-    * first character starting a line: a `'\n'` is written as itself, and a character that
-    * could start a block at a line's start is escaped there. A `|` is left as it is, for a
-    * table's cells to escape. `heading` escapes every `#`, which could close a heading.
+  /** Where inline text is written: a paragraph's lines, a heading's one line, or a table cell,
+    * which no line starts in.
     */
-  def write(t: Text[Nothing], heading: Boolean): String = {
+  enum Place {
+    case Lines, Heading, Cell
+  }
+
+  /** `t` as inline markdown that [[parse]] reads back as `t`, for text [[parse]] makes, written
+    * at `place`: a `'\n'` is written as itself, and a character that could start a block at a
+    * line's start is escaped there (in a cell, nowhere). A `|` is left as it is, for a table's
+    * cells to escape. In a heading, every `#` is escaped, which could close it.
+    */
+  def write(t: Text[Nothing], place: Place): String = {
+    val heading = place == Place.Heading
     val spans = t.spans
     val out = new StringBuilder
     // The marks open around the text so far, innermost first, each with its closer.
@@ -282,7 +290,12 @@ private[markdown] object Inlines {
         open = (m, closer) :: open
       }
       if (s.marks(Mark.Code)) out ++= code(s.text)
-      else out ++= literal(s.text, out.isEmpty || out.lastOption.contains('\n'), heading)
+      else
+        out ++= literal(
+          s.text,
+          place != Place.Cell && (out.isEmpty || out.lastOption.contains('\n')),
+          heading
+        )
     }
     open.foreach((_, closer) => out ++= closer)
     out.toString

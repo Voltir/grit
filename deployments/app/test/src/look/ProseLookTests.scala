@@ -150,6 +150,28 @@ object ProseLookTests extends TestSuite {
       )
     }
 
+    test("a table's cells are shown as they print: a number as its source showed it") {
+      import grit.prose.form.{Block as Prose, Cell, CellKind, Column, Doc as ProseDoc, Text}
+      val doc = ProseDoc(
+        Vector(
+          Prose.table(
+            Vector(Column(Text.plain("n"), CellKind.Number)),
+            Vector(
+              Vector(Cell.Number(BigDecimal("1234.5"), Text.plain("1,234.50"))),
+              Vector(Cell.Truth(true, Some("=A1>0")))
+            )
+          )
+        )
+      )
+      rows(painted(ProseLook(Look(Theme.Default)).render(doc), Size(6, 40))).take(5) ==> Vector(
+        "▌ᚨ",
+        "    n",
+        "    ────────────",
+        "    1,234.50",
+        "    TRUE (=A1>0)"
+      )
+    }
+
     test(
       "wrapped rows hang: the reply under its rune, items under their text, quotes on the rail"
     ) {

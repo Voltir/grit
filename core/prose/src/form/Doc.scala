@@ -14,7 +14,7 @@ object Level {
 }
 
 /** One block of prose: the structure a reply is written in, with nothing in it about how
-  * any edge draws it -- no widths, cells or colours. A terminal, Slack and a web page each
+  * any edge draws it -- no widths or colours. A terminal, Slack and a web page each
   * render the same blocks their own way ([[Renderer]]). Its spans carry notes of `A`.
   */
 enum Block[+A <: caps.Pure] {
@@ -39,13 +39,21 @@ enum Block[+A <: caps.Pure] {
     */
   case Code(language: Option[String], lines: Vector[String]) extends Block[Nothing]
 
-  /** A table: a row of column names, then rows of cells. A row may be shorter or longer
-    * than the header; an edge decides what that looks like.
+  /** A table: its columns, then rows of cells. [[Block.table]] makes each row as wide as the
+    * columns; a row built here may be shorter or longer, and an edge decides what that looks
+    * like.
     */
-  case Table(header: Vector[Text[A]], rows: Vector[Vector[Text[A]]])
+  case Table(columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]])
 
   /** A break between sections. */
   case Rule
+}
+
+object Block {
+
+  /** A table, each row cut or filled with [[Cell.Empty]] to the columns' width. */
+  def table[A <: caps.Pure](columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]]): Block[A] =
+    Table(columns, rows.map(r => r.take(columns.length).padTo(columns.length, Cell.Empty())))
 }
 
 /** One item of a list: the blocks under its marker, a nested list among them. */
@@ -72,7 +80,8 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Numbered(start, is) => Block.Numbered(start, items(is))
       case Block.Quote(bs) => Block.Quote(bs.map(block))
       case c: Block.Code => c
-      case Block.Table(h, rows) => Block.Table(h.map(text), rows.map(_.map(text)))
+      case Block.Table(cs, rows) =>
+        Block.Table(cs.map(c => Column(text(c.name), c.kind)), rows.map(_.map(_.mapText(text))))
       case Block.Rule => Block.Rule
     }
     Doc(blocks.map(block))
@@ -83,7 +92,8 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
     notes.foldLeft(zero)((m, a) => plus(m, f(a)))
 
   /** Every note in reading order: block by block, a list's items and a quote's blocks where
-    * they stand, a table's header then its rows; a note on several spans once per span.
+    * they stand, a table's column names then its rows' cells; a note on several spans once per
+    * span.
     */
   def notes: Vector[A] = {
     def text(t: Text[A]): Vector[A] = t.spans.flatMap(_.notes)
@@ -94,7 +104,8 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Numbered(_, is) => is.flatMap(_.blocks.flatMap(block))
       case Block.Quote(bs) => bs.flatMap(block)
       case Block.Code(_, _) | Block.Rule => Vector.empty
-      case Block.Table(h, rows) => (h ++ rows.flatten).flatMap(text)
+      case Block.Table(cs, rows) =>
+        cs.flatMap(c => text(c.name)) ++ rows.flatten.flatMap(c => text(c.shown))
     }
     blocks.flatMap(block)
   }

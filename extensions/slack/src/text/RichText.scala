@@ -1,6 +1,6 @@
 package grit.slack.text
 
-import grit.prose.form.{Block, Doc, Item, Mark, Renderer, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Mark, Renderer, Span, Text}
 import grit.slack.event.UserId
 
 /** One Slack message of a reply: its rich_text and divider blocks, and the plain text Slack
@@ -160,8 +160,8 @@ object RichText extends Renderer[Vector[Post]] {
           items.map(i => plainOf(i.blocks)).mkString("\n")
         )
       )
-    case Block.Table(header, rows) =>
-      val t = table(header, rows)
+    case Block.Table(columns, rows) =>
+      val t = table(columns, rows)
       Vector(Piece(rich(preformatted(t)), t))
   }
 
@@ -229,7 +229,7 @@ object RichText extends Renderer[Vector[Post]] {
         case Block.Quote(bs) => plainOf(bs)
         case Block.Bullets(items) => items.map(i => plainOf(i.blocks)).mkString("\n")
         case Block.Numbered(_, items) => items.map(i => plainOf(i.blocks)).mkString("\n")
-        case Block.Table(h, rows) => table(h, rows)
+        case Block.Table(columns, rows) => table(columns, rows)
         case Block.Rule => ""
       }
       .mkString("\n")
@@ -288,11 +288,12 @@ object RichText extends Renderer[Vector[Post]] {
   private def preformatted(t: String): ujson.Obj =
     ujson.Obj("type" -> "rich_text_preformatted", "elements" -> ujson.Arr(plain(t)))
 
-  /** `header` and `rows` as aligned text: cells padded to their column's width, split by
-    * ` | `, the header ruled off with `-` and `+`.
+  /** `cols`' names and `rows`' cells as printed ([[Cell.printed]]), as aligned text: cells
+    * padded to their column's width, split by ` | `, the names ruled off with `-` and `+`.
     */
-  private def table(header: Vector[Text[Nothing]], rows: Vector[Vector[Text[Nothing]]]): String = {
-    val all = (header +: rows).map(_.map(_.plain))
+  private def table(cols: Vector[Column[Nothing]], rows: Vector[Vector[Cell[Nothing]]]): String = {
+    val names: Vector[String] = cols.map(_.name.plain)
+    val all: Vector[Vector[String]] = names +: rows.map(_.map(_.printed.plain))
     val columns = all.map(_.size).maxOption.getOrElse(0)
     val cells = all.map(r => r.padTo(columns, ""))
     val widths = (0 until columns).toVector.map(c => cells.map(_(c).length).max)

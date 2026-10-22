@@ -1,6 +1,6 @@
 package grit.prose.markdown
 
-import grit.prose.form.{Block, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -38,7 +38,9 @@ object MarkdownTests extends TestSuite {
         case Block.Numbered(_, items) => items.map(i => shown(i.blocks)).mkString("\n")
         case Block.Quote(bs) => shown(bs)
         case Block.Code(_, ls) => ls.mkString("\n")
-        case Block.Table(h, rs) => (h +: rs).map(_.map(_.plain).mkString("|")).mkString("\n")
+        case Block.Table(cs, rs) =>
+          (cs.map(_.name.plain).mkString("|") +: rs.map(_.map(_.shown.plain).mkString("|")))
+            .mkString("\n")
         case Block.Rule => ""
       }
       .mkString("\n")
@@ -328,14 +330,44 @@ object MarkdownTests extends TestSuite {
       )
     }
 
-    test("a pipe table: header, rows, escaped pipes, marks in cells") {
-      Markdown.parse("| a | b |\n|:--|--:|\n| `x` | y \\| z |\n| only |") ==> Doc(
+    test("a pipe table: word columns, rows cut or filled to width, empty cells, escapes, marks") {
+      Markdown.parse(
+        "| a | b |\n|:--|--:|\n| `x` | y \\| z |\n| only |\n| 1 | 2 | 3 |\n|  | e |"
+      ) ==> Doc(
         Vector(
           Block.Table(
-            Vector(plain("a"), plain("b")),
+            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
             Vector(
-              Vector(Text(Vector(marked("x", Mark.Code))), plain("y | z")),
-              Vector(plain("only"))
+              Vector(Cell.Words(Text(Vector(marked("x", Mark.Code)))), Cell.Words(plain("y | z"))),
+              Vector(Cell.Words(plain("only")), Cell.Empty()),
+              Vector(Cell.Words(plain("1")), Cell.Words(plain("2"))),
+              Vector(Cell.Empty(), Cell.Words(plain("e")))
+            )
+          )
+        )
+      )
+    }
+
+    test("a number column is written as its cells print, and reads back as words") {
+      val number = Doc(
+        Vector(
+          Block.table(
+            Vector(Column(plain("n"), CellKind.Number)),
+            Vector(
+              Vector(Cell.Number(BigDecimal("1234.5"), plain("1,234.50"))),
+              Vector(Cell.Empty(Some("=SUM(A1:A2)")))
+            )
+          )
+        )
+      )
+      Markdown.write(number) ==> "| n |\n|---|\n| 1,234.50 |\n| =SUM(A1:A2) (not calculated) |"
+      Markdown.parse(Markdown.write(number)) ==> Doc(
+        Vector(
+          Block.Table(
+            Vector(Column(plain("n"), CellKind.Words)),
+            Vector(
+              Vector(Cell.Words(plain("1,234.50"))),
+              Vector(Cell.Words(plain("=SUM(A1:A2) (not calculated)")))
             )
           )
         )
@@ -411,7 +443,12 @@ object MarkdownTests extends TestSuite {
       Markdown.parsePrefix("| a | b |\n") ==> Doc.empty
       Markdown.parsePrefix("| a | b |\n|--|-") ==> Doc.empty
       Markdown.parsePrefix("| a | b |\n|--|--|\n| x") ==> Doc(
-        Vector(Block.Table(Vector(plain("a"), plain("b")), Vector.empty))
+        Vector(
+          Block.Table(
+            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
+            Vector.empty
+          )
+        )
       )
     }
 

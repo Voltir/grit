@@ -110,7 +110,8 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
           .styled(StyledText.styled(shown.mkString("\n"), body))
           .beside(margin, margin)
           .copy(ground = Style.bg(theme.well), overflow = Overflow.Truncate)
-      case Prose.Table(header, rows) => own(first, rest) :+ table(header, rows, rest ++ " ")
+      case Prose.Table(columns, rows) =>
+        own(first, rest) :+ table(columns.map(_.name), rows.map(_.map(_.printed)), rest ++ " ")
       case Prose.Rule =>
         own(first, rest) :+ Block.Separator(Style.fg(theme.rail), '─', lead = rest)
     }

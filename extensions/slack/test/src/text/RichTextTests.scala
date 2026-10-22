@@ -1,6 +1,6 @@
 package grit.slack.text
 
-import grit.prose.form.{Block, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
 import grit.slack.event.UserId
 
 import utest.*
@@ -136,15 +136,21 @@ object RichTextTests extends TestSuite {
       )
     }
 
-    test("a table is preformatted text, its columns aligned") {
+    test("a table is preformatted text, its columns aligned, each cell as it prints") {
       only(
         Doc(
           Vector(
             Block.Table(
-              Vector(Text.plain("name"), Text.plain("n")),
               Vector(
-                Vector(Text.plain("a"), Text.plain("10")),
-                Vector(Text.plain("long"), Text.plain("2"))
+                Column(Text.plain("name"), CellKind.Words),
+                Column(Text.plain("n"), CellKind.Number)
+              ),
+              Vector(
+                Vector(
+                  Cell.Words(Text.plain("a")),
+                  Cell.Number(BigDecimal(10), Text.plain("10.0"))
+                ),
+                Vector(Cell.Words(Text.plain("long")), Cell.Empty(Some("=B1")))
               )
             )
           )
@@ -153,7 +159,11 @@ object RichTextTests extends TestSuite {
         rich(
           ujson.Obj(
             "type" -> "rich_text_preformatted",
-            "elements" -> ujson.Arr(text("name | n \n-----+---\na    | 10\nlong | 2 "))
+            "elements" -> ujson.Arr(
+              text(
+                "name | n                   \n-----+---------------------\na    | 10.0                \nlong | =B1 (not calculated)"
+              )
+            )
           )
         )
       )

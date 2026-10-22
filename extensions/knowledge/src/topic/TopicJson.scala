@@ -10,7 +10,7 @@ import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
-import grit.prose.form.{Block, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
 import grit.prose.markdown.Markdown
 
 /** [[Topic]]'s data and text. A doc is written block by block, each an object keyed by its
@@ -193,10 +193,10 @@ private object TopicJson {
         "code" -> ujson.Arr.from(lines.map(ujson.Str(_))),
         "language" -> language.fold(ujson.Null: ujson.Value)(ujson.Str(_))
       )
-    case Block.Table(header, rows) =>
+    case Block.Table(columns, rows) =>
       ujson.Obj(
-        "table" -> ujson.Arr.from(header.map(text)),
-        "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(text))))
+        "table" -> ujson.Arr.from(columns.map(c => text(c.name))),
+        "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(c => text(c.printed)))))
       )
     case Block.Rule => ujson.Obj("rule" -> true)
   }
@@ -232,7 +232,7 @@ private object TopicJson {
               array(Some(r), "a table's row").flatMap(traverse(_)(c => readText(Some(c))))
             )
           )
-        } yield Block.Table(header, rows)
+        } yield Block.Table(header.map(Column(_, CellKind.Words)), rows.map(_.map(Cell.Words(_))))
       else if (has("rule")) Right(Block.Rule)
       else Left(s"a block of no kind: ${ujson.write(v)}")
     }

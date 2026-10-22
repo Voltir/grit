@@ -33,8 +33,12 @@ object DocTests extends TestSuite {
       Block.Code(Some("scala"), Vector("val x = 1")),
       Block.Numbered(3, Vector(Item(Vector(Block.Paragraph(line(noted("n", 6))))))),
       Block.Table(
-        Vector(line(noted("h", 7))),
-        Vector(Vector(line(noted("c", 8)), line(noted("d", 9))))
+        Vector(
+          Column(line(noted("h", 7)), CellKind.Words),
+          Column(Text.plain("n"), CellKind.Number)
+        ),
+        Vector(Vector(Cell.Words(line(noted("c", 8))), Cell.Number(BigDecimal(2), Text.plain("2"))))
+          :+ Vector(Cell.Words(line(noted("d", 9))), Cell.Empty())
       ),
       Block.Rule
     )
@@ -64,8 +68,14 @@ object DocTests extends TestSuite {
           Block.Code(Some("scala"), Vector("val x = 1")),
           Block.Numbered(3, Vector(Item(Vector(Block.Paragraph(line(noted("n", 60))))))),
           Block.Table(
-            Vector(line(noted("h", 70))),
-            Vector(Vector(line(noted("c", 80)), line(noted("d", 90))))
+            Vector(
+              Column(line(noted("h", 70)), CellKind.Words),
+              Column(Text.plain("n"), CellKind.Number)
+            ),
+            Vector(
+              Vector(Cell.Words(line(noted("c", 80))), Cell.Number(BigDecimal(2), Text.plain("2"))),
+              Vector(Cell.Words(line(noted("d", 90))), Cell.Empty())
+            )
           ),
           Block.Rule
         )
@@ -78,6 +88,26 @@ object DocTests extends TestSuite {
 
     test("foldMap folds the notes in notes' order") {
       Every.foldMap("", _ + _)(n => s"${n.n},") ==> "1,2,3,4,5,5,6,7,8,9,"
+    }
+
+    test("a cell prints as shown, its formula after it, a formula with no value alone") {
+      val bold = Text(Vector(Span("1,234.50", Set(Mark.Strong))))
+      Cell.Number(BigDecimal("1234.5"), bold).printed ==> bold
+      Cell.Number(BigDecimal("1234.5"), bold, Some("=SUM(B2:B9)")).printed ==>
+        Text(Vector(Span("1,234.50", Set(Mark.Strong)), Span.plain(" (=SUM(B2:B9))")))
+      Cell.Truth(false, Some("=A1>2")).printed ==> Text.plain("FALSE (=A1>2)")
+      Cell.Empty(Some("=NOW()")).printed ==> Text.plain("=NOW() (not calculated)")
+      Cell.Empty().printed ==> Text.empty
+    }
+
+    test("table cuts a row past the columns and fills a short one with empty cells") {
+      val cols =
+        Vector(Column(Text.plain("a"), CellKind.Words), Column(Text.plain("b"), CellKind.Truth))
+      val x = Cell.Words(Text.plain("x"))
+      Block.table(cols, Vector(Vector(x), Vector(x, Cell.Truth(true), x))) ==> Block.Table(
+        cols,
+        Vector(Vector(x, Cell.Empty()), Vector(x, Cell.Truth(true)))
+      )
     }
 
     test("mapSpans rewrites a topic: link into a note and leaves others") {
