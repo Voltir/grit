@@ -15,7 +15,7 @@ import grit.core.edge.{ServedEdge, Variable}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
-import grit.core.message.{Cost, Message, Tokens}
+import grit.core.message.{Message, Tokens}
 import grit.core.model.{Ladder, ModelId, Policy}
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
@@ -170,7 +170,7 @@ import grit.turn.TurnLoop
   *     each of its labels, one run at a time, on serve's database ([[Kit.runOnce]],
   *     [[TopicDocuments.backfill]]), at most `n` topics a run ([[TopicDocuments.PerRun]] when
   *     absent): how a topic data version's reset completes. It prints the database and asks
-  *     before running, with the most it may cost ([[backfillQuestion]]; `--yes` does not ask),
+  *     before running, with the most it may cost ([[TopicDocuments.backfillQuestion]]; `--yes` does not ask),
   *     then each run's line and the spend (`nothing ran` when declined). A day run again
   *     writes only what changed. Refused while serve runs, and on a database serve never ran
   *     this deployment on. A nightly run that comes due meanwhile runs too; a topic both write
@@ -1317,17 +1317,8 @@ object Main {
     */
   private[main] final case class BackfillTopics(days: Int, perRun: Int, yes: Boolean)
 
-  /** 30: the most days one `grit backfill topics` reaches back. */
-  private[main] val BackfillMost: Int = 30
-
-  /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, the run's attach ask
-    * shared among its topics. Measured on the dream model (Haiku 5.5, $0.10 / $0.50 per million
-    * tokens in / out): a ten-topic night is about 100k tokens in and 10k out, about 1.5¢.
-    */
-  private[main] val TopicCost: BigDecimal = BigDecimal("0.0015")
-
   /** `grit backfill topics`'s arguments after those two words, in any order: `--days N` (1 to
-    * [[BackfillMost]], required), `--per-run n` (above zero; [[TopicDocuments.PerRun]] when
+    * [[TopicDocuments.BackfillMost]], required), `--per-run n` (above zero; [[TopicDocuments.PerRun]] when
     * absent) and `--yes`; or why not, naming the argument.
     */
   private[main] def backfillTopics(args: Vector[String]): Either[String, BackfillTopics] = {
@@ -1340,9 +1331,9 @@ object Main {
         case (Some("--yes"), _) => read(at + 1, got.copy(_3 = true))
         case (Some("--days"), n) =>
           n.flatMap(_.trim.toIntOption)
-            .filter(d => d >= 1 && d <= BackfillMost)
+            .filter(d => d >= 1 && d <= TopicDocuments.BackfillMost)
             .toRight(
-              s"--days is a whole number of days from 1 to $BackfillMost, not '${n.getOrElse("")}'"
+              s"--days is a whole number of days from 1 to ${TopicDocuments.BackfillMost}, not '${n.getOrElse("")}'"
             )
             .flatMap(d => read(at + 2, got.copy(_1 = Some(d))))
         case (Some("--per-run"), n) =>
@@ -1355,26 +1346,12 @@ object Main {
       }
     read(0, (None, None, false)).flatMap((days, perRun, yes) =>
       days
-        .toRight(s"--days is required: a whole number of days from 1 to $BackfillMost")
+        .toRight(
+          s"--days is required: a whole number of days from 1 to ${TopicDocuments.BackfillMost}"
+        )
         .map(BackfillTopics(_, perRun.getOrElse(TopicDocuments.PerRun), yes))
     )
   }
-
-  /** What `grit backfill topics` asks before it runs: the days `from` to `to`, the `labels`,
-    * how many `runs` of at most `perRun` topics, and the most they cost at [[TopicCost]] a
-    * topic, in cents.
-    */
-  private[main] def backfillQuestion(
-      from: java.time.LocalDate,
-      to: java.time.LocalDate,
-      labels: Vector[Label],
-      runs: Int,
-      perRun: Int
-  ): String =
-    s"Backfill topics for $from to $to at ${labels.map(Label.shown).mkString(", ")}: " +
-      s"$runs runs, at most $perRun topics each, about " +
-      s"${Cost.cents(TopicCost * runs * perRun)} at most (${Cost.cents(TopicCost)} a topic); " +
-      "nothing caps it but today's cap."
 
   /** 10 minutes: the longest `grit backfill topics` waits for one run. */
   private val BackfillLongest: scala.concurrent.duration.FiniteDuration =
@@ -1386,12 +1363,6 @@ object Main {
       print(s"$question [y/N] ")
       Option(scala.io.StdIn.readLine()).exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
     }
-
-  /** What `grit backfill topics` prints last: `nothing ran` when no run did (its question
-    * declined), else `spent {cents}`, what the runs spent in all.
-    */
-  private[main] def backfilled(ran: Vector[Kit.Ran]): String =
-    if (ran.isEmpty) "nothing ran" else s"spent ${Cost.cents(ran.map(_.spent).sum)}"
 
   /** `grit backfill topics`: the topics plugin's runs for the `b.days` days before `today`
     * ([[TopicDocuments.backfill]], started at `started`), run on `deployment`'s database by
@@ -1417,7 +1388,7 @@ object Main {
           deployment,
           topics.name,
           runs,
-          backfillQuestion(
+          TopicDocuments.backfillQuestion(
             today.minusDays(b.days),
             today.minusDays(1),
             runs.map(_.clearance).distinct,
@@ -1431,7 +1402,7 @@ object Main {
         )
         .left
         .map(_.message)
-    } yield println(backfilled(ran))
+    } yield println(TopicDocuments.backfilled(ran.map(_.spent)))
   }
 
   /** How `grit serve` bounds what it hears before each join of its bot: [[DaysVar]],

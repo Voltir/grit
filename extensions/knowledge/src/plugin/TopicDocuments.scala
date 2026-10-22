@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Declared, Grace, Job, SlotRule}
+import grit.core.message.Cost
 import grit.core.plugin.{Documents, Exports, Plugin}
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
@@ -109,6 +110,38 @@ object TopicDocuments {
 
   /** 10: the most topics one run writes. */
   val PerRun: Int = 10
+
+  /** 30: the most days one `grit backfill topics` reaches back. */
+  val BackfillMost: Int = 30
+
+  /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, the run's attach ask
+    * shared among its topics. Measured on the dream model (Haiku 5.5, $0.10 / $0.50 per million
+    * tokens in / out): a ten-topic night is about 100k tokens in and 10k out, about 1.5¢.
+    */
+  val TopicCost: BigDecimal = BigDecimal("0.0015")
+
+  /** What `grit backfill topics` asks before it runs: the days `from` to `to`, the `labels`,
+    * how many `runs` of at most `perRun` topics, and the most they cost at [[TopicCost]] a
+    * topic, in cents.
+    */
+  def backfillQuestion(
+      from: LocalDate,
+      to: LocalDate,
+      labels: Vector[Label],
+      runs: Int,
+      perRun: Int
+  ): String =
+    s"Backfill topics for $from to $to at ${labels.map(Label.shown).mkString(", ")}: " +
+      s"$runs runs, at most $perRun topics each, about " +
+      s"${Cost.cents(TopicCost * runs * perRun)} at most (${Cost.cents(TopicCost)} a topic); " +
+      "nothing caps it but today's cap."
+
+  /** What `grit backfill topics` prints last: `nothing ran` when no run did (its question
+    * declined), else `spent {cents}`, what the runs spent in all. `spent` is each run's spend in
+    * USD, one per run that ran.
+    */
+  def backfilled(spent: Vector[BigDecimal]): String =
+    if (spent.isEmpty) "nothing ran" else s"spent ${Cost.cents(spent.sum)}"
 
   /** 2 days: how recently a strand must have been spoken in, or a card written, to be looked
     * at.
