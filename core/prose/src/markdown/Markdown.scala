@@ -1,6 +1,6 @@
 package grit.prose.markdown
 
-import grit.prose.form.Doc
+import grit.prose.form.{Doc, Renderer}
 
 /** Markdown in, prose out: the subset a model writes by habit ([[Blocks]], [[Inlines]]).
   * Total: any string is some prose, and nothing here throws.
@@ -20,13 +20,19 @@ object Markdown {
     */
   def parsePrefix(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(held(text)), open = true))
 
-  /** `doc` as markdown that [[parse]] reads back as `doc`, for a doc [[parse]] makes: a code
-    * span holding backticks fenced with one more, a character markdown would read as a
-    * marker escaped, adjacent lists of one kind under alternating markers. A doc it cannot
-    * make reads back as another: a marked span starting or ending in a space, say, or a
-    * span marked strong then one marked emphasis ending inside a word.
+  /** `doc` as markdown, whatever made it: a table's cells as they print
+    * ([[grit.prose.form.Cell.printed]]), a
+    * line break as `\` at its line's end (a space in a heading or a cell), a list at any depth.
+    * [[parse]] reads back exactly the doc it made from this one's output; a doc no parse makes
+    * reads back as another: a number column as words, a marked span starting or ending in a
+    * space, a span marked strong then one marked emphasis ending inside a word.
     */
   def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks).mkString("\n")
+
+  /** [[write]] as a [[grit.prose.form.Renderer]]. */
+  val writer: Renderer[String] = new Renderer[String] {
+    def render(doc: Doc[Nothing]): String = write(doc)
+  }
 
   /** `text` split into lines, carriage returns dropped. */
   private def lines(text: String): Vector[String] =

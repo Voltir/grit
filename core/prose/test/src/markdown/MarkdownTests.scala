@@ -157,6 +157,56 @@ object MarkdownTests extends TestSuite {
       lost ==> Vector.empty
     }
 
+    test("a line break is written as a backslash at its line's end, and read back") {
+      val doc = Doc(
+        Vector(
+          Block.Paragraph(Text(Vector(Span.plain("one\n"), marked("two\nthree", Mark.Strong))))
+        )
+      )
+      Markdown.writer.render(doc) ==> "one\\\n**two\\\nthree**"
+      Markdown.parse(Markdown.write(doc)) ==> doc
+    }
+
+    test("a line break in a heading or a cell, which no line holds, is written as a space") {
+      val doc = Doc(
+        Vector(
+          Block.Heading(Level.of(2), plain("a\nb")),
+          Block.table(
+            Vector(Column(plain("c\nd"), CellKind.Words)),
+            Vector(Vector(Cell.Words(plain("e\n- f"))))
+          )
+        )
+      )
+      Markdown.write(doc) ==> "## a b\n\n| c d |\n|---|\n| e - f |"
+    }
+
+    test("a list four deep, under both kinds of marker, reads back as it was written") {
+      def item(text: String, inner: Block[Nothing]*): Item[Nothing] =
+        Item(Block.Paragraph(plain(text)) +: inner.toVector)
+      val doc = Doc(
+        Vector(
+          Block.Numbered(
+            9,
+            Vector(
+              item(
+                "one",
+                Block.Bullets(
+                  Vector(
+                    item(
+                      "two",
+                      Block.Numbered(1, Vector(item("three", Block.Bullets(Vector(item("four"))))))
+                    )
+                  )
+                )
+              ),
+              item("ten")
+            )
+          )
+        )
+      )
+      Markdown.parse(Markdown.write(doc)) ==> doc
+    }
+
     test("a list marker of another character starts a new list") {
       kinds(Markdown.parse("- a\n+ b\n* c\n\n1. x\n2) y").blocks) ==>
         Vector("ul", "li", "p", "ul", "li", "p", "ul", "li", "p", "ol", "li", "p", "ol", "li", "p")

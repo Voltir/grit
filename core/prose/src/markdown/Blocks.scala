@@ -94,9 +94,9 @@ private[markdown] object Blocks {
     out.result()
   }
 
-  /** `blocks` as markdown lines that [[parse]] reads back as `blocks`, for blocks [[parse]]
-    * makes: a blank line between blocks, an item's lines under its marker's text, a quote's
-    * behind `> `.
+  /** `blocks` as markdown lines, any blocks at all, that [[parse]] reads back as `blocks` when
+    * it made them: a blank line between blocks, an item's lines under its marker's text, a
+    * quote's behind `> `.
     */
   def write(blocks: Vector[Block[Nothing]]): Vector[String] =
     // Each of a run of lists of one kind under the other marker from the one before it.
@@ -112,13 +112,11 @@ private[markdown] object Blocks {
 
   /** `b`'s lines; `apart` writes a list under its other marker (`+`, or `)`). */
   private def write(b: Block[Nothing], apart: Boolean): Vector[String] = b match {
-    // An empty line inside a paragraph is a lone backslash, which the reader strips.
+    // A line break is a backslash at its line's end (markdown's hard break), which the reader
+    // strips; an empty line is a lone backslash.
     case Block.Paragraph(t) =>
-      Inlines
-        .write(t, Inlines.Place.Lines)
-        .split("\n", -1)
-        .toVector
-        .map(l => if (l.isEmpty) "\\" else l)
+      val lines = Inlines.write(t, Inlines.Place.Lines).split("\n", -1).toVector
+      lines.zipWithIndex.map((l, k) => if (k < lines.length - 1 || l.isEmpty) l + "\\" else l)
     case Block.Heading(level, t) =>
       val text = Inlines.write(t, Inlines.Place.Heading)
       Vector("#" * level.value + (if (text.isEmpty) "" else " " + text))

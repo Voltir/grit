@@ -252,9 +252,10 @@ private[markdown] object Inlines {
   }
 
   /** `t` as inline markdown that [[parse]] reads back as `t`, for text [[parse]] makes, written
-    * at `place`: a `'\n'` is written as itself, and a character that could start a block at a
-    * line's start is escaped there (in a cell, nowhere). A `|` is left as it is, for a table's
-    * cells to escape. In a heading, every `#` is escaped, which could close it.
+    * at `place`: a `'\n'` is written as itself in a paragraph's lines and as a space elsewhere,
+    * and a character that could start a block at a line's start is escaped there (in a cell,
+    * nowhere). A `|` is left as it is, for a table's cells to escape. In a heading, every `#`
+    * is escaped, which could close it.
     */
   def write(t: Text[Nothing], place: Place): String = {
     val heading = place == Place.Heading
@@ -289,10 +290,11 @@ private[markdown] object Inlines {
         out ++= opener
         open = (m, closer) :: open
       }
-      if (s.marks(Mark.Code)) out ++= code(s.text)
+      val text = if (place == Place.Lines) s.text else s.text.replace('\n', ' ')
+      if (s.marks(Mark.Code)) out ++= code(text)
       else
         out ++= literal(
-          s.text,
+          text,
           place != Place.Cell && (out.isEmpty || out.lastOption.contains('\n')),
           heading
         )
