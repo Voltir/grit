@@ -45,7 +45,7 @@ read: the dream's scan withdraws it, and a nightly run opens it again only from 
 spoken in within its `recent`; one written from older strands comes back only through a run
 for their past days, which is `scripts/eval backfill` (`TopicBackfill`), and that runs over a
 copy of a captured database, so on a live one such a topic stays withdrawn. A topic of a later
-version than its reader's is left as it is and counted, so an older engine wipes nothing. Only the
-json package imports ujson (law rules `prose-json-alone-imports-ujson` and its three kin); a
-note codec that captures a capability does not compile (a probe, `ProseJsonCaptureTests`).
+version than its reader's is left as it is and counted, so an older engine wipes nothing. Only
+the json package names ujson (a grep in `scripts/enola-law.sh`, which sees a fully qualified
+name where an import rule would not); a note codec that captures a capability does not compile (a probe, `ProseJsonCaptureTests`).
 The stored form is pinned by `ProseJsonTests`.
