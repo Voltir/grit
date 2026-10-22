@@ -531,10 +531,16 @@ object grit extends Module {
     }
   }
 
-  /* Prose: a reply's structure as edge-neutral blocks (the form), read from markdown.
-   * Names no other module; each edge renders the form its own way. core/prose/README.md. */
+  /* Prose: grit's stored tree as edge-neutral blocks (the form), read from markdown and
+   * stored as JSON. Names no other module; each consumer renders the form its own way. ujson
+   * is its one library, for its json package alone. core/prose/README.md. */
   object prose extends GritPublished with Placed {
     def folder = os.sub / "core" / "prose"
+
+    def mvnDeps = Seq(
+      mvn"com.lihaoyi::ujson:4.4.3"
+    )
+
     object test extends GritTests
 
     /* That a doc's notes are pure: no capability rides in prose. */

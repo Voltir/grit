@@ -6,7 +6,8 @@
 #      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone;
 #      and only grit.dbos (besides core's visibility package) names a label's stored parts (ADR 0030)
 #   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
-#   3. grit.prose names no other grit module (core/prose/README.md)
+#   3. grit.prose names no other grit module, and only its json package imports ujson
+#      (core/prose/README.md)
 #   4. core names no extension, each extension names core alone (a plugin extension, such as
 #      grit.digest or grit.remind, names core and plugin extensions), and the kit names no
 #      plugin, edge extension, terminal UI or deployment (ADRs 0021, 0027; docs/extending.md)
@@ -87,6 +88,11 @@ components:
   # grit.prose, for its rule below: the source tree alone, so a test's imports are not
   # counted against it.
   - {name: prose-code,     kind: module, match: ["core/prose/src", "core/prose/src/**"]}
+
+  # grit.prose's packages but json, for its ujson rule below: a new prose package joins it.
+  - name: prose-outside-json
+    kind: dependency
+    match: ["core/prose/src/form", "core/prose/src/form/**", "core/prose/src/markdown", "core/prose/src/markdown/**"]
 
   # The outline tool's main sources, kept free of grit's modules so the tool can leave the repository.
   - {name: outline-code,   kind: module, match: ["dev/outline/src", "dev/outline/src/**"]}
@@ -729,6 +735,34 @@ rules:
     via: imports
     mode: strict
     because: "grit.prose is the edge-neutral form a reply is rendered from; naming grit.tui, grit.core or any edge would make it one edge's form"
+
+  # Only prose's json package imports ujson: the tree and its markdown know nothing of how
+  # prose is stored. A pattern is an exact name or a suffix, so each import is its own rule:
+  # `import ujson.*` (an edge to `ujson`) and the three types a codec names. An import edge
+  # only: a fully qualified `ujson.Value` passes unseen.
+  - id: prose-json-alone-imports-ujson
+    forbid_name: prose-outside-json
+    pattern: "* -> ujson"
+    mode: strict
+    because: "core/prose/README.md: the form is the tree and markdown its reader and writer; the stored JSON is one consumer of it, kept in grit.prose.json"
+
+  - id: prose-json-alone-imports-ujson-value
+    forbid_name: prose-outside-json
+    pattern: "* -> ujson.Value"
+    mode: strict
+    because: "core/prose/README.md: the form is the tree and markdown its reader and writer; the stored JSON is one consumer of it, kept in grit.prose.json"
+
+  - id: prose-json-alone-imports-ujson-obj
+    forbid_name: prose-outside-json
+    pattern: "* -> ujson.Obj"
+    mode: strict
+    because: "core/prose/README.md: the form is the tree and markdown its reader and writer; the stored JSON is one consumer of it, kept in grit.prose.json"
+
+  - id: prose-json-alone-imports-ujson-arr
+    forbid_name: prose-outside-json
+    pattern: "* -> ujson.Arr"
+    mode: strict
+    because: "core/prose/README.md: the form is the tree and markdown its reader and writer; the stored JSON is one consumer of it, kept in grit.prose.json"
 
   # -------------------------------------------------------------------------------------
   # 4. Core, extensions, kit and deployments (ADRs 0021, 0027): an extension module is named
