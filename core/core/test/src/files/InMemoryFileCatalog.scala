@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{FileHandle, Sha256}
+import grit.core.id.{EdgeName, FileHandle, Sha256}
 import grit.core.store.{StoreError, Tx}
 
 /** An in-memory [[FileCatalog]] for tests, keeping [[FilesContract]] under a [[FileArea]]. It
@@ -24,6 +24,13 @@ final class InMemoryFileCatalog extends FileCatalog {
 
   def keyed(key: PutKey)(using Tx^): Either[StoreError, Option[FileRecord]] =
     Right(rows.values.collectFirst { case (Some(k), r) if k == key => r })
+
+  def snapshots(edge: EdgeName, ref: String, revision: String)(using
+      Tx^
+  ): Either[StoreError, Vector[FileRecord]] =
+    Right(rows.values.map(_._2).toVector.filter { r =>
+      r.origin.edge == edge && r.origin.ref == ref && r.origin.revision.contains(revision)
+    })
 
   def get(handle: FileHandle)(using Tx^): Either[StoreError, Option[FileRecord]] =
     Right(rows.get(handle).map(_._2))

@@ -31,7 +31,9 @@ trait Intake extends caps.SharedCapability {
   /** `incoming`'s bytes kept as a file named `name` from `origin`, opened by whoever reads
     * `item`, expiring the area's expiry after the put; then `body` over it opened, before this
     * returns. When a file put under `key` is still kept, that file, nothing fetched, `body` run
-    * over it; a key whose file expired puts afresh. Refused, keeping nothing, by the area's
+    * over it; a key whose file expired puts afresh. Likewise when the same snapshot is still
+    * kept at the same `item`: put from `origin`'s edge and ref at its revision (never when
+    * `origin` names none), its bytes still here. Refused, keeping nothing, by the area's
     * bounds ([[FileArea.Bounds]]): [[FileError.TooLarge]] past the most one file may have
     * (before a byte is read when `declared` says so); [[FileError.Full]] when the files kept and
     * this one would pass the most they may have together;

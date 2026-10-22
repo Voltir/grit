@@ -22,6 +22,18 @@ final class SqlFileCatalog extends FileCatalog {
       _.setString(1, PutKey.value(key))
     )(record).flatMap(valid).map(_.headOption)
 
+  def snapshots(edge: EdgeName, ref: String, revision: String)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[FileRecord]] =
+    many(
+      s"SELECT $Columns FROM grit.files f WHERE f.edge = ? AND f.ref = ? AND f.revision = ? " +
+        "ORDER BY f.id"
+    ) { ps =>
+      ps.setString(1, EdgeName.value(edge))
+      ps.setString(2, ref)
+      ps.setString(3, revision)
+    }(record).flatMap(valid)
+
   def get(handle: FileHandle)(using tx: Tx^): Either[StoreError, Option[FileRecord]] =
     many(s"SELECT $Columns FROM grit.files f WHERE f.id = ?")(
       _.setLong(1, FileHandle.value(handle))

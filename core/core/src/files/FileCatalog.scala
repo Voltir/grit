@@ -2,7 +2,7 @@ package grit.core.files
 
 import java.time.Instant
 
-import grit.core.id.{FileHandle, Sha256}
+import grit.core.id.{EdgeName, FileHandle, Sha256}
 import grit.core.store.{StoreError, Tx}
 
 /** What the file area keeps, as rows: one a put, naming its blob by digest. Expired rows are
@@ -17,6 +17,11 @@ trait FileCatalog {
 
   /** The file put under `key`, expired or not. */
   def keyed(key: PutKey)(using Tx^): Either[StoreError, Option[FileRecord]]
+
+  /** The files put from `edge`'s `ref` at `revision`, expired or not. */
+  def snapshots(edge: EdgeName, ref: String, revision: String)(using
+      Tx^
+  ): Either[StoreError, Vector[FileRecord]]
 
   /** `handle`'s file, expired or not. */
   def get(handle: FileHandle)(using Tx^): Either[StoreError, Option[FileRecord]]

@@ -79,8 +79,19 @@ abstract class FilesContract extends TestSuite {
 
   private def key(n: Int): PutKey = PutKey.read(s"tool:test:0:$n")
 
-  private def put(a: FileArea, k: PutKey, s: Source, item: FileItem = shared) =
-    a.put(k, "notes.txt", Some("text/plain"), origin("d1"), item, s)(f => (f.name, f.bytes))
+  /** A put of `s` under `k`, from `from` (by default a ref of `k`'s own, so no two keys' puts
+    * are one snapshot), kept at `item`.
+    */
+  private def put(
+      a: FileArea,
+      k: PutKey,
+      s: Source,
+      item: FileItem = shared,
+      from: Option[FileOrigin] = None
+  ) =
+    a.put(k, "notes.txt", Some("text/plain"), from.getOrElse(origin(PutKey.value(k))), item, s)(f =>
+      (f.name, f.bytes)
+    )
 
   /** `handle`'s text, as admitted by [[reading]] and opened. */
   private def text(a: FileArea, handle: FileHandle): Either[FileError, String] =
@@ -104,6 +115,26 @@ abstract class FilesContract extends TestSuite {
         clock.at = Start.plusSeconds(60)
         val again = new Source("hello")
         (first.isRight, put(a, key(1), again), again.asked) ==> (true, first, 0)
+      }
+    }
+    test(
+      "a put of a snapshot kept, from the same edge's ref at the same revision and kept at the same item, answers that file, fetching nothing; another revision or item, or none, puts afresh"
+    ) {
+      area(Small.copy(maxTotal = 100)) { (a, clock, _) =>
+        val at7 = origin("d1")
+        def handle(k: Int, from: FileOrigin, item: FileItem = shared): (Option[FileHandle], Int) = {
+          val s = new Source("hello")
+          (put(a, key(k), s, item, Some(from)).toOption.map(_._1.handle), s.asked)
+        }
+        val first = handle(1, at7)
+        clock.at = Start.plusSeconds(12)
+        (
+          handle(2, at7.copy(fetched = Start.plusSeconds(12))),
+          handle(3, at7.copy(revision = Some("8")))._2,
+          handle(4, at7, anasOwn)._2,
+          handle(5, at7.copy(revision = None))._2,
+          handle(6, at7.copy(ref = "d2"))._2
+        ) ==> ((first._1, 0), 1, 1, 1, 1)
       }
     }
     test("a put under a key whose file expired puts afresh, under a new handle") {

@@ -115,11 +115,13 @@ object DriveEdgeTests extends TestSuite {
     (result, edges, log.asScala.toVector)
   }
 
-  /** A request of `tool` with `arguments`, addressed to Drive's place. */
-  private def request(tool: String, arguments: ujson.Value): ToolRequest = {
+  /** A request of `tool` with `arguments`, addressed to Drive's place, as call `call` of its
+    * turn's first round.
+    */
+  private def request(tool: String, arguments: ujson.Value, call: Int): ToolRequest = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     ToolRequest(
-      CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError()),
+      CallSlot.of(turn, 0, call).getOrElse(throw new java.lang.AssertionError()),
       ToolRequest.Protocol,
       turn.conversationId,
       Drive.place,
@@ -141,9 +143,10 @@ object DriveEdgeTests extends TestSuite {
       tool: String,
       arguments: ujson.Value,
       said: String => Unit = _ => (),
-      files: Intake^ = new NoIntake
+      files: Intake^ = new NoIntake,
+      call: Int = 0
   ): Outcome = {
-    val q = request(tool, arguments)
+    val q = request(tool, arguments, call)
     val route: Route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
@@ -460,6 +463,30 @@ object DriveEdgeTests extends TestSuite {
             first,
             1
           )
+        }
+      }
+    }
+
+    test(
+      "a second read of a Drive file not changed since, by another call, answers the handle the first kept, without asking Drive for its bytes again"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One.", "Two."))
+        withArea() { area =>
+          def kept(call: Int, pages: String): Option[ujson.Value] =
+            run(
+              fake,
+              "drive_read",
+              ujson.Obj("file" -> "file-4", "pages" -> pages),
+              files = area,
+              call = call
+            ) match {
+              case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
+                part.facts.flatMap(_.json.obj.get("file"))
+              case other => throw new java.lang.AssertionError(other.toString)
+            }
+          (kept(0, "1"), kept(1, "2"), media(fake)) ==>
+            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1)
         }
       }
     }

@@ -34,12 +34,12 @@ final class FileArea(
       incoming: Incoming^
   )(body: OpenFile^ => A): Either[FileError, (FileRecord, A)] =
     jot
-      .write(Subject.Public)(catalog.keyed(key))
+      .write(Subject.Public)(kept(key, origin, item))
       .left
       .map(FileError.Store(_))
       .flatMap {
-        case Some(record) if live(record) => Right(record)
-        case _ =>
+        case Some(record) => Right(record)
+        case None =>
           incoming.declared.filter(_ > bounds.maxFile) match {
             case Some(size) => Left(FileError.TooLarge(Some(size), bounds.maxFile))
             case None => fetched(key, name, claimed, origin, item, incoming)
@@ -123,9 +123,9 @@ final class FileArea(
           jot.write(Subject.Public) {
             for {
               _ <- catalog.lock()
-              again <- catalog.keyed(key)
+              again <- kept(key, origin, item)
               stored <- catalog.blobs()
-              kept <- again.filter(live) match {
+              kept <- again match {
                 case Some(r) => Right(Right(r))
                 case None
                     if !stored.contains(pending.sha256) &&
@@ -170,6 +170,21 @@ final class FileArea(
           .left
           .map(_ => gone(record.handle))
       )
+
+  /** The live file a put under `key`, of `origin` at `item`, answers: the one put under `key`,
+    * else the latest of the same snapshot (`origin`'s edge, ref and revision, when it has one)
+    * kept at the same item whose bytes are still here; `None` when there is neither.
+    */
+  private def kept(key: PutKey, origin: FileOrigin, item: FileItem)(using
+      Tx^
+  ): Either[StoreError, Option[FileRecord]] =
+    catalog.keyed(key).flatMap {
+      case Some(r) if live(r) => Right(Some(r))
+      case _ =>
+        origin.revision
+          .fold(Right(Vector.empty))(catalog.snapshots(origin.edge, origin.ref, _))
+          .map(_.filter(r => live(r) && r.item == item && blobs.at(r.sha256).nonEmpty).lastOption)
+    }
 
   private def live(record: FileRecord): Boolean = record.expires.isAfter(clock.now())
 
