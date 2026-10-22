@@ -6,17 +6,7 @@ import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
 import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.spend.DailyCap
-import grit.core.visibility.{
-  Accounted,
-  Group,
-  Integrity,
-  Itemised,
-  Label,
-  Level,
-  Party,
-  Provenance,
-  Room
-}
+import grit.core.visibility.{Accounted, Group, Integrity, Itemised, Label, Party, Provenance, Room}
 import grit.kit.deployment.Offered
 import grit.knowledge.plugin.TopicDocuments
 import grit.mcp.client.{Credential, KeyFiles}
