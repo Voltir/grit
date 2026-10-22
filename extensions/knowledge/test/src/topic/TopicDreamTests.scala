@@ -762,6 +762,30 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test("a topic of a later version than this reader's is left as it is and counted") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      // The topic as a later version of the plugin keeps it: data this reader must not wipe.
+      runs.topics.foreach { d =>
+        val later = ujson.copy(d.data)
+        later("v") = 3
+        val _ = ok(
+          runs.documents
+            .keeper(Plugin, Terms)
+            .write(d.key, d.label, d.integrity, d.place, d.text, later, d.pointer, Now)(using
+              TestTx.fake
+            )
+        )
+      }
+      val reply = runs.run(now = Now.plusSeconds(60))
+      (reply.contains("1 of a later version left"), runs.topics.map(_.data("v").num)) ==> (
+        true,
+        Vector(3.0)
+      )
+    }
+
     test("past perRun, the rest are left and counted") {
       val w = new StrandWorld
       val roots = (1 to 3).map(i => strand(w, s"C$i", s"subject $i", i * 100L))

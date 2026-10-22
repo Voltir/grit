@@ -33,7 +33,8 @@ private[topic] object TopicScan {
     * many passages it `withdrew`, and how many strands and cards it found `unchanged` or `left`
     * past the run's most; and, of each topic shown that holds cards, the current versions of
     * at most [[Holds]] of them, most recently written first (`holds`); and how many of the
-    * floor's topics it withdrew for data that no longer reads (`unreadable`), not passages.
+    * floor's topics it withdrew for data this reader refuses (`unreadable`), not passages, and
+    * how many it left as they are for data of a later reader's version (`later`).
     */
   final case class Scanned(
       attached: Vector[Touch],
@@ -45,7 +46,8 @@ private[topic] object TopicScan {
       left: Int,
       linked: Vector[Linked],
       holds: Vector[(TopicKey, Vector[DocumentVersionId])],
-      unreadable: Int
+      unreadable: Int,
+      later: Int
   ) extends caps.Pure {
 
     /** The card units `strands` link, and the cards paired with them, each once. */
@@ -80,8 +82,8 @@ private[topic] object TopicScan {
   /** 20: the most cards a topic holds that its write ask is shown besides those attached. */
   val Holds: Int = 20
 
-  /** The scan at `until`: its floor's topics read, one whose data does not read withdrawn;
-    * from each, the passages naming a strand `strands` no longer reads at the floor (its room at
+  /** The scan at `until`: its floor's topics read, one whose data is refused withdrawn and one of
+    * a later version left as it is ([[Topic.Unread]]); from each, the passages naming a strand `strands` no longer reads at the floor (its room at
     * another label now, or its messages gone) withdrawn, the topic itself when none is left;
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
@@ -106,7 +108,7 @@ private[topic] object TopicScan {
   )(using tx: Tx^): Either[StoreError, Scanned] = {
     val floor = Tx.floor(tx)
     val shelf = cards.flatMap(e => needs.of(e).toOption)
-    held(keeper, floor, at).flatMap((read: (Vector[Found], Int)) =>
+    held(keeper, floor, at).flatMap((read: (Vector[Found], Int, Int)) =>
       pruned(keeper, strands, read._1, floor, until, at).flatMap((kept: Vector[Pruned]) =>
         strands
           .atFloor(until.minusSeconds(params.recent.toSeconds), until)
@@ -144,7 +146,9 @@ private[topic] object TopicScan {
                               (_: Vector[Aside.Item]) =>
                                 val s = gathered(most, floor, kept, recent, seen, p, linked)
                                 holding(shelf, kept, s.leads.map(_._1), until)
-                                  .map(hs => s.copy(holds = hs, unreadable = read._2))
+                                  .map(hs =>
+                                    s.copy(holds = hs, unreadable = read._2, later = read._3)
+                                  )
                             }
                           })
                       )
@@ -239,25 +243,30 @@ private[topic] object TopicScan {
       cards: Vector[(CardShelf.Seen, Option[TopicKey])]
   )
 
-  /** The floor's topics, one whose data does not read withdrawn; its [[Aside]] is none. Also how
-    * many were withdrawn that way.
+  /** The floor's topics, one whose data this reader refuses withdrawn, one of a later version
+    * left as it is; its [[Aside]] is none. Also how many were withdrawn, and how many left.
     */
   private def held(keeper: DocumentKeeper, floor: Label, at: Instant)(using
       Tx^
-  ): Either[StoreError, (Vector[Found], Int)] =
+  ): Either[StoreError, (Vector[Found], Int, Int)] =
     keeper.newest(Int.MaxValue).flatMap { (documents: Vector[Document]) =>
-      val read: Vector[(Document, Either[String, (TopicKey, TopicWrite.Held)])] =
+      val read: Vector[(Document, Either[Topic.Unread, (TopicKey, TopicWrite.Held)])] =
         documents
           .filter(d => d.label == floor && d.key != Aside.Key)
           .map(d =>
             d -> TopicKey
               .read(d.key)
-              .toRight("no topic's key")
+              .toRight(Topic.Unread.Refused("no topic's key"))
               .flatMap(k => TopicWrite.read(k, d.data).map(k -> _))
           )
-      each(read.collect { case (d, Left(_)) => d.key })(k => keeper.withdraw(k, floor, at))
+      val refused = read.collect { case (d, Left(Topic.Unread.Refused(_))) => d.key }
+      each(refused)(k => keeper.withdraw(k, floor, at))
         .map(_ =>
-          (read.collect { case (d, Right((k, h))) => Found(k, d, h) }, read.count(_._2.isLeft))
+          (
+            read.collect { case (d, Right((k, h))) => Found(k, d, h) },
+            refused.size,
+            read.count { case (_, Left(Topic.Unread.Later(_))) => true; case _ => false }
+          )
         )
     }
 
@@ -386,6 +395,7 @@ private[topic] object TopicScan {
       (strands.size - most).max(0) + (cards.size - Cards).max(0),
       linked,
       Vector.empty,
+      0,
       0
     )
   }
@@ -425,9 +435,10 @@ private[topic] object TopicScan {
 
   /** Its record: `{"attached": [...], "strands": [...], "cards": [...], "leads": [...],
     * "withdrew", "unchanged", "left", "linked": [...], "holds": [{"key", "cards": [...]}]}`,
-    * and `"unreadable"` when some topic was withdrawn for data that no longer reads; read as
-    * linking none when `linked` is absent, holding none when `holds` is, and none unreadable
-    * when `unreadable` is.
+    * and `"unreadable"` when some topic was withdrawn for data this reader refuses, `"later"`
+    * when some was left for data of a later version; read as linking none when `linked` is
+    * absent, holding none when `holds` is, and none unreadable or later when `unreadable` or
+    * `later` is.
     */
   given Journaled[Scanned] = Journaled.json(
     s => {
@@ -444,6 +455,7 @@ private[topic] object TopicScan {
       )
       // Written only when some were, so a scan with none records as it did before the count.
       if (s.unreadable > 0) record("unreadable") = ujson.Num(s.unreadable.toDouble)
+      if (s.later > 0) record("later") = ujson.Num(s.later.toDouble)
       record
     },
     v =>
@@ -462,6 +474,8 @@ private[topic] object TopicScan {
         holds <- list(o.get("holds").orElse(Some(ujson.Arr())), "holds")(readHolds)
         // A scan recorded before a topic whose data no longer read was counted withdraws none.
         unreadable <- count(o.get("unreadable").orElse(Some(ujson.Num(0))), "unreadable")
+        // A scan recorded before a later version's topic was left and counted leaves none.
+        later <- count(o.get("later").orElse(Some(ujson.Num(0))), "later")
       } yield Scanned(
         attached,
         strands,
@@ -472,7 +486,8 @@ private[topic] object TopicScan {
         left,
         linked,
         holds,
-        unreadable
+        unreadable,
+        later
       )
   )
 

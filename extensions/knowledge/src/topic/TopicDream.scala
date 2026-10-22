@@ -95,6 +95,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           0,
           scan.withdrew,
           scan.unreadable,
+          scan.later,
           scan.unchanged,
           0,
           scan.left,
@@ -497,7 +498,7 @@ object TopicDream {
         (now, t.version) match {
           case (None, None) => Right(None)
           case (Some(d), Some(v)) if d.version == v =>
-            TopicWrite.read(t.key, d.data).map(Some(_)).left.map(StoreError.Invalid(_))
+            TopicWrite.read(t.key, d.data).map(Some(_)).left.map(u => StoreError.Invalid(u.why))
           case _ => Left(StoreError.Invalid("the topic was written since its scan"))
         }
       }

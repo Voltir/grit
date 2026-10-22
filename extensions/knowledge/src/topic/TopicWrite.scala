@@ -102,7 +102,7 @@ private[topic] object TopicWrite {
   }
 
   /** The topic `key`'s document `data` holds, or why not ([[Topic.read]]). */
-  def read(key: TopicKey, data: ujson.Value): Either[String, Held] =
+  def read(key: TopicKey, data: ujson.Value): Either[Topic.Unread, Held] =
     Topic.read(key, data).map { t =>
       val o = data.objOpt
       val units = o

@@ -33,8 +33,11 @@ final class TopicDocuments private (
 
   private val labels: Vector[Label] = keyed.map(_._2)
 
-  /** 2: its topics' data is of version 2 ([[grit.knowledge.topic.Topic.write]]); a topic of
-    * version 1 does not read, and its next run withdraws it and opens it afresh.
+  /** 2: its topics' data is of version 2 ([[grit.knowledge.topic.Topic.write]]). Its runs
+    * withdraw a topic of version 1 when they scan, and open one again only from strands spoken
+    * in within [[TopicDocuments.Recent]]; one of older strands comes back only through a run for
+    * their past days (`scripts/eval backfill`, over a copy of a captured database). A topic of
+    * a later version is left as it is.
     */
   val version: Int = 2
 

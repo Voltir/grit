@@ -24,24 +24,32 @@ private object TopicJson {
 
   def write(t: Topic): ujson.Value =
     ujson.Obj(
-      "v" -> 2,
+      "v" -> Version,
       "lead" -> doc(t.lead),
       "passages" -> ujson.Arr.from(t.passages.map(passage))
     )
 
-  def read(key: TopicKey, v: ujson.Value): Read[Topic] =
-    for {
-      o <- obj(v, "a topic")
-      _ <- o.get("v").flatMap(_.numOpt) match {
-        case Some(2) => Right(())
-        case Some(n) => Left(s"a topic of version ${n.toLong}, which this reader does not know")
-        case None => Left("a topic with no version")
-      }
-      lead <- o.get("lead").toRight("a topic with no lead").flatMap(readDoc)
-      passages <- array(o.get("passages"), "a topic's passages").flatMap(traverse(_)(readPassage))
-      t = Topic.of(lead, passages)
-      _ <- checked(key, t)
-    } yield t
+  def read(key: TopicKey, v: ujson.Value): Either[Topic.Unread, Topic] =
+    v.objOpt.flatMap(_.get("v")).flatMap(_.numOpt) match {
+      case Some(n) if n > Version => Left(Topic.Unread.Later(n.toLong))
+      case _ =>
+        (for {
+          o <- obj(v, "a topic")
+          _ <- o.get("v").flatMap(_.numOpt) match {
+            case Some(n) if n == Version => Right(())
+            case Some(n) => Left(s"a topic of version ${n.toLong}, which this reader does not know")
+            case None => Left("a topic with no version")
+          }
+          lead <- o.get("lead").toRight("a topic with no lead").flatMap(readDoc)
+          passages <- array(o.get("passages"), "a topic's passages")
+            .flatMap(traverse(_)(readPassage))
+          t = Topic.of(lead, passages)
+          _ <- checked(key, t)
+        } yield t).left.map(Topic.Unread.Refused(_))
+    }
+
+  /** 2: the version of the data [[write]] writes. */
+  private val Version: Int = 2
 
   def text(t: Topic): Read[DocText] = {
     val passages = t.passages.reverse.flatMap(p =>

@@ -34,8 +34,12 @@ Decision:
 
 Consequences: a reader, a store and a renderer meet at one type, and a new consumer is one
 `Renderer`. Changing the stored form is a new `ProseJson.Version` and a version of each
-keeper's data; topics moved onto it at their data's version 2, and a topic of version 1 is
-not read: the dream's scan withdraws it and the strands that wrote it open it again. Only the
+keeper's data; topics moved onto it at their data's version 2. A topic of version 1 is not
+read: the dream's scan withdraws it, and a nightly run opens it again only from the strands
+spoken in within its `recent`; one written from older strands comes back only through a run
+for their past days, which is `scripts/eval backfill` (`TopicBackfill`), and that runs over a
+copy of a captured database, so on a live one such a topic stays withdrawn. A topic of a later
+version than its reader's is left as it is and counted, so an older engine wipes nothing. Only the
 json package imports ujson (law rules `prose-json-alone-imports-ujson` and its three kin); a
 note codec that captures a capability does not compile (a probe, `ProseJsonCaptureTests`).
 The stored form is pinned by `ProseJsonTests`.

@@ -107,14 +107,23 @@ object TopicCodecTests extends TestSuite {
       val v1 = ujson.read(
         """{"v":1,"lead":[{"paragraph":[{"text":"The release"}]}],"passages":[]}"""
       )
-      Topic.read(key, v1) ==> Left("a topic of version 1, which this reader does not know")
+      Topic.read(key, v1) ==> Left(
+        Topic.Unread.Refused("a topic of version 1, which this reader does not know")
+      )
+    }
+
+    // A topic a later reader kept: told apart from a refused one, so a run leaves it be.
+    test("a topic of a later version is not refused but read as a later reader's") {
+      val v3 = Topic.write(topic)
+      v3("v") = 3
+      Topic.read(key, v3) ==> Left(Topic.Unread.Later(3))
     }
 
     test("a topic with no lead is refused, naming it") {
       val v = Topic.write(topic)
       v.obj.remove("lead")
       val read = Topic.read(key, v)
-      read ==> Left("a topic with no lead")
+      read ==> Left(Topic.Unread.Refused("a topic with no lead"))
     }
 
     test("a relation to a claim of its own topic that it does not hold is refused, naming it") {
@@ -130,7 +139,7 @@ object TopicCodecTests extends TestSuite {
         Vector.empty
       )
       val read = Topic.read(key, Topic.write(t))
-      assert(read.left.exists(_.contains("c5")))
+      assert(read.left.exists(_.why.contains("c5")))
     }
 
     test("a relation to another topic's claim is kept unchecked") {
@@ -164,7 +173,7 @@ object TopicCodecTests extends TestSuite {
         )
       )
       val read = Topic.read(key, Topic.write(t))
-      read ==> Left("two different claims of id c1")
+      read ==> Left(Topic.Unread.Refused("two different claims of id c1"))
     }
 
     test("a topic keeps its newest passages, oldest first, past its most dropping the oldest") {
@@ -217,9 +226,11 @@ object TopicCodecTests extends TestSuite {
       assert(Topic.text(Topic.of(Doc.empty, Vector.empty)).isLeft)
     }
 
-    test("a scan's unreadable count round-trips, and a scan recorded without it reads none") {
+    test(
+      "a scan's unreadable and later counts round-trip, and a scan recorded without them reads none"
+    ) {
       val codec = summon[Journaled[TopicScan.Scanned]]
-      def scan(unreadable: Int): TopicScan.Scanned = TopicScan.Scanned(
+      def scan(unreadable: Int, later: Int): TopicScan.Scanned = TopicScan.Scanned(
         Vector.empty,
         Vector.empty,
         Vector.empty,
@@ -229,11 +240,16 @@ object TopicCodecTests extends TestSuite {
         0,
         Vector.empty,
         Vector.empty,
-        unreadable
+        unreadable,
+        later
       )
-      codec.decode(codec.encode(scan(1))) ==> Right(scan(1))
-      codec.encode(scan(0)).contains("unreadable") ==> false
-      codec.decode(codec.encode(scan(0))) ==> Right(scan(0))
+      codec.decode(codec.encode(scan(1, 2))) ==> Right(scan(1, 2))
+      (
+        codec.encode(scan(0, 0)).contains("unreadable"),
+        codec.encode(scan(0, 0)).contains("later")
+      ) ==>
+        (false, false)
+      codec.decode(codec.encode(scan(0, 0))) ==> Right(scan(0, 0))
     }
   }
 }
