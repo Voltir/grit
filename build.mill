@@ -424,6 +424,19 @@ object grit extends Module {
     }
   }
 
+  /* Formats: the file readers a deployment reads PDFs, Word documents and Excel workbooks with
+   * (grit.core.files.Format, ADR 0044), and its default choice of them. Names only core.
+   * extensions/formats/README.md. */
+  object formats extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "formats"
+    def moduleDeps = Seq(core)
+
+    /* Over files each test writes to a temporary directory, with core's clock a test sets. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* The edge's side of the engine: what an edge does for a place it hosts, over core's
    * traits alone. Names no implementation of them; grit.app hands it grit.host's. */
   object edge extends GritPublished with Placed {

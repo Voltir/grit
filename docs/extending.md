@@ -53,6 +53,7 @@ service's edge does. Only a turn's asker may answer (ADR 0017).
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Placer` chooses |
 | `ContextAssembler` (`grit.core.context`), `TokenEstimator` (`grit.core.provider`) | `LinearAssembler`, `RetrievalAssembler`, `CharEstimate` | no: the kit's `Assembly` chooses; the assemblers are core (`core/assembly`), so a new one is a change to core |
 | `Workspace`, `Edits`, `Shell`, `Instructions` (`grit.core.host`) | `grit.host`'s `Local*` | no: the kit and `grit.app` use `grit.host` |
+| `Format` (`grit.core.files`), chosen per kind by a `Formats` | `grit.formats`' `Docx`, `Xlsx`, chosen by its `Defaults` | yes: a `Formats` value, handed to the edge that reads files |
 
 So a generic provider, classifier or host is a shipped extension and a case in the kit's
 choice. A deployment supplying its own `Provider`, `Classifier`, `ContextAssembler` or host
