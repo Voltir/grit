@@ -1,6 +1,6 @@
 # 0032. A principal is a person; edges name accounts, and trusted realms attest who they are
 
-Status: accepted (2026-10-07); revised (2026-10-16)
+Status: accepted (2026-10-07); revised (2026-10-21)
 
 Context: ADR 0030 clears a person by the grants of their groups. Each edge enrolled the people
 it saw under its own name for them, so one person with a chat account and a directory account
@@ -50,8 +50,9 @@ Decision:
   reader elsewhere is cleared for: the one rule by a room's identity rather than its label. A
   group direct message is not served.
 - **A person may ask what they are cleared for**, and is answered in full only where they alone
-  read it: in a direct message, or by command, whose answer is shown to them alone (ADR 0033).
-  Asked anywhere else, grit says nothing of it and asks them to write to it directly.
+  read it: in a direct message, or by command, whose answer is shown to them alone (ADR 0033),
+  or on an ask's ephemeral card, which only its asker sees (ADR 0017). Asked anywhere else,
+  grit says nothing of it and asks them to write to it directly.
 
 Consequences:
 

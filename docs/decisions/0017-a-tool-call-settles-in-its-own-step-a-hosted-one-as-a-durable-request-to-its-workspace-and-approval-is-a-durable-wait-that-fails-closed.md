@@ -60,8 +60,9 @@ the call.
 Consequences: a crash mid-loop reruns at most one read, never a change; an interrupted change
 is reported, not retried. No open edge means no access, which the turn is told. A hosted call
 costs a round trip through Postgres instead of a function call. A turn left waiting holds a
-DBOS workflow, not a thread. An edge says what it does with an ask (`ServedEdge.Asks`): one
-that answers lists a turn's open asks (`Deliveries.asks`) under that turn's subject; gated
-tools are refused while an edge shows none (`Unanswered`), never for a service's (`Never`).
+DBOS workflow, not a thread. An edge says what it does with an ask (`ServedEdge.asks`, of type
+`ServedEdge.Asks`): one that answers lists a turn's open asks (`Deliveries.asks`) under that
+turn's subject. While an edge shows none (`Unanswered`), the kit offers no administering tool
+(ADR 0033); a service's (`Never`) holds nothing back.
 Requests are journal-class, purged with their period (ADR 0014). Enforced by the replay gate
 and the contract suite `EdgesContract`, with `TurnToolsTests`.

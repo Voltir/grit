@@ -47,7 +47,8 @@ Decision:
   fails the turn loudly. `grit.turn_prompts` says which fragments each turn used.
 - **A turn's request says when its message was said**, after every fragment
   (`TurnShown.answering`), so "today" and "Friday" can be read against it: in the person's zone
-  when known, else the deployment's, then in UTC, with how to read times; the zones recorded by
+  when known (`grit.identities.zone`), else the deployment's, then in UTC, with how to read
+  times; the zones recorded by
   the turn's `offer` step. It is made from the turn's first entry, which is kept, and those
   zones, so a rebuilt request carries the same line. It is never a fragment: fragments are kept
   forever, and one per turn would grow their table with every turn.
