@@ -21,6 +21,18 @@ object DefaultsTests extends TestSuite {
       )
     }
 
+    test("a PDF is read by its pages") {
+      val pdf = grit.formats.pdf.Pdfs.file(
+        "p.pdf",
+        Vector("One.", "Two.", "Three.").map(t => grit.formats.pdf.Pdfs.lines(t))
+      )
+      Fixtures
+        .readAll(Defaults.formats, pdf, FileRange.pages(2, 3).getOrElse(FileRange.Start))
+        .map(r => (r.text, r.covered)) ==> Right(
+        ("[page 2]\nTwo.\n\n[page 3]\nThree.", "pages 2–3 of 3")
+      )
+    }
+
     test("an .xls is refused in words saying what could be read instead") {
       val xls = Fixtures.file(
         "old.xls",

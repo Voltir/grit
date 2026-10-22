@@ -431,6 +431,9 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "formats"
     def moduleDeps = Seq(core)
 
+    /* PDFBox, for its pdf package alone (pdf-package-alone-imports-pdfbox). */
+    def mvnDeps = Seq(mvn"org.apache.pdfbox:pdfbox:3.0.8")
+
     /* Over files each test writes to a temporary directory, with core's clock a test sets. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)

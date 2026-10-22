@@ -5,7 +5,8 @@ Implements `Format` (`grit.core.files`), the readers a deployment reads files wi
 of them a deployment makes unless it makes its own (ADR 0044).
 
 A shipped extension (ADR 0021): it names a generic format and no organisation, depends on
-`grit.core` alone, and is named only by a deployment (`formats-names-core-alone`). Each reader
+`grit.core` alone, and is named only by a deployment (`formats-names-core-alone`). It is
+PDFBox's quarantine (STYLE rule 8, `only-formats-imports-pdfbox`). Each reader
 makes `grit.prose`'s tree from one file, says what of the file it covers and what it saw and
 did not read, and stops at each of the `ReadLimits` it is handed with what it has read. None
 throws for a file it cannot read: a malformed file is `Unread.Damaged`, or a tree that covers
@@ -20,7 +21,11 @@ In dependency order:
 - **`ooxml`**: Word documents (`Docx`) and Excel workbooks (`Xlsx`), transitional or strict,
   read over the JDK's `ZipFile` and StAX by their parts' local names. `ZipFile`, not a stream,
   since a stream unpacks every entry it skips outside the count. The JDK alone. ← `limits`
-- **`choice`**: `Defaults`, which format reads which kind. ← `ooxml`
+- **`pdf`**: PDFs (`Pdf`) over PDFBox, in the order their pages draw text (sorting by position
+  scrambles columns), bookmarks placed as headings where their titles are printed, running
+  headers and footers dropped, every span noted with its page. The one package naming
+  `org.apache.pdfbox` (`pdf-package-alone-imports-pdfbox`). ← `limits`
+- **`choice`**: `Defaults`, which format reads which kind. ← `ooxml`, `pdf`
 
 The deadline is cooperative: a reader checks it between steps, so a single slow step inside a
 library is not interrupted, and only the byte limit bounds it.
