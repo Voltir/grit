@@ -109,6 +109,15 @@ if [ -n "$maintenance" ]; then
   failed=1
 fi
 
+# TRAP: prose's forms and markdown read and write no JSON: enola sees an import of ujson, not a
+# fully qualified `ujson.Value`, so grep for the name. Only prose's json package may name it.
+ujson=$(names 'ujson\.' | grep -E '^core/prose/src/' | grep -vE '^core/prose/src/json/' || true)
+if [ -n "$ujson" ]; then
+  echo "Only grit.prose's json package may name ujson; these sources do:" >&2
+  printf '  %s\n' $ujson >&2
+  failed=1
+fi
+
 # TRAP: rule 1h, as 1f above: only grit.dbos and the eval harness may name grit.dbos.internal.
 internal=$(names 'grit\.dbos\.internal' | grep -vE '^core/dbos/|^eval/harness/' || true)
 if [ -n "$internal" ]; then
