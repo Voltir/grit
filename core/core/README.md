@@ -86,7 +86,9 @@ In dependency order, each with the core packages it imports:
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is
-  in its result, ADR 0044), and a range of that tree as the model reads it. ← `clock`, `host`
+  in its result, ADR 0044), and a range of that tree as the model reads it; and the file area
+  (ADR 0045): files an edge puts under handles, kept a while, that a transaction admits and
+  its holder opens outside it. ← `clock`, `id`, `host`, `visibility`, `store`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,

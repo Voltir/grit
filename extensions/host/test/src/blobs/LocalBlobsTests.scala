@@ -1,6 +1,6 @@
 package grit.host.blobs
 
-import java.io.{ByteArrayInputStream, IOException, InputStream}
+import java.io.ByteArrayInputStream
 import java.nio.channels.FileChannel
 import java.nio.file.attribute.FileTime
 import java.nio.file.{Files, Path, StandardOpenOption}
@@ -8,27 +8,31 @@ import java.time.Instant
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.host.BlobError
-import grit.core.id.Sha256
+import grit.core.host.{Blobs, BlobsContract}
 
 import utest.*
 
-/** [[LocalBlobs]] in a temporary directory. */
-object LocalBlobsTests extends TestSuite {
+/** The blobs contract, kept by [[LocalBlobs]] in a temporary directory. */
+object LocalBlobsTests extends BlobsContract {
+  protected def fresh[A](body: Blobs^ => A): A = LocalBlobsDirectoryTests.inDir { root =>
+    body(LocalBlobsDirectoryTests.opened(root))
+  }
+}
+
+/** [[LocalBlobs]]' directories: what it leaves pending, and what it clears. */
+object LocalBlobsDirectoryTests extends TestSuite {
 
   /** A fresh directory, given to `body`, deleted after. */
-  private def inDir[A](body: Path => A): A = {
+  def inDir[A](body: Path => A): A = {
     val dir = Files.createTempDirectory("grit-blobs")
     try body(dir)
     finally Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
-  private def opened(root: Path): LocalBlobs = LocalBlobs.open(root) match {
+  def opened(root: Path): LocalBlobs = LocalBlobs.open(root) match {
     case Right(b) => b
     case Left(e) => throw new java.lang.AssertionError(e.toString)
   }
-
-  private def bytes(s: String): InputStream = new ByteArrayInputStream(s.getBytes("UTF-8"))
 
   private def names(dir: Path): Vector[String] =
     if (!Files.isDirectory(dir)) Vector.empty
@@ -39,58 +43,14 @@ object LocalBlobsTests extends TestSuite {
     }
 
   val tests = Tests {
-    test("receiving more than max keeps nothing and runs no body") {
+    test("nothing is left pending after a receive, kept, not kept or refused") {
       inDir { root =>
         val blobs = opened(root)
-        var ran = false
-        val got = blobs.receive(bytes("eleven byte"), 10) { _ => ran = true }
-        (got, ran, blobs.kept(), names(root.resolve("incoming"))) ==>
-          (Left(BlobError.TooLarge(10)), false, Right(Vector.empty), Vector.empty)
-      }
-    }
-    test("a kept blob is whole under its digest, and keeping the same bytes again leaves it") {
-      inDir { root =>
-        val blobs = opened(root)
-        val sha = Sha256.digest("hello".getBytes("UTF-8").toVector)
-        val first = blobs.receive(bytes("hello"), 10)(p => (p.sha256, p.bytes, p.keep()))
-        val second = blobs.receive(bytes("hello"), 10)(_.keep())
-        val text = blobs.at(sha).map(Files.readString(_))
-        (first, second, text, blobs.kept(), names(root.resolve("incoming"))) ==>
-          (
-            Right((sha, 5L, Right(()))),
-            Right(Right(())),
-            Some("hello"),
-            Right(Vector(sha)),
-            Vector.empty
-          )
-      }
-    }
-    test("a pending blob not kept is gone when its body returns") {
-      inDir { root =>
-        val blobs = opened(root)
-        val sha = blobs.receive(bytes("draft"), 10)(_.sha256)
-        (sha.map(blobs.at), blobs.kept(), names(root.resolve("incoming"))) ==>
-          (Right(None), Right(Vector.empty), Vector.empty)
-      }
-    }
-    test("a source failing partway keeps nothing, saying so") {
-      inDir { root =>
-        val blobs = opened(root)
-        val failing = new InputStream {
-          def read(): Int = throw new IOException("reset")
-        }
-        (blobs.receive(failing, 10)(_.keep()), names(root.resolve("incoming"))) ==>
-          (Left(BlobError.Source("IOException: reset")), Vector.empty)
-      }
-    }
-    test("remove deletes a kept blob, and is nothing for one not kept") {
-      inDir { root =>
-        val blobs = opened(root)
-        val sha = Sha256.digest("gone".getBytes("UTF-8").toVector)
-        val _ = blobs.receive(bytes("gone"), 10)(_.keep())
-        val before = blobs.kept()
-        (before, blobs.remove(sha), blobs.remove(sha), blobs.at(sha), blobs.kept()) ==>
-          (Right(Vector(sha)), Right(()), Right(()), None, Right(Vector.empty))
+        def in(s: String) = new ByteArrayInputStream(s.getBytes("UTF-8"))
+        val _ = blobs.receive(in("kept"), 10)(_.keep())
+        val _ = blobs.receive(in("dropped"), 10)(_.sha256)
+        val _ = blobs.receive(in("eleven byte"), 10)(_.keep())
+        (names(root.resolve("incoming")), names(root.resolve("blobs")).size) ==> (Vector.empty, 1)
       }
     }
     test("clearPending removes the pending blobs last written before the cutoff, and no newer") {

@@ -405,8 +405,10 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "host"
     def moduleDeps = Seq(core)
 
-    /* Against a temporary directory, and `sh` for the shell. */
-    object test extends GritTests
+    /* Against a temporary directory, and `sh` for the shell; core's blobs contract. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
   }
 
   /* The coding tool set: read, list, search, write, edit and run, as grit.core.tool Tools
