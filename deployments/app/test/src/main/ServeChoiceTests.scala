@@ -6,8 +6,19 @@ import grit.core.id.EdgeName
 import grit.core.identity.{Account, Domain}
 import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.spend.DailyCap
-import grit.core.visibility.{Accounted, Group, Integrity, Itemised, Label, Party, Provenance, Room}
+import grit.core.visibility.{
+  Accounted,
+  Group,
+  Integrity,
+  Itemised,
+  Label,
+  Level,
+  Party,
+  Provenance,
+  Room
+}
 import grit.kit.deployment.Offered
+import grit.knowledge.plugin.TopicDocuments
 import grit.mcp.client.{Credential, KeyFiles}
 import grit.mcp.wire.McpCalled
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
@@ -221,6 +232,47 @@ object ServeChoiceTests extends TestSuite {
           Right(ReplyNote.StrengthAndCost),
           Left("GRIT_SLACK_REPLY_NOTE is one of off, strength, strength-cost, not 'cost'")
         )
+    }
+
+    test(
+      "backfill topics reads --days, --per-run and --yes in any order, PerRun topics a run when --per-run is absent"
+    ) {
+      (
+        Main.backfillTopics(Vector("--yes", "--days", "3")),
+        Main.backfillTopics(Vector("--days", "30", "--per-run", "4"))
+      ) ==> (
+        Right(Main.BackfillTopics(3, TopicDocuments.PerRun, yes = true)),
+        Right(Main.BackfillTopics(30, 4, yes = false))
+      )
+    }
+
+    test(
+      "backfill topics refuses days missing or outside 1 to 30, a per-run under 1, and anything else, by name"
+    ) {
+      (
+        Main.backfillTopics(Vector()),
+        Main.backfillTopics(Vector("--days", "31")),
+        Main.backfillTopics(Vector("--days", "2", "--per-run", "0")),
+        Main.backfillTopics(Vector("--days", "2", "--what"))
+      ) ==> (
+        Left("--days is required: a whole number of days from 1 to 30"),
+        Left("--days is a whole number of days from 1 to 30, not '31'"),
+        Left("--per-run is a whole number of topics above zero, not '0'"),
+        Left("backfill topics takes --days, --per-run and --yes, not '--what'")
+      )
+    }
+
+    test(
+      "the backfill question names the days, the labels, the runs and the most it costs, in cents"
+    ) {
+      Main.backfillQuestion(
+        java.time.LocalDate.of(2026, 10, 1),
+        java.time.LocalDate.of(2026, 10, 3),
+        Vector(Label.Public, Label.at(Level.Internal)),
+        6,
+        3
+      ) ==> "Backfill topics for 2026-10-01 to 2026-10-03 at [level: public], [level: internal]: " +
+        "6 runs, at most 3 topics each, about 2.7¢ at most (0.15¢ a topic); nothing caps it but today's cap."
     }
 
     test(

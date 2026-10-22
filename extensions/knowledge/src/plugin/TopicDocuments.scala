@@ -35,9 +35,8 @@ final class TopicDocuments private (
 
   /** 2: its topics' data is of version 2 ([[grit.knowledge.topic.Topic.write]]). Its runs
     * withdraw a topic of version 1 when they scan, and open one again only from strands spoken
-    * in within [[TopicDocuments.Recent]]; one of older strands comes back only through a run for
-    * their past days (`scripts/eval backfill`, over a copy of a captured database). A topic of
-    * a later version is left as it is.
+    * in within [[TopicDocuments.Recent]]; one of older strands comes back through runs for
+    * their past days ([[backfill]]). A topic of a later version is left as it is.
     */
   val version: Int = 2
 

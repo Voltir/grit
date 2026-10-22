@@ -15,7 +15,7 @@ import grit.core.edge.{ServedEdge, Variable}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{Ladder, ModelId, Policy}
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
@@ -165,6 +165,15 @@ import grit.turn.TurnLoop
   *     label it is heard at, and asks before hearing anything (`--yes` does not ask); nothing caps what it spends. It
   *     takes serve's tokens and variables, and, like serve, never attaches. Threads still
   *     inside idle are left for serve.
+  *   - **`backfill topics --days N [--per-run n] [--yes]`: `grit backfill topics`**, the
+  *     topics plugin's job run for each of the N days before today (1 to 30), oldest first, at
+  *     each of its labels, one run at a time, on serve's database ([[Kit.runOnce]],
+  *     [[TopicDocuments.backfill]]), at most `n` topics a run ([[TopicDocuments.PerRun]] when
+  *     absent): how a topic data version's reset completes. It prints the database and asks
+  *     before running, with the most it may cost ([[backfillQuestion]]; `--yes` does not ask),
+  *     then each run's line and the spend. A day run again writes only what changed. Refused
+  *     while serve runs, and on a database serve never ran this deployment on. A nightly run
+  *     that comes due meanwhile runs too; a topic both write is left to the next run.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -183,6 +192,11 @@ object Main {
     val backfilling =
       args.sameElements(Array("backfill")) || args.sameElements(Array("backfill", "--yes"))
     val slack = serving || backfilling
+    // `grit backfill topics --days N [--per-run n] [--yes]`: the topics job for past days.
+    val topicsBackfill: Option[BackfillTopics] =
+      if (args.take(2).sameElements(Array("backfill", "topics")))
+        Some(exitOnLeft(backfillTopics(args.drop(2).toVector)))
+      else None
     // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
     // environment: a variable set in both takes the environment's value.
     val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
@@ -288,7 +302,17 @@ object Main {
         if (env.contains(OpenRouterConfig.KeyVar))
           uncleared(deployment.policy).foreach(line => System.err.println(s"[main] $line"))
         Kit.serve(deployment, env).left.map(_.message).swap.toOption
-      } else if (backfilling)
+      } else if (topicsBackfill.nonEmpty)
+        topicsBackfill.flatMap(b =>
+          topicsBackfilled(
+            deployment,
+            env,
+            b,
+            java.time.LocalDate.ofInstant(clock.now(), java.time.ZoneId.systemDefault()),
+            clock.now()
+          ).swap.toOption
+        )
+      else if (backfilling)
         backfillDays(env)
           .flatMap { days =>
             Kit
@@ -296,12 +320,7 @@ object Main {
                 deployment,
                 SlackEdge.backfill(days),
                 env,
-                question =>
-                  args.contains("--yes") || {
-                    print(s"$question [y/N] ")
-                    Option(scala.io.StdIn.readLine())
-                      .exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
-                  },
+                agreed(args.contains("--yes")),
                 println
               )
               .left
@@ -1291,6 +1310,122 @@ object Main {
     */
   private[main] def backfillDays(env: Map[String, String]): Either[String, Int] =
     above(env, DaysVar, DefaultDays, "a whole number of days above zero")
+
+  /** `grit backfill topics`'s arguments: how many `days` before today, at most `perRun` topics
+    * a run, and whether to run without asking (`yes`).
+    */
+  private[main] final case class BackfillTopics(days: Int, perRun: Int, yes: Boolean)
+
+  /** 30: the most days one `grit backfill topics` reaches back. */
+  private[main] val BackfillMost: Int = 30
+
+  /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, the run's attach ask
+    * shared among its topics. Measured on the dream model (Haiku 5.5, $0.10 / $0.50 per million
+    * tokens in / out): a ten-topic night is about 100k tokens in and 10k out, about 1.5¢.
+    */
+  private[main] val TopicCost: BigDecimal = BigDecimal("0.0015")
+
+  /** `grit backfill topics`'s arguments after those two words, in any order: `--days N` (1 to
+    * [[BackfillMost]], required), `--per-run n` (above zero; [[TopicDocuments.PerRun]] when
+    * absent) and `--yes`; or why not, naming the argument.
+    */
+  private[main] def backfillTopics(args: Vector[String]): Either[String, BackfillTopics] = {
+    def read(
+        at: Int,
+        got: (Option[Int], Option[Int], Boolean)
+    ): Either[String, (Option[Int], Option[Int], Boolean)] =
+      (args.lift(at), args.lift(at + 1)) match {
+        case (None, _) => Right(got)
+        case (Some("--yes"), _) => read(at + 1, got.copy(_3 = true))
+        case (Some("--days"), n) =>
+          n.flatMap(_.trim.toIntOption)
+            .filter(d => d >= 1 && d <= BackfillMost)
+            .toRight(
+              s"--days is a whole number of days from 1 to $BackfillMost, not '${n.getOrElse("")}'"
+            )
+            .flatMap(d => read(at + 2, got.copy(_1 = Some(d))))
+        case (Some("--per-run"), n) =>
+          n.flatMap(_.trim.toIntOption)
+            .filter(_ >= 1)
+            .toRight(s"--per-run is a whole number of topics above zero, not '${n.getOrElse("")}'")
+            .flatMap(p => read(at + 2, got.copy(_2 = Some(p))))
+        case (Some(other), _) =>
+          Left(s"backfill topics takes --days, --per-run and --yes, not '$other'")
+      }
+    read(0, (None, None, false)).flatMap((days, perRun, yes) =>
+      days
+        .toRight(s"--days is required: a whole number of days from 1 to $BackfillMost")
+        .map(BackfillTopics(_, perRun.getOrElse(TopicDocuments.PerRun), yes))
+    )
+  }
+
+  /** What `grit backfill topics` asks before it runs: the days `from` to `to`, the `labels`,
+    * how many `runs` of at most `perRun` topics, and the most they cost at [[TopicCost]] a
+    * topic, in cents.
+    */
+  private[main] def backfillQuestion(
+      from: java.time.LocalDate,
+      to: java.time.LocalDate,
+      labels: Vector[Label],
+      runs: Int,
+      perRun: Int
+  ): String =
+    s"Backfill topics for $from to $to at ${labels.map(Label.shown).mkString(", ")}: " +
+      s"$runs runs, at most $perRun topics each, about " +
+      s"${Cost.cents(TopicCost * runs * perRun)} at most (${Cost.cents(TopicCost)} a topic); " +
+      "nothing caps it but today's cap."
+
+  /** 10 minutes: the longest `grit backfill topics` waits for one run. */
+  private val BackfillLongest: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.Duration(10, "minutes")
+
+  /** `yes`, or the person's yes to `question`, asked on the terminal. */
+  private def agreed(yes: Boolean)(question: String): Boolean =
+    yes || {
+      print(s"$question [y/N] ")
+      Option(scala.io.StdIn.readLine()).exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
+    }
+
+  /** `grit backfill topics`: the topics plugin's runs for the `b.days` days before `today`
+    * ([[TopicDocuments.backfill]], started at `started`), run on `deployment`'s database by
+    * [[Kit.runOnce]], asked first ([[backfillQuestion]]) unless `b.yes`; each run's line
+    * printed, then their spend. Refused when the deployment has no topics plugin, and as
+    * [[Kit.runOnce]] refuses.
+    */
+  private def topicsBackfilled(
+      deployment: Deployment,
+      env: Map[String, String],
+      b: BackfillTopics,
+      today: java.time.LocalDate,
+      started: java.time.Instant
+  ): Either[String, Unit] = {
+    val days = (b.days to 1 by -1).toVector.map(today.minusDays(_))
+    for {
+      topics <- deployment.plugins
+        .collectFirst { case t: TopicDocuments => t }
+        .toRight(s"the topics plugin is off: $PluginsVar names no topics")
+      runs <- topics.backfill(days, b.perRun, started)
+      ran <- Kit
+        .runOnce(
+          deployment,
+          topics.name,
+          runs,
+          backfillQuestion(
+            today.minusDays(b.days),
+            today.minusDays(1),
+            runs.map(_.clearance).distinct,
+            runs.size,
+            b.perRun
+          ),
+          BackfillLongest,
+          env,
+          agreed(b.yes),
+          println
+        )
+        .left
+        .map(_.message)
+    } yield println(s"spent ${Cost.cents(ran.map(_.spent).sum)}")
+  }
 
   /** How `grit serve` bounds what it hears before each join of its bot: [[DaysVar]],
     * [[MessagesVar]] and [[JoinsVar]], [[Backfill.Default]]'s where one is unset; why not,

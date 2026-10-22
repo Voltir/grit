@@ -42,9 +42,9 @@ Consequences: a reader, a store and a renderer meet at one type, and a new consu
 `Renderer`. Changing the stored form is a new `ProseJson.Version` and a version of each
 keeper's data; topics moved onto it at their data's version 2. A topic of version 1 is not
 read: the dream's scan withdraws it, and a nightly run opens it again only from the strands
-spoken in within its `recent`; one written from older strands comes back only through a run
-for their past days, which is `scripts/eval backfill` (`TopicBackfill`), and that runs over a
-copy of a captured database, so on a live one such a topic stays withdrawn. A topic of a later
+spoken in within its `recent`; one written from older strands comes back through runs for
+their past days, `grit backfill topics --days N` on a live database (`Kit.runOnce` over
+`TopicDocuments.backfill`). A topic of a later
 version than its reader's is left as it is and counted, so an older engine wipes nothing. Only
 the json package names ujson (a grep in `scripts/enola-law.sh`, which sees a fully qualified
 name where an import rule would not); a note codec that captures a capability does not compile (a probe, `ProseJsonCaptureTests`).

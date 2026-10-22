@@ -52,6 +52,8 @@ Consequences:
 - Reminders, standups and index upkeep are one mechanism; a new one is a job and a schedule,
   not a sweep.
 - Recurrences are as expressive as the closed set; a rule it lacks is a change to core.
+- A plugin's job is run for past days by once schedules declared beside its own, one at a
+  time (`Kit.runOnce`): a backfill is schedules too, not a second way to run a job.
 - Who besides its author may cancel a person's schedule, and whether a person may write a
   recurring one, is the writing tool's to decide.
 - Enforced by the replay gate (`JobReplayTests`, `run-superseded.json` among its histories).
