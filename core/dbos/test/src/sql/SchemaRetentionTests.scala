@@ -6,13 +6,14 @@ import scala.util.Using
 import utest.*
 
 /** Every table in `schema.sql` declares what bounds it: `journal` (the raw window), `ledger`
-  * (the closings' window), `cache` (rebuilt from closings, deleted with them) or `kept`
-  * (settings and catalogs, bounded by what people change). A table nothing bounds is how a
+  * (the closings' window), `cache` (rebuilt from closings, deleted with them), `expiring`
+  * (deleted once its own expiry passes) or `kept` (settings and catalogs, bounded by what people
+  * change). A table nothing bounds is how a
   * database grows without end.
   */
 object SchemaRetentionTests extends TestSuite {
 
-  private val Classes = Set("journal", "ledger", "cache", "kept")
+  private val Classes = Set("journal", "ledger", "cache", "expiring", "kept")
 
   private def schema: Vector[String] =
     Using.resource(

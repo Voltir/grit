@@ -1191,3 +1191,29 @@ CREATE INDEX IF NOT EXISTS idx_tombstones_due ON grit.tombstones
 -- What Tombstones.forget deletes each sweep: the rows collected or spared before a time.
 CREATE INDEX IF NOT EXISTS idx_tombstones_collected ON grit.tombstones (collected_at)
     WHERE collected_at IS NOT NULL;
+
+-- Files kept in the area (grit.core.files, ADR 0045): the catalog; each file's bytes are a blob on
+-- the engine's machine, named by sha256. A handle is f<id>. `put_key` is cleared when a put
+-- under it finds its file expired, so the key puts afresh.
+-- Retention: expiring: deleted by the collector once a tombstone names it (Target.File), which
+-- the area's sweep writes when expires_at passes or its blob is missing; its blob goes when no
+-- row names it. Steady state: the files put in one expiry (24 hours by default), a few hundred
+-- bytes a row; their blobs at most 2 GiB.
+CREATE TABLE IF NOT EXISTS grit.files (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    put_key     TEXT UNIQUE CHECK (length(put_key) <= 1024),
+    sha256      BYTEA NOT NULL CHECK (length(sha256) = 32),
+    bytes       BIGINT NOT NULL CHECK (bytes BETWEEN 0 AND 104857600),
+    name        TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 8192),
+    claimed     TEXT CHECK (length(claimed) <= 255),
+    edge        TEXT NOT NULL,
+    ref         TEXT NOT NULL CHECK (length(ref) <= 8192),
+    revision    TEXT CHECK (length(revision) <= 1024),
+    fetched_at  TIMESTAMPTZ NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    place       TEXT[] NOT NULL
+                CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
+    originator  TEXT,                       -- Readers.Originator's email; NULL for Readers.AtPlace
+    vouched_id  SMALLINT NOT NULL REFERENCES grit.integrity_labels(id)
+);
+CREATE INDEX IF NOT EXISTS idx_files_sha256 ON grit.files (sha256);

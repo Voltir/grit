@@ -140,8 +140,9 @@ abstract class FilesContract extends TestSuite {
         val first = put(a, key(1), new Source("ten bytes!")).map(_._1.handle)
         val full = put(a, key(2), new Source("three"))
         val same = put(a, key(3), new Source("ten bytes!")).map(_._1.sha256)
-        (full, first.flatMap(text(a, _)), same) ==>
-          (Left(FileError.Full), Right("ten bytes!"), Right(sha("ten bytes!")))
+        val fits = put(a, key(4), new Source("hi")).map(_._1.bytes)
+        (full, first.flatMap(text(a, _)), same, fits) ==>
+          (Left(FileError.Full), Right("ten bytes!"), Right(sha("ten bytes!")), Right(2L))
       }
     }
     test("a handle this transaction does not read is gone as an expired or unknown one is") {

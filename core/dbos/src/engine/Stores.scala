@@ -117,6 +117,9 @@ class Stores private[engine] (visibility: Visibility) {
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones
 
+  /** The files the file area keeps (ADR 0045). */
+  val files: grit.core.files.FileCatalog = new grit.dbos.sql.SqlFileCatalog
+
   /** What triage made of each heard message. */
   val triage: TriageStore = new SqlTriageStore
 
