@@ -162,6 +162,9 @@ object grit extends Module {
   object core extends GritPublished with Placed {
     def folder = os.sub / "core" / "core"
 
+    /* grit.prose for its form: what a file is read into (grit.core.files). */
+    def moduleDeps = Seq(prose)
+
     def mvnDeps = Seq(
       mvn"com.lihaoyi::upickle:4.4.3"
     )

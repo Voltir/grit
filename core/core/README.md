@@ -2,6 +2,7 @@
 
 The domain and the traits everything else is written against. No DBOS, no JDBC driver on its
 classpath; implementations live in the modules that need the libraries (CLAUDE.md, rule 8).
+It names one other grit module, `grit.prose`, whose form a file is read into (`files`).
 
 Each package's types and their docs are the code's: `scripts/outline area <name>` maps a part of
 grit, and `scripts/outline show <Type>` reads one. This file holds what the code does not say:
@@ -81,6 +82,10 @@ In dependency order, each with the core packages it imports:
   ← `id`, `message`, `place`, `period`, `store`, `classify`
 - **`host`**: what a tool may do to the machine, as capabilities `grit.host` implements, and the
   pure rules they share. ← `place`
+- **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
+  `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
+  every span noted with where it lies, never silently wrong (what a read covers and missed is
+  in its result, ADR 0044), and a range of that tree as the model reads it. ← `clock`, `host`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
