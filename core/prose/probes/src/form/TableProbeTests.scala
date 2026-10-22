@@ -12,9 +12,9 @@ object TableProbeTests extends TestSuite {
 
   private val prelude =
     """package probe
-      |import grit.prose.form.{Block, CellKind, Column, Text}
+      |import grit.prose.form.{Block, Column, Text}
       |
-      |def columns: Vector[Column[Nothing]] = Vector(Column(Text.plain("a"), CellKind.Words))
+      |def columns: Vector[Column[Nothing]] = Vector(Column(Text.plain("a")))
       |""".stripMargin
 
   private val built =

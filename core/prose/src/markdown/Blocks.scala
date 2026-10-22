@@ -2,7 +2,7 @@ package grit.prose.markdown
 
 import scala.util.matching.Regex
 
-import grit.prose.form.{Block, Cell, CellKind, Column, Item, Level, Text}
+import grit.prose.form.{Block, Cell, Column, Item, Level, Text}
 
 /** Markdown's block syntax, read line by line into blocks: ATX headings, fenced code,
   * thematic breaks, block quotes, bullet and numbered lists (nested by indentation; a
@@ -68,7 +68,7 @@ private[markdown] object Blocks {
                           var j = i + 2
                           while (j < n && !blank(lines(j)) && lines(j).contains('|')) j += 1
                           out += Block.table(
-                            cells(line, open = false).map(Column(_, CellKind.Words)),
+                            cells(line, open = false).map(Column(_)),
                             lines
                               .slice(i + 2, j)
                               .map(

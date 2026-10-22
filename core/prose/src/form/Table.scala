@@ -2,15 +2,8 @@ package grit.prose.form
 
 import java.time.{LocalDate, LocalDateTime}
 
-/** What most cells of a table's column hold. A cell of another kind is kept as its source
-  * had it (a stray word in a number column), not converted.
-  */
-enum CellKind {
-  case Words, Number, Date, Truth
-}
-
-/** A table's column: its `name` and the kind most of its cells are. */
-final case class Column[+A <: caps.Pure](name: Text[A], kind: CellKind)
+/** A table's column: its `name`. */
+final case class Column[+A <: caps.Pure](name: Text[A])
 
 /** One table cell: [[shown]], its value as its source displayed it, never reformatted, and
   * `formula`, when its source computed it.

@@ -4,7 +4,7 @@ import java.time.{LocalDate, LocalDateTime}
 
 import scala.util.Try
 
-import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
 
 /** Prose as grit stores it: a flat list of blocks, a list item's level and kind as fields, under
   * a schema version (`"v"`), read back to the doc it was written from, but for a list with no
@@ -96,7 +96,7 @@ object ProseJson {
         ujson.Obj(
           "type" -> "table",
           "columns" -> ujson.Arr.from(
-            columns.map(c => ujson.Obj("name" -> text(c.name), "kind" -> kindName(c.kind)))
+            columns.map(c => ujson.Obj("name" -> text(c.name)))
           ),
           "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(cell(_, text)))))
         )
@@ -168,8 +168,6 @@ object ProseJson {
     case Mark.Code => "code"
     case Mark.Link(href) => ujson.Obj("link" -> href)
   }
-
-  private def kindName(k: CellKind): String = k.toString.toLowerCase
 
   // ---------------------------------------------------------------------------------------
   // Reading: the stream back to blocks, a run of items to its lists, a run of quotes to its
@@ -298,10 +296,7 @@ object ProseJson {
       for {
         o <- obj(v, "a column")
         name <- text(o.get("name"), "a column's name")
-        kind <- string(o.get("kind"), "a column's kind").flatMap(k =>
-          CellKind.values.find(kindName(_) == k).toRight(s"no cell kind: $k")
-        )
-      } yield Column(name, kind)
+      } yield Column(name)
 
     private def cell(v: ujson.Value): Read[Cell[A]] =
       obj(v, "a cell").flatMap { o =>

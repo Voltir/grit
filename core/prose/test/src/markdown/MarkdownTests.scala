@@ -1,6 +1,6 @@
 package grit.prose.markdown
 
-import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -172,7 +172,7 @@ object MarkdownTests extends TestSuite {
         Vector(
           Block.Heading(Level.of(2), plain("a\nb")),
           Block.table(
-            Vector(Column(plain("c\nd"), CellKind.Words)),
+            Vector(Column(plain("c\nd"))),
             Vector(Vector(Cell.Words(plain("e\n- f"))))
           )
         )
@@ -410,7 +410,7 @@ object MarkdownTests extends TestSuite {
       ) ==> Doc(
         Vector(
           Block.Table(
-            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
+            Vector(Column(plain("a")), Column(plain("b"))),
             Vector(
               Vector(Cell.Words(Text(Vector(marked("x", Mark.Code)))), Cell.Words(plain("y | z"))),
               Vector(Cell.Words(plain("only")), Cell.Empty()),
@@ -425,7 +425,7 @@ object MarkdownTests extends TestSuite {
       Markdown.parse("| a | b |\n|---|---|\n| 1 | 2 | 3 |\n| x | y|z | w |") ==> Doc(
         Vector(
           Block.Table(
-            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
+            Vector(Column(plain("a")), Column(plain("b"))),
             Vector(
               Vector(Cell.Words(plain("1")), Cell.Words(plain("2 | 3"))),
               Vector(Cell.Words(plain("x")), Cell.Words(plain("y | z | w")))
@@ -439,7 +439,7 @@ object MarkdownTests extends TestSuite {
       val number = Doc(
         Vector(
           Block.table(
-            Vector(Column(plain("n"), CellKind.Number)),
+            Vector(Column(plain("n"))),
             Vector(
               Vector(Cell.Number(BigDecimal("1234.5"), plain("1,234.50"))),
               Vector(Cell.Empty(Some("=SUM(A1:A2)")))
@@ -451,7 +451,7 @@ object MarkdownTests extends TestSuite {
       Markdown.parse(Markdown.write(number)) ==> Doc(
         Vector(
           Block.Table(
-            Vector(Column(plain("n"), CellKind.Words)),
+            Vector(Column(plain("n"))),
             Vector(
               Vector(Cell.Words(plain("1,234.50"))),
               Vector(Cell.Words(plain("=SUM(A1:A2) (not calculated)")))
@@ -532,7 +532,7 @@ object MarkdownTests extends TestSuite {
       Markdown.parsePrefix("| a | b |\n|--|--|\n| x") ==> Doc(
         Vector(
           Block.Table(
-            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
+            Vector(Column(plain("a")), Column(plain("b"))),
             Vector.empty
           )
         )

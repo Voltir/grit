@@ -34,8 +34,8 @@ object DocTests extends TestSuite {
       Block.Numbered(3, Vector(Item(Vector(Block.Paragraph(line(noted("n", 6))))))),
       Block.Table(
         Vector(
-          Column(line(noted("h", 7)), CellKind.Words),
-          Column(Text.plain("n"), CellKind.Number)
+          Column(line(noted("h", 7))),
+          Column(Text.plain("n"))
         ),
         Vector(Vector(Cell.Words(line(noted("c", 8))), Cell.Number(BigDecimal(2), Text.plain("2"))))
           :+ Vector(Cell.Words(line(noted("d", 9))), Cell.Empty())
@@ -69,8 +69,8 @@ object DocTests extends TestSuite {
           Block.Numbered(3, Vector(Item(Vector(Block.Paragraph(line(noted("n", 60))))))),
           Block.Table(
             Vector(
-              Column(line(noted("h", 70)), CellKind.Words),
-              Column(Text.plain("n"), CellKind.Number)
+              Column(line(noted("h", 70))),
+              Column(Text.plain("n"))
             ),
             Vector(
               Vector(Cell.Words(line(noted("c", 80))), Cell.Number(BigDecimal(2), Text.plain("2"))),
@@ -104,7 +104,7 @@ object DocTests extends TestSuite {
       "table folds a row past the columns into its last cell as printed, an empty end left out, and fills a short one"
     ) {
       val cols =
-        Vector(Column(Text.plain("a"), CellKind.Words), Column(Text.plain("b"), CellKind.Truth))
+        Vector(Column(Text.plain("a")), Column(Text.plain("b")))
       val x = Cell.Words(Text.plain("x"))
       Block.table(
         cols,
@@ -121,6 +121,15 @@ object DocTests extends TestSuite {
           Vector(x, Cell.Truth(true))
         )
       )
+    }
+
+    test("table makes a words cell with no text an empty cell, its formula kept") {
+      val cols =
+        Vector(Column(Text.plain("a")), Column(Text.plain("b")))
+      Block.table(
+        cols,
+        Vector(Vector(Cell.Words(Text.empty), Cell.Words(Text.plain(""), Some("=A1"))))
+      ) ==> Block.Table(cols, Vector(Vector(Cell.Empty(), Cell.Empty(Some("=A1")))))
     }
 
     test("mapSpans rewrites a topic: link into a note and leaves others") {

@@ -1,6 +1,6 @@
 package grit.slack.text
 
-import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
 import grit.slack.event.UserId
 
 import utest.*
@@ -142,8 +142,8 @@ object RichTextTests extends TestSuite {
           Vector(
             Block.table(
               Vector(
-                Column(Text.plain("name"), CellKind.Words),
-                Column(Text.plain("n"), CellKind.Number)
+                Column(Text.plain("name")),
+                Column(Text.plain("n"))
               ),
               Vector(
                 Vector(

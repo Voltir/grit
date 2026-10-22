@@ -53,13 +53,19 @@ object Block {
   /** A table, each row made as wide as the columns: a short one filled with [[Cell.Empty]]; a
     * long one's last cell and those past it folded into one [[Cell.Words]], their printed text
     * ([[Cell.printed]]) joined by ` | `, those past it that print nothing at its end left out,
-    * so no cell's text is lost. With no columns, no rows are kept.
+    * so no cell's text is lost. A [[Cell.Words]] with no text becomes a [[Cell.Empty]] of its
+    * formula. With no columns, no rows are kept.
     */
   def table[A <: caps.Pure](columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]]): Block[A] =
     Table(columns, if (columns.isEmpty) Vector.empty else rows.map(fitted(columns.length, _)))
 
   private def fitted[A <: caps.Pure](width: Int, row: Vector[Cell[A]]): Vector[Cell[A]] = {
-    val (kept, rest) = row.splitAt(width - 1)
+    val (kept, rest) = row
+      .map {
+        case Cell.Words(t, formula) if t.isEmpty => Cell.Empty(formula)
+        case c => c
+      }
+      .splitAt(width - 1)
     val tail = rest.reverse.dropWhile(_.printed.isEmpty).reverse
     val last: Vector[Cell[A]] = tail match {
       case Vector() => rest.take(1)
@@ -97,7 +103,7 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Quote(bs) => Block.Quote(bs.map(block))
       case c: Block.Code => c
       case Block.Table(cs, rows) =>
-        Block.Table(cs.map(c => Column(text(c.name), c.kind)), rows.map(_.map(_.mapText(text))))
+        Block.Table(cs.map(c => Column(text(c.name))), rows.map(_.map(_.mapText(text))))
       case Block.Rule => Block.Rule
     }
     Doc(blocks.map(block))

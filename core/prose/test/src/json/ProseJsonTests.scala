@@ -2,7 +2,7 @@ package grit.prose.json
 
 import java.time.{LocalDate, LocalDateTime}
 
-import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -75,7 +75,7 @@ object ProseJsonTests extends TestSuite {
         )
       ),
       Block.Table(
-        Vector(Column(noted("h", 5), CellKind.Words), Column(plain("n"), CellKind.Number)),
+        Vector(Column(noted("h", 5)), Column(plain("n"))),
         Vector(
           Vector(
             Cell.Words(noted("w", 6), Some("=A1")),

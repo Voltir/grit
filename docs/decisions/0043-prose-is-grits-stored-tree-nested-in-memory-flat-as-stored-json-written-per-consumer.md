@@ -15,9 +15,10 @@ position); and each keeper of prose with its own codec, as topics had.
 Decision:
 
 - **One tree, nested in memory.** `Doc`, `Block`, `Item` and `Text`, spans carrying marks and
-  pure notes of `A`, as pandoc nests them. A table's columns and cells are typed (`Column`,
-  `CellKind`, `Cell`): a number or a date keeps its value beside the text its source showed,
-  and `Cell.printed` is the one text every renderer prints for a cell, never reformatted. The
+  pure notes of `A`, as pandoc nests them. A table's cells are typed (`Cell`), each row as
+  wide as its columns (`Block.table`): a number or a date keeps its value beside the text its
+  source showed, and `Cell.printed` is the one text every renderer prints for a cell, never
+  reformatted. The
   tree gains a construct only when a reader emits it and a consumer reads it.
 - **Flat as stored.** `grit.prose.json.ProseJson` writes a doc as `{"v", "notes", "blocks"}`:
   a list of records, a list item's kind and level as fields, a quote's blocks with their
