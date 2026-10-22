@@ -1,5 +1,6 @@
 package grit.mcp.drive
 
+import grit.core.files.FileRead
 import grit.core.host.{Clipped, Kept}
 import grit.core.identity.Email
 import grit.core.tool.{Outcome, Trimmed}
@@ -114,20 +115,31 @@ object DriveItems {
             listing(called).map(stated)
           )
         )
-      case DriveCalled.Read(file, grants, text) =>
-        file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
-          val head = "The Drive file asked for:"
-          val part = readers(reading, file).map { r =>
-            val (shown, opened) = fitted(head, DriveFacts.entry(file), text)
-            ResultPart(
-              Provenance(reading.place(at), believed(reading, grants)),
-              r,
-              shown,
-              Some(stated(opened))
-            )
-          }
-          Itemised.Parts(head, part.toVector)
-        }
+      case DriveCalled.Read(file, grants, text) => opened(reading, file, grants, text, None)
+      case DriveCalled.Parsed(file, grants, read) =>
+        opened(reading, file, grants, read.shown, Some(read))
+    }
+
+  /** A read's parts: `text`, of `file`, kept as its part fits; `read`, what a format made of it. */
+  private def opened(
+      reading: DriveReading,
+      file: DriveFile,
+      grants: Option[Vector[Grant]],
+      text: String,
+      read: Option[FileRead]
+  ): Either[String, Itemised.Parts] =
+    file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
+      val head = "The Drive file asked for:"
+      val part = readers(reading, file).map { r =>
+        val (shown, opened) = fitted(head, DriveFacts.entry(file), text, read)
+        ResultPart(
+          Provenance(reading.place(at), believed(reading, grants)),
+          r,
+          shown,
+          Some(stated(opened))
+        )
+      }
+      Itemised.Parts(head, part.toVector)
     }
 
   /** `called` as the model reads it: [[items]]' head and parts, trimmed as [[Trimmed.of]] trims
@@ -152,7 +164,8 @@ object DriveItems {
   private def listing(called: DriveCalled): Option[DriveFacts.Listing] = called match {
     case DriveCalled.Drives(drives) => Some(DriveFacts.Listing(!drives.incomplete))
     case DriveCalled.Listed(files) => Some(DriveFacts.Listing(!files.incomplete))
-    case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) => None
+    case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) | DriveCalled.Parsed(_, _, _) =>
+      None
   }
 
   private def stated(facts: DriveFacts): Facts = Facts.of(DriveFacts.written(facts))
@@ -255,7 +268,8 @@ object DriveItems {
   private def fitted(
       head: String,
       entry: DriveFacts.Entry,
-      text: String
+      text: String,
+      read: Option[FileRead]
   ): (String, DriveFacts.Opened) = {
     val named = s"${title(entry)}${since(entry)}:"
     val lines = Clipped.lines(text)
@@ -273,6 +287,14 @@ object DriveItems {
     val k =
       if (Clipped.fits((head +: named +: lines).mkString("\n"))) lines.size
       else Clipped.most(lines.size - 1)(k => s"$head\n${kept(k)}")
-    (kept(k), DriveFacts.Opened(entry, lines.take(k).mkString("\n"), k == lines.size))
+    (
+      kept(k),
+      DriveFacts.Opened(
+        entry,
+        lines.take(k).mkString("\n"),
+        k == lines.size && read.forall(_.whole),
+        read.map(_.covered)
+      )
+    )
   }
 }

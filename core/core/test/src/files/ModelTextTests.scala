@@ -80,8 +80,20 @@ object ModelTextTests extends TestSuite {
         Some(
           "- 1 Introduction (page 1)\n- 3 Policy (page 210)\n  - 3.2 Access control (page 212)\n" +
             "  - 3.3 Audit (page 216)"
-        )
+        ),
+        false
       )
+    }
+
+    test("a read is whole only when it shows all of a file its reader read whole") {
+      val small = tree(Vector(para(1, "One."), para(2, "Two.")))
+      val cut = small.copy(covers = Covers.Part(2, 9, CoverUnit.Pages, Limit.Time))
+      Vector(
+        ModelText.of(small, FileRange.Start).whole,
+        ModelText.of(small, FileRange.pages(1, 2).getOrElse(FileRange.Start)).whole,
+        ModelText.of(small, FileRange.pages(2, 2).getOrElse(FileRange.Start)).whole,
+        ModelText.of(cut, FileRange.Start).whole
+      ) ==> Vector(true, true, false, false)
     }
 
     test(

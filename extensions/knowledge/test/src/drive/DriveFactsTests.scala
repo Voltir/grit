@@ -88,6 +88,15 @@ object DriveFactsTests extends TestSuite {
       )
     }
 
+    test("a PDF's read by pages decodes as its entry and its text, not all of it") {
+      val opened = DriveOpened.read(FactsGoldens.stated("read-file-pdf"))
+      assert(
+        opened.map(o => (o.entry.id, o.entry.kind, o.complete)) == Right(
+          ("file-4", DriveEntry.Kind.Other("pdf"), false)
+        )
+      )
+    }
+
     test("a part missing a key is refused, naming the part and the key") {
       val listing = DriveListing.read(FactsGoldens.stated(without("listing-drive-a", 2, "id")))
       assert(listing == Left("part 2 states no `id`"))

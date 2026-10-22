@@ -1,9 +1,12 @@
 package grit.mcp.drive
 
+import java.io.IOException
 import java.net.URI
+import java.nio.file.{Files, Path}
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
+import grit.core.files.Formats
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.prompt.Fragment
 import grit.core.store.StoreError
@@ -18,7 +21,9 @@ object DriveEdge {
     */
   val Instructions: String =
     "drive_list lists the shared drives, or what is directly in one folder or shared drive; " +
-      "drive_search finds Drive files by the words in them; and drive_read reads one by its id. " +
+      "drive_search finds Drive files by the words in them; and drive_read reads one by its id: " +
+      "a Doc, a Sheet or a text file whole, and a PDF, a Word file or an Excel file a part at a " +
+      "time, starting with its outline. " +
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
       "can open it to you with the label command, typing " +
@@ -30,17 +35,20 @@ object DriveEdge {
     * `reading` says, with `instructions` as the place's Place layer; or why not:
     * `instructions` blank, or `api` not an absolute URL. Opened, it registers the service's
     * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
-    * serves them, and serves the requests addressed there with [[DriveTools]], logging what
-    * they say of each run. It needs the
+    * serves them, and serves the requests addressed there with [[DriveTools]], reading PDFs,
+    * Word and Excel files with `formats` in a directory of this machine's temporary files that
+    * closing it removes, logging what they say of each run. It needs the
     * credential's variables, is never asked, and delivers no replies. Opening it is refused,
     * naming the credential's variables, when the credential does not open (its key read from
     * this machine's files, [[KeyFiles.Local]]) or Drive does not
     * take its token; when Drive cannot be reached, is busy or answers what cannot be read, saying
-    * its cause ([[DriveError.logged]]); or when the desk cannot be registered or advertise.
+    * its cause ([[DriveError.logged]]); or when the desk cannot be registered or advertise, or
+    * that directory cannot be made.
     */
   def serving(
       credential: Credential,
       reading: DriveReading,
+      formats: Formats,
       instructions: String = Instructions,
       api: String = DriveRest.Api
   ): Either[String, ServedEdge] =
@@ -51,12 +59,32 @@ object DriveEdge {
         .filter(_.isAbsolute)
         .toRight(s"Drive's API $api is not an absolute URL")
       declared <- PlaceFragments.declared(reading.service.place, instructions)
-    } yield new Edge(credential, reading, at, declared)
+    } yield new Edge(credential, reading, formats, at, declared)
+
+  /** A new directory, under this machine's temporary files, for the copies of files being read;
+    * or why not, for the operator.
+    */
+  private def scratch(): Either[EdgeRefusal, Path] =
+    try Right(Files.createTempDirectory("grit-drive-"))
+    catch {
+      case e: IOException =>
+        Left(EdgeRefusal.Failed(s"no directory to read files in: ${e.getClass.getSimpleName}"))
+    }
+
+  /** `scratch` removed with any copy a read left in it, as far as this machine allows. */
+  private def cleared(scratch: Path): Unit =
+    try {
+      val left = Files.list(scratch)
+      try left.forEach(p => { val _ = Files.deleteIfExists(p) })
+      finally left.close()
+      val _ = Files.deleteIfExists(scratch)
+    } catch { case _: IOException => () }
 
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(
       credential: Credential,
       reading: DriveReading,
+      formats: Formats,
       api: URI,
       declared: Fragment
   ) extends ServedEdge {
@@ -96,18 +124,23 @@ object DriveEdge {
                   case Left(e) =>
                     Left(EdgeRefusal.Failed(s"its tools could not be advertised: ${e.why}"))
                   case Right(()) =>
-                    log(s"${place.written}: serving drive_list, drive_search, drive_read")
-                    val server = new Server(
-                      desk,
-                      new DriveTools(clock, rest, reading),
-                      run => { val _ = Thread.ofVirtual().start(() => run()) },
-                      said => log(s"${place.written}: $said")
-                    )
-                    server.serve()
-                    Right(new ServedEdge.Open {
-                      def deliver(): Either[StoreError, Int] = Right(0)
-                      def close(): Unit = server.close()
-                    })
+                    DriveEdge.scratch().map { scratch =>
+                      log(s"${place.written}: serving drive_list, drive_search, drive_read")
+                      val server = new Server(
+                        desk,
+                        new DriveTools(clock, rest, reading, formats, scratch),
+                        run => { val _ = Thread.ofVirtual().start(() => run()) },
+                        said => log(s"${place.written}: $said")
+                      )
+                      server.serve()
+                      new ServedEdge.Open {
+                        def deliver(): Either[StoreError, Int] = Right(0)
+                        def close(): Unit = {
+                          server.close()
+                          DriveEdge.cleared(scratch)
+                        }
+                      }
+                    }
                 }
             }
         }

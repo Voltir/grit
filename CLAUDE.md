@@ -46,6 +46,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
 | `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
+| `grit.formats` | `limits`, `ooxml`, `pdf`, `choice` | core | the readers of PDF, Word and Excel files (ADR 0044), and PDFBox's quarantine |
 | `grit.host` | `grit.host` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
@@ -55,7 +56,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
 | `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, eval | the eval harness, run only through `scripts/eval` |
 | `grit.kit` | `deployment`, `environment`, `run` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host | what a deployment is built against (ADR 0021) |
-| `grit.app` | `config`, `look`, `chat`, `main` | kit, digest, remind, knowledge, slack, mcp, tui, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
+| `grit.app` | `config`, `look`, `chat`, `main` | kit, digest, remind, knowledge, slack, mcp, formats, tui, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
 
 Mill `moduleDeps` are transitive, so `grit.kit` and `grit.app` see `dev.dbos.*` through
 `grit.dbos` — enola's rule, not the compiler, guards it. Working in `extensions/tui/`? Read
@@ -106,7 +107,8 @@ capability is a promise of purity.**
    needs it, translated into grit's conventions there; such modules depend only on core and
    meet only in `grit.kit` and `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
    nothing outside `grit.models` and `grit.mcp` imports `java.net.http.*`, nothing outside `grit.slack` imports
-   `com.slack.*`, and nothing outside `grit.host` starts a process.
+   `com.slack.*`, nothing outside `grit.formats` imports `org.apache.pdfbox.*`, and nothing outside
+   `grit.host` starts a process.
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.

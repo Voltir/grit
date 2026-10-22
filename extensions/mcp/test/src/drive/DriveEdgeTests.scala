@@ -89,7 +89,14 @@ object DriveEdgeTests extends TestSuite {
       new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
     )
     val log = new ConcurrentLinkedQueue[String]()
-    val edge = right(DriveEdge.serving(Credential.static(Token), reading, api = fake.api.toString))
+    val edge = right(
+      DriveEdge.serving(
+        Credential.static(Token),
+        reading,
+        PagedText.formats,
+        api = fake.api.toString
+      )
+    )
     val result = edge.open(stores, env, Clock.system(), line => { val _ = log.add(line) }) match {
       case Left(refusal) => Left(refusal)
       case Right(open) => Right(open.close())
@@ -127,7 +134,12 @@ object DriveEdgeTests extends TestSuite {
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val clock = Clock.system()
-    new DriveTools(clock, fake.rest(clock), reading).run(route, q, said)
+    val scratch = java.nio.file.Files.createTempDirectory("drive-edge")
+    // Removing it throws when a read left its copy behind.
+    try
+      new DriveTools(clock, fake.rest(clock), reading, PagedText.formats, scratch)
+        .run(route, q, said)
+    finally java.nio.file.Files.deleteIfExists(scratch)
   }
 
   val tests = Tests {
@@ -177,11 +189,15 @@ object DriveEdgeTests extends TestSuite {
     test(
       "the edge is named for its service, needs its credential's variable, and is never asked; blank instructions or an API that is no URL are refused"
     ) {
-      val edge = right(DriveEdge.serving(Credential.static(Token), reading))
+      val edge = right(DriveEdge.serving(Credential.static(Token), reading, PagedText.formats))
       (
         (edge.name, edge.needs, edge.asks),
-        DriveEdge.serving(Credential.static(Token), reading, instructions = " ").map(_ => ()),
-        DriveEdge.serving(Credential.static(Token), reading, api = "drive/v3").map(_ => ())
+        DriveEdge
+          .serving(Credential.static(Token), reading, PagedText.formats, instructions = " ")
+          .map(_ => ()),
+        DriveEdge
+          .serving(Credential.static(Token), reading, PagedText.formats, api = "drive/v3")
+          .map(_ => ())
       ) ==> (
         (EdgeName("drive"), Vector(Token), ServedEdge.Asks.Never),
         Left("the instructions declared for service:drive are blank"),
@@ -364,6 +380,30 @@ object DriveEdgeTests extends TestSuite {
                 Integrity.Outside,
                 "name-30 (a text file), last changed 2026-09-13T10:00:00Z:\ntext text.\ntext text, text."
               )
+          case other => throw new java.lang.AssertionError(other.toString)
+        }
+      }
+    }
+
+    test(
+      "a PDF read by its pages says which of how many it shows, how to read on, and its facts say so"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes(
+          "files/file-4?alt=media",
+          200,
+          PagedText.bytes("One.", "Two.", "Three.", "Four.")
+        )
+        run(fake, "drive_read", ujson.Obj("file" -> "file-4", "pages" -> "2-3")) match {
+          case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
+            (
+              part.text.linesIterator.drop(1).mkString("\n"),
+              part.facts.map(f => (f.json("covered"), f.json("complete")))
+            ) ==> (
+              "Read: pages 2–3 of 4.\n\n[page 2]\nTwo.\n\n[page 3]\nThree.\n\n" +
+                "[To read on, ask for pages=\"4\".]",
+              Some((ujson.Str("pages 2–3 of 4"), ujson.Bool(false)))
+            )
           case other => throw new java.lang.AssertionError(other.toString)
         }
       }

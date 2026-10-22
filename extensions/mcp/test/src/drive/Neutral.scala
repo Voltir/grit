@@ -19,7 +19,7 @@ import scala.util.Try
   *   - a string at a key naming a name, title, description, snippet, content or text, or of no
   *     other shape kept: `<key>-N`.
   * Kept as they are: numbers, booleans, nulls, and strings shaped as a lowercase word (a type
-  * or a role), a media type, or a UTC time.
+  * or a role), a media type, a UTC time, or a file's `size` (digits, as Drive writes it).
   */
 final class Neutral(
     domain: String,
@@ -36,6 +36,7 @@ final class Neutral(
   private val Word = "[a-z][a-zA-Z]{0,30}".r
   private val Media = "[a-z]+/[a-zA-Z0-9.+-]+".r
   private val Time = """\d{4}-\d\d-\d\dT[\d:.]+Z""".r
+  private val Digits = """\d{1,19}""".r
   private val Address = """[^@\s]+@([^@\s]+)""".r
   private val Named: Vector[String] =
     Vector("name", "title", "description", "snippet", "content", "text")
@@ -106,6 +107,7 @@ final class Neutral(
           }
         case _ if Named.exists(key.toLowerCase.contains) => text(key, s)
         case Word() | Media() | Time() => s
+        case Digits() if key == "size" => s
         case _ => text(key, s)
       }
 }

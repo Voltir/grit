@@ -363,7 +363,7 @@ object DriveItemsTests extends TestSuite {
       "each listed part's facts name its id, kind and change time, and its name only when its line shows it"
     ) {
       val listed = right(DriveJson.hits(Recorded.json("made-children-folder-3")))
-      val odd = doc.copy(name = "<b>x</b>", changed = None)
+      val odd = doc.copy(name = "<b>x</b>", changed = None, mimeType = "application/zip")
       val files =
         parts(DriveCalled.Listed(listed.copy(files = listed.files.take(2) :+ odd))).map(p =>
           (p.text, p.facts.map(_.json))
@@ -391,12 +391,11 @@ object DriveItemsTests extends TestSuite {
             )
           ),
           (
-            "- name-12 (a file of type application/vnd.openxmlformats-officedocument.wordprocessingml.document), id file-3, last changed 2026-09-09T10:00:00Z",
+            "- name-12 (a Word file), id file-3, last changed 2026-09-09T10:00:00Z",
             Some(
               ujson.Obj(
                 "id" -> "file-3",
-                "kind" -> "other",
-                "type" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "kind" -> "word",
                 "name" -> "name-12",
                 "changed" -> "2026-09-09T10:00:00Z",
                 "within" -> "folder-3"
@@ -404,8 +403,15 @@ object DriveItemsTests extends TestSuite {
             )
           ),
           (
-            "- A file whose name is not shown, since it is not a plain title (a Doc), id file-1",
-            Some(ujson.Obj("id" -> "file-1", "kind" -> "document", "within" -> "folder-3"))
+            "- A file whose name is not shown, since it is not a plain title (a file of type application/zip), id file-1",
+            Some(
+              ujson.Obj(
+                "id" -> "file-1",
+                "kind" -> "other",
+                "type" -> "application/zip",
+                "within" -> "folder-3"
+              )
+            )
           )
         ),
         Vector(

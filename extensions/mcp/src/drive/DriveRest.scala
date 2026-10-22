@@ -10,6 +10,7 @@ import scala.concurrent.duration.*
 import scala.jdk.DurationConverters.*
 
 import grit.core.clock.Clock
+import grit.core.files.Unread
 import grit.mcp.client.Authorizer
 
 /** Why a request to Drive answered nothing grit reads. */
@@ -32,18 +33,28 @@ enum DriveError derives CanEqual {
   /** Drive's answer was not in the form it documents: `why`, for the operator's log alone. */
   case Malformed(why: String)
 
-  /** The file is of a type grit does not read, `kind` in words ("a PDF"). */
+  /** The file is of a type grit does not read, `kind` in words ("Slides"). */
   case Unreadable(kind: String)
+
+  /** Drive has flagged the file as possibly harmful, and will not give its bytes. */
+  case Flagged
+
+  /** The file was downloaded, or would have been, and could not be read: `unread` says why. */
+  case Unread(unread: grit.core.files.Unread)
+
+  /** The file's bytes could not be kept here to be read: `why`, for the operator's log alone. */
+  case Unkept(why: String)
 
   /** What the operator's log is told of it beside [[message]]: its cause; `None` for an answer
     * a person's own ask explains (a file not shared, or of a type not read).
     */
   def logged: Option[String] = this match {
     case NoToken(why) => Some(s"Drive gave no access: $why")
-    case Hidden | Unreadable(_) => None
+    case Hidden | Unreadable(_) | Flagged | Unread(_) => None
     case Busy(status) => Some(s"Drive answered $status")
     case Unreachable(why) => Some(s"Drive could not be reached: $why")
     case Malformed(why) => Some(s"Drive's answer could not be read: $why")
+    case Unkept(why) => Some(s"a Drive file's bytes could not be kept to read: $why")
   }
 
   /** What the model reads, and may say: what happened and what a person can do, in plain
@@ -56,7 +67,10 @@ enum DriveError derives CanEqual {
     case Unreachable(why) => s"Drive could not be reached ($why); try again in a minute."
     case Malformed(_) => "Drive's answer couldn't be read; try again later."
     case Unreadable(kind) =>
-      s"Only Docs, Sheets and text files in Drive can be read here, not $kind."
+      s"Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read here, not $kind."
+    case Flagged => "Drive has flagged this file as possibly harmful, so it isn't read here."
+    case Unread(unread) => unread.message
+    case Unkept(_) => "That file couldn't be read here just now; try again later."
   }
 }
 
@@ -141,6 +155,50 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     read.map(_.stripPrefix("\uFEFF"))
   }
 
+  /** `file`'s bytes written to `to`, their count; [[DriveError.Unread]] with
+    * [[grit.core.files.Unread.TooLarge]] when Drive gives its size over `max`, before its bytes
+    * are asked for, or when more than `max` arrive (`to` then holds a part of it);
+    * [[DriveError.Flagged]] when Drive will not give the bytes of a file it flagged as possibly
+    * harmful; [[DriveError.Unkept]] when `to` cannot be written; any other failure as
+    * [[text]]'s.
+    */
+  def bytes(file: DriveFile, max: Long, to: java.nio.file.Path): Either[DriveError, Long] =
+    file.size.filter(_ > max) match {
+      case Some(size) => Left(DriveError.Unread(Unread.TooLarge(size, max)))
+      case None =>
+        send(s"files/${FileId.value(file.id)}", Vector("alt" -> "media")) { (status, in) =>
+          if (status != 200) DriveRest.answered(status, DriveRest.text(in)).flatMap(_ => Right(0L))
+          else {
+            // `to`'s own failures are told apart from Drive's, which `send` catches.
+            def kept[B](io: => B): Either[DriveError, B] =
+              try Right(io)
+              catch { case e: IOException => Left(DriveError.Unkept(e.getClass.getSimpleName)) }
+            kept(java.nio.file.Files.newOutputStream(to)).flatMap { out =>
+              // At most one byte past `max`, so a file too large is known without reading it all.
+              var total = 0L
+              var failed: Option[DriveError] = None
+              var more = true
+              var closed: Either[DriveError, Unit] = Right(())
+              try {
+                while (more && failed.isEmpty && total <= max) {
+                  val chunk = in.readNBytes((max + 1 - total).min(64L * 1024).toInt)
+                  failed = kept(out.write(chunk)).left.toOption
+                  total += chunk.length
+                  more = chunk.nonEmpty
+                }
+              } finally closed = kept(out.close())
+              for {
+                _ <- failed.toLeft(())
+                _ <- closed
+                n <-
+                  if (total > max) Left(DriveError.Unread(Unread.TooLarge(total, max)))
+                  else Right(total)
+              } yield n
+            }
+          }
+        }
+    }
+
   /** Whether the account's token is taken: one search of one file. */
   private[drive] def reachable(): Either[DriveError, Unit] =
     json(
@@ -165,6 +223,15 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     * [[DriveError]] says.
     */
   private def get(path: String, query: Vector[(String, String)]): Either[DriveError, String] =
+    send(path, query)((status, in) => DriveRest.answered(status, DriveRest.text(in)))
+
+  /** A GET of `path` with `query`, and `supportsAllDrives` for a file's, its answer's status and
+    * body handed to `read`; the body closed after. A failure to reach Drive, or of `read`'s own
+    * I/O, as [[DriveError.Unreachable]].
+    */
+  private def send[A](path: String, query: Vector[(String, String)])(
+      read: (Int, java.io.InputStream) => Either[DriveError, A]
+  ): Either[DriveError, A] =
     authorizer
       .bearer(clock)
       .left
@@ -184,14 +251,8 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
         try {
           val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
           val in = response.body()
-          val body =
-            try {
-              val bytes = in.readNBytes(DriveRest.MaxRead)
-              val text = new String(bytes, UTF_8)
-              // A body cut at MaxRead ends partway through a line: keep its whole lines.
-              if (bytes.length < DriveRest.MaxRead) text else text.take(text.lastIndexOf('\n') + 1)
-            } finally in.close()
-          DriveRest.answered(response.statusCode, body)
+          try read(response.statusCode, in)
+          finally in.close()
         } catch {
           case _: HttpTimeoutException =>
             Left(DriveError.Unreachable(s"no answer within ${DriveRest.Timeout}"))
@@ -234,6 +295,14 @@ object DriveRest {
   private val Limits: Set[String] =
     Set("userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded", "quotaExceeded")
 
+  /** `in`'s first [[MaxRead]] bytes as text; when cut there, its whole lines. */
+  private def text(in: java.io.InputStream): String = {
+    val bytes = in.readNBytes(MaxRead)
+    val text = new String(bytes, UTF_8)
+    // A body cut at MaxRead ends partway through a line: keep its whole lines.
+    if (bytes.length < MaxRead) text else text.take(text.lastIndexOf('\n') + 1)
+  }
+
   /** `status` and `body` as a request's answer. */
   private def answered(status: Int, body: String): Either[DriveError, String] = {
     def reasons = scala.util.Try(ujson.read(body)).toOption.toVector.flatMap(DriveJson.reasons)
@@ -242,6 +311,7 @@ object DriveRest {
       case 401 => Left(DriveError.NoToken("Drive refused the token it was given"))
       case 403 if reasons.exists(Limits) => Left(DriveError.Busy(status))
       case 403 if reasons.contains("fileNotExportable") => Left(DriveError.Unreadable("this file"))
+      case 403 if reasons.contains("cannotDownloadAbusiveFile") => Left(DriveError.Flagged)
       case 403 | 404 => Left(DriveError.Hidden)
       case 429 => Left(DriveError.Busy(status))
       case s if s >= 500 => Left(DriveError.Busy(status))

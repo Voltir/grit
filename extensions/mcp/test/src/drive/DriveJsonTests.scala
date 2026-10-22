@@ -207,5 +207,15 @@ object DriveJsonTests extends TestSuite {
       ) ==>
         (Vector("fileNotExportable"), Vector("notFound"))
     }
+
+    test(
+      "a file's size is read from the string Drive writes it as; one that is no number is refused"
+    ) {
+      (
+        DriveJson.file(file("size" -> "12345")).map(_.size),
+        DriveJson.file(file()).map(_.size),
+        DriveJson.file(file("size" -> "lots")).map(_.size)
+      ) ==> (Right(Some(12345L)), Right(None), Left("a file's size is not a number"))
+    }
   }
 }

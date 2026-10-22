@@ -36,7 +36,7 @@ final class FakeDriveServer private () {
   private var kept = Vector.empty[(String, Map[String, String])]
 
   @caps.unsafe.untrackedCaptures
-  private var overrides = Map.empty[String, (Int, String)]
+  private var overrides = Map.empty[String, (Int, Vector[Byte])]
 
   private val http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
   http.createContext("/drive/v3/", exchange => answer(exchange))
@@ -68,6 +68,10 @@ final class FakeDriveServer private () {
     * content (`alt=media`) apart from its metadata, as `files/{id}?alt=media`.
     */
   def answering(path: String, status: Int, body: String): Unit =
+    answeringBytes(path, status, body.getBytes(UTF_8).toVector)
+
+  /** As [[answering]], with `body`'s bytes as they are. */
+  def answeringBytes(path: String, status: Int, body: Vector[Byte]): Unit =
     lock.synchronized { overrides = overrides.updated(path, (status, body)) }
 
   /** Stops answering. */
@@ -98,15 +102,17 @@ final class FakeDriveServer private () {
         Some("no supportsAllDrives")
       else if (!content && !query.contains("fields")) Some("no fields")
       else None
-    val (status, body) = refused match {
+    def text(answer: (Int, String)): (Int, Vector[Byte]) =
+      (answer._1, answer._2.getBytes(UTF_8).toVector)
+    val (status, bytes) = refused match {
       case Some(why) =>
-        (400, ujson.write(ujson.Obj("error" -> ujson.Obj("code" -> 400, "message" -> why))))
-      case None => overridden.getOrElse(recorded(path, query))
+        text((400, ujson.write(ujson.Obj("error" -> ujson.Obj("code" -> 400, "message" -> why)))))
+      case None => overridden.getOrElse(text(recorded(path, query)))
     }
-    val bytes = body.getBytes(UTF_8)
     exchange.getResponseHeaders.set("Content-Type", "application/json")
     exchange.sendResponseHeaders(status, bytes.length.toLong)
-    exchange.getResponseBody.write(bytes)
+    val out = exchange.getResponseBody
+    bytes.foreach(b => out.write(b.toInt))
     exchange.close()
   }
 

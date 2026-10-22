@@ -12,24 +12,21 @@
     },
     {
       "id": "file-3",
-      "kind": "other",
-      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "kind": "word",
       "name": "name-12",
       "changed": "2026-09-09T10:00:00Z",
       "within": "folder-3"
     },
     {
       "id": "file-8",
-      "kind": "other",
-      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "kind": "word",
       "name": "name-17",
       "changed": "2026-09-10T10:00:00Z",
       "within": "folder-3"
     },
     {
       "id": "file-9",
-      "kind": "other",
-      "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "kind": "word",
       "name": "name-18",
       "changed": "2026-09-11T10:00:00Z",
       "within": "folder-3"

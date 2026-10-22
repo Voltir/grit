@@ -116,4 +116,9 @@ enum DriveCalled {
     * its text.
     */
   case Read(file: DriveFile, grants: Option[Vector[Grant]], text: String)
+
+  /** A file read by a deployment's formats: as [[Read]], its text the part of it `read` shows
+    * ([[grit.core.files.FileRead.shown]]).
+    */
+  case Parsed(file: DriveFile, grants: Option[Vector[Grant]], read: grit.core.files.FileRead)
 }

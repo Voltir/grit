@@ -11,7 +11,7 @@ import grit.core.identity.{Domain, Email}
 object DriveJson {
 
   /** The fields a file is asked for with. */
-  val FileFields: String = "id,name,mimeType,parents,driveId,owners(emailAddress),modifiedTime"
+  val FileFields: String = "id,name,mimeType,parents,driveId,owners(emailAddress),modifiedTime,size"
 
   /** The fields a search is asked for with. */
   val SearchFields: String = s"nextPageToken,incompleteSearch,files($FileFields)"
@@ -108,7 +108,14 @@ object DriveJson {
           catch { case _: DateTimeParseException => Left("a file's modifiedTime is not a time") }
         case Some(_) => Left("a file's modifiedTime is not a time")
       }
-    } yield DriveFile(id, name, mimeType, parent, drive, owners, changed)
+      // Drive writes a size as a string of digits, and gives none for its own apps' files.
+      size <- o.get("size") match {
+        case None => Right(None)
+        case Some(ujson.Str(s)) =>
+          s.toLongOption.filter(_ >= 0).map(Some(_)).toRight("a file's size is not a number")
+        case Some(_) => Left("a file's size is not a number")
+      }
+    } yield DriveFile(id, name, mimeType, parent, drive, owners, changed, size)
 
   /** A `permissions.list` answer's grants; `None` when it names a next page, so it was not read
     * whole.

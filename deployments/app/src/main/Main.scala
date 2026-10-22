@@ -43,6 +43,7 @@ import grit.core.visibility.{
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
+import grit.formats.choice.Defaults
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.{DotEnv, Secrets}
@@ -1286,7 +1287,7 @@ object Main {
             case r: DriveReading.Misdeclared.Unclaimed => s"$DriveDomainVar: ${r.message}"
             case r => s"$DriveWritersVar: ${r.message}"
           }
-        edge <- DriveEdge.serving(credential, reading)
+        edge <- DriveEdge.serving(credential, reading, Defaults.formats)
       } yield Some(
         Drive(edge, Reaches(SlackRoot, service), reading.names)
       )

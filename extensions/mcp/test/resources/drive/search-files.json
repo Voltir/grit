@@ -24,6 +24,7 @@
       "driveId": "drive-a",
       "name": "name-12",
       "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": "30720",
       "id": "file-3",
       "parents": [
         "folder-3"
@@ -34,6 +35,7 @@
       "driveId": "drive-a",
       "name": "name-13",
       "mimeType": "application/pdf",
+      "size": "40960",
       "id": "file-4",
       "parents": [
         "drive-a"
@@ -44,6 +46,7 @@
       "driveId": "drive-a",
       "name": "name-14",
       "mimeType": "application/pdf",
+      "size": "51200",
       "id": "file-5",
       "parents": [
         "drive-a"
@@ -54,6 +57,7 @@
       "driveId": "drive-a",
       "name": "name-15",
       "mimeType": "application/pdf",
+      "size": "61440",
       "id": "file-6",
       "parents": [
         "drive-a"
@@ -74,6 +78,7 @@
       "driveId": "drive-a",
       "name": "name-17",
       "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": "81920",
       "id": "file-8",
       "parents": [
         "folder-3"
@@ -84,6 +89,7 @@
       "driveId": "drive-a",
       "name": "name-18",
       "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": "92160",
       "id": "file-9",
       "parents": [
         "folder-3"
@@ -94,6 +100,7 @@
       "driveId": "drive-a",
       "name": "name-19",
       "mimeType": "application/pdf",
+      "size": "102400",
       "id": "file-10",
       "parents": [
         "folder-3"

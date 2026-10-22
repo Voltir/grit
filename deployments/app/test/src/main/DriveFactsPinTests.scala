@@ -3,6 +3,7 @@ package grit.app.main
 import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.clock.Clock
+import grit.core.files.{FileRange, FileRead}
 import grit.core.tool.Outcome
 import grit.mcp.drive.{DriveCalled, DriveItems, DriveRest, FakeDriveServer, Recorded}
 
@@ -47,12 +48,28 @@ object DriveFactsPinTests extends TestSuite {
           text <- rest.text(file)
           grants <- rest.grants(file.id)
         } yield DriveCalled.Read(file, grants, text)
+        // A PDF's middle pages, as a format's read of them is shown: not the whole file.
+        val parsed = for {
+          file <- rest.file(Recorded.id("file-4"))
+          grants <- rest.grants(file.id)
+        } yield DriveCalled.Parsed(
+          file,
+          grants,
+          FileRead("[page 2]\nTwo.", "pages 2–3 of 4", FileRange.pages(4, 4), None, whole = false)
+        )
         Vector(
           stated(rest.drives().map(DriveCalled.Drives(_))),
           stated(rest.children(Recorded.id("drive-a")).map(DriveCalled.Listed(_))),
           stated(rest.children(Recorded.id("folder-3")).map(DriveCalled.Listed(_))),
-          stated(read)
-        ) ==> Vector("drives", "listing-drive-a", "listing-folder-3", "read-file-text").map(golden)
+          stated(read),
+          stated(parsed)
+        ) ==> Vector(
+          "drives",
+          "listing-drive-a",
+          "listing-folder-3",
+          "read-file-text",
+          "read-file-pdf"
+        ).map(golden)
       }
     }
   }

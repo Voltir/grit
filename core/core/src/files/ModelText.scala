@@ -31,7 +31,7 @@ object ModelText {
     * `" > "`, matched ignoring case and runs of spaces.
     */
   def of(tree: Understood, range: FileRange): FileRead = {
-    val laid = Laid(tree.doc)
+    val laid = Laid(tree.doc, tree.covers == Covers.Whole)
     val outline = laid.outline
     def told(covered: String): String = {
       val more = tree.covers.words.toVector ++
@@ -41,7 +41,7 @@ object ModelText {
       (covered +: more).mkString("; ")
     }
     def outlineOnly(said: String): FileRead =
-      FileRead(said, told("its outline"), None, Some(outline.getOrElse("(no headings)")))
+      FileRead(said, told("its outline"), None, Some(outline.getOrElse("(no headings)")), false)
     range match {
       case FileRange.Section(heading) =>
         laid.section(heading) match {
@@ -72,7 +72,7 @@ object ModelText {
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 
   /** `doc`'s blocks laid out as markdown, each at its character offset, with its pages. */
-  private final case class Laid(doc: Doc[Locus]) {
+  private final case class Laid(doc: Doc[Locus], readWhole: Boolean) {
 
     val blocks: Vector[Block[Locus]] = doc.blocks
 
@@ -205,7 +205,13 @@ object ModelText {
         else s"characters $from–$done of $total"
       val next =
         if (full) FileRange.from(done) else stop.flatMap((a, b) => FileRange.pages(a, b))
-      FileRead(text, told(covered), next, outline)
+      FileRead(
+        text,
+        told(covered),
+        next,
+        outline,
+        readWhole && from == 0 && !full && i >= blocks.size
+      )
     }
   }
 

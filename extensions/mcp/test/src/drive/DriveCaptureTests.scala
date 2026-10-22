@@ -24,7 +24,8 @@ object DriveCaptureTests extends TestSuite {
   )
 
   /** Whether Drive gives `field` to `file`, as its v3 reference says: `owners` only outside a
-    * shared drive, `driveId` only within one, `parents` to all but a drive's root; the rest
+    * shared drive, `driveId` only within one, `parents` to all but a drive's root, `size` only
+    * to a file whose bytes Drive keeps (not a Google Doc, Sheet, folder or shortcut); the rest
     * always.
     */
   private def gives(field: String, file: ujson.Obj): Boolean = {
@@ -33,6 +34,11 @@ object DriveCaptureTests extends TestSuite {
       case "owners" => !has("driveId")
       case "driveId" => !has("owners")
       case "parents" => file.value.get("id") != file.value.get("driveId")
+      case "size" =>
+        !file.value
+          .get("mimeType")
+          .flatMap(_.strOpt)
+          .exists(_.startsWith("application/vnd.google-apps."))
       case _ => true
     }
   }

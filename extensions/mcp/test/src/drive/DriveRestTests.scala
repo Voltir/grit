@@ -1,5 +1,6 @@
 package grit.mcp.drive
 
+import grit.core.files.Unread
 import grit.core.identity.Email
 
 import utest.*
@@ -147,7 +148,7 @@ object DriveRestTests extends TestSuite {
       }
     }
 
-    test("a file Drive will not export is unreadable, in words; a PDF is not asked for at all") {
+    test("a file Drive will not export is unreadable, in words; a PDF's text is not asked for") {
       withFake { (fake, rest) =>
         fake.answering("files/file-1/export", 403, Recorded.text("error-export-folder.json"))
         val doc = rest.file(file1)
@@ -155,13 +156,62 @@ object DriveRestTests extends TestSuite {
         val asked = fake.requests.size
         (
           doc.flatMap(rest.text).left.map(_.message),
-          pdf.flatMap(rest.text).left.map(_.message),
+          pdf.flatMap(rest.text),
           fake.requests.size - asked
         ) ==> (
-          Left("Only Docs, Sheets and text files in Drive can be read here, not this file."),
-          Left("Only Docs, Sheets and text files in Drive can be read here, not a PDF."),
+          Left(
+            "Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read " +
+              "here, not this file."
+          ),
+          Left(DriveError.Unreadable("a PDF")),
           1
         )
+      }
+    }
+
+    test("a file Drive says is larger than read here is refused before its bytes are asked for") {
+      withFake { (fake, rest) =>
+        val big = rest.file(Recorded.id("file-4")).map(_.copy(size = Some(30L << 20)))
+        val asked = fake.requests.size
+        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
+        try
+          (
+            big.flatMap(rest.bytes(_, 20L << 20, to)),
+            fake.requests.drop(asked)
+          ) ==> (Left(DriveError.Unread(Unread.TooLarge(30L << 20, 20L << 20))), Vector())
+        finally java.nio.file.Files.deleteIfExists(to)
+      }
+    }
+
+    test(
+      "a file's bytes are written whole; one of no size Drive gives, past the most read, is refused as too large"
+    ) {
+      withFake { (fake, rest) =>
+        val content = Vector.tabulate(3000)(i => (i % 256).toByte)
+        fake.answeringBytes("files/file-4?alt=media", 200, content)
+        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
+        try {
+          val file = rest.file(Recorded.id("file-4")).map(_.copy(size = None))
+          val whole = file.flatMap(rest.bytes(_, 3000, to))
+          val written = java.nio.file.Files.readAllBytes(to).toVector
+          (whole, written == content, file.flatMap(rest.bytes(_, 1000, to))) ==>
+            (Right(3000L), true, Left(DriveError.Unread(Unread.TooLarge(1001, 1000))))
+        } finally java.nio.file.Files.deleteIfExists(to)
+      }
+    }
+
+    test("a file Drive has flagged as possibly harmful is refused in words") {
+      withFake { (fake, rest) =>
+        fake.answering("files/file-4?alt=media", 403, error(403, "cannotDownloadAbusiveFile"))
+        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
+        try
+          rest
+            .file(Recorded.id("file-4"))
+            .flatMap(rest.bytes(_, 1L << 20, to))
+            .left
+            .map(_.message) ==>
+            Left("Drive has flagged this file as possibly harmful, so it isn't read here.")
+        finally java.nio.file.Files.deleteIfExists(to)
       }
     }
 

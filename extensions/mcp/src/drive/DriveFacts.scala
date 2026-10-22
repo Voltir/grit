@@ -7,7 +7,8 @@ import java.time.Instant
   *   - an entry, a file or folder listed: `{"id","kind","name"?,"changed"?,"within"?}`, `kind`
   *     as [[DriveKind.written]] writes it, and `"type"`, its MIME type, when that is `other`;
   *   - a shared drive: `{"id","kind":"drive","name"?}`;
-  *   - an opened file: its entry's keys, then `"text"` and `"complete"`;
+  *   - an opened file: its entry's keys, then `"text"`, `"complete"`, and `"covered"`, what
+  *     of the file the text covers in words ("pages 2–3 of 4"), for a file a format read;
   *   - a listing's own: `{"complete"}` alone, never counting or naming its parts.
   *
   * `name` only when [[DriveItems.shown]] admits it, as its line shows it; `changed` ISO-8601, as
@@ -28,9 +29,9 @@ enum DriveFacts derives CanEqual {
   case Drive(id: FileId, name: Option[String])
 
   /** A file read: `text`, the leading whole lines of it its part shows; `complete` when that is
-    * all of it.
+    * all of it; `covered`, what of the file it covers, for a file a format read.
     */
-  case Opened(entry: DriveFacts.Entry, text: String, complete: Boolean)
+  case Opened(entry: DriveFacts.Entry, text: String, complete: Boolean, covered: Option[String])
 
   /** A listing's own: `complete` when Drive had no more and every part it gave was kept. */
   case Listing(complete: Boolean)
@@ -55,10 +56,11 @@ object DriveFacts {
       val o = ujson.Obj("id" -> FileId.value(id), "kind" -> "drive")
       name.foreach(n => o("name") = n)
       o
-    case Opened(e, text, complete) =>
+    case Opened(e, text, complete, covered) =>
       val o = entryJson(e)
       o("text") = text
       o("complete") = complete
+      covered.foreach(c => o("covered") = c)
       o
     case Listing(complete) => ujson.Obj("complete" -> complete)
   }
@@ -80,19 +82,21 @@ object DriveFacts {
   * and the rest, their one home).
   */
 enum DriveKind derives CanEqual {
-  case Folder, Document, Spreadsheet, Pdf, Slides, Image, Text
+  case Folder, Document, Spreadsheet, Pdf, Word, Excel, Slides, Image, Text
 
   /** Any other, by its MIME type. */
   case Other(mimeType: String)
 
-  /** As its facts write it: `folder`, `document`, `spreadsheet`, `pdf`, `slides`, `image`,
-    * `text` or `other`.
+  /** As its facts write it: `folder`, `document`, `spreadsheet`, `pdf`, `word`, `excel`,
+    * `slides`, `image`, `text` or `other`.
     */
   def written: String = this match {
     case Folder => "folder"
     case Document => "document"
     case Spreadsheet => "spreadsheet"
     case Pdf => "pdf"
+    case Word => "word"
+    case Excel => "excel"
     case Slides => "slides"
     case Image => "image"
     case Text => "text"
@@ -107,6 +111,8 @@ enum DriveKind derives CanEqual {
     case Document => "a Doc"
     case Spreadsheet => "a Sheet"
     case Pdf => "a PDF"
+    case Word => "a Word file"
+    case Excel => "an Excel file"
     case Slides => "Slides"
     case Image => "an image"
     case Text => "a text file"

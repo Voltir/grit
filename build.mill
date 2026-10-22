@@ -688,7 +688,8 @@ object grit extends Module {
         grit.host,
         grit.edge,
         grit.slack,
-        grit.mcp
+        grit.mcp,
+        grit.formats
       )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")

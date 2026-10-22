@@ -66,13 +66,15 @@ object FileRange {
 
 /** A read as the model is shown it: `text` (markdown, `[page n]` lines where pages begin), what
   * it covers in words ("pages 212–214 of 492"), where the next read would start, and the file's
-  * outline when the read began at its start or asked for a section it lacks.
+  * outline when the read began at its start or asked for a section it lacks; `whole` when
+  * `text` is all of the file and its reader read all of it.
   */
 final case class FileRead(
     text: String,
     covered: String,
     next: Option[FileRange],
-    outline: Option[String]
+    outline: Option[String],
+    whole: Boolean
 ) {
 
   /** What the model reads: what it covers, the outline under `Outline:`, the text, and how to

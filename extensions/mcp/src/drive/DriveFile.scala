@@ -7,7 +7,8 @@ import grit.core.identity.{Domain, Email}
 /** What Drive says of one file or folder: `parent`, the folder or shared drive it lies in, when
   * Drive names one it shares with grit; `drive`, the shared drive holding it (`None` in a
   * person's My Drive); `owners`, empty in a shared drive; `changed`, when it last changed
-  * (`modifiedTime`), when Drive says.
+  * (`modifiedTime`), when Drive says; `size`, its bytes, which Drive gives a file it keeps the
+  * bytes of (none for a Doc, a Sheet or a folder).
   */
 final case class DriveFile(
     id: FileId,
@@ -16,7 +17,8 @@ final case class DriveFile(
     parent: Option[FileId],
     drive: Option[FileId],
     owners: Vector[Email],
-    changed: Option[Instant]
+    changed: Option[Instant],
+    size: Option[Long]
 ) {
 
   /** Where it lies: its parent, else its shared drive; `None` for a file with neither. */
@@ -30,6 +32,9 @@ final case class DriveFile(
     case DriveFile.Spreadsheet => DriveKind.Spreadsheet
     case DriveFile.Folder => DriveKind.Folder
     case "application/pdf" => DriveKind.Pdf
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" =>
+      DriveKind.Word
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => DriveKind.Excel
     case "application/vnd.google-apps.presentation" => DriveKind.Slides
     case other if other.startsWith("image/") => DriveKind.Image
     case other if other.startsWith("text/") => DriveKind.Text

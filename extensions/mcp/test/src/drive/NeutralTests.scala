@@ -75,6 +75,12 @@ object NeutralTests extends TestSuite {
         )
       )
     }
+    test("a file's size, a string of digits as Drive writes it, stays") {
+      val files = ujson.Obj("files" -> ujson.Arr(ujson.Obj("id" -> Doc, "size" -> "12345")))
+      inner(neutral.result(answer(files))) ==>
+        ujson.Obj("files" -> ujson.Arr(ujson.Obj("id" -> "file-1", "size" -> "12345")))
+    }
+
     test("addresses become stand-ins by whose they are, and a role or a kind of grant stays") {
       val permissions = ujson.Obj(
         "permissions" -> ujson.Arr(
