@@ -47,7 +47,8 @@ object SocketSlackContractTests extends SlackContract {
 
   /** `json`, posted at `url`, as its asker reads it in Slack: ephemeral when its
     * `response_type` says so; its text with Slack's escapes undone, and with no markup only
-    * when `mrkdwn` is off (else marked as such).
+    * when `mrkdwn` is off (else marked as such); replacing its message when `replace_original`
+    * says so.
     */
   private def shown(url: ResponseUrl, json: ujson.Value): Answered = {
     def field(name: String): Option[ujson.Value] = json.objOpt.flatMap(_.get(name))
@@ -56,7 +57,8 @@ object SocketSlackContractTests extends SlackContract {
     Answered(
       url,
       field("response_type").flatMap(_.strOpt).contains("ephemeral"),
-      if (field("mrkdwn").flatMap(_.boolOpt).contains(false)) plain else s"(as markup) $plain"
+      if (field("mrkdwn").flatMap(_.boolOpt).contains(false)) plain else s"(as markup) $plain",
+      field("replace_original").flatMap(_.boolOpt).contains(true)
     )
   }
 }

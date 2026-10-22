@@ -263,7 +263,15 @@ abstract class SlackContract extends TestSuite {
       withCommand() { (slack, hooks) =>
         val words = "label <level> & <!channel> &lt;: *not bold*"
         (slack.respond(hooks.live, words), hooks.answered()) ==>
-          (Right(()), Vector(Answered(hooks.live, ephemeral = true, words)))
+          (Right(()), Vector(Answered(hooks.live, ephemeral = true, words, replaces = false)))
+      }
+    }
+
+    test("respond in Replace mode replaces the message its url came from, in the words given") {
+      withCommand() { (slack, hooks) =>
+        val words = "Cancelled <@U1> & *done*"
+        (slack.respond(hooks.live, words, Respond.Replace), hooks.answered()) ==>
+          (Right(()), Vector(Answered(hooks.live, ephemeral = true, words, replaces = true)))
       }
     }
 
@@ -327,10 +335,10 @@ object SlackContract {
     def answered(): Vector[Answered]
   }
 
-  /** An answer Slack took at `url`: whether only its asker sees it, and its words as they
-    * read in Slack.
+  /** An answer Slack took at `url`: whether only its asker sees it, its words as they read in
+    * Slack, and whether it replaces the message the url came from.
     */
-  final case class Answered(url: ResponseUrl, ephemeral: Boolean, shown: String)
+  final case class Answered(url: ResponseUrl, ephemeral: Boolean, shown: String, replaces: Boolean)
 
   /** The ids the recordings use: the capture maps every real id to these. */
   val Team = TeamId("T0000000001")

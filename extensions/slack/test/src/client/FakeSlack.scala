@@ -22,7 +22,8 @@ import grit.slack.text.Post
 /** A [[Slack]] for tests, keeping what [[Slack]] says in memory and held to it by
   * [[SlackContract]]: the handlers `listen` was given ([[deliver]] hands an event's payload
   * to one, as Socket Mode would, and says whether it was acknowledged; [[command]] a slash
-  * command's to the other), what each command was answered ([[responses]]), the posts made, each with its tag,
+  * command's to the other), what each command was answered ([[answers]]), the cards shown
+  * ([[cards]]), the posts made, each with its tag,
   * and grit's reactions. Every post is made at a ts a microsecond after the latest it knows.
   * A message it knows is one listed, posted, or delivered as a person's message; a thread it
   * knows is one such message begins. Its people are user ids with no team of their own: each
@@ -345,20 +346,30 @@ final class FakeSlack extends Slack {
     }
   }
 
-  /** What each slash command was answered, oldest first: its url and the words. */
+  /** Every answer taken at a response url, oldest first: its url, the words and how. */
   // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
   @caps.unsafe.untrackedCaptures
-  var responses = Vector.empty[(ResponseUrl, String)]
+  var answers = Vector.empty[(ResponseUrl, String, Respond)]
+
+  /** What each slash command or click was answered with a new message, oldest first: its url
+    * and the words.
+    */
+  def responses: Vector[(ResponseUrl, String)] =
+    answers.collect { case (url, text, Respond.Reply) => (url, text) }
+
+  /** What each card clicked was replaced with, oldest first: its url and the words. */
+  def replaced: Vector[(ResponseUrl, String)] =
+    answers.collect { case (url, text, Respond.Replace) => (url, text) }
 
   /** The response urls of commands asked more than 30 minutes ago. */
   @caps.unsafe.untrackedCaptures
   var expired = Set.empty[ResponseUrl]
 
-  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit] =
+  def respond(url: ResponseUrl, text: String, mode: Respond): Either[SlackError, Unit] =
     request {
       if (expired.contains(url)) Left(SlackError.Refused("expired_url"))
       else {
-        responses = responses :+ (url, text)
+        answers = answers :+ (url, text, mode)
         Right(())
       }
     }

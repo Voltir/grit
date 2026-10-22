@@ -39,8 +39,8 @@ object Ts {
   def value(ts: Ts): String = ts
 }
 
-/** Where a slash command's answers go (its `response_url`): Slack takes up to 5 there, for 30
-  * minutes after the command.
+/** Where the answers to a slash command or a click go (its `response_url`): Slack takes up to 5
+  * there, for 30 minutes after the command or click.
   */
 opaque type ResponseUrl = String
 

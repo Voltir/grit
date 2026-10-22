@@ -79,6 +79,16 @@ final case class Member(name: Option[String], standing: Standing, zone: Option[Z
   */
 final case class Root(user: Option[UserId], tag: Option[Tag], text: String)
 
+/** How [[Slack.respond]] answers at a response url. */
+enum Respond {
+
+  /** With a new message, beside the one the url came from. */
+  case Reply
+
+  /** In place of the message the url came from. */
+  case Replace
+}
+
 /** Slack as grit uses it: one workspace, through grit's bot. */
 trait Slack extends caps.SharedCapability {
 
@@ -170,12 +180,18 @@ trait Slack extends caps.SharedCapability {
     */
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]]
 
-  /** Answers the slash command whose answers go to `url`, seen by its asker alone, in `text` as
-    * written: nothing in it becomes a mention, a link or markup. Slack takes up to 5 answers at
-    * a url, for 30 minutes after its command; one past either is `Refused` with Slack's word
-    * for it (`expired_url`).
+  /** Answers the slash command, or the click on a card, whose answers go to `url`, seen by the
+    * person who asked or clicked alone, in `text` as written: nothing in it becomes a mention, a
+    * link or markup. With `mode` [[Respond.Reply]] it is a new message; with
+    * [[Respond.Replace]], it replaces the message the url came from (the card clicked). Slack
+    * takes up to 5 answers at a url, for 30 minutes after its command or click; one past either
+    * is `Refused` with Slack's word for it (`expired_url`).
     */
-  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit]
+  def respond(
+      url: ResponseUrl,
+      text: String,
+      mode: Respond = Respond.Reply
+  ): Either[SlackError, Unit]
 
   /** Stops listening and disconnects; nothing is asked of it after. */
   def close(): Unit

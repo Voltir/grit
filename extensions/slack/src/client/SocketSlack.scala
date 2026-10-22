@@ -323,9 +323,9 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
         case other => Left(other)
       }
 
-  def respond(url: ResponseUrl, text: String): Either[SlackError, Unit] =
+  def respond(url: ResponseUrl, text: String, mode: Respond): Either[SlackError, Unit] =
     try {
-      val r = sdk.send(ResponseUrl.value(url), response(text))
+      val r = sdk.send(ResponseUrl.value(url), response(text, mode))
       answered(Option(r.getCode).fold(0)(_.toInt), Option(r.getBody).getOrElse(""))
     } catch { case NonFatal(e) => Left(unreachable(e)) }
 
@@ -461,18 +461,20 @@ object SocketSlack {
     start(() => handle(payload))
   }
 
-  /** The body [[Slack.respond]] posts at a command's response url: `text`, escaped as
-    * [[RichText]] escapes a reply's plain text and with markup off, seen by its asker alone.
-    * The SDK's own webhook payload has no `response_type`, so it is written here.
+  /** The body [[Slack.respond]] posts at a response url: `text`, escaped as [[RichText]]
+    * escapes a reply's plain text and with markup off, seen by its asker alone, and in `mode`
+    * [[Respond.Replace]] in place of the message the url came from. The SDK's own webhook
+    * payload has no `response_type`, so it is written here.
     */
-  def response(text: String): String =
-    ujson
-      .Obj(
-        "response_type" -> "ephemeral",
-        "text" -> RichText.escaped(text),
-        "mrkdwn" -> false
-      )
-      .render()
+  def response(text: String, mode: Respond): String = {
+    val body = ujson.Obj(
+      "response_type" -> "ephemeral",
+      "text" -> RichText.escaped(text),
+      "mrkdwn" -> false
+    )
+    if (mode == Respond.Replace) body("replace_original") = true
+    body.render()
+  }
 
   /** What a response url answered with `status` and `body`: taken on a 2xx; else `Refused`
     * with Slack's word for it, the error of a JSON body, or the plain text of another, or the

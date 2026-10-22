@@ -42,7 +42,9 @@ object FakeSlackContractTests extends SlackContract {
         // read. That an answer is ephemeral is pinned only by the Socket side's run of the
         // contract, which reads the response_type SocketSlack posts.
         def answered(): Vector[Answered] =
-          slack.responses.map((url, text) => Answered(url, ephemeral = true, text))
+          slack.answers.map((url, text, mode) =>
+            Answered(url, ephemeral = true, text, replaces = mode == Respond.Replace)
+          )
       }
     )
   }
