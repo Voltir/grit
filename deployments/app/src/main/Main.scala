@@ -12,6 +12,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{ServedEdge, Variable}
+import grit.core.files.{FileArea, Files}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
@@ -103,7 +104,11 @@ import grit.turn.TurnLoop
   * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
   * runs in, with its instruction files; a command it runs sees only the environment
-  * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
+  * `LocalShell` passes. Each turn's model is offered `file_read`, more of a file an edge kept
+  * in the file area (ADR 0045), whose bytes are kept in `GRIT_FILES_DIR` (default a directory
+  * of the machine's temporary directory named for the database), each for `GRIT_FILES_EXPIRY`
+  * (default 24 hours, at least a minute), read as [[Defaults]] reads PDFs, Word and Excel
+  * files. The engine sweeps every `GRIT_SWEEP` (default
   * [[DefaultSweep]]), asking the same classifier as the placer whether anyone is waiting on
   * each quiet period ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
   * closing written by the summary role and gated by that classifier, and posting each closed
@@ -583,6 +588,22 @@ object Main {
           .filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
     }
 
+  private val FilesExpiryVar = "GRIT_FILES_EXPIRY"
+
+  /** How long the file area keeps a file, from `GRIT_FILES_EXPIRY`, a duration ([[Durations]])
+    * of at least a minute; [[Files.Expiry]] when unset.
+    */
+  private[main] def filesExpiry(env: Map[String, String]): Either[String, FiniteDuration] =
+    env.get(FilesExpiryVar) match {
+      case None => Right(Files.Expiry)
+      case Some(raw) =>
+        Durations
+          .read(raw)
+          .left
+          .map(why => s"$FilesExpiryVar: $why")
+          .filterOrElse(_ >= 1.minute, s"$FilesExpiryVar must be at least a minute")
+    }
+
   private val PluginsVar = "GRIT_PLUGINS"
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
@@ -889,6 +910,7 @@ object Main {
       rounds <- toolRounds(env)
       models <- policy(env)
       sweep <- sweepEvery(env)
+      expiry <- filesExpiry(env)
       lifecycle <- Lifecycle.fromEnv(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
       domains <- Claimed.fromEnv(env)
@@ -933,7 +955,9 @@ object Main {
           sweep = sweep,
           // The reference deployment is grit itself, in a terminal and in Slack alike.
           persona = Persona.Grit,
-          identities = identities
+          identities = identities,
+          files = FileArea.Bounds.Default.copy(expiry = expiry),
+          formats = Defaults.formats
         )
         .left
         .map(_.message)

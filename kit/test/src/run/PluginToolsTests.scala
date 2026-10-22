@@ -184,9 +184,22 @@ object PluginToolsTests extends TestSuite {
       val administering =
         Launch.administering(grit.kit.deployment.Deployments.accepted(), admin, clock).map(_.name)
       val offered =
-        Launch.own(Persona.Grit, noOne, unread).map(_.name) ++
+        Launch
+          .own(Persona.Grit, noOne, unread, NoFiles, grit.core.files.Formats.Empty)
+          .map(_.name) ++
           Launch.operator(Unkept, models).map(_.name) ++ administering ++ Coding.hosted.map(_.name)
       (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }
   }
+}
+
+/** A file area that keeps nothing, for a test that only names the tools over it. */
+private object NoFiles extends grit.core.files.Files {
+  import grit.core.files.{Admitted, FileError, Files, OpenFile}
+  def admit(handle: grit.core.id.FileHandle)(using
+      grit.core.store.Tx^
+  ): Either[FileError, Admitted] =
+    Left(FileError.Gone(handle, Files.Expiry))
+  def open[A](admitted: Admitted)(body: OpenFile^ => A): Either[FileError, A] =
+    Left(FileError.Gone(admitted.record.handle, Files.Expiry))
 }

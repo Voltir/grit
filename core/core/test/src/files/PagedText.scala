@@ -1,25 +1,14 @@
-package grit.mcp.drive
+package grit.core.files
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 
-import grit.core.files.{
-  Covers,
-  Format,
-  FormatName,
-  Kind,
-  Locus,
-  OpenFile,
-  ReadLimits,
-  Understood,
-  Unread
-}
 import grit.prose.form.{Block, Doc, Span, Text}
 
-/** A format for the edge's tests: a file of `%PDF-` and then pages of text apart by form feeds,
+/** A format for tests above core: a file of `%PDF-` and then pages of text apart by form feeds,
   * each page one paragraph noted with its page, and nothing of any other bytes. A stand-in for a
-  * real reader, which grit.mcp may not name; what a format must do is core's
-  * ([[grit.core.files.Format]]), and grit.formats' readers are held to it there.
+  * real reader, which an edge's or a tool's module may not name; what a format must do is
+  * core's ([[Format]]), and grit.formats' readers are held to it there.
   */
 object PagedText extends Format {
   val name: FormatName = FormatName("paged-text")
@@ -51,6 +40,6 @@ object PagedText extends Format {
   }
 
   /** PDFs read by this format alone. */
-  val formats: grit.core.files.Formats =
-    grit.core.files.Formats(kind => if (kind == Kind.Pdf) Vector(PagedText) else Vector.empty)
+  val formats: Formats =
+    Formats(kind => if (kind == Kind.Pdf) Vector(PagedText) else Vector.empty)
 }

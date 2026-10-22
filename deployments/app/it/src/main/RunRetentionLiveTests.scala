@@ -136,6 +136,11 @@ object RunRetentionLiveTests extends TestSuite {
         new ReminderLiveTests.Through(model),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
         grit.core.classify.ClearedClassifier.of(grit.models.StubClassifier.Service, classifier),
+        Launch.area(
+          engine,
+          d,
+          Launch.filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+        ),
         _ => ()
       )
       body(

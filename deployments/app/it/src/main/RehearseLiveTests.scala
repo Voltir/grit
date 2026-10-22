@@ -298,6 +298,12 @@ object RehearseLiveTests extends TestSuite {
           new Through(seed, engine, model),
           cleared,
           cleared,
+          Launch.area(
+            engine,
+            deployment,
+            Launch
+              .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+          ),
           _ => ()
         )
         // Another thread of the channel, heard and triaged first: what the turn may search. Said
@@ -374,6 +380,12 @@ object RehearseLiveTests extends TestSuite {
             new Through(seed, engine, new Capturing),
             cleared,
             cleared,
+            Launch.area(
+              engine,
+              standing,
+              Launch
+                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+            ),
             _ => ()
           )
           val posted = settledLine(engine, Origin.Slack("T1", "C1", "1.0"), config)
@@ -428,6 +440,12 @@ object RehearseLiveTests extends TestSuite {
             new Through(seed, engine, new Capturing),
             cleared,
             cleared,
+            Launch.area(
+              engine,
+              drafting,
+              Launch
+                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+            ),
             _ => ()
           )
           remarked(engine, origin, config)
@@ -483,6 +501,12 @@ object RehearseLiveTests extends TestSuite {
             new Through(seed, engine, new Capturing),
             cleared,
             cleared,
+            Launch.area(
+              engine,
+              dreaming,
+              Launch
+                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+            ),
             _ => ()
           )
           val opened = Origin.Slack("T1", "C1", "1.0")

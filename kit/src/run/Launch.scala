@@ -1,5 +1,6 @@
 package grit.kit.run
 
+import java.nio.file.Path
 import java.time.Instant
 
 import grit.act.moves.{MoveRecords, MovesEnv}
@@ -14,6 +15,7 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
 import grit.core.edge.ServedEdge
+import grit.core.files.{FileArea, Files, Formats}
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
@@ -29,6 +31,8 @@ import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Runtime, Stores}
+import grit.dbos.sql.DbConfig
+import grit.host.blobs.LocalBlobs
 import grit.job.clock.ClockEdge
 import grit.job.run.{Run as JobRun, RunEnv, RunRecords}
 import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, Placer, PluginBinding}
@@ -40,7 +44,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
-import grit.tools.{About, Administering, Cleared, Coding, MessageIds, Probes, Tuning}
+import grit.tools.{About, Administering, Cleared, Coding, FileReading, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
   TurnEnv,
@@ -106,6 +110,8 @@ private[grit] object Launch {
         val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
         new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
     }
+    val temp = Path.of(System.getProperty("java.io.tmpdir"))
+    val files = area(engine, d, filesDir(s.files, s.database, temp))
     asking(
       engine,
       d,
@@ -113,6 +119,7 @@ private[grit] object Launch {
       if (run.announced) announced(reached) else reached,
       classifier(d, s),
       weighing(d, s),
+      files,
       finished
     )
     if (sweeping) {
@@ -121,9 +128,50 @@ private[grit] object Launch {
         engine,
         new ClockEdge(engine.inbox, engine.schedules, engine.db, engine.clock, d.allJobs)
       )
+      LocalBlobs.leftovers(temp) match {
+        case Left(e) =>
+          Log.warn(s"files: an earlier Drive edge's scratch directories were not removed: $e")
+        case Right(0) => ()
+        case Right(n) =>
+          Log.info(s"files: $n scratch directories an earlier Drive edge left removed")
+      }
+      val tombstones = engine.tombstones
+      engine.every("grit.files", d.sweep) { () =>
+        files.sweep(tombstones) match {
+          case Left(why) => Log.warn(s"files: $why")
+          case Right(FileArea.Swept(Vector(), 0, 0)) => ()
+          case Right(swept) =>
+            Log.info(
+              s"files: ${swept.marked.size} marked for deletion, ${swept.removed} blobs removed, " +
+                s"${swept.cleared} pending cleared"
+            )
+        }
+      }
     }
     engine
   }
+
+  /** `runtime`'s file area (ADR 0045): its rows in `runtime`'s store, written in its short
+    * transactions and dated by its clock; its bytes in `dir` ([[filesDir]]); kept as `d` says.
+    * Throws when `dir` cannot be made: nothing a turn reads a file with, or an edge keeps one in,
+    * can work.
+    */
+  private[grit] def area(runtime: Runtime^, d: Deployment, dir: Path): FileArea^ =
+    LocalBlobs.open(dir) match {
+      case Left(e) =>
+        throw new IllegalStateException(s"the file area's directory $dir could not be made: $e")
+      case Right(blobs) => new FileArea(runtime.files, blobs, runtime.jot, runtime.clock, d.files)
+    }
+
+  /** Where the file area of `database` keeps its bytes: `set`, or else a directory in `temp` named
+    * for the database (`grit-files/<host_port_database>`).
+    */
+  private[grit] def filesDir(set: Option[Path], database: DbConfig, temp: Path): Path =
+    set.getOrElse(
+      temp
+        .resolve("grit-files")
+        .resolve(database.endpoint.toString.replaceAll("[^A-Za-z0-9._-]", "_"))
+    )
 
   /** `d`'s workflows launched on `runtime` as [[apply]] launches them on an engine, but sweeping
     * nothing, every model call made through `models`, and every question the placer and a job's
@@ -141,6 +189,7 @@ private[grit] object Launch {
       models: Models,
       classifier: ClearedClassifier^,
       weighing: ClearedClassifier^,
+      files: Files^,
       finished: String => Unit
   ): Unit = {
     val clock: Clock^{runtime} = runtime.clock
@@ -404,17 +453,19 @@ private[grit] object Launch {
         },
         identity
       )
-    // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a
-    // model. The coding tools are hosted: offered here, run by the edge serving the
-    // conversation's directory (ADR 0017).
+    // The engine's own tools touch no file of the machine's: they read grit's store and its file
+    // area, keep a model setting, probe a model. The coding tools are hosted: offered here, run
+    // by the edge serving the conversation's directory (ADR 0017).
     // Offered everywhere: grit's own, and every plugin's tools.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks}]] =
-      Toolbox.of[caps.CapSet^{desks}](
-        (Vector[Tool.Offered^{desks}](
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks, files}]] =
+      Toolbox.of[caps.CapSet^{desks, files}](
+        (Vector[Tool.Offered^{desks, files}](
           own(
             d.persona,
             runtime.askers,
-            MessageIds.Stores(runtime.entries, runtime.rooms, runtime.search, runtime.principals)
+            MessageIds.Stores(runtime.entries, runtime.rooms, runtime.search, runtime.principals),
+            files,
+            d.formats
           )*
         ) ++
           plugged.map(_.over(desks)))*
@@ -428,22 +479,23 @@ private[grit] object Launch {
         (everyone, administers) match {
           case (Right(tools), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[caps.CapSet^{desks, administration, clock}](tools, admin).map { _ =>
-              launch(
-                TurnTooling[caps.CapSet^{desks, administration, clock}](
-                  tools,
-                  Toolbox.Empty,
-                  Coding.readOnlyHosted,
-                  runtime.jot,
-                  d.offer.rounds,
-                  worksIn = d.worksIn,
-                  reaches = d.reaches,
-                  recipe = d.recipe,
-                  knowledge = d.knowledge,
-                  persona = d.persona,
-                  administering = admin
+            Toolbox.joined[caps.CapSet^{desks, files, administration, clock}](tools, admin).map {
+              _ =>
+                launch(
+                  TurnTooling[caps.CapSet^{desks, files, administration, clock}](
+                    tools,
+                    Toolbox.Empty,
+                    Coding.readOnlyHosted,
+                    runtime.jot,
+                    d.offer.rounds,
+                    worksIn = d.worksIn,
+                    reaches = d.reaches,
+                    recipe = d.recipe,
+                    knowledge = d.knowledge,
+                    persona = d.persona,
+                    administering = admin
+                  )
                 )
-              )
             }
           case (Left(repeated), _) => Left(repeated)
           case (_, Left(repeated)) => Left(repeated)
@@ -459,13 +511,16 @@ private[grit] object Launch {
           case (Right(tools), Right(operator), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox
-              .joined[caps.CapSet^{tuned, models, desks}](tools, operator)
+              .joined[caps.CapSet^{tuned, models, desks, files}](tools, operator)
               .flatMap(
-                Toolbox.joined[caps.CapSet^{tuned, models, desks, administration, clock}](_, admin)
+                Toolbox.joined[caps.CapSet^{tuned, models, desks, files, administration, clock}](
+                  _,
+                  admin
+                )
               )
               .map { _ =>
                 launch(
-                  TurnTooling[caps.CapSet^{tuned, models, desks, administration, clock}](
+                  TurnTooling[caps.CapSet^{tuned, models, desks, files, administration, clock}](
                     tools,
                     operator,
                     Coding.hosted,
@@ -526,18 +581,26 @@ private[grit] object Launch {
     * ([[About]]), what the person asking is cleared for, its turn's asker as `askers`
     * resolves them, explained as read through the reads its turn hands it ([[Cleared]]), and
     * the ids of this conversation and of the asker's messages, read from `messages`
-    * ([[MessageIds]]); the kit, and the turn it launches, which reads them in its dispatch,
+    * ([[MessageIds]]), and more of a file `files` keeps, read with `formats` ([[FileReading]]);
+    * the kit, and the turn it launches, which reads them in its dispatch,
     * alone hold the engine's askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
     */
   private[run] def own(
       persona: Persona,
       askers: Askers,
-      messages: MessageIds.Stores
-  ): Vector[Tool.Offered] = {
+      messages: MessageIds.Stores,
+      files: Files^,
+      formats: Formats
+  ): Vector[Tool.Offered^{files}] = {
     val about: Tool[Option[About.Section]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
-    Vector[Tool.Offered](about, Cleared.tool(askers), MessageIds.tool(messages, askers))
+    Vector[Tool.Offered^{files}](
+      about,
+      Cleared.tool(askers),
+      MessageIds.tool(messages, askers),
+      FileReading.tool(files, formats)
+    )
   }
 
   /** The administering tools ([[Administering]]), acting through `administration` at the time

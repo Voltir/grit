@@ -1,5 +1,7 @@
 package grit.kit.rehearse
 
+import java.nio.file.Path
+
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.id.{ShadowName, SourceId}
@@ -59,6 +61,11 @@ object Rehearse {
             Taps.models(seed, r.db, r.modelSettings, answers, tape),
             classifier,
             classifier,
+            Launch.area(
+              r,
+              d,
+              Launch.filesDir(None, config, Path.of(System.getProperty("java.io.tmpdir")))
+            ),
             _ => ()
           )
           None

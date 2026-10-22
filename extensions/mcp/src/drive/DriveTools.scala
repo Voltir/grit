@@ -14,6 +14,7 @@ import grit.core.tool.{
   Gate,
   Hosted,
   Outcome,
+  RangeArgs,
   Retry,
   Tool,
   ToolName,
@@ -242,14 +243,9 @@ object DriveTools {
         .of(
           (
             file = Field.text("The file's id, from a search."),
-            pages = Field
-              .text("A PDF's pages to read: one page, \"212\", or a run, \"212-214\".")
-              .optional,
-            section =
-              Field.text("The heading of the section to read, as the outline gives it.").optional,
-            from = Field
-              .count("Where to read on from: the offset a read said to ask for.", 0, Int.MaxValue)
-              .optional
+            pages = RangeArgs.Pages,
+            section = RangeArgs.Section,
+            from = RangeArgs.From
           )
         )
         .refine(a =>
@@ -258,18 +254,7 @@ object DriveTools {
               .of(a.file)
               .left
               .map(why => ArgsError.Refused("file", DriveTools.sentence(why)))
-            range <- FileRange
-              .parse(a.pages, a.section, a.from)
-              .left
-              // Named by the one argument given, or by pages when several were.
-              .map(
-                ArgsError.Refused(
-                  if (a.section.nonEmpty && a.pages.isEmpty) "section"
-                  else if (a.from.nonEmpty && a.pages.isEmpty) "from"
-                  else "pages",
-                  _
-                )
-              )
+            range <- RangeArgs.range(a.pages, a.section, a.from)
           } yield Reading(id, range)
         ),
       Retry.Rerun

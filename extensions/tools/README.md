@@ -26,6 +26,8 @@ One package, `grit.tools`:
   in the room (every conversation in it counted: a channel's threads, a person's direct
   messages), or anyone's message there that best matches a quote, by its entry id, its conversation, when it was said and the link its edge recorded
   it with; over the store and the engine's askers, which only the kit holds.
+- `FileReading` — `file_read`: more of a file the file area keeps, by its handle, a range at
+  a time, admitted in one transaction of the reads its turn hands it and read holding none.
 - `Administering` — `label_room` and `quiet_room`: the conversation's own room labelled, or
   made quiet or not, once the person who asked approves the change on the ask, then made as
   them under the slash command's rules, re-decided at approval (ADR 0033); offered by the kit

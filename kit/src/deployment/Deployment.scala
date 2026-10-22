@@ -4,6 +4,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.document.{DocRef, Document, DocumentShelf}
 import grit.core.edge.ServedEdge
+import grit.core.files.{FileArea, Formats}
 import grit.core.id.{
   AttesterName,
   CorpusName,
@@ -340,7 +341,9 @@ enum DeploymentRefusal {
   * declares itself beside its plugins' (ADR 0029), its `visibility`: who may see what
   * (ADR 0030), and its `identities`: the attester it trusts for each realm, and the email
   * domains it claims (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
-  * them. The
+  * them; how long its file area keeps a file and how much it keeps (`files`, ADR 0045), and the
+  * `formats` `file_read` reads a kept file with ([[grit.core.files.Formats.Empty]] by default:
+  * none read). The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -368,7 +371,9 @@ final case class Deployment private (
     visibility: Visibility,
     identities: Identities,
     version: DeploymentVersion,
-    allJobs: Jobs
+    allJobs: Jobs,
+    files: FileArea.Bounds,
+    formats: Formats
 ) {
 
   /** The application version this deployment's engines open under: grit's epoch and its
@@ -415,7 +420,9 @@ object Deployment {
       schedules: Vector[Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
       identities: Identities = Identities.Shipped,
-      version: DeploymentVersion = DeploymentVersion.First
+      version: DeploymentVersion = DeploymentVersion.First,
+      files: FileArea.Bounds = FileArea.Bounds.Default,
+      formats: Formats = Formats.Empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)
@@ -612,7 +619,9 @@ object Deployment {
       visibility,
       identities,
       version,
-      all
+      all,
+      files,
+      formats
     )
   }
 

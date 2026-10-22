@@ -25,6 +25,7 @@ import grit.core.edge.{
   ToolRequest,
   Variable
 }
+import grit.core.files.PagedText
 import grit.core.id.{CallSlot, ConversationId, EdgeId, EdgeName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Service

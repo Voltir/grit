@@ -37,5 +37,20 @@ object SecretsTests extends TestSuite {
         Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY")))
       )
     }
+
+    test(
+      "the file area's directory is GRIT_FILES_DIR when set, an absolute path; unset, none is named"
+    ) {
+      val d = Deployments.accepted()
+      (
+        Secrets.of(db, d).map(_.files),
+        Secrets.of(db + ("GRIT_FILES_DIR" -> "/var/cache/grit-files"), d).map(_.files),
+        Secrets.of(db + ("GRIT_FILES_DIR" -> "cache/files"), d).map(_ => ())
+      ) ==> (
+        Right(None),
+        Right(Some(java.nio.file.Path.of("/var/cache/grit-files"))),
+        Left(SecretsRefusal.FilesDir("GRIT_FILES_DIR must be an absolute path"))
+      )
+    }
   }
 }
