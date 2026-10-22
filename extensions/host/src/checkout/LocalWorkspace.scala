@@ -1,4 +1,4 @@
-package grit.host
+package grit.host.checkout
 
 import java.nio.file.{Files, LinkOption, Path}
 import java.util.regex.{Pattern, PatternSyntaxException}

@@ -1,4 +1,4 @@
-package grit.host
+package grit.host.checkout
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}

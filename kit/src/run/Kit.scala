@@ -17,7 +17,7 @@ import grit.core.store.{Linking, StoreError, Tx}
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, Link, Unopened}
 import grit.dbos.sql.DbConfig
-import grit.host.LocalMachine
+import grit.host.machine.LocalMachine
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}

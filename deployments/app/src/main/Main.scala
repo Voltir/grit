@@ -44,7 +44,8 @@ import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.formats.choice.Defaults
-import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
+import grit.host.checkout.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
+import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}

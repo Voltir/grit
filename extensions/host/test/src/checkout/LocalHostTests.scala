@@ -1,4 +1,4 @@
-package grit.host
+package grit.host.checkout
 
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}

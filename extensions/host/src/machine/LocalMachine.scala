@@ -1,4 +1,4 @@
-package grit.host
+package grit.host.machine
 
 import java.net.InetAddress
 

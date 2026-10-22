@@ -1,4 +1,4 @@
-package grit.host
+package grit.host.checkout
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.{CharacterCodingException, CodingErrorAction, StandardCharsets}

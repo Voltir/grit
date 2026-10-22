@@ -6,7 +6,7 @@ import grit.core.edge.{Route, ToolRequest}
 import grit.core.place.Directory
 import grit.core.tool.{Outcome, ToolName}
 import grit.edge.{Run, Tools}
-import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.kit.deployment.Offered
 import grit.tools.Coding
 
