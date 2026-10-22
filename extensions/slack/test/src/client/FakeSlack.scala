@@ -376,6 +376,7 @@ final class FakeSlack extends Slack {
     answers.collect { case (url, text, Respond.Replace) => (url, text) }
 
   /** The response urls of commands asked more than 30 minutes ago. */
+  // Set by the test before the call it makes, on its one thread; read by respond there.
   @caps.unsafe.untrackedCaptures
   var expired = Set.empty[ResponseUrl]
 
