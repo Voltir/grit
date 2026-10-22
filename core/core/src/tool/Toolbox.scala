@@ -9,7 +9,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
-import grit.core.store.Reads
+import grit.core.store.{Reads, StoreError, Tx}
 
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[caps.CapSet^{ws}]` cannot edit or run a command unless `ws`
@@ -177,7 +177,9 @@ object Bound {
 
   /** A call of a tool that reads grit's store ([[Hosted.reading]]): run only by the turn it
     * belongs to, through the reads that turn hands it; an edge answers that it is not run
-    * there.
+    * there. An answer cut in parts is shown as those reads read it ([[Outcome.readable]]): the
+    * parts they may not read left out, saying so when none is left; `Failed`, saying to ask
+    * again, when what it kept is above the floor they are kept at, or when they cannot read.
     */
   final class Reading private[tool] (
       val tool: ToolName,
@@ -189,9 +191,37 @@ object Bound {
 
     /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
     def through(reads: Reads^): Runs^{this, reads} = ask match {
-      case None => new Free(tool, shown, output, at => run(at, reads))
+      case None => new Free(tool, shown, output, at => Reading.read(run(at, reads), reads))
       case Some((shownFirst, within)) =>
-        new Gated(tool, shown, shownFirst, within, output, at => run(at, reads))
+        new Gated(
+          tool,
+          shown,
+          shownFirst,
+          within,
+          output,
+          at => Reading.read(run(at, reads), reads)
+        )
+    }
+  }
+
+  private object Reading {
+
+    /** `outcome` as `reads` reads it, as [[Reading]] says. */
+    def read(outcome: Outcome, reads: Reads^): Outcome = outcome match {
+      case Outcome.Done(_, _, _, Some(_), _) =>
+        reads
+          .read { (tx: Tx^) ?=>
+            val read = outcome.readable
+            Tx.holds(read.label, Tx.floor(tx)).map(_ => read.outcome)
+          }
+          .fold(
+            {
+              case StoreError.Invalid(why) => Outcome.Failed(s"This result was not shown: $why.")
+              case _ => Outcome.Failed("This result could not be read just now; try again.")
+            },
+            identity
+          )
+      case other => other
     }
   }
 

@@ -24,11 +24,11 @@ import grit.core.place.Place
 import grit.core.store.{Db, Jot, StoreError, Tx}
 import grit.core.tool.{ArgsError, Bound, CallError, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
+  Accounted,
   Clearance,
   Integrity,
   Provenance,
   Readers,
-  ResultPart,
   Subject,
   Visibility
 }
@@ -119,20 +119,15 @@ object FileReadingTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a kept file is read by its handle, a range at a time, as one part kept where it came from"
+      "a kept file is read by its handle, a range at a time, shown to the turn as read where it came from"
     ) {
       area { (a, _) =>
         val h = kept(a, 1, shared, "One.", "Two.", "Three.")
-        called(a, ujson.Obj("file" -> h.written, "pages" -> "2")) match {
-          case Outcome.Done("", _, _, Some(Vector(ResultPart(item, readers, text, facts))), None) =>
-            (item, readers, text, facts.map(_.json)) ==> (
-              shared.item,
-              Readers.AtPlace,
-              s"${h.written}: Read: page 2 of 3.\n\n[page 2]\nTwo.\n\n[To read on, ask for pages=\"3\".]",
-              Some(ujson.Obj("file" -> h.written, "covered" -> "page 2 of 3", "complete" -> false))
-            )
-          case other => throw new java.lang.AssertionError(other.toString)
-        }
+        called(a, ujson.Obj("file" -> h.written, "pages" -> "2")) ==> Outcome.Done(
+          s"${h.written}: Read: page 2 of 3.\n\n[page 2]\nTwo.\n\n[To read on, ask for pages=\"3\".]",
+          None,
+          Accounted.of(Vector(shared.item))
+        )
       }
     }
     test("a file expired, never kept, or not this turn's to read is answered alike, in words") {

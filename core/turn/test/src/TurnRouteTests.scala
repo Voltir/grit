@@ -32,7 +32,20 @@ import grit.core.route.Uncleared
 import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.TestLabels.place
-import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, Recorded, Subject, Visibility}
+import grit.core.visibility.{
+  Clearance,
+  Cleared,
+  Integrity,
+  Label,
+  Level,
+  Party,
+  Provenance,
+  Readers,
+  Recorded,
+  ResultPart,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -629,6 +642,57 @@ object TurnRouteTests extends TestSuite {
         (r.isError, r.content.contains("ask again"))
       } ==>
         Some((true, true))
+    }
+
+    test(
+      "a tool reading the store answers in parts: the model is next shown each the turn reads, and never one it may not"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "what is in the file?")
+      val seen = place("service:drive")
+      val unseen = place("service:vault")
+      val db = new Rising(
+        labelling(
+          Vector(seen -> internal, unseen -> restricted),
+          Vector(Cleared(Party.of(flash).getOrElse(throw new java.lang.AssertionError()), internal))
+        )
+      )
+      def part(at: grit.core.place.Place, text: String) =
+        ResultPart(Provenance(at, Integrity.Member), Readers.AtPlace, text)
+      val parts = Toolbox
+        .of[caps.CapSet^{NoCheckout}](
+          Hosted[Unit](
+            ToolSpec(ToolName("look"), "Reads a file.", Args.of(NamedTuple.Empty).map(_ => ())),
+            Gate.Free,
+            _ => "",
+            Believed.Default
+          ).reading((_, _, _) =>
+            Outcome.Done(
+              "",
+              parts = Some(Vector(part(seen, "Page 213 says yes."), part(unseen, "A secret.")))
+            )
+          )
+        )
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      final class Asked extends Provider {
+        // Kept by `complete`, which the turn under test calls on the test's one thread.
+        @caps.unsafe.untrackedCaptures
+        var asked = Vector.empty[ModelRequest]
+        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+          asked = asked :+ request
+          if (asked.size == 1)
+            Right(said("", AssistantBlock.ToolCall(ToolCallId("t1"), "look", ujson.Obj())))
+          else Right(said("done"))
+        }
+      }
+      val provider = new Asked
+      val _ = new InMemoryDurable().run(turn.workflowId)(
+        routedBody(entries, provider, new RecordingProvider, new Asking, db, catalog, tools = parts)
+      )
+      val results = provider.asked.drop(1).flatMap(_.messages).collect {
+        case Message.ToolResult(_, content, isError) => (content, isError)
+      }
+      results ==> Vector(("Page 213 says yes.", false))
     }
 
     test("an offer made where the turn knows more than it was routed for fails, asking again") {
