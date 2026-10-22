@@ -69,6 +69,14 @@ In dependency order:
     backfill stops there. The edge holds no answer, clock or domain of its own: when to ask,
     and which addresses count, are core's. How a deployment trusts the edge:
     [`docs/extending.md`](../../docs/extending.md) (Identities).
+  - **Asks** (ADR 0017): a running turn's gated call that asks first is shown to the turn's
+    asker alone, as an ephemeral card in its thread, read for that turn and never in the public
+    pass that finds the turns, once per process. Slack keeps an ephemeral message only in the
+    client it was shown in, so a card is gone once its asker reloads Slack, and a card past its
+    time still shows its buttons until clicked. A click is acknowledged at once and answered on
+    a thread of its own, as its clicker's: Apply lets the call run and Cancel declines it, and
+    the card is rewritten in place to say so, or to say it expired; a clicker who is not the
+    asker is told, beside it, who alone may answer.
   - **Slash command**: acknowledged at once and run on a thread of its own, through core's
     `Administration`, as its asker's, in its room (its channel's, member or not, or from any
     direct message the asker's own direct room), answered to them alone. Any other command is
@@ -96,7 +104,8 @@ edge calls or is sent:
 - `channels:read`, `groups:read`, `im:read`: what a conversation is, and its name, and which
   channels the bot is in (`users.conversations`), and its joins and leaves (events
   `member_joined_channel`, `member_left_channel`, `channel_left`, `group_left`);
-- `chat:write`: its replies, refusals, `slack_post`'s posts and a review's prompts;
+- `chat:write`: its replies, refusals, `slack_post`'s posts, a review's prompts and an ask's
+  cards (`chat.postEphemeral`);
 - `reactions:read`, `reactions:write`: a rater's reactions (events `reaction_added`,
   `reaction_removed`), and the `:eyes:` mark and a prompt's reactions it adds and removes;
 - `users:read`, `users:read.email`: who an author is, and whether a full member, for the names
@@ -106,6 +115,9 @@ edge calls or is sent:
   Mode needs no request URL), with "Escape channels, users, and links sent to your app" on, so
   a person it names arrives as a mention; its usage hint may list what its `help` answers
   (`Command.Usage`).
+
+Interactivity & Shortcuts must be on (Socket Mode needs no request URL), or a click on an
+ask's card never reaches grit, and the ask waits until its time runs out.
 
 A scope added takes effect only once the app is reinstalled to the workspace.
 

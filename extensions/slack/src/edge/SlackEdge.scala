@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.immutable.VectorMap
 
 import grit.core.admin.Command
+import grit.core.approval.Approval
 import grit.core.clock.{Clock, Utc}
 import grit.core.edge.{
   Acknowledgement,
@@ -47,6 +48,7 @@ import grit.slack.client.{
   BotToken,
   Card,
   Member,
+  Respond,
   Root,
   Self,
   Slack,
@@ -54,7 +56,7 @@ import grit.slack.client.{
   SocketSlack,
   Tag
 }
-import grit.slack.event.{ChannelId, Event, Events, MessageLink, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Clicked, Event, Events, MessageLink, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
@@ -1290,6 +1292,63 @@ final class SlackEdge(
       }
     }
 
+  /** One click on an ask's card ([[Events.clicked]]), sent to the inbox as its clicker's
+    * answer ([[grit.core.inbox.Inbox.answer]]): Apply lets the call run, Cancel declines it.
+    * The card is then rewritten in place ([[Respond.Replace]]): [[Applying]] or [[Cancelled]]
+    * once the answer is taken, which a second click is told too, whatever the first was;
+    * [[Expired]] once the ask is closed, settled or past its time. A clicker who is not the
+    * turn's asker is told, beside the card, who alone can answer it ([[onlyAsker]]), and the card
+    * is left for the asker. A payload grit cannot read, an answer the inbox cannot take for any
+    * other reason, and a rewrite Slack will not show are said, and the card left as it was.
+    */
+  def click(payload: String): Unit =
+    Events.clicked(payload) match {
+      case Left(why) => said(s"slack: a click grit cannot read: $why")
+      case Right(c) =>
+        val call = s"${ToolCallId.value(c.call)} of ${WorkflowId.value(c.workflow)}"
+        SlackAccounts.account(c.team, c.user) match {
+          case Left(why) =>
+            said(s"slack: a click on $call not answered: its clicker cannot be named: $why")
+          case Right(by) =>
+            val approval = c.button match {
+              case Clicked.Button.Apply => Approval.Approved
+              case Clicked.Button.Cancel => Approval.Declined(None)
+            }
+            val shown: Option[(String, Respond)] =
+              stores.inbox.answer(c.workflow, c.call, approval, by) match {
+                case Right(()) =>
+                  Some(
+                    (if (approval == Approval.Approved) Applying else Cancelled, Respond.Replace)
+                  )
+                case Left(InboxError.Closed(_, _)) => Some((Expired, Respond.Replace))
+                case Left(InboxError.NotAsker(_)) => Some((onlyAsker(askerOf(c)), Respond.Reply))
+                case Left(e) =>
+                  said(s"slack: a click on $call not answered: $e")
+                  None
+              }
+            shown.foreach((text, mode) =>
+              slack
+                .respond(c.respondAt, text, mode)
+                .left
+                .foreach(e => said(s"slack: the card for $call not rewritten: $e"))
+            )
+        }
+    }
+
+  /** The Slack name of the person `c`'s card asks, when its ask is still open and they are a
+    * user of this team grit knows by name.
+    */
+  private def askerOf(c: Clicked): Option[String] =
+    TurnRef.fromWorkflowId(c.workflow).flatMap { turn =>
+      stores.jot
+        .write(Subject.Turn(turn))(stores.deliveries.asks(turn))
+        .toOption
+        .flatMap(_.find(_.call == c.call))
+        .flatMap(a => SlackAccounts.user(a.to, self.team))
+        .flatMap(namedOf)
+        .map(_.name)
+    }
+
   /** Posts `p`'s reply, part by part; whether all of it is posted and the turn delivered. */
   private def post(p: Pending, reply: Option[Message.Assistant], outcome: String): Boolean =
     Address.read(p.to) match {
@@ -1379,7 +1438,9 @@ object SlackEdge {
     * at open (found then, or left by a crash or a close) as it opens, and each join after from
     * the next delivery; closing waits for one under way at most [[Backfill.StopWithin]], and
     * one cut short is heard from where it stopped at the next open. Refused at open when Slack
-    * will not list its channels. It shows no ask ([[ServedEdge.Asks.Unanswered]]). It is the
+    * will not list its channels. It shows each open ask to its asker alone as a card in its
+    * turn's thread, and sends their click as the answer ([[ServedEdge.Asks.Answered]],
+    * [[SlackEdge.deliver]], [[SlackEdge.click]]). It is the
     * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a
     * deployment trusts it there, it says who each account is as Slack states it
     * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
@@ -1510,6 +1571,19 @@ object SlackEdge {
   /** The answer to a command whose asker Slack cannot say who they are, and never has. */
   val NotAttested: String =
     "Nothing was run: Slack could not say who you are just now. Try again in a minute."
+
+  /** What a card says once its asker's Apply is taken. */
+  val Applying: String = "Confirmed by you; applying…"
+
+  /** What a card says once its asker's Cancel is taken. */
+  val Cancelled: String = "Cancelled"
+
+  /** What a card says when clicked once its ask is closed. */
+  val Expired: String = "Expired"
+
+  /** What a clicker who is not the asker is told: the asker's Slack name, when grit knows it. */
+  def onlyAsker(name: Option[String]): String =
+    s"Only ${name.getOrElse("the person it asks")} can answer this"
 
   /** The answer to a command the database could not run. */
   val NotRun: String =

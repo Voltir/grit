@@ -71,7 +71,7 @@ private[slack] object Served {
   ): ServedEdge^{connect} = new ServedEdge {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
-    def asks: ServedEdge.Asks = ServedEdge.Asks.Unanswered
+    def asks: ServedEdge.Asks = ServedEdge.Asks.Answered
     override def attester: Option[AttesterName] = Some(SlackAccounts.Attester)
     override def reviewsAt: Option[Place] = review.map(_.place)
     def open(
@@ -109,7 +109,7 @@ private[slack] object Served {
                     case Right(name) => log(s"slack: grit's bot is named $name in Slack")
                     case Left(why) => log(s"slack: grit's bot's name is unread: $why")
                   }
-                  slack.listen(edge.receive, edge.command(command)) match {
+                  slack.listen(edge.receive, edge.command(command), edge.click) match {
                     case Left(e) =>
                       slack.close()
                       Left(EdgeRefusal.Refused(s"Socket Mode would not open: $e"))

@@ -106,7 +106,7 @@ object SlackAttestingTests extends TestSuite {
         grit.core.clock.Clock.system(),
         s => logged = logged :+ s
       )
-    val _ = slack.listen(edge.receive, _ => ())
+    val _ = slack.listen(edge.receive, _ => (), _ => ())
 
     /** Whether message `ts`, at the top of C, was recorded or heard. */
     def kept(ts: String): Boolean =

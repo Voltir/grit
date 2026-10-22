@@ -85,10 +85,12 @@ object SocketSlackTests extends TestSuite {
       )
     }
 
-    test("a slash command is acknowledged before its handler is started, then handled") {
+    test(
+      "a slash command or an interaction is acknowledged before its handler is started, then handled"
+    ) {
       // A Java list: the three callbacks share it, as one thread runs each in turn here.
       val seen = new java.util.ArrayList[String]()
-      SocketSlack.commanded(
+      SocketSlack.acknowledged(
         "E1",
         "{}",
         id => { val _ = seen.add(s"acknowledged $id") },

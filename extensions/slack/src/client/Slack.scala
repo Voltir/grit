@@ -99,12 +99,15 @@ trait Slack extends caps.SharedCapability {
     * threads, and acknowledges it only once `events` returns `true`; `false` leaves it
     * unacknowledged, and Slack delivers it again, a few times at most. Acknowledges each slash
     * command at once, then hands its payload to `commands` on a thread of its own, so a slow
-    * answer never fails the command; it is answered with [[respond]]. Returns once connected,
-    * and reconnects by itself until closed. Both handlers may hold the same capabilities, `C`.
+    * answer never fails the command; it is answered with [[respond]]. Each interaction (a
+    * click on a card's button among them) is acknowledged at once and handed to `clicks` the
+    * same way. Returns once connected, and reconnects by itself until closed. The handlers may
+    * hold the same capabilities, `C`.
     */
   def listen[C^](
       events: String ->{C} Boolean,
-      commands: String ->{C} Unit
+      commands: String ->{C} Unit,
+      clicks: String ->{C} Unit
   ): Either[SlackError, Unit]
 
   /** Posts `post` as a reply in `thread` of `channel`, carrying `tag`; the new message's ts.

@@ -220,7 +220,7 @@ object SlackEdgeTests extends TestSuite {
         case _ => throw new java.lang.AssertionError("nothing to post")
       }
     val first: SlackEdge^{this} = edge()
-    val _ = slack.listen(first.receive, _ => ())
+    val _ = slack.listen(first.receive, _ => (), _ => ())
     // As serving opens: which channels grit's bot is in read from Slack first, unless a test
     // starts from none recorded.
     if (reconciled) {

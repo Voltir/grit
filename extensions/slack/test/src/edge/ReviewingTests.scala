@@ -136,7 +136,7 @@ object ReviewingTests extends TestSuite {
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )
-    val _ = slack.listen(edge.receive, _ => ())
+    val _ = slack.listen(edge.receive, _ => (), _ => ())
 
     /** Message `ts` said at the top of C, known to Slack, heard, and picked as `reason`. */
     def picked(ts: String, reason: Reason = Reason.ShadowOnly): EntryId = {

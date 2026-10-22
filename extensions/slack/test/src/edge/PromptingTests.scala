@@ -176,7 +176,7 @@ object PromptingTests extends TestSuite {
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )
-    val _ = slack.listen(edge.receive, _ => ())
+    val _ = slack.listen(edge.receive, _ => (), _ => ())
 
     /** The conversation of the thread `thread` in `channel` of `team`, its root known to Slack. */
     def conversation(team: String, channel: ChannelId, thread: String): ConversationId = {

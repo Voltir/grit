@@ -3,6 +3,7 @@ package grit.slack.edge
 import java.time.{Instant, ZoneId}
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.approval.Approval
 import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Attesting,
@@ -20,7 +21,7 @@ import grit.core.store.{Entry, InMemoryVoucher, Jot, Origin, Payload, StoreError
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{Card, FakeSlack, Self}
-import grit.slack.event.{ChannelId, Payloads, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Clicked, Payloads, ResponseUrl, TeamId, Ts, UserId}
 
 import utest.*
 
@@ -96,7 +97,7 @@ object SlackAskingTests extends TestSuite {
         Stopped,
         s => logged = logged :+ s
       )
-    val _ = slack.listen(edge.receive, _ => ())
+    val _ = slack.listen(edge.receive, _ => (), _ => ())
     edge.reconcile() ==> Right(())
 
     /** Ana's mention at the top of C, at `ts`: its turn. */
@@ -131,6 +132,7 @@ object SlackAskingTests extends TestSuite {
   }
 
   private val C1 = ToolCallId("c1")
+  private val C2 = ToolCallId("c2")
 
   val tests = Tests {
     test("an open ask is posted once to its asker as an ephemeral card in its thread") {
@@ -177,6 +179,65 @@ object SlackAskingTests extends TestSuite {
       val said = w.logged.exists(_.contains("not shown"))
       w.edge.deliver() ==> Right(0)
       (said, w.slack.cards.map(_.card.call)) ==> (true, Vector(C1))
+    }
+
+    test("the asker's Apply answers Approved and the card says applying; Cancel answers Declined") {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Edit a.txt")
+      w.asks(t, C2, "Edit b.txt")
+      w.edge.deliver() ==> Right(0)
+      w.edge.click(click("grit_apply", Clicked.value(t.workflowId, C1)))
+      w.edge.click(click("grit_cancel", Clicked.value(t.workflowId, C2)))
+      (w.inbox.answers, w.slack.replaced, w.slack.responses) ==> (
+        Vector(
+          (t.workflowId, C1, Approval.Approved),
+          (t.workflowId, C2, Approval.Declined(None))
+        ),
+        Vector(
+          (ResponseUrl(ActionHook), SlackEdge.Applying),
+          (ResponseUrl(ActionHook), SlackEdge.Cancelled)
+        ),
+        Vector.empty
+      )
+    }
+
+    test(
+      "another person's click sends nothing the core accepts and tells them only the asker can answer"
+    ) {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Edit a.txt")
+      w.edge.click(click("grit_apply", Clicked.value(t.workflowId, C1), user = "U0BEN0001"))
+      (w.inbox.answers, w.slack.replaced, w.slack.responses) ==> (
+        Vector.empty,
+        Vector.empty,
+        Vector((ResponseUrl(ActionHook), "Only Ana Lima can answer this"))
+      )
+    }
+
+    test("a click on a closed ask rewrites the card Expired") {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Edit a.txt")
+      w.inbox.ledger.now = Until.plusSeconds(1)
+      w.edge.click(click("grit_apply", Clicked.value(t.workflowId, C1)))
+      (w.inbox.answers, w.slack.replaced) ==> (
+        Vector.empty,
+        Vector((ResponseUrl(ActionHook), SlackEdge.Expired))
+      )
+    }
+
+    test("a click grit cannot read, or one the inbox cannot take, is said and the card left") {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Edit a.txt")
+      val before = w.logged.size
+      w.edge.click(click("someone_elses", Clicked.value(t.workflowId, C1)))
+      w.inbox.down = true
+      w.edge.click(click("grit_apply", Clicked.value(t.workflowId, C1)))
+      (w.logged.size - before, w.slack.answers, w.inbox.answers) ==>
+        (2, Vector.empty, Vector.empty)
     }
   }
 }

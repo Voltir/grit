@@ -32,7 +32,11 @@ import com.slack.api.methods.request.users.{
 import com.slack.api.methods.{MethodsClient, SlackApiException, SlackApiTextResponse}
 import com.slack.api.model.{Conversation, ConversationType, Message, ResponseMetadata, User}
 import com.slack.api.socket_mode.SocketModeClient
-import com.slack.api.socket_mode.request.{EventsApiEnvelope, SlashCommandsEnvelope}
+import com.slack.api.socket_mode.request.{
+  EventsApiEnvelope,
+  InteractiveEnvelope,
+  SlashCommandsEnvelope
+}
 import com.slack.api.socket_mode.response.AckResponse
 import com.slack.api.{Slack => Sdk, SlackConfig}
 
@@ -65,7 +69,8 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
 
   def listen[C^](
       events: String ->{C} Boolean,
-      commands: String ->{C} Unit
+      commands: String ->{C} Unit,
+      clicks: String ->{C} Unit
   ): Either[SlackError, Unit] =
     try {
       val client = sdk.socketMode(app.value, SocketModeClient.Backend.JavaWebSocket)
@@ -75,15 +80,26 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
       client.addEventsApiEnvelopeListener { (envelope: EventsApiEnvelope) =>
         if (events(envelope.getPayload.toString)) ack(envelope.getEnvelopeId)
       }
+      def start(run: () => Unit): Unit = { val _ = Thread.ofVirtual().start(() => run()) }
       client.addSlashCommandsEnvelopeListener { (envelope: SlashCommandsEnvelope) =>
         // Each command's own virtual thread holds only `commands`. One still running at close
         // may still answer: a response url needs no socket.
-        commanded(
+        acknowledged(
           envelope.getEnvelopeId,
           Option(envelope.getPayload).fold("")(_.toString),
           ack,
-          run => { val _ = Thread.ofVirtual().start(() => run()) },
+          start,
           commands
+        )
+      }
+      client.addInteractiveEnvelopeListener { (envelope: InteractiveEnvelope) =>
+        // As a command's: each click's own virtual thread holds only `clicks`.
+        acknowledged(
+          envelope.getEnvelopeId,
+          Option(envelope.getPayload).fold("")(_.toString),
+          ack,
+          start,
+          clicks
         )
       }
       client.connect()
@@ -446,11 +462,12 @@ object SocketSlack {
     case Tag.Prompt(entry) => Map("entry" -> entry)
   }
 
-  /** A slash command's envelope `id` and `payload`, as [[Slack.listen]] takes one: `ack`
-    * acknowledges `id` at once, then `start` runs `handle` over `payload` on a thread of its
-    * own, so a slow answer never outlasts the 3 s Slack allows for the acknowledgement.
+  /** A slash command's or an interaction's envelope `id` and `payload`, as [[Slack.listen]]
+    * takes one: `ack` acknowledges `id` at once, then `start` runs `handle` over `payload` on a
+    * thread of its own, so a slow answer never outlasts the 3 s Slack allows for the
+    * acknowledgement.
     */
-  def commanded(
+  def acknowledged(
       id: String,
       payload: String,
       ack: String => Unit,

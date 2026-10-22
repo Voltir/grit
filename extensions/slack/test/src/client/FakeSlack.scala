@@ -43,6 +43,9 @@ final class FakeSlack extends Slack {
   var commander: Option[String -> Unit] = None
 
   @caps.unsafe.untrackedCaptures
+  var clicker: Option[String -> Unit] = None
+
+  @caps.unsafe.untrackedCaptures
   var posts = Vector.empty[Posted]
 
   /** grit's reactions now, by message. */
@@ -164,15 +167,26 @@ final class FakeSlack extends Slack {
 
   def listen[C^](
       events: String ->{C} Boolean,
-      commands: String ->{C} Unit
+      commands: String ->{C} Unit,
+      clicks: String ->{C} Unit
   ): Either[SlackError, Unit] = {
     // Kept past the call, as Socket Mode keeps its listeners: the test that made this fake
-    // is the only caller of deliver and command, and it outlives neither the handlers nor
-    // the fake.
+    // is the only caller of deliver, command and click, and it outlives neither the handlers
+    // nor the fake.
     handler = Some(caps.unsafe.unsafeAssumePure(events))
     // Likewise: the commander is read only by command, on the test's own thread.
     commander = Some(caps.unsafe.unsafeAssumePure(commands))
+    // Likewise: the clicker is read only by click, on the test's own thread.
+    clicker = Some(caps.unsafe.unsafeAssumePure(clicks))
     Right(())
+  }
+
+  /** Hands the click `payload` to the listening handler, as Socket Mode would once it has
+    * acknowledged it; whether there was one.
+    */
+  def click(payload: String): Boolean = clicker.fold(false) { handle =>
+    handle(payload)
+    true
   }
 
   /** Hands the slash command `payload` to the listening handler, as Socket Mode would once it

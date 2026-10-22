@@ -23,7 +23,7 @@ import grit.core.edge.{
   Unheard,
   Variable
 }
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.{SourceId, ToolCallId, TurnRef}
 import grit.core.identity.{Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -36,7 +36,7 @@ import grit.core.tool.{Outcome, ToolSet, ToolSetId}
 import grit.core.visibility.{RoomAccess, Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack, SlackError}
-import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Clicked, Listed, Payloads, ResponseUrl, TeamId, Ts, UserId}
 
 import utest.*
 
@@ -479,6 +479,22 @@ object ServedTests extends TestSuite {
       w.slack.responses ==> Vector((grit.slack.event.ResponseUrl(Hook), Answer.Help.text))
     }
 
+    test("serving answers a click on an ask's card through the inbox, as its clicker's") {
+      val w = new World
+      val _ =
+        Served
+          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .open(w.stores, Env, w.clock, _ => ())
+      w.slack.deliver(mention("1.0")) ==> true
+      val t = w.inbox
+        .ingested(Origin.Slack(Team, "C123ABC456", "1.0"), SourceId("1.0"))
+        .getOrElse(None)
+        .getOrElse(throw new java.lang.AssertionError("no turn"))
+      // No ask is open for the call: the inbox refuses it Closed, and the card says so.
+      val _ = w.slack.click(click("grit_apply", Clicked.value(t.workflowId, ToolCallId("c9"))))
+      w.slack.replaced ==> Vector((ResponseUrl(ActionHook), SlackEdge.Expired))
+    }
+
     test("serving puts up a wanted acknowledgement's mark as it delivers") {
       val w = new World
       val open =
@@ -688,10 +704,10 @@ object ServedTests extends TestSuite {
       )
     }
 
-    test("serving holds conversations but shows no ask yet: a call that asks first is unanswered") {
+    test("serving shows each ask to its asker and sends their answer: its asks are answered") {
       Served
         .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, new World().connect, Inline)
-        .asks ==> ServedEdge.Asks.Unanswered
+        .asks ==> ServedEdge.Asks.Answered
     }
 
     test(
