@@ -757,7 +757,7 @@ object TopicDreamTests extends TestSuite {
       }
       val reply = runs.run(now = Now.plusSeconds(60))
       (reply, runs.kept) ==> (
-        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run, 1 unreadable withdrawn",
         Vector(key(a) -> s"$Lead\n\n## 2026-10-12\n\n$Passage")
       )
     }

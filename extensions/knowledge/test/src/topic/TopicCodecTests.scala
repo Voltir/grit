@@ -3,6 +3,7 @@ package grit.knowledge.topic
 import java.time.LocalDate
 
 import grit.core.document.DocText
+import grit.core.durable.Journaled
 import grit.core.id.{ConversationId, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
@@ -214,6 +215,25 @@ object TopicCodecTests extends TestSuite {
 
     test("a topic with no text has none") {
       assert(Topic.text(Topic.of(Doc.empty, Vector.empty)).isLeft)
+    }
+
+    test("a scan's unreadable count round-trips, and a scan recorded without it reads none") {
+      val codec = summon[Journaled[TopicScan.Scanned]]
+      def scan(unreadable: Int): TopicScan.Scanned = TopicScan.Scanned(
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        Vector.empty,
+        0,
+        0,
+        0,
+        Vector.empty,
+        Vector.empty,
+        unreadable
+      )
+      codec.decode(codec.encode(scan(1))) ==> Right(scan(1))
+      codec.encode(scan(0)).contains("unreadable") ==> false
+      codec.decode(codec.encode(scan(0))) ==> Right(scan(0))
     }
   }
 }

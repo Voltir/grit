@@ -94,6 +94,7 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
           0,
           0,
           scan.withdrew,
+          scan.unreadable,
           scan.unchanged,
           0,
           scan.left,
