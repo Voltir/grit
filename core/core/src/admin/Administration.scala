@@ -2,9 +2,10 @@ package grit.core.admin
 
 import java.time.Instant
 
+import grit.core.id.TurnRef
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Compartment, GroupName, Label, Level, Room, RoomLabels, Visibility}
 
 /** Changes to who may see what, and to a room's baseline, that people make through grit (ADR
@@ -25,9 +26,29 @@ trait Administration extends caps.SharedCapability {
     * asker alone. `Left` only when the database failed; then nothing changed.
     */
   def run(by: Account, room: Place, command: Command, at: Instant): Either[StoreError, Answer]
+
+  /** Runs `command` as [[run]] runs it, `by` the account that wrote `turn`'s first entry (whom
+    * [[run]] resolves to the person linked to it now, the person [[grit.core.store.Askers.of]]
+    * names), in `turn`'s room, at `at`, its audit row naming `turn`. Refused as [[run]] refuses,
+    * and with [[Refusal.NotVouched]] for a turn with no inbound first entry: a job's run, a
+    * turn grit began, or a conversation gone.
+    */
+  def runFor(turn: TurnRef, command: Command, at: Instant): Either[StoreError, Answer]
 }
 
 object Administration {
+
+  /** The account a turn of `origin`'s conversation is asked through, `first` the account that
+    * wrote its first entry when that entry is inbound: in a direct message, its person's own,
+    * whoever wrote it; in a task's run, none; otherwise `first`. [[grit.core.store.Askers.of]]'s
+    * rule, by account, which [[Administration.runFor]] runs as.
+    */
+  private[grit] def askedThrough(origin: Origin, first: Option[Account]): Option[Account] =
+    origin match {
+      case Origin.Direct(account, _) => Some(account)
+      case Origin.Task(_, _) => None
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) => first
+    }
 
   /** What `command`, asked in `room` by `by` (whom its account is linked to now; `None` for
     * one never seen), comes to under the labels in force: `Left`, its answer, when it only

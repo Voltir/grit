@@ -426,15 +426,17 @@ CREATE TABLE IF NOT EXISTS grit.group_members (
 -- Every change made through a command (ADR 0033): who made it, when, and the change with what
 -- it replaced (ChangeJson: {"kind": "relabel"|"quiet"|"clear"|"remove"|"baseline", …}; labels
 -- in their written form, accounts as written, no names or addresses; a later kind is added, never a
--- reuse). A change repeated keeps nothing, and refusals are not kept. Holds PII (`by`, and the
--- accounts in `change`).
+-- reuse). A change repeated keeps nothing, and refusals are not kept. `turn` is the workflow id of
+-- the turn the change was asked in (Administration.runFor), NULL for a slash command's; no foreign
+-- key, since turns are DBOS's. Holds PII (`by`, and the accounts in `change`).
 -- Retention: kept: one row per change a person makes, at human rate (a few a week); no audit
 -- window yet.
 CREATE TABLE IF NOT EXISTS grit.visibility_changes (
     id     UUID PRIMARY KEY DEFAULT uuidv7(),
     at     TIMESTAMPTZ NOT NULL,
     by     TEXT NOT NULL REFERENCES grit.identities(account),
-    change JSONB NOT NULL
+    change JSONB NOT NULL,
+    turn   TEXT
 );
 
 -- Retention: journal: a closed period's raw entries after the raw window (Target.Raw); its closing

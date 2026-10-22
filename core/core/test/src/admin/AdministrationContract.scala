@@ -2,6 +2,7 @@ package grit.core.admin
 
 import java.time.Instant
 
+import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
 import grit.core.model.Grade
 import grit.core.place.Place
@@ -53,6 +54,11 @@ abstract class AdministrationContract extends TestSuite {
 
   /** Every audit row kept, oldest first. */
   protected def kept(a: Administration): Vector[Kept]
+
+  /** A turn of `origin`'s conversation, as the store `a` reads holds it: its first entry a
+    * message `first` wrote, or no entry at all for `None`, as a job's run begins.
+    */
+  protected def began(a: Administration, origin: Origin, first: Option[Account]): TurnRef
 
   /** A fresh administration, every one of [[Members]] a full member and [[gus]] seen, with
     * [[privateRoom]] reported invited and [[publicRoom]] open.
@@ -293,6 +299,29 @@ abstract class AdministrationContract extends TestSuite {
       kept(a) ==> Vector(Kept(ada, t(1), set))
     }
 
+    test(
+      "runFor runs as the turn's asker in the turn's room and records the turn; a job's run is refused NotVouched"
+    ) {
+      val a = arranged()
+      val asked = began(a, Origin.Slack("T1", "C-public", "1.0"), Some(mia))
+      val guest = began(a, Origin.Slack("T1", "C-public", "2.0"), Some(gus))
+      val job = began(a, Origin.Task("digest", "1"), None)
+      val on = new Change.Quiet(publicRoom, true)
+      def runFor(turn: TurnRef, command: Command, at: Int) =
+        a.runFor(turn, command, t(at))
+          .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      (
+        runFor(asked, Command.Quiet(true), 1),
+        runFor(guest, Command.Quiet(false), 2),
+        runFor(job, Command.Quiet(false), 3)
+      ) ==> (
+        Answer.quieted(on),
+        Answer.Refused(Refusal.NotVouched),
+        Answer.Refused(Refusal.NotVouched)
+      )
+      kept(a) ==> Vector(Kept(mia, t(1), on, Some(asked.workflowId)))
+    }
+
     test("quiet and speak are free to any member, and repeating either keeps nothing") {
       val a = arranged()
       val on = new Change.Quiet(publicRoom, true)
@@ -421,8 +450,8 @@ abstract class AdministrationContract extends TestSuite {
 
 object AdministrationContract {
 
-  /** An audit row: who made `change`, and when. */
-  final case class Kept(by: Account, at: Instant, change: Change)
+  /** An audit row: who made `change`, and when, and the turn it was asked in, if any. */
+  final case class Kept(by: Account, at: Instant, change: Change, turn: Option[WorkflowId] = None)
 
   def t(seconds: Int): Instant = Instant.parse("2026-10-08T09:00:00Z").plusSeconds(seconds)
 

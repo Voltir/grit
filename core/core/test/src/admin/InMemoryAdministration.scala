@@ -2,9 +2,10 @@ package grit.core.admin
 
 import java.time.Instant
 
+import grit.core.id.TurnRef
 import grit.core.identity.{Account, Principal, Standing, Vouched}
 import grit.core.place.Place
-import grit.core.store.{InMemoryVoucher, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Origin, StoreError, Tx}
 import grit.core.visibility.{GroupName, InMemoryRecorded, RoomAccess, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -38,7 +39,40 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
     val _ = records.room(room)(_.copy(access = Some(access)))
   }
 
-  def run(by: Account, room: Place, command: Command, at: Instant): Either[StoreError, Answer] = {
+  def run(by: Account, room: Place, command: Command, at: Instant): Either[StoreError, Answer] =
+    within(by, room, command, at, None)
+
+  def runFor(turn: TurnRef, command: Command, at: Instant): Either[StoreError, Answer] =
+    turns.get(turn) match {
+      case Some((origin, first)) =>
+        Administration.askedThrough(origin, first) match {
+          case Some(by) => within(by, origin.room, command, at, Some(turn))
+          case None => Right(Answer.Refused(Refusal.NotVouched))
+        }
+      case None => Right(Answer.Refused(Refusal.NotVouched))
+    }
+
+  /** The turns begun, each with its conversation's origin and the account that wrote its
+    * first entry, if one did.
+    */
+  // Replaced whole by the fake's own methods, which the test calls on its one thread.
+  @caps.unsafe.untrackedCaptures
+  private var turns = Map.empty[TurnRef, (Origin, Option[Account])]
+
+  /** Has `turn` begun in `origin`'s conversation, its first entry written by `first`, or
+    * holding none for `None`.
+    */
+  def began(turn: TurnRef, origin: Origin, first: Option[Account]): Unit =
+    turns = turns.updated(turn, (origin, first))
+
+  /** [[run]]'s body, its audit row naming `turn`. */
+  private def within(
+      by: Account,
+      room: Place,
+      command: Command,
+      at: Instant,
+      turn: Option[TurnRef]
+  ): Either[StoreError, Answer] = {
     val named = command match {
       case Command.Clearance(Some(of)) => whom(of)
       case _ => None
@@ -47,7 +81,7 @@ final class InMemoryAdministration(visibility: Visibility, val voucher: InMemory
       case Left(answer) => Right(answer)
       case Right(allowed) =>
         if (keep(allowed.change))
-          kept = kept :+ AdministrationContract.Kept(by, at, allowed.change)
+          kept = kept :+ AdministrationContract.Kept(by, at, allowed.change, turn.map(_.workflowId))
         val person = allowed.change match {
           case Change.Clear(p, _) => whom(p)
           case Change.Remove(p, _) => whom(p)

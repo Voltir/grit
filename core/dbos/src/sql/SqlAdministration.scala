@@ -3,16 +3,18 @@ package grit.dbos.sql
 import java.sql.PreparedStatement
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.admin.{Administration, Answer, Change, ChangeJson, Command}
+import grit.core.admin.{Administration, Answer, Change, ChangeJson, Command, Refusal}
+import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
-import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.store.{Jot, Origin, StoreError, Tx}
 import grit.core.visibility.{GroupName, Subject}
 
 /** [[Administration]] over Postgres: each command one transaction written through `jot` (so
   * nothing is kept unless all of it is), its changes kept in `grit.rooms` (a room never heard
   * gets its place first, [[SqlPlaces.id]]) and `grit.group_members`, each change made with one
-  * `grit.visibility_changes` row. Settings carry no label, so it opens for
+  * `grit.visibility_changes` row, naming the turn a change was asked in when it was
+  * ([[Administration.runFor]]). Settings carry no label, so it opens for
   * [[Subject.Public]]. A change's answer is read under the labels in force after it, read
   * again on the same transaction through `opener`.
   */
@@ -20,32 +22,93 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
   import SqlStatements.update
 
   def run(by: Account, room: Place, command: Command, at: Instant): Either[StoreError, Answer] =
+    jot.write(Subject.Public)(within(by, room, command, at, None))
+
+  def runFor(turn: TurnRef, command: Command, at: Instant): Either[StoreError, Answer] =
     jot.write(Subject.Public) { (tx: Tx^) ?=>
-      val named = command match {
-        case Command.Clearance(Some(of)) => SqlIdentities.person(of)
-        case _ => Right(None)
-      }
-      SqlIdentities.person(by).flatMap { asker =>
-        named.flatMap { named =>
-          Administration.decide(asker, room, command, named) match {
-            case Left(answer) => Right(answer)
-            case Right(allowed) =>
-              val change = allowed.change
-              for {
-                changed <- keep(change)
-                _ <- if (changed) audit(by, at, change) else Right(())
-                person <- change match {
-                  case Change.Clear(p, _) => SqlIdentities.person(p)
-                  case Change.Remove(p, _) => SqlIdentities.person(p)
-                  case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) =>
-                    Right(None)
-                }
-                answer <- answered(allowed, person, room)
-              } yield answer
+      asked(turn).flatMap {
+        case Some((origin, first)) =>
+          Administration.askedThrough(origin, first) match {
+            case Some(by) => within(by, origin.room, command, at, Some(turn))
+            case None => Right(Answer.Refused(Refusal.NotVouched))
           }
+        case None => Right(Answer.Refused(Refusal.NotVouched))
+      }
+    }
+
+  /** `turn`'s conversation's origin and the account that wrote its first entry, when that
+    * entry is inbound (`grit.inbound`); `None` when the conversation is gone. Ids alone, no
+    * entry's content, so the transaction's clearance bears on none of it.
+    */
+  private def asked(turn: TurnRef)(using
+      tx: Tx^
+  ): Either[StoreError, Option[(Origin, Option[Account])]] =
+    // An id that is no UUID names no conversation: gone, rather than a failed cast.
+    if (
+      scala.util.Try(java.util.UUID.fromString(ConversationId.value(turn.conversationId))).isFailure
+    )
+      Right(None)
+    else
+      SqlStatements
+        .one(
+          """SELECT c.origin::text, i.account
+            |  FROM grit.conversations c
+            |  LEFT JOIN LATERAL (SELECT id FROM grit.entries
+            |                      WHERE conversation_id = c.id AND turn_seq = ?
+            |                      ORDER BY seq LIMIT 1) e ON true
+            |  LEFT JOIN grit.inbound i ON i.entry_id = e.id
+            | WHERE c.id = ?::uuid""".stripMargin
+        ) { ps =>
+          ps.setLong(1, TurnSeq.value(turn.turnSeq))
+          ps.setString(2, ConversationId.value(turn.conversationId))
+        }(rs => (rs.getString(1), Option(rs.getString(2))))
+        .flatMap(_.fold(Right(None)) { (origin, account) =>
+          for {
+            o <- SqlConversationStore
+              .readOrigin(ujson.read(origin))
+              .left
+              .map(why =>
+                StoreError.Invalid(s"the origin of ${WorkflowId.value(turn.workflowId)}: $why")
+              )
+            a <- account.fold[Either[StoreError, Option[Account]]](Right(None))(
+              SqlIdentities.read(_).map(Some(_))
+            )
+          } yield Some((o, a))
+        })
+
+  /** [[run]]'s body on `tx`, its audit row naming `turn`. */
+  private def within(
+      by: Account,
+      room: Place,
+      command: Command,
+      at: Instant,
+      turn: Option[TurnRef]
+  )(using tx: Tx^): Either[StoreError, Answer] = {
+    val named = command match {
+      case Command.Clearance(Some(of)) => SqlIdentities.person(of)
+      case _ => Right(None)
+    }
+    SqlIdentities.person(by).flatMap { asker =>
+      named.flatMap { named =>
+        Administration.decide(asker, room, command, named) match {
+          case Left(answer) => Right(answer)
+          case Right(allowed) =>
+            val change = allowed.change
+            for {
+              changed <- keep(change)
+              _ <- if (changed) audit(by, at, change, turn) else Right(())
+              person <- change match {
+                case Change.Clear(p, _) => SqlIdentities.person(p)
+                case Change.Remove(p, _) => SqlIdentities.person(p)
+                case Change.Relabel(_, _, _) | Change.Quiet(_, _) | Change.Baseline(_, _, _) =>
+                  Right(None)
+              }
+              answer <- answered(allowed, person, room)
+            } yield answer
         }
       }
     }
+  }
 
   /** `kept`'s answer, made in `room`, under the labels in force read again on `tx`'s own
     * connection, which sees what this transaction has written.
@@ -123,14 +186,17 @@ private[dbos] final class SqlAdministration(jot: Jot, opener: Opener) extends Ad
          |   AND $unless""".stripMargin
     )(_.setString(1, SqlPlaces.path(room))).map(_ > 0)
 
-  /** One `grit.visibility_changes` row: `change`, made by `by` at `at`. */
-  private def audit(by: Account, at: Instant, change: Change)(using
+  /** One `grit.visibility_changes` row: `change`, made by `by` at `at`, asked in `turn`. */
+  private def audit(by: Account, at: Instant, change: Change, turn: Option[TurnRef])(using
       Tx^
   ): Either[StoreError, Unit] =
-    update("INSERT INTO grit.visibility_changes (at, by, change) VALUES (?, ?, ?::jsonb)") { ps =>
+    update(
+      "INSERT INTO grit.visibility_changes (at, by, change, turn) VALUES (?, ?, ?::jsonb, ?)"
+    ) { ps =>
       ps.setObject(1, at.atOffset(ZoneOffset.UTC))
       ps.setString(2, SqlIdentities.written(by))
       ps.setString(3, ChangeJson.write(change).render())
+      ps.setString(4, turn.map(t => WorkflowId.value(t.workflowId)).orNull)
     }.map(_ => ())
 
   private def member(ps: PreparedStatement, group: GroupName, account: Account): Unit = {

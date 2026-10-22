@@ -6,9 +6,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.util.Using
 
 import grit.core.admin.{Administration, AdministrationContract, ChangeJson}
+import grit.core.id.{TurnRef, TurnSeq, WorkflowId}
 import grit.core.identity.{Account, Standing, Vouched}
 import grit.core.place.Place
-import grit.core.store.{Tx, Voucher}
+import grit.core.store.{Origin, Tx, Voucher}
 import grit.core.visibility.RoomAccess
 import grit.dbos.sql.{DbConfig, LiveDb, SqlPlaces, SqlStatements, TestPostgres}
 
@@ -75,7 +76,7 @@ object SqlAdministrationTests extends AdministrationContract {
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement(
-          "SELECT by, at, change::text FROM grit.visibility_changes ORDER BY at, id"
+          "SELECT by, at, change::text, turn FROM grit.visibility_changes ORDER BY at, id"
         )
       ) { ps =>
         Using.resource(ps.executeQuery()) { rs =>
@@ -88,10 +89,17 @@ object SqlAdministrationTests extends AdministrationContract {
               rs.getObject(2, classOf[OffsetDateTime]).toInstant,
               ChangeJson
                 .read(ujson.read(rs.getString(3)))
-                .fold(e => throw new java.lang.AssertionError(e), identity)
+                .fold(e => throw new java.lang.AssertionError(e), identity),
+              Option(rs.getString(4)).map(WorkflowId(_))
             )
           rows.result()
         }
       }
     }
+
+  protected def began(a: Administration, origin: Origin, first: Option[Account]): TurnRef = {
+    val turn = TurnRef(LiveDb.conversation(fresh0.config, origin).id, TurnSeq(1))
+    first.foreach(LiveDb.asking(fresh0.config, turn, _, None))
+    turn
+  }
 }

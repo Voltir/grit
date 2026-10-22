@@ -22,6 +22,7 @@ import grit.core.edge.{
   InMemoryJoins,
   InMemoryOrigins
 }
+import grit.core.id.TurnRef
 import grit.core.identity.{Account, Realm, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Place
@@ -129,6 +130,8 @@ object SlackCommandingTests extends TestSuite {
     private val down: Administration = new Administration {
       def run(by: Account, room: Place, command: Command, at: Instant) =
         Left(StoreError.DatabaseError("gone"))
+      def runFor(turn: TurnRef, command: Command, at: Instant) =
+        Left(StoreError.DatabaseError("gone"))
     }
 
     /** The room each command was handed to the administration in, in order. */
@@ -141,6 +144,7 @@ object SlackCommandingTests extends TestSuite {
         rooms = rooms :+ room
         admin.run(by, room, command, at)
       }
+      def runFor(turn: TurnRef, command: Command, at: Instant) = admin.runFor(turn, command, at)
     }
 
     private val inbox: InMemoryInbox =

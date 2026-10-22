@@ -1,8 +1,9 @@
 package grit.core.admin
 
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.place.Place
-import grit.core.store.InMemoryVoucher
+import grit.core.store.{InMemoryVoucher, Origin}
 import grit.core.visibility.RoomAccess
 import grit.dbos.sql.TestTx
 
@@ -29,4 +30,10 @@ object InMemoryAdministrationTests extends AdministrationContract {
     fake(a).reported(room, access)
 
   protected def kept(a: Administration): Vector[Kept] = fake(a).kept
+
+  protected def began(a: Administration, origin: Origin, first: Option[Account]): TurnRef = {
+    val turn = TurnRef(ConversationId(s"conversation-${origin.place.written}"), TurnSeq(1))
+    fake(a).began(turn, origin, first)
+    turn
+  }
 }
