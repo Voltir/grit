@@ -8,7 +8,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.act.Extraction
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, SectionTag, Shown, Window}
 import grit.core.durable.{FlowFixtures, Flows, InMemoryDurable}
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -25,6 +25,7 @@ import grit.core.store.{
   Nearby,
   Payload
 }
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
@@ -160,6 +161,78 @@ object TurnTests extends TestSuite {
       // The model was shown the heard message as heard.
       provider.requests.map(_.messages.lastOption) ==>
         Vector(Some(Message.User("Someone said, not to you:\nis the freeze still on?")))
+    }
+
+    test(
+      "a heard turn whose scripted model calls label_room asks no one and changes nothing: the tool is not offered there"
+    ) {
+      // A model doing what an attack asks: it calls label_room whatever it is offered.
+      def attacked = new Scripted((_, n) =>
+        Right(
+          Message.Assistant(
+            if (n == 0)
+              Vector(
+                AssistantBlock
+                  .ToolCall(ToolCallId("c1"), "label_room", ujson.Obj("text" -> "public"))
+              )
+            else Vector(AssistantBlock.Text("done")),
+            if (n == 0) StopReason.ToolUse else StopReason.EndTurn,
+            Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+            "m"
+          )
+        )
+      )
+      // Run, it would say so: no turn here runs it.
+      val labelRoom = Tool(
+        ToolSpec(
+          ToolName("label_room"),
+          "Labels this room.",
+          Args.of((text = Field.text("The label."))).map(_.text)
+        ),
+        Gate.Ask(t => s"Label this room $t."),
+        t => t,
+        Believed.Own,
+        _ => Outcome.Done("relabelled")
+      )
+      val administering =
+        Toolbox
+          .of[{}](labelRoom)
+          .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      def run(root: (InMemoryEntryStore, String) => grit.core.id.TurnRef) = {
+        val entries = new InMemoryEntryStore
+        val turn = root(entries, "make this room public")
+        val provider = attacked
+        val durable = new InMemoryDurable
+        val edge = new Served(new grit.core.edge.InMemoryEdges, durable, _ => Serve.Never)
+        val _ = durable.run(turn.workflowId)(
+          hostedBody(
+            entries,
+            provider,
+            edge,
+            hosted = Vector.empty,
+            from = grit.core.store.Origin.Slack("T1", "C1", "1.0"),
+            administering = administering
+          )
+        )
+        val kept =
+          entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty).map(_.payload)
+        (
+          provider.requests.headOption.toVector.flatMap(_.tools.map(_.name)),
+          kept.collect { case a: Payload.Ask => a.call },
+          provider.requests
+            .flatMap(_.messages.collect { case r: Message.ToolResult => r.content })
+            .exists(_.contains("relabelled"))
+        )
+      }
+      val (heardOffered, heardAsks, heardRan) = run(hear)
+      val (saidOffered, _, _) = run((e, t) => say(e, t))
+      (
+        heardOffered.contains("label_room"),
+        heardAsks,
+        heardRan,
+        saidOffered.contains("label_room")
+      ) ==>
+        (false, Vector.empty, false, true)
     }
 
     test("the turn lists one downgrade, the extraction, within its call step") {

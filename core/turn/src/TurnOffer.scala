@@ -9,6 +9,7 @@ import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
 import grit.core.store.{
+  Audience,
   EntryStore,
   Origin,
   Payload,
@@ -113,7 +114,9 @@ object TurnOffer {
     * its place to ([[grit.core.place.Reaches.of]]) that [[grit.core.tool.Hosted.advertised]]
     * offers, less any whose name an earlier tool has (a heard-rooted turn is offered none of
     * them), then `tooling`'s own, then its operator tools when
-    * its origin is the operator's ([[grit.core.store.Audience.operator]]). A service place, its
+    * its origin is the operator's ([[grit.core.store.Audience.operator]]), then its
+    * administering tools when its root is `Addressed` or `ByName` and its origin is colleagues'
+    * ([[grit.core.store.Audience.Colleagues]]). A service place, its
     * workspace or one it reaches, offers nothing when the turn does not read from it
     * ([[grit.core.store.Tx.readsFrom]]): a reached one is not named, and of a workspace an edge
     * serves the prompt says only that its tools are not available ([[TurnPrompt.Serving]]); and its tools that declare
@@ -200,7 +203,8 @@ object TurnOffer {
         names.contains(h.name) &&
         whole.offerable(sends, at).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
-      engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.hosted.map(_.name)).toSet
+      engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.administering.names ++
+        tooling.hosted.map(_.name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
         .flatMap(_.offerable(sends, at))
@@ -220,8 +224,9 @@ object TurnOffer {
       offeredReaching = reaching.zip(reachedTook).collect {
         case (r, t) if !t.offer.withheld => r
       }
-      whole <- setOf(tooling, conversation.origin, hosted, reaching).map(_._2)
-      offered <- setOf(tooling, conversation.origin, offeredHosted, offeredReaching)
+      administers = administering(root, conversation.origin)
+      whole <- setOf(tooling, conversation.origin, administers, hosted, reaching).map(_._2)
+      offered <- setOf(tooling, conversation.origin, administers, offeredHosted, offeredReaching)
       (hostedSet, set) = offered
       _ <- hosting.toolSets.keep(set)
       _ <- if (whole.id == set.id) Right(()) else hosting.toolSets.keep(whole)
@@ -292,13 +297,27 @@ object TurnOffer {
       )
   }
 
+  /** Whether a turn rooted at `root` from `origin` is offered its tooling's administering tools:
+    * one a person put to grit, in a room an edge holds with colleagues.
+    */
+  private def administering(root: Root, origin: Origin): Boolean =
+    (root match {
+      case Root.Addressed | Root.ByName => true
+      case Root.Heard | Root.Named => false
+    }) && (origin.audience match {
+      case Audience.Colleagues => true
+      case Audience.Operator | Audience.Nobody | Audience.Person => false
+    })
+
   /** The hosted tools of a turn from `origin` as a set, and its whole set: `hosted`, then the
     * tools of `reaching` that [[Hosted.advertised]] offers, then `tooling`'s own, then its
-    * operator tools for the operator. Why not, naming a name two of them share.
+    * operator tools for the operator, then its administering tools when `administers`. Why not,
+    * naming a name two of them share.
     */
   private def setOf[C^](
       tooling: TurnTooling[C]^,
       origin: Origin,
+      administers: Boolean,
       hosted: Vector[Tool.Offered],
       reaching: Vector[(Service, ToolSet)]
   ): Either[StoreError, (ToolSet, ToolSet)] =
@@ -308,6 +327,9 @@ object TurnOffer {
       .flatMap(h =>
         (if (origin.audience.operator) Toolbox.joined(tooling.tools, tooling.operator)
          else Right(tooling.tools))
+          .flatMap(own =>
+            if (administers) Toolbox.joined(own, tooling.administering) else Right(own)
+          )
           .flatMap(_.preceded(hosted ++ reaching.flatMap(_._2.tools).flatMap(Hosted.advertised)))
           .map(all => (h, all.set))
       )
@@ -339,15 +361,18 @@ object TurnOffer {
       recorded.zoned
     )
 
-  /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
-    * tool, else its hosted one, else, for a name `offer` took from an advert, its
+  /** The tools `offer`'s set names, in its order: each `tooling`'s own tool, operator tool or
+    * administering tool, else its hosted one, else, for a name `offer` took from an advert, its
     * workspace's or a reached service's, that tool as
     * [[grit.core.tool.Hosted.advertised]] makes it from the set's entry, else a stand-in for
     * a tool this build no longer has ([[Tool.gone]]).
     */
   def toolbox[C^](tooling: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
     val chosen: Vector[Tool.Offered^{C}] = offer.tools.tools.map { entry =>
-      tooling.tools.tool(entry.name).orElse(tooling.operator.tool(entry.name)) match {
+      tooling.tools
+        .tool(entry.name)
+        .orElse(tooling.operator.tool(entry.name))
+        .orElse(tooling.administering.tool(entry.name)) match {
         case Some(own) => own
         case None =>
           tooling.hosted.find(_.name == entry.name) match {

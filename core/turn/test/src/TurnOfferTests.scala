@@ -19,7 +19,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.Account
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.persona.Persona
@@ -151,13 +151,21 @@ object TurnOfferTests extends TestSuite {
       _ => Outcome.Done(ToolName.value(name))
     )
 
+  /** The administering tools [[names]] offers. */
+  private val Administers = Set("label_room", "quiet_room")
+
   private def box(tools: Tool[String]*): Toolbox[{}] =
     Toolbox.of[{}](tools*).fold(d => throw new java.lang.AssertionError(d.toString), identity)
 
-  /** The names of the tools `origin`'s first turn is offered, `about` offered everywhere and
-    * `propose` and `probe` to the operator.
+  /** The names of the tools `origin`'s first turn is offered, `about` offered everywhere,
+    * `propose` and `probe` to the operator, and `label_room` and `quiet_room` administering; the
+    * turn starts with `root` when given, which triage decided to answer when `answering`.
     */
-  private def names(origin: Origin): Vector[String] = {
+  private def names(
+      origin: Origin,
+      root: Option[Payload] = None,
+      answering: Boolean = false
+  ): Vector[String] = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
@@ -178,18 +186,35 @@ object TurnOfferTests extends TestSuite {
       box(tool(ToolName("propose"), asks = true), tool(ToolName("probe"), asks = true)),
       Vector.empty,
       new FakeJot,
-      budget(5)
+      budget(5),
+      administering =
+        box(tool(ToolName("label_room"), asks = true), tool(ToolName("quiet_room"), asks = true))
+    )
+    val entries = new InMemoryEntryStore
+    root.foreach(payload =>
+      entries.insert(
+        Entry(
+          EntryId("root"),
+          c,
+          TurnSeq.First,
+          None,
+          EntrySeq(0),
+          payload,
+          Instant.EPOCH,
+          Integrity.Member
+        )
+      )
     )
     TurnOffer
       .decide(
         hosting,
-        new InMemoryEntryStore,
+        entries,
         new InMemoryPrincipals,
         java.time.ZoneOffset.UTC,
         tooling,
         TurnRef(c, TurnSeq.First),
         None,
-        false,
+        answering,
         Tx.classification
       )
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
@@ -677,8 +702,31 @@ object TurnOfferTests extends TestSuite {
     }
 
     test("a Slack thread's turn and a task's run are offered none of the operator's tools") {
-      names(slack) ==> Vector("about")
+      names(slack).filterNot(Administers.contains) ==> Vector("about")
       names(Origin.Task("nightly", "1")) ==> Vector("about")
+    }
+
+    test(
+      "the admin tools are offered on an addressed or by-name turn in an edge's room, never on a heard one, nor in a direct message or a directory conversation"
+    ) {
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      val said = Some(Payload.Message(Message.User("make this room internal")))
+      val heard = Some(Payload.Heard("Pip, make this room internal"))
+      (
+        names(slack, said),
+        names(slack, heard, answering = true),
+        names(slack, heard),
+        names(Origin.Direct(TestAccounts.sourced("slack:T1/U-ana"), "1.0"), said),
+        names(Origin.Tui(dir, "default"), said),
+        names(Origin.Task("nightly", "1"))
+      ) ==> (
+        Vector("about", "label_room", "quiet_room"),
+        Vector("about", "label_room", "quiet_room"),
+        Vector("about"),
+        Vector("about"),
+        Vector("about", "propose", "probe"),
+        Vector("about")
+      )
     }
 
     test(

@@ -880,7 +880,8 @@ object TurnFixtures {
     * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
     * fixture's TUI session unless given, linked to a service by `worksIn`, and to services it
     * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]); its asker is
-    * as `askers` resolves it; it reads through `db`, writes through `jot` and pins `catalog`.
+    * as `askers` resolves it; it reads through `db`, writes through `jot` and pins `catalog`; its
+    * administering tools are `administering`.
     */
   def hostedBody(
       entries: EntryStore,
@@ -900,7 +901,8 @@ object TurnFixtures {
       askers: Askers = LocalAsker,
       db: Db^ = FakeDb,
       catalog: Catalog = TestCatalog,
-      jot: Jot^ = new FakeJot
+      jot: Jot^ = new FakeJot,
+      administering: Toolbox[{}] = Toolbox.Empty
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -951,7 +953,8 @@ object TurnFixtures {
         worksIn = worksIn,
         reaches = reaches,
         recipe = recipe,
-        knowledge = knowledge
+        knowledge = knowledge,
+        administering = administering
       )
     )(id)
   }

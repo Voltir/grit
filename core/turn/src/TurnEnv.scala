@@ -182,7 +182,12 @@ final case class TurnHosting(
   * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
   * width, and which of those services' tools it is offered, by the corpora
   * `knowledge` says supply each ([[grit.core.triage.Corpora.supplied]]). `persona`
-  * is who the turn is told it is ([[TurnPrompt.called]]).
+  * is who the turn is told it is ([[TurnPrompt.called]]). `administering`, after `operator`,
+  * are offered only on a turn a person put to grit (its root `Addressed` or `ByName`) in a room
+  * an edge holds with colleagues ([[grit.core.store.Audience.Colleagues]]), never a heard or
+  * unprompted turn, nor one in a direct message, a job's run or a directory's conversation;
+  * whatever tools the deployment's `Offered` chose, which governs only the coding and operator
+  * tools.
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
@@ -195,5 +200,6 @@ final case class TurnTooling[C^](
     reaches: Vector[Reaches] = Vector.empty,
     recipe: TurnRecipe = TurnRecipe.Shipped,
     knowledge: Corpora = Corpora.Empty,
-    persona: Persona = Persona.Grit
+    persona: Persona = Persona.Grit,
+    administering: Toolbox[C] = Toolbox.Empty
 )
