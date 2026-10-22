@@ -11,7 +11,8 @@ import grit.core.host.TempBlobs
 import grit.core.id.{EdgeName, FileHandle, Sha256}
 import grit.core.identity.Email
 import grit.core.place.Place
-import grit.core.store.{Jot, Tx}
+import grit.core.retention.Target
+import grit.core.store.{Jot, Tombstones, Tx}
 import grit.core.visibility.{Integrity, Provenance, Readers}
 
 import utest.*
@@ -32,7 +33,10 @@ abstract class FilesContract extends TestSuite {
     */
   protected def reading[A](body: (Tx^) ?=> A): A
 
-  /** [[catalog]] with no files. */
+  /** Where the sweep marks files for deletion. */
+  protected def tombstones: Tombstones
+
+  /** [[catalog]] with no files, and [[tombstones]] with none of a file. */
   protected def emptied(): Unit
 
   private val Start = Instant.parse("2026-10-22T09:00:00Z")
@@ -166,6 +170,40 @@ abstract class FilesContract extends TestSuite {
         val _ = blobs.remove(sha("lost"))
         (admitted.isRight, admitted.flatMap(a.open(_)(_.bytes))) ==>
           (true, handle.flatMap(h => Left(FileError.Gone(h, 10.minutes))))
+      }
+    }
+    test(
+      "a sweep marks each file expired or whose bytes are lost, and removes each blob no file names"
+    ) {
+      area() { (a, clock, blobs) =>
+        val expired = put(a, key(1), new Source("old")).map(_._1.handle)
+        val lost = put(a, key(2), new Source("lost")).map(_._1.handle)
+        clock.at = Start.plusSeconds(300)
+        val live = put(a, key(3), new Source("new")).map(_._1.handle)
+        val _ = blobs.remove(sha("lost"))
+        val _ = blobs.receive(new ByteArrayInputStream("stray".getBytes("UTF-8")), 10)(_.keep())
+        clock.at = Start.plusSeconds(660)
+        val first = a.sweep(tombstones)
+        val marked = reading(tombstones.due(Target.Kind.File, clock.at.plusSeconds(1), 10))
+          .map(_.map(_.target))
+        // The collector forgets the expired file; the next sweep removes its blob.
+        expired.foreach(h => reading(catalog.forget(h)))
+        val second = a.sweep(tombstones)
+        (
+          live.isRight,
+          first,
+          marked,
+          second.map(s => (s.marked, s.removed)),
+          blobs.kept().map(_.toSet)
+        ) ==> (
+          true,
+          Right(
+            FileArea.Swept(Vector(expired, lost).flatMap(_.toOption), removed = 1, cleared = 0)
+          ),
+          Right(Vector(expired, lost).flatMap(_.toOption).map(Target.File(_))),
+          Right((Vector.empty, 1)),
+          Right(Set(sha("new")))
+        )
       }
     }
   }

@@ -1,6 +1,6 @@
 package grit.core.files
 
-import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.store.{InMemoryTombstones, Jot, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Clearance, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -21,5 +21,14 @@ object InMemoryFilesTests extends FilesContract {
   protected def reading[A](body: (Tx^) ?=> A): A =
     body(using TestTx.fake(Clearance.of(Visibility.Shipped.compartments.top)))
 
-  protected def emptied(): Unit = kept = new InMemoryFileCatalog
+  // Replaced whole by `emptied`, on the test's one thread.
+  @caps.unsafe.untrackedCaptures
+  private var marks = new InMemoryTombstones()
+
+  protected def tombstones: Tombstones = marks
+
+  protected def emptied(): Unit = {
+    kept = new InMemoryFileCatalog
+    marks = new InMemoryTombstones()
+  }
 }

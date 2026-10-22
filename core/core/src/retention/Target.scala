@@ -1,8 +1,11 @@
 package grit.core.retention
 
+import scala.concurrent.duration.Duration
+
 import grit.core.id.{
   ConversationId,
   DocumentVersionId,
+  FileHandle,
   PeriodRef,
   PeriodSeq,
   PluginName,
@@ -54,6 +57,11 @@ enum Target {
   /** An ended schedule's row (ADR 0029). Spared when it was declared again since it ended. */
   case Schedule(id: ScheduleId)
 
+  /** A file the area keeps, expired or its bytes lost (ADR 0045); its blob goes once no file
+    * names it.
+    */
+  case File(handle: FileHandle)
+
   def kind: Target.Kind = this match {
     case Raw(_) => Target.Kind.Raw
     case Superseded(_) => Target.Kind.Superseded
@@ -63,6 +71,7 @@ enum Target {
     case Disabled(_) => Target.Kind.Disabled
     case Document(_) => Target.Kind.Document
     case Schedule(_) => Target.Kind.Schedule
+    case File(_) => Target.Kind.File
   }
 }
 
@@ -78,16 +87,19 @@ object Target {
     case Disabled extends Kind("disabled")
     case Document extends Kind("document")
     case Schedule extends Kind("schedule")
+    case File extends Kind("file")
 
     /** How long after its tombstone is written a target of this kind is deleted: `windows`'
       * retention for Raw, PostRuns, Restarted and Schedule; its ledger window for Superseded,
-      * Quiet and Disabled; for Document, its plugin's declared retention.
+      * Quiet and Disabled; for Document, its plugin's declared retention; for File, none, as its
+      * tombstone is written once its own expiry has passed.
       */
     def retention(windows: Windows): Retention = this match {
       case Kind.Raw | Kind.PostRuns | Kind.Restarted | Kind.Schedule =>
         Retention.For(windows.retention)
       case Kind.Superseded | Kind.Quiet | Kind.Disabled => Retention.For(windows.ledger)
       case Kind.Document => Retention.Declared
+      case Kind.File => Retention.For(Duration.Zero)
     }
   }
 
@@ -99,7 +111,7 @@ object Target {
 
   /** `target`'s stored key, beside its kind's name: `{conversation}:{period}` for a period's,
     * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's, `{version}`
-    * for a document's, its id for a schedule's.
+    * for a document's, its id for a schedule's, its handle's number for a file's.
     */
   def key(target: Target): String = target match {
     case Raw(p) => period(p)
@@ -111,6 +123,7 @@ object Target {
     case Disabled(plugin) => PluginName.value(plugin)
     case Document(version) => DocumentVersionId.value(version).toString
     case Schedule(id) => ScheduleId.value(id)
+    case File(handle) => FileHandle.value(handle).toString
   }
 
   /** The target of `kind` stored under `key`, or why it is none. */
@@ -139,6 +152,11 @@ object Target {
           .toRight(s"document $key: not a version")
       case Kind.Schedule =>
         ScheduleId.of(key).map(Schedule(_)).left.map(why => s"schedule $key: $why")
+      case Kind.File =>
+        key.toLongOption
+          .flatMap(FileHandle.of)
+          .map(File(_))
+          .toRight(s"file $key: not a file's handle")
       case Kind.PostRuns =>
         key.split(':') match {
           case Array(p, v, c) =>

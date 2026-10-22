@@ -1,31 +1,20 @@
 package grit.dbos.engine
 
-import java.io.{ByteArrayInputStream, InputStream}
-import java.time.Instant
-import java.util.concurrent.{BrokenBarrierException, CyclicBarrier, TimeUnit, TimeoutException}
-
-import scala.concurrent.duration.*
-
-import grit.core.clock.SetClock
-import grit.core.files.{
-  FileArea,
-  FileCatalog,
-  FileError,
-  FileItem,
-  FileOrigin,
-  FilesContract,
-  Incoming,
-  PutKey
+import grit.core.files.{FileCatalog, FilesContract}
+import grit.core.store.{Jot, Tombstones, Tx}
+import grit.core.visibility.TestLabels
+import grit.dbos.sql.{
+  DbConfig,
+  LiveDb,
+  Opener,
+  SqlFileCatalog,
+  SqlJot,
+  SqlStatements,
+  SqlTombstones,
+  TestPostgres
 }
-import grit.core.host.TempBlobs
-import grit.core.id.EdgeName
-import grit.core.place.Place
-import grit.core.store.{Jot, StoreError, Tx}
-import grit.core.visibility.{Integrity, Provenance, Readers, Subject, TestLabels}
-import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlFileCatalog, SqlJot, SqlStatements, TestPostgres}
 
 import org.postgresql.ds.PGSimpleDataSource
-import utest.*
 
 /** The file area's contract, kept over the SQL catalog against a real Postgres. */
 object SqlFilesTests extends FilesContract {
@@ -40,8 +29,12 @@ object SqlFilesTests extends FilesContract {
   protected val catalog: FileCatalog = new SqlFileCatalog
   protected def jot: Jot = SqlFilesTests.jot(config)
   protected def reading[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+  protected val tombstones: Tombstones = new SqlTombstones
   protected def emptied(): Unit = {
     val _ = LiveDb.transaction(config)(SqlStatements.update("DELETE FROM grit.files")(_ => ()))
+    val _ = LiveDb.transaction(config)(
+      SqlStatements.update("DELETE FROM grit.tombstones WHERE kind = 'file'")(_ => ())
+    )
   }
 
   /** Short transactions on `config`'s database, as the engine's [[Jot]] makes them. */

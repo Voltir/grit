@@ -7,24 +7,14 @@ import java.util.concurrent.{BrokenBarrierException, CyclicBarrier, TimeUnit, Ti
 import scala.concurrent.duration.*
 
 import grit.core.clock.SetClock
-import grit.core.files.{
-  FileArea,
-  FileCatalog,
-  FileError,
-  FileItem,
-  FileOrigin,
-  FilesContract,
-  Incoming,
-  PutKey
-}
+import grit.core.files.{FileArea, FileError, FileItem, FileOrigin, Incoming, PutKey}
 import grit.core.host.TempBlobs
 import grit.core.id.EdgeName
 import grit.core.place.Place
 import grit.core.store.{Jot, StoreError, Tx}
-import grit.core.visibility.{Integrity, Provenance, Readers, Subject, TestLabels}
-import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlFileCatalog, SqlJot, SqlStatements, TestPostgres}
+import grit.core.visibility.{Integrity, Provenance, Readers, Subject}
+import grit.dbos.sql.{LiveDb, SqlFileCatalog, TestPostgres}
 
-import org.postgresql.ds.PGSimpleDataSource
 import utest.*
 
 /** Puts racing for the area's room: the lock lets one at a time check it and keep. */

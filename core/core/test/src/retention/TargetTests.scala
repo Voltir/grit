@@ -5,6 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.id.{
   ConversationId,
   DocumentVersionId,
+  FileHandle,
   PeriodRef,
   PeriodSeq,
   PluginName,
@@ -21,6 +22,7 @@ object TargetTests extends TestSuite {
   private val seven = CloseOrdinal.of(7).getOrElse(CloseOrdinal.Start)
   private val version = DocumentVersionId.of(42).getOrElse(sys.error("version"))
   private val schedule = ScheduleId.of("declared:plugin:digest:daily").fold(sys.error, identity)
+  private val file = FileHandle.of(41).getOrElse(sys.error("file"))
 
   private val all: Vector[Target] = Vector(
     Target.Raw(p),
@@ -30,7 +32,8 @@ object TargetTests extends TestSuite {
     Target.Restarted(digest),
     Target.Disabled(digest),
     Target.Document(version),
-    Target.Schedule(schedule)
+    Target.Schedule(schedule),
+    Target.File(file)
   )
 
   val tests = Tests {
@@ -44,7 +47,8 @@ object TargetTests extends TestSuite {
         ("restarted", "digest"),
         ("disabled", "digest"),
         ("document", "42"),
-        ("schedule", "declared:plugin:digest:daily")
+        ("schedule", "declared:plugin:digest:daily"),
+        ("file", "41")
       )
     }
 
@@ -58,11 +62,12 @@ object TargetTests extends TestSuite {
       Target.read(Target.Kind.Document, "0") ==> Left("document 0: not a version")
       Target.read(Target.Kind.Schedule, "asked:7") ==>
         Left("schedule asked:7: asked:7 is no schedule's id")
+      Target.read(Target.Kind.File, "f41") ==> Left("file f41: not a file's handle")
       Target.Kind.named("purge") ==> None
     }
 
     test(
-      "raw, posting runs, restarts and schedules keep the raw window; documents their plugin's; the rest the ledger's"
+      "raw, posting runs, restarts and schedules keep the raw window; documents their plugin's; files none, past their own expiry; the rest the ledger's"
     ) {
       val w = Windows.of(1.hour, 2.days, 9.days).fold(sys.error, identity)
       Target.Kind.values.toVector.map(k => (k, k.retention(w))) ==> Vector(
@@ -73,7 +78,8 @@ object TargetTests extends TestSuite {
         (Target.Kind.Restarted, Retention.For(2.days)),
         (Target.Kind.Disabled, Retention.For(9.days)),
         (Target.Kind.Document, Retention.Declared),
-        (Target.Kind.Schedule, Retention.For(2.days))
+        (Target.Kind.Schedule, Retention.For(2.days)),
+        (Target.Kind.File, Retention.For(Duration.Zero))
       )
     }
   }

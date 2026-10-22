@@ -1,19 +1,24 @@
 package grit.dbos.engine
 
+import java.io.{ByteArrayInputStream, InputStream}
 import java.time.{Instant, LocalTime, ZoneOffset}
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
+import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
+import grit.core.files.{FileArea, FileItem, FileOrigin, Incoming, PutKey}
+import grit.core.host.TempBlobs
 import grit.core.id.{
   CloseRef,
   ConversationId,
   Declarer,
   DocKey,
   DocumentVersionId,
+  EdgeName,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -44,8 +49,8 @@ import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
-import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, Subject}
+import grit.core.visibility.{Integrity, Provenance, Readers}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -1262,6 +1267,45 @@ object CollectorLiveTests extends TestSuite {
           tombstones.due(Target.Kind.Disabled, Instant.now().plusSeconds(3600), 10)
         ) ==>
           Right(Vector())
+      } finally engine.close()
+    }
+
+    test("an expired file's row goes once the area's sweep marks it, and its blob on the next") {
+      val config = TestPostgres.freshDatabase("collect_file")
+      val engine = launched(config, 1.day)
+      try {
+        TempBlobs.around { blobs =>
+          val clock = new SetClock(Morning)
+          val area = new FileArea(engine.files, blobs, engine.jot, clock)
+          val place = Place.read("service:drive").fold(sys.error, identity)
+          val incoming = new Incoming {
+            def declared: Option[Long] = None
+            def read[A](body: InputStream^ => A): Either[String, A] =
+              Right(body(new ByteArrayInputStream("minutes".getBytes("UTF-8"))))
+          }
+          val handle = area
+            .put(
+              PutKey.read("collect:1"),
+              "minutes.txt",
+              None,
+              FileOrigin(EdgeName("drive"), "d1", None, Morning),
+              FileItem(Provenance(place, Integrity.Member), Readers.AtPlace),
+              incoming
+            )(_.bytes)
+            .map(_._1.handle)
+            .fold(e => sys.error(e.toString), identity)
+          clock.at = Morning.plus(java.time.Duration.ofHours(25))
+          area.sweep(tombstones).map(_.marked) ==> Right(Vector(handle))
+          engine.sweep(clock.at.plusSeconds(1)).map(_.collected) ==> Right(
+            Vector(Target.File(handle))
+          )
+          (
+            LiveDb.transaction(config)(engine.files.get(handle)),
+            blobs.kept().map(_.size),
+            area.sweep(tombstones).map(_.removed),
+            blobs.kept()
+          ) ==> (Right(None), Right(1), Right(1), Right(Vector()))
+        }
       } finally engine.close()
     }
   }

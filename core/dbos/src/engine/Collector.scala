@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 import grit.core.document.DocumentStore
+import grit.core.files.FileCatalog
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
@@ -50,6 +51,7 @@ private[engine] final class Collector(
     documents: DocumentStore,
     documentReviews: DocumentReviews,
     schedules: SqlSchedules,
+    files: FileCatalog,
     tombstones: Tombstones,
     opener: Opener
 ) {
@@ -166,7 +168,8 @@ private[engine] final class Collector(
               )
             case None => Named.none
           })
-      case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) | Target.Schedule(_) =>
+      case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) | Target.Schedule(_) |
+          Target.File(_) =>
         Right(Named.none)
     }
 
@@ -310,6 +313,12 @@ private[engine] final class Collector(
           case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
           case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
         }
+      // Its blob goes on the file area's next sweep, once no row names it.
+      case Target.File(handle) =>
+        for {
+          _ <- files.forget(handle)
+          _ <- tombstones.collected(target, now)
+        } yield Outcome.Collected
     }
 }
 

@@ -6,6 +6,7 @@ import javax.sql.DataSource
 import scala.jdk.CollectionConverters.*
 
 import grit.core.document.DocumentStore
+import grit.core.files.FileCatalog
 import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
 import grit.core.job.Slot
 import grit.core.plugin.{PluginCursors, PostRef}
@@ -53,6 +54,7 @@ private[engine] final class Sweeper(
     documents: DocumentStore,
     documentReviews: DocumentReviews,
     schedules: SqlSchedules,
+    files: FileCatalog,
     plugins: () -> Vector[(PluginName, Int)],
     posting: () -> Vector[(PluginName, Int)],
     declared: () -> Vector[Shadowing],
@@ -73,6 +75,7 @@ private[engine] final class Sweeper(
     documents,
     documentReviews,
     schedules,
+    files,
     tombstones,
     opener
   )
