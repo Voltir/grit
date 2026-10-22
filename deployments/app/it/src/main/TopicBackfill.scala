@@ -11,7 +11,7 @@ import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Deployment
-import grit.kit.run.Kit
+import grit.kit.run.{Kit, Launch}
 import grit.knowledge.plugin.TopicDocuments
 
 /** The topics job run over a copy of a captured database, once for each day named and then once
@@ -77,6 +77,7 @@ object TopicBackfill {
       first <- RoomRun.deployment(env, Vector(topics, cards), cap)
       keeping = kept(config, first._1)
       deployment <- RoomRun.deployment(env, Vector(topics, cards) ++ keeping, cap)
+      _ = declared(config, deployment._1)
       // Each day twice, the second to see it change nothing; each run made due as it is reached.
       // Two starts a second apart key each day's two runs apart.
       started = Instant.now()
@@ -96,6 +97,15 @@ object TopicBackfill {
       }
       println(s"spent ${Cost.cents(ran.map(_.spent).sum)}")
     }
+
+  /** `d`'s schedules declared on the copy, as a start of grit serve leaves them: the copy is one
+    * this run made, so this stands in for the serve [[Kit.runOnce]] refuses a database without.
+    */
+  private def declared(config: DbConfig, d: Deployment): Unit = {
+    val engine = LiveEngine.open(config, d.runsUnder, d.budget, d.visibility)
+    try right(Launch.reconcile(engine.schedules, engine.jot, d, Instant.now()))
+    finally engine.close()
+  }
 
   /** Every other plugin whose documents the copy declares, kept declared. */
   private def kept(config: DbConfig, d: Deployment): Vector[TopicRuns.Keeping] = {
