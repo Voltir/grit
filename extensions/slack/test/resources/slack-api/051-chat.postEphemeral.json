@@ -1,0 +1,18 @@
+{
+  "method": "chat.postEphemeral",
+  "params": {
+    "channel": "C0000000001",
+    "user": "U0000000001",
+    "thread_ts": "1790782260.791279",
+    "text": "Edit a.txt (expires Wed 2026-10-21 08:03 PDT)"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "message_ts": "1790782270.000100"
+  },
+  "source": "hand-written from Slack's chat.postEphemeral docs, not yet captured"
+}

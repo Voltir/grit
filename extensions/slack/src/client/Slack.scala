@@ -107,6 +107,13 @@ trait Slack extends caps.SharedCapability {
     */
   def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts]
 
+  /** Posts `card` to `user` alone, in `channel`'s thread `thread` (`chat.postEphemeral`). Slack
+    * keeps it only in the client it was shown in: it is gone once the person reloads Slack, and
+    * it carries no tag to find it again by. `Refused` with Slack's word for it when Slack will
+    * not show it there (`user_not_in_channel`, `channel_not_found`).
+    */
+  def ask(channel: ChannelId, thread: Ts, user: UserId, card: Card): Either[SlackError, Unit]
+
   /** The messages in `thread` of `channel` that carry `tag`, oldest first;
     * `Refused("thread_not_found")` when no message there has the ts `thread`.
     */

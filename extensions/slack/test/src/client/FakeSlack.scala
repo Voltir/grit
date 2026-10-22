@@ -192,6 +192,26 @@ final class FakeSlack extends Slack {
       }
     }
 
+  /** A card [[ask]] showed `user` alone, in `thread` of `channel`. */
+  final case class Asked(channel: ChannelId, thread: Ts, user: UserId, card: Card)
+
+  /** Every card shown, oldest first. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
+  @caps.unsafe.untrackedCaptures
+  var cards = Vector.empty[Asked]
+
+  /** Refused as Slack refuses a card for someone not in the channel, in a channel grit's bot is
+    * not in.
+    */
+  def ask(channel: ChannelId, thread: Ts, user: UserId, card: Card): Either[SlackError, Unit] =
+    request {
+      if (notIn.contains(channel)) Left(SlackError.Refused("channel_not_found"))
+      else {
+        cards = cards :+ Asked(channel, thread, user, card)
+        Right(())
+      }
+    }
+
   /** Kept as a post whose thread is its own ts, as Slack lists a message no one replied to. */
   def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts] =
     request {

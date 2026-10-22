@@ -13,7 +13,11 @@ import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
 import grit.slack.text.{Post, RichText}
 
 import com.slack.api.methods.request.auth.AuthTestRequest
-import com.slack.api.methods.request.chat.{ChatGetPermalinkRequest, ChatPostMessageRequest}
+import com.slack.api.methods.request.chat.{
+  ChatGetPermalinkRequest,
+  ChatPostEphemeralRequest,
+  ChatPostMessageRequest
+}
 import com.slack.api.methods.request.conversations.{
   ConversationsHistoryRequest,
   ConversationsInfoRequest,
@@ -89,6 +93,9 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
 
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =
     call(methods.chatPostMessage(request(channel, thread, post, tag))).map(r => Ts(r.getTs))
+
+  def ask(channel: ChannelId, thread: Ts, user: UserId, card: Card): Either[SlackError, Unit] =
+    call(methods.chatPostEphemeral(ephemeral(channel, thread, user, card))).map(_ => ())
 
   def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts] =
     call(methods.chatPostMessage(topLevel(channel, post, tag))).map(r => Ts(r.getTs))
@@ -356,6 +363,24 @@ object SocketSlack {
     */
   def topLevel(channel: ChannelId, post: Post, tag: Tag): ChatPostMessageRequest =
     message(channel, post, tag).build()
+
+  /** The request that posts `card` to `user` alone in `thread` of `channel` ([[Card.blocks]],
+    * [[Card.fallback]]).
+    */
+  def ephemeral(
+      channel: ChannelId,
+      thread: Ts,
+      user: UserId,
+      card: Card
+  ): ChatPostEphemeralRequest =
+    ChatPostEphemeralRequest
+      .builder()
+      .channel(ChannelId.value(channel))
+      .user(UserId.value(user))
+      .threadTs(Ts.value(thread))
+      .blocksAsString(Card.blocks(card).render())
+      .text(Card.fallback(card))
+      .build()
 
   /** [[request]] and [[topLevel]] alike, but for the thread. */
   private def message(

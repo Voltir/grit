@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
-import grit.core.id.Href
+import grit.core.id.{Href, ToolCallId, WorkflowId}
 import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
 import grit.slack.event.{ChannelId, Listed, ResponseUrl, TeamId, Ts, UserId}
@@ -44,6 +44,9 @@ abstract class SlackContract extends TestSuite {
     case p +: _ => p
     case _ => throw new java.lang.AssertionError("a paragraph renders as no post")
   }
+
+  private val card =
+    Card(WorkflowId("contract:0"), ToolCallId("c1"), "Edit a.txt", "Wed 2026-10-21 08:03 PDT")
 
   val tests = Tests {
     test("self is the workspace's team and grit's bot user") {
@@ -250,6 +253,12 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test("ask shows its card to its user alone, in a thread of a channel grit's bot is in") {
+      withSlack() { slack =>
+        slack.ask(Public, w.ts("m1"), Ana, card) ==> Right(())
+      }
+    }
+
     test("respond answers its asker alone, at the command's url, in the words given") {
       withCommand() { (slack, hooks) =>
         val words = "label <level> & <!channel> &lt;: *not bold*"
@@ -285,6 +294,7 @@ abstract class SlackContract extends TestSuite {
           "self" -> kind(slack.self()),
           "post" -> kind(slack.post(Public, m1, post, Tag.Reply("contract", 0))),
           "postTopLevel" -> kind(slack.postTopLevel(Public, post, Tag.Sent("contract"))),
+          "ask" -> kind(slack.ask(Public, m1, Ana, card)),
           "tagged" -> kind(slack.tagged(Public, m1, Tag.Reply("contract", 0))),
           "root" -> kind(slack.root(Public, m1)),
           "permalink" -> kind(slack.permalink(Public, m1)),

@@ -4,9 +4,10 @@ import java.time.ZoneId
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.id.{ToolCallId, WorkflowId}
 import grit.core.identity.{Email, Standing}
 import grit.prose.form.{Block, Doc, Text}
-import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Clicked, Listed, TeamId, Ts, UserId}
 import grit.slack.text.RichText
 
 import com.slack.api.model.{Message, User}
@@ -52,6 +53,38 @@ object SocketSlackTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "an ask's request shows its card to its user alone in its thread: its words as written, then Apply and Cancel carrying its workflow and call alone"
+    ) {
+      val card =
+        Card(WorkflowId("c-1:0"), ToolCallId("toolu_01"), "Set <#C1> to *x* & more", "08:03 PDT")
+      val r = SocketSlack.ephemeral(ChannelId("C1"), Ts("1.5"), UserId("U1"), card)
+      val blocks = ujson.read(Option(r.getBlocksAsString).getOrElse("[]")).arr.toVector
+      def texts(v: ujson.Value): Vector[String] = v match {
+        case o: ujson.Obj if o.value.get("type").contains(ujson.Str("text")) =>
+          Vector(o("text").str)
+        case o: ujson.Obj => o.value.values.toVector.flatMap(texts)
+        case a: ujson.Arr => a.value.toVector.flatMap(texts)
+        case _ => Vector.empty
+      }
+      val buttons = blocks
+        .filter(_("type").str == "actions")
+        .flatMap(_("elements").arr)
+        .map(b => (b("action_id").str, b("text")("text").str, b("value").str))
+      val value = Clicked.value(WorkflowId("c-1:0"), ToolCallId("toolu_01"))
+      (
+        (r.getChannel, r.getUser, r.getThreadTs),
+        blocks.flatMap(texts),
+        buttons,
+        Option(r.getText)
+      ) ==> (
+        ("C1", "U1", "1.5"),
+        Vector("Set <#C1> to *x* & more", "Expires 08:03 PDT."),
+        Vector(("grit_apply", "Apply", value), ("grit_cancel", "Cancel", value)),
+        Some("Set &lt;#C1&gt; to *x* &amp; more (expires 08:03 PDT)")
+      )
+    }
+
     test("a slash command is acknowledged before its handler is started, then handled") {
       // A Java list: the three callbacks share it, as one thread runs each in turn here.
       val seen = new java.util.ArrayList[String]()
