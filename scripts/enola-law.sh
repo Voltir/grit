@@ -39,13 +39,14 @@ fi
 # TRAP: enola has no package pattern, so rule 8 is one rule per class. A class a
 # quarantine module starts importing without a matching rule may then be imported
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
-# driver), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK) or grit.host
-# (processes) imports must be named by a rule.
+# driver), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK), grit.formats
+# (PDFBox) or grit.host (processes) imports must be named by a rule.
 unruled=$( { grep -oE '"name":"core/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"extensions/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl; } |
+    grep -oE '"name":"extensions/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/formats/src(/[a-z]+)* -\\u003e org\.apache\.pdfbox\.[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
     grep -qF "\"* -> $class\"" enola-intent.yaml || echo "$class"
   done)
@@ -115,6 +116,16 @@ ujson=$(names 'ujson\.' | grep -E '^core/prose/src/' | grep -vE '^core/prose/src
 if [ -n "$ujson" ]; then
   echo "Only grit.prose's json package may name ujson; these sources do:" >&2
   printf '  %s\n' $ujson >&2
+  failed=1
+fi
+
+# TRAP: rule 1k sees only an import from outside grit.formats. Within it, only the pdf package
+# reads PDFs, and a fully qualified name makes no edge: grep every source for PDFBox's package.
+# Only formats' pdf package, its sources and its tests, may write it.
+pdfbox=$(names 'org\.apache\.pdfbox' | grep -vE '^extensions/formats/(src|test/src)/pdf/' || true)
+if [ -n "$pdfbox" ]; then
+  echo "Only grit.formats' pdf package may name PDFBox; these sources do:" >&2
+  printf '  %s\n' $pdfbox >&2
   failed=1
 fi
 

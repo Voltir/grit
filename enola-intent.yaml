@@ -40,35 +40,44 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.dbos and the eval harness: what may not name grit.dbos.internal
   # (rule 1h). As outside-dbos, with eval's own sources in place of all of eval/.
   - name: outside-dbos-and-harness
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.turn, grit.act and grit.kit, the three that make integrity-carrying
   # values from raw ones (rule 1j).
   - name: outside-minters
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/mcp/**", "extensions/formats/**"]
+
+  # Every module except grit.formats, for PDFBox's quarantine (STYLE rule 8). Within formats,
+  # only its pdf package may name PDFBox: a grep in scripts/enola-law.sh.
+  - name: outside-pdfbox
+    kind: dependency
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+
+  # grit.formats' sources, for its rule: a reader names core alone.
+  - {name: formats-code,   kind: module, match: ["extensions/formats/src", "extensions/formats/src/**"]}
 
   # grit.slack's sources, for its rule below: an edge names core, prose and grit.edge, never
   # the turn.
@@ -150,6 +159,8 @@ components:
             "extensions/mcp/src/client", "extensions/mcp/src/client/**", "extensions/mcp/src/edge", "extensions/mcp/src/edge/**",
             "extensions/mcp/src/scope", "extensions/mcp/src/scope/**", "extensions/mcp/src/github", "extensions/mcp/src/github/**",
             "extensions/mcp/src/drive", "extensions/mcp/src/drive/**",
+            "extensions/formats/src/choice", "extensions/formats/src/choice/**", "extensions/formats/src/ooxml", "extensions/formats/src/ooxml/**",
+            "extensions/formats/src/pdf", "extensions/formats/src/pdf/**",
             "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**",
@@ -671,6 +682,59 @@ rules:
     mode: strict
     because: "ADR 0036: a value's integrity is what its reader says of its source; only the turn, the moves and the kit, which hold the readers, mint it"
 
+  # -------------------------------------------------------------------------------------
+  # 1k. Only grit.formats imports PDFBox (STYLE rule 8): one rule per class it imports, as for
+  # DBOS; scripts/enola-law.sh fails when grit.formats imports a PDFBox class no rule names, and
+  # greps every source for the name, so only formats' pdf package (and its tests) name it.
+  # -------------------------------------------------------------------------------------
+  - id: only-formats-imports-pdfbox-loader
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.Loader"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-operator
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.contentstream.operator.Operator"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-cosbase
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.cos.COSBase"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-pddocument
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.pdmodel.PDDocument"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-invalid-password-exception
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-pdoutline-node
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineNode"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-pdftext-stripper
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.text.PDFTextStripper"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  - id: only-formats-imports-pdfbox-text-position
+    forbid_name: outside-pdfbox
+    pattern: "* -> org.apache.pdfbox.text.TextPosition"
+    mode: strict
+    because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
   # slack_post through. Mill already keeps grit.turn off its classpath; this rule is the
@@ -794,6 +858,13 @@ rules:
     via: imports
     mode: strict
     because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: formats-names-core-alone
+    allow: formats-code
+    only: [core-modules, formats-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension; a format reads one file it is handed"
 
   - id: mcp-generic-names-no-github
     allow: mcp-generic

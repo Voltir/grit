@@ -24,9 +24,10 @@ Where the plants go is read from the tree, so a layout change needs no edit here
             a rule to see), in the main sources of a module that may not name it: the kit's
             for every name but Mint, which the kit may name, grit.edge's for Mint,
             grit.act's for sanitiser, the downgrade only the integrity tree may make, and
-            grit.prose's, outside its json package, for ujson.
+            grit.prose's, outside its json package, for ujson; grit.formats', outside its pdf
+            package, for PDFBox.
   unruled   the quarantine grep: one unruled class imported in each of grit.dbos, grit.models,
-            grit.mcp, grit.host and grit.slack's sources, each of which it must list.
+            grit.mcp, grit.host, grit.slack and grit.formats' sources, each of which it must list.
   process   the process grep: `new ProcessBuilder` with no import in every production source
             root but grit.host's (the outline tool's test fixture's included: a `src` root),
             each of which it must list.
@@ -162,6 +163,7 @@ NAMES = {
     "may name Mint": ("grit.core.flow.Mint", "grit.edge"),
     "may name sanitiser": ("grit.core.flow.Downgrade.sanitiser", "grit.act"),
     "may name ujson": ("ujson.Value", "grit.prose"),
+    "may name PDFBox": ("org.apache.pdfbox.Loader", "grit.formats"),
 }
 
 
@@ -181,6 +183,7 @@ UNRULED = {
     "grit.mcp": "java.net.http.EnolaPlantMcp",
     "grit.host": "scala.sys.process.EnolaPlantHost",
     "grit.slack": "com.slack.api.EnolaPlantSlack",
+    "grit.formats": "org.apache.pdfbox.EnolaPlantFormats",
 }
 
 
