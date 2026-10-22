@@ -62,7 +62,8 @@ final class DriveTools(
             .flatMap(_.left.map(DriveError.Unread(_)))
         }
       finally {
-        // A copy left behind is cleared with the scratch directory when the edge next opens.
+        // A copy left behind goes with `scratch`, when the edge closes or, if this process is
+        // killed first, when a Drive edge on this machine next opens.
         try Files.deleteIfExists(temp)
         catch { case _: IOException => () }
         ()

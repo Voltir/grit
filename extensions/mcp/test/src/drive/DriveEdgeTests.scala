@@ -386,6 +386,58 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
+      "opening removes a scratch directory whose lock no process holds, never one whose lock is held, and closing removes its own"
+    ) {
+      import java.nio.file.{Files, StandardOpenOption}
+      import java.nio.channels.FileChannel
+      val root = Files.createTempDirectory("drive-scratch")
+      // A scratch directory as an edge leaves it: its lock beside it, a copy inside.
+      def left(name: String) = {
+        val d = Files.createDirectory(root.resolve(name))
+        val out = Files.newOutputStream(d.resolve("read-1.part"))
+        try out.write(1)
+        finally out.close()
+        Files.createFile(root.resolve(s"$name.lock"))
+      }
+      val _ = left("grit-drive-dead")
+      val held = FileChannel.open(left("grit-drive-live"), StandardOpenOption.WRITE)
+      val _ = held.lock()
+      val _ = Files.createDirectory(root.resolve("grit-drive-other"))
+      def names() = {
+        val listed = Files.list(root)
+        try listed.toArray.toVector.map(_.toString.stripPrefix(s"$root/")).sorted
+        finally listed.close()
+      }
+      val opened =
+        DriveEdge.scratch(root).fold(r => throw new java.lang.AssertionError(r), identity)
+      val made = opened.dir.getFileName.toString
+      val whileOpen = names().filterNot(_.startsWith(made))
+      opened.close()
+      val afterClose = names()
+      held.close()
+      val walked = Files.walk(root)
+      try walked.toArray.toVector.reverse.foreach(p => Files.delete(root.resolve(p.toString)))
+      finally walked.close()
+      (whileOpen, afterClose) ==> (
+        Vector("grit-drive-live", "grit-drive-live.lock", "grit-drive-other"),
+        Vector("grit-drive-live", "grit-drive-live.lock", "grit-drive-other")
+      )
+    }
+
+    test("a sweep leaves the lock files this JVM holds, and their directories, untouched") {
+      import java.nio.file.Files
+      // Opening and closing a held lock's file would let go this JVM's lock on it (POSIX
+      // locks), so the sweep is shown one it could take, named held, and must leave it.
+      val root = Files.createTempDirectory("drive-sweep")
+      val lock = Files.createFile(root.resolve("grit-drive-held.lock"))
+      val dir = Files.createDirectory(root.resolve("grit-drive-held"))
+      DriveEdge.swept(root, Set(lock))
+      val kept = (Files.exists(lock), Files.exists(dir))
+      Vector(dir, lock, root).foreach(Files.deleteIfExists(_))
+      kept ==> (true, true)
+    }
+
+    test(
       "a PDF read by its pages says which of how many it shows, how to read on, and its facts say so"
     ) {
       withFake { fake =>
