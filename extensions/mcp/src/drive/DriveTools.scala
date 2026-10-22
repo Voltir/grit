@@ -4,7 +4,7 @@ import java.io.InputStream
 
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.files.{FileError, FileOrigin, FileRange, Formats, Incoming, Intake, PutKey}
+import grit.core.files.{FileError, FileOrigin, FileRange, Incoming, Intake, PutKey}
 import grit.core.id.{CallSlot, EdgeName}
 import grit.core.tool.{
   Args,
@@ -31,8 +31,8 @@ import grit.edge.{Run, Tools}
   * with a [[DriveError]]'s words or why it was not placed. A read of a PDF, a Word, an Excel
   * or any other file Drive keeps the bytes of is kept in `files` under its call
   * ([[grit.core.files.PutKey.of]]), so the call run again answers the file it kept, and read
-  * there by `formats`; one past the most `formats` read is refused before its bytes are asked
-  * for, and one that lies in no folder or that no one here may read is never fetched. Folders,
+  * there by the formats the area reads with ([[Intake.formats]]); one past the most they read is
+  * refused before its bytes are asked for, and one that lies in no folder or that no one here may read is never fetched. Folders,
   * Slides and images are refused. The run's `said` hears each failure's cause
   * ([[DriveError.logged]]), its tool named, and that a search's drives could not be listed (its
   * hits then name them by id) or a read's grants could not be read (it is then believed
@@ -45,11 +45,10 @@ final class DriveTools(
     clock: Clock,
     rest: DriveRest^{clock},
     reading: DriveReading,
-    formats: Formats,
     files: Intake^
 ) extends Tools {
 
-  /** `file`'s `range`, read by `formats` from the file `files` keeps under `slot`'s call, put
+  /** `file`'s `range`, read by `files`' formats from the file it keeps under `slot`'s call, put
     * there from Drive when it keeps none.
     */
   private def kept(
@@ -67,7 +66,7 @@ final class DriveTools(
         val incoming = new Incoming {
           def declared: Option[Long] = file.size
           def read[A](body: InputStream^ => A): Either[String, A] =
-            rest.media(file, formats.limits.bytes)(body).left.map { e =>
+            rest.media(file, files.formats.limits.bytes)(body).left.map { e =>
               refused = Some(e)
               e.message
             }
@@ -84,7 +83,7 @@ final class DriveTools(
           ),
           item,
           incoming
-        )(_.read(formats, range)) match {
+        )(_.read(files.formats, range)) match {
           case Left(FileError.Fetch(why)) =>
             Left(refused.getOrElse(DriveError.Unkept(FileError.Fetch(why))))
           case Left(error) => Left(DriveError.Unkept(error))

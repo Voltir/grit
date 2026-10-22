@@ -4,6 +4,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
+import grit.core.files.PagedText
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
@@ -93,7 +94,8 @@ object Deployments {
       schedules = schedules,
       visibility = visibility,
       identities = identities,
-      version = version
+      version = version,
+      formats = PagedText.formats
     )
 
   /** [[of]], which the test expects to be accepted. */

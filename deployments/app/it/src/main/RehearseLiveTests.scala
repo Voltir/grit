@@ -8,6 +8,7 @@ import scala.util.Using
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, ClearedClassifier, Question}
 import grit.core.clock.SetClock
+import grit.core.files.PagedText
 import grit.core.id.{CloseRef, PluginName, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
@@ -78,7 +79,8 @@ object RehearseLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = speaking,
         sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit
+        persona = grit.core.persona.Persona.Grit,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

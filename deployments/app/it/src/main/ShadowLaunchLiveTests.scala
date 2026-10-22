@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.files.PagedText
 import grit.core.id.{
   CorpusName,
   PeriodRef,
@@ -69,7 +70,8 @@ object ShadowLaunchLiveTests extends TestSuite {
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit,
         shadows = shadows,
-        knowledge = knowledge
+        knowledge = knowledge,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

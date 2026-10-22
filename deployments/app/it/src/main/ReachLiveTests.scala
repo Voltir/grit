@@ -4,6 +4,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.edge.{Desk, OutcomeJson, Route, ToolRequest}
+import grit.core.files.PagedText
 import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
@@ -56,7 +57,8 @@ object ReachLiveTests extends TestSuite {
         speaking = Speaking.Off,
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit,
-        reaches = Vector(Reaches(Place.under(Namespace.Task, Vector.empty), SlackEdge.PostsAt))
+        reaches = Vector(Reaches(Place.under(Namespace.Task, Vector.empty), SlackEdge.PostsAt)),
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

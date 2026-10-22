@@ -4,7 +4,6 @@ import java.net.URI
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
-import grit.core.files.Formats
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.prompt.Fragment
 import grit.core.store.StoreError
@@ -34,8 +33,8 @@ object DriveEdge {
     * `instructions` blank, or `api` not an absolute URL. Opened, it registers the service's
     * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
     * serves them, and serves the requests addressed there with [[DriveTools]], reading PDFs,
-    * Word and Excel files with `formats` from the file area its stores give it
-    * ([[EdgeStores.files]]), logging what they say of each run. It needs the
+    * Word and Excel files from the file area its stores give it ([[EdgeStores.files]]), with
+    * the formats that area reads with, logging what they say of each run. It needs the
     * credential's variables, is never asked, and delivers no replies. Opening it is refused,
     * naming the credential's variables, when the credential does not open (its key read from
     * this machine's files, [[KeyFiles.Local]]) or Drive does not
@@ -45,7 +44,6 @@ object DriveEdge {
   def serving(
       credential: Credential,
       reading: DriveReading,
-      formats: Formats,
       instructions: String = Instructions,
       api: String = DriveRest.Api
   ): Either[String, ServedEdge] =
@@ -56,13 +54,12 @@ object DriveEdge {
         .filter(_.isAbsolute)
         .toRight(s"Drive's API $api is not an absolute URL")
       declared <- PlaceFragments.declared(reading.service.place, instructions)
-    } yield new Edge(credential, reading, formats, at, declared)
+    } yield new Edge(credential, reading, at, declared)
 
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(
       credential: Credential,
       reading: DriveReading,
-      formats: Formats,
       api: URI,
       declared: Fragment
   ) extends ServedEdge {
@@ -105,7 +102,7 @@ object DriveEdge {
                     log(s"${place.written}: serving drive_list, drive_search, drive_read")
                     val server = new Server(
                       desk,
-                      new DriveTools(clock, rest, reading, formats, stores.files),
+                      new DriveTools(clock, rest, reading, stores.files),
                       run => { val _ = Thread.ofVirtual().start(() => run()) },
                       said => log(s"${place.written}: $said")
                     )

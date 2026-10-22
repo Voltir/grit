@@ -19,7 +19,7 @@ Decision:
   name, size, digest, origin, and the item it is kept at: place, integrity, readers), and the
   bytes once per digest in `Blobs` (`LocalBlobs`: a directory on this machine). The catalog
   and the blobs meet only in `FileArea`; an edge reaches it as `Intake`, a turn or a job as
-  `Files`.
+  `Files`, and both read a file with the deployment's formats, which the area holds.
 - **A put is idempotent by its call.** `Intake.put` is keyed by `PutKey`, a hosted call's
   slot: run again after a crash, it answers the file the first run kept without fetching it.
 - **Admitted in a transaction, opened outside one.** `Files.admit` reads the row in the

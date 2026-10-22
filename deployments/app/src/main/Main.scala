@@ -1312,7 +1312,7 @@ object Main {
             case r: DriveReading.Misdeclared.Unclaimed => s"$DriveDomainVar: ${r.message}"
             case r => s"$DriveWritersVar: ${r.message}"
           }
-        edge <- DriveEdge.serving(credential, reading, Defaults.formats)
+        edge <- DriveEdge.serving(credential, reading)
       } yield Some(
         Drive(edge, Reaches(SlackRoot, service), reading.names)
       )

@@ -1,6 +1,6 @@
 package grit.tools
 
-import grit.core.files.{FileError, FileRange, Files, Formats}
+import grit.core.files.{FileError, FileRange, Files}
 import grit.core.id.FileHandle
 import grit.core.store.Tx
 import grit.core.tool.{
@@ -20,7 +20,7 @@ import grit.core.tool.{
 import grit.core.visibility.{Facts, Integrity, ResultPart}
 
 /** `file_read`: more of a file the file area keeps, by the handle a read that kept it named
-  * (`f41`), a range at a time, as `formats` read it. Each call admits the file in one
+  * (`f41`), a range at a time, as the area's formats read it ([[Files.formats]]). Each call admits the file in one
   * transaction of the reads its turn hands it ([[grit.core.tool.Hosted.reading]]), as an item
   * of its source's result is read, then opens and reads it holding none. Its answer is one part
   * kept where the file came from and read by whoever read it there, its facts `{"file",
@@ -35,8 +35,8 @@ object FileReading {
   /** A read's arguments: the file, and what of it to read. */
   final case class Reading(file: FileHandle, range: FileRange)
 
-  /** `file_read` over `files`, reading with `formats`. */
-  def tool(files: Files^, formats: Formats): Tool[Reading]^{files} =
+  /** `file_read` over `files`. */
+  def tool(files: Files^): Tool[Reading]^{files} =
     described.reading((asked, _, reads) =>
       reads
         .read((tx: Tx^) ?=> Right(files.admit(asked.file)))
@@ -45,7 +45,7 @@ object FileReading {
         .flatten
         .flatMap(admitted =>
           files
-            .open(admitted)(_.read(formats, asked.range))
+            .open(admitted)(_.read(files.formats, asked.range))
             .map(_.map(read => (admitted.record.item, read)))
         ) match {
         case Left(error) => Outcome.Failed(error.message)

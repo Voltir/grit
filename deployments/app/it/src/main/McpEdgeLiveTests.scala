@@ -5,6 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, EdgeStores, Variable}
 import grit.core.files.NoIntake
+import grit.core.files.PagedText
 import grit.core.id.SourceId
 import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
@@ -60,7 +61,8 @@ object McpEdgeLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,
         sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit
+        persona = grit.core.persona.Persona.Grit,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

@@ -25,6 +25,9 @@ trait Intake extends caps.SharedCapability {
   /** How long a file put now is kept: the area's expiry. */
   def keeps: FiniteDuration
 
+  /** What a file kept here is read with: the deployment's formats, the same [[Files.formats]]. */
+  def formats: Formats
+
   /** `incoming`'s bytes kept as a file named `name` from `origin`, opened by whoever reads
     * `item`, expiring the area's expiry after the put; then `body` over it opened, before this
     * returns. When a file put under `key` is still kept, that file, nothing fetched, `body` run
@@ -53,6 +56,11 @@ final case class Admitted private[grit] (record: FileRecord)
 
 /** The file area as a turn, a job or a sync reads it. */
 trait Files extends caps.SharedCapability {
+
+  /** What a file kept here is read with: the deployment's formats, the same an edge's
+    * [[Intake.formats]] read it with when it was put.
+    */
+  def formats: Formats
 
   /** `handle`'s file, when it is kept, not expired, and this transaction reads its item
     * ([[Tx.readsItem]]); otherwise [[FileError.Gone]], never saying which; [[FileError.Store]]

@@ -25,7 +25,16 @@ import grit.core.edge.{
   ToolRequest,
   Variable
 }
-import grit.core.files.{FileArea, InMemoryFileCatalog, Intake, NoIntake, PagedText}
+import grit.core.files.{
+  FileArea,
+  Formats,
+  InMemoryFileCatalog,
+  Intake,
+  Kind,
+  NoIntake,
+  PagedText,
+  Unread
+}
 import grit.core.host.TempBlobs
 import grit.core.id.{CallSlot, ConversationId, EdgeId, EdgeName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
@@ -96,7 +105,6 @@ object DriveEdgeTests extends TestSuite {
       DriveEdge.serving(
         Credential.static(Token),
         reading,
-        PagedText.formats,
         api = fake.api.toString
       )
     )
@@ -140,17 +148,20 @@ object DriveEdgeTests extends TestSuite {
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val clock = Clock.system()
-    new DriveTools(clock, fake.rest(clock), reading, PagedText.formats, files).run(route, q, said)
+    new DriveTools(clock, fake.rest(clock), reading, files).run(route, q, said)
   }
 
   /** `body` over a file area whose catalog is in memory and bytes in a temporary directory,
-    * kept as `bounds` says.
+    * read with `formats`, kept as `bounds` says.
     */
-  private def withArea[A](bounds: FileArea.Bounds = FileArea.Bounds.Default)(
+  private def withArea[A](
+      bounds: FileArea.Bounds = FileArea.Bounds.Default,
+      formats: Formats = PagedText.formats
+  )(
       body: FileArea^ => A
   ): A =
     TempBlobs.around(blobs =>
-      body(new FileArea(new InMemoryFileCatalog, blobs, FakeJot, Clock.system(), bounds))
+      body(new FileArea(new InMemoryFileCatalog, blobs, FakeJot, Clock.system(), formats, bounds))
     )
 
   /** How many of `fake`'s requests asked for a file's bytes. */
@@ -204,14 +215,14 @@ object DriveEdgeTests extends TestSuite {
     test(
       "the edge is named for its service, needs its credential's variable, and is never asked; blank instructions or an API that is no URL are refused"
     ) {
-      val edge = right(DriveEdge.serving(Credential.static(Token), reading, PagedText.formats))
+      val edge = right(DriveEdge.serving(Credential.static(Token), reading))
       (
         (edge.name, edge.needs, edge.asks),
         DriveEdge
-          .serving(Credential.static(Token), reading, PagedText.formats, instructions = " ")
+          .serving(Credential.static(Token), reading, instructions = " ")
           .map(_ => ()),
         DriveEdge
-          .serving(Credential.static(Token), reading, PagedText.formats, api = "drive/v3")
+          .serving(Credential.static(Token), reading, api = "drive/v3")
           .map(_ => ())
       ) ==> (
         (EdgeName("drive"), Vector(Token), ServedEdge.Asks.Never),
@@ -448,6 +459,19 @@ object DriveEdgeTests extends TestSuite {
             first,
             1
           )
+        }
+      }
+    }
+
+    test(
+      "a PDF is read with the formats of the area that keeps it, the ones file_read reads it with"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One."))
+        // No reader for any kind.
+        withArea(formats = Formats(_ => Vector.empty)) { area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area) ==>
+            Outcome.Failed(Unread.Unsupported(Kind.Pdf).message)
         }
       }
     }

@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.files.PagedText
 import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Tokens
@@ -67,7 +68,8 @@ object UnpromptedLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = speaking,
         sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit
+        persona = grit.core.persona.Persona.Grit,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

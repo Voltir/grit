@@ -34,8 +34,9 @@ Decision:
   why (`Unread`): a kind not read here, a password, a scan with no text, damage, too slow, too
   large; its message names no setting.
 
-Consequences: a new format is one `Format` value in a deployment's `Formats`; an edge reads
-any file through `OpenFile.read`, and a later file area opens its files the same way. Each read
+Consequences: a new format is one `Format` value in a deployment's `Formats`, which every
+deployment names (`Deployment.formats`, no default) and its file area holds (ADR 0045), so an
+edge that puts a file and `file_read` read it with the same ones, through `OpenFile.read`. Each read
 parses the file again; nothing caches a tree. The deadline is cooperative: a reader checks it
 between steps, so one slow step inside a library is not interrupted, and only the byte limit
 bounds it. A format holding a capability, or a choice of formats capturing one, does not

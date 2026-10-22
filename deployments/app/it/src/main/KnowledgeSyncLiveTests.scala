@@ -10,6 +10,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{Attesting, EdgeStores, Variable}
 import grit.core.files.NoIntake
+import grit.core.files.PagedText
 import grit.core.id.{CorpusName, PluginName, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.Slotted
@@ -170,7 +171,8 @@ object KnowledgeSyncLiveTests extends TestSuite {
         speaking = Speaking.Off,
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit,
-        visibility = visible
+        visibility = visible,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
   }

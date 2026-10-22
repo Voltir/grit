@@ -9,6 +9,7 @@ import scala.util.Using
 import grit.core.clock.SetClock
 import grit.core.edge.{Attesting, EdgeStores}
 import grit.core.files.NoIntake
+import grit.core.files.PagedText
 import grit.core.id.{
   ConversationId,
   Declarer,
@@ -98,7 +99,8 @@ object RunRetentionLiveTests extends TestSuite {
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit,
         jobs = jobs,
-        schedules = schedules
+        schedules = schedules,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

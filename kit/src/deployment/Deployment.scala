@@ -342,8 +342,8 @@ enum DeploymentRefusal {
   * (ADR 0030), and its `identities`: the attester it trusts for each realm, and the email
   * domains it claims (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
   * them; how long its file area keeps a file and how much it keeps (`files`, ADR 0045), and the
-  * `formats` `file_read` reads a kept file with ([[grit.core.files.Formats.Empty]] by default:
-  * none read). The
+  * `formats` every file kept there is read with, by an edge that puts it and by `file_read`
+  * alike (ADR 0044). The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -422,7 +422,7 @@ object Deployment {
       identities: Identities = Identities.Shipped,
       version: DeploymentVersion = DeploymentVersion.First,
       files: FileArea.Bounds = FileArea.Bounds.Default,
-      formats: Formats = Formats.Empty
+      formats: Formats
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)

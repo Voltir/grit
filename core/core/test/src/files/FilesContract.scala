@@ -73,7 +73,7 @@ abstract class FilesContract extends TestSuite {
     emptied()
     TempBlobs.around { blobs =>
       val clock = new SetClock(Start)
-      body(new FileArea(catalog, blobs, jot, clock, bounds), clock, blobs)
+      body(new FileArea(catalog, blobs, jot, clock, PagedText.formats, bounds), clock, blobs)
     }
   }
 

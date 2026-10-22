@@ -7,7 +7,7 @@ import java.util.concurrent.{BrokenBarrierException, CyclicBarrier, TimeUnit, Ti
 import scala.concurrent.duration.*
 
 import grit.core.clock.SetClock
-import grit.core.files.{FileArea, FileError, FileItem, FileOrigin, Incoming, PutKey}
+import grit.core.files.{FileArea, FileError, FileItem, FileOrigin, Incoming, PagedText, PutKey}
 import grit.core.host.TempBlobs
 import grit.core.id.EdgeName
 import grit.core.place.Place
@@ -58,6 +58,7 @@ object SqlFilesRaceTests extends TestSuite {
           blobs,
           new Paired(SqlFilesTests.jot(config), new CyclicBarrier(2)),
           new SetClock(start),
+          PagedText.formats,
           FileArea.Bounds(10.minutes, maxFile = 10, maxTotal = 12)
         )
         def put(n: Int, text: String): Either[FileError, Long] =

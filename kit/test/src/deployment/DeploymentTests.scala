@@ -3,6 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.DurationInt
 
 import grit.core.edge.ServedEdge
+import grit.core.files.PagedText
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.job.Owned
 import grit.core.tool.ToolName
@@ -965,7 +966,8 @@ object DeploymentTests extends TestSuite {
           knowledge = grit.core.triage.Corpora.Empty,
           recipe = grit.core.recipe.TurnRecipe.Shipped,
           persona = grit.core.persona.Persona.Grit,
-          review = None
+          review = None,
+          formats = PagedText.formats
         )
         .map(d => (d.jobs, d.schedules, d.declared)) ==> Right((Vector(), Vector(), Vector()))
     }

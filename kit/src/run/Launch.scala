@@ -15,7 +15,7 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
 import grit.core.edge.ServedEdge
-import grit.core.files.{FileArea, Files, Formats}
+import grit.core.files.{FileArea, Files}
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
@@ -161,7 +161,8 @@ private[grit] object Launch {
     LocalBlobs.open(dir) match {
       case Left(e) =>
         throw new IllegalStateException(s"the file area's directory $dir could not be made: $e")
-      case Right(blobs) => new FileArea(runtime.files, blobs, runtime.jot, runtime.clock, d.files)
+      case Right(blobs) =>
+        new FileArea(runtime.files, blobs, runtime.jot, runtime.clock, d.formats, d.files)
     }
 
   /** Where the file area of `database` keeps its bytes: `set`, or else a directory in `temp` named
@@ -465,8 +466,7 @@ private[grit] object Launch {
             d.persona,
             runtime.askers,
             MessageIds.Stores(runtime.entries, runtime.rooms, runtime.search, runtime.principals),
-            files,
-            d.formats
+            files
           )*
         ) ++
           plugged.map(_.over(desks)))*
@@ -582,7 +582,7 @@ private[grit] object Launch {
     * ([[About]]), what the person asking is cleared for, its turn's asker as `askers`
     * resolves them, explained as read through the reads its turn hands it ([[Cleared]]), and
     * the ids of this conversation and of the asker's messages, read from `messages`
-    * ([[MessageIds]]), and more of a file `files` keeps, read with `formats` ([[FileReading]]);
+    * ([[MessageIds]]), and more of a file `files` keeps ([[FileReading]]);
     * the kit, and the turn it launches, which reads them in its dispatch,
     * alone hold the engine's askers, so no plugin's tool can read who asked. Throws when
     * grit's shipped docs cannot be read, a fault of the build.
@@ -591,8 +591,7 @@ private[grit] object Launch {
       persona: Persona,
       askers: Askers,
       messages: MessageIds.Stores,
-      files: Files^,
-      formats: Formats
+      files: Files^
   ): Vector[Tool.Offered^{files}] = {
     val about: Tool[Option[About.Section]] =
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
@@ -600,7 +599,7 @@ private[grit] object Launch {
       about,
       Cleared.tool(askers),
       MessageIds.tool(messages, askers),
-      FileReading.tool(files, formats)
+      FileReading.tool(files)
     )
   }
 

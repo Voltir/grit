@@ -8,6 +8,7 @@ import scala.util.Using
 
 import grit.core.act.Moves
 import grit.core.clock.{Clock, SetClock}
+import grit.core.files.PagedText
 import grit.core.flow.Trusted
 import grit.core.id.{
   ConversationId,
@@ -119,7 +120,8 @@ object DeclaredLiveTests extends TestSuite {
         sweep = 30.seconds,
         persona = grit.core.persona.Persona.Grit,
         jobs = jobs,
-        schedules = schedules
+        schedules = schedules,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

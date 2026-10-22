@@ -7,6 +7,8 @@ final class NoIntake extends Intake {
 
   def keeps: scala.concurrent.duration.FiniteDuration = Files.Expiry
 
+  def formats: Formats = PagedText.formats
+
   def put[A](
       key: PutKey,
       name: String,

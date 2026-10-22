@@ -10,13 +10,15 @@ import grit.core.store.{Jot, StoreError, Tombstones, Tx}
 import grit.core.visibility.Subject
 
 /** The file area (ADR 0045): files listed in `catalog`, their bytes in `blobs`, each put
-  * written in a short transaction of `jot`'s, dated by `clock`, kept as `bounds` says.
+  * written in a short transaction of `jot`'s, dated by `clock`, read with `formats`, kept as
+  * `bounds` says.
   */
 final class FileArea(
     catalog: FileCatalog,
     blobs: Blobs^,
     jot: Jot^,
     clock: Clock^,
+    val formats: Formats,
     val bounds: FileArea.Bounds = FileArea.Bounds.Default
 ) extends Files,
       Intake {

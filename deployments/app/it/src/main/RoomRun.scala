@@ -5,6 +5,7 @@ import java.time.{Duration, Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
+import grit.core.files.PagedText
 import grit.core.id.{ConversationId, EntryId}
 import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
@@ -67,7 +68,8 @@ private[main] object RoomRun {
           budget = Budget(ZoneOffset.UTC, Some(cap)),
           speaking = Speaking.Off,
           sweep = 30.seconds,
-          persona = Persona.Grit
+          persona = Persona.Grit,
+          formats = PagedText.formats
         )
         .left
         .map(_.message)

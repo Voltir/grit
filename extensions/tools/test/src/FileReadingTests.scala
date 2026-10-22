@@ -65,6 +65,7 @@ object FileReadingTests extends TestSuite {
           blobs,
           jot,
           clock,
+          PagedText.formats,
           FileArea.Bounds(10.minutes, 1024, 4096)
         ),
         clock
@@ -92,7 +93,7 @@ object FileReadingTests extends TestSuite {
   /** `file_read` with `arguments`, bound as a turn binds a call, or why not. */
   private def bound(a: FileArea, arguments: ujson.Value) =
     Toolbox
-      .of(FileReading.tool(a, PagedText.formats))
+      .of(FileReading.tool(a))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
         TestTainted.authority(AssistantBlock.ToolCall(ToolCallId("c1"), "file_read", arguments)),

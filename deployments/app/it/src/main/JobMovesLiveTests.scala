@@ -11,6 +11,7 @@ import grit.core.classify.{Ask, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
 import grit.core.edge.{Desk, Route, ToolRequest}
+import grit.core.files.PagedText
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
   Declarer,
@@ -262,7 +263,8 @@ object JobMovesLiveTests extends TestSuite {
             SlotRule.Once(at, Grace.of(5.minutes).getOrElse(sys.error("grace"))),
             NoParams
           )
-        )
+        ),
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 
@@ -476,7 +478,8 @@ object JobMovesLiveTests extends TestSuite {
           budget = Budget(ZoneOffset.UTC, None),
           speaking = Speaking.Off,
           sweep = 30.seconds,
-          persona = grit.core.persona.Persona.Grit
+          persona = grit.core.persona.Persona.Grit,
+          formats = PagedText.formats
         )
         .fold(r => sys.error(r.message), identity)
       val engine = LiveEngine.open(config, Turn.Epoch)

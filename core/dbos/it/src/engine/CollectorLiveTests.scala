@@ -10,7 +10,7 @@ import scala.util.Using
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
-import grit.core.files.{FileArea, FileItem, FileOrigin, Incoming, PutKey}
+import grit.core.files.{FileArea, FileItem, FileOrigin, Incoming, PagedText, PutKey}
 import grit.core.host.TempBlobs
 import grit.core.id.{
   CloseRef,
@@ -1276,7 +1276,7 @@ object CollectorLiveTests extends TestSuite {
       try {
         TempBlobs.around { blobs =>
           val clock = new SetClock(Morning)
-          val area = new FileArea(engine.files, blobs, engine.jot, clock)
+          val area = new FileArea(engine.files, blobs, engine.jot, clock, PagedText.formats)
           val place = Place.read("service:drive").fold(sys.error, identity)
           val incoming = new Incoming {
             def declared: Option[Long] = None

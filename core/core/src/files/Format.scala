@@ -36,12 +36,6 @@ trait Format extends caps.Pure {
   */
 final case class Formats(of: Kind -> Vector[Format], limits: ReadLimits = ReadLimits.Default)
 
-object Formats {
-
-  /** No reader for any kind: every file is [[Unread.Unsupported]]. */
-  val Empty: Formats = Formats(_ => Vector.empty)
-}
-
 /** Which of a read's limits stopped it. */
 enum Limit derives CanEqual {
 

@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.files.PagedText
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -62,7 +63,8 @@ object StitchLiveTests extends TestSuite {
           Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("cap")), asks)
         ),
         sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit
+        persona = grit.core.persona.Persona.Grit,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 

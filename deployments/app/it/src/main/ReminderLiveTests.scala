@@ -11,6 +11,7 @@ import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.{SetClock, Utc}
 import grit.core.edge.{Attesting, EdgeStores}
 import grit.core.files.NoIntake
+import grit.core.files.PagedText
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, ScheduleId, ToolCallId, TurnRef}
 import grit.core.inbox.Slotted
 import grit.core.job.{Ending, Schedule, Slot}
@@ -125,7 +126,8 @@ object ReminderLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,
         sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit
+        persona = grit.core.persona.Persona.Grit,
+        formats = PagedText.formats
       )
       .fold(r => sys.error(r.message), identity)
 
