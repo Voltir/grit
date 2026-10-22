@@ -48,6 +48,57 @@ object Payloads {
       )
       .render()
 
+  /** The response url of [[click]]'s payloads. */
+  val ActionHook = "https://hooks.slack.com/actions/T123ABC456/1234567890/abcdefXYZ"
+
+  /** `user` clicking the button `actionId`, carrying `value`, on an ephemeral message grit
+    * posted in a thread of `channel`: the fields Slack's docs give for a `block_actions`
+    * payload, as an interactive Socket Mode envelope's `payload` holds them.
+    */
+  def click(
+      actionId: String,
+      value: String,
+      user: String = Ana,
+      channel: String = "C123ABC456"
+  ): String =
+    ujson
+      .Obj(
+        "type" -> "block_actions",
+        "user" -> ujson.Obj(
+          "id" -> user,
+          "username" -> "ana",
+          "name" -> "ana",
+          "team_id" -> Team
+        ),
+        "api_app_id" -> "A123ABC456",
+        "token" -> "XXYYZZ",
+        "container" -> ujson.Obj(
+          "type" -> "message",
+          "message_ts" -> "1515449700.000200",
+          "channel_id" -> channel,
+          "is_ephemeral" -> true,
+          "thread_ts" -> "1515449522.000016"
+        ),
+        "trigger_id" -> "13345224609.738474920.8088930838d88f008e0",
+        "team" -> ujson.Obj("id" -> Team, "domain" -> "acme"),
+        "enterprise" -> ujson.Null,
+        "is_enterprise_install" -> false,
+        "channel" -> ujson.Obj("id" -> channel, "name" -> "standup"),
+        "state" -> ujson.Obj("values" -> ujson.Obj()),
+        "response_url" -> ActionHook,
+        "actions" -> ujson.Arr(
+          ujson.Obj(
+            "action_id" -> actionId,
+            "block_id" -> "grit_ask",
+            "text" -> ujson.Obj("type" -> "plain_text", "text" -> "Apply", "emoji" -> true),
+            "value" -> value,
+            "type" -> "button",
+            "action_ts" -> "1515449710.123456"
+          )
+        )
+      )
+      .render()
+
   private def callback(event: ujson.Obj): String =
     ujson
       .Obj(

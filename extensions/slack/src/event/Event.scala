@@ -2,6 +2,7 @@ package grit.slack.event
 
 import java.time.Instant
 
+import grit.core.id.{ToolCallId, WorkflowId}
 import grit.core.store.Payload
 
 /** What Slack told grit, as grit acts on it. */
@@ -353,6 +354,48 @@ object Events {
       )
     case _ => None
   }
+
+  /** The click on an ask's card an interactive Socket Mode envelope's `payload` carries: a
+    * `block_actions` payload whose one action is one of the card's buttons
+    * ([[Clicked.Button]]), its value as [[Clicked.value]] wrote it, with its `user`'s `id` and
+    * `team_id` and its `response_url`. Why not, for any other payload (another interaction, an
+    * action not a card's, a value not read), or when it is not JSON.
+    */
+  def clicked(payload: String): Either[String, Clicked] =
+    scala.util
+      .Try(ujson.read(payload))
+      .toEither
+      .left
+      .map(e => s"not JSON: ${e.getMessage}")
+      .flatMap { p =>
+        for {
+          _ <- str(p, "type").filter(_ == "block_actions").toRight("not a block action")
+          user <- p.obj.get("user").toRight("a block action without a user")
+          id <- str(user, "id").toRight("a block action without its user's id")
+          team <- str(user, "team_id").toRight("a block action without its user's team_id")
+          url <- str(p, "response_url").toRight("a block action without response_url")
+          action <- p.obj
+            .get("actions")
+            .flatMap(_.arrOpt)
+            .collect { case a if a.size == 1 => a(0) }
+            .toRight("a block action without exactly one action")
+          button <- str(action, "action_id")
+            .flatMap(id => Clicked.Button.values.find(_.actionId == id))
+            .toRight("an action that is not a card's button")
+          value <- str(action, "value")
+            .flatMap(v => scala.util.Try(ujson.read(v)).toOption)
+            .toRight("a button whose value is not JSON")
+          workflow <- str(value, "workflow").toRight("a button's value without its workflow")
+          call <- str(value, "call").toRight("a button's value without its call")
+        } yield Clicked(
+          TeamId(team),
+          UserId(id),
+          WorkflowId(workflow),
+          ToolCallId(call),
+          button,
+          ResponseUrl(url)
+        )
+      }
 
   private val Stamp = "([0-9]{1,18})(?:\\.([0-9]{1,9}))?".r
 
