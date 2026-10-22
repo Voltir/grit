@@ -47,7 +47,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.formats` | `limits`, `ooxml`, `pdf`, `choice` | core | the readers of PDF, Word and Excel files (ADR 0044), and PDFBox's quarantine |
-| `grit.host` | `checkout`, `machine` | core | `grit.core.host`'s capabilities over this machine |
+| `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
 | `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0023) and the Slack SDK's quarantine |

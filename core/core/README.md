@@ -14,8 +14,8 @@ In dependency order, each with the core packages it imports:
   core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
-- **`id`**: the opaque ids, a web link as grit keeps it (`Href`), and the one short content hash
-  every content-addressed id uses. A
+- **`id`**: the opaque ids, a web link as grit keeps it (`Href`), the one short content hash
+  every content-addressed id uses, and the full digest bytes are kept by (`Sha256`). A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
   (enola-intent.yaml). Imports nothing in core.
 - **`persona`**: who grit presents as; a deployment declares one (ADR 0021). Imports nothing in
@@ -80,8 +80,9 @@ In dependency order, each with the core packages it imports:
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
 - **`stitch`**: a Slack thread's first message joined to an exchange in its room (ADR 0023).
   ← `id`, `message`, `place`, `period`, `store`, `classify`
-- **`host`**: what a tool may do to the machine, as capabilities `grit.host` implements, and the
-  pure rules they share. ← `place`
+- **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
+  (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
+  `place`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is
