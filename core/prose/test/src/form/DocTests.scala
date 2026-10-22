@@ -100,13 +100,26 @@ object DocTests extends TestSuite {
       Cell.Empty().printed ==> Text.empty
     }
 
-    test("table cuts a row past the columns and fills a short one with empty cells") {
+    test(
+      "table folds a row past the columns into its last cell as printed, an empty end left out, and fills a short one"
+    ) {
       val cols =
         Vector(Column(Text.plain("a"), CellKind.Words), Column(Text.plain("b"), CellKind.Truth))
       val x = Cell.Words(Text.plain("x"))
-      Block.table(cols, Vector(Vector(x), Vector(x, Cell.Truth(true), x))) ==> Block.Table(
+      Block.table(
         cols,
-        Vector(Vector(x, Cell.Empty()), Vector(x, Cell.Truth(true)))
+        Vector(
+          Vector(x),
+          Vector(x, Cell.Truth(true), Cell.Empty(Some("=A1")), Cell.Empty()),
+          Vector(x, Cell.Truth(true), Cell.Empty())
+        )
+      ) ==> Block.Table(
+        cols,
+        Vector(
+          Vector(x, Cell.Empty()),
+          Vector(x, Cell.Words(Text.plain("TRUE | =A1 (not calculated)"))),
+          Vector(x, Cell.Truth(true))
+        )
       )
     }
 

@@ -289,7 +289,7 @@ object ProseJson {
           rows <- array(r.get("rows"), "a table's rows").flatMap(
             traverse(_)(row => array(Some(row), "a table's row").flatMap(traverse(_)(cell)))
           )
-        } yield Vector(Block.Table(columns, rows))
+        } yield Vector(Block.table(columns, rows))
       case "rule" => Right(Vector(Block.Rule))
       case other => Left(s"a block of no kind this reader knows: $other")
     }

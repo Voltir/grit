@@ -39,11 +39,10 @@ enum Block[+A <: caps.Pure] {
     */
   case Code(language: Option[String], lines: Vector[String]) extends Block[Nothing]
 
-  /** A table: its columns, then rows of cells. [[Block.table]] makes each row as wide as the
-    * columns; a row built here may be shorter or longer, and an edge decides what that looks
-    * like.
+  /** A table: its columns, then rows of cells, each row exactly as wide as the columns
+    * ([[Block.table]] builds one).
     */
-  case Table(columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]])
+  case Table private[prose] (columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]])
 
   /** A break between sections. */
   case Rule
@@ -51,9 +50,26 @@ enum Block[+A <: caps.Pure] {
 
 object Block {
 
-  /** A table, each row cut or filled with [[Cell.Empty]] to the columns' width. */
+  /** A table, each row made as wide as the columns: a short one filled with [[Cell.Empty]]; a
+    * long one's last cell and those past it folded into one [[Cell.Words]], their printed text
+    * ([[Cell.printed]]) joined by ` | `, those past it that print nothing at its end left out,
+    * so no cell's text is lost. With no columns, no rows are kept.
+    */
   def table[A <: caps.Pure](columns: Vector[Column[A]], rows: Vector[Vector[Cell[A]]]): Block[A] =
-    Table(columns, rows.map(r => r.take(columns.length).padTo(columns.length, Cell.Empty())))
+    Table(columns, if (columns.isEmpty) Vector.empty else rows.map(fitted(columns.length, _)))
+
+  private def fitted[A <: caps.Pure](width: Int, row: Vector[Cell[A]]): Vector[Cell[A]] = {
+    val (kept, rest) = row.splitAt(width - 1)
+    val tail = rest.reverse.dropWhile(_.printed.isEmpty).reverse
+    val last: Vector[Cell[A]] = tail match {
+      case Vector() => rest.take(1)
+      case Vector(one) => Vector(one)
+      case many =>
+        val sep = Vector(Span.plain(" | "))
+        Vector(Cell.Words(Text.of(many.map(_.printed.spans).reduce(_ ++ sep ++ _))))
+    }
+    (kept ++ last).padTo(width, Cell.Empty())
+  }
 }
 
 /** One item of a list: the blocks under its marker, a nested list among them. */

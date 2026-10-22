@@ -167,25 +167,18 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
       rows: Vector[Vector[Inline[Nothing]]],
       margin: StyledText
   ): Block = {
-    val cols = (header.length +: rows.map(_.length)).maxOption.getOrElse(0)
-    def cells(row: Vector[Inline[Nothing]], style: Style): Vector[StyledText] =
-      (0 until cols).toVector.map(c => row.lift(c).fold(StyledText.empty)(t => phrase(t, style)))
-    val head = cells(header, body + Style.Bold)
-    val body1 = rows.map(cells(_, body))
-    val widths = (0 until cols).toVector.map(c =>
-      (head +: body1).map(r => r.lift(c).fold(0)(t => Width.of(t.text))).maxOption.getOrElse(0)
-    )
-    def line(row: Vector[StyledText]): StyledText = {
-      var acc = StyledText.empty
-      var c = 0
-      while (c < cols) {
-        val cell = row.lift(c).getOrElse(StyledText.empty)
-        if (c > 0) acc = acc ++ StyledText.styled(" │ ", faint)
-        acc = acc ++ cell ++ (" " * math.max(0, widths.lift(c).getOrElse(0) - Width.of(cell.text)))
-        c += 1
-      }
-      acc
-    }
+    // Every row is as wide as the header (Block.table makes it so).
+    val head = header.map(phrase(_, body + Style.Bold))
+    val body1 = rows.map(_.map(phrase(_, body)))
+    val widths = (head +: body1)
+      .map(_.map(t => Width.of(t.text)))
+      .reduce((a, b) => a.lazyZip(b).map((x, y) => math.max(x, y)))
+    def line(row: Vector[StyledText]): StyledText =
+      row
+        .lazyZip(widths)
+        .map((cell, w) => cell ++ (" " * (w - Width.of(cell.text))))
+        .reduceOption((a, b) => a ++ StyledText.styled(" │ ", faint) ++ b)
+        .getOrElse(StyledText.empty)
     val rule = StyledText.styled(widths.map(w => "─" * w).mkString("─┼─"), faint)
     Block
       .styled(StyledText.join("\n", (line(head) +: rule +: body1.map(line))))

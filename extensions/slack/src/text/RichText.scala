@@ -293,12 +293,13 @@ object RichText extends Renderer[Vector[Post]] {
     */
   private def table(cols: Vector[Column[Nothing]], rows: Vector[Vector[Cell[Nothing]]]): String = {
     val names: Vector[String] = cols.map(_.name.plain)
-    val all: Vector[Vector[String]] = names +: rows.map(_.map(_.printed.plain))
-    val columns = all.map(_.size).maxOption.getOrElse(0)
-    val cells = all.map(r => r.padTo(columns, ""))
-    val widths = (0 until columns).toVector.map(c => cells.map(_(c).length).max)
+    // Every row is as wide as the names (Block.table makes it so).
+    val cells: Vector[Vector[String]] = rows.map(_.map(_.printed.plain))
+    val widths = (names +: cells)
+      .map(_.map(_.length))
+      .reduce((a, b) => a.lazyZip(b).map((x, y) => math.max(x, y)))
     def line(r: Vector[String]): String =
       r.zip(widths).map((c, w) => c.padTo(w, ' ')).mkString(" | ")
-    (line(cells.head) +: widths.map("-" * _).mkString("-+-") +: cells.tail.map(line)).mkString("\n")
+    (line(names) +: widths.map("-" * _).mkString("-+-") +: cells.map(line)).mkString("\n")
   }
 }

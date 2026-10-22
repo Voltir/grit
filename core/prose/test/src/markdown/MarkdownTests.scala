@@ -404,9 +404,9 @@ object MarkdownTests extends TestSuite {
       )
     }
 
-    test("a pipe table: word columns, rows cut or filled to width, empty cells, escapes, marks") {
+    test("a pipe table: word columns, a short row filled to width, empty cells, escapes, marks") {
       Markdown.parse(
-        "| a | b |\n|:--|--:|\n| `x` | y \\| z |\n| only |\n| 1 | 2 | 3 |\n|  | e |"
+        "| a | b |\n|:--|--:|\n| `x` | y \\| z |\n| only |\n|  | e |"
       ) ==> Doc(
         Vector(
           Block.Table(
@@ -414,8 +414,21 @@ object MarkdownTests extends TestSuite {
             Vector(
               Vector(Cell.Words(Text(Vector(marked("x", Mark.Code)))), Cell.Words(plain("y | z"))),
               Vector(Cell.Words(plain("only")), Cell.Empty()),
-              Vector(Cell.Words(plain("1")), Cell.Words(plain("2"))),
               Vector(Cell.Empty(), Cell.Words(plain("e")))
+            )
+          )
+        )
+      )
+    }
+
+    test("a pipe table row wider than its header keeps its extra cells in its last, joined by |") {
+      Markdown.parse("| a | b |\n|---|---|\n| 1 | 2 | 3 |\n| x | y|z | w |") ==> Doc(
+        Vector(
+          Block.Table(
+            Vector(Column(plain("a"), CellKind.Words), Column(plain("b"), CellKind.Words)),
+            Vector(
+              Vector(Cell.Words(plain("1")), Cell.Words(plain("2 | 3"))),
+              Vector(Cell.Words(plain("x")), Cell.Words(plain("y | z | w")))
             )
           )
         )

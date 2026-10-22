@@ -140,7 +140,7 @@ object RichTextTests extends TestSuite {
       only(
         Doc(
           Vector(
-            Block.Table(
+            Block.table(
               Vector(
                 Column(Text.plain("name"), CellKind.Words),
                 Column(Text.plain("n"), CellKind.Number)
