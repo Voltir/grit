@@ -171,9 +171,10 @@ import grit.turn.TurnLoop
   *     [[TopicDocuments.backfill]]), at most `n` topics a run ([[TopicDocuments.PerRun]] when
   *     absent): how a topic data version's reset completes. It prints the database and asks
   *     before running, with the most it may cost ([[backfillQuestion]]; `--yes` does not ask),
-  *     then each run's line and the spend. A day run again writes only what changed. Refused
-  *     while serve runs, and on a database serve never ran this deployment on. A nightly run
-  *     that comes due meanwhile runs too; a topic both write is left to the next run.
+  *     then each run's line and the spend (`nothing ran` when declined). A day run again
+  *     writes only what changed. Refused while serve runs, and on a database serve never ran
+  *     this deployment on. A nightly run that comes due meanwhile runs too; a topic both write
+  *     is left to the next run.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -1389,7 +1390,7 @@ object Main {
   /** `grit backfill topics`: the topics plugin's runs for the `b.days` days before `today`
     * ([[TopicDocuments.backfill]], started at `started`), run on `deployment`'s database by
     * [[Kit.runOnce]], asked first ([[backfillQuestion]]) unless `b.yes`; each run's line
-    * printed, then their spend. Refused when the deployment has no topics plugin, and as
+    * printed, then their spend (`nothing ran` when none ran). Refused when the deployment has no topics plugin, and as
     * [[Kit.runOnce]] refuses.
     */
   private def topicsBackfilled(
@@ -1424,7 +1425,9 @@ object Main {
         )
         .left
         .map(_.message)
-    } yield println(s"spent ${Cost.cents(ran.map(_.spent).sum)}")
+    } yield println(
+      if (ran.isEmpty) "nothing ran" else s"spent ${Cost.cents(ran.map(_.spent).sum)}"
+    )
   }
 
   /** How `grit serve` bounds what it hears before each join of its bot: [[DaysVar]],
