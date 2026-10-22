@@ -1,10 +1,10 @@
 package grit.knowledge.plugin
 
-import java.time.{LocalTime, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalTime, ZoneOffset}
 
 import grit.core.document.DocLabel
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.SlotRule
+import grit.core.job.{Grace, SlotRule}
 import grit.core.need.PluginReads
 import grit.core.plugin.Exports
 import grit.core.visibility.{Label, Level, TestLabels, Visibility}
@@ -21,6 +21,8 @@ object TopicDocumentsTests extends TestSuite {
   private val Name: PluginName = PluginName.of("topics").fold(sys.error, identity)
 
   private val At: LocalTime = LocalTime.of(5, 0)
+
+  private def once(at: Instant): SlotRule = SlotRule.Once(at, Grace.Zero)
 
   private def of(
       labels: Vector[Label],
@@ -83,6 +85,35 @@ object TopicDocumentsTests extends TestSuite {
         of(Vector(Label.Public), cards = Some(cards)).map(_.needs.map(_.name)),
         of(Vector(Label.Public)).map(_.needs.map(_.name))
       ) ==> (Right(Vector(cards.name)), Right(Vector()))
+    }
+
+    test(
+      "backfill runs each day in order at each label in turn, keyed by label, day and start, each its day's and at most perRun"
+    ) {
+      val internal = Label.at(Level.Internal)
+      val (first, second) = (LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 2))
+      def params(day: LocalDate) =
+        TopicParams(3, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None)
+      val started = Instant.ofEpochSecond(1000)
+      of(Vector(Label.Public, internal))
+        .flatMap(_.backfill(Vector(first, second), 3, started))
+        .map(
+          _.map(d => (ScheduleKey.value(d.key), d.rule, Label.written(d.clearance), d.params))
+        ) ==>
+        Right(
+          Vector(
+            ("topics-backfill-public-2026-10-01-1000", once(started), "public", params(first)),
+            ("topics-backfill-internal-2026-10-01-1000", once(started), "internal", params(first)),
+            ("topics-backfill-public-2026-10-02-1000", once(started), "public", params(second)),
+            ("topics-backfill-internal-2026-10-02-1000", once(started), "internal", params(second))
+          )
+        )
+    }
+
+    test("backfill of under one topic a run is refused") {
+      of(Vector(Label.Public))
+        .flatMap(_.backfill(Vector(LocalDate.of(2026, 10, 1)), 0, Instant.EPOCH)) ==>
+        Left("a backfill writes at least one topic a run, not 0")
     }
 
     test("no label, one given twice, or one of a compartment not declared is refused") {

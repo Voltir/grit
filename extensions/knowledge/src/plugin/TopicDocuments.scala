@@ -1,12 +1,12 @@
 package grit.knowledge.plugin
 
-import java.time.{LocalDate, LocalTime, ZoneId}
+import java.time.{Instant, LocalDate, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Declared, Job, SlotRule}
+import grit.core.job.{Declared, Grace, Job, SlotRule}
 import grit.core.plugin.{Documents, Exports, Plugin}
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
@@ -65,9 +65,45 @@ final class TopicDocuments private (
         l
       )
     )
+
+  /** The runs that backfill `days`, in the order given, at each of its labels in turn: each a
+    * once schedule of its job, due from `started` with no grace, keyed
+    * `topics-backfill-{label}-{day}-{epoch second of started}` (the label as its nightly
+    * schedule's key writes it), at that label, with a nightly run's params but for `day` and at
+    * most `perRun` topics; or why not: `perRun` under 1. A day run again writes only what
+    * changed since: what a topic's lineage holds touches nothing.
+    */
+  def backfill(
+      days: Vector[LocalDate],
+      perRun: Int,
+      started: Instant
+  ): Either[String, Vector[Declared[TopicParams]]] =
+    if (perRun < 1) Left(s"a backfill writes at least one topic a run, not $perRun")
+    else {
+      val stamp = started.getEpochSecond
+      days.foldLeft[Either[String, Vector[Declared[TopicParams]]]](Right(Vector.empty)) {
+        (acc, day) =>
+          keyed.foldLeft(acc) { case (done, (nightly, l)) =>
+            val label = ScheduleKey.value(nightly).stripPrefix(s"${TopicDocuments.Nightly}-")
+            for {
+              runs <- done
+              key <- ScheduleKey.of(s"topics-backfill-$label-$day-$stamp")
+            } yield runs :+ Declared(
+              key,
+              dream,
+              SlotRule.Once(started, Grace.Zero),
+              TopicParams(perRun, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None),
+              l
+            )
+          }
+      }
+    }
 }
 
 object TopicDocuments {
+
+  /** What its nightly schedules' keys start with, before the label. */
+  private val Nightly: String = "topics-dream"
 
   /** 500: the most current topics one label's runs keep. */
   val Bound: Int = 500
@@ -95,7 +131,7 @@ object TopicDocuments {
       seedUntil: Option[LocalDate]
   ): Either[String, TopicDocuments] =
     for {
-      keyed <- DreamSchedules.keyed("topics", "topics-dream", labels, visibility)
+      keyed <- DreamSchedules.keyed("topics", Nightly, labels, visibility)
       terms <- DocLabel
         .of("topic")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound * labels.size))

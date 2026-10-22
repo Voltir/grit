@@ -4,8 +4,7 @@ import java.time.{Instant, LocalDate, LocalTime, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Declared, Grace, SlotRule}
+import grit.core.id.PluginName
 import grit.core.message.Cost
 import grit.core.spend.DailyCap
 import grit.core.visibility.{Label, Subject, Visibility}
@@ -14,7 +13,6 @@ import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Deployment
 import grit.kit.run.Kit
 import grit.knowledge.plugin.TopicDocuments
-import grit.knowledge.topic.{TopicDream, TopicParams}
 
 /** The topics job run over a copy of a captured database, once for each day named and then once
   * more, to see each day's second run change nothing: run by hand, through `scripts/eval
@@ -28,7 +26,7 @@ import grit.knowledge.topic.{TopicDream, TopicParams}
   * documents, and keeps each other plugin the database declares documents for declared, so its
   * documents stay searched. The runs are [[grit.kit.run.Kit.runOnce]]'s, one at a time: for
   * each day `topics-dream` for that day, then again, each a once schedule
-  * `topics-backfill-{day}-{n}`; it prints, by shape alone, each run's line (how it ended, its
+  * of [[TopicDocuments.backfill]]'s; it prints, by shape alone, each run's line (how it ended, its
   * reply line, its spend), for each day whether its second run wrote nothing and spent nothing
   * (`unchanged`), then the runs' spend in all.
   */
@@ -48,9 +46,6 @@ object TopicBackfill {
 
   /** The longest one run is waited for. */
   private val Longest: FiniteDuration = 10.minutes
-
-  private def key(day: LocalDate, n: Int): ScheduleKey =
-    ScheduleKey.of(s"topics-backfill-$day-$n").fold(sys.error, identity)
 
   private def run(args: Vector[String]): Either[String, Unit] =
     for {
@@ -79,22 +74,15 @@ object TopicBackfill {
         Some(cards),
         None
       )
-      dream <- topics.jobs.collectFirst { case d: TopicDream => d }.toRight("no topics job")
       first <- RoomRun.deployment(env, Vector(topics, cards), cap)
       keeping = kept(config, first._1)
       deployment <- RoomRun.deployment(env, Vector(topics, cards) ++ keeping, cap)
       // Each day twice, the second to see it change nothing; each run made due as it is reached.
-      runs = days.flatMap(day =>
-        (0 to 1).map(n =>
-          Declared(
-            key(day, n),
-            dream,
-            SlotRule.Once(Instant.EPOCH, Grace.Zero),
-            TopicParams(perRun, TopicDocuments.Recent, TopicDocuments.Recent, Some(day), None),
-            Label.Public
-          )
-        )
-      )
+      // Two starts a second apart key each day's two runs apart.
+      started = Instant.now()
+      firsts <- topics.backfill(days, perRun, started)
+      seconds <- topics.backfill(days, perRun, started.plusSeconds(1))
+      runs = firsts.zip(seconds).flatMap((a, b) => Vector(a, b))
       ran <- Kit
         .runOnce(deployment._1, Topics, runs, "", Longest, env, _ => true, println)
         .left
