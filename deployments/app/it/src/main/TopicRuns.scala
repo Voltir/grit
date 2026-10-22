@@ -1,18 +1,15 @@
 package grit.app.main
 
-import java.time.{Duration, Instant}
+import java.time.Instant
 
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
-import grit.core.id.{Declarer, PluginName, ScheduleId, ScheduleKey}
-import grit.core.job.{Declared, Grace, Slot, SlotRule}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.id.{PluginName, ScheduleKey}
+import grit.core.job.{Declared, Grace, SlotRule}
 import grit.core.need.PluginReads
 import grit.core.plugin.{DocumentPosting, Documents, Exports, Plugin}
-import grit.core.store.{Entry, Payload}
-import grit.core.visibility.{Label, Subject}
-import grit.dbos.engine.Engine
+import grit.core.visibility.Label
 import grit.knowledge.card.CardShelf
 import grit.knowledge.plugin.TopicDocuments
 import grit.knowledge.topic.{TopicDream, TopicParams}
@@ -21,8 +18,6 @@ import grit.knowledge.topic.{TopicDream, TopicParams}
   * one once schedule, and a cards plugin exporting its cards.
   */
 private[main] object TopicRuns {
-
-  import RoomRun.right
 
   /** The knowledge plugin's cards' terms, as it declares them. */
   val CardTerms: DocumentTerms = DocLabel
