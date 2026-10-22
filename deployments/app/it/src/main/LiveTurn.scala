@@ -27,7 +27,7 @@ import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubClassifier, StubModels, StubProvider}
 import grit.tools.Coding
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling, TurnTools}
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests: a
   * TUI session in the checkout the engine was launched over, whose coding tools an edge in

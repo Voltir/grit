@@ -2,8 +2,6 @@ package grit.turn
 
 import java.time.Instant
 
-import scala.concurrent.duration.*
-
 import grit.core.approval.Approval
 import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}

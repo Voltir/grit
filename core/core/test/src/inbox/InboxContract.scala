@@ -549,7 +549,7 @@ abstract class InboxContract extends TestSuite {
         inbox.startTurn(turn) ==> Right(())
         store.append(
           turn,
-          EntryId("ask:c1"),
+          EntryId("ask:asker-c1"),
           Payload.Ask(ToolCallId("c1"), "Edit a.txt", Some(Later))
         )
         (
@@ -570,15 +570,19 @@ abstract class InboxContract extends TestSuite {
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         inbox.startTurn(turn) ==> Right(())
         val (settled, lapsed) = (ToolCallId("c1"), ToolCallId("c2"))
-        store.append(turn, EntryId("ask:c1"), Payload.Ask(settled, "Edit a.txt", Some(Later)))
         store.append(
           turn,
-          EntryId("result:c1"),
+          EntryId("ask:closed-c1"),
+          Payload.Ask(settled, "Edit a.txt", Some(Later))
+        )
+        store.append(
+          turn,
+          EntryId("result:closed-c1"),
           Payload.Result(Message.ToolResult(settled, "edited", false), "edit a.txt")
         )
         store.append(
           turn,
-          EntryId("ask:c2"),
+          EntryId("ask:closed-c2"),
           Payload.Ask(lapsed, "Edit b.txt", Some(Instant.EPOCH))
         )
         (

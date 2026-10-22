@@ -21,7 +21,6 @@ import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{StubModels, StubProvider}
 import grit.slack.edge.SlackEdge
-import grit.turn.TurnTools
 
 /** A task's turn that reads GitHub and may post to Slack, over a live engine, for the
   * integrity gate's live tests: an MCP edge serving GitHub's `issue_read` from a
