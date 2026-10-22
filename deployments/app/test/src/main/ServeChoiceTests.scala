@@ -275,6 +275,17 @@ object ServeChoiceTests extends TestSuite {
         "6 runs, at most 3 topics each, about 2.7¢ at most (0.15¢ a topic); nothing caps it but today's cap."
     }
 
+    test("a topics backfill ends saying nothing ran when declined, else what its runs spent") {
+      def ran(usd: String) = grit.kit.run.Kit.Ran(
+        grit.core.id.ScheduleKey.of("k").fold(sys.error, identity),
+        None,
+        None,
+        BigDecimal(usd)
+      )
+      (Main.backfilled(Vector.empty), Main.backfilled(Vector(ran("0.001"), ran("0.0005")))) ==>
+        ("nothing ran", "spent 0.15¢")
+    }
+
     test(
       "the days backfill reads are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero"
     ) {

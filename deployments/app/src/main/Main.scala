@@ -1387,6 +1387,12 @@ object Main {
       Option(scala.io.StdIn.readLine()).exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
     }
 
+  /** What `grit backfill topics` prints last: `nothing ran` when no run did (its question
+    * declined), else `spent {cents}`, what the runs spent in all.
+    */
+  private[main] def backfilled(ran: Vector[Kit.Ran]): String =
+    if (ran.isEmpty) "nothing ran" else s"spent ${Cost.cents(ran.map(_.spent).sum)}"
+
   /** `grit backfill topics`: the topics plugin's runs for the `b.days` days before `today`
     * ([[TopicDocuments.backfill]], started at `started`), run on `deployment`'s database by
     * [[Kit.runOnce]], asked first ([[backfillQuestion]]) unless `b.yes`; each run's line
@@ -1425,9 +1431,7 @@ object Main {
         )
         .left
         .map(_.message)
-    } yield println(
-      if (ran.isEmpty) "nothing ran" else s"spent ${Cost.cents(ran.map(_.spent).sum)}"
-    )
+    } yield println(backfilled(ran))
   }
 
   /** How `grit serve` bounds what it hears before each join of its bot: [[DaysVar]],
