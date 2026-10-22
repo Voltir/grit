@@ -65,6 +65,10 @@ final class Rehearsing private (
       savepoint(keep = true)(opener.open(subject, conn).flatMap(tx => body(using tx)))
   }
 
+  /** The changes people make, written through [[jot]], so undone with the session. */
+  val administration: grit.core.admin.Administration =
+    new grit.dbos.sql.SqlAdministration(jot, opener)
+
   /** Where each opening is placed: its runner's ([[Rehearsing.Runner.placements]]). */
   val placements: Placements^{this} = runner.placements
 

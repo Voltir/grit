@@ -42,10 +42,13 @@ import grit.turn.{Turn, TurnLoop, TurnVerdict}
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
 final case class Offer(tools: Offered, rounds: TurnLoop.Rounds)
 
-/** Which tools a turn's model is offered. */
+/** Which of the coding and operator tools a turn's model is offered. The administering tools
+  * (`Administering`) are offered whichever it is, where the turn offers them
+  * (`TurnTooling.administering`).
+  */
 enum Offered {
 
-  /** `read`, `list` and `search` (`Coding.readOnly`), and `about`: nothing asks first. */
+  /** `read`, `list` and `search` (`Coding.readOnly`), and `about`: none of these asks first. */
   case Read
 
   /** Those and `write`, `edit` and `run` (`Coding`), `propose_model_setting` (`Tuning`) and

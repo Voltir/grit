@@ -8,10 +8,12 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.act.Dreaming
+import grit.core.admin.Administration
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
+import grit.core.edge.ServedEdge
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
@@ -38,7 +40,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
-import grit.tools.{About, Cleared, Coding, MessageIds, Probes, Tuning}
+import grit.tools.{About, Administering, Cleared, Coding, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
   TurnEnv,
@@ -128,8 +130,9 @@ private[grit] object Launch {
     * judgments ask going to `classifier`, and the turn's weighing's to `weighing`, each as its
     * clearance allows: a launch whose calls a test counts, or a rehearsal's. `d`'s lifecycle
     * settings and schedules are written through `runtime.jot` first. Each shadow asks the
-    * variant of its name in `variants`, and one it lacks asks nothing. Throws as [[apply]]
-    * does.
+    * variant of its name in `variants`, and one it lacks asks nothing. Its turns are offered
+    * the administering tools through `runtime`'s administration ([[administering]]), whatever
+    * `d`'s [[Offered]]. Throws as [[apply]] does.
     */
   private[grit] def asking(
       runtime: Runtime^,
@@ -416,51 +419,70 @@ private[grit] object Launch {
         ) ++
           plugged.map(_.over(desks)))*
       )
+    // Offered whatever d.offer is, where TurnOffer.decide offers them.
+    val administration = runtime.administration
+    val administers: Either[DuplicateName, Toolbox[caps.CapSet^{administration, clock}]] =
+      Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
     val launching = d.offer.tools match {
       case Offered.Read =>
-        everyone.map(tools =>
-          launch(
-            TurnTooling[caps.CapSet^{desks}](
-              tools,
-              Toolbox.Empty,
-              Coding.readOnlyHosted,
-              runtime.jot,
-              d.offer.rounds,
-              worksIn = d.worksIn,
-              reaches = d.reaches,
-              recipe = d.recipe,
-              knowledge = d.knowledge,
-              persona = d.persona
-            )
-          )
-        )
-      case Offered.All =>
-        // Offered only to the operator (Audience.operator): they tune grit, and ask first.
-        val tuned = new KeptModelSettings(runtime.jot, runtime.modelSettings, clock)
-        (
-          everyone,
-          Toolbox.of[caps.CapSet^{tuned, models}](operator(tuned, models)*)
-        ) match {
-          case (Right(tools), Right(operator)) =>
+        (everyone, administers) match {
+          case (Right(tools), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[caps.CapSet^{tuned, models, desks}](tools, operator).map { _ =>
+            Toolbox.joined[caps.CapSet^{desks, administration, clock}](tools, admin).map { _ =>
               launch(
-                TurnTooling[caps.CapSet^{tuned, models, desks}](
+                TurnTooling[caps.CapSet^{desks, administration, clock}](
                   tools,
-                  operator,
-                  Coding.hosted,
+                  Toolbox.Empty,
+                  Coding.readOnlyHosted,
                   runtime.jot,
                   d.offer.rounds,
                   worksIn = d.worksIn,
                   reaches = d.reaches,
                   recipe = d.recipe,
                   knowledge = d.knowledge,
-                  persona = d.persona
+                  persona = d.persona,
+                  administering = admin
                 )
               )
             }
           case (Left(repeated), _) => Left(repeated)
           case (_, Left(repeated)) => Left(repeated)
+        }
+      case Offered.All =>
+        // Offered only to the operator (Audience.operator): they tune grit, and ask first.
+        val tuned = new KeptModelSettings(runtime.jot, runtime.modelSettings, clock)
+        (
+          everyone,
+          Toolbox.of[caps.CapSet^{tuned, models}](operator(tuned, models)*),
+          administers
+        ) match {
+          case (Right(tools), Right(operator), Right(admin)) =>
+            // Refused here, at start, rather than as a failed offer on some turn.
+            Toolbox
+              .joined[caps.CapSet^{tuned, models, desks}](tools, operator)
+              .flatMap(
+                Toolbox.joined[caps.CapSet^{tuned, models, desks, administration, clock}](_, admin)
+              )
+              .map { _ =>
+                launch(
+                  TurnTooling[caps.CapSet^{tuned, models, desks, administration, clock}](
+                    tools,
+                    operator,
+                    Coding.hosted,
+                    runtime.jot,
+                    d.offer.rounds,
+                    worksIn = d.worksIn,
+                    reaches = d.reaches,
+                    recipe = d.recipe,
+                    knowledge = d.knowledge,
+                    persona = d.persona,
+                    administering = admin
+                  )
+                )
+              }
+          case (Left(repeated), _, _) => Left(repeated)
+          case (_, Left(repeated), _) => Left(repeated)
+          case (_, _, Left(repeated)) => Left(repeated)
         }
     }
     // Its caller closes the engine and reports the throw: in the chat, as the engine that
@@ -517,6 +539,19 @@ private[grit] object Launch {
       About.load(persona).fold(why => throw new IllegalStateException(why), t => t)
     Vector[Tool.Offered](about, Cleared.tool(askers), MessageIds.tool(messages, askers))
   }
+
+  /** The administering tools ([[Administering]]), acting through `administration` at the time
+    * `clock` tells, unless some edge `d` serves is [[ServedEdge.Asks.Unanswered]]: each asks
+    * first, and there a call would wait its whole time; none then. Whatever `d`'s
+    * [[Offered]], which governs only the coding and operator tools.
+    */
+  private[run] def administering(
+      d: Deployment,
+      administration: Administration^,
+      clock: Clock^
+  ): Vector[Tool.Offered^{administration, clock}] =
+    if (d.edges.exists(_.asks == ServedEdge.Asks.Unanswered)) Vector.empty
+    else Administering.tools(administration, clock)
 
   /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person
     * approves it ([[Tuning]]), and a battery of calls measuring a model through `models`

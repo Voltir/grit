@@ -165,7 +165,7 @@ object PluginToolsTests extends TestSuite {
     }
 
     test(
-      "grit's own tool names are those of every tool a launch offers besides the plugins': its own, the operator's, and the coding tools"
+      "grit's own tool names are those of every tool a launch offers besides the plugins': its own, the operator's, the administering and the coding tools"
     ) {
       val noOne: Askers = new Askers {
         def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
@@ -179,9 +179,13 @@ object PluginToolsTests extends TestSuite {
         Unsearched,
         principals
       )
+      val admin: grit.core.admin.Administration^ = grit.core.admin.InMemoryAdministration.none()
+      val clock: grit.core.clock.Clock^ = grit.core.clock.Clock.system()
+      val administering =
+        Launch.administering(grit.kit.deployment.Deployments.accepted(), admin, clock).map(_.name)
       val offered =
         Launch.own(Persona.Grit, noOne, unread).map(_.name) ++
-          Launch.operator(Unkept, models).map(_.name) ++ Coding.hosted.map(_.name)
+          Launch.operator(Unkept, models).map(_.name) ++ administering ++ Coding.hosted.map(_.name)
       (Names.all.toSet, Names.all.size) ==> (offered.toSet, offered.size)
     }
   }

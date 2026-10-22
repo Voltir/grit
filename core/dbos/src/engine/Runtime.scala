@@ -24,6 +24,9 @@ trait Runtime extends Stores, caps.SharedCapability {
   /** Short write transactions, each one's own. */
   val jot: Jot
 
+  /** The changes to who may see what that people make, through its own transactions. */
+  val administration: grit.core.admin.Administration
+
   /** The time, by which every body and desk built over this dates. */
   val clock: Clock^
 

@@ -26,7 +26,31 @@ object LaunchTests extends TestSuite {
       .fold(why => sys.error(why), identity)
   }
 
+  /** The administering tools `d` is launched with, by name. */
+  private def administering(d: grit.kit.deployment.Deployment): Vector[String] = {
+    val admin: grit.core.admin.Administration^ = grit.core.admin.InMemoryAdministration.none()
+    val clock: grit.core.clock.Clock^ = grit.core.clock.Clock.system()
+    Launch.administering(d, admin, clock).map(t => grit.core.tool.ToolName.value(t.name))
+  }
+
   val tests = Tests {
+    test(
+      "the admin tools are offered under Offered.Read, and not while a served edge is Unanswered"
+    ) {
+      import grit.core.edge.ServedEdge.Asks
+      import grit.kit.deployment.Deployments.{accepted, edge, of}
+      val answered =
+        accepted(edges = Vector(edge("slack", Asks.Answered), edge("github", Asks.Never)))
+      val unanswered =
+        of(edges = Vector(edge("slack", Asks.Answered), edge("tui", Asks.Unanswered)))
+          .fold(r => sys.error(r.message), identity)
+      (answered.offer.tools, administering(answered), administering(unanswered)) ==> (
+        grit.kit.deployment.Offered.Read,
+        Vector("label_room", "quiet_room"),
+        Vector.empty
+      )
+    }
+
     test("a restart with a changed declaration puts the new settings in force") {
       val store = new InMemoryLifecycleStore
       val first = weighted(2)
