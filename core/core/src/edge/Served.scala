@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.admin.Administration
 import grit.core.clock.Clock
+import grit.core.files.Intake
 import grit.core.id.{AttesterName, EdgeName, PluginName}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
@@ -20,8 +21,9 @@ import grit.core.visibility.Compartment
   * rater gives, where conversations happen (`origins`, read alone), each plugin's documents put
   * up for review (`documentReviews`, by plugin), `jot`, the short transactions it writes those
   * in,
-  * `desks`, where it registers places it hosts tools in, and `attesting`, through which its
-  * source says who the accounts of the realms its attester answers for are.
+  * `desks`, where it registers places it hosts tools in, `attesting`, through which its
+  * source says who the accounts of the realms its attester answers for are, and `files`, the
+  * file area it keeps the files it fetches in (ADR 0045).
   */
 final case class EdgeStores(
     inbox: Inbox,
@@ -36,7 +38,8 @@ final case class EdgeStores(
     documentReviews: PluginName -> Reviews[DocumentReview, ReviewWord],
     jot: Jot,
     desks: Desks^,
-    attesting: Attesting^
+    attesting: Attesting^,
+    files: Intake
 )
 
 /** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its

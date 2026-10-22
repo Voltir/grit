@@ -118,7 +118,18 @@ enum DriveCalled {
   case Read(file: DriveFile, grants: Option[Vector[Grant]], text: String)
 
   /** A file read by a deployment's formats: as [[Read]], its text the part of it `read` shows
-    * ([[grit.core.files.FileRead.shown]]).
+    * ([[grit.core.files.FileRead.shown]]); kept in the file area as `handle` for `keeps`.
     */
-  case Parsed(file: DriveFile, grants: Option[Vector[Grant]], read: grit.core.files.FileRead)
+  case Parsed(
+      file: DriveFile,
+      grants: Option[Vector[Grant]],
+      read: grit.core.files.FileRead,
+      handle: grit.core.id.FileHandle,
+      keeps: scala.concurrent.duration.FiniteDuration
+  )
+
+  /** A file asked for that lies in no folder, or that no one here may read: nothing of it
+    * fetched.
+    */
+  case Withheld(file: DriveFile)
 }

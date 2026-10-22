@@ -6,6 +6,7 @@ import scala.util.Using
 
 import grit.core.approval.Approval
 import grit.core.edge.{Attesting, EdgeStores}
+import grit.core.files.NoIntake
 import grit.core.id.{CallSlot, Href, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.inbox.{Inbox, InboxError, Progress, Slotted}
@@ -62,7 +63,8 @@ object SlackEdgeLiveTests extends TestSuite {
         engine.documentReviewsOf,
         engine.jot,
         engine,
-        new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
+        new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ()),
+        new NoIntake
       ),
       None,
       grit.slack.edge.ReplyNote.Off,
@@ -134,7 +136,8 @@ object SlackEdgeLiveTests extends TestSuite {
         engine.documentReviewsOf,
         engine.jot,
         engine,
-        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
+        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ()),
+        new NoIntake
       ),
       None,
       grit.slack.edge.ReplyNote.Off,

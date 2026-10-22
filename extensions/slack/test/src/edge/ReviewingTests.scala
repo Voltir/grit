@@ -13,6 +13,7 @@ import grit.core.edge.{
   InMemoryEdges,
   InMemoryOrigins
 }
+import grit.core.files.NoIntake
 import grit.core.id.EntryId
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
@@ -129,7 +130,8 @@ object ReviewingTests extends TestSuite {
         (new InMemoryDocuments).reviews.of,
         FakeJot,
         new InMemoryEdges,
-        new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+        new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+        new NoIntake
       ),
       Some(Review),
       grit.slack.edge.ReplyNote.Off,

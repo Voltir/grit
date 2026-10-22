@@ -3,7 +3,8 @@ package grit.app.main
 import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.clock.Clock
-import grit.core.files.{FileRange, FileRead}
+import grit.core.files.{FileRange, FileRead, Files}
+import grit.core.id.FileHandle
 import grit.core.tool.Outcome
 import grit.mcp.drive.{DriveCalled, DriveItems, DriveRest, FakeDriveServer, Recorded}
 
@@ -55,7 +56,9 @@ object DriveFactsPinTests extends TestSuite {
         } yield DriveCalled.Parsed(
           file,
           grants,
-          FileRead("[page 2]\nTwo.", "pages 2–3 of 4", FileRange.pages(4, 4), None, whole = false)
+          FileRead("[page 2]\nTwo.", "pages 2–3 of 4", FileRange.pages(4, 4), None, whole = false),
+          FileHandle.of(41).getOrElse(throw new java.lang.AssertionError("a handle")),
+          Files.Expiry
         )
         Vector(
           stated(rest.drives().map(DriveCalled.Drives(_))),

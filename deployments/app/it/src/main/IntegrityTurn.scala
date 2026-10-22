@@ -4,6 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, EdgeStores, Route, ToolRequest, Variable}
+import grit.core.files.NoIntake
 import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
@@ -279,7 +280,8 @@ object IntegrityTurn {
       engine.documentReviewsOf,
       engine.jot,
       engine,
-      new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
+      new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ()),
+      new NoIntake
     )
     val place = SlackEdge.PostsAt.place
     val desk = engine.register(PrincipalId.Grit, Set(place)) match {

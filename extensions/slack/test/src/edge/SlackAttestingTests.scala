@@ -15,6 +15,7 @@ import grit.core.edge.{
   InMemoryEdges,
   InMemoryOrigins
 }
+import grit.core.files.NoIntake
 import grit.core.id.SourceId
 import grit.core.identity.{Account, Email, Realm, Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
@@ -99,7 +100,8 @@ object SlackAttestingTests extends TestSuite {
           (new InMemoryDocuments).reviews.of,
           FakeJot,
           new InMemoryEdges,
-          new Attesting(voucher, FakeJot, r => reported = reported :+ r)
+          new Attesting(voucher, FakeJot, r => reported = reported :+ r),
+          new NoIntake
         ),
         None,
         grit.slack.edge.ReplyNote.Off,

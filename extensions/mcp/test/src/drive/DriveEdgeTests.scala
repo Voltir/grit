@@ -25,7 +25,8 @@ import grit.core.edge.{
   ToolRequest,
   Variable
 }
-import grit.core.files.PagedText
+import grit.core.files.{FileArea, InMemoryFileCatalog, Intake, NoIntake, PagedText}
+import grit.core.host.TempBlobs
 import grit.core.id.{CallSlot, ConversationId, EdgeId, EdgeName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Service
@@ -87,7 +88,8 @@ object DriveEdgeTests extends TestSuite {
       (new InMemoryDocuments).reviews.of,
       FakeJot,
       edges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new NoIntake
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = right(
@@ -123,25 +125,37 @@ object DriveEdgeTests extends TestSuite {
     )
   }
 
-  /** `tool` run with `arguments` by [[DriveTools]] over `fake`, telling `said` what it says. */
+  /** `tool` run with `arguments` by [[DriveTools]] over `fake`, keeping what it reads in
+    * `files`, telling `said` what it says.
+    */
   private def run(
       fake: FakeDriveServer,
       tool: String,
       arguments: ujson.Value,
-      said: String => Unit = _ => ()
+      said: String => Unit = _ => (),
+      files: Intake^ = new NoIntake
   ): Outcome = {
     val q = request(tool, arguments)
     val route: Route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
     val clock = Clock.system()
-    val scratch = java.nio.file.Files.createTempDirectory("drive-edge")
-    // Removing it throws when a read left its copy behind.
-    try
-      new DriveTools(clock, fake.rest(clock), reading, PagedText.formats, scratch)
-        .run(route, q, said)
-    finally java.nio.file.Files.deleteIfExists(scratch)
+    new DriveTools(clock, fake.rest(clock), reading, PagedText.formats, files).run(route, q, said)
   }
+
+  /** `body` over a file area whose catalog is in memory and bytes in a temporary directory,
+    * kept as `bounds` says.
+    */
+  private def withArea[A](bounds: FileArea.Bounds = FileArea.Bounds.Default)(
+      body: FileArea^ => A
+  ): A =
+    TempBlobs.around(blobs =>
+      body(new FileArea(new InMemoryFileCatalog, blobs, FakeJot, Clock.system(), bounds))
+    )
+
+  /** How many of `fake`'s requests asked for a file's bytes. */
+  private def media(fake: FakeDriveServer): Int =
+    fake.requests.count(_._2.get("alt").contains("media"))
 
   val tests = Tests {
     test(
@@ -387,58 +401,6 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "opening removes a scratch directory whose lock no process holds, never one whose lock is held, and closing removes its own"
-    ) {
-      import java.nio.file.{Files, StandardOpenOption}
-      import java.nio.channels.FileChannel
-      val root = Files.createTempDirectory("drive-scratch")
-      // A scratch directory as an edge leaves it: its lock beside it, a copy inside.
-      def left(name: String) = {
-        val d = Files.createDirectory(root.resolve(name))
-        val out = Files.newOutputStream(d.resolve("read-1.part"))
-        try out.write(1)
-        finally out.close()
-        Files.createFile(root.resolve(s"$name.lock"))
-      }
-      val _ = left("grit-drive-dead")
-      val held = FileChannel.open(left("grit-drive-live"), StandardOpenOption.WRITE)
-      val _ = held.lock()
-      val _ = Files.createDirectory(root.resolve("grit-drive-other"))
-      def names() = {
-        val listed = Files.list(root)
-        try listed.toArray.toVector.map(_.toString.stripPrefix(s"$root/")).sorted
-        finally listed.close()
-      }
-      val opened =
-        DriveEdge.scratch(root).fold(r => throw new java.lang.AssertionError(r), identity)
-      val made = opened.dir.getFileName.toString
-      val whileOpen = names().filterNot(_.startsWith(made))
-      opened.close()
-      val afterClose = names()
-      held.close()
-      val walked = Files.walk(root)
-      try walked.toArray.toVector.reverse.foreach(p => Files.delete(root.resolve(p.toString)))
-      finally walked.close()
-      (whileOpen, afterClose) ==> (
-        Vector("grit-drive-live", "grit-drive-live.lock", "grit-drive-other"),
-        Vector("grit-drive-live", "grit-drive-live.lock", "grit-drive-other")
-      )
-    }
-
-    test("a sweep leaves the lock files this JVM holds, and their directories, untouched") {
-      import java.nio.file.Files
-      // Opening and closing a held lock's file would let go this JVM's lock on it (POSIX
-      // locks), so the sweep is shown one it could take, named held, and must leave it.
-      val root = Files.createTempDirectory("drive-sweep")
-      val lock = Files.createFile(root.resolve("grit-drive-held.lock"))
-      val dir = Files.createDirectory(root.resolve("grit-drive-held"))
-      DriveEdge.swept(root, Set(lock))
-      val kept = (Files.exists(lock), Files.exists(dir))
-      Vector(dir, lock, root).foreach(Files.deleteIfExists(_))
-      kept ==> (true, true)
-    }
-
-    test(
       "a PDF read by its pages says which of how many it shows, how to read on, and its facts say so"
     ) {
       withFake { fake =>
@@ -447,7 +409,9 @@ object DriveEdgeTests extends TestSuite {
           200,
           PagedText.bytes("One.", "Two.", "Three.", "Four.")
         )
-        run(fake, "drive_read", ujson.Obj("file" -> "file-4", "pages" -> "2-3")) match {
+        withArea()(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-4", "pages" -> "2-3"), files = area)
+        ) match {
           case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
             (
               part.text.linesIterator.drop(1).mkString("\n"),
@@ -458,6 +422,46 @@ object DriveEdgeTests extends TestSuite {
               Some((ujson.Str("pages 2–3 of 4"), ujson.Bool(false)))
             )
           case other => throw new java.lang.AssertionError(other.toString)
+        }
+      }
+    }
+
+    test(
+      "a PDF read is kept under a handle its answer names, and the call run again answers that handle without asking Drive for its bytes again"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One.", "Two."))
+        withArea() { area =>
+          def read(): (String, Option[ujson.Value]) =
+            run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area) match {
+              case Outcome.Done(head, _, _, Some(Vector(part)), _) =>
+                (head, part.facts.flatMap(_.json.obj.get("file")))
+              case other => throw new java.lang.AssertionError(other.toString)
+            }
+          val first = read()
+          (first, read(), media(fake)) ==> (
+            (
+              "The Drive file asked for, kept here as f1 for 24 hours; file_read reads more of " +
+                "it by that handle:",
+              Some(ujson.Str("f1"))
+            ),
+            first,
+            1
+          )
+        }
+      }
+    }
+
+    test(
+      "a file Drive says is larger than a file kept here may be is refused before its bytes are asked for"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One."))
+        withArea(FileArea.Bounds.Default.copy(maxFile = 1000L)) { area =>
+          (run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area), media(fake)) ==> (
+            Outcome.Failed("That file is 1 MB, over the 1 MB a file kept here may be."),
+            0
+          )
         }
       }
     }

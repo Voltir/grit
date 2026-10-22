@@ -22,6 +22,7 @@ import grit.core.edge.{
   ServedEdge,
   Variable
 }
+import grit.core.files.NoIntake
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.{Place, Service}
@@ -93,7 +94,8 @@ object McpEdgeTests extends TestSuite {
       (new InMemoryDocuments).reviews.of,
       FakeJot,
       if (reachable) edges else Unreachable,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new NoIntake
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge

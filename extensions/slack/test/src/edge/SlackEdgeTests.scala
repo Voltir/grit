@@ -16,6 +16,7 @@ import grit.core.edge.{
   Membership,
   Part
 }
+import grit.core.files.NoIntake
 import grit.core.id.{
   CallSlot,
   ConversationId,
@@ -190,7 +191,8 @@ object SlackEdgeTests extends TestSuite {
           (new InMemoryDocuments).reviews.of,
           FakeJot,
           new InMemoryEdges,
-          new Attesting(voucher, FakeJot, _ => ())
+          new Attesting(voucher, FakeJot, _ => ()),
+          new NoIntake
         ),
         review,
         note,

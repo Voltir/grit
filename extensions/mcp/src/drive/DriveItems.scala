@@ -1,7 +1,8 @@
 package grit.mcp.drive
 
-import grit.core.files.FileRead
+import grit.core.files.{FileError, FileItem, FileRead}
 import grit.core.host.{Clipped, Kept}
+import grit.core.id.FileHandle
 import grit.core.identity.Email
 import grit.core.tool.{Outcome, Trimmed}
 import grit.core.visibility.{Facts, Integrity, Itemised, Provenance, Readers, ResultPart}
@@ -43,8 +44,9 @@ object DriveItems {
     *     [[DriveRest.ListMost]] are listed, and ending as the drives' does), then each file as
     *     a search's hit is, its line its name or that note, its type, its id and when it last
     *     changed, when Drive says;
-    *   - a read: a head that names nothing of the file, then one part, its name, when it last
-    *     changed when Drive says, and its text
+    *   - a read: a head that names nothing of the file (for one a format read, it names the
+    *     handle the file area keeps it under, for how long, and that `file_read` reads more of
+    *     it), then one part, its name, when it last changed when Drive says, and its text
     *     (cut to whole lines that fit beside the head, saying how many were kept), at the place
     *     it lies within, at the meet over its writers' integrities: the deployment's own
     *     address skipped; a declared writer at its integrity; a person, or everyone, in the
@@ -115,29 +117,50 @@ object DriveItems {
             listing(called).map(stated)
           )
         )
-      case DriveCalled.Read(file, grants, text) => opened(reading, file, grants, text, None)
-      case DriveCalled.Parsed(file, grants, read) =>
-        opened(reading, file, grants, read.shown, Some(read))
+      case DriveCalled.Read(file, grants, text) =>
+        opened(reading, file, grants, "The Drive file asked for:", text, None)
+      case DriveCalled.Parsed(file, grants, read, handle, keeps) =>
+        opened(
+          reading,
+          file,
+          grants,
+          s"The Drive file asked for, kept here as ${handle.written} ${FileError.span(keeps)}; " +
+            "file_read reads more of it by that handle:",
+          read.shown,
+          Some((read, handle))
+        )
+      case DriveCalled.Withheld(file) =>
+        opened(reading, file, None, "The Drive file asked for:", "", None)
     }
 
-  /** A read's parts: `text`, of `file`, kept as its part fits; `read`, what a format made of it. */
+  /** Where a read of `file` is kept and who reads it, as its part is ([[items]]); `None` when it
+    * lies in no folder or no one here may read it.
+    */
+  def item(
+      reading: DriveReading,
+      file: DriveFile,
+      grants: Option[Vector[Grant]]
+  ): Option[FileItem] =
+    for {
+      at <- file.within
+      r <- readers(reading, file)
+    } yield FileItem(Provenance(reading.place(at), believed(reading, grants)), r)
+
+  /** A read's head and parts: `text`, of `file`, kept as its part fits after `head`; `read`, what
+    * a format made of it and the handle it is kept under.
+    */
   private def opened(
       reading: DriveReading,
       file: DriveFile,
       grants: Option[Vector[Grant]],
+      head: String,
       text: String,
-      read: Option[FileRead]
+      read: Option[(FileRead, FileHandle)]
   ): Either[String, Itemised.Parts] =
-    file.within.toRight("This file's folder could not be read, so it is not shown.").map { at =>
-      val head = "The Drive file asked for:"
-      val part = readers(reading, file).map { r =>
+    file.within.toRight("This file's folder could not be read, so it is not shown.").map { _ =>
+      val part = item(reading, file, grants).map { kept =>
         val (shown, opened) = fitted(head, DriveFacts.entry(file), text, read)
-        ResultPart(
-          Provenance(reading.place(at), believed(reading, grants)),
-          r,
-          shown,
-          Some(stated(opened))
-        )
+        ResultPart(kept.item, kept.readers, shown, Some(stated(opened)))
       }
       Itemised.Parts(head, part.toVector)
     }
@@ -164,7 +187,8 @@ object DriveItems {
   private def listing(called: DriveCalled): Option[DriveFacts.Listing] = called match {
     case DriveCalled.Drives(drives) => Some(DriveFacts.Listing(!drives.incomplete))
     case DriveCalled.Listed(files) => Some(DriveFacts.Listing(!files.incomplete))
-    case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) | DriveCalled.Parsed(_, _, _) =>
+    case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) |
+        DriveCalled.Parsed(_, _, _, _, _) | DriveCalled.Withheld(_) =>
       None
   }
 
@@ -269,7 +293,7 @@ object DriveItems {
       head: String,
       entry: DriveFacts.Entry,
       text: String,
-      read: Option[FileRead]
+      read: Option[(FileRead, FileHandle)]
   ): (String, DriveFacts.Opened) = {
     val named = s"${title(entry)}${since(entry)}:"
     val lines = Clipped.lines(text)
@@ -292,8 +316,8 @@ object DriveItems {
       DriveFacts.Opened(
         entry,
         lines.take(k).mkString("\n"),
-        k == lines.size && read.forall(_.whole),
-        read.map(_.covered)
+        k == lines.size && read.forall(_._1.whole),
+        read.map((r, handle) => DriveFacts.Kept(r.covered, handle))
       )
     )
   }

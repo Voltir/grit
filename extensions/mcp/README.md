@@ -55,8 +55,10 @@ In dependency order:
   `drive_search` and `drive_read` at the service's place, its tools telling
   the operator's log what the model is not. `drive_read` reads a Doc, a Sheet or a text file
   whole, as Drive exports it, and any file Drive keeps the bytes of (a PDF, a Word or an Excel
-  file) by the deployment's formats (ADR 0044), from a copy kept only for that read, a part at
-  a time: its start and outline, a run of pages, a section by its heading, or from an offset. Imports `wire` and `client`; nothing else in mcp imports it
+  file) by the deployment's formats (ADR 0044), from the file area (ADR 0045), a part at a
+  time: its start and outline, a run of pages, a section by its heading, or from an offset. The
+  area keeps the file under the call, so a call run again answers the same handle, which
+  `file_read` reads further. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its

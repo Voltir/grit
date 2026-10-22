@@ -1,11 +1,11 @@
 package grit.mcp.drive
 
-import java.io.IOException
-import java.nio.file.{Files, Path}
+import java.io.InputStream
 
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.files.{FileRange, FileRead, Formats, OpenFile}
+import grit.core.files.{FileError, FileOrigin, FileRange, Formats, Incoming, Intake, PutKey}
+import grit.core.id.{CallSlot, EdgeName}
 import grit.core.tool.{
   Args,
   ArgsError,
@@ -29,11 +29,14 @@ import grit.edge.{Run, Tools}
   * [[Run.request]] runs a tool: [[DriveTools.List]], [[DriveTools.Search]] and
   * [[DriveTools.Read]], each answered as [[DriveItems.answer]] answers, or [[Outcome.Failed]]
   * with a [[DriveError]]'s words or why it was not placed. A read of a PDF, a Word, an Excel
-  * or any other file Drive keeps the bytes of is by `formats`, of a copy written to `scratch`
-  * and removed after (a copy left by a failed removal stays until the edge closes); Folders,
-  * Slides and images are refused. The run's `said` hears each failure's cause ([[DriveError.logged]]), its tool named, and that a
-  * search's drives could not be listed (its hits then name them by id) or a read's grants
-  * could not be read (it is then believed untrusted).
+  * or any other file Drive keeps the bytes of is kept in `files` under its call
+  * ([[grit.core.files.PutKey.of]]), so the call run again answers the file it kept, and read
+  * there by `formats`; one past the most `formats` read is refused before its bytes are asked
+  * for, and one that lies in no folder or that no one here may read is never fetched. Folders,
+  * Slides and images are refused. The run's `said` hears each failure's cause
+  * ([[DriveError.logged]]), its tool named, and that a search's drives could not be listed (its
+  * hits then name them by id) or a read's grants could not be read (it is then believed
+  * untrusted).
   */
 // `clock` is a parameter, rather than a capture-set parameter over `rest`, so the class's
 // captures are in its signature (docs/capture-checking.md, "A capset parameter a class's body
@@ -43,34 +46,53 @@ final class DriveTools(
     rest: DriveRest^{clock},
     reading: DriveReading,
     formats: Formats,
-    scratch: Path
+    files: Intake^
 ) extends Tools {
 
-  /** `file`'s `range`, read by `formats` from a copy of its bytes kept in `scratch` for this
-    * read alone.
+  /** `file`'s `range`, read by `formats` from the file `files` keeps under `slot`'s call, put
+    * there from Drive when it keeps none.
     */
-  private def parsed(file: DriveFile, range: FileRange): Either[DriveError, FileRead] = {
-    val kept =
-      try Right(Files.createTempFile(scratch, "read-", ".part"))
-      catch { case e: IOException => Left(DriveError.Unkept(e.getClass.getSimpleName)) }
-    kept.flatMap { temp =>
-      try
-        rest.bytes(file, formats.limits.bytes, temp).flatMap { _ =>
-          OpenFile
-            .reading(temp, file.name, Some(file.mimeType), clock)(_.read(formats, range))
-            .left
-            .map(DriveError.Unkept(_))
-            .flatMap(_.left.map(DriveError.Unread(_)))
+  private def kept(
+      file: DriveFile,
+      grants: Option[Vector[Grant]],
+      range: FileRange,
+      slot: CallSlot
+  ): Either[DriveError, DriveCalled] =
+    DriveItems.item(reading, file, grants) match {
+      case None => Right(DriveCalled.Withheld(file))
+      case Some(item) =>
+        // Drive's own failure, kept beside the words the area is told, so it is answered and
+        // logged as Drive's. Set only by this call's one put, on this thread.
+        var refused: Option[DriveError] = None
+        val incoming = new Incoming {
+          def declared: Option[Long] = file.size
+          def read[A](body: InputStream^ => A): Either[String, A] =
+            rest.media(file, formats.limits.bytes)(body).left.map { e =>
+              refused = Some(e)
+              e.message
+            }
         }
-      finally {
-        // A copy left behind goes with `scratch`, when the edge closes or, if this process is
-        // killed first, when a Drive edge on this machine next opens.
-        try Files.deleteIfExists(temp)
-        catch { case _: IOException => () }
-        ()
-      }
+        files.put(
+          PutKey.of(slot),
+          file.name,
+          Some(file.mimeType),
+          FileOrigin(
+            EdgeName(reading.service.name),
+            FileId.value(file.id),
+            file.changed.map(_.toString),
+            clock.now()
+          ),
+          item,
+          incoming
+        )(_.read(formats, range)) match {
+          case Left(FileError.Fetch(why)) =>
+            Left(refused.getOrElse(DriveError.Unkept(FileError.Fetch(why))))
+          case Left(error) => Left(DriveError.Unkept(error))
+          case Right((_, Left(unread))) => Left(DriveError.Unread(unread))
+          case Right((record, Right(read))) =>
+            Right(DriveCalled.Parsed(file, grants, read, record.handle, files.keeps))
+        }
     }
-  }
 
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
     // `e` told the operator after `what`, when it is not a person's own miss.
@@ -78,7 +100,7 @@ final class DriveTools(
       e.left.foreach(_.logged.foreach(why => said(s"$what: $why")))
       e
     }
-    val search: Tool.Offered^{clock, said} = DriveTools.Search.over { s =>
+    val search: Tool.Offered^{clock, files, said} = DriveTools.Search.over { s =>
       val drives = rest.drives() match {
         case Right(shared) => shared.names
         case Left(e) =>
@@ -93,7 +115,7 @@ final class DriveTools(
         heard("drive_search", rest.search(s.text, s.folder)).map(DriveCalled.Searched(_, drives))
       )
     }
-    val list: Tool.Offered^{clock, said} = DriveTools.List.over { folder =>
+    val list: Tool.Offered^{clock, files, said} = DriveTools.List.over { folder =>
       DriveTools.answer(
         reading,
         folder match {
@@ -102,7 +124,7 @@ final class DriveTools(
         }
       )
     }
-    val read: Tool.Offered^{clock, said} = DriveTools.Read.over { asked =>
+    val read: Tool.Offered^{clock, files, said} = DriveTools.Read.calling { (asked, slot) =>
       // Read after the file, as a person's grants are what its part is shown under.
       def grants: Option[Vector[Grant]] =
         heard(
@@ -120,13 +142,13 @@ final class DriveTools(
               case DriveKind.Folder | DriveKind.Slides | DriveKind.Image =>
                 Left(DriveError.Unreadable(file.kindOf.words))
               case DriveKind.Pdf | DriveKind.Word | DriveKind.Excel | DriveKind.Other(_) =>
-                parsed(file, asked.range).map(DriveCalled.Parsed(file, grants, _))
+                kept(file, grants, asked.range, slot)
             }
           }
         )
       )
     }
-    Toolbox.of[caps.CapSet^{clock, said}](list, search, read) match {
+    Toolbox.of[caps.CapSet^{clock, files, said}](list, search, read) match {
       case Right(box) => Run.request(request, box)
       // The three are named apart.
       case Left(repeated) =>

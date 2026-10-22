@@ -173,45 +173,31 @@ object DriveRestTests extends TestSuite {
       withFake { (fake, rest) =>
         val big = rest.file(Recorded.id("file-4")).map(_.copy(size = Some(30L << 20)))
         val asked = fake.requests.size
-        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
-        try
-          (
-            big.flatMap(rest.bytes(_, 20L << 20, to)),
-            fake.requests.drop(asked)
-          ) ==> (Left(DriveError.Unread(Unread.TooLarge(30L << 20, 20L << 20))), Vector())
-        finally java.nio.file.Files.deleteIfExists(to)
+        (
+          big.flatMap(rest.media(_, 20L << 20)(_.read())),
+          fake.requests.drop(asked)
+        ) ==> (Left(DriveError.Unread(Unread.TooLarge(30L << 20, 20L << 20))), Vector())
       }
     }
 
-    test(
-      "a file's bytes are written whole; one of no size Drive gives, past the most read, is refused as too large"
-    ) {
+    test("a file's bytes are streamed whole, one of no size Drive gives past the most read too") {
       withFake { (fake, rest) =>
         val content = Vector.tabulate(3000)(i => (i % 256).toByte)
         fake.answeringBytes("files/file-4?alt=media", 200, content)
-        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
-        try {
-          val file = rest.file(Recorded.id("file-4")).map(_.copy(size = None))
-          val whole = file.flatMap(rest.bytes(_, 3000, to))
-          val written = java.nio.file.Files.readAllBytes(to).toVector
-          (whole, written == content, file.flatMap(rest.bytes(_, 1000, to))) ==>
-            (Right(3000L), true, Left(DriveError.Unread(Unread.TooLarge(1001, 1000))))
-        } finally java.nio.file.Files.deleteIfExists(to)
+        val file = rest.file(Recorded.id("file-4")).map(_.copy(size = None))
+        file.flatMap(rest.media(_, 1000)(_.readAllBytes().toVector == content)) ==> Right(true)
       }
     }
 
     test("a file Drive has flagged as possibly harmful is refused in words") {
       withFake { (fake, rest) =>
         fake.answering("files/file-4?alt=media", 403, error(403, "cannotDownloadAbusiveFile"))
-        val to = java.nio.file.Files.createTempFile("drive-rest", ".bin")
-        try
-          rest
-            .file(Recorded.id("file-4"))
-            .flatMap(rest.bytes(_, 1L << 20, to))
-            .left
-            .map(_.message) ==>
-            Left("Drive has flagged this file as possibly harmful, so it isn't read here.")
-        finally java.nio.file.Files.deleteIfExists(to)
+        rest
+          .file(Recorded.id("file-4"))
+          .flatMap(rest.media(_, 1L << 20)(_.read()))
+          .left
+          .map(_.message) ==>
+          Left("Drive has flagged this file as possibly harmful, so it isn't read here.")
       }
     }
 

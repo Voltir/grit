@@ -16,6 +16,7 @@ import grit.core.edge.{
   InMemoryJoins,
   InMemoryOrigins
 }
+import grit.core.files.NoIntake
 import grit.core.id.{ConversationId, DocKey, PluginName}
 import grit.core.identity.TestAccounts
 import grit.core.inbox.InMemoryInbox
@@ -169,7 +170,8 @@ object PromptingTests extends TestSuite {
         documents.reviews.of,
         jot,
         new InMemoryEdges,
-        new Attesting(InMemoryVoucher.none(), jot, _ => ())
+        new Attesting(InMemoryVoucher.none(), jot, _ => ()),
+        new NoIntake
       ),
       Some(review),
       ReplyNote.Off,

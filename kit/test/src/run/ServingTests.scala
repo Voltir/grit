@@ -15,6 +15,7 @@ import grit.core.edge.{
   ServedEdge,
   Variable
 }
+import grit.core.files.NoIntake
 import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
@@ -55,7 +56,8 @@ object ServingTests extends TestSuite {
       (new InMemoryDocuments).reviews.of,
       FakeJot,
       new InMemoryEdges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new NoIntake
     )
 
   /** An edge named `called` that records, in `seen`, each open, deliver, look and close; it

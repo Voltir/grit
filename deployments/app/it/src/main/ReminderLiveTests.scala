@@ -10,6 +10,7 @@ import scala.util.Using
 import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.{SetClock, Utc}
 import grit.core.edge.{Attesting, EdgeStores}
+import grit.core.files.NoIntake
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, ScheduleId, ToolCallId, TurnRef}
 import grit.core.inbox.Slotted
 import grit.core.job.{Ending, Schedule, Slot}
@@ -185,7 +186,8 @@ object ReminderLiveTests extends TestSuite {
         engine.jot,
         engine,
         // grit's team's realm trusted, so the asker is a member: remind_me requires one.
-        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
+        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ()),
+        new NoIntake
       ),
       None,
       grit.slack.edge.ReplyNote.Off,

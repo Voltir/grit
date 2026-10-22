@@ -23,6 +23,7 @@ import grit.core.edge.{
   Unheard,
   Variable
 }
+import grit.core.files.NoIntake
 import grit.core.id.{SourceId, ToolCallId, TurnRef}
 import grit.core.identity.{Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
@@ -138,7 +139,8 @@ object ServedTests extends TestSuite {
         (new InMemoryDocuments).reviews.of,
         jot,
         edges,
-        new Attesting(voucher, jot, _ => ())
+        new Attesting(voucher, jot, _ => ()),
+        new NoIntake
       )
 
     /** What opening logged, in order. */

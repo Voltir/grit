@@ -21,6 +21,8 @@ final class FileArea(
 ) extends Files,
       Intake {
 
+  def keeps: FiniteDuration = bounds.expiry
+
   def put[A](
       key: PutKey,
       name: String,

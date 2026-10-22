@@ -93,7 +93,8 @@ private[grit] object Launch {
     * turn's [[TurnTally.line]] when its workflow's body returns (again if a recovered turn's
     * body returns again), or, when the tally cannot be read, what the body returned and why.
     * Its workflows, the clock edge and the declared schedules tell the time by
-    * [[Engine.clock]], as the sweep and the plugins' desks do.
+    * [[Engine.clock]], as the sweep and the plugins' desks do. Its answer is the file area its
+    * turns read files from ([[area]]), for its edges to keep files in.
     */
   def apply(
       engine: Engine^,
@@ -102,7 +103,7 @@ private[grit] object Launch {
       run: Run,
       sweeping: Boolean,
       finished: String => Unit
-  ): Engine^{engine} = {
+  ): FileArea^ = {
     Log.info(s"database: ${s.database.endpoint}")
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
@@ -148,7 +149,7 @@ private[grit] object Launch {
         }
       }
     }
-    engine
+    files
   }
 
   /** `runtime`'s file area (ADR 0045): its rows in `runtime`'s store, written in its short

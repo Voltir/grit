@@ -22,6 +22,9 @@ trait Incoming {
 /** The file area as an edge puts into it. */
 trait Intake extends caps.SharedCapability {
 
+  /** How long a file put now is kept: the area's expiry. */
+  def keeps: FiniteDuration
+
   /** `incoming`'s bytes kept as a file named `name` from `origin`, opened by whoever reads
     * `item`, expiring the area's expiry after the put; then `body` over it opened, before this
     * returns. When a file put under `key` is still kept, that file, nothing fetched, `body` run
@@ -117,7 +120,7 @@ object FileError {
   private def mb(bytes: Long): String = s"${(bytes + (1L << 20) - 1) >> 20} MB"
 
   /** `d` in its largest whole unit up to hours: "for 24 hours", "for 10 minutes". */
-  private def span(d: FiniteDuration): String = {
+  def span(d: FiniteDuration): String = {
     val (n, unit) =
       if (d.toHours >= 1 && d.toMinutes % 60 == 0) (d.toHours, "hour")
       else if (d.toMinutes >= 1 && d.toSeconds % 60 == 0) (d.toMinutes, "minute")

@@ -20,6 +20,7 @@ import grit.core.edge.{
   Unheard,
   Variable
 }
+import grit.core.files.NoIntake
 import grit.core.id.{
   CloseRef,
   ConversationId,
@@ -91,7 +92,8 @@ object CatchingUpTests extends TestSuite {
       (new InMemoryDocuments).reviews.of,
       FakeJot,
       new InMemoryEdges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ())
+      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new NoIntake
     )
 
   private def room(channel: String): Place = Place.under(Namespace.Slack, Vector("T1", channel))

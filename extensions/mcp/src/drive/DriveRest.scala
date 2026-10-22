@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 import scala.jdk.DurationConverters.*
 
 import grit.core.clock.Clock
-import grit.core.files.Unread
+import grit.core.files.{FileError, Unread}
 import grit.mcp.client.Authorizer
 
 /** Why a request to Drive answered nothing grit reads. */
@@ -42,8 +42,8 @@ enum DriveError derives CanEqual {
   /** The file was downloaded, or would have been, and could not be read: `unread` says why. */
   case Unread(unread: grit.core.files.Unread)
 
-  /** The file's bytes could not be kept here to be read: `why`, for the operator's log alone. */
-  case Unkept(why: String)
+  /** The file area did not keep the file: `error` says why. */
+  case Unkept(error: FileError)
 
   /** What the operator's log is told of it beside [[message]]: its cause; `None` for an answer
     * a person's own ask explains (a file not shared, or of a type not read).
@@ -54,7 +54,13 @@ enum DriveError derives CanEqual {
     case Busy(status) => Some(s"Drive answered $status")
     case Unreachable(why) => Some(s"Drive could not be reached: $why")
     case Malformed(why) => Some(s"Drive's answer could not be read: $why")
-    case Unkept(why) => Some(s"a Drive file's bytes could not be kept to read: $why")
+    case Unkept(FileError.Disk(why)) =>
+      Some(s"a Drive file's bytes could not be kept to read: $why")
+    case Unkept(FileError.Store(e)) => Some(s"a Drive file could not be kept to read: $e")
+    case Unkept(FileError.Full) => Some("a Drive file was not kept: the file area is full")
+    // Drive's own refusals are answered as Drive's; this is a download cut partway.
+    case Unkept(FileError.Fetch(why)) => Some(s"a Drive file's bytes stopped arriving: $why")
+    case Unkept(FileError.Gone(_, _) | FileError.TooLarge(_, _)) => None
   }
 
   /** What the model reads, and may say: what happened and what a person can do, in plain
@@ -70,7 +76,7 @@ enum DriveError derives CanEqual {
       s"Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read here, not $kind."
     case Flagged => "Drive has flagged this file as possibly harmful, so it isn't read here."
     case Unread(unread) => unread.message
-    case Unkept(_) => "That file couldn't be read here just now; try again later."
+    case Unkept(error) => error.message
   }
 }
 
@@ -155,47 +161,22 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
     read.map(_.stripPrefix("\uFEFF"))
   }
 
-  /** `file`'s bytes written to `to`, their count; [[DriveError.Unread]] with
+  /** `body` over a stream of `file`'s bytes, open only within it; [[DriveError.Unread]] with
     * [[grit.core.files.Unread.TooLarge]] when Drive gives its size over `max`, before its bytes
-    * are asked for, or when more than `max` arrive (`to` then holds a part of it);
-    * [[DriveError.Flagged]] when Drive will not give the bytes of a file it flagged as possibly
-    * harmful; [[DriveError.Unkept]] when `to` cannot be written; any other failure as
-    * [[text]]'s.
+    * are asked for (a file whose size Drive does not give is streamed whole: `body` bounds what
+    * it reads); [[DriveError.Flagged]] when Drive will not give the bytes of a file it flagged
+    * as possibly harmful; any other failure as [[text]]'s.
     */
-  def bytes(file: DriveFile, max: Long, to: java.nio.file.Path): Either[DriveError, Long] =
+  def media[A](file: DriveFile, max: Long)(body: java.io.InputStream^ => A): Either[DriveError, A] =
     file.size.filter(_ > max) match {
       case Some(size) => Left(DriveError.Unread(Unread.TooLarge(size, max)))
       case None =>
         send(s"files/${FileId.value(file.id)}", Vector("alt" -> "media")) { (status, in) =>
-          if (status != 200) DriveRest.answered(status, DriveRest.text(in)).flatMap(_ => Right(0L))
-          else {
-            // `to`'s own failures are told apart from Drive's, which `send` catches.
-            def kept[B](io: => B): Either[DriveError, B] =
-              try Right(io)
-              catch { case e: IOException => Left(DriveError.Unkept(e.getClass.getSimpleName)) }
-            kept(java.nio.file.Files.newOutputStream(to)).flatMap { out =>
-              // At most one byte past `max`, so a file too large is known without reading it all.
-              var total = 0L
-              var failed: Option[DriveError] = None
-              var more = true
-              var closed: Either[DriveError, Unit] = Right(())
-              try {
-                while (more && failed.isEmpty && total <= max) {
-                  val chunk = in.readNBytes((max + 1 - total).min(64L * 1024).toInt)
-                  failed = kept(out.write(chunk)).left.toOption
-                  total += chunk.length
-                  more = chunk.nonEmpty
-                }
-              } finally closed = kept(out.close())
-              for {
-                _ <- failed.toLeft(())
-                _ <- closed
-                n <-
-                  if (total > max) Left(DriveError.Unread(Unread.TooLarge(total, max)))
-                  else Right(total)
-              } yield n
-            }
-          }
+          if (status != 200)
+            DriveRest
+              .answered(status, DriveRest.text(in))
+              .flatMap(_ => Left(DriveError.Malformed(s"Drive answered $status")))
+          else Right(body(in))
         }
     }
 

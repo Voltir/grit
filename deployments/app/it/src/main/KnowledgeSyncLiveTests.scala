@@ -9,6 +9,7 @@ import scala.util.Using
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{Attesting, EdgeStores, Variable}
+import grit.core.files.NoIntake
 import grit.core.id.{CorpusName, PluginName, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.Slotted
@@ -380,7 +381,8 @@ object KnowledgeSyncLiveTests extends TestSuite {
           engine.documentReviewsOf,
           engine.jot,
           engine,
-          new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ())
+          new Attesting(engine.voucher(Set.empty, Set.empty), engine.jot, _ => ()),
+          new NoIntake
         )
       edge.open(stores, Map("FAKE_MCP_TOKEN" -> fake.token), Clock.system(), _ => ()) match {
         case Left(refused) => sys.error(refused.message)

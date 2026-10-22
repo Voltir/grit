@@ -14,6 +14,7 @@ import grit.core.edge.{
   InMemoryJoins,
   InMemoryOrigins
 }
+import grit.core.files.NoIntake
 import grit.core.id.WorkflowId
 import grit.core.id.{EntryId, SourceId, ToolCallId, TurnRef}
 import grit.core.inbox.InMemoryInbox
@@ -88,7 +89,8 @@ object SlackAskingTests extends TestSuite {
       (new InMemoryDocuments).reviews.of,
       Recording,
       new InMemoryEdges,
-      new Attesting(voucher, Recording, _ => ())
+      new Attesting(voucher, Recording, _ => ()),
+      new NoIntake
     )
 
     val edge: SlackEdge^{this} = opened()

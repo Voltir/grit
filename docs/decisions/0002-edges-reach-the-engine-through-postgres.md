@@ -1,6 +1,6 @@
 # 0002. Edges reach the engine only through Postgres
 
-Status: accepted (2026-09-23)
+Status: accepted (2026-09-23); revised (2026-10-22)
 
 Context: grit runs three ways: a local TUI harness, a cloud agent chatted with from Slack,
 and triggered tasks such as a scheduled run. The engine (the durable turn, memory and
@@ -33,6 +33,9 @@ Consequences:
   the deterministic id makes starting a turn twice run it once.
 - The cost is local latency and indirection: every submit goes through a row and a workflow
   start, not a method call.
+- Files an edge fetches are the one exception to "only Postgres": their bytes lie in the
+  file area's blobs on a filesystem the engine shares, reached only through `Intake` and
+  `Files` (ADR 0045).
 - Only the kit opens an engine (`Engine.open` is `private[grit]`); an edge works through core's
   traits (`Inbox` and the stores) over the database.
 - Enforced by the law: `slack-names-core-prose-and-edge`, `mcp-names-core-alone` and

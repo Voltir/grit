@@ -8,6 +8,7 @@ import scala.util.Using
 
 import grit.core.clock.SetClock
 import grit.core.edge.{Attesting, EdgeStores}
+import grit.core.files.NoIntake
 import grit.core.id.{
   ConversationId,
   Declarer,
@@ -162,7 +163,8 @@ object RunRetentionLiveTests extends TestSuite {
             engine.jot,
             engine,
             // grit's team's realm trusted, so the asker is a member: remind_me requires one.
-            new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
+            new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ()),
+            new NoIntake
           ),
           None,
           grit.slack.edge.ReplyNote.Off,

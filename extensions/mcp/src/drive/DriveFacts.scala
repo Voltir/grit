@@ -2,13 +2,16 @@ package grit.mcp.drive
 
 import java.time.Instant
 
+import grit.core.id.FileHandle
+
 /** What a Drive answer says as data, its text rendered from it (docs/extending.md). Written by
   * [[DriveFacts.written]]:
   *   - an entry, a file or folder listed: `{"id","kind","name"?,"changed"?,"within"?}`, `kind`
   *     as [[DriveKind.written]] writes it, and `"type"`, its MIME type, when that is `other`;
   *   - a shared drive: `{"id","kind":"drive","name"?}`;
-  *   - an opened file: its entry's keys, then `"text"`, `"complete"`, and `"covered"`, what
-  *     of the file the text covers in words ("pages 2–3 of 4"), for a file a format read;
+  *   - an opened file: its entry's keys, then `"text"`, `"complete"`, and, for a file a format
+  *     read, `"covered"`, what of the file the text covers in words ("pages 2–3 of 4"), and
+  *     `"file"`, the handle the file area keeps it under (`"f41"`);
   *   - a listing's own: `{"complete"}` alone, never counting or naming its parts.
   *
   * `name` only when [[DriveItems.shown]] admits it, as its line shows it; `changed` ISO-8601, as
@@ -29,15 +32,25 @@ enum DriveFacts derives CanEqual {
   case Drive(id: FileId, name: Option[String])
 
   /** A file read: `text`, the leading whole lines of it its part shows; `complete` when that is
-    * all of it; `covered`, what of the file it covers, for a file a format read.
+    * all of it; `kept`, for a file a format read.
     */
-  case Opened(entry: DriveFacts.Entry, text: String, complete: Boolean, covered: Option[String])
+  case Opened(
+      entry: DriveFacts.Entry,
+      text: String,
+      complete: Boolean,
+      kept: Option[DriveFacts.Kept]
+  )
 
   /** A listing's own: `complete` when Drive had no more and every part it gave was kept. */
   case Listing(complete: Boolean)
 }
 
 object DriveFacts {
+
+  /** A file a format read: what of it the text covers, in words, and the handle the file area
+    * keeps it under.
+    */
+  final case class Kept(covered: String, file: FileHandle) derives CanEqual
 
   /** `file` as its line names it: its name only when [[DriveItems.shown]] admits it. */
   def entry(file: DriveFile): Entry =
@@ -56,11 +69,14 @@ object DriveFacts {
       val o = ujson.Obj("id" -> FileId.value(id), "kind" -> "drive")
       name.foreach(n => o("name") = n)
       o
-    case Opened(e, text, complete, covered) =>
+    case Opened(e, text, complete, kept) =>
       val o = entryJson(e)
       o("text") = text
       o("complete") = complete
-      covered.foreach(c => o("covered") = c)
+      kept.foreach { k =>
+        o("covered") = k.covered
+        o("file") = k.file.written
+      }
       o
     case Listing(complete) => ujson.Obj("complete" -> complete)
   }

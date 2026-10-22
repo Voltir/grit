@@ -7,6 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
+import grit.core.files.Intake
 import grit.core.id.{AttesterName, Declarer, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.job.{Declared, Ending}
@@ -100,7 +101,7 @@ object Kit {
             val stopped = new CountDownLatch(1)
             val closed = new CountDownLatch(1)
             try {
-              Launch(
+              val files = Launch(
                 engine,
                 deployment,
                 secrets,
@@ -121,7 +122,8 @@ object Kit {
                       voucherOf(engine, deployment.identities, edge.attester),
                       link.jot,
                       report
-                    )
+                    ),
+                    files
                   ),
                 env,
                 clock,
@@ -201,7 +203,7 @@ object Kit {
           case Right(engine) =>
             val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
             try {
-              Launch(
+              val files = Launch(
                 engine,
                 deployment,
                 secrets,
@@ -224,7 +226,8 @@ object Kit {
                       said => log.warn(said),
                       said => log.error(said)
                     )
-                  )
+                  ),
+                  files
                 ),
                 env,
                 deployment.budget,
@@ -423,8 +426,10 @@ object Kit {
       deployment: Deployment,
       secrets: Secrets,
       run: Launch.Run
-  ): Engine^{engine} =
-    Launch(engine, deployment, secrets, run, sweeping = true, _ => ())
+  ): Engine^{engine} = {
+    val _ = Launch(engine, deployment, secrets, run, sweeping = true, _ => ())
+    engine
+  }
 
   /** `deployment`'s secrets in `env`, once every variable each of `needs` names is set. */
   private[run] def preflight(
@@ -485,7 +490,11 @@ object Kit {
         }
     }
 
-  private def stores(link: Link^, attesting: Attesting^): EdgeStores^{link, attesting} =
+  private def stores(
+      link: Link^,
+      attesting: Attesting^,
+      files: Intake^
+  ): EdgeStores^{link, attesting, files} =
     EdgeStores(
       link.inbox,
       link.administration,
@@ -499,7 +508,8 @@ object Kit {
       link.documentReviewsOf,
       link.jot,
       link,
-      attesting
+      attesting,
+      files
     )
 
   /** The voucher an edge attesting as `attester` records through: of [[trustOf]]'s realms and
