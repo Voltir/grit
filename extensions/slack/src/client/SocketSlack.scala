@@ -368,6 +368,9 @@ object SocketSlack {
   /** The metadata event type a review's prompt carries. */
   val PromptEvent = "grit_review"
 
+  /** The metadata event type grit's line saying a call waits for its asker carries. */
+  val AskingEvent = "grit_asking"
+
   /** The request that posts `post` in `thread` of `channel`, carrying `tag` as metadata; link
     * previews off, so a reply is only what grit wrote.
     */
@@ -442,6 +445,11 @@ object SocketSlack {
           } yield Tag.Reply(turn, part)
         case RefusalEvent => p.get("message").map(m => Tag.Refused(Ts(m)))
         case PromptEvent => p.get("entry").map(Tag.Prompt(_))
+        case AskingEvent =>
+          for {
+            turn <- p.get("turn")
+            call <- p.get("call")
+          } yield Tag.Asking(turn, call)
         case _ => None
       }
     }
@@ -452,6 +460,7 @@ object SocketSlack {
     case Tag.Refused(_) => RefusalEvent
     case Tag.Sent(_) => PostEvent
     case Tag.Prompt(_) => PromptEvent
+    case Tag.Asking(_, _) => AskingEvent
   }
 
   /** `tag`'s metadata payload. */
@@ -460,6 +469,7 @@ object SocketSlack {
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
     case Tag.Sent(request) => Map("request" -> request)
     case Tag.Prompt(entry) => Map("entry" -> entry)
+    case Tag.Asking(turn, call) => Map("turn" -> turn, "call" -> call)
   }
 
   /** A slash command's or an interaction's envelope `id` and `payload`, as [[Slack.listen]]

@@ -1,6 +1,7 @@
 package grit.slack.text
 
 import grit.prose.form.{Block, Doc, Item, Mark, Renderer, Span, Text}
+import grit.slack.event.UserId
 
 /** One Slack message of a reply: its rich_text and divider blocks, and the plain text Slack
   * shows where blocks are not shown (a notification), escaped so it reads as written. Only
@@ -47,6 +48,18 @@ object RichText extends Renderer[Vector[Post]] {
       case Some(last) =>
         posts.init :+ last.copy(blocks = ujson.Arr.from(last.blocks.value :+ note))
     }
+  }
+
+  /** One post of `before`, a mention of `user`, then `after`, as one paragraph: `before` and
+    * `after` read as written, and the mention notifies `user`. Text past [[MaxChars]] is cut.
+    */
+  def mentioning(before: String, user: UserId, after: String): Post = {
+    val room = MaxChars - before.length.min(MaxChars)
+    val (b, a) = (before.take(MaxChars), after.take(room))
+    val els =
+      Vector(plain(b), ujson.Obj("type" -> "user", "user_id" -> UserId.value(user)), plain(a))
+        .filter(el => !isText(el) || el("text").str.nonEmpty)
+    Post(ujson.Arr(rich(section(els))), s"${escaped(b)}<@${UserId.value(user)}>${escaped(a)}")
   }
 
   /** `text` with `&`, `<` and `>` written as Slack's mrkdwn escapes them, so a message's

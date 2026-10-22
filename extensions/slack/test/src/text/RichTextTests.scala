@@ -1,6 +1,7 @@
 package grit.slack.text
 
 import grit.prose.form.{Block, Doc, Item, Level, Mark, Span, Text}
+import grit.slack.event.UserId
 
 import utest.*
 
@@ -194,6 +195,22 @@ object RichTextTests extends TestSuite {
 
     test("an empty reply is no post") {
       RichText.render(Doc.empty) ==> Vector.empty
+    }
+
+    test("a mention is a user element between literal text, and a mention in the plain text") {
+      val p = RichText.mentioning("<!channel> ask ", UserId("U1"), " & go")
+      (p.blocks, p.fallback) ==> (
+        ujson.Arr(
+          rich(
+            section(
+              text("<!channel> ask "),
+              ujson.Obj("type" -> "user", "user_id" -> "U1"),
+              text(" & go")
+            )
+          )
+        ),
+        "&lt;!channel&gt; ask <@U1> &amp; go"
+      )
     }
   }
 }

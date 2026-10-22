@@ -65,6 +65,11 @@ enum Tag {
 
   /** A review's prompt for the heard message whose entry id is `entry`. */
   case Prompt(entry: String)
+
+  /** The line in a turn's thread saying that call `call` of the turn whose workflow id is
+    * `turn` waits for its asker's answer.
+    */
+  case Asking(turn: String, call: String)
 }
 
 /** A Slack user as [[Slack.member]] and [[Slack.members]] read them: the name they show, if any,

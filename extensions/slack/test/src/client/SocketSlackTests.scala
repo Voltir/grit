@@ -273,6 +273,23 @@ object SocketSlackTests extends TestSuite {
       SocketSlack.tagOf(m) ==> Some(tag)
     }
 
+    test(
+      "an ask's note carries its turn and call under grit's asking event, read back as its tag"
+    ) {
+      // A stored form: a restarted edge finds the note by it.
+      val tag = Tag.Asking("c:3", "toolu_1")
+      val r = SocketSlack.request(ChannelId("C1"), Ts("1.0"), post, tag)
+      (r.getMetadata.getEventType, r.getMetadata.getEventPayload.asScala.toMap) ==>
+        ("grit_asking", Map("turn" -> "c:3", "call" -> "toolu_1"))
+      val m = new Message()
+      m.setMetadata(r.getMetadata)
+      (
+        SocketSlack.tagOf(m),
+        SocketSlack.carries(m, tag),
+        SocketSlack.carries(m, Tag.Asking("c:3", "toolu_2"))
+      ) ==> (Some(tag), true, false)
+    }
+
     test("a message carries a tag only under grit's event type, with the same turn and part") {
       val tag = Tag.Reply("c:3", 1)
       SocketSlack.carries(message("grit_reply", "c:3", "1"), tag) ==> true

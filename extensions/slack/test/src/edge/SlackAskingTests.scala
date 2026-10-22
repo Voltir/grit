@@ -14,6 +14,7 @@ import grit.core.edge.{
   InMemoryJoins,
   InMemoryOrigins
 }
+import grit.core.id.WorkflowId
 import grit.core.id.{EntryId, SourceId, ToolCallId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -21,7 +22,7 @@ import grit.core.review.InMemoryReviews
 import grit.core.store.{Entry, InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
-import grit.slack.client.{Card, FakeSlack, Self}
+import grit.slack.client.{Card, FakeSlack, Self, Tag}
 import grit.slack.event.{ChannelId, Clicked, Payloads, ResponseUrl, TeamId, Ts, UserId}
 
 import utest.*
@@ -74,36 +75,48 @@ object SlackAskingTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var logged = Vector.empty[String]
 
-    val edge: SlackEdge^{this} =
-      new SlackEdge(
+    private val stores = EdgeStores(
+      inbox,
+      new InMemoryAdministration(Visibility.Shipped, voucher),
+      new InMemoryJoins(voucher),
+      inbox.principals,
+      deliveries,
+      inbox.ledger,
+      new InMemoryAcknowledgements,
+      InMemoryReviews.over(inbox),
+      new InMemoryOrigins(inbox.conversations),
+      (new InMemoryDocuments).reviews.of,
+      Recording,
+      new InMemoryEdges,
+      new Attesting(voucher, Recording, _ => ())
+    )
+
+    val edge: SlackEdge^{this} = opened()
+
+    /** A new edge over the same fake Slack and stores, as after a restart, listening and
+      * reconciled.
+      */
+    def opened(): SlackEdge^{this} = {
+      val edge = new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of(Workspace)),
-        EdgeStores(
-          inbox,
-          new InMemoryAdministration(Visibility.Shipped, voucher),
-          new InMemoryJoins(voucher),
-          inbox.principals,
-          deliveries,
-          inbox.ledger,
-          new InMemoryAcknowledgements,
-          InMemoryReviews.over(inbox),
-          new InMemoryOrigins(inbox.conversations),
-          (new InMemoryDocuments).reviews.of,
-          Recording,
-          new InMemoryEdges,
-          new Attesting(voucher, Recording, _ => ())
-        ),
+        stores,
         None,
         ReplyNote.Off,
         Stopped,
         s => logged = logged :+ s
       )
-    val _ = slack.listen(edge.receive, _ => (), _ => ())
-    edge.reconcile() ==> Right(())
+      val _ = slack.listen(edge.receive, _ => (), _ => ())
+      edge.reconcile() ==> Right(())
+      edge
+    }
 
     /** Ana's mention at the top of C, at `ts`: its turn. */
-    def mentioned(ts: String): TurnRef = {
-      slack.deliver(mention(ts)) ==> true
+    def mentioned(ts: String): TurnRef = turnOf(ts, mention(ts))
+
+    /** The turn of `payload`, a message at the top of C at `ts` that mentions grit. */
+    def turnOf(ts: String, payload: String): TurnRef = {
+      slack.deliver(payload) ==> true
       inbox
         .ingested(Origin.Slack(Team, ChannelId.value(C), ts), SourceId(ts))
         .toOption
@@ -197,6 +210,53 @@ object SlackAskingTests extends TestSuite {
       done(asked)
       val answered = pass()
       (first, carded, unasked, answered, w.slack.cards.size) ==> (1, 1, 1, 2, 1)
+    }
+
+    test(
+      "an open ask is told in its thread, naming its asker, before its card; once, though a restarted edge shows the card again"
+    ) {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Set this room's label to confidential")
+      w.edge.deliver() ==> Right(0)
+      w.edge.deliver() ==> Right(0)
+      w.opened().deliver() ==> Right(0)
+      val note = Tag.Asking(WorkflowId.value(t.workflowId), ToolCallId.value(C1))
+      w.slack.made.map {
+        case p: w.slack.Posted => (p.channel, p.thread, p.tag == note, p.post.fallback)
+        case a: w.slack.Asked =>
+          (a.channel, a.thread, false, s"card ${ToolCallId.value(a.card.call)}")
+      } ==> Vector(
+        (
+          C,
+          Ts("1.0"),
+          true,
+          s"Waiting for <@$Ana> to approve or cancel this; the buttons are shown only to them, in this thread."
+        ),
+        (C, Ts("1.0"), false, s"card ${ToolCallId.value(C1)}"),
+        (C, Ts("1.0"), false, s"card ${ToolCallId.value(C1)}")
+      )
+    }
+
+    test("an ask whose note Slack will not post is said, and its card shown all the same") {
+      val w = World()
+      val t = w.mentioned("1.0")
+      w.asks(t, C1, "Edit a.txt")
+      w.slack.limited = 1
+      w.edge.deliver()
+      (
+        w.logged.count(_.contains("the note for")),
+        w.slack.posts.size,
+        w.slack.cards.map(_.card.call)
+      ) ==> (1, 0, Vector(C1))
+    }
+
+    test("an ask to an account that is no user of grit's team posts no note and no card") {
+      val w = World()
+      val t = w.turnOf("1.0", message("1.0", s"<@$Bot> hi", extra = Seq("user_team" -> "T0OTHER1")))
+      w.asks(t, C1, "Edit a.txt")
+      w.edge.deliver() ==> Right(0)
+      (w.slack.made, w.logged.count(_.contains("not shown"))) ==> (Vector.empty, 1)
     }
 
     test("a card's expiry is in its asker's zone when Slack places them in one") {

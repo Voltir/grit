@@ -48,6 +48,11 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var posts = Vector.empty[Posted]
 
+  /** Every post and card, in the order made. */
+  // Replaced whole by the fake's own calls, on the test's one thread; nothing else holds it.
+  @caps.unsafe.untrackedCaptures
+  var made = Vector.empty[Posted | Asked]
+
   /** grit's reactions now, by message. */
   @caps.unsafe.untrackedCaptures
   var reactions = Set.empty[(ChannelId, Ts, String)]
@@ -202,7 +207,9 @@ final class FakeSlack extends Slack {
       if (notIn.contains(channel)) Left(SlackError.Refused("not_in_channel"))
       else {
         val ts = next()
-        posts = posts :+ Posted(channel, thread, post, tag, ts)
+        val p = Posted(channel, thread, post, tag, ts)
+        posts = posts :+ p
+        made = made :+ p
         Right(ts)
       }
     }
@@ -222,7 +229,9 @@ final class FakeSlack extends Slack {
     request {
       if (notIn.contains(channel)) Left(SlackError.Refused("channel_not_found"))
       else {
-        cards = cards :+ Asked(channel, thread, user, card)
+        val a = Asked(channel, thread, user, card)
+        cards = cards :+ a
+        made = made :+ a
         Right(())
       }
     }
@@ -233,7 +242,9 @@ final class FakeSlack extends Slack {
       if (notIn.contains(channel)) Left(SlackError.Refused("not_in_channel"))
       else {
         val ts = next()
-        posts = posts :+ Posted(channel, ts, post, tag, ts)
+        val p = Posted(channel, ts, post, tag, ts)
+        posts = posts :+ p
+        made = made :+ p
         Right(ts)
       }
     }

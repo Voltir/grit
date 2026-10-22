@@ -794,22 +794,26 @@ final class SlackEdge(
   /** Tells the person who wrote the message at `at` that it was not taken, in `line`, in its
     * thread, once: a refusal already there under its tag is not posted again.
     */
-  private def refuse(at: Address, line: String): Either[String, Unit] = {
-    val tag = Tag.Refused(at.answered)
+  private def refuse(at: Address, line: String): Either[String, Unit] =
+    once(
+      at,
+      Tag.Refused(at.answered),
+      RichText.render(Doc(Vector(Block.Paragraph(Text.plain(line)))))
+    )
+
+  /** Posts `posts` in `at`'s thread under `tag`, unless a message there already carries it. */
+  private def once(at: Address, tag: Tag, posts: Vector[Post]): Either[String, Unit] =
     slack
       .tagged(at.channel, at.thread, tag)
       .flatMap { there =>
         if (there.nonEmpty) Right(())
         else
-          RichText
-            .render(Doc(Vector(Block.Paragraph(Text.plain(line)))))
-            .foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
-              done.flatMap(_ => slack.post(at.channel, at.thread, post, tag).map(_ => ()))
-            )
+          posts.foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
+            done.flatMap(_ => slack.post(at.channel, at.thread, post, tag).map(_ => ()))
+          )
       }
       .left
       .map(_.toString)
-  }
 
   /** Whether grit serves `channel`: addresses, hears and backfills what is said there. A
     * channel grit's bot is recorded a member of, yes, but never the review's; any other, only
@@ -1255,9 +1259,12 @@ final class SlackEdge(
   /** Shows each of `p`'s turn's open asks this edge has not shown to its asker, as a card in the
     * turn's thread ([[Slack.ask]]), read in a transaction opened for the turn
     * ([[Subject.Turn]]): its words, and when it expires in the zone Slack places the asker in,
-    * else in UTC. An ask put to an account that is no user of this team is said once and never
-    * shown; a card Slack will not show, and asks the store could not read, are said, and tried
-    * again next pass.
+    * else in UTC. Before the card, a reply everyone in the thread sees says, naming the asker,
+    * that the turn waits for them ([[Tag.Asking]]); it is posted once per ask, ever, though a
+    * restarted edge shows the card again, and it stays. An ask put to an account that is no
+    * user of this team is said once, and neither noted nor shown. A note Slack will not post is
+    * said and the card shown all the same; a card Slack will not show, and asks the store could
+    * not read, are said, and tried again next pass, the note with the card when still missing.
     */
   private def ask(p: Pending): Unit =
     Address.read(p.to).foreach { to =>
@@ -1278,6 +1285,21 @@ final class SlackEdge(
                   case Some(zone) => Utc.toDayMinute(a.until, zone)
                   case None => Utc.toDayMinute(a.until)
                 }
+                val note = RichText.mentioning(
+                  "Waiting for ",
+                  user,
+                  " to approve or cancel this; the buttons are shown only to them, in this thread."
+                )
+                once(
+                  to,
+                  Tag.Asking(WorkflowId.value(workflow), ToolCallId.value(a.call)),
+                  Vector(note)
+                ).left
+                  .foreach(e =>
+                    said(
+                      s"slack: the note for ${ToolCallId.value(a.call)} of ${WorkflowId.value(workflow)} not posted: $e"
+                    )
+                  )
                 slack.ask(
                   to.channel,
                   to.thread,
