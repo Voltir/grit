@@ -22,7 +22,11 @@ Decision:
   tree gains a construct only when a reader emits it and a consumer reads it.
 - **Flat as stored.** `grit.prose.json.ProseJson` writes a doc as `{"v", "notes", "blocks"}`:
   a list of records, a list item's kind and level as fields, a quote's blocks with their
-  depth, notes written once each by the keeper's pure codec and named by index. Reading
+  depth, a list with no items as one record, notes written once each by the keeper's pure
+  codec and named by index. A list or quote right after another of its kind marks its first
+  record `"new"`: `true` on an item, which is always its own list's; on a quote a number,
+  which of the quotes around it opens afresh, since one quote's record also stands for each
+  quote it is in ([the module's README](../../core/prose/README.md) has the records). Reading
   rebuilds the nesting, and refuses another version, naming it. A keeper's own data that holds
   prose versions itself and stores each doc this way; it never keeps a codec of its own.
 - **Written per consumer.** `Renderer[Out]` is the one writer trait: `Markdown.writer` for the

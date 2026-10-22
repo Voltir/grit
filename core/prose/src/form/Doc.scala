@@ -103,7 +103,7 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Quote(bs) => Block.Quote(bs.map(block))
       case c: Block.Code => c
       case Block.Table(cs, rows) =>
-        Block.Table(cs.map(c => Column(text(c.name))), rows.map(_.map(_.mapText(text))))
+        Block.table(cs.map(c => Column(text(c.name))), rows.map(_.map(_.mapText(text))))
       case Block.Rule => Block.Rule
     }
     Doc(blocks.map(block))

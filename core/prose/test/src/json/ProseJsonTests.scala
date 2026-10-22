@@ -143,9 +143,31 @@ object ProseJsonTests extends TestSuite {
       roundTrip(doc) ==> Right(doc)
     }
 
-    test("a list with no items is not written") {
-      val doc: Doc[N] = Doc(Vector(para("a"), Block.Bullets(Vector.empty), para("b")))
-      roundTrip(doc) ==> Right(Doc(Vector(para("a"), para("b"))))
+    test("a list with no items is one record, and reads back as written wherever it is") {
+      val doc: Doc[N] = Doc(
+        Vector(
+          para("a"),
+          Block.Bullets(Vector.empty),
+          Block.Bullets(Vector(item("b"))),
+          Block.Numbered(4, Vector.empty),
+          Block.Bullets(Vector(item("c", Block.Numbered(1, Vector.empty)))),
+          Block.Quote(Vector(Block.Bullets(Vector.empty)))
+        )
+      )
+      (shape(ProseJson.write(doc, noteJson)), roundTrip(doc)) ==> (
+        Vector(
+          "para",
+          "list",
+          "item1",
+          "list",
+          "item1",
+          "item-more1",
+          "  list",
+          "quote1",
+          "  list"
+        ),
+        Right(doc)
+      )
     }
 
     // The stored form, pinned: rows written under it are read by every later reader.
@@ -159,6 +181,49 @@ object ProseJsonTests extends TestSuite {
       ujson.write(ProseJson.write(doc, noteJson)) ==>
         """{"v":1,"notes":[9],"blocks":[{"type":"para","text":[{"t":"x","m":["emphasis"],"n":[0,0]}]},""" +
         """{"type":"item","list":"number","level":1,"start":2,"text":[{"t":"y"}]}]}"""
+    }
+
+    // The records of every block that nests, and every cell kind, pinned byte for byte.
+    test(
+      "the stored form: lists and quotes side by side, a nested quote, an item opening with code, each cell kind with a formula"
+    ) {
+      val doc: Doc[N] = Doc(
+        Vector(
+          Block.Bullets(Vector(item("a"))),
+          Block.Bullets(Vector(item("b"))),
+          Block.Quote(Vector(para("q"))),
+          Block.Quote(Vector(Block.Quote(Vector(para("r"))), Block.Quote(Vector(para("s"))))),
+          Block.Numbered(2, Vector(Item(Vector(Block.Code(None, Vector("c")))))),
+          Block.table(
+            Vector("w", "n", "d", "b", "e").map(c => Column(plain(c))),
+            Vector(
+              Vector(
+                Cell.Words(plain("x"), Some("=A")),
+                Cell.Number(BigDecimal("1.5"), plain("1.50"), Some("=B")),
+                Cell.Date(LocalDate.of(2026, 10, 22), plain("22 Oct"), Some("=C")),
+                Cell.Truth(true, Some("=D")),
+                Cell.Empty(Some("=E"))
+              )
+            )
+          )
+        )
+      )
+      (ujson.write(ProseJson.write(doc, noteJson)), roundTrip(doc)) ==> (
+        """{"v":1,"notes":[],"blocks":[""" +
+          """{"type":"item","list":"bullet","level":1,"text":[{"t":"a"}]},""" +
+          """{"type":"item","list":"bullet","level":1,"new":true,"text":[{"t":"b"}]},""" +
+          """{"type":"quote","depth":1,"block":{"type":"para","text":[{"t":"q"}]}},""" +
+          """{"type":"quote","depth":2,"block":{"type":"para","text":[{"t":"r"}]},"new":1},""" +
+          """{"type":"quote","depth":2,"block":{"type":"para","text":[{"t":"s"}]},"new":2},""" +
+          """{"type":"item","list":"number","level":1,"start":2},""" +
+          """{"type":"item-more","level":1,"block":{"type":"code","lines":["c"]}},""" +
+          """{"type":"table","columns":[{"name":[{"t":"w"}]},{"name":[{"t":"n"}]},""" +
+          """{"name":[{"t":"d"}]},{"name":[{"t":"b"}]},{"name":[{"t":"e"}]}],"rows":[[""" +
+          """{"w":[{"t":"x"}],"formula":"=A"},{"n":"1.5","shown":[{"t":"1.50"}],"formula":"=B"},""" +
+          """{"d":"2026-10-22","shown":[{"t":"22 Oct"}],"formula":"=C"},""" +
+          """{"b":true,"formula":"=D"},{"empty":true,"formula":"=E"}]]}]}""",
+        Right(doc)
+      )
     }
 
     test("an item-more with no item before it at its level is refused") {

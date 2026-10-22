@@ -24,6 +24,19 @@ In dependency order:
 - **`json`** -- `ProseJson`, the stored form: a flat list of records under a schema version,
   notes written once by the keeper's codec. ← `form`
 
+  Its records, by `"type"`: `para`, `heading`, `code`, `table` and `rule`, one block each; a
+  list as its items, each an `item` record (`"list"`: `bullet` or `number`, `"level"`, its
+  first paragraph as `"text"` when it opens with one), its other blocks after it a level
+  deeper, a nested list's items as items and any other block as an `item-more` holding it;
+  a list with no items as one `list` record; a quote as its blocks, each a `quote` record
+  (`"depth"`) holding it, a quote inside one a depth deeper. Records that follow on from one
+  another join one block, so a list or quote directly after another of its kind marks its
+  first record `"new"`. On an item it is `true`: an item record is always its own list's, at
+  its level, so it needs no more. On a quote it is a number: a quote's record also stands for
+  every quote around it, so `"new": n` says which of them opens afresh, the `n`th counted from
+  the outermost, those outside it continuing (two quotes side by side inside one quote are
+  `"depth": 2, "new": 2` at the second's first record).
+
 `markdown` and `json` name nothing of each other. No source file sits at the module's root,
 and the test tree mirrors it. The terminal's renderer is `grit.app.look.ProseLook`, beside the
 theme it draws in; Slack's is `grit.slack.text.RichText`.

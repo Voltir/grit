@@ -7,15 +7,21 @@ import scala.util.Try
 import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
 
 /** Prose as grit stores it: a flat list of blocks, a list item's level and kind as fields, under
-  * a schema version (`"v"`), read back to the doc it was written from, but for a list with no
-  * items, which is not written. Notes are written by `note`, once each, and referred to by
-  * index from the spans carrying them.
+  * a schema version (`"v"`), read back to the doc it was written from. Notes are written by
+  * `note`, once each, and referred to by index from the spans carrying them. Its records are
+  * described in `core/prose/README.md`.
   */
 object ProseJson {
 
   /** 1: the version [[write]] writes and the one [[read]] reads. */
   val Version: Int = 1
 
+  /** `doc` as stored, `{"v": [[Version]], "notes": [...], "blocks": [...]}`: each distinct note
+    * of `doc` written by `note` once, in the order it first appears, and named by its index
+    * from each span carrying it; the blocks as a flat list of records, a nested list's items by
+    * their level and a nested quote's blocks by their depth. [[read]] of it, given a `note`
+    * reader that inverts `note`, is `doc`. Total: every doc is written.
+    */
   def write[A <: caps.Pure](doc: Doc[A], note: A -> ujson.Value): ujson.Value = {
     val notes: Vector[A] = doc.notes.distinct
     val index: Map[A, Int] = notes.zipWithIndex.toMap
@@ -50,8 +56,9 @@ object ProseJson {
   // Writing. A doc is a stream of records. A list is its items, each `"item"` at level 1 with
   // its first paragraph as its `"text"`, the rest of its blocks after it a level deeper: a
   // nested list's items as items, any other block as `"item-more"` holding it. A quote is its
-  // blocks, each as `"quote"` holding it, a quote inside one a depth deeper. A list or quote
-  // directly after another of its kind opens with `"new"`, which would otherwise continue it.
+  // blocks, each as `"quote"` holding it, a quote inside one a depth deeper. A list with no
+  // items is one `"list"` record. A list or quote directly after another of its kind opens
+  // with `"new"`, which would otherwise continue it (core/prose/README.md says how).
   // ---------------------------------------------------------------------------------------
 
   private def stream[A <: caps.Pure](
@@ -111,18 +118,23 @@ object ProseJson {
       fresh: Boolean,
       text: Text[A] -> ujson.Value
   ): Vector[ujson.Obj] =
-    items.zipWithIndex.flatMap { (item, k) =>
-      val head = ujson.Obj("type" -> "item", "list" -> kind, "level" -> 1)
-      if (k == 0) start.foreach(s => head("start") = s)
-      if (k == 0 && fresh) head("new") = true
-      val rest = item.blocks.headOption match {
-        case Some(Block.Paragraph(t)) =>
-          head("text") = text(t)
-          item.blocks.drop(1)
-        case _ => item.blocks
+    if (items.isEmpty) {
+      val o = ujson.Obj("type" -> "list", "list" -> kind)
+      start.foreach(s => o("start") = s)
+      Vector(o)
+    } else
+      items.zipWithIndex.flatMap { (item, k) =>
+        val head = ujson.Obj("type" -> "item", "list" -> kind, "level" -> 1)
+        if (k == 0) start.foreach(s => head("start") = s)
+        if (k == 0 && fresh) head("new") = true
+        val rest = item.blocks.headOption match {
+          case Some(Block.Paragraph(t)) =>
+            head("text") = text(t)
+            item.blocks.drop(1)
+          case _ => item.blocks
+        }
+        head +: stream(rest, text).map(deeper)
       }
-      head +: stream(rest, text).map(deeper)
-    }
 
   /** `r`, a record of an item's blocks, as a record of the stream its list is in. */
   private def deeper(r: ujson.Obj): ujson.Obj = r.value.get("type").flatMap(_.strOpt) match {
@@ -288,6 +300,15 @@ object ProseJson {
             traverse(_)(row => array(Some(row), "a table's row").flatMap(traverse(_)(cell)))
           )
         } yield Vector(Block.table(columns, rows))
+      case "list" =>
+        kindOf(r) match {
+          case Some("bullet") => Right(Vector(Block.Bullets(Vector.empty)))
+          case Some("number") =>
+            int(r.get("start"), "a numbered list's start").map(s =>
+              Vector(Block.Numbered(s, Vector.empty))
+            )
+          case _ => Left(s"a list of no kind: ${shownRecord(r)}")
+        }
       case "rule" => Right(Vector(Block.Rule))
       case other => Left(s"a block of no kind this reader knows: $other")
     }
