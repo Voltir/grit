@@ -207,6 +207,30 @@ object MarkdownTests extends TestSuite {
       Markdown.parse(Markdown.write(doc)) ==> doc
     }
 
+    test("a nested list under an item's text is written tight; a later paragraph keeps its blank") {
+      def item(text: String, inner: Block[Nothing]*): Item[Nothing] =
+        Item(Block.Paragraph(plain(text)) +: inner.toVector)
+      val nested = Doc(
+        Vector(
+          Block.Bullets(Vector(item("one", Block.Numbered(1, Vector(item("two"))))))
+        )
+      )
+      Markdown.write(nested) ==> "- one\n  1. two"
+      Markdown.parse(Markdown.write(nested)) ==> nested
+      val starts2 = Doc(
+        Vector(
+          Block.Bullets(Vector(item("one", Block.Numbered(2, Vector(item("two"))))))
+        )
+      )
+      Markdown.parse(Markdown.write(starts2)) ==> starts2
+      val later = Doc(
+        Vector(
+          Block.Bullets(Vector(item("one", Block.Paragraph(plain("two")))))
+        )
+      )
+      Markdown.write(later) ==> "- one\n\n  two"
+    }
+
     test("a list marker of another character starts a new list") {
       kinds(Markdown.parse("- a\n+ b\n* c\n\n1. x\n2) y").blocks) ==>
         Vector("ul", "li", "p", "ul", "li", "p", "ul", "li", "p", "ol", "li", "p", "ol", "li", "p")

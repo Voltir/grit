@@ -98,17 +98,35 @@ private[markdown] object Blocks {
     * it made them: a blank line between blocks, an item's lines under its marker's text, a
     * quote's behind `> `.
     */
-  def write(blocks: Vector[Block[Nothing]]): Vector[String] =
+  def write(blocks: Vector[Block[Nothing]]): Vector[String] = blockLines(blocks, inItem = false)
+
+  /** `blocks` one under another: a blank line between each pair, except that in an item a
+    * list under a paragraph is tight when the parser reads it as nested there.
+    */
+  private def blockLines(blocks: Vector[Block[Nothing]], inItem: Boolean): Vector[String] = {
     // Each of a run of lists of one kind under the other marker from the one before it.
-    blocks
+    val written = blocks
       .foldLeft((Vector.empty[Vector[String]], Option.empty[(Int, Boolean)])) {
         case ((out, before), b) =>
           val apart = before.exists((kind, was) => kind == b.ordinal && !was)
           (out :+ write(b, apart), Some((b.ordinal, apart)))
       }
       ._1
-      .reduceOption(_ ++ Vector("") ++ _)
-      .getOrElse(Vector.empty)
+    written.zipWithIndex.foldLeft(Vector.empty[String]) { case (out, (ls, k)) =>
+      val tight = inItem && k > 0 && tightAfter(blocks(k - 1), blocks(k))
+      if (k == 0 || tight) out ++ ls else out ++ Vector("") ++ ls
+    }
+  }
+
+  /** Whether a list under a paragraph reads back as nested in it: a paragraph is ended only by
+    * a bullet, or a number that starts at 1.
+    */
+  private def tightAfter(above: Block[Nothing], below: Block[Nothing]): Boolean =
+    (above, below) match {
+      case (Block.Paragraph(_), Block.Bullets(_)) => true
+      case (Block.Paragraph(_), Block.Numbered(1, _)) => true
+      case _ => false
+    }
 
   /** `b`'s lines; `apart` writes a list under its other marker (`+`, or `)`). */
   private def write(b: Block[Nothing], apart: Boolean): Vector[String] = b match {
@@ -146,12 +164,12 @@ private[markdown] object Blocks {
 
   /** An item under `marker`, its lines after the first indented to the marker's text. */
   private def item(marker: String, i: Item[Nothing]): Vector[String] = {
-    val lines = write(i.blocks)
+    val body = blockLines(i.blocks, inItem = true)
     val indent = " " * (marker.length + 1)
-    lines.headOption match {
+    body.headOption match {
       case None => Vector(marker)
       case Some(first) =>
-        (marker + " " + first) +: lines.drop(1).map(l => if (l.isEmpty) "" else indent + l)
+        (marker + " " + first) +: body.drop(1).map(l => if (l.isEmpty) "" else indent + l)
     }
   }
 
