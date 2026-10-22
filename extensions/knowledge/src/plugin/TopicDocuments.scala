@@ -33,7 +33,10 @@ final class TopicDocuments private (
 
   private val labels: Vector[Label] = keyed.map(_._2)
 
-  val version: Int = 1
+  /** 2: its topics' data is of version 2 ([[grit.knowledge.topic.Topic.write]]); a topic of
+    * version 1 does not read, and its next run withdraws it and opens it afresh.
+    */
+  val version: Int = 2
 
   override val needs: Vector[Exports[?]] = cards.toVector
 

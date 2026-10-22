@@ -22,7 +22,9 @@ object Topic {
   def of(lead: Doc[TopicNote], passages: Vector[Passage]): Topic =
     new Topic(lead, passages.sortBy(_.day.toEpochDay).takeRight(Passages))
 
-  /** Its data, `{"v":1, "lead", "passages"}`. */
+  /** Its data, `{"v":2, "lead", "passages"}`, each doc as [[grit.prose.json.ProseJson]] stores
+    * it.
+    */
   def write(t: Topic): ujson.Value = TopicJson.write(t)
 
   /** The topic of `key` that `v` holds, or why not: an unknown version, no lead, data that is

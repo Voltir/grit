@@ -10,12 +10,13 @@ import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
-import grit.prose.form.{Block, Cell, CellKind, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
+import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
 
-/** [[Topic]]'s data and text. A doc is written block by block, each an object keyed by its
-  * kind; a span `{"text", "marks"?, "notes"?}`; a note `{"link": key}` or `{"claim": …}`, a
-  * claim written whole at each span it notes.
+/** [[Topic]]'s data and text. Version 2: its lead and each passage's body stored as
+  * [[ProseJson]] writes prose, a note `{"link": key}` or `{"claim": …}`, each written once per
+  * doc. Version 1, a doc keyed block by block, is not read.
   */
 private object TopicJson {
 
@@ -23,7 +24,7 @@ private object TopicJson {
 
   def write(t: Topic): ujson.Value =
     ujson.Obj(
-      "v" -> 1,
+      "v" -> 2,
       "lead" -> doc(t.lead),
       "passages" -> ujson.Arr.from(t.passages.map(passage))
     )
@@ -32,7 +33,7 @@ private object TopicJson {
     for {
       o <- obj(v, "a topic")
       _ <- o.get("v").flatMap(_.numOpt) match {
-        case Some(1) => Right(())
+        case Some(2) => Right(())
         case Some(n) => Left(s"a topic of version ${n.toLong}, which this reader does not know")
         case None => Left("a topic with no version")
       }
@@ -167,123 +168,9 @@ private object TopicJson {
       .flatMap(n => DocumentVersionId.of(n.toLong))
       .toRight(s"no document's version: ${ujson.write(v)}")
 
-  private def doc(d: Doc[TopicNote]): ujson.Value = blocks(d.blocks)
+  private def doc(d: Doc[TopicNote]): ujson.Value = ProseJson.write(d, note)
 
-  private def readDoc(v: ujson.Value): Read[Doc[TopicNote]] = readBlocks(v).map(Doc(_))
-
-  private def blocks(bs: Vector[Block[TopicNote]]): ujson.Value = ujson.Arr.from(bs.map(block))
-
-  private def readBlocks(v: ujson.Value): Read[Vector[Block[TopicNote]]] =
-    array(Some(v), "a doc's blocks").flatMap(traverse(_)(readBlock))
-
-  private def items(is: Vector[Item[TopicNote]]): ujson.Value =
-    ujson.Arr.from(is.map(i => blocks(i.blocks)))
-
-  private def readItems(v: Option[ujson.Value]): Read[Vector[Item[TopicNote]]] =
-    array(v, "a list's items").flatMap(traverse(_)(i => readBlocks(i).map(Item(_))))
-
-  private def block(b: Block[TopicNote]): ujson.Value = b match {
-    case Block.Paragraph(t) => ujson.Obj("paragraph" -> text(t))
-    case Block.Heading(l, t) => ujson.Obj("heading" -> l.value, "text" -> text(t))
-    case Block.Bullets(is) => ujson.Obj("bullets" -> items(is))
-    case Block.Numbered(start, is) => ujson.Obj("numbered" -> items(is), "start" -> start)
-    case Block.Quote(bs) => ujson.Obj("quote" -> blocks(bs))
-    case Block.Code(language, lines) =>
-      ujson.Obj(
-        "code" -> ujson.Arr.from(lines.map(ujson.Str(_))),
-        "language" -> language.fold(ujson.Null: ujson.Value)(ujson.Str(_))
-      )
-    case Block.Table(columns, rows) =>
-      ujson.Obj(
-        "table" -> ujson.Arr.from(columns.map(c => text(c.name))),
-        "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(c => text(c.printed)))))
-      )
-    case Block.Rule => ujson.Obj("rule" -> true)
-  }
-
-  private def readBlock(v: ujson.Value): Read[Block[TopicNote]] =
-    obj(v, "a block").flatMap { o =>
-      def has(k: String) = o.contains(k)
-      if (has("paragraph")) readText(o.get("paragraph")).map(Block.Paragraph(_))
-      else if (has("heading"))
-        for {
-          l <- o.get("heading").flatMap(_.numOpt).toRight("a heading with no level")
-          t <- readText(o.get("text"))
-        } yield Block.Heading(Level.of(l.toInt), t)
-      else if (has("bullets")) readItems(o.get("bullets")).map(Block.Bullets(_))
-      else if (has("numbered"))
-        for {
-          start <- o.get("start").flatMap(_.numOpt).toRight("a numbered list with no start")
-          is <- readItems(o.get("numbered"))
-        } yield Block.Numbered(start.toInt, is)
-      else if (has("quote"))
-        o.get("quote").toRight("a quote with no blocks").flatMap(readBlocks).map(Block.Quote(_))
-      else if (has("code"))
-        for {
-          lines <- array(o.get("code"), "a code block's lines")
-            .flatMap(traverse(_)(l => string(Some(l), "a code block's line")))
-        } yield Block.Code(o.get("language").flatMap(_.strOpt), lines)
-      else if (has("table"))
-        for {
-          header <- array(o.get("table"), "a table's header")
-            .flatMap(traverse(_)(c => readText(Some(c))))
-          rows <- array(o.get("rows"), "a table's rows").flatMap(
-            traverse(_)(r =>
-              array(Some(r), "a table's row").flatMap(traverse(_)(c => readText(Some(c))))
-            )
-          )
-        } yield Block.Table(header.map(Column(_, CellKind.Words)), rows.map(_.map(Cell.Words(_))))
-      else if (has("rule")) Right(Block.Rule)
-      else Left(s"a block of no kind: ${ujson.write(v)}")
-    }
-
-  private def text(t: Text[TopicNote]): ujson.Value = ujson.Arr.from(t.spans.map(span))
-
-  private def readText(v: Option[ujson.Value]): Read[Text[TopicNote]] =
-    array(v, "a text's spans").flatMap(traverse(_)(readSpan)).map(Text(_))
-
-  private def span(s: Span[TopicNote]): ujson.Value = {
-    val o = ujson.Obj("text" -> s.text)
-    if (s.marks.nonEmpty)
-      o("marks") = ujson.Arr.from(s.marks.toVector.map(mark).sortBy(ujson.write(_)))
-    if (s.notes.nonEmpty) o("notes") = ujson.Arr.from(s.notes.map(note))
-    o
-  }
-
-  private def readSpan(v: ujson.Value): Read[Span[TopicNote]] =
-    for {
-      o <- obj(v, "a span")
-      t <- string(o.get("text"), "a span's text")
-      marks <- o
-        .get("marks")
-        .fold(Right(Vector.empty))(m =>
-          array(Some(m), "a span's marks").flatMap(traverse(_)(readMark))
-        )
-      notes <- o
-        .get("notes")
-        .fold(Right(Vector.empty))(n =>
-          array(Some(n), "a span's notes").flatMap(traverse(_)(readNote))
-        )
-    } yield Span(t, marks.toSet, notes)
-
-  private def mark(m: Mark): ujson.Value = m match {
-    case Mark.Strong => "strong"
-    case Mark.Emphasis => "emphasis"
-    case Mark.Code => "code"
-    case Mark.Link(href) => ujson.Obj("link" -> href)
-  }
-
-  private def readMark(v: ujson.Value): Read[Mark] = v.strOpt match {
-    case Some("strong") => Right(Mark.Strong)
-    case Some("emphasis") => Right(Mark.Emphasis)
-    case Some("code") => Right(Mark.Code)
-    case _ =>
-      v.objOpt
-        .flatMap(_.get("link"))
-        .flatMap(_.strOpt)
-        .map(Mark.Link(_))
-        .toRight(s"no mark: ${ujson.write(v)}")
-  }
+  private def readDoc(v: ujson.Value): Read[Doc[TopicNote]] = ProseJson.read(v, readNote)
 
   private def note(n: TopicNote): ujson.Value = n match {
     case TopicNote.Link(to) => ujson.Obj("link" -> TopicKey.value(to))

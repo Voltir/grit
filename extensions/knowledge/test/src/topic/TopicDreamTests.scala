@@ -736,6 +736,32 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
+    test(
+      "a topic whose data no longer reads, an earlier version's, is withdrawn and opened afresh"
+    ) {
+      val w = new StrandWorld
+      val a = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      // The topic as an earlier version of the plugin kept it: data this reader refuses.
+      runs.topics.foreach { d =>
+        val old = ujson.copy(d.data)
+        old("v") = 1
+        val _ = ok(
+          runs.documents
+            .keeper(Plugin, Terms)
+            .write(d.key, d.label, d.integrity, d.place, d.text, old, d.pointer, Now)(using
+              TestTx.fake
+            )
+        )
+      }
+      val reply = runs.run(now = Now.plusSeconds(60))
+      (reply, runs.kept) ==> (
+        "topics: 1 written (1 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run",
+        Vector(key(a) -> s"$Lead\n\n## 2026-10-12\n\n$Passage")
+      )
+    }
+
     test("past perRun, the rest are left and counted") {
       val w = new StrandWorld
       val roots = (1 to 3).map(i => strand(w, s"C$i", s"subject $i", i * 100L))

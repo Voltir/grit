@@ -78,11 +78,35 @@ object TopicCodecTests extends TestSuite {
       Topic.read(key, Topic.write(topic)) ==> Right(topic)
     }
 
-    test("an unknown version is refused, naming it") {
-      val v = Topic.write(topic)
-      v("v") = 2
-      val read = Topic.read(key, v)
-      read ==> Left("a topic of version 2, which this reader does not know")
+    test("a topic is version 2, each doc stored prose, a claim on two spans written once") {
+      val twice = Topic.of(
+        Doc(
+          Vector(
+            para(
+              Span("ships", Set.empty, Vector(TopicNote.Claimed(firm))),
+              Span(" Friday", Set(Mark.Strong), Vector(TopicNote.Claimed(firm)))
+            )
+          )
+        ),
+        Vector(monday)
+      )
+      val v = Topic.write(twice)
+      val lead = v("lead").objOpt
+      val notes = lead.flatMap(_.get("notes")).flatMap(_.arrOpt).map(_.map(_.obj.keys.toVector))
+      (v("v"), lead.flatMap(_.get("v")), notes) ==> (
+        ujson.Num(2),
+        Some(ujson.Num(1)),
+        Some(Vector(Vector("claim")))
+      )
+      Topic.read(key, v) ==> Right(twice)
+    }
+
+    // A topic of the first version, as kept before prose was stored flat: never read again.
+    test("a topic of version 1 is refused, naming its version") {
+      val v1 = ujson.read(
+        """{"v":1,"lead":[{"paragraph":[{"text":"The release"}]}],"passages":[]}"""
+      )
+      Topic.read(key, v1) ==> Left("a topic of version 1, which this reader does not know")
     }
 
     test("a topic with no lead is refused, naming it") {
