@@ -125,7 +125,10 @@ object ApprovalLiveTests extends TestSuite {
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
           results(engine, turn) ==> Vector(
-            ("Declined: the person declined this call; it did not run. Their reason: not yet", true)
+            (
+              "Declined: the person you are answering declined this call; it did not run. Their reason: not yet",
+              true
+            )
           )
           assert(reply(engine, turn).exists(_.contains("Their reason: not yet")))
         } finally engine.close()

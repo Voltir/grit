@@ -86,7 +86,8 @@ enum Outcome {
 
   /** The result the model reads for the call `call`: `Done` is not an error, every other
     * case is. `Declined` and `Unanswered` each begin with their name ("Declined: …",
-    * "Unanswered: …"), a declined one ending with the person's reason when they gave one;
+    * "Unanswered: …"), a declined one naming who declined as the person the model is answering
+    * (a gated call asks its turn's asker) and ending with their reason when they gave one;
     * `Interrupted` says the call may have partly run and should be checked before it is
     * tried again.
     */
@@ -97,7 +98,7 @@ enum Outcome {
       val said = reason.fold("")(r => s" Their reason: $r")
       Message.ToolResult(
         call,
-        s"Declined: the person declined this call; it did not run.$said",
+        s"Declined: the person you are answering declined this call; it did not run.$said",
         isError = true
       )
     case Unanswered =>
