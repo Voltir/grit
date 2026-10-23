@@ -3,9 +3,11 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.files.{
+  CoverUnit,
   Covers,
   FormatName,
   InMemoryPieces,
+  Limit,
   Locus,
   PieceKeeper,
   Pieces,
@@ -19,7 +21,7 @@ import grit.core.retention.Target
 import grit.core.store.Tx
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
 import grit.dbos.sql.TestTx
-import grit.prose.form.{Block, Doc, Span, Text}
+import grit.prose.form.{Block, Doc, Level, Span, Text}
 
 import utest.*
 
@@ -56,17 +58,20 @@ object PiecingTests extends TestSuite {
   private def at(minute: Int): Instant =
     Instant.parse("2026-03-01T00:00:00Z").plusSeconds(60L * minute)
 
-  /** The file `a` read and kept by a run at `label`, replacing its pieces at `replacing`. */
+  /** The file `a` read as `tree` and kept by a run at `label`, replacing its pieces at
+    * `replacing`.
+    */
   private def kept(
       pieces: InMemoryPieces,
       label: Label,
       replacing: Vector[Label],
-      minute: Int
+      minute: Int,
+      tree: Understood = Tree
   ): Pieced =
     Piecing
       .kept(
         Piecing.Read(File, "a", "r1", TestPieces.pointer("a"), Here, replacing),
-        Right(("a.pdf", Tree)),
+        Right(("a.pdf", tree)),
         pieces.keeper(Plugin, PieceKeeper.Bound),
         Integrity.Member,
         MovesFixtures.PerChar,
@@ -95,6 +100,22 @@ object PiecingTests extends TestSuite {
         )
       (again, pieces.current(Plugin)(using tx(Label.Public)).map(_.id) == before, marked) ==>
         (Pieced.Kept(1, 0), true, Right(Vector()))
+    }
+
+    test("a read whose tree yields no piece marks the file unread, saying why") {
+      def tree(blocks: Vector[Block[Locus]], covers: Covers) =
+        Understood(Doc(blocks), covers, Vector.empty, FormatName("test"), 1)
+      val sheet = Block.Heading(Level.of(2), Text(Vector(Span("Revenue", Set.empty, Vector()))))
+      val stopped = tree(Vector(sheet), Covers.Part(1, 2, CoverUnit.Sheets, Limit.Time))
+      (
+        kept(new InMemoryPieces, Label.Public, Vector(), 1, stopped),
+        kept(new InMemoryPieces, Label.Public, Vector(), 1, tree(Vector(), Covers.Whole))
+      ) ==> (
+        Pieced.Unread(
+          "Nothing of that file could be read here: it took too long to read whole here."
+        ),
+        Pieced.Unread("That file has no text in it.")
+      )
     }
 
     test("a survey finds due a file kept by a format the area no longer reads at that version") {

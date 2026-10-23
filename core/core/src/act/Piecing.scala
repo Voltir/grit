@@ -3,7 +3,7 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.document.Pointer
-import grit.core.files.{FormatName, KeptAs, PieceKeeper, PiecedFile, Pieces, Understood}
+import grit.core.files.{Covers, FormatName, KeptAs, PieceKeeper, PiecedFile, Pieces, Understood}
 import grit.core.id.FileHandle
 import grit.core.message.Tokens
 import grit.core.place.Place
@@ -77,8 +77,9 @@ object Piecing {
 
   /** What `read` comes to over `keeper`, written `at`, in this transaction: its file `file` (the
     * name its sender gave it and its tree, or why it is unread), cut by [[Pieces.of]] under
-    * `estimate` and kept at the floor believed at `integrity`, or, unread, `read.ref` marked so
-    * there; and its pieces at each of `read.replacing` but the floor withdrawn first.
+    * `estimate` and kept at the floor believed at `integrity`, or, unread or cut into no piece,
+    * `read.ref` marked so there, saying why; and its pieces at each of `read.replacing` but the
+    * floor withdrawn first.
     * The one meaning of a read, every [[Keeping]]'s.
     */
   def kept(
@@ -91,26 +92,37 @@ object Piecing {
   )(using tx: Tx^): Either[StoreError, Pieced] = {
     val floor = Tx.floor(tx)
     val replaced = read.replacing.filter(_ != floor).map(l => (read.ref, l))
+    def unread(why: String) =
+      marked(Mark(read.ref, read.revision, read.place, why, read.replacing), keeper, at)
     file match {
-      case Left(why) =>
-        marked(Mark(read.ref, read.revision, read.place, why, read.replacing), keeper, at)
+      case Left(why) => unread(why)
       case Right((name, tree)) =>
-        val (pieces, cut) = Pieces.of(tree, estimate)
-        val kept =
-          PiecedFile(
-            read.ref,
-            name,
-            read.revision,
-            tree.by,
-            tree.version,
-            read.pointer,
-            Pieces.Target
-          )
-        for {
-          _ <- withdrawn(replaced, keeper, at)
-          n <- keeper.keep(kept, read.place, integrity, pieces, cut, at)
-        } yield Pieced.Kept(n, cut)
+        Pieces.of(tree, estimate) match {
+          case (Vector(), _) => unread(nothingIn(tree.covers))
+          case (pieces, cut) =>
+            val kept =
+              PiecedFile(
+                read.ref,
+                name,
+                read.revision,
+                tree.by,
+                tree.version,
+                read.pointer,
+                Pieces.Target
+              )
+            for {
+              _ <- withdrawn(replaced, keeper, at)
+              n <- keeper.keep(kept, read.place, integrity, pieces, cut, at)
+            } yield Pieced.Kept(n, cut)
+        }
     }
+  }
+
+  /** Why a file read as covering `covers` yielded no piece, in words the model reads. */
+  private def nothingIn(covers: Covers): String = covers match {
+    case Covers.Whole => "That file has no text in it."
+    case Covers.Part(_, _, _, by) => s"Nothing of that file could be read here: ${by.words}."
+    case Covers.Start(by) => s"Nothing of that file could be read here: ${by.words}."
   }
 
   /** What `relabel` comes to over `keeper`, written `at`, in this transaction, its pieces
