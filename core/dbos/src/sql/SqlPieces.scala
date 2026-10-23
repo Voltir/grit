@@ -153,8 +153,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         at: Instant
     )(using tx: Tx^): Either[StoreError, Int] = {
       val clearance: Clearance = Tx.clearance(tx)
-      val room =
-        ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
+      val room = rooms(clearance)
       for {
         label <- SqlLabels.intern(clearance.floor)
         before <- current(file.ref, label)
@@ -223,6 +222,63 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         before <- current(ref, interned)
         _ <- before.fold(Right(()))(supersede(_, at))
       } yield before.nonEmpty
+
+    def relabel(ref: String, from: Label, place: Place, most: Integrity, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Int] = {
+      val clearance: Clearance = Tx.clearance(tx)
+      for {
+        interned <- SqlLabels.intern(from)
+        before <- current(ref, interned)
+        moved <- before.fold(Right(0))(old => relabelled(old, ref, clearance, place, most, at))
+      } yield moved
+    }
+
+    /** As [[relabel]], the set `old` of `ref` moved to `clearance`'s floor: how many pieces. */
+    private def relabelled(
+        old: Long,
+        ref: String,
+        clearance: Clearance,
+        place: Place,
+        most: Integrity,
+        at: Instant
+    )(using tx: Tx^): Either[StoreError, Int] =
+      for {
+        believed <- rows(
+          s"SELECT d.integrity_level, d.integrity_compartments FROM $Labelled d WHERE d.id = ?"
+        )(_.setLong(1, old))(rs => Right(SqlIntegrity.read(rs)))
+        integrity <- believed.headOption.toRight(StoreError.Invalid(s"no piece set $old"))
+        _ <- supersede(old, at)
+        label <- SqlLabels.intern(clearance.floor)
+        there <- current(ref, label)
+        _ <- there.fold(Right(()))(supersede(_, at))
+        made <- rows(
+          s"""INSERT INTO grit.piece_sets
+             |       (plugin, ref, name, revision, format, format_version, place,
+             |        classification_id, room_id, integrity_id, written_at, last_placed, cut)
+             |SELECT plugin, ref, name, revision, format, format_version,
+             |       ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
+             |       ${SqlIntegrity.Interned}, ?, last_placed, cut
+             |  FROM grit.piece_sets WHERE id = ?
+             |RETURNING id""".stripMargin
+        ) { ps =>
+          ps.setString(1, path(place).render())
+          ps.setInt(2, label)
+          ps.setString(3, rooms(clearance))
+          SqlIntegrity.bind(ps, 4, integrity.meet(most))
+          ps.setObject(6, utc(at))
+          ps.setLong(7, old)
+        }(rs => Right(rs.getLong("id")))
+        set <- made.headOption.toRight(StoreError.Invalid("a relabel returned no set"))
+        n <- update("UPDATE grit.pieces SET set_id = ? WHERE set_id = ?") { ps =>
+          ps.setLong(1, set)
+          ps.setLong(2, old)
+        }
+      } yield n
+
+    /** The path of `clearance`'s own room, as [[RoomId]] binds it: none when it has none. */
+    private def rooms(clearance: Clearance): String =
+      ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
 
     /** The current set of `ref` at the label whose id is `label`, locked. */
     private def current(ref: String, label: Int)(using tx: Tx^): Either[StoreError, Option[Long]] =

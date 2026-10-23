@@ -76,6 +76,8 @@ class ScriptedKeeping(
         val done = Trusted.asIs(from).extract match {
           case Piecing.Withdraw(gone) =>
             Piecing.withdrawn(gone, pieceKeeper, at).map(Pieced.Withdrawn(_))
+          case relabel: Piecing.Relabel =>
+            Piecing.relabelled(relabel, pieceKeeper, from.integrity, at)
           case read: Piecing.Read =>
             Piecing.kept(
               read,

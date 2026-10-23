@@ -21,6 +21,11 @@ enum Piecing extends caps.Pure derives CanEqual {
 
   /** Withdraw each file's pieces at its label: `ref` to that label. */
   case Withdraw(gone: Vector[(String, Label)])
+
+  /** Move `ref`'s current pieces at `from` to the floor, drawn on at `place`, as its card is
+    * moved ([[grit.core.files.PieceKeeper.relabel]]).
+    */
+  case Relabel(ref: String, from: Label, place: Place)
 }
 
 /** What a piece move came to. */
@@ -36,6 +41,9 @@ enum Pieced extends caps.Pure derives CanEqual {
 
   /** The pieces of `files` of the files named withdrawn; the others had none. */
   case Withdrawn(files: Int)
+
+  /** `pieces` moved to the floor: none when the file had none at the label it was moved from. */
+  case Relabelled(pieces: Int)
 }
 
 object Piecing {
@@ -68,6 +76,16 @@ object Piecing {
         } yield Pieced.Kept(n, cut)
     }
   }
+
+  /** What `relabel` comes to over `keeper`, written `at`, in this transaction, its pieces
+    * believed at no more than `integrity`. The one meaning of a relabel, every [[Keeping]]'s.
+    */
+  def relabelled(relabel: Relabel, keeper: PieceKeeper, integrity: Integrity, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Pieced] =
+    keeper
+      .relabel(relabel.ref, relabel.from, relabel.place, integrity, at)
+      .map(Pieced.Relabelled(_))
 
   /** How many of `gone`'s files had pieces at their labels, each withdrawn through `keeper`,
     * `at`, in this transaction.

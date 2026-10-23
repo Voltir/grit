@@ -107,6 +107,35 @@ final class InMemoryPieces extends PieceStore {
         case Some((s, r)) => supersede(s, r, at).map(_ => true)
         case None => Right(false)
       }
+
+    def relabel(ref: String, from: Label, place: Place, most: Integrity, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Int] = {
+      val clearance = Tx.clearance(tx)
+      val floor = clearance.floor
+      current(plugin, ref, from) match {
+        case None => Right(0)
+        case Some((s, r)) =>
+          for {
+            _ <- supersede(s, r, at)
+            _ <- current(plugin, ref, floor).fold(Right(()))((f, fr) => supersede(f, fr, at))
+          } yield {
+            lastSet += 1
+            val moved = r.copy(
+              place = place,
+              label = floor,
+              room = clearance.own.map(_.room),
+              integrity = r.integrity.meet(most),
+              written = at,
+              superseded = None
+            )
+            sets = sets.updated(lastSet, moved)
+            val pieces = of(s)
+            pieces.foreach((id, p) => rows = rows.updated(id, p.copy(set = lastSet)))
+            pieces.size
+          }
+      }
+    }
   }
 
   /** `plugin`'s current set for `ref` at `label`. */

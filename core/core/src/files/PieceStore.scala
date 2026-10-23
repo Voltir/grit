@@ -112,6 +112,17 @@ trait PieceKeeper {
     * marks those it replaces; whether there were any.
     */
   def withdraw(ref: String, label: Label, at: Instant)(using Tx^): Either[StoreError, Boolean]
+
+  /** `ref`'s current pieces at `from` made its current pieces at the transaction's floor, at
+    * `place`, written `at`, in its own room as [[keep]] keeps them: the same pieces, each keeping
+    * its id, with the file's name, revision, format and when it was last placed, believed at the
+    * meet of what they were and `most`. Those at `from`, and any current at the floor
+    * before, stop being current and are marked for deletion as [[keep]] marks those it replaces.
+    * How many pieces are kept: 0, keeping and withdrawing nothing, when `ref` has none at `from`.
+    */
+  def relabel(ref: String, from: Label, place: Place, most: Integrity, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Int]
 }
 
 object PieceKeeper {

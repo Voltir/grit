@@ -663,14 +663,21 @@ object SyncTests extends TestSuite {
       )
     }
 
-    test("a card relabelled has its file's pieces withdrawn at the label it left") {
+    test("a card relabelled takes its file's pieces with it, each keeping its id") {
       val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
       val first = keeping(lower, documents, pieces = pieces)
       val _ = runOf(first, job = filed())
-      val before = pieced(first).map(_._3)
+      val before = first.pieced.map(p => (p.id, p.label))
       val k = keeping(floor, documents, pieces = pieces)
       val reply = runOf(k, job = filed())
-      (before, reply, pieced(k)) ==> (Vector(lower), line(relabelled = 3), Vector())
+      val left = keeping(lower, documents, pieces = pieces).pieced.filter(_.label == lower)
+      (before.map(_._2), reply, k.pieced.map(p => (p.id, p.label)), pieced(k), left) ==> (
+        Vector(lower),
+        line(relabelled = 3),
+        before.map((id, _) => (id, floor)),
+        Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app.")),
+        Vector()
+      )
     }
 
     test("a refused first call leaves every held card current, and the reply says why") {

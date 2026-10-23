@@ -539,6 +539,8 @@ private[moves] object Act {
         val done: Either[StoreError, Pieced] = p.piecing match {
           case Piecing.Withdraw(gone) =>
             env.jot.write(subject)(Piecing.withdrawn(gone, p.keeper, at).map(Pieced.Withdrawn(_)))
+          case relabel: Piecing.Relabel =>
+            env.jot.write(subject)(Piecing.relabelled(relabel, p.keeper, p.integrity, at))
           case read: Piecing.Read =>
             treeOf(env, subject, read.file).flatMap { file =>
               env.jot.write(subject)(

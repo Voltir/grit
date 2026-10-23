@@ -31,8 +31,10 @@ Decision:
   transaction, and keeps its pieces at the run's floor in a write of its own, believed at no
   more than what it pieces from; a rerun keeps the same pieces again. A keep replaces the
   file's set at that label, and an unchanged piece keeps its id. The knowledge sync pieces
-  each file whose read kept it whole and was believed at `Outside` or above, and withdraws a
-  file's pieces wherever its card goes away (gone, relabelled, or read below `Outside`).
+  each file whose read kept it whole and was believed at `Outside` or above, moves a file's
+  pieces with its card when the card is relabelled (each keeping its id and when it was last
+  placed), and withdraws them when its card is gone or rewritten from a read that kept no
+  whole file believed at `Outside` or above.
 - **Bounded in bytes, forgotten whole.** A plugin's pieces take at most `PieceKeeper.Bound`
   (128 MiB) counted over every label; past it, whole files are deleted, those superseded
   first, then the least recently placed, never the one written. Superseded and withdrawn sets
@@ -43,7 +45,7 @@ Decision:
 
 Consequences: a question about a clause of a kept file finds the clause, cited by file,
 heading path and pages, at the cost of one search per turn that holds any pieces and no model
-call to keep them. A file's pieces live only as long as the sync keeps reading it: a card
-relabelled loses its file's pieces until the file is next read. Enforced by the pieces
-contract (`PieceContract`, over the in-memory and SQL stores) and the moves contract
-(`MovesContract`) for the piece move; the turn's replay gate holds the window's encoding.
+call to keep them. A file's pieces live only as long as the sync keeps its card. Enforced by
+the pieces contract (`PieceContract`, over the in-memory and SQL stores) and the moves
+contract (`MovesContract`) for the piece move; the turn's replay gate holds the window's
+encoding.

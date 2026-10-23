@@ -495,21 +495,26 @@ object MovesJournal {
       }
   )
 
-  /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}` or `{"withdrawn":n}`. */
+  /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}`, `{"withdrawn":n}` or
+    * `{"relabelled":n}`.
+    */
   given pieced: Journaled[Pieced] = Journaled.json(
     {
       case Pieced.Kept(pieces, cut) => ujson.Obj("kept" -> pieces, "cut" -> cut)
       case Pieced.Unread(why) => ujson.Obj("unread" -> why)
       case Pieced.Withdrawn(files) => ujson.Obj("withdrawn" -> files)
+      case Pieced.Relabelled(pieces) => ujson.Obj("relabelled" -> pieces)
     },
     v =>
       fields(v, "piece").flatMap { o =>
         def count(key: String) = o.get(key).flatMap(_.numOpt).map(_.toInt)
-        (count("kept"), count("cut"), o.get("unread").flatMap(_.strOpt), count("withdrawn")) match {
-          case (Some(kept), Some(cut), _, _) => Right(Pieced.Kept(kept, cut))
-          case (_, _, Some(why), _) => Right(Pieced.Unread(why))
-          case (_, _, _, Some(files)) => Right(Pieced.Withdrawn(files))
-          case _ => Left("piece: expected kept and cut, unread, or withdrawn")
+        val unread = o.get("unread").flatMap(_.strOpt)
+        (count("kept"), count("cut"), unread, count("withdrawn"), count("relabelled")) match {
+          case (Some(kept), Some(cut), _, _, _) => Right(Pieced.Kept(kept, cut))
+          case (_, _, Some(why), _, _) => Right(Pieced.Unread(why))
+          case (_, _, _, Some(files), _) => Right(Pieced.Withdrawn(files))
+          case (_, _, _, _, Some(pieces)) => Right(Pieced.Relabelled(pieces))
+          case _ => Left("piece: expected kept and cut, unread, withdrawn, or relabelled")
         }
       }
   )

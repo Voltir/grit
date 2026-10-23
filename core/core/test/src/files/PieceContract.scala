@@ -204,6 +204,47 @@ abstract class PieceContract extends TestSuite {
       (withdrawn, search(p, "alpha", 5), marked.size) ==> ((false, true, false), Vector(), 1)
     }
 
+    test(
+      "a file's pieces relabelled are current at the floor and place, each keeping its id and the file's name, belief no more than given, those left marked for deletion"
+    ) {
+      val p = name("pieces-relabel")
+      val k = keeper(p, PieceKeeper.Bound)
+      keep(k, "a", 1, "alpha one")
+      val id = idOf(p, "alpha", 2)
+      val There = Place.under(Namespace.Task, Vector("pieces", "there"))
+      val trial = Clearance.of(TestLabels.Trial)
+      val moved = opened(trial)(ok(k.relabel("a", Label.Public, There, Integrity.Outside, at(3))))
+      val none = opened(trial)(ok(k.relabel("b", Label.Public, There, Integrity.Outside, at(3))))
+      val hit = opened(trial)(ok(store.search(Vector(p), "alpha", 5, at(4))))
+      val marked = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
+      (
+        (moved, none),
+        hit.map(h => (h.piece.id, h.piece.label, h.piece.place, h.piece.integrity, h.piece.file)),
+        search(p, "alpha", 4),
+        marked.size
+      ) ==> (
+        (1, 0),
+        Vector((id, TestLabels.Trial, There, Integrity.Outside, file("a"))),
+        Vector(),
+        1
+      )
+    }
+
+    test("a file's pieces relabelled keep when they were last placed, which the bound orders by") {
+      val p = name("pieces-relabel-placed")
+      val one = Piece.size(piece("alpha one"), "a.pdf")
+      val k = keeper(p, 2 * one + one / 2)
+      keep(k, "a", 1, "alpha one")
+      keep(k, "b", 2, "bravo one")
+      transaction(ok(store.placed(Vector(idOf(p, "bravo", 3)), at(3))))
+      transaction(ok(k.relabel("a", Label.Public, Here, Integrity.Member, at(4))))
+      val relabelled = search(p, "alpha", 5).size
+      keep(k, "c", 5, "charl one")
+      val after =
+        (search(p, "alpha", 6).size, search(p, "bravo", 6).size, search(p, "charl", 6).size)
+      (relabelled, after) ==> (1, (0, 1, 1))
+    }
+
     test("a plugin's pieces removed are read no more, their tombstones ended") {
       val p = name("pieces-removed")
       val k = keeper(p, PieceKeeper.Bound)

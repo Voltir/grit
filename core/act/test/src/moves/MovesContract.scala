@@ -190,6 +190,24 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a piece move relabelling a file moves its pieces to the floor and the place given, believed no more than what it moves from"
+    ) {
+      val there = Place.under(Namespace.Task, Vector("notes", "there"))
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        val read = m.piece(
+          name("p"),
+          TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Member)
+        )
+        val moved = Piecing.Relabel("a", Floor, there)
+        Made(Vector(read, m.piece(name("r"), TestTainted.at(moved, Integrity.Outside))))
+      }
+      (got, kept.map(k => (k.file.ref, k.place, k.label, k.integrity))) ==> (
+        Made(Vector(Right(Pieced.Kept(1, 0)), Right(Pieced.Relabelled(1)))),
+        Vector(("a", there, Floor, Integrity.Outside))
+      )
+    }
+
+    test(
       "an ask is answered as its world answers at the world's floor, and a call done with its edge's answer at its service's place's label"
     ) {
       val got = within(limits(1, 1)) { m =>

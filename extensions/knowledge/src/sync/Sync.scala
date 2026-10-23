@@ -29,9 +29,8 @@ import grit.knowledge.ref.CardKey
   * kept, it keeps the pieces of the file when its read kept all of it in the file area
   * ([[Source.file]]) believed at `Outside` or above, as its card's key's at its version,
   * believed as its card ([[grit.core.act.Keeping.piece]]), and otherwise withdraws those its card
-  * held before; a file's pieces are withdrawn where its card is withdrawn or relabelled away. A
-  * held card at another
-  * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
+  * held before; a file's pieces move where its card is copied, and are withdrawn where it is
+  * withdrawn. A held card at another label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
   * read at, and believed at the meet of the run and what it read on its unit's way
   * ([[Step.Fetching.way]]: everything read before it for [[Way.Run]]; for [[Way.Through]], the
@@ -264,10 +263,11 @@ object Sync {
                 ),
                 s"relabelling the card of $path"
               )
-              // A file's pieces are not copied: those at `from` go with its card there, and its
-              // pieces are kept again when the file is next read.
-              val gone = read.map(_ => Piecing.Withdraw(Vector((CardKey.value(key), from))))
-              (if (from == floor) relabelled else after(relabelled, key, path, gone), read, seen)
+              // A file's pieces go where its card goes, in a move of their own; a directory's
+              // card (one made under a scope) has none.
+              val file = h.held.exists(c => c.key == key && c.label == from && c.scope.isEmpty)
+              val moved = read.map(_ => Piecing.Relabel(CardKey.value(key), from, at))
+              (if (file) after(relabelled, key, path, moved) else relabelled, read, seen)
             case Step.Drop(gone) =>
               val dropped = kept(
                 moves.keep(CardMoves.Drop, read)((_, keeper, now) => drop(keeper, gone, now)),
