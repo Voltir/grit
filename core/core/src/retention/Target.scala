@@ -7,6 +7,7 @@ import grit.core.id.{
   DocumentVersionId,
   FileHandle,
   PeriodRef,
+  PieceSetId,
   PeriodSeq,
   PluginName,
   ScheduleId
@@ -62,6 +63,11 @@ enum Target {
     */
   case File(handle: FileHandle)
 
+  /** A revision of a kept file's pieces that stopped being current (superseded, or withdrawn),
+    * with its pieces.
+    */
+  case PieceSet(set: PieceSetId)
+
   def kind: Target.Kind = this match {
     case Raw(_) => Target.Kind.Raw
     case Superseded(_) => Target.Kind.Superseded
@@ -72,6 +78,7 @@ enum Target {
     case Document(_) => Target.Kind.Document
     case Schedule(_) => Target.Kind.Schedule
     case File(_) => Target.Kind.File
+    case PieceSet(_) => Target.Kind.PieceSet
   }
 }
 
@@ -88,17 +95,18 @@ object Target {
     case Document extends Kind("document")
     case Schedule extends Kind("schedule")
     case File extends Kind("file")
+    case PieceSet extends Kind("piece-set")
 
     /** How long after its tombstone is written a target of this kind is deleted: `windows`'
       * retention for Raw, PostRuns, Restarted and Schedule; its ledger window for Superseded,
-      * Quiet and Disabled; for Document, its plugin's declared retention; for File, none, as its
-      * tombstone is written once its own expiry has passed.
+      * Quiet and Disabled; for Document and PieceSet, its plugin's declared retention; for File,
+      * none, as its tombstone is written once its own expiry has passed.
       */
     def retention(windows: Windows): Retention = this match {
       case Kind.Raw | Kind.PostRuns | Kind.Restarted | Kind.Schedule =>
         Retention.For(windows.retention)
       case Kind.Superseded | Kind.Quiet | Kind.Disabled => Retention.For(windows.ledger)
-      case Kind.Document => Retention.Declared
+      case Kind.Document | Kind.PieceSet => Retention.Declared
       case Kind.File => Retention.For(Duration.Zero)
     }
   }
@@ -111,7 +119,8 @@ object Target {
 
   /** `target`'s stored key, beside its kind's name: `{conversation}:{period}` for a period's,
     * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's, `{version}`
-    * for a document's, its id for a schedule's, its handle's number for a file's.
+    * for a document's, its id for a schedule's, its handle's number for a file's, its number for
+    * a piece set's.
     */
   def key(target: Target): String = target match {
     case Raw(p) => period(p)
@@ -124,6 +133,7 @@ object Target {
     case Document(version) => DocumentVersionId.value(version).toString
     case Schedule(id) => ScheduleId.value(id)
     case File(handle) => FileHandle.value(handle).toString
+    case PieceSet(set) => PieceSetId.value(set).toString
   }
 
   /** The target of `kind` stored under `key`, or why it is none. */
@@ -157,6 +167,11 @@ object Target {
           .flatMap(FileHandle.of)
           .map(File(_))
           .toRight(s"file $key: not a file's handle")
+      case Kind.PieceSet =>
+        key.toLongOption
+          .flatMap(PieceSetId.of)
+          .map(PieceSet(_))
+          .toRight(s"piece-set $key: not a set's number")
       case Kind.PostRuns =>
         key.split(':') match {
           case Array(p, v, c) =>

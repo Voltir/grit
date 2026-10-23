@@ -219,6 +219,7 @@ final class Engine private (
       documentReviews,
       sqlSchedules,
       files,
+      pieces,
       () => enabled.get(),
       () => posting.get(),
       () => declared.get(),

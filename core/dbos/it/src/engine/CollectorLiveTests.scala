@@ -10,7 +10,18 @@ import scala.util.Using
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
-import grit.core.files.{FileArea, FileItem, FileOrigin, Incoming, PagedText, PutKey}
+import grit.core.files.{
+  FileArea,
+  FileItem,
+  FileOrigin,
+  FormatName,
+  Incoming,
+  Locus,
+  PagedText,
+  Piece,
+  PiecedFile,
+  PutKey
+}
 import grit.core.host.TempBlobs
 import grit.core.id.{
   CloseRef,
@@ -49,6 +60,7 @@ import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
+import grit.prose.form.{Block, Doc, Span, Text}
 import grit.core.visibility.{Clearance, Label, Subject}
 import grit.core.visibility.{Integrity, Provenance, Readers}
 import grit.dbos.sql.{
@@ -61,6 +73,7 @@ import grit.dbos.sql.{
   SqlModelProfileStore,
   SqlPeriodStore,
   SqlPluginCursors,
+  SqlPieces,
   SqlPluginDocs,
   SqlSchedules,
   SqlSpeechStore,
@@ -1186,6 +1199,35 @@ object CollectorLiveTests extends TestSuite {
           Right(versions.take(1).map(Target.Document(_)))
         LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
           Right(versions.drop(1))
+      } finally engine.close()
+    }
+
+    test("a kept file's pieces no longer current go their plugin's declared retention after, not before") {
+      val config = TestPostgres.freshDatabase("collect_pieces")
+      val p = PluginName.of("piecing").getOrElse(sys.error("name"))
+      val pieces = new SqlPieces(tombstones)
+      val keeper = pieces.keeper(p)
+      val here = Place.under(Namespace.Task, Vector("collect"))
+      val file = PiecedFile("f", "f.pdf", "r1", FormatName("test"), 1)
+      def piece(text: String): Piece =
+        Piece(Vector.empty, Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1)))))))))
+      val engine = launched(config, 1.day, Vector(new Keeping(p)))
+      try {
+        val now = Instant.now()
+        def kept(text: String, at: Instant) =
+          LiveDb.transaction(config, Clearance.of(Label.Public))(
+            keeper.keep(file, here, Integrity.Member, Vector(piece(text)), 0, at)
+          ) ==> Right(1)
+        def found(text: String, at: Instant) =
+          LiveDb.transaction(config)(pieces.search(Vector(p), text, 5, at)).map(_.map(_.piece.id))
+        kept("first", now)
+        kept("second", now.plusSeconds(10))
+        val ids = Vector(found("first", now.plusSeconds(5)), found("second", now.plusSeconds(15)))
+          .flatMap(_.fold(e => sys.error(s"$e"), identity))
+        engine.sweep(now.plusSeconds(60)).map(_.collected) ==> Right(Vector())
+        engine.sweep(now.plusSeconds(180)).map(_.collected.map(_.kind)) ==>
+          Right(Vector(Target.Kind.PieceSet))
+        LiveDb.transaction(config)(pieces.read(ids)).map(_.map(_.id)) ==> Right(ids.drop(1))
       } finally engine.close()
     }
 

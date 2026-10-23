@@ -2,14 +2,13 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.id.PluginName
 import grit.core.retention.{Target, Tombstone}
 
 /** An in-memory [[Tombstones]] for tests, keeping [[TombstonesContract]]. It ignores the `Tx`.
-  * `owner` says which plugin's a document version is, as its row would; `None` for one with
-  * no row.
+  * `owner` says which plugin's a target is, as its row would; `None` for one with no row.
   */
-final class InMemoryTombstones(owner: DocumentVersionId -> Option[PluginName] = _ => None)
+final class InMemoryTombstones(owner: Target -> Option[PluginName] = _ => None)
     extends Tombstones {
   import InMemoryTombstones.Row
 
@@ -60,15 +59,12 @@ final class InMemoryTombstones(owner: DocumentVersionId -> Option[PluginName] = 
         .map(_._3)
     )
 
-  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
+  def declaredDue(kind: Target.Kind, plugin: PluginName, before: Instant, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[Tombstone]] =
-    due(Target.Kind.Document, before, Int.MaxValue).map(
-      _.filter(_.target match {
-        case Target.Document(v) => owner(v).contains(plugin)
-        case _ => false
-      }).take(n max 0)
-    )
+    if (kind != Target.Kind.Document && kind != Target.Kind.PieceSet) Right(Vector.empty)
+    else
+      due(kind, before, Int.MaxValue).map(_.filter(t => owner(t.target).contains(plugin)).take(n max 0))
 
   def deferred(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     rows.get(target) match {

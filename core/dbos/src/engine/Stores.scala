@@ -120,6 +120,15 @@ class Stores private[engine] (visibility: Visibility) {
   /** The files the file area keeps (ADR 0045). */
   val files: grit.core.files.FileCatalog = new grit.dbos.sql.SqlFileCatalog
 
+  private val sqlPieces = new grit.dbos.sql.SqlPieces(tombstones)
+
+  /** Every plugin's kept files' pieces, as windows draw on them and the engine writes them. */
+  val pieces: grit.core.files.PieceStore = sqlPieces
+
+  /** Given a plugin and the bytes its pieces may take, its pieces as it writes them. */
+  val pieceKeeper: (PluginName, Long) -> grit.core.files.PieceKeeper =
+    (plugin, bound) => sqlPieces.keeper(plugin, bound)
+
   /** What triage made of each heard message. */
   val triage: TriageStore = new SqlTriageStore
 

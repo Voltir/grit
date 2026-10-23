@@ -28,11 +28,13 @@ trait Tombstones {
       Tx^
   ): Either[StoreError, Vector[Tombstone]]
 
-  /** Pending [[Target.Document]] tombstones written before `before` on `plugin`'s versions, at
-    * most `n`, in [[due]]'s order. Which plugin's a version is, its document row says: one whose
-    * row is gone is never among them (its plugin's Disabled collection ends it).
+  /** Pending tombstones of `kind` written before `before` on `plugin`'s rows, at most `n`, in
+    * [[due]]'s order: of a kind whose retention its plugin declares
+    * ([[grit.core.retention.Retention.Declared]]), a [[Target.Document]]'s or a
+    * [[Target.PieceSet]]'s; none of any other kind. Which plugin's a target is, its row says: one
+    * whose row is gone is never among them (its plugin's Disabled collection ends it).
     */
-  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
+  def declaredDue(kind: Target.Kind, plugin: PluginName, before: Instant, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[Tombstone]]
 

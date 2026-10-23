@@ -1217,3 +1217,56 @@ CREATE TABLE IF NOT EXISTS grit.files (
     vouched_id  SMALLINT NOT NULL REFERENCES grit.integrity_labels(id)
 );
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON grit.files (sha256);
+
+-- A kept file's pieces at one revision, as a plugin keeps them (grit.core.files.PieceKeeper):
+-- the file as the plugin names it (`ref`), as a person does (`name`), its source's `revision`,
+-- and the reader that made its tree (`format` at `format_version`); `cut`, its pieces past
+-- Pieces.PerFile, dropped. Kept at `classification_id` in `room_id` as a document is
+-- (grit.core.visibility.Item.Kept); one current set per plugin, ref and label. `last_placed`
+-- is when a window last held one of its pieces (PieceStore.placed), from `written_at`.
+-- Retention: ledger: a set no longer current, its plugin's declared retention after
+-- (Target.PieceSet); every set of a plugin no longer enabled (Target.Disabled). Bounded in bytes
+-- per plugin (PieceKeeper.Bound, 128 MiB by default, its pieces' `bytes`, current sets and those
+-- awaiting collection alike): a keep past it deletes whole sets at once.
+CREATE TABLE IF NOT EXISTS grit.piece_sets (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    plugin            TEXT NOT NULL,
+    ref               TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 8192),
+    name              TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 8192),
+    revision          TEXT NOT NULL CHECK (length(revision) <= 1024),
+    format            TEXT NOT NULL CHECK (length(format) BETWEEN 1 AND 255),
+    format_version    INT NOT NULL,
+    place             TEXT[] NOT NULL
+                      CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    room_id           UUID REFERENCES grit.places(id),
+    integrity_id      SMALLINT NOT NULL REFERENCES grit.integrity_labels(id),
+    written_at        TIMESTAMPTZ NOT NULL,
+    superseded_at     TIMESTAMPTZ,
+    last_placed       TIMESTAMPTZ NOT NULL,
+    cut               INT NOT NULL DEFAULT 0 CHECK (cut >= 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_piece_sets_current ON grit.piece_sets (plugin, ref, classification_id)
+    WHERE superseded_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_piece_sets_plugin ON grit.piece_sets (plugin);
+
+-- One piece of a set (grit.core.files.Piece): its heading path, its tree (ProseJson, a page
+-- noted {"page": n}), the SHA-256 of its normalised words (`fingerprint`; a piece kept again
+-- with the same words moves to the new set, keeping its id), the text it is searched by
+-- (`search_text`, PieceIndex.of) and what it takes (`bytes`, Piece.size).
+-- Retention: ledger: with its set, by cascade.
+CREATE TABLE IF NOT EXISTS grit.pieces (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    set_id      BIGINT NOT NULL REFERENCES grit.piece_sets(id) ON DELETE CASCADE,
+    ordinal     INT NOT NULL CHECK (ordinal >= 0),
+    heading     TEXT[] NOT NULL,
+    tree        JSONB NOT NULL CHECK (octet_length(tree::text) <= 16384),
+    fingerprint BYTEA NOT NULL CHECK (length(fingerprint) = 32),
+    search_text TEXT NOT NULL CHECK (length(search_text) <= 4000),
+    bytes       INT NOT NULL CHECK (bytes >= 0),
+    UNIQUE (set_id, ordinal)
+);
+-- Its own statistics, apart from entries' and documents' (ADR 0005). Queries name it:
+-- to_bm25query(q, 'grit.idx_pieces_bm25').
+CREATE INDEX IF NOT EXISTS idx_pieces_bm25 ON grit.pieces
+    USING bm25 (search_text) WITH (text_config = 'english');

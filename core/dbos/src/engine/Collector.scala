@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 import grit.core.document.DocumentStore
-import grit.core.files.FileCatalog
+import grit.core.files.{FileCatalog, PieceStore}
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
@@ -52,6 +52,7 @@ private[engine] final class Collector(
     documentReviews: DocumentReviews,
     schedules: SqlSchedules,
     files: FileCatalog,
+    pieces: PieceStore,
     tombstones: Tombstones,
     opener: Opener
 ) {
@@ -82,7 +83,8 @@ private[engine] final class Collector(
                     acc.flatMap { done =>
                       Transact
                         .read(dataSource, opener)(
-                          tombstones.documentsDue(
+                          tombstones.declaredDue(
+                            kind,
                             plugin,
                             now.minusMillis(terms.retention.toMillis),
                             Batch
@@ -169,7 +171,7 @@ private[engine] final class Collector(
             case None => Named.none
           })
       case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) | Target.Schedule(_) |
-          Target.File(_) =>
+          Target.File(_) | Target.PieceSet(_) =>
         Right(Named.none)
     }
 
@@ -299,6 +301,7 @@ private[engine] final class Collector(
         for {
           _ <- cursors.remove(plugin)
           _ <- documents.remove(plugin, now)
+          _ <- pieces.remove(plugin, now)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
       case Target.Document(version) =>
@@ -317,6 +320,11 @@ private[engine] final class Collector(
       case Target.File(handle) =>
         for {
           _ <- files.forget(handle)
+          _ <- tombstones.collected(target, now)
+        } yield Outcome.Collected
+      case Target.PieceSet(set) =>
+        for {
+          _ <- pieces.forget(set)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
     }

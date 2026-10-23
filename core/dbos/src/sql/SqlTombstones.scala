@@ -57,21 +57,30 @@ final class SqlTombstones extends Tombstones {
       ps.setInt(3, n max 0)
     }
 
-  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
+  def declaredDue(kind: Target.Kind, plugin: PluginName, before: Instant, n: Int)(using
       tx: Tx^
-  ): Either[StoreError, Vector[Tombstone]] =
-    pending(
-      Target.Kind.Document,
-      """SELECT t.target, t.written_at FROM grit.tombstones t
-        |  JOIN grit.documents d ON d.version = t.target::bigint
-        | WHERE t.kind = ? AND t.collected_at IS NULL AND t.written_at < ? AND d.plugin = ?
-        | ORDER BY coalesce(t.deferred_at, t.written_at), t.target COLLATE "C" LIMIT ?""".stripMargin
-    ) { ps =>
-      ps.setString(1, Target.Kind.Document.name)
-      ps.setObject(2, before.atOffset(ZoneOffset.UTC))
-      ps.setString(3, PluginName.value(plugin))
-      ps.setInt(4, n max 0)
+  ): Either[StoreError, Vector[Tombstone]] = {
+    // The rows that say whose each kind's targets are.
+    val owners = kind match {
+      case Target.Kind.Document => Some("grit.documents d ON d.version = t.target::bigint")
+      case Target.Kind.PieceSet => Some("grit.piece_sets d ON d.id = t.target::bigint")
+      case _ => None
     }
+    owners.fold(Right(Vector.empty)) { join =>
+      pending(
+        kind,
+        s"""SELECT t.target, t.written_at FROM grit.tombstones t
+          |  JOIN $join
+          | WHERE t.kind = ? AND t.collected_at IS NULL AND t.written_at < ? AND d.plugin = ?
+          | ORDER BY coalesce(t.deferred_at, t.written_at), t.target COLLATE "C" LIMIT ?""".stripMargin
+      ) { ps =>
+        ps.setString(1, kind.name)
+        ps.setObject(2, before.atOffset(ZoneOffset.UTC))
+        ps.setString(3, PluginName.value(plugin))
+        ps.setInt(4, n max 0)
+      }
+    }
+  }
 
   /** The tombstones of `kind` that `sql`, its parameters set by `set`, selects. */
   private def pending(kind: Target.Kind, sql: String)(set: PreparedStatement => Unit)(using

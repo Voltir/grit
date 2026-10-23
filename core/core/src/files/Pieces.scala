@@ -9,6 +9,7 @@ import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
 import grit.prose.form.{Block, Cell, Column, Doc, Item, Span, Text}
 import grit.prose.index.IndexText
+import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
 
 /** A piece of a file: its tree under its heading path, the headings above it outermost first. */
@@ -36,6 +37,31 @@ object Piece {
 
   /** `doc` with its notes dropped. */
   private[files] def plain(doc: Doc[Locus]): Doc[Nothing] = doc.mapSpans(s => Span(s.text, s.marks))
+
+  /** `piece`'s doc as stored ([[ProseJson]]), a page noted as `{"page": n}`. */
+  def tree(piece: Piece): ujson.Value =
+    ProseJson.write(piece.doc, { case Locus.Page(n) => ujson.Obj("page" -> n) })
+
+  /** The piece under `heading` whose doc `tree` stores ([[tree]]), or why not. */
+  def read(heading: Vector[String], tree: ujson.Value): Either[String, Piece] =
+    ProseJson
+      .read(
+        tree,
+        v =>
+          v.objOpt
+            .flatMap(_.get("page"))
+            .flatMap(_.numOpt)
+            .collect { case n if n.isWhole && n >= 1 => Locus.Page(n.toInt) }
+            .toRight(s"a piece's note: not a page: ${v.render()}")
+      )
+      .map(Piece(heading, _))
+
+  /** What `piece` of the file named `file` takes kept, in bytes of UTF-8: its stored doc
+    * ([[tree]], compact) and the text it is searched by ([[PieceIndex.of]]).
+    */
+  def size(piece: Piece, file: String): Long =
+    tree(piece).render().getBytes(UTF_8).length.toLong +
+      PieceIndex.of(file, piece).getBytes(UTF_8).length
 }
 
 object Pieces {

@@ -39,7 +39,10 @@ final class InMemoryDocuments extends DocumentStore {
 
   /** Where its keepers mark the versions they leave for deletion. */
   val tombstones: InMemoryTombstones =
-    new InMemoryTombstones(v => rows.get(DocumentVersionId.value(v)).map(_.plugin))
+    new InMemoryTombstones({
+      case Target.Document(v) => rows.get(DocumentVersionId.value(v)).map(_.plugin)
+      case _ => None
+    })
 
   /** Its part of a transaction undone: what its keepers wrote, and the versions they marked. */
   val savepoints: Savepoints = new Savepoints {

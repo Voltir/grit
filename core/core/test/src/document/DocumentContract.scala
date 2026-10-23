@@ -597,10 +597,10 @@ abstract class DocumentContract extends TestSuite {
       val qk = keeper(q, terms())
       put(qk, "k", "one", 1)
       put(qk, "k", "two", 2)
-      transaction(ok(tombstones.documentsDue(p, at(10), 10))).toSet ==>
+      transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(10), 10))).toSet ==>
         (Tombstone(Target.Document(one), at(2)) +:
           (two +: withdrawal).map(v => Tombstone(Target.Document(v), at(3)))).toSet
-      transaction(ok(tombstones.documentsDue(p, at(3), 10))) ==>
+      transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(3), 10))) ==>
         Vector(Tombstone(Target.Document(one), at(2)))
     }
 
@@ -650,7 +650,7 @@ abstract class DocumentContract extends TestSuite {
       }
       undone ==> Left(StoreError.Invalid("refused"))
       texts(transaction(ok(shelf(p).newest(10)))).sorted ==> Vector("after", "one")
-      transaction(ok(tombstones.documentsDue(p, at(10), 10))) ==> Vector()
+      transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(10), 10))) ==> Vector()
       texts(transaction(ok(search.read(Vector(one))))) ==> Vector("one")
     }
 
