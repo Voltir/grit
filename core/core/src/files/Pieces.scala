@@ -103,7 +103,7 @@ object Pieces {
     var (start, end) = (0, 0)
     def close(): Unit = {
       if (open.nonEmpty)
-        done :+= Piece(path.map(_._2), Doc(open), Anchor.of(laid.whole, start, end))
+        done :+= Piece(path.map(_._2), Doc(open), Anchor.of(laid.plain, start, end))
       open = Vector.empty
     }
     tree.doc.blocks.zipWithIndex.foreach {
@@ -111,8 +111,9 @@ object Pieces {
         close()
         path = path.takeWhile(_._1 < level.value) :+ (level.value -> oneLine(text.plain))
       case (block, i) =>
-        val text = laid.texts.lift(i).getOrElse("")
-        val (from, to) = (laid.start(i), laid.start(i) + text.length)
+        val text = laid.plains.lift(i).getOrElse("")
+        val from = laid.plainStarts.lift(i).getOrElse(laid.plain.length)
+        val to = from + text.length
         // Where in its block's text the last part found began: the next is sought after it.
         var seen = -1
         cutter.cut(block).foreach { part =>

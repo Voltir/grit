@@ -2,7 +2,7 @@ package grit.core.files
 
 import java.nio.charset.StandardCharsets.UTF_8
 
-import grit.prose.form.{Block, Doc, Level, Span, Text}
+import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -155,6 +155,24 @@ object ModelTextTests extends TestSuite {
       val read = ModelText.of(now, FileRange.Near(anchor))
       (read.covered, read.text, read.next) ==>
         ("page 4 of 5", s"[page 4]\n$passage", FileRange.pages(5, 5))
+    }
+
+    test(
+      "a file's text is its blocks' plain words, and an anchor in it is found in what is shown"
+    ) {
+      val rule = Text(
+        Vector(
+          Span("Set a_b_c_d to ", Set.empty, Vector(Locus.Page(2))),
+          Span("daily", Set(Mark.Emphasis), Vector(Locus.Page(2))),
+          Span(" [Assignment: frequency].", Set.empty, Vector(Locus.Page(2)))
+        )
+      )
+      val file = tree(Vector(para(1, "Scope."), Block.Paragraph(rule)))
+      val text = ModelText.text(file)
+      val anchor = Anchor.of(text, text.indexOf("Set"), text.length)
+      val shown = ModelText.of(file, FileRange.Start).text
+      (text, Anchor.find(anchor, shown).map((s, _) => shown.substring(s).take(9))) ==>
+        ("Scope.\n\nSet a_b_c_d to daily [Assignment: frequency].", Some("Set a_b_c"))
     }
 
     test("near a passage in a file not counted in pages reads on from its block") {

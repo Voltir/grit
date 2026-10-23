@@ -71,27 +71,56 @@ object Anchor {
 
   /** Where `anchor`'s quote lies in `text` now, its first character and the one past its
     * last: exactly by its context, else nearest its position, else the best match at least
-    * [[Alike]] alike; `None` when it is gone, or it quotes nothing.
+    * [[Alike]] alike; `None` when it is gone, or it quotes nothing. Each is matched after a
+    * fold of both sides, runs of spaces as one and `*`, `_`, backticks and backslashes
+    * dropped, so an anchor taken from a file's plain words ([[ModelText.text]]) is found in
+    * the markdown the model was shown of it.
     */
   def find(anchor: Anchor, text: String): Option[(Int, Int)] = {
-    val quote = anchor.quote
-    val want = math.round(anchor.at * text.length)
+    val folded = Folded(text)
+    val (t, quote) = (folded.text, Folded(anchor.quote).text)
+    val (before, after) = (Folded(anchor.before).text, Folded(anchor.after).text)
+    val want = math.round(anchor.at * t.length)
     def nearest(starts: Vector[Int]): Option[Int] = starts.minByOption(s => (s - want).abs)
-    if (quote.isEmpty) None
+    if (quote.isBlank) None
     else {
       val hits = Iterator
-        .iterate(text.indexOf(quote))(s => text.indexOf(quote, s + 1))
+        .iterate(t.indexOf(quote))(s => t.indexOf(quote, s + 1))
         .takeWhile(_ >= 0)
         .toVector
       val inContext = hits.filter { s =>
-        text.startsWith(anchor.before, s - anchor.before.length) &&
-        text.startsWith(anchor.after, s + quote.length)
+        t.startsWith(before, s - before.length) && t.startsWith(after, s + quote.length)
       }
       nearest(inContext)
         .orElse(nearest(hits))
         .map(s => (s, s + quote.length))
-        .orElse(fuzzy(quote, text, want))
+        .orElse(fuzzy(quote, t, want))
+        .map(folded.unfolded)
     }
+  }
+
+  /** `text` folded as [[find]] matches it, with where each of its characters was in `text`. */
+  private final case class Folded private (text: String, from: Vector[Int], length: Int) {
+
+    /** The characters of the original that `start` until `end` of the folded text came from. */
+    def unfolded(start: Int, end: Int): (Int, Int) =
+      (from.lift(start).getOrElse(length), from.lift(end - 1).fold(length)(_ + 1))
+  }
+
+  private object Folded {
+    def apply(text: String): Folded = {
+      val kept = text.zipWithIndex.filterNot((c, _) => Dropped.contains(c))
+      val runs = kept.zipWithIndex.filterNot { case ((c, _), k) =>
+        c.isWhitespace && k > 0 && kept(k - 1)._1.isWhitespace
+      }
+      new Folded(
+        runs.map((ci, _) => if (ci._1.isWhitespace) ' ' else ci._1).mkString,
+        runs.map((ci, _) => ci._2).toVector,
+        text.length
+      )
+    }
+
+    private val Dropped: Set[Char] = Set('*', '_', '`', '\\')
   }
 
   /** How alike a passage must be to a quote, as one less the share of its characters an

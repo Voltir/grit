@@ -54,6 +54,18 @@ object AnchorTests extends TestSuite {
         (at(edited, "All accounts are reviewed every 90 days by"), None)
     }
 
+    test(
+      "found after a fold: spaces run together, and emphasis, backticks and backslashes dropped"
+    ) {
+      val plain = "Intro. Set a_b_c_d_e_f_g_h to x*y*z in `cfg` [Assignment: daily] now."
+      val shown =
+        "Intro.\nSet  a\\_b\\_c\\_d\\_e\\_f\\_g\\_h to x\\*y\\*z in cfg \\[Assignment: daily\\] now."
+      val start = plain.indexOf("Set")
+      val anchor = Anchor.of(plain, start, plain.length)
+      Anchor.find(anchor, shown).map((s, e) => shown.substring(s, e)) ==>
+        Some("Set  a\\_b\\_c\\_d\\_e\\_f\\_g\\_h to x\\*y\\*z in cfg \\[Assignment: daily\\]")
+    }
+
     test("a passage deleted from the text is gone") {
       val anchor = anchored("Policy. " + Passage + " Next.")
       Anchor.find(anchor, "Policy. Next.") ==> None
