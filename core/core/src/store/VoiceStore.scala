@@ -2,7 +2,9 @@ package grit.core.store
 
 import grit.core.prompt.Voice
 
-/** The voice grit talks to the person in, one for the whole database. */
+/** The voice grit talks to the person running it in, at a terminal: one for the whole
+  * database.
+  */
 trait VoiceStore {
 
   /** The voice set; [[Voice.Default]] when none is, or when the one stored is a name this

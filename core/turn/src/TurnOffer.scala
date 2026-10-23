@@ -131,7 +131,8 @@ object TurnOffer {
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
     * heard, how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
     * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
-    * reached service offering tools), the voice's fragment (none for plain), and the
+    * reached service offering tools), the voice set with `/set voice` at a terminal alone
+    * ([[grit.core.store.Audience.Operator]]; none for plain), and the
     * instruction files the edge read there. Its root is `ByName` when its first entry in
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
@@ -257,7 +258,8 @@ object TurnOffer {
             )
           ) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
-          Voice.fragment(voice) ++ place.fragments
+          Voice.fragment(voice).filter(_ => conversation.origin.audience == Audience.Operator) ++
+          place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
       person <- first.fold[Either[StoreError, Option[ZoneId]]](Right(None))(e =>

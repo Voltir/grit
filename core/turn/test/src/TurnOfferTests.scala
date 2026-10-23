@@ -75,7 +75,8 @@ object TurnOfferTests extends TestSuite {
       root: Payload,
       persona: Persona = Persona.Grit,
       weighed: Option[Tags] = None,
-      renders: Map[EdgeName, String] = Map.empty
+      renders: Map[EdgeName, String] = Map.empty,
+      voices: InMemoryVoiceStore = new InMemoryVoiceStore
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -89,7 +90,7 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore,
+      voices,
       TurnFixtures.LocalAsker
     )
     val tooling = TurnTooling[{}](
@@ -846,6 +847,24 @@ object TurnOfferTests extends TestSuite {
         heard.indexOf(TurnPrompt.unprompted.text) < heard.indexOf(voice),
         heard.indexOf(TurnPrompt.unprompted.text) >= 0
       ) ==> (Vector(true, false, false), true, true)
+    }
+
+    test(
+      "the voice set with /set voice is told only at the terminal, never in a Slack thread, a direct message or a task"
+    ) {
+      val voices = new InMemoryVoiceStore
+      voices.set(grit.core.prompt.Voice.Named.Sassy)(using TestTx.fake)
+      val person = grit.core.prompt.Voice
+        .fragment(grit.core.prompt.Voice.Named.Sassy)
+        .fold("none")(_.text)
+      val dm = Origin.Direct(
+        Account.of("slack", "T1/U1").fold(e => throw new java.lang.AssertionError(e), identity),
+        "1.0"
+      )
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      Vector(Origin.Tui(dir, "default"), slack, dm, Origin.Task("nightly", "1"))
+        .map(o => offeredAs(o, Payload.Message(Message.User("hi")), voices = voices)._1)
+        .map(_.contains(person)) ==> Vector(true, false, false, false)
     }
 
     test(

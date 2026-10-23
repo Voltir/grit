@@ -23,7 +23,9 @@ Decision:
   time, so equal fragments give equal bytes.
 - **The Person layer is the person's choice**: its fragment is the voice (`Voice`): a
   named voice (whose text is fixed per release and so caches like Base), the person's own
-  words, or `plain`, which adds no fragment. Its source is the person, never grit. Of the
+  words, or `plain`, which adds no fragment. Its source is the person, never grit, and it is
+  told only where that person reads, the terminal (`Audience.Operator`): one voice is kept
+  for the whole database, and in Slack its readers did not choose it. Of the
   engine's workflows only the turn is given a `VoiceStore`; the closing, query and summary
   writers take no system text a caller could pass it in. Manner only: Base's last line says
   later instructions change how grit speaks, never what it reports about its memory or a
