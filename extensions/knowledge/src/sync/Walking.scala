@@ -86,7 +86,9 @@ private[knowledge] final case class Walking[
   /** This walk with the held unit `key`, its card current, reached `way`: its file read again for
     * its pieces alone ([[Step.Piece]]) when [[Holding.repiece]] holds it, then counted unchanged;
     * left for the next run when [[spent]]; otherwise counted unchanged at once. A read again
-    * counts against `perRun` as any read does.
+    * counts against `perRun` as any read does. Since it may make a step, it is a task's `take`
+    * ([[Walking.Routine]]), one key a task: a step a listing's `listed` makes is replaced by the
+    * next task's.
     */
   def current(key: CardKey, way: Way): Walking[L, T, S] =
     holding.best(key).filter(_ => holding.repiece(key)) match {
@@ -196,7 +198,8 @@ private[knowledge] final case class Walking[
 private[knowledge] object Walking {
 
   /** How `source`'s walk does its tasks. `take` is the walk once a task is off its stack: a step
-    * made ([[Walking.list]], [[Walking.read]], [[Walking.relabel]], [[Walking.write]]), the walk
+    * made ([[Walking.list]], [[Walking.read]], [[Walking.current]], [[Walking.relabel]],
+    * [[Walking.write]]), the walk
     * [[Walking.end]]ed, or neither, and the next task is taken. `left` says whether a task the
     * walk never took counts as left; `drops` is what it withdraws at its end.
     */

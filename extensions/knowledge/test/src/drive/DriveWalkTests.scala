@@ -198,6 +198,26 @@ object DriveWalkTests extends TestSuite {
     }
 
     test(
+      "current files due for pieces are each read for them within perRun and counted unchanged, beside a new file read and written"
+    ) {
+      val holding = Vector(
+        held("file-18", internal, 5, "drive-a"),
+        held("file-30", internal, 6, "drive-b")
+      )
+      val repiece = Set("file-18", "file-30").map(CardKey.of(corpus.name, _))
+      def walked(perRun: Int) = {
+        val (steps, synced) = run(cards(labels).walk(perRun, internal, holding, due, repiece))
+        val fetched = fetches(steps).collect {
+          case Step.Piece(id, _) => s"piece $id"
+          case Step.Read(id, _) => s"read $id"
+        }
+        (fetched, synced.written, synced.unchanged, synced.left)
+      }
+      assert(walked(5) == (Vector("piece file-18", "piece file-30", "read file-32"), 1, 2, 0))
+      assert(walked(1) == (Vector("piece file-18"), 0, 1, 2))
+    }
+
+    test(
       "a current card kept elsewhere than its source's place is moved there, with no read and no ask"
     ) {
       val holding = Vector(held("file-18", internal, 5, "drive-a", elsewhere = true))

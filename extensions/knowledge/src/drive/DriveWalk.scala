@@ -16,8 +16,9 @@ import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
   * floor; of another's it only follows the folders. Of a listing it cards, a Doc, a Sheet or a
   * text file is read through that listing unless its card held at the floor records its change
   * time and that listing, and its card records the listing and is titled with the file's name. A
-  * current card [[Holding.copying]] names a label of is relabelled from it. Past `perRun` reads a
-  * changed file is left, and the listings go on.
+  * current card [[Holding.copying]] names a label of is relabelled from it; one whose pieces are
+  * due ([[Holding.repiece]]) is read again for them ([[Walking.current]]). Past `perRun` reads a
+  * changed or due file is left, and the listings go on.
   *
   * It drops the cards held at the floor of files another run's listing showed; of those no
   * listing showed, only when the listing each records was made and complete; those held at a
@@ -66,6 +67,7 @@ object DriveWalk {
     case Folders
     case Read(entry: DriveEntry, within: String)
     case Relabel(key: CardKey, from: Label)
+    case Repiece(key: CardKey, within: String)
   }
 
   /** Its record: the folders found in the drives, the files listings showed, those another run's
@@ -96,6 +98,7 @@ object DriveWalk {
     case Task.Folder(id, drive) => w.list(id, Way.Through(drive))(files(cards, _, id, _, _))
     case Task.Folders => w.push(picked(w.own.found, cards.maxUnits, turn))
     case Task.Relabel(key, from) => w.relabel(key, from)
+    case Task.Repiece(key, within) => w.current(key, Way.Through(within))
     case Task.Read(entry, within) =>
       w.read(entry.id, Way.Through(within), DriveCards.subject(entry))(
         Card.file(cards.corpus, entry.id, _, _, _, entry.name, Some(within))
@@ -141,14 +144,19 @@ object DriveWalk {
       val (relabels, unchanged) = current
         .map(e => CardKey.of(cards.corpus, e.id))
         .partitionMap(k => w.holding.copying(k).map(Task.Relabel(k, _)).toLeft(k))
-      val pushed = w.recording(own).push(relabels ++ changed.map(Task.Read(_, within)))
-      unchanged.foldLeft(pushed)(_.current(_, Way.Through(within)))
+      // A read for pieces is a step, so each due file is a task of its own: steps made in a fold
+      // here would each replace the last, and the next task taken would replace the last one.
+      val (due, kept) = unchanged.partition(w.holding.repiece)
+      val pushed = w
+        .recording(own)
+        .push(relabels ++ changed.map(Task.Read(_, within)) ++ due.map(Task.Repiece(_, within)))
+      kept.foldLeft(pushed)(_.unchanged(_))
     } else w.recording(own.copy(foreign = own.foreign ++ readable.map(_.id)))
   }
 
-  /** Whether `task`, never taken, is a file to read or relabel. */
+  /** Whether `task`, never taken, is a file to read, read again for its pieces, or relabel. */
   private def left(task: Task): Boolean = task match {
-    case Task.Read(_, _) | Task.Relabel(_, _) => true
+    case Task.Read(_, _) | Task.Relabel(_, _) | Task.Repiece(_, _) => true
     case Task.Shared | Task.Drive(_) | Task.Folder(_, _) | Task.Folders => false
   }
 

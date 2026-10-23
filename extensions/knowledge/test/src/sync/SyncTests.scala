@@ -371,6 +371,92 @@ object SyncTests extends TestSuite {
 
   private val clash = "duplicate key value violates unique constraint"
 
+  /** A Drive source over two shared drives, `drive-a` holding the Doc `file-a` and `drive-b` the
+    * Doc `file-b`, carding at [[floor]].
+    */
+  private val drive: grit.knowledge.drive.DriveCards =
+    grit.knowledge.drive.DriveCardsTests.cards(Vector(floor))
+
+  private def driveFacts(complete: Boolean, parts: ujson.Obj*) = grit.core.tool.Outcome.Stated(
+    Some(grit.core.visibility.Facts.of(ujson.Obj("complete" -> complete))),
+    parts.toVector.map(grit.core.visibility.Facts.of)
+  )
+
+  private def doc(id: String, within: String) = ujson.Obj(
+    "id" -> id,
+    "kind" -> "document",
+    "name" -> s"name of $id",
+    "changed" -> "2026-09-01T10:00:00Z",
+    "within" -> within
+  )
+
+  /** [[drive]]'s answer to a call of `args`, its label and what it is believed at: `drive-a` is
+    * listed below the floor and believed `Member`; everything else is read at the floor, believed
+    * `Authority`. A file is read as a native Doc is, its text and no file kept.
+    */
+  private def driveAnswer(
+      args: ujson.Obj
+  ): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
+    (
+      args.value.get("folder").flatMap(_.strOpt),
+      args.value.get("file").flatMap(_.strOpt)
+    ) match {
+      case (None, None) =>
+        val drives = Vector("drive-a", "drive-b")
+          .map(id => ujson.Obj("id" -> id, "kind" -> "drive", "name" -> id))
+        Some((driveFacts(true, drives*), floor, Integrity.Authority))
+      case (Some("drive-a"), _) =>
+        Some((driveFacts(true, doc("file-a", "drive-a")), lower, Integrity.Member))
+      case (Some("drive-b"), _) =>
+        Some((driveFacts(true, doc("file-b", "drive-b")), floor, Integrity.Authority))
+      case (_, Some(id)) =>
+        val opened = doc(id, "drive-x")
+        opened("text") = s"What $id holds."
+        opened("complete") = true
+        Some(
+          (
+            grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
+            floor,
+            Integrity.Authority
+          )
+        )
+      case _ => None
+    }
+
+  /** A Drive run's moves at [[floor]], each call answered by [[driveAnswer]], keeping into
+    * `documents` and `pieces`.
+    */
+  private def driveKeeping(
+      documents: InMemoryDocuments,
+      pieces: InMemoryPieces = new InMemoryPieces
+  ): ScriptedKeeping =
+    new ScriptedKeeping(
+      new Sync(Vector(drive)).limits,
+      floor,
+      plugin,
+      terms,
+      _ => Left(MoveError.Model("no text ask")),
+      (_, _, args) =>
+        Right(driveAnswer(args).fold(Called.Failed("Not Found")) { (stated, at, believed) =>
+          Called.Done(TestTainted.at(grit.core.act.Answer("not read", stated), believed), at)
+        }),
+      (system, messages) => reply(Summaries.Fixed, floor, Map.empty, system, messages),
+      _ => Left(MoveError.Model("no judgment is asked in this run")),
+      documents,
+      // Positional, as in `keeping`: a named argument lifts the others into locals.
+      Instant.EPOCH,
+      Integrity.Authority,
+      Recorded.Empty,
+      pieces
+    )
+
+  /** [[drive]]'s run over `moves`, its reply. */
+  private def driveRun(moves: Keeping^): String =
+    new Sync(Vector(drive)).run(
+      TestTainted.trusted(JobRun(SyncParams(drive.corpus, 5), Instant.EPOCH, Instant.EPOCH)),
+      moves
+    )
+
   /** `inner`, and after each keep the documents `inner` reads, as [[held]] shows them, and each
     * keep's name with what it kept from was believed at; a keep named `failing` is refused as a
     * store's failure, [[clash]], and not made.
@@ -528,73 +614,9 @@ object SyncTests extends TestSuite {
     }
 
     test("a Drive run keeps each card at the floor, believed at its own way") {
-      import grit.knowledge.drive.{DriveCards, DriveCardsTests}
-      val drive: DriveCards = DriveCardsTests.cards(Vector(floor))
-      def facts(complete: Boolean, parts: ujson.Obj*) = grit.core.tool.Outcome.Stated(
-        Some(grit.core.visibility.Facts.of(ujson.Obj("complete" -> complete))),
-        parts.toVector.map(grit.core.visibility.Facts.of)
-      )
-      def doc(id: String, within: String) = ujson.Obj(
-        "id" -> id,
-        "kind" -> "document",
-        "name" -> s"name of $id",
-        "changed" -> "2026-09-01T10:00:00Z",
-        "within" -> within
-      )
-      // Each call's answer, its label and what it is believed at: `drive-a` is listed below the
-      // floor and believed `Member`; everything else is read at the floor, believed `Authority`.
-      def answered(args: ujson.Obj): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
-        (
-          args.value.get("folder").flatMap(_.strOpt),
-          args.value.get("file").flatMap(_.strOpt)
-        ) match {
-          case (None, None) =>
-            val drives = Vector("drive-a", "drive-b")
-              .map(id => ujson.Obj("id" -> id, "kind" -> "drive", "name" -> id))
-            Some((facts(true, drives*), floor, Integrity.Authority))
-          case (Some("drive-a"), _) =>
-            Some((facts(true, doc("file-a", "drive-a")), lower, Integrity.Member))
-          case (Some("drive-b"), _) =>
-            Some((facts(true, doc("file-b", "drive-b")), floor, Integrity.Authority))
-          case (_, Some(id)) =>
-            val opened = doc(id, "drive-x")
-            opened("text") = s"What $id holds."
-            opened("complete") = true
-            Some(
-              (
-                grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
-                floor,
-                Integrity.Authority
-              )
-            )
-          case _ => None
-        }
-      val documents = new InMemoryDocuments
-      val sync = new Sync(Vector(drive))
-      val k = new ScriptedKeeping(
-        sync.limits,
-        floor,
-        plugin,
-        terms,
-        _ => Left(MoveError.Model("no text ask")),
-        (_, _, args) =>
-          Right(answered(args).fold(Called.Failed("Not Found")) { (stated, at, believed) =>
-            Called.Done(
-              TestTainted.at(grit.core.act.Answer("not read", stated), believed),
-              at
-            )
-          }),
-        (system, messages) => reply(Summaries.Fixed, floor, Map.empty, system, messages),
-        _ => Left(MoveError.Model("no judgment is asked in this run")),
-        documents
-      )
+      val k = driveKeeping(new InMemoryDocuments)
       val watched = new Watched(k)
-      val said = sync.run(
-        TestTainted.trusted(
-          JobRun(SyncParams(drive.corpus, 5), Instant.EPOCH, Instant.EPOCH)
-        ),
-        watched
-      )
+      val said = driveRun(watched)
       def written(id: String) = CardMoves.of(Phase.Write, CardKey.of(drive.corpus, id))
       assert(
         said == "shared: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run"
@@ -603,6 +625,42 @@ object SyncTests extends TestSuite {
       assert(
         watched.believed.filter(_._1 != CardMoves.Held) ==
           Vector(written("file-a") -> Integrity.Member, written("file-b") -> Integrity.Authority)
+      )
+    }
+
+    test(
+      "a Drive run reads its current Docs with no pieces again once, marks them unread, and the next run reads none"
+    ) {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      // Carded before pieces were kept: the first run's piece moves go to a store left behind.
+      val _ = driveRun(driveKeeping(documents))
+      def again = {
+        val k = driveKeeping(documents, pieces)
+        val reply = driveRun(k)
+        val marks = pieces
+          .keeper(plugin, grit.core.files.PieceKeeper.Bound)
+          .kept(Vector("file-a", "file-b").map(id => CardKey.value(CardKey.of(drive.corpus, id))))(
+            using TestTx.fake(Clearance.of(floor))
+          )
+        val fetched = k.made
+          .map(MoveName.value(_).takeWhile(_ != '/'))
+          .filter(m => m == "read" || m == "piece")
+        (reply, fetched, marks)
+      }
+      val said =
+        "shared: 0 written, 0 relabelled, 0 withdrawn, 2 unchanged, 0 left for the next run"
+      val unread = Right(
+        Vector("file-a", "file-b")
+          .map(id =>
+            CardKey.value(CardKey.of(drive.corpus, id)) ->
+              KeptAs.Unread("its read kept no whole file in the file area")
+          )
+          .toMap
+      )
+      val second = again
+      (second, again) ==> (
+        (said, Vector("read", "piece", "read", "piece"), unread),
+        (said, Vector(), unread)
       )
     }
 
