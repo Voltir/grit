@@ -1,0 +1,111 @@
+package grit.core.files
+
+import grit.core.message.{Message, Tokens}
+import grit.core.provider.TokenEstimator
+import grit.prose.form.{Block, Cell, Column, Doc, Level, Span, Text}
+
+import utest.*
+
+/** [[Pieces.of]]: a file's tree cut into pieces of about [[Pieces.Target]] tokens. */
+object PiecesTests extends TestSuite {
+
+  /** A token for each run of letters or digits, so the counts below are words. */
+  private object PerWord extends TokenEstimator {
+    def message(message: Message): Tokens = system(message.toString)
+    def system(prompt: String): Tokens =
+      Tokens("""[\p{L}\d]+""".r.findAllIn(prompt).size.toLong)
+  }
+
+  private def on(page: Int, s: String): Text[Locus] =
+    Text(Vector(Span(s, Set.empty, Vector(Locus.Page(page)))))
+  private def para(s: String, page: Int = 1): Block[Locus] = Block.Paragraph(on(page, s))
+  private def heading(level: Int, s: String): Block[Locus] = Block.Heading(Level.of(level), on(1, s))
+
+  /** `n` words, `tag` then numbered: "tag1 tag2 …". */
+  private def words(tag: String, n: Int): String = (1 to n).map(i => s"$tag$i").mkString(" ")
+
+  private def tree(blocks: Block[Locus]*): Understood =
+    Understood(Doc(blocks.toVector), Covers.Whole, Vector.empty, FormatName("test"), 1)
+
+  private def plain(p: Piece): String = IndexTextOf(p)
+  private object IndexTextOf {
+    def apply(p: Piece): String = grit.prose.index.IndexText.render(Piece.plain(p.doc))
+  }
+
+  val tests = Tests {
+
+    test("paragraphs are packed whole, greedily, to at most Target tokens under one heading path") {
+      Pieces.Target ==> Tokens(200)
+      val (pieces, dropped) = Pieces.of(
+        tree(
+          heading(1, "Policy"),
+          para(words("a", 60)),
+          para(words("b", 60)),
+          para(words("c", 60)),
+          para(words("d", 60)),
+          heading(2, "Scope"),
+          para(words("e", 10)),
+          heading(1, "Audit"),
+          para(words("f", 10))
+        ),
+        PerWord
+      )
+      (pieces.map(p => (p.heading, p.doc.blocks.size)), dropped) ==> (Vector(
+        (Vector("Policy"), 3),
+        (Vector("Policy"), 1),
+        (Vector("Policy", "Scope"), 1),
+        (Vector("Audit"), 1)
+      ), 0)
+    }
+
+    test("a paragraph over Target is cut at its sentences, a sentence over it at words") {
+      val s1 = words("a", 90) + "."
+      val s2 = words("b", 90) + "."
+      val s3 = words("c", 250) + "."
+      val (pieces, _) = Pieces.of(tree(para(s"$s1 $s2 $s3")), PerWord)
+      pieces.map(plain) ==> Vector(
+        s"$s1 $s2",
+        words("c", 200),
+        (201 to 250).map(i => s"c$i").mkString(" ") + "."
+      )
+    }
+
+    test("a table's rows are packed with its columns, a row over Target cut at its columns") {
+      val columns = Vector(Column(Text.plain("Control")), Column(Text.plain("Text")))
+      def row(tag: String, n: Int): Vector[Cell[Locus]] =
+        Vector(Cell.Words(on(1, tag)), Cell.Words(on(1, words(tag, n))))
+      val (pieces, _) = Pieces.of(
+        tree(Block.table(columns, Vector(row("r", 60), row("s", 60), row("t", 60), row("u", 250)))),
+        PerWord
+      )
+      pieces.map(_.doc.blocks.map {
+        case Block.Table(cs, rows) => (cs.map(_.name.plain), rows.size)
+        case other => (Vector(other.toString), 0)
+      }) ==> Vector(
+        Vector((Vector("Control", "Text"), 3), (Vector("Control"), 1)),
+        Vector((Vector("Text"), 1)),
+        Vector((Vector("Text"), 1))
+      )
+    }
+
+    test("past PerFile pieces, the rest are dropped and counted") {
+      val (pieces, dropped) =
+        Pieces.of(tree((1 to Pieces.PerFile + 3).map(i => para(words(s"p${i}x", 150)))*), PerWord)
+      (pieces.size, dropped) ==> (Pieces.PerFile, 3)
+    }
+
+    test("a piece's pages are the first and last its text lies on") {
+      val (pieces, _) = Pieces.of(tree(para("one", 3), para("two", 4)), PerWord)
+      pieces.map(_.pages) ==> Vector(Some((3, 4)))
+    }
+
+    test("a piece's fingerprint is the same for its words and path wherever they lie, and differs for others") {
+      val here = Piece(Vector("Policy"), Doc(Vector(para("Accounts  are  reviewed.", 3))))
+      val moved = Piece(Vector("Policy"), Doc(Vector(para("accounts are reviewed.", 40))))
+      val other = Piece(Vector("Policy"), Doc(Vector(para("Accounts are removed.", 3))))
+      val elsewhere = Piece(Vector("Audit"), Doc(Vector(para("Accounts are reviewed.", 3))))
+      (here.fingerprint == moved.fingerprint, here.fingerprint == other.fingerprint,
+        here.fingerprint == elsewhere.fingerprint) ==> (true, false, false)
+    }
+  }
+}

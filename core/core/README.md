@@ -88,7 +88,9 @@ In dependency order, each with the core packages it imports:
   every span noted with where it lies, never silently wrong (what a read covers and missed is
   in its result, ADR 0044), and a range of that tree as the model reads it; and the file area
   (ADR 0045): files an edge puts under handles, kept a while, that a transaction admits and
-  its holder opens outside it. ← `clock`, `id`, `host`, `visibility`, `store`
+  its holder opens outside it; a tree cut into pieces of about one judged candidate's size
+  (`Pieces`), and the text each is searched by (`PieceIndex`). ← `clock`, `id`, `host`,
+  `visibility`, `store`, `message`, `provider`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
