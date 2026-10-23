@@ -101,7 +101,7 @@ object Anchor {
 
   /** Where `anchor`'s quote lies in `text` now, its first character and the one past its
     * last: exactly by its context, else nearest its position, else the best match at least
-    * [[Alike]] alike; `None` when it is gone, or it quotes nothing. Each is matched after a
+    * [[Alike]] alike; `None` when none matches, or it quotes nothing. Each is matched after a
     * fold of both sides that leaves a passage's words in reading order however markdown laid
     * them out: a line that is a table's delimiter row or a code fence dropped; a line's quote,
     * list or heading marker dropped; `*`, `_`, `|`, backticks and backslashes dropped; runs of

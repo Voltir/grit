@@ -26,8 +26,8 @@ object ModelText {
     * a block that crosses pages); pages past the end, the last page; pages of a file not
     * counted in pages, its outline, saying so; a section not found, its outline with
     * "no section '<heading>'"; near an anchor, the page its passage lies on now ([[Anchor.find]]),
-    * or in a file not counted in pages from its block on, and when it is gone, the outline with
-    * "That passage is gone from the file now.". `covered` names its pages ("pages 212–214 of 492") or, for a
+    * or in a file not counted in pages from its block on, and when none is found, the outline
+    * with [[Unmatched]]. `covered` names its pages ("pages 212–214 of 492") or, for a
     * file not counted in pages, its characters, and adds what `tree.covers` and `tree.missed`
     * say. A heading's path is its own text after its enclosing headings' each followed by
     * `" > "`, matched ignoring case and runs of spaces.
@@ -70,7 +70,7 @@ object ModelText {
         laid.fit(offset.min(laid.total), laid.blocks.size, None, told, None)
       case FileRange.Near(anchor) =>
         Anchor.find(anchor, laid.whole) match {
-          case None => outlineOnly("That passage is gone from the file now.")
+          case None => outlineOnly(Unmatched)
           case Some((at, _)) =>
             val block = laid.blockAt(at)
             laid.spans.lift(block).flatten.map(_._1).orElse(laid.onPage.lift(block).flatten) match {
@@ -81,6 +81,14 @@ object ModelText {
       case FileRange.Start => laid.fit(0, laid.blocks.size, outline, told, None)
     }
   }
+
+  /** What a read near an anchor says under the file's outline ([[FileRead.shown]]) when
+    * [[Anchor.find]] finds no passage matching it. It claims no change to the file: a quote that
+    * matches nothing may be one the file never held as read now.
+    */
+  val Unmatched: String =
+    "No passage matching that quote was found in the file as read now: read a section by its " +
+      s"heading from the outline above, or quote at least ${Anchor.QuoteLeast} words as they appear."
 
   /** All of `tree` as the model is shown it, each block's markdown ([[Markdown.write]]) apart
     * by a blank line, with no `[page n]` lines: the text an [[Anchor]] counts in.

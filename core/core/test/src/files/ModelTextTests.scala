@@ -199,10 +199,13 @@ object ModelTextTests extends TestSuite {
       read.map(r => (r.covered, r.next)) ==> Right(("page 3 of 4", FileRange.pages(4, 4)))
     }
 
-    test("near a quote no file words match says it is gone") {
+    test("near a quote no file words match says none matched as read now, claiming no change") {
       val near = "Suppliers are vetted by an independent panel each year."
       FileRange.parse(None, None, None, Some(near)).map(ModelText.of(book, _).text) ==>
-        Right("That passage is gone from the file now.")
+        Right(
+          "No passage matching that quote was found in the file as read now: read a section " +
+            "by its heading from the outline above, or quote at least 5 words as they appear."
+        )
     }
 
     test(
@@ -251,10 +254,11 @@ object ModelTextTests extends TestSuite {
       (read.covered, read.text) ==> ("characters 21–87 of 87", s"$passage\n\nEnd.")
     }
 
-    test("near a passage no longer in the file says it is gone, with the outline") {
+    test("near a passage no longer in the file says none matched, with the outline") {
       val anchor = Anchor("Accounts are reviewed every ninety days by", "Scope.\n\n", " the", 0.5)
       ModelText.of(book, FileRange.Near(anchor)) ==> FileRead(
-        "That passage is gone from the file now.",
+        "No passage matching that quote was found in the file as read now: read a section by " +
+          "its heading from the outline above, or quote at least 5 words as they appear.",
         "its outline",
         None,
         Some(

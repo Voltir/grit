@@ -552,7 +552,7 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "a piece's pointer, followed once its file is edited in Drive, reads the page its passage moved to, or says it is gone"
+      "a piece's pointer, followed once its file is edited in Drive, reads the page its passage moved to, or says no passage matched"
     ) {
       val passage = "Accounts are reviewed every ninety days by the owner."
       // The piece as a keep of the file's first revision anchored it.
@@ -588,7 +588,9 @@ object DriveEdgeTests extends TestSuite {
         }
       (followed("Scope.", "A new page.", passage, "End."), followed("Scope.", "End.")) ==> (
         s"Read: page 3 of 4.\n\n[page 3]\n$passage\n\n[To read on, ask for pages=\"4\".]",
-        "Read: its outline.\n\nOutline:\n(no headings)\n\nThat passage is gone from the file now."
+        "Read: its outline.\n\nOutline:\n(no headings)\n\nNo passage matching that quote was " +
+          "found in the file as read now: read a section by its heading from the outline " +
+          "above, or quote at least 5 words as they appear."
       )
     }
 
