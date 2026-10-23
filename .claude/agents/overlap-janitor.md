@@ -14,15 +14,15 @@ new one overlaps with one that already existed. The brief names the range.
 ## What to read
 
 1. The new symbols: `git diff --stat <range> -- '*/src/*' ':!*/test/*'`, then for each file
-   `scripts/outline file <path>` (what it defines) and `scripts/outline show <Sym>` for the
+   `scripts/scout file <path>` (what it defines) and `scripts/scout show <Sym>` for the
    public ones. Skip tests, histories and generated files.
 2. For each new trait, type, public function or recorded step, look for its kin, wider than its
-   own package: `scripts/outline find '*<key word>*'` for each word in its name and its doc's
+   own package: `scripts/scout find '*<key word>*'` for each word in its name and its doc's
    main noun, then the same for that word's common synonyms (a new `Discussion` beside
-   `Conversation`), `scripts/outline family <Trait>` for any trait it resembles,
-   `scripts/outline area` for the areas whose description covers what it does, and
+   `Conversation`), `scripts/scout family <Trait>` for any trait it resembles,
+   `scripts/scout area` for the areas whose description covers what it does, and
    `uses` of the nearest candidate.
-   outline answers from the compiled code; read a file by `sed -n` range only where it cannot.
+   scout answers from the compiled code; read a file by `sed -n` range only where it cannot.
    A `find` over the whole tree can take minutes: give its Bash call a 300000 ms timeout, and run
    it in the foreground rather than moving it to the background.
 
@@ -41,7 +41,7 @@ rule 8) that says so; a test fake.
 
 ## Standard of evidence
 
-- Every flag cites both sides, `file:line` (or the outline query that shows each), and says
+- Every flag cites both sides, `file:line` (or the scout query that shows each), and says
   what differs between them. No second side, no flag.
 - Say what merging them would take in one line: which survives, and what its callers change.
 - When unsure, mark the row `unsure`. Do not inflate; a clean area is a fine answer.

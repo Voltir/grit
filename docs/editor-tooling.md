@@ -75,7 +75,7 @@ ps -eo pid,ppid,etime,rss,args | grep '[M]illBspMain' | cut -c1-120
 ## Metals for grit's own development
 
 Metals is for the editor, and for compiling or testing one module mid-edit in this checkout
-from VS Code. Agents read the code through `scripts/outline` (CLAUDE.md, "Reading the code"),
+from VS Code. Agents read the code through `scripts/scout` (CLAUDE.md, "Reading the code"),
 which answers in any worktree, and type-check with Mill.
 
 **Metals serves this checkout, not a git worktree.** Its compiles and tests build the main

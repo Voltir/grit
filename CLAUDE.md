@@ -28,7 +28,7 @@ checking rejects any attempt to let it outlive its block.
 
 Mill modules, and what each may name. A module's folder follows ADR 0021's three questions
 (`core/`, `extensions/`, `kit/`, `deployments/`, `eval/`; [`docs/extending.md`](docs/extending.md)),
-while its Mill name, package and artifact stay `grit.<name>`. More on each: `scripts/outline
+while its Mill name, package and artifact stay `grit.<name>`. More on each: `scripts/scout
 area`, and the README in its folder (package order, and what the code cannot say).
 
 | Module | Packages | Depends on | Holds |
@@ -69,8 +69,10 @@ of the current epoch: guard it with `Durable.patch`, or start a new `Turn.Epoch`
 
 ## Reading the code
 
-Read Scala through `scripts/outline` first (`dev/outline`; also the `outline` MCP server). It
-answers from the compiler's TASTy, in less text than a file read, and works in any worktree (`--root`; it runs from the checkout it is in).
+Read Scala through scout first: the `scout` MCP server, or `scripts/scout` (a native binary built
+outside this repository; the script says where it looks). It answers from the compiler's TASTy, in
+less text than a file read, and works in any worktree (`--root`; with none, the checkout above the
+working directory).
 
 - `area` — with no name, the areas and what each covers; `area <name>[,name…]`, a map of one
   part of grit: start here on an unfamiliar task.
@@ -80,7 +82,7 @@ answers from the compiler's TASTy, in less text than a file read, and works in a
 - `family <Trait>` — a trait and its implementations. `uses <Owner.member>` — every direct
   reference, compiler-exact. `tests <Suite>` — a suite's tests and helpers.
 - The definition lines it prints are the file's own text: an Edit may copy them as `old_string`
-  without a Read first. `scripts/outline <query> --help` says which lines are file text.
+  without a Read first. `scripts/scout <query> --help` says which lines are file text.
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency.
 - It reads compiled output: compile the module first if its TASTy is stale. Bash reads remain
@@ -163,7 +165,7 @@ Re-measured before every version bump (`scripts/fetch-enola.sh`).
 - **Import-edge and module facts are sound** and may gate. Every rule in the law is of this kind.
 - **Symbol facts never gate** (`exported-surface`, `complexity-outliers`, any symbol count).
   They may guide exploration (`impact_analysis`, `explore`); a symbol-level claim is confirmed
-  with outline before it is stated.
+  with scout before it is stated.
 
 **A green gate is not automatically a checked gate.** A declaration that matches nothing
 passes vacuously and `lint` still exits 0; `enola-law.sh` greps for that. A rule is not

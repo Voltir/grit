@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# scout: answers questions about grit's Scala from its compiled TASTy, as a native binary. Every argument
+# passes through: a query (`scripts/scout show Moves.ask`), `--root DIR` for another checkout or worktree,
+# and `mcp` for the stdio MCP server .mcp.json starts. With no `--root`, it reads the checkout above the
+# working directory.
+#
+# The binary is $SCOUT when set, else ~/Projects/Spikes/scout-bin/scout, built from the scout repository.
+set -euo pipefail
+
+bin=${SCOUT:-$HOME/Projects/Spikes/scout-bin/scout}
+if [ ! -x "$bin" ]; then
+  echo "scout: no binary at $bin; build it from the scout repository and link it there, or set SCOUT to its path" >&2
+  exit 127
+fi
+exec "$bin" "$@"

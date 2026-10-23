@@ -20,7 +20,7 @@ symbol facts guide exploration only (CLAUDE.md, "The architecture gate (enola)")
   the MCP server may be an older binary than `tools/enola` (it keeps the one it started with).
 - **Module-level questions** (what depends on this package, how two are wired): MCP
   `impact_analysis`, `find_path`, `traverse`, or `explore`. For symbols, read through
-  `scripts/outline`; confirm any symbol-level answer from enola there before stating it.
+  `scripts/scout`; confirm any symbol-level answer from enola there before stating it.
 
 enola's stop hook reports the architectural delta at the end of a session when it finds
 something worth reading. A finding nothing enforced is a report, not a broken build: show it

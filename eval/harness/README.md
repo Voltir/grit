@@ -28,7 +28,7 @@ database records no deployment's groups, so the records near a message that it s
 ones the live read was not cleared for. Those lines reach only the review files above; the
 run logs and the bound sweep keep their digests alone.
 
-Its types are the code's (`scripts/outline area eval`); this file holds the package order and
+Its types are the code's (`scripts/scout area eval`); this file holds the package order and
 the rules each package keeps that its signatures cannot state.
 
 Packages, each importing only those above it:

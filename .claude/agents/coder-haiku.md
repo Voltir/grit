@@ -19,13 +19,13 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   to make a probe or test pass.
 
 ## Reading and editing code
-- Read Scala through the outline tool first. It answers with less text than a file read,
+- Read Scala through scout first. It answers with less text than a file read,
   resolved by the compiler, in a form an Edit can match. Use its MCP tools
-  (`mcp__outline__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
-  ToolSearch `select:mcp__outline__show,…` if they are listed as deferred), passing
-  `root: <your worktree>`: the server is warm, while each `scripts/outline …` CLI call starts a
-  JVM (about 14 s). The CLI (`scripts/outline <query> … --root .`) is the fallback. Bash
-  (`grep -n`, `sed -n`) is for what outline cannot name, or a quick text search; say in your
+  (`mcp__scout__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
+  ToolSearch `select:mcp__scout__show,…` if they are listed as deferred), passing
+  `root: <your worktree>`: the server keeps what it has read between calls. The CLI
+  (`scripts/scout <query> … --root .`) is the fallback. Bash
+  (`grep -n`, `sed -n`) is for what scout cannot name, or a quick text search; say in your
   report when you fell back. Every symbol you need goes in one call (`show Flow,Step,Flows`).
 - Which query, for what: a signature and doc, `show Moves.ask`; a body to edit,
   `show Turn --body looping --private`; where a file's imports end, `file TurnEnv`; every
@@ -36,10 +36,10 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   when an Edit fails to match. Several changes a few lines apart are one Edit.
 - Change source with Edit (and Write for a new file), which fails loudly on a mismatch; never
   `sed -i`, python or a heredoc, which change nothing silently when the text differs.
-- A line range outline printed is not a cue for `sed -n`: to read a member's body, private
+- A line range scout printed is not a cue for `sed -n`: to read a member's body, private
   ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
   fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
-  is for what outline cannot name (a test file's imports, a region inside one body).
+  is for what scout cannot name (a test file's imports, a region inside one body).
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency to understand the code. Name
   the members you need (`show Render --body oneLine,caseItem --private`); `--private` on a whole
@@ -60,7 +60,7 @@ You build exactly one task in grit, from the brief you are given, and commit it.
 
 ## Checks cost real time
 While editing, compile, don't test: after each burst of edits, `./mill <module>.compile`
-(seconds, warm), which also keeps outline's answers current (a file edited since its compile is
+(seconds, warm), which also keeps scout's answers current (a file edited since its compile is
 tagged stale). Run a test only to see it red or green: the one suite you're changing, red, then
 green. Run the brief's module check once, when the task's edits are done, before committing.
 Integration suites run after your report, by whoever reviews it, unless the brief says you run

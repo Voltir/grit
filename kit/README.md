@@ -20,7 +20,7 @@ the kit as a `grit.core.edge.ServedEdge` value its extension's entry object make
 plugin, and offers every plugin's tools the same way, each bound when the engine starts over
 the plugin's own documents and the services of the plugins it needs (ADR 0027).
 
-Its types are the code's (`scripts/outline area deployment`); this file holds the package
+Its types are the code's (`scripts/scout area deployment`); this file holds the package
 order and what the signatures cannot say.
 
 In dependency order:

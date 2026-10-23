@@ -17,7 +17,7 @@
 # capture-annotated sources against 46 from structurally identical plain ones). 0.4.29
 # extracts all 46 with their right owners, but its receipt would be as silent about a new
 # regression, and the fixture covers no separation-checking syntax. So symbol facts may guide
-# exploration, and a symbol-level claim is confirmed against the compiler's view (outline)
+# exploration, and a symbol-level claim is confirmed against the compiler's view (scout)
 # before it is stated.
 repo: "."
 

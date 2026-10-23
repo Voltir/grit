@@ -4,8 +4,8 @@ The domain and the traits everything else is written against. No DBOS, no JDBC d
 classpath; implementations live in the modules that need the libraries (CLAUDE.md, rule 8).
 It names one other grit module, `grit.prose`, whose form a file is read into (`files`).
 
-Each package's types and their docs are the code's: `scripts/outline area <name>` maps a part of
-grit, and `scripts/outline show <Type>` reads one. This file holds what the code does not say:
+Each package's types and their docs are the code's: `scripts/scout area <name>` maps a part of
+grit, and `scripts/scout show <Type>` reads one. This file holds what the code does not say:
 the packages' order, each one's idea, and the rules enforced outside the compiler.
 
 In dependency order, each with the core packages it imports:

@@ -259,7 +259,7 @@ weak coverage, it is false coverage: it reads as a guarantee and holds none.
 ## Why rule 10 is a feature, not an aspiration
 
 It is what keeps building on grit cheap. Whoever writes the next change, a person or an
-agent, reads what it calls through signature-only views (`scripts/outline show` prints a
+agent, reads what it calls through signature-only views (`scripts/scout show` prints a
 definition's signature and doc, and its body only on request) and stops there. When the
 signatures are the whole truth, that reader holds an accurate picture of the code in a
 fraction of the tokens its bodies would cost; when an effect hides in a body, it has to read

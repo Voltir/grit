@@ -12,7 +12,7 @@ answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE ru
 `grit.edge` (whose `Server` serves `slack_post`), never the turn
 (`slack-names-core-prose-and-edge`).
 
-Its types are the code's (`scripts/outline area edge`); this file holds the package order, what
+Its types are the code's (`scripts/scout area edge`); this file holds the package order, what
 the edge does that its signatures cannot say, and what the Slack app needs.
 
 In dependency order:

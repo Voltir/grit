@@ -8,7 +8,7 @@ DBOS is on its classpath; enola's `only-dbos-imports-*` rules are what keep it o
 reaches Postgres only through `grit.dbos.engine.Engine`. Run it with `scripts/grit`, with
 `GRIT_DATABASE_URL` set (in `.env`, as `.env.example` shows): without it, every command refuses
 to start, and every start logs the database it opened (`grit.launch`). Its types
-are the code's (`scripts/outline area app`); this file holds the package order and what a
+are the code's (`scripts/scout area app`); this file holds the package order and what a
 person sets and sees.
 
 In dependency order:

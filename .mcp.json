@@ -4,8 +4,8 @@
       "command": "tools/enola",
       "args": ["--no-dashboard", "mcp-arch.yaml"]
     },
-    "outline": {
-      "command": "scripts/outline",
+    "scout": {
+      "command": "scripts/scout",
       "args": ["mcp"]
     }
   }

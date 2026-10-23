@@ -27,15 +27,15 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 
 ## Reading and editing code
 
-- Read Scala through the outline tool first. It answers with less text than a file read,
+- Read Scala through scout first. It answers with less text than a file read,
   resolved by the compiler, in a form an Edit can match. Use its MCP tools
-  (`mcp__outline__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
-  ToolSearch `select:mcp__outline__show,…` if they are listed as deferred), passing
-  `root: <your worktree>`: the server is warm, while each `scripts/outline …` CLI call starts a
-  JVM (about 14 s). The CLI (`scripts/outline <query> … --root .`) is the fallback when the MCP
-  tools are missing. Bash reads and searches are for what outline cannot name, or a quick text
-  search; avoid whole-file reads. `scripts/outline <query> --help` gives each query's flags and
-  says which printed lines are the file's own text.
+  (`mcp__scout__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
+  ToolSearch `select:mcp__scout__show,…` if they are listed as deferred), passing
+  `root: <your worktree>`: the server keeps what it has read between calls. The CLI
+  (`scripts/scout <query> … --root .`) is the fallback when the MCP tools are missing. Bash
+  reads and searches are for what scout cannot name, or a quick text search; avoid whole-file
+  reads. `scripts/scout <query> --help` gives each query's flags and says which printed lines
+  are the file's own text.
 - Which query, for what:
   - an unfamiliar part of grit: `area <name>`;
   - a name you don't know: `find '*Shelf*'`, `find '*.placed'`;
@@ -54,10 +54,10 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   mismatch. The one exception is a mechanical change across many sites (a rename): a script
   may make it, and its commit message shows it applied, the count of matches before and after
   and a clean compile.
-- A line range outline printed is not a cue for `sed -n`: to read a member's body, private
+- A line range scout printed is not a cue for `sed -n`: to read a member's body, private
   ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
   fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
-  is for what outline cannot name (a test file's imports, a region inside one body).
+  is for what scout cannot name (a test file's imports, a region inside one body).
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency to understand the code.
   Name the members you need with `--body`.
@@ -119,7 +119,7 @@ reading the doc each item names rather than assuming its rule.
 - **Checks cost real time.** Keep one warm Mill for the whole task: `./mill`, never
   `--no-daemon`, and no `./mill shutdown` between steps except once to clear a "Connection
   refused". One Mill job at a time. While editing, compile, don't test: after each burst of
-  edits, `./mill <module>.compile` (seconds, warm), which also keeps outline's answers current —
+  edits, `./mill <module>.compile` (seconds, warm), which also keeps scout's answers current —
   it reads compiled output, so a file edited since its compile is tagged stale and its lines
   may not match. Run a test only to see it red or green: the suite of the test the commit is
   about (`scripts/check <Suite>`), red before the change and green after. Run the module's

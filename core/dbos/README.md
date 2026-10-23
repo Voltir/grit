@@ -2,7 +2,7 @@
 
 The DBOS quarantine (ADR 0001): the only module that names DBOS, JDBC or the Postgres
 driver, translated into core's traits here. `resources/schema.sql` is the schema. The types
-and their docs are the code's (`scripts/outline area storage`, `scripts/outline show <Type>`);
+and their docs are the code's (`scripts/scout area storage`, `scripts/scout show <Type>`);
 this file holds the package order and the rules the code's signatures cannot state.
 
 - **`sql`**: Postgres behind core's store traits, one `Sql*` class per trait.

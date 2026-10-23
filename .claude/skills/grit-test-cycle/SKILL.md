@@ -88,7 +88,7 @@ encodings must replay every history of its epoch
 
 ## In a git worktree
 
-Build and test with Mill, and read the code with `scripts/outline --root .` from the
+Build and test with Mill, and read the code with `scripts/scout --root .` from the
 worktree: it answers from the worktree's own compiled output. Metals serves the main checkout
 only. A CLI `./mill` and Metals never block each other (separate build directories).
 

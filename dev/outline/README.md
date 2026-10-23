@@ -121,25 +121,19 @@ File text: in show and family, each definition's lines after its NN-MM header ar
 
 ## Running it
 
-- `scripts/outline <query> …` runs a query from the current checkout.
-- `scripts/outline mcp` runs a stdio MCP server. Client configuration, one entry:
+Agents read grit through scout (`scripts/scout`, CLAUDE.md "Reading the code"), a native port of
+this tool; nothing in `scripts/` or `.mcp.json` runs this one, which is kept only until its removal.
+It runs through its own module. Build its launcher in a Mill output directory of its own, so a
+running `./mill` daemon is not disturbed (built in `out/` itself, a no-daemon run replaces the
+compiler worker that daemon is connected to):
 
-      {"outline": {"command": "<checkout>/scripts/outline", "args": ["mcp"]}}
+    MILL_OUTPUT_DIR=out/outline ./mill --no-daemon grit.outline.launcher
 
-Builds are kept in `${XDG_CACHE_HOME:-~/.cache}/grit-outline/<key>`, one per version of outline's
-sources: the key hashes every file under `dev/outline`, the `build.mill` lines that define the module
-and `.mill-version`. Every checkout on the same outline code runs the same build, and a branch that
-changes outline gets its own. A key with no build is built on first use, in the checkout, without a
-daemon in its own Mill output directory (`out/outline`, so a running `./mill` daemon is never
-disturbed), then kept; the build first says so on stderr, in one `outline: building` line. A kept
-build is never rewritten, so neither a rebuild nor `./mill clean` reaches it. A key unused for 7 days
-is removed.
+then run `out/outline/grit/outline/launcher.dest/run` with the JDK `grit.outline.javaHome` names:
 
-An MCP server runs from its own copy of a kept build, in `grit-outline/mcp/<pid>`. When its key has
-no build yet, it starts at once from the last build used, since a client waits about 30 s for it to
-answer, and its own builds in the background for the next start; with none to start from, it builds
-first and says so on stderr. `grit-outline/mcp.log` keeps when and by whom each server was started,
-its stderr, how it ended, the background builds and the keys removed.
+- `run --root <checkout> <query> …` runs a query; the usage lines above and the tool's help write
+  it as `scripts/outline`, the wrapper it had.
+- `run --root <checkout> mcp` runs a stdio MCP server.
 
 A request the server fails on gets a JSON-RPC error (-32603) naming the failure, and the server goes on
 serving. Three requests in a row that fail to link, its classes gone or changed under it, end it; it

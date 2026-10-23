@@ -6,7 +6,7 @@ core's in-memory fakes, and its histories are read over the same flow. Not in
 `grit.turn`: that module is the turn's body, and its epoch's replay gate is the turn's; each
 workflow here has its own recorded histories, replayed under the engine's epoch
 (`Turn.Epoch`). Each workflow's steps and the environment it works with are the code's
-(`scripts/outline area lifecycle`); this file holds the package order and what the steps'
+(`scripts/scout area lifecycle`); this file holds the package order and what the steps'
 signatures do not say. A workflow's classifier calls and the close's summary model call are
 moves (`grit.act.moves.Judging`): admitted under the deployment's daily cap, unavailable when
 over it, and each one's cost kept in the ledger, charged to its turn under the workflow's own id.
