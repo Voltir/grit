@@ -19,7 +19,6 @@ import grit.core.files.{
   Locus,
   PagedText,
   Piece,
-  PiecedFile,
   PutKey,
   TestPieces
 }

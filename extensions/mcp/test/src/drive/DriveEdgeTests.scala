@@ -42,7 +42,6 @@ import grit.core.files.{
   OpenFile,
   PagedText,
   Piece,
-  PiecedFile,
   ReadLimits,
   TestPieces,
   Understood,

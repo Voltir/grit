@@ -47,7 +47,6 @@ import grit.core.files.{
   Piece,
   PieceKeeper,
   PieceSearch,
-  PiecedFile,
   TestPieces
 }
 import grit.core.id.{

@@ -18,15 +18,7 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
-import grit.core.files.{
-  FormatName,
-  InMemoryPieces,
-  Locus,
-  Piece,
-  PieceKeeper,
-  PiecedFile,
-  TestPieces
-}
+import grit.core.files.{FormatName, InMemoryPieces, Locus, Piece, PieceKeeper, TestPieces}
 import grit.core.id.{
   ConversationId,
   DocKey,

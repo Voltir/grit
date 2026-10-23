@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.classify.StateJson
 import grit.core.context.Window
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
-import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile, TestPieces}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, TestPieces}
 import grit.core.id.{
   ConversationId,
   DocKey,

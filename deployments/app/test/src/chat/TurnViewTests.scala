@@ -6,7 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.durable.StepRecord
-import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile, TestPieces}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, TestPieces}
 import grit.core.id.{
   ConversationId,
   DocKey,
