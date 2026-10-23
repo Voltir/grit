@@ -93,9 +93,8 @@ enum DriveError derives CanEqual {
     case Unreachable(why) => s"Drive could not be reached ($why); try again in a minute."
     case Malformed(_) => "Drive's answer couldn't be read; try again later."
     case SlidesOff => "Slides decks can't be read here just now; tell an administrator."
-    case Unreadable(kind) =>
-      "Docs, Sheets, Slides decks, PDFs, Word and Excel files, and text files in Drive can be " +
-        s"read here, not $kind."
+    // Names only the kind refused: which kinds are read depends on the deployment's formats.
+    case Unreadable(kind) => s"${kind.capitalize} can't be read here."
     case Flagged => "Drive has flagged this file as possibly harmful, so it isn't read here."
     case ExportTooLarge =>
       "This file is too large for Drive to hand over to be read here (Drive passes on at most " +

@@ -159,14 +159,20 @@ object DriveRestTests extends TestSuite {
           pdf.flatMap(rest.text),
           fake.requests.size - asked
         ) ==> (
-          Left(
-            "Docs, Sheets, Slides decks, PDFs, Word and Excel files, and text files in Drive " +
-              "can be read here, not this file."
-          ),
+          Left("This file can't be read here."),
           Left(DriveError.Unreadable("a PDF")),
           1
         )
       }
+    }
+
+    test(
+      "an unreadable file's message names only its kind, so a deck's never says decks are read"
+    ) {
+      (
+        DriveError.Unreadable(DriveKind.Slides.words).message,
+        DriveError.Unreadable(DriveKind.Folder.words).message
+      ) ==> ("Slides can't be read here.", "A folder can't be read here.")
     }
 
     test("a file Drive says is larger than read here is refused before its bytes are asked for") {
