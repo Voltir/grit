@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.classify.StateJson
 import grit.core.context.Window
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -12,6 +13,7 @@ import grit.core.id.{
   EntryId,
   EntrySeq,
   PeriodSeq,
+  PieceId,
   PluginName,
   ToolCallId,
   TurnSeq
@@ -74,7 +76,8 @@ object TurnJudgeTests extends TestSuite {
       speakers: Speakers,
       draft: String,
       documents: Vector[(Document, DocLabel)] = Vector.empty,
-      mine: Vector[Entry] = Vector.empty
+      mine: Vector[Entry] = Vector.empty,
+      pieces: Vector[(KeptPiece, DocLabel, Int)] = Vector.empty
   ): TurnJudge.State =
     TurnJudge.state(
       all,
@@ -84,7 +87,7 @@ object TurnJudgeTests extends TestSuite {
         near,
         speakers,
         documents,
-        Vector.empty
+        pieces
       ),
       window,
       strand,
@@ -306,6 +309,47 @@ object TurnJudgeTests extends TestSuite {
         "draft",
         documents = Vector(card -> got(DocLabel.of("Cards")))
       ).recalled ==> "[doc] Cards, at slack:T1/C1, 2026-09-30:\nReleases are cut on Tuesdays."
+    }
+
+    test(
+      "a piece the window held is recalled under its label, place, heading path and date, with the count of its file's other matches"
+    ) {
+      def got[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val label = got(DocLabel.of("Drive files"))
+      val shown = KeptPiece(
+        PieceId.of(12L).getOrElse(sys.error("id")),
+        got(PluginName.of("files")),
+        PiecedFile("f12", "plan.pdf", "r1", FormatName("pdf"), 1),
+        got(Place.read("slack:T1/C1")),
+        grit.core.visibility.Label.Public,
+        Integrity.Member,
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Piece(
+          Vector("Access"),
+          grit.prose.form.Doc(
+            Vector(
+              grit.prose.form.Block.Paragraph(
+                grit.prose.form.Text(
+                  Vector(
+                    grit.prose.form.Span("Accounts are reviewed.", Set.empty, Vector(Locus.Page(2)))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      judging(
+        Vector(root),
+        Window(Vector.empty),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "draft",
+        pieces = Vector((shown, label, 3))
+      ).recalled ==> "[doc] Drive files, part of the file plan.pdf, under Access, page 2, at slack:T1/C1, 2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search."
     }
 
     test("what the draft's own tool calls read is recalled under each call; a failed one is not") {
