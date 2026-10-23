@@ -1,6 +1,10 @@
 package grit.slack.text
 
+import scala.compiletime.constValue
+import scala.deriving.Mirror
+
 import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.markdown.Markdown
 import grit.slack.event.UserId
 
 import utest.*
@@ -26,6 +30,33 @@ object RichTextTests extends TestSuite {
     RichText.render(doc) match {
       case Vector(post) => post.blocks
       case other => throw new java.lang.AssertionError(s"${other.size} posts")
+    }
+
+  /** How many cases the sum type `T` has, counted by the compiler. */
+  private inline def cases[T](using m: Mirror.SumOf[T]): Int =
+    constValue[Tuple.Size[m.MirroredElemLabels]]
+
+  /** What a claim about `blocks` (one example's) must say, and what its drawing must show. */
+  private def drawn(blocks: Vector[Block[Nothing]]): (String, String => Boolean) =
+    blocks match {
+      case Vector(Block.Paragraph(t)) =>
+        t.spans.flatMap(_.marks).headOption match {
+          case Some(Mark.Strong) => ("bold", _.contains("\"bold\":true"))
+          case Some(Mark.Emphasis) => ("italic", _.contains("\"italic\":true"))
+          case Some(Mark.Code) => ("code style", _.contains("\"code\":true"))
+          case Some(Mark.Link(href)) => ("link", _.contains(s"\"type\":\"link\",\"url\":\"$href\""))
+          case None => ("as written", j => j.contains("rich_text_section") && !j.contains("style"))
+        }
+      case Vector(Block.Heading(_, _)) => ("bold line", _.contains("\"bold\":true"))
+      case Vector(Block.Bullets(_)) => ("indented", _.contains("\"style\":\"bullet\",\"indent\":1"))
+      case Vector(Block.Numbered(_, _)) => ("numbered", _.contains("\"style\":\"ordered\""))
+      case Vector(Block.Quote(_)) =>
+        ("plain text", j => j.contains("rich_text_quote") && !j.contains("rich_text_list"))
+      case Vector(Block.Code(language, _)) =>
+        ("language", j => j.contains("rich_text_preformatted") && language.forall(!j.contains(_)))
+      case Vector(Block.Table(_, _)) => ("columns aligned", _.contains("rich_text_preformatted"))
+      case Vector(Block.Rule) => ("divider", _.contains("\"divider\""))
+      case other => throw new java.lang.AssertionError(s"one block, not ${other.size}")
     }
 
   val tests = Tests {
@@ -205,6 +236,19 @@ object RichTextTests extends TestSuite {
 
     test("an empty reply is no post") {
       RichText.render(Doc.empty) ==> Vector.empty
+    }
+
+    test("what Slack is told names every block and mark render draws, each as it draws it") {
+      val parsed = RichText.told.map((md, claim) => (md, claim, Markdown.parse(md).blocks))
+      val blocks = parsed.flatMap(_._3)
+      val marks = blocks.collect { case Block.Paragraph(t) => t.spans.flatMap(_.marks) }.flatten
+      blocks.map(_.ordinal).distinct.sorted ==> (0 until cases[Block[Nothing]]).toVector
+      marks.map(_.ordinal).distinct.sorted ==> (0 until cases[Mark]).toVector
+      parsed.foreach { (md, claim, bs) =>
+        val (says, holds) = drawn(bs)
+        val json = ujson.write(only(Doc(bs)))
+        assert(RichText.Shown.contains(s"$claim:\n$md"), claim.contains(says), holds(json))
+      }
     }
 
     test("a mention is a user element between literal text, and a mention in the plain text") {

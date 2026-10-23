@@ -1,6 +1,7 @@
 package grit.slack.text
 
 import grit.prose.form.{Block, Cell, Column, Doc, Item, Mark, Renderer, Span, Text}
+import grit.prose.markdown.Markdown
 import grit.slack.event.UserId
 
 /** One Slack message of a reply: its rich_text and divider blocks, and the plain text Slack
@@ -22,6 +23,47 @@ object RichText extends Renderer[Vector[Post]] {
     * Slack's reference does not state.
     */
   val MaxChars = 3000
+
+  /** What a Slack message shows of the markdown a reply is written in, for the model that
+    * writes it: one line for each kind of block and mark [[render]] draws, a markdown example
+    * and how Slack shows it (a heading as a bold line, a table as preformatted text, a list or
+    * quote inside a quote as its plain text). The same text on every call.
+    */
+  val Shown: String =
+    told
+      .map((md, claim) => s"$claim:\n$md")
+      .mkString("How Slack shows the markdown you write, an example of each kind:\n\n", "\n\n", "")
+
+  /** Each example's markdown, and how Slack shows it: [[shows]] of the block or mark it parses
+    * to, so a block or mark [[render]] has no words for is a compile error.
+    */
+  private[text] def told: Vector[(String, String)] =
+    examples.flatMap { md =>
+      Markdown.parse(md).blocks match {
+        case Vector(Block.Paragraph(t)) =>
+          t.spans.flatMap(_.marks).headOption match {
+            case Some(m) => Vector(md -> shows(m))
+            case None => Vector(md -> shows(Block.Paragraph(t)))
+          }
+        case bs => bs.headOption.map(b => md -> shows(b)).toVector
+      }
+    }
+
+  /** One example of each kind of block, then of each mark. */
+  private def examples: Vector[String] = Vector(
+    "A plain sentence.",
+    "## Next steps",
+    "- Draft the plan\n  - Ask for review",
+    "1. Draft\n2. Review",
+    "> We agreed:\n> - ship on Friday",
+    "```scala\nval total = 3\n```",
+    "| Owner | Due |\n|---|---|\n| Ana | Friday |",
+    "---",
+    "**done**",
+    "*soon*",
+    "`grit serve`",
+    "[the plan](https://example.com/plan)"
+  )
 
   /** `doc` as Slack messages, split at block boundaries (a code block longer than one post at
     * its line boundaries, any other block at spaces) into posts of at most [[MaxBlocks]]
@@ -165,6 +207,23 @@ object RichText extends Renderer[Vector[Post]] {
       Vector(Piece(rich(preformatted(t)), t))
   }
 
+  /** How [[block]] draws `b`, in words for the model. */
+  private def shows(b: Block[Nothing]): String = b match {
+    case Block.Paragraph(_) => "A paragraph shows as written"
+    case Block.Heading(_, _) => "A heading, at any level, shows as a bold line the size of the text"
+    case Block.Rule => "A rule shows as a divider"
+    case Block.Code(_, _) =>
+      "A fenced code block shows as preformatted text, without its language"
+    case Block.Quote(_) =>
+      "A quote shows as a quote; a list or a quote inside it shows as its plain text"
+    case Block.Bullets(_) =>
+      "A bulleted list shows as a list, a nested list indented under its item"
+    case Block.Numbered(_, _) =>
+      "A numbered list shows numbered, counting on from its first number"
+    case Block.Table(_, _) =>
+      "A table shows as preformatted text, its columns aligned, not as a grid"
+  }
+
   /** A list's items as Slack list elements: one list per run of items, each nested list a list
     * at `indent` + 1 between them, an ordered list's `offset` counting on across the runs.
     */
@@ -261,6 +320,14 @@ object RichText extends Renderer[Vector[Post]] {
       case Mark.Code => "code"
     }
     Option.when(on.nonEmpty)(ujson.Obj.from(on.distinct.map(_ -> ujson.Bool(true))))
+  }
+
+  /** How [[spans]] draws text marked `m`, in words for the model. */
+  private def shows(m: Mark): String = m match {
+    case Mark.Strong => "Strong text shows bold"
+    case Mark.Emphasis => "Emphasis shows italic"
+    case Mark.Code => "Inline code shows in code style"
+    case Mark.Link(_) => "A link shows as its text, as a link"
   }
 
   /** Adjacent text elements of one style as one. */
