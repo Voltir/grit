@@ -104,7 +104,7 @@ object Pieces {
     var (start, end) = (0, 0)
     def close(): Unit = {
       if (open.nonEmpty)
-        done :+= Piece(path.map(_._2), Doc(open), Anchor.of(laid.plain, start, end))
+        done :+= Piece(path.map(_._2), Doc(open), Anchor.of(laid.whole, start, end))
       open = Vector.empty
     }
     tree.doc.blocks.zipWithIndex.foreach {
@@ -112,8 +112,8 @@ object Pieces {
         close()
         path = path.takeWhile(_._1 < level.value) :+ (level.value -> oneLine(text.plain))
       case (block, i) =>
-        val text = laid.plains.lift(i).getOrElse("")
-        val from = laid.plainStarts.lift(i).getOrElse(laid.plain.length)
+        val text = laid.texts.lift(i).getOrElse("")
+        val from = laid.start(i)
         val to = from + text.length
         // Where in its block's text the last part found began: the next is sought after it.
         var seen = -1
@@ -133,12 +133,18 @@ object Pieces {
 
   private def oneLine(s: String): String = s.replace('\n', ' ').trim
 
-  /** The first [[Anchor.Words]] runs of letters and digits of `part`'s words, whatever lies
-    * between them, as markdown may write it; `None` when it has none.
+  /** The first [[Anchor.Words]] runs of letters and digits of `part`'s markdown, a table's from
+    * its rows (its header is written above each part of it), whatever lies between them;
+    * `None` when it has none.
     */
   private def firstWords(part: Block[Locus]): Option[Regex] = {
+    val written = Markdown.write(Doc(Vector(part)).unnoted)
+    val words = part match {
+      case Block.Table(_, _) => written.linesIterator.drop(2).mkString("\n")
+      case _ => written
+    }
     val runs = """[\p{L}\p{N}]+""".r
-      .findAllIn(IndexText.render(Doc(Vector(part)).unnoted))
+      .findAllIn(words)
       .take(Anchor.Words)
       .map(Regex.quote)
       .toVector

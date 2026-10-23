@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.host.Clipped
 import grit.prose.form.{Block, Doc}
-import grit.prose.index.IndexText
 import grit.prose.markdown.Markdown
 
 /** A file's tree as the model reads it, a range at a time. */
@@ -70,10 +69,10 @@ object ModelText {
       case FileRange.From(offset) =>
         laid.fit(offset.min(laid.total), laid.blocks.size, None, told, None)
       case FileRange.Near(anchor) =>
-        Anchor.find(anchor, laid.plain) match {
+        Anchor.find(anchor, laid.whole) match {
           case None => outlineOnly("That passage is gone from the file now.")
           case Some((at, _)) =>
-            val block = laid.plainBlockAt(at)
+            val block = laid.blockAt(at)
             laid.spans.lift(block).flatten.map(_._1).orElse(laid.onPage.lift(block).flatten) match {
               case Some(page) => pages(page, page)
               case None => laid.fit(laid.start(block), laid.blocks.size, None, told, None)
@@ -83,11 +82,10 @@ object ModelText {
     }
   }
 
-  /** All of `tree`'s words, each block's plain text ([[grit.prose.index.IndexText]]: no
-    * markdown, a table row as `column: value` pairs) apart by a blank line: the text an
-    * [[Anchor]] counts in.
+  /** All of `tree` as the model is shown it, each block's markdown ([[Markdown.write]]) apart
+    * by a blank line, with no `[page n]` lines: the text an [[Anchor]] counts in.
     */
-  def text(tree: Understood): String = Laid(tree.doc, readWhole = false).plain
+  def text(tree: Understood): String = Laid(tree.doc, readWhole = false).whole
 
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 
@@ -102,21 +100,10 @@ object ModelText {
     /** Each block's first character in the whole text, blocks apart by a blank line. */
     val starts: Vector[Int] = texts.scanLeft(0)((at, t) => at + t.length + 2).dropRight(1)
 
-    /** Each block's plain words, what an anchor counts in. */
-    lazy val plains: Vector[String] = blocks.map(b => IndexText.render(Doc(Vector(b)).unnoted))
-
-    /** Each block's first character in [[plain]]. */
-    lazy val plainStarts: Vector[Int] =
-      plains.scanLeft(0)((at, t) => at + t.length + 2).dropRight(1)
-
-    /** The blocks' plain words, apart by a blank line. */
-    lazy val plain: String = plains.mkString("\n\n")
-
-    /** The block the character `offset` of [[plain]] lies in, or the next when it lies between. */
-    def plainBlockAt(offset: Int): Int = {
-      val i = plainStarts.lastIndexWhere(_ <= offset)
-      if (i < 0) 0 else if (offset > plainStarts(i) + plains(i).length) i + 1 else i
-    }
+    /** The blocks' markdown apart by a blank line, each at its [[starts]]: what an anchor counts
+      * in.
+      */
+    lazy val whole: String = texts.mkString("\n\n")
 
     val total: Int = texts.lastOption.fold(0)(t => starts.lastOption.getOrElse(0) + t.length)
 

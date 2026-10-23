@@ -66,6 +66,26 @@ object AnchorTests extends TestSuite {
         Some("Set  a\\_b\\_c\\_d\\_e\\_f\\_g\\_h to x\\*y\\*z in cfg \\[Assignment: daily\\]")
     }
 
+    test(
+      "a quote of markdown's words is found in it, table bars, its delimiter row, and list and " +
+        "heading markers dropped"
+    ) {
+      val shown = "## Reach out\n\n- Call the lender first\n- Then email them\n\n" +
+        "**How borrowers reach us**\n\n| **Channel** | **Role** | **Why** |\n|---|---|---|\n" +
+        "| AI assistants | Primary | Captures borrowers early |"
+      def found(quote: String): Option[String] =
+        Anchor.quoted(quote).toOption.flatMap(Anchor.find(_, shown)).map(shown.substring(_, _))
+      (
+        found("Reach out Call the lender first Then email them"),
+        found("How borrowers reach us. Channel Role Why AI assistants Primary Captures borrowers")
+      ) ==> (
+        Some("Reach out\n\n- Call the lender first\n- Then email"),
+        Some(
+          "How borrowers reach us**\n\n| **Channel** | **Role** | **Why** |\n|---|---|---|\n| AI"
+        )
+      )
+    }
+
     test("a passage deleted from the text is gone") {
       val anchor = anchored("Policy. " + Passage + " Next.")
       Anchor.find(anchor, "Policy. Next.") ==> None

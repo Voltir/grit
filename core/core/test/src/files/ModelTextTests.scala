@@ -2,7 +2,7 @@ package grit.core.files
 
 import java.nio.charset.StandardCharsets.UTF_8
 
-import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -167,7 +167,8 @@ object ModelTextTests extends TestSuite {
     }
 
     test(
-      "a file's text is its blocks' plain words, and an anchor in it is found in what is shown"
+      "a file's text is its blocks' markdown without page lines, and an anchor in it is found " +
+        "in what is shown"
     ) {
       val rule = Text(
         Vector(
@@ -181,7 +182,7 @@ object ModelTextTests extends TestSuite {
       val anchor = Anchor.of(text, text.indexOf("Set"), text.length)
       val shown = ModelText.of(file, FileRange.Start).text
       (text, Anchor.find(anchor, shown).map((s, _) => shown.substring(s).take(9))) ==>
-        ("Scope.\n\nSet a_b_c_d to daily [Assignment: frequency].", Some("Set a_b_c"))
+        ("Scope.\n\nSet a_b_c_d to *daily* [Assignment: frequency].", Some("Set a_b_c"))
     }
 
     test("near a quote reads the page its words lie on, though its lines break elsewhere") {
@@ -202,6 +203,41 @@ object ModelTextTests extends TestSuite {
       val near = "Suppliers are vetted by an independent panel each year."
       FileRange.parse(None, None, None, Some(near)).map(ModelText.of(book, _).text) ==>
         Right("That passage is gone from the file now.")
+    }
+
+    test(
+      "near a table's words, quoted or pointed at as another reading flattened them, reads the " +
+        "page the table lies on"
+    ) {
+      def strong(s: String): Text[Locus] =
+        Text(Vector(Span(s, Set(Mark.Strong), Vector(Locus.Page(2)))))
+      val words = Vector("AI assistants", "Primary", "Captures borrowers early")
+      val deck = tree(
+        Vector(
+          para(1, "Intro."),
+          Block.Paragraph(strong("How borrowers reach us")),
+          Block.table(
+            Vector("Channel", "Role", "Why").map(c => Column(strong(c))),
+            Vector(words.map(w => Cell.Words(on(2, w))))
+          ),
+          para(3, "End.")
+        )
+      )
+      val flat = tree(
+        Vector(
+          para(1, "Intro."),
+          para(2, "How borrowers reach us Channel Role Why AI assistants Primary Captures"),
+          para(3, "End.")
+        )
+      )
+      val text = ModelText.text(flat)
+      val pointer = Anchor.of(text, text.indexOf("How"), text.indexOf("End."))
+      val quote =
+        "How borrowers reach us. Channel Role Why AI assistants Primary Captures borrowers"
+      (
+        FileRange.parse(None, None, None, Some(quote)).map(ModelText.of(deck, _).covered),
+        ModelText.of(deck, FileRange.Near(pointer)).covered
+      ) ==> (Right("page 2 of 3"), "page 2 of 3")
     }
 
     test("near a passage in a file not counted in pages reads on from its block") {

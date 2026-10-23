@@ -68,7 +68,9 @@ object Anchor {
     */
   val QuoteLeast: Int = 5
 
-  /** How many words a quote holds. */
+  /** How many words a quote holds, a word a run of non-spaces holding a letter or digit: a
+    * table's bars and delimiter row are none.
+    */
   val Words: Int = 8
 
   /** The most characters of a quote; past it, cut. */
@@ -100,9 +102,11 @@ object Anchor {
   /** Where `anchor`'s quote lies in `text` now, its first character and the one past its
     * last: exactly by its context, else nearest its position, else the best match at least
     * [[Alike]] alike; `None` when it is gone, or it quotes nothing. Each is matched after a
-    * fold of both sides, runs of spaces as one and `*`, `_`, backticks and backslashes
-    * dropped, so an anchor taken from a file's plain words ([[ModelText.text]]) is found in
-    * the markdown the model was shown of it.
+    * fold of both sides that leaves a passage's words in reading order however markdown laid
+    * them out: a line that is a table's delimiter row or a code fence dropped; a line's quote,
+    * list or heading marker dropped; `*`, `_`, `|`, backticks and backslashes dropped; runs of
+    * spaces and line breaks as one space. So a quote of a table's words, flattened as another
+    * reading of its file gave them, is found in its markdown, and the reverse.
     */
   def find(anchor: Anchor, text: String): Option[(Int, Int)] = {
     val folded = Folded(text)
@@ -137,7 +141,18 @@ object Anchor {
 
   private object Folded {
     def apply(text: String): Folded = {
-      val kept = text.zipWithIndex.filterNot((c, _) => Dropped.contains(c))
+      val lines = text.split("\n", -1).toVector
+      val kept = lines
+        .zip(lines.scanLeft(0)(_ + _.length + 1))
+        .flatMap { (line, at) =>
+          val from =
+            if (Structure.matches(line)) line.length
+            else Marker.findPrefixMatchOf(line).fold(0)(_.end)
+          (from until line.length).collect {
+            case i if !Dropped.contains(line.charAt(i)) => (line.charAt(i), at + i)
+          } :+ ('\n', at + line.length)
+        }
+        .dropRight(1)
       val runs = kept.zipWithIndex.filterNot { case ((c, _), k) =>
         c.isWhitespace && k > 0 && kept(k - 1)._1.isWhitespace
       }
@@ -148,7 +163,14 @@ object Anchor {
       )
     }
 
-    private val Dropped: Set[Char] = Set('*', '_', '`', '\\')
+    private val Dropped: Set[Char] = Set('*', '_', '|', '`', '\\')
+
+    /** A line dropped whole: a table's delimiter row, or a code fence. */
+    private val Structure =
+      """[ \t]*(?:\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?|(?:`{3,}|~{3,})[^`\s]*)[ \t]*""".r
+
+    /** A line's quote markers, then its list or heading marker. */
+    private val Marker = """(?:[ \t]*>)*[ \t]*(?:#{1,6}|[-*+]|\d{1,9}[.)])?(?=[ \t]|$)""".r
   }
 
   /** How alike a passage must be to a quote, as one less the share of its characters an
@@ -156,7 +178,7 @@ object Anchor {
     */
   val Alike: Double = 0.8
 
-  private val Word = """\S+""".r
+  private val Word = """\S*[\p{L}\p{N}]\S*""".r
 
   /** The run of `text`'s words, one fewer to one more than `quote` holds, most alike it and at
     * least [[Alike]] alike, nearest `want` among the equally alike.

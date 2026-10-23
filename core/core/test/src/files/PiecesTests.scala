@@ -35,6 +35,21 @@ object PiecesTests extends TestSuite {
   private def tree(blocks: Block[Locus]*): Understood =
     Understood(Doc(blocks.toVector), Covers.Whole, Vector.empty, FormatName("test"), 1)
 
+  /** A table of a control's tag and text: rows r, s and t of 0.3 [[Pieces.Target]] and u of
+    * 1.25.
+    */
+  private val controls: Understood = {
+    val columns = Vector(Column(Text.plain("Control")), Column(Text.plain("Text")))
+    def row(tag: String, n: Int): Vector[Cell[Locus]] =
+      Vector(Cell.Words(on(1, tag)), Cell.Words(on(1, words(tag, n))))
+    tree(
+      Block.table(
+        columns,
+        Vector(row("r", of(0.3)), row("s", of(0.3)), row("t", of(0.3)), row("u", of(1.25)))
+      )
+    )
+  }
+
   private def plain(p: Piece): String = IndexTextOf(p)
   private object IndexTextOf {
     def apply(p: Piece): String = grit.prose.index.IndexText.render(p.doc.unnoted)
@@ -97,18 +112,7 @@ object PiecesTests extends TestSuite {
     }
 
     test("a table's rows are packed with its columns, a row over Target cut at its columns") {
-      val columns = Vector(Column(Text.plain("Control")), Column(Text.plain("Text")))
-      def row(tag: String, n: Int): Vector[Cell[Locus]] =
-        Vector(Cell.Words(on(1, tag)), Cell.Words(on(1, words(tag, n))))
-      val (pieces, _) = Pieces.of(
-        tree(
-          Block.table(
-            columns,
-            Vector(row("r", of(0.3)), row("s", of(0.3)), row("t", of(0.3)), row("u", of(1.25)))
-          )
-        ),
-        PerWord
-      )
+      val (pieces, _) = Pieces.of(controls, PerWord)
       pieces.map(_.doc.blocks.map {
         case Block.Table(cs, rows) => (cs.map(_.name.plain), rows.size)
         case other => (Vector(other.toString), 0)
@@ -117,6 +121,21 @@ object PiecesTests extends TestSuite {
         Vector((Vector("Text"), 1)),
         Vector((Vector("Text"), 1))
       )
+    }
+
+    test("a table's pieces are anchored at their first row's words in its file's text") {
+      val text = ModelText.text(controls)
+      val (pieces, _) = Pieces.of(controls, PerWord)
+      def firstWord(p: Piece): Option[String] = p.doc.blocks
+        .collectFirst { case Block.Table(_, rows) =>
+          rows.flatten.headOption.map(_.printed.plain)
+        }
+        .flatten
+        .flatMap(_.split(' ').headOption)
+      pieces.map(p =>
+        Anchor.find(p.anchor, text).map((s, _) => text.substring(s).takeWhile(_ != ' '))
+      ) ==>
+        pieces.map(firstWord)
     }
 
     test("past PerFile pieces, the rest are dropped and counted") {
