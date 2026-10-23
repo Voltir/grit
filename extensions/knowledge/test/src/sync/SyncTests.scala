@@ -646,6 +646,23 @@ object SyncTests extends TestSuite {
       (before, reply, pieced(k)) ==> (1, line(written = 2, unchanged = 1), Vector())
     }
 
+    test(
+      "a file rewritten from a read that kept no file has its earlier pieces withdrawn, and no other unit makes a piece move"
+    ) {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val first = keeping(floor, documents, pieces = pieces)
+      val _ = runOf(first, job = filed())
+      val before = pieced(first).map(_._2)
+      val k = keeping(floor, documents, repo(a = 4, aText = "Rolling back."), pieces = pieces)
+      val reply = runOf(k, job = filed())
+      (before, reply, pieced(k), k.made.filter(MoveName.value(_).startsWith("piece/"))) ==> (
+        Vector(hex(1)),
+        line(written = 2, unchanged = 1),
+        Vector(),
+        Vector(CardMoves.of(Phase.Piece, CardKey.of(name, "docs/a.md")))
+      )
+    }
+
     test("a card relabelled has its file's pieces withdrawn at the label it left") {
       val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
       val first = keeping(lower, documents, pieces = pieces)

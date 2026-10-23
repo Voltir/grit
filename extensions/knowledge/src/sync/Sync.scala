@@ -15,7 +15,7 @@ import grit.core.place.Place
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
+import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitKind, UnitVersion}
 import grit.knowledge.ref.CardKey
 
 /** The job `knowledge-sync`, version 6, over `sources`. A run, for the source its parameters
@@ -28,8 +28,9 @@ import grit.knowledge.ref.CardKey
   * withdraws the cards of units gone from directories it listed in full. After a file's card is
   * kept, it keeps the pieces of the file when its read kept all of it in the file area
   * ([[Source.file]]) believed at `Outside` or above, as its card's key's at its version,
-  * believed as its card ([[grit.core.act.Keeping.piece]]); a file's pieces are withdrawn where its
-  * card is withdrawn or relabelled away, and when it was read below `Outside`. A held card at another
+  * believed as its card ([[grit.core.act.Keeping.piece]]), and otherwise withdraws those its card
+  * held before; a file's pieces are withdrawn where its card is withdrawn or relabelled away. A
+  * held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
   * read at, and believed at the meet of the run and what it read on its unit's way
@@ -178,7 +179,7 @@ object Sync {
                   // or above: of one below, only its head is checked.
                   val whole = source
                     .file(Trusted.asIs(answer).extract)
-                    .map(f => if (answer.integrity.belowOutside) Whole.Unchecked else Whole.Kept(f))
+                    .filterNot(_ => answer.integrity.belowOutside)
                   val on = reachedAs.copy(whole = whole)
                   source.fetched(Trusted.asIs(answer).extract) match {
                     case Fetched.Text(whole, version) if answer.integrity.belowOutside =>
@@ -233,12 +234,17 @@ object Sync {
                 ),
                 s"keeping the card of ${card.path}"
               )
+              // A file's card written from a read that kept no whole file withdraws the pieces
+              // of its earlier revision at each label its card was held at, so none is served as
+              // its current one; a new file's card has none to withdraw, so makes no move.
               val ref = CardKey.value(card.key)
-              val piecing = on.flatMap(_.whole).map {
-                case Whole.Kept(file) =>
-                  Piecing.Read(file, ref, UnitVersion.value(card.version), at, replacing.toVector)
-                case Whole.Unchecked =>
-                  Piecing.Withdraw((replacing.toVector :+ h.floor).map((ref, _)))
+              val held = h.held.filter(_.key == card.key).map(c => (ref, c.label))
+              val piecing = (card.kind, on.flatMap(_.whole)) match {
+                case (UnitKind.Directory, _) => None
+                case (UnitKind.File, Some(file)) =>
+                  val version = UnitVersion.value(card.version)
+                  Some(Piecing.Read(file, ref, version, at, replacing.toVector))
+                case (UnitKind.File, None) => Option.when(held.nonEmpty)(Piecing.Withdraw(held))
               }
               (
                 piecing.fold(written)(p => after(written, card.key, card.path, from.map(_ => p))),
@@ -402,16 +408,6 @@ object Sync {
       _ => Outcome.Kept
     )
 
-  /** What a run read of a file the file area kept all of. */
-  private enum Whole {
-
-    /** Kept under `file`, believed at Outside or above: its pieces are kept. */
-    case Kept(file: FileHandle)
-
-    /** Believed below Outside, so checked only by its head: none of its pieces are kept. */
-    case Unchecked
-  }
-
   /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
   private def kept(result: Either[MoveError, Kept], doing: String): Outcome[Nothing] =
     result.fold(e => Outcome.Stopped(s"$doing: ${MoveError.said(e)}"), _ => Outcome.Kept)
@@ -504,11 +500,17 @@ object Sync {
   private type Read = Tainted[Unit]
 
   /** What a run saw of one unit: the label its answers hold nothing above, what they are
-    * believed at, the way it was reached, and what its read kept of a file. Through
+    * believed at, the way it was reached, and the file whose pieces are kept: the file area kept
+    * all of what its read read, believed at `Outside` or above. Through
     * [[Way.Run]], it is believed as everything the run read before it was; through
     * [[Way.Through]], as its listing's record was, and its label joins that record's.
     */
-  private final case class Seen(at: Label, believed: Read, way: Way, whole: Option[Whole] = None) {
+  private final case class Seen(
+      at: Label,
+      believed: Read,
+      way: Way,
+      whole: Option[FileHandle] = None
+  ) {
 
     /** This, `answer` heard after it. */
     def hearing(answer: Tainted[?]): Seen = copy(believed = heard(believed, answer))
