@@ -253,5 +253,12 @@ object JsonSchemaTests extends TestSuite {
       schema.foreach(s => s.json("properties")("a")("type") = "integer")
       schema.map(_.json("properties")("a")("type")) ==> Right(ujson.Str("string"))
     }
+
+    test("a property its schema admits null for, left out, checks as null") {
+      val nullable =
+        obj("terms" -> ujson.Obj("type" -> ujson.Arr("array", "null"), "items" -> text))
+      val checked = JsonSchema.read(nullable).map(_.check(ujson.Obj(), Set.empty).map(_.json))
+      checked ==> Right(Right(ujson.Obj("terms" -> ujson.Null)))
+    }
   }
 }

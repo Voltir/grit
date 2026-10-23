@@ -54,5 +54,11 @@ object CardSummaryTests extends TestSuite {
       val read = CardSummary.of("A file.", Vector(" one two three four ", "  ", "five"))
       assert(read.map(_.terms) == Right(Vector("one two three", "five")))
     }
+
+    test("a reply without terms is read as no terms, its summary kept") {
+      val read = reply(ujson.Obj("summary" -> "A file."))
+      assert(read.map(_.summary) == Right("A file."))
+      assert(read.map(_.terms) == Right(Vector.empty))
+    }
   }
 }

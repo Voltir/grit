@@ -17,8 +17,9 @@ final class JsonSchema private (root: JsonSchema.Node) extends caps.Pure {
   /** `value`, with `repairs` made where this schema directs them, if it conforms: a string
     * of decimal digits where a number or integer is asked for under
     * [[grit.core.model.ArgRepair.QuotedNumber]], a string holding a JSON list where a list is
-    * asked for under [[grit.core.model.ArgRepair.QuotedList]]. Otherwise the first place, in
-    * document order, where it does not ([[Mismatch]]).
+    * asked for under [[grit.core.model.ArgRepair.QuotedList]]. A property left out whose schema
+    * admits `null` checks as `null`. Otherwise the first place, in document order, where it
+    * does not ([[Mismatch]]).
     */
   def check(value: ujson.Value, repairs: Set[ArgRepair]): Either[Mismatch, Conforming] =
     JsonSchema.conform(root, value, "", repairs).map(v => new Conforming(v.render()))
@@ -402,11 +403,12 @@ object JsonSchema {
                 case Some((_, p)) => conform(p, s, at(name), repairs).map(name -> _)
               }
             })
-            _ <- names.find(n => !sent.exists(_._1 == n)) match {
-              case Some(n) => Left(Mismatch(at(n), "is missing"))
+            absent = properties.filterNot((n, _) => sent.exists(_._1 == n))
+            _ <- absent.find((_, p) => !p.admits(ujson.Null)) match {
+              case Some((n, _)) => Left(Mismatch(at(n), "is missing"))
               case None => Right(())
             }
-          } yield ujson.Obj.from(kept)
+          } yield ujson.Obj.from(kept ++ absent.map((n, _) => n -> ujson.Null))
       }
     }
   }

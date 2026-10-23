@@ -117,7 +117,8 @@ object CheckTests extends TestSuite {
       )
       mismatch(with_("ratio", "x")) ==>
         Some(Mismatch("ratio", "expected a number or null, got \"x\""))
-      mismatch(without("ratio")) ==> Some(Mismatch("ratio", "is missing"))
+      checked(without("ratio"), Set.empty) ==> Right(with_("ratio", ujson.Null))
+      mismatch(without("label")) ==> Some(Mismatch("label", "is missing"))
     }
 
     test("a quoted number is read as its number only when asked, and only where one is asked for") {

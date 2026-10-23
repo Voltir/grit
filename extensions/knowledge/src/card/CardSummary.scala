@@ -34,13 +34,14 @@ object CardSummary {
   /** The reply a file's summary ask takes ([[replyOf]] with the file's descriptions). */
   val Reply: Typed[CardSummary] = replyOf(
     s"What the file is and what it holds, in at most $Words words.",
-    "Search terms, each one to three words, for what the file holds " +
-      "that the summary leaves out."
+    "The search terms it defines, each one to three words, for what the file holds " +
+      "that the summary leaves out, or null if none."
   )
 
   /** The reply a summary ask takes: its schema (`summary` a string, described to the model as
-    * `summary` says, `terms` an array of at most [[Terms]] strings, as `terms` says), read as
-    * [[of]] reads it, refusing a blank summary and cutting one over [[Words]] words.
+    * `summary` says, `terms` an array of at most [[Terms]] strings or `null`, as `terms` says),
+    * read as [[of]] reads it, refusing a blank summary and cutting one over [[Words]] words. A
+    * `terms` that is `null`, or left out, reads as no terms.
     */
   def replyOf(summary: String, terms: String): Typed[CardSummary] = {
     val schema = ujson.Obj(
@@ -48,7 +49,7 @@ object CardSummary {
       "properties" -> ujson.Obj(
         "summary" -> ujson.Obj("type" -> "string", "description" -> summary),
         "terms" -> ujson.Obj(
-          "type" -> "array",
+          "type" -> ujson.Arr("array", "null"),
           "items" -> ujson.Obj("type" -> "string"),
           "maxItems" -> Terms,
           "description" -> terms
@@ -71,8 +72,11 @@ object CardSummary {
     (for {
       o <- json.objOpt
       summary <- o.get("summary").flatMap(_.strOpt)
-      terms <- o.get("terms").flatMap(_.arrOpt)
-    } yield (summary, terms.toVector.flatMap(_.strOpt)))
+      terms <- o.get("terms") match {
+        case None | Some(ujson.Null) => Some(Vector.empty[ujson.Value])
+        case Some(v) => v.arrOpt.map(_.toVector)
+      }
+    } yield (summary, terms.flatMap(_.strOpt)))
       .toRight("a summary reply holds a string summary and an array of terms")
       .flatMap(of)
 }
