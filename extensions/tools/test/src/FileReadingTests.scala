@@ -124,7 +124,8 @@ object FileReadingTests extends TestSuite {
           "Read any part of a file kept here, by its handle (such as f41), which the read that " +
           "kept it named. The whole file is kept, not only the part read then: with no other " +
           "argument, its outline and its start; ask for pages, a section by its heading, or " +
-          "from an offset to read on. Each read says what it covers. Files are kept a while, " +
+          "from an offset to read on, or near a passage as a piece's pointer gives it. Each " +
+          "read says what it covers. Files are kept a while, " +
           "then must be read again from where they came from."
       }
     }

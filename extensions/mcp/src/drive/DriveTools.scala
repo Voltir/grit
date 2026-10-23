@@ -282,14 +282,16 @@ object DriveTools {
         "sheet as CSV, a text file as it is, and a PDF, a Word file or an Excel file a part at a " +
         "time. For those, with no other argument it gives the file's outline (its headings, with " +
         "their pages) and its start; ask for pages, a section by its heading, or from an offset " +
-        "to read on. Each read says what it covers.",
+        "to read on, or near a passage as a piece's pointer gives it. Each read says what it " +
+        "covers.",
       Args
         .of(
           (
             file = Field.text("The file's id, from a search."),
             pages = RangeArgs.Pages,
             section = RangeArgs.Section,
-            from = RangeArgs.From
+            from = RangeArgs.From,
+            near = RangeArgs.Near
           )
         )
         .refine(a =>
@@ -298,7 +300,7 @@ object DriveTools {
               .of(a.file)
               .left
               .map(why => ArgsError.Refused("file", DriveTools.sentence(why)))
-            range <- RangeArgs.range(a.pages, a.section, a.from)
+            range <- RangeArgs.range(a.pages, a.section, a.from, a.near)
           } yield Reading(id, range)
         ),
       Retry.Rerun

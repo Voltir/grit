@@ -142,5 +142,44 @@ object ModelTextTests extends TestSuite {
         "pages 1–2 of 2; only its first 2 of 492 pages were read: it is too long to read whole " +
         "here; not read here: comments, a text box"
     }
+
+    test("near a passage reads the page it lies on now, though pages came before it") {
+      val passage = "Accounts are reviewed every ninety days by the system owner."
+      val was = tree(Vector(heading(1, 1, "Policy"), para(1, "Scope."), para(2, passage)))
+      val text = ModelText.text(was)
+      val anchor = Anchor.of(text, text.indexOf(passage), text.indexOf(passage) + passage.length)
+      val now = tree(
+        Vector(heading(1, 1, "Policy"), para(1, "Scope."), para(2, "New."), para(3, "More.")) :+
+          para(4, passage) :+ para(5, "After.")
+      )
+      val read = ModelText.of(now, FileRange.Near(anchor))
+      (read.covered, read.text, read.next) ==>
+        ("page 4 of 5", s"[page 4]\n$passage", FileRange.pages(5, 5))
+    }
+
+    test("near a passage in a file not counted in pages reads on from its block") {
+      val passage = "Accounts are reviewed every ninety days by the system owner."
+      def plain(s: String): Block[Locus] = Block.Paragraph(Text.plain(s))
+      val was = tree(Vector(plain("Scope."), plain(passage)))
+      val text = ModelText.text(was)
+      val anchor = Anchor.of(text, text.indexOf(passage), text.indexOf(passage) + passage.length)
+      val now = tree(Vector(plain("Scope."), plain("A new rule."), plain(passage), plain("End.")))
+      val read = ModelText.of(now, FileRange.Near(anchor))
+      (read.covered, read.text) ==> ("characters 21–87 of 87", s"$passage\n\nEnd.")
+    }
+
+    test("near a passage no longer in the file says it is gone, with the outline") {
+      val anchor = Anchor("Accounts are reviewed every ninety days by", "Scope.\n\n", " the", 0.5)
+      ModelText.of(book, FileRange.Near(anchor)) ==> FileRead(
+        "That passage is gone from the file now.",
+        "its outline",
+        None,
+        Some(
+          "- 1 Introduction (page 1)\n- 3 Policy (page 210)\n  - 3.2 Access control (page 212)\n" +
+            "  - 3.3 Audit (page 216)"
+        ),
+        false
+      )
+    }
   }
 }

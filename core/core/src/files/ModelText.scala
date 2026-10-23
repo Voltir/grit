@@ -25,7 +25,9 @@ object ModelText {
     * on from where it was cut; a page's first block after a `[page n]` line (`[pages n–m]` for
     * a block that crosses pages); pages past the end, the last page; pages of a file not
     * counted in pages, its outline, saying so; a section not found, its outline with
-    * "no section '<heading>'". `covered` names its pages ("pages 212–214 of 492") or, for a
+    * "no section '<heading>'"; near an anchor, the page its passage lies on now ([[Anchor.find]]),
+    * or in a file not counted in pages from its block on, and when it is gone, the outline with
+    * "That passage is gone from the file now.". `covered` names its pages ("pages 212–214 of 492") or, for a
     * file not counted in pages, its characters, and adds what `tree.covers` and `tree.missed`
     * say. A heading's path is its own text after its enclosing headings' each followed by
     * `" > "`, matched ignoring case and runs of spaces.
@@ -42,6 +44,18 @@ object ModelText {
     }
     def outlineOnly(said: String): FileRead =
       FileRead(said, told("its outline"), None, Some(outline.getOrElse("(no headings)")), false)
+    def pages(a: Int, b: Int): FileRead = {
+      val to = b.min(laid.pages)
+      val from = a.min(to)
+      val (first, end) = laid.pageBlocks(from, to)
+      laid.fit(
+        laid.start(first),
+        end,
+        None,
+        told,
+        stop = Option.when(to < laid.pages)((to + 1, (to + 1 + (to - from)).min(laid.pages)))
+      )
+    }
     range match {
       case FileRange.Section(heading) =>
         laid.section(heading) match {
@@ -51,23 +65,27 @@ object ModelText {
       case FileRange.Pages(a, b) =>
         if (laid.pages == 0)
           outlineOnly("It is not counted in pages: ask for a section, or read on from an offset.")
-        else {
-          val to = b.min(laid.pages)
-          val from = a.min(to)
-          val (first, end) = laid.pageBlocks(from, to)
-          laid.fit(
-            laid.start(first),
-            end,
-            None,
-            told,
-            stop = Option.when(to < laid.pages)((to + 1, (to + 1 + (to - from)).min(laid.pages)))
-          )
-        }
+        else pages(a, b)
       case FileRange.From(offset) =>
         laid.fit(offset.min(laid.total), laid.blocks.size, None, told, None)
+      case FileRange.Near(anchor) =>
+        Anchor.find(anchor, laid.whole) match {
+          case None => outlineOnly("That passage is gone from the file now.")
+          case Some((at, _)) =>
+            val block = laid.blockAt(at)
+            laid.spans.lift(block).flatten.map(_._1).orElse(laid.onPage.lift(block).flatten) match {
+              case Some(page) => pages(page, page)
+              case None => laid.fit(laid.start(block), laid.blocks.size, None, told, None)
+            }
+        }
       case FileRange.Start => laid.fit(0, laid.blocks.size, outline, told, None)
     }
   }
+
+  /** All of `tree` as the model reads it, its blocks as markdown apart by a blank line, their
+    * notes dropped: the text a [[FileRange.From]] offset and an [[Anchor]] count in.
+    */
+  def text(tree: Understood): String = Laid(tree.doc, readWhole = false).whole
 
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 
@@ -81,6 +99,9 @@ object ModelText {
 
     /** Each block's first character in the whole text, blocks apart by a blank line. */
     val starts: Vector[Int] = texts.scanLeft(0)((at, t) => at + t.length + 2).dropRight(1)
+
+    /** The whole text. */
+    lazy val whole: String = texts.mkString("\n\n")
 
     val total: Int = texts.lastOption.fold(0)(t => starts.lastOption.getOrElse(0) + t.length)
 

@@ -4,9 +4,41 @@ package grit.core.files
   * [[Anchor.QuoteMost]] characters), up to [[Anchor.Context]] characters either side of them,
   * and where it began as a fraction of the text's length.
   */
-final case class Anchor(quote: String, before: String, after: String, at: Double)
+final case class Anchor(quote: String, before: String, after: String, at: Double) {
+
+  /** As a reader's `near` argument gives it: its position to four places, `|`, then its
+    * quote between `⟪` and `⟫` within its context: `0.4213|the policy states ⟪All accounts are
+    * reviewed every ninety days by⟫ the system owner`.
+    */
+  def written: String = {
+    val position = BigDecimal(at.max(0.0).min(1.0)).setScale(4, BigDecimal.RoundingMode.HALF_UP)
+    s"${position.toString}|$before⟪$quote⟫$after"
+  }
+}
 
 object Anchor {
+
+  /** The anchor `near` writes ([[Anchor.written]]), or why not, in words the model reads. */
+  def read(near: String): Either[String, Anchor] = {
+    val refused = Left("Give near as a piece's pointer gives it, copied whole.")
+    val bar = near.indexOf('|')
+    val open = near.indexOf('⟪', bar + 1)
+    val close = near.lastIndexOf('⟫')
+    if (bar < 0 || open < 0 || close < open) refused
+    else
+      near.substring(0, bar).trim.toDoubleOption.filter(a => a >= 0 && a <= 1) match {
+        case None => refused
+        case Some(at) =>
+          Right(
+            Anchor(
+              near.substring(open + 1, close),
+              near.substring(bar + 1, open),
+              near.substring(close + 1),
+              at
+            )
+          )
+      }
+  }
 
   /** How many words a quote holds. */
   val Words: Int = 8
@@ -18,20 +50,24 @@ object Anchor {
   val Context: Int = 32
 
   /** The anchor of the passage of `text` from character `start` to `end`, each held within
-    * the text.
+    * the text. Its quote and context stop short of a `⟪` or `⟫`, which [[written]] marks its
+    * quote with.
     */
   def of(text: String, start: Int, end: Int): Anchor = {
     val from = start.max(0).min(text.length)
     val to = end.max(from).min(text.length)
     val ends = Word.findAllMatchIn(text.substring(from, to)).map(from + _.end).take(Words).toVector
     val quoteEnd = ends.lastOption.getOrElse(from).min(from + QuoteMost)
-    Anchor(
-      text.substring(from, quoteEnd),
-      text.substring((from - Context).max(0), from),
-      text.substring(quoteEnd, (quoteEnd + Context).min(text.length)),
-      if (text.isEmpty) 0.0 else from.toDouble / text.length
-    )
+    val quote = text.substring(from, quoteEnd).takeWhile(!Marks.contains(_))
+    val before = text.substring((from - Context).max(0), from).reverse.takeWhile(!Marks.contains(_))
+    val after = text
+      .substring(from + quote.length, (from + quote.length + Context).min(text.length))
+      .takeWhile(!Marks.contains(_))
+    Anchor(quote, before.reverse, after, if (text.isEmpty) 0.0 else from.toDouble / text.length)
   }
+
+  /** What [[written]] marks a quote with. */
+  private val Marks: Set[Char] = Set('⟪', '⟫')
 
   /** Where `anchor`'s quote lies in `text` now, its first character and the one past its
     * last: exactly by its context, else nearest its position, else the best match at least

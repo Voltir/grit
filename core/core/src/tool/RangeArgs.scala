@@ -21,23 +21,31 @@ object RangeArgs {
       .count("Where to read on from: the offset a read said to ask for.", 0, Int.MaxValue)
       .optional
 
-  /** The range `pages`, `section` and `from` ask for ([[FileRange.Start]] when none is given);
-    * refused as [[FileRange.parse]] refuses, naming the one argument given, or `pages` when
-    * several were.
+  /** Where a passage a piece's pointer names lies now. */
+  val Near: Field[Option[String]] =
+    Field
+      .text("The passage to read around, as a piece's pointer gives it, copied whole.")
+      .optional
+
+  /** The range `pages`, `section`, `from` and `near` ask for ([[FileRange.Start]] when none is
+    * given); refused as [[FileRange.parse]] refuses, naming the one argument given, or `pages`
+    * when several were.
     */
   def range(
       pages: Option[String],
       section: Option[String],
-      from: Option[Int]
+      from: Option[Int],
+      near: Option[String]
   ): Either[ArgsError, FileRange] =
     FileRange
-      .parse(pages, section, from)
+      .parse(pages, section, from, near)
       .left
       .map(
         ArgsError.Refused(
-          if (section.nonEmpty && pages.isEmpty) "section"
-          else if (from.nonEmpty && pages.isEmpty) "from"
-          else "pages",
+          if (pages.nonEmpty) "pages"
+          else if (section.nonEmpty) "section"
+          else if (from.nonEmpty) "from"
+          else "near",
           _
         )
       )

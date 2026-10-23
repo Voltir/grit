@@ -1,22 +1,25 @@
 package grit.core.files
 
 /** What of a file to read: from the start; pages `from` to `to` (1-based, inclusive); the
-  * section whose heading path ends with `heading`; or from the character `offset` of its text.
+  * section whose heading path ends with `heading`; from the character `offset` of its text; or
+  * around where `anchor`'s passage lies now ([[Anchor.find]]).
   */
 enum FileRange derives CanEqual {
   case Start
   case Pages private[files] (from: Int, to: Int)
   case Section private[files] (heading: String)
   case From private[files] (offset: Int)
+  case Near private[files] (anchor: Anchor)
 
   /** As a reader asks for it again: `pages="212-214"`, `section="3.2 Access control"`,
-    * `from=51234`; empty for [[Start]].
+    * `from=51234`, `near="<the anchor as written>"` ([[Anchor.written]]); empty for [[Start]].
     */
   def asked: String = this match {
     case Start => ""
     case Pages(a, b) => if (a == b) s"pages=\"$a\"" else s"pages=\"$a-$b\""
     case Section(h) => s"section=\"$h\""
     case From(o) => s"from=$o"
+    case Near(a) => s"near=\"${a.written}\""
   }
 }
 
@@ -25,21 +28,24 @@ object FileRange {
   /** The range a reader's arguments ask for: [[FileRange.Start]] when none is given. `Left`, in
     * words the model reads, for more than one, `pages` not a page (`"212"`) or a run of them
     * (`"212-214"`, an en dash too) counted from 1, the run's end before its start, a blank
-    * `section`, or a negative `from`.
+    * `section`, a negative `from`, or a `near` not an anchor as written ([[Anchor.read]]).
     */
   def parse(
       pages: Option[String],
       section: Option[String],
-      from: Option[Int]
+      from: Option[Int],
+      near: Option[String]
   ): Either[String, FileRange] =
-    (pages, section, from) match {
-      case (None, None, None) => Right(Start)
-      case (Some(p), None, None) => pagesOf(p)
-      case (None, Some(s), None) =>
+    (pages, section, from, near) match {
+      case (None, None, None, None) => Right(Start)
+      case (None, None, None, Some(n)) => Anchor.read(n).map(Near(_))
+      case (Some(p), None, None, None) => pagesOf(p)
+      case (None, Some(s), None, None) =>
         if (s.trim.isEmpty) Left("Name the section by its heading.") else Right(Section(s.trim))
-      case (None, None, Some(o)) =>
+      case (None, None, Some(o), None) =>
         if (o < 0) Left("Give from as a character offset, 0 or more.") else Right(From(o))
-      case _ => Left("Ask for pages, a section or a starting offset: one of them, not several.")
+      case _ =>
+        Left("Ask for pages, a section, a starting offset or near: one of them, not several.")
     }
 
   /** Pages `from` to `to`, or `None` unless 1 ≤ `from` ≤ `to`. */
