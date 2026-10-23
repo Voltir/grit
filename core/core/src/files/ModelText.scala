@@ -3,7 +3,7 @@ package grit.core.files
 import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.host.Clipped
-import grit.prose.form.{Block, Doc, Span}
+import grit.prose.form.{Block, Doc}
 import grit.prose.index.IndexText
 import grit.prose.markdown.Markdown
 
@@ -97,13 +97,13 @@ object ModelText {
     val blocks: Vector[Block[Locus]] = doc.blocks
 
     val texts: Vector[String] =
-      blocks.map(b => Markdown.write(Doc(Vector(b)).mapSpans(s => Span(s.text, s.marks))))
+      blocks.map(b => Markdown.write(Doc(Vector(b)).unnoted))
 
     /** Each block's first character in the whole text, blocks apart by a blank line. */
     val starts: Vector[Int] = texts.scanLeft(0)((at, t) => at + t.length + 2).dropRight(1)
 
     /** Each block's plain words, what an anchor counts in. */
-    lazy val plains: Vector[String] = blocks.map(b => IndexText.render(Piece.plain(Doc(Vector(b)))))
+    lazy val plains: Vector[String] = blocks.map(b => IndexText.render(Doc(Vector(b)).unnoted))
 
     /** Each block's first character in [[plain]]. */
     lazy val plainStarts: Vector[Int] =

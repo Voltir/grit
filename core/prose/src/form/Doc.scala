@@ -87,6 +87,9 @@ final case class Item[+A <: caps.Pure](blocks: Vector[Block[A]])
 final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
   def isEmpty: Boolean = blocks.isEmpty
 
+  /** This doc with its notes dropped, as a renderer takes it. */
+  def unnoted: Doc[Nothing] = mapSpans(s => Span(s.text, s.marks))
+
   /** This doc with each note replaced by `f` of it, everything else as it was. */
   def map[B <: caps.Pure](f: A => B): Doc[B] =
     mapSpans(s => Span(s.text, s.marks, s.notes.map(f)))

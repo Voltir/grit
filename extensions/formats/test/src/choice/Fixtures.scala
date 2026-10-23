@@ -8,7 +8,7 @@ import java.util.zip.{ZipEntry, ZipOutputStream}
 
 import grit.core.clock.SetClock
 import grit.core.files.{FileRange, FileRead, Format, Formats, ReadLimits, Understood, Unread}
-import grit.prose.form.{Block, Doc, Span}
+import grit.prose.form.{Block, Doc}
 import grit.prose.markdown.Markdown
 
 /** Files a test writes, each to a temporary directory of its own, and read back. */
@@ -69,7 +69,7 @@ object Fixtures {
 
   /** `understood`'s blocks, their notes dropped. */
   def blocks(understood: Either[Unread, Understood]): Either[Unread, Vector[Block[Nothing]]] =
-    understood.map(_.doc.mapSpans(s => Span(s.text, s.marks)).blocks)
+    understood.map(_.doc.unnoted.blocks)
 
   /** `block` as the model reads it. */
   def plainText(block: Block[Nothing]): String = Markdown.write(Doc(Vector(block)))

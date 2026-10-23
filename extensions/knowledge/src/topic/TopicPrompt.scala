@@ -64,7 +64,7 @@ object TopicPrompt {
     } yield TopicPrompt(
       r,
       today.opened,
-      held.topic.lead.mapSpans(s => Span(s.text, s.marks)),
+      held.topic.lead.unnoted,
       held.topic.passages
         .filter(_.day == today.day)
         .flatMap(_.from.tags)

@@ -86,6 +86,14 @@ object DocTests extends TestSuite {
       Every.notes ==> Vector(1, 2, 3, 4, 5, 5, 6, 7, 8, 9).map(N(_))
     }
 
+    test("unnoted drops every note, keeping each span's text and marks") {
+      val strong = Span("x", Set(Mark.Strong), Vector(N(1)))
+      (Every.unnoted.notes, Doc(Vector(Block.Paragraph(line(strong)))).unnoted) ==> (
+        Vector(),
+        Doc(Vector(Block.Paragraph(line(Span("x", Set(Mark.Strong))))))
+      )
+    }
+
     test("foldMap folds the notes in notes' order") {
       Every.foldMap("", _ + _)(n => s"${n.n},") ==> "1,2,3,4,5,5,6,7,8,9,"
     }

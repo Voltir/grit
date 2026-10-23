@@ -37,7 +37,7 @@ object PiecesTests extends TestSuite {
 
   private def plain(p: Piece): String = IndexTextOf(p)
   private object IndexTextOf {
-    def apply(p: Piece): String = grit.prose.index.IndexText.render(Piece.plain(p.doc))
+    def apply(p: Piece): String = grit.prose.index.IndexText.render(p.doc.unnoted)
   }
 
   val tests = Tests {

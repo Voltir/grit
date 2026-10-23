@@ -7,7 +7,7 @@ import scala.util.matching.Regex
 import grit.core.id.Sha256
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Span, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
@@ -27,7 +27,7 @@ final case class Piece(heading: Vector[String], doc: Doc[Locus], anchor: Anchor)
     * in another revision of its file, wherever it lies there.
     */
   val fingerprint: Sha256 = {
-    val words = (heading.mkString(" > ") + "\n" + IndexText.render(Piece.plain(doc)))
+    val words = (heading.mkString(" > ") + "\n" + IndexText.render(doc.unnoted))
       .replaceAll("\\s+", " ")
       .trim
       .toLowerCase
@@ -35,7 +35,7 @@ final case class Piece(heading: Vector[String], doc: Doc[Locus], anchor: Anchor)
   }
 
   /** Its doc as the model reads it: markdown ([[Markdown.write]]), its notes dropped. */
-  def text: String = Markdown.write(Piece.plain(doc))
+  def text: String = Markdown.write(doc.unnoted)
 
   /** This piece's heading path holding `text` alone, one paragraph: what a stub shows in its
     * place.
@@ -45,9 +45,6 @@ final case class Piece(heading: Vector[String], doc: Doc[Locus], anchor: Anchor)
 }
 
 object Piece {
-
-  /** `doc` with its notes dropped. */
-  private[files] def plain(doc: Doc[Locus]): Doc[Nothing] = doc.mapSpans(s => Span(s.text, s.marks))
 
   /** `piece`'s doc as stored ([[ProseJson]]), a page noted as `{"page": n}`. */
   def tree(piece: Piece): ujson.Value =
@@ -141,7 +138,7 @@ object Pieces {
     */
   private def firstWords(part: Block[Locus]): Option[Regex] = {
     val runs = """[\p{L}\p{N}]+""".r
-      .findAllIn(IndexText.render(Piece.plain(Doc(Vector(part)))))
+      .findAllIn(IndexText.render(Doc(Vector(part)).unnoted))
       .take(Anchor.Words)
       .map(Regex.quote)
       .toVector
@@ -152,7 +149,7 @@ object Pieces {
   private final case class Cutter(estimate: TokenEstimator) {
 
     def cost(blocks: Vector[Block[Locus]]): Long =
-      Tokens.value(estimate.system(Markdown.write(Piece.plain(Doc(blocks)))))
+      Tokens.value(estimate.system(Markdown.write(Doc(blocks).unnoted)))
 
     def fits(blocks: Vector[Block[Locus]]): Boolean = cost(blocks) <= Tokens.value(Target)
 
@@ -309,7 +306,7 @@ object PieceIndex {
       .replaceAll("""\s+""", " ")
       .trim
     val path = piece.heading.mkString(" > ")
-    val text = Vector(name, path, IndexText.render(Piece.plain(piece.doc))).filter(_.nonEmpty)
+    val text = Vector(name, path, IndexText.render(piece.doc.unnoted)).filter(_.nonEmpty)
     query(text.mkString("\n")).take(Most)
   }
 
