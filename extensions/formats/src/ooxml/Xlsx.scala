@@ -243,7 +243,6 @@ object Xlsx extends Format {
   private def column(ref: String): Int =
     ref.takeWhile(_.isLetter).foldLeft(0)((c, ch) => c * 26 + (ch.toUpper - 'A' + 1)) - 1
 
-
   /** How a workbook's cells read: its shared strings, each style's number format, its own
     * formats' codes, and its date system.
     */

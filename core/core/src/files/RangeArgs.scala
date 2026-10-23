@@ -7,9 +7,11 @@ import grit.core.tool.{ArgsError, Field}
   */
 object RangeArgs {
 
-  /** A PDF's pages to read: one page, or a run. */
+  /** A PDF's pages, or a deck's slides, to read: one page, or a run. */
   val Pages: Field[Option[String]] =
-    Field.text("A PDF's pages to read: one page, \"212\", or a run, \"212-214\".").optional
+    Field
+      .text("A PDF's pages, or a deck's slides, to read: one page, \"212\", or a run, \"212-214\".")
+      .optional
 
   /** The heading of the section to read. */
   val Section: Field[Option[String]] =

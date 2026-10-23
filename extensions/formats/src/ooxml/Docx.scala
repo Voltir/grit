@@ -20,7 +20,8 @@ import grit.core.files.{
 }
 import grit.formats.limits.Guard
 import grit.formats.ooxml.Package.{attr, isText}
-import grit.formats.tree.Blocks.{nest, table}
+import grit.formats.tree.Blocks.{list, table}
+import grit.formats.tree.Levelled
 import grit.prose.form.{Block, Cell, Doc, Level, Mark, Span, Text}
 
 /** Word documents (`.docx`, `.docm`), transitional or strict, read over the JDK's zip and StAX:
@@ -221,7 +222,7 @@ object Docx extends Format {
   ): Unit = {
     val paras = mutable.Stack.empty[Para]
     val boxed = mutable.ArrayBuffer.empty[Text[Nothing]]
-    val items = mutable.ArrayBuffer.empty[(Int, Text[Nothing])]
+    val items = mutable.ArrayBuffer.empty[Levelled[Nothing]]
     val rows = mutable.ArrayBuffer.empty[Vector[Text[Nothing]]]
     val row = mutable.ArrayBuffer.empty[Text[Nothing]]
     val cell = mutable.ArrayBuffer.empty[Text[Nothing]]
@@ -241,7 +242,7 @@ object Docx extends Format {
     def put(s: String): Unit = paras.headOption.foreach(p => count.keep(s, t => p.add(t, link)))
 
     def flushList(): Unit =
-      if (items.nonEmpty) { out += Block.Bullets(nest(items.toList)); items.clear() }
+      if (items.nonEmpty) { out += list(items.toList); items.clear() }
 
     def flushBoxes(): Unit = { boxed.foreach(t => out += Block.Paragraph(t)); boxed.clear() }
 
@@ -272,9 +273,11 @@ object Docx extends Format {
         listed match {
           case Some(numId) =>
             val ilvl = p.props.get("ilvl").flatMap(_.toIntOption).getOrElse(0)
-            items += ilvl -> lists
-              .next(numId, ilvl)
-              .fold(text)(l => Text.of(Span.plain(s"$l ") +: text.spans))
+            items += Levelled(
+              ilvl,
+              None,
+              lists.next(numId, ilvl).fold(text)(l => Text.of(Span.plain(s"$l ") +: text.spans))
+            )
           case None =>
             flushList()
             out += level.fold[Block[Locus]](Block.Paragraph(text))(l =>

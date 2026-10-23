@@ -33,6 +33,37 @@ object DefaultsTests extends TestSuite {
       )
     }
 
+    test("a Google Slides deck is read by its slides, as pages") {
+      def slide(words: String) = ujson.Obj(
+        "objectId" -> "s",
+        "pageElements" -> ujson.Arr(
+          ujson.Obj(
+            "objectId" -> "b",
+            "shape" -> ujson.Obj(
+              "text" -> ujson.Obj(
+                "textElements" -> ujson.Arr(
+                  ujson.Obj("textRun" -> ujson.Obj("content" -> s"$words\n"))
+                )
+              )
+            )
+          )
+        )
+      )
+      val deck = ujson.Obj(
+        "presentationId" -> "d",
+        "slides" -> ujson.Arr(slide("One."), slide("Two."), slide("Three."))
+      )
+      val path = Fixtures.file("deck", ujson.write(deck).getBytes("UTF-8").toVector)
+      Fixtures
+        .readAll(
+          Defaults.formats,
+          path,
+          FileRange.pages(2, 2).getOrElse(FileRange.Start),
+          Some("application/vnd.google-apps.presentation")
+        )
+        .map(r => (r.text, r.covered)) ==> Right(("[page 2]\n# Slide 2\n\nTwo.", "page 2 of 3"))
+    }
+
     test("an .xls is refused in words saying what could be read instead") {
       val xls = Fixtures.file(
         "old.xls",

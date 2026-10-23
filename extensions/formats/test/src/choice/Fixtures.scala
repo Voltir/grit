@@ -51,17 +51,20 @@ object Fixtures {
   ): Either[Unread, Understood] =
     open(path)(f => format.read(f, limits))
 
-  /** `formats`' reading of `range` of the file at `path`. */
+  /** `formats`' reading of `range` of the file at `path`, its sender claiming it `claimed`. */
   def readAll(
       formats: Formats,
       path: Path,
-      range: FileRange = FileRange.Start
+      range: FileRange = FileRange.Start,
+      claimed: Option[String] = None
   ): Either[Unread, FileRead] =
-    open(path)(f => f.read(formats, range))
+    open(path, claimed)(f => f.read(formats, range))
 
-  private def open[A](path: Path)(body: grit.core.files.OpenFile^ => A): A =
+  private def open[A](path: Path, claimed: Option[String] = None)(
+      body: grit.core.files.OpenFile^ => A
+  ): A =
     grit.core.files.OpenFile
-      .reading(path, path.getFileName.toString, None, new SetClock(Instant.EPOCH))(body)
+      .reading(path, path.getFileName.toString, claimed, new SetClock(Instant.EPOCH))(body)
       .fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** `understood`'s blocks, their notes dropped. */

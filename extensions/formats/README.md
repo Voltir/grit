@@ -18,17 +18,22 @@ In dependency order:
   characters read, the bytes unpacked, the deadline checked every 1024 steps) and answers the
   limit that stopped it; a zip part's stream counted as it is unpacked; XML read with no DTD and
   no external entity. The JDK alone. Imports nothing in formats.
-- **`tree`**: the blocks more than one reader builds alike from what it read (`Blocks`: a
-  levelled list nested, rows made a table). Prose's tree alone. Imports nothing in formats.
+- **`tree`**: the shapes more than one reader builds alike from what it read (`Blocks`: a
+  levelled list nested, rows made a table; `Deck`: slides as sections, each on its own page,
+  the one shape a deck's readers fill). Prose's tree and core's `Locus` alone. Imports nothing
+  in formats.
 - **`ooxml`**: Word documents (`Docx`) and Excel workbooks (`Xlsx`), transitional or strict,
   read over the JDK's `ZipFile` and StAX by their parts' local names. `ZipFile`, not a stream,
   since a stream unpacks every entry it skips outside the count. The JDK alone. ← `limits`,
   `tree`
+- **`google`**: Google's own files as its APIs answer them: a Slides deck (`Slides`) from
+  `presentations.get`'s JSON, read whole with ujson (a deck's answer is small, and bounded by
+  the bytes read). Each slide a section, in the answer's element order. ← `limits`, `tree`
 - **`pdf`**: PDFs (`Pdf`) over PDFBox, in the order their pages draw text (sorting by position
   scrambles columns), bookmarks placed as headings where their titles are printed, running
   headers and footers dropped, every span noted with its page. The one package naming
   `org.apache.pdfbox` (`pdf-package-alone-imports-pdfbox`). ← `limits`
-- **`choice`**: `Defaults`, which format reads which kind. ← `ooxml`, `pdf`
+- **`choice`**: `Defaults`, which format reads which kind. ← `ooxml`, `google`, `pdf`
 
 The deadline is cooperative: a reader checks it between steps, so a single slow step inside a
 library is not interrupted, and only the byte limit bounds it.

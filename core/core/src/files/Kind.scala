@@ -83,7 +83,11 @@ object Kind {
         head.slice(8, 12).map(_.toChar).mkString == "WEBP")
     ) Image
     else if (text(head))
-      if (claimed.contains(SlidesType) && head.find(b => !Character.isWhitespace(b.toInt)).contains('{'.toByte))
+      if (
+        claimed.contains(SlidesType) && head
+          .find(b => !Character.isWhitespace(b.toInt))
+          .contains('{'.toByte)
+      )
         GoogleSlides
       else Text
     else Unknown

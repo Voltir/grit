@@ -161,6 +161,7 @@ components:
             "extensions/mcp/src/drive", "extensions/mcp/src/drive/**",
             "extensions/formats/src/choice", "extensions/formats/src/choice/**", "extensions/formats/src/ooxml", "extensions/formats/src/ooxml/**",
             "extensions/formats/src/pdf", "extensions/formats/src/pdf/**",
+            "extensions/formats/src/google", "extensions/formats/src/google/**",
             "extensions/digest/src", "extensions/digest/src/**", "extensions/remind/src", "extensions/remind/src/**",
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**",
