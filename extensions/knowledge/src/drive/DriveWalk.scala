@@ -22,7 +22,9 @@ import grit.knowledge.sync.{CardCopy, Held, Holding, Walk, Walking, Way}
   * changed or due file is left, and the listings go on.
   *
   * It drops the cards held at the floor, damaged ones too, of files another run's listing
-  * showed; of those no listing showed, none damaged and only when the listing each records was made and complete; those held at a
+  * showed; of the damaged ones no listing showed, only when every listing it asked for came
+  * complete, it listed every folder it found and it left nothing for the next run; of the
+  * others no listing showed, only when the listing each records was made and complete; those held at a
   * label not among the source's whose [[DriveCards.carding]] is the floor; and, past `maxUnits`
   * (when it was lowered), the files last by id.
   */
@@ -57,7 +59,7 @@ object DriveWalk {
       perRun,
       Holding(floor, held, repiece, damaged),
       List(Task.Shared),
-      Own(Vector.empty, Set.empty, Set.empty, Set.empty)
+      Own(Vector.empty, Set.empty, Set.empty, Set.empty, Set.empty)
     )
 
   /** What is still to do, in walk order: the first three list, and [[Task.Folders]], once every
@@ -74,31 +76,35 @@ object DriveWalk {
   }
 
   /** Its record: the folders found in the drives, the files listings showed, those another run's
-    * showed, and the listings of files made complete.
+    * showed, the listings made complete, and every listing asked for.
     */
   private final case class Own(
       found: Vector[Task.Folder],
       seen: Set[String],
       foreign: Set[String],
-      complete: Set[String]
+      complete: Set[String],
+      asked: Set[String]
   ) extends caps.Pure
 
   private type W = Walking[DriveListing, Task, Own]
 
   private def take(cards: DriveCards, turn: Long, task: Task, w: W): W = task match {
     case Task.Shared =>
-      w.list(Drives, Way.Run) { (w, listing, _) =>
+      asking(w, Drives).list(Drives, Way.Run) { (w, listing, _) =>
         val drives = listing.entries.filter(_.kind == DriveEntry.Kind.Drive)
-        w.push(drives.map(e => Task.Drive(e.id)) :+ Task.Folders)
+        val complete = if (listing.complete) w.own.complete + Drives else w.own.complete
+        w.recording(w.own.copy(complete = complete))
+          .push(drives.map(e => Task.Drive(e.id)) :+ Task.Folders)
       }
     case Task.Drive(id) =>
-      w.list(id, Way.Through(Drives)) { (w, listing, at) =>
+      asking(w, id).list(id, Way.Through(Drives)) { (w, listing, at) =>
         val found = listing.entries
           .filter(_.kind == DriveEntry.Kind.Folder)
           .map(f => new Task.Folder(f.id, id))
         files(cards, w.recording(w.own.copy(found = w.own.found ++ found)), id, listing, at)
       }
-    case Task.Folder(id, drive) => w.list(id, Way.Through(drive))(files(cards, _, id, _, _))
+    case Task.Folder(id, drive) =>
+      asking(w, id).list(id, Way.Through(drive))(files(cards, _, id, _, _))
     case Task.Folders => w.push(picked(w.own.found, cards.maxUnits, turn))
     case Task.Relabel(key, from) => w.relabel(key, from)
     case Task.Repiece(key, kind, within) => w.current(key, Way.Through(within), kind)
@@ -107,6 +113,16 @@ object DriveWalk {
         Card.file(cards.corpus, entry.id, _, _, _, entry.name, Some(within))
       )
   }
+
+  /** `w` with the listing `id` asked for. */
+  private def asking(w: W, id: String): W = w.recording(w.own.copy(asked = w.own.asked + id))
+
+  /** Whether `w` saw every file a listing of its could show: each listing it asked for came
+    * complete, it listed every folder it found, and it left nothing for the next run.
+    */
+  private def whole(cards: DriveCards, w: W): Boolean =
+    w.own.asked.subsetOf(w.own.complete) && w.own.found.size <= cards.maxUnits &&
+      w.tally.left == 0 && w.tally.unwritten.isEmpty
 
   /** Of `found`, in the order found, the folders a run at `turn` lists: every one when they are
     * at most `most`; else the `most` from index `turn × most`, counted around the end.
@@ -180,8 +196,11 @@ object DriveWalk {
         cards.carding(h.label).contains(holding.floor) &&
         !w.replaced(h)
     }
-    // A damaged copy records no listing it was shown in: only another run's showing drops it.
-    val damaged = holding.damaged.filter(d => d.label == holding.floor && own.foreign(d.path))
+    // A damaged copy records no listing it was shown in: it goes when another run's listing
+    // showed its file, or when this run saw every listing whole and none showed it.
+    val damaged = holding.damaged.filter(d =>
+      d.label == holding.floor && (own.foreign(d.path) || whole(cards, w) && !own.seen(d.path))
+    )
     // Past maxUnits (it was lowered): the files last by id go, so the source holds no more.
     w.past(gone, Vector(_), _ => Vector.empty) ++ damaged
   }

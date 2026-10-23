@@ -139,6 +139,16 @@ object DriveWalkTests extends TestSuite {
 
   private val labels: Vector[Label] = Vector(internal, confidential)
 
+  /** The card of `file-gone`, a file in no listing, held at `internal`, that does not read. */
+  private val damaged: Vector[Held.Read.Damaged] = Vector(
+    new Held.Read.Damaged(
+      CardKey.of(corpus.name, "file-gone"),
+      "file-gone",
+      internal,
+      "its version, 2026-10-23, is no git SHA or instant"
+    )
+  )
+
   val tests = Tests {
     test(
       "a first run lists the drives, each drive and the folders directly in it, and reads each Doc, Sheet and text file it cards through the listing naming it"
@@ -366,6 +376,28 @@ object DriveWalkTests extends TestSuite {
       val (withheld, _) =
         run(cards(labels).walk(5, internal, in31, due), world.removed("folder-31"))
       assert(dropped(incomplete) == Vector.empty, dropped(withheld) == Vector.empty)
+    }
+
+    test(
+      "a damaged card whose file no listing of a run that listed all in full shows is withdrawn"
+    ) {
+      val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty, due, Set.empty, damaged))
+      assert(dropped(steps) == Vector(("file-gone", internal)))
+    }
+
+    test(
+      "a damaged card is not withdrawn by a run with a listing cut or withheld, folders it did not list, or files left"
+    ) {
+      def drops(c: DriveCards, perRun: Int, drive: Map[String, (DriveListing, Label)]) =
+        dropped(run(c.walk(perRun, internal, Vector.empty, due, Set.empty, damaged), drive)._1)
+      val (listing, at) = world("drive-b")
+      val cut = world.updated("drive-b", (listing.copy(complete = false), at))
+      (
+        drops(cards(labels), 5, cut),
+        drops(cards(labels), 5, world.removed("folder-31")),
+        drops(cards(labels, maxUnits = 1), 5, world),
+        drops(cards(labels), 1, world)
+      ) ==> (Vector.empty, Vector.empty, Vector.empty, Vector.empty)
     }
 
     test("past the folders it may list, a card in a folder not listed is not withdrawn") {
