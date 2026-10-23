@@ -28,9 +28,10 @@ object DriveEdge {
       "the folder's id from a list or a search."
 
   /** The edge named for `reading`'s service, serving [[DriveTools.List]], [[DriveTools.Search]]
-    * and [[DriveTools.Read]] there over Drive's API at `api` with `credential`'s tokens, read as
-    * `reading` says, with `instructions` as the place's Place layer; or why not:
-    * `instructions` blank, or `api` not an absolute URL. Opened, it registers the service's
+    * and [[DriveTools.Read]] there over Drive's API at `api`, and the Slides API at `slides`,
+    * with `credential`'s tokens, read as `reading` says, with `instructions` as the place's
+    * Place layer; or why not: `instructions` blank, or `api` or `slides` not an absolute URL.
+    * Opened, it registers the service's
     * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
     * serves them, and serves the requests addressed there with [[DriveTools]], reading PDFs,
     * Word and Excel files from the file area its stores give it ([[EdgeStores.files]]), with
@@ -45,22 +46,28 @@ object DriveEdge {
       credential: Credential,
       reading: DriveReading,
       instructions: String = Instructions,
-      api: String = DriveRest.Api
-  ): Either[String, ServedEdge] =
-    for {
-      at <- scala.util
-        .Try(URI.create(api))
+      api: String = DriveRest.Api,
+      slides: String = DriveRest.Slides
+  ): Either[String, ServedEdge] = {
+    def absolute(what: String, url: String): Either[String, URI] =
+      scala.util
+        .Try(URI.create(url))
         .toOption
         .filter(_.isAbsolute)
-        .toRight(s"Drive's API $api is not an absolute URL")
+        .toRight(s"$what $url is not an absolute URL")
+    for {
+      at <- absolute("Drive's API", api)
+      decks <- absolute("The Slides API", slides)
       declared <- PlaceFragments.declared(reading.service.place, instructions)
-    } yield new Edge(credential, reading, at, declared)
+    } yield new Edge(credential, reading, at, decks, declared)
+  }
 
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(
       credential: Credential,
       reading: DriveReading,
       api: URI,
+      slides: URI,
       declared: Fragment
   ) extends ServedEdge {
 
@@ -79,7 +86,7 @@ object DriveEdge {
       val place = reading.service.place
       val check = s"check ${credential.needs.map(Variable.value).mkString(", ")}"
       Credential.open(credential, env, KeyFiles.Local).flatMap { authorizer =>
-        val rest: DriveRest^{clock} = new DriveRest(api, authorizer, clock)
+        val rest: DriveRest^{clock} = new DriveRest(api, slides, authorizer, clock)
         rest.reachable() match {
           case Left(DriveError.NoToken(why)) =>
             Left(EdgeRefusal.Refused(s"Drive gave no access ($why); $check"))

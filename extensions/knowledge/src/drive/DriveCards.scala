@@ -41,11 +41,11 @@ final case class DriveCards private (
 
   /** Whether it cards a file of `kind`: a Doc, a Sheet or a text file always; a PDF, a Word
     * document or an Excel workbook when [[formatted]] holds its kind, and a Slides deck when it
-    * holds PDFs; nothing else.
+    * holds decks or PDFs; nothing else.
     */
   def cards(kind: DriveEntry.Kind): Boolean = kind.read.exists {
     case DriveEntry.Kind.Read.Exported => true
-    case DriveEntry.Kind.Read.Formatted(k) => formatted(k)
+    case DriveEntry.Kind.Read.Formatted(first, rest) => (first +: rest).exists(formatted)
   }
 
   /** What the summary model is told `entry`, a file, is ([[Step.Summarise]]): a Doc, a Sheet
@@ -158,8 +158,8 @@ object DriveCards {
     */
   val TurnsFrom: Instant = Instant.parse("2026-01-01T00:00:00Z")
 
-  /** These, `labels` least first, carding the PDFs (Slides decks among them, as Drive exports
-    * them), Word documents and Excel workbooks a format
+  /** These, `labels` least first, carding the Slides decks (as the Slides API answers them, else
+    * as Drive exports them to PDFs), PDFs, Word documents and Excel workbooks a format
     * of `formats` (the deployment's) reads, or why not: `corpus` supplies no service; `labels`
     * empty, holding one twice or one holding `unmapped`, or not a chain (two of them neither
     * dominating the other); `maxUnits` under 1; no `syncs`, or two of one key.
@@ -220,6 +220,7 @@ object DriveCards {
       maxUnits,
       at,
       syncs,
-      Set(FileKind.Pdf, FileKind.Word, FileKind.Excel).filter(formats.of(_).nonEmpty)
+      Set(FileKind.Pdf, FileKind.Word, FileKind.Excel, FileKind.GoogleSlides)
+        .filter(formats.of(_).nonEmpty)
     )
 }

@@ -118,7 +118,8 @@ object DriveEdgeTests extends TestSuite {
       DriveEdge.serving(
         Credential.static(Token),
         reading,
-        api = fake.api.toString
+        api = fake.api.toString,
+        slides = fake.slides.toString
       )
     )
     val result = edge.open(stores, env, Clock.system(), line => { val _ = log.add(line) }) match {
@@ -222,6 +223,40 @@ object DriveEdgeTests extends TestSuite {
     val version: Int = 1
     def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] =
       Left(Unread.Damaged(Kind.Pdf))
+  }
+
+  /** A format for these tests: a file the area sniffed as a Google Slides deck, read as one
+    * paragraph naming its `presentationId`. A stand-in for the Slides reader, which an edge's
+    * module may not name.
+    */
+  private object DeckId extends Format {
+    val name: FormatName = FormatName("deck-id")
+    val version: Int = 1
+    def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] =
+      if (file.kind != Kind.GoogleSlides) Left(Unread.NotMine)
+      else {
+        val id = ujson.read(java.nio.file.Files.readAllBytes(file.path))("presentationId").str
+        Right(
+          Understood(
+            Doc(
+              Vector(
+                Block.Paragraph(Text(Vector(Span(s"deck $id", Set.empty, Vector(Locus.Page(1))))))
+              )
+            ),
+            Covers.Whole,
+            Vector.empty,
+            name,
+            version
+          )
+        )
+      }
+
+    /** Decks read by this format, and PDFs by [[PagedText]]. */
+    val formats: Formats = Formats {
+      case Kind.GoogleSlides => Vector(DeckId)
+      case Kind.Pdf => Vector(PagedText)
+      case _ => Vector.empty
+    }
   }
 
   /** A format for these tests: a Word document's zip, its `word/document.xml` read as one
@@ -676,6 +711,66 @@ object DriveEdgeTests extends TestSuite {
           Outcome.Failed(DriveError.Unreadable("Slides").message),
           Vector(Some(DriveFile.Pdf))
         )
+      }
+    }
+
+    test(
+      "a Slides deck is read as its PDF while the Slides API is off, the operator told; once it is on, as the API answers it, kept as a deck apart from the PDF of its version"
+    ) {
+      withFake { fake =>
+        fake.answering("files/file-1", 200, slides)
+        fake.answering(
+          "presentations/file-1",
+          403,
+          ujson.write(
+            ujson.Obj(
+              "error" -> ujson.Obj(
+                "code" -> 403,
+                "status" -> "PERMISSION_DENIED",
+                "details" -> ujson.Arr(ujson.Obj("reason" -> "SERVICE_DISABLED"))
+              )
+            )
+          )
+        )
+        fake.answeringBytes("files/file-1/export", 200, PagedText.bytes("One.", "Two."))
+        withArea(formats = DeckId.formats) { area =>
+          val log = Vector.newBuilder[String]
+          val fell = run(
+            fake,
+            "drive_read",
+            ujson.Obj("file" -> "file-1", "pages" -> "2"),
+            log += _,
+            files = area
+          )
+          fake.answering(
+            "presentations/file-1",
+            200,
+            """{"presentationId": "file-1", "slides": []}"""
+          )
+          val decked =
+            run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area, call = 1)
+          (
+            readPart(fell),
+            log.result(),
+            readPart(decked),
+            fake.requests.count(_._1 == "presentations/file-1"),
+            exports(fake)
+          ) ==> (
+            (
+              "Read: page 2 of 2.\n\n[page 2]\nTwo.",
+              Some((ujson.Str("slides"), Some(ujson.Str("f1"))))
+            ),
+            Vector(
+              "drive_read: the Slides API is not enabled for this account's project, so a deck is read as its PDF"
+            ),
+            (
+              "Read: page 1 of 1.\n\n[page 1]\ndeck file-1",
+              Some((ujson.Str("slides"), Some(ujson.Str("f2"))))
+            ),
+            2,
+            Vector(Some(DriveFile.Pdf))
+          )
+        }
       }
     }
 

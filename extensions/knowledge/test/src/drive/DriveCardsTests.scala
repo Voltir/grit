@@ -50,6 +50,33 @@ object DriveCardsTests extends TestSuite {
     DriveCards.of(corpus, list, read, labels, 100, service.place, Vector(nightly), unformatted)
 
   val tests = Tests {
+    test(
+      "a Slides deck is carded when its deployment's formats read decks, or PDFs; a PDF only when they read PDFs"
+    ) {
+      def reading(kinds: grit.core.files.Kind*) =
+        cards(
+          Vector(internal),
+          formats =
+            Formats(k => if (kinds.contains(k)) Vector(grit.core.files.PagedText) else Vector.empty)
+        )
+      val decks = reading(grit.core.files.Kind.GoogleSlides)
+      val pdfs = reading(grit.core.files.Kind.Pdf)
+      (
+        Vector(decks, pdfs, cards(Vector(internal))).map(_.cards(DriveEntry.Kind.Slides)),
+        Vector(decks, pdfs).map(_.cards(DriveEntry.Kind.Pdf)),
+        DriveEntry.Kind.Slides.read
+      ) ==> (
+        Vector(true, true, false),
+        Vector(false, true),
+        Some(
+          DriveEntry.Kind.Read.Formatted(
+            grit.core.files.Kind.GoogleSlides,
+            Vector(grit.core.files.Kind.Pdf)
+          )
+        )
+      )
+    }
+
     test("a file is carded at the least declared label dominating what its listing was read at") {
       val source = cards(Vector(confidential, internal))
       assert(source.carding(Label.Public) == Some(internal))

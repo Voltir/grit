@@ -209,15 +209,15 @@ object DriveRestTests extends TestSuite {
         Vector("file-1", "file-11").foreach(id =>
           fake.answeringBytes(s"files/$id/export", 200, content)
         )
-        def whole(file: Either[DriveError, DriveFile]) =
-          file.flatMap(rest.exported(_)(_.readAllBytes().toVector == content))
+        def whole(file: Either[DriveError, DriveFile], as: DriveExport) =
+          file.flatMap(rest.exported(_, as)(_.readAllBytes().toVector == content))
         val doc = rest.file(file1)
         val asked = fake.requests.size
         (
-          whole(doc),
-          whole(rest.file(Recorded.id("file-11"))),
-          whole(doc.map(_.copy(mimeType = DriveFile.Presentation))),
-          rest.file(Recorded.id("file-4")).flatMap(rest.exported(_)(_.read())),
+          whole(doc, DriveExport.Word),
+          whole(rest.file(Recorded.id("file-11")), DriveExport.Excel),
+          whole(doc.map(_.copy(mimeType = DriveFile.Presentation)), DriveExport.Pdf),
+          rest.file(Recorded.id("file-4")).flatMap(rest.exported(_, DriveExport.Pdf)(_.read())),
           fake.requests
             .drop(asked)
             .collect { case (path, q) if path.endsWith("/export") => (path, q.get("mimeType")) }
@@ -235,10 +235,87 @@ object DriveRestTests extends TestSuite {
       }
     }
 
+    test(
+      "a Slides deck is asked of the Slides API at the deck's fields; a form its kind is not given in is refused before Google is asked"
+    ) {
+      withFake { (fake, rest) =>
+        val content = """{"presentationId": "file-1", "slides": []}"""
+        fake.answering("presentations/file-1", 200, content)
+        val doc = rest.file(file1)
+        val deck = doc.map(_.copy(mimeType = DriveFile.Presentation))
+        val asked = fake.requests.size
+        val read = deck.flatMap(
+          rest.exported(_, DriveExport.Deck)(in => new String(in.readAllBytes(), "UTF-8"))
+        )
+        val sent = fake.requests.drop(asked)
+        (
+          read,
+          sent.map((path, q) => (path, q.get("fields"))),
+          doc.flatMap(rest.exported(_, DriveExport.Deck)(_.read())),
+          deck.flatMap(rest.exported(_, DriveExport.Word)(_.read())),
+          fake.requests.size - asked
+        ) ==> (
+          Right(content),
+          Vector(("presentations/file-1", Some(DriveRest.DeckFields))),
+          Left(DriveError.Unreadable("a Doc")),
+          Left(DriveError.Unreadable("Slides")),
+          1
+        )
+      }
+    }
+
+    test(
+      "a Slides API not enabled is told by Google's reason, old form or new; any other 403 or a 404 is hidden, and Drive's own is never it"
+    ) {
+      withFake { (fake, rest) =>
+        val disabled = ujson.write(
+          ujson.Obj(
+            "error" -> ujson.Obj(
+              "code" -> 403,
+              "message" -> "Google Slides API has not been used in project 0 before or it is disabled.",
+              "status" -> "PERMISSION_DENIED",
+              "details" -> ujson.Arr(
+                ujson.Obj(
+                  "@type" -> "type.googleapis.com/google.rpc.ErrorInfo",
+                  "reason" -> "SERVICE_DISABLED",
+                  "domain" -> "googleapis.com"
+                )
+              )
+            )
+          )
+        )
+        val denied = ujson.write(
+          ujson.Obj("error" -> ujson.Obj("code" -> 403, "status" -> "PERMISSION_DENIED"))
+        )
+        val deck = rest.file(file1).map(_.copy(mimeType = DriveFile.Presentation))
+        def answered(status: Int, body: String) = {
+          fake.answering("presentations/file-1", status, body)
+          deck.flatMap(rest.exported(_, DriveExport.Deck)(_.read()))
+        }
+        val off = answered(403, disabled)
+        val old = answered(403, error(403, "accessNotConfigured"))
+        val hidden = answered(403, denied)
+        val gone = answered(404, error(404, "notFound"))
+        fake.answering("files/file-1", 403, disabled)
+        (off, old, hidden, gone, rest.file(file1), off.left.map(_.logged)) ==> (
+          Left(DriveError.SlidesOff),
+          Left(DriveError.SlidesOff),
+          Left(DriveError.Hidden),
+          Left(DriveError.Hidden),
+          Left(DriveError.Hidden),
+          Left(Some("the Slides API is not enabled for this account's project"))
+        )
+      }
+    }
+
     test("an export past Drive's cap on one is refused in words") {
       withFake { (fake, rest) =>
         fake.answering("files/file-1/export", 403, error(403, "exportSizeLimitExceeded"))
-        rest.file(file1).flatMap(rest.exported(_)(_.read())).left.map(e => (e, e.message)) ==>
+        rest
+          .file(file1)
+          .flatMap(rest.exported(_, DriveExport.Word)(_.read()))
+          .left
+          .map(e => (e, e.message)) ==>
           Left(
             (
               DriveError.ExportTooLarge,

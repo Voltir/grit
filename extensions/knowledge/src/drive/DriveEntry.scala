@@ -30,13 +30,18 @@ object DriveEntry {
       * exports as text (a Doc, a Sheet, a text file; a Doc or a Sheet is read as the Word or
       * Excel file Drive exports it to instead when a deployment's format reads those);
       * [[Kind.Read.Formatted]] for those only a deployment's format reads, naming the file
-      * area's kind (a Slides deck's, the PDF Drive exports it to); none for the rest.
+      * area's kinds (a Slides deck's, the Slides API's answer, then the PDF Drive exports it
+      * to); none for the rest.
       */
     def read: Option[Kind.Read] = this match {
       case Document | Spreadsheet | Text => Some(Kind.Read.Exported)
-      case Pdf | Slides => Some(Kind.Read.Formatted(grit.core.files.Kind.Pdf))
-      case Word => Some(Kind.Read.Formatted(grit.core.files.Kind.Word))
-      case Excel => Some(Kind.Read.Formatted(grit.core.files.Kind.Excel))
+      case Slides =>
+        Some(
+          Kind.Read.Formatted(grit.core.files.Kind.GoogleSlides, Vector(grit.core.files.Kind.Pdf))
+        )
+      case Pdf => Some(Kind.Read.Formatted(grit.core.files.Kind.Pdf, Vector.empty))
+      case Word => Some(Kind.Read.Formatted(grit.core.files.Kind.Word, Vector.empty))
+      case Excel => Some(Kind.Read.Formatted(grit.core.files.Kind.Excel, Vector.empty))
       case Folder | Drive | Other(_) => None
     }
   }
@@ -46,7 +51,11 @@ object DriveEntry {
     /** How a file's text is had ([[Kind.read]]). */
     enum Read extends caps.Pure {
       case Exported
-      case Formatted(kind: grit.core.files.Kind)
+
+      /** Read as the file area's kind `first` when a deployment's format reads it, else as the
+        * first of `then` one does; unread when none is.
+        */
+      case Formatted(first: grit.core.files.Kind, `then`: Vector[grit.core.files.Kind])
     }
 
     /** The kind its facts write as `written`. */

@@ -32,9 +32,11 @@ import grit.edge.{Run, Tools}
   * ([[grit.core.files.PutKey.of]]), so the call run again answers the file it kept, and read
   * there by the formats the area reads with ([[Intake.formats]]); one past the most they read is
   * refused before its bytes are asked for, and one that lies in no folder or that no one here may read is never fetched. A Doc,
-  * a Sheet or a Slides deck is kept and read so as the office file Drive exports it to
-  * ([[DriveKind.exportsAs]]) when those formats read that kind; else a Doc or a Sheet is
-  * answered as Drive's text of it, and a Slides deck refused. Folders and images are refused.
+  * a Sheet or a Slides deck is kept and read so in the first form Drive gives it in
+  * ([[DriveKind.exportsAs]]) whose kind those formats read: a deck as the Slides API answers
+  * it, else, or when the Slides API is not enabled ([[DriveError.SlidesOff]], `said` hears it),
+  * as its PDF. Else a Doc or a Sheet is answered as Drive's text of it, and a Slides deck
+  * refused. Folders and images are refused.
   * A file whose read meets its own refusal ([[DriveError.lasting]]: a format would not read it,
   * Drive flagged it or will not export it) is answered as unread, saying why
   * ([[DriveCalled.Unread]]), not as a failure. The run's `said` hears each failure's cause
@@ -71,8 +73,8 @@ final class DriveTools(
         val incoming = new Incoming {
           def declared: Option[Long] = file.size
           def read[A](body: InputStream^ => A): Either[String, A] =
-            as.fold(rest.media(file, files.formats.limits.bytes)(body))(_ =>
-              rest.exported(file)(body)
+            as.fold(rest.media(file, files.formats.limits.bytes)(body))(a =>
+              rest.exported(file, a)(body)
             ).left
               .map { e =>
                 refused = Some(e)
@@ -86,9 +88,14 @@ final class DriveTools(
           FileOrigin(
             EdgeName(reading.service.name),
             FileId.value(file.id),
-            // An export's revision is Drive's version of the file, which has no other; a file
-            // Drive keeps the bytes of is named by when it last changed.
-            as.fold(file.changed.map(_.toString))(_ => file.version.map(v => s"version $v")),
+            // An export's revision is Drive's version of the file, which has no other, a deck's
+            // own answer told from its PDF; a file Drive keeps the bytes of is named by when it
+            // last changed.
+            as.fold(file.changed.map(_.toString))(a =>
+              file.version.map(v =>
+                if (a == DriveExport.Deck) s"version $v, the Slides API's answer" else s"version $v"
+              )
+            ),
             clock.now()
           ),
           item,
@@ -151,11 +158,24 @@ final class DriveTools(
               case Left(e) if e.lasting => Right(DriveCalled.Unread(file, grants, e))
               case other => other
             }
-            // A Doc, a Sheet or a Slides deck is read as the office file Drive exports it to
-            // when a format here reads that; a Doc or a Sheet, else, as Drive's text of it.
+            // The forms in turn: the next only when the Slides API is off, the operator told.
+            def inTurn(forms: Vector[DriveExport]): Either[DriveError, DriveCalled] =
+              forms match {
+                case as +: rest =>
+                  kept(file, grants, asked.range, slot, Some(as)) match {
+                    case Left(DriveError.SlidesOff) if rest.nonEmpty =>
+                      DriveError.SlidesOff.logged
+                        .foreach(why => said(s"drive_read: $why, so a deck is read as its PDF"))
+                      inTurn(rest)
+                    case other => other
+                  }
+                case _ => Left(DriveError.Unreadable(file.kindOf.words))
+              }
+            // A Doc, a Sheet or a Slides deck is read in the first form Drive gives it in that a
+            // format here reads; a Doc or a Sheet, else, as Drive's text of it.
             file.kindOf.exportsAs.filter(as => files.formats.of(as.kind).nonEmpty) match {
-              case Some(as) => readOrUnread(kept(file, grants, asked.range, slot, Some(as)))
-              case None =>
+              case forms if forms.nonEmpty => readOrUnread(inTurn(forms))
+              case _ =>
                 file.kindOf match {
                   case DriveKind.Document | DriveKind.Spreadsheet | DriveKind.Text =>
                     readOrUnread(rest.text(file).map(DriveCalled.Read(file, grants, _)))

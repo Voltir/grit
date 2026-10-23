@@ -99,7 +99,12 @@ object DriveLive {
       inFolder: DriveFile
   ) extends DriveRestContract {
     protected def rest: DriveRest^ =
-      new DriveRest(URI.create(DriveRest.Api), authorizer, Clock.system())
+      new DriveRest(
+        URI.create(DriveRest.Api),
+        URI.create(DriveRest.Slides),
+        authorizer,
+        Clock.system()
+      )
     // Words nearly every file holds, as DriveCapture's search asks.
     protected def words: String = "a"
     protected def topFile: (FileId, FileId) = (top.id, within(top))

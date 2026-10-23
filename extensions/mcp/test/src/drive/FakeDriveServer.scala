@@ -20,7 +20,8 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * own `made-permissions-{id}` when it has one, else its drive's `permissions-*`; a Doc's
   * markdown export with `export-doc.md`, a Sheet's CSV export with `export-sheet.csv`, any
   * other export with `error-export-folder` (403); an id the recordings do not name with
-  * `error-no-file` (404); a listing of shared drives with `drives-list`. Each request must be a
+  * `error-no-file` (404); a listing of shared drives with `drives-list`. The Slides API's
+  * `presentations/{id}`, below [[slides]], is answered only as [[answering]] sets. Each request must be a
   * GET carrying [[FakeDriveServer.Token]], `supportsAllDrives=true` when it asks of files, and
   * `fields` unless it reads content; one that does not is answered 400. Every request's path
   * and query are kept, in [[requests]].
@@ -40,10 +41,14 @@ final class FakeDriveServer private () {
 
   private val http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
   http.createContext("/drive/v3/", exchange => answer(exchange))
+  http.createContext("/slides/v1/", exchange => answer(exchange))
   http.start()
 
   /** The API's base, as [[DriveRest]] takes it. */
   def api: URI = URI.create(s"http://127.0.0.1:${http.getAddress.getPort}/drive/v3/")
+
+  /** The Slides API's base, as [[DriveRest]] takes it. */
+  def slides: URI = URI.create(s"http://127.0.0.1:${http.getAddress.getPort}/slides/v1/")
 
   /** A [[DriveRest]] over this fake, carrying [[FakeDriveServer.Token]], reading the system's clock. */
   def rest(): DriveRest^ = rest(Clock.system())
@@ -58,7 +63,7 @@ final class FakeDriveServer private () {
         KeyFiles.Local
       )
       .fold(r => throw new java.lang.AssertionError(r.message), identity)
-    new DriveRest(api, authorizer, clock)
+    new DriveRest(api, slides, authorizer, clock)
   }
 
   /** Every request's path below the API and its query, in the order received. */
@@ -78,7 +83,8 @@ final class FakeDriveServer private () {
   def stop(): Unit = http.stop(0)
 
   private def answer(exchange: HttpExchange): Unit = {
-    val path = exchange.getRequestURI.getRawPath.stripPrefix("/drive/v3/")
+    val path =
+      exchange.getRequestURI.getRawPath.stripPrefix("/drive/v3/").stripPrefix("/slides/v1/")
     val query = Option(exchange.getRequestURI.getRawQuery).toVector
       .flatMap(_.split('&').toVector)
       .map { kv =>
