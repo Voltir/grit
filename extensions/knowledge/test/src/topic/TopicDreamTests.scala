@@ -762,26 +762,38 @@ object TopicDreamTests extends TestSuite {
       )
     }
 
-    test("a topic of a later version than this reader's is left as it is and counted") {
+    test(
+      "a topic of a later version than this reader's is left as it is and counted, and the strands it refers to are asked of no more"
+    ) {
       val w = new StrandWorld
-      val _ = strand(w, "C1", "deploy pipeline")
+      val a = strand(w, "C1", "deploy pipeline")
       val runs = new Runs(w)
       val _ = runs.run()
-      // The topic as a later version of the plugin keeps it: data this reader must not wipe.
+      // The topic as a later version of the plugin keeps it, referring to its strand as this
+      // version does: data this reader must not wipe.
       runs.topics.foreach { d =>
         val later = ujson.copy(d.data)
         later("v") = 3
         val _ = ok(
           runs.documents
             .keeper(Plugin, Terms)
-            .write(d.key, d.label, d.integrity, d.place, d.text, later, d.pointer, Now)(using
-              TestTx.fake
-            )
+            .write(
+              d.key,
+              d.label,
+              d.integrity,
+              d.place,
+              d.text,
+              later,
+              d.pointer,
+              Now,
+              Set(right(Ref.written(Ref.Strand(a.id))))
+            )(using TestTx.fake)
         )
       }
       val reply = runs.run(now = Now.plusSeconds(60))
-      (reply, runs.topics.map(_.data("v").num)) ==> (
-        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left; not written: topic:strand-c1 (the topic was written since its scan)",
+      (reply, runs.asked.map(_.kind), runs.topics.map(_.data("v").num)) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 1 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left",
+        Vector("attach", "write"),
         Vector(3.0)
       )
     }

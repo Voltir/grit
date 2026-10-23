@@ -88,7 +88,7 @@ private[topic] object TopicScan {
     * then the strands at the floor spoken in within `recent` before `until`, and the cards
     * changed within `cardRecent` before `until`: the floor's [[Aside]] kept to those among them at
     * the digest or version set aside, and set aside within `asideFor` before `until`; each already in a topic's lineage or the aside at its
-    * digest or version unchanged, each a topic refers to attached to it, and of the rest at most
+    * digest or version, or referred to by a topic of a later version, unchanged, each a topic refers to attached to it, and of the rest at most
     * `most` strands and [[Cards]] cards of files kept at the floor to place, oldest first, the
     * others left (a card kept below the floor is its own label's run's to place); the cards read
     * back until [[Cards]] of them are such files in no lineage, the aside or a pairing, so
@@ -108,7 +108,7 @@ private[topic] object TopicScan {
   )(using tx: Tx^): Either[StoreError, Scanned] = {
     val floor = Tx.floor(tx)
     val shelf = cards.flatMap(e => needs.of(e).toOption)
-    held(keeper, floor, at).flatMap((read: (Vector[Found], Int, Int)) =>
+    held(keeper, floor, at).flatMap((read: (Vector[Found], Int, Set[TopicKey])) =>
       pruned(keeper, strands, read._1, floor, until, at).flatMap((kept: Vector[Pruned]) =>
         strands
           .atFloor(until.minusSeconds(params.recent.toSeconds), until)
@@ -123,36 +123,40 @@ private[topic] object TopicScan {
                 val lineage = (topics.flatMap(_._3.topic.passages.flatMap(_.from.tags)) ++
                   held.map(_.tag)).toSet
                 def unplaced(c: CardShelf.Seen) = !lineage.contains(Lineage.Tag.Card(c.version))
-                referrers(keeper, keys, recent.filterNot(s => lineage.exists(isStrand(s))))(s =>
-                  Some(Ref.Strand(s.root))
-                ).flatMap((ss: Vector[(Strand.Digested, Option[TopicKey])]) =>
-                  linking(strands, shelf, inPlay(most, ss), until).flatMap {
-                    (linked: Vector[Linked]) =>
-                      val paired = linked.flatMap(_.cards.map(_.version)).toSet
-                      // Read back until Cards could be offered, so successive runs page through
-                      // them: a directory's card, one kept at another label, or one placed, set
-                      // aside or paired, is not.
-                      changed(
-                        shelf,
-                        until.minusSeconds(params.cardRecent.toSeconds),
-                        until,
-                        Cards,
-                        c => offered(c, floor) && unplaced(c) && !paired.contains(c.version)
-                      ).flatMap((seen: Vector[CardShelf.Seen]) =>
-                        referrers(keeper, keys, seen.filter(unplaced))(_.unit)
-                          .flatMap((cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
-                            val p = Placed(ss, cs)
-                            aside(keeper, floor, all, held, recent, seen, linked, at).flatMap {
-                              (_: Vector[Aside.Item]) =>
-                                val s = gathered(most, floor, kept, recent, seen, p, linked)
-                                holding(shelf, kept, s.leads.map(_._1), until)
-                                  .map(hs =>
-                                    s.copy(holds = hs, unreadable = read._2, later = read._3)
-                                  )
-                            }
-                          })
-                      )
-                  }
+                referrers(
+                  keeper,
+                  keys,
+                  read._3,
+                  recent.filterNot(s => lineage.exists(isStrand(s)))
+                )(s => Some(Ref.Strand(s.root))).flatMap(
+                  (ss: Vector[(Strand.Digested, Option[TopicKey])]) =>
+                    linking(strands, shelf, inPlay(most, ss), until).flatMap {
+                      (linked: Vector[Linked]) =>
+                        val paired = linked.flatMap(_.cards.map(_.version)).toSet
+                        // Read back until Cards could be offered, so successive runs page through
+                        // them: a directory's card, one kept at another label, or one placed, set
+                        // aside or paired, is not.
+                        changed(
+                          shelf,
+                          until.minusSeconds(params.cardRecent.toSeconds),
+                          until,
+                          Cards,
+                          c => offered(c, floor) && unplaced(c) && !paired.contains(c.version)
+                        ).flatMap((seen: Vector[CardShelf.Seen]) =>
+                          referrers(keeper, keys, read._3, seen.filter(unplaced))(_.unit)
+                            .flatMap((cs: Vector[(CardShelf.Seen, Option[TopicKey])]) => {
+                              val p = Placed(ss, cs)
+                              aside(keeper, floor, all, held, recent, seen, linked, at).flatMap {
+                                (_: Vector[Aside.Item]) =>
+                                  val s = gathered(most, floor, kept, recent, seen, p, linked)
+                                  holding(shelf, kept, s.leads.map(_._1), until)
+                                    .map(hs =>
+                                      s.copy(holds = hs, unreadable = read._2, later = read._3.size)
+                                    )
+                              }
+                            })
+                        )
+                    }
                 )
               }
           )
@@ -244,11 +248,11 @@ private[topic] object TopicScan {
   )
 
   /** The floor's topics, one whose data this reader refuses withdrawn, one of a later version
-    * left as it is; its [[Aside]] is none. Also how many were withdrawn, and how many left.
+    * left as it is; its [[Aside]] is none. Also how many were withdrawn, and the keys left.
     */
   private def held(keeper: DocumentKeeper, floor: Label, at: Instant)(using
       Tx^
-  ): Either[StoreError, (Vector[Found], Int, Int)] =
+  ): Either[StoreError, (Vector[Found], Int, Set[TopicKey])] =
     keeper.newest(Int.MaxValue).flatMap { (documents: Vector[Document]) =>
       val read: Vector[(Document, Either[Topic.Unread, (TopicKey, TopicWrite.Held)])] =
         documents
@@ -265,7 +269,10 @@ private[topic] object TopicScan {
           (
             read.collect { case (d, Right((k, h))) => Found(k, d, h) },
             refused.size,
-            read.count { case (_, Left(Topic.Unread.Later(_))) => true; case _ => false }
+            read
+              .collect { case (d, Left(Topic.Unread.Later(_))) => TopicKey.read(d.key) }
+              .flatten
+              .toSet
           )
         )
     }
@@ -344,13 +351,17 @@ private[topic] object TopicScan {
     if (now == all) Right(all) else Aside.kept(keeper, floor, now, at).map(_ => now)
   }
 
-  /** Each of `as`, with the topic among `held` that refers to what `ref` reads of it, if any. */
+  /** Each of `as`, with the topic among `held` that refers to what `ref` reads of it, if any;
+    * one a topic of `later` refers to left out, as that topic is.
+    */
   private def referrers[A](
       keeper: DocumentKeeper,
       held: Set[TopicKey],
+      later: Set[TopicKey],
       as: Vector[A]
   )(ref: A -> Option[Ref])(using Tx^): Either[StoreError, Vector[(A, Option[TopicKey])]] =
-    each(as)((a: A) => ref(a).fold(Right(None))(referred(keeper, _, held)).map(a -> _))
+    each(as)((a: A) => ref(a).fold(Right(None))(referred(keeper, _, held ++ later)).map(a -> _))
+      .map(_.filterNot(_._2.exists(later.contains)))
 
   /** The scan's result, from what its reads found. */
   private def gathered(
