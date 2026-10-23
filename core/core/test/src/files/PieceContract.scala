@@ -165,8 +165,18 @@ abstract class PieceContract extends TestSuite {
       keep(k, "b", 2, "bravo one")
       transaction(ok(store.placed(Vector(idOf(p, "alpha", 3)), at(3))))
       keep(k, "c", 4, "charl one")
-      (search(p, "alpha", 5).size, search(p, "bravo", 5).size, search(p, "charl", 5).size) ==>
-        (1, 0, 1)
+      // A bound smaller than one file: each keep deletes the others, never the file it wrote.
+      val small = name("pieces-bound-small")
+      val tight = keeper(small, one / 2)
+      keep(tight, "a", 1, "alpha one")
+      keep(tight, "b", 2, "bravo one")
+      (
+        search(p, "alpha", 5).size,
+        search(p, "bravo", 5).size,
+        search(p, "charl", 5).size,
+        search(small, "alpha", 5).size,
+        search(small, "bravo", 5).size
+      ) ==> (1, 0, 1, 0, 1)
     }
 
     test("past its bound, a keeper deletes the files no longer current first") {
@@ -247,12 +257,15 @@ abstract class PieceContract extends TestSuite {
     ) {
       val p = name("pieces-relabel")
       val k = keeper(p, PieceKeeper.Bound)
-      keep(k, "a", 1, "alpha one")
+      transaction(
+        ok(k.keep(file("a"), Here, Integrity.Outside, Vector(piece("alpha one")), 0, at(1)))
+      )
       val id = idOf(p, "alpha", 2)
       val There = Place.under(Namespace.Task, Vector("pieces", "there"))
       val trial = Clearance.of(TestLabels.Trial)
-      val moved = opened(trial)(ok(k.relabel("a", Label.Public, There, Integrity.Outside, at(3))))
-      val none = opened(trial)(ok(k.relabel("b", Label.Public, There, Integrity.Outside, at(3))))
+      // Relabelled at most Authority, pieces believed at Outside stay at Outside.
+      val moved = opened(trial)(ok(k.relabel("a", Label.Public, There, Integrity.Authority, at(3))))
+      val none = opened(trial)(ok(k.relabel("b", Label.Public, There, Integrity.Authority, at(3))))
       val hit = opened(trial)(ok(store.search(Vector(p), "alpha", 5, at(4))))
       val marked = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
       (

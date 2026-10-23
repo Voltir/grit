@@ -286,7 +286,7 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a piece move relabelling a file moves its pieces to the floor and the place given, believed no more than what it moves from"
+      "a piece move relabelling a file moves its pieces to the place given, believed no more than what it moves from"
     ) {
       val there = Place.under(Namespace.Task, Vector("notes", "there"))
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
@@ -294,11 +294,12 @@ abstract class MovesContract extends TestSuite {
           name("p"),
           TestTainted.at(
             Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
-            Integrity.Member
+            Integrity.Outside
           )
         )
+        // Moved from what is believed at Authority, pieces believed at Outside stay at Outside.
         val moved = Piecing.Relabel("a", Floor, there)
-        Made(Vector(read, m.piece(name("r"), TestTainted.at(moved, Integrity.Outside))))
+        Made(Vector(read, m.piece(name("r"), TestTainted.at(moved, Integrity.Authority))))
       }
       (got, kept.map(k => (k.file.ref, k.place, k.label, k.integrity))) ==> (
         Made(Vector(Right(Pieced.Kept(1, 0)), Right(Pieced.Relabelled(1)))),

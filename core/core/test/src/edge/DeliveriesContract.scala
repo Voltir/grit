@@ -90,8 +90,9 @@ abstract class DeliveriesContract extends TestSuite {
       val a = asking(ana)
       val (c1, c2, c3, c4, c5) =
         (ToolCallId("c1"), ToolCallId("c2"), ToolCallId("c3"), ToolCallId("c4"), ToolCallId("c5"))
-      a.append(EntryId("ask:c1"), Payload.Ask(c1, "Edit a.txt", Some(later)))
-      a.append(EntryId("ask:c2"), Payload.Ask(c2, "Edit b.txt", Some(later.plusSeconds(60))))
+      // The older ask lasts longer: the list is in the asks' order, not their untils'.
+      a.append(EntryId("ask:c1"), Payload.Ask(c1, "Edit a.txt", Some(later.plusSeconds(60))))
+      a.append(EntryId("ask:c2"), Payload.Ask(c2, "Edit b.txt", Some(later)))
       a.append(EntryId("ask:c3"), Payload.Ask(c3, "Edit c.txt", Some(Instant.EPOCH)))
       a.append(EntryId("ask:c4"), Payload.Ask(c4, "Edit d.txt", None))
       a.append(EntryId("ask:c5"), Payload.Ask(c5, "Edit e.txt", Some(later)))
@@ -101,8 +102,8 @@ abstract class DeliveriesContract extends TestSuite {
       )
       a.at(reads)(a.deliveries.asks(a.turn)) ==> Right(
         Vector(
-          OpenAsk(c1, "Edit a.txt", ana, later),
-          OpenAsk(c2, "Edit b.txt", ana, later.plusSeconds(60))
+          OpenAsk(c1, "Edit a.txt", ana, later.plusSeconds(60)),
+          OpenAsk(c2, "Edit b.txt", ana, later)
         )
       )
     }

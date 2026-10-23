@@ -63,12 +63,14 @@ object ModelTextTests extends TestSuite {
       "a section is the one whose heading path ends with the words asked, up to the next of its rank"
     ) {
       val read = ModelText.of(book, FileRange.Section("policy  >  3.2 ACCESS control"))
+      val lastOnly = ModelText.of(book, FileRange.Section("3.2 access control"))
       (
         read.covered,
         read.text.linesIterator.toVector.filter(_.startsWith("Text")).size,
-        read.next
+        read.next,
+        lastOnly.covered
       ) ==>
-        ("pages 212–215 of 492", 4, None)
+        ("pages 212–215 of 492", 4, None, "pages 212–215 of 492")
     }
 
     test("a section not found is the outline, saying there is none") {
@@ -104,15 +106,19 @@ object ModelTextTests extends TestSuite {
       val first = ModelText.of(long, FileRange.Start)
       val shownBlocks = first.text.split("\n\n").toVector
       val second = first.next.map(ModelText.of(long, _))
+      // One more block, 1,000 bytes and its blank line, would pass the text's room: Room less
+      // the 512 bytes a read keeps for the lines around its text.
       (
         size(first.shown) <= ModelText.Room,
+        size(first.text) + 1002 > ModelText.Room - 512,
         shownBlocks.forall(_.length == 1000),
         second.map(_.text.take(4)),
         shownBlocks.lastOption.map(_.take(3).toInt + 1)
       ) ==> (
         true,
         true,
-        second.map(_ => f"${shownBlocks.size + 1}%03d "),
+        true,
+        Some(f"${shownBlocks.size + 1}%03d "),
         Some(shownBlocks.size + 1)
       )
     }
@@ -123,11 +129,14 @@ object ModelTextTests extends TestSuite {
       val first = ModelText.of(code, FileRange.Start)
       val shown = first.text.linesIterator.toVector
       val second = first.next.map(ModelText.of(code, _))
+      // One more line, 10 bytes and its newline, would pass the cut's room: Room less the 512
+      // bytes a read keeps for the lines around its text and the 64 a cut block keeps.
       (
         size(first.shown) <= ModelText.Room,
+        size(first.text) + 11 > ModelText.Room - 512 - 64,
         shown.lastOption.exists(_.startsWith("line ")),
         second.map(_.text.linesIterator.next())
-      ) ==> (true, true, Some(f"line ${shown.size}%05d"))
+      ) ==> (true, true, true, Some(f"line ${shown.size}%05d"))
     }
 
     test("what the reader stopped at and what it did not read are said beside the pages") {

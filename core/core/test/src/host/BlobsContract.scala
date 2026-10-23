@@ -2,6 +2,7 @@ package grit.core.host
 
 import java.io.{ByteArrayInputStream, IOException, InputStream}
 import java.nio.file.Files
+import java.time.Instant
 
 import grit.core.id.Sha256
 
@@ -63,6 +64,18 @@ abstract class BlobsContract extends TestSuite {
         val before = blobs.kept()
         (before, blobs.remove(sha("gone")), blobs.remove(sha("gone")), blobs.at(sha("gone"))) ==>
           (Right(Vector(sha("gone"))), Right(()), Right(()), None)
+      }
+    }
+    test("clearing removes the pending blobs written before the time given, counting them") {
+      fresh { blobs =>
+        val later = Instant.now().plusSeconds(3600)
+        val got = blobs.receive(bytes("draft"), 10) { p =>
+          val none = blobs.clearPending(Instant.EPOCH)
+          val cleared = blobs.clearPending(later)
+          (none, cleared, p.keep().isLeft)
+        }
+        (got, blobs.clearPending(later), blobs.kept()) ==>
+          (Right((Right(0), Right(1), true)), Right(0), Right(Vector.empty))
       }
     }
   }

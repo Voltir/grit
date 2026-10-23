@@ -9,9 +9,18 @@ import scala.jdk.CollectionConverters.*
 import grit.core.id.Sha256
 
 /** [[Blobs]] for tests, keeping [[BlobsContract]]: each blob a file in `dir`, a pending one held
-  * in memory. Nothing is ever pending past its block, so [[clearPending]] has none to clear.
+  * in memory, written when its receive read it; one cleared by [[clearPending]] cannot be kept.
   */
 final class TempBlobs(dir: Path) extends Blobs {
+
+  /** Each pending blob's number and when it was written. */
+  // Only ever replaced by a new immutable map, as a directory's listing would be.
+  @caps.unsafe.untrackedCaptures
+  private var pending = Map.empty[Long, Instant]
+
+  // A number, as `pending`.
+  @caps.unsafe.untrackedCaptures
+  private var last = 0L
 
   def receive[A](in: InputStream^, max: Long)(body: Pending^ => A): Either[BlobError, A] =
     (try Right(in.readNBytes((max + 1).min(Int.MaxValue.toLong).toInt).toVector)
@@ -19,17 +28,25 @@ final class TempBlobs(dir: Path) extends Blobs {
       case e: IOException => Left(BlobError.Source(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
     }).flatMap { read =>
       if (read.size > max) Left(BlobError.TooLarge(max))
-      else
-        Right(body(new Pending {
-          def sha256: Sha256 = Sha256.digest(read)
-          def bytes: Long = read.size.toLong
-          def keep(): Either[BlobError, Unit] = {
-            val out = Files.newOutputStream(dir.resolve(sha256.hex))
-            try read.foreach(b => out.write(b.toInt))
-            finally out.close()
-            Right(())
-          }
-        }))
+      else {
+        last += 1
+        val id = last
+        pending = pending.updated(id, Instant.now())
+        try
+          Right(body(new Pending {
+            def sha256: Sha256 = Sha256.digest(read)
+            def bytes: Long = read.size.toLong
+            def keep(): Either[BlobError, Unit] =
+              if (!pending.contains(id)) Left(BlobError.Failed("its pending blob was cleared"))
+              else {
+                val out = Files.newOutputStream(dir.resolve(sha256.hex))
+                try read.foreach(b => out.write(b.toInt))
+                finally out.close()
+                Right(())
+              }
+          }))
+        finally pending = pending.removed(id)
+      }
     }
 
   def at(sha256: Sha256): Option[Path] =
@@ -46,7 +63,11 @@ final class TempBlobs(dir: Path) extends Blobs {
     Right(())
   }
 
-  def clearPending(before: Instant): Either[BlobError, Int] = Right(0)
+  def clearPending(before: Instant): Either[BlobError, Int] = {
+    val gone = pending.filter((_, written) => written.isBefore(before)).keySet
+    pending = pending.removedAll(gone)
+    Right(gone.size)
+  }
 }
 
 object TempBlobs {
