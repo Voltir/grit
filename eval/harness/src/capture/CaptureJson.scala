@@ -5,14 +5,14 @@ import scala.util.Try
 import grit.core.classify.AnswersJson
 import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
+import grit.core.json.Fields
+import grit.core.json.Fields.opt
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.Kind
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
-
-import Fields.opt
 
 /** A capture's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
   * `capture.json`. Each value is written with its fields in one fixed order, so equal values
@@ -481,4 +481,9 @@ object CaptureJson {
     "asks" -> s.asks,
     "weight" -> s.weight
   )
+
+  extension (f: Fields) {
+    private def probability(k: String): Either[String, Probability] =
+      f.num(k).flatMap(Probability.of(_).toRight(s"${f.what}'s $k is not a probability"))
+  }
 }

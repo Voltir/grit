@@ -3,6 +3,7 @@ package grit.knowledge.sync
 import grit.core.document.Document
 import grit.core.durable.Journaled
 import grit.core.id.{CorpusName, DocKey}
+import grit.core.json.Fields
 import grit.core.place.Place
 import grit.core.visibility.Label
 import grit.knowledge.card.{Scope, UnitVersion}
@@ -226,43 +227,31 @@ private[knowledge] object Holding {
       acc.flatMap(as => read(v).map(as :+ _))
     }
 
-  /** `json`'s string `field`, or why not. */
-  private def str(json: ujson.Value, field: String): Either[String, String] =
-    json.objOpt
-      .flatMap(_.get(field))
-      .flatMap(_.strOpt)
-      .toRight(s"a held card's record holds no string $field: ${ujson.write(json)}")
-
-  private def damagedCard(json: ujson.Value): Either[String, Held.Read.Damaged] =
+  private def damagedCard(json: ujson.Value): Either[String, Held.Read.Damaged] = {
+    val f = Fields(s"a held card's record ${ujson.write(json)}", json)
     for {
-      key <- str(json, "key").flatMap(CardKey.parse)
-      path <- str(json, "path")
-      label <- str(json, "label").flatMap(Label.read)
-      why <- str(json, "why")
+      key <- f.str("key").flatMap(CardKey.parse)
+      path <- f.str("path")
+      label <- f.str("label").flatMap(Label.read)
+      why <- f.str("why")
     } yield Held.Read.Damaged(key, path, label, why)
+  }
 
   private def card(json: ujson.Value): Either[String, Held] = {
-    def str(field: String): Either[String, String] = Holding.str(json, field)
+    val f = Fields(s"a held card's record ${ujson.write(json)}", json)
     for {
-      key <- str("key").flatMap(CardKey.parse)
-      path <- str("path")
-      label <- str("label").flatMap(Label.read)
-      version <- str("version").flatMap(UnitVersion.of)
-      scope <- json.objOpt.flatMap(_.get("scope")) match {
+      key <- f.str("key").flatMap(CardKey.parse)
+      path <- f.str("path")
+      label <- f.str("label").flatMap(Label.read)
+      version <- f.str("version").flatMap(UnitVersion.of)
+      scope <- f.addedStr("scope").flatMap {
         case None => Right(None)
-        case Some(_) => str("scope").flatMap(Scope.parse).map(Some(_))
+        case Some(s) => Scope.parse(s).map(Some(_))
       }
-      within <- json.objOpt.flatMap(_.get("within")) match {
-        case None => Right(None)
-        case Some(_) => str("within").map(Some(_))
-      }
-      elsewhere <- json.objOpt.flatMap(_.get("elsewhere")) match {
-        case None => Right(false)
-        case Some(value) =>
-          value.boolOpt.toRight(
-            s"a held card's record holds no boolean elsewhere: ${ujson.write(json)}"
-          )
-      }
+      within <- f.addedStr("within")
+      elsewhere <- f
+        .added("elsewhere")
+        .flatMap(v => if (v.isEmpty) Right(false) else f.bool("elsewhere"))
     } yield Held.recorded(key, path, label, version, scope, within, elsewhere)
   }
 }

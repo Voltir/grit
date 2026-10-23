@@ -5,8 +5,9 @@ import scala.util.Try
 
 import grit.core.either.Traversal
 import grit.core.id.WorkflowId
+import grit.core.json.Fields
 import grit.core.place.Service
-import grit.eval.harness.capture.{Fields, Parts}
+import grit.eval.harness.capture.Parts
 import grit.eval.harness.label.{Found, Locator, ReplyLabels}
 
 /** What a turn's build is expected to do, by ids alone. */

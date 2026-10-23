@@ -125,14 +125,14 @@ object CaptureJsonTests extends TestSuite {
 
     test("a case missing a field is refused, naming the field and where it is missing") {
       CaptureJson.readCase(without(CaptureJson.writeCase(full), "clusters")) ==>
-        Left("case: no clusters")
+        Left("case names no clusters")
       CaptureJson.readCase(without(CaptureJson.writeCase(full), "stitch", "drift")) ==>
-        Left("stitch: no drift")
+        Left("stitch names no drift")
     }
 
     test("a manifest missing a field is refused, naming it") {
       CaptureJson.readManifest(without(CaptureJson.writeManifest(manifest), "dump", "sha256")) ==>
-        Left("dump: no sha256")
+        Left("dump names no sha256")
     }
 
     test(

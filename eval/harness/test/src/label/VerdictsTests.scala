@@ -74,8 +74,8 @@ object VerdictsTests extends TestSuite {
         Verdicts.written(verdicts).replace("\"at\": \"2026-10-03T09:00:01Z\"", "\"at\": 1")
       (Verdicts.read(unknown), Verdicts.read(noTime), Verdicts.read("[]")) ==> (
         Left("verdicts: C1/2.0: verdict meh"),
-        Left("verdicts: C1/2.0: at is not a string"),
-        Left("verdicts: no cases")
+        Left("verdicts: C1/2.0's at is not a string"),
+        Left("verdicts names no cases")
       )
     }
   }

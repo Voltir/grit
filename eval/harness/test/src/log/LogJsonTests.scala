@@ -182,7 +182,7 @@ object LogJsonTests extends TestSuite {
       val broken = ujson.read(LogJson.row(answered))
       broken("row").obj.remove("key")
       LogJson.read[Vector[Weights]](Vector(LogJson.header(header), broken.render())) ==>
-        Left("line 2: row: no key")
+        Left("line 2: row names no key")
     }
 
     // A Jev error body can echo the request; a failed row keeps the kind and nothing else.

@@ -60,7 +60,7 @@ object CacheTests extends TestSuite {
       val key = CacheKey.of("jev", body("jev-1.13.0", "abc"), 0)
       cache.put(key, cached) ==> Right(())
       Files.writeString(dir.resolve(key.hex.take(2)).resolve(s"${key.hex}.json"), "{}")
-      cache.get(key) ==> Left(s"cache ${key.hex}: cached: no answer")
+      cache.get(key) ==> Left(s"cache ${key.hex}: cached names no answer")
     }
   }
 }

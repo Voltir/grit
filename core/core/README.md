@@ -12,6 +12,8 @@ In dependency order, each with the core packages it imports:
 
 - **`either`**: a vector of `Either`s traversed, failing at the first `Left`. Imports nothing in
   core.
+- **`json`**: a JSON object's fields read, each refusal naming the object and the field. Imports
+  nothing in core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
 - **`id`**: the opaque ids, a web link as grit keeps it (`Href`), the one short content hash

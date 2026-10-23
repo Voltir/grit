@@ -249,7 +249,7 @@ object TurnJsonTests extends TestSuite {
         line
       }
       Vector(older(None), older(Some(1))).map(TurnJson.read) ==> Vector(
-        Left("turn: no format: written by an older capture; recapture"),
+        Left("turn names no format: written by an older capture; recapture"),
         Left("turn: format 1, not 2: written by an older capture; recapture")
       )
     }

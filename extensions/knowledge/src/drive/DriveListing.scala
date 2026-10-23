@@ -1,5 +1,6 @@
 package grit.knowledge.drive
 
+import grit.core.json.Fields
 import grit.core.tool.Outcome
 
 /** A Drive listing as a reader kept it: the entries it kept, in order, and whether the listing
@@ -17,8 +18,7 @@ object DriveListing {
   def read(stated: Outcome.Stated): Either[String, DriveListing] =
     for {
       own <- stated.answer.toRight("the listing states no `complete`")
-      o <- Fields.obj(own.json, "the listing")
-      complete <- Fields.bool(o, "complete", "the listing")
+      complete <- Fields("the listing", own.json).bool("complete")
       entries <- stated.parts.zipWithIndex.foldLeft[Either[String, Vector[DriveEntry]]](
         Right(Vector.empty)
       ) { case (got, (part, i)) =>

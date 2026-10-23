@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 
 import grit.core.identity.{Domain, Email}
+import grit.core.json.Fields
 
 /** Drive's v3 REST answers as grit reads them, asked for with [[DriveJson]]'s fields; each `Left`
   * says in words what was not in the form Drive documents.
@@ -34,9 +35,8 @@ object DriveJson {
       named <- listed.foldLeft[Either[String, Map[FileId, String]]](Right(Map.empty)) { (read, d) =>
         for {
           kept <- read
-          drive <- obj(d, "a drive")
-          id <- str(drive, "id", "a drive").flatMap(FileId.of)
-          name <- str(drive, "name", "a drive")
+          id <- Fields("a drive", d).str("id").flatMap(FileId.of)
+          name <- Fields("a drive", d).str("name")
         } yield kept + (id -> name)
       }
     } yield SharedDrives(named, incomplete = o.contains("nextPageToken"))
@@ -69,9 +69,10 @@ object DriveJson {
   def file(answer: ujson.Value): Either[String, DriveFile] =
     for {
       o <- obj(answer, "a file")
-      id <- str(o, "id", "a file").flatMap(FileId.of)
-      name <- str(o, "name", "a file")
-      mimeType <- str(o, "mimeType", "a file")
+      f = Fields("a file", answer)
+      id <- f.str("id").flatMap(FileId.of)
+      name <- f.str("name")
+      mimeType <- f.str("mimeType")
       parent <- o.get("parents") match {
         case None => Right(None)
         case Some(ujson.Arr(ps)) =>
@@ -94,8 +95,8 @@ object DriveJson {
           os.toVector.foldLeft[Either[String, Vector[Email]]](Right(Vector.empty)) {
             (read, owner) =>
               read.flatMap(kept =>
-                obj(owner, "an owner")
-                  .flatMap(str(_, "emailAddress", "an owner"))
+                Fields("an owner", owner)
+                  .str("emailAddress")
                   .flatMap(Email.of)
                   .map(kept :+ _)
               )
@@ -155,22 +156,23 @@ object DriveJson {
     )
   }
 
-  private def grant(answer: ujson.Value): Either[String, Grant] =
+  private def grant(answer: ujson.Value): Either[String, Grant] = {
+    def str(k: String, what: String) = Fields(what, answer).str(k)
     for {
-      o <- obj(answer, "a grant")
-      kind <- str(o, "type", "a grant")
-      role <- str(o, "role", "a grant").flatMap(role)
+      kind <- str("type", "a grant")
+      role <- str("role", "a grant").flatMap(role)
       read <- kind match {
         case "user" =>
-          str(o, "emailAddress", "a user's grant").flatMap(Email.of).map(Grant.Person(_, role))
+          str("emailAddress", "a user's grant").flatMap(Email.of).map(Grant.Person(_, role))
         case "group" =>
-          str(o, "emailAddress", "a group's grant").flatMap(Email.of).map(Grant.Group(_, role))
+          str("emailAddress", "a group's grant").flatMap(Email.of).map(Grant.Group(_, role))
         case "domain" =>
-          str(o, "domain", "a domain's grant").flatMap(Domain.of).map(Grant.Everyone(_, role))
+          str("domain", "a domain's grant").flatMap(Domain.of).map(Grant.Everyone(_, role))
         case "anyone" => Right(Grant.Anyone(role))
         case other => Left(s"a grant's type $other is not one Drive documents")
       }
     } yield read
+  }
 
   private def role(name: String): Either[String, Role] = name match {
     case "owner" => Right(Role.Owner)
@@ -187,14 +189,4 @@ object DriveJson {
       what: String
   ): Either[String, collection.Map[String, ujson.Value]] =
     v.objOpt.toRight(s"$what is not a JSON object")
-
-  private def str(
-      o: collection.Map[String, ujson.Value],
-      key: String,
-      what: String
-  ): Either[String, String] =
-    o.get(key) match {
-      case None => Left(s"$what names no $key")
-      case Some(v) => v.strOpt.toRight(s"$what's $key is not a string")
-    }
 }

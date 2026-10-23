@@ -4,7 +4,8 @@ import scala.util.Try
 
 import grit.core.either.Traversal
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, WorkflowId}
-import grit.eval.harness.capture.{Fields, Part, Parts}
+import grit.core.json.Fields
+import grit.eval.harness.capture.{Part, Parts}
 
 /** How good a reply is, as a person judged it. */
 enum Quality {

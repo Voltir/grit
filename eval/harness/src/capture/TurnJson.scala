@@ -14,6 +14,8 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
+import grit.core.json.Fields
+import grit.core.json.Fields.opt
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
@@ -23,8 +25,6 @@ import grit.core.store.Focus
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
-
-import Fields.opt
 
 /** A turn of a capture as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
   * so equal turns write equal bytes. A read is `Left` naming the first field missing or not of

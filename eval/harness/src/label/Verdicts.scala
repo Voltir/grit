@@ -7,8 +7,9 @@ import scala.util.Try
 import grit.core.either.Traversal
 import grit.core.id.ShadowName
 import grit.core.identity.Account
+import grit.core.json.Fields
 import grit.core.review.{Reason, Verdict}
-import grit.eval.harness.capture.{CaseId, Fields}
+import grit.eval.harness.capture.CaseId
 
 /** The verdict standing on one reviewed message's prompt: the shadow it was picked against
   * and why, the verdict, who gave it and when.

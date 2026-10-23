@@ -1,6 +1,7 @@
 package grit.knowledge.drive
 
 import grit.core.id.FileHandle
+import grit.core.json.Fields
 import grit.core.tool.Outcome
 
 /** A Drive file as a read of it answered: [[DriveOpened.Read]] or [[DriveOpened.Unread]]. */
@@ -31,22 +32,21 @@ object DriveOpened {
   def read(stated: Outcome.Stated): Either[String, DriveOpened] =
     stated.parts match {
       case Vector(part) =>
-        val facts = part.json
+        val o = Fields("part 1", part.json)
         for {
-          entry <- DriveEntry.read(facts, 1)
-          o <- Fields.obj(facts, "part 1")
-          unread <- Fields.optStr(o, "unread", "part 1")
+          entry <- DriveEntry.read(part.json, 1)
+          unread <- o.addedStr("unread")
           opened <- unread.fold(readable(entry, o))(why => Right(DriveOpened.Unread(entry, why)))
         } yield opened
       case parts => Left(s"a read states one part, not ${parts.size}")
     }
 
   /** `o`, the facts of `entry`'s read, as read, or why not, as [[read]] says. */
-  private def readable(entry: DriveEntry, o: Fields.Obj): Either[String, DriveOpened] =
+  private def readable(entry: DriveEntry, o: Fields): Either[String, DriveOpened] =
     for {
-      text <- Fields.str(o, "text", "part 1")
-      complete <- Fields.bool(o, "complete", "part 1")
-      kept <- Fields.optStr(o, "file", "part 1")
+      text <- o.str("text")
+      complete <- o.bool("complete")
+      kept <- o.addedStr("file")
       file <- kept match {
         case None => Right(None)
         case Some(h) =>

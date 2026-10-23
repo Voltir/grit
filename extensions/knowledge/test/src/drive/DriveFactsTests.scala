@@ -124,9 +124,9 @@ object DriveFactsTests extends TestSuite {
 
     test("a part missing a key is refused, naming the part and the key") {
       val listing = DriveListing.read(FactsGoldens.stated(without("listing-drive-a", 2, "id")))
-      assert(listing == Left("part 2 states no `id`"))
+      assert(listing == Left("part 2 names no id"))
       val opened = DriveOpened.read(FactsGoldens.stated(without("read-file-text", 1, "text")))
-      assert(opened == Left("part 1 states no `text`"))
+      assert(opened == Left("part 1 names no text"))
     }
 
     test("a listing stating no facts of its own is refused as not saying whether it is complete") {

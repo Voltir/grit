@@ -4,6 +4,7 @@ import scala.util.Try
 
 import grit.core.either.Traversal
 import grit.core.id.CorpusName
+import grit.core.json.Fields
 import grit.core.place.{Place, Service}
 import grit.core.triage.{Corpora, Corpus}
 

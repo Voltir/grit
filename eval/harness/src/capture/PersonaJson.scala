@@ -2,6 +2,7 @@ package grit.eval.harness.capture
 
 import scala.util.Try
 
+import grit.core.json.Fields
 import grit.core.persona.Persona
 
 /** The persona the deployment that recorded a capture declares, as its `persona.json` holds
