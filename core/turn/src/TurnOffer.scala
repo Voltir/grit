@@ -126,7 +126,8 @@ object TurnOffer {
     * and not at all when none is; what it sends and writes out is checked at `at`; one the engine describes, only when it writes to all of its
     * places. Its prompt: the base,
     * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]], its edge's
-    * fragment, where its reply goes ([[TurnPrompt.destination]]), what it is called
+    * fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
+    * where its reply goes ([[TurnPrompt.destination]]), what it is called
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
     * heard, its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
     * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
@@ -241,7 +242,8 @@ object TurnOffer {
           TurnPrompt.Answering,
           TurnPrompt.Security,
           TurnPrompt.edge(conversation.origin)
-        ) ++ TurnPrompt.destination(conversation.origin) ++
+        ) ++ TurnPrompt.rendered(conversation.origin, tooling.renders) ++
+          TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
           unasked ++
           Vector(TurnPrompt.room(conversation.origin, Tx.floor(tx))) ++

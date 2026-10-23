@@ -11,7 +11,7 @@ import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.files.PieceStore
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.id.{EdgeName, EntryId, TurnRef, WorkflowId}
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
@@ -184,7 +184,8 @@ final case class TurnHosting(
   * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
   * width, and which of those services' tools it is offered, by the corpora
   * `knowledge` says supply each ([[grit.core.triage.Corpora.supplied]]). `persona`
-  * is who the turn is told it is ([[TurnPrompt.called]]). `administering`, after `operator`,
+  * is who the turn is told it is ([[TurnPrompt.called]]); `renders`, what each served edge
+  * says its replies show, by its name ([[grit.core.edge.ServedEdge.renders]]). `administering`, after `operator`,
   * are offered only on a turn a person put to grit (its root `Addressed` or `ByName`) in a room
   * an edge holds with colleagues ([[grit.core.store.Audience.Colleagues]]), never a heard or
   * unprompted turn, nor one in a direct message, a job's run or a directory's conversation;
@@ -203,5 +204,6 @@ final case class TurnTooling[C^](
     recipe: TurnRecipe = TurnRecipe.Shipped,
     knowledge: Corpora = Corpora.Empty,
     persona: Persona = Persona.Grit,
-    administering: Toolbox[C] = Toolbox.Empty
+    administering: Toolbox[C] = Toolbox.Empty,
+    renders: Map[EdgeName, String] = Map.empty
 )

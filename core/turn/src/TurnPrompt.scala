@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.core.context.SectionTag
+import grit.core.id.EdgeName
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fragment, Layer}
@@ -194,6 +195,12 @@ object TurnPrompt {
     }
     Fragment(Layer.Edge, Fragment.Grit, text)
   }
+
+  /** What a turn at `origin` is told of how its reply is shown: `renders`' words for its edge
+    * ([[Origin.edge]]), an edge-layer fragment of grit's own; `None` when that edge says none.
+    */
+  def rendered(origin: Origin, renders: Map[EdgeName, String]): Option[Fragment] =
+    renders.get(origin.edge).map(Fragment(Layer.Edge, Fragment.Grit, _))
 
   /** The whole reply that says a turn rooted on a heard message has nothing to add. */
   // A constant, inlined where it is read, so `unprompted` never reads it uninitialized.

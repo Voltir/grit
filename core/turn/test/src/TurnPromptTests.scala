@@ -1,9 +1,10 @@
 package grit.turn
 
 import grit.core.context.SectionTag
+import grit.core.id.EdgeName
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place}
-import grit.core.prompt.Layer
+import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.tool.{Retry, ToolName, ToolSet}
 
@@ -118,6 +119,25 @@ object TurnPromptTests extends TestSuite {
       // fragment naming any other word has every heard-rooted draft reply with it instead.
       val text = TurnPrompt.unprompted.text
       text.drop(text.lastIndexOf(':') + 2) ==> TurnPrompt.Pass
+    }
+
+    test(
+      "rendered: a turn is told its edge's words in an edge fragment of grit's; an edge that says none adds nothing"
+    ) {
+      val renders = Map(EdgeName.Slack -> "A heading shows as a bold line.")
+      val dm = Origin.Direct(
+        grit.core.identity.Account
+          .of("slack", "T1/U1")
+          .fold(e => throw new java.lang.AssertionError(e), identity),
+        "1.0"
+      )
+      Vector(Origin.Slack("T1", "C1", "1.0"), dm, Origin.Tui(dir, "s"))
+        .map(o => TurnPrompt.rendered(o, renders).map(f => (f.layer, f.source, f.text))) ==>
+        Vector(
+          Some((Layer.Edge, Fragment.Grit, "A heading shows as a bold line.")),
+          Some((Layer.Edge, Fragment.Grit, "A heading shows as a bold line.")),
+          None
+        )
     }
 
     test("called: a Slack turn is told its persona's name in an edge fragment of its own") {

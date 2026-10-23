@@ -11,6 +11,7 @@ import grit.core.flow.TestTainted
 import grit.core.id.{
   ConversationId,
   CorpusName,
+  EdgeName,
   EntryId,
   EntrySeq,
   QuestionName,
@@ -73,7 +74,8 @@ object TurnOfferTests extends TestSuite {
       origin: Origin,
       root: Payload,
       persona: Persona = Persona.Grit,
-      weighed: Option[Tags] = None
+      weighed: Option[Tags] = None,
+      renders: Map[EdgeName, String] = Map.empty
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -96,7 +98,8 @@ object TurnOfferTests extends TestSuite {
       Vector.empty,
       new FakeJot,
       budget(5),
-      persona = persona
+      persona = persona,
+      renders = renders
     )
     val entries = new InMemoryEntryStore
     entries.insert(
@@ -785,6 +788,27 @@ object TurnOfferTests extends TestSuite {
       val (prompt, _) =
         offeredAs(slack, Payload.Message(Message.User("hi")), pip)
       prompt ==> expected(slack, pip)
+    }
+
+    test("a Slack turn is told what its edge renders, right after its edge; a TUI turn is not") {
+      val renders = Map(EdgeName.Slack -> "A heading shows as a bold line.")
+      val hi = Payload.Message(Message.User("hi"))
+      offeredAs(slack, hi, renders = renders)._1 ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
+        TurnPrompt.edge(slack).text,
+        "A heading shows as a bold line.",
+        "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+          "only by calling a tool that does it, and only if one is offered to you.",
+        "In this workspace you are called grit.",
+        TurnPrompt.room(slack, Label.Public).text,
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
+      ).mkString("\n\n")
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      val tui = Origin.Tui(dir, "default")
+      offeredAs(tui, hi, renders = renders)._1 ==> offered(tui)
     }
 
     test(
