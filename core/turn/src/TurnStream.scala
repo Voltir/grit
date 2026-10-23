@@ -6,9 +6,9 @@ import grit.core.durable.StreamWriter
 import grit.core.provider.Delta
 
 /** What a turn tells edges while its model answers: the stream [[Key]] of its workflow,
-  * pieces of reasoning and text, and the name of each tool call as it begins, each tagged
+  * chunks of reasoning and text, and the name of each tool call as it begins, each tagged
   * with the attempt at the `ask:n` step that wrote it. The stream is at least once (ADR
-  * 0006): a step cut short by a crash leaves its pieces, and the rerun writes its own after
+  * 0006): a step cut short by a crash leaves its chunks, and the rerun writes its own after
   * them, so a reader keeps only the latest attempt's ([[Heard]]). The recorded reply, not
   * the stream, is the turn's answer.
   */
@@ -17,34 +17,34 @@ object TurnStream {
   /** The turn workflow's stream of its reply. */
   val Key = "reply"
 
-  /** A piece of the reply, written by the `ask:n` run `attempt`. */
-  final case class Piece(attempt: String, delta: Delta)
+  /** A chunk of the reply, written by the `ask:n` run `attempt`. */
+  final case class Chunk(attempt: String, delta: Delta)
 
-  def encode(piece: Piece): String = {
-    val (kind, text) = piece.delta match {
+  def encode(chunk: Chunk): String = {
+    val (kind, text) = chunk.delta match {
       case Delta.Text(t) => ("text", t)
       case Delta.Reasoning(t) => ("reasoning", t)
       case Delta.Calling(name) => ("calling", name)
     }
-    ujson.write(ujson.Obj("attempt" -> piece.attempt, "kind" -> kind, "text" -> text))
+    ujson.write(ujson.Obj("attempt" -> chunk.attempt, "kind" -> kind, "text" -> text))
   }
 
-  /** The piece `raw` encodes, or why it encodes none. */
-  def decode(raw: String): Either[String, Piece] =
+  /** The chunk `raw` encodes, or why it encodes none. */
+  def decode(raw: String): Either[String, Chunk] =
     scala.util.Try(ujson.read(raw)).toOption.flatMap(_.objOpt) match {
-      case None => Left("a piece is not a JSON object")
+      case None => Left("a chunk is not a JSON object")
       case Some(o) =>
         val field = (k: String) => o.get(k).flatMap(_.strOpt)
         (field("attempt"), field("kind"), field("text")) match {
-          case (Some(a), Some("text"), Some(t)) => Right(Piece(a, Delta.Text(t)))
-          case (Some(a), Some("reasoning"), Some(t)) => Right(Piece(a, Delta.Reasoning(t)))
-          case (Some(a), Some("calling"), Some(n)) => Right(Piece(a, Delta.Calling(n)))
-          case _ => Left(s"not a piece: ${raw.take(80)}")
+          case (Some(a), Some("text"), Some(t)) => Right(Chunk(a, Delta.Text(t)))
+          case (Some(a), Some("reasoning"), Some(t)) => Right(Chunk(a, Delta.Reasoning(t)))
+          case (Some(a), Some("calling"), Some(n)) => Right(Chunk(a, Delta.Calling(n)))
+          case _ => Left(s"not a chunk: ${raw.take(80)}")
         }
     }
 
-  /** Deltas written to `out` as pieces of `attempt`, gathered so a reply is tens of rows
-    * rather than one per token: a piece of text or reasoning is written when the kind
+  /** Deltas written to `out` as chunks of `attempt`, gathered so a reply is tens of rows
+    * rather than one per token: a chunk of text or reasoning is written when the kind
     * changes, when it reaches [[MaxChars]], or when [[MaxMs]] have passed since the last was
     * written, as `now` (milliseconds) tells; a call's name is written at once, after what
     * was gathered before it. [[flush]] writes what is left. For one run of one step.
@@ -78,7 +78,7 @@ object TurnStream {
     }
 
     private def write(delta: Delta): Unit = {
-      out.write(encode(Piece(attempt, delta)))
+      out.write(encode(Chunk(attempt, delta)))
       since = now()
     }
 
@@ -104,10 +104,10 @@ object TurnStream {
       }
     }
 
-  /** How long a piece may wait to be written. */
+  /** How long a chunk may wait to be written. */
   val MaxMs = 100L
 
-  /** How long a piece may grow before it is written. */
+  /** How long a chunk may grow before it is written. */
   val MaxChars = 200
 
   /** What an edge has heard of the reply so far: the latest attempt's reasoning and text,
@@ -120,11 +120,11 @@ object TurnStream {
       calling: Vector[String]
   ) {
 
-    /** `piece` heard: added to its attempt's, or, from a new attempt, starting over. */
-    def +(piece: Piece): Heard = {
+    /** `chunk` heard: added to its attempt's, or, from a new attempt, starting over. */
+    def +(chunk: Chunk): Heard = {
       val base =
-        if (attempt.contains(piece.attempt)) this else Heard(Some(piece.attempt), "", "", Vector())
-      piece.delta match {
+        if (attempt.contains(chunk.attempt)) this else Heard(Some(chunk.attempt), "", "", Vector())
+      chunk.delta match {
         case Delta.Text(t) => base.copy(text = base.text + t)
         case Delta.Reasoning(t) => base.copy(reasoning = base.reasoning + t)
         case Delta.Calling(name) => base.copy(calling = base.calling :+ name)

@@ -519,10 +519,10 @@ object TurnFixtures {
   def heard(
       durable: InMemoryDurable,
       turn: TurnRef
-  ): (Vector[TurnStream.Piece], TurnStream.Heard) = {
-    val pieces =
+  ): (Vector[TurnStream.Chunk], TurnStream.Heard) = {
+    val chunks =
       durable.streamed(turn.workflowId, TurnStream.Key).flatMap(TurnStream.decode(_).toOption)
-    (pieces, pieces.foldLeft(TurnStream.Heard.nothing)(_ + _))
+    (chunks, chunks.foldLeft(TurnStream.Heard.nothing)(_ + _))
   }
 
   /** Reads straight through to the in-memory store. */

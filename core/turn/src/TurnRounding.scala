@@ -456,7 +456,7 @@ private[turn] object Rounding {
   /** The request built from `turn`'s `window`, each item `stubs` names shown as its stub, and
     * shaped by `shape`, sent to the provider, whose reply is told to edges as it arrives, asked
     * as [[Asking.reply]] says: each try a fresh attempt on the stream
-    * ([[TurnStream.hearing]]), so a rerun's pieces follow a crashed run's; its failure fails
+    * ([[TurnStream.hearing]]), so a rerun's chunks follow a crashed run's; its failure fails
     * the call.
     */
   private def callShaped(

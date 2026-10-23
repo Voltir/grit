@@ -5,7 +5,7 @@ import grit.core.provider.Delta
 
 import utest.*
 
-/** The reply's stream: its pieces' form, how the writer gathers deltas, and what a reader
+/** The reply's stream: its chunks' form, how the writer gathers deltas, and what a reader
   * keeps across attempts.
   */
 object TurnStreamTests extends TestSuite {
@@ -28,9 +28,9 @@ object TurnStreamTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a piece reads back as written; anything else is not a piece") {
-      val pieces = Vector(Piece("a", Delta.Text("Fe\"hu")), Piece("b", Delta.Reasoning("…")))
-      pieces.map(p => decode(encode(p))) ==> pieces.map(Right(_))
+    test("a chunk reads back as written; anything else is not a chunk") {
+      val chunks = Vector(Chunk("a", Delta.Text("Fe\"hu")), Chunk("b", Delta.Reasoning("…")))
+      chunks.map(c => decode(encode(c))) ==> chunks.map(Right(_))
       assert(decode("nope").isLeft, decode("""{"attempt":"a","kind":"x","text":"t"}""").isLeft)
     }
 
@@ -42,15 +42,15 @@ object TurnStreamTests extends TestSuite {
       w.tell(Delta.Reasoning("ink"))
       out.pieces ==> Vector.empty
       w.tell(Delta.Text("Fe"))
-      out.pieces.map(decode) ==> Vector(Right(Piece("a", Delta.Reasoning("think"))))
+      out.pieces.map(decode) ==> Vector(Right(Chunk("a", Delta.Reasoning("think"))))
       clock.at = MaxMs
       w.tell(Delta.Text("hu"))
-      out.pieces.map(decode).lastOption ==> Some(Right(Piece("a", Delta.Text("Fehu"))))
+      out.pieces.map(decode).lastOption ==> Some(Right(Chunk("a", Delta.Text("Fehu"))))
       w.tell(Delta.Text("x" * MaxChars))
       out.pieces.size ==> 3
       w.tell(Delta.Text("end"))
       w.flush()
-      out.pieces.map(decode).lastOption ==> Some(Right(Piece("a", Delta.Text("end"))))
+      out.pieces.map(decode).lastOption ==> Some(Right(Chunk("a", Delta.Text("end"))))
     }
 
     test("a call is written at once, after what was gathered before it, and read back") {
@@ -60,24 +60,24 @@ object TurnStreamTests extends TestSuite {
       w.tell(Delta.Calling("read"))
       w.tell(Delta.Calling("list"))
       out.pieces.map(decode) ==> Vector(
-        Right(Piece("a", Delta.Text("Let me look."))),
-        Right(Piece("a", Delta.Calling("read"))),
-        Right(Piece("a", Delta.Calling("list")))
+        Right(Chunk("a", Delta.Text("Let me look."))),
+        Right(Chunk("a", Delta.Calling("read"))),
+        Right(Chunk("a", Delta.Calling("list")))
       )
       val heard = Vector(
-        Piece("a", Delta.Calling("stale")),
-        Piece("b", Delta.Text("Let me look.")),
-        Piece("b", Delta.Calling("read"))
+        Chunk("a", Delta.Calling("stale")),
+        Chunk("b", Delta.Text("Let me look.")),
+        Chunk("b", Delta.Calling("read"))
       ).foldLeft(Heard.nothing)(_ + _)
       heard ==> Heard(Some("b"), "", "Let me look.", Vector("read"))
     }
 
     test("a reader keeps the latest attempt: a new one starts over") {
       val heard = Vector(
-        Piece("a", Delta.Reasoning("hm")),
-        Piece("a", Delta.Text("The El")),
-        Piece("b", Delta.Text("The Elder")),
-        Piece("b", Delta.Text(" Futhark"))
+        Chunk("a", Delta.Reasoning("hm")),
+        Chunk("a", Delta.Text("The El")),
+        Chunk("b", Delta.Text("The Elder")),
+        Chunk("b", Delta.Text(" Futhark"))
       ).foldLeft(Heard.nothing)(_ + _)
       heard ==> Heard(Some("b"), "", "The Elder Futhark", Vector())
     }

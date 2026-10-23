@@ -423,16 +423,16 @@ final class ChatHost(
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has
-    * heard so far after each piece, the latest attempt's ([[TurnStream.Heard]]). Ends with
+    * heard so far after each chunk, the latest attempt's ([[TurnStream.Heard]]). Ends with
     * the turn's workflow, or with the host.
     */
   private def listen(engine: Link^, turn: TurnRef, mailbox: Mailbox[ChatScreen.Msg]): Unit =
     background { () =>
-      val pieces = engine.stream(turn, TurnStream.Key)
+      val chunks = engine.stream(turn, TurnStream.Key)
       var heard = TurnStream.Heard.nothing
-      while (open && pieces.hasNext) {
-        TurnStream.decode(pieces.next()).foreach { piece =>
-          heard = heard + piece
+      while (open && chunks.hasNext) {
+        TurnStream.decode(chunks.next()).foreach { chunk =>
+          heard = heard + chunk
           mailbox.offer(
             ChatScreen.Msg.Heard(
               ChatScreen.Hearing(turn.turnSeq, heard.reasoning, heard.text, heard.calling)
