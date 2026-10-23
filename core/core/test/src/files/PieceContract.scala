@@ -194,6 +194,14 @@ abstract class PieceContract extends TestSuite {
       ) ==> (Vector(), Vector("alpha two"), 1)
     }
 
+    test("a keeper whose files measure exactly its bound deletes none of them") {
+      val p = name("pieces-bound-exact")
+      val k = keeper(p, 2 * Piece.size(piece("alpha one"), "a.pdf"))
+      keep(k, "a", 1, "alpha one")
+      keep(k, "b", 2, "bravo one")
+      (search(p, "alpha", 3).size, search(p, "bravo", 3).size) ==> (1, 1)
+    }
+
     test("a search answers at most PerFile pieces of one file, each saying how many more matched") {
       val p = name("pieces-per-file")
       val k = keeper(p, PieceKeeper.Bound)
