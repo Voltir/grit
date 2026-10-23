@@ -237,18 +237,28 @@ object TurnDocumentsTests extends TestSuite {
       val provider = new RecordingProvider
       val documents = new InMemoryDocuments
       val files = got(PluginName.of("files"))
-      documents.declare(Vector(digest -> terms("Weekly digest"), files -> terms("Drive files")))(using
-        TestTx.fake
+      documents.declare(Vector(digest -> terms("Weekly digest"), files -> terms("Drive files")))(
+        using TestTx.fake
       )
       val week = write(documents, digest, "Weekly digest", "week", "Deploys frozen until Friday.")
       val pieces = new InMemoryPieces
       def kept(plugin: PluginName, text: String): PieceId = {
-        val piece = Piece(Vector("Access"), Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2)))))))))
+        val piece = Piece(
+          Vector("Access"),
+          Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2))))))))
+        )
         ok(
           pieces
             .keeper(plugin, PieceKeeper.Bound)
-            .keep(PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1), board, Integrity.Member, Vector(piece), 0, written)(
-              using TestTx.fake
+            .keep(
+              PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1),
+              board,
+              Integrity.Member,
+              Vector(piece),
+              0,
+              written
+            )(using
+              TestTx.fake
             )
         )
         ok(pieces.search(Vector(plugin), text, 5, written.plusSeconds(1))(using TestTx.fake))

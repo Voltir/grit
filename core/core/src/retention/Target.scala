@@ -7,8 +7,8 @@ import grit.core.id.{
   DocumentVersionId,
   FileHandle,
   PeriodRef,
-  PieceSetId,
   PeriodSeq,
+  PieceSetId,
   PluginName,
   ScheduleId
 }

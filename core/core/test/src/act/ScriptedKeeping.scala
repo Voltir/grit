@@ -77,7 +77,14 @@ class ScriptedKeeping(
           case Piecing.Withdraw(gone) =>
             Piecing.withdrawn(gone, pieceKeeper, at).map(Pieced.Withdrawn(_))
           case read: Piecing.Read =>
-            Piecing.kept(read, files(read.file), pieceKeeper, from.integrity, MovesFixtures.PerChar, at)
+            Piecing.kept(
+              read,
+              files(read.file),
+              pieceKeeper,
+              from.integrity,
+              MovesFixtures.PerChar,
+              at
+            )
         }
         done.left.map(e => MoveError.Store(described(e)))
       }

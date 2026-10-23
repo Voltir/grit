@@ -140,7 +140,8 @@ object Pieces {
       case Block.Rule => Vector.empty
       case Block.Paragraph(text) if text.plain.isBlank => Vector.empty
       case b if fits(b) => Vector(b)
-      case Block.Paragraph(text) => texts(text, t => fits(Block.Paragraph(t))).map(Block.Paragraph(_))
+      case Block.Paragraph(text) =>
+        texts(text, t => fits(Block.Paragraph(t))).map(Block.Paragraph(_))
       case Block.Heading(level, text) =>
         texts(text, t => fits(Block.Heading(level, t))).map(Block.Heading(level, _))
       case Block.Bullets(items) =>
@@ -159,7 +160,8 @@ object Pieces {
       case Block.Code(language, lines) =>
         val parts = lines.flatMap { line =>
           if (fits(Block.Code(language, Vector(line)))) Vector(line)
-          else texts(Text.plain(line), t => fits(Block.Code(language, Vector(t.plain)))).map(_.plain)
+          else
+            texts(Text.plain(line), t => fits(Block.Code(language, Vector(t.plain)))).map(_.plain)
         }
         packed(parts)(ls => fits(Block.Code(language, ls))).map(Block.Code(language, _))
       case Block.Table(columns, rows) =>
@@ -172,7 +174,10 @@ object Pieces {
     /** A row too long for one piece, cut at its columns: as many columns a table as fit, a
       * cell's words too long alone cut as a paragraph is.
       */
-    private def cells(columns: Vector[Column[Locus]], row: Vector[Cell[Locus]]): Vector[Block[Locus]] = {
+    private def cells(
+        columns: Vector[Column[Locus]],
+        row: Vector[Cell[Locus]]
+    ): Vector[Block[Locus]] = {
       val single = columns.zip(row).flatMap { (c, cell) =>
         val one = Block.table(Vector(c), Vector(Vector(cell)))
         cell match {

@@ -30,8 +30,8 @@ import grit.core.clock.Clock
 import grit.core.document.{DocLabel, Document, DocumentKeeper, DocumentSearch}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.either.Traversal.sequence
+import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,

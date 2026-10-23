@@ -21,10 +21,10 @@ import grit.core.context.{
   Window
 }
 import grit.core.document.{DocumentStore, InMemoryDocuments}
-import grit.core.files.{InMemoryPieces, PieceStore}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.InMemoryDeliveries
 import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
+import grit.core.files.{InMemoryPieces, PieceStore}
 import grit.core.host.{Clipped, HostError, Lines, RelPath, Workspace}
 import grit.core.id.{
   CallSlot,

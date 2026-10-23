@@ -16,7 +16,7 @@ import grit.core.visibility.{Integrity, Item, Label}
   * `Tx`'s clearance, and otherwise ignores it.
   */
 final class InMemoryPieces extends PieceStore {
-  import InMemoryPieces.{SetRow, PieceRow}
+  import InMemoryPieces.{PieceRow, SetRow}
 
   // Only ever replaced by a new immutable map, as the store's tables would be.
   @caps.unsafe.untrackedCaptures
@@ -57,7 +57,8 @@ final class InMemoryPieces extends PieceStore {
         case Some((s, r))
             if r.place == place && r.integrity == integrity && r.file.format == file.format &&
               r.file.version == file.version && of(s).map(_._2.piece) == pieces =>
-          sets = sets.updated(s, r.copy(file = r.file.copy(name = file.name, revision = file.revision)))
+          sets =
+            sets.updated(s, r.copy(file = r.file.copy(name = file.name, revision = file.revision)))
           Right(pieces.size)
         case _ =>
           for {
@@ -66,7 +67,18 @@ final class InMemoryPieces extends PieceStore {
               lastSet += 1
               sets = sets.updated(
                 lastSet,
-                SetRow(plugin, file, place, label, clearance.own.map(_.room), integrity, at, None, at, cut)
+                SetRow(
+                  plugin,
+                  file,
+                  place,
+                  label,
+                  clearance.own.map(_.room),
+                  integrity,
+                  at,
+                  None,
+                  at,
+                  cut
+                )
               )
               lastSet
             }
@@ -137,7 +149,9 @@ final class InMemoryPieces extends PieceStore {
       over
     }
     gone.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, s) =>
-      acc.flatMap(_ => forget(set(s)).flatMap(_ => tombstones.collected(Target.PieceSet(set(s)), at)))
+      acc.flatMap(_ =>
+        forget(set(s)).flatMap(_ => tombstones.collected(Target.PieceSet(set(s)), at))
+      )
     }
   }
 
@@ -211,7 +225,8 @@ final class InMemoryPieces extends PieceStore {
   def placed(ids: Vector[PieceId], at: Instant)(using Tx^): Either[StoreError, Unit] = {
     ids.flatMap(i => rows.get(PieceId.value(i))).map(_.set).distinct.foreach { s =>
       sets.get(s).foreach { r =>
-        sets = sets.updated(s, r.copy(lastPlaced = if (at.isAfter(r.lastPlaced)) at else r.lastPlaced))
+        sets =
+          sets.updated(s, r.copy(lastPlaced = if (at.isAfter(r.lastPlaced)) at else r.lastPlaced))
       }
     }
     Right(())
@@ -253,7 +268,13 @@ object InMemoryPieces {
   )
 
   /** A piece's row, in set `set` at `ordinal`. */
-  private final case class PieceRow(set: Long, ordinal: Int, piece: Piece, search: String, bytes: Long)
+  private final case class PieceRow(
+      set: Long,
+      ordinal: Int,
+      piece: Piece,
+      search: String,
+      bytes: Long
+  )
 
   /** `text`'s words, lower-cased: its runs of letters and digits. */
   private def words(text: String): Vector[String] =

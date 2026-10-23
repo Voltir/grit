@@ -31,15 +31,7 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.Journaled
-import grit.core.files.{
-  Covers,
-  FileError,
-  Files,
-  FormatName,
-  KeptPiece,
-  Locus,
-  Understood
-}
+import grit.core.files.{Covers, FileError, Files, FormatName, KeptPiece, Locus, Understood}
 import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
 import grit.core.message.{AssistantBlock, Message}
@@ -122,9 +114,21 @@ abstract class MovesContract extends TestSuite {
       "a piece move keeps the pieces of the file its handle names at the floor, believed as what it pieces from, under the name its sender gave"
     ) {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
-        Made(Vector(m.piece(name("p"), TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Outside))))
+        Made(
+          Vector(
+            m.piece(
+              name("p"),
+              TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Outside)
+            )
+          )
+        )
       }
-      (got, kept.map(k => (k.file.ref, k.file.name, k.file.revision, k.label, k.integrity, k.piece.text))) ==> (
+      (
+        got,
+        kept.map(k =>
+          (k.file.ref, k.file.name, k.file.revision, k.label, k.integrity, k.piece.text)
+        )
+      ) ==> (
         Made(Vector(Right(Pieced.Kept(1, 0)))),
         Vector(("a", Policy, "r1", Floor, Integrity.Outside, Pages.mkString("\n\n")))
       )
@@ -136,14 +140,19 @@ abstract class MovesContract extends TestSuite {
       val missing = FileHandle.read("f999").getOrElse(throw new java.lang.AssertionError("f999"))
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
         Made(Vector(file, missing).zipWithIndex.map { (f, i) =>
-          m.piece(name(s"p$i"), TestTainted.at(Piecing.Read(f, "a", "r1", Here, Vector()), Believed))
+          m.piece(
+            name(s"p$i"),
+            TestTainted.at(Piecing.Read(f, "a", "r1", Here, Vector()), Believed)
+          )
         })
       }
       (got, kept) ==> (
-        Made(Vector(
-          Right(Pieced.Kept(1, 0)),
-          Right(Pieced.Unread(FileError.Gone(missing, Files.Expiry).message))
-        )),
+        Made(
+          Vector(
+            Right(Pieced.Kept(1, 0)),
+            Right(Pieced.Unread(FileError.Gone(missing, Files.Expiry).message))
+          )
+        ),
         Vector()
       )
     }
@@ -153,18 +162,27 @@ abstract class MovesContract extends TestSuite {
     ) {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
         val read = Piecing.Read(file, "a", "r1", Here, Vector())
-        Made(Vector(TestTainted.at(read, Integrity.Untrusted), TestTainted.at(read, Believed))
-          .map(m.piece(name("p"), _)))
+        Made(
+          Vector(TestTainted.at(read, Integrity.Untrusted), TestTainted.at(read, Believed))
+            .map(m.piece(name("p"), _))
+        )
       }
       (got, kept) ==> (
-        Made(Vector(Left(MoveError.Below(Integrity.Untrusted)), Left(MoveError.Repeated(name("p"))))),
+        Made(
+          Vector(Left(MoveError.Below(Integrity.Untrusted)), Left(MoveError.Repeated(name("p"))))
+        ),
         Vector()
       )
     }
 
-    test("a piece move withdrawing files withdraws each one's pieces at its label, counting those that had any") {
+    test(
+      "a piece move withdrawing files withdraws each one's pieces at its label, counting those that had any"
+    ) {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
-        val read = m.piece(name("p"), TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Believed))
+        val read = m.piece(
+          name("p"),
+          TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Believed)
+        )
         val gone = Vector(("a", Label.Public), ("a", Floor), ("b", Floor))
         Made(Vector(read, m.piece(name("w"), TestTainted.at(Piecing.Withdraw(gone), Believed))))
       }
@@ -1060,13 +1078,15 @@ object MovesContract {
   val Policy = "policy.pdf"
 
   /** The pages of [[Policy]], each one paragraph: few enough words to be one piece. */
-  val Pages: Vector[String] = Vector("Accounts are disabled after ninety days.", "Keys rotate yearly.")
+  val Pages: Vector[String] =
+    Vector("Accounts are disabled after ninety days.", "Keys rotate yearly.")
 
   /** [[Pages]] as a format reading pages reads them: each page a paragraph noted with its page. */
   val Paged: Understood =
     Understood(
       Doc(Pages.zipWithIndex.map { (page, i) =>
-        Block.Paragraph(Text(Vector(Span(page, Set.empty, Vector(Locus.Page(i + 1)))))): Block[Locus]
+        Block
+          .Paragraph(Text(Vector(Span(page, Set.empty, Vector(Locus.Page(i + 1)))))): Block[Locus]
       }),
       Covers.Whole,
       Vector.empty,

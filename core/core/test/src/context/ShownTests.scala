@@ -713,7 +713,9 @@ object ShownTests extends TestSuite {
       )
     }
 
-    test("a piece is one user message under its label, its file, heading path, pages, place and day, its text as markdown, and how many more of its file matched") {
+    test(
+      "a piece is one user message under its label, its file, heading path, pages, place and day, its text as markdown, and how many more of its file matched"
+    ) {
       val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
       def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       def on(page: Int, s: String): grit.prose.form.Text[Locus] =

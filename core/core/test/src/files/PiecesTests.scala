@@ -19,7 +19,8 @@ object PiecesTests extends TestSuite {
   private def on(page: Int, s: String): Text[Locus] =
     Text(Vector(Span(s, Set.empty, Vector(Locus.Page(page)))))
   private def para(s: String, page: Int = 1): Block[Locus] = Block.Paragraph(on(page, s))
-  private def heading(level: Int, s: String): Block[Locus] = Block.Heading(Level.of(level), on(1, s))
+  private def heading(level: Int, s: String): Block[Locus] =
+    Block.Heading(Level.of(level), on(1, s))
 
   /** `n` words, `tag` then numbered: "tag1 tag2 …". */
   private def words(tag: String, n: Int): String = (1 to n).map(i => s"$tag$i").mkString(" ")
@@ -50,12 +51,15 @@ object PiecesTests extends TestSuite {
         ),
         PerWord
       )
-      (pieces.map(p => (p.heading, p.doc.blocks.size)), dropped) ==> (Vector(
-        (Vector("Policy"), 3),
-        (Vector("Policy"), 1),
-        (Vector("Policy", "Scope"), 1),
-        (Vector("Audit"), 1)
-      ), 0)
+      (pieces.map(p => (p.heading, p.doc.blocks.size)), dropped) ==> (
+        Vector(
+          (Vector("Policy"), 3),
+          (Vector("Policy"), 1),
+          (Vector("Policy", "Scope"), 1),
+          (Vector("Audit"), 1)
+        ),
+        0
+      )
     }
 
     test("a paragraph over Target is cut at its sentences, a sentence over it at words") {
@@ -99,13 +103,18 @@ object PiecesTests extends TestSuite {
       pieces.map(_.pages) ==> Vector(Some((3, 4)))
     }
 
-    test("a piece's fingerprint is the same for its words and path wherever they lie, and differs for others") {
+    test(
+      "a piece's fingerprint is the same for its words and path wherever they lie, and differs for others"
+    ) {
       val here = Piece(Vector("Policy"), Doc(Vector(para("Accounts  are  reviewed.", 3))))
       val moved = Piece(Vector("Policy"), Doc(Vector(para("accounts are reviewed.", 40))))
       val other = Piece(Vector("Policy"), Doc(Vector(para("Accounts are removed.", 3))))
       val elsewhere = Piece(Vector("Audit"), Doc(Vector(para("Accounts are reviewed.", 3))))
-      (here.fingerprint == moved.fingerprint, here.fingerprint == other.fingerprint,
-        here.fingerprint == elsewhere.fingerprint) ==> (true, false, false)
+      (
+        here.fingerprint == moved.fingerprint,
+        here.fingerprint == other.fingerprint,
+        here.fingerprint == elsewhere.fingerprint
+      ) ==> (true, false, false)
     }
   }
 }

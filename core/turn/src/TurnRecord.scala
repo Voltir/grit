@@ -3,10 +3,10 @@ package grit.turn
 import grit.act.moves.Judging
 import grit.core.context.{Querying, Results, Retrieved}
 import grit.core.document.DocumentSearch
-import grit.core.files.PieceSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
 import grit.core.either.Traversal.sequence
+import grit.core.files.PieceSearch
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome

@@ -20,8 +20,8 @@ import grit.core.act.{
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
 import grit.core.document.DocumentKeeper
-import grit.core.files.PieceKeeper
 import grit.core.durable.{Flow, Journaled, Steps}
+import grit.core.files.PieceKeeper
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
@@ -171,8 +171,13 @@ object DurableMoves {
   }
 
   /** One run's moves, its keeps over `keeper` and its piece moves over `pieces`. */
-  private class Kept(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper, pieces: PieceKeeper)(
-      using steps: Steps[KeepingEnv]^
+  private class Kept(
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      pieces: PieceKeeper
+  )(using
+      steps: Steps[KeepingEnv]^
   ) extends Run(acting, limits),
         Keeping {
 

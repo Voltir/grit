@@ -9,8 +9,8 @@ import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
-import grit.core.files.PieceStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
+import grit.core.files.PieceStore
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, WorksIn}

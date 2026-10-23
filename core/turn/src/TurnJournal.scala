@@ -87,14 +87,15 @@ private[turn] object TurnJournal {
               pieces <- o.value.get("pieces") match {
                 case None => Right(Vector.empty)
                 case Some(ujson.Arr(items)) =>
-                  items.toVector.foldLeft[Either[String, Vector[Retrieved.Piece]]](Right(Vector.empty)) {
-                    (acc, p) =>
-                      acc.flatMap(ps =>
-                        readFound(p).flatMap {
-                          case found: Retrieved.Piece => Right(ps :+ found)
-                          case _ => Left("window: a piece is not a piece")
-                        }
-                      )
+                  items.toVector.foldLeft[Either[String, Vector[Retrieved.Piece]]](
+                    Right(Vector.empty)
+                  ) { (acc, p) =>
+                    acc.flatMap(ps =>
+                      readFound(p).flatMap {
+                        case found: Retrieved.Piece => Right(ps :+ found)
+                        case _ => Left("window: a piece is not a piece")
+                      }
+                    )
                   }
                 case Some(_) => Left("window: pieces is not an array")
               }
@@ -1244,7 +1245,9 @@ private[turn] object TurnJournal {
             )
           case "result" => str(o, "call").map(c => ItemRef.Result(ToolCallId(c)))
           case "piece" =>
-            long(o, "id").flatMap(n => PieceId.of(n).map(ItemRef.Piece(_)).toRight(s"gate: piece $n"))
+            long(o, "id").flatMap(n =>
+              PieceId.of(n).map(ItemRef.Piece(_)).toRight(s"gate: piece $n")
+            )
           case other => Left(s"gate: no ref kind $other")
         }
       }

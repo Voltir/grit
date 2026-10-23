@@ -345,11 +345,25 @@ object RetrievalAssemblerTests extends TestSuite {
   /** `texts` kept as the pieces of `p`'s file `ref`, written before every turn's root; each one's
     * id, in order.
     */
-  private def kept(pieces: InMemoryPieces, p: String, ref: String, texts: String*): Vector[PieceId] = {
+  private def kept(
+      pieces: InMemoryPieces,
+      p: String,
+      ref: String,
+      texts: String*
+  ): Vector[PieceId] = {
     val all = texts.toVector.map(t =>
-      Piece(Vector("Policy"), grit.prose.form.Doc(Vector(grit.prose.form.Block.Paragraph(
-        grit.prose.form.Text(Vector(grit.prose.form.Span(t, Set.empty, Vector(Locus.Page(1)))))
-      ))))
+      Piece(
+        Vector("Policy"),
+        grit.prose.form.Doc(
+          Vector(
+            grit.prose.form.Block.Paragraph(
+              grit.prose.form.Text(
+                Vector(grit.prose.form.Span(t, Set.empty, Vector(Locus.Page(1))))
+              )
+            )
+          )
+        )
+      )
     )
     pieces
       .keeper(plugin(p), PieceKeeper.Bound)
@@ -1332,7 +1346,9 @@ object RetrievalAssemblerTests extends TestSuite {
         (1L, Vector(named), Vector(v))
     }
 
-    test("a piece ranks beside the turns and documents found, by its score times its plugin's weight") {
+    test(
+      "a piece ranks beside the turns and documents found, by its score times its plugin's weight"
+    ) {
       val docs = shelf("notes" -> 1.0, "files" -> 4.0)
       val alpha = write(docs, "notes", "a", placeOf("api"), "the database for probes")
       val pieces = new InMemoryPieces
@@ -1389,7 +1405,14 @@ object RetrievalAssemblerTests extends TestSuite {
       val pieces = new InMemoryPieces
       val big = kept(pieces, "files", "big", "probe budget " + ("word " * 400))
       val small = kept(pieces, "files", "small", "the probe budget")
-      val w = assemble(store(ask), new Writer(Some("probe budget")), 300, at = 0, documents = docs, pieces = pieces)
+      val w = assemble(
+        store(ask),
+        new Writer(Some("probe budget")),
+        300,
+        at = 0,
+        documents = docs,
+        pieces = pieces
+      )
       (big.size, w.pieces.map(_.id)) ==> (1, small)
     }
 

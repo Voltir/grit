@@ -13,13 +13,15 @@ object PieceIndexTests extends TestSuite {
   val tests = Tests {
 
     test("a piece is searched by its file's name in words, its heading path, then its words") {
-      val piece = Piece(Vector("Access Control", "Account Management"), Doc(Vector(para("Review accounts."))))
+      val piece =
+        Piece(Vector("Access Control", "Account Management"), Doc(Vector(para("Review accounts."))))
       PieceIndex.of("security_plan-final.pdf", piece) ==>
         "security plan final\nAccess Control > Account Management\nReview accounts."
     }
 
     test("an identifier is also written as its alias, in a piece's text and in a query") {
-      val piece = Piece(Vector("AC-2 Account Management"), Doc(Vector(para("See AC-2(3) and SP 800-53."))))
+      val piece =
+        Piece(Vector("AC-2 Account Management"), Doc(Vector(para("See AC-2(3) and SP 800-53."))))
       (
         PieceIndex.of("controls.pdf", piece),
         PieceIndex.query("what does ac-2(3) say, and A.5.1?")

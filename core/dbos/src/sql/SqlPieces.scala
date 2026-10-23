@@ -67,7 +67,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         ps.setInt(p + 6, PieceSearch.PerFile)
         ps.setInt(p + 7, limit)
       }(rs =>
-        kept(rs).map(k => (rs.getLong("set_id"), rs.getInt("n"), PieceSearch.Hit(k, -rs.getDouble("s"), 0)))
+        kept(rs).map(k =>
+          (rs.getLong("set_id"), rs.getInt("n"), PieceSearch.Hit(k, -rs.getDouble("s"), 0))
+        )
       ).map { (found: Vector[(Long, Int, PieceSearch.Hit)]) =>
         // How many more of each file matched than are answered.
         val shown = found.groupBy(_._1).view.mapValues(_.size).toMap
@@ -235,7 +237,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       }(rs => Right(rs.getLong("id"))).map(_.headOption)
 
     /** `set`'s pieces in order: each one's id, fingerprint and piece. */
-    private def pieced(set: Long)(using tx: Tx^): Either[StoreError, Vector[(Long, String, Piece)]] =
+    private def pieced(
+        set: Long
+    )(using tx: Tx^): Either[StoreError, Vector[(Long, String, Piece)]] =
       rows(
         """SELECT id, encode(fingerprint, 'hex') AS fingerprint, array_to_json(heading)::text AS heading,
           |       tree::text AS tree
@@ -372,7 +376,10 @@ private[sql] object SqlPieces {
   /** The piece `rs` holds in its `heading` and `tree` columns, or why not. */
   def piece(rs: ResultSet): Either[String, Piece] =
     Piece.read(
-      ujson.read(rs.getString("heading")).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)),
+      ujson
+        .read(rs.getString("heading"))
+        .arrOpt
+        .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)),
       ujson.read(rs.getString("tree"))
     )
 

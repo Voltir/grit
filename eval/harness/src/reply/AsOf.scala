@@ -3,8 +3,8 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.document.{Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.files.PieceSearch
 import grit.core.either.Traversal.traverse
+import grit.core.files.PieceSearch
 import grit.core.id.{
   CallSlot,
   CloseRef,

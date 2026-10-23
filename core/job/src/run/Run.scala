@@ -5,8 +5,8 @@ import java.time.Instant
 import grit.act.moves.{DurableMoves, KeepingEnv, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates}
 import grit.core.document.{DocumentKeeper, DocumentTerms}
-import grit.core.files.PieceKeeper
 import grit.core.durable.{Durable, Flow, Flows, Step as DurableStep, StepName, Steps}
+import grit.core.files.PieceKeeper
 import grit.core.flow.Trusted
 import grit.core.id.{EntryId, JobName, PluginName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId

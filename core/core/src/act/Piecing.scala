@@ -57,7 +57,8 @@ object Piecing {
     val floor = Tx.floor(tx)
     val replaced = read.replacing.filter(_ != floor).map(l => (read.ref, l))
     file match {
-      case Left(why) => withdrawn(replaced :+ (read.ref, floor), keeper, at).map(_ => Pieced.Unread(why))
+      case Left(why) =>
+        withdrawn(replaced :+ (read.ref, floor), keeper, at).map(_ => Pieced.Unread(why))
       case Right((name, tree)) =>
         val (pieces, cut) = Pieces.of(tree, estimate)
         val kept = PiecedFile(read.ref, name, read.revision, tree.by, tree.version)

@@ -3,8 +3,8 @@ package grit.turn
 import java.time.LocalDate
 
 import grit.core.document.InMemoryDocuments
-import grit.core.files.InMemoryPieces
 import grit.core.durable.{InMemoryDurable, StepRecord}
+import grit.core.files.InMemoryPieces
 import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{

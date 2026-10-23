@@ -28,7 +28,13 @@ object PiecingTests extends TestSuite {
 
   private val Tree: Understood =
     Understood(
-      Doc(Vector(Block.Paragraph(Text(Vector(Span("Keys rotate yearly.", Set.empty, Vector(Locus.Page(1)))))))),
+      Doc(
+        Vector(
+          Block.Paragraph(
+            Text(Vector(Span("Keys rotate yearly.", Set.empty, Vector(Locus.Page(1)))))
+          )
+        )
+      ),
       Covers.Whole,
       Vector.empty,
       FormatName("test"),
@@ -41,7 +47,12 @@ object PiecingTests extends TestSuite {
     Instant.parse("2026-03-01T00:00:00Z").plusSeconds(60L * minute)
 
   /** The file `a` read and kept by a run at `label`, replacing its pieces at `replacing`. */
-  private def kept(pieces: InMemoryPieces, label: Label, replacing: Vector[Label], minute: Int): Pieced =
+  private def kept(
+      pieces: InMemoryPieces,
+      label: Label,
+      replacing: Vector[Label],
+      minute: Int
+  ): Pieced =
     Piecing
       .kept(
         Piecing.Read(File, "a", "r1", Here, replacing),
@@ -54,7 +65,9 @@ object PiecingTests extends TestSuite {
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
 
   val tests = Tests {
-    test("a read replacing another label withdraws the file's pieces there, and keeps them at the floor") {
+    test(
+      "a read replacing another label withdraws the file's pieces there, and keeps them at the floor"
+    ) {
       val pieces = new InMemoryPieces
       kept(pieces, TestLabels.Trial, Vector(), 1)
       kept(pieces, Label.Public, Vector(TestLabels.Trial), 2)
@@ -67,7 +80,9 @@ object PiecingTests extends TestSuite {
       val before = pieces.current(Plugin)(using tx(Label.Public)).map(_.id)
       val again = kept(pieces, Label.Public, Vector(Label.Public), 2)
       val marked =
-        pieces.tombstones.declaredDue(Target.Kind.PieceSet, Plugin, at(10), 10)(using tx(Label.Public))
+        pieces.tombstones.declaredDue(Target.Kind.PieceSet, Plugin, at(10), 10)(using
+          tx(Label.Public)
+        )
       (again, pieces.current(Plugin)(using tx(Label.Public)).map(_.id) == before, marked) ==>
         (Pieced.Kept(1, 0), true, Right(Vector()))
     }

@@ -53,9 +53,16 @@ abstract class PieceContract extends TestSuite {
 
   /** Keeps `texts` as `ref`'s pieces under `k` at minute `m`; how many were kept. */
   private def keep(k: PieceKeeper, ref: String, m: Int, texts: String*): Int =
-    transaction(ok(k.keep(file(ref), Here, Integrity.Member, texts.map(piece(_)).toVector, 0, at(m))))
+    transaction(
+      ok(k.keep(file(ref), Here, Integrity.Member, texts.map(piece(_)).toVector, 0, at(m)))
+    )
 
-  private def search(plugin: PluginName, query: String, m: Int, limit: Int = 30): Vector[PieceSearch.Hit] =
+  private def search(
+      plugin: PluginName,
+      query: String,
+      m: Int,
+      limit: Int = 30
+  ): Vector[PieceSearch.Hit] =
     transaction(ok(store.search(Vector(plugin), query, limit, at(m))))
 
   /** The id of the one piece of `plugin`'s matching `query` at minute `m`. */
@@ -71,7 +78,9 @@ abstract class PieceContract extends TestSuite {
 
   val tests = Tests {
 
-    test("kept pieces are found by their words; a later keep of the file supersedes them, marked for deletion") {
+    test(
+      "kept pieces are found by their words; a later keep of the file supersedes them, marked for deletion"
+    ) {
       val p = name("pieces-supersede")
       val k = keeper(p, PieceKeeper.Bound)
       (keep(k, "a", 1, "alpha one", "beta two"), keep(k, "a", 5, "gamma three")) ==> (2, 1)
@@ -83,7 +92,9 @@ abstract class PieceContract extends TestSuite {
         (Vector("alpha one"), Vector(), Vector("gamma three"), true)
     }
 
-    test("a piece whose words are kept again keeps its id; one no longer kept is read until collected") {
+    test(
+      "a piece whose words are kept again keeps its id; one no longer kept is read until collected"
+    ) {
       val p = name("pieces-identity")
       val k = keeper(p, PieceKeeper.Bound)
       keep(k, "a", 1, "alpha one", "beta two")
@@ -106,7 +117,9 @@ abstract class PieceContract extends TestSuite {
       (kept, hit.map(_.piece.file.revision), marked) ==> (1, Vector("r2"), Vector())
     }
 
-    test("past its bound, a keeper deletes whole files, least recently placed first, never the one written") {
+    test(
+      "past its bound, a keeper deletes whole files, least recently placed first, never the one written"
+    ) {
       val p = name("pieces-bound")
       val one = Piece.size(piece("alpha one"), "a.pdf")
       val k = keeper(p, 2 * one + one / 2)
@@ -126,8 +139,11 @@ abstract class PieceContract extends TestSuite {
       val old = idOf(p, "one", 2)
       keep(k, "a", 3, "alpha two")
       keep(k, "b", 4, "bravo one")
-      (transaction(ok(store.read(Vector(old)))), search(p, "alpha", 5).map(words),
-        search(p, "bravo", 5).size) ==> (Vector(), Vector("alpha two"), 1)
+      (
+        transaction(ok(store.read(Vector(old)))),
+        search(p, "alpha", 5).map(words),
+        search(p, "bravo", 5).size
+      ) ==> (Vector(), Vector("alpha two"), 1)
     }
 
     test("a search answers at most PerFile pieces of one file, each saying how many more matched") {
@@ -156,26 +172,34 @@ abstract class PieceContract extends TestSuite {
       opened(Clearance.of(TestLabels.Trial))(
         ok(k.keep(file("a"), Here, Integrity.Member, Vector(piece("alpha one")), 0, at(1)))
       )
-      val high = opened(Clearance.of(TestLabels.Trial))(ok(store.search(Vector(p), "alpha", 5, at(2))))
+      val high =
+        opened(Clearance.of(TestLabels.Trial))(ok(store.search(Vector(p), "alpha", 5, at(2))))
       (search(p, "alpha", 2), high.map(_.piece.label)) ==> (Vector(), Vector(TestLabels.Trial))
     }
 
     test("a plugin holds pieces while one is current that its transaction reads") {
-      val (p, q, r) = (name("pieces-holding"), name("pieces-holding-high"), name("pieces-holding-none"))
+      val (p, q, r) =
+        (name("pieces-holding"), name("pieces-holding-high"), name("pieces-holding-none"))
       keep(keeper(p, PieceKeeper.Bound), "a", 2, "alpha one")
       opened(Clearance.of(TestLabels.Trial))(
-        ok(keeper(q, PieceKeeper.Bound).keep(file("a"), Here, Integrity.Member, Vector(piece("x")), 0, at(2)))
+        ok(
+          keeper(q, PieceKeeper.Bound)
+            .keep(file("a"), Here, Integrity.Member, Vector(piece("x")), 0, at(2))
+        )
       )
       def holding(m: Int) = transaction(ok(store.holding(Vector(r, q, p), at(m))))
       (holding(1), holding(3)) ==> (Vector(), Vector(p))
     }
 
-    test("a file's pieces withdrawn at their label are no longer current, and marked for deletion") {
+    test(
+      "a file's pieces withdrawn at their label are no longer current, and marked for deletion"
+    ) {
       val p = name("pieces-withdraw")
       val k = keeper(p, PieceKeeper.Bound)
       keep(k, "a", 1, "alpha one")
       def withdraw(label: Label, m: Int) = transaction(ok(k.withdraw("a", label, at(m))))
-      val withdrawn = (withdraw(TestLabels.Trial, 2), withdraw(Label.Public, 3), withdraw(Label.Public, 4))
+      val withdrawn =
+        (withdraw(TestLabels.Trial, 2), withdraw(Label.Public, 3), withdraw(Label.Public, 4))
       val marked = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
       (withdrawn, search(p, "alpha", 5), marked.size) ==> ((false, true, false), Vector(), 1)
     }

@@ -26,6 +26,14 @@ import grit.core.document.{
 }
 import grit.core.durable.{Flow, Flows, InMemoryDurable}
 import grit.core.edge.Advert
+import grit.core.edge.{
+  EdgeDirectory,
+  InMemoryEdges,
+  Registration,
+  RequestState,
+  ToolRequest,
+  ToolRequests
+}
 import grit.core.files.{
   FileArea,
   FileItem,
@@ -41,14 +49,6 @@ import grit.core.files.{
   PutKey
 }
 import grit.core.host.TempBlobs
-import grit.core.edge.{
-  EdgeDirectory,
-  InMemoryEdges,
-  Registration,
-  RequestState,
-  ToolRequest,
-  ToolRequests
-}
 import grit.core.id.{CallSlot, ConversationId, EdgeName, FileHandle, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
@@ -130,7 +130,10 @@ object DurableMovesTests extends MovesContract {
         )(_ => ())
         .fold(e => throw new java.lang.AssertionError(e.message), _._1.handle)
       val got = w.keeping(limits, w.keeper, area)(m => use(m, file))
-      (got, w.pieces.current(MovesWorld.Notes)(using TestTx.fake(Clearance.of(MovesContract.Floor))))
+      (
+        got,
+        w.pieces.current(MovesWorld.Notes)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
+      )
     }
   }
 
@@ -316,7 +319,8 @@ final class MovesWorld(
       use: Keeping^ -> A
   ): A = {
     val models = new Answering(Answer)
-    val keeps = MovesWorld.keeps(acting, limits, keeper, pieces.keeper(Notes, PieceKeeper.Bound))(use)
+    val keeps =
+      MovesWorld.keeps(acting, limits, keeper, pieces.keeper(Notes, PieceKeeper.Bound))(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(Flows.run(keeps, kept(models, files), ()).merge)

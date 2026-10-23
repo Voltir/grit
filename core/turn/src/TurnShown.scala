@@ -186,7 +186,8 @@ private[turn] object TurnShown {
       near <- Nearby.read(window.nearby, entries)
       named <- principals.speakers((at ++ mine ++ near).map(_.id).distinct)
       labelled <- documents.labelled(window.documents)
-      kept <- if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
+      kept <-
+        if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
       // The terms in force are read only when a piece is left to label.
       terms <- if (kept.isEmpty) Right(Vector.empty) else documents.declared()
     } yield {

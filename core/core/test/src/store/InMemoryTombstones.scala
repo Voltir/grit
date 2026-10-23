@@ -8,8 +8,7 @@ import grit.core.retention.{Target, Tombstone}
 /** An in-memory [[Tombstones]] for tests, keeping [[TombstonesContract]]. It ignores the `Tx`.
   * `owner` says which plugin's a target is, as its row would; `None` for one with no row.
   */
-final class InMemoryTombstones(owner: Target -> Option[PluginName] = _ => None)
-    extends Tombstones {
+final class InMemoryTombstones(owner: Target -> Option[PluginName] = _ => None) extends Tombstones {
   import InMemoryTombstones.Row
 
   // Replaced whole by the fake's own methods, which the test calls on its one thread.
@@ -64,7 +63,9 @@ final class InMemoryTombstones(owner: Target -> Option[PluginName] = _ => None)
   ): Either[StoreError, Vector[Tombstone]] =
     if (kind != Target.Kind.Document && kind != Target.Kind.PieceSet) Right(Vector.empty)
     else
-      due(kind, before, Int.MaxValue).map(_.filter(t => owner(t.target).contains(plugin)).take(n max 0))
+      due(kind, before, Int.MaxValue).map(
+        _.filter(t => owner(t.target).contains(plugin)).take(n max 0)
+      )
 
   def deferred(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     rows.get(target) match {

@@ -60,7 +60,6 @@ import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
-import grit.prose.form.{Block, Doc, Span, Text}
 import grit.core.visibility.{Clearance, Label, Subject}
 import grit.core.visibility.{Integrity, Provenance, Readers}
 import grit.dbos.sql.{
@@ -72,8 +71,8 @@ import grit.dbos.sql.{
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlPeriodStore,
-  SqlPluginCursors,
   SqlPieces,
+  SqlPluginCursors,
   SqlPluginDocs,
   SqlSchedules,
   SqlSpeechStore,
@@ -82,6 +81,7 @@ import grit.dbos.sql.{
   TestPostgres
 }
 import grit.dbos.workflow.{DurableWorkflow, Posts}
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.{DBOSClient, EnqueueOptions}
@@ -1202,7 +1202,9 @@ object CollectorLiveTests extends TestSuite {
       } finally engine.close()
     }
 
-    test("a kept file's pieces no longer current go their plugin's declared retention after, not before") {
+    test(
+      "a kept file's pieces no longer current go their plugin's declared retention after, not before"
+    ) {
       val config = TestPostgres.freshDatabase("collect_pieces")
       val p = PluginName.of("piecing").getOrElse(sys.error("name"))
       val pieces = new SqlPieces(tombstones)
@@ -1210,7 +1212,10 @@ object CollectorLiveTests extends TestSuite {
       val here = Place.under(Namespace.Task, Vector("collect"))
       val file = PiecedFile("f", "f.pdf", "r1", FormatName("test"), 1)
       def piece(text: String): Piece =
-        Piece(Vector.empty, Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1)))))))))
+        Piece(
+          Vector.empty,
+          Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1))))))))
+        )
       val engine = launched(config, 1.day, Vector(new Keeping(p)))
       try {
         val now = Instant.now()

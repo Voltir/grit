@@ -212,7 +212,8 @@ final class RetrievalAssembler(
       read.open.find(o => o.conversation == c && !before(seq, o.first))
     val versions =
       read.shelves.fold(Vector.empty)(_ => asked.collect { case Retrieved.Doc(v) => v })
-    val pieceIds = read.pieced.fold(Vector.empty)(_ => asked.collect { case Retrieved.Piece(id, _) => id })
+    val pieceIds =
+      read.pieced.fold(Vector.empty)(_ => asked.collect { case Retrieved.Piece(id, _) => id })
     val pieceTerms = read.pieced.fold(Map.empty)(_.terms)
     val near = asked.collect {
       case Retrieved.Near(c, seq) if openAt(c, seq).nonEmpty => c
@@ -248,7 +249,9 @@ final class RetrievalAssembler(
               .map(Candidate.Doc(d, _))
           })
         case Retrieved.Piece(id, more) =>
-          Right(held.get(id).flatMap(k => pieceTerms.get(k.plugin).map(Candidate.Piece(k, _, more))))
+          Right(
+            held.get(id).flatMap(k => pieceTerms.get(k.plugin).map(Candidate.Piece(k, _, more)))
+          )
       }
     db.read(Subject.Turn(request.turn)) {
       for {
@@ -677,7 +680,9 @@ final class RetrievalAssembler(
         .get(h.piece.plugin)
         .map(t => (h.score * DocWeight.value(t.weight), Candidate.Piece(h.piece, t, h.more)))
     }
-    (own ++ near ++ records.filterNot(r => openHere(r._2.conversation)) ++ docs ++ parts).zipWithIndex
+    (own ++ near ++ records.filterNot(r =>
+      openHere(r._2.conversation)
+    ) ++ docs ++ parts).zipWithIndex
       .sortBy { case ((score, _), i) => (-score, i) }
       .map { case ((score, c), _) => (c, score) }
       .distinctBy(_._1.key)

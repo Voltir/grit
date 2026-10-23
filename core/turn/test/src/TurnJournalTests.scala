@@ -246,16 +246,28 @@ object TurnJournalTests extends TestSuite {
       assert(j.decode("""{"ok":{"entries":[0],"notes":[],"documents":[0]}}""").isLeft)
     }
 
-    test("a window's pieces are recorded by id and how many more, after its documents, and read back") {
+    test(
+      "a window's pieces are recorded by id and how many more, after its documents, and read back"
+    ) {
       val nine = PieceId.of(9).getOrElse(sys.error("unreachable: 9 is an id"))
       val versions = Vector(7L).flatMap(DocumentVersionId.of)
       val j = summon[Journaled[Either[TurnFailure, Window]]]
       val pieced: Either[TurnFailure, Window] =
-        Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, Vector(Retrieved.Piece(nine, 2))))
+        Right(
+          Window(
+            Vector(EntrySeq(0)),
+            Vector.empty,
+            Vector.empty,
+            versions,
+            Vector(Retrieved.Piece(nine, 2))
+          )
+        )
       j.encode(pieced) ==>
         """{"ok":{"entries":[0],"notes":[],"documents":[7],"pieces":[{"piece":9,"more":2}]}}"""
       roundTrip(pieced) ==> Right(pieced)
-      assert(j.decode("""{"ok":{"entries":[0],"notes":[],"pieces":[{"piece":0,"more":2}]}}""").isLeft)
+      assert(
+        j.decode("""{"ok":{"entries":[0],"notes":[],"pieces":[{"piece":0,"more":2}]}}""").isLeft
+      )
       // A window with no pieces is recorded as before: no "pieces" field.
       j.encode(Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions))) ==>
         """{"ok":{"entries":[0],"notes":[],"documents":[7]}}"""
@@ -586,7 +598,10 @@ object TurnJournalTests extends TestSuite {
         Retrieved.Doc(DocumentVersionId.of(7).getOrElse(sys.error("unreachable: 7 is a version")))
       val piece = Retrieved.Piece(PieceId.of(9).getOrElse(sys.error("unreachable: 9 is an id")), 4)
       val results =
-        Results(Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5, piece -> 0.25), beyond = 3)
+        Results(
+          Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5, piece -> 0.25),
+          beyond = 3
+        )
       val verdicts = Vector(
         own -> TurnRelevance.Verdict.Passed(Probability.clamped(0.75)),
         doc -> TurnRelevance.Verdict.Rejected(Probability.clamped(0.25)),
