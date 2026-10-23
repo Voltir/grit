@@ -122,11 +122,11 @@ trait PieceKeeper {
     * label stop being current and are marked for deletion after the plugin's retention
     * ([[grit.core.retention.Target.PieceSet]]); one whose fingerprint is among the new keeps its
     * id. Nothing new is kept when those pieces were the same, in order, at the same place,
-    * integrity, format and version: only `file`'s name and revision change. Then, while the
-    * plugin's pieces kept, current or not, take more than the keeper's bound in bytes
-    * ([[Piece.size]]), the files kept least recently placed are deleted whole, at any label:
-    * those no longer current first, the oldest first, then the current ones, never `file`'s.
-    * How many pieces are kept.
+    * integrity, format, version and target: only `file`'s name, revision, kind and pointer
+    * change. Then, while the plugin's pieces kept, current or not, take more than the keeper's
+    * bound in bytes ([[Piece.size]]), the files kept least recently placed are deleted whole, at
+    * any label: those no longer current first, the oldest first, then the current ones, never
+    * `file`'s. How many pieces are kept.
     */
   def keep(
       file: PiecedFile,

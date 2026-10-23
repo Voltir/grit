@@ -63,7 +63,12 @@ final class InMemoryPieces extends PieceStore {
           sets = sets.updated(
             s,
             r.copy(file =
-              r.file.copy(name = file.name, revision = file.revision, pointer = file.pointer)
+              r.file.copy(
+                name = file.name,
+                revision = file.revision,
+                kind = file.kind,
+                pointer = file.pointer
+              )
             )
           )
           Right(pieces.size)
