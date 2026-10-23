@@ -239,7 +239,7 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
     send(base, path, query) { (status, in) =>
       if (status != 200)
         DriveRest
-          .answered(status, DriveRest.text(in), off)
+          .answered(status, DriveRest.bodyText(in), off)
           .flatMap(_ => Left(DriveError.Malformed(s"Drive answered $status")))
       else Right(body(in))
     }
@@ -268,7 +268,7 @@ final class DriveRest(api: URI, slides: URI, authorizer: Authorizer, clock: Cloc
     * [[DriveError]] says.
     */
   private def get(path: String, query: Vector[(String, String)]): Either[DriveError, String] =
-    send(api, path, query)((status, in) => DriveRest.answered(status, DriveRest.text(in)))
+    send(api, path, query)((status, in) => DriveRest.answered(status, DriveRest.bodyText(in)))
 
   /** A GET of `path` below `base` with `query`, and `supportsAllDrives` for a file's, its
     * answer's status and body handed to `read`; the body closed after. A failure to reach
@@ -358,7 +358,7 @@ object DriveRest {
     Set("userRateLimitExceeded", "rateLimitExceeded", "dailyLimitExceeded", "quotaExceeded")
 
   /** `in`'s first [[MaxRead]] bytes as text; when cut there, its whole lines. */
-  private def text(in: java.io.InputStream): String = {
+  private def bodyText(in: java.io.InputStream): String = {
     val bytes = in.readNBytes(MaxRead)
     val text = new String(bytes, UTF_8)
     // A body cut at MaxRead ends partway through a line: keep its whole lines.
