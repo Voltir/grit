@@ -226,7 +226,8 @@ object Sync {
                       )
                     case Left(why) => read.map(_ => Piecing.Mark(ref, revision, at, why, Vector()))
                   }
-                  (pieced(moves.piece(CardMoves.of(Phase.Piece, key), piecing), path), read, seen)
+                  val piece = moves.piece(CardMoves.of(Phase.Piece, key), piecing)
+                  (kept(piece, s"keeping the pieces of $path"), read, seen)
               }
             case Step.Summarise(path, subject, head, _) =>
               val asked = summarising(subject, head)
@@ -300,9 +301,9 @@ object Sync {
               (
                 dropped match {
                   case Outcome.Kept if gone.nonEmpty && source.keepsFiles =>
-                    pieced(
+                    kept(
                       moves.piece(CardMoves.DropPieces, read.map(_ => files)),
-                      "the files gone"
+                      "keeping the pieces of the files gone"
                     )
                   case stopped => stopped
                 },
@@ -320,7 +321,11 @@ object Sync {
             path: String,
             piecing: Tainted[Piecing]
         ): Outcome[Nothing] = done match {
-          case Outcome.Kept => pieced(moves.piece(CardMoves.of(Phase.Piece, key), piecing), path)
+          case Outcome.Kept =>
+            kept(
+              moves.piece(CardMoves.of(Phase.Piece, key), piecing),
+              s"keeping the pieces of $path"
+            )
           case stopped => stopped
         }
 
@@ -460,17 +465,10 @@ object Sync {
       case Some(file) => Right(file)
     }
 
-  /** A piece move's outcome: [[Outcome.Kept]] whatever it kept, or why keeping the pieces of
-    * `what` stopped.
+  /** A keep's or a piece move's outcome: [[Outcome.Kept]] whatever it kept, or why `doing`
+    * stopped.
     */
-  private def pieced(result: Either[MoveError, Pieced], what: String): Outcome[Nothing] =
-    result.fold(
-      e => Outcome.Stopped(s"keeping the pieces of $what: ${MoveError.said(e)}"),
-      _ => Outcome.Kept
-    )
-
-  /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
-  private def kept(result: Either[MoveError, Kept], doing: String): Outcome[Nothing] =
+  private def kept(result: Either[MoveError, Kept | Pieced], doing: String): Outcome[Nothing] =
     result.fold(e => Outcome.Stopped(s"$doing: ${MoveError.said(e)}"), _ => Outcome.Kept)
 
   /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
