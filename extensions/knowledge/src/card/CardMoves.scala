@@ -47,6 +47,9 @@ object CardMoves {
   /** `drop-pieces`: the piece move withdrawing the pieces of the files gone. */
   val DropPieces: MoveName = MoveName("drop-pieces")
 
+  /** `due-pieces`: the piece move finding the held files whose pieces are due. */
+  val DuePieces: MoveName = MoveName("due-pieces")
+
   /** `{kind}-{i}`: a dreaming run's `i`th move of `kind`, lower-case words joined by `-`. */
   private[knowledge] def numbered(kind: String, i: Int): MoveName = known(s"$kind-$i")
 

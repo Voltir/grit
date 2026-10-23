@@ -86,5 +86,17 @@ object PiecingTests extends TestSuite {
       (again, pieces.current(Plugin)(using tx(Label.Public)).map(_.id) == before, marked) ==>
         (Pieced.Kept(1, 0), true, Right(Vector()))
     }
+
+    test("a survey finds due a file kept by a format the area no longer reads at that version") {
+      val pieces = new InMemoryPieces
+      kept(pieces, Label.Public, Vector(), 1)
+      def due(reads: (FormatName, Int) -> Boolean) =
+        Piecing
+          .due(Piecing.Survey(Vector("a")), pieces.keeper(Plugin, PieceKeeper.Bound), reads)(using
+            tx(Label.Public)
+          )
+      (due((n, v) => n == FormatName("test") && v == 1), due((_, v) => v == 2)) ==>
+        (Right(Pieced.Due(Vector())), Right(Pieced.Due(Vector("a"))))
+    }
   }
 }

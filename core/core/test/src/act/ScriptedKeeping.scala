@@ -5,7 +5,15 @@ import java.time.Instant
 import grit.core.classify.{Answer, Request}
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.Journaled
-import grit.core.files.{FileError, Files, InMemoryPieces, KeptPiece, PieceKeeper, Understood}
+import grit.core.files.{
+  FileError,
+  Files,
+  FormatName,
+  InMemoryPieces,
+  KeptPiece,
+  PieceKeeper,
+  Understood
+}
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{EntryId, FileHandle, PluginName}
 import grit.core.message.Message
@@ -25,7 +33,8 @@ import grit.dbos.sql.TestTx
   * less than `Outside` is [[MoveError.Below]] and writes nothing; keeps are not limited. Its documents keep `documents`' rules: two of
   * these over one `documents` are two runs of a plugin, the second reading what the first kept.
   * Its piece moves keep `plugin`'s pieces in `pieces`, each file read as `files` reads its
-  * handle (by default none is kept), cut with [[MovesFixtures.PerChar]].
+  * handle (by default none is kept), cut with [[MovesFixtures.PerChar]]; its surveys take the
+  * area to read with a format at a version when `reads` says so (by default every one).
   */
 class ScriptedKeeping(
     limits: MoveLimits,
@@ -44,7 +53,8 @@ class ScriptedKeeping(
     rooms: Recorded = Recorded.Empty,
     val pieces: InMemoryPieces = new InMemoryPieces,
     files: FileHandle -> Either[String, (String, Understood)] = (h: FileHandle) =>
-      Left(FileError.Gone(h, Files.Expiry).message)
+      Left(FileError.Gone(h, Files.Expiry).message),
+    reads: (FormatName, Int) -> Boolean = (_, _) => true
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -78,6 +88,8 @@ class ScriptedKeeping(
             Piecing.withdrawn(gone, pieceKeeper, at).map(Pieced.Withdrawn(_))
           case relabel: Piecing.Relabel =>
             Piecing.relabelled(relabel, pieceKeeper, from.integrity, at)
+          case mark: Piecing.Mark => Piecing.marked(mark, pieceKeeper, at)
+          case survey: Piecing.Survey => Piecing.due(survey, pieceKeeper, reads)
           case read: Piecing.Read =>
             Piecing.kept(
               read,

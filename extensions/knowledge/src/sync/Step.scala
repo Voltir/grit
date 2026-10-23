@@ -34,6 +34,11 @@ object Step {
   /** Read the file `path`, reached `way`. */
   final case class Read(path: String, way: Way) extends Fetching
 
+  /** Read the file `path`, reached `way`, its card current, for its pieces alone: kept, or the
+    * file marked unread, as a write's read would leave them; its outcome is [[Outcome.Kept]].
+    */
+  final case class Piece(path: String, way: Way) extends Fetching
+
   /** Summarise `head`, the first 8 KB of the file `path` as read at `version`, the summary model
     * told before it that it is `subject` (`A Google Sheet named …`: what kind of thing it is, in
     * its source's own words); the card written from it records `version`.

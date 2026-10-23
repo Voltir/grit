@@ -31,7 +31,9 @@ Packages, in one-way order (each names only those before it):
   it drops. `Sync`, the keeping job `knowledge-sync`, makes each step as a move: a call, a
   summary ask, a check, or a keep; a card held at another label is withdrawn in the keep that
   replaces it. A file whose read the file area kept whole is kept as pieces beside its card, by
-  a piece move after its card's keep; its pieces move with its card and go when it goes. A
+  a piece move after its card's keep, and one read with none kept is marked unread; its pieces
+  move with its card and go when it goes, and a current file with neither pieces nor a mark,
+  or pieced by a reader since revised, is read again for them alone. A
   listing or a file answered below `Outside` is checked by the integrity tree before anything is made from it (ADR 0036),
   since a card is kept only from `Outside` or above. Imports `ref` and `card`.
 - **`github`**: a repository as a card source, read through GitHub's MCP server's

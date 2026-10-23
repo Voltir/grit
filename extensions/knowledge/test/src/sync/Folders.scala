@@ -9,6 +9,7 @@ import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, UnitVersion}
+import grit.knowledge.ref.CardKey
 
 /** A card source of two folders for [[Sync]]'s tests of a unit's own belief: `/` lists `a` and
   * `b`, `a` the file `a/x` and `b` the file `b/y`. Its walk lists `/` ([[Way.Run]]), then, for
@@ -45,7 +46,13 @@ final class Folders(
 
   override def calls(perRun: Int): Int = 10
 
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Folders.Names] =
+  def walk(
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      due: Instant,
+      repiece: Set[CardKey]
+  ): Walk[Folders.Names] =
     Folders.Scripted(
       corpus,
       Step.List("/", Way.Run) :: order.toList.flatMap { folder =>

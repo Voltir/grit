@@ -495,8 +495,8 @@ object MovesJournal {
       }
   )
 
-  /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}`, `{"withdrawn":n}` or
-    * `{"relabelled":n}`.
+  /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}`, `{"withdrawn":n}`,
+    * `{"relabelled":n}` or `{"due":[ref, …]}`.
     */
   given pieced: Journaled[Pieced] = Journaled.json(
     {
@@ -504,6 +504,7 @@ object MovesJournal {
       case Pieced.Unread(why) => ujson.Obj("unread" -> why)
       case Pieced.Withdrawn(files) => ujson.Obj("withdrawn" -> files)
       case Pieced.Relabelled(pieces) => ujson.Obj("relabelled" -> pieces)
+      case Pieced.Due(refs) => ujson.Obj("due" -> ujson.Arr.from(refs.map(ujson.Str(_))))
     },
     v =>
       fields(v, "piece").flatMap { o =>
@@ -514,7 +515,12 @@ object MovesJournal {
           case (_, _, Some(why), _, _) => Right(Pieced.Unread(why))
           case (_, _, _, Some(files), _) => Right(Pieced.Withdrawn(files))
           case (_, _, _, _, Some(pieces)) => Right(Pieced.Relabelled(pieces))
-          case _ => Left("piece: expected kept and cut, unread, withdrawn, or relabelled")
+          case _ =>
+            o.get("due").flatMap(_.arrOpt) match {
+              case Some(refs) if refs.forall(_.strOpt.nonEmpty) =>
+                Right(Pieced.Due(refs.toVector.flatMap(_.strOpt)))
+              case _ => Left("piece: expected kept and cut, unread, withdrawn, relabelled, or due")
+            }
         }
       }
   )

@@ -8,6 +8,7 @@ import grit.core.id.{CorpusName, FileHandle}
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
+import grit.knowledge.ref.CardKey
 
 /** A card source as a sync run reads it, its listings read as `L`. */
 trait Source[L <: caps.Pure] extends caps.Pure {
@@ -42,6 +43,11 @@ trait Source[L <: caps.Pure] extends caps.Pure {
     */
   def file(answer: Answer): Option[FileHandle] = None
 
+  /** Whether its reads may keep files in the file area ([[file]]), so its files' cards are
+    * kept with their pieces: false by default, and then a run makes no piece move.
+    */
+  def keepsFiles: Boolean = false
+
   /** What of `listing` the integrity tree checks when it is believed below `Outside`: what
     * reaches a card or steers the run.
     */
@@ -61,7 +67,14 @@ trait Source[L <: caps.Pure] extends caps.Pure {
 
   /** This run's walk, keeping at `floor`, holding `held`, its cards as [[Held.read]] reads
     * them, asking for at most `perRun` summaries, its slot due at `due`
-    * ([[grit.core.job.JobRun.nominal]]).
+    * ([[grit.core.job.JobRun.nominal]]); the files of `repiece`, their cards current, read again
+    * for their pieces alone, within the same `perRun` reads ([[Holding.repiece]]).
     */
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[L]
+  def walk(
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      due: Instant,
+      repiece: Set[CardKey] = Set.empty
+  ): Walk[L]
 }

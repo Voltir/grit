@@ -25,13 +25,17 @@ import grit.knowledge.ref.CardKey
   * makes it, at no model cost), each pointing at the read of its unit; copies up to
   * its floor, with no call or ask, the card of an unchanged unit held at another label, and to
   * its source's place ([[Source.at]]) the card of one kept elsewhere; and
-  * withdraws the cards of units gone from directories it listed in full. After a file's card is
-  * kept, it keeps the pieces of the file when its read kept all of it in the file area
-  * ([[Source.file]]) believed at `Outside` or above, as its card's key's at its version,
-  * believed as its card ([[grit.core.act.Keeping.piece]]), and otherwise withdraws those its card
-  * held before; a file's pieces move where its card is copied, and are withdrawn where it is
-  * withdrawn. A held card at another label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
-  * card it did not replace current. A card is kept at no less than what its unit's answers were
+  * withdraws the cards of units gone from directories it listed in full. Of a source that keeps
+  * files ([[Source.keepsFiles]]), after a file's card is kept, it keeps the pieces of the file
+  * when its read kept all of it in the file area ([[Source.file]]) believed at `Outside` or
+  * above, as its card's key's at its version, believed as its card
+  * ([[grit.core.act.Keeping.piece]]), and otherwise marks the file unread, saying why, so no
+  * earlier revision's pieces stay current; a file's pieces move where its card is copied, and
+  * are withdrawn where it is withdrawn. A file whose card is current at the floor but which has
+  * neither pieces there nor a mark, or whose pieces a format the area no longer reads at that
+  * version made, is read again for its pieces alone, within the run's `perRun` reads, and
+  * counted unchanged. A held card at another label is withdrawn only in the keep that replaces
+  * it, so a run stopped early leaves every card it did not replace current. A card is kept at no less than what its unit's answers were
   * read at, and believed at the meet of the run and what it read on its unit's way
   * ([[Step.Fetching.way]]: everything read before it for [[Way.Run]]; for [[Way.Through]], the
   * listings it was reached through, whose labels its own joins), its source's results (each as
@@ -174,12 +178,7 @@ object Sync {
               reached(Phase.Read, reading, read, seen) match {
                 case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, seen)
                 case Right((answer, at, reachedAs)) =>
-                  // All of a file is kept as pieces only when all of it is believed at Outside
-                  // or above: of one below, only its head is checked.
-                  val whole = source
-                    .file(Trusted.asIs(answer).extract)
-                    .filterNot(_ => answer.integrity.belowOutside)
-                  val on = reachedAs.copy(whole = whole)
+                  val on = reachedAs.copy(whole = wholeOf(source, answer))
                   source.fetched(Trusted.asIs(answer).extract) match {
                     case Fetched.Text(whole, version) if answer.integrity.belowOutside =>
                       // Of a file, only its head reaches its card, through its summary: the head
@@ -204,6 +203,25 @@ object Sync {
                     // A read with no version is left unwritten: none of it reaches a card.
                     case fetched => (Outcome.Fetched(fetched, at), read, seen)
                   }
+              }
+            case piece @ Step.Piece(path, _) =>
+              val key = CardKey.of(corpus, path)
+              val (ref, at) = (CardKey.value(key), source.at)
+              val revision = h.best(key).fold("")(c => UnitVersion.value(c.version))
+              reached(Phase.Read, piece, read, seen) match {
+                case Left(why) =>
+                  (Outcome.Stopped(s"reading $path for its pieces: $why"), read, seen)
+                case Right((answer, _, on)) =>
+                  // Nothing of the file reaches a card or steers the run: only its pieces are
+                  // believed as what it was read as.
+                  val piecing = wholeOf(source, answer) match {
+                    case Right(file) =>
+                      heard(on.believed, answer).map(_ =>
+                        Piecing.Read(file, ref, revision, at, Vector())
+                      )
+                    case Left(why) => read.map(_ => Piecing.Mark(ref, revision, at, why, Vector()))
+                  }
+                  (pieced(moves.piece(CardMoves.of(Phase.Piece, key), piecing), path), read, seen)
               }
             case Step.Summarise(path, subject, head, _) =>
               val asked = summarising(subject, head)
@@ -233,17 +251,17 @@ object Sync {
                 ),
                 s"keeping the card of ${card.path}"
               )
-              // A file's card written from a read that kept no whole file withdraws the pieces
-              // of its earlier revision at each label its card was held at, so none is served as
-              // its current one; a new file's card has none to withdraw, so makes no move.
-              val ref = CardKey.value(card.key)
-              val held = h.held.filter(_.key == card.key).map(c => (ref, c.label))
-              val piecing = (card.kind, on.flatMap(_.whole)) match {
-                case (UnitKind.Directory, _) => None
-                case (UnitKind.File, Some(file)) =>
-                  val version = UnitVersion.value(card.version)
-                  Some(Piecing.Read(file, ref, version, at, replacing.toVector))
-                case (UnitKind.File, None) => Option.when(held.nonEmpty)(Piecing.Withdraw(held))
+              // A file's card written from a read that kept no whole file marks it unread, so
+              // none of its earlier revision's pieces is served as current, and no run reads it
+              // again for its pieces until it changes.
+              val (ref, revision) = (CardKey.value(card.key), UnitVersion.value(card.version))
+              val piecing = card.kind match {
+                case UnitKind.File if source.keepsFiles =>
+                  Some(on.fold[Either[String, FileHandle]](Left(NotRead))(_.whole) match {
+                    case Right(file) => Piecing.Read(file, ref, revision, at, replacing.toVector)
+                    case Left(why) => Piecing.Mark(ref, revision, at, why, replacing.toVector)
+                  })
+                case UnitKind.File | UnitKind.Directory => None
               }
               (
                 piecing.fold(written)(p => after(written, card.key, card.path, from.map(_ => p))),
@@ -265,7 +283,8 @@ object Sync {
               )
               // A file's pieces go where its card goes, in a move of their own; a directory's
               // card (one made under a scope) has none.
-              val file = h.held.exists(c => c.key == key && c.label == from && c.scope.isEmpty)
+              val file = source.keepsFiles &&
+                h.held.exists(c => c.key == key && c.label == from && c.scope.isEmpty)
               val moved = read.map(_ => Piecing.Relabel(CardKey.value(key), from, at))
               (if (file) after(relabelled, key, path, moved) else relabelled, read, seen)
             case Step.Drop(gone) =>
@@ -276,7 +295,7 @@ object Sync {
               val files = Piecing.Withdraw(gone.map(c => (CardKey.value(c.key), c.label)))
               (
                 dropped match {
-                  case Outcome.Kept if gone.nonEmpty =>
+                  case Outcome.Kept if gone.nonEmpty && source.keepsFiles =>
                     pieced(
                       moves.piece(CardMoves.DropPieces, read.map(_ => files)),
                       "the files gone"
@@ -395,9 +414,47 @@ object Sync {
             go(w.after(outcome), after, next)
         }
 
-        go(source.walk(perRun, h.floor, h.held, due), start.map(_ => ()), Map.empty)
+        // The held files whose cards are current at the floor and whose pieces are due: read
+        // again for them alone ([[Holding.repiece]]).
+        val files = h.held.filter(c => c.label == h.floor && c.scope.isEmpty).map(_.key)
+        val owed =
+          if (!source.keepsFiles || files.isEmpty) Right(Vector.empty)
+          else
+            moves
+              .piece(CardMoves.DuePieces, start.map(_ => Piecing.Survey(files.map(CardKey.value))))
+              .map {
+                case Pieced.Due(refs) => files.filter(k => refs.contains(CardKey.value(k)))
+                case _ => Vector.empty
+              }
+        owed match {
+          case Left(e) =>
+            val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+            none.copy(stopped = Some(s"finding the pieces due: ${MoveError.said(e)}")).line
+          case Right(repiece) =>
+            go(
+              source.walk(perRun, h.floor, h.held, due, repiece.toSet),
+              start.map(_ => ()),
+              Map.empty
+            )
+        }
     }
   }
+
+  /** Why a file whose read is not what a run saw keeps no pieces: it was not read. */
+  private val NotRead = "it was not read"
+
+  /** The file `answer`, a read of `source`'s, kept whole in the file area, believed at `Outside` or above,
+    * whose pieces are kept; or why none are.
+    */
+  private def wholeOf(source: Source[?], answer: Tainted[Answer]): Either[String, FileHandle] =
+    source.file(Trusted.asIs(answer).extract) match {
+      case None => Left("its read kept no whole file in the file area")
+      // All of a file is kept as pieces only when all of it is believed at Outside or above: of
+      // one below, only its head is checked.
+      case Some(_) if answer.integrity.belowOutside =>
+        Left("it was believed below Outside, so only its head was checked")
+      case Some(file) => Right(file)
+    }
 
   /** A piece move's outcome: [[Outcome.Kept]] whatever it kept, or why keeping the pieces of
     * `what` stopped.
@@ -509,7 +566,7 @@ object Sync {
       at: Label,
       believed: Read,
       way: Way,
-      whole: Option[FileHandle] = None
+      whole: Either[String, FileHandle] = Left(NotRead)
   ) {
 
     /** This, `answer` heard after it. */

@@ -190,6 +190,56 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a piece survey finds due the files with nothing at the floor, not one kept or marked unread"
+    ) {
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
+        Made(
+          Vector(
+            move("p", Piecing.Read(file, "a", "r1", Here, Vector())),
+            move("m", Piecing.Mark("b", "r1", Here, "too large", Vector())),
+            move("s", Piecing.Survey(Vector("a", "b", "c")))
+          )
+        )
+      }
+      (got, kept.map(_.file.ref)) ==> (
+        Made(
+          Vector(
+            Right(Pieced.Kept(1, 0)),
+            Right(Pieced.Unread("too large")),
+            Right(Pieced.Due(Vector("c")))
+          )
+        ),
+        Vector("a")
+      )
+    }
+
+    test(
+      "a piece move marking a file unread withdraws its pieces before, and leaves it not due"
+    ) {
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
+        Made(
+          Vector(
+            move("p", Piecing.Read(file, "a", "r1", Here, Vector())),
+            move("m", Piecing.Mark("a", "r2", Here, "too large", Vector(Label.Public))),
+            move("s", Piecing.Survey(Vector("a")))
+          )
+        )
+      }
+      (got, kept) ==> (
+        Made(
+          Vector(
+            Right(Pieced.Kept(1, 0)),
+            Right(Pieced.Unread("too large")),
+            Right(Pieced.Due(Vector()))
+          )
+        ),
+        Vector()
+      )
+    }
+
+    test(
       "a piece move relabelling a file moves its pieces to the floor and the place given, believed no more than what it moves from"
     ) {
       val there = Place.under(Namespace.Task, Vector("notes", "there"))

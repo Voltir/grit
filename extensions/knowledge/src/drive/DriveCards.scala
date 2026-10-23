@@ -10,6 +10,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
 import grit.knowledge.card.UnitVersion
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
 
 /** The Docs, Sheets and text files of every shared drive its service reads, top level and one
@@ -41,12 +42,13 @@ final case class DriveCards private (
   def carding(at: Label): Option[Label] = labels.find(_.dominates(at))
 
   /** `list` with no arguments for the shared drives ([[DriveWalk.Drives]]), or with `folder` for
-    * a drive's or a folder's id; `read` with `file`.
+    * a drive's or a folder's id; `read` with `file`, for its card or its pieces.
     */
   def call(step: Step.Fetching): (ToolName, ujson.Obj) = step match {
     case Step.List(path, _) if path == DriveWalk.Drives => (list, ujson.Obj())
     case Step.List(path, _) => (list, ujson.Obj("folder" -> path))
     case Step.Read(path, _) => (read, ujson.Obj("file" -> path))
+    case Step.Piece(path, _) => (read, ujson.Obj("file" -> path))
   }
 
   /** [[DriveListing.read]] of `answer`'s facts: its text is never read. */
@@ -67,6 +69,8 @@ final case class DriveCards private (
     }
 
   /** The handle [[DriveOpened.read]] reads of `answer`'s facts: a file a format read. */
+  override def keepsFiles: Boolean = true
+
   override def file(answer: Answer): Option[FileHandle] =
     DriveOpened.read(answer.stated).toOption.flatMap(_.file)
 
@@ -79,8 +83,14 @@ final case class DriveCards private (
   def besides: Int = DriveCards.DrivesMost
 
   /** [[DriveWalk.start]] at the [[turn]] of `due`. */
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[DriveListing] =
-    DriveWalk.start(this, perRun, floor, held, turn(due))
+  def walk(
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      due: Instant,
+      repiece: Set[CardKey]
+  ): Walk[DriveListing] =
+    DriveWalk.start(this, perRun, floor, held, turn(due), repiece)
 
   /** How many slots of its [[syncs]] fall after [[DriveCards.TurnsFrom]] and at or before `due`:
     * of two runs of its schedules, the later's is one more for each slot between them.

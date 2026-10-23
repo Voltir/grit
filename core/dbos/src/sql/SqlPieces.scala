@@ -5,6 +5,7 @@ import java.time.Instant
 
 import grit.core.files.{
   FormatName,
+  KeptAs,
   KeptPiece,
   Piece,
   PieceIndex,
@@ -234,6 +235,60 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       } yield moved
     }
 
+    def unread(ref: String, revision: String, place: Place, why: String, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] = {
+      val clearance: Clearance = Tx.clearance(tx)
+      for {
+        label <- SqlLabels.intern(clearance.floor)
+        before <- current(ref, label)
+        _ <- before.fold(Right(()))(supersede(_, at))
+        // Believed at the least: it holds nothing read of the file.
+        _ <- update(
+          s"""INSERT INTO grit.piece_sets
+             |       (plugin, ref, name, revision, place, classification_id, room_id, integrity_id,
+             |        written_at, last_placed, unread)
+             |VALUES (?, ?, ?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
+             |        ${SqlIntegrity.Interned}, ?, ?, ?)""".stripMargin
+        ) { ps =>
+          ps.setString(1, PluginName.value(plugin))
+          ps.setString(2, ref)
+          ps.setString(3, ref)
+          ps.setString(4, revision)
+          ps.setString(5, path(place).render())
+          ps.setInt(6, label)
+          ps.setString(7, rooms(clearance))
+          SqlIntegrity.bind(ps, 8, Integrity.Untrusted)
+          ps.setObject(10, utc(at))
+          ps.setObject(11, utc(at))
+          ps.setString(12, why)
+        }
+      } yield ()
+    }
+
+    def kept(refs: Vector[String])(using tx: Tx^): Either[StoreError, Map[String, KeptAs]] =
+      if (refs.isEmpty) Right(Map.empty)
+      else
+        for {
+          label <- SqlLabels.intern(Tx.clearance(tx).floor)
+          found <- rows(
+            """SELECT ref, format, format_version, unread FROM grit.piece_sets
+              | WHERE plugin = ? AND classification_id = ? AND superseded_at IS NULL
+              |   AND ref = ANY (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))""".stripMargin
+          ) { ps =>
+            ps.setString(1, PluginName.value(plugin))
+            ps.setInt(2, label)
+            ps.setString(3, ujson.Arr.from(refs.map(ujson.Str(_))).render())
+          } { rs =>
+            val as = Option(rs.getString("unread")) match {
+              case Some(why) => KeptAs.Unread(why)
+              case None =>
+                KeptAs.Read(FormatName(rs.getString("format")), rs.getInt("format_version"))
+            }
+            Right(rs.getString("ref") -> as)
+          }
+        } yield found.toMap
+
     /** As [[relabel]], the set `old` of `ref` moved to `clearance`'s floor: how many pieces. */
     private def relabelled(
         old: Long,
@@ -255,10 +310,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         made <- rows(
           s"""INSERT INTO grit.piece_sets
              |       (plugin, ref, name, revision, format, format_version, place,
-             |        classification_id, room_id, integrity_id, written_at, last_placed, cut)
+             |        classification_id, room_id, integrity_id, written_at, last_placed, cut, unread)
              |SELECT plugin, ref, name, revision, format, format_version,
              |       ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
-             |       ${SqlIntegrity.Interned}, ?, last_placed, cut
+             |       ${SqlIntegrity.Interned}, ?, last_placed, cut, unread
              |  FROM grit.piece_sets WHERE id = ?
              |RETURNING id""".stripMargin
         ) { ps =>

@@ -71,6 +71,8 @@ private[knowledge] final case class Walking[
       Walking.advance(
         copy(tally = tally.copy(relabelled = tally.relabelled + 1), settled = settled + key)
       )
+    case (Waiting.Repieced(key), Outcome.Kept | Outcome.NotTaken(_)) =>
+      Walking.advance(unchanged(key))
     case (Waiting.Dropped(count), Outcome.Kept) => copy(tally = tally.copy(withdrawn = count)).done
     case (waiting, other) => halt(s"${Walking.expected(waiting)} came to ${Walking.kind(other)}")
   }
@@ -80,6 +82,19 @@ private[knowledge] final case class Walking[
 
   /** This walk with `tasks` stacked before those it has, the first taken first. */
   def push(tasks: Seq[T]): Walking[L, T, S] = copy(stack = tasks.toList ++ stack)
+
+  /** This walk with the held unit `key`, its card current, reached `way`: its file read again for
+    * its pieces alone ([[Step.Piece]]) when [[Holding.repiece]] holds it, then counted unchanged;
+    * left for the next run when [[spent]]; otherwise counted unchanged at once. A read again
+    * counts against `perRun` as any read does.
+    */
+  def current(key: CardKey, way: Way): Walking[L, T, S] =
+    holding.best(key).filter(_ => holding.repiece(key)) match {
+      case None => unchanged(key)
+      case Some(_) if spent => leave
+      case Some(h) =>
+        copy(reads = reads + 1).step(Step.Piece(h.path, way), Waiting.Repieced(key))
+    }
 
   /** This walk with the held unit `key` counted unchanged. */
   def unchanged(key: CardKey): Walking[L, T, S] =
@@ -229,6 +244,7 @@ private[knowledge] object Walking {
     case Summary(card: CardSummary -> Card)
     case Wrote(key: CardKey)
     case Relabelled(key: CardKey)
+    case Repieced(key: CardKey)
     case Dropped(count: Int)
   }
 
@@ -256,6 +272,7 @@ private[knowledge] object Walking {
     case Waiting.Summary(_) => "a summary"
     case Waiting.Wrote(_) => "a write"
     case Waiting.Relabelled(_) => "a relabel"
+    case Waiting.Repieced(_) => "a read for pieces"
     case _ => "a drop"
   }
 

@@ -96,9 +96,14 @@ object Held {
 }
 
 /** What a run's `held` keep read: the floor its run keeps cards at, and the cards it holds,
-  * by key.
+  * by key; and the files, their cards current, whose pieces it reads them again for
+  * (`repiece`): none kept at the floor, or kept by a format the area no longer reads.
   */
-private[knowledge] final case class Holding(floor: Label, held: Vector[Held]) extends caps.Pure {
+private[knowledge] final case class Holding(
+    floor: Label,
+    held: Vector[Held],
+    repiece: Set[CardKey] = Set.empty
+) extends caps.Pure {
   private val byKey: Map[CardKey, Vector[Held]] = held.groupBy(_.key)
 
   /** The copy of `key` a walk goes by: the one at the floor, else the first held. */

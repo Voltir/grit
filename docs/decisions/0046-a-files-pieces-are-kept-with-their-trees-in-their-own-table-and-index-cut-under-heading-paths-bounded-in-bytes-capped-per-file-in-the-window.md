@@ -33,8 +33,13 @@ Decision:
   file's set at that label, and an unchanged piece keeps its id. The knowledge sync pieces
   each file whose read kept it whole and was believed at `Outside` or above, moves a file's
   pieces with its card when the card is relabelled (each keeping its id and when it was last
-  placed), and withdraws them when its card is gone or rewritten from a read that kept no
-  whole file believed at `Outside` or above.
+  placed), and withdraws them when its card is gone. A file read with none of it kept (no
+  whole file kept, a read below `Outside`, no format reads it) is marked unread, an empty set
+  saying why, so its earlier pieces stop being current and no run reads it again for them
+  until it changes. Each run first finds the current files with neither pieces nor a mark at
+  its floor, or with pieces a format no longer read at that version made, and reads them again
+  for their pieces alone, within its reads: files carded before their pieces were kept, or
+  before a reader's version changed, are pieced without waiting for an edit.
 - **Bounded in bytes, forgotten whole.** A plugin's pieces take at most `PieceKeeper.Bound`
   (128 MiB) counted over every label; past it, whole files are deleted, those superseded
   first, then the least recently placed, never the one written. Superseded and withdrawn sets

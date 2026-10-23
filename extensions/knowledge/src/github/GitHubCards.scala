@@ -10,6 +10,7 @@ import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.Label
 import grit.knowledge.card.Scope
+import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
 
 /** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
@@ -89,8 +90,14 @@ final case class GitHubCards private (
   def besides: Int = include.flatMap(i => i.indices.filter(i(_) == '/').map(i.take)).distinct.size
 
   /** [[RepositoryWalk.start]]'s: a repository's walk goes by what it holds, whenever it is due. */
-  def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Listing] =
-    RepositoryWalk.start(this, perRun, floor, held)
+  def walk(
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      due: Instant,
+      repiece: Set[CardKey]
+  ): Walk[Listing] =
+    RepositoryWalk.start(this, perRun, floor, held, repiece)
 
   /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no
     * `ref`, so a read of it at any ref follows; or why not: those over

@@ -36,14 +36,21 @@ import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
 object RepositoryWalk {
 
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
-    * holding `held`, its source's cards as [[Held.read]] reads them. Its first step lists the
-    * repository's root, `/`; when `cards` includes nothing, it has none and holds nothing gone.
+    * holding `held`, its source's cards as [[Held.read]] reads them, reading again the files of
+    * `repiece` for their pieces ([[Holding.repiece]]). Its first step lists the repository's
+    * root, `/`; when `cards` includes nothing, it has none and holds nothing gone.
     */
-  def start(cards: GitHubCards, perRun: Int, floor: Label, held: Vector[Held]): Walk[Listing] =
+  def start(
+      cards: GitHubCards,
+      perRun: Int,
+      floor: Label,
+      held: Vector[Held],
+      repiece: Set[CardKey] = Set.empty
+  ): Walk[Listing] =
     Walking.start(
       Walking.Routine[Listing, Task, Own](cards, take(cards, _, _), left(cards, _, _), drops),
       perRun,
-      Holding(floor, held),
+      Holding(floor, held, repiece),
       if (cards.include.isEmpty) Nil else List(Task.Pass(Root)),
       Own(0, Map.empty, Set.empty, Set.empty, Set.empty)
     )
@@ -165,7 +172,7 @@ object RepositoryWalk {
 
   /** `w` relabelling the current held unit `key` when it is to be copied, else unchanged. */
   private def known(w: W, key: CardKey): W =
-    w.holding.copying(key).fold(w.unchanged(key))(w.relabel(key, _))
+    w.holding.copying(key).fold(w.current(key, Way.Run))(w.relabel(key, _))
 
   /** `w` with the new unit at `path` not taken, so the directories above it are not written. */
   private def refuse(w: W, path: String): W =

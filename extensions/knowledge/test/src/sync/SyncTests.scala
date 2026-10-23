@@ -27,7 +27,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.files.{Covers, FormatName, InMemoryPieces, Locus, Understood}
+import grit.core.files.{Covers, FormatName, InMemoryPieces, KeptAs, Locus, Understood}
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
@@ -37,7 +37,8 @@ import grit.core.sanitise.IntegrityTree
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
-import grit.core.visibility.{Compartment, Integrity, Label, Level, Recorded}
+import grit.core.visibility.{Clearance, Compartment, Integrity, Label, Level, Recorded}
+import grit.dbos.sql.TestTx
 import grit.knowledge.card.{CardMoves, Phase, UnitVersion}
 import grit.knowledge.github.{GitHubCards, Listing}
 import grit.knowledge.ref.CardKey
@@ -229,10 +230,13 @@ object SyncTests extends TestSuite {
     )
 
   /** [[source]], each file whose answer holds a text of `kept` read as the file area keeping it
-    * under that text's handle.
+    * under that text's handle, a source keeping files when `keeps`.
     */
-  private final class Filed(inner: GitHubCards, kept: Map[String, FileHandle])
-      extends Source[Listing] {
+  private final class Filed(
+      inner: GitHubCards,
+      kept: Map[String, FileHandle],
+      keeps: Boolean = true
+  ) extends Source[Listing] {
     def corpus: CorpusName = inner.corpus
     def service: Service = inner.service
     def at: Place = inner.at
@@ -245,19 +249,29 @@ object SyncTests extends TestSuite {
     def pointer(path: String): Either[String, Pointer] = inner.pointer(path)
     override def calls(perRun: Int): Int = inner.calls(perRun)
     def besides: Int = inner.besides
-    def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Listing] =
-      inner.walk(perRun, floor, held, due)
+    def walk(
+        perRun: Int,
+        floor: Label,
+        held: Vector[Held],
+        due: Instant,
+        repiece: Set[CardKey]
+    ): Walk[Listing] =
+      inner.walk(perRun, floor, held, due, repiece)
+    override def keepsFiles: Boolean = keeps
     override def file(answer: grit.core.act.Answer): Option[FileHandle] =
       kept.collectFirst { case (text, h) if answer.text.contains(text) => h }
   }
 
-  /** The sync over [[source]] whose reads of `a.md`, and of `b.md` when `both`, keep their files. */
-  private def filed(both: Boolean = false): Sync =
+  /** The sync over [[source]] whose reads of `a.md`, and of `b.md` when `both`, keep their
+    * files, a source keeping files when `keeps`.
+    */
+  private def filed(both: Boolean = false, keeps: Boolean = true, perRun: Int = 5): Sync =
     new Sync(
       Vector(
         Filed(
-          source(),
-          Map("Deploying the app." -> fa) ++ Option.when(both)("Testing the app." -> fb)
+          source(perRun),
+          Map("Deploying the app." -> fa) ++ Option.when(both)("Testing the app." -> fb),
+          keeps
         )
       )
     )
@@ -274,7 +288,8 @@ object SyncTests extends TestSuite {
     * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there; a
     * call reading a path in `believedAt` is believed at its integrity there. A judgment is
     * answered `judged` to each of its questions, or, with none, fails. Its piece moves keep
-    * into `pieces`, reading [[Trees]].
+    * into `pieces`, reading [[Trees]] as a format at `version` would, the area reading with a
+    * format at a version when `reads` says so.
     */
   private def keeping(
       at: Label,
@@ -286,7 +301,9 @@ object SyncTests extends TestSuite {
       summaryAt: Map[String, Label] = Map.empty,
       believedAt: Map[String, Integrity] = Map.empty,
       judged: Option[Double] = None,
-      pieces: InMemoryPieces = new InMemoryPieces
+      pieces: InMemoryPieces = new InMemoryPieces,
+      version: Int = 1,
+      reads: (FormatName, Int) -> Boolean = (_, _) => true
   ): ScriptedKeeping =
     new ScriptedKeeping(
       sync.limits,
@@ -307,7 +324,9 @@ object SyncTests extends TestSuite {
       Integrity.Authority,
       Recorded.Empty,
       pieces,
-      (h: FileHandle) => Trees.get(h).toRight(s"no file ${h.written}")
+      (h: FileHandle) =>
+        Trees.get(h).map((n, t) => (n, t.copy(version = version))).toRight(s"no file ${h.written}"),
+      reads
     )
 
   /** Every path of [[repo]], answered believed at `Untrusted`. */
@@ -609,14 +628,26 @@ object SyncTests extends TestSuite {
     }
 
     test(
-      "a run keeps the pieces of each file the file area kept of its read, under its card's key and version, at the floor, believed as its card"
+      "a run keeps the pieces of each file the file area kept of its read, under its card's key and version, at the floor, believed as its card, and marks each other file unread"
     ) {
-      val k = keeping(floor, new InMemoryDocuments)
+      val (pieces, k) = {
+        val p = new InMemoryPieces
+        (p, keeping(floor, new InMemoryDocuments, pieces = p))
+      }
       val reply = runOf(k, job = filed())
-      (reply, pieced(k), k.made.filter(MoveName.value(_).startsWith("piece/"))) ==> (
+      val marks = pieces
+        .keeper(plugin, grit.core.files.PieceKeeper.Bound)
+        .kept(Vector(ref("docs/a.md"), ref("docs/b.md")))(using TestTx.fake(Clearance.of(floor)))
+      (reply, pieced(k), k.made.filter(MoveName.value(_).startsWith("piece/")), marks) ==> (
         line(written = 3),
         Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app.")),
-        Vector(CardMoves.of(Phase.Piece, CardKey.of(name, "docs/a.md")))
+        Vector("docs/a.md", "docs/b.md").map(p => CardMoves.of(Phase.Piece, CardKey.of(name, p))),
+        Right(
+          Map(
+            ref("docs/a.md") -> KeptAs.Read(FormatName("test"), 1),
+            ref("docs/b.md") -> KeptAs.Unread("its read kept no whole file in the file area")
+          )
+        )
       )
     }
 
@@ -660,6 +691,52 @@ object SyncTests extends TestSuite {
         line(written = 2, unchanged = 1),
         Vector(),
         Vector(CardMoves.of(Phase.Piece, CardKey.of(name, "docs/a.md")))
+      )
+    }
+
+    test(
+      "a current file's card kept with no pieces has its file read again and pieced, or marked unread, once"
+    ) {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val _ = runOf(keeping(floor, documents, pieces = pieces), job = filed(keeps = false))
+      def again = {
+        val k = keeping(floor, documents, pieces = pieces)
+        val reply = runOf(k, job = filed())
+        (reply, k.made.filter(MoveName.value(_).startsWith("piece/")), pieced(k))
+      }
+      val second = again
+      (second, again) ==> (
+        (
+          line(unchanged = 3),
+          Vector("docs/a.md", "docs/b.md").map(p => CardMoves.of(Phase.Piece, CardKey.of(name, p))),
+          Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app."))
+        ),
+        (
+          line(unchanged = 3),
+          Vector(),
+          Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app."))
+        )
+      )
+    }
+
+    test(
+      "a file pieced by a format the area no longer reads at that version is read again and pieced anew, once"
+    ) {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val _ = runOf(keeping(floor, documents, pieces = pieces), job = filed())
+      def again = {
+        val k = keeping(floor, documents, pieces = pieces, version = 2, reads = (_, v) => v == 2)
+        val reply = runOf(k, job = filed())
+        (reply, k.made.filter(MoveName.value(_).startsWith("piece/")), k.pieced.map(_.file.version))
+      }
+      val second = again
+      (second, again) ==> (
+        (
+          line(unchanged = 3),
+          Vector(CardMoves.of(Phase.Piece, CardKey.of(name, "docs/a.md"))),
+          Vector(2)
+        ),
+        (line(unchanged = 3), Vector(), Vector(2))
       )
     }
 

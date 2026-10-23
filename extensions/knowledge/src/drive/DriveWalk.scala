@@ -30,7 +30,8 @@ object DriveWalk {
   val Drives: String = "/"
 
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
-    * holding `held`, its source's cards as [[Held.read]] reads them, at `turn`
+    * holding `held`, its source's cards as [[Held.read]] reads them, reading again the files of
+    * `repiece` for their pieces ([[Holding.repiece]]), at `turn`
     * ([[DriveCards.turn]] of its slot), which picks the folders it lists.
     */
   def start(
@@ -38,7 +39,8 @@ object DriveWalk {
       perRun: Int,
       floor: Label,
       held: Vector[Held],
-      turn: Long
+      turn: Long,
+      repiece: Set[CardKey] = Set.empty
   ): Walk[DriveListing] =
     Walking.start(
       Walking
@@ -49,7 +51,7 @@ object DriveWalk {
           drops(cards, _)
         ),
       perRun,
-      Holding(floor, held),
+      Holding(floor, held, repiece),
       List(Task.Shared),
       Own(Vector.empty, Set.empty, Set.empty, Set.empty)
     )
@@ -140,7 +142,7 @@ object DriveWalk {
         .map(e => CardKey.of(cards.corpus, e.id))
         .partitionMap(k => w.holding.copying(k).map(Task.Relabel(k, _)).toLeft(k))
       val pushed = w.recording(own).push(relabels ++ changed.map(Task.Read(_, within)))
-      unchanged.foldLeft(pushed)(_.unchanged(_))
+      unchanged.foldLeft(pushed)(_.current(_, Way.Through(within)))
     } else w.recording(own.copy(foreign = own.foreign ++ readable.map(_.id)))
   }
 

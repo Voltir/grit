@@ -118,11 +118,34 @@ trait PieceKeeper {
     * its id, with the file's name, revision, format and when it was last placed, believed at the
     * meet of what they were and `most`. Those at `from`, and any current at the floor
     * before, stop being current and are marked for deletion as [[keep]] marks those it replaces.
-    * How many pieces are kept: 0, keeping and withdrawing nothing, when `ref` has none at `from`.
+    * A file marked [[unread]] at `from` is marked so at the floor. How many pieces are kept:
+    * 0, keeping and withdrawing nothing, when `ref` has nothing current at `from`.
     */
   def relabel(ref: String, from: Label, place: Place, most: Integrity, at: Instant)(using
       Tx^
   ): Either[StoreError, Int]
+
+  /** `ref`'s file, at `revision`, marked read with no pieces kept, `why`, at the transaction's
+    * floor and `place`, written `at`: what it held there before stops being current and is
+    * marked for deletion as [[keep]] marks what it replaces. [[kept]] answers it
+    * [[KeptAs.Unread]] until a [[keep]], [[withdraw]] or another mark replaces it.
+    */
+  def unread(ref: String, revision: String, place: Place, why: String, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Unit]
+
+  /** Of `refs`, those with something current at the transaction's floor, each as what. */
+  def kept(refs: Vector[String])(using Tx^): Either[StoreError, Map[String, KeptAs]]
+}
+
+/** What a file has current at a label ([[PieceKeeper.kept]]). */
+enum KeptAs extends caps.Pure derives CanEqual {
+
+  /** Its pieces, read by `format` at `version`. */
+  case Read(format: FormatName, version: Int)
+
+  /** None: it was read and none kept, `why` ([[PieceKeeper.unread]]). */
+  case Unread(why: String)
 }
 
 object PieceKeeper {

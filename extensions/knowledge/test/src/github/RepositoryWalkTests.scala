@@ -125,6 +125,7 @@ object RepositoryWalkTests extends TestSuite {
   private def shown(step: Step): String = step match {
     case Step.List(path, way) => s"list $path${through(way)}"
     case Step.Read(path, way) => s"read $path${through(way)}"
+    case Step.Piece(path, way) => s"piece $path${through(way)}"
     case Step.Summarise(path, _, _, v) => s"summarise $path ${at(v)}"
     case Step.Write(card, replacing) =>
       s"write ${card.path} ${at(card.version)}" +
@@ -149,7 +150,7 @@ object RepositoryWalkTests extends TestSuite {
     case Step.Read(path, _) =>
       files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_, floor))
     case Step.Summarise(_, _, _, _) => Outcome.Summarised(summary)
-    case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) => Outcome.Kept
+    case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) | Step.Piece(_, _) => Outcome.Kept
   }
 
   /** Each step of `walk` answered by `answer`, and what its run came to. */
@@ -175,14 +176,16 @@ object RepositoryWalkTests extends TestSuite {
       maxUnits: Int = 100,
       include: Vector[String] = Vector("docs"),
       extensions: Set[String] = Set("md"),
-      exclude: Vector[String] = Vector.empty
+      exclude: Vector[String] = Vector.empty,
+      repiece: Set[String] = Set.empty
   ): (Vector[String], Synced) = {
     val (steps, synced) = drive(
       RepositoryWalk.start(
         source(maxUnits, include, extensions, exclude = exclude),
         perRun,
         floor,
-        held
+        held,
+        repiece.map(CardKey.of(name, _))
       ),
       moves(listings, files)
     )
@@ -237,6 +240,17 @@ object RepositoryWalkTests extends TestSuite {
     test("an unchanged tree SHA lists nothing under it") {
       val (steps, result) = run(heldAll(), Map("/" -> root()))
       assert(steps == Vector("list /"), result == synced(unchanged = 5))
+    }
+
+    test(
+      "a current file whose pieces are due is read for them alone and counted unchanged; past the run's reads it is left"
+    ) {
+      val (steps, result) =
+        run(heldAll(), Map("/" -> root()), perRun = 1, repiece = Set("docs/a.md", "docs/b.md"))
+      assert(
+        steps == Vector("list /", "piece docs/a.md"),
+        result == synced(unchanged = 4, left = 1)
+      )
     }
 
     test("a changed file is read, summarised and written, and its directory's card after it") {

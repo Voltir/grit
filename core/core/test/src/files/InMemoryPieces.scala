@@ -136,6 +136,40 @@ final class InMemoryPieces extends PieceStore {
           }
       }
     }
+
+    def unread(ref: String, revision: String, place: Place, why: String, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] = {
+      val clearance = Tx.clearance(tx)
+      val label = clearance.floor
+      current(plugin, ref, label).fold(Right(()))((s, r) => supersede(s, r, at)).map { _ =>
+        lastSet += 1
+        val file = PiecedFile(ref, ref, revision, FormatName(""), 0)
+        val row = SetRow(
+          plugin,
+          file,
+          place,
+          label,
+          clearance.own.map(_.room),
+          Integrity.Untrusted,
+          at,
+          None,
+          at,
+          0,
+          Some(why)
+        )
+        sets = sets.updated(lastSet, row)
+      }
+    }
+
+    def kept(refs: Vector[String])(using tx: Tx^): Either[StoreError, Map[String, KeptAs]] = {
+      val floor = Tx.clearance(tx).floor
+      Right(refs.flatMap { ref =>
+        current(plugin, ref, floor).map((_, r) =>
+          ref -> r.unread.fold(KeptAs.Read(r.file.format, r.file.version))(KeptAs.Unread(_))
+        )
+      }.toMap)
+    }
   }
 
   /** `plugin`'s current set for `ref` at `label`. */
@@ -299,7 +333,8 @@ object InMemoryPieces {
       written: Instant,
       superseded: Option[Instant],
       lastPlaced: Instant,
-      cut: Int
+      cut: Int,
+      unread: Option[String] = None
   )
 
   /** A piece's row, in set `set` at `ordinal`. */
