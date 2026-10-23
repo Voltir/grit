@@ -421,19 +421,30 @@ object SlidesTests extends TestSuite {
       )
     }
 
-    test("a largest text longer than 100 characters is no title: the slide is 'Slide n'") {
-      blocks(
+    test(
+      "a largest text longer than 100 characters is no title: the slide is 'Slide n'; one of 100 is"
+    ) {
+      def titled(text: String) = blocks(
         slide(
           Vector(
-            shape("long", None, Vector(sized("x" * 101, 27))),
+            shape("long", None, Vector(sized(text, 27))),
             shape("note", None, Vector(sized("Small words", 10)))
           )
         )
-      ) ==> Right(
-        Vector(
-          heading("Slide 1"),
-          p("x" * 101),
-          p("Small words")
+      )
+      (titled("x" * 101), titled("y" * 100)) ==> (
+        Right(
+          Vector(
+            heading("Slide 1"),
+            p("x" * 101),
+            p("Small words")
+          )
+        ),
+        Right(
+          Vector(
+            heading("y" * 100),
+            p("Small words")
+          )
         )
       )
     }

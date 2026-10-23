@@ -139,7 +139,7 @@ object TopicCodecTests extends TestSuite {
         Vector.empty
       )
       val read = Topic.read(key, Topic.write(t))
-      assert(read.left.exists(_.why.contains("c5")))
+      read ==> Left(Topic.Unread.Refused("claim c2 bears on c5, which this topic does not hold"))
     }
 
     test("a relation to another topic's claim is kept unchecked") {
@@ -244,12 +244,10 @@ object TopicCodecTests extends TestSuite {
         later
       )
       codec.decode(codec.encode(scan(1, 2))) ==> Right(scan(1, 2))
-      (
-        codec.encode(scan(0, 0)).contains("unreadable"),
-        codec.encode(scan(0, 0)).contains("later")
-      ) ==>
-        (false, false)
-      codec.decode(codec.encode(scan(0, 0))) ==> Right(scan(0, 0))
+      // A scan as it was journaled before it counted unreadable and later topics.
+      val recorded = """{"attached":[],"strands":[],"cards":[],"leads":[],"withdrew":0,""" +
+        """"unchanged":0,"left":0,"linked":[],"holds":[]}"""
+      codec.decode(recorded) ==> Right(scan(0, 0))
     }
   }
 }

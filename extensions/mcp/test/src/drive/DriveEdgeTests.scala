@@ -646,7 +646,7 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "a second read of a Drive file not changed since, by another call, answers the handle the first kept, without asking Drive for its bytes again"
+      "a second read of a Drive file not changed since, by another call, answers the handle the first kept, without asking Drive for its bytes again; once it changes, its bytes are asked for and kept anew"
     ) {
       withFake { fake =>
         fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One.", "Two."))
@@ -663,8 +663,13 @@ object DriveEdgeTests extends TestSuite {
                 part.facts.flatMap(_.json.obj.get("file"))
               case other => throw new java.lang.AssertionError(other.toString)
             }
-          (kept(0, "1"), kept(1, "2"), media(fake)) ==>
-            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1)
+          val (first, second) = (kept(0, "1"), kept(1, "2"))
+          val unchanged = media(fake)
+          val changed = Recorded.json("metadata-file-top")
+          changed("modifiedTime") = "2026-09-03T10:00:00.000Z"
+          fake.answering("files/file-4", 200, ujson.write(changed))
+          (first, second, unchanged, kept(2, "1"), media(fake)) ==>
+            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1, Some(ujson.Str("f2")), 2)
         }
       }
     }
@@ -783,7 +788,7 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
-      "a second read of a Doc whose version has not moved, by another call, answers the handle the first kept, without Drive exporting it again"
+      "a second read of a Doc whose version has not moved, by another call, answers the handle the first kept, without Drive exporting it again; once its version moves, it is exported and kept anew"
     ) {
       withFake { fake =>
         fake.answeringBytes("files/file-1/export", 200, ZippedWord.bytes("One."))
@@ -792,8 +797,13 @@ object DriveEdgeTests extends TestSuite {
             readPart(
               run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area, call = call)
             )._2.flatMap(_._2)
-          (kept(0), kept(1), exports(fake).size) ==>
-            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1)
+          val (first, second) = (kept(0), kept(1))
+          val unmoved = exports(fake).size
+          val moved = Recorded.json("metadata-file-in-folder")
+          moved("version") = "6"
+          fake.answering("files/file-1", 200, ujson.write(moved))
+          (first, second, unmoved, kept(2), exports(fake).size) ==>
+            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1, Some(ujson.Str("f2")), 2)
         }
       }
     }

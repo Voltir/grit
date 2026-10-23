@@ -1,6 +1,6 @@
 package grit.slack.client
 
-import grit.slack.event.ResponseUrl
+import grit.slack.event.{ChannelId, ResponseUrl, Ts, UserId}
 
 /** The Slack contract, kept by [[SocketSlack]] against [[SlackStub]], which answers with
   * Slack's own recorded JSON.
@@ -19,6 +19,22 @@ object SocketSlackContractTests extends SlackContract {
     if (down) stub.close()
     val slack = new SocketSlack(bot, app, stub.api)
     try body(slack)
+    finally {
+      slack.close()
+      stub.close()
+    }
+  }
+
+  protected def withCards[A](body: (Slack, () => Vector[CardShown]) => A): A = {
+    val stub = new SlackStub(0)
+    val slack = new SocketSlack(bot, app, stub.api)
+    def cards(): Vector[CardShown] = stub.taken.collect { case ("chat.postEphemeral", params) =>
+      (params.get("channel"), params.get("thread_ts"), params.get("user")) match {
+        case (Some(c), Some(t), Some(u)) => CardShown(ChannelId(c), Ts(t), UserId(u))
+        case _ => throw new java.lang.AssertionError(s"a card missing its place: $params")
+      }
+    }
+    try body(slack, () => cards())
     finally {
       slack.close()
       stub.close()

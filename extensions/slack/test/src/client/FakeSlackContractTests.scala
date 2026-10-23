@@ -27,6 +27,11 @@ object FakeSlackContractTests extends SlackContract {
   protected def withSlack[A](limited: Int, down: Boolean)(body: Slack => A): A =
     body(fake(limited, down))
 
+  protected def withCards[A](body: (Slack, () => Vector[CardShown]) => A): A = {
+    val slack = fake(0, false)
+    body(slack, () => slack.cards.map(a => CardShown(a.channel, a.thread, a.user)))
+  }
+
   protected def withCommand[A](down: Boolean)(body: (Slack, Hooks^) => A): A = {
     val slack = fake(0, down)
     val asked = ResponseUrl("https://hooks.slack.com/commands/T0000000001/1/live")

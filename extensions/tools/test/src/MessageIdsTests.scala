@@ -240,6 +240,8 @@ object MessageIdsTests extends TestSuite {
     ) {
       val w = new World
       w.say("0.5", "Ben here", 0, link("p05"), by = ben)
+      // A later message recorded before the earliest, so first is by time, not by record.
+      w.say("3.0", "a later one", 3, link("p30"))
       w.say("1.0", "hello   there,\nfirst one", 1, link("p10"))
       w.reply("1.0", 2, 0)
       val now = w.say("5.0", "what is my first message's id?", 5, link("p50"))

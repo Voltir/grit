@@ -337,8 +337,15 @@ object SlackAskingTests extends TestSuite {
       w.edge.click(click("someone_elses", Clicked.value(t.workflowId, C1)))
       w.inbox.down = true
       w.edge.click(click("grit_apply", Clicked.value(t.workflowId, C1)))
-      (w.logged.size - before, w.slack.answers, w.inbox.answers) ==>
-        (2, Vector.empty, Vector.empty)
+      (w.logged.drop(before), w.slack.answers, w.inbox.answers) ==>
+        (
+          Vector(
+            "slack: a click grit cannot read: an action that is not a card's button",
+            "slack: a click on c1 of c1:0 not answered: Unavailable(the database is down)"
+          ),
+          Vector.empty,
+          Vector.empty
+        )
     }
   }
 }

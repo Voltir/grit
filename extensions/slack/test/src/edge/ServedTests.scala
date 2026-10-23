@@ -5,6 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.admin.{Answer, Command, InMemoryAdministration}
+import grit.core.approval.Approval
 import grit.core.clock.{Clock, SetClock}
 import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
@@ -24,7 +25,7 @@ import grit.core.edge.{
   Variable
 }
 import grit.core.files.NoIntake
-import grit.core.id.{SourceId, ToolCallId, TurnRef}
+import grit.core.id.{EntryId, SourceId, ToolCallId, TurnRef}
 import grit.core.identity.{Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -32,7 +33,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
+import grit.core.store.{Entry, InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.tool.{Outcome, ToolSet, ToolSetId}
 import grit.core.visibility.{RoomAccess, Subject, Visibility}
 import grit.dbos.sql.TestTx
@@ -492,9 +493,39 @@ object ServedTests extends TestSuite {
         .ingested(Origin.Slack(Team, "C123ABC456", "1.0"), SourceId("1.0"))
         .getOrElse(None)
         .getOrElse(throw new java.lang.AssertionError("no turn"))
-      // No ask is open for the call: the inbox refuses it Closed, and the card says so.
+      // The turn's call c1 asks first, open for a day.
+      locally {
+        given Tx = TestTx.fake
+        val next = w.inbox.entries
+          .lockNext(t.conversationId)
+          .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        val level =
+          w.inbox.entries
+            .believed(t)
+            .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        val _ = w.inbox.entries.insert(
+          Entry(
+            EntryId("ask:c1"),
+            t.conversationId,
+            t.turnSeq,
+            None,
+            next.seq,
+            Payload.Ask(ToolCallId("c1"), "Edit a.txt", Some(Instant.EPOCH.plusSeconds(86400))),
+            Instant.EPOCH,
+            level
+          )
+        )
+      }
+      val _ = w.slack.click(click("grit_apply", Clicked.value(t.workflowId, ToolCallId("c1"))))
+      // No ask is open for c9: the inbox refuses it Closed, and the card says so.
       val _ = w.slack.click(click("grit_apply", Clicked.value(t.workflowId, ToolCallId("c9"))))
-      w.slack.replaced ==> Vector((ResponseUrl(ActionHook), SlackEdge.Expired))
+      (w.inbox.answers, w.slack.replaced) ==> (
+        Vector((t.workflowId, ToolCallId("c1"), Approval.Approved)),
+        Vector(
+          (ResponseUrl(ActionHook), SlackEdge.Applying),
+          (ResponseUrl(ActionHook), SlackEdge.Expired)
+        )
+      )
     }
 
     test("serving puts up a wanted acknowledgement's mark as it delivers") {
@@ -713,7 +744,7 @@ object ServedTests extends TestSuite {
       )
     }
 
-    test("serving shows each ask to its asker and sends their answer: its asks are answered") {
+    test("serving says its asks are answered") {
       Served
         .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, new World().connect, Inline)
         .asks ==> ServedEdge.Asks.Answered

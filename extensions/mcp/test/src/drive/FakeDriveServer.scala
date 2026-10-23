@@ -24,7 +24,8 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * `presentations/{id}`, below [[slides]], is answered only as [[answering]] sets. Each request must be a
   * GET carrying [[FakeDriveServer.Token]], `supportsAllDrives=true` when it asks of files, and
   * `fields` unless it reads content; one that does not is answered 400. Every request's path
-  * and query are kept, in [[requests]].
+  * and query are kept, in [[requests]]. A recording's files carry their `version`, digits a
+  * capture keeps as Drive wrote them ([[Neutral]]).
   */
 final class FakeDriveServer private () {
 

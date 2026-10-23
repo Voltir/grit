@@ -238,22 +238,39 @@ object DriveWalkTests extends TestSuite {
     test(
       "a PDF, Word or Excel file is read and summarised as what it is only when its deployment's formats read its kind"
     ) {
-      def summarised(formats: grit.core.files.Formats) =
-        run(cards(labels, formats = formats).walk(5, internal, Vector.empty, due))._1.collect {
-          case Step.Summarise(id, subject, _, _) => (id, subject)
-        }
-      val pdfs = grit.core.files.PagedText.formats
-      def named(kind: Kind) = cards(labels).subject(DriveEntry("f", kind, Some("f"), None, None))
-      assert(
-        summarised(pdfs).map(_._1) == Vector("file-18", "file-4", "file-30", "file-32"),
-        summarised(pdfs)(1)._2 == "A PDF named `name of file-4` in Google Drive",
-        summarised(DriveCardsTests.unformatted)
-          .map(_._1) == Vector("file-18", "file-30", "file-32"),
-        Vector(Kind.Word, Kind.Excel).map(named) == Vector(
-          "A Word document named `f` in Google Drive",
-          "An Excel workbook named `f` in Google Drive"
+      val office = world.updated(
+        "drive-a",
+        (
+          DriveListing(
+            Vector(
+              entry("folder-3", Kind.Folder, 1, "drive-a"),
+              entry("file-18", Kind.Document, 5, "drive-a"),
+              entry("file-4", Kind.Pdf, 2, "drive-a"),
+              entry("file-40", Kind.Word, 3, "drive-a"),
+              entry("file-41", Kind.Excel, 4, "drive-a")
+            ),
+            true
+          ),
+          internal
         )
       )
+      def summarised(formats: grit.core.files.Formats) =
+        run(cards(labels, formats = formats).walk(10, internal, Vector.empty, due), office)._1
+          .collect { case Step.Summarise(id, subject, _, _) => (id, subject) }
+          .filter((id, _) => id == "file-4" || id == "file-40" || id == "file-41")
+      def reading(kinds: grit.core.files.Kind*) = grit.core.files.Formats { kind =>
+        if (kinds.contains(kind)) Vector(grit.core.files.PagedText) else Vector.empty
+      }
+      val pdf = "file-4" -> "A PDF named `name of file-4` in Google Drive"
+      val word = "file-40" -> "A Word document named `name of file-40` in Google Drive"
+      val excel = "file-41" -> "An Excel workbook named `name of file-41` in Google Drive"
+      (
+        summarised(
+          reading(grit.core.files.Kind.Pdf, grit.core.files.Kind.Word, grit.core.files.Kind.Excel)
+        ),
+        summarised(reading(grit.core.files.Kind.Word)),
+        summarised(DriveCardsTests.unformatted)
+      ) ==> (Vector(pdf, word, excel), Vector(word), Vector())
     }
 
     test("only a file whose change time is not its card's at the floor is read") {

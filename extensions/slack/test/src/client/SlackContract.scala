@@ -32,6 +32,11 @@ abstract class SlackContract extends TestSuite {
     */
   protected def withCommand[A](down: Boolean = false)(body: (Slack, Hooks^) => A): A
 
+  /** Runs `body` over a Slack as [[withSlack]] does, given every card Slack has shown so far,
+    * oldest first.
+    */
+  protected def withCards[A](body: (Slack, () => Vector[CardShown]) => A): A
+
   private val w = Workspace
 
   /** A listing as the names of its messages, a ts the workspace does not know as itself. */
@@ -254,8 +259,15 @@ abstract class SlackContract extends TestSuite {
     }
 
     test("ask shows its card to its user alone, in a thread of a channel grit's bot is in") {
-      withSlack() { slack =>
-        slack.ask(Public, w.ts("m1"), Ana, card) ==> Right(())
+      withCards { (slack, cards) =>
+        (slack.ask(Public, w.ts("m1"), Ana, card), cards()) ==>
+          (Right(()), Vector(CardShown(Public, w.ts("m1"), Ana)))
+      }
+    }
+    test("ask in a channel grit's bot is not in is Refused(channel_not_found), and shows nothing") {
+      withCards { (slack, cards) =>
+        (slack.ask(Outside, w.ts("m1"), Ana, card), cards()) ==>
+          (Left(SlackError.Refused("channel_not_found")), Vector())
       }
     }
 
@@ -339,6 +351,9 @@ object SlackContract {
     * Slack, and whether it replaces the message the url came from.
     */
   final case class Answered(url: ResponseUrl, ephemeral: Boolean, shown: String, replaces: Boolean)
+
+  /** A card Slack showed `user` alone, in `thread` of `channel`. */
+  final case class CardShown(channel: ChannelId, thread: Ts, user: UserId)
 
   /** The ids the recordings use: the capture maps every real id to these. */
   val Team = TeamId("T0000000001")

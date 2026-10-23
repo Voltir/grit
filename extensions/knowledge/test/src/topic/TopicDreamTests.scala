@@ -780,8 +780,8 @@ object TopicDreamTests extends TestSuite {
         )
       }
       val reply = runs.run(now = Now.plusSeconds(60))
-      (reply.contains("1 of a later version left"), runs.topics.map(_.data("v").num)) ==> (
-        true,
+      (reply, runs.topics.map(_.data("v").num)) ==> (
+        "topics: 0 written (0 opened), 0 withdrawn, 0 unchanged, 0 set aside, 0 left for the next run, 1 of a later version left; not written: topic:strand-c1 (the topic was written since its scan)",
         Vector(3.0)
       )
     }
