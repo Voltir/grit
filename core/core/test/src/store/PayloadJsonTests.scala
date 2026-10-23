@@ -163,10 +163,10 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test(
-      "a window's pieces are stored by id after its documents, and read back; one stored without them holds none"
+      "a window's pieces are stored by id with their counts of further matches after its documents, and read back; one stored without them holds none"
     ) {
       val versions = Vector(7L).flatMap(DocumentVersionId.of)
-      val pieces = Vector(12L, 4L).flatMap(PieceId.of)
+      val pieces = Vector(12L, 4L).flatMap(PieceId.of).zip(Vector(2, 0))
       val window = Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, pieces)
       val stored = PayloadJson.write(window).render()
       val older = """{"kind":"window","entries":[0],"recalled":[],"documents":[7]}"""
@@ -178,7 +178,7 @@ object PayloadJsonTests extends TestSuite {
           .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"pieces":[0]}"""))
           .isLeft
       ) ==> (
-        """{"kind":"window","entries":[0],"recalled":[],"documents":[7],"pieces":[12,4]}""",
+        """{"kind":"window","entries":[0],"recalled":[],"documents":[7],"pieces":[{"id":12,"more":2},{"id":4,"more":0}]}""",
         Right(window),
         Right(Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions)),
         true

@@ -38,7 +38,12 @@ object PayloadJson {
       if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
       if (documents.nonEmpty) o("documents") = writeVersions(documents)
       if (pieces.nonEmpty)
-        o("pieces") = ujson.Arr.from(pieces.map(p => ujson.Num(PieceId.value(p).toDouble)))
+        o("pieces") = ujson.Arr.from(pieces.map { (p, more) =>
+          ujson.Obj(
+            "id" -> ujson.Num(PieceId.value(p).toDouble),
+            "more" -> ujson.Num(more.toDouble)
+          )
+        })
       o
     // "topic" is the agenda's kind from before its rename.
     case Payload.Agenda(events) =>
@@ -381,14 +386,24 @@ object PayloadJson {
       case _ => Left("document versions are not an array")
     }
 
-  /** The pieces `v` stores, by id, or why none. */
-  private def readPieces(v: ujson.Value): Either[String, Vector[PieceId]] =
+  /** The pieces `v` stores, each by id with its count of further matches, or why none. */
+  private def readPieces(v: ujson.Value): Either[String, Vector[(PieceId, Int)]] =
     v match {
       case ujson.Arr(items) =>
         traverse(items.toVector) {
-          case ujson.Num(n) if n.isWhole =>
-            PieceId.of(n.toLong).toRight("a piece's id is a whole number from 1")
-          case _ => Left("a piece's id is a whole number from 1")
+          case o: ujson.Obj =>
+            for {
+              id <- o.value.get("id") match {
+                case Some(ujson.Num(n)) if n.isWhole =>
+                  PieceId.of(n.toLong).toRight("a piece's id is a whole number from 1")
+                case _ => Left("a piece's id is a whole number from 1")
+              }
+              more <- o.value.get("more") match {
+                case Some(ujson.Num(n)) if n.isWhole && n >= 0 => Right(n.toInt)
+                case _ => Left("a piece's more is a whole number from 0")
+              }
+            } yield (id, more)
+          case _ => Left("a piece is not an object")
         }
       case _ => Left("pieces are not an array")
     }

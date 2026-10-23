@@ -474,8 +474,8 @@ object TurnViewTests extends TestSuite {
       )
       val label = got(DocLabel.of("Drive files"))
       val held = Vector(
-        piece(12, "Accounts are reviewed.") -> label,
-        piece(4, "Keys rotate.") -> label
+        (piece(12, "Accounts are reviewed."), label, 3),
+        (piece(4, "Keys rotate."), label, 0)
       )
       val asked = Vector(
         user(0, 0, "who reviews accounts?"),
@@ -487,7 +487,7 @@ object TurnViewTests extends TestSuite {
             Vector.empty,
             Vector.empty,
             Vector.empty,
-            held.map(_(0).id)
+            held.map((k, _, more) => (k.id, more))
           )
         ),
         reply(2, 0, "Finance", 50)
@@ -508,7 +508,9 @@ object TurnViewTests extends TestSuite {
         .window
         .getOrElse(sys.error("no window"))
       val pieces =
-        held.map((k, l) => CharEstimate.message(Shown.piece(k, l, 0))).foldLeft(Tokens.Zero)(_ + _)
+        held
+          .map((k, l, m) => CharEstimate.message(Shown.piece(k, l, m)))
+          .foldLeft(Tokens.Zero)(_ + _)
       (w.pieces, w.total) ==> (
         pieces,
         CharEstimate.system("s") + pieces + CharEstimate.message(

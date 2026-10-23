@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.act.phase.{Asking, Hearing, Placing}
 import grit.core.allot.Router
-import grit.core.context.{AssemblyNote, Window}
+import grit.core.context.{AssemblyNote, Retrieved, Window}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
@@ -835,9 +835,22 @@ private[turn] object TurnSteps {
           all <- records.entries.list(turn.conversationId)
           window = all
             .collectFirst {
-              case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, documents, _), _, _)
-                  if id == Turn.windowId(turn) =>
-                Window(entries = entries, nearby = nearby, documents = documents)
+              case Entry(
+                    id,
+                    _,
+                    _,
+                    _,
+                    _,
+                    Payload.Window(entries, _, nearby, documents, pieces),
+                    _,
+                    _
+                  ) if id == Turn.windowId(turn) =>
+                Window(
+                  entries = entries,
+                  nearby = nearby,
+                  documents = documents,
+                  pieces = pieces.map((id, more) => Retrieved.Piece(id, more))
+                )
             }
             .getOrElse(Window(Vector.empty))
           // What the model was shown, read as its own request reads it.
@@ -1237,7 +1250,7 @@ private[turn] object TurnSteps {
               recalled,
               window.nearby,
               window.documents,
-              window.pieces.map(_.id)
+              window.pieces.map(p => (p.id, p.more))
             ),
             at,
             level

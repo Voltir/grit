@@ -389,15 +389,17 @@ final class ChatHost(
       engine.db
         .read(session)(engine.documents.labelled(windows.flatMap(_.documents)))
         .getOrElse(Vector.empty)
-    // Its pieces of files likewise.
+    // Its pieces of files likewise, each with the count of further matches its window recorded.
+    val counts = windows.flatMap(_.pieces).toMap
     val pieces =
       engine.db
         .read(session)(
           engine.pieces
-            .read(windows.flatMap(_.pieces))
+            .read(counts.keys.toVector)
             .flatMap(engine.documents.labelledPieces)
         )
         .getOrElse(Vector.empty)
+        .map((piece, label) => (piece, label, counts.getOrElse(piece.id, 0)))
     val prompt = engine.db.read(session)(engine.prompts.of(turn.workflowId)).toOption.flatten
     // Unread names cost the window as unnamed: the panel is a view, never a failure.
     val speakers =

@@ -170,7 +170,7 @@ object TurnView {
       profile: Option[TurnProfile] = None,
       nearby: Vector[Entry] = Vector.empty,
       documents: Vector[(Document, DocLabel)] = Vector.empty,
-      pieces: Vector[(KeptPiece, DocLabel)] = Vector.empty
+      pieces: Vector[(KeptPiece, DocLabel, Int)] = Vector.empty
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
@@ -201,10 +201,8 @@ object TurnView {
           documents
             .map((document, label) => estimator.message(Shown.document(document, label)))
             .foldLeft(Tokens.Zero)(_ + _),
-          // The window records no piece's count of further matches, so each is estimated
-          // without that line.
           pieces
-            .map((piece, label) => estimator.message(Shown.piece(piece, label, 0)))
+            .map((piece, label, more) => estimator.message(Shown.piece(piece, label, more)))
             .foldLeft(Tokens.Zero)(_ + _)
         )
       }

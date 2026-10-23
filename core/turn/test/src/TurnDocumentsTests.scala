@@ -340,7 +340,7 @@ object TurnDocumentsTests extends TestSuite {
       ok(entries.list(conversation)(using TestTx.fake)).collectFirst {
         case Entry(id, _, _, _, _, w: Payload.Window, _, _) if id == Turn.windowId(turn) =>
           (w.documents, w.pieces)
-      } ==> Some((Vector(week), Vector(two, one)))
+      } ==> Some((Vector(week), Vector((two, 0), (one, 1))))
     }
 
     test(

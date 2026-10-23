@@ -42,7 +42,8 @@ enum Payload {
     * ([[grit.core.context.Window]]): the seqs of the entries of its own conversation the
     * model saw before the turn's own, in the order it saw them, which earlier turns among them search
     * `recalled` rather than recency, the `nearby` sections from other conversations, the
-    * documents it held, by version, and the pieces of files it held, by id. A record of what
+    * documents it held, by version, and the pieces of files it held, by id with how many more
+    * of its file's pieces its search matched (the count the model was shown). A record of what
     * the model saw: never shown to the model, never searched.
     */
   case Window(
@@ -50,7 +51,7 @@ enum Payload {
       recalled: Vector[TurnSeq],
       nearby: Vector[Nearby] = Vector.empty,
       documents: Vector[DocumentVersionId] = Vector.empty,
-      pieces: Vector[PieceId] = Vector.empty
+      pieces: Vector[(PieceId, Int)] = Vector.empty
   )
 
   /** What happened to the conversation's agenda during the turn the entry belongs to
