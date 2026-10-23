@@ -389,6 +389,15 @@ final class ChatHost(
       engine.db
         .read(session)(engine.documents.labelled(windows.flatMap(_.documents)))
         .getOrElse(Vector.empty)
+    // Its pieces of files likewise.
+    val pieces =
+      engine.db
+        .read(session)(
+          engine.pieces
+            .read(windows.flatMap(_.pieces))
+            .flatMap(engine.documents.labelledPieces)
+        )
+        .getOrElse(Vector.empty)
     val prompt = engine.db.read(session)(engine.prompts.of(turn.workflowId)).toOption.flatten
     // Unread names cost the window as unnamed: the panel is a view, never a failure.
     val speakers =
@@ -406,7 +415,8 @@ final class ChatHost(
       estimator,
       profile,
       nearby,
-      documents
+      documents,
+      pieces
     )
   }
 

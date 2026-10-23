@@ -4,6 +4,7 @@ import java.time.Duration
 
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, Document}
+import grit.core.files.KeptPiece
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
@@ -97,7 +98,8 @@ object TurnView {
     * period before, the recent turns with the gap lines between the window's turns, the
     * turns search recalled (`recalledTurns`), the
     * turn's own messages, the sections from other conversations (`nearby`, their turns
-    * `nearbyTurns`), and the plugins' documents it held (`documents`).
+    * `nearbyTurns`), and the plugins' documents and pieces of files it held (`documents`,
+    * `pieces`).
     */
   final case class Window(
       system: Tokens,
@@ -108,9 +110,11 @@ object TurnView {
       recalledTurns: Vector[TurnSeq],
       nearby: Tokens = Tokens.Zero,
       nearbyTurns: Vector[Near] = Vector.empty,
-      documents: Tokens = Tokens.Zero
+      documents: Tokens = Tokens.Zero,
+      pieces: Tokens = Tokens.Zero
   ) {
-    def total: Tokens = system + closing + recent + recalled + message + nearby + documents
+    def total: Tokens =
+      system + closing + recent + recalled + message + nearby + documents + pieces
   }
 
   /** A nearby section the window showed, by its place. */
@@ -147,7 +151,8 @@ object TurnView {
 
   /** `turn`, from every entry of its conversation, whose person's messages `speakers` names,
     * and the `nearby` entries of other conversations its window showed, the `documents` its
-    * window held, each under its plugin's label ([[grit.core.document.DocumentSearch.labelled]]), the `steps` its
+    * window held, each under its plugin's label ([[grit.core.document.DocumentSearch.labelled]]),
+    * the `pieces` of files it held likewise, the `steps` its
     * workflow recorded,
     * whether it is `running`, its ledger rows `costs`, the `profile` it pinned, and the
     * system `prompt` it was sent (none for a turn that recorded none). The window is
@@ -164,7 +169,8 @@ object TurnView {
       estimator: TokenEstimator,
       profile: Option[TurnProfile] = None,
       nearby: Vector[Entry] = Vector.empty,
-      documents: Vector[(Document, DocLabel)] = Vector.empty
+      documents: Vector[(Document, DocLabel)] = Vector.empty,
+      pieces: Vector[(KeptPiece, DocLabel)] = Vector.empty
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
@@ -194,6 +200,11 @@ object TurnView {
           },
           documents
             .map((document, label) => estimator.message(Shown.document(document, label)))
+            .foldLeft(Tokens.Zero)(_ + _),
+          // The window records no piece's count of further matches, so each is estimated
+          // without that line.
+          pieces
+            .map((piece, label) => estimator.message(Shown.piece(piece, label, 0)))
             .foldLeft(Tokens.Zero)(_ + _)
         )
       }

@@ -61,7 +61,7 @@ object TurnModelsTests extends TestSuite {
     )
 
   private val isWindow: Entry -> Boolean = _.payload match {
-    case Payload.Window(_, _, _, _) => true
+    case Payload.Window(_, _, _, _, _) => true
     case _ => false
   }
 

@@ -148,7 +148,7 @@ object Rebuild {
       recorded <- read("window")(reader.entries.get(Turn.windowId(turn))).map(
         _.flatMap(e =>
           e.payload match {
-            case Payload.Window(seqs, _, nearby, documents) =>
+            case Payload.Window(seqs, _, nearby, documents, _) =>
               Some(Window(seqs, Vector.empty, nearby, documents))
             case _ => None
           }

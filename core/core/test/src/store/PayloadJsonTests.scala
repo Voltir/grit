@@ -1,7 +1,15 @@
 package grit.core.store
 
 import grit.core.agenda.{Agenda, Placement, Weights}
-import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  EntrySeq,
+  PeriodSeq,
+  PieceId,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
@@ -152,6 +160,29 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson
         .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"documents":[0]}"""))
         .isLeft ==> true
+    }
+
+    test(
+      "a window's pieces are stored by id after its documents, and read back; one stored without them holds none"
+    ) {
+      val versions = Vector(7L).flatMap(DocumentVersionId.of)
+      val pieces = Vector(12L, 4L).flatMap(PieceId.of)
+      val window = Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, pieces)
+      val stored = PayloadJson.write(window).render()
+      val older = """{"kind":"window","entries":[0],"recalled":[],"documents":[7]}"""
+      (
+        stored,
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.read(ujson.read(older)),
+        PayloadJson
+          .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"pieces":[0]}"""))
+          .isLeft
+      ) ==> (
+        """{"kind":"window","entries":[0],"recalled":[],"documents":[7],"pieces":[12,4]}""",
+        Right(window),
+        Right(Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions)),
+        true
+      )
     }
 
     test("a closed nearby section is stored with its closing, and read back") {

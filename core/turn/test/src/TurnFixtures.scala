@@ -1150,7 +1150,7 @@ object TurnFixtures {
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
-        case Payload.Window(_, _, _, _) | Payload.Agenda(_) => None
+        case Payload.Window(_, _, _, _, _) | Payload.Agenda(_) => None
       }
     }
 

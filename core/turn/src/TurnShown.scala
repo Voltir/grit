@@ -188,12 +188,10 @@ private[turn] object TurnShown {
       labelled <- documents.labelled(window.documents)
       kept <-
         if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
-      // The terms in force are read only when a piece is left to label.
-      terms <- if (kept.isEmpty) Right(Vector.empty) else documents.declared()
+      shown <- documents.labelledPieces(kept)
     } yield {
-      val labels = terms.map((p, t) => p -> t.label).toMap
       val more = window.pieces.map(p => p.id -> p.more).toMap
-      val parts = kept.flatMap(k => labels.get(k.plugin).map(l => (k, l, more.getOrElse(k.id, 0))))
+      val parts = shown.map((k, l) => (k, l, more.getOrElse(k.id, 0)))
       Showing(at, mine, near, named, labelled, parts)
     }
 

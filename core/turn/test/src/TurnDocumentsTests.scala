@@ -101,6 +101,32 @@ object TurnDocumentsTests extends TestSuite {
     }
 
   /** An assembler whose every window is `drawn`. */
+  /** `text`, kept in `pieces` as `plugin`'s one piece of a file of its own (`text` its ref),
+    * under the heading Access on page 2, at [[board]], [[written]]: its id.
+    */
+  private def kept(pieces: InMemoryPieces, plugin: PluginName, text: String): PieceId = {
+    val piece = Piece(
+      Vector("Access"),
+      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2))))))))
+    )
+    ok(
+      pieces
+        .keeper(plugin, PieceKeeper.Bound)
+        .keep(
+          PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1),
+          board,
+          Integrity.Member,
+          Vector(piece),
+          0,
+          written
+        )(using TestTx.fake)
+    )
+    ok(pieces.search(Vector(plugin), text, 5, written.plusSeconds(1))(using TestTx.fake))
+      .map(_.piece.id)
+      .headOption
+      .getOrElse(sys.error(s"no piece for $text"))
+  }
+
   private def windowing(drawn: Window): ContextAssembler = new Drawing {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
       Right(drawn)
@@ -242,32 +268,8 @@ object TurnDocumentsTests extends TestSuite {
       )
       val week = write(documents, digest, "Weekly digest", "week", "Deploys frozen until Friday.")
       val pieces = new InMemoryPieces
-      def kept(plugin: PluginName, text: String): PieceId = {
-        val piece = Piece(
-          Vector("Access"),
-          Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2))))))))
-        )
-        ok(
-          pieces
-            .keeper(plugin, PieceKeeper.Bound)
-            .keep(
-              PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1),
-              board,
-              Integrity.Member,
-              Vector(piece),
-              0,
-              written
-            )(using
-              TestTx.fake
-            )
-        )
-        ok(pieces.search(Vector(plugin), text, 5, written.plusSeconds(1))(using TestTx.fake))
-          .map(_.piece.id)
-          .headOption
-          .getOrElse(sys.error(s"no piece for $text"))
-      }
-      val shown = kept(files, "Accounts are reviewed.")
-      val unlabelled = kept(got(PluginName.of("dropped")), "Accounts are removed.")
+      val shown = kept(pieces, files, "Accounts are reviewed.")
+      val unlabelled = kept(pieces, got(PluginName.of("dropped")), "Accounts are removed.")
       say(entries, "one")
       val turn = say(entries, "two")
       val output = new InMemoryDurable().run(turn.workflowId)(
@@ -303,6 +305,42 @@ object TurnDocumentsTests extends TestSuite {
         )
       )
       assert(output.startsWith("replied:"))
+    }
+
+    test("the window's entry names each piece the window held, by id, after its documents") {
+      val entries = new InMemoryEntryStore
+      val documents = new InMemoryDocuments
+      val files = got(PluginName.of("files"))
+      documents.declare(Vector(digest -> terms("Weekly digest"), files -> terms("Drive files")))(
+        using TestTx.fake
+      )
+      val week = write(documents, digest, "Weekly digest", "week", "Deploys frozen until Friday.")
+      val pieces = new InMemoryPieces
+      val (one, two) =
+        (kept(pieces, files, "Accounts are reviewed."), kept(pieces, files, "Keys rotate."))
+      val turn = say(entries, "hello")
+      val _ = new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          windowing(
+            Window(
+              Vector(EntrySeq(0)),
+              Vector.empty,
+              Vector.empty,
+              Vector(week),
+              Vector(Retrieved.Piece(two, 0), Retrieved.Piece(one, 1))
+            )
+          ),
+          new InMemoryUsageLedger,
+          documents = documents,
+          pieces = pieces
+        )
+      )
+      ok(entries.list(conversation)(using TestTx.fake)).collectFirst {
+        case Entry(id, _, _, _, _, w: Payload.Window, _, _) if id == Turn.windowId(turn) =>
+          (w.documents, w.pieces)
+      } ==> Some((Vector(week), Vector(two, one)))
     }
 
     test(

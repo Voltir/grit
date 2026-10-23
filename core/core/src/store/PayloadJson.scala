@@ -2,7 +2,15 @@ package grit.core.store
 
 import grit.core.agenda.AgendaJson
 import grit.core.either.Traversal.traverse
-import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  EntrySeq,
+  PeriodSeq,
+  PieceId,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
@@ -20,7 +28,7 @@ object PayloadJson {
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
-    case Payload.Window(entries, recalled, nearby, documents) =>
+    case Payload.Window(entries, recalled, nearby, documents, pieces) =>
       val o = ujson.Obj(
         "kind" -> "window",
         "entries" -> writeSeqs(entries),
@@ -29,6 +37,8 @@ object PayloadJson {
       // Each written only when there are any.
       if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
       if (documents.nonEmpty) o("documents") = writeVersions(documents)
+      if (pieces.nonEmpty)
+        o("pieces") = ujson.Arr.from(pieces.map(p => ujson.Num(PieceId.value(p).toDouble)))
       o
     // "topic" is the agenda's kind from before its rename.
     case Payload.Agenda(events) =>
@@ -116,7 +126,8 @@ object PayloadJson {
               if (o.value.contains("nearby")) arr(o, "nearby").flatMap(traverse(_)(readNearby))
               else Right(Vector.empty)
             documents <- o.value.get("documents").fold(Right(Vector.empty))(readVersions)
-          } yield Payload.Window(entries, recalled, nearby, documents)
+            pieces <- o.value.get("pieces").fold(Right(Vector.empty))(readPieces)
+          } yield Payload.Window(entries, recalled, nearby, documents, pieces)
         case "topic" =>
           arr(o, "events").flatMap(traverse(_)(AgendaJson.read)).map(Payload.Agenda(_))
         case "exchange" =>
@@ -368,6 +379,18 @@ object PayloadJson {
           case _ => Left("a document version is a whole number from 1")
         }
       case _ => Left("document versions are not an array")
+    }
+
+  /** The pieces `v` stores, by id, or why none. */
+  private def readPieces(v: ujson.Value): Either[String, Vector[PieceId]] =
+    v match {
+      case ujson.Arr(items) =>
+        traverse(items.toVector) {
+          case ujson.Num(n) if n.isWhole =>
+            PieceId.of(n.toLong).toRight("a piece's id is a whole number from 1")
+          case _ => Left("a piece's id is a whole number from 1")
+        }
+      case _ => Left("pieces are not an array")
     }
 
   private def seq(v: ujson.Value): Either[String, EntrySeq] = v match {

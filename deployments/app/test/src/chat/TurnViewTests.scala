@@ -6,6 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.durable.StepRecord
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -13,6 +14,7 @@ import grit.core.id.{
   EntryId,
   EntrySeq,
   PeriodSeq,
+  PieceId,
   PluginName,
   TurnRef,
   TurnSeq
@@ -443,6 +445,75 @@ object TurnViewTests extends TestSuite {
       w.documents ==> documents
       w.total ==> CharEstimate.system("s") + documents + CharEstimate.message(
         Message.User("when is the freeze?")
+      )
+    }
+
+    test("a window's pieces are counted as the model was shown them, each under its label") {
+      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val board = got(Place.read("slack:T1/C1"))
+      def piece(id: Long, text: String) = KeptPiece(
+        PieceId.of(id).getOrElse(sys.error("id")),
+        got(PluginName.of("files")),
+        PiecedFile(s"f$id", "plan.pdf", "r1", FormatName("pdf"), 1),
+        board,
+        grit.core.visibility.Label.Public,
+        Integrity.Member,
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Piece(
+          Vector("Access"),
+          grit.prose.form.Doc(
+            Vector(
+              grit.prose.form.Block.Paragraph(
+                grit.prose.form.Text(
+                  Vector(grit.prose.form.Span(text, Set.empty, Vector(Locus.Page(2))))
+                )
+              )
+            )
+          )
+        )
+      )
+      val label = got(DocLabel.of("Drive files"))
+      val held = Vector(
+        piece(12, "Accounts are reviewed.") -> label,
+        piece(4, "Keys rotate.") -> label
+      )
+      val asked = Vector(
+        user(0, 0, "who reviews accounts?"),
+        entry(
+          1,
+          0,
+          Payload.Window(
+            Vector.empty,
+            Vector.empty,
+            Vector.empty,
+            Vector.empty,
+            held.map(_(0).id)
+          )
+        ),
+        reply(2, 0, "Finance", 50)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(0)),
+          asked,
+          Speakers.none,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate,
+          None,
+          pieces = held
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val pieces =
+        held.map((k, l) => CharEstimate.message(Shown.piece(k, l, 0))).foldLeft(Tokens.Zero)(_ + _)
+      (w.pieces, w.total) ==> (
+        pieces,
+        CharEstimate.system("s") + pieces + CharEstimate.message(
+          Message.User("who reviews accounts?")
+        )
       )
     }
 

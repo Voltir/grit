@@ -10,6 +10,7 @@ import grit.core.clock.Clock
 import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.{Desk, DeskError, Desks}
+import grit.core.files.PieceSearch
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.Account
@@ -88,6 +89,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 
   /** The plugins' documents, as windows hold them. */
   val documents: DocumentSearch
+
+  /** The plugins' pieces of files, as windows hold them. */
+  val pieces: PieceSearch
 
   /** The replies an edge has yet to post outside grit, and the parts it has. */
   val deliveries: grit.core.edge.Deliveries
@@ -289,6 +293,8 @@ private[engine] final class Attached(
   val principals: Principals = new SqlPrincipals()
 
   val documents: DocumentSearch = new SqlDocumentSearch
+
+  val pieces: PieceSearch = new grit.dbos.sql.SqlPieces(new grit.dbos.sql.SqlTombstones)
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 

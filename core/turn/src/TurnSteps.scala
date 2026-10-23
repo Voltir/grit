@@ -835,7 +835,7 @@ private[turn] object TurnSteps {
           all <- records.entries.list(turn.conversationId)
           window = all
             .collectFirst {
-              case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, documents), _, _)
+              case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, documents, _), _, _)
                   if id == Turn.windowId(turn) =>
                 Window(entries = entries, nearby = nearby, documents = documents)
             }
@@ -1232,7 +1232,13 @@ private[turn] object TurnSteps {
             turn.turnSeq,
             None,
             windowSeq,
-            Payload.Window(window.entries, recalled, window.nearby, window.documents),
+            Payload.Window(
+              window.entries,
+              recalled,
+              window.nearby,
+              window.documents,
+              window.pieces.map(_.id)
+            ),
             at,
             level
           )

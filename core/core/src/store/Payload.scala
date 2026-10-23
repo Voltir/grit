@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersionId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{DocumentVersionId, EntrySeq, PeriodSeq, PieceId, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing}
 
@@ -41,15 +41,16 @@ enum Payload {
   /** The window the reply of the turn the entry belongs to was written from
     * ([[grit.core.context.Window]]): the seqs of the entries of its own conversation the
     * model saw before the turn's own, in the order it saw them, which earlier turns among them search
-    * `recalled` rather than recency, the `nearby` sections from other conversations, and the
-    * documents it held, by version. A record of what the model saw: never shown to the model,
-    * never searched.
+    * `recalled` rather than recency, the `nearby` sections from other conversations, the
+    * documents it held, by version, and the pieces of files it held, by id. A record of what
+    * the model saw: never shown to the model, never searched.
     */
   case Window(
       entries: Vector[EntrySeq],
       recalled: Vector[TurnSeq],
       nearby: Vector[Nearby] = Vector.empty,
-      documents: Vector[DocumentVersionId] = Vector.empty
+      documents: Vector[DocumentVersionId] = Vector.empty,
+      pieces: Vector[PieceId] = Vector.empty
   )
 
   /** What happened to the conversation's agenda during the turn the entry belongs to

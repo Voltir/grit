@@ -251,7 +251,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       }
     }
 
-  /** The window as one bar: system, what came from elsewhere, the documents it held,
+  /** The window as one bar: system, what came from elsewhere, the documents and pieces it held,
     * closing, recent, recalled and the turn's own message, then what is left of `budget`,
     * each a colour, with a legend under it. A turn that failed before assembly had none.
     */
@@ -266,6 +266,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         (w.system, t.faint),
         (w.nearby, t.headerFg),
         (w.documents, t.statusFg),
+        (w.pieces, t.statusFg),
         (w.closing, t.thumb),
         (w.recent, t.grit),
         (w.recalled, t.user),
@@ -301,15 +302,11 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       ) ++
         // Only when the window held one, so the panel stays as tall as before for one that did
         // not.
-        Option
-          .when(Tokens.value(w.documents) > 0)(
-            row(
-              "   " -> fg(t.faint),
-              "■ " -> fg(t.statusFg),
-              s"documents ${count(w.documents)}" -> fg(t.faint)
-            )
-          )
-          .toVector ++ prompt(v)
+        Vector("documents" -> w.documents, "pieces" -> w.pieces)
+          .filter((_, n) => Tokens.value(n) > 0)
+          .map((name, n) =>
+            row("   " -> fg(t.faint), "■ " -> fg(t.statusFg), s"$name ${count(n)}" -> fg(t.faint))
+          ) ++ prompt(v)
   }
 
   /** The system prompt's fragments, each with its estimate, two to a row so a narrow panel
