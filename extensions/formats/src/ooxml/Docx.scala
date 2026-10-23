@@ -20,7 +20,8 @@ import grit.core.files.{
 }
 import grit.formats.limits.Guard
 import grit.formats.ooxml.Package.{attr, isText}
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.formats.tree.Blocks.{nest, table}
+import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 
 /** Word documents (`.docx`, `.docm`), transitional or strict, read over the JDK's zip and StAX:
   * paragraphs, headings by style (or a style based on one, or an outline level), lists with
@@ -363,23 +364,4 @@ object Docx extends Format {
       flushBoxes()
     }
   }
-
-  /** Items at their depths as nested lists: an item followed by deeper ones holds them. */
-  private def nest(items: List[(Int, Text[Nothing])]): Vector[Item[Nothing]] = items match {
-    case Nil => Vector.empty
-    case (d, t) :: rest =>
-      val (children, after) = rest.span(_._1 > d)
-      val inner = if (children.isEmpty) Vector.empty else Vector(Block.Bullets(nest(children)))
-      Item(Block.Paragraph(t) +: inner) +: nest(after)
-  }
-
-  /** `rows` as a table as wide as its widest row, the first its columns' names. */
-  private def table(rows: Vector[Vector[Text[Nothing]]]): Option[Block[Nothing]] =
-    rows.headOption.map { head =>
-      val width = rows.map(_.size).max
-      Block.table(
-        head.padTo(width, Text.empty).map(Column(_)),
-        rows.drop(1).map(_.map(t => Cell.Words(t): Cell[Nothing]))
-      )
-    }
 }

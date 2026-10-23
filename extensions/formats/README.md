@@ -18,9 +18,12 @@ In dependency order:
   characters read, the bytes unpacked, the deadline checked every 1024 steps) and answers the
   limit that stopped it; a zip part's stream counted as it is unpacked; XML read with no DTD and
   no external entity. The JDK alone. Imports nothing in formats.
+- **`tree`**: the blocks more than one reader builds alike from what it read (`Blocks`: a
+  levelled list nested, rows made a table). Prose's tree alone. Imports nothing in formats.
 - **`ooxml`**: Word documents (`Docx`) and Excel workbooks (`Xlsx`), transitional or strict,
   read over the JDK's `ZipFile` and StAX by their parts' local names. `ZipFile`, not a stream,
-  since a stream unpacks every entry it skips outside the count. The JDK alone. ← `limits`
+  since a stream unpacks every entry it skips outside the count. The JDK alone. ← `limits`,
+  `tree`
 - **`pdf`**: PDFs (`Pdf`) over PDFBox, in the order their pages draw text (sorting by position
   scrambles columns), bookmarks placed as headings where their titles are printed, running
   headers and footers dropped, every span noted with its page. The one package naming
