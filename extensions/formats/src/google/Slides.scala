@@ -65,7 +65,7 @@ object Slides extends Format {
             unseen ++= missed
           }
         }
-        Guard.unread(stopped.filter(_ => done.isEmpty), Kind.GoogleSlides).toLeft {
+        Guard.unread(stopped, done.size, Kind.GoogleSlides).toLeft {
           Understood(
             Deck.doc(done.toVector),
             stopped.fold(Covers.Whole)(Covers.Part(done.size, slides.size, CoverUnit.Pages, _)),
@@ -229,7 +229,9 @@ object Slides extends Format {
     def add(content: String, marks: Set[Mark]): Unit =
       content.split("\n", -1).zipWithIndex.foreach { (part, i) =>
         if (i > 0) flush()
-        if (part.nonEmpty) count.keep(part.replace('\u000b', '\n'), k => spans += Span(k, marks))
+        // A soft break (U+000B) ends a line, not a paragraph: a space keeps its words apart
+        // without a line end inside the paragraph's text.
+        if (part.nonEmpty) count.keep(part.replace('\u000b', ' '), k => spans += Span(k, marks))
       }
     all(text, "textElements").foreach { e =>
       count.step()

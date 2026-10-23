@@ -82,7 +82,7 @@ object Xlsx extends Format {
       }
     }
     opened.flatMap { _ =>
-      Guard.unread(stopped.filter(_ => tables == 0), Kind.Excel).toLeft {
+      Guard.unread(stopped, tables, Kind.Excel).toLeft {
         Understood(
           Doc(blocks.toVector),
           stopped.fold(Covers.Whole)(Covers.Part(begun, visible, CoverUnit.Sheets, _)),

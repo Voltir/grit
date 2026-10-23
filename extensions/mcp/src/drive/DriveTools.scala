@@ -35,7 +35,8 @@ import grit.edge.{Run, Tools}
   * a Sheet or a Slides deck is kept and read so in the first form Drive gives it in
   * ([[DriveKind.exportsAs]]) whose kind those formats read: a deck as the Slides API answers
   * it, else, or when the Slides API is not enabled ([[DriveError.SlidesOff]], `said` hears it),
-  * as its PDF. Else a Doc or a Sheet is answered as Drive's text of it, and a Slides deck
+  * as its PDF; while the API is off, every read of a deck makes one failing Slides request, so
+  * heard, before it answers from the PDF the area keeps. Else a Doc or a Sheet is answered as Drive's text of it, and a Slides deck
   * refused. Folders and images are refused.
   * A file whose read meets its own refusal ([[DriveError.lasting]]: a format would not read it,
   * Drive flagged it or will not export it) is answered as unread, saying why

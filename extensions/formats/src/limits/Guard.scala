@@ -55,15 +55,17 @@ object Guard {
     }
   }
 
-  /** What a read of a file of `kind` that kept nothing of it is, when `stopped` stopped it:
-    * [[Unread.TooSlow]] by its time, [[Unread.Damaged]] by damage; `None` for any other stop,
-    * or none, so it is answered as what it covers.
+  /** What a read of a file of `kind`, stopped by `stopped` after keeping `kept` of its units (a
+    * workbook's tables, a document's body blocks, a deck's slides), is: when it kept none, [[Unread.TooSlow]] by its time and
+    * [[Unread.Damaged]] by damage; `None` when it kept any, for any other stop, or none, so it is
+    * answered as what it covers.
     */
-  def unread(stopped: Option[Limit], kind: Kind): Option[Unread] = stopped match {
-    case Some(Limit.Time) => Some(Unread.TooSlow)
-    case Some(Limit.Damaged) => Some(Unread.Damaged(kind))
-    case Some(Limit.Chars | Limit.Glyphs | Limit.Inflated) | None => None
-  }
+  def unread(stopped: Option[Limit], kept: Int, kind: Kind): Option[Unread] =
+    stopped.filter(_ => kept == 0) match {
+      case Some(Limit.Time) => Some(Unread.TooSlow)
+      case Some(Limit.Damaged) => Some(Unread.Damaged(kind))
+      case Some(Limit.Chars | Limit.Glyphs | Limit.Inflated) | None => None
+    }
 
   /** A read's counts, each throwing [[Stopped]] past its limit. */
   trait Count extends caps.SharedCapability {

@@ -85,7 +85,7 @@ object Docx extends Format {
       if (!read) Left(Unread.Damaged(Kind.Word))
       else
         // Its end sections are no read of its body.
-        Guard.unread(stopped.filter(_ => bodied == 0), Kind.Word).toLeft {
+        Guard.unread(stopped, bodied, Kind.Word).toLeft {
           Understood(
             Doc(blocks.toVector),
             stopped.fold(Covers.Whole)(Covers.Start(_)),

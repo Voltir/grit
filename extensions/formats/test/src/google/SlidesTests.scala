@@ -151,7 +151,7 @@ object SlidesTests extends TestSuite {
     }
 
     test(
-      "bold, italic and a link are marks; a soft break a line break; a link to a slide its text"
+      "bold, italic and a link are marks; a soft break a space within its paragraph; a link to a slide its text"
     ) {
       val styled = para(
         run("Bold", ujson.Obj("bold" -> true)),
@@ -172,7 +172,7 @@ object SlidesTests extends TestSuite {
                 Span("Bold", Set(Mark.Strong)),
                 Span.plain(" and "),
                 Span("leaning", Set(Mark.Emphasis)),
-                Span.plain("\nsee "),
+                Span.plain(" see "),
                 Span("the site", Set(Mark.Link("https://example.com/plan"))),
                 Span.plain(" or slide 3.")
               )
