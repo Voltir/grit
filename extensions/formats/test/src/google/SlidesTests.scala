@@ -41,10 +41,11 @@ object SlidesTests extends TestSuite {
   private def slide(
       elements: Vector[ujson.Value],
       notes: Vector[ujson.Value] = Vector.empty,
-      skipped: Boolean = false
+      skipped: Boolean = false,
+      layout: String = "layout-body"
   ): ujson.Value = {
     val props = ujson.Obj(
-      "layoutObjectId" -> "layout-body",
+      "layoutObjectId" -> layout,
       "notesPage" -> ujson.Obj(
         "notesProperties" -> ujson.Obj("speakerNotesObjectId" -> "notes"),
         "pageElements" -> ujson.Arr(
@@ -68,6 +69,14 @@ object SlidesTests extends TestSuite {
         ujson.Obj(
           "objectId" -> "layout-body",
           "layoutProperties" -> ujson.Obj("name" -> "TITLE_AND_BODY")
+        ),
+        ujson.Obj(
+          "objectId" -> "layout-section",
+          "layoutProperties" -> ujson.Obj("name" -> "SECTION_HEADER")
+        ),
+        ujson.Obj(
+          "objectId" -> "layout-section-described",
+          "layoutProperties" -> ujson.Obj("name" -> "SECTION_TITLE_AND_DESCRIPTION")
         )
       ),
       "slides" -> ujson.Arr.from(slides)
@@ -238,6 +247,33 @@ object SlidesTests extends TestSuite {
           ),
           heading("Next")
         )
+      )
+    }
+
+    test(
+      "slides after a section header slide are nested under it, up to the next; those before it, and a deck with none, stay flat"
+    ) {
+      def at(level: Int, s: String) = Block.Heading(Level.of(level), plain(s))
+      (
+        blocks(
+          slide(Vector(title("Welcome"))),
+          slide(Vector(title("Plans")), layout = "layout-section"),
+          slide(Vector(title("Hiring"))),
+          slide(Vector(title("Results")), layout = "layout-section-described"),
+          slide(Vector(title("Revenue")))
+        ),
+        blocks(slide(Vector(title("One"))), slide(Vector(title("Two"))))
+      ) ==> (
+        Right(
+          Vector(
+            at(1, "Welcome"),
+            at(1, "Plans"),
+            at(2, "Hiring"),
+            at(1, "Results"),
+            at(2, "Revenue")
+          )
+        ),
+        Right(Vector(at(1, "One"), at(1, "Two")))
       )
     }
 

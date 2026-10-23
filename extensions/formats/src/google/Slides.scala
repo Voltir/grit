@@ -25,7 +25,9 @@ import grit.prose.form.{Block, Cell, Mark, Span, Text}
 /** Google Slides decks as the Slides API's `presentations.get` answers them: each slide a section
   * headed by its title (else "Slide n"), every span on page n, n its place among all slides;
   * body text, lists, tables and alt text in the answer's element order, never by position;
-  * speaker notes as a quote led by **Speaker notes**; a skipped slide said so. A slide number,
+  * speaker notes as a quote led by **Speaker notes**; a skipped slide said so; slides after a
+  * section-header slide (laid out by Google's section header layouts) nested under it, up to
+  * the next, as level 2 sections, and a deck with none left flat. A slide number,
   * date or footer placeholder, a line and a shape with no text are dropped. Images and charts
   * without alt text, and videos, are [[Missed]]. [[Unread.NotMine]] for JSON that is not a deck;
   * [[Unread.Damaged]] for JSON that does not parse. A stopped read [[Covers.Part]] in slides
@@ -42,6 +44,9 @@ object Slides extends Format {
   private val Titles = Set("TITLE", "CENTERED_TITLE")
   private val Dropped = Set("SLIDE_NUMBER", "DATE_AND_TIME", "FOOTER")
 
+  /** Google's predefined layouts for a section's header. */
+  private val Sections = Set("SECTION_HEADER", "SECTION_TITLE_AND_DESCRIPTION")
+
   def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] =
     parsed(file).flatMap { json =>
       val slides = all(json, "slides")
@@ -50,9 +55,13 @@ object Slides extends Format {
       else {
         val done = mutable.ArrayBuffer.empty[Deck.Slide]
         val unseen = mutable.ArrayBuffer.empty[Unseen]
+        val dividers = all(json, "layouts")
+          .filter(l => field(l, "layoutProperties").exists(sectioning))
+          .flatMap(str(_, "objectId"))
+          .toSet
         val stopped = Guard.until(file, limits) { count =>
           slides.zipWithIndex.foreach { (s, i) =>
-            val (slide, missed) = slideOf(s, i + 1, count)
+            val (slide, missed) = slideOf(s, i + 1, dividers, count)
             done += slide
             unseen ++= missed
           }
@@ -82,8 +91,15 @@ object Slides extends Format {
         Left(Unread.Damaged(Kind.GoogleSlides))
     }
 
-  /** Slide `n`, and what it holds that is not read. */
-  private def slideOf(s: ujson.Value, n: Int, count: Guard.Count^): (Deck.Slide, Vector[Unseen]) = {
+  /** Slide `n`, a divider when laid out by one of `dividers`, and what it holds that is not
+    * read.
+    */
+  private def slideOf(
+      s: ujson.Value,
+      n: Int,
+      dividers: Set[String],
+      count: Guard.Count^
+  ): (Deck.Slide, Vector[Unseen]) = {
     val elements = flat(all(s, "pageElements"))
     def placed(types: Set[String]): Option[ujson.Value] =
       elements.find(e => placeholder(e).exists(types.contains))
@@ -116,9 +132,19 @@ object Slides extends Format {
       sub,
       read.flatMap(_._1),
       notes,
-      props.exists(flag(_, "isSkipped"))
+      props.exists(flag(_, "isSkipped")),
+      props.flatMap(str(_, "layoutObjectId")).exists(dividers)
     )
     (slide, read.flatMap(_._2))
+  }
+
+  /** Whether a layout is one of Google's for a section's header, by its predefined name, else
+    * by the name the editor shows it under.
+    */
+  private def sectioning(properties: ujson.Value): Boolean = {
+    val shown = str(properties, "displayName").map(_.toLowerCase.replaceAll("[^a-z]+", " ").trim)
+    str(properties, "name").exists(Sections.contains) ||
+    shown.exists(Set("section header", "section title and description").contains)
   }
 
   /** `elements` with each group's children where the group stands. */
