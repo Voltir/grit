@@ -22,6 +22,9 @@ object Fragment {
   /** The source of a fragment the person chose. */
   val Person = "person"
 
+  /** The source of a fragment its deployment's persona declares. */
+  val Persona = "persona"
+
   /** The stored form, `{"layer","source","text"}`, which the id hashes: a change here changes
     * every fragment's id.
     */

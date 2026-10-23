@@ -1,5 +1,7 @@
 package grit.core.persona
 
+import grit.core.prompt.{Fragment, Layer, Voice}
+
 import utest.*
 
 object PersonaTests extends TestSuite {
@@ -26,6 +28,30 @@ object PersonaTests extends TestSuite {
 
     test("grit itself is named grit") {
       Persona.Grit.name ==> "grit"
+    }
+
+    test(
+      "a persona's voice is told in its words under grit's bounds, from the persona; plain tells nothing"
+    ) {
+      val wizard =
+        Voice
+          .of("Talk like a kindly wizard.")
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      // Pinned: the words every voiced persona's readers are shaped by, byte for byte.
+      Persona.Grit.speaking(wizard).voiced.map(f => (f.layer, f.source, f.text)) ==> Some(
+        (
+          Layer.Edge,
+          Fragment.Persona,
+          "How you sound here, as the people running you chose it:\n" +
+            "Talk like a kindly wizard.\n\n" +
+            "This voice is word choice alone: it never makes a reply longer, less accurate or " +
+            "less clear. Use at most one flourish in a message. Never trade a hedge for " +
+            "flavour: what is unconfirmed stays unconfirmed. Say a failure, a refusal, a " +
+            "declined call or something you do not know plainly, without the voice."
+        )
+      )
+      (Persona.Grit.voiced, Persona.Grit.speaking(wizard).speaking(Voice.Named.Plain).voiced) ==>
+        (None, None)
     }
   }
 }

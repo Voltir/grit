@@ -8,6 +8,8 @@ import grit.core.act.{Keeping, Moves}
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.flow.Trusted
 import grit.core.id.{JobName, PluginName}
+import grit.core.persona.Persona
+import grit.core.prompt.Voice
 
 import utest.*
 
@@ -24,6 +26,17 @@ object JobTests extends TestSuite {
   }
 
   final case class Count(n: Int) extends caps.Pure
+
+  /** A deployment's job that writes its posts' system prompt in `persona`'s voice. */
+  final class Voiced(persona: Persona) extends PlainJob[Count] {
+    val name: JobName = JobName.of("news").getOrElse(throw new java.lang.AssertionError("news"))
+    val version: Int = 1
+    val system: String = persona.voiced.fold("")(_.text)
+    def write(params: Count): ujson.Value = ujson.Num(params.n)
+    def read(params: ujson.Value): Either[String, Count] =
+      params.numOpt.map(n => Count(n.toInt)).toRight(s"not a count: $params")
+    def run(run: Trusted[JobRun[Count]], moves: Moves^): String = system
+  }
 
   /** A keeping job named `tally` whose parameters are a count. */
   final class Tallying extends KeepingJob[Count] {
@@ -46,6 +59,14 @@ object JobTests extends TestSuite {
         .getOrElse(throw new java.lang.AssertionError())
       Vector("remind", "standup", "digest").map(n => jobs.named(name(n)).map(_.job.version)) ==>
         Vector(Some(2), Some(1), None)
+    }
+
+    test("a deployment's job may hold a voiced persona, and is told its voice") {
+      val teacher = Persona.Grit.speaking(Voice.Named.Teacher)
+      val job = new Voiced(teacher)
+      Jobs.of(Vector(Owned.Deployments(job))).map(_.named(name("news")).map(_.job)) ==>
+        Right(Some(job))
+      job.system.contains(Voice.words(Voice.Named.Teacher).getOrElse("none")) ==> true
     }
 
     test("jobs two of which share a name are refused, naming the first name shared") {

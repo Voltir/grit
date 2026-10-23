@@ -1,8 +1,8 @@
 package grit.core.prompt
 
-/** How grit talks to the person, as they set it: one of grit's [[Voice.Named]] voices, or
-  * their own words. It is shown to the model only as a turn's person fragment
-  * ([[Voice.fragment]]).
+/** How grit talks, as someone chose it: one of grit's [[Voice.Named]] voices, or someone's own
+  * words. A person's is shown to the model as a turn's person fragment ([[Voice.fragment]]); a
+  * persona's, where people read grit ([[grit.core.persona.Persona.voiced]]).
   */
 sealed trait Voice
 
@@ -54,8 +54,8 @@ object Voice {
   /** The voice when none is set. */
   val Default: Voice = Named.Plain
 
-  /** A person's own words for how to talk to them: trimmed, never blank, at most
-    * [[MaxChars]] characters.
+  /** Someone's own words for how grit talks: trimmed, never blank, at most [[MaxChars]]
+    * characters.
     */
   final case class Own private[Voice] (text: String) extends Voice
 
@@ -81,11 +81,14 @@ object Voice {
   /** The person-layer fragment for `voice`: "How to talk to this person:", a line break,
     * then the voice's words, from source [[Fragment.Person]]. `None` for [[Named.Plain]].
     */
-  def fragment(voice: Voice): Option[Fragment] = {
-    val words = voice match {
-      case n: Named => n.words
-      case Own(text) => Some(text)
-    }
-    words.map(w => Fragment(Layer.Person, Fragment.Person, s"How to talk to this person:\n$w"))
+  def fragment(voice: Voice): Option[Fragment] =
+    words(voice).map(w =>
+      Fragment(Layer.Person, Fragment.Person, s"How to talk to this person:\n$w")
+    )
+
+  /** `voice`'s words as the model reads them; `None` for [[Named.Plain]]. */
+  def words(voice: Voice): Option[String] = voice match {
+    case n: Named => n.words
+    case Own(text) => Some(text)
   }
 }

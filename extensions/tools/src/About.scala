@@ -61,7 +61,7 @@ object About {
 
   /** The line the overview opens with: who `persona` is. */
   private def who(persona: Persona): String =
-    if (persona == Persona.Grit) s"You are called ${persona.name}."
+    if (persona.name == Persona.Grit.name) s"You are called ${persona.name}."
     else
       s"You are called ${persona.name}, a persona of grit: grit is the harness you run on, " +
         "described below."

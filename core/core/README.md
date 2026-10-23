@@ -18,8 +18,6 @@ In dependency order, each with the core packages it imports:
   every content-addressed id uses, and the full digest bytes are kept by (`Sha256`). A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
   (enola-intent.yaml). Imports nothing in core.
-- **`persona`**: who grit presents as; a deployment declares one (ADR 0021). Imports nothing in
-  core.
 - **`place`**: where conversations happen (ADR 0013): one containment tree, one namespace per
   source, and the weight a window gives its own conversation against the rest. Imports
   nothing in core.
@@ -36,6 +34,8 @@ In dependency order, each with the core packages it imports:
   `grit.dbos` (enola-intent.yaml). ← `id`, `place`, `identity`, `model`
 - **`prompt`**: a turn's system prompt as ordered fragments (ADR 0016), the most stable layer
   first, for a provider's prompt cache. ← `id`
+- **`persona`**: who grit presents as, and how it sounds where people read it; a deployment
+  declares one (ADR 0021). ← `prompt`
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`
 - **`schema`**: the JSON Schemas a reply is held to, in the subset every provider's strict mode
   accepts. ← `model`

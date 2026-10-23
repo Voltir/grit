@@ -46,6 +46,12 @@ object AboutTests extends TestSuite {
       asked(ujson.Obj("topic" -> "places"), pip) ==> Outcome.Done(shipped("places"))
     }
 
+    test("a voiced persona named grit is grit itself") {
+      val teacher = grit.core.prompt.Voice.Named.Teacher
+      asked(ujson.Obj(), Persona.Grit.speaking(teacher)) ==>
+        Outcome.Done("You are called grit.\n\n" + shipped("grit"))
+    }
+
     test(
       "a persona other than grit is told it is a persona running on grit, which the docs describe"
     ) {
