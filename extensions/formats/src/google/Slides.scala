@@ -22,7 +22,9 @@ import grit.formats.tree.{Blocks, Deck, Levelled}
 import grit.prose.form.{Block, Cell, Mark, Span, Text}
 
 /** Google Slides decks as the Slides API's `presentations.get` answers them: each slide a section
-  * headed by its title (else "Slide n"), every span on page n, n its place among all slides;
+  * headed by its title placeholder's text; without one, by the one short text whose font is
+  * largest on the slide (a fallback, not a layout analysis); else "Slide n". Every span on
+  * page n, n its place among all slides;
   * body text, lists, tables and alt text in the answer's element order, never by position;
   * speaker notes as a quote led by **Speaker notes**; a skipped slide said so; slides after a
   * section-header slide (laid out by Google's section header layouts) nested under it, up to
@@ -35,7 +37,7 @@ import grit.prose.form.{Block, Cell, Mark, Span, Text}
 object Slides extends Format {
 
   val name: FormatName = FormatName("google-slides")
-  val version: Int = 1
+  val version: Int = 2
 
   /** What a slide holds that is not read, counted for [[Missed]]. */
   private enum Unseen derives CanEqual { case Image, Chart, Video }
@@ -98,8 +100,8 @@ object Slides extends Format {
     val elements = flat(all(s, "pageElements"))
     def placed(types: Set[String]): Option[ujson.Value] =
       elements.find(e => placeholder(e).exists(types.contains))
-    val title = placed(Titles)
-    val subtitle = placed(Set("SUBTITLE"))
+    val title = placed(Titles).orElse(largest(elements))
+    val subtitle = placed(Set("SUBTITLE")).filterNot(title.contains)
     val rest = elements.filterNot(e =>
       title.contains(e) || subtitle.contains(e) || placeholder(e).exists(Dropped.contains)
     )
@@ -148,6 +150,50 @@ object Slides extends Format {
 
   private def placeholder(e: ujson.Value): Option[String] =
     field(e, "shape").flatMap(field(_, "placeholder")).flatMap(str(_, "type"))
+
+  /** Without a title placeholder, the one short text whose font is largest on the slide: the
+    * candidates are the shapes with text that are not dropped, each sized by its first run; a
+    * tie for the largest size, or a largest text of several paragraphs or over 100 characters,
+    * has none. A fallback, not a layout analysis.
+    */
+  private def largest(elements: Vector[ujson.Value]): Option[ujson.Value] = {
+    val sized = elements
+      .filterNot(e => placeholder(e).exists(Dropped.contains))
+      .flatMap { e =>
+        field(e, "shape")
+          .flatMap(field(_, "text"))
+          .filter(t => rawText(t).trim.nonEmpty)
+          .flatMap(t => size(t).map(pt => (e, t, pt)))
+      }
+    val top = sized.map(_._3).maxOption
+    sized.filter(c => top.contains(c._3)) match {
+      case Vector((e, t, _)) if short(t) => Some(e)
+      case _ => None
+    }
+  }
+
+  /** A text's runs' content, as the API gives it. */
+  private def rawText(t: ujson.Value): String =
+    all(t, "textElements")
+      .flatMap(e => field(e, "textRun").orElse(field(e, "autoText")).flatMap(str(_, "content")))
+      .mkString
+
+  /** The font size in points of a text's first run, if it has one. */
+  private def size(t: ujson.Value): Option[Double] =
+    all(t, "textElements")
+      .find(e => field(e, "textRun").isDefined)
+      .flatMap(e => field(e, "textRun"))
+      .flatMap(field(_, "style"))
+      .flatMap(field(_, "fontSize"))
+      .flatMap(field(_, "magnitude"))
+      .flatMap(_.numOpt)
+
+  /** Whether a text is one non-blank paragraph of at most 100 characters. */
+  private def short(t: ujson.Value): Boolean =
+    rawText(t).split("\n").map(_.trim).filter(_.nonEmpty) match {
+      case Array(one) => one.length <= 100
+      case _ => false
+    }
 
   /** One element's blocks, and what of it is not read. */
   private def element(

@@ -365,5 +365,97 @@ object SlidesTests extends TestSuite {
         Right(Covers.Part(1, 2, CoverUnit.Pages, Limit.Chars))
       )
     }
+
+    test("without a title placeholder, a slide is headed by its largest short text") {
+      blocks(
+        slide(
+          Vector(
+            shape("eyebrow", None, Vector(sized("How borrowers reach us", 10))),
+            shape("headline", None, Vector(sized("We focus on stuff crust.", 27))),
+            shape("footer", None, Vector(sized("Footer words", 9)))
+          )
+        )
+      ) ==> Right(
+        Vector(
+          heading("We focus on stuff crust."),
+          p("How borrowers reach us"),
+          p("Footer words")
+        )
+      )
+    }
+
+    test("a tie for the largest text is no title: the slide is 'Slide n'") {
+      blocks(
+        slide(
+          Vector(
+            shape("left", None, Vector(sized("Left words", 20))),
+            shape("right", None, Vector(sized("Right words", 20))),
+            shape("note", None, Vector(sized("Small words", 10)))
+          )
+        )
+      ) ==> Right(
+        Vector(
+          heading("Slide 1"),
+          p("Left words"),
+          p("Right words"),
+          p("Small words")
+        )
+      )
+    }
+
+    test("a largest text of two paragraphs is no title: the slide is 'Slide n'") {
+      blocks(
+        slide(
+          Vector(
+            shape("two", None, Vector(sized("First line\nSecond line\n", 27))),
+            shape("note", None, Vector(sized("Small words", 10)))
+          )
+        )
+      ) ==> Right(
+        Vector(
+          heading("Slide 1"),
+          p("First line"),
+          p("Second line"),
+          p("Small words")
+        )
+      )
+    }
+
+    test("a largest text longer than 100 characters is no title: the slide is 'Slide n'") {
+      blocks(
+        slide(
+          Vector(
+            shape("long", None, Vector(sized("x" * 101, 27))),
+            shape("note", None, Vector(sized("Small words", 10)))
+          )
+        )
+      ) ==> Right(
+        Vector(
+          heading("Slide 1"),
+          p("x" * 101),
+          p("Small words")
+        )
+      )
+    }
+
+    test("a title placeholder wins over a larger text box elsewhere on the slide") {
+      blocks(
+        slide(
+          Vector(
+            shape("big", None, Vector(sized("Big note", 40))),
+            title("Roadmap")
+          )
+        )
+      ) ==> Right(Vector(heading("Roadmap"), p("Big note")))
+    }
   }
 }
+
+/** A text run of `s` at `pt` points, as the API's `textRun` with its font size. */
+private def sized(s: String, pt: Int): ujson.Value =
+  ujson.Obj(
+    "textRun" -> ujson.Obj(
+      "content" -> s,
+      "style" -> ujson.Obj("fontSize" -> ujson.Obj("magnitude" -> pt, "unit" -> "PT"))
+    )
+  )
