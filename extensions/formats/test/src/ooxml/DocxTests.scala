@@ -38,6 +38,16 @@ object DocxTests extends TestSuite {
        |</w:styles>""".stripMargin
 
   val tests = Tests {
+    test(
+      "a document of 1.5 Mi characters, as long as a long standard's PDF, is read whole by default"
+    ) {
+      // 15,360 paragraphs of 100 characters: past 1 Mi, under the default's 4 Mi.
+      val line = "x" * 99
+      val long = docx(Vector.fill(15 * 1024)(p(line)).mkString)
+      Fixtures.read(Docx, long).map(u => (u.covers, u.doc.blocks.size)) ==>
+        Right((Covers.Whole, 15 * 1024))
+    }
+
     test("headings are paragraphs in a heading style, or one based on one") {
       Fixtures.blocks(
         Fixtures.read(

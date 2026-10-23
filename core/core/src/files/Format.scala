@@ -78,12 +78,12 @@ final case class ReadLimits private (
 
 object ReadLimits {
 
-  /** 20 MiB of file, 1 Mi characters of text out, 2 Mi glyphs drawn, 64 MiB unpacked from a
+  /** 20 MiB of file, 4 Mi characters of text out, 2 Mi glyphs drawn, 64 MiB unpacked from a
     * zip, 1000 zip entries, and 10 seconds.
     */
   val Default: ReadLimits = ReadLimits(
     bytes = 20L * 1024 * 1024,
-    chars = 1024 * 1024,
+    chars = 4 * 1024 * 1024,
     glyphs = 2 * 1024 * 1024,
     inflated = 64L * 1024 * 1024,
     entries = 1000,
