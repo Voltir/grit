@@ -15,7 +15,7 @@ import grit.core.place.Place
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitKind, UnitVersion}
+import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
 import grit.knowledge.ref.CardKey
 
 /** The job `knowledge-sync`, version 6, over `sources`. A run, for the source its parameters
@@ -207,7 +207,7 @@ object Sync {
                     case fetched => (Outcome.Fetched(fetched, at), read, seen)
                   }
               }
-            case piece @ Step.Piece(path, _) =>
+            case piece @ Step.Piece(path, _, kind) =>
               val key = CardKey.of(corpus, path)
               val (ref, at) = (CardKey.value(key), source.at)
               val revision = h.best(key).fold("")(c => UnitVersion.value(c.version))
@@ -222,7 +222,7 @@ object Sync {
                   ) match {
                     case Right((file, pointer)) =>
                       heard(on.believed, answer).map(_ =>
-                        Piecing.Read(file, ref, revision, pointer, at, Vector())
+                        Piecing.Read(file, kind, ref, revision, pointer, at, Vector())
                       )
                     case Left(why) => read.map(_ => Piecing.Mark(ref, revision, at, why, Vector()))
                   }
@@ -246,7 +246,7 @@ object Sync {
                     )
                   )
               }
-            case Step.Write(card, replacing) =>
+            case Step.Write(card, replacing, kind) =>
               val on = seen.get(card.path)
               val label = on.fold(h.floor)(_.at)
               val (at, from) = (source.at, believed(card.path, read, seen))
@@ -260,14 +260,12 @@ object Sync {
               // none of its earlier revision's pieces is served as current, and no run reads it
               // again for its pieces until it changes.
               val (ref, revision) = (CardKey.value(card.key), UnitVersion.value(card.version))
-              val piecing = card.kind match {
-                case UnitKind.File if source.keepsFiles =>
-                  Some(on.fold[Either[String, FileHandle]](Left(NotRead))(_.whole) match {
-                    case Right(file) =>
-                      Piecing.Read(file, ref, revision, card.pointer, at, replacing.toVector)
-                    case Left(why) => Piecing.Mark(ref, revision, at, why, replacing.toVector)
-                  })
-                case UnitKind.File | UnitKind.Directory => None
+              val piecing = kind.filter(_ => source.keepsFiles).map { kind =>
+                on.fold[Either[String, FileHandle]](Left(NotRead))(_.whole) match {
+                  case Right(file) =>
+                    Piecing.Read(file, kind, ref, revision, card.pointer, at, replacing.toVector)
+                  case Left(why) => Piecing.Mark(ref, revision, at, why, replacing.toVector)
+                }
               }
               (
                 piecing.fold(written)(p => after(written, card.key, card.path, from.map(_ => p))),

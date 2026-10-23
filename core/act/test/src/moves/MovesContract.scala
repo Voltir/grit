@@ -37,6 +37,7 @@ import grit.core.files.{
   Files,
   FormatName,
   KeptPiece,
+  Kind,
   Locus,
   TestPieces,
   Understood
@@ -128,7 +129,7 @@ abstract class MovesContract extends TestSuite {
             m.piece(
               name("p"),
               TestTainted.at(
-                Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+                Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
                 Integrity.Outside
               )
             )
@@ -155,7 +156,7 @@ abstract class MovesContract extends TestSuite {
           m.piece(
             name(s"p$i"),
             TestTainted.at(
-              Piecing.Read(f, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+              Piecing.Read(f, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
               Believed
             )
           )
@@ -176,7 +177,7 @@ abstract class MovesContract extends TestSuite {
       "a piece move from what is believed less than Outside is Below: nothing is read or kept, and its name is spent"
     ) {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
-        val read = Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())
+        val read = Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector())
         Made(
           Vector(TestTainted.at(read, Integrity.Untrusted), TestTainted.at(read, Believed))
             .map(m.piece(name("p"), _))
@@ -197,7 +198,7 @@ abstract class MovesContract extends TestSuite {
         val read = m.piece(
           name("p"),
           TestTainted.at(
-            Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+            Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
             Believed
           )
         )
@@ -214,7 +215,10 @@ abstract class MovesContract extends TestSuite {
         def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
         Made(
           Vector(
-            move("p", Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())),
+            move(
+              "p",
+              Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector())
+            ),
             move("m", Piecing.Mark("b", "r1", Here, "too large", Vector())),
             move("s", Piecing.Survey(Vector("a", "b", "c")))
           )
@@ -239,7 +243,10 @@ abstract class MovesContract extends TestSuite {
         def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
         Made(
           Vector(
-            move("p", Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())),
+            move(
+              "p",
+              Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector())
+            ),
             move("m", Piecing.Mark("a", "r2", Here, "too large", Vector(Label.Public))),
             move("s", Piecing.Survey(Vector("a")))
           )
@@ -265,7 +272,7 @@ abstract class MovesContract extends TestSuite {
         val read = m.piece(
           name("p"),
           TestTainted.at(
-            Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+            Piecing.Read(file, Kind.Pdf, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
             Integrity.Member
           )
         )

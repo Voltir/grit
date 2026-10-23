@@ -1,5 +1,6 @@
 package grit.knowledge.drive
 
+import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, UnitVersion}
 import grit.knowledge.ref.CardKey
@@ -65,9 +66,9 @@ object DriveWalk {
     case Drive(id: String)
     case Folder(id: String, drive: String)
     case Folders
-    case Read(entry: DriveEntry, within: String)
+    case Read(entry: DriveEntry, kind: Kind, within: String)
     case Relabel(key: CardKey, from: Label)
-    case Repiece(key: CardKey, within: String)
+    case Repiece(key: CardKey, kind: Kind, within: String)
   }
 
   /** Its record: the folders found in the drives, the files listings showed, those another run's
@@ -98,9 +99,9 @@ object DriveWalk {
     case Task.Folder(id, drive) => w.list(id, Way.Through(drive))(files(cards, _, id, _, _))
     case Task.Folders => w.push(picked(w.own.found, cards.maxUnits, turn))
     case Task.Relabel(key, from) => w.relabel(key, from)
-    case Task.Repiece(key, within) => w.current(key, Way.Through(within))
-    case Task.Read(entry, within) =>
-      w.read(entry.id, Way.Through(within), cards.subject(entry))(
+    case Task.Repiece(key, kind, within) => w.current(key, Way.Through(within), kind)
+    case Task.Read(entry, kind, within) =>
+      w.read(entry.id, Way.Through(within), cards.subject(entry), kind)(
         Card.file(cards.corpus, entry.id, _, _, _, entry.name, Some(within))
       )
   }
@@ -127,14 +128,17 @@ object DriveWalk {
       listing: DriveListing,
       at: Label
   ): W = {
-    val readable = listing.entries.filter(e => cards.cards(e.kind))
+    // Each file it cards, with the kind its pieces record (DriveEntry.Kind.Read.first).
+    val readable = listing.entries
+      .filter(e => cards.cards(e.kind))
+      .flatMap(e => e.kind.read.map(r => (e, r.first)))
     val own = w.own.copy(
-      seen = w.own.seen ++ readable.map(_.id),
+      seen = w.own.seen ++ readable.map(_._1.id),
       complete = if (listing.complete) w.own.complete + within else w.own.complete
     )
     val floor = w.holding.floor
     if (cards.carding(at).contains(floor)) {
-      val (current, changed) = readable.partition(e =>
+      val (current, changed) = readable.partition((e, _) =>
         e.changed.exists(t =>
           w.holding.best(CardKey.of(cards.corpus, e.id)).exists { h =>
             h.label == floor && h.version == UnitVersion.Changed(t) && h.within.contains(within)
@@ -142,21 +146,24 @@ object DriveWalk {
         )
       )
       val (relabels, unchanged) = current
-        .map(e => CardKey.of(cards.corpus, e.id))
-        .partitionMap(k => w.holding.copying(k).map(Task.Relabel(k, _)).toLeft(k))
+        .map((e, kind) => (CardKey.of(cards.corpus, e.id), kind))
+        .partitionMap((k, kind) => w.holding.copying(k).map(Task.Relabel(k, _)).toLeft((k, kind)))
       // A read for pieces is a step, so each due file is a task of its own: steps made in a fold
       // here would each replace the last, and the next task taken would replace the last one.
-      val (due, kept) = unchanged.partition(w.holding.repiece)
+      val (due, kept) = unchanged.partition((k, _) => w.holding.repiece(k))
       val pushed = w
         .recording(own)
-        .push(relabels ++ changed.map(Task.Read(_, within)) ++ due.map(Task.Repiece(_, within)))
-      kept.foldLeft(pushed)(_.unchanged(_))
-    } else w.recording(own.copy(foreign = own.foreign ++ readable.map(_.id)))
+        .push(
+          relabels ++ changed.map(Task.Read(_, _, within)) ++
+            due.map(Task.Repiece(_, _, within))
+        )
+      kept.foldLeft(pushed)((w, k) => w.unchanged(k._1))
+    } else w.recording(own.copy(foreign = own.foreign ++ readable.map(_._1.id)))
   }
 
   /** Whether `task`, never taken, is a file to read, read again for its pieces, or relabel. */
   private def left(task: Task): Boolean = task match {
-    case Task.Read(_, _) | Task.Relabel(_, _) | Task.Repiece(_, _) => true
+    case Task.Read(_, _, _) | Task.Relabel(_, _) | Task.Repiece(_, _, _) => true
     case Task.Shared | Task.Drive(_) | Task.Folder(_, _) | Task.Folders => false
   }
 

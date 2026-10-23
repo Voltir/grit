@@ -34,7 +34,9 @@ object DriveEntry {
       * to); none for the rest.
       */
     def read: Option[Kind.Read] = this match {
-      case Document | Spreadsheet | Text => Some(Kind.Read.Exported)
+      case Document => Some(Kind.Read.Exported(grit.core.files.Kind.Word))
+      case Spreadsheet => Some(Kind.Read.Exported(grit.core.files.Kind.Excel))
+      case Text => Some(Kind.Read.Exported(grit.core.files.Kind.Text))
       case Slides =>
         Some(
           Kind.Read.Formatted(grit.core.files.Kind.GoogleSlides, Vector(grit.core.files.Kind.Pdf))
@@ -50,7 +52,16 @@ object DriveEntry {
 
     /** How a file's text is had ([[Kind.read]]). */
     enum Read extends caps.Pure {
-      case Exported
+
+      /** The file area's kind the file is read as first, which is the kind its pieces record
+        * ([[grit.core.files.PiecedFile.kind]]) whatever it was read as.
+        */
+      def first: grit.core.files.Kind
+
+      /** Read as the file area's kind `first` when a deployment's format reads it, else as the
+        * text Drive exports it as.
+        */
+      case Exported(first: grit.core.files.Kind)
 
       /** Read as the file area's kind `first` when a deployment's format reads it, else as the
         * first of `then` one does; unread when none is.

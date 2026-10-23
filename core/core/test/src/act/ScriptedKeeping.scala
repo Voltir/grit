@@ -11,6 +11,7 @@ import grit.core.files.{
   FormatName,
   InMemoryPieces,
   KeptPiece,
+  Kind,
   PieceKeeper,
   Understood
 }
@@ -34,7 +35,8 @@ import grit.dbos.sql.TestTx
   * these over one `documents` are two runs of a plugin, the second reading what the first kept.
   * Its piece moves keep `plugin`'s pieces in `pieces`, each file read as `files` reads its
   * handle (by default none is kept), cut with [[MovesFixtures.PerChar]]; its surveys take the
-  * area to read with a format at a version when `reads` says so (by default every one).
+  * area to read with a format at a version when `reads` says so (by default every one), and to
+  * read a kind first with the format and version `first` names (by default none).
   */
 class ScriptedKeeping(
     limits: MoveLimits,
@@ -54,7 +56,8 @@ class ScriptedKeeping(
     val pieces: InMemoryPieces = new InMemoryPieces,
     files: FileHandle -> Either[String, (String, Understood)] = (h: FileHandle) =>
       Left(FileError.Gone(h, Files.Expiry).message),
-    reads: (FormatName, Int) -> Boolean = (_, _) => true
+    reads: (FormatName, Int) -> Boolean = (_, _) => true,
+    first: Kind -> Option[(FormatName, Int)] = _ => None
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
@@ -89,7 +92,7 @@ class ScriptedKeeping(
           case relabel: Piecing.Relabel =>
             Piecing.relabelled(relabel, pieceKeeper, from.integrity, at)
           case mark: Piecing.Mark => Piecing.marked(mark, pieceKeeper, at)
-          case survey: Piecing.Survey => Piecing.due(survey, pieceKeeper, reads)
+          case survey: Piecing.Survey => Piecing.due(survey, pieceKeeper, reads, first)
           case read: Piecing.Read =>
             Piecing.kept(
               read,

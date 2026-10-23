@@ -727,6 +727,7 @@ object ShownTests extends TestSuite {
           "1AbC",
           "Security plan.pdf",
           "r1",
+          grit.core.files.Kind.Pdf,
           FormatName("pdf"),
           1,
           got(Pointer.of(ToolName("drive_read"), "file" -> ujson.Str("1AbC"))),

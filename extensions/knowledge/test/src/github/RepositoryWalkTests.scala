@@ -125,9 +125,9 @@ object RepositoryWalkTests extends TestSuite {
   private def shown(step: Step): String = step match {
     case Step.List(path, way) => s"list $path${through(way)}"
     case Step.Read(path, way) => s"read $path${through(way)}"
-    case Step.Piece(path, way) => s"piece $path${through(way)}"
+    case Step.Piece(path, way, _) => s"piece $path${through(way)}"
     case Step.Summarise(path, _, _, v) => s"summarise $path ${at(v)}"
-    case Step.Write(card, replacing) =>
+    case Step.Write(card, replacing, _) =>
       s"write ${card.path} ${at(card.version)}" +
         replacing.fold("")(l => s" replacing ${Label.written(l)}")
     case Step.Relabel(key, from) => s"relabel ${pathOf(key)} from ${Label.written(from)}"
@@ -150,7 +150,8 @@ object RepositoryWalkTests extends TestSuite {
     case Step.Read(path, _) =>
       files.get(path).fold(Outcome.Stopped(s"no file $path"))(Outcome.Fetched(_, floor))
     case Step.Summarise(_, _, _, _) => Outcome.Summarised(summary)
-    case Step.Write(_, _) | Step.Relabel(_, _) | Step.Drop(_) | Step.Piece(_, _) => Outcome.Kept
+    case Step.Write(_, _, _) | Step.Relabel(_, _) | Step.Drop(_) | Step.Piece(_, _, _) =>
+      Outcome.Kept
   }
 
   /** Each step of `walk` answered by `answer`, and what its run came to. */
@@ -217,7 +218,7 @@ object RepositoryWalkTests extends TestSuite {
 
   /** What the card each step writes of the directory at `path` says. */
   private def said(steps: Vector[Step], path: String): Vector[String] = steps.collect {
-    case Step.Write(card, _) if card.path == path => card.summary.summary
+    case Step.Write(card, _, _) if card.path == path => card.summary.summary
   }
 
   /** `docs`, as first written, with `docs/assets` beside it, holding a logo and `raw`, holding
@@ -288,7 +289,7 @@ object RepositoryWalkTests extends TestSuite {
             sha(4)
           )
         ),
-        made.contains(Step.Write(card, None))
+        made.contains(Step.Write(card, None, Some(grit.core.files.Kind.Text)))
       )
     }
 
@@ -303,7 +304,7 @@ object RepositoryWalkTests extends TestSuite {
         right(CardSummary.of(words, Vector.empty)),
         right(source().pointer("docs"))
       )
-      assert(steps(listings, files).lastOption == Some(Step.Write(card, None)))
+      assert(steps(listings, files).lastOption == Some(Step.Write(card, None, None)))
     }
 
     test(
@@ -804,7 +805,7 @@ object RepositoryWalkTests extends TestSuite {
           "write docs/b.md @6",
           "write docs @11"
         ),
-        made.collectFirst { case Step.Write(card, _) => card.summary } == Some(empty)
+        made.collectFirst { case Step.Write(card, _, _) => card.summary } == Some(empty)
       )
     }
 

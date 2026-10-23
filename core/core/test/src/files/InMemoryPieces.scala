@@ -155,7 +155,8 @@ final class InMemoryPieces extends PieceStore {
         val none = Pointer
           .of(ToolName("none"), "ref" -> ujson.Str(ref))
           .fold(why => throw new IllegalStateException(why), identity)
-        val file = PiecedFile(ref, ref, revision, FormatName(""), 0, none, Pieces.Target)
+        val file =
+          PiecedFile(ref, ref, revision, Kind.Unknown, FormatName(""), 0, none, Pieces.Target)
         val row = SetRow(
           plugin,
           file,
@@ -177,9 +178,9 @@ final class InMemoryPieces extends PieceStore {
       val floor = Tx.clearance(tx).floor
       Right(refs.flatMap { ref =>
         current(plugin, ref, floor).map((_, r) =>
-          ref -> r.unread.fold(KeptAs.Read(r.file.format, r.file.version, r.file.target))(
-            KeptAs.Unread(_)
-          )
+          ref -> r.unread.fold(
+            KeptAs.Read(r.file.kind, r.file.format, r.file.version, r.file.target)
+          )(KeptAs.Unread(_))
         )
       }.toMap)
     }

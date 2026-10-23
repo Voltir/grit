@@ -1,5 +1,6 @@
 package grit.knowledge.sync
 
+import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.ref.CardKey
@@ -34,10 +35,11 @@ object Step {
   /** Read the file `path`, reached `way`. */
   final case class Read(path: String, way: Way) extends Fetching
 
-  /** Read the file `path`, reached `way`, its card current, for its pieces alone: kept, or the
-    * file marked unread, as a write's read would leave them; its outcome is [[Outcome.Kept]].
+  /** Read the file `path`, of `kind` as its source classes it ([[grit.core.act.Piecing.Read]]),
+    * reached `way`, its card current, for its pieces alone: kept, or the file marked unread, as a
+    * write's read would leave them; its outcome is [[Outcome.Kept]].
     */
-  final case class Piece(path: String, way: Way) extends Fetching
+  final case class Piece(path: String, way: Way, kind: Kind) extends Fetching
 
   /** Summarise `head`, the first 8 KB of the file `path` as read at `version`, the summary model
     * told before it that it is `subject` (`A Google Sheet named …`: what kind of thing it is, in
@@ -46,8 +48,11 @@ object Step {
   final case class Summarise(path: String, subject: String, head: String, version: UnitVersion)
       extends Step
 
-  /** Keep `card` at the run's floor, withdrawing its copy at `replacing`, if any, in that keep. */
-  final case class Write(card: Card, replacing: Option[Label]) extends Step
+  /** Keep `card` at the run's floor, withdrawing its copy at `replacing`, if any, in that keep;
+    * `kind`, the kind its source classes the file as ([[grit.core.act.Piecing.Read]]) for a
+    * file's card, none for a directory's.
+    */
+  final case class Write(card: Card, replacing: Option[Label], kind: Option[Kind]) extends Step
 
   /** Copy the card under `key` from `from` to the run's floor at its source's place, and
     * withdraw it at `from` when that is another label.

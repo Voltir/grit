@@ -1,5 +1,6 @@
 package grit.knowledge.github
 
+import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardSummary, UnitKind, UnitVersion}
 import grit.knowledge.ref.CardKey
@@ -113,7 +114,8 @@ object RepositoryWalk {
           case UnitKind.File =>
             if (w.spent) w.leave.end
             else
-              w.read(entry.path, Way.Run, cards.subject(entry.path))(
+              // A repository's files come as their text, so its source classes each as Text.
+              w.read(entry.path, Way.Run, cards.subject(entry.path), Kind.Text)(
                 Card.file(cards.corpus, entry.path, _, _, _)
               )
         }
@@ -135,7 +137,7 @@ object RepositoryWalk {
               .of(described(path, cards.keeps, children), Vector.empty)
               .map(Card.directory(cards.corpus, path, version, cards.scope, _, pointer))
           )
-          .fold(w.unwritten(path, _), w.write)
+          .fold(w.unwritten(path, _), w.write(_, None))
   }
 
   /** A walk once the directory `path` was listed, whatever label it was read at: its children in
@@ -172,7 +174,7 @@ object RepositoryWalk {
 
   /** `w` relabelling the current held unit `key` when it is to be copied, else unchanged. */
   private def known(w: W, key: CardKey): W =
-    w.holding.copying(key).fold(w.current(key, Way.Run))(w.relabel(key, _))
+    w.holding.copying(key).fold(w.current(key, Way.Run, Kind.Text))(w.relabel(key, _))
 
   /** `w` with the new unit at `path` not taken, so the directories above it are not written. */
   private def refuse(w: W, path: String): W =

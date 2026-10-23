@@ -3,7 +3,16 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.document.Pointer
-import grit.core.files.{Covers, FormatName, KeptAs, PieceKeeper, PiecedFile, Pieces, Understood}
+import grit.core.files.{
+  Covers,
+  FormatName,
+  KeptAs,
+  Kind,
+  PieceKeeper,
+  PiecedFile,
+  Pieces,
+  Understood
+}
 import grit.core.id.FileHandle
 import grit.core.message.Tokens
 import grit.core.place.Place
@@ -16,12 +25,14 @@ import grit.core.visibility.{Integrity, Label}
   */
 enum Piecing extends caps.Pure derives CanEqual {
 
-  /** Keep the pieces of the file the area keeps under `file` as `ref`'s current pieces at
-    * `revision`, read again by `pointer`, drawn on at `place`; first withdrawing `ref`'s pieces
-    * at each of `replacing`.
+  /** Keep the pieces of the file the area keeps under `file`, a file of `kind` as its source
+    * classes it (not as the area sniffed it: a deck read as its PDF export is GoogleSlides), as
+    * `ref`'s current pieces at `revision`, read again by `pointer`, drawn on at `place`; first
+    * withdrawing `ref`'s pieces at each of `replacing`.
     */
   case Read(
       file: FileHandle,
+      kind: Kind,
       ref: String,
       revision: String,
       pointer: Pointer,
@@ -44,9 +55,8 @@ enum Piecing extends caps.Pure derives CanEqual {
     */
   case Mark(ref: String, revision: String, place: Place, why: String, replacing: Vector[Label])
 
-  /** Of the files `refs`, find those whose pieces are due: none kept at the floor, kept by a
-    * format the area no longer reads at that version, or cut at another target than
-    * [[Pieces.Target]]. One marked unread is not due.
+  /** Of the files `refs`, find those whose pieces are due: none kept at the floor, or due as
+    * [[Piecing.due]] says. One marked unread is not due.
     */
   case Survey(refs: Vector[String])
 }
@@ -105,6 +115,7 @@ object Piecing {
                 read.ref,
                 name,
                 read.revision,
+                read.kind,
                 tree.by,
                 tree.version,
                 read.pointer,
@@ -149,12 +160,18 @@ object Piecing {
     } yield Pieced.Unread(mark.why)
   }
 
-  /** What `survey` comes to over `keeper`, in this transaction, a file kept by a format at a
-    * version due unless `reads` says the area reads with it, and one cut at another target than
-    * [[Pieces.Target]] due. The one meaning of a survey,
-    * every [[Keeping]]'s.
+  /** What `survey` comes to over `keeper`, in this transaction: a file is due when `reads` no
+    * longer holds for the format and version its pieces were cut by, when `first` names a first
+    * format for its kind other than that (another reader of its kind now comes first; a kind
+    * `first` has none for is not due by it), or when it was cut at another target than
+    * [[Pieces.Target]]. The one meaning of a survey, every [[Keeping]]'s.
     */
-  def due(survey: Survey, keeper: PieceKeeper, reads: (FormatName, Int) -> Boolean)(using
+  def due(
+      survey: Survey,
+      keeper: PieceKeeper,
+      reads: (FormatName, Int) -> Boolean,
+      first: Kind -> Option[(FormatName, Int)]
+  )(using
       Tx^
   ): Either[StoreError, Pieced] =
     keeper
@@ -163,8 +180,9 @@ object Piecing {
         Pieced.Due(survey.refs.filter { ref =>
           held.get(ref) match {
             case None => true
-            case Some(KeptAs.Read(format, version, target)) =>
-              !reads(format, version) || Tokens.value(target) != Tokens.value(Pieces.Target)
+            case Some(KeptAs.Read(kind, format, version, target)) =>
+              !reads(format, version) || first(kind).exists(_ != (format, version)) ||
+              Tokens.value(target) != Tokens.value(Pieces.Target)
             case Some(KeptAs.Unread(_)) => false
           }
         })

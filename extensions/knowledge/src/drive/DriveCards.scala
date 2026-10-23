@@ -44,7 +44,7 @@ final case class DriveCards private (
     * holds decks or PDFs; nothing else.
     */
   def cards(kind: DriveEntry.Kind): Boolean = kind.read.exists {
-    case DriveEntry.Kind.Read.Exported => true
+    case DriveEntry.Kind.Read.Exported(_) => true
     case DriveEntry.Kind.Read.Formatted(first, rest) => (first +: rest).exists(formatted)
   }
 
@@ -85,7 +85,7 @@ final case class DriveCards private (
     case Step.List(path, _) if path == DriveWalk.Drives => (list, ujson.Obj())
     case Step.List(path, _) => (list, ujson.Obj("folder" -> path))
     case Step.Read(path, _) => (read, ujson.Obj("file" -> path))
-    case Step.Piece(path, _) => (read, ujson.Obj("file" -> path))
+    case Step.Piece(path, _, _) => (read, ujson.Obj("file" -> path))
   }
 
   /** [[DriveListing.read]] of `answer`'s facts: its text is never read. */

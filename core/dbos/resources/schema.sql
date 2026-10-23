@@ -1220,14 +1220,15 @@ CREATE INDEX IF NOT EXISTS idx_files_sha256 ON grit.files (sha256);
 
 -- A kept file's pieces at one revision, as a plugin keeps them (grit.core.files.PieceKeeper):
 -- the file as the plugin names it (`ref`), as a person does (`name`), its source's `revision`,
--- and the reader that made its tree (`format` at `format_version`); `pointer`, the call that
--- reads it again (SqlDocuments.pointerJson, as a document's); `target`, the tokens a piece was
--- cut to (Pieces.Target then: a set cut to another is pieced again); `cut`, its pieces past
--- Pieces.PerFile, dropped. Kept at `classification_id` in `room_id` as a document is
+-- the kind its source classes it as (`kind`, grit.core.files.Kind's case name: a deck read as its
+-- PDF is GoogleSlides) and the reader that made its tree (`format` at `format_version`);
+-- `pointer`, the call that reads it again (SqlDocuments.pointerJson, as a document's); `target`,
+-- the tokens a piece was cut to (Pieces.Target then: a set cut to another is pieced again); `cut`,
+-- its pieces past Pieces.PerFile, dropped. Kept at `classification_id` in `room_id` as a document is
 -- (grit.core.visibility.Item.Kept); one current set per plugin, ref and label. `last_placed`
 -- is when a window last held one of its pieces (PieceStore.placed), from `written_at`. A set
--- with `unread` holds no pieces, no reader and no pointer: its file was read and none kept, and why
--- (PieceKeeper.unread), so a sync does not read it again for its pieces until it changes.
+-- with `unread` holds no pieces, no kind, no reader and no pointer: its file was read and none
+-- kept, and why (PieceKeeper.unread), so a sync does not read it again for its pieces until it changes.
 -- Retention: ledger: a set no longer current, its plugin's declared retention after
 -- (Target.PieceSet); every set of a plugin no longer enabled (Target.Disabled). Bounded in bytes
 -- per plugin (PieceKeeper.Bound, 128 MiB by default, its pieces' `bytes`, current sets and those
@@ -1238,6 +1239,7 @@ CREATE TABLE IF NOT EXISTS grit.piece_sets (
     ref               TEXT NOT NULL CHECK (length(ref) BETWEEN 1 AND 8192),
     name              TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 8192),
     revision          TEXT NOT NULL CHECK (length(revision) <= 1024),
+    kind              TEXT CHECK (length(kind) BETWEEN 1 AND 64),
     format            TEXT CHECK (length(format) BETWEEN 1 AND 255),
     format_version    INT,
     pointer           JSONB CHECK (octet_length(pointer::text) <= 4096),
@@ -1254,7 +1256,7 @@ CREATE TABLE IF NOT EXISTS grit.piece_sets (
     unread            TEXT CHECK (length(unread) BETWEEN 1 AND 1024),
     CHECK ((unread IS NULL) =
            (format IS NOT NULL AND format_version IS NOT NULL AND pointer IS NOT NULL
-            AND target IS NOT NULL))
+            AND target IS NOT NULL AND kind IS NOT NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_piece_sets_current ON grit.piece_sets (plugin, ref, classification_id)
     WHERE superseded_at IS NULL;

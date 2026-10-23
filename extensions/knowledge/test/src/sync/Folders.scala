@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.act.Answer
 import grit.core.document.Pointer
+import grit.core.files.Kind
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
@@ -14,7 +15,7 @@ import grit.knowledge.ref.CardKey
 /** A card source of two folders for [[Sync]]'s tests of a unit's own belief: `/` lists `a` and
   * `b`, `a` the file `a/x` and `b` the file `b/y`. Its walk lists `/` ([[Way.Run]]), then, for
   * each folder in `order`, lists it through `/`, reads its file through it, summarises the file
-  * and writes its card ([[Way.Through]] each). A listing's answer is its children's paths, one a
+  * and writes its card, a text file's ([[Way.Through]] each). A listing's answer is its children's paths, one a
   * line; a file's, its text, read at [[Folders.Version]]. Each call is `read` with the unit's
   * `path`; the first outcome not of its step's kind stops the walk, saying so.
   */
@@ -96,9 +97,14 @@ object Folders {
         val pointer = Pointer.of(Read, "path" -> ujson.Str(path))
         pointer.fold(
           why => copy(stop = Some(why)),
-          p => copy(todo = Step.Write(Card.file(corpus, path, version, summary, p), None) :: rest)
+          p =>
+            copy(todo =
+              Step.Write(Card.file(corpus, path, version, summary, p), None, Some(Kind.Text)) ::
+                rest
+            )
         )
-      case (Step.Write(_, _) :: rest, Outcome.Kept) => copy(todo = rest, written = written + 1)
+      case (Step.Write(_, _, _) :: rest, Outcome.Kept) =>
+        copy(todo = rest, written = written + 1)
       case (_, Outcome.NotTaken(why)) => copy(stop = Some(why))
       case (_, Outcome.Stopped(why)) => copy(stop = Some(why))
       case (_, other) => copy(stop = Some(s"unexpected $other"))

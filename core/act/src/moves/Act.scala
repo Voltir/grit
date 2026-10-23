@@ -545,7 +545,12 @@ private[moves] object Act {
           case survey: Piecing.Survey =>
             val formats = env.files.formats
             val read = Kind.values.toVector.flatMap(formats.of).map(f => (f.name, f.version)).toSet
-            env.moves.db.read(subject)(Piecing.due(survey, p.keeper, (n, v) => read((n, v))))
+            val first = Kind.values.toVector
+              .flatMap(k => formats.of(k).headOption.map(f => k -> (f.name, f.version)))
+              .toMap
+            env.moves.db.read(subject)(
+              Piecing.due(survey, p.keeper, (n, v) => read((n, v)), first.get)
+            )
           case read: Piecing.Read =>
             treeOf(env, subject, read.file).flatMap { file =>
               env.jot.write(subject)(

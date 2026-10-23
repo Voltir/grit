@@ -27,7 +27,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.files.{Covers, FormatName, InMemoryPieces, KeptAs, Locus, Pieces, Understood}
+import grit.core.files.{Covers, FormatName, InMemoryPieces, KeptAs, Kind, Locus, Pieces, Understood}
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
@@ -864,7 +864,7 @@ object SyncTests extends TestSuite {
         Vector("docs/a.md", "docs/b.md").map(p => CardMoves.of(Phase.Piece, CardKey.of(name, p))),
         Right(
           Map(
-            ref("docs/a.md") -> KeptAs.Read(FormatName("test"), 1, Pieces.Target),
+            ref("docs/a.md") -> KeptAs.Read(Kind.Text, FormatName("test"), 1, Pieces.Target),
             ref("docs/b.md") -> KeptAs.Unread("its read kept no whole file in the file area")
           )
         )

@@ -3,6 +3,7 @@ package grit.knowledge.sync
 import scala.annotation.tailrec
 
 import grit.core.document.Pointer
+import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.ref.CardKey
@@ -53,21 +54,23 @@ private[knowledge] final case class Walking[
         Walking.advance(listed(idle, listing, at))
       case (Waiting.Listing(path, _), Outcome.NotTaken(why)) =>
         Walking.advance(idle.unwritten(path, why))
-      case (Waiting.Reading(path, _, _), Outcome.NotTaken(why)) =>
+      case (Waiting.Reading(path, _, _, _), Outcome.NotTaken(why)) =>
         Walking.advance(idle.unwritten(path, why))
-      case (Waiting.Reading(path, subject, card), Outcome.Fetched(fetched, _)) =>
+      case (Waiting.Reading(path, subject, kind, card), Outcome.Fetched(fetched, _)) =>
         fetched match {
           case Fetched.Text(text, version) if text.isBlank =>
-            idle.write(card(version, Walking.Empty))
+            idle.write(card(version, Walking.Empty), Some(kind))
           case Fetched.Text(text, version) =>
             idle.step(
               Step.Summarise(path, subject, Fetched.head(text), version),
-              Waiting.Summary(card(version, _))
+              Waiting.Summary(kind, card(version, _))
             )
           case Fetched.Unversioned(why) => Walking.advance(idle.unwritten(path, why))
-          case Fetched.Unreadable(_, version) => idle.write(card(version, Walking.Unreadable))
+          case Fetched.Unreadable(_, version) =>
+            idle.write(card(version, Walking.Unreadable), Some(kind))
         }
-      case (Waiting.Summary(card), Outcome.Summarised(summary)) => idle.write(card(summary))
+      case (Waiting.Summary(kind, card), Outcome.Summarised(summary)) =>
+        idle.write(card(summary), Some(kind))
       case (Waiting.Wrote(key), Outcome.Kept) =>
         Walking.advance(
           idle.copy(
@@ -94,17 +97,18 @@ private[knowledge] final case class Walking[
   /** This walk with `tasks` stacked before those it has, the first taken first. */
   def push(tasks: Seq[T]): Walking[L, T, S] = copy(stack = tasks.toList ++ stack)
 
-  /** This walk with the held unit `key`, its card current, reached `way`: its file read again for
-    * its pieces alone ([[Step.Piece]]) when [[Holding.repiece]] holds it, then counted unchanged;
-    * left for the next run when [[spent]]; otherwise counted unchanged at once. A read again
-    * counts against `perRun` as any read does. It may make a step, so it takes one key a task.
+  /** This walk with the held unit `key`, its card current, reached `way`: its file, of `kind` as
+    * its source classes it, read again for its pieces alone ([[Step.Piece]]) when
+    * [[Holding.repiece]] holds it, then counted unchanged; left for the next run when [[spent]];
+    * otherwise counted unchanged at once. A read again counts against `perRun` as any read does.
+    * It may make a step, so it takes one key a task.
     */
-  def current(key: CardKey, way: Way): Walking[L, T, S] =
+  def current(key: CardKey, way: Way, kind: Kind): Walking[L, T, S] =
     holding.best(key).filter(_ => holding.repiece(key)) match {
       case None => unchanged(key)
       case Some(_) if spent => leave
       case Some(h) =>
-        copy(reads = reads + 1).step(Step.Piece(h.path, way), Waiting.Repieced(key))
+        copy(reads = reads + 1).step(Step.Piece(h.path, way, kind), Waiting.Repieced(key))
     }
 
   /** This walk with the held unit `key` counted unchanged. */
@@ -156,12 +160,13 @@ private[knowledge] final case class Walking[
       listed: (Walking[L, T, S], L, Label) -> Walking[L, T, S]
   ): Walking[L, T, S] = step(Step.List(path, way), Waiting.Listing(path, listed))
 
-  /** This walk reading the file `path`, reached `way`, through its source's pointer of it, the
-    * summary model told it is `subject`; its card is `card` of the read's version, the summary
-    * and the pointer. With no read made, checked in this order: [[refuse]]d when [[full]],
-    * [[leave]]s it when [[spent]], unwritten when the path makes no pointer.
+  /** This walk reading the file `path`, of `kind` as its source classes it, reached `way`,
+    * through its source's pointer of it, the summary model told it is `subject`; its card is
+    * `card` of the read's version, the summary and the pointer. With no read made, checked in
+    * this order: [[refuse]]d when [[full]], [[leave]]s it when [[spent]], unwritten when the path
+    * makes no pointer.
     */
-  def read(path: String, way: Way, subject: String)(
+  def read(path: String, way: Way, subject: String, kind: Kind)(
       card: (UnitVersion, CardSummary, Pointer) -> Card
   ): Walking[L, T, S] =
     if (full(CardKey.of(routine.source.corpus, path))) refuse
@@ -172,7 +177,7 @@ private[knowledge] final case class Walking[
         case Right(pointer) =>
           copy(reads = reads + 1).step(
             Step.Read(path, way),
-            Waiting.Reading(path, subject, card(_, _, pointer))
+            Waiting.Reading(path, subject, kind, card(_, _, pointer))
           )
       }
 
@@ -180,9 +185,9 @@ private[knowledge] final case class Walking[
   def relabel(key: CardKey, from: Label): Walking[L, T, S] =
     step(Step.Relabel(key, from), Waiting.Relabelled(key))
 
-  /** This walk writing `card` at the floor. */
-  def write(card: Card): Walking[L, T, S] =
-    step(Step.Write(card, holding.replacing(card.key)), Waiting.Wrote(card.key))
+  /** This walk writing `card` at the floor, `kind` as [[Step.Write]] says. */
+  def write(card: Card, kind: Option[Kind]): Walking[L, T, S] =
+    step(Step.Write(card, holding.replacing(card.key), kind), Waiting.Wrote(card.key))
 
   /** This walk ended here: no task more is taken. */
   def end: Walking[L, T, S] = {
@@ -256,8 +261,13 @@ private[knowledge] object Walking {
     case Idle()
     case Done()
     case Listing(path: String, listed: (Walking[L, T, S], L, Label) -> Walking[L, T, S])
-    case Reading(path: String, subject: String, card: (UnitVersion, CardSummary) -> Card)
-    case Summary(card: CardSummary -> Card)
+    case Reading(
+        path: String,
+        subject: String,
+        kind: Kind,
+        card: (UnitVersion, CardSummary) -> Card
+    )
+    case Summary(kind: Kind, card: CardSummary -> Card)
     case Wrote(key: CardKey)
     case Relabelled(key: CardKey)
     case Repieced(key: CardKey)
@@ -290,17 +300,17 @@ private[knowledge] object Walking {
   private def made(step: Step): String = step match {
     case Step.List(_, _) => "a list"
     case Step.Read(_, _) => "a read"
-    case Step.Piece(_, _) => "a read for pieces"
+    case Step.Piece(_, _, _) => "a read for pieces"
     case Step.Summarise(_, _, _, _) => "a summary"
-    case Step.Write(_, _) => "a write"
+    case Step.Write(_, _, _) => "a write"
     case Step.Relabel(_, _) => "a relabel"
     case Step.Drop(_) => "a drop"
   }
 
   private def expected(waiting: Waiting[?, ?, ?]): String = waiting match {
     case Waiting.Listing(_, _) => "a list"
-    case Waiting.Reading(_, _, _) => "a read"
-    case Waiting.Summary(_) => "a summary"
+    case Waiting.Reading(_, _, _, _) => "a read"
+    case Waiting.Summary(_, _) => "a summary"
     case Waiting.Wrote(_) => "a write"
     case Waiting.Relabelled(_) => "a relabel"
     case Waiting.Repieced(_) => "a read for pieces"

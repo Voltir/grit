@@ -161,7 +161,7 @@ object DriveWalkTests extends TestSuite {
 
     test("a written card is titled with the file's name, at the time it last changed") {
       val (steps, _) = run(cards(labels).walk(5, internal, Vector.empty, due))
-      val written = steps.collect { case Step.Write(card, _) =>
+      val written = steps.collect { case Step.Write(card, _, _) =>
         (card.path, card.title, card.version)
       }
       assert(
@@ -266,13 +266,45 @@ object DriveWalkTests extends TestSuite {
       def walked(perRun: Int) = {
         val (steps, synced) = run(cards(labels).walk(perRun, internal, holding, due, repiece))
         val fetched = fetches(steps).collect {
-          case Step.Piece(id, _) => s"piece $id"
+          case Step.Piece(id, _, _) => s"piece $id"
           case Step.Read(id, _) => s"read $id"
         }
         (fetched, synced.written, synced.unchanged, synced.left)
       }
       assert(walked(5) == (Vector("piece file-18", "piece file-30", "read file-32"), 1, 2, 0))
       assert(walked(1) == (Vector("piece file-18"), 0, 1, 2))
+    }
+
+    test(
+      "a file's write, and its read for its pieces, carry the kind its pieces record: a Doc's a Word file's, a Sheet's a workbook's, a Slides deck's a deck's"
+    ) {
+      val decks = world.updated(
+        "drive-b",
+        (
+          DriveListing(
+            Vector(
+              entry("file-30", Kind.Spreadsheet, 6, "drive-b"),
+              entry("file-34", Kind.Slides, 2, "drive-b")
+            ),
+            true
+          ),
+          internal
+        )
+      )
+      val holding = Vector(held("file-34", internal, 2, "drive-b"))
+      val repiece = Set(CardKey.of(corpus.name, "file-34"))
+      val pdfs = grit.core.files.PagedText.formats
+      val (steps, _) =
+        run(cards(labels, formats = pdfs).walk(5, internal, holding, due, repiece), decks)
+      val kinds = steps.collect {
+        case Step.Write(card, _, kind) => (card.path, kind)
+        case Step.Piece(id, _, kind) => (id, Some(kind))
+      }
+      kinds.filter((id, _) => Set("file-18", "file-30", "file-34")(id)) ==> Vector(
+        "file-18" -> Some(grit.core.files.Kind.Word),
+        "file-30" -> Some(grit.core.files.Kind.Excel),
+        "file-34" -> Some(grit.core.files.Kind.GoogleSlides)
+      )
     }
 
     test(
@@ -350,7 +382,7 @@ object DriveWalkTests extends TestSuite {
     ) {
       val holding = Vector(held("file-18", internal, 5, "folder-3"))
       val (steps, _) = run(cards(labels).walk(5, internal, holding, due))
-      val written = steps.collect { case Step.Write(card, _) => (card.path, card.within) }
+      val written = steps.collect { case Step.Write(card, _, _) => (card.path, card.within) }
       assert(written.headOption == Some(("file-18", Some("drive-a"))))
     }
 
@@ -381,7 +413,7 @@ object DriveWalkTests extends TestSuite {
       val holding = Vector(held("file-18", Label.Public, 5, "drive-a"))
       val source = cards(Vector(Label.Public, internal))
       val (steps, _) = run(source.walk(5, internal, holding, due))
-      val replacing = steps.collect { case Step.Write(card, r) if card.path == "file-18" => r }
+      val replacing = steps.collect { case Step.Write(card, r, _) if card.path == "file-18" => r }
       assert(replacing == Vector(Some(Label.Public)))
       assert(!dropped(steps).exists(_._1 == "file-18"))
     }

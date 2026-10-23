@@ -8,6 +8,7 @@ import grit.core.files.{
   FormatName,
   KeptAs,
   KeptPiece,
+  Kind,
   Piece,
   PieceIndex,
   PieceKeeper,
@@ -182,12 +183,14 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
           if (same)
             before.fold(Right(pieces.size)) { set =>
               update(
-                "UPDATE grit.piece_sets SET name = ?, revision = ?, pointer = ?::jsonb WHERE id = ?"
+                "UPDATE grit.piece_sets SET name = ?, revision = ?, kind = ?, pointer = ?::jsonb " +
+                  "WHERE id = ?"
               ) { ps =>
                 ps.setString(1, file.name)
                 ps.setString(2, file.revision)
-                ps.setString(3, SqlDocuments.pointerJson(file.pointer))
-                ps.setLong(4, set)
+                ps.setString(3, file.kind.toString)
+                ps.setString(4, SqlDocuments.pointerJson(file.pointer))
+                ps.setLong(5, set)
               }.map(_ => pieces.size)
             }
           else
@@ -198,9 +201,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 s"""INSERT INTO grit.piece_sets
                    |       (plugin, ref, name, revision, format, format_version, place,
                    |        classification_id, room_id, integrity_id, written_at, last_placed, cut,
-                   |        pointer, target)
+                   |        pointer, target, kind)
                    |VALUES (?, ?, ?, ?, ?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)),
-                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?, ?::jsonb, ?)
+                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?, ?::jsonb, ?, ?)
                    |RETURNING id""".stripMargin
               ) { ps =>
                 ps.setString(1, PluginName.value(plugin))
@@ -218,6 +221,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 ps.setInt(14, cut)
                 ps.setString(15, SqlDocuments.pointerJson(file.pointer))
                 ps.setLong(16, Tokens.value(file.target))
+                ps.setString(17, file.kind.toString)
               }(rs => Right(rs.getLong("id")))
               set <- made.headOption.toRight(StoreError.Invalid("a keep returned no set"))
               _ <- written(set, file.name, pieces, olds)
@@ -281,7 +285,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         for {
           label <- SqlLabels.intern(Tx.clearance(tx).floor)
           found <- rows(
-            """SELECT ref, format, format_version, target, unread FROM grit.piece_sets
+            """SELECT ref, kind, format, format_version, target, unread FROM grit.piece_sets
               | WHERE plugin = ? AND classification_id = ? AND superseded_at IS NULL
               |   AND ref = ANY (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))""".stripMargin
           ) { ps =>
@@ -290,15 +294,18 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
             ps.setString(3, ujson.Arr.from(refs.map(ujson.Str(_))).render())
           } { rs =>
             val as = Option(rs.getString("unread")) match {
-              case Some(why) => KeptAs.Unread(why)
+              case Some(why) => Right(KeptAs.Unread(why))
               case None =>
-                KeptAs.Read(
-                  FormatName(rs.getString("format")),
-                  rs.getInt("format_version"),
-                  Tokens(rs.getLong("target"))
+                kindOf(rs).map(
+                  KeptAs.Read(
+                    _,
+                    FormatName(rs.getString("format")),
+                    rs.getInt("format_version"),
+                    Tokens(rs.getLong("target"))
+                  )
                 )
             }
-            Right(rs.getString("ref") -> as)
+            as.map(rs.getString("ref") -> _)
           }
         } yield found.toMap
 
@@ -322,9 +329,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         _ <- there.fold(Right(()))(supersede(_, at))
         made <- rows(
           s"""INSERT INTO grit.piece_sets
-             |       (plugin, ref, name, revision, format, format_version, pointer, target, place,
+             |       (plugin, ref, name, revision, kind, format, format_version, pointer, target, place,
              |        classification_id, room_id, integrity_id, written_at, last_placed, cut, unread)
-             |SELECT plugin, ref, name, revision, format, format_version, pointer, target,
+             |SELECT plugin, ref, name, revision, kind, format, format_version, pointer, target,
              |       ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
              |       ${SqlIntegrity.Interned}, ?, last_placed, cut, unread
              |  FROM grit.piece_sets WHERE id = ?
@@ -498,7 +505,8 @@ private[sql] object SqlPieces {
   val Columns: String =
     "p.id, array_to_json(p.heading)::text AS heading, p.tree::text AS tree, p.anchor, d.plugin, " +
       "d.ref, array_to_json(d.place)::text AS place, d.pointer::text AS pointer, " +
-      "d.name, d.revision, d.format, d.format_version, d.target, d.written_at, d.label_level, " +
+      "d.name, d.revision, d.kind, d.format, d.format_version, d.target, d.written_at, " +
+      "d.label_level, " +
       "d.label_compartments, d.integrity_level, d.integrity_compartments"
 
   /** The piece `rs` holds in its `heading`, `tree` and `anchor` columns, or why not. */
@@ -518,6 +526,12 @@ private[sql] object SqlPieces {
         )
       )
 
+  /** The kind of file `rs`'s `kind` column names, as [[Kind]]'s case name, or why not. */
+  def kindOf(rs: ResultSet): Either[String, Kind] = {
+    val written = rs.getString("kind")
+    Kind.values.find(_.toString == written).toRight(s"a piece set's kind: $written")
+  }
+
   /** The kept piece `rs` holds ([[Columns]]), or why not. */
   def kept(rs: ResultSet): Either[String, KeptPiece] =
     for {
@@ -528,6 +542,7 @@ private[sql] object SqlPieces {
       pointer <- Option(rs.getString("pointer"))
         .toRight("a read piece set's pointer: none")
         .flatMap(SqlDocuments.pointerOf)
+      kind <- kindOf(rs)
     } yield KeptPiece(
       id,
       plugin,
@@ -535,6 +550,7 @@ private[sql] object SqlPieces {
         rs.getString("ref"),
         rs.getString("name"),
         rs.getString("revision"),
+        kind,
         FormatName(rs.getString("format")),
         rs.getInt("format_version"),
         pointer,

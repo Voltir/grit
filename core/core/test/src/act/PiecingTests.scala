@@ -7,6 +7,7 @@ import grit.core.files.{
   Covers,
   FormatName,
   InMemoryPieces,
+  Kind,
   Limit,
   Locus,
   PieceKeeper,
@@ -58,19 +59,20 @@ object PiecingTests extends TestSuite {
   private def at(minute: Int): Instant =
     Instant.parse("2026-03-01T00:00:00Z").plusSeconds(60L * minute)
 
-  /** The file `a` read as `tree` and kept by a run at `label`, replacing its pieces at
-    * `replacing`.
+  /** The file `a`, of `kind` as its source classes it, read as `tree` and kept by a run at
+    * `label`, replacing its pieces at `replacing`.
     */
   private def kept(
       pieces: InMemoryPieces,
       label: Label,
       replacing: Vector[Label],
       minute: Int,
-      tree: Understood = Tree
+      tree: Understood = Tree,
+      kind: Kind = Kind.Pdf
   ): Pieced =
     Piecing
       .kept(
-        Piecing.Read(File, "a", "r1", TestPieces.pointer("a"), Here, replacing),
+        Piecing.Read(File, kind, "a", "r1", TestPieces.pointer("a"), Here, replacing),
         Right(("a.pdf", tree)),
         pieces.keeper(Plugin, PieceKeeper.Bound),
         Integrity.Member,
@@ -122,12 +124,46 @@ object PiecingTests extends TestSuite {
       val pieces = new InMemoryPieces
       kept(pieces, Label.Public, Vector(), 1)
       def due(reads: (FormatName, Int) -> Boolean) =
-        Piecing
-          .due(Piecing.Survey(Vector("a")), pieces.keeper(Plugin, PieceKeeper.Bound), reads)(using
-            tx(Label.Public)
-          )
+        Piecing.due(
+          Piecing.Survey(Vector("a")),
+          pieces.keeper(Plugin, PieceKeeper.Bound),
+          reads,
+          _ => None
+        )(using tx(Label.Public))
       (due((n, v) => n == FormatName("test") && v == 1), due((_, v) => v == 2)) ==>
         (Right(Pieced.Due(Vector())), Right(Pieced.Due(Vector("a"))))
+    }
+
+    test(
+      "a survey finds due a deck pieced from its PDF once another reader comes first for decks"
+    ) {
+      val pieces = new InMemoryPieces
+      kept(pieces, Label.Public, Vector(), 1, kind = Kind.GoogleSlides)
+      def due(first: Kind -> Option[(FormatName, Int)]) =
+        Piecing.due(
+          Piecing.Survey(Vector("a")),
+          pieces.keeper(Plugin, PieceKeeper.Bound),
+          (_, _) => true,
+          first
+        )(using tx(Label.Public))
+      val slides = (FormatName("google-slides"), 1)
+      (
+        due(k => if (k == Kind.GoogleSlides) Some(slides) else None),
+        due(k => if (k == Kind.Pdf) Some(slides) else Some((FormatName("test"), 1)))
+      ) ==> (Right(Pieced.Due(Vector("a"))), Right(Pieced.Due(Vector())))
+    }
+
+    test(
+      "a survey never finds due by its first reader a file of a kind no reader comes first for"
+    ) {
+      val pieces = new InMemoryPieces
+      kept(pieces, Label.Public, Vector(), 1, kind = Kind.GoogleSlides)
+      Piecing.due(
+        Piecing.Survey(Vector("a")),
+        pieces.keeper(Plugin, PieceKeeper.Bound),
+        (_, _) => true,
+        _ => None
+      )(using tx(Label.Public)) ==> Right(Pieced.Due(Vector()))
     }
 
     test("a survey finds due a file cut at another target than the one pieces are cut at now") {
@@ -145,7 +181,7 @@ object PiecingTests extends TestSuite {
           at(1)
         )
       val _ = (keptAt("old", Tokens(Tokens.value(Pieces.Target) / 2)), keptAt("now", Pieces.Target))
-      Piecing.due(Piecing.Survey(Vector("old", "now")), keeper, (_, _) => true) ==>
+      Piecing.due(Piecing.Survey(Vector("old", "now")), keeper, (_, _) => true, _ => None) ==>
         Right(Pieced.Due(Vector("old")))
     }
   }

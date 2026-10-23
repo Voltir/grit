@@ -125,6 +125,24 @@ abstract class PieceContract extends TestSuite {
         (Vector(first), Vector(moved), Vector(pointer), true)
     }
 
+    test(
+      "a file's kind as its source classes it reads back as kept, whatever format cut its pieces"
+    ) {
+      val p = name("pieces-kind")
+      val k = keeper(p, PieceKeeper.Bound)
+      val deck = file("a").copy(kind = Kind.GoogleSlides, format = FormatName("pdf"))
+      transaction(ok(k.keep(deck, Here, Integrity.Member, Vector(piece("alpha one")), 0, at(1))))
+      keep(k, "b", 1, "beta one")
+      val kept = transaction(ok(k.kept(Vector("a", "b"))))
+      (kept, search(p, "alpha", 2).map(_.piece.file.kind)) ==> (
+        Map(
+          "a" -> KeptAs.Read(Kind.GoogleSlides, FormatName("pdf"), 1, Pieces.Target),
+          "b" -> KeptAs.Read(Kind.Pdf, FormatName("test"), 1, Pieces.Target)
+        ),
+        Vector(Kind.GoogleSlides)
+      )
+    }
+
     test("a keep of the same pieces keeps nothing new, only the file's revision") {
       val p = name("pieces-unchanged")
       val k = keeper(p, PieceKeeper.Bound)
@@ -280,12 +298,12 @@ abstract class PieceContract extends TestSuite {
       val tombs = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
       keep(k, "a", 5, "alpha again")
       (first, marked, gone, tombs.size, kept) ==> (
-        Map("a" -> KeptAs.Read(FormatName("test"), 1, Pieces.Target)),
+        Map("a" -> KeptAs.Read(Kind.Pdf, FormatName("test"), 1, Pieces.Target)),
         Map("a" -> KeptAs.Unread("too large"), "b" -> KeptAs.Unread("no format reads it")),
         Vector(),
         1,
         Map(
-          "a" -> KeptAs.Read(FormatName("test"), 1, Pieces.Target),
+          "a" -> KeptAs.Read(Kind.Pdf, FormatName("test"), 1, Pieces.Target),
           "b" -> KeptAs.Unread("no format reads it")
         )
       )
