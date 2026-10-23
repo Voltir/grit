@@ -37,14 +37,9 @@ final class SqlDocumentSearch extends DocumentSearch {
         s"""WITH ${SqlClearance.With}
            |SELECT plugin, array_to_json(place)::text AS place FROM (
            |  SELECT DISTINCT plugin, place FROM grit.documents d
-           |   WHERE plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |     AND body IS NOT NULL AND $CurrentAt AND ${SqlClearance.kept("d")}
+           |   WHERE ${SqlKept.currentOf("d")} AND body IS NOT NULL
            |) shelved""".stripMargin
-      ) { ps =>
-        ps.setString(SqlClearance.Params + 1, strings(plugins.map(PluginName.value)))
-        ps.setObject(SqlClearance.Params + 2, utc(at))
-        ps.setObject(SqlClearance.Params + 3, utc(at))
-      } { rs =>
+      )(SqlKept.of(_, SqlClearance.Params + 1, plugins, at)) { rs =>
         for {
           plugin <- PluginName.of(rs.getString("plugin"))
           place <- placeOf(rs.getString("place"))

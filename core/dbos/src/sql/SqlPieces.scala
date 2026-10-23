@@ -28,7 +28,7 @@ import grit.core.visibility.{Clearance, Integrity, Label}
   */
 final class SqlPieces(tombstones: Tombstones) extends PieceStore {
   import SqlPieces.*
-  import SqlDocuments.{RoomId, cleared, path, rows, strings, update, utc}
+  import SqlDocuments.{RoomId, cleared, path, room, rows, strings, update, utc}
 
   /** `plugin`'s pieces as it writes them, bounded at `bound` bytes. */
   def keeper(plugin: PluginName, bound: Long = PieceKeeper.Bound): PieceKeeper =
@@ -46,9 +46,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
            |matched AS (
            |  SELECT p.id, p.set_id, p.search_text <@> to_bm25query(?, 'grit.idx_pieces_bm25') AS s
            |    FROM grit.pieces p JOIN grit.piece_sets d ON d.id = p.set_id
-           |   WHERE ${SqlClearance.kept("d")}
-           |     AND d.plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |     AND d.written_at < ? AND (d.superseded_at IS NULL OR d.superseded_at >= ?)
+           |   WHERE ${SqlKept.currentOf("d")}
            |   ORDER BY s, p.id
            |   LIMIT ?
            |), ranked AS (
@@ -64,9 +62,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       ) { ps =>
         val p = SqlClearance.Params
         ps.setString(p + 1, PieceIndex.query(query))
-        ps.setString(p + 2, strings(plugins.map(PluginName.value)))
-        ps.setObject(p + 3, utc(at))
-        ps.setObject(p + 4, utc(at))
+        SqlKept.of(ps, p + 2, plugins, at)
         ps.setInt(p + 5, limit * PieceSearch.PerFile)
         ps.setInt(p + 6, PieceSearch.PerFile)
         ps.setInt(p + 7, limit)
@@ -88,15 +84,11 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       cleared(
         s"""WITH ${SqlClearance.With}
            |SELECT DISTINCT d.plugin FROM grit.piece_sets d
-           | WHERE d.plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |   AND d.written_at < ? AND (d.superseded_at IS NULL OR d.superseded_at >= ?)
-           |   AND ${SqlClearance.kept("d")}
+           | WHERE ${SqlKept.currentOf("d")}
            |   AND EXISTS (SELECT 1 FROM grit.pieces p WHERE p.set_id = d.id)""".stripMargin
-      ) { ps =>
-        ps.setString(SqlClearance.Params + 1, strings(plugins.map(PluginName.value)))
-        ps.setObject(SqlClearance.Params + 2, utc(at))
-        ps.setObject(SqlClearance.Params + 3, utc(at))
-      }(rs => PluginName.of(rs.getString("plugin"))).map(found => plugins.filter(found.contains))
+      )(SqlKept.of(_, SqlClearance.Params + 1, plugins, at))(rs =>
+        PluginName.of(rs.getString("plugin"))
+      ).map(found => plugins.filter(found.contains))
 
   def read(ids: Vector[PieceId])(using tx: Tx^): Either[StoreError, Vector[KeptPiece]] =
     if (ids.isEmpty) Right(Vector.empty)
@@ -127,20 +119,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       }.map(_ => ())
 
   def forget(set: PieceSetId)(using tx: Tx^): Either[StoreError, Unit] =
-    update("DELETE FROM grit.piece_sets WHERE id = ?")(_.setLong(1, PieceSetId.value(set)))
-      .map(_ => ())
+    SqlKept.PieceSets.forget(PieceSetId.value(set))
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
-    update(
-      """WITH gone AS (DELETE FROM grit.piece_sets WHERE plugin = ? RETURNING id)
-        |UPDATE grit.tombstones SET collected_at = ?
-        | WHERE kind = ? AND collected_at IS NULL
-        |   AND target IN (SELECT id::text FROM gone)""".stripMargin
-    ) { ps =>
-      ps.setString(1, PluginName.value(plugin))
-      ps.setObject(2, utc(at))
-      ps.setString(3, Target.Kind.PieceSet.name)
-    }.map(_ => ())
+    SqlKept.PieceSets.delete("plugin = ?", at)(_.setString(1, PluginName.value(plugin)))
 
   /** `plugin`'s pieces as it writes them under `bound`, marking in `tombstones` each set it
     * leaves.
@@ -157,7 +139,6 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         at: Instant
     )(using tx: Tx^): Either[StoreError, Int] = {
       val clearance: Clearance = Tx.clearance(tx)
-      val room = rooms(clearance)
       for {
         label <- SqlLabels.intern(clearance.floor)
         before <- current(file.ref, label)
@@ -214,7 +195,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 ps.setInt(6, file.version)
                 ps.setString(7, path(place).render())
                 ps.setInt(8, label)
-                ps.setString(9, room)
+                ps.setString(9, room(clearance))
                 SqlIntegrity.bind(ps, 10, integrity)
                 ps.setObject(12, utc(at))
                 ps.setObject(13, utc(at))
@@ -270,7 +251,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
           ps.setString(4, revision)
           ps.setString(5, path(place).render())
           ps.setInt(6, label)
-          ps.setString(7, rooms(clearance))
+          ps.setString(7, room(clearance))
           SqlIntegrity.bind(ps, 8, Integrity.Untrusted)
           ps.setObject(10, utc(at))
           ps.setObject(11, utc(at))
@@ -339,7 +320,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         ) { ps =>
           ps.setString(1, path(place).render())
           ps.setInt(2, label)
-          ps.setString(3, rooms(clearance))
+          ps.setString(3, room(clearance))
           SqlIntegrity.bind(ps, 4, integrity.meet(most))
           ps.setObject(6, utc(at))
           ps.setLong(7, old)
@@ -351,21 +332,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         }
       } yield n
 
-    /** The path of `clearance`'s own room, as [[RoomId]] binds it: none when it has none. */
-    private def rooms(clearance: Clearance): String =
-      ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
-
     /** The current set of `ref` at the label whose id is `label`, locked. */
     private def current(ref: String, label: Int)(using tx: Tx^): Either[StoreError, Option[Long]] =
-      rows(
-        """SELECT id FROM grit.piece_sets
-          | WHERE plugin = ? AND ref = ? AND classification_id = ? AND superseded_at IS NULL
-          |   FOR UPDATE""".stripMargin
-      ) { ps =>
-        ps.setString(1, PluginName.value(plugin))
-        ps.setString(2, ref)
-        ps.setInt(3, label)
-      }(rs => Right(rs.getLong("id"))).map(_.headOption)
+      SqlKept.PieceSets.current(plugin, ref, label)(rs => Right(rs.getLong("id")))
 
     /** `set`'s pieces in order: each one's id, fingerprint and piece. */
     private def pieced(
@@ -381,14 +350,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
 
     /** `set` no longer current from `at`, and marked for deletion. */
     private def supersede(set: Long, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
-      for {
-        _ <- update("UPDATE grit.piece_sets SET superseded_at = ? WHERE id = ?") { ps =>
-          ps.setObject(1, utc(at))
-          ps.setLong(2, set)
-        }
-        id <- PieceSetId.of(set).toRight(StoreError.Invalid(s"a piece set's id: $set"))
-        _ <- tombstones.write(Target.PieceSet(id), at)
-      } yield ()
+      PieceSetId
+        .of(set)
+        .toRight(StoreError.Invalid(s"a piece set's id: $set"))
+        .flatMap(id => SqlKept.PieceSets.supersede(Target.PieceSet(id), tombstones, at))
 
     /** `pieces` written into `set`, each whose fingerprint is among `olds` (once each) moved
       * there from its old set, keeping its id.
@@ -462,44 +427,26 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       * those no longer current first, the oldest first, then the current ones least recently
       * placed, ties by ref then id; their pending tombstones ended at `at`.
       */
-    private def bounded(kept: Long, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
-      update(
-        """WITH sized AS (
-          |  SELECT s.id, s.superseded_at, s.last_placed, s.ref,
-          |         coalesce((SELECT sum(p.bytes) FROM grit.pieces p WHERE p.set_id = s.id), 0) AS bytes
-          |    FROM grit.piece_sets s WHERE s.plugin = ?
-          |), total AS (SELECT sum(bytes) AS all_bytes FROM sized),
-          |ordered AS (
-          |  SELECT id, sum(bytes) OVER (ORDER BY superseded_at IS NULL,
-          |                                       coalesce(superseded_at, last_placed),
-          |                                       ref COLLATE "C", id
-          |                              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS freed
-          |    FROM sized WHERE id <> ?
-          |), gone AS (
-          |  DELETE FROM grit.piece_sets
-          |   WHERE id IN (SELECT o.id FROM ordered o, total t
-          |                 WHERE t.all_bytes - coalesce(o.freed, 0) > ?)
-          |  RETURNING id
-          |)
-          |UPDATE grit.tombstones SET collected_at = ?
-          | WHERE kind = ? AND collected_at IS NULL
-          |   AND target IN (SELECT id::text FROM gone)""".stripMargin
-      ) { ps =>
+    private def bounded(kept: Long, at: Instant)(using tx: Tx^): Either[StoreError, Unit] = {
+      val cut = SqlKept.cut(
+        """SELECT d.id, d.superseded_at, d.last_placed, d.ref,
+          |       coalesce((SELECT sum(p.bytes) FROM grit.pieces p WHERE p.set_id = d.id), 0) AS measure
+          |  FROM grit.piece_sets d WHERE d.plugin = ?""".stripMargin,
+        """superseded_at IS NULL, coalesce(superseded_at, last_placed), ref COLLATE "C", id""",
+        "id = ?"
+      )
+      SqlKept.PieceSets.delete(s"id IN (SELECT id FROM ($cut) cut)", at) { ps =>
         ps.setString(1, PluginName.value(plugin))
         ps.setLong(2, kept)
         ps.setLong(3, bound)
-        ps.setObject(4, utc(at))
-        ps.setString(5, Target.Kind.PieceSet.name)
-      }.map(_ => ())
+      }
+    }
   }
 }
 
 private[sql] object SqlPieces {
 
-  /** `grit.piece_sets` with each set's label's and integrity's columns. */
-  val Labelled: String =
-    s"(SELECT d.*, ${SqlLabels.columns("l")}, ${SqlIntegrity.columns("d.integrity_id")} " +
-      "FROM grit.piece_sets d JOIN grit.classifications l ON l.id = d.classification_id)"
+  val Labelled: String = SqlKept.PieceSets.labelled
 
   /** A piece's columns, as [[kept]] reads them, from `grit.pieces p` joined to [[Labelled]] `d`. */
   val Columns: String =

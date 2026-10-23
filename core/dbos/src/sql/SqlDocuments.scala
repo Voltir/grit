@@ -128,22 +128,11 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
     )(_ => ())(rs => PluginName.of(rs.getString("plugin")))
 
   def forget(version: DocumentVersionId)(using tx: Tx^): Either[StoreError, Unit] =
-    update("DELETE FROM grit.documents WHERE version = ?")(
-      _.setLong(1, DocumentVersionId.value(version))
-    ).map(_ => ())
+    SqlKept.Documents.forget(DocumentVersionId.value(version))
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     for {
-      _ <- update(
-        """WITH gone AS (DELETE FROM grit.documents WHERE plugin = ? RETURNING version)
-          |UPDATE grit.tombstones SET collected_at = ?
-          | WHERE kind = ? AND collected_at IS NULL
-          |   AND target IN (SELECT version::text FROM gone)""".stripMargin
-      ) { ps =>
-        ps.setString(1, PluginName.value(plugin))
-        ps.setObject(2, utc(at))
-        ps.setString(3, Target.Kind.Document.name)
-      }
+      _ <- SqlKept.Documents.delete("plugin = ?", at)(_.setString(1, PluginName.value(plugin)))
       _ <- update("DELETE FROM grit.document_terms WHERE plugin = ?")(
         _.setString(1, PluginName.value(plugin))
       )
@@ -155,12 +144,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
 
 private[sql] object SqlDocuments {
 
-  /** `grit.documents` with each version's label's columns ([[SqlLabels.columns]]), for a read
-    * to select [[Columns]] from.
-    */
-  val Labelled: String =
-    s"(SELECT d.*, ${SqlLabels.columns("l")}, ${SqlIntegrity.columns("d.integrity_id")} " +
-      "FROM grit.documents d JOIN grit.classifications l ON l.id = d.classification_id)"
+  val Labelled: String = SqlKept.Documents.labelled
 
   /** A version's columns, as [[document]] reads them, from [[Labelled]]. */
   val Columns: String =
@@ -176,10 +160,9 @@ private[sql] object SqlDocuments {
   val RoomId: String =
     "(SELECT p.id FROM grit.places p WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))"
 
-  /** Current at the instant bound twice here: written before it, superseded by none written
-    * before it.
-    */
-  val CurrentAt: String = "written_at < ? AND (superseded_at IS NULL OR superseded_at >= ?)"
+  /** The path of `clearance`'s own room, as [[RoomId]] binds it: none when it has none. */
+  def room(clearance: Clearance): String =
+    ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
 
   // pg_textsearch scores are negative, more negative is better. The planner may filter to the
   // shelves first, scoring rows that do not match 0; the guard drops them outside the LIMIT,
@@ -195,7 +178,7 @@ private[sql] object SqlDocuments {
        |                  WHERE d.plugin = r.p
        |                    AND d.place = ARRAY(SELECT jsonb_array_elements_text(r.place)))
        |     AND d.body IS NOT NULL
-       |     AND d.written_at < ? AND (d.superseded_at IS NULL OR d.superseded_at >= ?)
+       |     AND ${SqlKept.currentAt("d")}
        |   ORDER BY s, d.written_at DESC, d.version DESC
        |   LIMIT ?
        |) ranked
@@ -368,8 +351,6 @@ private[sql] object SqlDocuments {
     )(using tx: Tx^): Either[StoreError, Written] = {
       val clearance: Clearance = Tx.clearance(tx)
       val kept = label.join(clearance.floor)
-      val room =
-        ujson.Arr.from(clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))).render()
       val held = refsJson(refs)
       if (refs.size > DocRef.Most)
         Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs, not ${refs.size}"))
@@ -431,7 +412,7 @@ private[sql] object SqlDocuments {
                       ps.setObject(7, utc(at))
                       ps.setObject(8, utc(at))
                       ps.setInt(9, id)
-                      ps.setString(10, room)
+                      ps.setString(10, room(clearance))
                       SqlIntegrity.bind(ps, 11, integrity)
                     }(versionOf)
                     version <- written.headOption.toRight(
@@ -487,54 +468,33 @@ private[sql] object SqlDocuments {
     private def withdrawn(key: DocKey, label: Int, at: Instant)(using
         tx: Tx^
     ): Either[StoreError, Option[DocumentVersionId]] =
-      rows(
-        """SELECT version FROM grit.documents
-          | WHERE plugin = ? AND key = ? AND classification_id = ? AND superseded_at IS NULL
-          |   AND body IS NOT NULL
-          |   FOR UPDATE""".stripMargin
-      ) { ps =>
-        ps.setString(1, PluginName.value(plugin))
-        ps.setString(2, DocKey.value(key))
-        ps.setInt(3, label)
-      }(versionOf).flatMap { (found: Vector[DocumentVersionId]) =>
-        // At most one: idx_documents_current allows one per key and label.
-        found.headOption match {
-          case None => Right(None)
-          case Some(current) =>
-            for {
-              _ <- supersede(current, at)
-              written <- rows(
-                """INSERT INTO grit.documents
-                  |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id,
-                  |        integrity_id)
-                  |SELECT plugin, key, place, NULL, ?, ?, classification_id, room_id, integrity_id
-                  |  FROM grit.documents
-                  | WHERE version = ?
-                  |RETURNING version""".stripMargin
-              ) { ps =>
-                ps.setObject(1, utc(at))
-                ps.setObject(2, utc(at))
-                ps.setLong(3, DocumentVersionId.value(current))
-              }(versionOf)
-              withdrawal <- written.headOption.toRight(
-                StoreError.Invalid("a withdrawal returned no version")
-              )
-              _ <- tombstones.write(Target.Document(withdrawal), at)
-            } yield Some(withdrawal)
-        }
-      }
+      SqlKept.Documents
+        .current(plugin, DocKey.value(key), label, "body IS NOT NULL")(versionOf)
+        .flatMap(_.fold(Right(None)) { current =>
+          for {
+            _ <- supersede(current, at)
+            written <- rows(
+              """INSERT INTO grit.documents
+                |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id,
+                |        integrity_id)
+                |SELECT plugin, key, place, NULL, ?, ?, classification_id, room_id, integrity_id
+                |  FROM grit.documents
+                | WHERE version = ?
+                |RETURNING version""".stripMargin
+            ) { ps =>
+              ps.setObject(1, utc(at))
+              ps.setObject(2, utc(at))
+              ps.setLong(3, DocumentVersionId.value(current))
+            }(versionOf)
+            withdrawal <- written.headOption.toRight(
+              StoreError.Invalid("a withdrawal returned no version")
+            )
+            _ <- tombstones.write(Target.Document(withdrawal), at)
+          } yield Some(withdrawal)
+        })
 
-    /** `version` no longer current from `at`, and marked for deletion. */
-    private def supersede(version: DocumentVersionId, at: Instant)(using
-        tx: Tx^
-    ): Either[StoreError, Unit] =
-      for {
-        _ <- update("UPDATE grit.documents SET superseded_at = ? WHERE version = ?") { ps =>
-          ps.setObject(1, utc(at))
-          ps.setLong(2, DocumentVersionId.value(version))
-        }
-        _ <- tombstones.write(Target.Document(version), at)
-      } yield ()
+    private def supersede(version: DocumentVersionId, at: Instant)(using Tx^) =
+      SqlKept.Documents.supersede(Target.Document(version), tombstones, at)
 
     /** The keys and labels past the bound once one is written under `kept` at the label whose
       * id is `label`, with that label's id: the current documents but it, of every label,
@@ -544,17 +504,16 @@ private[sql] object SqlDocuments {
         tx: Tx^
     ): Either[StoreError, Vector[(DocKey, Label, Int)]] =
       rows(
-        s"""WITH holding AS (
-          |  SELECT d.key, d.last_placed, d.classification_id, d.label_level, d.label_compartments,
-          |         concat_ws('+', VARIADIC (ARRAY[(ARRAY['public', 'internal', 'confidential',
-          |                                               'restricted'])[d.label_level + 1]]
-          |                                  || l.compartments)) AS written
-          |    FROM $Labelled d JOIN grit.classifications l ON l.id = d.classification_id
-          |   WHERE d.plugin = ? AND d.superseded_at IS NULL AND d.body IS NOT NULL
-          |     AND NOT (d.key = ? AND d.classification_id = ?))
-          |SELECT key, classification_id, label_level, label_compartments FROM holding
-          | ORDER BY last_placed, key COLLATE "C", written COLLATE "C"
-          | LIMIT greatest((SELECT count(*) FROM holding) + 1 - ?, 0)""".stripMargin
+        SqlKept.cut(
+          s"""SELECT d.key, d.last_placed, d.classification_id, d.label_level, d.label_compartments,
+            |       concat_ws('+', VARIADIC (ARRAY[(ARRAY['public', 'internal', 'confidential',
+            |                                             'restricted'])[d.label_level + 1]]
+            |                                || l.compartments)) AS written, 1 AS measure
+            |  FROM $Labelled d JOIN grit.classifications l ON l.id = d.classification_id
+            | WHERE d.plugin = ? AND d.superseded_at IS NULL AND d.body IS NOT NULL""".stripMargin,
+          """last_placed, key COLLATE "C", written COLLATE "C"""",
+          "key = ? AND classification_id = ?"
+        )
       ) { ps =>
         ps.setString(1, PluginName.value(plugin))
         ps.setString(2, DocKey.value(kept))
