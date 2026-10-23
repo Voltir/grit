@@ -22,7 +22,8 @@ import grit.core.files.{
 }
 import grit.formats.limits.Guard
 import grit.formats.ooxml.Package.{attr, isText}
-import grit.prose.form.{Block, Cell, Column, Doc, Level, Text}
+import grit.formats.tree.Blocks.table
+import grit.prose.form.{Block, Cell, Doc, Level, Text}
 
 /** Excel workbooks (`.xlsx`, `.xlsm`), transitional or strict, read over the JDK's zip and
   * StAX: each visible sheet, in the workbook's order, a heading of its name and a table as wide
@@ -242,12 +243,6 @@ object Xlsx extends Format {
   private def column(ref: String): Int =
     ref.takeWhile(_.isLetter).foldLeft(0)((c, ch) => c * 26 + (ch.toUpper - 'A' + 1)) - 1
 
-  /** `rows` as a table as wide as its widest row, the first its columns' names. */
-  private def table(rows: Vector[Vector[Cell[Nothing]]]): Option[Block[Nothing]] =
-    rows.headOption.map { head =>
-      val width = rows.map(_.size).max
-      Block.table(head.map(c => Column(c.printed)).padTo(width, Column(Text.empty)), rows.drop(1))
-    }
 
   /** How a workbook's cells read: its shared strings, each style's number format, its own
     * formats' codes, and its date system.

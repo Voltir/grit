@@ -14,13 +14,12 @@ private[formats] object Blocks {
       Item(Block.Paragraph(t) +: inner) +: nest(after)
   }
 
-  /** `rows` as a table as wide as its widest row, the first its columns' names. */
-  def table[A <: caps.Pure](rows: Vector[Vector[Text[A]]]): Option[Block[A]] =
+  /** `rows` as a table as wide as its widest row, the first its columns' names (each cell's
+    * printed text); `None` for no rows.
+    */
+  def table[A <: caps.Pure](rows: Vector[Vector[Cell[A]]]): Option[Block[A]] =
     rows.headOption.map { head =>
       val width = rows.map(_.size).max
-      Block.table(
-        head.padTo(width, Text.empty).map(Column(_)),
-        rows.drop(1).map(_.map(t => Cell.Words(t): Cell[A]))
-      )
+      Block.table(head.map(c => Column(c.printed)).padTo(width, Column(Text.empty)), rows.drop(1))
     }
 }

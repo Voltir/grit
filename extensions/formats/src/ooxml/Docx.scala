@@ -21,7 +21,7 @@ import grit.core.files.{
 import grit.formats.limits.Guard
 import grit.formats.ooxml.Package.{attr, isText}
 import grit.formats.tree.Blocks.{nest, table}
-import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Doc, Level, Mark, Span, Text}
 
 /** Word documents (`.docx`, `.docm`), transitional or strict, read over the JDK's zip and StAX:
   * paragraphs, headings by style (or a style based on one, or an outline level), lists with
@@ -250,7 +250,8 @@ object Docx extends Format {
     def endRow(): Unit = if (row.nonEmpty) { rows += row.toVector; row.clear() }
 
     def endTable(): Unit = {
-      table(rows.toVector).foreach(out += _)
+      val cells = rows.toVector.map((r: Vector[Text[Nothing]]) => r.map(t => Cell.Words(t)))
+      table[Nothing](cells).foreach(out += _)
       rows.clear()
       flushBoxes()
     }
