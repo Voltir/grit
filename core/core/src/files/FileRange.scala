@@ -28,7 +28,8 @@ object FileRange {
   /** The range a reader's arguments ask for: [[FileRange.Start]] when none is given. `Left`, in
     * words the model reads, for more than one, `pages` not a page (`"212"`) or a run of them
     * (`"212-214"`, an en dash too) counted from 1, the run's end before its start, a blank
-    * `section`, a negative `from`, or a `near` not an anchor as written ([[Anchor.read]]).
+    * `section`, a negative `from`, or a `near` that is neither a piece's pointer nor a quote of
+    * enough words ([[Anchor.asked]]).
     */
   def parse(
       pages: Option[String],
@@ -38,7 +39,7 @@ object FileRange {
   ): Either[String, FileRange] =
     (pages, section, from, near) match {
       case (None, None, None, None) => Right(Start)
-      case (None, None, None, Some(n)) => Anchor.read(n).map(Near(_))
+      case (None, None, None, Some(n)) => Anchor.asked(n).map(Near(_))
       case (Some(p), None, None, None) => pagesOf(p)
       case (None, Some(s), None, None) =>
         if (s.trim.isEmpty) Left("Name the section by its heading.") else Right(Section(s.trim))

@@ -24,10 +24,13 @@ object RangeArgs {
   /** `near`: the name every reading tool gives [[Near]], which a piece's pointer sets. */
   val NearArgument: String = "near"
 
-  /** Where a passage a piece's pointer names lies now. */
+  /** Where a passage a piece's pointer, or a quote of it, names lies now. */
   val Near: Field[Option[String]] =
     Field
-      .text("The passage to read around, as a piece's pointer gives it, copied whole.")
+      .text(
+        "The passage to read around: a piece's pointer, copied whole, or at least " +
+          s"${Anchor.QuoteLeast} words quoted from the passage."
+      )
       .optional
 
   /** The range `pages`, `section`, `from` and `near` ask for ([[FileRange.Start]] when none is

@@ -40,6 +40,34 @@ object Anchor {
       }
   }
 
+  /** The anchor a `near` argument names: the one written as a piece's pointer gives it when
+    * `near` holds a `⟪` or `⟫` ([[read]]), else [[quoted]].
+    */
+  def asked(near: String): Either[String, Anchor] =
+    if (near.exists(Marks.contains)) read(near) else quoted(near)
+
+  /** The anchor of a passage known only by `quote`, the model's own copy of its words: its
+    * first [[Words]] words (at most [[QuoteMost]] characters) as its quote, the rest of
+    * `quote` as what follows, and at the text's start, so [[find]] takes the first of equal
+    * matches. `Left`, in words the model reads, for fewer than [[QuoteLeast]] words.
+    */
+  def quoted(quote: String): Either[String, Anchor] = {
+    val q = quote.trim
+    if (Word.findAllMatchIn(q).size < QuoteLeast)
+      Left(
+        s"Give near as at least $QuoteLeast words quoted from the passage, or as a piece's " +
+          "pointer gives it, copied whole."
+      )
+    else Right(of(q, 0, q.length))
+  }
+
+  /** The fewest words a quote with no position must hold. Fewer recur across a long file, so
+    * the first match would be an arbitrary one, and at the [[Alike]] floor a quote of a few
+    * short words is a couple of edits from unrelated ones; five give some 25 characters, which
+    * the floor lets differ by about five.
+    */
+  val QuoteLeast: Int = 5
+
   /** How many words a quote holds. */
   val Words: Int = 8
 

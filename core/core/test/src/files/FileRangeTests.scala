@@ -31,16 +31,32 @@ object FileRangeTests extends TestSuite {
       FileRange.parse(None, None, None, None) ==> Right(FileRange.Start)
     }
 
-    test("near reads back the anchor it writes; near not so written is refused in words") {
+    test("near reads back the anchor it writes; a pointer not so written is refused in words") {
       val anchor = Anchor("All accounts are reviewed", "Policy | text. ", " by the owner.", 0.25)
       (
         anchor.written,
         FileRange.parse(None, None, None, Some(anchor.written)),
-        FileRange.parse(None, None, None, Some("All accounts are reviewed"))
+        FileRange.parse(None, None, None, Some("2|Policy ⟪All accounts are reviewed⟫"))
       ) ==> (
         "0.2500|Policy | text. ⟪All accounts are reviewed⟫ by the owner.",
         Right(FileRange.Near(anchor)),
         Left("Give near as a piece's pointer gives it, copied whole.")
+      )
+    }
+
+    test("near without a pointer's marks is a quote found by its first words, from the start") {
+      val quote = " All accounts are reviewed every ninety days by the system owner. "
+      FileRange.parse(None, None, None, Some(quote)) ==> Right(
+        FileRange.Near(
+          Anchor("All accounts are reviewed every ninety days by", "", " the system owner.", 0.0)
+        )
+      )
+    }
+
+    test("a quote of fewer than five words is refused, saying how many to give") {
+      FileRange.parse(None, None, None, Some("All accounts are reviewed")) ==> Left(
+        "Give near as at least 5 words quoted from the passage, or as a piece's pointer gives " +
+          "it, copied whole."
       )
     }
   }

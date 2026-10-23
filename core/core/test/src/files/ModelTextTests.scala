@@ -175,6 +175,26 @@ object ModelTextTests extends TestSuite {
         ("Scope.\n\nSet a_b_c_d to daily [Assignment: frequency].", Some("Set a_b_c"))
     }
 
+    test("near a quote reads the page its words lie on, though its lines break elsewhere") {
+      val now = tree(
+        Vector(para(1, "Scope."), para(2, "SR-10 Developer screening.")) ++ Vector(
+          heading(2, 3, "SR-11 COMPONENT AUTHENTICITY"),
+          para(3, "a. Develop and implement\nanti-counterfeit policy and procedures that"),
+          para(4, "After.")
+        )
+      )
+      val near = "SR-11 COMPONENT AUTHENTICITY a. Develop and implement anti-counterfeit policy " +
+        "and procedures"
+      val read = FileRange.parse(None, None, None, Some(near)).map(ModelText.of(now, _))
+      read.map(r => (r.covered, r.next)) ==> Right(("page 3 of 4", FileRange.pages(4, 4)))
+    }
+
+    test("near a quote no file words match says it is gone") {
+      val near = "Suppliers are vetted by an independent panel each year."
+      FileRange.parse(None, None, None, Some(near)).map(ModelText.of(book, _).text) ==>
+        Right("That passage is gone from the file now.")
+    }
+
     test("near a passage in a file not counted in pages reads on from its block") {
       val passage = "Accounts are reviewed every ninety days by the system owner."
       def plain(s: String): Block[Locus] = Block.Paragraph(Text.plain(s))
