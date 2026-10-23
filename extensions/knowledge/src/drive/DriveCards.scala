@@ -92,6 +92,7 @@ final case class DriveCards private (
   def listing(answer: Answer): Either[String, DriveListing] = DriveListing.read(answer.stated)
 
   /** [[DriveOpened.read]] of `answer`'s facts, its text at when the file last changed;
+    * [[Fetched.Unreadable]] at that time for a file read and found unreadable;
     * [[Fetched.Unversioned]] when they are no read's, or state no change time. A read cut for
     * size is kept: its head, all a summary is asked of, is whole.
     */
@@ -99,9 +100,12 @@ final case class DriveCards private (
     DriveOpened.read(answer.stated) match {
       case Left(why) => Fetched.Unversioned(why)
       case Right(opened) =>
-        opened.entry.changed match {
-          case Some(at) => Fetched.Text(opened.text, UnitVersion.Changed(at))
-          case None => Fetched.Unversioned("Drive did not say when it last changed")
+        (opened, opened.entry.changed) match {
+          case (_, None) => Fetched.Unversioned("Drive did not say when it last changed")
+          case (DriveOpened.Read(_, text, _, _), Some(at)) =>
+            Fetched.Text(text, UnitVersion.Changed(at))
+          case (DriveOpened.Unread(_, why), Some(at)) =>
+            Fetched.Unreadable(why, UnitVersion.Changed(at))
         }
     }
 
@@ -109,7 +113,10 @@ final case class DriveCards private (
   override def keepsFiles: Boolean = true
 
   override def file(answer: Answer): Option[FileHandle] =
-    DriveOpened.read(answer.stated).toOption.flatMap(_.file)
+    DriveOpened.read(answer.stated).toOption.flatMap {
+      case DriveOpened.Read(_, _, _, file) => file
+      case DriveOpened.Unread(_, _) => None
+    }
 
   /** Its entries' names, one a line: a name reaches a card as its title, while an id is only
     * passed back to Drive's own tools, which refuse one that is no id.

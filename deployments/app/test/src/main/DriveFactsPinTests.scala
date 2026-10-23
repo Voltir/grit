@@ -3,10 +3,10 @@ package grit.app.main
 import java.nio.charset.StandardCharsets.UTF_8
 
 import grit.core.clock.Clock
-import grit.core.files.{FileRange, FileRead, Files}
+import grit.core.files.{FileRange, FileRead, Files, Kind, Unread}
 import grit.core.id.FileHandle
 import grit.core.tool.Outcome
-import grit.mcp.drive.{DriveCalled, DriveItems, DriveRest, FakeDriveServer, Recorded}
+import grit.mcp.drive.{DriveCalled, DriveError, DriveItems, DriveRest, FakeDriveServer, Recorded}
 
 import utest.*
 
@@ -60,18 +60,25 @@ object DriveFactsPinTests extends TestSuite {
           FileHandle.of(41).getOrElse(throw new java.lang.AssertionError("a handle")),
           Files.Expiry
         )
+        // A PDF a format found damaged.
+        val unread = for {
+          file <- rest.file(Recorded.id("file-4"))
+          grants <- rest.grants(file.id)
+        } yield DriveCalled.Unread(file, grants, DriveError.Unread(Unread.Damaged(Kind.Pdf)))
         Vector(
           stated(rest.drives().map(DriveCalled.Drives(_))),
           stated(rest.children(Recorded.id("drive-a")).map(DriveCalled.Listed(_))),
           stated(rest.children(Recorded.id("folder-3")).map(DriveCalled.Listed(_))),
           stated(read),
-          stated(parsed)
+          stated(parsed),
+          stated(unread)
         ) ==> Vector(
           "drives",
           "listing-drive-a",
           "listing-folder-3",
           "read-file-text",
-          "read-file-pdf"
+          "read-file-pdf",
+          "read-file-unread"
         ).map(golden)
       }
     }

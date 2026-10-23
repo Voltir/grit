@@ -74,7 +74,7 @@ object DriveFactsTests extends TestSuite {
       val opened = DriveOpened.read(FactsGoldens.stated("read-file-text"))
       assert(
         opened == Right(
-          DriveOpened(
+          DriveOpened.Read(
             DriveEntry(
               "file-text",
               DriveEntry.Kind.Text,
@@ -95,8 +95,29 @@ object DriveFactsTests extends TestSuite {
     ) {
       val opened = DriveOpened.read(FactsGoldens.stated("read-file-pdf"))
       assert(
-        opened.map(o => (o.entry.id, o.entry.kind, o.complete, o.file.map(_.written))) == Right(
-          ("file-4", DriveEntry.Kind.Pdf, false, Some("f41"))
+        opened.map {
+          case DriveOpened.Read(e, _, complete, file) =>
+            Some((e.id, e.kind, complete, file.map(_.written)))
+          case DriveOpened.Unread(_, _) => None
+        } == Right(Some(("file-4", DriveEntry.Kind.Pdf, false, Some("f41"))))
+      )
+    }
+
+    test("an unreadable file's golden decodes as its entry and why it was not read") {
+      val opened = DriveOpened.read(FactsGoldens.stated("read-file-unread"))
+      assert(
+        opened.map {
+          case DriveOpened.Unread(e, why) => Some((e.id, e.kind, why))
+          case DriveOpened.Read(_, _, _, _) => None
+        } == Right(
+          Some(
+            (
+              "file-4",
+              DriveEntry.Kind.Pdf,
+              "That file looks damaged, or isn't really a PDF, so it couldn't be read. " +
+                "Opening it and saving it again may fix it."
+            )
+          )
         )
       )
     }

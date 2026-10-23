@@ -59,7 +59,9 @@ In dependency order:
   formats (ADR 0044), from the file area (ADR 0045), a part at a time: its start and outline,
   a run of pages, a section by its heading, or from an offset; any other Doc or Sheet whole, as
   Drive's text of it. The area keeps the file under the call, so a call run again answers the
-  same handle, which `file_read` reads further. Imports `wire` and `client`; nothing else in mcp imports it
+  same handle, which `file_read` reads further. A file refused for its own sake (a format would
+  not read it, Drive flagged it or will not export it) is answered as unread, saying why, and
+  not as a failure, so a reader (the knowledge sync) tells it from Drive or the area failing. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its

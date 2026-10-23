@@ -12,7 +12,9 @@ import grit.knowledge.ref.CardKey
   * stack, the last pushed first, until one makes a step, the routine keeping its own record `S`.
   *
   * A file read is summarised from its first 8 KB and its card written at the version its read
-  * gave; a blank text's card says `An empty file.`, with no ask. A write withdraws, in its keep,
+  * gave; a blank text's card says `An empty file.`, and that of a file read and found
+  * unreadable ([[Fetched.Unreadable]]) `A file that could not be read.`, each with no ask, so a
+  * run reads the latter again only once it changes. A write withdraws, in its keep,
   * the copy [[Holding.replacing]] names. A list or a read that came to [[Outcome.NotTaken]], and
   * a read with no version, are [[Unwritten]], saying why. When no task is left, or the routine
   * [[end]]s it, its last step is a [[Step.Drop]] of the routine's `drops` but each copy a write or
@@ -63,6 +65,7 @@ private[knowledge] final case class Walking[
               Waiting.Summary(card(version, _))
             )
           case Fetched.Unversioned(why) => Walking.advance(idle.unwritten(path, why))
+          case Fetched.Unreadable(_, version) => idle.write(card(version, Walking.Unreadable))
         }
       case (Waiting.Summary(card), Outcome.Summarised(summary)) => idle.write(card(summary))
       case (Waiting.Wrote(key), Outcome.Kept) =>
@@ -264,6 +267,13 @@ private[knowledge] object Walking {
   // "An empty file." is three words and not blank: CardSummary.of never refuses it.
   private val Empty: CardSummary = CardSummary
     .of("An empty file.", Vector.empty)
+    .fold(why => throw new IllegalStateException(why), identity)
+
+  // Six words, not blank: CardSummary.of never refuses it. No word of why the file is
+  // unreadable, which its read's answer gave, reaches the card: none of that answer is
+  // believed into it, whatever it was believed at.
+  private val Unreadable: CardSummary = CardSummary
+    .of("A file that could not be read.", Vector.empty)
     .fold(why => throw new IllegalStateException(why), identity)
 
   /** Pops tasks until one makes a step or ends the walk, or none is left; `w` itself when it

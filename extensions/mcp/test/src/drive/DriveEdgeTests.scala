@@ -193,11 +193,29 @@ object DriveEdgeTests extends TestSuite {
       case other => throw new java.lang.AssertionError(other.toString)
     }
 
+  /** Why a read answered as unread says its one file was not read, as its facts state it. */
+  private def unreadWhy(outcome: Outcome): String = outcome match {
+    case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
+      part.facts
+        .flatMap(_.json.obj.get("unread"))
+        .flatMap(_.strOpt)
+        .getOrElse(throw new java.lang.AssertionError(s"not unread: $outcome"))
+    case other => throw new java.lang.AssertionError(other.toString)
+  }
+
   /** `file-1`, a Doc, as Drive says of it, but a Slides deck. */
   private def slides: String = {
     val doc = Recorded.json("metadata-file-in-folder")
     doc("mimeType") = DriveFile.Presentation
     ujson.write(doc)
+  }
+
+  /** A format for these tests that finds every file a damaged PDF. */
+  private object Damaging extends Format {
+    val name: FormatName = FormatName("damaging")
+    val version: Int = 1
+    def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] =
+      Left(Unread.Damaged(Kind.Pdf))
   }
 
   /** A format for these tests: a Word document's zip, its `word/document.xml` read as one
@@ -631,14 +649,46 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
+      "a file a format finds damaged is answered as unread, named and saying why, its facts stating why; Drive busy is still a failure"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One."))
+        val damaged = Formats(kind => if (kind == Kind.Pdf) Vector(Damaging) else Vector.empty)
+        val unread = withArea(formats = damaged)(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area)
+        )
+        fake.answering("files/file-4?alt=media", 503, "{}")
+        val busy = withArea()(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area, call = 1)
+        )
+        val why = Unread.Damaged(Kind.Pdf).message
+        (
+          unread match {
+            case Outcome.Done(head, _, _, Some(Vector(part)), _) =>
+              (head, part.text, part.facts.map(_.json("unread")))
+            case other => throw new java.lang.AssertionError(other.toString)
+          },
+          busy
+        ) ==> (
+          (
+            "The Drive file asked for could not be read:",
+            s"name-13 (a PDF), last changed 2026-09-02T10:00:00Z: $why",
+            Some(ujson.Str(why))
+          ),
+          Outcome.Failed("Drive is busy just now; try again in a minute.")
+        )
+      }
+    }
+
+    test(
       "a PDF is read with the formats of the area that keeps it, the ones file_read reads it with"
     ) {
       withFake { fake =>
         fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One."))
         // No reader for any kind.
         withArea(formats = Formats(_ => Vector.empty)) { area =>
-          run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area) ==>
-            Outcome.Failed(Unread.Unsupported(Kind.Pdf).message)
+          unreadWhy(run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area)) ==>
+            Unread.Unsupported(Kind.Pdf).message
         }
       }
     }
@@ -649,10 +699,10 @@ object DriveEdgeTests extends TestSuite {
       withFake { fake =>
         fake.answeringBytes("files/file-4?alt=media", 200, PagedText.bytes("One."))
         withArea(FileArea.Bounds.Default.copy(maxFile = 1000L)) { area =>
-          (run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area), media(fake)) ==> (
-            Outcome.Failed("That file is 1 MB, over the 1 MB a file kept here may be."),
-            0
-          )
+          (
+            unreadWhy(run(fake, "drive_read", ujson.Obj("file" -> "file-4"), files = area)),
+            media(fake)
+          ) ==> ("That file is 1 MB, over the 1 MB a file kept here may be.", 0)
         }
       }
     }

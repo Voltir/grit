@@ -132,6 +132,10 @@ object DriveItems {
         )
       case DriveCalled.Withheld(file) =>
         opened(reading, file, None, "The Drive file asked for:", "", None)
+      case DriveCalled.Unread(file, grants, error) =>
+        single(reading, file, grants, "The Drive file asked for could not be read:") { e =>
+          (s"${title(e)}${since(e)}: ${error.message}", DriveFacts.Unread(e, error.message))
+        }
     }
 
   /** Where a read of `file` is kept and who reads it, as its part is ([[items]]); `None` when it
@@ -158,10 +162,21 @@ object DriveItems {
       text: String,
       read: Option[(FileRead, FileHandle)]
   ): Either[String, Itemised.Parts] =
+    single(reading, file, grants, head)(fitted(head, _, text, read))
+
+  /** `file`'s one part after `head`, its text and facts `shown` of its entry, kept as [[item]]
+    * keeps it; `Left` for a file lying nowhere.
+    */
+  private def single(
+      reading: DriveReading,
+      file: DriveFile,
+      grants: Option[Vector[Grant]],
+      head: String
+  )(shown: DriveFacts.Entry => (String, DriveFacts)): Either[String, Itemised.Parts] =
     file.within.toRight("This file's folder could not be read, so it is not shown.").map { _ =>
       val part = item(reading, file, grants).map { kept =>
-        val (shown, opened) = fitted(head, DriveFacts.entry(file), text, read)
-        ResultPart(kept.item, kept.readers, shown, Some(stated(opened)))
+        val (text, facts) = shown(DriveFacts.entry(file))
+        ResultPart(kept.item, kept.readers, text, Some(stated(facts)))
       }
       Itemised.Parts(head, part.toVector)
     }
@@ -189,7 +204,7 @@ object DriveItems {
     case DriveCalled.Drives(drives) => Some(DriveFacts.Listing(!drives.incomplete))
     case DriveCalled.Listed(files) => Some(DriveFacts.Listing(!files.incomplete))
     case DriveCalled.Searched(_, _) | DriveCalled.Read(_, _, _) |
-        DriveCalled.Parsed(_, _, _, _, _) | DriveCalled.Withheld(_) =>
+        DriveCalled.Parsed(_, _, _, _, _) | DriveCalled.Withheld(_) | DriveCalled.Unread(_, _, _) =>
       None
   }
 

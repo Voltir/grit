@@ -22,7 +22,9 @@ import grit.knowledge.ref.CardKey
   * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
   * writes a card at its own floor for each new or changed unit (a file's from one summary, with
   * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
-  * makes it, at no model cost), each pointing at the read of its unit; copies up to
+  * makes it, at no model cost, one whose read found it unreadable ([[Fetched.Unreadable]])
+  * among them, so it is read again only once it changes), each pointing at the read of its
+  * unit; copies up to
   * its floor, with no call or ask, the card of an unchanged unit held at another label, and to
   * its source's place ([[Source.at]]) the card of one kept elsewhere; and
   * withdraws the cards of units gone from directories it listed in full. Of a source that keeps
@@ -200,7 +202,8 @@ object Sync {
                         heard(read, answer),
                         seen.updated(path, on.hearing(answer))
                       )
-                    // A read with no version is left unwritten: none of it reaches a card.
+                    // A read with no version is left unwritten; a file found unreadable is carded
+                    // with words of the walk's own: none of either read reaches a card.
                     case fetched => (Outcome.Fetched(fetched, at), read, seen)
                   }
               }

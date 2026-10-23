@@ -48,6 +48,16 @@ enum DriveError derives CanEqual {
   /** The file area did not keep the file: `error` says why. */
   case Unkept(error: FileError)
 
+  /** Whether it is the file's own, so a read of it meets it again until the file changes: the
+    * file is of no type read, flagged, too large to export or to keep, or a format would not
+    * read it ([[grit.core.files.Unread]]); not a failure of access, of Drive, or of this machine.
+    */
+  def lasting: Boolean = this match {
+    case Unreadable(_) | Flagged | ExportTooLarge | Unread(_) => true
+    case Unkept(FileError.TooLarge(_, _)) => true
+    case NoToken(_) | Hidden | Busy(_) | Unreachable(_) | Malformed(_) | Unkept(_) => false
+  }
+
   /** What the operator's log is told of it beside [[message]]: its cause; `None` for an answer
     * a person's own ask explains (a file not shared, or of a type not read).
     */

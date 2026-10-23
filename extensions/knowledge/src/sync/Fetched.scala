@@ -11,6 +11,11 @@ enum Fetched extends caps.Pure {
 
   /** No text with its version, and `why`, as a run's reply says it. */
   case Unversioned(why: String)
+
+  /** Read at `version` and found unreadable, for `why`, until it changes: carded as such, at
+    * that version, with no summary asked, so no run reads it again before it changes.
+    */
+  case Unreadable(why: String, version: UnitVersion)
 }
 
 object Fetched {

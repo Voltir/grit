@@ -132,4 +132,9 @@ enum DriveCalled {
     * fetched.
     */
   case Withheld(file: DriveFile)
+
+  /** A file asked for, its grants as [[Read]]'s, that Drive or a format would not read, for
+    * `error`: one a read of it meets again until it changes ([[DriveError.lasting]]).
+    */
+  case Unread(file: DriveFile, grants: Option[Vector[Grant]], error: DriveError)
 }

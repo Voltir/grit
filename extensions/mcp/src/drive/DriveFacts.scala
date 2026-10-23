@@ -12,6 +12,7 @@ import grit.core.id.FileHandle
   *   - an opened file: its entry's keys, then `"text"`, `"complete"`, and, for a file a format
   *     read, `"covered"`, what of the file the text covers in words ("pages 2–3 of 4"), and
   *     `"file"`, the handle the file area keeps it under (`"f41"`);
+  *   - a file read and not readable: its entry's keys, then `"unread"`, why, as the model reads it;
   *   - a listing's own: `{"complete"}` alone, never counting or naming its parts.
   *
   * `name` only when [[DriveItems.shown]] admits it, as its line shows it; `changed` ISO-8601, as
@@ -43,6 +44,9 @@ enum DriveFacts derives CanEqual {
 
   /** A listing's own: `complete` when Drive had no more and every part it gave was kept. */
   case Listing(complete: Boolean)
+
+  /** A file read and not readable, for `why`, in the words the model reads ([[DriveCalled.Unread]]). */
+  case Unread(entry: DriveFacts.Entry, why: String)
 }
 
 object DriveFacts {
@@ -79,6 +83,10 @@ object DriveFacts {
       }
       o
     case Listing(complete) => ujson.Obj("complete" -> complete)
+    case Unread(e, why) =>
+      val o = entryJson(e)
+      o("unread") = why
+      o
   }
 
   private def entryJson(e: Entry): ujson.Obj = {

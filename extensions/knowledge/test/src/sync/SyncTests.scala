@@ -404,11 +404,13 @@ object SyncTests extends TestSuite {
     * Doc as Drive's text of it, no file kept, but kept as an exported Word document when
     * `formatted` holds Word (`file-b` as [[fc]]); the PDF `file-p` as a format reads it, its text
     * over 8 KB of `~` then `^`, the file area keeping it as [[fa]]; the Slides deck `file-s`
-    * exported as a PDF, kept as [[fb]].
+    * exported as a PDF, kept as [[fb]]. When `unreadable`, `drive-b` holds the Doc `file-u` too,
+    * whose read finds it damaged.
     */
   private def driveAnswer(
       args: ujson.Obj,
-      formatted: Set[grit.core.files.Kind] = Set.empty
+      formatted: Set[grit.core.files.Kind] = Set.empty,
+      unreadable: Boolean = false
   ): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
     (
       args.value.get("folder").flatMap(_.strOpt),
@@ -425,8 +427,18 @@ object SyncTests extends TestSuite {
           doc("file-b", "drive-b"),
           doc("file-p", "drive-b", "pdf"),
           doc("file-s", "drive-b", "slides")
-        )
+        ) ++ Option.when(unreadable)(doc("file-u", "drive-b"))
         Some((driveFacts(true, files*), floor, Integrity.Authority))
+      case (_, Some("file-u")) =>
+        val opened = doc("file-u", "drive-b")
+        opened("unread") = "That file looks damaged, so it couldn't be read."
+        Some(
+          (
+            grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
+            floor,
+            Integrity.Authority
+          )
+        )
       case (_, Some("file-p")) =>
         val opened = doc("file-p", "drive-b", "pdf")
         opened("text") = "~" * 8192 + "^" * 100
@@ -474,7 +486,8 @@ object SyncTests extends TestSuite {
       documents: InMemoryDocuments,
       pieces: InMemoryPieces = new InMemoryPieces,
       summaries: Summaries = Summaries.Fixed,
-      source: grit.knowledge.drive.DriveCards = drive
+      source: grit.knowledge.drive.DriveCards = drive,
+      unreadable: Boolean = false
   ): ScriptedKeeping =
     new ScriptedKeeping(
       new Sync(Vector(drive)).limits,
@@ -483,7 +496,7 @@ object SyncTests extends TestSuite {
       terms,
       _ => Left(MoveError.Model("no text ask")),
       (_, _, args) =>
-        Right(driveAnswer(args, source.formatted).fold(Called.Failed("Not Found")) {
+        Right(driveAnswer(args, source.formatted, unreadable).fold(Called.Failed("Not Found")) {
           (stated, at, believed) =>
             Called.Done(TestTainted.at(grit.core.act.Answer("not read", stated), believed), at)
         }),
@@ -738,6 +751,40 @@ object SyncTests extends TestSuite {
         said,
         Vector(),
         Right(Vector(KeptAs.Unread("its read kept no whole file in the file area")))
+      )
+    }
+
+    test(
+      "a Drive file whose read finds it unreadable is carded as such at its change time, with no summary asked, and marked unread, and the next run does not read it again"
+    ) {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val u = CardKey.value(CardKey.of(drive.corpus, "file-u"))
+      def walk = {
+        val k = driveKeeping(documents, pieces, unreadable = true)
+        val reply = driveRun(k)
+        val marks = pieces
+          .keeper(plugin, grit.core.files.PieceKeeper.Bound)
+          .kept(Vector(u))(using TestTx.fake(Clearance.of(floor)))
+        val made = k.made.map(MoveName.value).filter(_.contains(u))
+        val card = k.kept
+          .find(d => pathOf(d) == "file-u")
+          .map(d => DocText.value(d.text).linesIterator.toVector.last)
+        (reply, made, card, marks)
+      }
+      val mark = Right(Map(u -> KeptAs.Unread("its read kept no whole file in the file area")))
+      (walk, walk) ==> (
+        (
+          "shared: 3 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
+          Vector(s"read/$u", s"write/$u", s"piece/$u"),
+          Some("A file that could not be read."),
+          mark
+        ),
+        (
+          "shared: 0 written, 0 relabelled, 0 withdrawn, 3 unchanged, 0 left for the next run",
+          Vector(),
+          Some("A file that could not be read."),
+          mark
+        )
       )
     }
 
