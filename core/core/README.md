@@ -90,7 +90,8 @@ In dependency order, each with the core packages it imports:
   (ADR 0045): files an edge puts under handles, kept a while, that a transaction admits and
   its holder opens outside it; a tree cut into pieces of about one judged candidate's size
   (`Pieces`), the text each is searched by (`PieceIndex`), and the pieces a plugin keeps of a
-  file, bounded in bytes, as windows search them (`PieceKeeper`, `PieceSearch`). ← `clock`,
+  file, bounded in bytes, as windows search them (`PieceKeeper`, `PieceSearch`); and where a
+  passage lies in a file's text, found again after the file changes (`Anchor`). ← `clock`,
   `id`, `place`, `host`, `visibility`, `store`, `message`, `provider`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
