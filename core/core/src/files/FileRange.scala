@@ -1,5 +1,7 @@
 package grit.core.files
 
+import grit.core.tool.ArgsError
+
 /** What of a file to read: from the start; pages `from` to `to` (1-based, inclusive); the
   * section whose heading path ends with `heading`; from the character `offset` of its text; or
   * around where `anchor`'s passage lies now ([[Anchor.find]]).
@@ -25,19 +27,19 @@ enum FileRange derives CanEqual {
 
 object FileRange {
 
-  /** The range a reader's arguments ask for: [[FileRange.Start]] when none is given. `Left`, in
-    * words the model reads, for more than one, `pages` not a page (`"212"`) or a run of them
-    * (`"212-214"`, an en dash too) counted from 1, the run's end before its start, a blank
-    * `section`, a negative `from`, or a `near` that is neither a piece's pointer nor a quote of
-    * enough words ([[Anchor.asked]]).
+  /** The range a reader's arguments ask for: [[FileRange.Start]] when none is given. Refused, in
+    * words the model reads, naming the argument (the first given, when several are), for more
+    * than one, `pages` not a page (`"212"`) or a run of them (`"212-214"`, an en dash too)
+    * counted from 1, the run's end before its start, a blank `section`, a negative `from`, or a
+    * `near` that is neither a piece's pointer nor a quote of enough words ([[Anchor.asked]]).
     */
   def parse(
       pages: Option[String],
       section: Option[String],
       from: Option[Int],
       near: Option[String]
-  ): Either[String, FileRange] =
-    (pages, section, from, near) match {
+  ): Either[ArgsError, FileRange] =
+    ((pages, section, from, near) match {
       case (None, None, None, None) => Right(Start)
       case (None, None, None, Some(n)) => Anchor.asked(n).map(Near(_))
       case (Some(p), None, None, None) => pagesOf(p)
@@ -47,7 +49,15 @@ object FileRange {
         if (o < 0) Left("Give from as a character offset, 0 or more.") else Right(From(o))
       case _ =>
         Left("Ask for pages, a section, a starting offset or near: one of them, not several.")
-    }
+    }).left.map(
+      ArgsError.Refused(
+        if (pages.nonEmpty) "pages"
+        else if (section.nonEmpty) "section"
+        else if (from.nonEmpty) "from"
+        else "near",
+        _
+      )
+    )
 
   /** Pages `from` to `to`, or `None` unless 1 ≤ `from` ≤ `to`. */
   def pages(from: Int, to: Int): Option[FileRange] =

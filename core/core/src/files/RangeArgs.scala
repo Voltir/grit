@@ -1,6 +1,6 @@
 package grit.core.files
 
-import grit.core.tool.{ArgsError, Field}
+import grit.core.tool.Field
 
 /** The arguments every tool that reads a file a range at a time takes for its range, each
   * optional: `pages`, `section` and `from`, as [[FileRange.parse]] reads them.
@@ -34,27 +34,4 @@ object RangeArgs {
           s"${Anchor.QuoteLeast} words quoted from the passage."
       )
       .optional
-
-  /** The range `pages`, `section`, `from` and `near` ask for ([[FileRange.Start]] when none is
-    * given); refused as [[FileRange.parse]] refuses, naming the one argument given, or `pages`
-    * when several were.
-    */
-  def range(
-      pages: Option[String],
-      section: Option[String],
-      from: Option[Int],
-      near: Option[String]
-  ): Either[ArgsError, FileRange] =
-    FileRange
-      .parse(pages, section, from, near)
-      .left
-      .map(
-        ArgsError.Refused(
-          if (pages.nonEmpty) "pages"
-          else if (section.nonEmpty) "section"
-          else if (from.nonEmpty) "from"
-          else "near",
-          _
-        )
-      )
 }

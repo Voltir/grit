@@ -322,7 +322,7 @@ object DriveTools {
               .of(a.file)
               .left
               .map(why => ArgsError.Refused("file", DriveTools.sentence(why)))
-            range <- RangeArgs.range(a.pages, a.section, a.from, a.near)
+            range <- FileRange.parse(a.pages, a.section, a.from, a.near)
           } yield Reading(id, range)
         ),
       Retry.Rerun

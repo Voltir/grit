@@ -105,7 +105,7 @@ object FileReading {
                     s"${a.file} is no file's handle; one is f and a number, such as f41."
                   )
                 )
-              range <- RangeArgs.range(a.pages, a.section, a.from, a.near)
+              range <- FileRange.parse(a.pages, a.section, a.from, a.near)
             } yield Reading(file, range)
           ),
         retry = Retry.Rerun

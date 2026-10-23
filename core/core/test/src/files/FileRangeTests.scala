@@ -1,9 +1,13 @@
 package grit.core.files
 
+import grit.core.tool.ArgsError
+
 import utest.*
 
 /** [[FileRange.parse]]: a reader's arguments as the range they ask for. */
 object FileRangeTests extends TestSuite {
+
+  private def refused(argument: String, why: String): ArgsError = ArgsError.Refused(argument, why)
 
   val tests = Tests {
     test("pages are one page or a run of them, by hyphen or en dash, counted from 1") {
@@ -21,9 +25,24 @@ object FileRangeTests extends TestSuite {
         FileRange.parse(Some("0"), None, None, None),
         FileRange.parse(Some("1"), Some("Intro"), None, None)
       ) ==> Vector(
-        Left("Give pages as one page, \"212\", or a run of them, \"212-214\", not \"214-212\"."),
-        Left("Give pages as one page, \"212\", or a run of them, \"212-214\", not \"0\"."),
-        Left("Ask for pages, a section, a starting offset or near: one of them, not several.")
+        Left(
+          refused(
+            "pages",
+            "Give pages as one page, \"212\", or a run of them, \"212-214\", not \"214-212\"."
+          )
+        ),
+        Left(
+          refused(
+            "pages",
+            "Give pages as one page, \"212\", or a run of them, \"212-214\", not \"0\"."
+          )
+        ),
+        Left(
+          refused(
+            "pages",
+            "Ask for pages, a section, a starting offset or near: one of them, not several."
+          )
+        )
       )
     }
 
@@ -40,7 +59,7 @@ object FileRangeTests extends TestSuite {
       ) ==> (
         "0.2500|Policy | text. ⟪All accounts are reviewed⟫ by the owner.",
         Right(FileRange.Near(anchor)),
-        Left("Give near as a piece's pointer gives it, copied whole.")
+        Left(refused("near", "Give near as a piece's pointer gives it, copied whole."))
       )
     }
 
@@ -55,8 +74,11 @@ object FileRangeTests extends TestSuite {
 
     test("a quote of fewer than five words is refused, saying how many to give") {
       FileRange.parse(None, None, None, Some("All accounts are reviewed")) ==> Left(
-        "Give near as at least 5 words quoted from the passage, or as a piece's pointer gives " +
-          "it, copied whole."
+        refused(
+          "near",
+          "Give near as at least 5 words quoted from the passage, or as a piece's pointer gives " +
+            "it, copied whole."
+        )
       )
     }
   }
