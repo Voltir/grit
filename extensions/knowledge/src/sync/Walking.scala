@@ -17,8 +17,10 @@ import grit.knowledge.ref.CardKey
   * a read with no version, are [[Unwritten]], saying why. When no task is left, or the routine
   * [[end]]s it, its last step is a [[Step.Drop]] of the routine's `drops` but each copy a write or
   * relabel of this walk withdrew, when any are left. A step that came to [[Outcome.Stopped]], or
-  * to an outcome not of its kind, ends it at once with no drop, saying why. Ended either way,
-  * each task still stacked that the routine's `left` holds is counted left.
+  * to an outcome not of its kind, ends it at once with no drop, saying why; so does a second
+  * step made before the first's outcome (a task's `take`, or a listing's `listed`, makes at most
+  * one, and the one `listed` makes comes before the tasks stacked). Ended either way, each task
+  * still stacked that the routine's `left` holds is counted left.
   */
 private[knowledge] final case class Walking[
     L <: caps.Pure,
@@ -39,42 +41,48 @@ private[knowledge] final case class Walking[
 ) extends Walk[L] {
   import Walking.Waiting
 
-  def after(outcome: Outcome[L]): Walking[L, T, S] = (waiting, outcome) match {
-    case (Waiting.Done(), _) => this
-    case (_, Outcome.Stopped(why)) => halt(why)
-    case (Waiting.Listing(_, listed), Outcome.Listed(listing, at)) =>
-      Walking.advance(listed(this, listing, at))
-    case (Waiting.Listing(path, _), Outcome.NotTaken(why)) =>
-      Walking.advance(unwritten(path, why))
-    case (Waiting.Reading(path, _, _), Outcome.NotTaken(why)) =>
-      Walking.advance(unwritten(path, why))
-    case (Waiting.Reading(path, subject, card), Outcome.Fetched(fetched, _)) =>
-      fetched match {
-        case Fetched.Text(text, version) if text.isBlank => write(card(version, Walking.Empty))
-        case Fetched.Text(text, version) =>
-          step(
-            Step.Summarise(path, subject, Fetched.head(text), version),
-            Waiting.Summary(card(version, _))
+  def after(outcome: Outcome[L]): Walking[L, T, S] = {
+    // The outcome answers what was awaited: from here the walk awaits nothing until it steps.
+    val idle = copy(waiting = Waiting.Idle())
+    (waiting, outcome) match {
+      case (Waiting.Done(), _) => this
+      case (_, Outcome.Stopped(why)) => halt(why)
+      case (Waiting.Listing(_, listed), Outcome.Listed(listing, at)) =>
+        Walking.advance(listed(idle, listing, at))
+      case (Waiting.Listing(path, _), Outcome.NotTaken(why)) =>
+        Walking.advance(idle.unwritten(path, why))
+      case (Waiting.Reading(path, _, _), Outcome.NotTaken(why)) =>
+        Walking.advance(idle.unwritten(path, why))
+      case (Waiting.Reading(path, subject, card), Outcome.Fetched(fetched, _)) =>
+        fetched match {
+          case Fetched.Text(text, version) if text.isBlank =>
+            idle.write(card(version, Walking.Empty))
+          case Fetched.Text(text, version) =>
+            idle.step(
+              Step.Summarise(path, subject, Fetched.head(text), version),
+              Waiting.Summary(card(version, _))
+            )
+          case Fetched.Unversioned(why) => Walking.advance(idle.unwritten(path, why))
+        }
+      case (Waiting.Summary(card), Outcome.Summarised(summary)) => idle.write(card(summary))
+      case (Waiting.Wrote(key), Outcome.Kept) =>
+        Walking.advance(
+          idle.copy(
+            tally = tally.copy(written = tally.written + 1),
+            fresh = if (holding.isNew(key)) fresh + 1 else fresh,
+            settled = settled + key
           )
-        case Fetched.Unversioned(why) => Walking.advance(unwritten(path, why))
-      }
-    case (Waiting.Summary(card), Outcome.Summarised(summary)) => write(card(summary))
-    case (Waiting.Wrote(key), Outcome.Kept) =>
-      Walking.advance(
-        copy(
-          tally = tally.copy(written = tally.written + 1),
-          fresh = if (holding.isNew(key)) fresh + 1 else fresh,
-          settled = settled + key
         )
-      )
-    case (Waiting.Relabelled(key), Outcome.Kept) =>
-      Walking.advance(
-        copy(tally = tally.copy(relabelled = tally.relabelled + 1), settled = settled + key)
-      )
-    case (Waiting.Repieced(key), Outcome.Kept | Outcome.NotTaken(_)) =>
-      Walking.advance(unchanged(key))
-    case (Waiting.Dropped(count), Outcome.Kept) => copy(tally = tally.copy(withdrawn = count)).done
-    case (waiting, other) => halt(s"${Walking.expected(waiting)} came to ${Walking.kind(other)}")
+      case (Waiting.Relabelled(key), Outcome.Kept) =>
+        Walking.advance(
+          idle.copy(tally = tally.copy(relabelled = tally.relabelled + 1), settled = settled + key)
+        )
+      case (Waiting.Repieced(key), Outcome.Kept | Outcome.NotTaken(_)) =>
+        Walking.advance(idle.unchanged(key))
+      case (Waiting.Dropped(count), Outcome.Kept) =>
+        idle.copy(tally = tally.copy(withdrawn = count)).done
+      case (waiting, other) => halt(s"${Walking.expected(waiting)} came to ${Walking.kind(other)}")
+    }
   }
 
   /** This walk, its routine's record now `own`. */
@@ -86,9 +94,7 @@ private[knowledge] final case class Walking[
   /** This walk with the held unit `key`, its card current, reached `way`: its file read again for
     * its pieces alone ([[Step.Piece]]) when [[Holding.repiece]] holds it, then counted unchanged;
     * left for the next run when [[spent]]; otherwise counted unchanged at once. A read again
-    * counts against `perRun` as any read does. Since it may make a step, it is a task's `take`
-    * ([[Walking.Routine]]), one key a task: a step a listing's `listed` makes is replaced by the
-    * next task's.
+    * counts against `perRun` as any read does. It may make a step, so it takes one key a task.
     */
   def current(key: CardKey, way: Way): Walking[L, T, S] =
     holding.best(key).filter(_ => holding.repiece(key)) match {
@@ -191,8 +197,12 @@ private[knowledge] final case class Walking[
 
   private def done: Walking[L, T, S] = copy(next = Left(tally), waiting = Waiting.Done())
 
-  private def step(s: Step, w: Waiting[L, T, S]): Walking[L, T, S] =
-    copy(next = Right(s), waiting = w)
+  private def step(s: Step, w: Waiting[L, T, S]): Walking[L, T, S] = waiting match {
+    case Waiting.Idle() => copy(next = Right(s), waiting = w)
+    case Waiting.Done() => this
+    case awaited =>
+      halt(s"${Walking.made(s)} was made while ${Walking.expected(awaited)}'s outcome was awaited")
+  }
 }
 
 private[knowledge] object Walking {
@@ -256,17 +266,25 @@ private[knowledge] object Walking {
     .of("An empty file.", Vector.empty)
     .fold(why => throw new IllegalStateException(why), identity)
 
-  /** Pops tasks until one makes a step or ends the walk, or none is left. */
+  /** Pops tasks until one makes a step or ends the walk, or none is left; `w` itself when it
+    * already made one, or ended.
+    */
   @tailrec private def advance[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
       w: Walking[L, T, S]
-  ): Walking[L, T, S] = w.stack match {
-    case Nil => w.end
-    case task :: rest =>
-      val taken = w.routine.take(task, w.copy(stack = rest, waiting = Waiting.Idle()))
-      taken.waiting match {
-        case Waiting.Idle() => advance(taken)
-        case _ => taken
-      }
+  ): Walking[L, T, S] = (w.waiting, w.stack) match {
+    case (Waiting.Idle(), Nil) => w.end
+    case (Waiting.Idle(), task :: rest) => advance(w.routine.take(task, w.copy(stack = rest)))
+    case _ => w
+  }
+
+  private def made(step: Step): String = step match {
+    case Step.List(_, _) => "a list"
+    case Step.Read(_, _) => "a read"
+    case Step.Piece(_, _) => "a read for pieces"
+    case Step.Summarise(_, _, _, _) => "a summary"
+    case Step.Write(_, _) => "a write"
+    case Step.Relabel(_, _) => "a relabel"
+    case Step.Drop(_) => "a drop"
   }
 
   private def expected(waiting: Waiting[?, ?, ?]): String = waiting match {
