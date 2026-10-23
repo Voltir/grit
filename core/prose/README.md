@@ -37,6 +37,9 @@ In dependency order:
   the outermost, those outside it continuing (two quotes side by side inside one quote are
   `"depth": 2, "new": 2` at the second's first record).
 
-`markdown` and `json` name nothing of each other. No source file sits at the module's root,
+- **`index`** -- `IndexText`, the text a search index ranks for a doc: its words a block a
+  line, each under its heading path, a table row as `column: value` pairs. ← `form`
+
+`markdown`, `json` and `index` name nothing of each other. No source file sits at the module's root,
 and the test tree mirrors it. The terminal's renderer is `grit.app.look.ProseLook`, beside the
 theme it draws in; Slack's is `grit.slack.text.RichText`.
