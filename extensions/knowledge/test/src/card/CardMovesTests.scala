@@ -18,7 +18,9 @@ object CardMovesTests extends TestSuite {
       val names = Phase.values.toVector.map(p => MoveName.value(CardMoves.of(p, key)))
       // Recorded move names: a changed word stops every run recorded under the old one replaying.
       (names, names.forall(_.length <= 72)) ==> (
-        Vector("list", "read", "summary", "write", "relabel").map(w => s"$w/${CardKey.value(key)}"),
+        Vector("list", "read", "summary", "write", "relabel", "piece").map(w =>
+          s"$w/${CardKey.value(key)}"
+        ),
         true
       )
     }
@@ -30,9 +32,9 @@ object CardMovesTests extends TestSuite {
       (name, name.length <= 79) ==> (s"vet/${CardKey.value(key)}/${Int.MaxValue}", true)
     }
 
-    test("the whole-run keeps are held and drop") {
-      assert(MoveName.value(CardMoves.Held) == "held")
-      assert(MoveName.value(CardMoves.Drop) == "drop")
+    test("the whole-run keeps are held, drop and drop-pieces") {
+      Vector(CardMoves.Held, CardMoves.Drop, CardMoves.DropPieces).map(MoveName.value) ==>
+        Vector("held", "drop", "drop-pieces")
     }
   }
 }

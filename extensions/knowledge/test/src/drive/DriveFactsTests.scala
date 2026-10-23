@@ -82,17 +82,20 @@ object DriveFactsTests extends TestSuite {
               Some("folder-3")
             ),
             "text text.\ntext text, text.",
-            complete = true
+            complete = true,
+            file = None
           )
         )
       )
     }
 
-    test("a PDF's read by pages decodes as its entry and its text, not all of it") {
+    test(
+      "a PDF's read by pages decodes as its entry, its text, not all of it, and the handle the area keeps it under"
+    ) {
       val opened = DriveOpened.read(FactsGoldens.stated("read-file-pdf"))
       assert(
-        opened.map(o => (o.entry.id, o.entry.kind, o.complete)) == Right(
-          ("file-4", DriveEntry.Kind.Other("pdf"), false)
+        opened.map(o => (o.entry.id, o.entry.kind, o.complete, o.file.map(_.written))) == Right(
+          ("file-4", DriveEntry.Kind.Other("pdf"), false, Some("f41"))
         )
       )
     }

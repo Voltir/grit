@@ -4,28 +4,32 @@ import java.time.Instant
 
 import scala.annotation.tailrec
 
-import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, Posed}
+import grit.core.act.{Answer, Called, Keeping, MoveError, MoveLimits, Pieced, Piecing, Posed}
 import grit.core.document.DocumentKeeper
 import grit.core.durable.Journaled
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{CorpusName, DocumentVersionId, JobName}
+import grit.core.id.{CorpusName, DocumentVersionId, FileHandle, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase}
+import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
 import grit.knowledge.ref.CardKey
 
-/** The job `knowledge-sync`, version 5, over `sources`. A run, for the source its parameters
+/** The job `knowledge-sync`, version 6, over `sources`. A run, for the source its parameters
   * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
   * writes a card at its own floor for each new or changed unit (a file's from one summary, with
   * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
   * makes it, at no model cost), each pointing at the read of its unit; copies up to
   * its floor, with no call or ask, the card of an unchanged unit held at another label, and to
   * its source's place ([[Source.at]]) the card of one kept elsewhere; and
-  * withdraws the cards of units gone from directories it listed in full. A held card at another
+  * withdraws the cards of units gone from directories it listed in full. After a file's card is
+  * kept, it keeps the pieces of the file when its read kept all of it in the file area
+  * ([[Source.file]]) believed at `Outside` or above, as its card's key's at its version,
+  * believed as its card ([[grit.core.act.Keeping.piece]]); a file's pieces are withdrawn where its
+  * card is withdrawn or relabelled away, and when it was read below `Outside`. A held card at another
   * label is withdrawn only in the keep that replaces it, so a run stopped early leaves every
   * card it did not replace current. A card is kept at no less than what its unit's answers were
   * read at, and believed at the meet of the run and what it read on its unit's way
@@ -51,7 +55,7 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 
   val name: JobName = Sync.Name
 
-  val version: Int = 5
+  val version: Int = 6
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)
@@ -169,7 +173,13 @@ object Sync {
             case reading @ Step.Read(path, _) =>
               reached(Phase.Read, reading, read, seen) match {
                 case Left(why) => (Outcome.Stopped(s"reading $path: $why"), read, seen)
-                case Right((answer, at, on)) =>
+                case Right((answer, at, reachedAs)) =>
+                  // All of a file is kept as pieces only when all of it is believed at Outside
+                  // or above: of one below, only its head is checked.
+                  val whole = source
+                    .file(Trusted.asIs(answer).extract)
+                    .map(f => if (answer.integrity.belowOutside) Whole.Unchecked else Whole.Kept(f))
+                  val on = reachedAs.copy(whole = whole)
                   source.fetched(Trusted.asIs(answer).extract) match {
                     case Fetched.Text(whole, version) if answer.integrity.belowOutside =>
                       // Of a file, only its head reaches its card, through its summary: the head
@@ -207,19 +217,31 @@ object Sync {
                   (
                     Outcome.Summarised(Trusted.asIs(a.reply).extract),
                     heard(read, a.reply),
-                    seen.updated(path, Seen(on.at.join(a.at), heard(from, a.reply), on.way))
+                    seen.updated(
+                      path,
+                      on.copy(at = on.at.join(a.at), believed = heard(from, a.reply))
+                    )
                   )
               }
             case Step.Write(card, replacing) =>
-              val label = seen.get(card.path).fold(h.floor)(_.at)
+              val on = seen.get(card.path)
+              val label = on.fold(h.floor)(_.at)
               val (at, from) = (source.at, believed(card.path, read, seen))
-              (
-                kept(
-                  moves.keep(CardMoves.of(Phase.Write, card.key), from)((_, keeper, now) =>
-                    replace(keeper, card, label, from.integrity, at, replacing, now)
-                  ),
-                  s"keeping the card of ${card.path}"
+              val written = kept(
+                moves.keep(CardMoves.of(Phase.Write, card.key), from)((_, keeper, now) =>
+                  replace(keeper, card, label, from.integrity, at, replacing, now)
                 ),
+                s"keeping the card of ${card.path}"
+              )
+              val ref = CardKey.value(card.key)
+              val piecing = on.flatMap(_.whole).map {
+                case Whole.Kept(file) =>
+                  Piecing.Read(file, ref, UnitVersion.value(card.version), at, replacing.toVector)
+                case Whole.Unchecked =>
+                  Piecing.Withdraw((replacing.toVector :+ h.floor).map((ref, _)))
+              }
+              (
+                piecing.fold(written)(p => after(written, card.key, card.path, from.map(_ => p))),
                 read,
                 seen
               )
@@ -230,26 +252,48 @@ object Sync {
               // what the run has read, as its writes are. Today a listing believed below a keep's
               // need always stops the run at its directory's card first, since a walk emits the
               // drop last; keeping from `read` makes that hold whatever the order.
-              (
-                kept(
-                  moves.keep(CardMoves.of(Phase.Relabel, key), read)((_, keeper, now) =>
-                    relabel(keeper, key, from, floor, at, now)
-                  ),
-                  s"relabelling the card of $path"
+              val relabelled = kept(
+                moves.keep(CardMoves.of(Phase.Relabel, key), read)((_, keeper, now) =>
+                  relabel(keeper, key, from, floor, at, now)
                 ),
-                read,
-                seen
+                s"relabelling the card of $path"
               )
+              // A file's pieces are not copied: those at `from` go with its card there, and its
+              // pieces are kept again when the file is next read.
+              val gone = read.map(_ => Piecing.Withdraw(Vector((CardKey.value(key), from))))
+              (if (from == floor) relabelled else after(relabelled, key, path, gone), read, seen)
             case Step.Drop(gone) =>
+              val dropped = kept(
+                moves.keep(CardMoves.Drop, read)((_, keeper, now) => drop(keeper, gone, now)),
+                "withdrawing the cards gone"
+              )
+              val files = Piecing.Withdraw(gone.map(c => (CardKey.value(c.key), c.label)))
               (
-                kept(
-                  moves.keep(CardMoves.Drop, read)((_, keeper, now) => drop(keeper, gone, now)),
-                  "withdrawing the cards gone"
-                ),
+                dropped match {
+                  case Outcome.Kept if gone.nonEmpty =>
+                    pieced(
+                      moves.piece(CardMoves.DropPieces, read.map(_ => files)),
+                      "the files gone"
+                    )
+                  case stopped => stopped
+                },
                 read,
                 seen
               )
           }
+
+        /** `done`, a keep about the unit `key` at `path`; then, when it was kept, the piece move
+          * `piecing` of its file.
+          */
+        def after(
+            done: Outcome[Nothing],
+            key: CardKey,
+            path: String,
+            piecing: Tainted[Piecing]
+        ): Outcome[Nothing] = done match {
+          case Outcome.Kept => pieced(moves.piece(CardMoves.of(Phase.Piece, key), piecing), path)
+          case stopped => stopped
+        }
 
         /** `text`, read of `path`, a `source`, through the integrity tree a window at a time
           * ([[IntegrityTree.windows]]), each window its own vet: all of it, believed as its windows
@@ -349,6 +393,25 @@ object Sync {
     }
   }
 
+  /** A piece move's outcome: [[Outcome.Kept]] whatever it kept, or why keeping the pieces of
+    * `what` stopped.
+    */
+  private def pieced(result: Either[MoveError, Pieced], what: String): Outcome[Nothing] =
+    result.fold(
+      e => Outcome.Stopped(s"keeping the pieces of $what: ${MoveError.said(e)}"),
+      _ => Outcome.Kept
+    )
+
+  /** What a run read of a file the file area kept all of. */
+  private enum Whole {
+
+    /** Kept under `file`, believed at Outside or above: its pieces are kept. */
+    case Kept(file: FileHandle)
+
+    /** Believed below Outside, so checked only by its head: none of its pieces are kept. */
+    case Unchecked
+  }
+
   /** A keep's outcome: [[Outcome.Kept]], or why `doing` stopped. */
   private def kept(result: Either[MoveError, Kept], doing: String): Outcome[Nothing] =
     result.fold(e => Outcome.Stopped(s"$doing: ${MoveError.said(e)}"), _ => Outcome.Kept)
@@ -441,11 +504,11 @@ object Sync {
   private type Read = Tainted[Unit]
 
   /** What a run saw of one unit: the label its answers hold nothing above, what they are
-    * believed at, and the way it was reached. Through [[Way.Run]], it is believed as everything
-    * the run read before it was; through [[Way.Through]], as its listing's record was, and its
-    * label joins that record's.
+    * believed at, the way it was reached, and what its read kept of a file. Through
+    * [[Way.Run]], it is believed as everything the run read before it was; through
+    * [[Way.Through]], as its listing's record was, and its label joins that record's.
     */
-  private final case class Seen(at: Label, believed: Read, way: Way) {
+  private final case class Seen(at: Label, believed: Read, way: Way, whole: Option[Whole] = None) {
 
     /** This, `answer` heard after it. */
     def hearing(answer: Tainted[?]): Seen = copy(believed = heard(believed, answer))
@@ -459,8 +522,8 @@ object Sync {
     */
   private def believed(path: String, read: Read, seen: Seens): Read =
     seen.get(path) match {
-      case Some(Seen(_, from, Way.Through(_))) => from
-      case Some(Seen(_, _, Way.Run)) | None => read
+      case Some(Seen(_, from, Way.Through(_), _)) => from
+      case Some(Seen(_, _, Way.Run, _)) | None => read
     }
 
   /** 10: the most windows of one listing's paths or one file's head a run checks

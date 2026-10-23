@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.act.Answer
 import grit.core.document.Pointer
-import grit.core.id.{CorpusName, ScheduleKey}
+import grit.core.id.{CorpusName, FileHandle, ScheduleKey}
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
@@ -65,6 +65,10 @@ final case class DriveCards private (
           case None => Fetched.Unversioned("Drive did not say when it last changed")
         }
     }
+
+  /** The handle [[DriveOpened.read]] reads of `answer`'s facts: a file a format read. */
+  override def file(answer: Answer): Option[FileHandle] =
+    DriveOpened.read(answer.stated).toOption.flatMap(_.file)
 
   /** Its entries' names, one a line: a name reaches a card as its title, while an id is only
     * passed back to Drive's own tools, which refuse one that is no id.

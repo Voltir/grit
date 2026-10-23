@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.act.Answer
 import grit.core.document.Pointer
-import grit.core.id.CorpusName
+import grit.core.id.{CorpusName, FileHandle}
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
@@ -35,6 +35,12 @@ trait Source[L <: caps.Pure] extends caps.Pure {
 
   /** What `answer`, a read, holds. */
   def fetched(answer: Answer): Fetched
+
+  /** The handle the file area keeps all of the file `answer` read under, when the read kept it
+    * there: the file a run keeps the pieces of. None by default, as a source whose reads keep
+    * no file answers.
+    */
+  def file(answer: Answer): Option[FileHandle] = None
 
   /** What of `listing` the integrity tree checks when it is believed below `Outside`: what
     * reaches a card or steers the run.

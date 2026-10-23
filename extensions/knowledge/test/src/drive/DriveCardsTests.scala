@@ -104,6 +104,13 @@ object DriveCardsTests extends TestSuite {
       )
     }
 
+    test("a read a format made names the file the area keeps whole; a read of text names none") {
+      val drive = cards(Vector(internal))
+      Vector("read-file-pdf", "read-file-text")
+        .map(g => drive.file(Answer("", FactsGoldens.stated(g))).map(_.written)) ==>
+        Vector(Some("f41"), None)
+    }
+
     test("a read cut for size is carded from what it gave") {
       val v = FactsGoldens.json("read-file-text")
       v("parts").arr(0)("complete") = false

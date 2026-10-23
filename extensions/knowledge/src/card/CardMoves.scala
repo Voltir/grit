@@ -20,9 +20,12 @@ enum Phase(val word: String) {
 
   /** Copy an unchanged unit's card to another label. */
   case Relabel extends Phase("relabel")
+
+  /** Keep or withdraw the pieces of a file whose card was kept or relabelled. */
+  case Piece extends Phase("piece")
 }
 
-/** The names of knowledge's runs' moves: a sync run's, one per phase and unit, and its two
+/** The names of knowledge's runs' moves: a sync run's, one per phase and unit, and its three
   * whole-run keeps; and a dreaming run's, numbered within it.
   */
 object CardMoves {
@@ -40,6 +43,9 @@ object CardMoves {
 
   /** `drop`: the keep withdrawing the cards of units gone. */
   val Drop: MoveName = MoveName("drop")
+
+  /** `drop-pieces`: the piece move withdrawing the pieces of the files gone. */
+  val DropPieces: MoveName = MoveName("drop-pieces")
 
   /** `{kind}-{i}`: a dreaming run's `i`th move of `kind`, lower-case words joined by `-`. */
   private[knowledge] def numbered(kind: String, i: Int): MoveName = known(s"$kind-$i")

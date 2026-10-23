@@ -1,6 +1,6 @@
 # 0034. Turns and jobs act through three moves, ask, call and keep, made under an acting value
 
-Status: accepted (2026-10-08); revised (2026-10-18)
+Status: accepted (2026-10-08); revised (2026-10-22)
 
 Context: the turn called models through `Provider` and edges' tools through `ToolRequest`, with
 spend, ADR 0031's label checks and approvals woven into its own steps. A job's run (ADR 0029)
@@ -37,7 +37,8 @@ Decision:
   budget carved from its parent's. How is not yet decided.
 - **The rules are written once**: the acting value and the planner's moves in core, their
   durable steps in `grit.act`, which the turn, jobs and the lifecycle share. One step grammar
-  (ADR 0038): a planner's moves are `ask:{name}`, `call:{name}` and `keep:{name}`, the turn's
+  (ADR 0038): a planner's moves are `ask:{name}`, `call:{name}` and `keep:{name}`, with
+  `piece:{name}` a keep of a file's pieces (ADR 0046), the turn's
   `ask:n` and `call:n:j`. The lifecycle's classifier calls and the close's summary call are
   moves (`Judging`), each charged to its turn under its own workflow.
 - **A planner makes its moves through `Moves`**: each named, at most once per run, within its

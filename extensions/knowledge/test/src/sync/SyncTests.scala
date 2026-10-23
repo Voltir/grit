@@ -16,6 +16,7 @@ import grit.core.act.{
   ScriptedKeeping
 }
 import grit.core.classify.Answer
+import grit.core.document.Pointer
 import grit.core.document.{
   DocLabel,
   DocText,
@@ -26,8 +27,9 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
+import grit.core.files.{Covers, FormatName, InMemoryPieces, Locus, Understood}
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
-import grit.core.id.{CorpusName, PluginName, ScheduleKey}
+import grit.core.id.{CorpusName, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
@@ -35,10 +37,11 @@ import grit.core.sanitise.IntegrityTree
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.triage.Corpus
-import grit.core.visibility.{Compartment, Integrity, Label, Level}
+import grit.core.visibility.{Compartment, Integrity, Label, Level, Recorded}
 import grit.knowledge.card.{CardMoves, Phase, UnitVersion}
-import grit.knowledge.github.GitHubCards
+import grit.knowledge.github.{GitHubCards, Listing}
 import grit.knowledge.ref.CardKey
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import utest.*
 
@@ -203,11 +206,75 @@ object SyncTests extends TestSuite {
     }
   }
 
+  /** Two files the file area keeps, by handle: `a.pdf` holding [[repo]]'s `a.md` text, `b.pdf`
+    * its `b.md`'s.
+    */
+  private val (fa, fb) = (handle("f1"), handle("f2"))
+  private val Trees: Map[FileHandle, (String, Understood)] = Map(
+    fa -> ("a.pdf", tree("Deploying the app.")),
+    fb -> ("b.pdf", tree("Testing the app."))
+  )
+
+  private def handle(h: String): FileHandle =
+    FileHandle.read(h).getOrElse(throw new java.lang.AssertionError(h))
+
+  /** `text` as a format reads a one-page file of it. */
+  private def tree(text: String): Understood =
+    Understood(
+      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1)))))))),
+      Covers.Whole,
+      Vector.empty,
+      FormatName("test"),
+      1
+    )
+
+  /** [[source]], each file whose answer holds a text of `kept` read as the file area keeping it
+    * under that text's handle.
+    */
+  private final class Filed(inner: GitHubCards, kept: Map[String, FileHandle])
+      extends Source[Listing] {
+    def corpus: CorpusName = inner.corpus
+    def service: Service = inner.service
+    def at: Place = inner.at
+    def maxUnits: Int = inner.maxUnits
+    def syncs: Vector[SyncSchedule] = inner.syncs
+    def call(step: Step.Fetching): (ToolName, ujson.Obj) = inner.call(step)
+    def listing(answer: grit.core.act.Answer): Either[String, Listing] = inner.listing(answer)
+    def fetched(answer: grit.core.act.Answer): Fetched = inner.fetched(answer)
+    def checked(listing: Listing): String = inner.checked(listing)
+    def pointer(path: String): Either[String, Pointer] = inner.pointer(path)
+    override def calls(perRun: Int): Int = inner.calls(perRun)
+    def besides: Int = inner.besides
+    def walk(perRun: Int, floor: Label, held: Vector[Held], due: Instant): Walk[Listing] =
+      inner.walk(perRun, floor, held, due)
+    override def file(answer: grit.core.act.Answer): Option[FileHandle] =
+      kept.collectFirst { case (text, h) if answer.text.contains(text) => h }
+  }
+
+  /** The sync over [[source]] whose reads of `a.md`, and of `b.md` when `both`, keep their files. */
+  private def filed(both: Boolean = false): Sync =
+    new Sync(
+      Vector(
+        Filed(
+          source(),
+          Map("Deploying the app." -> fa) ++ Option.when(both)("Testing the app." -> fb)
+        )
+      )
+    )
+
+  /** Each current piece `k` reads, as its file's ref, revision, label, belief and text. */
+  private def pieced(k: ScriptedKeeping): Vector[(String, String, Label, Integrity, String)] =
+    k.pieced.map(p => (p.file.ref, p.file.revision, p.label, p.integrity, p.piece.text))
+
+  /** The ref of `path`'s pieces: its card's key. */
+  private def ref(path: String): String = CardKey.value(CardKey.of(name, path))
+
   /** A run's moves at `at`: calls answered from `answers` (each refused, saying `refused`,
     * when given), asks as `summaries`, keeps into `documents`. A call reading a path in
     * `readAt`, and the ask summarising a path in `summaryAt`, is answered at its label there; a
     * call reading a path in `believedAt` is believed at its integrity there. A judgment is
-    * answered `judged` to each of its questions, or, with none, fails.
+    * answered `judged` to each of its questions, or, with none, fails. Its piece moves keep
+    * into `pieces`, reading [[Trees]].
     */
   private def keeping(
       at: Label,
@@ -218,7 +285,8 @@ object SyncTests extends TestSuite {
       readAt: Map[String, Label] = Map.empty,
       summaryAt: Map[String, Label] = Map.empty,
       believedAt: Map[String, Integrity] = Map.empty,
-      judged: Option[Double] = None
+      judged: Option[Double] = None,
+      pieces: InMemoryPieces = new InMemoryPieces
   ): ScriptedKeeping =
     new ScriptedKeeping(
       sync.limits,
@@ -234,7 +302,12 @@ object SyncTests extends TestSuite {
         judged.fold(Left(MoveError.Model("no judgment is asked in this run")))(p =>
           Right(Asked(TestTainted.authority(request.questions.map(_ => Answer.YesNo(p))), at))
         ),
-      documents
+      documents,
+      Instant.EPOCH,
+      Integrity.Authority,
+      Recorded.Empty,
+      pieces,
+      (h: FileHandle) => Trees.get(h).toRight(s"no file ${h.written}")
     )
 
   /** Every path of [[repo]], answered believed at `Untrusted`. */
@@ -533,6 +606,54 @@ object SyncTests extends TestSuite {
           line(written = 1, withdrawn = 1, unchanged = 1),
           Vector(("docs", floor), ("docs/a.md", floor))
         )
+    }
+
+    test(
+      "a run keeps the pieces of each file the file area kept of its read, under its card's key and version, at the floor, believed as its card"
+    ) {
+      val k = keeping(floor, new InMemoryDocuments)
+      val reply = runOf(k, job = filed())
+      (reply, pieced(k), k.made.filter(MoveName.value(_).startsWith("piece/"))) ==> (
+        line(written = 3),
+        Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app.")),
+        Vector(CardMoves.of(Phase.Piece, CardKey.of(name, "docs/a.md")))
+      )
+    }
+
+    test("the pieces of a file gone from its directory's listing are withdrawn with its card") {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val _ = runOf(keeping(floor, documents, pieces = pieces), job = filed(both = true))
+      val k = keeping(floor, documents, repo(b = None), pieces = pieces)
+      val reply = runOf(k, job = filed(both = true))
+      (reply, pieced(k).map(_._1)) ==>
+        (line(written = 1, withdrawn = 1, unchanged = 1), Vector(ref("docs/a.md")))
+    }
+
+    test("a file read below Outside keeps no pieces, and those kept of it before are withdrawn") {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val first = keeping(floor, documents, pieces = pieces)
+      val _ = runOf(first, job = filed())
+      val before = pieced(first).size
+      val k = keeping(
+        floor,
+        documents,
+        repo(a = 4),
+        believedAt = Map("docs/a.md" -> Integrity.Untrusted),
+        judged = Some(0.1),
+        pieces = pieces
+      )
+      val reply = runOf(k, job = filed())
+      (before, reply, pieced(k)) ==> (1, line(written = 2, unchanged = 1), Vector())
+    }
+
+    test("a card relabelled has its file's pieces withdrawn at the label it left") {
+      val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
+      val first = keeping(lower, documents, pieces = pieces)
+      val _ = runOf(first, job = filed())
+      val before = pieced(first).map(_._3)
+      val k = keeping(floor, documents, pieces = pieces)
+      val reply = runOf(k, job = filed())
+      (before, reply, pieced(k)) ==> (Vector(lower), line(relabelled = 3), Vector())
     }
 
     test("a refused first call leaves every held card current, and the reply says why") {

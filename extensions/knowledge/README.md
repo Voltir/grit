@@ -30,7 +30,8 @@ Packages, in one-way order (each names only those before it):
   `Walking.Routine` says what each of its tasks does, which tasks left untaken count, and what
   it drops. `Sync`, the keeping job `knowledge-sync`, makes each step as a move: a call, a
   summary ask, a check, or a keep; a card held at another label is withdrawn in the keep that
-  replaces it. A listing or a file answered
+  replaces it. A file whose read the file area kept whole is kept as pieces beside its card, by
+  a piece move after its card's keep, and its pieces go wherever its card goes away. A listing or a file answered
   below `Outside` is checked by the integrity tree before anything is made from it (ADR 0036),
   since a card is kept only from `Outside` or above. Imports `ref` and `card`.
 - **`github`**: a repository as a card source, read through GitHub's MCP server's
