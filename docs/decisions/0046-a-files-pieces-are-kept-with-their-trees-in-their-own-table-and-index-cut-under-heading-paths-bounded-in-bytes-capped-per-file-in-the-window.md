@@ -21,11 +21,11 @@ Decision:
   file, the rest counted as cut. A piece's identity across revisions is its fingerprint, the
   hash of its normalised heading path and text.
 - **Their own tables and index.** `grit.piece_sets` (one row per plugin, file and label: name,
-  revision, format and version, the pointer that reads it, place, labels, when written,
-  superseded and last placed) and `grit.pieces` (each piece's tree as prose JSON, fingerprint,
-  anchor, index text and size), searched
-  by their own BM25 index over `PieceIndex.of`: the file name's words, then `IndexText`, each
-  identifier also as its alias (`AC-2(3)` also `AC2x3`), the same aliases added to a query.
+  revision, kind, format and version, the pointer that reads it, the target cut at, place,
+  labels, when written, superseded and last placed) and `grit.pieces` (each piece's tree as
+  prose JSON, fingerprint, anchor, index text and size), searched by their own BM25 index over
+  `PieceIndex.of`: the file name's words, then `IndexText`, each identifier also as its alias
+  (`AC-2(3)` also `AC2x3`), the same aliases added to a query.
   The model reads a piece rendered from its tree (`Shown.piece`), never a stored text.
 - **Kept by a plugin's keeping job as it keeps a card.** A piece move (`piece:{name}`, a keep
   by kind) admits the file a read kept in the area, opens and reads it holding no
@@ -33,15 +33,13 @@ Decision:
   more than what it pieces from; a rerun keeps the same pieces again. A keep replaces the
   file's set at that label, and an unchanged piece keeps its id. The knowledge sync pieces
   each file whose read kept it whole and was believed at `Outside` or above, moves a file's
-  pieces with its card when the card is relabelled (each keeping its id and when it was last
-  placed), and withdraws them when its card is gone. A file read with none of it kept (no
-  whole file kept, a read below `Outside`, no format reads it) is marked unread, an empty set
-  saying why, so its earlier pieces stop being current and no run reads it again for them
-  until it changes. Each run first finds the current files with neither pieces nor a mark at
-  its floor, or with pieces a format no longer read at that version made or cut at another
-  target, and reads them again for their pieces alone, within its reads: files carded before
-  their pieces were kept, or before a reader's version or the target changed, are pieced
-  without waiting for an edit.
+  pieces with its card when the card is relabelled (each keeping its id and when last placed),
+  and withdraws them when its card is gone. A file read with none of it kept (no whole file
+  kept, a read below `Outside`, no format reads it) is marked unread, an empty set saying why,
+  so no run reads it again until it changes. Each run first finds the current files with
+  neither pieces nor a mark at its floor, or with pieces cut at another target or by a format
+  no longer read at that version or no longer the first for the file's kind (`Piecing.due`),
+  and reads them again for their pieces alone, within its reads, without waiting for an edit.
 - **Bounded in bytes, forgotten whole.** A plugin's pieces take at most `PieceKeeper.Bound`
   (128 MiB) counted over every label; past it, whole files are deleted, those superseded
   first, then the least recently placed, never the one written. Superseded and withdrawn sets
@@ -49,10 +47,11 @@ Decision:
 - **A piece is cited by an anchor its pointer follows.** Each piece keeps an `Anchor` (its
   first 8 words, 32 characters either side, its position; under 170 characters), and the
   window shows its file's pointer (its card's) with `near` set to it. Every reading tool's
-  `near` re-reads the file and finds the passage exactly by context, else nearest its
-  position, else at least 0.8 alike, reading the page it lies on, or says it is gone. Turned
-  down: a citation by offset or page alone (any edit before it moves it), and following by
-  the area's handle (kept a day; a piece lives as long as its card).
+  `near` (that anchor, or a plain quote of at least 5 words: `Anchor.quoted`) re-reads the
+  file and finds the passage exactly by context, else nearest its position, else at least 0.8
+  alike, reading the page it lies on, or says it is gone. Turned down: a citation by offset or
+  page alone (any edit before it moves it), and following by the area's handle (kept a day; a
+  piece lives as long as its card).
 - **At most eight of one file in a window.** The pieces search answers at most
   `PieceSearch.PerFile` of one file and how many more matched, and the window says so ("n
   more parts of this file matched"), so one long file cannot fill the judged candidates.

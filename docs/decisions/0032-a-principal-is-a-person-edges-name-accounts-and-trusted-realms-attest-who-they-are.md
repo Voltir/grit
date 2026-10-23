@@ -6,8 +6,7 @@ Context: ADR 0030 clears a person by the grants of their groups. Each edge enrol
 it saw under its own name for them, so one person with a chat account and a directory account
 was two principals, granted twice. Linking accounts fixes that, and is also how a clearance
 could be raised by mistake: a wrong link gives one person another's grants. A deployment
-declaring its people in code was tried and dropped: a hand-kept directory, the identity
-provider's job done badly. Identity systems that link accounts safely do so only on an email
+declaring its people in code was tried and dropped (a hand-kept directory). Identity systems that link accounts safely do so only on an email
 that is verified, from a trusted provider, in a domain the organisation owns, and attach
 accounts rather than merge people.
 
@@ -60,8 +59,8 @@ Consequences:
   the same address in a claimed domain; a wrong attestation moves one account and is undone by
   its source's next word.
 - Risks accepted, each bounded: a realm's administrators can mint a member with a chosen
-  address (bounded by the claimed domains); an address reused after its holder leaves gives the
-  new holder that person, until the source's next answer; one human whose realms verify two
+  address (within the claimed domains); a reused address gives its new holder that person until
+  the source's next answer; one human whose realms verify two
   addresses is two people; a source that withholds emails links nothing (fails closed); a guest
   conversion goes unseen until the realm reports it, the person writes, or a day passes.
 - A deployment can clear every full member of a workspace with one group and one grant.

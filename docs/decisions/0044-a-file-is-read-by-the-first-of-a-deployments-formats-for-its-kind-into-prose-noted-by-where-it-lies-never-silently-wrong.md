@@ -2,8 +2,8 @@
 
 Status: accepted (2026-10-22)
 
-Context: an edge is handed files grit cannot read as text today: PDFs, Word documents and
-Excel workbooks. Reading them is a choice of library and of shape. Measured and turned down:
+Context: an edge is handed files grit cannot read as text today: PDFs, Word documents, Excel
+workbooks and Google Slides decks. Reading them is a choice of library and of shape. Measured and turned down:
 pandoc as the reader (an xlsx's numbers and dates come out wrong, a bomb leaves no partial
 text, ZIP64 is refused); Apache POI, Tika, docx4j or fastexcel in the JVM (each silently drops
 or keeps the wrong text somewhere, and several run out of memory on a crafted file); a

@@ -8,8 +8,7 @@ only replied text. Giving jobs moves of their own would have defined spend, attr
 checks and gates a second time, and smart jobs and subagents a third. Turned down: handing
 plugins `Durable` steps (a plugin could name, order and repeat steps freely and reach effects
 past every check); keeping in a plain step through `Jot` (its writes would not commit with the
-step's record). Moving the turn onto the moves' step names was first turned down, since it
-needed a new epoch; the 2026-10-15 epoch made that move.
+step's record).
 
 Decision:
 
@@ -51,7 +50,8 @@ Decision:
   permanent result.
 - **Whose a job is says what it may do**: a plain job asks and calls; a plugin's keeping job
   also keeps, under its plugin's document terms; a dreaming job's keeps may also read strands
-  by id and count, and core summarises one for its asks (ADR 0042). A deployment is refused either whose plugin declares no documents.
+  by id and count, and core summarises one for its asks (ADR 0042). A deployment with either
+  for a plugin declaring no documents is refused.
 - **Every result carries a bound on its content's label**: for now, its actor's floor. A label
   below it is a declassification (ADR 0036's `Downgrade`).
 

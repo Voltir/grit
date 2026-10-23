@@ -2,16 +2,14 @@
 
 Status: accepted (2026-09-27); revised (2026-10-21)
 
-Context: a turn's loop runs the tools its model calls: reads, and changes (writing a file,
-running a command). A step cut short by a crash runs again from the start, and its output is
-journaled. With one engine per database (ADR 0015) and conversations in many directories, an
-engine running every tool over its own directory ran them wherever it happened to start. Some
-tools wait for a person's approval, for hours, across restarts. Turned down: the whole loop
-as one step (a crash reruns it call by call); a tool's output in the journal (large, and
-replayed); rerunning a change after a crash because most are idempotent (`run` is not);
-routing a call to an edge (the request dies with that edge); asking for approval inside the
-tool's step (a step may not wait on a message); an approvals table the workflow polls;
-standing approvals kept across restarts.
+Context: a turn's loop runs the tools its model calls. A step cut short by a crash runs again
+from the start, and its output is journaled. With one engine per database (ADR 0015), an
+engine running every tool over its own directory ran them wherever it started. Some tools wait
+for a person's approval, for hours, across restarts. Turned down: the whole loop as one step (a
+crash reruns it call by call); a tool's output in the journal (large); rerunning a change after
+a crash because most are idempotent (`run` is not); routing a call to an edge (the request dies
+with it); approval inside the tool's step (a step cannot wait on a message); an approvals table
+the workflow polls; standing approvals kept across restarts.
 
 Decision:
 
@@ -37,12 +35,11 @@ a store that cannot be written, or a provider that fails, fails the turn.
   `Interrupt` answers `Interrupted`), never by its gate. The edge writes the answer on the row
   and rings the turn; the turn reads it from the row in `call:n:j`, so a lost ring loses
   nothing. Unclaimed within `Calling.ServeWithin` (10 s), or unanswered within `RunWithin`
-  more, the request is settled by `call:n:j:expire` or `call:n:j:abandon`. The engine offers
-  what an edge advertises, and the offer records it, so a replay rebuilds it without the edge.
+  more, the request is settled by `call:n:j:expire` or `call:n:j:abandon`. The offer records
+  what an edge advertises, so a replay rebuilds it without the edge.
   An addressed turn is also offered the tools at each service its place reaches (`Reaches`);
   a turn rooted on a message grit heard is offered none of them. A service's edge holds a call
-  there to exact argument bounds, failing closed: words to the model are an aid, never the
-  guard.
+  there to exact argument bounds, failing closed, never by words to the model.
 
 **Approval.** For a gated call the turn keeps a `Payload.Ask` entry (`call:n:j:approve`), so
 every edge sees what it is asked, then waits with `Durable.recv` on `Approval.topic(call)`,
