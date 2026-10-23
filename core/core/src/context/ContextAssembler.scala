@@ -112,7 +112,8 @@ enum Retrieved {
   case Doc(version: DocumentVersionId)
 
   /** Piece `id`, and how many more of its file's pieces its search matched past
-    * [[grit.core.files.PieceSearch.PerFile]], which the window says.
+    * [[grit.core.files.PieceSearch.PerFile]], which the window says. Not a [[Doc]]: pieces are
+    * kept in their own tables and index (ADR 0046), and a window records them apart.
     */
   case Piece(id: PieceId, more: Int)
 }

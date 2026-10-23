@@ -2,7 +2,7 @@ package grit.core.files
 
 import java.time.Instant
 
-import grit.core.document.{DocLabel, DocumentSearch, Pointer}
+import grit.core.document.Pointer
 import grit.core.id.{PieceId, PieceSetId, PluginName}
 import grit.core.message.Tokens
 import grit.core.place.Place
@@ -83,18 +83,6 @@ object PieceSearch {
   val PerFile: Int = 8
 
   final case class Hit(piece: KeptPiece, score: Double, more: Int)
-
-  /** Those of `pieces` whose plugin is enabled, in their order, each with its plugin's label as
-    * `documents` declares it: what a window holding them shows.
-    */
-  def labelled(documents: DocumentSearch, pieces: Vector[KeptPiece])(using
-      Tx^
-  ): Either[StoreError, Vector[(KeptPiece, DocLabel)]] =
-    for {
-      // The terms in force are read only when a piece is left to label.
-      terms <- if (pieces.isEmpty) Right(Vector.empty) else documents.declared()
-      labels = terms.toMap
-    } yield pieces.flatMap(p => labels.get(p.plugin).map(t => p -> t.label))
 }
 
 /** [[PieceSearch]], and what the engine itself writes of every plugin's pieces. */

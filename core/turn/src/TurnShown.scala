@@ -188,7 +188,7 @@ private[turn] object TurnShown {
       labelled <- documents.labelled(window.documents)
       kept <-
         if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
-      shown <- PieceSearch.labelled(documents, kept)
+      shown <- documents.labelOf(kept)(_.plugin)
     } yield {
       val more = window.pieces.map(p => p.id -> p.more).toMap
       val parts = shown.map((k, l) => (k, l, more.getOrElse(k.id, 0)))

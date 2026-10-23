@@ -6,7 +6,6 @@ import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
 import grit.core.clock.{Clock, Fresh}
-import grit.core.files.PieceSearch
 import grit.core.id.{ConversationId, EntrySeq, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -397,7 +396,7 @@ final class ChatHost(
         .read(session)(
           engine.pieces
             .read(counts.keys.toVector)
-            .flatMap(PieceSearch.labelled(engine.documents, _))
+            .flatMap(engine.documents.labelOf(_)(_.plugin))
         )
         .getOrElse(Vector.empty)
         .map((piece, label) => (piece, label, counts.getOrElse(piece.id, 0)))

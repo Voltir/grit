@@ -508,6 +508,15 @@ abstract class DocumentContract extends TestSuite {
       )
     }
     test(
+      "labelOf keeps those whose plugin is enabled, in their order, each with its plugin's label"
+    ) {
+      val (p, q, r) = (name("doc-label-of-p"), name("doc-label-of-q"), name("doc-label-of-r"))
+      transaction(ok(store.declare(Vector(p -> terms(), q -> terms(label = "decisions")))))
+      val held = Vector("b" -> q, "x" -> r, "a" -> p, "c" -> q)
+      transaction(ok(search.labelOf(held)(_._2))).map((h, l) => h._1 -> DocLabel.value(l)) ==>
+        Vector("b" -> "decisions", "a" -> "notes", "c" -> "decisions")
+    }
+    test(
       "a document the transaction does not read is never returned by nearby and never displaces one it does"
     ) {
       val p = name("doc-nearby-above")
