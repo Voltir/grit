@@ -1104,6 +1104,34 @@ object TurnTests extends TestSuite {
       summary.requests.map(_.system) ==> Vector(TurnSummary.AgendaSystem)
     }
 
+    test("the persona's voice reaches every model call of a Slack turn, never its summary") {
+      val entries = new InMemoryEntryStore
+      // Two rounds: a call to a tool the turn does not offer, answered, then a reply.
+      val call: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(grit.core.id.ToolCallId("c1"), "nope", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+        "m"
+      )
+      val turn = new Scripted((_, n) => Right(if (n == 0) call else said("done")))
+      val summary = new RecordingProvider
+      val pip = grit.core.persona.Persona.Grit.speaking(Voice.Named.Teacher)
+      val voice = pip.voiced.fold("none")(_.text)
+      val asked = say(entries, "hello")
+      new InMemoryDurable().run(asked.workflowId)(
+        voicedBody(
+          entries,
+          turn,
+          summary,
+          new InMemoryVoiceStore,
+          at = grit.core.store.Origin.Slack("T1", "C1", "1.0"),
+          persona = pip
+        )
+      )
+      (turn.requests.map(_.system.contains(voice)), summary.requests.map(_.system)) ==>
+        (Vector(true, true), Vector(TurnSummary.AgendaSystem))
+    }
+
     test(
       "a named account's message reaches the model under its name, in the window and as the turn's own; an unnamed one's as it is"
     ) {

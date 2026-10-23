@@ -5,7 +5,7 @@ import grit.core.id.EdgeName
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fragment, Layer}
-import grit.core.store.Origin
+import grit.core.store.{Audience, Origin}
 import grit.core.tool.ToolSet
 import grit.core.visibility.Label
 
@@ -149,8 +149,8 @@ object TurnPrompt {
     * offered tool. `None` for a terminal or a task, whose reply has one reader. An edge-layer
     * fragment of its own.
     */
-  def destination(origin: Origin): Option[Fragment] = origin match {
-    case _: Origin.Slack =>
+  def destination(origin: Origin): Option[Fragment] = origin.audience match {
+    case Audience.Colleagues =>
       Some(
         Fragment(
           Layer.Edge,
@@ -159,7 +159,7 @@ object TurnPrompt {
             "only by calling a tool that does it, and only if one is offered to you."
         )
       )
-    case _: Origin.Direct =>
+    case Audience.Person =>
       Some(
         Fragment(
           Layer.Edge,
@@ -168,7 +168,7 @@ object TurnPrompt {
             "anywhere else only by calling a tool that does it, and only if one is offered to you."
         )
       )
-    case _: Origin.Tui | _: Origin.Task => None
+    case Audience.Operator | Audience.Nobody => None
   }
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
@@ -227,12 +227,20 @@ object TurnPrompt {
     */
   // Its own fragment (not a sentence in `edge`'s Slack text) so that measured text stays
   // byte-identical; checked for gross regression on the forgery check, 2026-09-28.
-  def called(persona: Persona, origin: Origin): Option[Fragment] = origin match {
-    case _: Origin.Slack | _: Origin.Direct =>
+  def called(persona: Persona, origin: Origin): Option[Fragment] = origin.audience match {
+    case Audience.Colleagues | Audience.Person =>
       Some(
         Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called ${persona.name}.")
       )
-    case _: Origin.Tui | _: Origin.Task => None
+    case Audience.Operator | Audience.Nobody => None
+  }
+
+  /** How a turn whose reply people read (a Slack thread's or a direct message's) is told to
+    * sound: `persona`'s voice ([[Persona.voiced]]); `None` for a terminal or a task.
+    */
+  def voiced(persona: Persona, origin: Origin): Option[Fragment] = origin.audience match {
+    case Audience.Colleagues | Audience.Person => persona.voiced
+    case Audience.Operator | Audience.Nobody => None
   }
 
   /** What a turn may reach in `workspace`, as `serving` says: the tools offered in a

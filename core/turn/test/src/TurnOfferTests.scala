@@ -812,6 +812,43 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
+      "a Slack or direct-message turn is told its persona's voice after its name; a terminal or task turn is not, and a heard one is"
+    ) {
+      val pip = Persona
+        .of("Pip")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+        .speaking(grit.core.prompt.Voice.Named.Teacher)
+      val voice = pip.voiced.fold("none")(_.text)
+      val hi = Payload.Message(Message.User("hi"))
+      val dm = Origin.Direct(
+        Account.of("slack", "T1/U1").fold(e => throw new java.lang.AssertionError(e), identity),
+        "1.0"
+      )
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      val (tui, task) = (Origin.Tui(dir, "default"), Origin.Task("nightly", "1"))
+      offeredAs(slack, hi, pip)._1 ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
+        TurnPrompt.edge(slack).text,
+        "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+          "only by calling a tool that does it, and only if one is offered to you.",
+        "In this workspace you are called Pip.",
+        voice,
+        TurnPrompt.room(slack, Label.Public).text,
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
+      ).mkString("\n\n")
+      val heard = offeredAs(slack, Payload.Heard("lunch?"), pip)._1
+      val told = Vector(dm, tui, task).map(o => offeredAs(o, hi, pip)._1.contains(voice))
+      (
+        told,
+        heard.indexOf(TurnPrompt.unprompted.text) < heard.indexOf(voice),
+        heard.indexOf(TurnPrompt.unprompted.text) >= 0
+      ) ==> (Vector(true, false, false), true, true)
+    }
+
+    test(
       "a heard message triage answers as said to grit is offered, told and shaped as the same message said to grit, and recorded by name"
     ) {
       def offer(root: Payload, answering: Boolean) = reaching(

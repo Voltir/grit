@@ -40,6 +40,7 @@ import grit.core.identity.{Account, Principal}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Reaches, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
@@ -144,15 +145,16 @@ object TurnFixtures {
   }
 
   /** What a fixture turn is offered when no edge serves its directory: its conversations,
-    * the fixture one created first, and in-memory prompts, tool sets, `edges` and `voices`
-    * (none set: the default).
+    * the fixture one created first, at `at`, and in-memory prompts, tool sets, `edges` and
+    * `voices` (none set: the default).
     */
   def hosting(
       edges: InMemoryEdges = new InMemoryEdges,
-      voices: VoiceStore = new InMemoryVoiceStore
+      voices: VoiceStore = new InMemoryVoiceStore,
+      at: Origin = origin
   ): TurnHosting = {
     val conversations = new InMemoryConversationStore
-    conversations.findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
+    conversations.findOrCreate(at, Account.Local, Label.Public)(using TestTx.fake)
     TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, LocalAsker)
   }
 
@@ -1609,7 +1611,8 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
-    * `summary`'s, in the voice `voices` holds, the deployment's zone `zone`.
+    * `summary`'s, in the voice `voices` holds, the deployment's zone `zone`; its conversation at
+    * `at`, its deployment's persona `persona`.
     */
   def voicedBody(
       entries: EntryStore,
@@ -1617,7 +1620,9 @@ object TurnFixtures {
       summary: Provider^,
       voices: VoiceStore,
       principals: Principals = new InMemoryPrincipals,
-      zone: ZoneId = ZoneOffset.UTC
+      zone: ZoneId = ZoneOffset.UTC,
+      at: Origin = origin,
+      persona: Persona = Persona.Grit
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -1632,7 +1637,7 @@ object TurnFixtures {
           new InMemoryDocuments,
           new InMemoryPieces
         ),
-        hosting(voices = voices),
+        hosting(voices = voices, at = at),
         new LinearAssembler(
           entries,
           NoPeriods,
@@ -1655,7 +1660,8 @@ object TurnFixtures {
         Toolbox.Empty,
         Vector.empty,
         new FakeJot,
-        budget(5)
+        budget(5),
+        persona = persona
       )
     )(id)
 

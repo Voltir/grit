@@ -129,7 +129,7 @@ object TurnOffer {
     * fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
     * where its reply goes ([[TurnPrompt.destination]]), what it is called
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
-    * heard, its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
+    * heard, how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
     * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice's fragment (none for plain), and the
     * instruction files the edge read there. Its root is `ByName` when its first entry in
@@ -246,6 +246,7 @@ object TurnOffer {
           TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
           unasked ++
+          TurnPrompt.voiced(tooling.persona, conversation.origin) ++
           Vector(TurnPrompt.room(conversation.origin, Tx.floor(tx))) ++
           Option.when(kept)(
             TurnPrompt.reach(

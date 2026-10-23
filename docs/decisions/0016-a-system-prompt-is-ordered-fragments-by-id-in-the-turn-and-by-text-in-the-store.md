@@ -1,6 +1,6 @@
 # 0016. A system prompt is ordered fragments: by id in the turn, by text in the store
 
-Status: accepted (2026-09-27); revised (2026-09-27, 2026-10-21)
+Status: accepted (2026-09-27); revised (2026-09-27, 2026-10-21, 2026-10-23)
 
 Context: the system prompt was one string, and the one model input not in the store: nothing
 showed what a turn was sent. It comes from several places (grit's own words, the edge, the
@@ -14,12 +14,14 @@ dedupe, and every reader of entries would have to skip it).
 Decision:
 
 - **A prompt is ordered fragments.** Each has a `Layer` and a source. The layers, stable to
-  volatile: `Base` (grit's words, per release), `Edge` (what the edge is and renders), `Person`
+  volatile: `Base` (grit's words, per release), `Edge` (core's words per origin, what the
+  served edge says its replies show, `ServedEdge.renders`, and who grit is called and how it
+  sounds there, `Persona.voiced`), `Person`
   (how the person wants to be talked to), `Reach` (grit's words on where the conversation is
   and what a turn may reach there), then `Place` (the place's own instructions).
   `SystemPrompt.of` sorts stably by layer, and `render` joins the texts the same way every
   time, so equal fragments give equal bytes.
-- **The Person layer is the person's choice**: its one fragment is the voice (`Voice`): a
+- **The Person layer is the person's choice**: its fragment is the voice (`Voice`): a
   named voice (whose text is fixed per release and so caches like Base), the person's own
   words, or `plain`, which adds no fragment. Its source is the person, never grit. Of the
   engine's workflows only the turn is given a `VoiceStore`; the closing, query and summary
@@ -61,5 +63,6 @@ was sent can be shown exactly. Fragments are never collected, so their table gro
 distinct text; a collection kind for unreferenced ones waits until nothing that can still
 replay names them. Enforced by `SystemPromptTests` (order, the pinned id) and
 `TurnPromptTests` (the base teaches every tag grit writes), `TurnTests` and `TurnHostedTests`
-(the line saying when the message was said, and that no fragment holds it), and
-`TurnShownTests` (its forms).
+(the line saying when the message was said, and that no fragment holds it),
+`TurnShownTests` (its forms), `RichTextTests` (Slack's words cover every block and mark it
+draws) and `PersonaTests` (a persona's voice under grit's bounds).
