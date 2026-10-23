@@ -213,7 +213,7 @@ object DriveEdgeTests extends TestSuite {
   /** `file-1`, a Doc, as Drive says of it, but a Slides deck. */
   private def slides: String = {
     val doc = Recorded.json("metadata-file-in-folder")
-    doc("mimeType") = DriveFile.Presentation
+    doc("mimeType") = Kind.SlidesType
     ujson.write(doc)
   }
 

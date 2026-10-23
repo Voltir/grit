@@ -2,6 +2,7 @@ package grit.mcp.drive
 
 import java.time.Instant
 
+import grit.core.files.Kind
 import grit.core.identity.{Domain, Email}
 
 /** What Drive says of one file or folder: `parent`, the folder or shared drive it lies in, when
@@ -37,7 +38,7 @@ final case class DriveFile(
     case DriveFile.Pdf => DriveKind.Pdf
     case DriveFile.Word => DriveKind.Word
     case DriveFile.Excel => DriveKind.Excel
-    case DriveFile.Presentation => DriveKind.Slides
+    case Kind.SlidesType => DriveKind.Slides
     case other if other.startsWith("image/") => DriveKind.Image
     case other if other.startsWith("text/") => DriveKind.Text
     case other => DriveKind.Other(other)
@@ -54,9 +55,6 @@ object DriveFile {
 
   /** A Google Sheet's type. */
   val Spreadsheet: String = "application/vnd.google-apps.spreadsheet"
-
-  /** A Google Slides deck's type. */
-  val Presentation: String = "application/vnd.google-apps.presentation"
 
   /** A PDF's type. */
   val Pdf: String = "application/pdf"

@@ -163,5 +163,5 @@ enum DriveExport(val mimeType: String, val kind: grit.core.files.Kind) derives C
   case Word extends DriveExport(DriveFile.Word, grit.core.files.Kind.Word)
   case Excel extends DriveExport(DriveFile.Excel, grit.core.files.Kind.Excel)
   case Pdf extends DriveExport(DriveFile.Pdf, grit.core.files.Kind.Pdf)
-  case Deck extends DriveExport(DriveFile.Presentation, grit.core.files.Kind.GoogleSlides)
+  case Deck extends DriveExport(grit.core.files.Kind.SlidesType, grit.core.files.Kind.GoogleSlides)
 }

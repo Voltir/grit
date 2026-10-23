@@ -66,7 +66,7 @@ object Pdf extends Format {
   private def pdf(file: OpenFile^): Boolean =
     try {
       val in = Files.newInputStream(file.path)
-      try new String(in.readNBytes(1024), "ISO-8859-1").contains("%PDF-")
+      try Kind.pdf(in.readNBytes(Kind.Head).toVector)
       finally in.close()
     } catch { case _: IOException => false }
 

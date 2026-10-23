@@ -1,6 +1,6 @@
 package grit.mcp.drive
 
-import grit.core.files.Unread
+import grit.core.files.{Kind, Unread}
 import grit.core.identity.Email
 
 import utest.*
@@ -222,7 +222,7 @@ object DriveRestTests extends TestSuite {
         (
           whole(doc, DriveExport.Word),
           whole(rest.file(Recorded.id("file-11")), DriveExport.Excel),
-          whole(doc.map(_.copy(mimeType = DriveFile.Presentation)), DriveExport.Pdf),
+          whole(doc.map(_.copy(mimeType = Kind.SlidesType)), DriveExport.Pdf),
           rest.file(Recorded.id("file-4")).flatMap(rest.exported(_, DriveExport.Pdf)(_.read())),
           fake.requests
             .drop(asked)
@@ -248,7 +248,7 @@ object DriveRestTests extends TestSuite {
         val content = """{"presentationId": "file-1", "slides": []}"""
         fake.answering("presentations/file-1", 200, content)
         val doc = rest.file(file1)
-        val deck = doc.map(_.copy(mimeType = DriveFile.Presentation))
+        val deck = doc.map(_.copy(mimeType = Kind.SlidesType))
         val asked = fake.requests.size
         val read = deck.flatMap(
           rest.exported(_, DriveExport.Deck)(in => new String(in.readAllBytes(), "UTF-8"))
@@ -293,7 +293,7 @@ object DriveRestTests extends TestSuite {
         val denied = ujson.write(
           ujson.Obj("error" -> ujson.Obj("code" -> 403, "status" -> "PERMISSION_DENIED"))
         )
-        val deck = rest.file(file1).map(_.copy(mimeType = DriveFile.Presentation))
+        val deck = rest.file(file1).map(_.copy(mimeType = Kind.SlidesType))
         def answered(status: Int, body: String) = {
           fake.answering("presentations/file-1", status, body)
           deck.flatMap(rest.exported(_, DriveExport.Deck)(_.read()))

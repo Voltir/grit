@@ -94,10 +94,12 @@ object Kind {
   }
 
   /** The media type Drive gives a Google Slides deck. */
-  private val SlidesType = "application/vnd.google-apps.presentation"
+  val SlidesType: String = "application/vnd.google-apps.presentation"
 
-  /** `%PDF-` within the head, where a PDF reader looks for it. */
-  private def pdf(head: Vector[Byte]): Boolean =
+  /** Whether `%PDF-` lies within `head` (a file's first [[Head]] bytes), where a PDF reader looks
+    * for it.
+    */
+  def pdf(head: Vector[Byte]): Boolean =
     head.map(b => (b & 0xff).toChar).mkString.contains("%PDF-")
 
   private def zip(entries: Vector[String], claimed: Option[String]): Kind = {
