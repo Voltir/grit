@@ -58,7 +58,8 @@ final class InMemoryPieces extends PieceStore {
       before match {
         case Some((s, r))
             if r.place == place && r.integrity == integrity && r.file.format == file.format &&
-              r.file.version == file.version && of(s).map(_._2.piece) == pieces =>
+              r.file.version == file.version && r.file.target == file.target &&
+              of(s).map(_._2.piece) == pieces =>
           sets = sets.updated(
             s,
             r.copy(file =
@@ -154,7 +155,7 @@ final class InMemoryPieces extends PieceStore {
         val none = Pointer
           .of(ToolName("none"), "ref" -> ujson.Str(ref))
           .fold(why => throw new IllegalStateException(why), identity)
-        val file = PiecedFile(ref, ref, revision, FormatName(""), 0, none)
+        val file = PiecedFile(ref, ref, revision, FormatName(""), 0, none, Pieces.Target)
         val row = SetRow(
           plugin,
           file,
@@ -176,7 +177,9 @@ final class InMemoryPieces extends PieceStore {
       val floor = Tx.clearance(tx).floor
       Right(refs.flatMap { ref =>
         current(plugin, ref, floor).map((_, r) =>
-          ref -> r.unread.fold(KeptAs.Read(r.file.format, r.file.version))(KeptAs.Unread(_))
+          ref -> r.unread.fold(KeptAs.Read(r.file.format, r.file.version, r.file.target))(
+            KeptAs.Unread(_)
+          )
         )
       }.toMap)
     }

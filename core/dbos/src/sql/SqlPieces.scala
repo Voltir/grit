@@ -16,6 +16,7 @@ import grit.core.files.{
   PiecedFile
 }
 import grit.core.id.{PieceId, PieceSetId, PluginName}
+import grit.core.message.Tokens
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
@@ -163,14 +164,15 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
           rows(
             s"""SELECT place = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
                |       AND integrity_id = ${SqlIntegrity.Interned}
-               |       AND format = ? AND format_version = ? AS same
+               |       AND format = ? AND format_version = ? AND target = ? AS same
                |  FROM grit.piece_sets WHERE id = ?""".stripMargin
           ) { ps =>
             ps.setString(1, path(place).render())
             SqlIntegrity.bind(ps, 2, integrity)
             ps.setString(4, file.format.value)
             ps.setInt(5, file.version)
-            ps.setLong(6, set)
+            ps.setLong(6, Tokens.value(file.target))
+            ps.setLong(7, set)
           }(rs => Right(rs.getBoolean("same"))).flatMap { (found: Vector[Boolean]) =>
             if (!found.contains(true)) Right(false)
             else pieced(set).map(_.map(_._3) == pieces)
@@ -196,9 +198,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 s"""INSERT INTO grit.piece_sets
                    |       (plugin, ref, name, revision, format, format_version, place,
                    |        classification_id, room_id, integrity_id, written_at, last_placed, cut,
-                   |        pointer)
+                   |        pointer, target)
                    |VALUES (?, ?, ?, ?, ?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)),
-                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?, ?::jsonb)
+                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?, ?::jsonb, ?)
                    |RETURNING id""".stripMargin
               ) { ps =>
                 ps.setString(1, PluginName.value(plugin))
@@ -215,6 +217,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 ps.setObject(13, utc(at))
                 ps.setInt(14, cut)
                 ps.setString(15, SqlDocuments.pointerJson(file.pointer))
+                ps.setLong(16, Tokens.value(file.target))
               }(rs => Right(rs.getLong("id")))
               set <- made.headOption.toRight(StoreError.Invalid("a keep returned no set"))
               _ <- written(set, file.name, pieces, olds)
@@ -278,7 +281,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         for {
           label <- SqlLabels.intern(Tx.clearance(tx).floor)
           found <- rows(
-            """SELECT ref, format, format_version, unread FROM grit.piece_sets
+            """SELECT ref, format, format_version, target, unread FROM grit.piece_sets
               | WHERE plugin = ? AND classification_id = ? AND superseded_at IS NULL
               |   AND ref = ANY (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))""".stripMargin
           ) { ps =>
@@ -289,7 +292,11 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
             val as = Option(rs.getString("unread")) match {
               case Some(why) => KeptAs.Unread(why)
               case None =>
-                KeptAs.Read(FormatName(rs.getString("format")), rs.getInt("format_version"))
+                KeptAs.Read(
+                  FormatName(rs.getString("format")),
+                  rs.getInt("format_version"),
+                  Tokens(rs.getLong("target"))
+                )
             }
             Right(rs.getString("ref") -> as)
           }
@@ -315,9 +322,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         _ <- there.fold(Right(()))(supersede(_, at))
         made <- rows(
           s"""INSERT INTO grit.piece_sets
-             |       (plugin, ref, name, revision, format, format_version, pointer, place,
+             |       (plugin, ref, name, revision, format, format_version, pointer, target, place,
              |        classification_id, room_id, integrity_id, written_at, last_placed, cut, unread)
-             |SELECT plugin, ref, name, revision, format, format_version, pointer,
+             |SELECT plugin, ref, name, revision, format, format_version, pointer, target,
              |       ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
              |       ${SqlIntegrity.Interned}, ?, last_placed, cut, unread
              |  FROM grit.piece_sets WHERE id = ?
@@ -491,7 +498,7 @@ private[sql] object SqlPieces {
   val Columns: String =
     "p.id, array_to_json(p.heading)::text AS heading, p.tree::text AS tree, p.anchor, d.plugin, " +
       "d.ref, array_to_json(d.place)::text AS place, d.pointer::text AS pointer, " +
-      "d.name, d.revision, d.format, d.format_version, d.written_at, d.label_level, " +
+      "d.name, d.revision, d.format, d.format_version, d.target, d.written_at, d.label_level, " +
       "d.label_compartments, d.integrity_level, d.integrity_compartments"
 
   /** The piece `rs` holds in its `heading`, `tree` and `anchor` columns, or why not. */
@@ -530,7 +537,8 @@ private[sql] object SqlPieces {
         rs.getString("revision"),
         FormatName(rs.getString("format")),
         rs.getInt("format_version"),
-        pointer
+        pointer,
+        Tokens(rs.getLong("target"))
       ),
       place,
       SqlLabels.read(rs),

@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.document.Pointer
 import grit.core.files.{FormatName, KeptAs, PieceKeeper, PiecedFile, Pieces, Understood}
 import grit.core.id.FileHandle
+import grit.core.message.Tokens
 import grit.core.place.Place
 import grit.core.provider.TokenEstimator
 import grit.core.store.{StoreError, Tx}
@@ -43,8 +44,9 @@ enum Piecing extends caps.Pure derives CanEqual {
     */
   case Mark(ref: String, revision: String, place: Place, why: String, replacing: Vector[Label])
 
-  /** Of the files `refs`, find those whose pieces are due: none kept at the floor, or kept by a
-    * format the area no longer reads at that version. One marked unread is not due.
+  /** Of the files `refs`, find those whose pieces are due: none kept at the floor, kept by a
+    * format the area no longer reads at that version, or cut at another target than
+    * [[Pieces.Target]]. One marked unread is not due.
     */
   case Survey(refs: Vector[String])
 }
@@ -94,7 +96,16 @@ object Piecing {
         marked(Mark(read.ref, read.revision, read.place, why, read.replacing), keeper, at)
       case Right((name, tree)) =>
         val (pieces, cut) = Pieces.of(tree, estimate)
-        val kept = PiecedFile(read.ref, name, read.revision, tree.by, tree.version, read.pointer)
+        val kept =
+          PiecedFile(
+            read.ref,
+            name,
+            read.revision,
+            tree.by,
+            tree.version,
+            read.pointer,
+            Pieces.Target
+          )
         for {
           _ <- withdrawn(replaced, keeper, at)
           n <- keeper.keep(kept, read.place, integrity, pieces, cut, at)
@@ -127,7 +138,8 @@ object Piecing {
   }
 
   /** What `survey` comes to over `keeper`, in this transaction, a file kept by a format at a
-    * version due unless `reads` says the area reads with it. The one meaning of a survey,
+    * version due unless `reads` says the area reads with it, and one cut at another target than
+    * [[Pieces.Target]] due. The one meaning of a survey,
     * every [[Keeping]]'s.
     */
   def due(survey: Survey, keeper: PieceKeeper, reads: (FormatName, Int) -> Boolean)(using
@@ -139,7 +151,8 @@ object Piecing {
         Pieced.Due(survey.refs.filter { ref =>
           held.get(ref) match {
             case None => true
-            case Some(KeptAs.Read(format, version)) => !reads(format, version)
+            case Some(KeptAs.Read(format, version, target)) =>
+              !reads(format, version) || Tokens.value(target) != Tokens.value(Pieces.Target)
             case Some(KeptAs.Unread(_)) => false
           }
         })

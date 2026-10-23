@@ -79,8 +79,12 @@ object Piece {
 
 object Pieces {
 
-  /** About how many tokens a piece holds: what a window's judge reads of each candidate. */
-  val Target: Tokens = Tokens(200)
+  /** About how many tokens a piece holds, 400: what a window's judge reads of each candidate
+    * ([[grit.core.files.PiecedFile.target]]: a file cut at another is pieced again).
+    */
+  // Measured on retrieval: 400-token pieces under a 1,200-character judge brief had more
+  // answering pieces judged relevant than 200 under 800, the quote still within the brief.
+  val Target: Tokens = Tokens(400)
 
   /** The most pieces one file is cut into; the rest are dropped, and counted. */
   val PerFile: Int = 2000

@@ -8,10 +8,12 @@ import grit.core.files.{
   InMemoryPieces,
   Locus,
   PieceKeeper,
+  Pieces,
   TestPieces,
   Understood
 }
 import grit.core.id.{FileHandle, PluginName}
+import grit.core.message.Tokens
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.Tx
@@ -105,6 +107,25 @@ object PiecingTests extends TestSuite {
           )
       (due((n, v) => n == FormatName("test") && v == 1), due((_, v) => v == 2)) ==>
         (Right(Pieced.Due(Vector())), Right(Pieced.Due(Vector("a"))))
+    }
+
+    test("a survey finds due a file cut at another target than the one pieces are cut at now") {
+      val pieces = new InMemoryPieces
+      val keeper = pieces.keeper(Plugin, PieceKeeper.Bound)
+      given Tx = tx(Label.Public)
+      val (cut, _) = Pieces.of(Tree, MovesFixtures.PerChar)
+      def keptAt(ref: String, target: Tokens) =
+        keeper.keep(
+          TestPieces.file(ref, s"$ref.pdf", FormatName("test")).copy(target = target),
+          Here,
+          Integrity.Member,
+          cut,
+          0,
+          at(1)
+        )
+      val _ = (keptAt("old", Tokens(Tokens.value(Pieces.Target) / 2)), keptAt("now", Pieces.Target))
+      Piecing.due(Piecing.Survey(Vector("old", "now")), keeper, (_, _) => true) ==>
+        Right(Pieced.Due(Vector("old")))
     }
   }
 }

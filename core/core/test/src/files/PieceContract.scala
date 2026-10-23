@@ -50,7 +50,7 @@ abstract class PieceContract extends TestSuite {
     )
 
   private def file(ref: String, revision: String = "r1"): PiecedFile =
-    PiecedFile(ref, s"$ref.pdf", revision, FormatName("test"), 1, TestPieces.pointer(ref))
+    TestPieces.file(ref, s"$ref.pdf", FormatName("test")).copy(revision = revision)
 
   /** Keeps `texts` as `ref`'s pieces under `k` at minute `m`; how many were kept. */
   private def keep(k: PieceKeeper, ref: String, m: Int, texts: String*): Int =
@@ -280,11 +280,14 @@ abstract class PieceContract extends TestSuite {
       val tombs = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
       keep(k, "a", 5, "alpha again")
       (first, marked, gone, tombs.size, kept) ==> (
-        Map("a" -> KeptAs.Read(FormatName("test"), 1)),
+        Map("a" -> KeptAs.Read(FormatName("test"), 1, Pieces.Target)),
         Map("a" -> KeptAs.Unread("too large"), "b" -> KeptAs.Unread("no format reads it")),
         Vector(),
         1,
-        Map("a" -> KeptAs.Read(FormatName("test"), 1), "b" -> KeptAs.Unread("no format reads it"))
+        Map(
+          "a" -> KeptAs.Read(FormatName("test"), 1, Pieces.Target),
+          "b" -> KeptAs.Unread("no format reads it")
+        )
       )
     }
 

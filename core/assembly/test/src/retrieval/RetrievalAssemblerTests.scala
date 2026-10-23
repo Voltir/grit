@@ -370,7 +370,7 @@ object RetrievalAssemblerTests extends TestSuite {
     pieces
       .keeper(plugin(p), PieceKeeper.Bound)
       .keep(
-        PiecedFile(ref, s"$ref.pdf", "r1", FormatName("test"), 1, TestPieces.pointer(ref)),
+        TestPieces.file(ref, s"$ref.pdf", FormatName("test")),
         placeOf("files"),
         Integrity.Member,
         all,

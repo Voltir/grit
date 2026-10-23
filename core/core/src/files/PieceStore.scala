@@ -4,13 +4,15 @@ import java.time.Instant
 
 import grit.core.document.{DocLabel, DocumentSearch, Pointer}
 import grit.core.id.{PieceId, PieceSetId, PluginName}
+import grit.core.message.Tokens
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
 
 /** A file as its pieces are kept: `ref`, its keeping plugin's name for it (a Drive file's id);
   * `name`, as a person knows it; `revision`, its source's; read by `format` at `version`
-  * ([[Understood.by]]); read again by the call `pointer` names.
+  * ([[Understood.by]]); read again by the call `pointer` names; cut at `target` tokens a piece
+  * ([[Pieces.Target]] when it was cut).
   */
 final case class PiecedFile(
     ref: String,
@@ -18,7 +20,8 @@ final case class PiecedFile(
     revision: String,
     format: FormatName,
     version: Int,
-    pointer: Pointer
+    pointer: Pointer,
+    target: Tokens
 )
 
 /** A piece as kept: by `plugin`, of `file`, at `place`, at `label` and believed at
@@ -165,8 +168,8 @@ trait PieceKeeper {
 /** What a file has current at a label ([[PieceKeeper.kept]]). */
 enum KeptAs extends caps.Pure derives CanEqual {
 
-  /** Its pieces, read by `format` at `version`. */
-  case Read(format: FormatName, version: Int)
+  /** Its pieces, read by `format` at `version`, cut at `target` tokens a piece. */
+  case Read(format: FormatName, version: Int, target: Tokens)
 
   /** None: it was read and none kept, `why` ([[PieceKeeper.unread]]). */
   case Unread(why: String)

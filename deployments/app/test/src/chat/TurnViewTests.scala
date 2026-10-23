@@ -454,7 +454,7 @@ object TurnViewTests extends TestSuite {
       def piece(id: Long, text: String) = KeptPiece(
         PieceId.of(id).getOrElse(sys.error("id")),
         got(PluginName.of("files")),
-        PiecedFile(s"f$id", "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer(s"f$id")),
+        TestPieces.file(s"f$id", "plan.pdf", FormatName("pdf")),
         board,
         grit.core.visibility.Label.Public,
         Integrity.Member,

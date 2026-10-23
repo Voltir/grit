@@ -30,8 +30,10 @@ object TurnRelevance {
   // changes which way a history taken past `heard-quiet-exit` replays, so it needs a patch.
   val GroundsAt: Probability = Probability.clamped(0.7)
 
-  /** How many characters of the turn's message, and of each candidate, the judge is shown. */
-  val Chars = 800
+  /** How many characters of the turn's message, and of each candidate, the judge is shown:
+    * 1,200, the head of a piece ([[grit.core.files.Pieces.Target]]).
+    */
+  val Chars = 1200
 
   /** Why a candidate found by the search, but gone before it was briefed, is unjudged. */
   val Gone = "gone before it was briefed"

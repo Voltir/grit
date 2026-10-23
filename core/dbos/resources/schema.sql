@@ -1221,7 +1221,8 @@ CREATE INDEX IF NOT EXISTS idx_files_sha256 ON grit.files (sha256);
 -- A kept file's pieces at one revision, as a plugin keeps them (grit.core.files.PieceKeeper):
 -- the file as the plugin names it (`ref`), as a person does (`name`), its source's `revision`,
 -- and the reader that made its tree (`format` at `format_version`); `pointer`, the call that
--- reads it again (SqlDocuments.pointerJson, as a document's); `cut`, its pieces past
+-- reads it again (SqlDocuments.pointerJson, as a document's); `target`, the tokens a piece was
+-- cut to (Pieces.Target then: a set cut to another is pieced again); `cut`, its pieces past
 -- Pieces.PerFile, dropped. Kept at `classification_id` in `room_id` as a document is
 -- (grit.core.visibility.Item.Kept); one current set per plugin, ref and label. `last_placed`
 -- is when a window last held one of its pieces (PieceStore.placed), from `written_at`. A set
@@ -1240,6 +1241,7 @@ CREATE TABLE IF NOT EXISTS grit.piece_sets (
     format            TEXT CHECK (length(format) BETWEEN 1 AND 255),
     format_version    INT,
     pointer           JSONB CHECK (octet_length(pointer::text) <= 4096),
+    target            INT CHECK (target > 0),
     place             TEXT[] NOT NULL
                       CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
@@ -1251,7 +1253,8 @@ CREATE TABLE IF NOT EXISTS grit.piece_sets (
     cut               INT NOT NULL DEFAULT 0 CHECK (cut >= 0),
     unread            TEXT CHECK (length(unread) BETWEEN 1 AND 1024),
     CHECK ((unread IS NULL) =
-           (format IS NOT NULL AND format_version IS NOT NULL AND pointer IS NOT NULL))
+           (format IS NOT NULL AND format_version IS NOT NULL AND pointer IS NOT NULL
+            AND target IS NOT NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_piece_sets_current ON grit.piece_sets (plugin, ref, classification_id)
     WHERE superseded_at IS NULL;

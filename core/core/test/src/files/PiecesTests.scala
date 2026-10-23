@@ -22,6 +22,13 @@ object PiecesTests extends TestSuite {
   private def heading(level: Int, s: String): Block[Locus] =
     Block.Heading(Level.of(level), on(1, s))
 
+  /** `share` of [[Pieces.Target]], in words. */
+  private def of(share: Double): Int = (Tokens.value(Pieces.Target) * share).toInt
+
+  /** `tag` numbered from `from` to `to`: "tagfrom … tagto". */
+  private def run(tag: String, from: Int, to: Int): String =
+    (from to to).map(i => s"$tag$i").mkString(" ")
+
   /** `n` words, `tag` then numbered: "tag1 tag2 …". */
   private def words(tag: String, n: Int): String = (1 to n).map(i => s"$tag$i").mkString(" ")
 
@@ -36,14 +43,14 @@ object PiecesTests extends TestSuite {
   val tests = Tests {
 
     test("paragraphs are packed whole, greedily, to at most Target tokens under one heading path") {
-      Pieces.Target ==> Tokens(200)
+      Pieces.Target ==> Tokens(400)
       val (pieces, dropped) = Pieces.of(
         tree(
           heading(1, "Policy"),
-          para(words("a", 60)),
-          para(words("b", 60)),
-          para(words("c", 60)),
-          para(words("d", 60)),
+          para(words("a", of(0.3))),
+          para(words("b", of(0.3))),
+          para(words("c", of(0.3))),
+          para(words("d", of(0.3))),
           heading(2, "Scope"),
           para(words("e", 10)),
           heading(1, "Audit"),
@@ -63,28 +70,29 @@ object PiecesTests extends TestSuite {
     }
 
     test("each piece is anchored at its own first words in its file's text, cut ones too") {
-      val s1 = words("a", 90) + "."
-      val s2 = words("b", 90) + "."
-      val s3 = words("c", 250) + "."
+      val s1 = words("a", of(0.45)) + "."
+      val s2 = words("b", of(0.45)) + "."
+      val s3 = words("c", of(1.25)) + "."
       val file = tree(heading(1, "Policy"), para("Scope."), para(s"$s1 $s2 $s3"))
       val text = ModelText.text(file)
       val (pieces, _) = Pieces.of(file, PerWord)
+      val later = of(1) + 1
       pieces.map(p => (p.anchor.quote, Anchor.find(p.anchor, text).map(_._1))) ==> Vector(
         ("Scope.\n\n" + words("a", 7), Some(text.indexOf("Scope."))),
         (words("c", 8), Some(text.indexOf("c1 "))),
-        ((201 to 208).map(i => s"c$i").mkString(" "), Some(text.indexOf("c201 ")))
+        (run("c", later, later + 7), Some(text.indexOf(s"c$later ")))
       )
     }
 
     test("a paragraph over Target is cut at its sentences, a sentence over it at words") {
-      val s1 = words("a", 90) + "."
-      val s2 = words("b", 90) + "."
-      val s3 = words("c", 250) + "."
+      val s1 = words("a", of(0.45)) + "."
+      val s2 = words("b", of(0.45)) + "."
+      val s3 = words("c", of(1.25)) + "."
       val (pieces, _) = Pieces.of(tree(para(s"$s1 $s2 $s3")), PerWord)
       pieces.map(plain) ==> Vector(
         s"$s1 $s2",
-        words("c", 200),
-        (201 to 250).map(i => s"c$i").mkString(" ") + "."
+        words("c", of(1)),
+        run("c", of(1) + 1, of(1.25)) + "."
       )
     }
 
@@ -93,7 +101,12 @@ object PiecesTests extends TestSuite {
       def row(tag: String, n: Int): Vector[Cell[Locus]] =
         Vector(Cell.Words(on(1, tag)), Cell.Words(on(1, words(tag, n))))
       val (pieces, _) = Pieces.of(
-        tree(Block.table(columns, Vector(row("r", 60), row("s", 60), row("t", 60), row("u", 250)))),
+        tree(
+          Block.table(
+            columns,
+            Vector(row("r", of(0.3)), row("s", of(0.3)), row("t", of(0.3)), row("u", of(1.25)))
+          )
+        ),
         PerWord
       )
       pieces.map(_.doc.blocks.map {
@@ -108,7 +121,10 @@ object PiecesTests extends TestSuite {
 
     test("past PerFile pieces, the rest are dropped and counted") {
       val (pieces, dropped) =
-        Pieces.of(tree((1 to Pieces.PerFile + 3).map(i => para(words(s"p${i}x", 150)))*), PerWord)
+        Pieces.of(
+          tree((1 to Pieces.PerFile + 3).map(i => para(words(s"p${i}x", of(0.75))))*),
+          PerWord
+        )
       (pieces.size, dropped) ==> (Pieces.PerFile, 3)
     }
 

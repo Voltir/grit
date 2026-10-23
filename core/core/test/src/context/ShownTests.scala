@@ -729,7 +729,8 @@ object ShownTests extends TestSuite {
           "r1",
           FormatName("pdf"),
           1,
-          got(Pointer.of(ToolName("drive_read"), "file" -> ujson.Str("1AbC")))
+          got(Pointer.of(ToolName("drive_read"), "file" -> ujson.Str("1AbC"))),
+          grit.core.files.Pieces.Target
         ),
         board,
         grit.core.visibility.Label.Public,

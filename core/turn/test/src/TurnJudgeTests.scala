@@ -320,7 +320,7 @@ object TurnJudgeTests extends TestSuite {
       val shown = KeptPiece(
         PieceId.of(12L).getOrElse(sys.error("id")),
         got(PluginName.of("files")),
-        PiecedFile("f12", "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer("f12")),
+        TestPieces.file("f12", "plan.pdf", FormatName("pdf")),
         got(Place.read("slack:T1/C1")),
         grit.core.visibility.Label.Public,
         Integrity.Member,

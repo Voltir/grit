@@ -79,6 +79,13 @@ object TurnRelevanceTests extends TestSuite {
       )
     }
 
+    test("the judge reads 1,200 characters of each candidate: the head of a 400-token piece") {
+      // Pinned as measured: 1,200 characters under 400-token pieces judged more answering
+      // pieces relevant than 800 under 200, the quote still within what was read.
+      (TurnRelevance.Chars, grit.core.files.Pieces.Target) ==>
+        (1200, grit.core.message.Tokens(400))
+    }
+
     test("only the first thirty are admitted, judged or not") {
       val results = ranked(35)
       val verdicts = Vector(

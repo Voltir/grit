@@ -528,7 +528,9 @@ object DriveEdgeTests extends TestSuite {
       val piece = KeptPiece(
         right(grit.core.id.PieceId.of(1).toRight("id")),
         right(grit.core.id.PluginName.of("knowledge")),
-        PiecedFile("card", "plan.pdf", "r1", PagedText.name, 1, TestPieces.pointer("file-5")),
+        TestPieces
+          .file("card", "plan.pdf", PagedText.name)
+          .copy(pointer = TestPieces.pointer("file-5")),
         Drive.place,
         grit.core.visibility.Label.Public,
         Integrity.Member,

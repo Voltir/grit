@@ -122,7 +122,7 @@ object TurnDocumentsTests extends TestSuite {
       pieces
         .keeper(plugin, PieceKeeper.Bound)
         .keep(
-          PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer(text)),
+          TestPieces.file(text, "plan.pdf", FormatName("pdf")),
           board,
           Integrity.Member,
           Vector(piece),

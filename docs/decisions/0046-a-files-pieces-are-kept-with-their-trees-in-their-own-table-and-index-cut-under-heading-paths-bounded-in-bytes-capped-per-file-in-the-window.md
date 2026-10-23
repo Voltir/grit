@@ -7,7 +7,7 @@ of a long policy or standard finds the card at best, and the model must then rea
 range by range. Retrieval needs the passages themselves. Turned down: passages as documents
 (`grit.documents` is one row per key and label, a summary each, its bound shared with the
 plugin's cards; a 300-page standard would crowd every card out); a summary per passage (a
-model call per 200 tokens of every file, on every revision); a search over the file area at
+model call per piece of every file, on every revision); a search over the file area at
 turn time (files are kept a day, and a turn cannot afford to read them); text alone, not the
 tree (the model's text and the index's text differ: a table row as `column: value`, the
 heading path first, identifiers with their aliases).
@@ -15,7 +15,7 @@ heading path first, identifiers with their aliases).
 Decision:
 
 - **A piece is a tree under a heading path.** `Pieces.of` cuts a file's tree (ADR 0044)
-  greedily to about `Pieces.Target`, 200 tokens, the one constant the judge's brief is sized
+  greedily to about `Pieces.Target`, 400 tokens, the one constant the judge's brief is sized
   by: whole paragraphs under one heading path, a long one cut at sentences, a list by items,
   code by lines, a table by rows with its columns kept; at most `Pieces.PerFile` (2,000) a
   file, the rest counted as cut. A piece's identity across revisions is its fingerprint, the
@@ -38,9 +38,10 @@ Decision:
   whole file kept, a read below `Outside`, no format reads it) is marked unread, an empty set
   saying why, so its earlier pieces stop being current and no run reads it again for them
   until it changes. Each run first finds the current files with neither pieces nor a mark at
-  its floor, or with pieces a format no longer read at that version made, and reads them again
-  for their pieces alone, within its reads: files carded before their pieces were kept, or
-  before a reader's version changed, are pieced without waiting for an edit.
+  its floor, or with pieces a format no longer read at that version made or cut at another
+  target, and reads them again for their pieces alone, within its reads: files carded before
+  their pieces were kept, or before a reader's version or the target changed, are pieced
+  without waiting for an edit.
 - **Bounded in bytes, forgotten whole.** A plugin's pieces take at most `PieceKeeper.Bound`
   (128 MiB) counted over every label; past it, whole files are deleted, those superseded
   first, then the least recently placed, never the one written. Superseded and withdrawn sets

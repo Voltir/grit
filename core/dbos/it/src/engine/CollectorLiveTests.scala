@@ -1211,7 +1211,7 @@ object CollectorLiveTests extends TestSuite {
       val pieces = new SqlPieces(tombstones)
       val keeper = pieces.keeper(p)
       val here = Place.under(Namespace.Task, Vector("collect"))
-      val file = PiecedFile("f", "f.pdf", "r1", FormatName("test"), 1, TestPieces.pointer("f"))
+      val file = TestPieces.file("f", "f.pdf", FormatName("test"))
       def piece(text: String): Piece =
         Piece(
           Vector.empty,
