@@ -245,6 +245,12 @@ final class InMemoryPieces extends PieceStore {
       .sortBy((s, r) => (r.file.ref, s))
       .flatMap((s, _) => of(s).flatMap((id, p) => kept(id, p)))
 
+  /** When the file holding piece `id` was last placed, while it is kept: what a test reads back
+    * of a window's placements.
+    */
+  def lastPlaced(id: PieceId): Option[Instant] =
+    rows.get(PieceId.value(id)).flatMap(p => sets.get(p.set)).map(_.lastPlaced)
+
   def read(ids: Vector[PieceId])(using Tx^): Either[StoreError, Vector[KeptPiece]] =
     Right(ids.flatMap { i =>
       val id = PieceId.value(i)

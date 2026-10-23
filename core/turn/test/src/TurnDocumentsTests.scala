@@ -475,6 +475,45 @@ object TurnDocumentsTests extends TestSuite {
     }
 
     test(
+      "record-window marks the file of each piece the window holds placed at the window's time, the bound's order"
+    ) {
+      val entries = new InMemoryEntryStore
+      val pieces = new InMemoryPieces
+      val files = got(PluginName.of("files"))
+      val (one, two, other) = (
+        kept(pieces, files, "Accounts are reviewed."),
+        kept(pieces, files, "Keys rotate."),
+        kept(pieces, files, "Backups run nightly.")
+      )
+      val turn = say(entries, "hello")
+      val at = Instant.parse("2026-10-01T09:00:00Z")
+      val clock = new Clock {
+        def now(): Instant = at
+        def millis(): Long = at.toEpochMilli
+        def sleep(duration: FiniteDuration): Unit = ()
+      }
+      val _ = new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          windowing(
+            Window(
+              Vector(EntrySeq(0)),
+              Vector.empty,
+              Vector.empty,
+              Vector.empty,
+              Vector(Retrieved.Piece(one, 0), Retrieved.Piece(two, 0))
+            )
+          ),
+          new InMemoryUsageLedger,
+          pieces = pieces,
+          clock = clock
+        )
+      )
+      Vector(one, two, other).map(pieces.lastPlaced) ==> Vector(Some(at), Some(at), Some(written))
+    }
+
+    test(
       "a turn whose calls followed a document's pointer counts it once, at its reply's time; a replayed turn counts none again"
     ) {
       val entries = new InMemoryEntryStore
