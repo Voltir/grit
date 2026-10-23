@@ -409,8 +409,8 @@ object SyncTests extends TestSuite {
     */
   private def driveAnswer(
       args: ujson.Obj,
-      formatted: Set[grit.core.files.Kind] = Set.empty,
-      unreadable: Boolean = false
+      formatted: Set[grit.core.files.Kind],
+      unreadable: Boolean
   ): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
     (
       args.value.get("folder").flatMap(_.strOpt),
