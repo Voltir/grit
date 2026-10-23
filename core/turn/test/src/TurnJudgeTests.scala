@@ -83,7 +83,8 @@ object TurnJudgeTests extends TestSuite {
         mine,
         near,
         speakers,
-        documents
+        documents,
+        Vector.empty
       ),
       window,
       strand,

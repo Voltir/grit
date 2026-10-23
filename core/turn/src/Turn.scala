@@ -355,7 +355,7 @@ object Turn {
       (set, prompt) = (offer.tools, offer.prompt)
       showing <- kept(
         "window",
-        shown(reads.entries, reads.principals, reads.documents, turn, window)
+        shown(reads.entries, reads.principals, reads.documents, reads.pieces, turn, window)
       )
       direct <- kept("conversation", TurnShown.direct(reads.conversations, turn))
       calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {

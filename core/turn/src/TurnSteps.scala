@@ -925,7 +925,7 @@ private[turn] object TurnSteps {
       believed: Option[Integrity],
       at: Instant
   )(using Tx^): Either[TurnFailure, Outcome] = {
-    val TurnRecords(entries, ledger, _, _, _, _) = env.records
+    val TurnRecords(entries, ledger, _, _, _, _, _) = env.records
     val TurnSpeech(speaking, store, deliveries) = env.speech
     for {
       all <- entries.list(turn.conversationId).left.map(TurnFailure.ofStore)
@@ -1028,7 +1028,7 @@ private[turn] object TurnSteps {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
-    val TurnRecords(entries, ledger, estimator, _, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _, _) = records
     for {
       read <- TurnSummary
         .read(message)
@@ -1103,7 +1103,7 @@ private[turn] object TurnSteps {
         (turn.replyId, Payload.Message(message))
       case TurnOffer.Root.Heard | TurnOffer.Root.Named => (turn.draftId, Payload.Draft(message))
     }
-    val TurnRecords(entries, ledger, estimator, _, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- believedAt(entries, turn, believed)
@@ -1168,7 +1168,8 @@ private[turn] object TurnSteps {
   }
 
   /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
-    * dated `at`, and each document the window holds counted as placed at `at`.
+    * dated `at`, and each document and each piece's file the window holds counted as placed at
+    * `at`.
     */
   private def windowRecorded(
       records: TurnRecords,
@@ -1181,6 +1182,7 @@ private[turn] object TurnSteps {
       level <- records.entries.believed(turn).left.map(TurnFailure.ofStore)
       _ <- writeWindow(records.entries, turn, window, next.seq, level, at)
       _ <- records.documents.placed(window.documents, at).left.map(TurnFailure.ofStore)
+      _ <- records.pieces.placed(window.pieces.map(_.id), at).left.map(TurnFailure.ofStore)
     } yield Turn.windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[Turn.queryId]], then the

@@ -190,7 +190,8 @@ object RebuildTests extends TestSuite {
             CharEstimate,
             engine.profiles,
             engine.principals,
-            engine.documents
+            engine.documents,
+            engine.pieces
           ),
           TurnHosting(
             engine.conversations,
@@ -210,6 +211,7 @@ object RebuildTests extends TestSuite {
             engine.lifecycle,
             engine.search,
             engine.documents,
+            engine.pieces,
             engine.stitches,
             CharEstimate,
             Assembled.Shipped.window,
@@ -567,6 +569,7 @@ object RebuildTests extends TestSuite {
     val rooms: grit.core.recipe.RoomReads = reader.rooms
     val search: grit.core.store.EntrySearch = counted
     val documents: grit.core.document.DocumentSearch = reader.documents
+    val pieces: grit.core.files.PieceSearch = reader.pieces
     def current()(using grit.core.store.Tx^) = reader.current()
     val principals: grit.core.store.Principals = reader.principals
     val triage: grit.core.triage.TriageStore = reader.triage

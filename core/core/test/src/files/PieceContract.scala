@@ -160,6 +160,16 @@ abstract class PieceContract extends TestSuite {
       (search(p, "alpha", 2), high.map(_.piece.label)) ==> (Vector(), Vector(TestLabels.Trial))
     }
 
+    test("a plugin holds pieces while one is current that its transaction reads") {
+      val (p, q, r) = (name("pieces-holding"), name("pieces-holding-high"), name("pieces-holding-none"))
+      keep(keeper(p, PieceKeeper.Bound), "a", 2, "alpha one")
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(keeper(q, PieceKeeper.Bound).keep(file("a"), Here, Integrity.Member, Vector(piece("x")), 0, at(2)))
+      )
+      def holding(m: Int) = transaction(ok(store.holding(Vector(r, q, p), at(m))))
+      (holding(1), holding(3)) ==> (Vector(), Vector(p))
+    }
+
     test("a withdrawn file's pieces are no longer current, and marked for deletion") {
       val p = name("pieces-withdraw")
       val k = keeper(p, PieceKeeper.Bound)

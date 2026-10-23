@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Retrieved, Window}
 import grit.core.document.{
   DocLabel,
   DocText,
@@ -18,12 +18,14 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
+import grit.core.files.{FormatName, InMemoryPieces, Locus, Piece, PieceKeeper, PiecedFile}
 import grit.core.id.{
   ConversationId,
   DocKey,
   DocumentVersionId,
   EntryId,
   EntrySeq,
+  PieceId,
   PluginName,
   ToolCallId,
   TurnSeq,
@@ -44,6 +46,7 @@ import grit.core.store.{
 import grit.core.tool.{ToolName, Toolbox}
 import grit.core.visibility.Integrity
 import grit.dbos.sql.TestTx
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import utest.*
 
@@ -225,6 +228,71 @@ object TurnDocumentsTests extends TestSuite {
       assert(output.startsWith("replied:"))
       windows(entries).lastOption.map(_._2) ==>
         Some(Payload.Window(Vector(EntrySeq(0)), Vector.empty, nearby, held))
+    }
+
+    test(
+      "each piece is shown under its plugin's label after the documents and before the own turns, saying how many more of its file matched; one whose plugin is not enabled is left out"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val documents = new InMemoryDocuments
+      val files = got(PluginName.of("files"))
+      documents.declare(Vector(digest -> terms("Weekly digest"), files -> terms("Drive files")))(using
+        TestTx.fake
+      )
+      val week = write(documents, digest, "Weekly digest", "week", "Deploys frozen until Friday.")
+      val pieces = new InMemoryPieces
+      def kept(plugin: PluginName, text: String): PieceId = {
+        val piece = Piece(Vector("Access"), Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2)))))))))
+        ok(
+          pieces
+            .keeper(plugin, PieceKeeper.Bound)
+            .keep(PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1), board, Integrity.Member, Vector(piece), 0, written)(
+              using TestTx.fake
+            )
+        )
+        ok(pieces.search(Vector(plugin), text, 5, written.plusSeconds(1))(using TestTx.fake))
+          .map(_.piece.id)
+          .headOption
+          .getOrElse(sys.error(s"no piece for $text"))
+      }
+      val shown = kept(files, "Accounts are reviewed.")
+      val unlabelled = kept(got(PluginName.of("dropped")), "Accounts are removed.")
+      say(entries, "one")
+      val turn = say(entries, "two")
+      val output = new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          provider,
+          windowing(
+            Window(
+              Vector(EntrySeq(0)),
+              Vector.empty,
+              Vector.empty,
+              Vector(week),
+              Vector(Retrieved.Piece(shown, 3), Retrieved.Piece(unlabelled, 0))
+            )
+          ),
+          new InMemoryUsageLedger,
+          documents = documents,
+          pieces = pieces
+        )
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(
+          Message.User(
+            "[doc] Weekly digest, at slack:T1/C1, 2026-09-30:\n" +
+              "Deploys frozen until Friday."
+          ),
+          Message.User(
+            "[doc] Drive files, part of the file plan.pdf, under Access, page 2, at slack:T1/C1, " +
+              "2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search."
+          ),
+          Message.User("one"),
+          Message.User("two")
+        )
+      )
+      assert(output.startsWith("replied:"))
     }
 
     test(

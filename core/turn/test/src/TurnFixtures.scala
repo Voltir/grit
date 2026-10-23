@@ -21,6 +21,7 @@ import grit.core.context.{
   Window
 }
 import grit.core.document.{DocumentStore, InMemoryDocuments}
+import grit.core.files.{InMemoryPieces, PieceStore}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.InMemoryDeliveries
 import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
@@ -916,7 +917,8 @@ object TurnFixtures {
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals,
-          new InMemoryDocuments
+          new InMemoryDocuments,
+          new InMemoryPieces
         ),
         TurnHosting(
           conversations,
@@ -1521,7 +1523,8 @@ object TurnFixtures {
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals,
-          new InMemoryDocuments
+          new InMemoryDocuments,
+          new InMemoryPieces
         ),
         hosting(),
         assembler,
@@ -1545,7 +1548,7 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
-    * and counting `documents`, dated by `clock`, the model offered `tools`; when
+    * and counting `documents` and `pieces`, dated by `clock`, the model offered `tools`; when
     * `aboveTheClassifier`, routed under [[RoutedCatalog]] at reads its classifier is not
     * cleared for ([[AboveTheClassifier]]).
     */
@@ -1563,6 +1566,7 @@ object TurnFixtures {
       documents: DocumentStore = new InMemoryDocuments,
       clock: Clock^ = new NoWait,
       aboveTheClassifier: Boolean = false,
+      pieces: PieceStore = new InMemoryPieces,
       tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools
   )(
       id: WorkflowId
@@ -1575,7 +1579,8 @@ object TurnFixtures {
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals,
-          documents
+          documents,
+          pieces
         ),
         hosted,
         assembler,
@@ -1624,7 +1629,8 @@ object TurnFixtures {
           CharEstimate,
           profilesKept(),
           principals,
-          new InMemoryDocuments
+          new InMemoryDocuments,
+          new InMemoryPieces
         ),
         hosting(voices = voices),
         new LinearAssembler(
@@ -1922,7 +1928,8 @@ object TurnFixtures {
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals,
-          new InMemoryDocuments
+          new InMemoryDocuments,
+          new InMemoryPieces
         ),
         hosting(),
         new LinearAssembler(
@@ -1976,7 +1983,8 @@ object TurnFixtures {
           CharEstimate,
           profiles,
           new InMemoryPrincipals,
-          new InMemoryDocuments
+          new InMemoryDocuments,
+          new InMemoryPieces
         ),
         hosting(),
         new LinearAssembler(

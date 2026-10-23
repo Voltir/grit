@@ -12,10 +12,11 @@ object QueryWriter {
 
   val System: String =
     "You write search queries over a person's conversations with an assistant: the earlier " +
-      "part of this one, and others they have open elsewhere. Given the user's new message, " +
-      "write one query that would find the earlier messages needed to answer it: the names, " +
-      "files, commands, " +
-      "decisions and technical terms those messages would contain, with likely synonyms. " +
+      "part of this one, and others they have open elsewhere; and over passages of the files " +
+      "and documents kept for them, such as policies, standards and spreadsheets. Given the " +
+      "user's new message, write one query that would find the earlier messages or passages " +
+      "needed to answer it: the names, identifiers, files, commands, " +
+      "decisions and technical terms they would contain, with likely synonyms. " +
       "Write plain words: the search ranks by shared words, and ignores operators such as " +
       "AND, OR and quotes. Reply with the query alone, on one line."
 

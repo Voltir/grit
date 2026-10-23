@@ -340,6 +340,7 @@ object VisibilityLiveTests extends TestSuite {
         engine.lifecycle,
         engine.search,
         engine.documents,
+        engine.pieces,
         engine.stitches,
         CharEstimate,
         Tokens(24_000),

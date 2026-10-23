@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.clock.Utc
 import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
+import grit.core.files.{KeptPiece, PieceSearch}
 import grit.core.id.{EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
@@ -161,19 +162,21 @@ private[turn] object TurnShown {
 
   /** What a request for `turn` over `window` can show, read from `records`: the entries of
     * its conversation at the window's seqs, the turn's own entries, the nearby sections'
-    * entries that still exist, who said each, and the window's documents as it shows them
-    * ([[grit.core.document.DocumentSearch.labelled]]); nothing else of the conversation.
+    * entries that still exist, who said each, and the window's documents and pieces as it
+    * shows them ([[grit.core.document.DocumentSearch.labelled]]); nothing else of the
+    * conversation.
     */
   def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
       Tx^
   ): Either[StoreError, Showing] =
-    shown(records.entries, records.principals, records.documents, turn, window)
+    shown(records.entries, records.principals, records.documents, records.pieces, turn, window)
 
-  /** [[shown]], read from the three stores it reads. */
+  /** [[shown]], read from the four stores it reads. */
   def shown(
       entries: EntryStore,
       principals: Principals,
       documents: DocumentSearch,
+      pieces: PieceSearch,
       turn: TurnRef,
       window: Window
   )(using Tx^): Either[StoreError, Showing] =
@@ -183,25 +186,36 @@ private[turn] object TurnShown {
       near <- Nearby.read(window.nearby, entries)
       named <- principals.speakers((at ++ mine ++ near).map(_.id).distinct)
       labelled <- documents.labelled(window.documents)
-    } yield Showing(at, mine, near, named, labelled)
+      kept <- if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
+      // The terms in force are read only when a piece is left to label.
+      terms <- if (kept.isEmpty) Right(Vector.empty) else documents.declared()
+    } yield {
+      val labels = terms.map((p, t) => p -> t.label).toMap
+      val more = window.pieces.map(p => p.id -> p.more).toMap
+      val parts = kept.flatMap(k => labels.get(k.plugin).map(l => (k, l, more.getOrElse(k.id, 0))))
+      Showing(at, mine, near, named, labelled, parts)
+    }
 
   /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
     * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;
     * `documents`, the window's documents still kept whose plugin is enabled, in its order,
-    * each with its plugin's label.
+    * each with its plugin's label; `pieces`, its pieces likewise, each with its plugin's label
+    * and how many more of its file matched.
     */
   final case class Showing(
       window: Vector[Entry],
       mine: Vector[Entry],
       near: Vector[Entry],
       named: Speakers,
-      documents: Vector[(Document, DocLabel)]
+      documents: Vector[(Document, DocLabel)],
+      pieces: Vector[(KeptPiece, DocLabel, Int)]
   )
 
   /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
     * there ([[hiding]]), to be shaped
     * ([[Unshaped]]): each nearby section as one user message ([[Shown.section]], a section with
     * none of its entries left dropped), then each document as one ([[Shown.document]]), then
+    * each piece as one ([[Shown.piece]]), then
     * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
     * entry as one user message, and a gap line wherever turns are left out), then the turn's
     * own, its tool loop's exchange among them in order. A summary is not shown to the model
@@ -218,7 +232,7 @@ private[turn] object TurnShown {
       zoned: Option[TurnOffer.Zoned],
       direct: Boolean
   ): Either[TurnFailure, Unshaped] = {
-    val Showing(at, mine, near, named, documents) = hiding(showing, stubs)
+    val Showing(at, mine, near, named, documents, pieces) = hiding(showing, stubs)
     val bySeq = at.map(e => e.seq -> e).toMap
     val sections = window.nearby.flatMap(Shown.section(_, near, named))
     window.entries.filterNot(bySeq.contains) match {
@@ -233,7 +247,8 @@ private[turn] object TurnShown {
         val dated = mine
           .minByOption(e => EntrySeq.value(e.seq))
           .fold(system)(root => s"$system\n\n${answering(root.createdAt, zoned, direct)}")
-        Right(Unshaped(dated, sections, documents, shown ++ Shown.turn(mine, named)))
+        val parts = pieces.map((k, label, more) => Shown.piece(k, label, more))
+        Right(Unshaped(dated, sections, documents, parts ++ shown ++ Shown.turn(mine, named)))
     }
   }
 
@@ -326,7 +341,7 @@ private[turn] object TurnShown {
     * window, a query, a summary, an item, an ask, a message with no text nearby) is none.
     */
   def itemsOf(showing: Showing, window: Window): Vector[Item] = {
-    val Showing(shownWindow, mine, near, named, documents) = showing
+    val Showing(shownWindow, mine, near, named, documents, pieces) = showing
     val tools: Map[ToolCallId, String] = (shownWindow ++ mine)
       .flatMap(_.payload match {
         case Payload.Exchange(reply) =>
@@ -363,6 +378,7 @@ private[turn] object TurnShown {
       documents.map((d, label) =>
         Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
       ) ++
+      pieces.map((k, label, _) => Item(ItemRef.Piece(k.id), k.integrity, DocLabel.value(label))) ++
       shownWindow
         .filter(e => Shown.of(e, named).isDefined)
         .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
@@ -403,6 +419,10 @@ private[turn] object TurnShown {
         showing.documents.collectFirst {
           case (d, label) if d.version == version => text(Shown.document(d, label))
         }
+      case ItemRef.Piece(id) =>
+        showing.pieces.collectFirst {
+          case (k, label, more) if k.id == id => text(Shown.piece(k, label, more))
+        }
     }
   }
 
@@ -417,7 +437,8 @@ private[turn] object TurnShown {
   /** `showing` with each item `stubs` names, by the ref [[itemsOf]] gives it, in its kind's
     * place but holding its stub in place of what it says: a tool's result as a result that is
     * no error, grit's reply as its text, a heard message or grit's post as one, a closing as
-    * its record's prose, a document as its text (dropped if the stub cannot be one), and any
+    * its record's prose, a document as its text (dropped if the stub cannot be one), a piece as
+    * its text under its heading path ([[grit.core.files.Piece.holding]]), and any
     * other entry as a person's message.
     */
   private def hiding(showing: Showing, stubs: Map[ItemRef, String]): Showing =
@@ -439,6 +460,12 @@ private[turn] object TurnShown {
           stubs.get(ItemRef.Document(document.version)) match {
             case None => Some((document, label))
             case Some(stub) => DocText.of(stub).toOption.map(t => (document.copy(text = t), label))
+          }
+        ),
+        pieces = showing.pieces.map((k, label, more) =>
+          stubs.get(ItemRef.Piece(k.id)) match {
+            case None => (k, label, more)
+            case Some(stub) => (k.copy(piece = k.piece.holding(stub)), label, more)
           }
         )
       )

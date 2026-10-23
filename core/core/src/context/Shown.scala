@@ -4,6 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, Document}
+import grit.core.files.KeptPiece
 import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
@@ -143,6 +144,26 @@ object Shown {
       s"${SectionTag.Document.tag} ${DocLabel.value(label)}, at ${document.place.written}, " +
         s"$day:\n${pasted(DocText.value(document.text))}" +
         document.pointer.fold("")(p => s"\n${p.shown}")
+    )
+  }
+
+  /** A piece of a kept file as one user message, read as a document is: "[doc] {label}, part
+    * of the file {name}, under {heading path}, pages {p}–{q}, at {place.written}, {the UTC date
+    * it was written}:" (no heading path or pages when it has none), then its markdown
+    * ([[grit.core.files.Piece.text]]) as [[pasted]] shows it, then, when `more` is positive,
+    * "{more} more parts of this file matched the search."
+    */
+  def piece(piece: KeptPiece, label: DocLabel, more: Int): Message = {
+    val day = piece.written.atOffset(ZoneOffset.UTC).toLocalDate
+    val path =
+      if (piece.piece.heading.isEmpty) "" else piece.piece.heading.mkString(", under ", " > ", "")
+    val pages = piece.piece.pages.fold("") { (p, q) =>
+      if (p == q) s", page $p" else s", pages $p–$q"
+    }
+    Message.User(
+      s"${SectionTag.Document.tag} ${DocLabel.value(label)}, part of the file ${piece.file.name}" +
+        s"$path$pages, at ${piece.place.written}, $day:\n${pasted(piece.piece.text)}" +
+        (if (more > 0) s"\n$more more parts of this file matched the search." else "")
     )
   }
 

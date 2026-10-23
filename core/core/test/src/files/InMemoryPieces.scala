@@ -151,7 +151,7 @@ final class InMemoryPieces extends PieceStore {
     for {
       r <- sets.get(p.set)
       pid <- PieceId.of(id)
-    } yield KeptPiece(pid, r.plugin, r.file, r.label, r.integrity, r.written, p.piece)
+    } yield KeptPiece(pid, r.plugin, r.file, r.place, r.label, r.integrity, r.written, p.piece)
 
   def search(plugins: Vector[PluginName], query: String, limit: Int, at: Instant)(using
       Tx^
@@ -171,21 +171,27 @@ final class InMemoryPieces extends PieceStore {
       .sortBy((id, _, score) => (-score, id))
       .take((limit max 0) * PieceSearch.PerFile)
     val counts = scored.groupBy(_._2.set).view.mapValues(_.size).toMap
-    Right(
-      scored
-        .groupBy(_._2.set)
-        .values
-        .flatMap(_.take(PieceSearch.PerFile))
-        .toVector
-        .sortBy((id, _, score) => (-score, id))
-        .take(limit max 0)
-        .flatMap { (id, p, score) =>
-          kept(id, p).map(
-            PieceSearch.Hit(_, score, (counts.getOrElse(p.set, 0) - PieceSearch.PerFile) max 0)
-          )
-        }
-    )
+    val answered = scored
+      .groupBy(_._2.set)
+      .values
+      .flatMap(_.take(PieceSearch.PerFile))
+      .toVector
+      .sortBy((id, _, score) => (-score, id))
+      .take(limit max 0)
+    val shown = answered.groupBy(_._2.set).view.mapValues(_.size).toMap
+    Right(answered.flatMap { (id, p, score) =>
+      kept(id, p).map(
+        PieceSearch.Hit(_, score, counts.getOrElse(p.set, 0) - shown.getOrElse(p.set, 0))
+      )
+    })
   }
+
+  def holding(plugins: Vector[PluginName], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[PluginName]] =
+    Right(plugins.filter { p =>
+      sets.exists((s, r) => r.plugin == p && currentAt(r, at) && reads(r) && of(s).nonEmpty)
+    })
 
   def read(ids: Vector[PieceId])(using Tx^): Either[StoreError, Vector[KeptPiece]] =
     Right(ids.flatMap { i =>

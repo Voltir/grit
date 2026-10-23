@@ -217,6 +217,7 @@ private[grit] object Launch {
           runtime.lifecycle,
           runtime.search,
           runtime.documents,
+          runtime.pieces,
           runtime.stitches,
           CharEstimate,
           budget,
@@ -269,7 +270,8 @@ private[grit] object Launch {
           CharEstimate,
           runtime.profiles,
           runtime.principals,
-          runtime.documents
+          runtime.documents,
+          runtime.pieces
         ),
         TurnHosting(
           runtime.conversations,

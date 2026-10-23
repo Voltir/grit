@@ -9,6 +9,7 @@ import grit.core.classify.ClearedClassifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
+import grit.core.files.PieceStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.persona.Persona
@@ -136,7 +137,7 @@ final case class TurnSpeech(speaking: Speaking, store: SpeechStore, deliveries: 
 
 /** Where a turn's entries, their costs and its model profile are written, how a request is
   * priced, whose names its messages are shown under (`principals`), and the plugins'
-  * documents its window shows and counts as placed (`documents`).
+  * documents and pieces its window shows and counts as placed (`documents`, `pieces`).
   */
 final case class TurnRecords(
     entries: EntryStore,
@@ -144,7 +145,8 @@ final case class TurnRecords(
     estimator: TokenEstimator,
     profiles: ModelProfileStore,
     principals: Principals,
-    documents: DocumentStore
+    documents: DocumentStore,
+    pieces: PieceStore
 )
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,

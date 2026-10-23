@@ -6,7 +6,15 @@ import grit.core.allot.{Allotment, Headroom}
 import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
-import grit.core.id.{ConversationId, DocumentVersionId, EntryId, EntrySeq, ToolCallId, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PieceId,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -236,6 +244,21 @@ object TurnJournalTests extends TestSuite {
       j.encode(documented) ==> """{"ok":{"entries":[0],"notes":[],"documents":[7,3]}}"""
       roundTrip(documented) ==> Right(documented)
       assert(j.decode("""{"ok":{"entries":[0],"notes":[],"documents":[0]}}""").isLeft)
+    }
+
+    test("a window's pieces are recorded by id and how many more, after its documents, and read back") {
+      val nine = PieceId.of(9).getOrElse(sys.error("unreachable: 9 is an id"))
+      val versions = Vector(7L).flatMap(DocumentVersionId.of)
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      val pieced: Either[TurnFailure, Window] =
+        Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, Vector(Retrieved.Piece(nine, 2))))
+      j.encode(pieced) ==>
+        """{"ok":{"entries":[0],"notes":[],"documents":[7],"pieces":[{"piece":9,"more":2}]}}"""
+      roundTrip(pieced) ==> Right(pieced)
+      assert(j.decode("""{"ok":{"entries":[0],"notes":[],"pieces":[{"piece":0,"more":2}]}}""").isLeft)
+      // A window with no pieces is recorded as before: no "pieces" field.
+      j.encode(Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions))) ==>
+        """{"ok":{"entries":[0],"notes":[],"documents":[7]}}"""
     }
 
     test(
@@ -527,6 +550,8 @@ object TurnJournalTests extends TestSuite {
           """{"item":{"ref":{"kind":"nearby","conversation":"c2","seq":4},"integrity":"outside","source":"Ann"},""" +
           """"fate":{"kind":"lowered"}},""" +
           """{"item":{"ref":{"kind":"document","version":3},"integrity":"authority","source":"notes"},""" +
+          """"fate":{"kind":"lowered"}},""" +
+          """{"item":{"ref":{"kind":"piece","id":9},"integrity":"outside","source":"files"},""" +
           """"fate":{"kind":"lowered"}}],""" +
           """"withheld":[{"tool":"slack_post","requires":"member"}]}}"""
       val three =
@@ -538,7 +563,8 @@ object TurnJournalTests extends TestSuite {
             ItemRef.Result(ToolCallId("c1")),
             ItemRef.Own(EntrySeq(41)),
             ItemRef.Nearby(ConversationId("c2"), EntrySeq(4)),
-            ItemRef.Document(three)
+            ItemRef.Document(three),
+            ItemRef.Piece(PieceId.of(9).getOrElse(throw new java.lang.AssertionError("9 is an id")))
           )
         )
       )
@@ -558,11 +584,14 @@ object TurnJournalTests extends TestSuite {
         )
       val doc =
         Retrieved.Doc(DocumentVersionId.of(7).getOrElse(sys.error("unreachable: 7 is a version")))
-      val results = Results(Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5), beyond = 3)
+      val piece = Retrieved.Piece(PieceId.of(9).getOrElse(sys.error("unreachable: 9 is an id")), 4)
+      val results =
+        Results(Vector(own -> 6.0, near -> 2.5, closed -> 1.0, doc -> 0.5, piece -> 0.25), beyond = 3)
       val verdicts = Vector(
         own -> TurnRelevance.Verdict.Passed(Probability.clamped(0.75)),
         doc -> TurnRelevance.Verdict.Rejected(Probability.clamped(0.25)),
-        closed -> TurnRelevance.Verdict.Unjudged(TurnRelevance.Gone)
+        closed -> TurnRelevance.Verdict.Unjudged(TurnRelevance.Gone),
+        piece -> TurnRelevance.Verdict.Passed(Probability.clamped(0.5))
       )
       val searched = summon[Journaled[Either[TurnFailure, Results]]]
       roundTrip[Either[TurnFailure, Results]](Right(results)) ==> Right(Right(results))
@@ -570,7 +599,7 @@ object TurnJournalTests extends TestSuite {
       searched.encode(Right(Results(Vector(own -> 6.0, doc -> 0.5), 3))) ==>
         """{"ok":{"ranked":[{"own":2,"score":6},{"doc":7,"score":0.5}],"beyond":3}}"""
       summon[Journaled[Vector[(Retrieved, TurnRelevance.Verdict)]]].encode(verdicts) ==>
-        """[{"own":2,"passed":0.75},{"doc":7,"rejected":0.25},{"closed":"c3","unjudged":"gone before it was briefed"}]"""
+        """[{"own":2,"passed":0.75},{"doc":7,"rejected":0.25},{"closed":"c3","unjudged":"gone before it was briefed"},{"piece":9,"more":4,"passed":0.5}]"""
       searched.encode(Right(Results(Vector(near -> 1.0)))) ==>
         """{"ok":{"ranked":[{"near":"c2","turn":5,"score":1}],"beyond":0}}"""
     }

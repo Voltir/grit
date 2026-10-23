@@ -6,7 +6,6 @@ import grit.core.id.{PieceId, PieceSetId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.prose.markdown.Markdown
 
 /** A file as its pieces are kept: `ref`, its keeping plugin's name for it (a Drive file's id);
   * `name`, as a person knows it; `revision`, its source's; read by `format` at `version`
@@ -20,28 +19,19 @@ final case class PiecedFile(
     version: Int
 )
 
-/** A piece as kept: by `plugin`, of `file`, at `label` and believed at `integrity`, written
-  * `written`.
+/** A piece as kept: by `plugin`, of `file`, at `place`, at `label` and believed at
+  * `integrity`, written `written`.
   */
 final case class KeptPiece(
     id: PieceId,
     plugin: PluginName,
     file: PiecedFile,
+    place: Place,
     label: Label,
     integrity: Integrity,
     written: Instant,
     piece: Piece
-) {
-
-  /** As the model reads it: a line naming its file, heading path and pages ("Plan.pdf, Access
-    * Control > AC-2, pages 3–4"), then its doc as markdown ([[Markdown.write]]).
-    */
-  def shown: String = {
-    val pages = piece.pages.fold("") { (p, q) => if (p == q) s", page $p" else s", pages $p–$q" }
-    val path = if (piece.heading.isEmpty) "" else piece.heading.mkString(", ", " > ", "")
-    s"${file.name}$path$pages\n${Markdown.write(Piece.plain(piece.doc))}"
-  }
-}
+)
 
 /** Kept pieces as windows draw on them. Each read returns only the pieces its transaction reads
   * (a piece is kept and read as a document is, [[grit.core.document.DocumentShelf]]).
@@ -51,13 +41,20 @@ trait PieceSearch {
   /** The pieces of `plugins`' files, current at `at`, that its transaction reads and that match
     * `query` with [[PieceIndex.query]]'s aliases added: best first, at most `limit`, at most
     * [[PieceSearch.PerFile]] of one file, each with its score, positive and higher better, on
-    * the pieces index's own scale, and how many more of its file were among the best
-    * `limit` × [[PieceSearch.PerFile]] but left out. Empty when nothing matches, `query` is
-    * blank, `limit` is not positive or `plugins` is empty.
+    * the pieces index's own scale, and how many more of its file's pieces matched than it
+    * answers, counted among the best `limit` × [[PieceSearch.PerFile]]. Empty when nothing
+    * matches, `query` is blank, `limit` is not positive or `plugins` is empty.
     */
   def search(plugins: Vector[PluginName], query: String, limit: Int, at: Instant)(using
       Tx^
   ): Either[StoreError, Vector[PieceSearch.Hit]]
+
+  /** Of `plugins`, each with a piece current at `at` that its transaction reads, in their
+    * order: those a [[search]] could find anything of.
+    */
+  def holding(plugins: Vector[PluginName], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[PluginName]]
 
   /** The pieces among `ids` still kept and read by its transaction, in their order. */
   def read(ids: Vector[PieceId])(using Tx^): Either[StoreError, Vector[KeptPiece]]

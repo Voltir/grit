@@ -1,17 +1,19 @@
 package grit.turn
 
-import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, ToolCallId}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, ToolCallId}
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
 /** One thing a round's request may show the model, by where it is kept: an entry of the
-  * turn's own conversation, a nearby one, a document version, or a tool result of this turn.
+  * turn's own conversation, a nearby one, a document version, a piece of a kept file, or a tool
+  * result of this turn.
   */
 enum ItemRef derives CanEqual {
   case Own(seq: EntrySeq)
   case Nearby(conversation: ConversationId, seq: EntrySeq)
   case Document(version: DocumentVersionId)
   case Result(call: ToolCallId)
+  case Piece(id: PieceId)
 }
 
 /** An item as `gate:n` read it: where it is kept, how far it may be believed (its row's, fixed

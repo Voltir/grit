@@ -1,6 +1,6 @@
 package grit.core.context
 
-import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Db, Nearby, StoreError}
@@ -102,13 +102,19 @@ enum Querying {
 }
 
 /** What a search can find: an earlier turn of the period, an open turn elsewhere, a
-  * conversation elsewhere shown by its newest kept closing, or a document version.
+  * conversation elsewhere shown by its newest kept closing, a document version, or a piece of
+  * a kept file.
   */
 enum Retrieved {
   case Own(turn: TurnSeq)
   case Near(conversation: ConversationId, turn: TurnSeq)
   case Closed(conversation: ConversationId)
   case Doc(version: DocumentVersionId)
+
+  /** Piece `id`, and how many more of its file's pieces its search matched past
+    * [[grit.core.files.PieceSearch.PerFile]], which the window says.
+    */
+  case Piece(id: PieceId, more: Int)
 }
 
 /** What a search found, best first, each with its weighted score; `beyond`, how many more
@@ -166,17 +172,18 @@ enum Width {
 }
 
 /** What the model sees before the turn's own messages: each of `nearby`'s sections, then each
-  * of `documents` under its plugin's label, then the entries of its own conversation at
-  * `entries`, in that order; and notes on how they were chosen. A nearby entry, or a document,
-  * gone by the time the model is called is left out, as is a document whose plugin is no
-  * longer enabled, and a section left with no message is dropped; an own entry gone fails
-  * the turn.
+  * of `documents` under its plugin's label, then each of `pieces` under its plugin's label
+  * ([[Shown.piece]]), then the entries of its own conversation at `entries`, in that order; and
+  * notes on how they were chosen. A nearby entry, a document or a piece gone by the time the
+  * model is called is left out, as is a document or a piece whose plugin is no longer enabled,
+  * and a section left with no message is dropped; an own entry gone fails the turn.
   */
 final case class Window(
     entries: Vector[EntrySeq],
     notes: Vector[AssemblyNote] = Vector.empty,
     nearby: Vector[Nearby] = Vector.empty,
-    documents: Vector[DocumentVersionId] = Vector.empty
+    documents: Vector[DocumentVersionId] = Vector.empty,
+    pieces: Vector[Retrieved.Piece] = Vector.empty
 )
 
 /** Something an assembler did while choosing a window, kept for the record and never shown

@@ -281,6 +281,7 @@ object Eval {
       engine.lifecycle,
       engine.search,
       engine.documents,
+      engine.pieces,
       engine.stitches,
       CharEstimate,
       budget,

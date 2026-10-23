@@ -40,6 +40,15 @@ import grit.core.document.{
   Shelved,
   Written
 }
+import grit.core.files.{
+  FormatName,
+  InMemoryPieces,
+  Locus,
+  Piece,
+  PieceKeeper,
+  PieceSearch,
+  PiecedFile
+}
 import grit.core.id.{
   CallSlot,
   CloseRef,
@@ -50,6 +59,7 @@ import grit.core.id.{
   EntrySeq,
   PeriodRef,
   PeriodSeq,
+  PieceId,
   PluginName,
   TurnRef,
   TurnSeq
@@ -332,6 +342,35 @@ object RetrievalAssemblerTests extends TestSuite {
       .map(d => Tokens.value(CharEstimate.message(Shown.document(d, got(DocLabel.of("Notes"))))))
       .getOrElse(sys.error("no document"))
 
+  /** `texts` kept as the pieces of `p`'s file `ref`, written before every turn's root; each one's
+    * id, in order.
+    */
+  private def kept(pieces: InMemoryPieces, p: String, ref: String, texts: String*): Vector[PieceId] = {
+    val all = texts.toVector.map(t =>
+      Piece(Vector("Policy"), grit.prose.form.Doc(Vector(grit.prose.form.Block.Paragraph(
+        grit.prose.form.Text(Vector(grit.prose.form.Span(t, Set.empty, Vector(Locus.Page(1)))))
+      ))))
+    )
+    pieces
+      .keeper(plugin(p), PieceKeeper.Bound)
+      .keep(
+        PiecedFile(ref, s"$ref.pdf", "r1", FormatName("test"), 1),
+        placeOf("files"),
+        Integrity.Member,
+        all,
+        0,
+        Before
+      )(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+    all.flatMap(piece =>
+      pieces
+        .search(Vector(plugin(p)), piece.text, 100, Instant.EPOCH)(using TestTx.fake)
+        .getOrElse(Vector.empty)
+        .find(_.piece.piece == piece)
+        .map(_.piece.id)
+    )
+  }
+
   /** How many hits the assembler is told to ask for. */
   private val Hits = 7
 
@@ -387,7 +426,8 @@ object RetrievalAssemblerTests extends TestSuite {
       width: Width = Width.Deployed,
       documents: DocumentSearch = new InMemoryDocuments,
       query: Option[Pinned] = Some(QueryPin),
-      admit: Results -> Results = r => Results(r.ranked, r.beyond)
+      admit: Results -> Results = r => Results(r.ranked, r.beyond),
+      pieces: PieceSearch = new InMemoryPieces
   ): Window = {
     val models = new Writing(writer, QueryPin)
     ContextAssembler
@@ -402,7 +442,8 @@ object RetrievalAssemblerTests extends TestSuite {
           tuning,
           others,
           posted,
-          documents
+          documents,
+          pieces = pieces
         ),
         AssemblyRequest(TurnRef(c1, TurnSeq(at)), width)
       )(
@@ -436,7 +477,8 @@ object RetrievalAssemblerTests extends TestSuite {
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
       documents: DocumentSearch = new InMemoryDocuments,
-      entries: Option[EntryStore] = None
+      entries: Option[EntryStore] = None,
+      pieces: PieceSearch = new InMemoryPieces
   ): RetrievalAssembler = {
     val conversations = new InMemoryConversationStore
     conversations.all =
@@ -465,6 +507,7 @@ object RetrievalAssemblerTests extends TestSuite {
       lifecycle,
       search,
       documents,
+      pieces,
       stitches.getOrElse(
         new InMemoryStitchStore(
           world.entries,
@@ -1287,6 +1330,71 @@ object RetrievalAssemblerTests extends TestSuite {
         assemble(world, new Writer(Some("probe budget")), 1000, search, at = 0, documents = docs)
       (DocumentVersionId.value(v), w.nearby.map(_.conversation), w.documents) ==>
         (1L, Vector(named), Vector(v))
+    }
+
+    test("a piece ranks beside the turns and documents found, by its score times its plugin's weight") {
+      val docs = shelf("notes" -> 1.0, "files" -> 4.0)
+      val alpha = write(docs, "notes", "a", placeOf("api"), "the database for probes")
+      val pieces = new InMemoryPieces
+      val ids = kept(pieces, "files", "plan", "probes use a database", "nothing here")
+      val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
+      val search = new Scripted("t0:1")
+      // The own turn scores 3 × the default weight, 2; the piece 2 words × 4; the document 3 × 1.
+      search.scores = Vector(3.0)
+      val found = retrieval(entries, 80, search, documents = docs, pieces = pieces).search(
+        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        WrittenQuery
+      )(using new FakeDb)
+      found.map(_.ranked.map(_._1)) ==> Right(
+        Vector(
+          Retrieved.Piece(ids.head, 0),
+          Retrieved.Own(TurnSeq(0)),
+          Retrieved.Doc(alpha)
+        )
+      )
+    }
+
+    test("a window draws at most PerFile pieces of one file, saying how many more matched") {
+      val docs = shelf("files" -> 1.0)
+      val pieces = new InMemoryPieces
+      val ids = kept(pieces, "files", "plan", (1 to 11).map(i => s"probe budget part $i")*)
+      val w = assemble(
+        store(ask),
+        new Writer(Some("probe budget")),
+        4000,
+        at = 0,
+        width = Width.Within(Tokens(4000), 30),
+        documents = docs,
+        pieces = pieces
+      )
+      w.pieces ==> ids.take(PieceSearch.PerFile).map(Retrieved.Piece(_, 3))
+    }
+
+    test("a conversation with only a piece to draw writes a query; with none, not") {
+      def run(written: Boolean): (Writer, Window) = {
+        val docs = shelf("files" -> 1.0)
+        val pieces = new InMemoryPieces
+        if (written) { val _ = kept(pieces, "files", "plan", "the probe budget") }
+        val writer = new Writer(Some("probe budget"))
+        (writer, assemble(store(ask), writer, 1000, at = 0, documents = docs, pieces = pieces))
+      }
+      val (asked, drawn) = run(written = true)
+      (asked.requests.size, drawn.pieces.size) ==> (1, 1)
+      val (off, none) = run(written = false)
+      (off.requests.size, none.pieces.size) ==> (0, 0)
+    }
+
+    test("a piece that does not fit is passed over, costed as the window shows it") {
+      val docs = shelf("files" -> 1.0)
+      val pieces = new InMemoryPieces
+      val big = kept(pieces, "files", "big", "probe budget " + ("word " * 400))
+      val small = kept(pieces, "files", "small", "the probe budget")
+      val w = assemble(store(ask), new Writer(Some("probe budget")), 300, at = 0, documents = docs, pieces = pieces)
+      (big.size, w.pieces.map(_.id)) ==> (1, small)
+    }
+
+    test("the query writer is told its search also finds passages of the files kept") {
+      QueryWriter.System.contains("passages of the files and documents kept") ==> true
     }
 
     test("a plugin not declared is never searched") {

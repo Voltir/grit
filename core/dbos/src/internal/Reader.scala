@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.document.{Document, DocumentSearch}
 import grit.core.durable.StepRecord
+import grit.core.files.PieceSearch
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.recipe.RoomReads
 import grit.core.review.ReviewStore
@@ -44,6 +45,7 @@ import grit.dbos.sql.{
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlPeriodStore,
+  SqlPieces,
   SqlPrincipals,
   SqlPromptStore,
   SqlReviews,
@@ -87,6 +89,9 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
 
   /** The enabled plugins' documents as windows draw on them. */
   val documents: DocumentSearch
+
+  /** The kept files' pieces as windows draw on them. */
+  val pieces: PieceSearch
 
   /** Every plugin's current documents that its transaction reads, enabled or not, withdrawals
     * left out: by plugin in name order, each plugin's most recently written first.
@@ -180,6 +185,8 @@ object Reader {
     val search: EntrySearch = new SqlEntrySearch()
     // Its keepers would write tombstones; a reader only searches, so none is ever built.
     val documents: DocumentSearch = new SqlDocumentSearch
+    // Read through its search alone: no keeper is built, so no tombstone is written.
+    val pieces: PieceSearch = new SqlPieces(new SqlTombstones)
     // Read through its shelves and its list of plugins alone: no keeper is built, so no
     // tombstone is written.
     private val shelves = new SqlDocuments(new SqlTombstones)

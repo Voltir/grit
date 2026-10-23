@@ -422,7 +422,7 @@ private[turn] object Rounding {
       believed: Option[Integrity],
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator, _, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _, _) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)

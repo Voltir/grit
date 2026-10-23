@@ -3,6 +3,7 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.document.{Document, DocumentSearch, DocumentTerms, Shelved}
+import grit.core.files.PieceSearch
 import grit.core.either.Traversal.traverse
 import grit.core.id.{
   CallSlot,
@@ -73,6 +74,7 @@ final class AsOf private (
     val lifecycle: LifecycleStore,
     val search: EntrySearch,
     val documents: DocumentSearch,
+    val pieces: PieceSearch,
     val stitches: StitchStore,
     every: DocumentSearch
 ) {
@@ -90,6 +92,7 @@ final class AsOf private (
       new AsOf.Settled(lifecycle, settings),
       search,
       documents,
+      pieces,
       stitches,
       every
     )
@@ -109,6 +112,7 @@ final class AsOf private (
       lifecycle,
       search,
       new AsOf.AtEnd(new AsOf.Documents(every, end), end),
+      pieces,
       stitches,
       every
     )
@@ -132,6 +136,7 @@ object AsOf {
       reader.lifecycle,
       new Search(reader.search, reader.entries, at),
       new Documents(reader.documents, at),
+      reader.pieces,
       new Stitches(reader.stitches, reader.conversations, at),
       reader.documents
     )

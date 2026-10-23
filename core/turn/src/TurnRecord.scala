@@ -3,6 +3,7 @@ package grit.turn
 import grit.act.moves.Judging
 import grit.core.context.{Querying, Results, Retrieved}
 import grit.core.document.DocumentSearch
+import grit.core.files.PieceSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
 import grit.core.either.Traversal.sequence
@@ -71,6 +72,7 @@ object TurnRecord {
       entries: EntryStore,
       principals: Principals,
       documents: DocumentSearch,
+      pieces: PieceSearch,
       prompts: PromptStore,
       toolSets: ToolSets,
       profiles: ModelProfileStore
@@ -165,7 +167,7 @@ object TurnRecord {
   /** Whether `item` is an entry's closing record, as a gate records it. */
   def closing(item: Item): Boolean = item.ref match {
     case ItemRef.Own(_) | ItemRef.Nearby(_, _) => item.source == TurnGate.ClosingRecord
-    case ItemRef.Document(_) | ItemRef.Result(_) => false
+    case ItemRef.Document(_) | ItemRef.Result(_) | ItemRef.Piece(_) => false
   }
 
   /** The first of `steps` whose output is a [[TurnFailure]]: its step's family

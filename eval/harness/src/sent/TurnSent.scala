@@ -130,6 +130,7 @@ object TurnSent {
                 reader.entries,
                 reader.principals,
                 reader.documents,
+                reader.pieces,
                 reader.prompts,
                 reader.toolSets,
                 reader.profiles

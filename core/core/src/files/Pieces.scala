@@ -31,6 +31,14 @@ final case class Piece(heading: Vector[String], doc: Doc[Locus]) {
       .toLowerCase
     Sha256.digest(words.getBytes(UTF_8).toVector)
   }
+
+  /** Its doc as the model reads it: markdown ([[Markdown.write]]), its notes dropped. */
+  def text: String = Markdown.write(Piece.plain(doc))
+
+  /** This piece's heading path holding `text` alone, one paragraph: what a stub shows in its
+    * place.
+    */
+  def holding(text: String): Piece = Piece(heading, Doc(Vector(Block.Paragraph(Text.plain(text)))))
 }
 
 object Piece {

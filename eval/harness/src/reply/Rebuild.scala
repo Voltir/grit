@@ -97,6 +97,7 @@ object Rebuild {
       view.lifecycle,
       view.search,
       view.documents,
+      view.pieces,
       view.stitches,
       CharEstimate,
       assembled.window,

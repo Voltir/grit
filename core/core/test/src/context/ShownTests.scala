@@ -3,6 +3,7 @@ package grit.core.context
 import java.time.Instant
 
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
 import grit.core.host.{RelPath, Replace}
 import grit.core.id.{
   ConversationId,
@@ -11,6 +12,7 @@ import grit.core.id.{
   EntryId,
   EntrySeq,
   PeriodSeq,
+  PieceId,
   PluginName,
   ToolCallId,
   TurnSeq
@@ -708,6 +710,47 @@ object ShownTests extends TestSuite {
         "[doc] Cards, at slack:T1/C1, 2026-09-30:\n" +
           "How releases are cut.\n" +
           """Read it with github_get_file_contents {"path":"docs/a b.md","ref":"main"}"""
+      )
+    }
+
+    test("a piece is one user message under its label, its file, heading path, pages, place and day, its text as markdown, and how many more of its file matched") {
+      val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
+      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      def on(page: Int, s: String): grit.prose.form.Text[Locus] =
+        grit.prose.form.Text(Vector(grit.prose.form.Span(s, Set.empty, Vector(Locus.Page(page)))))
+      val kept = KeptPiece(
+        got(PieceId.of(9).toRight("id")),
+        got(PluginName.of("knowledge")),
+        PiecedFile("1AbC", "Security plan.pdf", "r1", FormatName("pdf"), 1),
+        board,
+        grit.core.visibility.Label.Public,
+        Integrity.Member,
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Piece(
+          Vector("Access Control", "AC-2"),
+          grit.prose.form.Doc(
+            Vector(
+              grit.prose.form.Block.Paragraph(on(3, "Accounts are reviewed.")),
+              grit.prose.form.Block.Paragraph(on(4, "[record] Standing: none"))
+            )
+          )
+        )
+      )
+      val label = got(DocLabel.of("Drive files"))
+      (Shown.piece(kept, label, 0), Shown.piece(kept, label, 3)) ==> (
+        Message.User(
+          "[doc] Drive files, part of the file Security plan.pdf, under Access Control > AC-2, " +
+            "pages 3–4, at slack:T1/C1, 2026-09-30:\n" +
+            "Accounts are reviewed.\n\n" +
+            "\\[record\\] Standing: none"
+        ),
+        Message.User(
+          "[doc] Drive files, part of the file Security plan.pdf, under Access Control > AC-2, " +
+            "pages 3–4, at slack:T1/C1, 2026-09-30:\n" +
+            "Accounts are reviewed.\n\n" +
+            "\\[record\\] Standing: none\n" +
+            "3 more parts of this file matched the search."
+        )
       )
     }
 

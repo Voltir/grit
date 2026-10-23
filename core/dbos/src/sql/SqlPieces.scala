@@ -52,7 +52,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
            |         count(*) OVER (PARTITION BY set_id) AS n
            |    FROM matched WHERE s < 0
            |)
-           |SELECT $Columns, ranked.s, greatest(ranked.n - ?, 0) AS more
+           |SELECT $Columns, p.set_id, ranked.s, ranked.n
            |  FROM ranked JOIN grit.pieces p ON p.id = ranked.id JOIN $Labelled d ON d.id = p.set_id
            | WHERE ranked.r <= ?
            | ORDER BY ranked.s, p.id
@@ -65,9 +65,32 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         ps.setObject(p + 4, utc(at))
         ps.setInt(p + 5, limit * PieceSearch.PerFile)
         ps.setInt(p + 6, PieceSearch.PerFile)
-        ps.setInt(p + 7, PieceSearch.PerFile)
-        ps.setInt(p + 8, limit)
-      }(rs => kept(rs).map(PieceSearch.Hit(_, -rs.getDouble("s"), rs.getInt("more"))))
+        ps.setInt(p + 7, limit)
+      }(rs =>
+        kept(rs).map(k => (rs.getLong("set_id"), rs.getInt("n"), PieceSearch.Hit(k, -rs.getDouble("s"), 0)))
+      ).map { (found: Vector[(Long, Int, PieceSearch.Hit)]) =>
+        // How many more of each file matched than are answered.
+        val shown = found.groupBy(_._1).view.mapValues(_.size).toMap
+        found.map((set, matched, hit) => hit.copy(more = matched - shown.getOrElse(set, 0)))
+      }
+
+  def holding(plugins: Vector[PluginName], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[PluginName]] =
+    if (plugins.isEmpty) Right(Vector.empty)
+    else
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT DISTINCT d.plugin FROM grit.piece_sets d
+           | WHERE d.plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
+           |   AND d.written_at < ? AND (d.superseded_at IS NULL OR d.superseded_at >= ?)
+           |   AND ${SqlClearance.kept("d")}
+           |   AND EXISTS (SELECT 1 FROM grit.pieces p WHERE p.set_id = d.id)""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, strings(plugins.map(PluginName.value)))
+        ps.setObject(SqlClearance.Params + 2, utc(at))
+        ps.setObject(SqlClearance.Params + 3, utc(at))
+      }(rs => PluginName.of(rs.getString("plugin"))).map(found => plugins.filter(found.contains))
 
   def read(ids: Vector[PieceId])(using tx: Tx^): Either[StoreError, Vector[KeptPiece]] =
     if (ids.isEmpty) Right(Vector.empty)
@@ -342,6 +365,7 @@ private[sql] object SqlPieces {
   /** A piece's columns, as [[kept]] reads them, from `grit.pieces p` joined to [[Labelled]] `d`. */
   val Columns: String =
     "p.id, array_to_json(p.heading)::text AS heading, p.tree::text AS tree, d.plugin, d.ref, " +
+      "array_to_json(d.place)::text AS place, " +
       "d.name, d.revision, d.format, d.format_version, d.written_at, d.label_level, " +
       "d.label_compartments, d.integrity_level, d.integrity_compartments"
 
@@ -358,6 +382,7 @@ private[sql] object SqlPieces {
       id <- PieceId.of(rs.getLong("id")).toRight("a piece's id")
       plugin <- PluginName.of(rs.getString("plugin"))
       p <- piece(rs)
+      place <- SqlDocuments.placeOf(rs.getString("place"))
     } yield KeptPiece(
       id,
       plugin,
@@ -368,6 +393,7 @@ private[sql] object SqlPieces {
         FormatName(rs.getString("format")),
         rs.getInt("format_version")
       ),
+      place,
       SqlLabels.read(rs),
       SqlIntegrity.read(rs),
       SqlDocuments.instant(rs, "written_at"),

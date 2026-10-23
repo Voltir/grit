@@ -16,6 +16,7 @@ import grit.core.id.{
   DocumentVersionId,
   EntryId,
   EntrySeq,
+  PieceId,
   ToolCallId,
   TurnSeq
 }
@@ -39,20 +40,22 @@ import grit.core.visibility.{Integrity, Label}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes, nearby sections or documents is the bare array of its entries'
-    * seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries": [...], "notes": [...]}`,
-    * with `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]), and
-    * `"documents": [...]` when it has documents ([[PayloadJson.writeVersions]]).
+  /** A window with no notes, nearby sections, documents or pieces is the bare array of its
+    * entries' seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries": [...], "notes":
+    * [...]}`, with `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]),
+    * `"documents": [...]` when it has documents ([[PayloadJson.writeVersions]]), and
+    * `"pieces": [{"piece": id, "more": n}, ...]` when it has pieces ([[writeFound]]).
     */
   given window: Journaled[Either[TurnFailure, Window]] =
     outcome(
       w => {
         val ids = PayloadJson.writeSeqs(w.entries)
-        if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty) ids
+        if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty) ids
         else {
           val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
           if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
           if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
+          if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
           o
         }
       },
@@ -81,7 +84,21 @@ private[turn] object TurnJournal {
               documents <- o.value
                 .get("documents")
                 .fold(Right(Vector.empty))(PayloadJson.readVersions)
-            } yield Window(ids, notes, nearby, documents)
+              pieces <- o.value.get("pieces") match {
+                case None => Right(Vector.empty)
+                case Some(ujson.Arr(items)) =>
+                  items.toVector.foldLeft[Either[String, Vector[Retrieved.Piece]]](Right(Vector.empty)) {
+                    (acc, p) =>
+                      acc.flatMap(ps =>
+                        readFound(p).flatMap {
+                          case found: Retrieved.Piece => Right(ps :+ found)
+                          case _ => Left("window: a piece is not a piece")
+                        }
+                      )
+                  }
+                case Some(_) => Left("window: pieces is not an array")
+              }
+            } yield Window(ids, notes, nearby, documents, pieces)
           case _ => Left("window: expected an array or an object")
         }
     )
@@ -1029,7 +1046,8 @@ private[turn] object TurnJournal {
   }
 
   /** A found candidate as an object's fields, then `more`: `{"own": seq}`, `{"near":
-    * conversation, "turn": seq}`, `{"closed": conversation}` or `{"doc": version}`.
+    * conversation, "turn": seq}`, `{"closed": conversation}`, `{"doc": version}` or `{"piece":
+    * id, "more": n}`.
     */
   private def writeFound(found: Retrieved, more: (String, ujson.Value)*): ujson.Obj = {
     val fields: Vector[(String, ujson.Value)] = found match {
@@ -1041,6 +1059,8 @@ private[turn] object TurnJournal {
         )
       case Retrieved.Closed(c) => Vector("closed" -> ujson.Str(ConversationId.value(c)))
       case Retrieved.Doc(d) => Vector("doc" -> ujson.Num(DocumentVersionId.value(d).toDouble))
+      case Retrieved.Piece(id, more) =>
+        Vector("piece" -> ujson.Num(PieceId.value(id).toDouble), "more" -> ujson.Num(more.toDouble))
     }
     ujson.Obj.from(fields ++ more)
   }
@@ -1063,12 +1083,17 @@ private[turn] object TurnJournal {
         .flatMap(c => seq("turn").map(Retrieved.Near(c, _)))
     else if (o.contains("closed"))
       conversation("closed").toRight("found: no closed").map(Retrieved.Closed(_))
+    else if (o.contains("piece"))
+      (for {
+        id <- o.get("piece").flatMap(_.numOpt).filter(_.isWhole).flatMap(n => PieceId.of(n.toLong))
+        more <- o.get("more").flatMap(_.numOpt).filter(n => n.isWhole && n >= 0)
+      } yield Retrieved.Piece(id, more.toInt)).toRight("found: no piece")
     else
       o.get("doc")
         .flatMap(_.numOpt)
         .filter(_.isWhole)
         .flatMap(n => DocumentVersionId.of(n.toLong))
-        .toRight("found: expected an own, near, closed or doc candidate")
+        .toRight("found: expected an own, near, closed, doc or piece candidate")
         .map(Retrieved.Doc(_))
   }
 
@@ -1159,6 +1184,8 @@ private[turn] object TurnJournal {
             )
           case ItemRef.Result(call) =>
             ujson.Obj("kind" -> "result", "call" -> ToolCallId.value(call))
+          case ItemRef.Piece(id) =>
+            ujson.Obj("kind" -> "piece", "id" -> ujson.Num(PieceId.value(id).toDouble))
         }
         val fate = d.fate match {
           case Fate.Lowered => ujson.Obj("kind" -> "lowered")
@@ -1216,6 +1243,8 @@ private[turn] object TurnJournal {
               DocumentVersionId.of(n).map(ItemRef.Document(_)).toRight(s"gate: version $n")
             )
           case "result" => str(o, "call").map(c => ItemRef.Result(ToolCallId(c)))
+          case "piece" =>
+            long(o, "id").flatMap(n => PieceId.of(n).map(ItemRef.Piece(_)).toRight(s"gate: piece $n"))
           case other => Left(s"gate: no ref kind $other")
         }
       }
