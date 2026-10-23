@@ -496,15 +496,12 @@ final class InMemoryInbox(
           kept <- entries.ofTurn(turn)
           conversation <- conversations.get(turn.conversationId)
         } yield {
-          // The asker by the SQL opener's one rule (Opener.asker).
-          val asker = conversation.map(_.origin).flatMap {
-            case Origin.Direct(account, _) => Some(person(account))
-            case Origin.Task(_, _) => Some(Principal.Grit)
-            case Origin.Tui(_, _) | Origin.Slack(_, _, _) =>
-              kept.headOption.map(first => principals.author(first.id).fold(Principal.Grit)(person))
-          }
-          InboxError.answering(workflow, call, by, kept, asker, ledger.now)
-        }).left
+          val first = kept.headOption.map(first => principals.author(first.id).map(person))
+          conversation
+            .map(_.origin)
+            .fold(Right(None))(_.asker(first)(account => Right(Some(person(account)))))
+            .map(asker => InboxError.answering(workflow, call, by, kept, asker, ledger.now))
+        }).flatten.left
           .map(InboxError.stored)
           .flatMap(_.toLeft(()))
           .map(_ => answers = answers :+ ((workflow, call, approval)))

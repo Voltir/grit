@@ -1,7 +1,7 @@
 package grit.core.store
 
 import grit.core.id.EdgeName
-import grit.core.identity.Account
+import grit.core.identity.{Account, Principal}
 import grit.core.place.{Directory, Namespace, Place}
 
 /** Where a conversation's work comes from. Each origin names exactly one
@@ -84,6 +84,20 @@ enum Origin {
     case Slack(team, channel, _) => Origin.channel(team, channel)
     case Task(name, _) => Place.under(Namespace.Task, Vector(name))
     case Direct(account, _) => Origin.direct(account, Vector.empty)
+  }
+
+  /** Whom a turn of its conversation answers ([[grit.core.visibility.Subject.Turn]]), `first`
+    * being the turn's first entry, if it has one, as whom its author is linked to now (`None`
+    * when grit's own): in a direct message, its account's `person`, whoever wrote that entry;
+    * in a task's run, grit; otherwise that entry's author, grit for grit's own, and no one when
+    * it has none. `person`'s failure is the only one.
+    */
+  def asker(first: Option[Option[Principal]])(
+      person: Account.Sourced => Either[StoreError, Option[Principal]]
+  ): Either[StoreError, Option[Principal]] = this match {
+    case Direct(account, _) => person(account)
+    case Task(_, _) => Right(Some(Principal.Grit))
+    case Tui(_, _) | Slack(_, _, _) => Right(first.map(_.getOrElse(Principal.Grit)))
   }
 
 }

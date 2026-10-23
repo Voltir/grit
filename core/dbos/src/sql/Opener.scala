@@ -25,21 +25,14 @@ private[dbos] object Opener {
         .map(why => StoreError.Invalid(s"the recorded compartments: $why"))
     )
 
-  /** Whom a turn of `origin`'s conversation answers, as [[Subject.Turn]] says, `first` being
-    * its first entry, if it has one, as whom its account is linked to now (`None` when grit's
-    * own): in a direct message, the person its account is linked to now, whoever wrote that
-    * entry (`None` for an account never seen); in a task's run, grit; otherwise whoever wrote
-    * that entry, grit for grit's own, and no one when it has none. The one asker rule: the
-    * opener and the label a conversation is created at ([[SqlRooms.label]]) both call it.
+  /** [[Origin.asker]], a direct message's person the one its account is linked to now (`None`
+    * for an account never seen). The opener and the label a conversation is created at
+    * ([[SqlRooms.label]]) both call it.
     */
   def asker(origin: Origin, first: Option[Option[Principal]])(using
       Tx^
   ): Either[StoreError, Option[Principal]] =
-    origin match {
-      case Origin.Direct(account, _) => SqlIdentities.person(account)
-      case Origin.Task(_, _) => Right(Some(Principal.Grit))
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) => Right(first.map(_.getOrElse(Principal.Grit)))
-    }
+    origin.asker(first)(SqlIdentities.person(_))
 }
 
 /** How every transaction this module opens gets its clearance (ADR 0030): a [[Subject]]
