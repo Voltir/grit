@@ -1087,8 +1087,13 @@ object TurnFixtures {
         }
     )
 
-  /** Records `text` as the user message that starts the conversation's next turn. */
-  def say(entries: EntryStore, text: String, integrity: Integrity = Integrity.Member): TurnRef = {
+  /** Records `text` as the user message that starts the conversation's next turn, said `at`. */
+  def say(
+      entries: EntryStore,
+      text: String,
+      integrity: Integrity = Integrity.Member,
+      at: Instant = Instant.EPOCH
+  ): TurnRef = {
     given Tx = TestTx.fake
     val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
     entries.insert(
@@ -1099,7 +1104,7 @@ object TurnFixtures {
         None,
         next.seq,
         Payload.Message(Message.User(text)),
-        Instant.EPOCH,
+        at,
         integrity
       )
     )
@@ -1198,11 +1203,11 @@ object TurnFixtures {
   def ownTurn(n: Int): Retrieved = Retrieved.Own(TurnSeq(n.toLong))
 
   /** An assembler whose every query is written: it finds `found` earlier turns of its own, best
-    * first, each briefed as `candidate n`, an even one `relevant candidate n`; its window is the
-    * linear one, noted with the query's note and the own turns it was handed to pack
-    * ([[AssemblyNote.Recalled]]).
+    * first, each briefed as `candidate n`, an even one `relevant candidate n`, then `padding`
+    * dots, cut to the characters asked; its window is the linear one, noted with the query's
+    * note and the own turns it was handed to pack ([[AssemblyNote.Recalled]]).
     */
-  final class Searching(entries: EntryStore, found: Int) extends Drawing {
+  final class Searching(entries: EntryStore, found: Int, padding: Int = 0) extends Drawing {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
       linearOver(entries, request)
     override def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
@@ -1223,7 +1228,9 @@ object TurnFixtures {
     override def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
     ): Either[AssemblyError, Briefs] =
-      Right(Briefs("hello", retrieved.map(r => r -> Searching.brief(r))))
+      Right(
+        Briefs("hello", retrieved.map(r => r -> (Searching.brief(r) + "." * padding).take(chars)))
+      )
     override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
     ): Either[AssemblyError, Window] =

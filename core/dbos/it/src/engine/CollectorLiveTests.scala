@@ -1231,6 +1231,8 @@ object CollectorLiveTests extends TestSuite {
         val ids = Vector(found("first", now.plusSeconds(5)), found("second", now.plusSeconds(15)))
           .flatMap(_.fold(e => sys.error(s"$e"), identity))
         engine.sweep(now.plusSeconds(60)).map(_.collected) ==> Right(Vector())
+        // Two minutes after it was first kept, but not yet after it stopped being current.
+        engine.sweep(now.plusSeconds(125)).map(_.collected) ==> Right(Vector())
         engine.sweep(now.plusSeconds(180)).map(_.collected.map(_.kind)) ==>
           Right(Vector(Target.Kind.PieceSet))
         LiveDb.transaction(config)(pieces.read(ids)).map(_.map(_.id)) ==> Right(ids.drop(1))

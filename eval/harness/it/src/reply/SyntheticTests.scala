@@ -205,11 +205,13 @@ object SyntheticTests extends TestSuite {
         ("decoy/plain", 0, 0),
         ("decoy/buried", 0, 0)
       )
-      // Made again under the first's name: the run dropped it.
-      (Scratch.create(beside, s"${prefix}_0") match {
-        case Right(again) => again.drop()
-        case Left(why) => Left(why)
-      }) ==> Right(())
+      // Each made again under its name: the run dropped every one.
+      laid.indices.toVector.map { i =>
+        Scratch.create(beside, s"${prefix}_$i") match {
+          case Right(again) => again.drop()
+          case Left(why) => Left(why)
+        }
+      } ==> Vector.fill(laid.size)(Right(()))
     }
 
     test("a case is judged by its window at a width: held when deployed, missed when narrow") {

@@ -473,10 +473,10 @@ object TurnViewTests extends TestSuite {
           TestPieces.anchor(text)
         )
       )
-      val label = got(DocLabel.of("Drive files"))
+      // Labels of different lengths, so a piece counted under the other's is miscounted.
       val held = Vector(
-        (piece(12, "Accounts are reviewed."), label, 3),
-        (piece(4, "Keys rotate."), label, 0)
+        (piece(12, "Accounts are reviewed."), got(DocLabel.of("Drive files")), 3),
+        (piece(4, "Keys rotate."), got(DocLabel.of("Security team's meeting notes")), 0)
       )
       val asked = Vector(
         user(0, 0, "who reviews accounts?"),

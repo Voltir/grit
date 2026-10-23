@@ -421,8 +421,18 @@ object TurnTests extends TestSuite {
     ) {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
-      runTurn(new InMemoryDurable, entries, provider, say(entries, "hello")) ==> Done
-      provider.requests.map(_.system.split("\n\n").toVector.lastOption) ==> Vector(Some(dated))
+      val durable = new InMemoryDurable
+      runTurn(durable, entries, new RecordingProvider, say(entries, "hello")) ==> Done
+      // Said after the conversation's first message, at a time of its own.
+      val later = say(entries, "and now?", at = Instant.parse("2026-03-04T15:30:00Z"))
+      val _ = runTurn(durable, entries, provider, later)
+      provider.requests.map(
+        _.system.split("\n\n").toVector.lastOption.map(_.takeWhile(_ != ';'))
+      ) ==> Vector(
+        Some(
+          "The message you are answering was said Wed 2026-03-04 15:30 UTC, this deployment's time (UTC)"
+        )
+      )
     }
 
     test(
@@ -433,8 +443,12 @@ object TurnTests extends TestSuite {
       val (ana, gia) = (TestAccounts.account("slack:T1/U1"), TestAccounts.account("slack:T1/U2"))
       principals.zoned(ana, ZoneId.of("America/Los_Angeles"))(using TestTx.fake)
       // The first clause of the line its one call's system prompt ends with.
-      def told(text: String, by: grit.core.identity.Account): Vector[Option[String]] = {
-        val asked = say(entries, text)
+      def told(
+          text: String,
+          by: grit.core.identity.Account,
+          at: Instant
+      ): Vector[Option[String]] = {
+        val asked = say(entries, text, at = at)
         principals.authored(EntryId(s"in:$text"), by)
         val turn = new RecordingProvider
         val eastern = ZoneId.of("America/New_York")
@@ -450,16 +464,19 @@ object TurnTests extends TestSuite {
         )
         turn.requests.map(_.system.split("\n\n").toVector.lastOption.map(_.takeWhile(_ != ';')))
       }
-      // Every fixture entry is made at the epoch.
-      (told("hello", ana), told("thanks", gia)) ==> (
+      // Each message said at a time of its own, the second in summer time.
+      (
+        told("hello", ana, Instant.parse("2026-01-15T17:45:00Z")),
+        told("thanks", gia, Instant.parse("2026-07-01T12:10:00Z"))
+      ) ==> (
         Vector(
           Some(
-            "The message you are answering was said Wed 1969-12-31 16:00 PST, the person's time (America/Los_Angeles)"
+            "The message you are answering was said Thu 2026-01-15 09:45 PST, the person's time (America/Los_Angeles)"
           )
         ),
         Vector(
           Some(
-            "The message you are answering was said Wed 1969-12-31 19:00 EST, this deployment's time (America/New_York)"
+            "The message you are answering was said Wed 2026-07-01 08:10 EDT, this deployment's time (America/New_York)"
           )
         )
       )
@@ -737,6 +754,22 @@ object TurnTests extends TestSuite {
         "ask:relevance-2:record",
         "assemble"
       )
+    }
+
+    test("the judge reads the first 1,200 characters of each candidate") {
+      val entries = new InMemoryEntryStore
+      val sifter = new Sifter
+      val turn = say(entries, "hello")
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new StubProvider(),
+          new Searching(entries, 1, padding = 1300),
+          new InMemoryUsageLedger,
+          sifter
+        )
+      ) ==> Done
+      sifter.asked ==> Vector(Vector("relevant candidate 0" + "." * 1180))
     }
 
     test("a turn's search reads back as its query, the results it recorded and each verdict") {

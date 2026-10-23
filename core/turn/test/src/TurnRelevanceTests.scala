@@ -79,7 +79,7 @@ object TurnRelevanceTests extends TestSuite {
       )
     }
 
-    test("the judge reads 1,200 characters of each candidate: the head of a 400-token piece") {
+    test("the judge's cut is pinned as measured: 1,200 characters, a 400-token piece's head") {
       // Pinned as measured: 1,200 characters under 400-token pieces judged more answering
       // pieces relevant than 800 under 200, the quote still within what was read.
       (TurnRelevance.Chars, grit.core.files.Pieces.Target) ==>

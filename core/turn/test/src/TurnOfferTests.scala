@@ -155,9 +155,6 @@ object TurnOfferTests extends TestSuite {
       _ => Outcome.Done(ToolName.value(name))
     )
 
-  /** The administering tools [[names]] offers. */
-  private val Administers = Set("label_room", "quiet_room")
-
   private def box(tools: Tool[String]*): Toolbox[{}] =
     Toolbox.of[{}](tools*).fold(d => throw new java.lang.AssertionError(d.toString), identity)
 
@@ -705,13 +702,8 @@ object TurnOfferTests extends TestSuite {
       names(Origin.Tui(dir, "default")) ==> Vector("about", "propose", "probe")
     }
 
-    test("a Slack thread's turn and a task's run are offered none of the operator's tools") {
-      names(slack).filterNot(Administers.contains) ==> Vector("about")
-      names(Origin.Task("nightly", "1")) ==> Vector("about")
-    }
-
     test(
-      "the admin tools are offered on an addressed or by-name turn in an edge's room, never on a heard one, nor in a direct message or a directory conversation"
+      "the admin tools are offered on an addressed or by-name turn in an edge's room, never on a heard one, nor in a direct message or a directory conversation; the operator's only in a directory conversation"
     ) {
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       val said = Some(Payload.Message(Message.User("make this room internal")))
