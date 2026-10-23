@@ -23,7 +23,8 @@ Decision:
   `Format` holds no capability; a deployment's `Formats` gives, for each `Kind`, the formats
   tried in order, and the first that does not answer `Unread.NotMine` wins.
 - **A file's kind is its bytes'.** `Kind.sniff` reads its first bytes, and a zip's entries'
-  names; the type its sender claims breaks only a tie.
+  names; the type its sender claims breaks only a tie: a zip holding both a document and a
+  workbook, or text claimed as a native file's API answer (a Google Slides deck's JSON).
 - **Read into prose, noted by where it lies.** A reader makes a `Doc[Locus]` (ADR 0043): a
   span on a page carries `Locus.Page`, so a paragraph crossing a page break keeps both pages.
   Footnotes and endnotes are an end section, referenced as `[n]`.

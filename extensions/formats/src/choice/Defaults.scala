@@ -16,8 +16,8 @@ object Defaults {
     case Kind.Pdf => Vector(Pdf)
     case Kind.Word => Vector(Docx)
     case Kind.Excel => Vector(Xlsx)
-    case Kind.OldOffice | Kind.ExcelBinary | Kind.OtherZip | Kind.Text | Kind.Image |
-        Kind.Unknown =>
+    case Kind.OldOffice | Kind.ExcelBinary | Kind.OtherZip | Kind.GoogleSlides | Kind.Text |
+        Kind.Image | Kind.Unknown =>
       Vector.empty
   }
 }

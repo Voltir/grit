@@ -23,6 +23,11 @@ enum Kind derives CanEqual {
   /** A zip holding neither a Word document nor an Excel workbook. */
   case OtherZip
 
+  /** A Google Slides deck as the Slides API answers it: JSON, told from other text only by its
+    * sender's claim (`application/vnd.google-apps.presentation`).
+    */
+  case GoogleSlides
+
   /** Text in UTF-8, with no NUL among its first bytes. */
   case Text
 
@@ -40,6 +45,7 @@ enum Kind derives CanEqual {
     case OldOffice => "an older Office file (.doc, .xls or .ppt) or a locked one"
     case ExcelBinary => "an Excel binary workbook (.xlsb)"
     case OtherZip => "a zip file"
+    case GoogleSlides => "a Google Slides deck"
     case Text => "a text file"
     case Image => "an image"
     case Unknown => "a file of a type not known here"
@@ -52,9 +58,10 @@ object Kind {
   val Head: Int = 1024
 
   /** The kind `head` (a file's first [[Head]] bytes, or all of a shorter one) shows; for a zip,
-    * by `entries`, its entries' names, asked only of a zip; `claimed`, a media type its sender
-    * gave, decides only a zip holding both a Word document and a workbook, and an empty file
-    * (text when it claims `text/`, else [[Unknown]]).
+    * by `entries`, its entries' names, asked only of a zip. `claimed`, a media type its sender
+    * gave, decides only a zip holding both a Word document and a workbook; an empty file (text
+    * when it claims `text/`, else [[Unknown]]); and text that is a JSON object ([[GoogleSlides]]
+    * when it claims `application/vnd.google-apps.presentation`, else [[Text]]).
     */
   def sniff(head: Vector[Byte], entries: => Vector[String], claimed: Option[String]): Kind = {
     def starts(magic: Int*): Boolean =
@@ -75,9 +82,15 @@ object Kind {
       (starts(0x52, 0x49, 0x46, 0x46) && head.length >= 12 &&
         head.slice(8, 12).map(_.toChar).mkString == "WEBP")
     ) Image
-    else if (text(head)) Text
+    else if (text(head))
+      if (claimed.contains(SlidesType) && head.find(b => !Character.isWhitespace(b.toInt)).contains('{'.toByte))
+        GoogleSlides
+      else Text
     else Unknown
   }
+
+  /** The media type Drive gives a Google Slides deck. */
+  private val SlidesType = "application/vnd.google-apps.presentation"
 
   /** `%PDF-` within the head, where a PDF reader looks for it. */
   private def pdf(head: Vector[Byte]): Boolean =

@@ -19,6 +19,7 @@ object KindTests extends TestSuite {
     Vector("[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml")
   private val Docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   private val Xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  private val SlidesDeck = "application/vnd.google-apps.presentation"
 
   val tests = Tests {
     test("a file is known by its bytes, never by the type its sender claims") {
@@ -65,6 +66,17 @@ object KindTests extends TestSuite {
         Kind.sniff(zip, docx ++ xlsx, Some(Xlsx)),
         Kind.sniff(zip, docx ++ xlsx, Some(Docx))
       ) ==> Vector(Kind.Text, Kind.Unknown, Kind.Excel, Kind.Word)
+    }
+
+    test("a JSON object is a Slides deck only when it is claimed as one") {
+      val deck = bytes("""  {"presentationId": "p1", "slides": []}""")
+      Vector(
+        Kind.sniff(deck, Vector.empty, Some(SlidesDeck)),
+        Kind.sniff(deck, Vector.empty, None),
+        Kind.sniff(deck, Vector.empty, Some("application/json")),
+        Kind.sniff(bytes("""["p1"]"""), Vector.empty, Some(SlidesDeck)),
+        Kind.sniff(bytes("Roadmap {draft}"), Vector.empty, Some(SlidesDeck))
+      ) ==> Vector(Kind.GoogleSlides, Kind.Text, Kind.Text, Kind.Text, Kind.Text)
     }
   }
 }
