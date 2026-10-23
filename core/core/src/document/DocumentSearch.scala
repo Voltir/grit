@@ -2,7 +2,6 @@ package grit.core.document
 
 import java.time.Instant
 
-import grit.core.files.KeptPiece
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -81,18 +80,6 @@ trait DocumentSearch {
       terms <- if (kept.isEmpty) Right(Vector.empty) else declared()
       labels = terms.toMap
     } yield kept.flatMap(d => labels.get(d.plugin).map(t => d -> t.label))
-
-  /** Those of `pieces` whose plugin is enabled, in their order, each with its plugin's label:
-    * what a window holding them shows.
-    */
-  final def labelledPieces(pieces: Vector[KeptPiece])(using
-      Tx^
-  ): Either[StoreError, Vector[(KeptPiece, DocLabel)]] =
-    for {
-      // The terms in force are read only when a piece is left to label.
-      terms <- if (pieces.isEmpty) Right(Vector.empty) else declared()
-      labels = terms.toMap
-    } yield pieces.flatMap(p => labels.get(p.plugin).map(t => p -> t.label))
 }
 
 object DocumentSearch {

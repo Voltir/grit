@@ -83,22 +83,24 @@ In dependency order, each with the core packages it imports:
 - **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
   `place`
-- **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
-  `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
-  every span noted with where it lies, never silently wrong (what a read covers and missed is
-  in its result, ADR 0044), and a range of that tree as the model reads it; and the file area
-  (ADR 0045): files an edge puts under handles, kept a while, that a transaction admits and
-  its holder opens outside it; a tree cut into pieces of about one judged candidate's size
-  (`Pieces`), the text each is searched by (`PieceIndex`), and the pieces a plugin keeps of a
-  file, bounded in bytes, as windows search them (`PieceKeeper`, `PieceSearch`); and where a
-  passage lies in a file's text, found again after the file changes (`Anchor`). ← `clock`,
-  `id`, `place`, `host`, `visibility`, `store`, `message`, `provider`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
   `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
   key, or a withdrawal, supersedes it. ← `id`, `place`, `visibility`, `store`, `tool`
+- **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
+  `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
+  every span noted with where it lies, never silently wrong (what a read covers and missed is
+  in its result, ADR 0044), a range of that tree as the model reads it, and the arguments a
+  reading tool takes for one (`RangeArgs`); and the file area (ADR 0045): files an edge puts
+  under handles, kept a while, that a transaction admits and its holder opens outside it; a
+  tree cut into pieces of about one judged candidate's size (`Pieces`), the text each is
+  searched by (`PieceIndex`), and the pieces a plugin keeps of a file, bounded in bytes, as
+  windows search and label them (`PieceKeeper`, `PieceSearch`); and where a passage lies in a
+  file's text, found again after the file changes (`Anchor`). Above `tool` and `document`, so
+  a kept file may name the call that reads it. ← `clock`,
+  `id`, `place`, `host`, `visibility`, `store`, `message`, `provider`, `tool`, `document`
 - **`review`**: what a person says of what grit puts up for review, by one edge path
   (`Reviews`): a verdict on grit's speech decision, asked of a few heard messages a day and kept
   after the message's entry is gone (ADR 0022), and a word on a plugin's document, kept after

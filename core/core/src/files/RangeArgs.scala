@@ -1,6 +1,6 @@
-package grit.core.tool
+package grit.core.files
 
-import grit.core.files.FileRange
+import grit.core.tool.{ArgsError, Field}
 
 /** The arguments every tool that reads a file a range at a time takes for its range, each
   * optional: `pages`, `section` and `from`, as [[FileRange.parse]] reads them.

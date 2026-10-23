@@ -4,7 +4,7 @@ import java.io.InputStream
 
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
-import grit.core.files.{FileError, FileOrigin, FileRange, Incoming, Intake, PutKey}
+import grit.core.files.{FileError, FileOrigin, FileRange, Incoming, Intake, PutKey, RangeArgs}
 import grit.core.id.{CallSlot, EdgeName}
 import grit.core.tool.{
   Args,
@@ -14,7 +14,6 @@ import grit.core.tool.{
   Gate,
   Hosted,
   Outcome,
-  RangeArgs,
   Retry,
   Tool,
   ToolName,

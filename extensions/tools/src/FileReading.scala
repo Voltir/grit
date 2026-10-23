@@ -1,6 +1,6 @@
 package grit.tools
 
-import grit.core.files.{FileError, FileRange, Files}
+import grit.core.files.{FileError, FileRange, Files, RangeArgs}
 import grit.core.id.FileHandle
 import grit.core.store.Tx
 import grit.core.tool.{
@@ -11,7 +11,6 @@ import grit.core.tool.{
   Gate,
   Hosted,
   Outcome,
-  RangeArgs,
   Retry,
   Tool,
   ToolName,
