@@ -145,11 +145,58 @@ object MarkdownTests extends TestSuite {
 
   val tests = Tests {
 
-    test("write then parse gives back every doc the parser makes in these tests") {
+    test("text is written as it is: brackets, underscores, stars, angles and backslashes bare") {
+      Vector(
+        Markdown.write(Doc(Vector(para(marked("[Assignment: organization-defined frequency]"))))),
+        Markdown.write(Doc(Vector(para(marked("a_b*c<d> and \\n, ![x](y)"))))),
+        Markdown.write(Doc(Vector(Block.Heading(Level.of(2), plain("AC-2 [Withdrawn]")))))
+      ) ==> Vector(
+        "[Assignment: organization-defined frequency]",
+        "a_b*c<d> and \\n, ![x](y)",
+        "## AC-2 [Withdrawn]"
+      )
+    }
+
+    test("a paragraph starting as a block would is still escaped there: - 1. # > ``` and |") {
+      Vector("- a", "1. b", "# c", "> d", "```e", "| f", "* g", "_ _ _")
+        .map(s => Markdown.write(Doc(Vector(para(marked(s)))))) ==>
+        Vector("\\- a", "1\\. b", "\\# c", "\\> d", "\\```e", "\\| f", "\\* g", "\\_ _ _")
+    }
+
+    test(
+      "each span's text is written whole, in a run of the output, but for the escapes a block needs"
+    ) {
+      // The escapes a block needs: `#` in a heading, `|` in a cell, and a line's leading marker,
+      // whose lines are left out here.
+      def spans(blocks: Vector[Block[Nothing]]): Vector[String] = blocks.flatMap {
+        case Block.Paragraph(t) => t.spans.flatMap(_.text.split("\n"))
+        case Block.Heading(_, t) => t.spans.map(_.text.replace('\n', ' ').replace("#", "\\#"))
+        case Block.Bullets(items) => items.flatMap(i => spans(i.blocks))
+        case Block.Numbered(_, items) => items.flatMap(i => spans(i.blocks))
+        case Block.Quote(bs) => spans(bs)
+        case Block.Table(cs, rs) =>
+          (cs.map(_.name) ++ rs.flatten.map(_.shown))
+            .flatMap(_.spans.map(_.text.replace('\n', ' ').replace("|", "\\|")))
+        case Block.Code(_, _) | Block.Rule => Vector.empty
+      }
+      def leads(s: String): Boolean =
+        s.headOption.exists(c => c.isDigit || "#>-+*~:|=`_<".contains(c))
+      val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse).distinct
+      docs.flatMap { d =>
+        val written = Markdown.write(d)
+        spans(d.blocks)
+          .filter(s => s.trim.nonEmpty && !leads(s) && !written.contains(s))
+          .map(s => s"'$s' not in ${written.replace("\n", "⏎")}")
+      } ==> Vector.empty
+    }
+
+    test("write then parse gives back every doc these tests read that holds no inline marker") {
       // Every prefix of the sample too, read whole: parsePrefix keeps a trailing space parse
-      // never makes.
+      // never makes. A doc whose text holds `\`, a backtick, a bracket, `<`, `!`, `*` or `_`
+      // is written bare (see above), so it may read back otherwise.
+      def bare(d: Doc[Nothing]): Boolean = !shown(d.blocks).exists("\\`[]<!*_".contains(_))
       val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse)
-      val lost = docs.distinct.flatMap { d =>
+      val lost = docs.distinct.filter(bare).flatMap { d =>
         val written = Markdown.write(d)
         val read = Markdown.parse(written)
         Option.when(read != d)(s"$d\n  written as ${written.replace("\n", "⏎")}\n  read as $read")

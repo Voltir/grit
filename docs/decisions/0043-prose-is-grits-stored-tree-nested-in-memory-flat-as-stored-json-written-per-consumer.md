@@ -31,7 +31,10 @@ Decision:
   prose versions itself and stores each doc this way; it never keeps a codec of its own.
 - **Written per consumer.** `Renderer[Out]` is the one writer trait: the terminal's
   `ProseLook`; Slack's `RichText`. The model's markdown is `Markdown.write`, total over any
-  doc, whose output `Markdown.parse` reads back exactly for a doc it made; it becomes a
+  doc, written for a reader, not to be parsed back (nothing does but a test): each span's
+  text whole and bare (`[Assignment: …]`, `a_b`, `*`), escaping only what would start a block
+  (a line's leading marker, `#` in a heading, `|` in a cell); `Markdown.parse` reads back
+  exactly a doc it made with no inline marker in its text. It becomes a
   `Renderer` value with its first caller that takes one, as an index's writer will. A
   renderer is a function of the doc and what it was built with.
 - **What is rendered at keep time stays so.** A document's `body` is its text as the model

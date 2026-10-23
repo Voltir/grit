@@ -314,26 +314,21 @@ private[markdown] object Inlines {
     if (padded) s"$fence $t $fence" else s"$fence$t$fence"
   }
 
-  /** `s` with each character escaped that would otherwise read as a marker: `\`, backticks,
-    * brackets and `<` always, `*` unless between spaces, `_` unless inside a word, a `!` that
-    * a link may follow, and at a line's start (`lineStart` for the first) a block marker.
+  /** `s` with each character escaped that would otherwise start a block: at a line's start
+    * (`lineStart` for the first) a block marker, `.` or `)` after a line's leading digits, and
+    * `#` in a heading. Inline markers are written bare: nothing parses this text back but a
+    * test, and a reader, person or model, takes `[`, `_` or `*` as they are.
     */
   private def literal(s: String, lineStart: Boolean, heading: Boolean): String = {
     val out = new StringBuilder
     var start = lineStart
     var digits = if (lineStart) 0 else -1
-    def at(k: Int): Option[Char] = Option.when(k >= 0 && k < s.length)(s.charAt(k))
     s.indices.foreach { k =>
       val c = s.charAt(k)
       val escaped =
-        "\\`[]<".contains(c) ||
-          (start && "#>-+*~:|=".contains(c)) ||
+        (start && "#>-+*~:|=`_<".contains(c)) ||
           (c == '#' && heading) ||
-          ((c == '.' || c == ')') && digits > 0) ||
-          (c == '*' && !(at(k - 1).exists(_ == ' ') && at(k + 1).exists(_ == ' '))) ||
-          (c == '_' && !(at(k - 1)
-            .exists(_.isLetterOrDigit) && at(k + 1).exists(_.isLetterOrDigit))) ||
-          (c == '!' && k == s.length - 1)
+          ((c == '.' || c == ')') && digits > 0)
       if (escaped) out += '\\'
       out += c
       start = c == '\n'

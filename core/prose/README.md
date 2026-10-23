@@ -17,8 +17,9 @@ In dependency order:
   `Cell.printed` is what every renderer prints for it. Imports nothing in prose.
 - **`markdown`** -- `Markdown.parse` for a whole reply and `Markdown.parsePrefix` for one
   still streaming, which holds back what the next token may still change so that each
-  prefix renders as the start of the whole. `Markdown.write` is the way back, the model's
-  text: total over any doc, and read back exactly by `parse` for a doc `parse` made.
+  prefix renders as the start of the whole. `Markdown.write` is the model's text: total over
+  any doc, each span's text written bare but for what would start a block, and read back
+  exactly by `parse` only for a doc `parse` made that holds no inline marker.
   Hand-written, total, and a subset: what it reads and writes is in `Blocks` and `Inlines`.
   ← `form`
 - **`json`** -- `ProseJson`, the stored form: a flat list of records under a schema version,

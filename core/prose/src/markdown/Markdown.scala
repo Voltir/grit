@@ -20,12 +20,14 @@ object Markdown {
     */
   def parsePrefix(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(held(text)), open = true))
 
-  /** `doc` as markdown, whatever made it: a table's cells as they print
+  /** `doc` as markdown, for a reader, not for [[parse]]: a table's cells as they print
     * ([[grit.prose.form.Cell.printed]]), a line break as `\` at its line's end (a space in a
-    * heading or a cell), a list at any depth. [[parse]] reads back exactly the doc it made from
-    * this one's output; a doc no parse makes reads back as another: a number column as words,
-    * a marked span starting or ending in a space, a span marked strong then one marked emphasis
-    * ending inside a word.
+    * heading or a cell), a list at any depth. Each span's text is written whole and bare, but
+    * for what a block needs escaped: a line's leading block marker, `.` or `)` after a line's
+    * leading digits, `#` in a heading and `|` in a cell. [[parse]] reads back exactly a doc it
+    * made whose text holds no `\`, backtick, bracket, `<`, `!`, `*` or `_`; any other may read
+    * back as another, as may a number column (as words), a marked span starting or ending in a
+    * space, and a span marked strong then one marked emphasis ending inside a word.
     */
   def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks).mkString("\n")
 
