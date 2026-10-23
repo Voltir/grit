@@ -14,6 +14,8 @@ import grit.core.act.{
   MoveName,
   Moves,
   MovesFixtures,
+  Pieced,
+  Piecing,
   Posed
 }
 import grit.core.classify.{Answer as Judged, Ask, ClassifierError, StateJson}
@@ -29,8 +31,17 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.Journaled
+import grit.core.files.{
+  Covers,
+  FileError,
+  Files,
+  FormatName,
+  KeptPiece,
+  Locus,
+  Understood
+}
 import grit.core.flow.{Shape, Tainted, TestTainted}
-import grit.core.id.{DocKey, DocumentVersionId, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
 import grit.core.place.{Namespace, Place, Service}
@@ -43,6 +54,7 @@ import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Level}
 import grit.dbos.sql.TestTx
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import utest.*
 
@@ -95,7 +107,70 @@ abstract class MovesContract extends TestSuite {
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])])
 
+  /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose piece moves keep
+    * [[MovesWorld.Notes]]' pieces in transactions opened at [[Floor]], reading the file
+    * [[Policy]] of [[Pages]], as a format reading pages gives it, under the handle given to
+    * `use`, and no other; and that plugin's current pieces afterwards, as a run at [[Floor]]
+    * reads them.
+    */
+  def piecing[A <: caps.Pure](limits: MoveLimits)(
+      use: (Keeping^, FileHandle) -> A
+  ): (A, Vector[KeptPiece])
+
   val tests = Tests {
+    test(
+      "a piece move keeps the pieces of the file its handle names at the floor, believed as what it pieces from, under the name its sender gave"
+    ) {
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        Made(Vector(m.piece(name("p"), TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Outside))))
+      }
+      (got, kept.map(k => (k.file.ref, k.file.name, k.file.revision, k.label, k.integrity, k.piece.text))) ==> (
+        Made(Vector(Right(Pieced.Kept(1, 0)))),
+        Vector(("a", Policy, "r1", Floor, Integrity.Outside, Pages.mkString("\n\n")))
+      )
+    }
+
+    test(
+      "a piece move of a file the area does not keep is Unread in the area's words, and withdraws the pieces kept of it"
+    ) {
+      val missing = FileHandle.read("f999").getOrElse(throw new java.lang.AssertionError("f999"))
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        Made(Vector(file, missing).zipWithIndex.map { (f, i) =>
+          m.piece(name(s"p$i"), TestTainted.at(Piecing.Read(f, "a", "r1", Here, Vector()), Believed))
+        })
+      }
+      (got, kept) ==> (
+        Made(Vector(
+          Right(Pieced.Kept(1, 0)),
+          Right(Pieced.Unread(FileError.Gone(missing, Files.Expiry).message))
+        )),
+        Vector()
+      )
+    }
+
+    test(
+      "a piece move from what is believed less than Outside is Below: nothing is read or kept, and its name is spent"
+    ) {
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        val read = Piecing.Read(file, "a", "r1", Here, Vector())
+        Made(Vector(TestTainted.at(read, Integrity.Untrusted), TestTainted.at(read, Believed))
+          .map(m.piece(name("p"), _)))
+      }
+      (got, kept) ==> (
+        Made(Vector(Left(MoveError.Below(Integrity.Untrusted)), Left(MoveError.Repeated(name("p"))))),
+        Vector()
+      )
+    }
+
+    test("a piece move withdrawing files withdraws each one's pieces at its label, counting those that had any") {
+      val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
+        val read = m.piece(name("p"), TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Believed))
+        val gone = Vector(("a", Label.Public), ("a", Floor), ("b", Floor))
+        Made(Vector(read, m.piece(name("w"), TestTainted.at(Piecing.Withdraw(gone), Believed))))
+      }
+      (got, kept) ==> (Made(Vector(Right(Pieced.Kept(1, 0)), Right(Pieced.Withdrawn(1)))), Vector())
+    }
+
     test(
       "an ask is answered as its world answers at the world's floor, and a call done with its edge's answer at its service's place's label"
     ) {
@@ -774,6 +849,9 @@ object MovesContract {
       case Right(keys) => keys.newest().map(ks => Kept(ks.mkString(",")))
     }
 
+  /** What a run's piece moves came to, in order. */
+  final case class Made(pieced: Vector[Either[MoveError, Pieced]]) extends caps.Pure
+
   /** The label a keep wrote at, journaled as its written form. */
   final case class Kept(label: String) extends caps.Pure
   object Kept {
@@ -977,6 +1055,24 @@ object MovesContract {
 
   /** What a call of [[Tool]] at [[Probe]] is answered. */
   val Read = "read"
+
+  /** The name a piece move's file was given by its sender. */
+  val Policy = "policy.pdf"
+
+  /** The pages of [[Policy]], each one paragraph: few enough words to be one piece. */
+  val Pages: Vector[String] = Vector("Accounts are disabled after ninety days.", "Keys rotate yearly.")
+
+  /** [[Pages]] as a format reading pages reads them: each page a paragraph noted with its page. */
+  val Paged: Understood =
+    Understood(
+      Doc(Pages.zipWithIndex.map { (page, i) =>
+        Block.Paragraph(Text(Vector(Span(page, Set.empty, Vector(Locus.Page(i + 1)))))): Block[Locus]
+      }),
+      Covers.Whole,
+      Vector.empty,
+      FormatName("paged-text"),
+      1
+    )
 
   /** The least label every transaction of the world is opened at: above public, so a move that
     * reports public whatever its floor is seen.

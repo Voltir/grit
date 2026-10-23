@@ -2,9 +2,10 @@ package grit.job.run
 
 import java.time.Instant
 
-import grit.act.moves.{DurableMoves, MovesEnv}
+import grit.act.moves.{DurableMoves, KeepingEnv, MovesEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates}
 import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.files.PieceKeeper
 import grit.core.durable.{Durable, Flow, Flows, Step as DurableStep, StepName, Steps}
 import grit.core.flow.Trusted
 import grit.core.id.{EntryId, JobName, PluginName, TurnRef, WorkflowId}
@@ -65,6 +66,7 @@ object Run {
       jobs: Jobs,
       budget: Budget,
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
+      pieces: PluginName -> PieceKeeper,
       reads: Dreaming.Reads
   ): Flow[RunEnv, WorkflowId, String, String] =
     Flow
@@ -75,8 +77,8 @@ object Run {
       })
       .andThen(
         Flow.branch((r: (TurnRef, SlotRead.Read)) => planned(jobs, budget, r._1, r._2))(
-          moves(keepers, reads)
-            .over[RunEnv](env => env.moves)
+          moves(keepers, pieces, reads)
+            .over[RunEnv](env => KeepingEnv(env.moves, env.files, env.jot))
             .keeping
             .map { (p, text) =>
               Replying(p.acting.turn, p.read, Planned.Says(text))
@@ -96,7 +98,7 @@ object Run {
     * of `jobs` and `env`'s budget, keepers and reads.
     */
   def body(env: RunEnv^, jobs: Jobs)(id: WorkflowId)(using d: Durable^): String =
-    Flows.run(flow(jobs, env.budget, env.keepers, env.reads), env, id).merge
+    Flows.run(flow(jobs, env.budget, env.keepers, env.pieces, env.reads), env, id).merge
 
   /** What a read slot comes to under `jobs`: its job's moves to make under the acting of its
     * schedule, admitted by `budget`, or a reply that makes none.
@@ -131,16 +133,19 @@ object Run {
   /** A job's run: the moves it makes, through the steps of a program, and its reply. */
   private def moves(
       keepers: (PluginName, DocumentTerms) -> DocumentKeeper,
+      pieces: PluginName -> PieceKeeper,
       reads: Dreaming.Reads
-  ): Flow[MovesEnv, Planning, Nothing, String] =
-    Flow.program[MovesEnv, Planning, String]("moves", DurableMoves.Within) { steps => p =>
+  ): Flow[KeepingEnv, Planning, Nothing, String] =
+    Flow.program[KeepingEnv, Planning, String]("moves", DurableMoves.Within) { steps => p =>
       p.owned match {
         case Owned.Deployments(job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Plugins(_, job) => plain(job, p.read, p.acting)(using steps)
         case Owned.Keeps(plugin, terms, job) =>
-          keeping(job, p.read, p.acting, keepers(plugin, terms))(using steps)
+          keeping(job, p.read, p.acting, keepers(plugin, terms), pieces(plugin))(using steps)
         case Owned.Dreams(plugin, terms, job) =>
-          dreaming(job, p.read, p.acting, plugin, keepers(plugin, terms), reads)(using steps)
+          dreaming(job, p.read, p.acting, plugin, keepers(plugin, terms), pieces(plugin), reads)(
+            using steps
+          )
       }
     }
 
@@ -259,10 +264,13 @@ object Run {
       job: KeepingJob[P],
       read: SlotRead.Read,
       acting: Acting,
-      keeper: DocumentKeeper
-  )(using steps: Steps[MovesEnv]^): String =
+      keeper: DocumentKeeper,
+      pieces: PieceKeeper
+  )(using steps: Steps[KeepingEnv]^): String =
     said(job, read, acting)(run =>
-      DurableMoves.keeping(acting, job.limits, keeper)(moves => Said(job.run(run, moves))).text
+      DurableMoves
+        .keeping(acting, job.limits, keeper, pieces)(moves => Said(job.run(run, moves)))
+        .text
     )
 
   /** As [[keeping]], `plugin`'s, its moves also reading `reads`. */
@@ -272,11 +280,14 @@ object Run {
       acting: Acting,
       plugin: PluginName,
       keeper: DocumentKeeper,
+      pieces: PieceKeeper,
       reads: Dreaming.Reads
-  )(using steps: Steps[MovesEnv]^): String =
+  )(using steps: Steps[KeepingEnv]^): String =
     said(job, read, acting)(run =>
       DurableMoves
-        .dreaming(acting, job.limits, plugin, keeper, reads)(moves => Said(job.run(run, moves)))
+        .dreaming(acting, job.limits, plugin, keeper, pieces, reads)(moves =>
+          Said(job.run(run, moves))
+        )
         .text
     )
 

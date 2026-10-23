@@ -14,10 +14,13 @@ import grit.core.act.{
   MoveLimits,
   MoveName,
   Moves,
+  Pieced,
+  Piecing,
   Posed
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
 import grit.core.document.DocumentKeeper
+import grit.core.files.PieceKeeper
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
 import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
@@ -60,11 +63,16 @@ object DurableMoves {
   def started[P <: caps.Pure](run: JobRun[P], acting: Acting): Trusted[JobRun[P]] =
     Mint.trusted(run, acting.integrity)
 
-  /** As [[plain]], its moves also keeping `keeper`'s documents. */
-  def keeping[A <: caps.Pure](acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(
-      body: Keeping^ => A
-  )(using steps: Steps[MovesEnv]^): A =
-    body(new Kept(acting, limits, keeper))
+  /** As [[plain]], its moves also keeping `keeper`'s documents and `pieces`' pieces of files,
+    * each piece move recorded as `piece:{name}`.
+    */
+  def keeping[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      pieces: PieceKeeper
+  )(body: Keeping^ => A)(using steps: Steps[KeepingEnv]^): A =
+    body(new Kept(acting, limits, keeper, pieces))
 
   /** As [[keeping]], `plugin`'s, its moves also reading `reads` ([[Dreaming]]), its scans
     * `plugin`'s needs; a summary reading the documents of `plugin` and its needs alone, in its
@@ -76,9 +84,10 @@ object DurableMoves {
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
+      pieces: PieceKeeper,
       reads: Dreaming.Reads
-  )(body: Dreaming^ => A)(using steps: Steps[MovesEnv]^): A =
-    body(new Dreamt(acting, limits, plugin, keeper, reads))
+  )(body: Dreaming^ => A)(using steps: Steps[KeepingEnv]^): A =
+    body(new Dreamt(acting, limits, plugin, keeper, pieces, reads))
 
   /** One run's moves, its keeps over `keeper`, the rest over `reads` as [[dreaming]] says. */
   private final class Dreamt(
@@ -86,9 +95,10 @@ object DurableMoves {
       limits: MoveLimits,
       plugin: PluginName,
       keeper: DocumentKeeper,
+      pieces: PieceKeeper,
       reads: Dreaming.Reads
-  )(using steps: Steps[MovesEnv]^)
-      extends Kept(acting, limits, keeper),
+  )(using steps: Steps[KeepingEnv]^)
+      extends Kept(acting, limits, keeper, pieces),
         Dreaming {
 
     private val needs = reads.needs(plugin)
@@ -160,11 +170,24 @@ object DurableMoves {
       }
   }
 
-  /** One run's moves, and its keeps over `keeper`. */
-  private class Kept(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(using
-      steps: Steps[MovesEnv]^
+  /** One run's moves, its keeps over `keeper` and its piece moves over `pieces`. */
+  private class Kept(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper, pieces: PieceKeeper)(
+      using steps: Steps[KeepingEnv]^
   ) extends Run(acting, limits),
         Keeping {
+
+    def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced] =
+      refused(name, MoveKind.Keep).toLeft(()).flatMap { _ =>
+        if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
+        else {
+          val piecing = Trusted.asIs(from).extract
+          steps
+            .run(Flow.step(Act.piece), Act.Piece(name, acting, piecing, pieces, from.integrity))
+            .merge
+            .left
+            .map(MoveError.Store(_))
+        }
+      }
 
     def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
         body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]

@@ -15,7 +15,7 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
 import grit.core.edge.ServedEdge
-import grit.core.files.{FileArea, Files}
+import grit.core.files.{FileArea, Files, PieceKeeper}
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
@@ -407,8 +407,10 @@ private[grit] object Launch {
           jot,
           clock,
           moves,
+          files,
           d.budget,
           runtime.keeper,
+          plugin => runtime.pieceKeeper(plugin, PieceKeeper.Bound),
           Dreaming.Reads(
             StrandShelf.over(runtime.stitches, runtime.conversations),
             // A dreaming job's plugin is always among the deployment's: none other is asked.

@@ -1,7 +1,7 @@
 package grit.act.moves
 
 import grit.act.phase.Faults
-import grit.core.act.{Answer, Called}
+import grit.core.act.{Answer, Called, Pieced}
 import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
@@ -491,6 +491,25 @@ object MovesJournal {
           case (Some(value), _) => a.decode(value).map(Right(_))
           case (_, Some(why)) => Right(Left(why))
           case _ => Left("keep: expected kept or store")
+        }
+      }
+  )
+
+  /** What a piece move came to: `{"kept":n,"cut":n}`, `{"unread":why}` or `{"withdrawn":n}`. */
+  given pieced: Journaled[Pieced] = Journaled.json(
+    {
+      case Pieced.Kept(pieces, cut) => ujson.Obj("kept" -> pieces, "cut" -> cut)
+      case Pieced.Unread(why) => ujson.Obj("unread" -> why)
+      case Pieced.Withdrawn(files) => ujson.Obj("withdrawn" -> files)
+    },
+    v =>
+      fields(v, "piece").flatMap { o =>
+        def count(key: String) = o.get(key).flatMap(_.numOpt).map(_.toInt)
+        (count("kept"), count("cut"), o.get("unread").flatMap(_.strOpt), count("withdrawn")) match {
+          case (Some(kept), Some(cut), _, _) => Right(Pieced.Kept(kept, cut))
+          case (_, _, Some(why), _) => Right(Pieced.Unread(why))
+          case (_, _, _, Some(files)) => Right(Pieced.Withdrawn(files))
+          case _ => Left("piece: expected kept and cut, unread, or withdrawn")
         }
       }
   )

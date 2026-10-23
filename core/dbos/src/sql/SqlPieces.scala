@@ -17,7 +17,7 @@ import grit.core.id.{PieceId, PieceSetId, PluginName}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
-import grit.core.visibility.{Clearance, Integrity}
+import grit.core.visibility.{Clearance, Integrity, Label}
 
 /** [[PieceStore]] over `grit.piece_sets` and `grit.pieces`, ranked by their own BM25 index, its
   * keepers marking in `tombstones` the sets they leave for deletion.
@@ -215,10 +215,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
       } yield kept
     }
 
-    def withdraw(ref: String, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] =
+    def withdraw(ref: String, label: Label, at: Instant)(using Tx^): Either[StoreError, Boolean] =
       for {
-        label <- SqlLabels.intern(Tx.clearance(tx).floor)
-        before <- current(ref, label)
+        interned <- SqlLabels.intern(label)
+        before <- current(ref, interned)
         _ <- before.fold(Right(()))(supersede(_, at))
       } yield before.nonEmpty
 

@@ -13,18 +13,31 @@ import grit.act.phase.{
   WaitSteps,
   Waiting
 }
-import grit.core.act.{Acting, Allowance, Answer, Called, Dreaming, MoveError, MoveName, Posed}
+import grit.core.act.{
+  Acting,
+  Allowance,
+  Answer,
+  Called,
+  Dreaming,
+  MoveError,
+  MoveName,
+  Pieced,
+  Piecing,
+  Posed
+}
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
 import grit.core.document.{DocLabel, Document, DocumentKeeper, DocumentSearch}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
+import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.either.Traversal.sequence
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
   DocumentVersionId,
   EntryId,
+  FileHandle,
   PluginName,
   ToolCallId,
   TurnRef,
@@ -110,6 +123,9 @@ private[moves] object Act {
   /** A keep's `keep:{name}`. */
   val Keeps: ActName[Move] = ActName.keyed[Move]("keep")(m => MoveName.value(m.name))
 
+  /** A piece move's `piece:{name}`. */
+  val Piecings: ActName[Move] = ActName.keyed[Move]("piece")(m => MoveName.value(m.name))
+
   /** The text ask `name` of `request`, under `digest`. */
   final case class Text(name: MoveName, acting: Acting, request: ModelRequest, digest: String)
       extends Acted
@@ -171,6 +187,15 @@ private[moves] object Act {
   /** The keep `name` of `value` into `keeper`'s documents. */
   final case class Keep[I](name: MoveName, acting: Acting, value: I, keeper: DocumentKeeper)
       extends Acted
+
+  /** The piece move `name` of `piecing` into `keeper`'s pieces, believed at `integrity`. */
+  final case class Piece(
+      name: MoveName,
+      acting: Acting,
+      piecing: Piecing,
+      keeper: PieceKeeper,
+      integrity: Integrity
+  ) extends Acted
 
   /** What an ask's `ask:{n}` recorded, and its `ask:{n}:record`'s result: `Right` when it
     * recorded nothing to keep.
@@ -501,6 +526,50 @@ private[moves] object Act {
       )
     )
   }
+
+  /** A piece move's step: what [[grit.core.act.Keeping.piece]] says it does, admitting its file
+    * in a read and keeping its pieces through `jot`, each as the acting's subject, with no
+    * transaction held while the file is read; its result, or why nothing was kept.
+    */
+  val piece: Step[KeepingEnv, Piece, Either[String, Pieced]] = {
+    given Journaled[Either[String, Pieced]] = MovesJournal.kept[Pieced](using MovesJournal.pieced)
+    Step[KeepingEnv, Piece, Either[String, Pieced]](Piecings.move)(env =>
+      p => {
+        val (subject, at) = (p.acting.subject, env.clock.now())
+        val done: Either[StoreError, Pieced] = p.piecing match {
+          case Piecing.Withdraw(gone) =>
+            env.jot.write(subject)(Piecing.withdrawn(gone, p.keeper, at).map(Pieced.Withdrawn(_)))
+          case read: Piecing.Read =>
+            treeOf(env, subject, read.file).flatMap { file =>
+              env.jot.write(subject)(
+                Piecing.kept(read, file, p.keeper, p.integrity, env.records.estimator, at)
+              )
+            }
+        }
+        done.left.map(describe)
+      }
+    )
+  }
+
+  /** The name the sender gave the file `env`'s area keeps under `file`, and its tree as the
+    * area's formats read it; or why it is unread, the area's words; or the store's failure.
+    */
+  private def treeOf(
+      env: KeepingEnv^,
+      subject: Subject,
+      file: FileHandle
+  ): Either[StoreError, Either[String, (String, Understood)]] =
+    env.db.read(subject)((tx: Tx^) ?=> Right(env.files.admit(file))).flatMap {
+      case Left(FileError.Store(e)) => Left(e)
+      case Left(other) => Right(Left(other.message))
+      case Right(admitted) =>
+        env.files.open(admitted)(o => o.tree(env.files.formats)) match {
+          case Left(FileError.Store(e)) => Left(e)
+          case Left(other) => Right(Left(other.message))
+          case Right(Left(unread)) => Right(Left(unread.message))
+          case Right(Right(tree)) => Right(Right((admitted.record.name, tree)))
+        }
+    }
 
   /** The pins a move's ask is made under: the summary role's ([[Summaries]]) for every ask but
     * a dreaming job's summary, which is the dream role's ([[Dreams]]).

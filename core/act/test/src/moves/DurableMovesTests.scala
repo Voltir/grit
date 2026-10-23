@@ -1,5 +1,6 @@
 package grit.act.moves
 
+import java.io.{ByteArrayInputStream, InputStream}
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.act.MovesFixtures.{
@@ -25,6 +26,21 @@ import grit.core.document.{
 }
 import grit.core.durable.{Flow, Flows, InMemoryDurable}
 import grit.core.edge.Advert
+import grit.core.files.{
+  FileArea,
+  FileItem,
+  FileOrigin,
+  Files,
+  InMemoryFileCatalog,
+  InMemoryPieces,
+  Incoming,
+  KeptPiece,
+  NoFiles,
+  PagedText,
+  PieceKeeper,
+  PutKey
+}
+import grit.core.host.TempBlobs
 import grit.core.edge.{
   EdgeDirectory,
   InMemoryEdges,
@@ -33,7 +49,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.id.{CallSlot, ConversationId, PluginName, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, EdgeName, FileHandle, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
 import grit.core.message.Message
@@ -42,7 +58,7 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.stitch.StrandWorld
-import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, StoreError, Tx}
+import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 import grit.core.visibility.{
   Cap,
@@ -52,7 +68,10 @@ import grit.core.visibility.{
   Integrity,
   Label,
   Party,
+  Provenance,
+  Readers,
   RoomLabels,
+  Subject,
   Visibility
 }
 import grit.dbos.sql.TestTx
@@ -91,6 +110,37 @@ object DurableMovesTests extends MovesContract {
       .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(MovesContract.Floor)))
       .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
     (got, docs)
+  }
+
+  def piecing[A <: caps.Pure](limits: MoveLimits)(
+      use: (Keeping^, FileHandle) -> A
+  ): (A, Vector[KeptPiece]) = {
+    val w = new MovesWorld(broken = false, MovesContract.Floor)
+    TempBlobs.around { blobs =>
+      val area =
+        new FileArea(new InMemoryFileCatalog, blobs, w.jot, w.clock, PagedText.formats)
+      val file = area
+        .put(
+          PutKey.read("tool:test:0:1"),
+          MovesContract.Policy,
+          Some("application/pdf"),
+          FileOrigin(EdgeName("drive"), "policy", Some("7"), MovesWorld.Start),
+          FileItem(Provenance(MovesContract.Here, Integrity.Member), Readers.AtPlace),
+          new Given(PagedText.bytes(MovesContract.Pages*))
+        )(_ => ())
+        .fold(e => throw new java.lang.AssertionError(e.message), _._1.handle)
+      val got = w.keeping(limits, w.keeper, area)(m => use(m, file))
+      (got, w.pieces.current(MovesWorld.Notes)(using TestTx.fake(Clearance.of(MovesContract.Floor))))
+    }
+  }
+
+  /** `bytes`, as a source gives them. */
+  private final class Given(bytes: Vector[Byte]) extends Incoming {
+    // Each byte as the one character ISO-8859-1 encodes back to it.
+    private val latin = bytes.map(b => (b & 0xff).toChar).mkString
+    def declared: Option[Long] = Some(bytes.size.toLong)
+    def read[A](body: InputStream^ => A): Either[String, A] =
+      Right(body(new ByteArrayInputStream(latin.getBytes("ISO-8859-1"))))
   }
 
   def dreaming[A <: caps.Pure](
@@ -242,17 +292,34 @@ final class MovesWorld(
   /** [[Notes]]' documents as it writes them. */
   val keeper: DocumentKeeper = documents.keeper(Notes, NotesTerms)
 
+  /** Where [[Notes]]' piece moves keep its pieces. */
+  val pieces: InMemoryPieces = new InMemoryPieces
+
+  /** Short write transactions, each opened at `floor`. */
+  val jot: Jot = new Jot {
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using TestTx.fake(Clearance.of(floor), visibility))
+  }
+
+  /** [[env]], and a keeping job's: piece moves reading `files` and writing through [[jot]]. */
+  def kept(models: Models^, files: Files^ = MovesWorld.Fileless): KeepingEnv^ =
+    KeepingEnv(env(models), files, jot)
+
   /** What `use` returns over [[Turn]]'s moves within `limits`, keeping [[Notes]]' documents
-    * through `keeper`, its workflow run once.
+    * through `keeper` and its pieces in [[pieces]], read from `files`, its workflow run once.
     */
-  def keeping[A <: caps.Pure](limits: MoveLimits, keeper: DocumentKeeper = keeper)(
+  def keeping[A <: caps.Pure](
+      limits: MoveLimits,
+      keeper: DocumentKeeper = keeper,
+      files: Files^ = MovesWorld.Fileless
+  )(
       use: Keeping^ -> A
   ): A = {
     val models = new Answering(Answer)
-    val keeps = MovesWorld.keeps(acting, limits, keeper)(use)
+    val keeps = MovesWorld.keeps(acting, limits, keeper, pieces.keeper(Notes, PieceKeeper.Bound))(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(Flows.run(keeps, env(models), ()).merge)
+      out = Some(Flows.run(keeps, kept(models, files), ()).merge)
       "done"
     }
     out.getOrElse(throw new java.lang.AssertionError("the workflow did not run"))
@@ -272,7 +339,7 @@ final class MovesWorld(
     val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs, documents)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(Flows.run(dreams, env(models), ()).merge)
+      out = Some(Flows.run(dreams, kept(models), ()).merge)
       "done"
     }
     (out.getOrElse(throw new java.lang.AssertionError("the workflow did not run")), models.requests)
@@ -291,14 +358,15 @@ object MovesWorld {
       world: StrandWorld,
       needs: Needs = Needs.over(Notes, Vector.empty),
       documents: DocumentSearch = new InMemoryDocuments
-  )(use: Dreaming^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
-    Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
+  )(use: Dreaming^ -> A): Flow[KeepingEnv, Unit, Nothing, A] =
+    Flow.program[KeepingEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
       _ =>
         DurableMoves.dreaming(
           acting,
           limits,
           Notes,
           keeper,
+          new InMemoryPieces().keeper(Notes, PieceKeeper.Bound),
           Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents)
         )(use)(using steps)
     )
@@ -315,12 +383,20 @@ object MovesWorld {
       _ => DurableMoves.plain(acting, limits)(use)(using steps)
     )
 
-  /** As [[moves]], its moves also keeping `keeper`'s documents. */
-  def keeps[A <: caps.Pure](acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)(
+  /** An area that keeps no file. */
+  object Fileless extends NoFiles
+
+  /** As [[moves]], its moves also keeping `keeper`'s documents and `pieces`' pieces. */
+  def keeps[A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      keeper: DocumentKeeper,
+      pieces: PieceKeeper = new InMemoryPieces().keeper(Notes, PieceKeeper.Bound)
+  )(
       use: Keeping^ -> A
-  ): Flow[MovesEnv, Unit, Nothing, A] =
-    Flow.program[MovesEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
-      _ => DurableMoves.keeping(acting, limits, keeper)(use)(using steps)
+  ): Flow[KeepingEnv, Unit, Nothing, A] =
+    Flow.program[KeepingEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
+      _ => DurableMoves.keeping(acting, limits, keeper, pieces)(use)(using steps)
     )
 
   val Start: Instant = Instant.parse("2026-10-08T12:00:00Z")

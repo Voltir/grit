@@ -170,13 +170,14 @@ abstract class PieceContract extends TestSuite {
       (holding(1), holding(3)) ==> (Vector(), Vector(p))
     }
 
-    test("a withdrawn file's pieces are no longer current, and marked for deletion") {
+    test("a file's pieces withdrawn at their label are no longer current, and marked for deletion") {
       val p = name("pieces-withdraw")
       val k = keeper(p, PieceKeeper.Bound)
       keep(k, "a", 1, "alpha one")
-      val withdrawn = (transaction(ok(k.withdraw("a", at(3)))), transaction(ok(k.withdraw("a", at(4)))))
+      def withdraw(label: Label, m: Int) = transaction(ok(k.withdraw("a", label, at(m))))
+      val withdrawn = (withdraw(TestLabels.Trial, 2), withdraw(Label.Public, 3), withdraw(Label.Public, 4))
       val marked = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
-      (withdrawn, search(p, "alpha", 5), marked.size) ==> ((true, false), Vector(), 1)
+      (withdrawn, search(p, "alpha", 5), marked.size) ==> ((false, true, false), Vector(), 1)
     }
 
     test("a plugin's pieces removed are read no more, their tombstones ended") {

@@ -16,11 +16,13 @@ import grit.core.act.{
 }
 import grit.core.classify.{Answer as Judged, ClassifierError}
 import grit.core.document.{Document, InMemoryDocuments}
+import grit.core.files.{FileError, Files, InMemoryPieces, KeptPiece}
 import grit.core.flow.TestTainted
+import grit.core.id.FileHandle
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.stitch.StrandWorld
 import grit.core.tool.Outcome
-import grit.core.visibility.Integrity
+import grit.core.visibility.{Integrity, Recorded}
 
 /** [[MovesContract]] against `ScriptedMoves` and its keeping `ScriptedKeeping`, scripted with
   * the contract's world.
@@ -40,6 +42,29 @@ object ScriptedMovesTests extends MovesContract {
     val moves =
       scripted(limits, broken = false, Vector(), Right(Judged.YesNo(Yes)), Integrity.Authority)
     (use(moves), moves.kept)
+  }
+
+  def piecing[A <: caps.Pure](limits: MoveLimits)(
+      use: (Keeping^, FileHandle) -> A
+  ): (A, Vector[KeptPiece]) = {
+    val file = FileHandle.read("f1").getOrElse(throw new java.lang.AssertionError("f1"))
+    val moves = new ScriptedKeeping(
+      limits,
+      Floor,
+      MovesWorld.Notes,
+      MovesWorld.NotesTerms,
+      _ => Left(MoveError.Model("no ask scripted")),
+      (_, _, _) => Right(Called.Failed("unadvertised")),
+      (_, _) => Left(MoveError.Model("no ask scripted")),
+      _ => Left(MoveError.Model("no judgment scripted")),
+      new InMemoryDocuments,
+      Instant.EPOCH,
+      Integrity.Authority,
+      Recorded.Empty,
+      new InMemoryPieces,
+      h => if (h == file) Right((Policy, Paged)) else Left(FileError.Gone(h, Files.Expiry).message)
+    )
+    (use(moves, file), moves.pieced)
   }
 
   def dreaming[A <: caps.Pure](

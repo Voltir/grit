@@ -5,8 +5,9 @@ import java.time.Instant
 import grit.core.classify.{Answer, Request}
 import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.durable.Journaled
+import grit.core.files.{FileError, Files, InMemoryPieces, KeptPiece, PieceKeeper, Understood}
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{EntryId, PluginName}
+import grit.core.id.{EntryId, FileHandle, PluginName}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -23,6 +24,8 @@ import grit.dbos.sql.TestTx
   * less than `floor`, believed at no more than what it keeps from, and from what is believed
   * less than `Outside` is [[MoveError.Below]] and writes nothing; keeps are not limited. Its documents keep `documents`' rules: two of
   * these over one `documents` are two runs of a plugin, the second reading what the first kept.
+  * Its piece moves keep `plugin`'s pieces in `pieces`, each file read as `files` reads its
+  * handle (by default none is kept), cut with [[MovesFixtures.PerChar]].
   */
 class ScriptedKeeping(
     limits: MoveLimits,
@@ -38,11 +41,16 @@ class ScriptedKeeping(
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
     integrity: Integrity = Integrity.Authority,
-    rooms: Recorded = Recorded.Empty
+    rooms: Recorded = Recorded.Empty,
+    val pieces: InMemoryPieces = new InMemoryPieces,
+    files: FileHandle -> Either[String, (String, Understood)] = (h: FileHandle) =>
+      Left(FileError.Gone(h, Files.Expiry).message)
 ) extends ScriptedMoves(limits, asks, calls, jsons, judgments, integrity),
       Keeping {
 
   private val keeper = documents.keeper(plugin, terms)
+
+  private val pieceKeeper = pieces.keeper(plugin, PieceKeeper.Bound)
 
   def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
       body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
@@ -59,6 +67,24 @@ class ScriptedKeeping(
           .map(e => MoveError.Store(described(e)))
       }
     }
+
+  def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced] =
+    making(name, MoveKind.Keep, Int.MaxValue) {
+      if (from.integrity.belowOutside) Left(MoveError.Below(from.integrity))
+      else {
+        given Tx = opened
+        val done = Trusted.asIs(from).extract match {
+          case Piecing.Withdraw(gone) =>
+            Piecing.withdrawn(gone, pieceKeeper, at).map(Pieced.Withdrawn(_))
+          case read: Piecing.Read =>
+            Piecing.kept(read, files(read.file), pieceKeeper, from.integrity, MovesFixtures.PerChar, at)
+        }
+        done.left.map(e => MoveError.Store(described(e)))
+      }
+    }
+
+  /** `plugin`'s current pieces of files, as a run at `floor` reads them. */
+  def pieced: Vector[KeptPiece] = pieces.current(plugin)(using opened)
 
   /** `plugin`'s current documents, as a run at `floor` reads them: every key's and label's
     * that `floor` reads, most recently written first.

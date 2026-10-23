@@ -19,16 +19,17 @@ object MovesCaptureTests extends TestSuite {
       |import grit.act.moves.*
       |import grit.core.act.*
       |import grit.core.document.DocumentKeeper
+      |import grit.core.files.PieceKeeper
       |import grit.core.durable.{Flow, Step, StepName, Steps}
       |final case class Reply(text: String) extends caps.Pure
       |val peek: Flow[MovesEnv, Unit, Nothing, String] =
       |  Flow.step(Step[MovesEnv, Unit, String](StepName("peek"))(r => _ => "x"))
       |""".stripMargin
 
-  /** `body` as a run's: over an acting, its limits and a keeper, in a program's steps. */
+  /** `body` as a run's: over an acting, its limits and keepers, in a keeping program's steps. */
   private def run(body: String): String =
-    "def run(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper)" +
-      s"(using steps: Steps[MovesEnv]^): Reply = {\n$body\n}"
+    "def run(acting: Acting, limits: MoveLimits, keeper: DocumentKeeper, pieces: PieceKeeper)" +
+      s"(using steps: Steps[KeepingEnv]^): Reply = {\n$body\n}"
 
   /** The error messages from compiling `body` as a run's, with every probe below. */
   private def errors(body: String): List[String] = compiled.errors(run(body))
@@ -37,7 +38,7 @@ object MovesCaptureTests extends TestSuite {
 
   private val runs =
     """val plain = DurableMoves.plain(acting, limits)(moves => Reply(moves.toString))
-      |val kept = DurableMoves.keeping(acting, limits, keeper)(moves => Reply(moves.toString))
+      |val kept = DurableMoves.keeping(acting, limits, keeper, pieces)(moves => Reply(moves.toString))
       |Reply(steps.run(peek, ()).merge + plain.text + kept.text)""".stripMargin
 
   private val plainReturnsMoves =
@@ -45,7 +46,7 @@ object MovesCaptureTests extends TestSuite {
       |Reply("")""".stripMargin
 
   private val keepingReturnsMoves =
-    """val _ = DurableMoves.keeping[Keeping^](acting, limits, keeper)(moves => moves)
+    """val _ = DurableMoves.keeping[Keeping^](acting, limits, keeper, pieces)(moves => moves)
       |Reply("")""".stripMargin
 
   private val plainSteps =
@@ -55,7 +56,7 @@ object MovesCaptureTests extends TestSuite {
       |})""".stripMargin
 
   private val keepingSteps =
-    """DurableMoves.keeping(acting, limits, keeper)(moves => {
+    """DurableMoves.keeping(acting, limits, keeper, pieces)(moves => {
       |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin

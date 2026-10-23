@@ -90,8 +90,8 @@ final class InMemoryPieces extends PieceStore {
       }
     }
 
-    def withdraw(ref: String, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] =
-      current(plugin, ref, Tx.clearance(tx).floor) match {
+    def withdraw(ref: String, label: Label, at: Instant)(using Tx^): Either[StoreError, Boolean] =
+      current(plugin, ref, label) match {
         case Some((s, r)) => supersede(s, r, at).map(_ => true)
         case None => Right(false)
       }
@@ -192,6 +192,15 @@ final class InMemoryPieces extends PieceStore {
     Right(plugins.filter { p =>
       sets.exists((s, r) => r.plugin == p && currentAt(r, at) && reads(r) && of(s).nonEmpty)
     })
+
+  /** `plugin`'s current pieces its transaction reads, by file, then in order: what a test
+    * reads back of a keep.
+    */
+  def current(plugin: PluginName)(using Tx^): Vector[KeptPiece] =
+    sets.toVector
+      .filter((_, r) => r.plugin == plugin && r.superseded.isEmpty && reads(r))
+      .sortBy((s, r) => (r.file.ref, s))
+      .flatMap((s, _) => of(s).flatMap((id, p) => kept(id, p)))
 
   def read(ids: Vector[PieceId])(using Tx^): Either[StoreError, Vector[KeptPiece]] =
     Right(ids.flatMap { i =>

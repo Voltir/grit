@@ -108,10 +108,10 @@ trait PieceKeeper {
       at: Instant
   )(using Tx^): Either[StoreError, Int]
 
-  /** `ref`'s pieces at the transaction's floor no longer current from `at`, and marked for
-    * deletion as [[keep]] marks those it replaces; whether there were any.
+  /** `ref`'s pieces at `label` no longer current from `at`, and marked for deletion as [[keep]]
+    * marks those it replaces; whether there were any.
     */
-  def withdraw(ref: String, at: Instant)(using Tx^): Either[StoreError, Boolean]
+  def withdraw(ref: String, label: Label, at: Instant)(using Tx^): Either[StoreError, Boolean]
 }
 
 object PieceKeeper {

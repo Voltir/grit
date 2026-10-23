@@ -29,6 +29,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
+import grit.core.files.{InMemoryPieces, NoFiles, PieceKeeper}
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
   CallSlot,
@@ -428,6 +429,9 @@ object RunFixtures {
     val toolSets: InMemoryToolSets = new InMemoryToolSets
     val documents: InMemoryDocuments = new InMemoryDocuments
 
+    /** Where its keeping jobs' piece moves keep pieces. */
+    val pieces: InMemoryPieces = new InMemoryPieces
+
     /** Its rooms' strands, which a dreaming job reads. */
     val strands: StrandWorld = new StrandWorld(Due.minusSeconds(3600))
 
@@ -505,8 +509,10 @@ object RunFixtures {
           db,
           clock
         ),
+        new NoFiles,
         Budget(ZoneOffset.UTC, cap.flatMap(DailyCap.of(_).toOption)),
         (plugin, terms) => documents.keeper(plugin, terms),
+        plugin => pieces.keeper(plugin, PieceKeeper.Bound),
         Dreaming.Reads(
           strands.shelf,
           plugin => Needs.over(plugin, Vector.empty),

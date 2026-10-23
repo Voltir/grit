@@ -76,7 +76,7 @@ object DurableKeepingTests extends TestSuite {
           val keeps = MovesWorld.keeps(w.acting, MoveLimits.Zero, counting)(m =>
             Seen(keep(m).kept.fold(_.toString, _.label))
           )
-          Flows.run(keeps, w.env(models), ()).merge.said
+          Flows.run(keeps, w.kept(models), ()).merge.said
         }
       (first, steps, kept(w), again, counting.writes) ==> (
         Got(Right(Kept(Label.written(floor)))),
@@ -100,7 +100,7 @@ object DurableKeepingTests extends TestSuite {
         )
       )
       w.durable.run(Turn.workflowId) { _ =>
-        val _ = Flows.run(dreams, w.env(models), ()).merge
+        val _ = Flows.run(dreams, w.kept(models), ()).merge
         "done"
       }
       models.pairs ==> Vector(MovesFixtures.Dream, MovesFixtures.Summary)

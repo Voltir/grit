@@ -4,7 +4,17 @@ import java.time.{Instant, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
-import grit.core.act.{Asked, Called, Keeping, MoveError, MoveName, Posed, ScriptedKeeping}
+import grit.core.act.{
+  Asked,
+  Called,
+  Keeping,
+  MoveError,
+  MoveName,
+  Pieced,
+  Piecing,
+  Posed,
+  ScriptedKeeping
+}
 import grit.core.classify.Answer
 import grit.core.document.{
   DocLabel,
@@ -312,6 +322,9 @@ object SyncTests extends TestSuite {
         believed = believed :+ (name -> from.integrity)
         kept
       }
+
+    def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced] =
+      inner.piece(name, from)
   }
 
   val tests = Tests {

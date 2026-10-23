@@ -207,7 +207,7 @@ trait Moves {
   protected def tree: Option[IntegrityTree.Raising^]
 }
 
-/** [[Moves]], and the acting plugin's own documents. */
+/** [[Moves]], and the acting plugin's own documents and pieces of files. */
 trait Keeping extends Moves {
 
   /** `body` over `from`'s value and its plugin's documents, `at` the instant the move is made,
@@ -221,6 +221,19 @@ trait Keeping extends Moves {
   def keep[I, A <: caps.Pure: Journaled](name: MoveName, from: Tainted[I])(
       body: (I, DocumentKeeper, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
+
+  /** What `from` asks, done to the acting plugin's pieces of files at the run's floor, in one
+    * transaction for the acting's subject, believed at no more than `from` is. For
+    * [[Piecing.Read]]: the file admitted as the acting's subject reads it
+    * ([[grit.core.files.Files.admit]]), then opened and read by the area's formats holding no
+    * transaction, cut by [[grit.core.files.Pieces.of]] and kept ([[grit.core.files.PieceKeeper.keep]]); or,
+    * gone or read by no format, [[Pieced.Unread]]. The transaction is not the move's record's,
+    * so a rerun cut short by a crash keeps the same pieces again. [[MoveError.Below]] when `from`
+    * is believed less than [[grit.core.visibility.Integrity.Outside]]: nothing is read or
+    * written. [[MoveError.Store]] when the store fails: nothing is written. Either way the move
+    * counts as made.
+    */
+  def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced]
 }
 
 /** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's
