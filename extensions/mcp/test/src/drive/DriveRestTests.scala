@@ -201,6 +201,55 @@ object DriveRestTests extends TestSuite {
       }
     }
 
+    test(
+      "a Doc, a Sheet and a Slides deck are exported as a Word document, an Excel workbook and a PDF, their bytes streamed whole; a PDF is never exported"
+    ) {
+      withFake { (fake, rest) =>
+        val content = Vector.tabulate(3000)(i => (i % 256).toByte)
+        Vector("file-1", "file-11").foreach(id =>
+          fake.answeringBytes(s"files/$id/export", 200, content)
+        )
+        def whole(file: Either[DriveError, DriveFile]) =
+          file.flatMap(rest.exported(_)(_.readAllBytes().toVector == content))
+        val doc = rest.file(file1)
+        val asked = fake.requests.size
+        (
+          whole(doc),
+          whole(rest.file(Recorded.id("file-11"))),
+          whole(doc.map(_.copy(mimeType = DriveFile.Presentation))),
+          rest.file(Recorded.id("file-4")).flatMap(rest.exported(_)(_.read())),
+          fake.requests
+            .drop(asked)
+            .collect { case (path, q) if path.endsWith("/export") => (path, q.get("mimeType")) }
+        ) ==> (
+          Right(true),
+          Right(true),
+          Right(true),
+          Left(DriveError.Unreadable("a PDF")),
+          Vector(
+            ("files/file-1/export", Some(DriveFile.Word)),
+            ("files/file-11/export", Some(DriveFile.Excel)),
+            ("files/file-1/export", Some(DriveFile.Pdf))
+          )
+        )
+      }
+    }
+
+    test("an export past Drive's cap on one is refused in words") {
+      withFake { (fake, rest) =>
+        fake.answering("files/file-1/export", 403, error(403, "exportSizeLimitExceeded"))
+        rest.file(file1).flatMap(rest.exported(_)(_.read())).left.map(e => (e, e.message)) ==>
+          Left(
+            (
+              DriveError.ExportTooLarge,
+              "This file is too large for Drive to hand over to be read here (Drive passes on " +
+                "at most 10 MB of a Doc, Sheet or Slides deck). A shorter copy, or the file " +
+                "split in parts, could be."
+            )
+          )
+      }
+    }
+
     test("a Doc's export loses its byte-order mark, and nothing else") {
       withFake { (fake, rest) =>
         val recorded = Recorded.text("export-doc.txt")

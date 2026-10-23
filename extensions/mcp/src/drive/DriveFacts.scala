@@ -134,4 +134,24 @@ enum DriveKind derives CanEqual {
     case Text => "a text file"
     case Other(mimeType) => s"a file of type $mimeType"
   }
+
+  /** The office file Drive exports a file of this kind to ([[DriveRest.exported]]): a Doc as a
+    * Word document, a Sheet as an Excel workbook, every sheet in it, a Slides deck as a PDF;
+    * `None` for a kind Drive keeps the bytes of, or does not export.
+    */
+  def exportsAs: Option[DriveExport] = this match {
+    case Document => Some(DriveExport.Word)
+    case Spreadsheet => Some(DriveExport.Excel)
+    case Slides => Some(DriveExport.Pdf)
+    case Folder | Pdf | Word | Excel | Image | Text | Other(_) => None
+  }
+}
+
+/** An office file Drive exports one of its own to, by its MIME type, and the kind of file the
+  * file area reads it as.
+  */
+enum DriveExport(val mimeType: String, val kind: grit.core.files.Kind) derives CanEqual {
+  case Word extends DriveExport(DriveFile.Word, grit.core.files.Kind.Word)
+  case Excel extends DriveExport(DriveFile.Excel, grit.core.files.Kind.Excel)
+  case Pdf extends DriveExport(DriveFile.Pdf, grit.core.files.Kind.Pdf)
 }

@@ -39,6 +39,9 @@ enum DriveError derives CanEqual {
   /** Drive has flagged the file as possibly harmful, and will not give its bytes. */
   case Flagged
 
+  /** Drive will not export the file: the export would pass its cap on one, 10 MB. */
+  case ExportTooLarge
+
   /** The file was downloaded, or would have been, and could not be read: `unread` says why. */
   case Unread(unread: grit.core.files.Unread)
 
@@ -50,7 +53,7 @@ enum DriveError derives CanEqual {
     */
   def logged: Option[String] = this match {
     case NoToken(why) => Some(s"Drive gave no access: $why")
-    case Hidden | Unreadable(_) | Flagged | Unread(_) => None
+    case Hidden | Unreadable(_) | Flagged | ExportTooLarge | Unread(_) => None
     case Busy(status) => Some(s"Drive answered $status")
     case Unreachable(why) => Some(s"Drive could not be reached: $why")
     case Malformed(why) => Some(s"Drive's answer could not be read: $why")
@@ -75,6 +78,9 @@ enum DriveError derives CanEqual {
     case Unreadable(kind) =>
       s"Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read here, not $kind."
     case Flagged => "Drive has flagged this file as possibly harmful, so it isn't read here."
+    case ExportTooLarge =>
+      "This file is too large for Drive to hand over to be read here (Drive passes on at most " +
+        "10 MB of a Doc, Sheet or Slides deck). A shorter copy, or the file split in parts, could be."
     case Unread(unread) => unread.message
     case Unkept(error) => error.message
   }
@@ -170,14 +176,34 @@ final class DriveRest(api: URI, authorizer: Authorizer, clock: Clock) {
   def media[A](file: DriveFile, max: Long)(body: java.io.InputStream^ => A): Either[DriveError, A] =
     file.size.filter(_ > max) match {
       case Some(size) => Left(DriveError.Unread(Unread.TooLarge(size, max)))
-      case None =>
-        send(s"files/${FileId.value(file.id)}", Vector("alt" -> "media")) { (status, in) =>
-          if (status != 200)
-            DriveRest
-              .answered(status, DriveRest.text(in))
-              .flatMap(_ => Left(DriveError.Malformed(s"Drive answered $status")))
-          else Right(body(in))
-        }
+      case None => streamed(s"files/${FileId.value(file.id)}", Vector("alt" -> "media"))(body)
+    }
+
+  /** `body` over a stream of `file` as Drive exports it ([[DriveKind.exportsAs]]), open only
+    * within it, its size not known before (`body` bounds what it reads);
+    * [[DriveError.ExportTooLarge]] past Drive's cap on an export, 10 MB;
+    * [[DriveError.Unreadable]], before Drive is asked, for a kind it exports to no office file;
+    * any other failure as [[text]]'s.
+    */
+  def exported[A](file: DriveFile)(body: java.io.InputStream^ => A): Either[DriveError, A] =
+    file.kindOf.exportsAs match {
+      case None => Left(DriveError.Unreadable(file.kindOf.words))
+      case Some(as) =>
+        streamed(s"files/${FileId.value(file.id)}/export", Vector("mimeType" -> as.mimeType))(body)
+    }
+
+  /** `body` over the body of a GET of `path` with `query` when Drive answers 200; otherwise its
+    * failure, as [[DriveError]] says.
+    */
+  private def streamed[A](path: String, query: Vector[(String, String)])(
+      body: java.io.InputStream^ => A
+  ): Either[DriveError, A] =
+    send(path, query) { (status, in) =>
+      if (status != 200)
+        DriveRest
+          .answered(status, DriveRest.text(in))
+          .flatMap(_ => Left(DriveError.Malformed(s"Drive answered $status")))
+      else Right(body(in))
     }
 
   /** Whether the account's token is taken: one search of one file. */
@@ -293,6 +319,7 @@ object DriveRest {
       case 403 if reasons.exists(Limits) => Left(DriveError.Busy(status))
       case 403 if reasons.contains("fileNotExportable") => Left(DriveError.Unreadable("this file"))
       case 403 if reasons.contains("cannotDownloadAbusiveFile") => Left(DriveError.Flagged)
+      case 403 if reasons.contains("exportSizeLimitExceeded") => Left(DriveError.ExportTooLarge)
       case 403 | 404 => Left(DriveError.Hidden)
       case 429 => Left(DriveError.Busy(status))
       case s if s >= 500 => Left(DriveError.Busy(status))

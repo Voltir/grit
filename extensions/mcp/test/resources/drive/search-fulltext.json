@@ -8,7 +8,8 @@
       "parents": [
         "folder-4"
       ],
-      "modifiedTime": "2026-08-05T10:00:00.000Z"
+      "modifiedTime": "2026-08-05T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -19,7 +20,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-02T10:00:00.000Z"
+      "modifiedTime": "2026-09-02T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -29,7 +31,8 @@
       "parents": [
         "folder-2"
       ],
-      "modifiedTime": "2026-08-11T10:00:00.000Z"
+      "modifiedTime": "2026-08-11T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -39,7 +42,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-06T10:00:00.000Z"
+      "modifiedTime": "2026-08-06T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -49,7 +53,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-05T10:00:00.000Z"
+      "modifiedTime": "2026-09-05T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -59,7 +64,8 @@
       "parents": [
         "folder-2"
       ],
-      "modifiedTime": "2026-08-13T10:00:00.000Z"
+      "modifiedTime": "2026-08-13T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -70,7 +76,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-04T10:00:00.000Z"
+      "modifiedTime": "2026-09-04T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -81,7 +88,8 @@
       "parents": [
         "folder-3"
       ],
-      "modifiedTime": "2026-09-12T10:00:00.000Z"
+      "modifiedTime": "2026-09-12T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -91,7 +99,8 @@
       "parents": [
         "folder-7"
       ],
-      "modifiedTime": "2026-08-07T10:00:00.000Z"
+      "modifiedTime": "2026-08-07T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -101,7 +110,8 @@
       "parents": [
         "folder-6"
       ],
-      "modifiedTime": "2026-08-08T10:00:00.000Z"
+      "modifiedTime": "2026-08-08T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -111,7 +121,8 @@
       "parents": [
         "folder-5"
       ],
-      "modifiedTime": "2026-08-04T10:00:00.000Z"
+      "modifiedTime": "2026-08-04T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -122,7 +133,8 @@
       "parents": [
         "folder-3"
       ],
-      "modifiedTime": "2026-09-11T10:00:00.000Z"
+      "modifiedTime": "2026-09-11T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -133,7 +145,8 @@
       "parents": [
         "folder-3"
       ],
-      "modifiedTime": "2026-09-10T10:00:00.000Z"
+      "modifiedTime": "2026-09-10T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -144,7 +157,8 @@
       "parents": [
         "folder-3"
       ],
-      "modifiedTime": "2026-09-09T10:00:00.000Z"
+      "modifiedTime": "2026-09-09T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -155,7 +169,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-03T10:00:00.000Z"
+      "modifiedTime": "2026-09-03T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -165,7 +180,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-03T10:00:00.000Z"
+      "modifiedTime": "2026-08-03T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -175,7 +191,8 @@
       "parents": [
         "folder-3"
       ],
-      "modifiedTime": "2026-09-08T10:00:00.000Z"
+      "modifiedTime": "2026-09-08T10:00:00.000Z",
+      "version": "5"
     }
   ],
   "incompleteSearch": false

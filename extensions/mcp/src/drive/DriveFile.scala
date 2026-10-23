@@ -8,7 +8,9 @@ import grit.core.identity.{Domain, Email}
   * Drive names one it shares with grit; `drive`, the shared drive holding it (`None` in a
   * person's My Drive); `owners`, empty in a shared drive; `changed`, when it last changed
   * (`modifiedTime`), when Drive says; `size`, its bytes, which Drive gives a file it keeps the
-  * bytes of (none for a Doc, a Sheet or a folder).
+  * bytes of (none for a Doc, a Sheet or a folder); `version`, Drive's count of its changes,
+  * which only grows, when Drive says: what names a Doc's, a Sheet's or a Slides deck's
+  * revision, which have no other.
   */
 final case class DriveFile(
     id: FileId,
@@ -18,7 +20,8 @@ final case class DriveFile(
     drive: Option[FileId],
     owners: Vector[Email],
     changed: Option[Instant],
-    size: Option[Long]
+    size: Option[Long],
+    version: Option[Long]
 ) {
 
   /** Where it lies: its parent, else its shared drive; `None` for a file with neither. */
@@ -31,11 +34,10 @@ final case class DriveFile(
     case DriveFile.Document => DriveKind.Document
     case DriveFile.Spreadsheet => DriveKind.Spreadsheet
     case DriveFile.Folder => DriveKind.Folder
-    case "application/pdf" => DriveKind.Pdf
-    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" =>
-      DriveKind.Word
-    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => DriveKind.Excel
-    case "application/vnd.google-apps.presentation" => DriveKind.Slides
+    case DriveFile.Pdf => DriveKind.Pdf
+    case DriveFile.Word => DriveKind.Word
+    case DriveFile.Excel => DriveKind.Excel
+    case DriveFile.Presentation => DriveKind.Slides
     case other if other.startsWith("image/") => DriveKind.Image
     case other if other.startsWith("text/") => DriveKind.Text
     case other => DriveKind.Other(other)
@@ -52,6 +54,18 @@ object DriveFile {
 
   /** A Google Sheet's type. */
   val Spreadsheet: String = "application/vnd.google-apps.spreadsheet"
+
+  /** A Google Slides deck's type. */
+  val Presentation: String = "application/vnd.google-apps.presentation"
+
+  /** A PDF's type. */
+  val Pdf: String = "application/pdf"
+
+  /** A Word document's type (`.docx`). */
+  val Word: String = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+  /** An Excel workbook's type (`.xlsx`). */
+  val Excel: String = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 }
 
 /** A search's or a listing's first page of files, in Drive's order; `incomplete` when Drive has

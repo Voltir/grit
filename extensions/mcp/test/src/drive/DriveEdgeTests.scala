@@ -26,13 +26,19 @@ import grit.core.edge.{
   Variable
 }
 import grit.core.files.{
+  Covers,
   FileArea,
+  Format,
+  FormatName,
   Formats,
   InMemoryFileCatalog,
   Intake,
   Kind,
   NoIntake,
+  OpenFile,
   PagedText,
+  ReadLimits,
+  Understood,
   Unread
 }
 import grit.core.host.TempBlobs
@@ -47,6 +53,7 @@ import grit.core.visibility.{Integrity, Subject}
 import grit.dbos.sql.TestTx
 import grit.edge.PlaceFragments
 import grit.mcp.client.Credential
+import grit.prose.form.{Block, Doc, Span, Text}
 
 import utest.*
 
@@ -170,6 +177,69 @@ object DriveEdgeTests extends TestSuite {
   /** How many of `fake`'s requests asked for a file's bytes. */
   private def media(fake: FakeDriveServer): Int =
     fake.requests.count(_._2.get("alt").contains("media"))
+
+  /** The type each of `fake`'s exports asked for, in order. */
+  private def exports(fake: FakeDriveServer): Vector[Option[String]] =
+    fake.requests.collect { case (path, q) if path.endsWith("/export") => q.get("mimeType") }
+
+  /** A read's one part's text after its first line (its name), and its facts' `kind` and `file`. */
+  private def readPart(outcome: Outcome): (String, Option[(ujson.Value, Option[ujson.Value])]) =
+    outcome match {
+      case Outcome.Done(_, _, _, Some(Vector(part)), _) =>
+        (
+          part.text.linesIterator.drop(1).mkString("\n"),
+          part.facts.map(f => (f.json("kind"), f.json.obj.get("file")))
+        )
+      case other => throw new java.lang.AssertionError(other.toString)
+    }
+
+  /** `file-1`, a Doc, as Drive says of it, but a Slides deck. */
+  private def slides: String = {
+    val doc = Recorded.json("metadata-file-in-folder")
+    doc("mimeType") = DriveFile.Presentation
+    ujson.write(doc)
+  }
+
+  /** A format for these tests: a Word document's zip, its `word/document.xml` read as one
+    * paragraph of text. A stand-in for the Word reader, which an edge's module may not name.
+    */
+  private object ZippedWord extends Format {
+    val name: FormatName = FormatName("zipped-word")
+    val version: Int = 1
+
+    /** `text` as such a file's bytes. */
+    def bytes(text: String): Vector[Byte] = {
+      val out = new java.io.ByteArrayOutputStream
+      val zip = new java.util.zip.ZipOutputStream(out)
+      zip.putNextEntry(new java.util.zip.ZipEntry("word/document.xml"))
+      zip.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      zip.closeEntry()
+      zip.close()
+      out.toByteArray.toVector
+    }
+
+    def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] = {
+      val zip = new java.util.zip.ZipFile(file.path.toFile)
+      try
+        Option(zip.getEntry("word/document.xml")).toRight(Unread.NotMine).map { entry =>
+          val text = new String(
+            zip.getInputStream(entry).readAllBytes(),
+            java.nio.charset.StandardCharsets.UTF_8
+          )
+          Understood(
+            Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector.empty)))))),
+            Covers.Whole,
+            Vector.empty,
+            name,
+            version
+          )
+        }
+      finally zip.close()
+    }
+
+    /** Word documents read by this format alone. */
+    val formats: Formats = Formats(kind => if (kind == Kind.Word) Vector(this) else Vector.empty)
+  }
 
   val tests = Tests {
     test(
@@ -486,6 +556,75 @@ object DriveEdgeTests extends TestSuite {
               case other => throw new java.lang.AssertionError(other.toString)
             }
           (kept(0, "1"), kept(1, "2"), media(fake)) ==>
+            (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1)
+        }
+      }
+    }
+
+    test(
+      "a Doc is exported as a Word document and kept when the area's formats read Word documents; else it is read as Drive's markdown of it"
+    ) {
+      val kept = withFake { fake =>
+        fake.answeringBytes("files/file-1/export", 200, ZippedWord.bytes("One."))
+        val read = withArea(formats = ZippedWord.formats)(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area)
+        )
+        (readPart(read), exports(fake))
+      }
+      val texted = withFake { fake =>
+        val read =
+          withArea()(area => run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area))
+        (readPart(read), exports(fake))
+      }
+      (kept, texted) ==> (
+        (
+          ("Read: all of it.\n\nOne.", Some((ujson.Str("document"), Some(ujson.Str("f1"))))),
+          Vector(Some(DriveFile.Word))
+        ),
+        (
+          (
+            Recorded.text("export-doc.md").stripSuffix("\n"),
+            Some((ujson.Str("document"), None))
+          ),
+          Vector(Some("text/markdown"))
+        )
+      )
+    }
+
+    test(
+      "a Slides deck is exported as a PDF and kept when the area's formats read PDFs; else it is refused"
+    ) {
+      withFake { fake =>
+        fake.answering("files/file-1", 200, slides)
+        fake.answeringBytes("files/file-1/export", 200, PagedText.bytes("One.", "Two."))
+        val read = withArea()(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-1", "pages" -> "2"), files = area)
+        )
+        val refused = withArea(formats = Formats(_ => Vector.empty))(area =>
+          run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area, call = 1)
+        )
+        (readPart(read), refused, exports(fake)) ==> (
+          (
+            "Read: page 2 of 2.\n\n[page 2]\nTwo.",
+            Some((ujson.Str("slides"), Some(ujson.Str("f1"))))
+          ),
+          Outcome.Failed(DriveError.Unreadable("Slides").message),
+          Vector(Some(DriveFile.Pdf))
+        )
+      }
+    }
+
+    test(
+      "a second read of a Doc whose version has not moved, by another call, answers the handle the first kept, without Drive exporting it again"
+    ) {
+      withFake { fake =>
+        fake.answeringBytes("files/file-1/export", 200, ZippedWord.bytes("One."))
+        withArea(formats = ZippedWord.formats) { area =>
+          def kept(call: Int): Option[ujson.Value] =
+            readPart(
+              run(fake, "drive_read", ujson.Obj("file" -> "file-1"), files = area, call = call)
+            )._2.flatMap(_._2)
+          (kept(0), kept(1), exports(fake).size) ==>
             (Some(ujson.Str("f1")), Some(ujson.Str("f1")), 1)
         }
       }

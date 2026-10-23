@@ -32,8 +32,10 @@ import grit.edge.{Run, Tools}
   * or any other file Drive keeps the bytes of is kept in `files` under its call
   * ([[grit.core.files.PutKey.of]]), so the call run again answers the file it kept, and read
   * there by the formats the area reads with ([[Intake.formats]]); one past the most they read is
-  * refused before its bytes are asked for, and one that lies in no folder or that no one here may read is never fetched. Folders,
-  * Slides and images are refused. The run's `said` hears each failure's cause
+  * refused before its bytes are asked for, and one that lies in no folder or that no one here may read is never fetched. A Doc,
+  * a Sheet or a Slides deck is kept and read so as the office file Drive exports it to
+  * ([[DriveKind.exportsAs]]) when those formats read that kind; else a Doc or a Sheet is
+  * answered as Drive's text of it, and a Slides deck refused. Folders and images are refused. The run's `said` hears each failure's cause
   * ([[DriveError.logged]]), its tool named, and that a search's drives could not be listed (its
   * hits then name them by id) or a read's grants could not be read (it is then believed
   * untrusted).
@@ -49,13 +51,14 @@ final class DriveTools(
 ) extends Tools {
 
   /** `file`'s `range`, read by `files`' formats from the file it keeps under `slot`'s call, put
-    * there from Drive when it keeps none.
+    * there from Drive when it keeps none: its bytes, or Drive's export of it `as` an office file.
     */
   private def kept(
       file: DriveFile,
       grants: Option[Vector[Grant]],
       range: FileRange,
-      slot: CallSlot
+      slot: CallSlot,
+      as: Option[DriveExport]
   ): Either[DriveError, DriveCalled] =
     DriveItems.item(reading, file, grants) match {
       case None => Right(DriveCalled.Withheld(file))
@@ -66,19 +69,24 @@ final class DriveTools(
         val incoming = new Incoming {
           def declared: Option[Long] = file.size
           def read[A](body: InputStream^ => A): Either[String, A] =
-            rest.media(file, files.formats.limits.bytes)(body).left.map { e =>
-              refused = Some(e)
-              e.message
-            }
+            as.fold(rest.media(file, files.formats.limits.bytes)(body))(_ =>
+              rest.exported(file)(body)
+            ).left
+              .map { e =>
+                refused = Some(e)
+                e.message
+              }
         }
         files.put(
           PutKey.of(slot),
           file.name,
-          Some(file.mimeType),
+          Some(as.fold(file.mimeType)(_.mimeType)),
           FileOrigin(
             EdgeName(reading.service.name),
             FileId.value(file.id),
-            file.changed.map(_.toString),
+            // An export's revision is Drive's version of the file, which has no other; a file
+            // Drive keeps the bytes of is named by when it last changed.
+            as.fold(file.changed.map(_.toString))(_ => file.version.map(v => s"version $v")),
             clock.now()
           ),
           item,
@@ -135,13 +143,19 @@ final class DriveTools(
         heard(
           "drive_read",
           rest.file(asked.file).flatMap { file =>
-            file.kindOf match {
-              case DriveKind.Document | DriveKind.Spreadsheet | DriveKind.Text =>
-                rest.text(file).map(DriveCalled.Read(file, grants, _))
-              case DriveKind.Folder | DriveKind.Slides | DriveKind.Image =>
-                Left(DriveError.Unreadable(file.kindOf.words))
-              case DriveKind.Pdf | DriveKind.Word | DriveKind.Excel | DriveKind.Other(_) =>
-                kept(file, grants, asked.range, slot)
+            // A Doc, a Sheet or a Slides deck is read as the office file Drive exports it to
+            // when a format here reads that; a Doc or a Sheet, else, as Drive's text of it.
+            file.kindOf.exportsAs.filter(as => files.formats.of(as.kind).nonEmpty) match {
+              case Some(as) => kept(file, grants, asked.range, slot, Some(as))
+              case None =>
+                file.kindOf match {
+                  case DriveKind.Document | DriveKind.Spreadsheet | DriveKind.Text =>
+                    rest.text(file).map(DriveCalled.Read(file, grants, _))
+                  case DriveKind.Folder | DriveKind.Slides | DriveKind.Image =>
+                    Left(DriveError.Unreadable(file.kindOf.words))
+                  case DriveKind.Pdf | DriveKind.Word | DriveKind.Excel | DriveKind.Other(_) =>
+                    kept(file, grants, asked.range, slot, None)
+                }
             }
           }
         )

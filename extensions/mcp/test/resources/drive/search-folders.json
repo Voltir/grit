@@ -8,7 +8,8 @@
       "parents": [
         "folder-1"
       ],
-      "modifiedTime": "2026-08-15T10:00:00.000Z"
+      "modifiedTime": "2026-08-15T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -18,7 +19,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-14T10:00:00.000Z"
+      "modifiedTime": "2026-08-14T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -28,7 +30,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-01T10:00:00.000Z"
+      "modifiedTime": "2026-09-01T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -38,7 +41,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-16T10:00:00.000Z"
+      "modifiedTime": "2026-08-16T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -48,7 +52,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-17T10:00:00.000Z"
+      "modifiedTime": "2026-08-17T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -58,7 +63,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-18T10:00:00.000Z"
+      "modifiedTime": "2026-08-18T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-b",
@@ -68,7 +74,8 @@
       "parents": [
         "drive-b"
       ],
-      "modifiedTime": "2026-08-19T10:00:00.000Z"
+      "modifiedTime": "2026-08-19T10:00:00.000Z",
+      "version": "5"
     }
   ],
   "incompleteSearch": false

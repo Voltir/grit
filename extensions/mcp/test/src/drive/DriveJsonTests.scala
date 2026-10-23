@@ -161,6 +161,22 @@ object DriveJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "a file's version is read as Drive writes it, a string of digits; none when Drive gives none, and one in another form is refused"
+    ) {
+      (
+        DriveJson.file(file("version" -> "42")).map(_.version),
+        DriveJson.file(file()).map(_.version),
+        DriveJson.file(file("version" -> 42)).map(_.version),
+        DriveJson.file(file("version" -> "-1")).map(_.version)
+      ) ==> (
+        Right(Some(42L)),
+        Right(None),
+        Left("a file's version is not a number"),
+        Left("a file's version is not a number")
+      )
+    }
+
     test("a file in My Drive reads its owners' addresses") {
       DriveJson
         .file(file("owners" -> ujson.Arr(ujson.Obj("emailAddress" -> "Person-1@Example.com"))))

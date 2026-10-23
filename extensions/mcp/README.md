@@ -53,12 +53,13 @@ In dependency order:
   read believed at the meet over its writers (ADR 0039), each part's text rendered from its
   `DriveFacts`, the data it carries beside it and the one home of their keys. `DriveEdge` serves `drive_list`,
   `drive_search` and `drive_read` at the service's place, its tools telling
-  the operator's log what the model is not. `drive_read` reads a Doc, a Sheet or a text file
-  whole, as Drive exports it, and any file Drive keeps the bytes of (a PDF, a Word or an Excel
-  file) by the deployment's formats (ADR 0044), from the file area (ADR 0045), a part at a
-  time: its start and outline, a run of pages, a section by its heading, or from an offset. The
-  area keeps the file under the call, so a call run again answers the same handle, which
-  `file_read` reads further. Imports `wire` and `client`; nothing else in mcp imports it
+  the operator's log what the model is not. `drive_read` reads any file Drive keeps the bytes
+  of (a PDF, a Word or an Excel file), and a Doc, a Sheet or a Slides deck as the office file
+  Drive exports it to (Word, Excel, PDF) when the deployment's formats read that kind, by those
+  formats (ADR 0044), from the file area (ADR 0045), a part at a time: its start and outline,
+  a run of pages, a section by its heading, or from an offset; any other Doc or Sheet whole, as
+  Drive's text of it. The area keeps the file under the call, so a call run again answers the
+  same handle, which `file_read` reads further. Imports `wire` and `client`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
@@ -143,7 +144,7 @@ reason, a role, a type) and every key and its order as sent. They show that ever
 its drive, that a shared drive's top files have the drive's id as their only parent, that
 folders carry `inheritedPermissionsDisabled` and grants `permissionDetails.inherited`, and that
 the account's own address is among a file's grants. The capture came before the reader asked
-for `modifiedTime`, which Drive gives every file, and `size`, which it gives a file it keeps the
+for `modifiedTime` and `version`, which Drive gives every file, and `size`, which it gives a file it keeps the
 bytes of: each recorded file's was added by hand, a stand-in, the `made-*` file's where one lists it (`DriveCaptureTests` checks that every
 recorded file holds each field Drive gives it).
 

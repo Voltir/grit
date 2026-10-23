@@ -8,7 +8,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-01T10:00:00.000Z"
+      "modifiedTime": "2026-09-01T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -18,7 +19,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-02T10:00:00.000Z"
+      "modifiedTime": "2026-09-02T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -28,7 +30,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-03T10:00:00.000Z"
+      "modifiedTime": "2026-09-03T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -38,7 +41,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-04T10:00:00.000Z"
+      "modifiedTime": "2026-09-04T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -48,7 +52,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-05T10:00:00.000Z"
+      "modifiedTime": "2026-09-05T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -58,7 +63,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-06T10:00:00.000Z"
+      "modifiedTime": "2026-09-06T10:00:00.000Z",
+      "version": "5"
     },
     {
       "driveId": "drive-a",
@@ -68,7 +74,8 @@
       "parents": [
         "drive-a"
       ],
-      "modifiedTime": "2026-09-07T10:00:00.000Z"
+      "modifiedTime": "2026-09-07T10:00:00.000Z",
+      "version": "5"
     }
   ],
   "incompleteSearch": false
