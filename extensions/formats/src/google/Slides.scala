@@ -11,7 +11,6 @@ import grit.core.files.{
   Format,
   FormatName,
   Kind,
-  Limit,
   Missed,
   OpenFile,
   ReadLimits,
@@ -66,19 +65,15 @@ object Slides extends Format {
             unseen ++= missed
           }
         }
-        if (done.isEmpty && stopped.contains(Limit.Time)) Left(Unread.TooSlow)
-        else if (done.isEmpty && stopped.contains(Limit.Damaged))
-          Left(Unread.Damaged(Kind.GoogleSlides))
-        else
-          Right(
-            Understood(
-              Deck.doc(done.toVector),
-              stopped.fold(Covers.Whole)(Covers.Part(done.size, slides.size, CoverUnit.Pages, _)),
-              missed(unseen.toVector),
-              name,
-              version
-            )
+        Guard.unread(stopped.filter(_ => done.isEmpty), Kind.GoogleSlides).toLeft {
+          Understood(
+            Deck.doc(done.toVector),
+            stopped.fold(Covers.Whole)(Covers.Part(done.size, slides.size, CoverUnit.Pages, _)),
+            missed(unseen.toVector),
+            name,
+            version
           )
+        }
       }
     }
 

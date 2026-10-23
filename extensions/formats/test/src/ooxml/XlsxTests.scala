@@ -160,6 +160,17 @@ object XlsxTests extends TestSuite {
       )
     }
 
+    test("a workbook damaged before its first row is damaged, not a read of no rows") {
+      val sheets = workbook(Vector("Broken" -> "", "Next" -> ""))
+        .map((name, xml) =>
+          if (name == "xl/worksheets/sheet1.xml")
+            (name, s"""<worksheet xmlns="$S"><sheetData><row""")
+          else (name, xml)
+        )
+      Fixtures.read(Xlsx, Fixtures.zipOf("broken.xlsx", sheets)) ==>
+        Left(Unread.Damaged(grit.core.files.Kind.Excel))
+    }
+
     test("a zip holding no workbook is not an Excel file") {
       Fixtures.read(Xlsx, Fixtures.zip("w.docx", "word/document.xml" -> "<document/>")) ==>
         Left(Unread.NotMine)

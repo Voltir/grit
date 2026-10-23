@@ -7,7 +7,7 @@ import javax.xml.stream.{XMLInputFactory, XMLStreamException, XMLStreamReader}
 
 import scala.util.control.ControlThrowable
 
-import grit.core.files.{Limit, OpenFile, ReadLimits}
+import grit.core.files.{Kind, Limit, OpenFile, ReadLimits, Unread}
 
 /** A read stopped by `by`: thrown by a guard deep inside a reader, a library's callback
   * included, and caught by the format whose read it stops ([[Guard.until]]).
@@ -53,6 +53,16 @@ object Guard {
       // A library's own failure on a malformed file: the file, not grit, is what is wrong.
       case _: RuntimeException => Some(Limit.Damaged)
     }
+  }
+
+  /** What a read of a file of `kind` that kept nothing of it is, when `stopped` stopped it:
+    * [[Unread.TooSlow]] by its time, [[Unread.Damaged]] by damage; `None` for any other stop,
+    * or none, so it is answered as what it covers.
+    */
+  def unread(stopped: Option[Limit], kind: Kind): Option[Unread] = stopped match {
+    case Some(Limit.Time) => Some(Unread.TooSlow)
+    case Some(Limit.Damaged) => Some(Unread.Damaged(kind))
+    case Some(Limit.Chars | Limit.Glyphs | Limit.Inflated) | None => None
   }
 
   /** A read's counts, each throwing [[Stopped]] past its limit. */

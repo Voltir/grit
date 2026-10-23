@@ -10,7 +10,6 @@ import grit.core.files.{
   Format,
   FormatName,
   Kind,
-  Limit,
   Locus,
   Missed,
   OpenFile,
@@ -30,7 +29,8 @@ import grit.prose.form.{Block, Cell, Doc, Level, Mark, Span, Text}
   * after their paragraph, footnotes and endnotes as an end section referenced `[n]`, and page
   * headers and footers in a section after it. Tracked deletions and a move's source are not
   * read; comments are [[Missed]]. Its tree is not counted in pages: a stopped read
-  * [[Covers.Start]].
+  * [[Covers.Start]], and one stopped by its time or by damage before its body's first block
+  * [[Unread.TooSlow]] or [[Unread.Damaged]].
   */
 object Docx extends Format {
 
@@ -44,6 +44,7 @@ object Docx extends Format {
     val missed = mutable.ArrayBuffer.empty[Missed]
     var opened: Either[Unread, Unit] = Right(())
     var read = false
+    var bodied = 0
     val stopped = Guard.until(file, limits) { count =>
       opened = Package.open(file, limits, Kind.Word, Main, count) { parts =>
         read = true
@@ -66,6 +67,7 @@ object Docx extends Format {
         // The end sections are written whether or not the body was read whole.
         try parts.xml(Main)(body(_, count, headings, lists, links, referenced, blocks))
         finally {
+          bodied = blocks.size
           if (referenced.nonEmpty) {
             blocks += Block.Heading(Level.of(2), Text.plain("Notes"))
             referenced.foreach { (id, n) =>
@@ -81,10 +83,9 @@ object Docx extends Format {
     }
     opened.flatMap { _ =>
       if (!read) Left(Unread.Damaged(Kind.Word))
-      else if (blocks.isEmpty && stopped.contains(Limit.Time)) Left(Unread.TooSlow)
-      else if (blocks.isEmpty && stopped.contains(Limit.Damaged)) Left(Unread.Damaged(Kind.Word))
       else
-        Right(
+        // Its end sections are no read of its body.
+        Guard.unread(stopped.filter(_ => bodied == 0), Kind.Word).toLeft {
           Understood(
             Doc(blocks.toVector),
             stopped.fold(Covers.Whole)(Covers.Start(_)),
@@ -92,7 +93,7 @@ object Docx extends Format {
             name,
             version
           )
-        )
+        }
     }
   }
 

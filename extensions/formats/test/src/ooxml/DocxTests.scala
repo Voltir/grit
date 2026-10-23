@@ -182,6 +182,21 @@ object DocxTests extends TestSuite {
         (Right(Vector(para("Host."), para("Boxed."))), Right(Vector(Missed("comments"))))
     }
 
+    test(
+      "a document damaged before its body's first block is damaged, its page headers not a read of it"
+    ) {
+      val header =
+        s"""<w:hdr xmlns:w="$W"><w:p><w:r><w:t>Company plan</w:t></w:r></w:p></w:hdr>"""
+      Fixtures.read(
+        Docx,
+        Fixtures.zip(
+          "h.docx",
+          "word/document.xml" -> s"""<w:document xmlns:w="$W"><w:body><w:p""",
+          "word/header1.xml" -> header
+        )
+      ) ==> Left(Unread.Damaged(Kind.Word))
+    }
+
     test("a billion laughs stops at its entity, keeping what came before") {
       val laughs =
         s"""<?xml version="1.0"?><!DOCTYPE w:document [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">]>""" +

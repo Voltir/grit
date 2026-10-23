@@ -31,7 +31,8 @@ import grit.prose.form.{Block, Cell, Doc, Level, Text}
   * shows: a number as stored, a date (in the workbook's 1900 or 1904 system) as an ISO date or
   * date and time, a percentage as one, a formula after its value, or alone as not calculated
   * when the workbook kept no value. Hidden sheets, cell comments, drawings and charts are
-  * [[Missed]]. A stopped read covers the sheets it began ([[Covers.Part]]).
+  * [[Missed]]. A stopped read covers the sheets it began ([[Covers.Part]]); one stopped by its
+  * time or by damage before its first row is [[Unread.TooSlow]] or [[Unread.Damaged]].
   */
 object Xlsx extends Format {
 
@@ -48,6 +49,7 @@ object Xlsx extends Format {
     var opened: Either[Unread, Unit] = Right(())
     var begun = 0
     var visible = 0
+    var tables = 0
     val stopped = Guard.until(file, limits) { count =>
       opened = Package.open(file, limits, Kind.Excel, Main, count) { parts =>
         val (listed, d1904) = parts.xml(Main)(workbook(_, count)).getOrElse((Vector.empty, false))
@@ -75,18 +77,20 @@ object Xlsx extends Format {
           blocks += Block.Heading(Level.of(2), Text.plain(s.name))
           val rows = mutable.ArrayBuffer.empty[Vector[Cell[Nothing]]]
           try parts.xml(s.part)(sheet(_, cells, count, rows))
-          finally table(rows.toVector).foreach(blocks += _)
+          finally table(rows.toVector).foreach { t => blocks += t; tables += 1 }
         }
       }
     }
-    opened.map { _ =>
-      Understood(
-        Doc(blocks.toVector),
-        stopped.fold(Covers.Whole)(Covers.Part(begun, visible, CoverUnit.Sheets, _)),
-        missed.toVector,
-        name,
-        version
-      )
+    opened.flatMap { _ =>
+      Guard.unread(stopped.filter(_ => tables == 0), Kind.Excel).toLeft {
+        Understood(
+          Doc(blocks.toVector),
+          stopped.fold(Covers.Whole)(Covers.Part(begun, visible, CoverUnit.Sheets, _)),
+          missed.toVector,
+          name,
+          version
+        )
+      }
     }
   }
 
