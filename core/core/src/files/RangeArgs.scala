@@ -21,6 +21,9 @@ object RangeArgs {
       .count("Where to read on from: the offset a read said to ask for.", 0, Int.MaxValue)
       .optional
 
+  /** `near`: the name every reading tool gives [[Near]], which a piece's pointer sets. */
+  val NearArgument: String = "near"
+
   /** Where a passage a piece's pointer names lies now. */
   val Near: Field[Option[String]] =
     Field

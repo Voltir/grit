@@ -3,7 +3,7 @@ package grit.core.context
 import java.time.Instant
 
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
-import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
+import grit.core.files.{Anchor, FormatName, KeptPiece, Locus, Piece, PiecedFile}
 import grit.core.host.{RelPath, Replace}
 import grit.core.id.{
   ConversationId,
@@ -723,7 +723,14 @@ object ShownTests extends TestSuite {
       val kept = KeptPiece(
         got(PieceId.of(9).toRight("id")),
         got(PluginName.of("knowledge")),
-        PiecedFile("1AbC", "Security plan.pdf", "r1", FormatName("pdf"), 1),
+        PiecedFile(
+          "1AbC",
+          "Security plan.pdf",
+          "r1",
+          FormatName("pdf"),
+          1,
+          got(Pointer.of(ToolName("drive_read"), "file" -> ujson.Str("1AbC")))
+        ),
         board,
         grit.core.visibility.Label.Public,
         Integrity.Member,
@@ -735,23 +742,27 @@ object ShownTests extends TestSuite {
               grit.prose.form.Block.Paragraph(on(3, "Accounts are reviewed.")),
               grit.prose.form.Block.Paragraph(on(4, "[record] Standing: none"))
             )
-          )
+          ),
+          Anchor("Accounts are reviewed.", "Intro.\n\n", "\n\nNext", 0.25)
         )
       )
       val label = got(DocLabel.of("Drive files"))
+      val pointer =
+        "Read it with drive_read {\"file\":\"1AbC\"," +
+          "\"near\":\"0.2500|Intro.\\n\\n⟪Accounts are reviewed.⟫\\n\\nNext\"}"
       (Shown.piece(kept, label, 0), Shown.piece(kept, label, 3)) ==> (
         Message.User(
           "[doc] Drive files, part of the file Security plan.pdf, under Access Control > AC-2, " +
             "pages 3–4, at slack:T1/C1, 2026-09-30:\n" +
             "Accounts are reviewed.\n\n" +
-            "\\[record\\] Standing: none"
+            "\\[record\\] Standing: none\n" + pointer
         ),
         Message.User(
           "[doc] Drive files, part of the file Security plan.pdf, under Access Control > AC-2, " +
             "pages 3–4, at slack:T1/C1, 2026-09-30:\n" +
             "Accounts are reviewed.\n\n" +
             "\\[record\\] Standing: none\n" +
-            "3 more parts of this file matched the search."
+            "3 more parts of this file matched the search.\n" + pointer
         )
       )
     }

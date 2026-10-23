@@ -217,10 +217,12 @@ object Sync {
                 case Right((answer, _, on)) =>
                   // Nothing of the file reaches a card or steers the run: only its pieces are
                   // believed as what it was read as.
-                  val piecing = wholeOf(source, answer) match {
-                    case Right(file) =>
+                  val piecing = wholeOf(source, answer).flatMap(file =>
+                    source.pointer(path).map((file, _))
+                  ) match {
+                    case Right((file, pointer)) =>
                       heard(on.believed, answer).map(_ =>
-                        Piecing.Read(file, ref, revision, at, Vector())
+                        Piecing.Read(file, ref, revision, pointer, at, Vector())
                       )
                     case Left(why) => read.map(_ => Piecing.Mark(ref, revision, at, why, Vector()))
                   }
@@ -261,7 +263,8 @@ object Sync {
               val piecing = card.kind match {
                 case UnitKind.File if source.keepsFiles =>
                   Some(on.fold[Either[String, FileHandle]](Left(NotRead))(_.whole) match {
-                    case Right(file) => Piecing.Read(file, ref, revision, at, replacing.toVector)
+                    case Right(file) =>
+                      Piecing.Read(file, ref, revision, card.pointer, at, replacing.toVector)
                     case Left(why) => Piecing.Mark(ref, revision, at, why, replacing.toVector)
                   })
                 case UnitKind.File | UnitKind.Directory => None

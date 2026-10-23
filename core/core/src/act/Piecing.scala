@@ -2,6 +2,7 @@ package grit.core.act
 
 import java.time.Instant
 
+import grit.core.document.Pointer
 import grit.core.files.{FormatName, KeptAs, PieceKeeper, PiecedFile, Pieces, Understood}
 import grit.core.id.FileHandle
 import grit.core.place.Place
@@ -15,9 +16,17 @@ import grit.core.visibility.{Integrity, Label}
 enum Piecing extends caps.Pure derives CanEqual {
 
   /** Keep the pieces of the file the area keeps under `file` as `ref`'s current pieces at
-    * `revision`, drawn on at `place`; first withdrawing `ref`'s pieces at each of `replacing`.
+    * `revision`, read again by `pointer`, drawn on at `place`; first withdrawing `ref`'s pieces
+    * at each of `replacing`.
     */
-  case Read(file: FileHandle, ref: String, revision: String, place: Place, replacing: Vector[Label])
+  case Read(
+      file: FileHandle,
+      ref: String,
+      revision: String,
+      pointer: Pointer,
+      place: Place,
+      replacing: Vector[Label]
+  )
 
   /** Withdraw each file's pieces at its label: `ref` to that label. */
   case Withdraw(gone: Vector[(String, Label)])
@@ -85,7 +94,7 @@ object Piecing {
         marked(Mark(read.ref, read.revision, read.place, why, read.replacing), keeper, at)
       case Right((name, tree)) =>
         val (pieces, cut) = Pieces.of(tree, estimate)
-        val kept = PiecedFile(read.ref, name, read.revision, tree.by, tree.version)
+        val kept = PiecedFile(read.ref, name, read.revision, tree.by, tree.version, read.pointer)
         for {
           _ <- withdrawn(replaced, keeper, at)
           n <- keeper.keep(kept, read.place, integrity, pieces, cut, at)

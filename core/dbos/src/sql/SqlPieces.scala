@@ -4,6 +4,7 @@ import java.sql.ResultSet
 import java.time.Instant
 
 import grit.core.files.{
+  Anchor,
   FormatName,
   KeptAs,
   KeptPiece,
@@ -178,10 +179,13 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         kept <-
           if (same)
             before.fold(Right(pieces.size)) { set =>
-              update("UPDATE grit.piece_sets SET name = ?, revision = ? WHERE id = ?") { ps =>
+              update(
+                "UPDATE grit.piece_sets SET name = ?, revision = ?, pointer = ?::jsonb WHERE id = ?"
+              ) { ps =>
                 ps.setString(1, file.name)
                 ps.setString(2, file.revision)
-                ps.setLong(3, set)
+                ps.setString(3, SqlDocuments.pointerJson(file.pointer))
+                ps.setLong(4, set)
               }.map(_ => pieces.size)
             }
           else
@@ -191,9 +195,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
               made <- rows(
                 s"""INSERT INTO grit.piece_sets
                    |       (plugin, ref, name, revision, format, format_version, place,
-                   |        classification_id, room_id, integrity_id, written_at, last_placed, cut)
+                   |        classification_id, room_id, integrity_id, written_at, last_placed, cut,
+                   |        pointer)
                    |VALUES (?, ?, ?, ?, ?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)),
-                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?)
+                   |        ?, $RoomId, ${SqlIntegrity.Interned}, ?, ?, ?, ?::jsonb)
                    |RETURNING id""".stripMargin
               ) { ps =>
                 ps.setString(1, PluginName.value(plugin))
@@ -209,6 +214,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
                 ps.setObject(12, utc(at))
                 ps.setObject(13, utc(at))
                 ps.setInt(14, cut)
+                ps.setString(15, SqlDocuments.pointerJson(file.pointer))
               }(rs => Right(rs.getLong("id")))
               set <- made.headOption.toRight(StoreError.Invalid("a keep returned no set"))
               _ <- written(set, file.name, pieces, olds)
@@ -309,9 +315,9 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         _ <- there.fold(Right(()))(supersede(_, at))
         made <- rows(
           s"""INSERT INTO grit.piece_sets
-             |       (plugin, ref, name, revision, format, format_version, place,
+             |       (plugin, ref, name, revision, format, format_version, pointer, place,
              |        classification_id, room_id, integrity_id, written_at, last_placed, cut, unread)
-             |SELECT plugin, ref, name, revision, format, format_version,
+             |SELECT plugin, ref, name, revision, format, format_version, pointer,
              |       ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, $RoomId,
              |       ${SqlIntegrity.Interned}, ?, last_placed, cut, unread
              |  FROM grit.piece_sets WHERE id = ?
@@ -353,7 +359,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
     )(using tx: Tx^): Either[StoreError, Vector[(Long, String, Piece)]] =
       rows(
         """SELECT id, encode(fingerprint, 'hex') AS fingerprint, array_to_json(heading)::text AS heading,
-          |       tree::text AS tree
+          |       tree::text AS tree, anchor
           |  FROM grit.pieces WHERE set_id = ? ORDER BY ordinal""".stripMargin
       )(_.setLong(1, set))(rs =>
         piece(rs).map(p => (rs.getLong("id"), rs.getString("fingerprint"), p))
@@ -395,6 +401,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
           "heading" -> ujson.Arr.from(p.heading.map(ujson.Str(_))),
           "tree" -> Piece.tree(p),
           "fingerprint" -> fingerprint,
+          "anchor" -> p.anchor.written,
           "search_text" -> PieceIndex.of(name, p),
           "bytes" -> Piece.size(p, name).toDouble
         )
@@ -408,9 +415,11 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
               """UPDATE grit.pieces p
                 |   SET set_id = ?, ordinal = r.ordinal,
                 |       heading = ARRAY(SELECT jsonb_array_elements_text(r.heading)),
-                |       tree = r.tree, search_text = r.search_text, bytes = r.bytes
+                |       tree = r.tree, anchor = r.anchor, search_text = r.search_text,
+                |       bytes = r.bytes
                 |  FROM jsonb_to_recordset(?::jsonb)
-                |       AS r(id text, ordinal int, heading jsonb, tree jsonb, search_text text, bytes int)
+                |       AS r(id text, ordinal int, heading jsonb, tree jsonb, anchor text,
+                |            search_text text, bytes int)
                 | WHERE p.id = r.id::bigint""".stripMargin
             ) { ps =>
               ps.setLong(1, set)
@@ -420,12 +429,13 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
           if (adds.isEmpty) Right(0)
           else
             update(
-              """INSERT INTO grit.pieces (set_id, ordinal, heading, tree, fingerprint, search_text, bytes)
+              """INSERT INTO grit.pieces
+                |       (set_id, ordinal, heading, tree, fingerprint, anchor, search_text, bytes)
                 |SELECT ?, r.ordinal, ARRAY(SELECT jsonb_array_elements_text(r.heading)), r.tree,
-                |       decode(r.fingerprint, 'hex'), r.search_text, r.bytes
+                |       decode(r.fingerprint, 'hex'), r.anchor, r.search_text, r.bytes
                 |  FROM jsonb_to_recordset(?::jsonb)
-                |       AS r(ordinal int, heading jsonb, tree jsonb, fingerprint text, search_text text,
-                |            bytes int)
+                |       AS r(ordinal int, heading jsonb, tree jsonb, fingerprint text, anchor text,
+                |            search_text text, bytes int)
                 | ORDER BY r.ordinal""".stripMargin
             ) { ps =>
               ps.setLong(1, set)
@@ -479,20 +489,27 @@ private[sql] object SqlPieces {
 
   /** A piece's columns, as [[kept]] reads them, from `grit.pieces p` joined to [[Labelled]] `d`. */
   val Columns: String =
-    "p.id, array_to_json(p.heading)::text AS heading, p.tree::text AS tree, d.plugin, d.ref, " +
-      "array_to_json(d.place)::text AS place, " +
+    "p.id, array_to_json(p.heading)::text AS heading, p.tree::text AS tree, p.anchor, d.plugin, " +
+      "d.ref, array_to_json(d.place)::text AS place, d.pointer::text AS pointer, " +
       "d.name, d.revision, d.format, d.format_version, d.written_at, d.label_level, " +
       "d.label_compartments, d.integrity_level, d.integrity_compartments"
 
-  /** The piece `rs` holds in its `heading` and `tree` columns, or why not. */
+  /** The piece `rs` holds in its `heading`, `tree` and `anchor` columns, or why not. */
   def piece(rs: ResultSet): Either[String, Piece] =
-    Piece.read(
-      ujson
-        .read(rs.getString("heading"))
-        .arrOpt
-        .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)),
-      ujson.read(rs.getString("tree"))
-    )
+    Anchor
+      .read(rs.getString("anchor"))
+      .left
+      .map(why => s"a piece's anchor: $why")
+      .flatMap(anchor =>
+        Piece.read(
+          ujson
+            .read(rs.getString("heading"))
+            .arrOpt
+            .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)),
+          ujson.read(rs.getString("tree")),
+          anchor
+        )
+      )
 
   /** The kept piece `rs` holds ([[Columns]]), or why not. */
   def kept(rs: ResultSet): Either[String, KeptPiece] =
@@ -501,6 +518,9 @@ private[sql] object SqlPieces {
       plugin <- PluginName.of(rs.getString("plugin"))
       p <- piece(rs)
       place <- SqlDocuments.placeOf(rs.getString("place"))
+      pointer <- Option(rs.getString("pointer"))
+        .toRight("a read piece set's pointer: none")
+        .flatMap(SqlDocuments.pointerOf)
     } yield KeptPiece(
       id,
       plugin,
@@ -509,7 +529,8 @@ private[sql] object SqlPieces {
         rs.getString("name"),
         rs.getString("revision"),
         FormatName(rs.getString("format")),
-        rs.getInt("format_version")
+        rs.getInt("format_version"),
+        pointer
       ),
       place,
       SqlLabels.read(rs),

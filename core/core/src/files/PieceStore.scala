@@ -2,7 +2,7 @@ package grit.core.files
 
 import java.time.Instant
 
-import grit.core.document.{DocLabel, DocumentSearch}
+import grit.core.document.{DocLabel, DocumentSearch, Pointer}
 import grit.core.id.{PieceId, PieceSetId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -10,14 +10,15 @@ import grit.core.visibility.{Integrity, Label}
 
 /** A file as its pieces are kept: `ref`, its keeping plugin's name for it (a Drive file's id);
   * `name`, as a person knows it; `revision`, its source's; read by `format` at `version`
-  * ([[Understood.by]]).
+  * ([[Understood.by]]); read again by the call `pointer` names.
   */
 final case class PiecedFile(
     ref: String,
     name: String,
     revision: String,
     format: FormatName,
-    version: Int
+    version: Int,
+    pointer: Pointer
 )
 
 /** A piece as kept: by `plugin`, of `file`, at `place`, at `label` and believed at
@@ -32,7 +33,17 @@ final case class KeptPiece(
     integrity: Integrity,
     written: Instant,
     piece: Piece
-)
+) {
+
+  /** The call that reads around it: its file's pointer with [[RangeArgs.NearArgument]] its
+    * anchor as written ([[Anchor.written]]); its file's pointer alone when that would be too
+    * long a pointer ([[Pointer.of]]).
+    */
+  def pointer: Pointer =
+    file.pointer
+      .setting(RangeArgs.NearArgument, ujson.Str(piece.anchor.written))
+      .getOrElse(file.pointer)
+}
 
 /** Kept pieces as windows draw on them. Each read returns only the pieces its transaction reads
   * (a piece is kept and read as a document is, [[grit.core.document.DocumentShelf]]).

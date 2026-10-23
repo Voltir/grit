@@ -18,7 +18,15 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
-import grit.core.files.{FormatName, InMemoryPieces, Locus, Piece, PieceKeeper, PiecedFile}
+import grit.core.files.{
+  FormatName,
+  InMemoryPieces,
+  Locus,
+  Piece,
+  PieceKeeper,
+  PiecedFile,
+  TestPieces
+}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -107,13 +115,14 @@ object TurnDocumentsTests extends TestSuite {
   private def kept(pieces: InMemoryPieces, plugin: PluginName, text: String): PieceId = {
     val piece = Piece(
       Vector("Access"),
-      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2))))))))
+      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(2)))))))),
+      TestPieces.anchor(text)
     )
     ok(
       pieces
         .keeper(plugin, PieceKeeper.Bound)
         .keep(
-          PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1),
+          PiecedFile(text, "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer(text)),
           board,
           Integrity.Member,
           Vector(piece),
@@ -298,7 +307,9 @@ object TurnDocumentsTests extends TestSuite {
           ),
           Message.User(
             "[doc] Drive files, part of the file plan.pdf, under Access, page 2, at slack:T1/C1, " +
-              "2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search."
+              "2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search." +
+              "\nRead it with drive_read {\"file\":\"Accounts are reviewed.\"," +
+              "\"near\":\"0.0000|⟪Accounts are reviewed.⟫\"}"
           ),
           Message.User("one"),
           Message.User("two")

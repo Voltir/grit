@@ -2,7 +2,15 @@ package grit.core.act
 
 import java.time.Instant
 
-import grit.core.files.{Covers, FormatName, InMemoryPieces, Locus, PieceKeeper, Understood}
+import grit.core.files.{
+  Covers,
+  FormatName,
+  InMemoryPieces,
+  Locus,
+  PieceKeeper,
+  TestPieces,
+  Understood
+}
 import grit.core.id.{FileHandle, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
@@ -55,7 +63,7 @@ object PiecingTests extends TestSuite {
   ): Pieced =
     Piecing
       .kept(
-        Piecing.Read(File, "a", "r1", Here, replacing),
+        Piecing.Read(File, "a", "r1", TestPieces.pointer("a"), Here, replacing),
         Right(("a.pdf", Tree)),
         pieces.keeper(Plugin, PieceKeeper.Bound),
         Integrity.Member,

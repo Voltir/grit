@@ -31,7 +31,16 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.Journaled
-import grit.core.files.{Covers, FileError, Files, FormatName, KeptPiece, Locus, Understood}
+import grit.core.files.{
+  Covers,
+  FileError,
+  Files,
+  FormatName,
+  KeptPiece,
+  Locus,
+  TestPieces,
+  Understood
+}
 import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
 import grit.core.message.{AssistantBlock, Message}
@@ -118,7 +127,10 @@ abstract class MovesContract extends TestSuite {
           Vector(
             m.piece(
               name("p"),
-              TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Outside)
+              TestTainted.at(
+                Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+                Integrity.Outside
+              )
             )
           )
         )
@@ -142,7 +154,10 @@ abstract class MovesContract extends TestSuite {
         Made(Vector(file, missing).zipWithIndex.map { (f, i) =>
           m.piece(
             name(s"p$i"),
-            TestTainted.at(Piecing.Read(f, "a", "r1", Here, Vector()), Believed)
+            TestTainted.at(
+              Piecing.Read(f, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+              Believed
+            )
           )
         })
       }
@@ -161,7 +176,7 @@ abstract class MovesContract extends TestSuite {
       "a piece move from what is believed less than Outside is Below: nothing is read or kept, and its name is spent"
     ) {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
-        val read = Piecing.Read(file, "a", "r1", Here, Vector())
+        val read = Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())
         Made(
           Vector(TestTainted.at(read, Integrity.Untrusted), TestTainted.at(read, Believed))
             .map(m.piece(name("p"), _))
@@ -181,7 +196,10 @@ abstract class MovesContract extends TestSuite {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
         val read = m.piece(
           name("p"),
-          TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Believed)
+          TestTainted.at(
+            Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+            Believed
+          )
         )
         val gone = Vector(("a", Label.Public), ("a", Floor), ("b", Floor))
         Made(Vector(read, m.piece(name("w"), TestTainted.at(Piecing.Withdraw(gone), Believed))))
@@ -196,7 +214,7 @@ abstract class MovesContract extends TestSuite {
         def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
         Made(
           Vector(
-            move("p", Piecing.Read(file, "a", "r1", Here, Vector())),
+            move("p", Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())),
             move("m", Piecing.Mark("b", "r1", Here, "too large", Vector())),
             move("s", Piecing.Survey(Vector("a", "b", "c")))
           )
@@ -221,7 +239,7 @@ abstract class MovesContract extends TestSuite {
         def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
         Made(
           Vector(
-            move("p", Piecing.Read(file, "a", "r1", Here, Vector())),
+            move("p", Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector())),
             move("m", Piecing.Mark("a", "r2", Here, "too large", Vector(Label.Public))),
             move("s", Piecing.Survey(Vector("a")))
           )
@@ -246,7 +264,10 @@ abstract class MovesContract extends TestSuite {
       val (got, kept) = piecing(MoveLimits.Zero) { (m, file) =>
         val read = m.piece(
           name("p"),
-          TestTainted.at(Piecing.Read(file, "a", "r1", Here, Vector()), Integrity.Member)
+          TestTainted.at(
+            Piecing.Read(file, "a", "r1", TestPieces.pointer("a"), Here, Vector()),
+            Integrity.Member
+          )
         )
         val moved = Piecing.Relabel("a", Floor, there)
         Made(Vector(read, m.piece(name("r"), TestTainted.at(moved, Integrity.Outside))))

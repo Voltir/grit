@@ -20,7 +20,8 @@ import grit.core.files.{
   PagedText,
   Piece,
   PiecedFile,
-  PutKey
+  PutKey,
+  TestPieces
 }
 import grit.core.host.TempBlobs
 import grit.core.id.{
@@ -1210,11 +1211,12 @@ object CollectorLiveTests extends TestSuite {
       val pieces = new SqlPieces(tombstones)
       val keeper = pieces.keeper(p)
       val here = Place.under(Namespace.Task, Vector("collect"))
-      val file = PiecedFile("f", "f.pdf", "r1", FormatName("test"), 1)
+      val file = PiecedFile("f", "f.pdf", "r1", FormatName("test"), 1, TestPieces.pointer("f"))
       def piece(text: String): Piece =
         Piece(
           Vector.empty,
-          Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1))))))))
+          Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(1)))))))),
+          TestPieces.anchor(text)
         )
       val engine = launched(config, 1.day, Vector(new Keeping(p)))
       try {

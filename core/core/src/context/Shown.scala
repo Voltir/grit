@@ -151,7 +151,8 @@ object Shown {
     * of the file {name}, under {heading path}, pages {p}–{q}, at {place.written}, {the UTC date
     * it was written}:" (no heading path or pages when it has none), then its markdown
     * ([[grit.core.files.Piece.text]]) as [[pasted]] shows it, then, when `more` is positive,
-    * "{more} more parts of this file matched the search."
+    * "{more} more parts of this file matched the search.", then the line its pointer shows
+    * ([[grit.core.files.KeptPiece.pointer]], [[grit.core.document.Pointer.shown]]).
     */
   def piece(piece: KeptPiece, label: DocLabel, more: Int): Message = {
     val day = piece.written.atOffset(ZoneOffset.UTC).toLocalDate
@@ -163,7 +164,8 @@ object Shown {
     Message.User(
       s"${SectionTag.Document.tag} ${DocLabel.value(label)}, part of the file ${piece.file.name}" +
         s"$path$pages, at ${piece.place.written}, $day:\n${pasted(piece.piece.text)}" +
-        (if (more > 0) s"\n$more more parts of this file matched the search." else "")
+        (if (more > 0) s"\n$more more parts of this file matched the search." else "") +
+        s"\n${piece.pointer.shown}"
     )
   }
 

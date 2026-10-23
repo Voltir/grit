@@ -2,10 +2,12 @@ package grit.core.files
 
 import java.time.Instant
 
+import grit.core.document.Pointer
 import grit.core.id.{PieceId, PieceSetId, PluginName}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, StoreError, Tx}
+import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Item, Label}
 
 /** An in-memory [[PieceStore]], with each plugin's [[PieceKeeper]], for tests, keeping
@@ -57,8 +59,12 @@ final class InMemoryPieces extends PieceStore {
         case Some((s, r))
             if r.place == place && r.integrity == integrity && r.file.format == file.format &&
               r.file.version == file.version && of(s).map(_._2.piece) == pieces =>
-          sets =
-            sets.updated(s, r.copy(file = r.file.copy(name = file.name, revision = file.revision)))
+          sets = sets.updated(
+            s,
+            r.copy(file =
+              r.file.copy(name = file.name, revision = file.revision, pointer = file.pointer)
+            )
+          )
           Right(pieces.size)
         case _ =>
           for {
@@ -144,7 +150,11 @@ final class InMemoryPieces extends PieceStore {
       val label = clearance.floor
       current(plugin, ref, label).fold(Right(()))((s, r) => supersede(s, r, at)).map { _ =>
         lastSet += 1
-        val file = PiecedFile(ref, ref, revision, FormatName(""), 0)
+        // An unread set holds no pieces, so no read answers its file's pointer, as SQL keeps none.
+        val none = Pointer
+          .of(ToolName("none"), "ref" -> ujson.Str(ref))
+          .fold(why => throw new IllegalStateException(why), identity)
+        val file = PiecedFile(ref, ref, revision, FormatName(""), 0, none)
         val row = SetRow(
           plugin,
           file,

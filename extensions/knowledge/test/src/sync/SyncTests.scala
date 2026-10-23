@@ -856,9 +856,11 @@ object SyncTests extends TestSuite {
       val marks = pieces
         .keeper(plugin, grit.core.files.PieceKeeper.Bound)
         .kept(Vector(ref("docs/a.md"), ref("docs/b.md")))(using TestTx.fake(Clearance.of(floor)))
-      (reply, pieced(k), k.made.filter(MoveName.value(_).startsWith("piece/")), marks) ==> (
+      val read = k.pieced.map(p => Right(p.file.pointer))
+      (reply, pieced(k), read, k.made.filter(MoveName.value(_).startsWith("piece/")), marks) ==> (
         line(written = 3),
         Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app.")),
+        Vector(source(5).pointer("docs/a.md")),
         Vector("docs/a.md", "docs/b.md").map(p => CardMoves.of(Phase.Piece, CardKey.of(name, p))),
         Right(
           Map(
@@ -923,7 +925,8 @@ object SyncTests extends TestSuite {
         (reply, k.made.filter(MoveName.value(_).startsWith("piece/")), pieced(k))
       }
       val second = again
-      (second, again) ==> (
+      val read = keeping(floor, documents, pieces = pieces).pieced.map(p => Right(p.file.pointer))
+      (second, again, read) ==> (
         (
           line(unchanged = 3),
           Vector("docs/a.md", "docs/b.md").map(p => CardMoves.of(Phase.Piece, CardKey.of(name, p))),
@@ -933,7 +936,9 @@ object SyncTests extends TestSuite {
           line(unchanged = 3),
           Vector(),
           Vector((ref("docs/a.md"), hex(1), floor, Integrity.Member, "Deploying the app."))
-        )
+        ),
+        // Pieced by a read of its own, read again by the call its card's pointer names.
+        Vector(source(5).pointer("docs/a.md"))
       )
     }
 

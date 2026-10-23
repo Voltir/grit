@@ -47,7 +47,8 @@ import grit.core.files.{
   Piece,
   PieceKeeper,
   PieceSearch,
-  PiecedFile
+  PiecedFile,
+  TestPieces
 }
 import grit.core.id.{
   CallSlot,
@@ -362,13 +363,14 @@ object RetrievalAssemblerTests extends TestSuite {
               )
             )
           )
-        )
+        ),
+        TestPieces.anchor(t)
       )
     )
     pieces
       .keeper(plugin(p), PieceKeeper.Bound)
       .keep(
-        PiecedFile(ref, s"$ref.pdf", "r1", FormatName("test"), 1),
+        PiecedFile(ref, s"$ref.pdf", "r1", FormatName("test"), 1, TestPieces.pointer(ref)),
         placeOf("files"),
         Integrity.Member,
         all,

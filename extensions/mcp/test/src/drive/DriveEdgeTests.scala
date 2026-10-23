@@ -26,6 +26,7 @@ import grit.core.edge.{
   Variable
 }
 import grit.core.files.{
+  Anchor,
   Covers,
   FileArea,
   Format,
@@ -33,11 +34,17 @@ import grit.core.files.{
   Formats,
   InMemoryFileCatalog,
   Intake,
+  KeptPiece,
   Kind,
+  Locus,
+  ModelText,
   NoIntake,
   OpenFile,
   PagedText,
+  Piece,
+  PiecedFile,
   ReadLimits,
+  TestPieces,
   Understood,
   Unread
 }
@@ -500,6 +507,45 @@ object DriveEdgeTests extends TestSuite {
           case other => throw new java.lang.AssertionError(other.toString)
         }
       }
+    }
+
+    test(
+      "a piece's pointer, followed once its file is edited in Drive, reads the page its passage moved to, or says it is gone"
+    ) {
+      val passage = "Accounts are reviewed every ninety days by the owner."
+      // The piece as a keep of the file's first revision anchored it.
+      val was = Understood(
+        Doc(Vector("Scope.", passage, "End.").zipWithIndex.map { (s, i) =>
+          Block.Paragraph(Text(Vector(Span(s, Set.empty, Vector(Locus.Page(i + 1)))))): Block[Locus]
+        }),
+        Covers.Whole,
+        Vector.empty,
+        PagedText.name,
+        PagedText.version
+      )
+      val text = ModelText.text(was)
+      val start = text.indexOf(passage)
+      val piece = KeptPiece(
+        right(grit.core.id.PieceId.of(1).toRight("id")),
+        right(grit.core.id.PluginName.of("knowledge")),
+        PiecedFile("card", "plan.pdf", "r1", PagedText.name, 1, TestPieces.pointer("file-5")),
+        Drive.place,
+        grit.core.visibility.Label.Public,
+        Integrity.Member,
+        java.time.Instant.EPOCH,
+        Piece(Vector.empty, was.doc, Anchor.of(text, start, start + passage.length))
+      )
+      def followed(pages: String*): String =
+        withFake { fake =>
+          fake.answeringBytes("files/file-5?alt=media", 200, PagedText.bytes(pages*))
+          readPart(
+            withArea()(area => run(fake, "drive_read", piece.pointer.arguments, files = area))
+          )._1
+        }
+      (followed("Scope.", "A new page.", passage, "End."), followed("Scope.", "End.")) ==> (
+        s"Read: page 3 of 4.\n\n[page 3]\n$passage\n\n[To read on, ask for pages=\"4\".]",
+        "Read: its outline.\n\nOutline:\n(no headings)\n\nThat passage is gone from the file now."
+      )
     }
 
     test(

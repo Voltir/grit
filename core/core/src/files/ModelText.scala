@@ -90,7 +90,7 @@ object ModelText {
   private def bytes(s: String): Int = s.getBytes(UTF_8).length
 
   /** `doc`'s blocks laid out as markdown, each at its character offset, with its pages. */
-  private final case class Laid(doc: Doc[Locus], readWhole: Boolean) {
+  private[files] final case class Laid(doc: Doc[Locus], readWhole: Boolean) {
 
     val blocks: Vector[Block[Locus]] = doc.blocks
 

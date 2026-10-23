@@ -21,8 +21,9 @@ Decision:
   file, the rest counted as cut. A piece's identity across revisions is its fingerprint, the
   hash of its normalised heading path and text.
 - **Their own tables and index.** `grit.piece_sets` (one row per plugin, file and label: name,
-  revision, format and version, place, labels, when written, superseded and last placed) and
-  `grit.pieces` (each piece's tree as prose JSON, fingerprint, index text and size), searched
+  revision, format and version, the pointer that reads it, place, labels, when written,
+  superseded and last placed) and `grit.pieces` (each piece's tree as prose JSON, fingerprint,
+  anchor, index text and size), searched
   by their own BM25 index over `PieceIndex.of`: the file name's words, then `IndexText`, each
   identifier also as its alias (`AC-2(3)` also `AC2x3`), the same aliases added to a query.
   The model reads a piece rendered from its tree (`Shown.piece`), never a stored text.
@@ -44,6 +45,13 @@ Decision:
   (128 MiB) counted over every label; past it, whole files are deleted, those superseded
   first, then the least recently placed, never the one written. Superseded and withdrawn sets
   are collected after the plugin's retention (`Target.PieceSet`).
+- **A piece is cited by an anchor its pointer follows.** Each piece keeps an `Anchor` (its
+  first 8 words, 32 characters either side, its position; under 170 characters), and the
+  window shows its file's pointer (its card's) with `near` set to it. Every reading tool's
+  `near` re-reads the file and finds the passage exactly by context, else nearest its
+  position, else at least 0.8 alike, reading the page it lies on, or says it is gone. Turned
+  down: a citation by offset or page alone (any edit before it moves it), and following by
+  the area's handle (kept a day; a piece lives as long as its card).
 - **At most eight of one file in a window.** The pieces search answers at most
   `PieceSearch.PerFile` of one file and how many more matched, and the window says so ("n
   more parts of this file matched"), so one long file cannot fill the judged candidates.

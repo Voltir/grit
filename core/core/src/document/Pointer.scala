@@ -20,6 +20,14 @@ final case class Pointer private (tool: ToolName, private val pointed: ujson.Obj
     */
   def shown: String = s"Read it with ${ToolName.value(tool)} ${ujson.write(pointed)}"
 
+  /** This pointer with its argument `name` set to `value`, in place of any it held, or why not,
+    * as [[Pointer.of]] refuses.
+    */
+  def setting(name: String, value: ujson.Value): Either[String, Pointer] = {
+    val others = pointed.value.toVector.filter(_._1 != name).map((k, v) => k -> ujson.copy(v))
+    Pointer.of(tool, name -> value, others*)
+  }
+
   /** Whether a call of `tool` with `arguments` follows it; one whose `arguments` is not an
     * object never does.
     */

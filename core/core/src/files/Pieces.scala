@@ -12,8 +12,10 @@ import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
 
-/** A piece of a file: its tree under its heading path, the headings above it outermost first. */
-final case class Piece(heading: Vector[String], doc: Doc[Locus]) {
+/** A piece of a file: its tree under its heading path, the headings above it outermost first,
+  * and where it lies in its file's text ([[ModelText.text]]).
+  */
+final case class Piece(heading: Vector[String], doc: Doc[Locus], anchor: Anchor) {
 
   /** The first and last page its text lies on, when its file is counted in pages. */
   val pages: Option[(Int, Int)] = {
@@ -38,7 +40,8 @@ final case class Piece(heading: Vector[String], doc: Doc[Locus]) {
   /** This piece's heading path holding `text` alone, one paragraph: what a stub shows in its
     * place.
     */
-  def holding(text: String): Piece = Piece(heading, Doc(Vector(Block.Paragraph(Text.plain(text)))))
+  def holding(text: String): Piece =
+    copy(doc = Doc(Vector(Block.Paragraph(Text.plain(text)))))
 }
 
 object Piece {
@@ -50,8 +53,8 @@ object Piece {
   def tree(piece: Piece): ujson.Value =
     ProseJson.write(piece.doc, { case Locus.Page(n) => ujson.Obj("page" -> n) })
 
-  /** The piece under `heading` whose doc `tree` stores ([[tree]]), or why not. */
-  def read(heading: Vector[String], tree: ujson.Value): Either[String, Piece] =
+  /** The piece under `heading` at `anchor` whose doc `tree` stores ([[tree]]), or why not. */
+  def read(heading: Vector[String], tree: ujson.Value, anchor: Anchor): Either[String, Piece] =
     ProseJson
       .read(
         tree,
@@ -62,14 +65,16 @@ object Piece {
             .collect { case n if n.isWhole && n >= 1 => Locus.Page(n.toInt) }
             .toRight(s"a piece's note: not a page: ${v.render()}")
       )
-      .map(Piece(heading, _))
+      .map(Piece(heading, _, anchor))
 
   /** What `piece` of the file named `file` takes kept, in bytes of UTF-8: its stored doc
-    * ([[tree]], compact) and the text it is searched by ([[PieceIndex.of]]).
+    * ([[tree]], compact), the text it is searched by ([[PieceIndex.of]]) and its anchor
+    * ([[Anchor.written]]).
     */
   def size(piece: Piece, file: String): Long =
     tree(piece).render().getBytes(UTF_8).length.toLong +
-      PieceIndex.of(file, piece).getBytes(UTF_8).length
+      PieceIndex.of(file, piece).getBytes(UTF_8).length +
+      piece.anchor.written.getBytes(UTF_8).length
 }
 
 object Pieces {
@@ -84,27 +89,40 @@ object Pieces {
     * `estimate` under one heading path, a block over it cut (a paragraph at sentences, then
     * words; a list at its items; a code listing at lines); a table's rows packed with its
     * columns, a row over it cut at its columns; at most [[PerFile]], and how many were
-    * dropped. A heading is never in a piece's doc but in its path; a rule is dropped.
+    * dropped. A heading is never in a piece's doc but in its path; a rule is dropped. Each is
+    * anchored ([[Anchor.of]]) where its first words lie in `tree`'s text ([[ModelText.text]]).
     */
   def of(tree: Understood, estimate: TokenEstimator): (Vector[Piece], Int) = {
     val cutter = Cutter(estimate)
-    // The heading path, each heading with its level; the pieces done; the blocks of the one open.
+    val laid = ModelText.Laid(tree.doc, readWhole = false)
+    // The heading path, each heading with its level; the pieces done; the blocks of the one open,
+    // where it starts in the file's text, and where the last of its blocks ends.
     var path = Vector.empty[(Int, String)]
     var done = Vector.empty[Piece]
     var open = Vector.empty[Block[Locus]]
+    var (start, end) = (0, 0)
     def close(): Unit = {
-      if (open.nonEmpty) done :+= Piece(path.map(_._2), Doc(open))
+      if (open.nonEmpty)
+        done :+= Piece(path.map(_._2), Doc(open), Anchor.of(laid.whole, start, end))
       open = Vector.empty
     }
-    tree.doc.blocks.foreach {
-      case Block.Heading(level, text) =>
+    tree.doc.blocks.zipWithIndex.foreach {
+      case (Block.Heading(level, text), _) =>
         close()
         path = path.takeWhile(_._1 < level.value) :+ (level.value -> oneLine(text.plain))
-      case block =>
+      case (block, i) =>
+        val text = laid.texts.lift(i).getOrElse("")
+        val (from, to) = (laid.start(i), laid.start(i) + text.length)
+        // Where in its block's text the last part found began: the next is sought after it.
+        var seen = -1
         cutter.cut(block).foreach { part =>
+          val at = firstWords(part).flatMap(_.findFirstMatchIn(text.substring(seen + 1)))
+          val begins = at.fold(seen.max(0))(m => seen + 1 + m.start)
+          seen = begins
           val joined = cutter.join(open, part)
-          if (open.isEmpty || cutter.fits(joined)) open = joined
-          else { close(); open = Vector(part) }
+          if (open.nonEmpty && cutter.fits(joined)) open = joined
+          else { close(); open = Vector(part); start = from + begins }
+          end = to
         }
     }
     close()
@@ -112,6 +130,18 @@ object Pieces {
   }
 
   private def oneLine(s: String): String = s.replace('\n', ' ').trim
+
+  /** The first [[Anchor.Words]] runs of letters and digits of `part`'s words, whatever lies
+    * between them, as markdown may write it; `None` when it has none.
+    */
+  private def firstWords(part: Block[Locus]): Option[Regex] = {
+    val runs = """[\p{L}\p{N}]+""".r
+      .findAllIn(IndexText.render(Piece.plain(Doc(Vector(part)))))
+      .take(Anchor.Words)
+      .map(Regex.quote)
+      .toVector
+    Option.when(runs.nonEmpty)(runs.mkString("""[^\p{L}\p{N}]+""").r)
+  }
 
   /** Cuts blocks and packs them to at most [[Target]] tokens by `estimate`. */
   private final case class Cutter(estimate: TokenEstimator) {

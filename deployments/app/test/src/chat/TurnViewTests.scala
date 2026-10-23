@@ -6,7 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.durable.StepRecord
-import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile, TestPieces}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -454,7 +454,7 @@ object TurnViewTests extends TestSuite {
       def piece(id: Long, text: String) = KeptPiece(
         PieceId.of(id).getOrElse(sys.error("id")),
         got(PluginName.of("files")),
-        PiecedFile(s"f$id", "plan.pdf", "r1", FormatName("pdf"), 1),
+        PiecedFile(s"f$id", "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer(s"f$id")),
         board,
         grit.core.visibility.Label.Public,
         Integrity.Member,
@@ -469,7 +469,8 @@ object TurnViewTests extends TestSuite {
                 )
               )
             )
-          )
+          ),
+          TestPieces.anchor(text)
         )
       )
       val label = got(DocLabel.of("Drive files"))

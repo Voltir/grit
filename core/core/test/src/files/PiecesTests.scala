@@ -62,6 +62,20 @@ object PiecesTests extends TestSuite {
       )
     }
 
+    test("each piece is anchored at its own first words in its file's text, cut ones too") {
+      val s1 = words("a", 90) + "."
+      val s2 = words("b", 90) + "."
+      val s3 = words("c", 250) + "."
+      val file = tree(heading(1, "Policy"), para("Scope."), para(s"$s1 $s2 $s3"))
+      val text = ModelText.text(file)
+      val (pieces, _) = Pieces.of(file, PerWord)
+      pieces.map(p => (p.anchor.quote, Anchor.find(p.anchor, text).map(_._1))) ==> Vector(
+        ("Scope.\n\n" + words("a", 7), Some(text.indexOf("Scope."))),
+        (words("c", 8), Some(text.indexOf("c1 "))),
+        ((201 to 208).map(i => s"c$i").mkString(" "), Some(text.indexOf("c201 ")))
+      )
+    }
+
     test("a paragraph over Target is cut at its sentences, a sentence over it at words") {
       val s1 = words("a", 90) + "."
       val s2 = words("b", 90) + "."
@@ -106,10 +120,12 @@ object PiecesTests extends TestSuite {
     test(
       "a piece's fingerprint is the same for its words and path wherever they lie, and differs for others"
     ) {
-      val here = Piece(Vector("Policy"), Doc(Vector(para("Accounts  are  reviewed.", 3))))
-      val moved = Piece(Vector("Policy"), Doc(Vector(para("accounts are reviewed.", 40))))
-      val other = Piece(Vector("Policy"), Doc(Vector(para("Accounts are removed.", 3))))
-      val elsewhere = Piece(Vector("Audit"), Doc(Vector(para("Accounts are reviewed.", 3))))
+      def piece(path: String, text: String, page: Int, at: Double) =
+        Piece(Vector(path), Doc(Vector(para(text, page))), Anchor(text, "", "", at))
+      val here = piece("Policy", "Accounts  are  reviewed.", 3, 0.1)
+      val moved = piece("Policy", "accounts are reviewed.", 40, 0.9)
+      val other = piece("Policy", "Accounts are removed.", 3, 0.1)
+      val elsewhere = piece("Audit", "Accounts are reviewed.", 3, 0.1)
       (
         here.fingerprint == moved.fingerprint,
         here.fingerprint == other.fingerprint,

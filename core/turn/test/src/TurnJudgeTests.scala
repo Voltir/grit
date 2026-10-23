@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.classify.StateJson
 import grit.core.context.Window
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
-import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile}
+import grit.core.files.{FormatName, KeptPiece, Locus, Piece, PiecedFile, TestPieces}
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -320,7 +320,7 @@ object TurnJudgeTests extends TestSuite {
       val shown = KeptPiece(
         PieceId.of(12L).getOrElse(sys.error("id")),
         got(PluginName.of("files")),
-        PiecedFile("f12", "plan.pdf", "r1", FormatName("pdf"), 1),
+        PiecedFile("f12", "plan.pdf", "r1", FormatName("pdf"), 1, TestPieces.pointer("f12")),
         got(Place.read("slack:T1/C1")),
         grit.core.visibility.Label.Public,
         Integrity.Member,
@@ -337,7 +337,8 @@ object TurnJudgeTests extends TestSuite {
                 )
               )
             )
-          )
+          ),
+          TestPieces.anchor("Accounts are reviewed.")
         )
       )
       judging(
@@ -349,7 +350,8 @@ object TurnJudgeTests extends TestSuite {
         names,
         "draft",
         pieces = Vector((shown, label, 3))
-      ).recalled ==> "[doc] Drive files, part of the file plan.pdf, under Access, page 2, at slack:T1/C1, 2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search."
+      ).recalled ==> "[doc] Drive files, part of the file plan.pdf, under Access, page 2, at slack:T1/C1, 2026-09-30:\nAccounts are reviewed.\n3 more parts of this file matched the search." +
+        "\nRead it with drive_read {\"file\":\"f12\",\"near\":\"0.0000|⟪Accounts are reviewed.⟫\"}"
     }
 
     test("what the draft's own tool calls read is recalled under each call; a failed one is not") {

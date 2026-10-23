@@ -45,11 +45,12 @@ abstract class PieceContract extends TestSuite {
   private def piece(text: String, page: Int = 1): Piece =
     Piece(
       Vector("Policy"),
-      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(page))))))))
+      Doc(Vector(Block.Paragraph(Text(Vector(Span(text, Set.empty, Vector(Locus.Page(page)))))))),
+      TestPieces.anchor(text)
     )
 
   private def file(ref: String, revision: String = "r1"): PiecedFile =
-    PiecedFile(ref, s"$ref.pdf", revision, FormatName("test"), 1)
+    PiecedFile(ref, s"$ref.pdf", revision, FormatName("test"), 1, TestPieces.pointer(ref))
 
   /** Keeps `texts` as `ref`'s pieces under `k` at minute `m`; how many were kept. */
   private def keep(k: PieceKeeper, ref: String, m: Int, texts: String*): Int =
@@ -103,6 +104,25 @@ abstract class PieceContract extends TestSuite {
       val read = transaction(ok(store.read(Vector(beta, alpha)))).map(_.id)
       (idOf(p, "alpha", 6) == alpha, search(p, "beta", 6), read) ==>
         (true, Vector(), Vector(beta, alpha))
+    }
+
+    test(
+      "a piece reads back with its anchor and its file's pointer; kept again moved, its new anchor"
+    ) {
+      val p = name("pieces-anchored")
+      val k = keeper(p, PieceKeeper.Bound)
+      val pointer = TestPieces.pointer("drive-id-a")
+      def kept(anchor: Anchor, m: Int) = {
+        val one = piece("alpha one").copy(anchor = anchor)
+        val of = file("a").copy(pointer = pointer)
+        transaction(ok(k.keep(of, Here, Integrity.Member, Vector(one), 0, at(m))))
+        search(p, "alpha", m + 1).map(h => (h.piece.id, h.piece.piece.anchor, h.piece.file.pointer))
+      }
+      val first = Anchor("alpha one", "Intro x. ", " then", 0.1)
+      val moved = Anchor("alpha one", "Later. ", "", 0.8)
+      val (before, after) = (kept(first, 1), kept(moved, 5))
+      (before.map(_._2), after.map(_._2), after.map(_._3), after.map(_._1) == before.map(_._1)) ==>
+        (Vector(first), Vector(moved), Vector(pointer), true)
     }
 
     test("a keep of the same pieces keeps nothing new, only the file's revision") {
