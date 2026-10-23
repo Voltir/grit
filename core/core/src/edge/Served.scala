@@ -101,6 +101,12 @@ trait ServedEdge {
     */
   def reviewsAt: Option[Place] = None
 
+  /** What its replies show of the markdown the model writes, in grit's words: told to each
+    * turn of a conversation whose edge it is ([[grit.core.store.Origin.edge]]). `None`, the
+    * default, when it says nothing more than that its replies are rendered from markdown.
+    */
+  def renders: Option[String] = None
+
   /** The compartments it names, in a label it labels anything with. A deployment is refused
     * unless its visibility declares each.
     */

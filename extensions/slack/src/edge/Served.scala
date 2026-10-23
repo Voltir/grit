@@ -12,6 +12,7 @@ import grit.core.tool.ToolSet
 import grit.edge.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
 import grit.slack.event.{ChannelId, Event, TeamId, UserId}
+import grit.slack.text.RichText
 
 /** The Slack edge as a deployment serves it, and its backfill, over whatever a [[Connect]]
   * makes of the tokens: [[SlackEdge.serving]] and [[SlackEdge.backfill]] connect over Socket
@@ -74,6 +75,7 @@ private[slack] object Served {
     def asks: ServedEdge.Asks = ServedEdge.Asks.Answered
     override def attester: Option[AttesterName] = Some(SlackAccounts.Attester)
     override def reviewsAt: Option[Place] = review.map(_.place)
+    override def renders: Option[String] = Some(RichText.Shown)
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

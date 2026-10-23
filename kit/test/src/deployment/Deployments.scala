@@ -18,7 +18,8 @@ import grit.turn.TurnLoop
 object Deployments {
 
   /** An edge named `called` that needs `needs`, does `asks` with a call that asks first, posts
-    * review prompts at `reviews`, names `naming`, is the attester `attests`, and never opens.
+    * review prompts at `reviews`, names `naming`, is the attester `attests`, says its replies
+    * show `shows`, and never opens.
     */
   def edge(
       called: String,
@@ -26,7 +27,8 @@ object Deployments {
       needs: Vector[String] = Vector.empty,
       naming: Vector[Compartment] = Vector.empty,
       reviews: Option[Place] = None,
-      attests: Option[String] = None
+      attests: Option[String] = None,
+      shows: Option[String] = None
   ): ServedEdge = {
     val wanted = needs.map(Variable(_))
     val asked = asks
@@ -37,6 +39,7 @@ object Deployments {
       override def reviewsAt: Option[Place] = reviews
       override def compartments: Vector[Compartment] = naming
       override def attester: Option[AttesterName] = attests.map(AttesterName(_))
+      override def renders: Option[String] = shows
       def open(
           stores: EdgeStores^,
           env: Map[String, String],

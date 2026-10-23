@@ -653,6 +653,13 @@ object ServedTests extends TestSuite {
         (Some(SlackAccounts.Attester), Some(SlackAccounts.Attester))
     }
 
+    test("serving says its replies show as RichText draws them") {
+      val w = new World
+      Served
+        .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+        .renders ==> Some(grit.slack.text.RichText.Shown)
+    }
+
     test(
       "an edge served looks, when asked, through its own source: a due account's team listed once"
     ) {

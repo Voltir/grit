@@ -51,6 +51,15 @@ object LaunchTests extends TestSuite {
       )
     }
 
+    test("a served edge's renders reach the turn tooling by its name; one that says none is not") {
+      import grit.core.edge.ServedEdge.Asks
+      import grit.kit.deployment.Deployments.{accepted, edge}
+      val d = accepted(edges =
+        Vector(edge("slack", Asks.Answered, shows = Some("bold")), edge("github", Asks.Never))
+      )
+      Launch.renders(d) ==> Map(grit.core.id.EdgeName("slack") -> "bold")
+    }
+
     test("a restart with a changed declaration puts the new settings in force") {
       val store = new InMemoryLifecycleStore
       val first = weighted(2)

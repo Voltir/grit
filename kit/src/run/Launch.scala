@@ -16,7 +16,7 @@ import grit.core.context.ContextAssembler
 import grit.core.durable.Durable
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Files, PieceKeeper}
-import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
+import grit.core.id.{EdgeName, JobName, PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
 import grit.core.model.{Catalog, ModelSettings, Pinned}
@@ -479,6 +479,7 @@ private[grit] object Launch {
     val administration = runtime.administration
     val administers: Either[DuplicateName, Toolbox[caps.CapSet^{administration, clock}]] =
       Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
+    val shows = renders(d)
     val launching = d.offer.tools match {
       case Offered.Read =>
         (everyone, administers) match {
@@ -498,7 +499,8 @@ private[grit] object Launch {
                     recipe = d.recipe,
                     knowledge = d.knowledge,
                     persona = d.persona,
-                    administering = admin
+                    administering = admin,
+                    renders = shows
                   )
                 )
             }
@@ -536,7 +538,8 @@ private[grit] object Launch {
                     recipe = d.recipe,
                     knowledge = d.knowledge,
                     persona = d.persona,
-                    administering = admin
+                    administering = admin,
+                    renders = shows
                   )
                 )
               }
@@ -619,6 +622,10 @@ private[grit] object Launch {
   ): Vector[Tool.Offered^{administration, clock}] =
     if (d.edges.exists(_.asks == ServedEdge.Asks.Unanswered)) Vector.empty
     else Administering.tools(administration, clock)
+
+  /** What each edge `d` serves says its replies show ([[ServedEdge.renders]]), by its name. */
+  private[run] def renders(d: Deployment): Map[EdgeName, String] =
+    d.edges.flatMap(e => e.renders.map(e.name -> _)).toMap
 
   /** The operator's tools: a measured model setting proposed, kept through `tuned` once a person
     * approves it ([[Tuning]]), and a battery of calls measuring a model through `models`
