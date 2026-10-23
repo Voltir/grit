@@ -2,7 +2,7 @@ package grit.job.run
 
 import java.time.Instant
 
-import grit.act.moves.{DurableMoves, KeepingEnv, MovesEnv}
+import grit.act.moves.{DurableMoves, KeepingEnv}
 import grit.core.act.{Acting, ActsFor, Allowance, Dreaming, Gates}
 import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.durable.{Durable, Flow, Flows, Step as DurableStep, StepName, Steps}

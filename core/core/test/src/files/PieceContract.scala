@@ -251,15 +251,15 @@ abstract class PieceContract extends TestSuite {
       val p = name("pieces-unread")
       val k = keeper(p, PieceKeeper.Bound)
       keep(k, "a", 1, "alpha one")
-      def kept(m: Int) = transaction(ok(k.kept(Vector("a", "b", "c"))))
-      val first = kept(2)
+      def kept = transaction(ok(k.kept(Vector("a", "b", "c"))))
+      val first = kept
       transaction(ok(k.unread("a", "r2", Here, "too large", at(3))))
       transaction(ok(k.unread("b", "r1", Here, "no format reads it", at(3))))
-      val marked = kept(4)
+      val marked = kept
       val gone = search(p, "alpha", 4)
       val tombs = transaction(ok(tombstones.declaredDue(Target.Kind.PieceSet, p, at(10), 10)))
       keep(k, "a", 5, "alpha again")
-      (first, marked, gone, tombs.size, kept(6)) ==> (
+      (first, marked, gone, tombs.size, kept) ==> (
         Map("a" -> KeptAs.Read(FormatName("test"), 1)),
         Map("a" -> KeptAs.Unread("too large"), "b" -> KeptAs.Unread("no format reads it")),
         Vector(),
