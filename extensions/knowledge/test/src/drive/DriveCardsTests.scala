@@ -3,6 +3,7 @@ package grit.knowledge.drive
 import java.time.{Instant, LocalTime, ZoneId}
 
 import grit.core.act.Answer
+import grit.core.files.Formats
 import grit.core.id.{CorpusName, ScheduleKey}
 import grit.core.job.SlotRule
 import grit.core.place.Service
@@ -32,12 +33,21 @@ object DriveCardsTests extends TestSuite {
   private val team = right(Compartment.of("team"))
   private val acme = right(Compartment.of("acme"))
 
-  /** A source at `labels`, holding at most `maxUnits` cards. */
-  def cards(labels: Vector[Label], maxUnits: Int = 100): DriveCards =
-    right(DriveCards.of(corpus, list, read, labels, maxUnits, service.place, Vector(nightly)))
+  /** No format: a deployment reading no PDF, Word or Excel file. */
+  val unformatted: Formats = Formats(_ => Vector.empty)
+
+  /** A source at `labels`, holding at most `maxUnits` cards, its deployment's formats `formats`. */
+  def cards(
+      labels: Vector[Label],
+      maxUnits: Int = 100,
+      formats: Formats = unformatted
+  ): DriveCards =
+    right(
+      DriveCards.of(corpus, list, read, labels, maxUnits, service.place, Vector(nightly), formats)
+    )
 
   private def refusal(labels: Vector[Label]): Either[String, DriveCards] =
-    DriveCards.of(corpus, list, read, labels, 100, service.place, Vector(nightly))
+    DriveCards.of(corpus, list, read, labels, 100, service.place, Vector(nightly), unformatted)
 
   val tests = Tests {
     test("a file is carded at the least declared label dominating what its listing was read at") {

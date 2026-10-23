@@ -372,19 +372,26 @@ object SyncTests extends TestSuite {
   private val clash = "duplicate key value violates unique constraint"
 
   /** A Drive source over two shared drives, `drive-a` holding the Doc `file-a` and `drive-b` the
-    * Doc `file-b`, carding at [[floor]].
+    * Doc `file-b` and the PDF `file-p`, carding at [[floor]], its deployment reading no PDF.
     */
   private val drive: grit.knowledge.drive.DriveCards =
     grit.knowledge.drive.DriveCardsTests.cards(Vector(floor))
+
+  /** [[drive]], its deployment reading PDFs. */
+  private val drivePdfs: grit.knowledge.drive.DriveCards =
+    grit.knowledge.drive.DriveCardsTests.cards(
+      Vector(floor),
+      formats = grit.core.files.PagedText.formats
+    )
 
   private def driveFacts(complete: Boolean, parts: ujson.Obj*) = grit.core.tool.Outcome.Stated(
     Some(grit.core.visibility.Facts.of(ujson.Obj("complete" -> complete))),
     parts.toVector.map(grit.core.visibility.Facts.of)
   )
 
-  private def doc(id: String, within: String) = ujson.Obj(
+  private def doc(id: String, within: String, kind: String = "document") = ujson.Obj(
     "id" -> id,
-    "kind" -> "document",
+    "kind" -> kind,
     "name" -> s"name of $id",
     "changed" -> "2026-09-01T10:00:00Z",
     "within" -> within
@@ -392,7 +399,8 @@ object SyncTests extends TestSuite {
 
   /** [[drive]]'s answer to a call of `args`, its label and what it is believed at: `drive-a` is
     * listed below the floor and believed `Member`; everything else is read at the floor, believed
-    * `Authority`. A file is read as a native Doc is, its text and no file kept.
+    * `Authority`. A Doc is read as a native Doc is, its text and no file kept; the PDF `file-p`
+    * as a format reads it, its text over 8 KB of `~` then `^`, the file area keeping it as [[fa]].
     */
   private def driveAnswer(
       args: ujson.Obj
@@ -408,7 +416,20 @@ object SyncTests extends TestSuite {
       case (Some("drive-a"), _) =>
         Some((driveFacts(true, doc("file-a", "drive-a")), lower, Integrity.Member))
       case (Some("drive-b"), _) =>
-        Some((driveFacts(true, doc("file-b", "drive-b")), floor, Integrity.Authority))
+        val files = Vector(doc("file-b", "drive-b"), doc("file-p", "drive-b", "pdf"))
+        Some((driveFacts(true, files*), floor, Integrity.Authority))
+      case (_, Some("file-p")) =>
+        val opened = doc("file-p", "drive-b", "pdf")
+        opened("text") = "~" * 8192 + "^" * 100
+        opened("complete") = false
+        opened("file") = "f1"
+        Some(
+          (
+            grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
+            floor,
+            Integrity.Authority
+          )
+        )
       case (_, Some(id)) =>
         val opened = doc(id, "drive-x")
         opened("text") = s"What $id holds."
@@ -423,12 +444,13 @@ object SyncTests extends TestSuite {
       case _ => None
     }
 
-  /** A Drive run's moves at [[floor]], each call answered by [[driveAnswer]], keeping into
-    * `documents` and `pieces`.
+  /** A Drive run's moves at [[floor]], each call answered by [[driveAnswer]], its summaries as
+    * `summaries`, keeping into `documents` and `pieces`, the file area holding [[Trees]].
     */
   private def driveKeeping(
       documents: InMemoryDocuments,
-      pieces: InMemoryPieces = new InMemoryPieces
+      pieces: InMemoryPieces = new InMemoryPieces,
+      summaries: Summaries = Summaries.Fixed
   ): ScriptedKeeping =
     new ScriptedKeeping(
       new Sync(Vector(drive)).limits,
@@ -440,19 +462,23 @@ object SyncTests extends TestSuite {
         Right(driveAnswer(args).fold(Called.Failed("Not Found")) { (stated, at, believed) =>
           Called.Done(TestTainted.at(grit.core.act.Answer("not read", stated), believed), at)
         }),
-      (system, messages) => reply(Summaries.Fixed, floor, Map.empty, system, messages),
+      (system, messages) => reply(summaries, floor, Map.empty, system, messages),
       _ => Left(MoveError.Model("no judgment is asked in this run")),
       documents,
       // Positional, as in `keeping`: a named argument lifts the others into locals.
       Instant.EPOCH,
       Integrity.Authority,
       Recorded.Empty,
-      pieces
+      pieces,
+      (h: FileHandle) => Trees.get(h).toRight(s"no file ${h.written}")
     )
 
-  /** [[drive]]'s run over `moves`, its reply. */
-  private def driveRun(moves: Keeping^): String =
-    new Sync(Vector(drive)).run(
+  /** `source`'s run over `moves`, its reply. */
+  private def driveRun(
+      moves: Keeping^,
+      source: grit.knowledge.drive.DriveCards = drive
+  ): String =
+    new Sync(Vector(source)).run(
       TestTainted.trusted(JobRun(SyncParams(drive.corpus, 5), Instant.EPOCH, Instant.EPOCH)),
       moves
     )
@@ -625,6 +651,35 @@ object SyncTests extends TestSuite {
       assert(
         watched.believed.filter(_._1 != CardMoves.Held) ==
           Vector(written("file-a") -> Integrity.Member, written("file-b") -> Integrity.Authority)
+      )
+    }
+
+    test(
+      "a Drive run cards and pieces a PDF when its deployment's formats read PDFs, from its head alone, and never names it when they do not"
+    ) {
+      def walked(source: grit.knowledge.drive.DriveCards) = {
+        val k = driveKeeping(new InMemoryDocuments, summaries = Summaries.Counting)
+        val reply = driveRun(k, source)
+        val cards =
+          k.kept.map(d => pathOf(d) -> DocText.value(d.text).linesIterator.toVector.last).sorted
+        (reply, cards, k.pieced.map(p => (p.file.ref, p.piece.text)))
+      }
+      val pdf = CardKey.value(CardKey.of(drive.corpus, "file-p"))
+      (walked(drivePdfs), walked(drive)) ==> (
+        (
+          "shared: 3 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
+          Vector(
+            "file-a" -> "0 tildes and 0 carets",
+            "file-b" -> "0 tildes and 0 carets",
+            "file-p" -> "8192 tildes and 0 carets"
+          ),
+          Vector(pdf -> "Deploying the app.")
+        ),
+        (
+          "shared: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
+          Vector("file-a" -> "0 tildes and 0 carets", "file-b" -> "0 tildes and 0 carets"),
+          Vector()
+        )
       )
     }
 

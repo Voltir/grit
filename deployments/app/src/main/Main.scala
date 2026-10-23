@@ -12,7 +12,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{ServedEdge, Variable}
-import grit.core.files.{FileArea, Files}
+import grit.core.files.{FileArea, Files, Formats}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
@@ -604,11 +604,15 @@ object Main {
           .filterOrElse(_ >= 1.minute, s"$FilesExpiryVar must be at least a minute")
     }
 
+  /** The formats its files are read with, and so the kinds of Drive file knowledge cards. */
+  private val Formatted: Formats = Defaults.formats
+
   private val PluginsVar = "GRIT_PLUGINS"
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
     * Those there are: `digest` ([[Digest]]), `remind` ([[Reminders]]), `knowledge`
-    * ([[knowledge]], under `visibility`, its days beginning in `zone`), `strands`
+    * ([[knowledge]], under `visibility`, its days beginning in `zone`, carding the Drive files
+    * `formats` reads), `strands`
     * ([[strands]], likewise), `topics` ([[topics]], likewise, reading the knowledge plugin's
     * cards when it is listed, which it must be before `topics`) and `standing` ([[StandingDocuments]], leaving out what a reminder
     * tool's result established).
@@ -616,7 +620,8 @@ object Main {
   private[main] def pluginChoice(
       env: Map[String, String],
       visibility: Visibility,
-      zone: java.time.ZoneId
+      zone: java.time.ZoneId,
+      formats: Formats
   ): Either[String, Vector[Plugin]] =
     csv(env, PluginsVar).distinct
       .foldLeft[Either[String, Vector[Plugin]]](Right(Vector.empty)) { (acc, raw) =>
@@ -626,7 +631,7 @@ object Main {
               case "digest" => Right(done :+ new Digest(name))
               case "remind" => Right(done :+ new Reminders(name))
               case "knowledge" =>
-                knowledge(name, env, visibility, zone)
+                knowledge(name, env, visibility, zone, formats)
                   .map(done :+ _)
                   .left
                   .map(why => s"$PluginsVar: $why")
@@ -759,8 +764,8 @@ object Main {
     * and its reply says so), kept at public, the corpus `github`, and drawn on where a
     * turn may read `service:github`. With [[DriveKeyVar]] set,
     * the shared drives grit is a member of, as [[DriveCards]] reads them through the Drive
-    * tools [[drive]]'s edge serves, at most 600 cards at each label [[DriveCardLabelsVar]]
-    * names, the corpus `drive`, drawn on where a turn may read `service:drive`; Drive's place is
+    * tools [[drive]]'s edge serves, PDFs, Word and Excel files among them when `formats` reads
+    * that kind, at most 600 cards at each label [[DriveCardLabelsVar]] names, the corpus `drive`, drawn on where a turn may read `service:drive`; Drive's place is
     * internal, so no label below it is accepted. Why not: neither variable set; a part of the
     * repository unset or blank, or [[DriveCardLabelsVar]] unset, blank or naming no label,
     * naming its variable; or [[DriveCards.of]]'s or [[Knowledge.of]]'s refusal under
@@ -770,7 +775,8 @@ object Main {
       name: PluginName,
       env: Map[String, String],
       visibility: Visibility,
-      zone: java.time.ZoneId
+      zone: java.time.ZoneId,
+      formats: Formats
   ): Either[String, Knowledge] = {
     for {
       _ <- Either.cond(
@@ -784,7 +790,7 @@ object Main {
         if (env.contains(GithubTokenVar)) githubCards(env, daily).map(Vector(_))
         else Right(Vector.empty)
       drive <-
-        if (env.contains(DriveKeyVar)) driveCards(env, daily).map(Vector(_))
+        if (env.contains(DriveKeyVar)) driveCards(env, daily, formats).map(Vector(_))
         else Right(Vector.empty)
       plugin <- Knowledge
         .of(name, github ++ drive, visibility)
@@ -835,7 +841,8 @@ object Main {
     */
   private def driveCards(
       env: Map[String, String],
-      daily: SyncSchedule
+      daily: SyncSchedule,
+      formats: Formats
   ): Either[String, CardSource] =
     for {
       written <- Some(csv(env, DriveCardLabelsVar))
@@ -857,7 +864,8 @@ object Main {
         labels,
         600,
         service.place,
-        Vector(daily)
+        Vector(daily),
+        formats
       )
     } yield CardSource.Drive(cards)
 
@@ -935,7 +943,7 @@ object Main {
         capped ++ Option.when(driving)(Cap(drive.place, Integrity.Member)),
         Option.when(driving)(drive.place).toVector
       )
-      plugins <- pluginChoice(env, visible, zone)
+      plugins <- pluginChoice(env, visible, zone, Formatted)
       deployment <- Deployment
         .of(
           visibility = visible,
@@ -957,7 +965,7 @@ object Main {
           persona = Persona.Grit,
           identities = identities,
           files = FileArea.Bounds.Default.copy(expiry = expiry),
-          formats = Defaults.formats
+          formats = Formatted
         )
         .left
         .map(_.message)

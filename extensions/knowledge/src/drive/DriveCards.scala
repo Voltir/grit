@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.act.Answer
 import grit.core.document.Pointer
+import grit.core.files.{Formats, Kind as FileKind}
 import grit.core.id.{CorpusName, FileHandle, ScheduleKey}
 import grit.core.place.{Place, Service}
 import grit.core.tool.ToolName
@@ -13,11 +14,12 @@ import grit.knowledge.card.UnitVersion
 import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
 
-/** The Docs, Sheets and text files of every shared drive its service reads, top level and one
+/** The files of every shared drive its service reads that it [[cards]], top level and one
   * folder deep, listed with `list` and read with `read` (`drive_list` and `drive_read`, as the
   * deployment offers them); each file carded at [[carding]] of the label its listing was read
   * at, by the run of that label; at most `maxUnits` cards. `corpus` names it and `service` is
-  * the one its corpus supplies.
+  * the one its corpus supplies; `formatted`, the kinds of file a deployment's format reads that
+  * it cards.
   *
   * `labels`, least first, are its runs' floors: one run of each of `syncs` per label. A file in
   * a folder no one has labelled, or above every label, is never carded and never named. Windows
@@ -33,8 +35,17 @@ final case class DriveCards private (
     labels: Vector[Label],
     maxUnits: Int,
     at: Place,
-    syncs: Vector[SyncSchedule]
+    syncs: Vector[SyncSchedule],
+    formatted: Set[FileKind]
 ) extends Source[DriveListing] {
+
+  /** Whether it cards a file of `kind`: a Doc, a Sheet or a text file always; a PDF, a Word
+    * document or an Excel workbook when [[formatted]] holds its kind; nothing else.
+    */
+  def cards(kind: DriveEntry.Kind): Boolean = kind.read.exists {
+    case DriveEntry.Kind.Read.Exported => true
+    case DriveEntry.Kind.Read.Formatted(k) => formatted(k)
+  }
 
   /** The label a file whose listing was read at `at` is carded at: the least of [[labels]]
     * dominating it; `None` when none does.
@@ -110,14 +121,18 @@ object DriveCards {
   val DrivesMost: Int = 100
 
   /** What the summary model is told `entry`, a file, is ([[Step.Summarise]]): a Doc, a Sheet
-    * (whose first tab its read gives as comma-separated rows, as Drive exports it) or a text
-    * file, named as its listing names it, in Google Drive.
+    * (whose first tab its read gives as comma-separated rows, as Drive exports it), a text
+    * file, a PDF, a Word document or an Excel workbook, named as its listing names it, in Google
+    * Drive.
     */
   def subject(entry: DriveEntry): String = {
     val kind = entry.kind match {
       case DriveEntry.Kind.Document => "A Doc"
       case DriveEntry.Kind.Spreadsheet => "A Sheet (a spreadsheet)"
       case DriveEntry.Kind.Text => "A text file"
+      case DriveEntry.Kind.Pdf => "A PDF"
+      case DriveEntry.Kind.Word => "A Word document"
+      case DriveEntry.Kind.Excel => "An Excel workbook"
       case DriveEntry.Kind.Folder | DriveEntry.Kind.Drive | DriveEntry.Kind.Other(_) => "A file"
     }
     val named = entry.name.fold("")(n => s" named `$n`")
@@ -133,9 +148,10 @@ object DriveCards {
     */
   val TurnsFrom: Instant = Instant.parse("2026-01-01T00:00:00Z")
 
-  /** These, `labels` least first, or why not: `corpus` supplies no service; `labels` empty,
-    * holding one twice or one holding `unmapped`, or not a chain (two of them neither dominating
-    * the other); `maxUnits` under 1; no `syncs`, or two of one key.
+  /** These, `labels` least first, carding the PDFs, Word documents and Excel workbooks a format
+    * of `formats` (the deployment's) reads, or why not: `corpus` supplies no service; `labels`
+    * empty, holding one twice or one holding `unmapped`, or not a chain (two of them neither
+    * dominating the other); `maxUnits` under 1; no `syncs`, or two of one key.
     */
   def of(
       corpus: Corpus,
@@ -144,7 +160,8 @@ object DriveCards {
       labels: Vector[Label],
       maxUnits: Int,
       at: Place,
-      syncs: Vector[SyncSchedule]
+      syncs: Vector[SyncSchedule],
+      formats: Formats
   ): Either[String, DriveCards] =
     for {
       service <- corpus.supplies.toRight(
@@ -191,6 +208,7 @@ object DriveCards {
       labels.sortWith((a, b) => a != b && b.dominates(a)),
       maxUnits,
       at,
-      syncs
+      syncs,
+      Set(FileKind.Pdf, FileKind.Word, FileKind.Excel).filter(formats.of(_).nonEmpty)
     )
 }

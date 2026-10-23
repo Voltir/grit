@@ -32,7 +32,7 @@ object PluginChoiceTests extends TestSuite {
       env: Map[String, String],
       visibility: Visibility = Visibility.Shipped
   ): Either[String, Vector[Plugin]] =
-    Main.pluginChoice(env, visibility, zone)
+    Main.pluginChoice(env, visibility, zone, grit.core.files.Formats(_ => Vector.empty))
 
   private def names(env: Map[String, String]) =
     choice(env).map(_.map(p => (p.getClass.getSimpleName, PluginName.value(p.name))))

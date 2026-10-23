@@ -13,8 +13,8 @@ import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
   * end, so runs at consecutive turns list them all within ⌈folders / maxUnits⌉ runs.
   *
   * A listing is the run's to card when [[DriveCards.carding]] of the label it was read at is the
-  * floor; of another's it only follows the folders. Of a listing it cards, a Doc, a Sheet or a
-  * text file is read through that listing unless its card held at the floor records its change
+  * floor; of another's it only follows the folders. Of a listing it cards, a file of a kind
+  * [[DriveCards.cards]] is read through that listing unless its card held at the floor records its change
   * time and that listing, and its card records the listing and is titled with the file's name. A
   * current card [[Holding.copying]] names a label of is relabelled from it; one whose pieces are
   * due ([[Holding.repiece]]) is read again for them ([[Walking.current]]). Past `perRun` reads a
@@ -127,7 +127,7 @@ object DriveWalk {
       listing: DriveListing,
       at: Label
   ): W = {
-    val readable = listing.entries.filter(_.kind.readable)
+    val readable = listing.entries.filter(e => cards.cards(e.kind))
     val own = w.own.copy(
       seen = w.own.seen ++ readable.map(_.id),
       complete = if (listing.complete) w.own.complete + within else w.own.complete

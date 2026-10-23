@@ -18,22 +18,34 @@ final case class DriveEntry(
 
 object DriveEntry {
 
-  /** What an entry is, as its facts' `kind` writes it: a folder, a Doc, a Sheet, a text file or
-    * a shared drive; any other kind, a PDF or a shortcut among them, is [[Other]], its written
-    * form kept.
+  /** What an entry is, as its facts' `kind` writes it: a folder, a Doc, a Sheet, a text file, a
+    * PDF, a Word document, an Excel workbook or a shared drive; any other kind, a shortcut among
+    * them, is [[Other]], its written form kept.
     */
   enum Kind extends caps.Pure {
-    case Folder, Document, Spreadsheet, Text, Drive
+    case Folder, Document, Spreadsheet, Text, Pdf, Word, Excel, Drive
     case Other(written: String)
 
-    /** Whether a card is made of a file of this kind: a Doc, a Sheet or a text file. */
-    def readable: Boolean = this match {
-      case Document | Spreadsheet | Text => true
-      case Folder | Drive | Other(_) => false
+    /** How a card is made of a file of this kind: [[Kind.Read.Exported]] for those Drive
+      * exports as text (a Doc, a Sheet, a text file); [[Kind.Read.Formatted]] for those only
+      * a deployment's format reads, naming the file area's kind; none for the rest.
+      */
+    def read: Option[Kind.Read] = this match {
+      case Document | Spreadsheet | Text => Some(Kind.Read.Exported)
+      case Pdf => Some(Kind.Read.Formatted(grit.core.files.Kind.Pdf))
+      case Word => Some(Kind.Read.Formatted(grit.core.files.Kind.Word))
+      case Excel => Some(Kind.Read.Formatted(grit.core.files.Kind.Excel))
+      case Folder | Drive | Other(_) => None
     }
   }
 
   object Kind {
+
+    /** How a file's text is had ([[Kind.read]]). */
+    enum Read extends caps.Pure {
+      case Exported
+      case Formatted(kind: grit.core.files.Kind)
+    }
 
     /** The kind its facts write as `written`. */
     def of(written: String): Kind = written match {
@@ -41,6 +53,9 @@ object DriveEntry {
       case "document" => Document
       case "spreadsheet" => Spreadsheet
       case "text" => Text
+      case "pdf" => Pdf
+      case "word" => Word
+      case "excel" => Excel
       case "drive" => Drive
       case other => Other(other)
     }

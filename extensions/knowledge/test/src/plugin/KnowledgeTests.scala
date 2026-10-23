@@ -125,7 +125,8 @@ object KnowledgeTests extends TestSuite {
           labels,
           10,
           Place.under(Namespace.Task, Vector.empty),
-          Vector(right(SyncSchedule.of(right(ScheduleKey.of("nightly")), rule, 5)))
+          Vector(right(SyncSchedule.of(right(ScheduleKey.of("nightly")), rule, 5))),
+          grit.core.files.Formats(_ => Vector.empty)
         )
       )
     )

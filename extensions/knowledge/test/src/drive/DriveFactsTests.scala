@@ -42,9 +42,9 @@ object DriveFactsTests extends TestSuite {
         kinds == Right(
           Vector(
             ("folder-3", DriveEntry.Kind.Folder),
-            ("file-4", DriveEntry.Kind.Other("pdf")),
-            ("file-5", DriveEntry.Kind.Other("pdf")),
-            ("file-6", DriveEntry.Kind.Other("pdf")),
+            ("file-4", DriveEntry.Kind.Pdf),
+            ("file-5", DriveEntry.Kind.Pdf),
+            ("file-6", DriveEntry.Kind.Pdf),
             ("file-18", DriveEntry.Kind.Document),
             ("file-21", DriveEntry.Kind.Spreadsheet),
             ("file-22", DriveEntry.Kind.Other("other"))
@@ -64,7 +64,8 @@ object DriveFactsTests extends TestSuite {
 
     test("a folder's listing decodes its text file as readable, within the folder") {
       val listing = DriveListing.read(FactsGoldens.stated("listing-folder-3"))
-      val text = listing.map(_.entries.filter(_.kind.readable).map(_.id))
+      val source = DriveCardsTests.cards(Vector(DriveCardsTests.internal))
+      val text = listing.map(_.entries.filter(e => source.cards(e.kind)).map(_.id))
       assert(text == Right(Vector("file-1", "file-text")))
       assert(listing.map(_.entries.map(_.within).distinct) == Right(Vector(Some("folder-3"))))
     }
@@ -95,7 +96,7 @@ object DriveFactsTests extends TestSuite {
       val opened = DriveOpened.read(FactsGoldens.stated("read-file-pdf"))
       assert(
         opened.map(o => (o.entry.id, o.entry.kind, o.complete, o.file.map(_.written))) == Right(
-          ("file-4", DriveEntry.Kind.Other("pdf"), false, Some("f41"))
+          ("file-4", DriveEntry.Kind.Pdf, false, Some("f41"))
         )
       )
     }

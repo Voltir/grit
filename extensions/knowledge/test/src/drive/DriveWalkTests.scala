@@ -41,7 +41,7 @@ object DriveWalkTests extends TestSuite {
         Vector(
           entry("folder-3", Kind.Folder, 1, "drive-a"),
           entry("file-18", Kind.Document, 5, "drive-a"),
-          entry("file-4", Kind.Other("pdf"), 2, "drive-a")
+          entry("file-4", Kind.Pdf, 2, "drive-a")
         ),
         true
       ),
@@ -185,6 +185,27 @@ object DriveWalkTests extends TestSuite {
           "file-32" -> "A text file named `name of file-32` in Google Drive"
         ),
         DriveCards.subject(unnamed) == "A text file in Google Drive"
+      )
+    }
+
+    test(
+      "a PDF, Word or Excel file is read and summarised as what it is only when its deployment's formats read its kind"
+    ) {
+      def summarised(formats: grit.core.files.Formats) =
+        run(cards(labels, formats = formats).walk(5, internal, Vector.empty, due))._1.collect {
+          case Step.Summarise(id, subject, _, _) => (id, subject)
+        }
+      val pdfs = grit.core.files.PagedText.formats
+      def named(kind: Kind) = DriveCards.subject(DriveEntry("f", kind, Some("f"), None, None))
+      assert(
+        summarised(pdfs).map(_._1) == Vector("file-18", "file-4", "file-30", "file-32"),
+        summarised(pdfs)(1)._2 == "A PDF named `name of file-4` in Google Drive",
+        summarised(DriveCardsTests.unformatted)
+          .map(_._1) == Vector("file-18", "file-30", "file-32"),
+        Vector(Kind.Word, Kind.Excel).map(named) == Vector(
+          "A Word document named `f` in Google Drive",
+          "An Excel workbook named `f` in Google Drive"
+        )
       )
     }
 
