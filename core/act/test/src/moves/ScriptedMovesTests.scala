@@ -16,7 +16,7 @@ import grit.core.act.{
 }
 import grit.core.classify.{Answer as Judged, ClassifierError}
 import grit.core.document.{Document, InMemoryDocuments}
-import grit.core.files.{FileError, Files, InMemoryPieces, KeptPiece}
+import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece}
 import grit.core.flow.TestTainted
 import grit.core.id.FileHandle
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
@@ -44,7 +44,7 @@ object ScriptedMovesTests extends MovesContract {
     (use(moves), moves.kept)
   }
 
-  def piecing[A <: caps.Pure](limits: MoveLimits)(
+  def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats)(
       use: (Keeping^, FileHandle) -> A
   ): (A, Vector[KeptPiece]) = {
     val file = FileHandle.read("f1").getOrElse(throw new java.lang.AssertionError("f1"))
@@ -62,7 +62,8 @@ object ScriptedMovesTests extends MovesContract {
       Integrity.Authority,
       Recorded.Empty,
       new InMemoryPieces,
-      h => if (h == file) Right((Policy, Paged)) else Left(FileError.Gone(h, Files.Expiry).message)
+      h => if (h == file) Right((Policy, Paged)) else Left(FileError.Gone(h, Files.Expiry).message),
+      Some(formats)
     )
     (use(moves, file), moves.pieced)
   }

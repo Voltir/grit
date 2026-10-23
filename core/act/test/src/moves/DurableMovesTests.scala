@@ -39,6 +39,7 @@ import grit.core.files.{
   FileItem,
   FileOrigin,
   Files,
+  Formats,
   InMemoryFileCatalog,
   InMemoryPieces,
   Incoming,
@@ -112,13 +113,12 @@ object DurableMovesTests extends MovesContract {
     (got, docs)
   }
 
-  def piecing[A <: caps.Pure](limits: MoveLimits)(
+  def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats)(
       use: (Keeping^, FileHandle) -> A
   ): (A, Vector[KeptPiece]) = {
     val w = new MovesWorld(broken = false, MovesContract.Floor)
     TempBlobs.around { blobs =>
-      val area =
-        new FileArea(new InMemoryFileCatalog, blobs, w.jot, w.clock, PagedText.formats)
+      val area = new FileArea(new InMemoryFileCatalog, blobs, w.jot, w.clock, formats)
       val file = area
         .put(
           PutKey.read("tool:test:0:1"),

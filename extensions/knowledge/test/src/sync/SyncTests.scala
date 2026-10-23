@@ -27,7 +27,21 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.Journaled
-import grit.core.files.{Covers, FormatName, InMemoryPieces, KeptAs, Kind, Locus, Pieces, Understood}
+import grit.core.files.{
+  Covers,
+  Format,
+  FormatName,
+  Formats,
+  InMemoryPieces,
+  KeptAs,
+  Kind,
+  Locus,
+  OpenFile,
+  Pieces,
+  ReadLimits,
+  Understood,
+  Unread
+}
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
 import grit.core.id.{CorpusName, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
@@ -220,6 +234,16 @@ object SyncTests extends TestSuite {
   private def handle(h: String): FileHandle =
     FileHandle.read(h).getOrElse(throw new java.lang.AssertionError(h))
 
+  /** An area reading every kind with [[tree]]'s format at version 2, and at no other. */
+  private val ReadsVersion2: Formats = Formats(_ =>
+    Vector(new Format {
+      val name: FormatName = FormatName("test")
+      val version: Int = 2
+      def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] =
+        Left(Unread.NotMine)
+    })
+  )
+
   /** `text` as a format reads a one-page file of it. */
   private def tree(text: String): Understood =
     Understood(
@@ -304,7 +328,7 @@ object SyncTests extends TestSuite {
       judged: Option[Double] = None,
       pieces: InMemoryPieces = new InMemoryPieces,
       version: Int = 1,
-      reads: (FormatName, Int) -> Boolean = (_, _) => true
+      formats: Option[Formats] = None
   ): ScriptedKeeping =
     new ScriptedKeeping(
       sync.limits,
@@ -327,7 +351,7 @@ object SyncTests extends TestSuite {
       pieces,
       (h: FileHandle) =>
         Trees.get(h).map((n, t) => (n, t.copy(version = version))).toRight(s"no file ${h.written}"),
-      reads
+      formats
     )
 
   /** Every path of [[repo]], answered believed at `Untrusted`. */
@@ -948,7 +972,8 @@ object SyncTests extends TestSuite {
       val (documents, pieces) = (new InMemoryDocuments, new InMemoryPieces)
       val _ = runOf(keeping(floor, documents, pieces = pieces), job = filed())
       def again = {
-        val k = keeping(floor, documents, pieces = pieces, version = 2, reads = (_, v) => v == 2)
+        val k =
+          keeping(floor, documents, pieces = pieces, version = 2, formats = Some(ReadsVersion2))
         val reply = runOf(k, job = filed())
         (reply, k.made.filter(MoveName.value(_).startsWith("piece/")), k.pieced.map(_.file.version))
       }

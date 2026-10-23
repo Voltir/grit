@@ -31,7 +31,7 @@ import grit.core.document.{DocLabel, Document, DocumentKeeper, DocumentSearch}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
 import grit.core.either.Traversal.sequence
-import grit.core.files.{FileError, Kind, PieceKeeper, Understood}
+import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
@@ -544,12 +544,8 @@ private[moves] object Act {
           case mark: Piecing.Mark => env.jot.write(subject)(Piecing.marked(mark, p.keeper, at))
           case survey: Piecing.Survey =>
             val formats = env.files.formats
-            val read = Kind.values.toVector.flatMap(formats.of).map(f => (f.name, f.version)).toSet
-            val first = Kind.values.toVector
-              .flatMap(k => formats.of(k).headOption.map(f => k -> (f.name, f.version)))
-              .toMap
             env.moves.db.read(subject)(
-              Piecing.due(survey, p.keeper, (n, v) => read((n, v)), first.get)
+              Piecing.due(survey, p.keeper, formats.reads, formats.first)
             )
           case read: Piecing.Read =>
             treeOf(env, subject, read.file).flatMap { file =>

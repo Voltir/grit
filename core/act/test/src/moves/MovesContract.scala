@@ -35,12 +35,18 @@ import grit.core.files.{
   Covers,
   FileError,
   Files,
+  Format,
   FormatName,
+  Formats,
   KeptPiece,
   Kind,
   Locus,
+  OpenFile,
+  PagedText,
+  ReadLimits,
   TestPieces,
-  Understood
+  Understood,
+  Unread
 }
 import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
@@ -112,10 +118,10 @@ abstract class MovesContract extends TestSuite {
   /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose piece moves keep
     * [[MovesWorld.Notes]]' pieces in transactions opened at [[Floor]], reading the file
     * [[Policy]] of [[Pages]], as a format reading pages gives it, under the handle given to
-    * `use`, and no other; and that plugin's current pieces afterwards, as a run at [[Floor]]
-    * reads them.
+    * `use`, and no other, in an area whose readers are `formats`; and that plugin's current
+    * pieces afterwards, as a run at [[Floor]] reads them.
     */
-  def piecing[A <: caps.Pure](limits: MoveLimits)(
+  def piecing[A <: caps.Pure](limits: MoveLimits, formats: Formats = PagedText.formats)(
       use: (Keeping^, FileHandle) -> A
   ): (A, Vector[KeptPiece])
 
@@ -233,6 +239,21 @@ abstract class MovesContract extends TestSuite {
           )
         ),
         Vector("a")
+      )
+    }
+
+    test(
+      "a piece survey finds a deck pieced by the PDF reader due once a Slides format comes first for decks, and not while no format reads decks"
+    ) {
+      def surveyed(formats: Formats) = piecing(MoveLimits.Zero, formats) { (m, file) =>
+        def move(n: String, p: Piecing) = m.piece(name(n), TestTainted.at(p, Believed))
+        val deck =
+          Piecing.Read(file, Kind.GoogleSlides, "a", "r1", TestPieces.pointer("a"), Here, Vector())
+        Made(Vector(move("p", deck), move("s", Piecing.Survey(Vector("a")))))
+      }._1
+      (surveyed(DecksFirst), surveyed(PagedText.formats)) ==> (
+        Made(Vector(Right(Pieced.Kept(1, 0)), Right(Pieced.Due(Vector("a"))))),
+        Made(Vector(Right(Pieced.Kept(1, 0)), Right(Pieced.Due(Vector()))))
       )
     }
 
@@ -1189,6 +1210,19 @@ object MovesContract {
       FormatName("paged-text"),
       1
     )
+
+  /** A deck reader that reads no file, there to come first for decks. */
+  object SlidesFirst extends Format {
+    val name: FormatName = FormatName("google-slides")
+    val version: Int = 1
+    def read(file: OpenFile^, limits: ReadLimits): Either[Unread, Understood] = Left(Unread.NotMine)
+  }
+
+  /** [[PagedText.formats]], with [[SlidesFirst]] and then the PDF reader for decks. */
+  val DecksFirst: Formats = Formats {
+    case Kind.GoogleSlides => Vector(SlidesFirst, PagedText)
+    case other => PagedText.formats.of(other)
+  }
 
   /** The least label every transaction of the world is opened at: above public, so a move that
     * reports public whatever its floor is seen.

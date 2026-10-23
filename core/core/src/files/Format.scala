@@ -34,7 +34,16 @@ trait Format extends caps.Pure {
 /** A deployment's readers: for each kind, the formats tried in order; and the limits every read
   * stops at.
   */
-final case class Formats(of: Kind -> Vector[Format], limits: ReadLimits = ReadLimits.Default)
+final case class Formats(of: Kind -> Vector[Format], limits: ReadLimits = ReadLimits.Default) {
+
+  /** Whether some kind is read with the format `name` at `version`. */
+  def reads(name: FormatName, version: Int): Boolean =
+    Kind.values.exists(of(_).exists(f => f.name == name && f.version == version))
+
+  /** The format and version a file of `kind` is tried with first; none when no format reads it. */
+  def first(kind: Kind): Option[(FormatName, Int)] =
+    of(kind).headOption.map(f => (f.name, f.version))
+}
 
 /** Which of a read's limits stopped it. */
 enum Limit derives CanEqual {
