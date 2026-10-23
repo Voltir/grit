@@ -11,7 +11,7 @@ Turned down:
 - Visibility by place, a document kept at a workspace's root reaching every channel under it:
   the place tree says what a thing is about, not who may see it (ADR 0013 ranks by place and
   decides nothing: locality is not visibility), and a sharing set fits no place.
-- Reader sets: they go stale as membership changes.
+- Reader sets: they go stale as membership does.
 - A label stored as a set of atoms, so a deployment could insert a level: such a set has more
   values than there are labels, and its join folds a malformed one into a valid one.
 
