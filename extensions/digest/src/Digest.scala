@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
-import grit.core.id.{CallSlot, DocKey, PluginName}
+import grit.core.id.{CallSlot, DocKey, PluginName, Sha256}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.period.{CloseOrdinal, CloseReason}
@@ -139,12 +139,7 @@ object Digest {
   /** A room's key: the SHA-256 of its written place, in hex, so that a place too long or not
     * one line for a [[DocKey]] still has one.
     */
-  private def roomKey(room: Place): String =
-    java.security.MessageDigest
-      .getInstance("SHA-256")
-      .digest(room.written.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-      .map(b => f"$b%02x")
-      .mkString
+  private def roomKey(room: Place): String = Sha256.text(room.written).hex
 
   /** One closing's line, under its close ordinal `order`. */
   private final case class Line(

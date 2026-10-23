@@ -1,7 +1,6 @@
 package grit.core.classify
 
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
+import grit.core.id.Sha256
 
 /** One request as a classifier receives it: the state's JSON and the questions, in order.
   * Made only from an [[Ask]] ([[Request.of]]), so it always holds a question.
@@ -12,12 +11,7 @@ final case class Request private[classify] (state: ujson.Value, questions: Vecto
     * order built): any change to the state, or to a question's kind, words, keys, levels or
     * order, changes it. The model is not part of it.
     */
-  def digest: String =
-    MessageDigest
-      .getInstance("SHA-256")
-      .digest(Request.json(this).render().getBytes(StandardCharsets.UTF_8))
-      .map(b => f"${b & 0xff}%02x")
-      .mkString
+  def digest: String = Sha256.text(Request.json(this).render()).hex
 }
 
 object Request {

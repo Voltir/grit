@@ -1,9 +1,7 @@
 package grit.eval.harness.capture
 
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-
 import grit.core.classify.Request
+import grit.core.id.Sha256
 
 /** A SHA-256, as 64 lower-case hex digits: what a capture keeps of a text or an input in place
   * of it.
@@ -16,14 +14,7 @@ object Digest {
   def json(value: ujson.Value): Digest = text(value.render())
 
   /** Of `text`'s UTF-8 bytes. */
-  def text(text: String): Digest =
-    new Digest(
-      MessageDigest
-        .getInstance("SHA-256")
-        .digest(text.getBytes(StandardCharsets.UTF_8))
-        .map(b => f"${b & 0xff}%02x")
-        .mkString
-    )
+  def text(text: String): Digest = new Digest(Sha256.text(text).hex)
 
   /** `request`'s own ([[Request.digest]]). */
   def request(request: Request): Digest = new Digest(request.digest)

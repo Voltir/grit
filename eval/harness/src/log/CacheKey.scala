@@ -2,7 +2,8 @@ package grit.eval.harness.log
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
+
+import grit.core.id.Sha256
 
 /** What a cached answer is kept under: 64 lower-case hex digits. */
 final case class CacheKey private (hex: String)
@@ -15,13 +16,10 @@ object CacheKey {
     */
   def of(provider: String, request: String, repeat: Int): CacheKey = {
     val tag = provider.getBytes(StandardCharsets.UTF_8)
-    val sha = MessageDigest.getInstance("SHA-256")
+    def int(n: Int) = ByteBuffer.allocate(4).putInt(n).array()
     // Each part's length first, so no two different splits hash the same bytes.
-    sha.update(ByteBuffer.allocate(4).putInt(tag.length).array())
-    sha.update(tag)
-    sha.update(ByteBuffer.allocate(4).putInt(repeat).array())
-    sha.update(request.getBytes(StandardCharsets.UTF_8))
-    new CacheKey(sha.digest().map(b => f"${b & 0xff}%02x").mkString)
+    val bytes = int(tag.length) ++ tag ++ int(repeat) ++ request.getBytes(StandardCharsets.UTF_8)
+    new CacheKey(Sha256.digest(bytes.toVector).hex)
   }
 
   /** The key written `hex`; why not, when it is not 64 lower-case hex digits. */

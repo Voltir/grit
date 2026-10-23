@@ -6,7 +6,7 @@ import grit.core.classify.{Question, Request}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.{ConversationId, DocumentVersionId}
+import grit.core.id.{ConversationId, DocumentVersionId, Sha256}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.Service
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -364,10 +364,7 @@ object MovesJournal {
 
   private def v2(form: String): String = "v2:" + sha(form)
 
-  private def sha(form: String): String = {
-    val sha = java.security.MessageDigest.getInstance("SHA-256")
-    sha.digest(form.getBytes("UTF-8")).map(b => f"$b%02x").mkString
-  }
+  private def sha(form: String): String = Sha256.text(form).hex
 
   private def text(s: String): String = s"${s.length}:$s"
 

@@ -1,7 +1,6 @@
 package grit.knowledge.card
 
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
+import grit.core.id.Sha256
 
 /** What of its source a directory's card was made under, as a digest: the SHA-256 of the terms
   * that decide which units become cards, sorted, one to a line, as 64 lowercase hex digits. A
@@ -13,12 +12,7 @@ opaque type Scope = String
 object Scope {
 
   /** The scope of `terms`, whatever their order. */
-  def of(terms: Set[String]): Scope = {
-    val digest = MessageDigest
-      .getInstance("SHA-256")
-      .digest(terms.toVector.sorted.mkString("\n").getBytes(StandardCharsets.UTF_8))
-    digest.map(b => f"${b & 0xff}%02x").mkString
-  }
+  def of(terms: Set[String]): Scope = Sha256.text(terms.toVector.sorted.mkString("\n")).hex
 
   /** `text` as a scope, read back from where one was written, or why not: not 64 lowercase hex
     * digits.

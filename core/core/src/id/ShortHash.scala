@@ -5,8 +5,5 @@ package grit.core.id
   * equal id, whichever id it is.
   */
 private[core] object ShortHash {
-  def of(text: String): String = {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
-    digest.digest(text.getBytes("UTF-8")).take(8).map(b => f"$b%02x").mkString
-  }
+  def of(text: String): String = Sha256.text(text).hex.take(16)
 }

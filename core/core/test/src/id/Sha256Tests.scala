@@ -13,6 +13,10 @@ object Sha256Tests extends TestSuite {
       val sha = Sha256.digest("abc".getBytes("UTF-8").toVector)
       (sha.hex, Sha256.of(sha.bytes), Sha256.read(Abc)) ==> (Abc, Some(sha), Some(sha))
     }
+    test("a text's digest is its UTF-8 bytes'") {
+      (Sha256.text("abc").hex, Sha256.text("é") == Sha256.digest(Vector(0xc3, 0xa9).map(_.toByte)))
+        ==> (Abc, true)
+    }
     test("text that is not 64 lowercase hex digits, and bytes that are not 32, are no digest") {
       (
         Sha256.read(Abc.toUpperCase),

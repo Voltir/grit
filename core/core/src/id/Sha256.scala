@@ -24,6 +24,12 @@ object Sha256 {
     md.digest().map(b => f"$b%02x").mkString
   }
 
+  /** The digest of `text`'s UTF-8 bytes. */
+  def text(text: String): Sha256 = {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)).map(b => f"$b%02x").mkString
+  }
+
   extension (s: Sha256) {
 
     /** As 64 lowercase hex digits, as [[read]] reads it. */
