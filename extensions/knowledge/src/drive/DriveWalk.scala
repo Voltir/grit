@@ -4,7 +4,7 @@ import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, UnitVersion}
 import grit.knowledge.ref.CardKey
-import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
+import grit.knowledge.sync.{CardCopy, Held, Holding, Walk, Walking, Way}
 
 /** One run's walk of a [[DriveCards]] source ([[Walking]]). It lists the shared drives first,
   * [[Way.Run]]; then each drive [[Way.Through]] that listing, its files read before the next
@@ -21,8 +21,8 @@ import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
   * due ([[Holding.repiece]]) is read again for them ([[Walking.current]]). Past `perRun` reads a
   * changed or due file is left, and the listings go on.
   *
-  * It drops the cards held at the floor of files another run's listing showed; of those no
-  * listing showed, only when the listing each records was made and complete; those held at a
+  * It drops the cards held at the floor, damaged ones too, of files another run's listing
+  * showed; of those no listing showed, none damaged and only when the listing each records was made and complete; those held at a
   * label not among the source's whose [[DriveCards.carding]] is the floor; and, past `maxUnits`
   * (when it was lowered), the files last by id.
   */
@@ -34,7 +34,8 @@ object DriveWalk {
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
     * holding `held`, its source's cards as [[Held.read]] reads them, reading again the files of
     * `repiece` for their pieces ([[Holding.repiece]]), at `turn`
-    * ([[DriveCards.turn]] of its slot), which picks the folders it lists.
+    * ([[DriveCards.turn]] of its slot), which picks the folders it lists; the copies in
+    * `damaged` held as no card ([[Holding.damaged]]).
     */
   def start(
       cards: DriveCards,
@@ -42,7 +43,8 @@ object DriveWalk {
       floor: Label,
       held: Vector[Held],
       turn: Long,
-      repiece: Set[CardKey] = Set.empty
+      repiece: Set[CardKey] = Set.empty,
+      damaged: Vector[Held.Read.Damaged] = Vector.empty
   ): Walk[DriveListing] =
     Walking.start(
       Walking
@@ -53,7 +55,7 @@ object DriveWalk {
           drops(cards, _)
         ),
       perRun,
-      Holding(floor, held, repiece),
+      Holding(floor, held, repiece, damaged),
       List(Task.Shared),
       Own(Vector.empty, Set.empty, Set.empty, Set.empty)
     )
@@ -168,7 +170,7 @@ object DriveWalk {
   }
 
   /** What it drops, as [[DriveWalk]] says. */
-  private def drops(cards: DriveCards, w: W): Vector[Held] = {
+  private def drops(cards: DriveCards, w: W): Vector[CardCopy] = {
     val (holding, own) = (w.holding, w.own)
     val gone = holding.held.filter { h =>
       if (h.label == holding.floor)
@@ -178,7 +180,9 @@ object DriveWalk {
         cards.carding(h.label).contains(holding.floor) &&
         !w.replaced(h)
     }
+    // A damaged copy records no listing it was shown in: only another run's showing drops it.
+    val damaged = holding.damaged.filter(d => d.label == holding.floor && own.foreign(d.path))
     // Past maxUnits (it was lowered): the files last by id go, so the source holds no more.
-    w.past(gone, Vector(_), _ => Vector.empty)
+    w.past(gone, Vector(_), _ => Vector.empty) ++ damaged
   }
 }

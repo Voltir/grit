@@ -18,8 +18,11 @@ import grit.knowledge.ref.CardKey
   * run reads the latter again only once it changes. A write withdraws, in its keep,
   * the copy [[Holding.replacing]] names. A list or a read that came to [[Outcome.NotTaken]], and
   * a read with no version, are [[Unwritten]], saying why. When no task is left, or the routine
-  * [[end]]s it, its last step is a [[Step.Drop]] of the routine's `drops` but each copy a write or
-  * relabel of this walk withdrew, when any are left. A step that came to [[Outcome.Stopped]], or
+  * [[end]]s it, its last step is a [[Step.Drop]] of the routine's `drops`, and of the damaged
+  * copies ([[Holding.damaged]]) at another label of units it brought up to date at the floor, but
+  * each copy a write or relabel of this walk withdrew, when any are left. A damaged copy is held
+  * as no card, so its unit is reached as new; its write withdraws, in its keep, the damaged copy
+  * [[Holding.replacing]] names. A step that came to [[Outcome.Stopped]], or
   * to an outcome not of its kind, ends it at once with no drop, saying why; so does a second
   * step made before the first's outcome (a task's `take`, or a listing's `listed`, makes at most
   * one, and the one `listed` makes comes before the tasks stacked). Ended either way, each task
@@ -134,9 +137,9 @@ private[knowledge] final case class Walking[
   /** Whether it has read `perRun` files. */
   def spent: Boolean = reads >= perRun
 
-  /** Whether `held` is the copy a write or relabel of this walk withdrew in its keep. */
-  def replaced(held: Held): Boolean =
-    settled(held.key) && holding.replacing(held.key).contains(held.label)
+  /** Whether `copy` is the one a write or relabel of this walk withdrew in its keep. */
+  def replaced(copy: CardCopy): Boolean =
+    settled(copy.key) && holding.replacing(copy.key).contains(copy.label)
 
   /** The held copies in `gone`, and every copy of the held units past `maxUnits` once those this
     * walk wrote new have their places: of the units not in `gone`, the last by their paths'
@@ -192,7 +195,10 @@ private[knowledge] final case class Walking[
   /** This walk ended here: no task more is taken. */
   def end: Walking[L, T, S] = {
     val ended = unstacked(None)
-    val gone = routine.drops(ended).filterNot(ended.replaced)
+    // A damaged copy at another label than the floor's, of a unit this walk brought up to date
+    // there, that its keep did not withdraw.
+    val stale = holding.damaged.filter(d => settled(d.key) && d.label != holding.floor)
+    val gone = (routine.drops(ended) ++ stale).distinct.filterNot(ended.replaced)
     if (gone.isEmpty) ended.done else ended.step(Step.Drop(gone), Waiting.Dropped(gone.size))
   }
 
@@ -219,13 +225,14 @@ private[knowledge] object Walking {
     * made ([[Walking.list]], [[Walking.read]], [[Walking.current]], [[Walking.relabel]],
     * [[Walking.write]]), the walk
     * [[Walking.end]]ed, or neither, and the next task is taken. `left` says whether a task the
-    * walk never took counts as left; `drops` is what it withdraws at its end.
+    * walk never took counts as left; `drops` is what it withdraws at its end, besides the
+    * damaged copies [[Walking.end]] withdraws of every routine.
     */
   final case class Routine[L <: caps.Pure, T <: caps.Pure, S <: caps.Pure](
       source: Source[L],
       take: (T, Walking[L, T, S]) -> Walking[L, T, S],
       left: (T, Walking[L, T, S]) -> Boolean,
-      drops: Walking[L, T, S] -> Vector[Held]
+      drops: Walking[L, T, S] -> Vector[CardCopy]
   ) extends caps.Pure
 
   /** The walk of `routine` for a run reading at most `perRun` files, holding `holding`, its first
@@ -238,7 +245,7 @@ private[knowledge] object Walking {
       tasks: List[T],
       own: S
   ): Walking[L, T, S] = {
-    val none = Synced(routine.source.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+    val none = Synced(routine.source.corpus, 0, 0, 0, 0, 0, 0, Vector.empty, holding.damaged, None)
     advance(
       Walking(
         routine,

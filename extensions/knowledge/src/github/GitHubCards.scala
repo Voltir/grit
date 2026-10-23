@@ -95,9 +95,10 @@ final case class GitHubCards private (
       floor: Label,
       held: Vector[Held],
       due: Instant,
-      repiece: Set[CardKey]
+      repiece: Set[CardKey],
+      damaged: Vector[Held.Read.Damaged]
   ): Walk[Listing] =
-    RepositoryWalk.start(this, perRun, floor, held, repiece)
+    RepositoryWalk.start(this, perRun, floor, held, repiece, damaged)
 
   /** The pointer of the unit at `path`: `readTool` with `owner`, `repo` and `path`, and no
     * `ref`, so a read of it at any ref follows; or why not: those over

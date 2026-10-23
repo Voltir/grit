@@ -4,7 +4,7 @@ import grit.core.files.Kind
 import grit.core.visibility.Label
 import grit.knowledge.card.{Card, CardSummary, UnitKind, UnitVersion}
 import grit.knowledge.ref.CardKey
-import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
+import grit.knowledge.sync.{CardCopy, Held, Holding, Walk, Walking, Way}
 
 /** One run's walk of a repository ([[Walking]]): depth first by path from the repository's root,
   * `/`. Of the repository it walks the paths `include` names but those under `exclude`, and, of
@@ -12,7 +12,8 @@ import grit.knowledge.sync.{Held, Holding, Walk, Walking, Way}
   * included path are listed and carry no card.
   *
   * A directory whose held card records its tree SHA, made under the source's
-  * [[GitHubCards.scope]], is not listed: each card held beneath it is unchanged. One made under
+  * [[GitHubCards.scope]], with no damaged card ([[Holding.damaged]]) beneath it, is not listed:
+  * each card held beneath it is unchanged. One made under
   * another scope is listed, so a changed `include` or `extensions` reaches beneath it. A file is
   * read only when its listed SHA is not its held card's. A directory's card is written from its
   * listing, with no ask, naming the files in scope in it and the directories holding more, of
@@ -38,7 +39,8 @@ object RepositoryWalk {
 
   /** The walk of `cards` for a run reading at most `perRun` files and keeping at `floor`,
     * holding `held`, its source's cards as [[Held.read]] reads them, reading again the files of
-    * `repiece` for their pieces ([[Holding.repiece]]). Its first step lists the repository's
+    * `repiece` for their pieces ([[Holding.repiece]]), the copies in `damaged` held as no card
+    * ([[Holding.damaged]]). Its first step lists the repository's
     * root, `/`; when `cards` includes nothing, it has none and holds nothing gone.
     */
   def start(
@@ -46,12 +48,13 @@ object RepositoryWalk {
       perRun: Int,
       floor: Label,
       held: Vector[Held],
-      repiece: Set[CardKey] = Set.empty
+      repiece: Set[CardKey] = Set.empty,
+      damaged: Vector[Held.Read.Damaged] = Vector.empty
   ): Walk[Listing] =
     Walking.start(
       Walking.Routine[Listing, Task, Own](cards, take(cards, _, _), left(cards, _, _), drops),
       perRun,
-      Holding(floor, held, repiece),
+      Holding(floor, held, repiece, damaged),
       if (cards.include.isEmpty) Nil else List(Task.Pass(Root)),
       Own(0, Map.empty, Set.empty, Set.empty, Set.empty)
     )
@@ -181,12 +184,13 @@ object RepositoryWalk {
     w.refuse.recording(w.own.copy(undone = w.own.undone + path))
 
   /** Whether `entry`'s held card is up to date: at its version and, a directory's, made under
-    * the source's scope.
+    * the source's scope with no damaged copy beneath it.
     */
   private def current(cards: GitHubCards, holding: Holding, entry: Entry): Boolean = {
     val best = holding.best(CardKey.of(cards.corpus, entry.path))
     best.exists(_.version == entry.version) &&
-    (entry.kind == UnitKind.File || best.exists(_.scope.contains(cards.scope)))
+    (entry.kind == UnitKind.File || best.exists(_.scope.contains(cards.scope)) &&
+      !holding.damaged.exists(d => beneath(d.path, entry.path)))
   }
 
   private def inScope(cards: GitHubCards, entry: Entry): Boolean =
@@ -219,18 +223,20 @@ object RepositoryWalk {
   }
 
   /** What it drops, as [[RepositoryWalk]] says. */
-  private def drops(w: W): Vector[Held] = {
+  private def drops(w: W): Vector[CardCopy] = {
     val (holding, own) = (w.holding, w.own)
+    def outside(path: String): Boolean =
+      own.passed.contains(path) || own.listed.exists { (dir, children) =>
+        beneath(path, dir) && !children.contains(toward(dir, path))
+      } || own.empty.exists(e => path == e || beneath(path, e))
     val gone = holding.held.filter { h =>
       if (w.settled(h.key)) h.label != holding.floor && !w.replaced(h)
-      else
-        own.passed.contains(h.path) || own.listed.exists { (dir, children) =>
-          beneath(h.path, dir) && !children.contains(toward(dir, h.path))
-        } || own.empty.exists(e => h.path == e || beneath(h.path, e))
+      else outside(h.path)
     }
+    val damaged = holding.damaged.filter(d => !w.settled(d.key) && outside(d.path))
     // Past maxUnits (it was lowered): the units last in walk order go, and the directories
     // above them, so the next run lists those again and takes the units back when there is room.
-    w.past(gone, _.split('/').toVector, ancestors)
+    w.past(gone, _.split('/').toVector, ancestors) ++ damaged
   }
 
   /** The paths of the directories above `path`. */

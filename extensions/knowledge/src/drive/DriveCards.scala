@@ -132,9 +132,10 @@ final case class DriveCards private (
       floor: Label,
       held: Vector[Held],
       due: Instant,
-      repiece: Set[CardKey]
+      repiece: Set[CardKey],
+      damaged: Vector[Held.Read.Damaged]
   ): Walk[DriveListing] =
-    DriveWalk.start(this, perRun, floor, held, turn(due), repiece)
+    DriveWalk.start(this, perRun, floor, held, turn(due), repiece, damaged)
 
   /** How many slots of its [[syncs]] fall after [[DriveCards.TurnsFrom]] and at or before `due`:
     * of two runs of its schedules, the later's is one more for each slot between them.

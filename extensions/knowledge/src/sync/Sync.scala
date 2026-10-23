@@ -137,7 +137,7 @@ object Sync {
     val corpus = source.corpus
     moves.keep(CardMoves.Held, start)((_, keeper, _) => holding(corpus, source.at, keeper)) match {
       case Left(e) =>
-        val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+        val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, Vector.empty, None)
         none.copy(stopped = Some(s"reading the cards held: ${MoveError.said(e)}")).line
       case Right(h) =>
         val paths = h.held.map(c => c.key -> c.path).toMap
@@ -432,11 +432,11 @@ object Sync {
               }
         owed match {
           case Left(e) =>
-            val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, None)
+            val none = Synced(corpus, 0, 0, 0, 0, 0, 0, Vector.empty, h.damaged, None)
             none.copy(stopped = Some(s"finding the pieces due: ${MoveError.said(e)}")).line
           case Right(repiece) =>
             go(
-              source.walk(perRun, h.floor, h.held, due, repiece.toSet),
+              source.walk(perRun, h.floor, h.held, due, repiece.toSet, h.damaged),
               start.map(_ => ()),
               Map.empty
             )
@@ -474,22 +474,21 @@ object Sync {
     result.fold(e => Outcome.Stopped(s"$doing: ${MoveError.said(e)}"), _ => Outcome.Kept)
 
   /** The floor its transaction keeps at, and `corpus`'s cards among the plugin's documents, by
-    * key, each kept elsewhere when not at `at`; or the first document that is no card, as the
-    * store's refusal.
+    * key, each kept elsewhere when not at `at`, and those of its cards that do not read
+    * ([[Held.read]]); a document of another source's, or of none, is passed over.
     */
   private def holding(corpus: CorpusName, at: Place, keeper: DocumentKeeper)(using
       tx: Tx^
   ): Either[StoreError, Holding] =
     // Every current document: the plugin's bound, counted over every label, holds them to the
     // sum of its sources' maxUnits.
-    keeper.newest(Int.MaxValue).flatMap { documents =>
-      documents
-        .foldLeft[Either[String, Vector[Held]]](Right(Vector.empty)) { (acc, d) =>
-          acc.flatMap(hs => Held.read(corpus, at, d).map(hs ++ _))
-        }
-        .left
-        .map(StoreError.Invalid(_))
-        .map(hs => Holding(Tx.floor(tx), hs.sortBy(c => CardKey.value(c.key))))
+    keeper.newest(Int.MaxValue).map { documents =>
+      val read = documents.map(Held.read(corpus, at, _))
+      Holding(
+        Tx.floor(tx),
+        read.collect { case Held.Read.Ours(h) => h }.sortBy(c => CardKey.value(c.key)),
+        damaged = read.collect { case d: Held.Read.Damaged => d }.sortBy(d => CardKey.value(d.key))
+      )
     }
 
   /** `card` kept at `label` at `place`, `now`, believed at `integrity`, the meet of its unit's
@@ -548,7 +547,7 @@ object Sync {
   }
 
   /** Each of `gone` withdrawn at its label, `now`. */
-  private def drop(keeper: DocumentKeeper, gone: Vector[Held], now: Instant)(using
+  private def drop(keeper: DocumentKeeper, gone: Vector[CardCopy], now: Instant)(using
       Tx^
   ): Either[StoreError, Kept] =
     gone

@@ -18,8 +18,9 @@ import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
   * with `+` written `-`, and declared at that label. Its documents: label "knowledge card",
   * weight 1, kept 30 days after a version stops being
   * current, bounded at the sum of each GitHub source's `maxUnits` and each Drive source's
-  * `maxUnits` times its labels; at each start, a card of a corpus none of its sources has, or
-  * at a label its source's schedules are not declared at, is withdrawn ([[Documents.sweep]]);
+  * `maxUnits` times its labels; at each start, a document none of its sources reads as its card
+  * ([[Held.read]]: a card of a corpus none of them has, or one no source wrote), or a card at a
+  * label its source's schedules are not declared at, is withdrawn ([[Documents.sweep]]);
   * it posts nothing. It exports its cards ([[CardShelf]]).
   */
 final class Knowledge private (
@@ -39,13 +40,13 @@ final class Knowledge private (
       val terms: DocumentTerms = kept
       val posting: Option[DocumentPosting] = None
 
-      /** A card of a corpus no source has, or at a label none of its source's schedules is
-        * declared at: no run reads it, so no run would withdraw it.
+      /** A document no source reads as its card, or a card at a label none of its source's
+        * schedules is declared at: no run reads it, so no run would withdraw it.
         */
       override def undeclared(document: Document): Boolean = {
         val read = sources.map(s => (s.corpus, Held.read(s.corpus, s.at, document)))
-        read.forall(_._2 == Right(None)) || read.exists {
-          case (c, Right(Some(h))) => !declaring.exists(d => d.corpus == c && d.label == h.label)
+        read.forall(_._2 == Held.Read.Theirs) || read.exists {
+          case (c, Held.Read.Ours(h)) => !declaring.exists(d => d.corpus == c && d.label == h.label)
           case _ => false
         }
       }

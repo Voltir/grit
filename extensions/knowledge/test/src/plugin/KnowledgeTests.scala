@@ -276,12 +276,17 @@ object KnowledgeTests extends TestSuite {
         .map(_.documents.map(d => DocLabel.value(d.terms.label))) ==> Right(Some("knowledge card"))
     }
 
-    test("a card of a corpus no source declares is undeclared, and a document no card is not") {
+    test(
+      "a card of a corpus no source declares, or a document no source wrote, is undeclared, and a card of its own that does not read is not"
+    ) {
       val plugin = right(Knowledge.of(name, Vector(source(None)), driveUnder(internal)))
+      val own = card("repo", internal)
       val gone = card("gone", internal)
       val noCard = gone.copy(data = ujson.Obj("note" -> "no card"))
-      Vector(card("repo", internal), gone, noCard)
-        .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, false)
+      val data = ujson.copy(own.data)
+      data("version") = "2026-10-23"
+      Vector(own, gone, noCard, own.copy(data = data))
+        .map(d => plugin.documents.exists(_.undeclared(d))) ==> Vector(false, true, true, false)
     }
 
     test("a Drive schedule's key another source's schedule has is refused") {

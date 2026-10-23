@@ -60,7 +60,7 @@ object Step {
   final case class Relabel(key: CardKey, from: Label) extends Step
 
   /** Withdraw each of `gone`, at its label. */
-  final case class Drop(gone: Vector[Held]) extends Step
+  final case class Drop(gone: Vector[CardCopy]) extends Step
 }
 
 /** What the run's last step came to, as a walk of a source listing as `L` reads it:

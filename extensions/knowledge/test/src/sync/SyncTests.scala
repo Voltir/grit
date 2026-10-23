@@ -43,7 +43,7 @@ import grit.core.files.{
   Unread
 }
 import grit.core.flow.{Extracted, Shape, Tainted, TestTainted, Trusted}
-import grit.core.id.{CorpusName, FileHandle, PluginName, ScheduleKey}
+import grit.core.id.{CorpusName, DocKey, FileHandle, PluginName, ScheduleKey}
 import grit.core.job.{JobRun, SlotRule}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
@@ -279,9 +279,10 @@ object SyncTests extends TestSuite {
         floor: Label,
         held: Vector[Held],
         due: Instant,
-        repiece: Set[CardKey]
+        repiece: Set[CardKey],
+        damaged: Vector[Held.Read.Damaged]
     ): Walk[Listing] =
-      inner.walk(perRun, floor, held, due, repiece)
+      inner.walk(perRun, floor, held, due, repiece, damaged)
     override def keepsFiles: Boolean = keeps
     override def file(answer: grit.core.act.Answer): Option[FileHandle] =
       kept.collectFirst { case (text, h) if answer.text.contains(text) => h }
@@ -382,6 +383,49 @@ object SyncTests extends TestSuite {
     val _ = runOf(keeping(at, documents))
     documents
   }
+
+  /** `data` written into `documents` under `key` at `at`, as no run of the sync would. */
+  private def written(
+      documents: InMemoryDocuments,
+      key: DocKey,
+      at: Label,
+      data: ujson.Value
+  ): Unit =
+    documents
+      .keeper(plugin, terms)
+      .write(
+        key,
+        at,
+        Integrity.Authority,
+        service.place,
+        right(DocText.of("Written by hand.")),
+        data,
+        None,
+        Instant.EPOCH
+      )(using TestTx.fake(Clearance.of(at)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), _ => ())
+
+  /** `documents` with the card of `path` held at `at` written again, its version `2026-10-23`. */
+  private def damaged(documents: InMemoryDocuments, path: String, at: Label): Unit = {
+    val key = CardKey.docKey(CardKey.of(name, path))
+    val held = documents
+      .keeper(plugin, terms)
+      .current(key, at)(using TestTx.fake(Clearance.of(at)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      .getOrElse(throw new java.lang.AssertionError(s"no card of $path"))
+    val data = ujson.copy(held.data)
+    data("version") = "2026-10-23"
+    written(documents, key, at, data)
+  }
+
+  /** What the reply says of the cards of `paths` it held unreadable, their version `2026-10-23`. */
+  private def unreadable(paths: String*): String =
+    "; held unreadable: " +
+      paths.map(p => s"$p (its version, 2026-10-23, is no git SHA or instant)").mkString(", ")
+
+  /** The version of the current card of `path` in `k`. */
+  private def versionOf(k: ScriptedKeeping, path: String): Vector[String] =
+    k.kept.filter(pathOf(_) == path).map(_.data("version").str)
 
   private def line(
       written: Int = 0,
@@ -870,6 +914,80 @@ object SyncTests extends TestSuite {
     }
 
     test(
+      "a document no source wrote is passed over: the run goes on as without it, saying nothing of it"
+    ) {
+      val documents = firstAt(floor)
+      val other = right(DocKey.of(f"${7}%064x"))
+      written(documents, other, floor, ujson.Obj("path" -> "notes/x.md", "version" -> "2026-10-23"))
+      val k = keeping(floor, documents, repo(a = 4))
+      val reply = runOf(k)
+      (reply, held(k)) ==> (
+        line(written = 2, unchanged = 1),
+        Vector(("docs", floor), ("docs/a.md", floor), ("docs/b.md", floor), ("notes/x.md", floor))
+      )
+    }
+
+    test(
+      "a card of its own that does not read is written anew, beneath an unchanged directory, and the reply names it"
+    ) {
+      val documents = firstAt(floor)
+      damaged(documents, "docs/a.md", floor)
+      val k = keeping(floor, documents)
+      val reply = runOf(k)
+      val again = runOf(keeping(floor, documents))
+      (reply, versionOf(k, "docs/a.md"), again) ==> (
+        line(written = 2, unchanged = 1) + unreadable("docs/a.md"),
+        Vector(hex(1)),
+        line(unchanged = 3)
+      )
+    }
+
+    test(
+      "a card of its own that does not read, at another label, is withdrawn in the keep that writes it anew"
+    ) {
+      val documents = firstAt(lower)
+      damaged(documents, "docs/a.md", lower)
+      val k = new Watched(keeping(floor, documents))
+      val reply = runOf(k)
+      (reply, k.seen) ==> (
+        line(written = 2, relabelled = 1) + unreadable("docs/a.md"),
+        Vector(
+          Vector(("docs", lower), ("docs/a.md", lower), ("docs/b.md", lower)),
+          Vector(("docs", lower), ("docs/a.md", floor), ("docs/b.md", lower)),
+          Vector(("docs", lower), ("docs/a.md", floor), ("docs/b.md", floor)),
+          Vector(("docs", floor), ("docs/a.md", floor), ("docs/b.md", floor))
+        )
+      )
+    }
+
+    test(
+      "a card of its own that does not read, at another label than its unit's current card at the floor, is withdrawn"
+    ) {
+      val documents = firstAt(floor)
+      val key = CardKey.docKey(CardKey.of(name, "docs/a.md"))
+      written(documents, key, lower, ujson.Obj("path" -> "docs/a.md", "version" -> "2026-10-23"))
+      val k = keeping(floor, documents)
+      val reply = runOf(k)
+      (reply, held(k)) ==> (
+        line(written = 1, withdrawn = 1, unchanged = 2) + unreadable("docs/a.md"),
+        Vector(("docs", floor), ("docs/a.md", floor), ("docs/b.md", floor))
+      )
+    }
+
+    test(
+      "a card of its own that does not read, of a file gone from its directory's listing, is withdrawn"
+    ) {
+      val documents = firstAt(floor)
+      damaged(documents, "docs/b.md", floor)
+      val k = keeping(floor, documents, repo(b = None))
+      val reply = runOf(k)
+      (reply, held(k)) ==> (
+        line(written = 1, withdrawn = 1, unchanged = 1) + unreadable("docs/b.md"),
+        Vector(("docs", floor), ("docs/a.md", floor))
+      )
+    }
+
+    test(
       "a run keeps the pieces of each file the file area kept of its read, under its card's key and version, at the floor, believed as its card, and marks each other file unread"
     ) {
       val (pieces, k) = {
@@ -1298,6 +1416,35 @@ object SyncTests extends TestSuite {
         Vector("confidential+acme+trial", "public", "confidential+acme+trial", "public"),
         Vector(None, None, Some("folder-3")),
         Vector(None, None, Some(true))
+      )
+    }
+
+    test(
+      "the held keep's record names its damaged cards only when it holds some, and one written before them reads back holding none"
+    ) {
+      val held = Vector(Held.of(name, "docs", Label.Public, right(UnitVersion.of(hex(13))), None))
+      val damaged = Vector(
+        new Held.Read.Damaged(
+          CardKey.of(name, "docs/a.md"),
+          "docs/a.md",
+          lower,
+          "its scope, 7, is no scope"
+        )
+      )
+      val journaled = summon[Journaled[Holding]]
+      val old = ujson.read(journaled.encode(Holding(floor, held)))
+      (
+        journaled.decode(journaled.encode(Holding(floor, held, damaged = damaged))),
+        old.obj.keySet,
+        journaled.decode(
+          s"""{"floor":"confidential","held":[{"key":"${CardKey.value(
+              held(0).key
+            )}","path":"docs","label":"public","version":"${hex(13)}"}]}"""
+        )
+      ) ==> (
+        Right(Holding(floor, held, damaged = damaged)),
+        Set("floor", "held"),
+        Right(Holding(floor, held))
       )
     }
 

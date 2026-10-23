@@ -210,7 +210,18 @@ object RepositoryWalkTests extends TestSuite {
       refused: Int = 0,
       unwritten: Vector[Unwritten] = Vector.empty,
       stopped: Option[String] = None
-  ) = Synced(name, written, relabelled, withdrawn, unchanged, left, refused, unwritten, stopped)
+  ) = Synced(
+    name,
+    written,
+    relabelled,
+    withdrawn,
+    unchanged,
+    left,
+    refused,
+    unwritten,
+    Vector.empty,
+    stopped
+  )
 
   /** `docs` changed at `a.md`, now `@4`, whose read answers `a`. */
   private def changedA(a: Fetched): (Map[String, Listing], Map[String, Fetched]) =

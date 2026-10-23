@@ -68,13 +68,16 @@ trait Source[L <: caps.Pure] extends caps.Pure {
   /** This run's walk, keeping at `floor`, holding `held`, its cards as [[Held.read]] reads
     * them, asking for at most `perRun` summaries, its slot due at `due`
     * ([[grit.core.job.JobRun.nominal]]); the files of `repiece`, their cards current, read again
-    * for their pieces alone, within the same `perRun` reads ([[Holding.repiece]]).
+    * for their pieces alone, within the same `perRun` reads ([[Holding.repiece]]); the copies
+    * of its cards in `damaged` held as no card, so written anew or withdrawn
+    * ([[Holding.damaged]]).
     */
   def walk(
       perRun: Int,
       floor: Label,
       held: Vector[Held],
       due: Instant,
-      repiece: Set[CardKey] = Set.empty
+      repiece: Set[CardKey] = Set.empty,
+      damaged: Vector[Held.Read.Damaged] = Vector.empty
   ): Walk[L]
 }

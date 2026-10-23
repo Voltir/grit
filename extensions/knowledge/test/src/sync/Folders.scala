@@ -52,7 +52,8 @@ final class Folders(
       floor: Label,
       held: Vector[Held],
       due: Instant,
-      repiece: Set[CardKey]
+      repiece: Set[CardKey],
+      damaged: Vector[Held.Read.Damaged]
   ): Walk[Folders.Names] =
     Folders.Scripted(
       corpus,
@@ -86,7 +87,7 @@ object Folders {
 
     def next: Either[Synced, Step] = (stop, todo) match {
       case (None, step :: _) => Right(step)
-      case _ => Left(Synced(corpus, written, 0, 0, 0, 0, 0, Vector.empty, stop))
+      case _ => Left(Synced(corpus, written, 0, 0, 0, 0, 0, Vector.empty, Vector.empty, stop))
     }
 
     def after(outcome: Outcome[Names]): Scripted = (todo, outcome) match {
