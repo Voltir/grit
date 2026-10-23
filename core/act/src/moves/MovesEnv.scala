@@ -31,7 +31,7 @@ final case class MoveRecords(
   * an ask; `clock`, which dates and paces them. Every write a move makes is in its own step's
   * transaction. A keeping job's moves are made with more ([[KeepingEnv]]).
   */
-case class MovesEnv(
+final case class MovesEnv(
     records: MoveRecords,
     models: Models^,
     classifier: ClearedClassifier^,
@@ -39,9 +39,16 @@ case class MovesEnv(
     clock: Clock^
 )
 
-/** What a keeping job's moves are made with: `moves`' own, and `files`, the area a piece move
-  * reads files from, and `jot`, through which it keeps their pieces in a transaction of its own
-  * ([[grit.core.act.Keeping.piece]]).
+/** What a keeping job's moves are made with: every move's `moves`, and `files`, the area a piece
+  * move reads files from, and `jot`, through which it keeps their pieces in a transaction of its
+  * own ([[grit.core.act.Keeping.piece]]).
   */
-final class KeepingEnv(moves: MovesEnv^, val files: Files^, val jot: Jot^)
-    extends MovesEnv(moves.records, moves.models, moves.classifier, moves.db, moves.clock)
+final case class KeepingEnv(moves: MovesEnv^, files: Files^, jot: Jot^)
+
+object KeepingEnv {
+
+  /** The [[MovesEnv]] in `env`, every move's. */
+  // A value, not a lambda written where it is passed: in a class's super call, a lambda's root
+  // capability cannot flow into the synthesized super-argument method's.
+  val moves: (env: KeepingEnv^) -> MovesEnv^{env} = env => env.moves
+}

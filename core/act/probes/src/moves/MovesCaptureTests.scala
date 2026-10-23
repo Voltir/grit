@@ -22,8 +22,8 @@ object MovesCaptureTests extends TestSuite {
       |import grit.core.files.PieceKeeper
       |import grit.core.durable.{Flow, Step, StepName, Steps}
       |final case class Reply(text: String) extends caps.Pure
-      |val peek: Flow[MovesEnv, Unit, Nothing, String] =
-      |  Flow.step(Step[MovesEnv, Unit, String](StepName("peek"))(r => _ => "x"))
+      |val peek: Flow[KeepingEnv, Unit, Nothing, String] =
+      |  Flow.step(Step[KeepingEnv, Unit, String](StepName("peek"))(r => _ => "x"))
       |""".stripMargin
 
   /** `body` as a run's: over an acting, its limits and keepers, in a keeping program's steps. */
@@ -37,12 +37,12 @@ object MovesCaptureTests extends TestSuite {
   private val bound = "does not conform to upper bound scala.caps.Pure"
 
   private val runs =
-    """val plain = DurableMoves.plain(acting, limits)(moves => Reply(moves.toString))
+    """val plain = DurableMoves.plain[KeepingEnv, Reply](acting, limits, KeepingEnv.moves)(moves => Reply(moves.toString))
       |val kept = DurableMoves.keeping(acting, limits, keeper, pieces)(moves => Reply(moves.toString))
       |Reply(steps.run(peek, ()).merge + plain.text + kept.text)""".stripMargin
 
   private val plainReturnsMoves =
-    """val _ = DurableMoves.plain[Moves^](acting, limits)(moves => moves)
+    """val _ = DurableMoves.plain[KeepingEnv, Moves^](acting, limits, KeepingEnv.moves)(moves => moves)
       |Reply("")""".stripMargin
 
   private val keepingReturnsMoves =
@@ -50,7 +50,7 @@ object MovesCaptureTests extends TestSuite {
       |Reply("")""".stripMargin
 
   private val plainSteps =
-    """DurableMoves.plain(acting, limits)(moves => {
+    """DurableMoves.plain[KeepingEnv, Reply](acting, limits, KeepingEnv.moves)(moves => {
       |  val seen = steps.run(peek, ()).merge
       |  Reply(moves.toString + seen)
       |})""".stripMargin

@@ -47,17 +47,21 @@ object DurableMoves {
     */
   val Within: Vector[Flow.Node] = Vector(Extraction.Node, IntegrityTree.Node)
 
-  /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`,
-    * after which none of them may be made: each recorded as `ask:{name}`, `call:{name}` or
+  /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`, each
+    * with the [[MovesEnv]] that `env` finds in the `R` a run hands them (`identity` when that is
+    * all it hands them; [[KeepingEnv.moves]] for a keeping job's run; `R` is given, since inferred
+    * from `env` it is a refinement `steps` are not over), after which none of them may be made: each recorded as `ask:{name}`, `call:{name}` or
     * `keep:{name}`, and its phases as an ask's `ask:{name}:record` and a call's
     * `call:{name}:expire`, `:abandon` and `:answer` ([[ActName]]). A run's call
     * `i` (from 0) is its turn's call slot `(0, i)`. An ask's cost is recorded under
     * `move:{workflow}:{name}`, and a JSON ask's repair's under `move:{workflow}:{name}:repair`.
     */
-  def plain[A <: caps.Pure](acting: Acting, limits: MoveLimits)(
-      body: Moves^ => A
-  )(using steps: Steps[MovesEnv]^): A =
-    body(new Run(acting, limits))
+  def plain[R, A <: caps.Pure](
+      acting: Acting,
+      limits: MoveLimits,
+      env: (r: R^) -> MovesEnv^{r}
+  )(body: Moves^ => A)(using steps: Steps[R]^): A =
+    body(new Run[R](acting, limits, env))
 
   /** `run`, believed at what `acting`'s run starts at ([[Acting.integrity]]). */
   def started[P <: caps.Pure](run: JobRun[P], acting: Acting): Trusted[JobRun[P]] =
@@ -178,7 +182,7 @@ object DurableMoves {
       pieces: PieceKeeper
   )(using
       steps: Steps[KeepingEnv]^
-  ) extends Run(acting, limits),
+  ) extends Run[KeepingEnv](acting, limits, KeepingEnv.moves),
         Keeping {
 
     def piece(name: MoveName, from: Tainted[Piecing]): Either[MoveError, Pieced] =
@@ -211,8 +215,9 @@ object DurableMoves {
   /** One run's moves. The run state below is read and written only by this object's own
     * methods, between steps.
     */
-  private class Run(acting: Acting, limits: MoveLimits)(using steps: Steps[MovesEnv]^)
-      extends Moves {
+  private class Run[R](acting: Acting, limits: MoveLimits, moves: (r: R^) -> MovesEnv^{r})(using
+      steps: Steps[R]^
+  ) extends Moves {
 
     // caps.unsafe: each holds an immutable value. The object is made inside `plain`,
     // `keeping` or `dreaming`, per run, and never leaves its `body` (whose result is pure, so it cannot carry
@@ -236,7 +241,7 @@ object DurableMoves {
 
     /** What `flow`, a move's steps, passed from `in`, made next through the run's steps. */
     protected def made[I, O](flow: Flow[MovesEnv, I, Nothing, O], in: I): O =
-      steps.run(flow, in).merge
+      steps.run(flow.over[R](moves), in).merge
 
     /** Why a move `name` of `kind` may not be made now; when it may, its name is spent and its
       * kind counted.

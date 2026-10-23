@@ -384,7 +384,7 @@ object MovesWorld {
       declared: Vector[Flow.Node] = DurableMoves.Within
   )(use: Moves^ -> A): Flow[MovesEnv, Unit, Nothing, A] =
     Flow.program[MovesEnv, Unit, A]("moves", declared)(steps =>
-      _ => DurableMoves.plain(acting, limits)(use)(using steps)
+      _ => DurableMoves.plain[MovesEnv, A](acting, limits, env => env)(use)(using steps)
     )
 
   /** An area that keeps no file. */

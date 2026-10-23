@@ -535,14 +535,14 @@ private[moves] object Act {
     given Journaled[Either[String, Pieced]] = MovesJournal.kept[Pieced](using MovesJournal.pieced)
     Step[KeepingEnv, Piece, Either[String, Pieced]](Piecings.move)(env =>
       p => {
-        val (subject, at) = (p.acting.subject, env.clock.now())
+        val (subject, at) = (p.acting.subject, env.moves.clock.now())
         val done: Either[StoreError, Pieced] = p.piecing match {
           case Piecing.Withdraw(gone) =>
             env.jot.write(subject)(Piecing.withdrawn(gone, p.keeper, at).map(Pieced.Withdrawn(_)))
           case read: Piecing.Read =>
             treeOf(env, subject, read.file).flatMap { file =>
               env.jot.write(subject)(
-                Piecing.kept(read, file, p.keeper, p.integrity, env.records.estimator, at)
+                Piecing.kept(read, file, p.keeper, p.integrity, env.moves.records.estimator, at)
               )
             }
         }
@@ -559,7 +559,7 @@ private[moves] object Act {
       subject: Subject,
       file: FileHandle
   ): Either[StoreError, Either[String, (String, Understood)]] =
-    env.db.read(subject)((tx: Tx^) ?=> Right(env.files.admit(file))).flatMap {
+    env.moves.db.read(subject)((tx: Tx^) ?=> Right(env.files.admit(file))).flatMap {
       case Left(FileError.Store(e)) => Left(e)
       case Left(other) => Right(Left(other.message))
       case Right(admitted) =>

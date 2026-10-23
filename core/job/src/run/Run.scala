@@ -253,10 +253,14 @@ object Run {
 
   /** `job`'s reply to the run `read`, after the moves it makes under `acting` through `steps`. */
   private def plain[P <: caps.Pure](job: PlainJob[P], read: SlotRead.Read, acting: Acting)(using
-      steps: Steps[MovesEnv]^
+      steps: Steps[KeepingEnv]^
   ): String =
     said(job, read, acting)(run =>
-      DurableMoves.plain(acting, job.limits)(moves => Said(job.run(run, moves))).text
+      DurableMoves
+        .plain[KeepingEnv, Said](acting, job.limits, KeepingEnv.moves)(moves =>
+          Said(job.run(run, moves))
+        )
+        .text
     )
 
   /** As [[plain]], its moves also keeping `keeper`'s documents. */
