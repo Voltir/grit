@@ -39,22 +39,21 @@ private[sql] final case class SqlKept(table: String, id: String, name: String, k
     update(s"DELETE FROM $table WHERE $id = ?")(_.setLong(1, key)).map(_ => ())
 
   /** The rows `where` matches deleted, their pending tombstones ended at `at`: `bind` sets
-    * `where`'s parameters, every `?` in it one.
+    * `where`'s parameters, the first at the index it is given.
     */
-  def delete(where: String, at: Instant)(bind: PreparedStatement => Unit)(using
+  def delete(where: String, at: Instant)(bind: (PreparedStatement, Int) => Unit)(using
       Tx^
-  ): Either[StoreError, Unit] = {
-    val n = where.count(_ == '?')
+  ): Either[StoreError, Unit] =
     update(
-      s"WITH gone AS (DELETE FROM $table WHERE $where RETURNING $id)\n" +
-        "UPDATE grit.tombstones SET collected_at = ? WHERE kind = ? AND collected_at IS NULL " +
-        s"AND target IN (SELECT $id::text FROM gone)"
+      "WITH fixed AS (SELECT ?::timestamptz AS at, ?::text AS kind),\n" +
+        s"gone AS (DELETE FROM $table WHERE $where RETURNING $id)\n" +
+        "UPDATE grit.tombstones t SET collected_at = f.at FROM fixed f WHERE t.kind = f.kind " +
+        s"AND t.collected_at IS NULL AND t.target IN (SELECT $id::text FROM gone)"
     ) { ps =>
-      bind(ps)
-      ps.setObject(n + 1, utc(at))
-      ps.setString(n + 2, kind.name)
+      ps.setObject(1, utc(at))
+      ps.setString(2, kind.name)
+      bind(ps, 3)
     }.map(_ => ())
-  }
 
   /** The row `target` names, one of `kind`'s, no longer current from `at`, and marked for
     * deletion.

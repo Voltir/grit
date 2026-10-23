@@ -122,7 +122,7 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
     SqlKept.PieceSets.forget(PieceSetId.value(set))
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
-    SqlKept.PieceSets.delete("plugin = ?", at)(_.setString(1, PluginName.value(plugin)))
+    SqlKept.PieceSets.delete("plugin = ?", at)(_.setString(_, PluginName.value(plugin)))
 
   /** `plugin`'s pieces as it writes them under `bound`, marking in `tombstones` each set it
     * leaves.
@@ -435,10 +435,10 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         """superseded_at IS NULL, coalesce(superseded_at, last_placed), ref COLLATE "C", id""",
         "id = ?"
       )
-      SqlKept.PieceSets.delete(s"id IN (SELECT id FROM ($cut) cut)", at) { ps =>
-        ps.setString(1, PluginName.value(plugin))
-        ps.setLong(2, kept)
-        ps.setLong(3, bound)
+      SqlKept.PieceSets.delete(s"id IN (SELECT id FROM ($cut) cut)", at) { (ps, i) =>
+        ps.setString(i, PluginName.value(plugin))
+        ps.setLong(i + 1, kept)
+        ps.setLong(i + 2, bound)
       }
     }
   }

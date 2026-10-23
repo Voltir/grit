@@ -132,7 +132,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     for {
-      _ <- SqlKept.Documents.delete("plugin = ?", at)(_.setString(1, PluginName.value(plugin)))
+      _ <- SqlKept.Documents.delete("plugin = ?", at)(_.setString(_, PluginName.value(plugin)))
       _ <- update("DELETE FROM grit.document_terms WHERE plugin = ?")(
         _.setString(1, PluginName.value(plugin))
       )
