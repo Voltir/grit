@@ -67,4 +67,4 @@ replay names them. Enforced by `SystemPromptTests` (order, the pinned id) and
 `TurnPromptTests` (the base teaches every tag grit writes), `TurnTests` and `TurnHostedTests`
 (the line saying when the message was said, and that no fragment holds it),
 `TurnShownTests` (its forms), `RichTextTests` (Slack's words cover every block and mark it
-draws) and `PersonaTests` (a persona's voice under grit's bounds).
+draws) and `PersonaTests` (a persona's voice in its words).

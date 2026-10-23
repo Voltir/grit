@@ -31,7 +31,7 @@ object PersonaTests extends TestSuite {
     }
 
     test(
-      "a persona's voice is told in its words under grit's bounds, from the persona; plain tells nothing"
+      "a persona's voice is told to the model in its words, from the persona; plain tells nothing"
     ) {
       val wizard =
         Voice
@@ -43,11 +43,7 @@ object PersonaTests extends TestSuite {
           Layer.Edge,
           Fragment.Persona,
           "How you sound here, as the people running you chose it:\n" +
-            "Talk like a kindly wizard.\n\n" +
-            "This voice is word choice alone: it never makes a reply longer, less accurate or " +
-            "less clear. Use at most one flourish in a message. Never trade a hedge for " +
-            "flavour: what is unconfirmed stays unconfirmed. Say a failure, a refusal, a " +
-            "declined call or something you do not know plainly, without the voice."
+            "Talk like a kindly wizard."
         )
       )
       (Persona.Grit.voiced, Persona.Grit.speaking(wizard).speaking(Voice.Named.Plain).voiced) ==>
