@@ -40,11 +40,37 @@ final case class DriveCards private (
 ) extends Source[DriveListing] {
 
   /** Whether it cards a file of `kind`: a Doc, a Sheet or a text file always; a PDF, a Word
-    * document or an Excel workbook when [[formatted]] holds its kind; nothing else.
+    * document or an Excel workbook when [[formatted]] holds its kind, and a Slides deck when it
+    * holds PDFs; nothing else.
     */
   def cards(kind: DriveEntry.Kind): Boolean = kind.read.exists {
     case DriveEntry.Kind.Read.Exported => true
     case DriveEntry.Kind.Read.Formatted(k) => formatted(k)
+  }
+
+  /** What the summary model is told `entry`, a file, is ([[Step.Summarise]]): a Doc, a Sheet
+    * (whose first tab its read gives as comma-separated rows, as Drive exports it as text, when
+    * [[formatted]] holds no Excel workbook), a Slides deck, a text file, a PDF, a Word document
+    * or an Excel workbook, named as its listing names it, in Google Drive.
+    */
+  def subject(entry: DriveEntry): String = {
+    val kind = entry.kind match {
+      case DriveEntry.Kind.Document => "A Doc"
+      case DriveEntry.Kind.Spreadsheet => "A Sheet (a spreadsheet)"
+      case DriveEntry.Kind.Slides => "A Slides deck"
+      case DriveEntry.Kind.Text => "A text file"
+      case DriveEntry.Kind.Pdf => "A PDF"
+      case DriveEntry.Kind.Word => "A Word document"
+      case DriveEntry.Kind.Excel => "An Excel workbook"
+      case DriveEntry.Kind.Folder | DriveEntry.Kind.Drive | DriveEntry.Kind.Other(_) => "A file"
+    }
+    val named = entry.name.fold("")(n => s" named `$n`")
+    val rows = entry.kind match {
+      case DriveEntry.Kind.Spreadsheet if !formatted(FileKind.Excel) =>
+        "; its first tab is given below as comma-separated rows"
+      case _ => ""
+    }
+    s"$kind$named in Google Drive$rows"
   }
 
   /** The label a file whose listing was read at `at` is carded at: the least of [[labels]]
@@ -120,35 +146,13 @@ object DriveCards {
   /** 100: the most shared drives a listing of them gives (Drive's tools list no more). */
   val DrivesMost: Int = 100
 
-  /** What the summary model is told `entry`, a file, is ([[Step.Summarise]]): a Doc, a Sheet
-    * (whose first tab its read gives as comma-separated rows, as Drive exports it), a text
-    * file, a PDF, a Word document or an Excel workbook, named as its listing names it, in Google
-    * Drive.
-    */
-  def subject(entry: DriveEntry): String = {
-    val kind = entry.kind match {
-      case DriveEntry.Kind.Document => "A Doc"
-      case DriveEntry.Kind.Spreadsheet => "A Sheet (a spreadsheet)"
-      case DriveEntry.Kind.Text => "A text file"
-      case DriveEntry.Kind.Pdf => "A PDF"
-      case DriveEntry.Kind.Word => "A Word document"
-      case DriveEntry.Kind.Excel => "An Excel workbook"
-      case DriveEntry.Kind.Folder | DriveEntry.Kind.Drive | DriveEntry.Kind.Other(_) => "A file"
-    }
-    val named = entry.name.fold("")(n => s" named `$n`")
-    val rows = entry.kind match {
-      case DriveEntry.Kind.Spreadsheet => "; its first tab is given below as comma-separated rows"
-      case _ => ""
-    }
-    s"$kind$named in Google Drive$rows"
-  }
-
   /** 2026-01-01T00:00:00Z: where [[DriveCards.turn]] starts counting; a slot before it is not
     * counted.
     */
   val TurnsFrom: Instant = Instant.parse("2026-01-01T00:00:00Z")
 
-  /** These, `labels` least first, carding the PDFs, Word documents and Excel workbooks a format
+  /** These, `labels` least first, carding the PDFs (Slides decks among them, as Drive exports
+    * them), Word documents and Excel workbooks a format
     * of `formats` (the deployment's) reads, or why not: `corpus` supplies no service; `labels`
     * empty, holding one twice or one holding `unmapped`, or not a chain (two of them neither
     * dominating the other); `maxUnits` under 1; no `syncs`, or two of one key.

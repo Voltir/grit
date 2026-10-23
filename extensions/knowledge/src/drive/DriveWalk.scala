@@ -100,7 +100,7 @@ object DriveWalk {
     case Task.Relabel(key, from) => w.relabel(key, from)
     case Task.Repiece(key, within) => w.current(key, Way.Through(within))
     case Task.Read(entry, within) =>
-      w.read(entry.id, Way.Through(within), DriveCards.subject(entry))(
+      w.read(entry.id, Way.Through(within), cards.subject(entry))(
         Card.file(cards.corpus, entry.id, _, _, _, entry.name, Some(within))
       )
   }

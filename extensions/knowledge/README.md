@@ -87,7 +87,8 @@ it becomes cards, and those files in a few plain words, which its directories' c
 hold; at most how many cards; its label; the place its cards are kept at, drawn on
 where a conversation's scope holds it; and its `SyncSchedule`s), or with `DriveCards.of` (the
 same, but Drive's two tools, a chain of labels in place of the repository and one label, and
-the deployment's formats, so that a PDF, Word or Excel file is carded only where one reads it),
+the deployment's formats, so that a PDF, Word or Excel file, or a Slides deck as the PDF Drive
+exports it to, is carded only where one reads it),
 and the plugin with
 `Knowledge.of(name, sources, visibility)`, under the visibility it declares. It also serves an
 edge hosting the MCP server's `get_file_contents` at the source's service, or every run's first

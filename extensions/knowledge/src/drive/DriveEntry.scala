@@ -18,21 +18,23 @@ final case class DriveEntry(
 
 object DriveEntry {
 
-  /** What an entry is, as its facts' `kind` writes it: a folder, a Doc, a Sheet, a text file, a
-    * PDF, a Word document, an Excel workbook or a shared drive; any other kind, a shortcut among
-    * them, is [[Other]], its written form kept.
+  /** What an entry is, as its facts' `kind` writes it: a folder, a Doc, a Sheet, a Slides deck,
+    * a text file, a PDF, a Word document, an Excel workbook or a shared drive; any other kind, a
+    * shortcut among them, is [[Other]], its written form kept.
     */
   enum Kind extends caps.Pure {
-    case Folder, Document, Spreadsheet, Text, Pdf, Word, Excel, Drive
+    case Folder, Document, Spreadsheet, Slides, Text, Pdf, Word, Excel, Drive
     case Other(written: String)
 
     /** How a card is made of a file of this kind: [[Kind.Read.Exported]] for those Drive
-      * exports as text (a Doc, a Sheet, a text file); [[Kind.Read.Formatted]] for those only
-      * a deployment's format reads, naming the file area's kind; none for the rest.
+      * exports as text (a Doc, a Sheet, a text file; a Doc or a Sheet is read as the Word or
+      * Excel file Drive exports it to instead when a deployment's format reads those);
+      * [[Kind.Read.Formatted]] for those only a deployment's format reads, naming the file
+      * area's kind (a Slides deck's, the PDF Drive exports it to); none for the rest.
       */
     def read: Option[Kind.Read] = this match {
       case Document | Spreadsheet | Text => Some(Kind.Read.Exported)
-      case Pdf => Some(Kind.Read.Formatted(grit.core.files.Kind.Pdf))
+      case Pdf | Slides => Some(Kind.Read.Formatted(grit.core.files.Kind.Pdf))
       case Word => Some(Kind.Read.Formatted(grit.core.files.Kind.Word))
       case Excel => Some(Kind.Read.Formatted(grit.core.files.Kind.Excel))
       case Folder | Drive | Other(_) => None
@@ -52,6 +54,7 @@ object DriveEntry {
       case "folder" => Folder
       case "document" => Document
       case "spreadsheet" => Spreadsheet
+      case "slides" => Slides
       case "text" => Text
       case "pdf" => Pdf
       case "word" => Word

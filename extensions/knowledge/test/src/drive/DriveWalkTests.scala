@@ -184,7 +184,44 @@ object DriveWalkTests extends TestSuite {
             "its first tab is given below as comma-separated rows"),
           "file-32" -> "A text file named `name of file-32` in Google Drive"
         ),
-        DriveCards.subject(unnamed) == "A text file in Google Drive"
+        cards(labels).subject(unnamed) == "A text file in Google Drive"
+      )
+    }
+
+    test(
+      "a Slides deck is read and summarised as one only when its deployment's formats read PDFs, and a Sheet's first tab is said to be what is given only when they read no workbook"
+    ) {
+      val decks = world.updated(
+        "drive-b",
+        (
+          DriveListing(
+            Vector(
+              entry("file-30", Kind.Spreadsheet, 6, "drive-b"),
+              entry("file-34", Kind.Slides, 2, "drive-b")
+            ),
+            true
+          ),
+          internal
+        )
+      )
+      def summarised(formats: grit.core.files.Formats) =
+        run(cards(labels, formats = formats).walk(5, internal, Vector.empty, due), decks)._1
+          .collect { case Step.Summarise(id, subject, _, _) => (id, subject) }
+          .filter((id, _) => id == "file-30" || id == "file-34")
+      val office = grit.core.files.Formats { kind =>
+        if (kind == grit.core.files.Kind.Pdf || kind == grit.core.files.Kind.Excel)
+          Vector(grit.core.files.PagedText)
+        else Vector.empty
+      }
+      (summarised(office), summarised(DriveCardsTests.unformatted)) ==> (
+        Vector(
+          "file-30" -> "A Sheet (a spreadsheet) named `name of file-30` in Google Drive",
+          "file-34" -> "A Slides deck named `name of file-34` in Google Drive"
+        ),
+        Vector(
+          "file-30" -> ("A Sheet (a spreadsheet) named `name of file-30` in Google Drive; " +
+            "its first tab is given below as comma-separated rows")
+        )
       )
     }
 
@@ -196,7 +233,7 @@ object DriveWalkTests extends TestSuite {
           case Step.Summarise(id, subject, _, _) => (id, subject)
         }
       val pdfs = grit.core.files.PagedText.formats
-      def named(kind: Kind) = DriveCards.subject(DriveEntry("f", kind, Some("f"), None, None))
+      def named(kind: Kind) = cards(labels).subject(DriveEntry("f", kind, Some("f"), None, None))
       assert(
         summarised(pdfs).map(_._1) == Vector("file-18", "file-4", "file-30", "file-32"),
         summarised(pdfs)(1)._2 == "A PDF named `name of file-4` in Google Drive",

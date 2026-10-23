@@ -207,13 +207,14 @@ object SyncTests extends TestSuite {
     }
   }
 
-  /** Two files the file area keeps, by handle: `a.pdf` holding [[repo]]'s `a.md` text, `b.pdf`
-    * its `b.md`'s.
+  /** Three files the file area keeps, by handle: `a.pdf` holding [[repo]]'s `a.md` text, `b.pdf`
+    * its `b.md`'s, and `c.docx`, a Doc as Drive exports it.
     */
-  private val (fa, fb) = (handle("f1"), handle("f2"))
+  private val (fa, fb, fc) = (handle("f1"), handle("f2"), handle("f3"))
   private val Trees: Map[FileHandle, (String, Understood)] = Map(
     fa -> ("a.pdf", tree("Deploying the app.")),
-    fb -> ("b.pdf", tree("Testing the app."))
+    fb -> ("b.pdf", tree("Testing the app.")),
+    fc -> ("c.docx", tree("Reviewing the app."))
   )
 
   private def handle(h: String): FileHandle =
@@ -397,13 +398,17 @@ object SyncTests extends TestSuite {
     "within" -> within
   )
 
-  /** [[drive]]'s answer to a call of `args`, its label and what it is believed at: `drive-a` is
-    * listed below the floor and believed `Member`; everything else is read at the floor, believed
-    * `Authority`. A Doc is read as a native Doc is, its text and no file kept; the PDF `file-p`
-    * as a format reads it, its text over 8 KB of `~` then `^`, the file area keeping it as [[fa]].
+  /** [[drive]]'s answer to a call of `args`, its deployment's formats reading `formatted`, its
+    * label and what it is believed at: `drive-a` is listed below the floor and believed `Member`;
+    * everything else is read at the floor, believed `Authority`. As `drive_read` reads them: a
+    * Doc as Drive's text of it, no file kept, but kept as an exported Word document when
+    * `formatted` holds Word (`file-b` as [[fc]]); the PDF `file-p` as a format reads it, its text
+    * over 8 KB of `~` then `^`, the file area keeping it as [[fa]]; the Slides deck `file-s`
+    * exported as a PDF, kept as [[fb]].
     */
   private def driveAnswer(
-      args: ujson.Obj
+      args: ujson.Obj,
+      formatted: Set[grit.core.files.Kind] = Set.empty
   ): Option[(grit.core.tool.Outcome.Stated, Label, Integrity)] =
     (
       args.value.get("folder").flatMap(_.strOpt),
@@ -416,7 +421,11 @@ object SyncTests extends TestSuite {
       case (Some("drive-a"), _) =>
         Some((driveFacts(true, doc("file-a", "drive-a")), lower, Integrity.Member))
       case (Some("drive-b"), _) =>
-        val files = Vector(doc("file-b", "drive-b"), doc("file-p", "drive-b", "pdf"))
+        val files = Vector(
+          doc("file-b", "drive-b"),
+          doc("file-p", "drive-b", "pdf"),
+          doc("file-s", "drive-b", "slides")
+        )
         Some((driveFacts(true, files*), floor, Integrity.Authority))
       case (_, Some("file-p")) =>
         val opened = doc("file-p", "drive-b", "pdf")
@@ -430,10 +439,23 @@ object SyncTests extends TestSuite {
             Integrity.Authority
           )
         )
+      case (_, Some("file-s")) if formatted(grit.core.files.Kind.Pdf) =>
+        val opened = doc("file-s", "drive-b", "slides")
+        opened("text") = "~" * 3
+        opened("complete") = true
+        opened("file") = "f2"
+        Some(
+          (
+            grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
+            floor,
+            Integrity.Authority
+          )
+        )
       case (_, Some(id)) =>
         val opened = doc(id, "drive-x")
         opened("text") = s"What $id holds."
         opened("complete") = true
+        if (id == "file-b" && formatted(grit.core.files.Kind.Word)) opened("file") = "f3"
         Some(
           (
             grit.core.tool.Outcome.Stated(None, Vector(grit.core.visibility.Facts.of(opened))),
@@ -444,13 +466,15 @@ object SyncTests extends TestSuite {
       case _ => None
     }
 
-  /** A Drive run's moves at [[floor]], each call answered by [[driveAnswer]], its summaries as
-    * `summaries`, keeping into `documents` and `pieces`, the file area holding [[Trees]].
+  /** A Drive run's moves at [[floor]], each call answered by [[driveAnswer]] as `source`'s
+    * deployment's formats make `drive_read` answer, its summaries as `summaries`, keeping into
+    * `documents` and `pieces`, the file area holding [[Trees]].
     */
   private def driveKeeping(
       documents: InMemoryDocuments,
       pieces: InMemoryPieces = new InMemoryPieces,
-      summaries: Summaries = Summaries.Fixed
+      summaries: Summaries = Summaries.Fixed,
+      source: grit.knowledge.drive.DriveCards = drive
   ): ScriptedKeeping =
     new ScriptedKeeping(
       new Sync(Vector(drive)).limits,
@@ -459,8 +483,9 @@ object SyncTests extends TestSuite {
       terms,
       _ => Left(MoveError.Model("no text ask")),
       (_, _, args) =>
-        Right(driveAnswer(args).fold(Called.Failed("Not Found")) { (stated, at, believed) =>
-          Called.Done(TestTainted.at(grit.core.act.Answer("not read", stated), believed), at)
+        Right(driveAnswer(args, source.formatted).fold(Called.Failed("Not Found")) {
+          (stated, at, believed) =>
+            Called.Done(TestTainted.at(grit.core.act.Answer("not read", stated), believed), at)
         }),
       (system, messages) => reply(summaries, floor, Map.empty, system, messages),
       _ => Left(MoveError.Model("no judgment is asked in this run")),
@@ -655,31 +680,64 @@ object SyncTests extends TestSuite {
     }
 
     test(
-      "a Drive run cards and pieces a PDF when its deployment's formats read PDFs, from its head alone, and never names it when they do not"
+      "a Drive run cards and pieces a PDF and a Slides deck when its deployment's formats read PDFs, a PDF from its head alone, and never names them when they do not"
     ) {
       def walked(source: grit.knowledge.drive.DriveCards) = {
-        val k = driveKeeping(new InMemoryDocuments, summaries = Summaries.Counting)
+        val k = driveKeeping(new InMemoryDocuments, summaries = Summaries.Counting, source = source)
         val reply = driveRun(k, source)
         val cards =
           k.kept.map(d => pathOf(d) -> DocText.value(d.text).linesIterator.toVector.last).sorted
         (reply, cards, k.pieced.map(p => (p.file.ref, p.piece.text)))
       }
-      val pdf = CardKey.value(CardKey.of(drive.corpus, "file-p"))
+      def key(id: String) = CardKey.value(CardKey.of(drive.corpus, id))
       (walked(drivePdfs), walked(drive)) ==> (
         (
-          "shared: 3 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
+          "shared: 4 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
           Vector(
             "file-a" -> "0 tildes and 0 carets",
             "file-b" -> "0 tildes and 0 carets",
-            "file-p" -> "8192 tildes and 0 carets"
+            "file-p" -> "8192 tildes and 0 carets",
+            "file-s" -> "3 tildes and 0 carets"
           ),
-          Vector(pdf -> "Deploying the app.")
+          Vector(key("file-p") -> "Deploying the app.", key("file-s") -> "Testing the app.")
         ),
         (
           "shared: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run",
           Vector("file-a" -> "0 tildes and 0 carets", "file-b" -> "0 tildes and 0 carets"),
           Vector()
         )
+      )
+    }
+
+    test(
+      "a Drive run pieces a Doc its read kept as an exported Word document, its deployment's formats reading Word documents, and marks it unread when read as Drive's text"
+    ) {
+      val words = grit.knowledge.drive.DriveCardsTests.cards(
+        Vector(floor),
+        formats = grit.core.files.Formats(kind =>
+          if (kind == grit.core.files.Kind.Word) Vector(grit.core.files.PagedText) else Vector.empty
+        )
+      )
+      def walked(source: grit.knowledge.drive.DriveCards) = {
+        val pieces = new InMemoryPieces
+        val k = driveKeeping(new InMemoryDocuments, pieces, source = source)
+        val reply = driveRun(k, source)
+        val b = CardKey.value(CardKey.of(drive.corpus, "file-b"))
+        val marks = pieces
+          .keeper(plugin, grit.core.files.PieceKeeper.Bound)
+          .kept(Vector(b))(using TestTx.fake(Clearance.of(floor)))
+        (reply, k.pieced.map(p => (p.file.ref, p.piece.text)), marks.map(_.values.toVector))
+      }
+      val b = CardKey.value(CardKey.of(drive.corpus, "file-b"))
+      val said =
+        "shared: 2 written, 0 relabelled, 0 withdrawn, 0 unchanged, 0 left for the next run"
+      val (kept, texted) = (walked(words), walked(drive))
+      (kept._1, kept._2, texted._1, texted._2, texted._3) ==> (
+        said,
+        Vector(b -> "Reviewing the app."),
+        said,
+        Vector(),
+        Right(Vector(KeptAs.Unread("its read kept no whole file in the file area")))
       )
     }
 
