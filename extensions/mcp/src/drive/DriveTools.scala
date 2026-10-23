@@ -294,13 +294,15 @@ object DriveTools {
   /** A read's arguments: the file, and what of it to read. */
   final case class Reading(file: FileId, range: FileRange)
 
-  /** `drive_read`: one file's text, by its id: a PDF, a Word file or an Excel file by `range`. */
+  /** `drive_read`: one file's text, by its id: a PDF, a Word file, an Excel file or a Slides
+    * deck by `range`.
+    */
   val Read: Hosted[Reading] = new Hosted(
     ToolSpec(
       ToolName("drive_read"),
       "Read a Drive file's text by its id, from a search: a Doc as markdown, a Sheet's first " +
-        "sheet as CSV, a text file as it is, and a PDF, a Word file or an Excel file a part at a " +
-        "time. For those, with no other argument it gives the file's outline (its headings, with " +
+        "sheet as CSV, a text file as it is, and a PDF, a Word file, an Excel file or a Slides " +
+        "deck a part at a time. For those, with no other argument it gives the file's outline (its headings, with " +
         "their pages) and its start; ask for pages, a section by its heading, or from an offset " +
         "to read on, or near a passage as a piece's pointer gives it. Each read says what it " +
         "covers.",

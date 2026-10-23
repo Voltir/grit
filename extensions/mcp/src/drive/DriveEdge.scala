@@ -19,8 +19,8 @@ object DriveEdge {
   val Instructions: String =
     "drive_list lists the shared drives, or what is directly in one folder or shared drive; " +
       "drive_search finds Drive files by the words in them; and drive_read reads one by its id: " +
-      "a Doc, a Sheet or a text file whole, and a PDF, a Word file or an Excel file a part at a " +
-      "time, starting with its outline. " +
+      "a Doc, a Sheet or a text file whole, and a PDF, a Word file, an Excel file or a Slides " +
+      "deck a part at a time, starting with its outline. " +
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
       "can open it to you with the label command, typing " +

@@ -311,6 +311,14 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
+      "what the model is told of Drive, and of drive_read, names a Slides deck among the files read a part at a time"
+    ) {
+      val partly = "a PDF, a Word file, an Excel file or a Slides deck a part at a time"
+      (DriveEdge.Instructions.contains(partly), DriveTools.Read.spec.does.contains(partly)) ==>
+        (true, true)
+    }
+
+    test(
       "what the model cannot be told of a failed run reaches the operator's log, naming no argument; a person's own miss, nothing; a read whose grants were not read, that it is believed untrusted"
     ) {
       withFake { fake =>

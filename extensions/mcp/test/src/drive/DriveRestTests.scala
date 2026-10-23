@@ -160,8 +160,8 @@ object DriveRestTests extends TestSuite {
           fake.requests.size - asked
         ) ==> (
           Left(
-            "Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read " +
-              "here, not this file."
+            "Docs, Sheets, Slides decks, PDFs, Word and Excel files, and text files in Drive " +
+              "can be read here, not this file."
           ),
           Left(DriveError.Unreadable("a PDF")),
           1

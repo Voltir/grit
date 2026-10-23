@@ -94,7 +94,8 @@ enum DriveError derives CanEqual {
     case Malformed(_) => "Drive's answer couldn't be read; try again later."
     case SlidesOff => "Slides decks can't be read here just now; tell an administrator."
     case Unreadable(kind) =>
-      s"Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read here, not $kind."
+      "Docs, Sheets, Slides decks, PDFs, Word and Excel files, and text files in Drive can be " +
+        s"read here, not $kind."
     case Flagged => "Drive has flagged this file as possibly harmful, so it isn't read here."
     case ExportTooLarge =>
       "This file is too large for Drive to hand over to be read here (Drive passes on at most " +

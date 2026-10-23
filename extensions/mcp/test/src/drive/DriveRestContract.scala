@@ -102,7 +102,7 @@ trait DriveRestContract extends TestSuite {
         Right(true),
         Right(true),
         Left(
-          "Docs, Sheets, PDFs, Word and Excel files, and text files in Drive can be read here, not a folder."
+          "Docs, Sheets, Slides decks, PDFs, Word and Excel files, and text files in Drive can be read here, not a folder."
         )
       )
     }
