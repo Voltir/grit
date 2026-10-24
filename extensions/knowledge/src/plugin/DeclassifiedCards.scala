@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.{Declared, Job, SlotRule}
+import grit.core.job.{Declared, Interval, Job, SlotRule}
 import grit.core.plugin.{DocumentPosting, Documents, Exports, Plugin}
 import grit.core.visibility.{Label, Visibility}
 import grit.knowledge.card.CardShelf
@@ -54,6 +54,9 @@ object DeclassifiedCards {
   /** 5: the most cards one run rewrites. */
   val PerRun: Int = 5
 
+  /** Every half hour: its runs' rule unless a deployment gives one. */
+  val Cadence: SlotRule = SlotRule.Every(Interval.HalfHour)
+
   /** The plugin over `cards`' cards, its runs at `at` by `rule`, under the deployment's
     * `visibility`; or why not: `at` holding a compartment `visibility` does not declare, or the
     * unmapped mark, or a written form that makes no schedule key.
@@ -62,8 +65,8 @@ object DeclassifiedCards {
       name: PluginName,
       cards: Exports[CardShelf],
       at: Label,
-      rule: SlotRule,
-      visibility: Visibility
+      visibility: Visibility,
+      rule: SlotRule = Cadence
   ): Either[String, DeclassifiedCards] =
     for {
       _ <- Either.cond(

@@ -2,8 +2,10 @@ package grit.knowledge.plugin
 
 import java.time.{LocalTime, ZoneOffset}
 
+import scala.concurrent.duration.*
+
 import grit.core.id.{PluginName, ScheduleKey}
-import grit.core.job.SlotRule
+import grit.core.job.{Interval, SlotRule}
 import grit.core.need.PluginReads
 import grit.core.plugin.Exports
 import grit.core.visibility.{Label, Level, TestLabels}
@@ -27,7 +29,7 @@ object DeclassifiedCardsTests extends TestSuite {
   private val Rule = SlotRule.Daily(LocalTime.of(3, 0), ZoneOffset.UTC)
 
   private def of(at: Label) =
-    DeclassifiedCards.of(Name, Cards, at, Rule, TestLabels.Trialled)
+    DeclassifiedCards.of(Name, Cards, at, TestLabels.Trialled, Rule)
 
   val tests = Tests {
     test(
@@ -45,6 +47,18 @@ object DeclassifiedCardsTests extends TestSuite {
           Vector(Cards.name)
         )
       )
+    }
+
+    test("given no rule, its runs fall every 30 minutes") {
+      val at = Label.at(Level.Confidential, TestLabels.trial)
+      DeclassifiedCards.of(Name, Cards, at, TestLabels.Trialled).map(_.schedules.map(_.rule)) ==>
+        Right(
+          Vector(
+            SlotRule.Every(
+              Interval.of(30.minutes).getOrElse(throw new java.lang.AssertionError("30 min"))
+            )
+          )
+        )
     }
 
     test("a label holding the unmapped mark, or a compartment not declared, is refused") {
