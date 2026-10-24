@@ -81,7 +81,9 @@ Packages, in one-way order (each names only those before it):
   `StrandDream` job on a daily schedule per label it is declared at, and its documents' terms;
   `TopicDocuments`, the topics plugin, the same for `TopicDream`, needing the plugin that
   exports its cards when given one (`DreamSchedules` holds what the two share);
-  `DeclassifiedCards`, the plugin of `CardDeclassify` on one schedule, needing that plugin; and
+  `DeclassifiedCards`, the plugin of `CardDeclassify` on one schedule, needing that plugin,
+  whose policies and their applications an operator sets by the SQL beside
+  `grit.declassification_policies` and `grit.declassification_applications` in `schema.sql`; and
   `StandingDocuments`, a plugin of its own over `standing`; and `Leaves`, which documents say
   again what a topic was written from, read by the eval's duplication measure alone, since
   the three plugins' key forms meet only here. Each is its own plugin because a

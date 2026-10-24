@@ -49,10 +49,12 @@ Decision:
   refuses a value below outside.
 - **Endorsement only raises, so soundness never depends on it.** An endorsement is a downgrade
   (`Downgrade`): a pure, described node a flow lists (`Flows.downgrades`), applied only through
-  the `Raise` handed where it sits. There are two: the extraction, which endorses an answer of
+  the `Raise` handed where it sits. There are three: the extraction, which endorses an answer of
   at most `Bounded.K` bits (`extract`: a typed question to a quarantined model) to `Trusted`
-  at the turn's level met with member; and the sanitiser, which raises free text from below
-  outside to outside, still `Tainted`. A classifier labels features and code decides. Vetting
+  at the turn's level met with member; the sanitiser, which raises free text from below
+  outside to outside, still `Tainted`; and the declassification, which removes a compartment
+  from a rewrite under that compartment's policy, applied to one document, each rewrite
+  checked by a judgment. A classifier labels features and code decides. Vetting
   reads the text the model reads, never the facts it is rendered from (`docs/extending.md`).
 - **In the types.** `Tainted[T]` has a pure `map` and no exit. `Trusted[T]` has a free `extract`
   and a pure `coflatMap`, and is made only by a check against a required level

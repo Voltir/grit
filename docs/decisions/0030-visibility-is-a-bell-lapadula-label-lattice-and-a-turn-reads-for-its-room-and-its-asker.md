@@ -47,7 +47,8 @@ Decision:
   and the asker's clearance. A room is one by identity, never by containment. A person's
   clearance is the join of their groups' grants.
 - **What is derived takes at least the join of its sources' labels.** Work that derives runs
-  under a declared clearance and keeps its output there.
+  under a declared clearance and keeps its output there; the exception is a rewrite declassified
+  under a compartment's policy applied to its source (`Declassified.declassification`).
 - **What a mapping cannot place fails high**: `unmapped`, joined to whatever part was mapped,
   readable only by clearances granted it.
 - **Core owns the semantics**: labels, clearances, the filter, and the clearance every
