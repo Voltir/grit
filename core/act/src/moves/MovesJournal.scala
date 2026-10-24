@@ -347,11 +347,15 @@ object MovesJournal {
     case _ => false
   }
 
-  /** v1's canonical form of a rewrite, which [[rewrite]] hashes. */
+  /** v1's canonical form of a rewrite, which [[rewrite]] hashes: the source's id; the policy's
+    * over and version, which stand for its instructions; the application's version and document;
+    * the source's canonical text; the request's framing, [[Declassifying.Template]]; and
+    * [[Declassifying.SourceChars]].
+    */
   private def rewriteForm(source: DocumentVersionId, applied: PolicyApplication): String =
     "rewrite" + text(DocumentVersionId.value(source).toString) +
       text(applied.policy.over.written) + count(applied.policy.version) + count(applied.version) +
-      canonical(applied.document.written) + text(Declassifying.Rewrite) +
+      canonical(applied.document.written) + Declassifying.Template.map(text).mkString +
       count(Declassifying.SourceChars)
 
   /** v1's canonical form of an ask of `request`, which [[ask]] hashes. */

@@ -821,7 +821,10 @@ abstract class MovesContract extends TestSuite {
         Seen(Vector(m.declassify(name("d"), source, policy).map(outcome)))
       }
       shown ==> Vector(
-        (Declassifying.Rewrite, Vector(s"Instructions:\n$Instructions\n\nDocument:\n$CardText"))
+        (
+          Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>",
+          Vector(s"<document>\n$CardText\n</document>")
+        )
       )
     }
 
