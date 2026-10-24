@@ -2,13 +2,23 @@ package grit.core.act
 
 import java.time.Instant
 
-import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
+import grit.core.classify.{Answer, Request}
+import grit.core.document.{
+  Declassified,
+  DocText,
+  DocumentKeeper,
+  DocumentTerms,
+  InMemoryDocuments,
+  PolicyApplication
+}
 import grit.core.durable.Journaled
 import grit.core.either.Traversal.sequence
 import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.Message
 import grit.core.need.Needs
+import grit.core.period.Probability
+import grit.core.provider.ModelRequest
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Recorded}
@@ -21,7 +31,9 @@ import grit.core.visibility.{Integrity, Label, Recorded}
   * keeps, which `grit.act.moves.MovesContract` holds it to beside the durable moves: a summary
   * is an ask, named and limited as one; one whose strand's messages changed since its scan
   * asks nothing and is `None`; its reply is believed at the meet of the summary, the run, every
-  * message read and every document shown.
+  * message read and every document shown. Its declassifies read as its summaries do
+  * ([[Declassifying.read]]), ask the rewrite of `asks` and the check of `judgments`, and are
+  * always declared.
   */
 final class ScriptedDreaming(
     limits: MoveLimits,
@@ -33,15 +45,20 @@ final class ScriptedDreaming(
     documents: InMemoryDocuments = new InMemoryDocuments,
     at: Instant = Instant.EPOCH,
     integrity: Integrity = Integrity.Authority,
-    rooms: Recorded = Recorded.Empty
+    rooms: Recorded = Recorded.Empty,
+    asks: ModelRequest -> Either[MoveError, Asked[Message.Assistant]] = (_: ModelRequest) =>
+      Left(MoveError.Model("no text reply scripted")),
+    judgments: Request -> Either[MoveError, Asked[Vector[Answer]]] = (_: Request) =>
+      Left(MoveError.Model("no judgment scripted"))
 ) extends ScriptedKeeping(
       limits,
       floor,
       plugin,
       terms,
-      _ => Left(MoveError.Model("no text reply scripted")),
+      asks,
       (_, _, _) => Left(MoveError.Model("no call scripted")),
       jsons,
+      judgments,
       documents = documents,
       at = at,
       integrity = integrity,
@@ -87,4 +104,63 @@ final class ScriptedDreaming(
           .map(a => Some(Dreaming.Summarised(a, docs.map(_._1.version))))
     }
   }
+
+  protected def declassifier: Option[Declassifying.Raising^] =
+    Some(TestTainted.raise(Declassified.declassification))
+
+  protected def rewrite(
+      name: MoveName,
+      source: DocumentVersionId,
+      applied: PolicyApplication
+  ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
+    shown(source, applied) match {
+      case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
+      case Right(None) =>
+        making(name, MoveKind.Ask, limits.asks)(
+          Right(TestTainted.at(Declassifying.Rewritten.Unapplied, integrity))
+        )
+      case Right(Some(shown)) =>
+        val d = shown.source
+        val posed = Posed.Text(Declassifying.request(shown.instructions, d.text))
+        ask(name, TestTainted.at(posed, integrity.meet(d.integrity))).map(a =>
+          a.reply.map(m =>
+            Declassifying
+              .written(m)
+              .fold(Declassifying.Rewritten.Withheld)(t =>
+                Declassifying.Rewritten.Made(t, d.plugin, d.key, d.place, d.label, shown.pointer)
+              )
+          )
+        )
+    }
+
+  protected def check(
+      name: MoveName,
+      source: DocumentVersionId,
+      applied: PolicyApplication,
+      rewrite: DocText
+  ): Either[MoveError, Option[Probability]] =
+    Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
+      shown(source, applied) match {
+        case Left(e) =>
+          making(checking, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
+        case Right(None) => making(checking, MoveKind.Judge, limits.judgments)(Right(None))
+        case Right(Some(shown)) =>
+          val state = Declassifying.state(shown.instructions, shown.source.text, rewrite)
+          ask(checking, TestTainted.at(Posed.judge(state, Declassifying.Check), integrity))
+            .map(a => Some(Trusted.asIs(a.reply).extract))
+      }
+    }
+
+  /** What a rewrite of `source` under `applied` is made from, read as its keeps read. */
+  private def shown(
+      source: DocumentVersionId,
+      applied: PolicyApplication
+  ): Either[StoreError, Option[Declassifying.Shown]] =
+    Declassifying.read(
+      source,
+      applied,
+      reads.documents,
+      documents.keeper(plugin, terms),
+      plugin +: needs.plugins
+    )(using opened)
 }

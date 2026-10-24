@@ -167,4 +167,49 @@ object ScriptedMovesTests extends MovesContract {
       shape
     }
   }
+
+  /** The answers to each judgment in turn, each of `leaks` (the last again once they run out). */
+  private final class Leaks(leaks: Vector[Vector[Double]]) {
+    // As `Replies`' count.
+    @caps.unsafe.untrackedCaptures
+    private var judged = 0
+
+    def next(): Vector[Judged] = {
+      val these = leaks.lift(judged).orElse(leaks.lastOption).getOrElse(Vector())
+      judged += 1
+      these.map(Judged.YesNo(_))
+    }
+  }
+
+  def declassifying[A <: caps.Pure](
+      limits: MoveLimits,
+      shelves: MovesContract.Shelves,
+      rewrite: String,
+      leaks: Vector[Vector[Double]]
+  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
+    val shown = new Shown
+    val answers = new Leaks(leaks)
+    val reply: Message.Assistant =
+      Message.Assistant(Vector(AssistantBlock.Text(rewrite)), StopReason.EndTurn, Usage.Zero, "m")
+    val world = new StrandWorld
+    val moves = new ScriptedDreaming(
+      limits,
+      Declassing,
+      MovesWorld.Notes,
+      MovesWorld.NotesTerms,
+      Dreaming.Reads(world.shelf, _ => shelves.needs, world.excerpts, shelves.documents),
+      (_, _) => Left(MoveError.Model("no JSON reply scripted")),
+      // Positional, as `dreaming`'s scripts are.
+      shelves.documents,
+      Instant.EPOCH,
+      Integrity.Authority,
+      Recorded.Empty,
+      request => {
+        shown.add(request.system, request.messages.collect { case Message.User(t) => t })
+        Right(Asked(TestTainted.at(reply, Believed), Declassing))
+      },
+      _ => Right(Asked(TestTainted.at(answers.next(), Believed), Declassing))
+    )
+    (use(moves), shown.all)
+  }
 }

@@ -3,12 +3,20 @@ package grit.core.act
 import java.time.Instant
 
 import grit.core.classify.{Ask, Request, StateJson}
-import grit.core.document.{DocLabel, DocText, DocumentKeeper, DocumentSearch}
+import grit.core.document.{
+  Declassified,
+  DocLabel,
+  DocText,
+  DocumentKeeper,
+  DocumentSearch,
+  PolicyApplication
+}
 import grit.core.durable.Journaled
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
+import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
@@ -238,8 +246,9 @@ trait Keeping extends Moves {
 
 /** [[Keeping]], the strands of the rooms its run reads, by ids and counts, and its plugin's
   * needs: what a [[grit.core.job.DreamingJob]]'s run is handed. Their messages' text, and a
-  * document's text it is to read, reach a model only through [[summarise]], read in its own
-  * step, and never the job's code, which is handed only the links in them
+  * document's text it is to read, reach a model only through [[summarise]] and
+  * [[declassify]], read in their own steps, and never the job's code, which is handed only the
+  * links in them
   * ([[grit.core.stitch.StrandShelf.links]]).
   */
 trait Dreaming extends Keeping {
@@ -273,6 +282,72 @@ trait Dreaming extends Keeping {
       shown: Vector[DocumentVersionId],
       summary: Tainted[Dreaming.Summary[T]]
   ): Either[MoveError, Option[Dreaming.Summarised[T]]]
+
+  /** `source`, a document of the acting plugin or one of its needs, rewritten under `applied`
+    * and checked. It is asked as a [[Posed.Text]] of [[Declassifying.request]], the policy's
+    * text and `source`'s head alone, read in this move's own step (`ask:{name}`), of the
+    * catalog's `dream` role; then as a judgment of [[Declassifying.Check]]'s three questions
+    * about [[Declassifying.state]], read again in its own step (`ask:{name}-check`); then
+    * lowered by the declassification the run's program declared ([[Declassifying.Node]]).
+    * [[Declassifying.Outcome]]: `Made`; `Kept` when a question's probability is at or above
+    * [[Declassified.Below]], or the model wrote [[Declassifying.Nothing]] (no check asked);
+    * `Unapplied`, asking nothing more, when either step reads nothing ([[Declassifying.read]]).
+    * Each ask is counted, limited and refused as an ask or a judgment is ([[ask]]), and a
+    * check refused is that refusal, never a declassification. [[MoveError.Undeclared]], no move
+    * made, when the program did not declare the declassification.
+    */
+  final def declassify(
+      name: MoveName,
+      source: DocumentVersionId,
+      applied: PolicyApplication
+  ): Either[MoveError, Declassifying.Outcome] =
+    declassifier match {
+      case None => Left(MoveError.Undeclared(Declassified.declassification.described.name))
+      case Some(raise) =>
+        rewrite(name, source, applied).flatMap { rewritten =>
+          Trusted.asIs(rewritten).extract match {
+            case Declassifying.Rewritten.Unapplied => Right(Declassifying.Outcome.Unapplied)
+            case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
+            case Declassifying.Rewritten.Made(text, plugin, key, place, label, pointer) =>
+              check(name, source, applied, text).map {
+                case None => Declassifying.Outcome.Unapplied
+                case Some(leak) =>
+                  val from = Declassified.Source(source, plugin, key, place, label, pointer)
+                  raise((rewrite = text, source = from, applied = applied, leak = leak)) match {
+                    case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
+                    case None if leak >= Declassified.Below =>
+                      Declassifying.Outcome.Kept(Some(leak))
+                    case None => Declassifying.Outcome.Unapplied
+                  }
+              }
+          }
+        }
+    }
+
+  /** The declassification, as the run's program declared it ([[Declassifying.raise]]): `None`
+    * when it did not.
+    */
+  protected def declassifier: Option[Declassifying.Raising^]
+
+  /** [[declassify]]'s first ask, `name`: what it read and the model wrote, believed at the meet
+    * of the run, its source and the reply; [[Declassifying.Rewritten.Unapplied]] when it read
+    * nothing and asked nothing.
+    */
+  protected def rewrite(
+      name: MoveName,
+      source: DocumentVersionId,
+      applied: PolicyApplication
+  ): Either[MoveError, Tainted[Declassifying.Rewritten]]
+
+  /** [[declassify]]'s check of `rewrite`, `{name}-check`: the highest of its probabilities;
+    * `None` when it read nothing and asked nothing.
+    */
+  protected def check(
+      name: MoveName,
+      source: DocumentVersionId,
+      applied: PolicyApplication,
+      rewrite: DocText
+  ): Either[MoveError, Option[Probability]]
 }
 
 object Dreaming {

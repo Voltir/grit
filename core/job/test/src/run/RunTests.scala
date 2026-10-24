@@ -1,7 +1,7 @@
 package grit.job.run
 
 import grit.core.act.MovesFixtures.{Judged, PerChar, replied, shown}
-import grit.core.act.{Extraction, MoveError, Moves, Posed}
+import grit.core.act.{Declassifying, Extraction, MoveError, Moves, Posed}
 import grit.core.classify.{
   Answer as Judgment,
   Answers,
@@ -35,13 +35,14 @@ object RunTests extends TestSuite {
   import RunFixtures.*
 
   val tests = Tests {
-    test("a job's program lists the extraction and the tree, within moves") {
+    test("a job's program lists the extraction, the tree and the declassification, within moves") {
       val env = new World().env()
       Flows
         .downgrades(Run.flow(jobs(1), env.budget, env.keepers, env.pieces, env.reads))
         .map(d => (d.at.name, d.sits, d.node)) ==> Vector(
         ("moves", Flows.Sits.Within, Extraction.Node),
-        ("moves", Flows.Sits.Within, IntegrityTree.Node)
+        ("moves", Flows.Sits.Within, IntegrityTree.Node),
+        ("moves", Flows.Sits.Within, Declassifying.Node)
       )
     }
 

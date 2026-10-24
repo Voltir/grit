@@ -1,14 +1,15 @@
 package grit.act.moves
 
 import grit.act.phase.Faults
-import grit.core.act.{Answer, Called, Pieced}
+import grit.core.act.{Answer, Called, Declassifying, Pieced}
 import grit.core.classify.{Question, Request}
+import grit.core.document.{DocText, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.flow.{Mint, Trusted}
-import grit.core.id.{ConversationId, DocumentVersionId, Sha256}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName, Sha256}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
 import grit.core.stitch.{Strand, StrandDigest}
@@ -303,6 +304,56 @@ object MovesJournal {
       case _ => false
     }
 
+  /** The digest of a rewrite of `source` under `applied`, v1: the source's version; the policy's
+    * compartment and version; the application's version and the pointer it names; then the
+    * rewrite's system text ([[Declassifying.Rewrite]]) and [[Declassifying.SourceChars]]. What
+    * it was shown is not in it: the versions stand for that.
+    */
+  def rewrite(source: DocumentVersionId, applied: PolicyApplication): String =
+    v1(rewriteForm(source, applied))
+
+  /** The digest of the check of `rewrite`, made from `source` under `applied`, v1: the
+    * rewrite's form ([[rewrite]]), then `rewrite`, [[Declassifying.About]] and each of
+    * [[Declassifying.Check]]'s questions as [[judgment]] writes them.
+    */
+  def check(source: DocumentVersionId, applied: PolicyApplication, rewrite: DocText): String =
+    v1(
+      "check" + rewriteForm(source, applied) + text(DocText.value(rewrite)) +
+        text(Declassifying.About) + {
+          val questions = Request.of(Declassifying.State("", "", ""), Declassifying.Check).questions
+          count(questions.size) + questions.map(question).mkString
+        }
+    )
+
+  /** As [[sameAsk]], for a rewrite. */
+  def sameRewrite(
+      recorded: String,
+      source: DocumentVersionId,
+      applied: PolicyApplication
+  ): Boolean =
+    recorded match {
+      case s"v1:$_" => recorded == rewrite(source, applied)
+      case _ => false
+    }
+
+  /** As [[sameAsk]], for a rewrite's check. */
+  def sameCheck(
+      recorded: String,
+      source: DocumentVersionId,
+      applied: PolicyApplication,
+      rewrite: DocText
+  ): Boolean = recorded match {
+    case s"v1:$_" => recorded == check(source, applied, rewrite)
+    case _ => false
+  }
+
+  /** v1's canonical form of a rewrite, which [[rewrite]] hashes. */
+  private def rewriteForm(source: DocumentVersionId, applied: PolicyApplication): String =
+    "rewrite" + text(DocumentVersionId.value(source).toString) +
+      text(applied.policy.over.written) + count(applied.policy.version) + count(applied.version) +
+      canonical(applied.document.written) + text(Declassifying.Rewrite) +
+      count(Declassifying.SourceChars)
+
   /** v1's canonical form of an ask of `request`, which [[ask]] hashes. */
   private[moves] def askForm(request: ModelRequest): String = {
     val use = request.use match {
@@ -416,6 +467,46 @@ object MovesJournal {
   }
 
   given askMade: Journaled[AskMade] = Journaled.json(writeAsk, readAsk)
+
+  /** A rewrite's `ask:{n}`: `{"rewrite":a}`, `a` its ask's record as [[askMade]] writes it,
+    * with `"source":{"plugin","key","place","label","pointer","level"}` when it read its source.
+    */
+  private[moves] given rewrote: Journaled[(AskMade, Option[Act.Sourced])] = Journaled.json(
+    (made, sourced) =>
+      ujson.Obj.from(
+        Vector[(String, ujson.Value)]("rewrite" -> writeAsk(made)) ++ sourced.map(s =>
+          "source" -> ujson.Obj(
+            "plugin" -> PluginName.value(s.plugin),
+            "key" -> DocKey.value(s.key),
+            "place" -> s.place.written,
+            "label" -> Label.written(s.label),
+            "pointer" -> s.pointer.written,
+            "level" -> Integrity.written(s.level)
+          )
+        )
+      ),
+    v =>
+      for {
+        o <- fields(v, "rewrite")
+        made <- o.get("rewrite").toRight("rewrite: no record").flatMap(readAsk)
+        sourced <- o.get("source") match {
+          case None => Right(None)
+          case Some(s) =>
+            for {
+              f <- fields(s, "rewrite.source")
+              plugin <- str(f, "plugin").flatMap(PluginName.of)
+              key <- str(f, "key").flatMap(DocKey.of)
+              place <- str(f, "place").flatMap(Place.read)
+              label <- str(f, "label").flatMap(Label.read)
+              pointer <- f
+                .get("pointer")
+                .toRight("rewrite.source: no pointer")
+                .flatMap(Pointer.read)
+              level <- str(f, "level").flatMap(Integrity.read)
+            } yield Some(Act.Sourced(plugin, key, place, label, pointer, level))
+        }
+      } yield (made, sourced)
+  )
 
   given recorded: Journaled[Either[String, Unit]] = Journaled.json(
     {

@@ -27,7 +27,6 @@ import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
-import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, DeclassificationPolicy, Integrity, Label}
 
 /** [[DocumentStore]] over `grit.documents`, `grit.document_refs` and `grit.document_terms`, its
@@ -217,26 +216,13 @@ private[sql] object SqlDocuments {
     }
 
   /** `pointer` as its column holds it: `{"arguments":{…},"tool":…}`, compact, every key sorted. */
-  def pointerJson(pointer: Pointer): String =
-    ujson.Obj("arguments" -> pointer.arguments, "tool" -> ToolName.value(pointer.tool)).render()
+  def pointerJson(pointer: Pointer): String = pointer.written.render()
 
   /** The pointer `json` holds ([[pointerJson]]), or why not; JSONB keeps its keys in its own
     * order, so its arguments are sorted again.
     */
   def pointerOf(json: String): Either[String, Pointer] =
-    for {
-      obj <- ujson.read(json).objOpt.toRight("a document's pointer: not an object")
-      tool <- obj.get("tool").flatMap(_.strOpt).toRight("a document's pointer: no tool")
-      name <- ToolName.of(tool)
-      arguments <- obj
-        .get("arguments")
-        .flatMap(_.objOpt)
-        .toRight("a document's pointer: no arguments")
-      pointer <- arguments.toVector match {
-        case first +: rest => Pointer.of(name, first, rest*)
-        case _ => Left("a document's pointer: no arguments")
-      }
-    } yield pointer
+    Pointer.read(ujson.read(json)).left.map(why => s"a document's $why")
 
   /** The version `rs` holds ([[Columns]]), or why not: one withdrawn holds nothing. */
   def document(rs: ResultSet): Either[String, Document] =

@@ -80,6 +80,13 @@ object DowngradeCaptureTests extends TestSuite {
       |  Downgrade.Authority.Policy, Downgrade.Capacity.Text), (i: Int) => i)""".stripMargin
   private val declassificationOutside =
     "val n = grit.core.document.Declassified.declassification"
+  private val declassifyingNodeOn =
+    "val f = grit.core.act.Declassifying.Node.on(s)(of)"
+  private val stepsForged =
+    """final class Mine extends Steps[Any] {
+      |  def run[I, E, O](flow: Flow[Any, I, E, O], in: I): Either[E, O] = Left(???)
+      |  def declares(node: Flow.Node): Boolean = true
+      |}""".stripMargin
   private val declassifiedMade =
     """import grit.core.document.*
       |def f(t: DocText, s: Declassified.Source, a: PolicyApplication,
@@ -129,7 +136,9 @@ object DowngradeCaptureTests extends TestSuite {
       downgradeMade,
       declassificationOutside,
       declassifiedMade,
-      rowMade
+      rowMade,
+      declassifyingNodeOn,
+      stepsForged
     )
   )
 
@@ -241,6 +250,15 @@ object DowngradeCaptureTests extends TestSuite {
         says(
           "private[document] constructor Row can only be accessed from package grit.core.document in package grit.core."
         )(probe(rowMade))
+      )
+    }
+
+    test(
+      "the declassification's node is no downgrade outside grit.core, and no Steps is forged to declare it"
+    ) {
+      assert(
+        says("value on is not a member of grit.core.durable.Flow.Node")(probe(declassifyingNodeOn)),
+        says("Cannot extend sealed trait Steps in a different source file")(probe(stepsForged))
       )
     }
 

@@ -18,6 +18,7 @@ import grit.core.act.{
   Allowance,
   Answer,
   Called,
+  Declassifying,
   Dreaming,
   MoveError,
   MoveName,
@@ -27,7 +28,15 @@ import grit.core.act.{
 }
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
-import grit.core.document.{DocLabel, Document, DocumentKeeper, DocumentSearch}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  Document,
+  DocumentKeeper,
+  DocumentSearch,
+  Pointer,
+  PolicyApplication
+}
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
 import grit.core.either.Traversal.sequence
@@ -35,6 +44,7 @@ import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
+  DocKey,
   DocumentVersionId,
   EntryId,
   FileHandle,
@@ -45,7 +55,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
@@ -214,15 +224,128 @@ private[moves] object Act {
   val text: Step[MovesEnv, Text, AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Text, AskMade](Asks.move)(env =>
-      t =>
-        admitted(env.records, env.models, env.db, env.clock, t.acting, Summaries, t.digest) match {
-          case Left(refusal) => refusal
-          case Right((at, pin)) =>
-            Asking.reply(env.models.provider(pin), t.request, Hearing.silent(), env.clock) match {
-              case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, t.digest)
-              case Right(message) =>
-                AskMade.Made(t.digest, message, at, env.records.estimator.request(t.request))
-            }
+      t => texted(env, t.acting, Summaries, t.request, t.digest)
+    )
+  }
+
+  /** A text ask of `request` for `acting`, under `digest`: admitted to `role`'s pins, then the
+    * model's reply.
+    */
+  private def texted(
+      env: MovesEnv^,
+      acting: Acting,
+      role: Catalog -> Pins,
+      request: ModelRequest,
+      digest: String
+  ): AskMade =
+    admitted(env.records, env.models, env.db, env.clock, acting, role, digest) match {
+      case Left(refusal) => refusal
+      case Right((at, pin)) =>
+        Asking.reply(env.models.provider(pin), request, Hearing.silent(), env.clock) match {
+          case Left(why) => AskMade.Refused(AskMade.Kind.Model, why, digest)
+          case Right(message) =>
+            AskMade.Made(digest, message, at, env.records.estimator.request(request))
+        }
+    }
+
+  /** The rewrite `name` of `source` under `applied`, read through `documents` and `keeper` as
+    * one of `readable`'s ([[Declassifying.read]]), under `digest`.
+    */
+  final case class Rewriting(
+      name: MoveName,
+      acting: Acting,
+      source: DocumentVersionId,
+      applied: PolicyApplication,
+      documents: DocumentSearch,
+      keeper: DocumentKeeper,
+      readable: Vector[PluginName],
+      digest: String
+  ) extends Acted
+
+  /** The check `name` of `rewrite`, made from `source` under `applied`, read again as its
+    * [[Rewriting]] read it, under `digest`.
+    */
+  final case class Checking(
+      name: MoveName,
+      acting: Acting,
+      source: DocumentVersionId,
+      applied: PolicyApplication,
+      rewrite: DocText,
+      documents: DocumentSearch,
+      keeper: DocumentKeeper,
+      readable: Vector[PluginName],
+      digest: String
+  ) extends Acted
+
+  /** What a rewrite's step read of its source, beside its ask: the source's `plugin`, `key`,
+    * `place` and `label`, the `pointer` that reads it, and `level`, the acting's integrity met
+    * with the source's.
+    */
+  final case class Sourced(
+      plugin: PluginName,
+      key: DocKey,
+      place: Place,
+      label: Label,
+      pointer: Pointer,
+      level: Integrity
+  )
+
+  /** A rewrite's `ask:{n}`: its source, the source's pointer, the application in force for it
+    * and its policy's text read in one transaction for its acting's subject, then, when they
+    * are as its input names them, asked of the dream role's pins as [[Declassifying.request]];
+    * beside it, what it read of the source. A refusal of kind `Changed` when it read nothing.
+    */
+  val rewrite: Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])] = {
+    import MovesJournal.given
+    Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])](Asks.move)(env =>
+      r =>
+        env.db.read(r.acting.subject)(
+          Declassifying.read(r.source, r.applied, r.documents, r.keeper, r.readable)
+        ) match {
+          case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), r.digest), None)
+          case Right(None) => (AskMade.Refused(AskMade.Kind.Changed, Changed, r.digest), None)
+          case Right(Some(shown)) =>
+            val d = shown.source
+            val request = Declassifying.request(shown.instructions, d.text)
+            (
+              texted(env, r.acting, Dreams, request, r.digest),
+              Some(
+                Sourced(
+                  d.plugin,
+                  d.key,
+                  d.place,
+                  d.label,
+                  shown.pointer,
+                  r.acting.integrity.meet(d.integrity)
+                )
+              )
+            )
+        }
+    )
+  }
+
+  /** A rewrite's check's `ask:{n}`: read again as its rewrite's was, then, when it read the
+    * same, the classifier's answers to [[Declassifying.Check]] about [[Declassifying.state]];
+    * a refusal of kind `Changed` when it read nothing.
+    */
+  val check: Step[MovesEnv, Checking, AskMade] = {
+    import MovesJournal.given
+    Step[MovesEnv, Checking, AskMade](Asks.move)(env =>
+      c =>
+        env.db.read(c.acting.subject)(
+          Declassifying.read(c.source, c.applied, c.documents, c.keeper, c.readable)
+        ) match {
+          case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), c.digest)
+          case Right(None) => AskMade.Refused(AskMade.Kind.Changed, Changed, c.digest)
+          case Right(Some(shown)) =>
+            val state = Declassifying.state(shown.instructions, shown.source.text, c.rewrite)
+            judged(
+              env,
+              c.acting,
+              Request.of(state, Declassifying.Check),
+              Declassifying.Check,
+              c.digest
+            )
         }
     )
   }
@@ -342,30 +465,41 @@ private[moves] object Act {
   def judgment[T]: Step[MovesEnv, Judgment[T], AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Judgment[T], AskMade](Asks.move)(env =>
-      j =>
-        admits(env.records, env.db, env.clock, j.acting, j.digest) match {
-          case Left(refusal) => refusal
-          case Right((at, routed)) =>
-            env.classifier.at(routed) match {
-              case Left(u) => uncleared(u, "no classifier", j.digest)
-              case Right(asked) =>
-                Classifying.replied(asked, j.request, env.clock) match {
-                  case Left(error) =>
-                    AskMade.Refused(AskMade.Kind.Model, unanswered(error), j.digest)
-                  case Right(reply) =>
-                    val call = classified(env.records, j.request, reply, env.classifier.upstream)
-                    reply.answers.flatMap(a => j.questions.read(a.answers).map(_ => a)) match {
-                      case Left(error) => AskMade.Unjudged(j.digest, unanswered(error), call)
-                      case Right(answers) =>
-                        val written =
-                          ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
-                        AskMade.Judged(j.digest, written, at, call)
-                    }
+      j => judged(env, j.acting, j.request, j.questions, j.digest)
+    )
+  }
+
+  /** A judgment of `request` for `acting`, its answers read by `questions`, under `digest`:
+    * admitted, then the classifier's answers, asked only when its service is cleared for what
+    * the admitting read knew.
+    */
+  private def judged[T](
+      env: MovesEnv^,
+      acting: Acting,
+      request: Request,
+      questions: Ask[?, T],
+      digest: String
+  ): AskMade =
+    admits(env.records, env.db, env.clock, acting, digest) match {
+      case Left(refusal) => refusal
+      case Right((at, routed)) =>
+        env.classifier.at(routed) match {
+          case Left(u) => uncleared(u, "no classifier", digest)
+          case Right(asked) =>
+            Classifying.replied(asked, request, env.clock) match {
+              case Left(error) => AskMade.Refused(AskMade.Kind.Model, unanswered(error), digest)
+              case Right(reply) =>
+                val call = classified(env.records, request, reply, env.classifier.upstream)
+                reply.answers.flatMap(a => questions.read(a.answers).map(_ => a)) match {
+                  case Left(error) => AskMade.Unjudged(digest, unanswered(error), call)
+                  case Right(answers) =>
+                    val written =
+                      ujson.write(ujson.Arr.from(answers.answers.map(AnswersJson.write)))
+                    AskMade.Judged(digest, written, at, call)
                 }
             }
         }
-    )
-  }
+    }
 
   /** The costs of an ask's model or classifier `calls`, recorded in its `ask:{n}:record` for
     * `turn`, under `workflow`, in a transaction opened for `subject`; and what its `ask:{n}`
@@ -396,6 +530,12 @@ private[moves] object Act {
     */
   def ask[I <: Acted](made: Step[MovesEnv, I, AskMade]): Flow[MovesEnv, I, Nothing, Settling] =
     settled(Flow.step(made).map(m => (m, ()))).map(_._1)
+
+  /** As [[ask]], with what `made` recorded beside its ask passed beside it. */
+  def askBeside[I <: Acted, X](
+      made: Step[MovesEnv, I, (AskMade, X)]
+  ): Flow[MovesEnv, I, Nothing, (Settling, X)] =
+    settled(Flow.step(made))
 
   /** As [[ask]], with `node` made over what `of` takes from what `made` recorded, beside it. */
   def raised[I <: Acted, A, B](made: Step[MovesEnv, I, AskMade], node: Downgrade[A, B])(

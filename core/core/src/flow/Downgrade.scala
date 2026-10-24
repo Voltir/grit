@@ -40,8 +40,13 @@ final class Downgrade[-A, +B] private[core] (
   // Not `Raise[A, B]^{steps}`: a new capability is a root of its own, never narrowed to
   // another's set (docs/capture-checking.md). The fresh root is made inside the program's body,
   // so it is no more visible past the program than `steps` is (DowngradeCaptureTests).
-  def raise(using steps: Steps[?]^): Option[Raise[A, B]^] =
-    if (steps.declares(this)) Some(new Raise.Of(rule)) else None
+  def raise(using steps: Steps[?]^): Option[Raise[A, B]^] = raiseAs(this)
+
+  /** As [[raise]], declared by `node` in its place: for a downgrade outside this package's
+    * reach, `node` all a program sees of it, so code holding `node` cannot make it on a step.
+    */
+  private[core] def raiseAs(node: Flow.Node)(using steps: Steps[?]^): Option[Raise[A, B]^] =
+    if (steps.declares(node)) Some(new Raise.Of(rule)) else None
 
   override def equals(that: Any): Boolean = that match {
     case d: Downgrade[?, ?] => d.described == described

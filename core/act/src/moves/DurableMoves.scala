@@ -6,6 +6,7 @@ import grit.core.act.{
   Acting,
   Asked,
   Called,
+  Declassifying,
   Dreaming,
   Extraction,
   Keeping,
@@ -19,7 +20,7 @@ import grit.core.act.{
   Posed
 }
 import grit.core.classify.{Answer, AnswersJson, Ask, Request}
-import grit.core.document.DocumentKeeper
+import grit.core.document.{DocText, DocumentKeeper, PolicyApplication}
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.files.PieceKeeper
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
@@ -27,6 +28,7 @@ import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
+import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
@@ -42,10 +44,12 @@ import grit.core.visibility.Integrity
 object DurableMoves {
 
   /** The downgrades a run's moves make, for its program to declare ([[Flow.program]]'s
-    * `within`): an extraction's ([[Extraction.Node]]) and the integrity tree's
-    * ([[IntegrityTree.Node]], without which a vet is [[MoveError.Undeclared]]).
+    * `within`): an extraction's ([[Extraction.Node]]), the integrity tree's
+    * ([[IntegrityTree.Node]], without which a vet is [[MoveError.Undeclared]]) and the
+    * declassification ([[Declassifying.Node]], without which a declassify is).
     */
-  val Within: Vector[Flow.Node] = Vector(Extraction.Node, IntegrityTree.Node)
+  val Within: Vector[Flow.Node] =
+    Vector(Extraction.Node, IntegrityTree.Node, Declassifying.Node)
 
   /** What `body` returns, given the moves of `acting` within `limits`, made through `steps`, each
     * with the [[MovesEnv]] that `env` finds in the `R` a run hands them (`identity` when that is
@@ -81,7 +85,10 @@ object DurableMoves {
   /** As [[keeping]], `plugin`'s, its moves also reading `reads` ([[Dreaming]]), its scans
     * `plugin`'s needs; a summary reading the documents of `plugin` and its needs alone, in its
     * own step: recorded as an `ask:{name}` in a JSON ask's form, under its own digest
-    * ([[MovesJournal.strands]]).
+    * ([[MovesJournal.strands]]); a declassify's rewrite and check reading them so too, each in
+    * its own step, recorded as `ask:{name}`, beside what it read of its source
+    * ([[MovesJournal.rewrote]]), and `ask:{name}-check` under theirs ([[MovesJournal.rewrite]],
+    * [[MovesJournal.check]]).
     */
   def dreaming[A <: caps.Pure](
       acting: Acting,
@@ -122,7 +129,6 @@ object DurableMoves {
         val Dreaming.Summary(system, chars, documentChars, reply) = Trusted.asIs(summary).extract
         val digest =
           MovesJournal.strands(seen, shown, system, chars, documentChars, reply.schema)
-        val readable = plugin +: needs.plugins
         val asked = made(
           Act.ask(Act.summary[T]),
           Act.Summary(
@@ -172,6 +178,84 @@ object DurableMoves {
             )
         }
       }
+
+    protected def declassifier: Option[Declassifying.Raising^] = Declassifying.raise
+
+    protected def rewrite(
+        name: MoveName,
+        source: DocumentVersionId,
+        applied: PolicyApplication
+    ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
+      refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
+        val digest = MovesJournal.rewrite(source, applied)
+        val (asked, sourced) = made(
+          Act.askBeside(Act.rewrite),
+          Act.Rewriting(name, acting, source, applied, reads.documents, keeper, readable, digest)
+        )
+        val same = MovesJournal.sameRewrite(asked.made.digest, source, applied)
+        (asked.made, sourced) match {
+          case (AskMade.Refused(AskMade.Kind.Changed, _, _, _), _) if same =>
+            Right(Mint.tainted(Declassifying.Rewritten.Unapplied, acting.integrity))
+          case _ =>
+            settled(name, asked, same) {
+              case AskMade.Made(_, message, at, _) =>
+                sourced.map { s =>
+                  val rewritten = Declassifying
+                    .written(message)
+                    .fold(
+                      Declassifying.Rewritten.Withheld
+                    )(text =>
+                      Declassifying.Rewritten
+                        .Made(text, s.plugin, s.key, s.place, s.label, s.pointer)
+                    )
+                  Right(Asked(Mint.tainted(rewritten, s.level), at))
+                }
+              case _ => None
+            }.map(_.reply)
+        }
+      }
+
+    protected def check(
+        name: MoveName,
+        source: DocumentVersionId,
+        applied: PolicyApplication,
+        rewrite: DocText
+    ): Either[MoveError, Option[Probability]] =
+      Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
+        refused(checking, MoveKind.Judge).toLeft(()).flatMap { _ =>
+          val digest = MovesJournal.check(source, applied, rewrite)
+          val asked = made(
+            Act.ask(Act.check),
+            Act.Checking(
+              checking,
+              acting,
+              source,
+              applied,
+              rewrite,
+              reads.documents,
+              keeper,
+              readable,
+              digest
+            )
+          )
+          val same = MovesJournal.sameCheck(asked.made.digest, source, applied, rewrite)
+          asked.made match {
+            case AskMade.Refused(AskMade.Kind.Changed, _, _, _) if same => Right(None)
+            case _ =>
+              settled(checking, asked, same) {
+                case AskMade.Judged(_, written, at, _) =>
+                  Some(
+                    judgedBack(Declassifying.Check, written)
+                      .map(p => Asked(Mint.tainted(p, acting.integrity), at))
+                  )
+                case _ => None
+              }.map(a => Some(Trusted.asIs(a.reply).extract))
+          }
+        }
+      }
+
+    /** The plugins whose documents its summaries and rewrites read: its own and its needs'. */
+    private def readable: Vector[PluginName] = plugin +: needs.plugins
   }
 
   /** One run's moves, its keeps over `keeper` and its piece moves over `pieces`. */

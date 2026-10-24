@@ -159,6 +159,29 @@ object DurableMovesTests extends MovesContract {
     val (got, requests) = w.dreaming(limits, world, shelves.needs)(use)
     (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
+
+  def declassifying[A <: caps.Pure](
+      limits: MoveLimits,
+      shelves: MovesContract.Shelves,
+      rewrite: String,
+      leaks: Vector[Vector[Double]]
+  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
+    val w = new MovesWorld(
+      broken = false,
+      MovesContract.Declassing,
+      Integrity.Authority,
+      documents = shelves.documents,
+      compartments = MovesContract.Declared
+    )
+    val judging = new Judging(
+      leaks.map(ls => Right(Answers(ls.map(Judged.YesNo(_)), Spent, "test/judge")))
+    )
+    val (got, requests) =
+      w.answering(limits, new StrandWorld, shelves.needs, rewrite, judging, DurableMoves.Within)(
+        use
+      )
+    (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
+  }
 }
 
 /** A world for [[DurableMoves]]: a turn whose asker is grit, a model answering
@@ -179,7 +202,8 @@ final class MovesWorld(
     capped: Vector[Cap] = Vector(Cap(MovesContract.Probe.place, MovesContract.ProbeOutput)),
     answer: Outcome = Outcome.Done(MovesContract.Read),
     rooms: RoomLabels = RoomLabels.Public,
-    val documents: InMemoryDocuments = new InMemoryDocuments
+    val documents: InMemoryDocuments = new InMemoryDocuments,
+    compartments: Compartments = Compartments.Shipped
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -187,7 +211,7 @@ final class MovesWorld(
   private val visibility: Visibility =
     Visibility
       .of(
-        Compartments.Shipped,
+        compartments,
         rooms,
         Vector.empty,
         Vector.empty,
@@ -338,12 +362,29 @@ final class MovesWorld(
       needs: Needs = Needs.over(MovesWorld.Notes, Vector.empty)
   )(
       use: Dreaming^ -> A
+  ): (A, Vector[ModelRequest]) =
+    answering(limits, world, needs, Answer, new Judging(), DurableMoves.Within)(use)
+
+  /** As [[dreaming]], its text asks answered `answer`, its judgments by `classifier`, and its
+    * program declaring `declared`.
+    */
+  def answering[A <: caps.Pure](
+      limits: MoveLimits,
+      world: StrandWorld,
+      needs: Needs,
+      answer: String,
+      classifier: Classifier^,
+      declared: Vector[Flow.Node]
+  )(
+      use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
-    val models = new Answering(Answer)
-    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs, documents)(use)
+    val models = new Answering(answer)
+    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs, documents, declared)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
-      out = Some(Flows.run(dreams, kept(models), ()).merge)
+      out = Some(
+        Flows.run(dreams, KeepingEnv(env(models, classifier), MovesWorld.Fileless, jot), ()).merge
+      )
       "done"
     }
     (out.getOrElse(throw new java.lang.AssertionError("the workflow did not run")), models.requests)
@@ -361,9 +402,10 @@ object MovesWorld {
       keeper: DocumentKeeper,
       world: StrandWorld,
       needs: Needs = Needs.over(Notes, Vector.empty),
-      documents: DocumentSearch = new InMemoryDocuments
+      documents: DocumentSearch = new InMemoryDocuments,
+      declared: Vector[Flow.Node] = DurableMoves.Within
   )(use: Dreaming^ -> A): Flow[KeepingEnv, Unit, Nothing, A] =
-    Flow.program[KeepingEnv, Unit, A]("moves", DurableMoves.Within)(steps =>
+    Flow.program[KeepingEnv, Unit, A]("moves", declared)(steps =>
       _ =>
         DurableMoves.dreaming(
           acting,

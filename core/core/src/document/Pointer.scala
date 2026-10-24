@@ -20,6 +20,11 @@ final case class Pointer private (tool: ToolName, private val pointed: ujson.Obj
     */
   def shown: String = s"Read it with ${ToolName.value(tool)} ${ujson.write(pointed)}"
 
+  /** `{"arguments": {...}, "tool": "<tool>"}`: the form a store keeps it in and an operator's
+    * row names it by, which [[Pointer.read]] reads.
+    */
+  def written: ujson.Obj = ujson.Obj("arguments" -> arguments, "tool" -> ToolName.value(tool))
+
   /** This pointer with its argument `name` set to `value`, in place of any it held, or why not,
     * as [[Pointer.of]] refuses.
     */
@@ -79,6 +84,21 @@ object Pointer {
       case None => Right(new Pointer(tool, arguments))
     }
   }
+
+  /** The pointer `value` holds as [[Pointer.written]] writes it, its arguments sorted again; or
+    * why not, as [[of]] refuses, or `value` is not of that form.
+    */
+  def read(value: ujson.Value): Either[String, Pointer] =
+    for {
+      obj <- value.objOpt.toRight("a pointer: not an object")
+      tool <- obj.get("tool").flatMap(_.strOpt).toRight("a pointer: no tool")
+      name <- ToolName.of(tool)
+      arguments <- obj.get("arguments").flatMap(_.objOpt).toRight("a pointer: no arguments")
+      pointer <- arguments.toVector match {
+        case first +: rest => of(name, first, rest*)
+        case _ => Left("a pointer: no arguments")
+      }
+    } yield pointer
 
   /** A copy of `obj`, every object's keys sorted at every depth. */
   private def sorted(obj: ujson.Obj): ujson.Obj =

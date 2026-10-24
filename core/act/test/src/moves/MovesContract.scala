@@ -6,6 +6,7 @@ import grit.core.act.MovesFixtures.{replied, shown}
 import grit.core.act.{
   Asked,
   Called,
+  Declassifying,
   Dreaming,
   Keeping,
   MoveError,
@@ -28,6 +29,8 @@ import grit.core.document.{
   DocumentShelf,
   DocumentTerms,
   InMemoryDocuments,
+  Pointer,
+  PolicyApplication,
   Written
 }
 import grit.core.durable.Journaled
@@ -52,6 +55,7 @@ import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
+import grit.core.period.Probability
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.plugin.{Exports, InMemoryPlugins}
 import grit.core.provider.ModelRequest
@@ -60,7 +64,7 @@ import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.core.visibility.{Label, Level}
+import grit.core.visibility.{Compartments, DeclassificationPolicy, Label, Level, TestLabels}
 import grit.dbos.sql.TestTx
 import grit.prose.form.{Block, Doc, Span, Text}
 
@@ -114,6 +118,19 @@ abstract class MovesContract extends TestSuite {
   )(
       use: Dreaming^ -> A
   ): (A, Vector[(String, Vector[String])])
+
+  /** What `use` returns, given moves as [[dreaming]]'s within `limits` over `shelves` and no
+    * strands, every transaction opened at [[Declassing]]: a text ask's model replying `rewrite`,
+    * and the `i`th judgment's classifier answering yes to each of its questions with the `i`th
+    * of `leaks`, in order (the last again once they run out); and each text ask's system text
+    * and user messages, as the model was shown them, in order.
+    */
+  def declassifying[A <: caps.Pure](
+      limits: MoveLimits,
+      shelves: Shelves,
+      rewrite: String,
+      leaks: Vector[Vector[Double]]
+  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])])
 
   /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose piece moves keep
     * [[MovesWorld.Notes]]' pieces in transactions opened at [[Floor]], reading the file
@@ -740,6 +757,96 @@ abstract class MovesContract extends TestSuite {
       got ==> Seen(Vector(Right("unneeded others")))
     }
 
+    test("a declassify makes a Declassified only when all three check answers are below Below") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val leaks = Vector(Vector(0.05, 0.05, 0.09), Vector(0.05, 0.1, 0.05), Vector(0.0, 0.0, 0.6))
+      val (got, _) = declassifying(declassifies(3, 3), shelves, Rewrote, leaks) { m =>
+        Seen(Vector("a", "b", "c").map(n => m.declassify(name(n), source, policy).map(outcome)))
+      }
+      got ==> Seen(Vector(Right("made internal judged 0.09"), Right("kept 0.1"), Right("kept 0.6")))
+    }
+
+    test(
+      "a declassify's rewrite holds its source, its pointer, the policy version and the application version"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val (got, _) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+        m.declassify(name("d"), source, policy) match {
+          case Right(Declassifying.Outcome.Made(t)) =>
+            val d = grit.core.flow.Trusted.asIs(t).extract
+            val kept = m.keep(name("k"), t)((d, keeper, at) =>
+              keeper
+                .declassified(d, Integrity.Authority, at)
+                .map {
+                  case Written.Versioned(v, _, _) => Kept(DocumentVersionId.value(v).toString)
+                  case w => Kept(w.toString)
+                }
+            )
+            Seen(
+              Vector(
+                Right(
+                  s"${DocumentVersionId.value(d.source)} ${d.applied.document.shown} " +
+                    s"${d.applied.policy.version} ${d.applied.version}"
+                ),
+                kept.map(_.label)
+              )
+            )
+          case other => Seen(Vector(other.map(_.toString)))
+        }
+      }
+      val audit = got.moves
+        .lift(1)
+        .flatMap(_.toOption)
+        .flatMap(_.toLongOption)
+        .flatMap(DocumentVersionId.of)
+        .flatMap(shelves.documents.declassification)
+        .map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
+      (got.moves.headOption, audit) ==> (
+        Some(
+          Right(
+            s"${DocumentVersionId.value(source)} ${file("c1").shown} 1 1"
+          )
+        ),
+        Some((DocumentVersionId.value(source), 1, 1))
+      )
+    }
+
+    test("a declassify's rewrite ask holds only its source's text and its policy's") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val _ = card(shelves, "c2", "The second card, which nothing applies to.")
+      val (_, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+        Seen(Vector(m.declassify(name("d"), source, policy).map(outcome)))
+      }
+      shown ==> Vector(
+        (Declassifying.Rewrite, Vector(s"Instructions:\n$Instructions\n\nDocument:\n$CardText"))
+      )
+    }
+
+    test(
+      "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied or Kept"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val (withheld, _) =
+        declassifying(declassifies(1, 0), shelves, Declassifying.Nothing, Clean) { m =>
+          Seen(Vector(m.declassify(name("w"), source, policy).map(outcome)))
+        }
+      // A later application of the same policy: the one the move names is no longer in force.
+      shelves.documents.application(file("c1"), 2, Some(Team))
+      val (removed, shown) =
+        declassifying(declassifies(1, 0), shelves, Rewrote, Clean) { m =>
+          Seen(Vector(m.declassify(name("r"), source, policy).map(outcome)))
+        }
+      (withheld, removed, shown) ==> (
+        Seen(Vector(Right("kept nothing"))),
+        Seen(Vector(Right("unapplied"))),
+        Vector()
+      )
+    }
+
     test(
       "a keep whose body is Left keeps none of its writes, is Store in its words, and its name is spent"
     ) {
@@ -1113,6 +1220,85 @@ object MovesContract {
       case Right(Written.Versioned(v, _, _)) => v
       case other => throw new java.lang.AssertionError(s"not written: $other")
     }
+
+  /** Internal, in the compartment `team`: what a declassifying run reads at and its card is
+    * kept at.
+    */
+  val Declassing: Label = Label.at(Level.Internal, TestLabels.compartment("team"))
+
+  /** [[Declassing]]'s compartment declared, so a world's parties may be cleared for it. */
+  val Declared: Compartments =
+    Compartments
+      .of(Vector(TestLabels.compartment("team")))
+      .fold(c => throw new java.lang.AssertionError(s"$c twice"), identity)
+
+  /** The policy over `team`. */
+  val Team: DeclassificationPolicy.Over =
+    DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
+
+  /** The text of [[Team]]'s policy. */
+  val Instructions = "Remove where the offsite is."
+
+  /** The text of the card a declassifying run rewrites. */
+  val CardText = "The offsite is at the lake house."
+
+  /** What a declassifying run's model rewrites it to. */
+  val Rewrote = "The team meets offsite."
+
+  /** One check's answers, each a sure no. */
+  val Clean: Vector[Vector[Double]] = Vector(Vector(0.0, 0.0, 0.0))
+
+  /** The pointer at the drive file `id`. */
+  def file(id: String): Pointer =
+    Pointer
+      .of(ToolName("drive_read_file"), "file" -> ujson.Str(id))
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A [[Cards]] card under `key` holding `text` at [[Declassing]], read by [[file]] of `key`,
+    * kept in `shelves`: its version.
+    */
+  def card(shelves: Shelves, key: String, text: String = CardText): DocumentVersionId =
+    shelves.documents
+      .keeper(Cards.name, terms("cards"))
+      .write(
+        DocKey.of(key).fold(e => throw new java.lang.AssertionError(e), identity),
+        Declassing,
+        Integrity.Member,
+        Here,
+        DocText.of(text).fold(e => throw new java.lang.AssertionError(e), identity),
+        ujson.Obj(),
+        Some(file(key)),
+        Instant.EPOCH
+      )(using TestTx.fake(grit.core.visibility.Clearance.of(Declassing))) match {
+      case Right(Written.Versioned(v, _, _)) => v
+      case other => throw new java.lang.AssertionError(s"not written: $other")
+    }
+
+  /** [[card]] `key` in `shelves`, [[Team]]'s policy of [[Instructions]] kept at [[Declassing]],
+    * and the policy applied to the card: the card's version and the application.
+    */
+  def applied(shelves: Shelves, key: String): (DocumentVersionId, PolicyApplication) = {
+    val v = card(shelves, key)
+    shelves.documents.policy(Team, 1, Some(Instructions), Declassing)
+    shelves.documents.application(file(key), 1, Some(Team))
+    (v, PolicyApplication(DeclassificationPolicy(Team, 1), file(key), 1))
+  }
+
+  /** What a declassify came to: `made {label} judged {p}`, `kept {p}`, `kept nothing` or
+    * `unapplied`.
+    */
+  def outcome(o: Declassifying.Outcome): String = o match {
+    case Declassifying.Outcome.Made(t) =>
+      val d = grit.core.flow.Trusted.asIs(t).extract
+      s"made ${Label.written(d.label)} judged ${Probability.value(d.judged)}"
+    case Declassifying.Outcome.Kept(judged) =>
+      s"kept ${judged.fold("nothing")(p => Probability.value(p).toString)}"
+    case Declassifying.Outcome.Unapplied => "unapplied"
+  }
+
+  /** Limits of `asks` asks, no calls and `judgments` judgments. */
+  def declassifies(asks: Int, judgments: Int): MoveLimits =
+    MoveLimits.of(asks, 0, judgments).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** Limits of no asks or calls and `n` judgments. */
   def judgments(n: Int): MoveLimits =
