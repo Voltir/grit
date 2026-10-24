@@ -16,7 +16,8 @@ enum SlotRule {
   case Weekly(day: DayOfWeek, at: LocalTime, zone: ZoneId)
 
   /** At each whole multiple of `period` since the epoch, 1970-01-01T00:00Z: the same slots in
-    * any zone and across restarts (every 30 minutes falls at :00 and :30 UTC).
+    * any zone and across restarts (every 30 minutes falls at :00 and :30 UTC). Its `period` is
+    * a length of time, not a conversation's [[grit.core.period.Period]].
     */
   case Every(period: Interval)
 
