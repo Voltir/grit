@@ -283,7 +283,7 @@ final case class Dreamt(
 
   /** `strands: {written} written, {withdrawn} withdrawn, {unchanged} unchanged, {left plus
     * unwritten} left for the next run`, then, when some were, `; {n} rooms at a label no
-    * schedule declares`, then `; not written: {root} ({why})` for at most [[Dreamt.Shown]] of
+    * schedule declares`, then `; not written: {root} ({why})` for at most [[NotWritten.Shown]] of
     * them, separated by `, `, and `and {n} more` for the rest; then, when it stopped, `;
     * stopped: {why}`.
     */
@@ -294,9 +294,8 @@ final case class Dreamt(
       if (undeclared == 0) ""
       else if (undeclared == 1) "; 1 room at a label no schedule declares"
       else s"; $undeclared rooms at a label no schedule declares"
-    val notWritten =
-      NotWritten.tail(unwritten.map((r, why) => (ConversationId.value(r), why)), Dreamt.Shown)
-    counts + rooms + notWritten + stopped.fold("")(why => s"; stopped: $why")
+    val notWritten = NotWritten.tail(unwritten.map((r, why) => (ConversationId.value(r), why)))
+    counts + rooms + notWritten + NotWritten.stopped(stopped)
   }
 
   private[strand] def wrote: Dreamt = copy(written = written + 1)
@@ -308,10 +307,6 @@ final case class Dreamt(
 }
 
 object Dreamt {
-
-  /** 5: the most unwritten strands a reply names. */
-  val Shown: Int = 5
-
   private[strand] def of(scan: Scanned): Dreamt =
     Dreamt(0, scan.withdrew, scan.unchanged, scan.left, scan.undeclared, Vector.empty, None)
 

@@ -30,25 +30,18 @@ final case class Synced(
   /** `{source}: {written} written, {relabelled} relabelled, {withdrawn} withdrawn, {unchanged}
     * unchanged, {left plus unwritten} left for the next run`, then, when some were refused,
     * `; {refused} new units not taken, the source holding its most cards`, then, when some are
-    * unwritten, `; not written: {path} ({why})` for at most [[Synced.Shown]] of them, separated
+    * unwritten, `; not written: {path} ({why})` for at most [[NotWritten.Shown]] of them, separated
     * by `, `, and `and {n} more` for the rest; then, the same way, `; held unreadable: {path}
     * ({why})` for those `unreadable`; then, when it stopped, `; stopped: {why}`.
     */
   def line: String = {
     val counts = s"${CorpusName.value(source)}: $written written, $relabelled relabelled, " +
       s"$withdrawn withdrawn, $unchanged unchanged, ${left + unwritten.size} left for the next run"
-    val notWritten = NotWritten.tail(unwritten.map(u => (u.path, u.why)), Synced.Shown)
-    val damaged =
-      NotWritten.tail(unreadable.map(d => (d.path, d.why)), Synced.Shown, "held unreadable")
+    val notWritten = NotWritten.tail(unwritten.map(u => (u.path, u.why)))
+    val damaged = NotWritten.tail(unreadable.map(d => (d.path, d.why)), "held unreadable")
     val notTaken =
       if (refused == 0) ""
       else s"; $refused new units not taken, the source holding its most cards"
-    counts + notTaken + notWritten + damaged + stopped.fold("")(why => s"; stopped: $why")
+    counts + notTaken + notWritten + damaged + NotWritten.stopped(stopped)
   }
-}
-
-object Synced {
-
-  /** 5: the most unwritten units, and the most unreadable cards, a reply names. */
-  val Shown: Int = 5
 }

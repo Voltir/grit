@@ -36,7 +36,7 @@ final case class Gathered(
     * left`, then, when some were, `; {unnamed} unnamed, offered
     * again`, then, when some were, `; {dropped} named twice or not
     * shown, dropped`, then, when it was, `; {again}
-    * asked again`, then, when some were, `; {n} refs too long to keep`, then `; not written: {name} ({why})` for at most [[Gathered.Shown]] of them,
+    * asked again`, then, when some were, `; {n} refs too long to keep`, then `; not written: {name} ({why})` for at most [[NotWritten.Shown]] of them,
     * separated by `, `, and `and {n} more` for the rest; then, when it stopped, `; stopped:
     * {why}`.
     */
@@ -52,17 +52,12 @@ final case class Gathered(
       if (skipped == 0) ""
       else if (skipped == 1) "; 1 ref too long to keep"
       else s"; $skipped refs too long to keep"
-    val notWritten = NotWritten.tail(unwritten, Gathered.Shown)
-    counts + missed + wrong + asked + refs + notWritten + stopped.fold("")(why =>
-      s"; stopped: $why"
-    )
+    counts + missed + wrong + asked + refs + NotWritten.tail(unwritten) +
+      NotWritten.stopped(stopped)
   }
 }
 
 object Gathered {
-
-  /** 5: the most things not written a reply names. */
-  val Shown: Int = 5
 
   /** A run that stopped before writing anything, and why. */
   private[topic] def stopped(why: String): Gathered =

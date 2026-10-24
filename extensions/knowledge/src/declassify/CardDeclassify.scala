@@ -216,16 +216,14 @@ final case class Tally(
 
   /** `declassified cards: {written} written, {withheld} withheld, {unapplied} unapplied,
     * {withdrawn} withdrawn, {left plus unwritten} left for the next run`, then `; not written:
-    * {version} ({why})` for at most [[Tally.Shown]] of them and `and {n} more` for the rest; then,
+    * {version} ({why})` for at most [[NotWritten.Shown]] of them and `and {n} more` for the rest; then,
     * when it stopped, `; stopped: {why}`.
     */
   def line: String =
     s"declassified cards: $written written, $withheld withheld, $unapplied unapplied, " +
       s"$withdrawn withdrawn, ${left + unwritten.size} left for the next run" +
-      NotWritten.tail(
-        unwritten.map((v, why) => (DocumentVersionId.value(v).toString, why)),
-        Tally.Shown
-      ) + stopped.fold("")(why => s"; stopped: $why")
+      NotWritten.tail(unwritten.map((v, why) => (DocumentVersionId.value(v).toString, why))) +
+      NotWritten.stopped(stopped)
 
   private[declassify] def wrote: Tally = copy(written = written + 1)
 
@@ -238,10 +236,6 @@ final case class Tally(
 }
 
 object Tally {
-
-  /** 5: the most cards not rewritten a reply names. */
-  val Shown: Int = 5
-
   private[declassify] def of(scan: Scanned): Tally =
     Tally(0, 0, 0, scan.withdrew, scan.left, Vector.empty, None)
 
