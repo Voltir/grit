@@ -34,6 +34,18 @@ object StoredFormsTests extends TestSuite {
       all.map((_, j) => SlotRuleJson.read(ujson.read(j))) ==> all.map((r, _) => Right(r))
     }
 
+    test("the JSON round-trips and older kinds read unchanged") {
+      val every = SlotRule.Every(
+        Interval.of(30.minutes).getOrElse(throw new java.lang.AssertionError("30 min"))
+      )
+      SlotRuleJson.write(every).render() ==> """{"kind":"every","period":"PT30M"}"""
+      SlotRuleJson.read(ujson.read("""{"kind":"every","period":"PT30M"}""")) ==> Right(every)
+      SlotRuleJson.read(ujson.read("""{"kind":"every","period":"PT30S"}""")) ==>
+        Left("a slot rule's period is no interval: PT30S")
+      SlotRuleJson.read(ujson.read("""{"kind":"daily","at":"09:00","zone":"UTC"}""")) ==>
+        Right(SlotRule.Daily(LocalTime.of(9, 0), ZoneId.of("UTC")))
+    }
+
     test("a stored rule that is not one is refused, saying why") {
       val bad = Vector(
         """[]""" -> "a slot rule is not an object",

@@ -15,7 +15,8 @@ Decision:
   Jobs are never patched.
 - **A schedule is a row** (`grit.schedules`): its job, by name; a slot rule (`SlotRule`),
   once at an instant or a recurrence from a small closed set (daily, on weekdays, weekly, at
-  a time in a time zone), never a cron expression; parameters, as JSON the job reads; the
+  a time in a time zone; or every so long, a minute or more, at its multiples since the
+  epoch), never a cron expression; parameters, as JSON the job reads; the
   principal it runs for, whose budget it spends; and where its runs report: kept in their own
   conversation, or posted at a destination that names its edge as well as its address.
 - **Schedules come from two sources.** A deployment or plugin declares some; they run for the

@@ -15,12 +15,36 @@ object SlotRuleTests extends TestSuite {
   private val Paris = ZoneId.of("Europe/Paris")
   private val NewYork = ZoneId.of("America/New_York")
   private val Auckland = ZoneId.of("Pacific/Auckland")
+  private def every(d: FiniteDuration): SlotRule =
+    SlotRule.Every(
+      Interval.of(d).getOrElse(throw new java.lang.AssertionError(s"$d is an interval"))
+    )
 
   val tests = Tests {
     test("a grace is zero or more") {
       Grace.of(90.minutes).map(Grace.value) ==> Some(90.minutes)
       Grace.of(Duration.Zero).map(Grace.value) ==> Some(Grace.value(Grace.Zero))
       Grace.of((-1).second) ==> None
+    }
+
+    test("an interval is a minute or more") {
+      Interval.of(1.minute).map(Interval.value) ==> Some(1.minute)
+      Interval.of(90.seconds).map(Interval.value) ==> Some(90.seconds)
+      Vector(Duration.Zero, 59.seconds, (-5).minutes).map(Interval.of) ==> Vector(None, None, None)
+    }
+
+    test("Every(5 min) after 10:02 is 10:05") {
+      every(5.minutes).after(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:05:00Z"))
+      every(5.minutes).first(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:05:00Z"))
+      // Multiples since the epoch, not since the hour: `date -u` puts 10:02 two minutes past a
+      // multiple of 7.
+      every(7.minutes).after(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:07:00Z"))
+    }
+
+    test("a slot exactly on a multiple is not after itself") {
+      every(5.minutes).after(at("2026-10-07T10:05:00Z")) ==> Some(at("2026-10-07T10:10:00Z"))
+      every(30.minutes).between(at("2026-10-07T10:00:00Z"), at("2026-10-07T11:00:00Z")).toVector ==>
+        Vector(at("2026-10-07T10:30:00Z"), at("2026-10-07T11:00:00Z"))
     }
 
     test("a once slot is after an instant only when strictly later") {

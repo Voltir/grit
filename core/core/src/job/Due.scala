@@ -29,7 +29,8 @@ object Due {
           val late = Duration.between(next, now)
           if (late.compareTo(Duration.ofNanos(Grace.value(grace).toNanos)) <= 0) Run(next, None)
           else Missed(next)
-        case SlotRule.Daily(_, _) | SlotRule.Weekdays(_, _) | SlotRule.Weekly(_, _, _) =>
+        case SlotRule.Daily(_, _) | SlotRule.Weekdays(_, _) | SlotRule.Weekly(_, _, _) |
+            SlotRule.Every(_) =>
           val from = if (next.isBefore(now.minus(Lookback))) now.minus(Lookback) else next
           val nominal = rule.between(from, now).foldLeft(next)((_, slot) => slot)
           Run(nominal, rule.after(nominal))

@@ -1,9 +1,9 @@
 package grit.core.job
 
-import java.time.{DayOfWeek, Instant, LocalTime, ZoneId, ZonedDateTime}
+import java.time.{DayOfWeek, Duration, Instant, LocalTime, ZoneId, ZonedDateTime}
 
-/** When a schedule's slots fall (ADR 0029): once, or a recurrence from this closed set at a
-  * local time in a zone; never a cron expression. A local time a clock change skips falls
+/** When a schedule's slots fall (ADR 0029): once, or a recurrence from this closed set, at a
+  * local time in a zone or every so long; never a cron expression. A local time a clock change skips falls
   * later by the gap's length (02:30 in a one-hour gap at 03:30); one it repeats, at its first
   * instance (java.time's rules).
   */
@@ -14,6 +14,11 @@ enum SlotRule {
   /** Monday to Friday. */
   case Weekdays(at: LocalTime, zone: ZoneId)
   case Weekly(day: DayOfWeek, at: LocalTime, zone: ZoneId)
+
+  /** At each whole multiple of `period` since the epoch, 1970-01-01T00:00Z: the same slots in
+    * any zone and across restarts (every 30 minutes falls at :00 and :30 UTC).
+    */
+  case Every(period: Interval)
 
   /** Its slots after `from` and at or before `until`, in order. */
   def between(from: Instant, until: Instant): Iterator[Instant] =
@@ -28,6 +33,7 @@ enum SlotRule {
     case Weekdays(at, zone) =>
       SlotRule.firstAfter(instant, at, zone, d => d != DayOfWeek.SATURDAY && d != DayOfWeek.SUNDAY)
     case Weekly(day, at, zone) => SlotRule.firstAfter(instant, at, zone, _ == day)
+    case Every(period) => Some(SlotRule.nextMultiple(instant, period))
   }
 
   /** The first slot of a schedule made at `now`: a once slot's own instant, however far past
@@ -36,7 +42,7 @@ enum SlotRule {
     */
   def first(now: Instant): Option[Instant] = this match {
     case Once(at, _) => Some(at)
-    case Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) => after(now)
+    case Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) | Every(_) => after(now)
   }
 
   /** Whether a schedule that ended under `was` is pending again when declared as this: `was` a
@@ -45,12 +51,21 @@ enum SlotRule {
     */
   def rearms(was: SlotRule): Boolean = (was, this) match {
     case (Once(before, _), Once(after, _)) => before != after
-    case (Once(_, _), Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _)) => true
-    case (Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _), _) => false
+    case (Once(_, _), Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) | Every(_)) => true
+    case (Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) | Every(_), _) => false
   }
 }
 
 object SlotRule {
+
+  private def nextMultiple(instant: Instant, period: Interval): Instant = {
+    val p = Duration.ofNanos(Interval.value(period).toNanos)
+    // dividedBy truncates toward zero: the k-th multiple is after `instant` only before the
+    // epoch, and the (k+1)-th always is.
+    val k = Duration.between(Instant.EPOCH, instant).dividedBy(p)
+    val kth = Instant.EPOCH.plus(p.multipliedBy(k))
+    if (kth.isAfter(instant)) kth else kth.plus(p)
+  }
 
   // A week and a day from the instant's local date holds the next slot of every recurrence.
   private def firstAfter(

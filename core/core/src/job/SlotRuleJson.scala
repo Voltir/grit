@@ -9,7 +9,8 @@ import scala.util.Try
 /** A [[SlotRule]]'s stored form, a schedule row's `rule`:
   * `{"kind":"once","at":"2026-10-07T09:00:00Z","grace":"PT1H"}` (the grace an ISO-8601
   * duration), `{"kind":"daily","at":"09:00","zone":"Europe/Paris"}`, `"weekdays"` likewise, and
-  * `{"kind":"weekly","day":"wednesday","at":"17:00","zone":…}`.
+  * `{"kind":"weekly","day":"wednesday","at":"17:00","zone":…}`, and
+  * `{"kind":"every","period":"PT30M"}`.
   */
 object SlotRuleJson {
 
@@ -18,7 +19,7 @@ object SlotRuleJson {
       ujson.Obj(
         "kind" -> "once",
         "at" -> at.toString,
-        "grace" -> Duration.ofNanos(Grace.value(grace).toNanos).toString
+        "grace" -> iso(Grace.value(grace))
       )
     case SlotRule.Daily(at, zone) =>
       ujson.Obj("kind" -> "daily", "at" -> at.toString, "zone" -> zone.getId)
@@ -31,7 +32,14 @@ object SlotRuleJson {
         "at" -> at.toString,
         "zone" -> zone.getId
       )
+    case SlotRule.Every(period) =>
+      ujson.Obj("kind" -> "every", "period" -> iso(Interval.value(period)))
   }
+
+  private def iso(d: FiniteDuration): String = Duration.ofNanos(d.toNanos).toString
+
+  private def duration(text: String): Option[FiniteDuration] =
+    Try(FiniteDuration(Duration.parse(text).toNanos, "nanos")).toOption
 
   /** The rule stored as `v` ([[write]]'s form), or why it is none. */
   def read(v: ujson.Value): Either[String, SlotRule] = {
@@ -52,9 +60,7 @@ object SlotRuleJson {
         case "once" =>
           for {
             at <- parsed(o, "at", "instant")(t => Try(Instant.parse(t)).toOption)
-            grace <- parsed(o, "grace", "grace")(g =>
-              Try(FiniteDuration(Duration.parse(g).toNanos, "nanos")).toOption.flatMap(Grace.of)
-            )
+            grace <- parsed(o, "grace", "grace")(duration(_).flatMap(Grace.of))
           } yield SlotRule.Once(at, grace)
         case "daily" =>
           for { at <- localTime(o); z <- zone(o) } yield SlotRule.Daily(at, z)
@@ -68,6 +74,8 @@ object SlotRuleJson {
             at <- localTime(o)
             z <- zone(o)
           } yield SlotRule.Weekly(day, at, z)
+        case "every" =>
+          parsed(o, "period", "interval")(duration(_).flatMap(Interval.of)).map(SlotRule.Every(_))
         case other => Left(s"no slot rule $other")
       }
     } yield rule
