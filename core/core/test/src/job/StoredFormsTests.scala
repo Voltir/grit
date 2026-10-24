@@ -28,22 +28,13 @@ object StoredFormsTests extends TestSuite {
         SlotRule.Weekdays(LocalTime.of(8, 30, 15), ZoneId.of("UTC")) ->
           """{"kind":"weekdays","at":"08:30:15","zone":"UTC"}""",
         SlotRule.Weekly(DayOfWeek.WEDNESDAY, LocalTime.of(17, 0), ZoneId.of("America/New_York")) ->
-          """{"kind":"weekly","day":"wednesday","at":"17:00","zone":"America/New_York"}"""
+          """{"kind":"weekly","day":"wednesday","at":"17:00","zone":"America/New_York"}""",
+        SlotRule.Every(
+          Interval.of(30.minutes).getOrElse(throw new java.lang.AssertionError("30 min"))
+        ) -> """{"kind":"every","period":"PT30M"}"""
       )
       all.map((r, _) => SlotRuleJson.write(r).render()) ==> all.map(_._2)
       all.map((_, j) => SlotRuleJson.read(ujson.read(j))) ==> all.map((r, _) => Right(r))
-    }
-
-    test("the JSON round-trips and older kinds read unchanged") {
-      val every = SlotRule.Every(
-        Interval.of(30.minutes).getOrElse(throw new java.lang.AssertionError("30 min"))
-      )
-      SlotRuleJson.write(every).render() ==> """{"kind":"every","period":"PT30M"}"""
-      SlotRuleJson.read(ujson.read("""{"kind":"every","period":"PT30M"}""")) ==> Right(every)
-      SlotRuleJson.read(ujson.read("""{"kind":"every","period":"PT30S"}""")) ==>
-        Left("a slot rule's period is no interval: PT30S")
-      SlotRuleJson.read(ujson.read("""{"kind":"daily","at":"09:00","zone":"UTC"}""")) ==>
-        Right(SlotRule.Daily(LocalTime.of(9, 0), ZoneId.of("UTC")))
     }
 
     test("a stored rule that is not one is refused, saying why") {
@@ -59,7 +50,8 @@ object StoredFormsTests extends TestSuite {
         """{"kind":"daily","at":"09:00","zone":"Mars/Olympus"}""" ->
           "a slot rule's zone is no zone: Mars/Olympus",
         """{"kind":"weekly","day":"someday","at":"09:00","zone":"UTC"}""" ->
-          "a slot rule's day is no day: someday"
+          "a slot rule's day is no day: someday",
+        """{"kind":"every","period":"PT30S"}""" -> "a slot rule's period is no interval: PT30S"
       )
       bad.map((j, _) => SlotRuleJson.read(ujson.read(j))) ==> bad.map((_, why) => Left(why))
     }

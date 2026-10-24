@@ -116,7 +116,7 @@ object DowngradeTests extends TestSuite {
     }
 
     test(
-      "the declassification removes its compartment when every check answer is below DeclassifyBelow, and nothing otherwise"
+      "the declassification removes its compartment when its leak is below Declassified.Below and the policy lowers the label; nothing otherwise"
     ) {
       def made(label: Label, leak: Double): Option[Label] =
         raised(

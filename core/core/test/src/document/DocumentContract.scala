@@ -1559,17 +1559,21 @@ abstract class DocumentContract extends TestSuite {
       def kept(a: PolicyApplication) =
         transaction(
           k.declassified(declassified("gist", source, card, a), Integrity.Member, at(1))
-        ).left
-          .map(_.isInstanceOf[StoreError.Invalid])
+        )
+      val stale = Left(
+        StoreError.Invalid("the declassification's policy or application is no longer current")
+      )
       policy(team, 1, revoked = false)
       application(card, 1, Some(team))
       val first = applied
       policy(team, 2, revoked = false)
+      val policyStale = kept(first)
       val second = applied
       application(card, 2, Some(team))
+      val applicationStale = kept(second)
       val internal = Clearance.of(Label.at(Level.Internal))
-      (kept(first), kept(second), opened(internal)(keys(ok(shelf(p).newest(10))))) ==>
-        (Left(true), Left(true), Vector())
+      (policyStale, applicationStale, opened(internal)(keys(ok(shelf(p).newest(10))))) ==>
+        (stale, stale, Vector())
     }
   }
 }

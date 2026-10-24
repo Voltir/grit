@@ -33,12 +33,11 @@ object SlotRuleTests extends TestSuite {
       Vector(Duration.Zero, 59.seconds, (-5).minutes).map(Interval.of) ==> Vector(None, None, None)
     }
 
-    test("Every(5 min) after 10:02 is 10:05") {
-      every(5.minutes).after(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:05:00Z"))
-      every(5.minutes).first(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:05:00Z"))
-      // Multiples since the epoch, not since the hour: `date -u` puts 10:02 two minutes past a
-      // multiple of 7.
-      every(7.minutes).after(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:07:00Z"))
+    test("Every's slots are the multiples of its period since the epoch") {
+      // `date -u +%s` puts 11:03 on a multiple of 7 minutes since the epoch; anchored on the
+      // hour the slot would be 11:07, on the day 11:05.
+      every(7.minutes).after(at("2026-10-07T11:02:00Z")) ==> Some(at("2026-10-07T11:03:00Z"))
+      every(7.minutes).first(at("2026-10-07T11:02:00Z")) ==> Some(at("2026-10-07T11:03:00Z"))
     }
 
     test("Every's next slot before the epoch is the first multiple after it") {
