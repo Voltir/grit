@@ -59,34 +59,41 @@ object CardShelf {
     def changed(since: Instant, until: Instant, n: Int, counts: Seen -> Boolean)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
-      documents.newestWhere(n, _.written.isBefore(since))(card(until), counts)
+      cardsWhere(documents, n, _.written.isBefore(since))(card(until), counts)
 
     def linked(units: Set[Ref], until: Instant, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[Seen]] =
       if (units.isEmpty) Right(Vector.empty)
       else
-        documents.newestWhere(n, _ => false)(
-          card(until)(_).filter(_.unit.exists(units.contains)),
+        cardsWhere(documents, n, _ => false)(
+          card(until)(_, _).filter(_.unit.exists(units.contains)),
           _ => true
         )
 
     def pointed(n: Int)(using Tx^): Either[StoreError, Vector[Pointed]] =
-      documents.newestWhere(n, _ => false)(
-        d =>
-          for {
-            _ <- CardKey.parse(DocKey.value(d.key)).toOption
-            pointer <- d.pointer
-          } yield Pointed(d.version, d.label, pointer),
+      cardsWhere(documents, n, _ => false)(
+        (_, d) => d.pointer.map(Pointed(d.version, d.label, _)),
         _ => true
       )
   }
 
-  /** `d` as a card seen, or `None` when it is no card or written after `until`. */
-  private def card(until: Instant)(d: Document): Option[Seen] =
+  /** As [[DocumentShelf.newestWhere]], over the documents among `documents` that are cards,
+    * `keep` given each one's key.
+    */
+  private def cardsWhere[A](documents: DocumentShelf, n: Int, past: Document => Boolean)(
+      keep: (CardKey, Document) => Option[A],
+      counts: A => Boolean
+  )(using Tx^): Either[StoreError, Vector[A]] =
+    documents.newestWhere(n, past)(
+      d => CardKey.parse(DocKey.value(d.key)).toOption.flatMap(keep(_, d)),
+      counts
+    )
+
+  /** `d`, the card `key`, as seen; `None` when it was written after `until` or holds no path. */
+  private def card(until: Instant)(key: CardKey, d: Document): Option[Seen] =
     for {
       _ <- Option.unless(d.written.isAfter(until))(())
-      key <- CardKey.parse(DocKey.value(d.key)).toOption
       o <- d.data.objOpt
       path <- o.get("path").flatMap(_.strOpt)
     } yield Seen(
