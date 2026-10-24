@@ -768,47 +768,35 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a declassify's rewrite holds its source, its pointer, the policy version and the application version"
+      "a declassify's rewrite is kept without its compartment, audited with its source, the policy version and the application version"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
       val (source, policy) = applied(shelves, "c1")
       val (got, _) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
         m.declassify(name("d"), source, policy) match {
           case Right(Declassifying.Outcome.Made(t)) =>
-            val d = grit.core.flow.Trusted.asIs(t).extract
             val kept = m.keep(name("k"), t)((d, keeper, at) =>
               keeper
                 .declassified(d, Integrity.Authority, at)
                 .map {
-                  case Written.Versioned(v, _, _) => Kept(DocumentVersionId.value(v).toString)
+                  case Written.Versioned(v, label, _) =>
+                    Kept(s"${DocumentVersionId.value(v)} ${Label.written(label)}")
                   case w => Kept(w.toString)
                 }
             )
-            Seen(
-              Vector(
-                Right(
-                  s"${DocumentVersionId.value(d.source)} ${d.applied.document.shown} " +
-                    s"${d.applied.policy.version} ${d.applied.version}"
-                ),
-                kept.map(_.label)
-              )
-            )
+            Seen(Vector(kept.map(_.label)))
           case other => Seen(Vector(other.map(_.toString)))
         }
       }
-      val audit = got.moves
-        .lift(1)
-        .flatMap(_.toOption)
+      val written = got.moves.headOption.flatMap(_.toOption).map(_.split(" ", 2).toVector)
+      val audit = written
+        .flatMap(_.headOption)
         .flatMap(_.toLongOption)
         .flatMap(DocumentVersionId.of)
         .flatMap(shelves.documents.declassification)
         .map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
-      (got.moves.headOption, audit) ==> (
-        Some(
-          Right(
-            s"${DocumentVersionId.value(source)} ${file("c1").shown} 1 1"
-          )
-        ),
+      (written.flatMap(_.lift(1)), audit) ==> (
+        Some(Label.written(Label.at(Level.Internal))),
         Some((DocumentVersionId.value(source), 1, 1))
       )
     }
