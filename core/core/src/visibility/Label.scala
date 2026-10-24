@@ -50,7 +50,7 @@ object Compartment {
 
   /** Its name, as [[of]] took it: what a person reads in a refusal naming it, and what it is
     * stored as. It says nothing of any label's structure: no public operation takes a
-    * compartment out of a label.
+    * compartment out of a label but a policy's ([[DeclassificationPolicy.lowered]]).
     */
   def name(c: Compartment): String = c
 

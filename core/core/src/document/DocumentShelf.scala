@@ -108,6 +108,36 @@ trait DocumentKeeper extends DocumentShelf {
   def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
+
+  /** The application in force for the document `pointer` reads, kept at `label`: its current
+    * application, when `label` holds the application's compartment and that compartment's
+    * policy is current; `None` otherwise, and for a label holding the unmapped mark. Read from
+    * the operator's rows as this transaction sees them now.
+    */
+  def declassifying(label: Label, pointer: Pointer)(using
+      Tx^
+  ): Either[StoreError, Option[PolicyApplication]]
+
+  /** Keeps `d` as the current document of this plugin under a key derived from its source's
+    * plugin and key (never repeating the source's key), at `d.label`, below this transaction's
+    * floor (the *-property's one exception besides the trusted subject), at its source's place,
+    * believed at `integrity`, holding its text, data naming only its source version and
+    * application, and no pointer or refs; and records it as declassified. A rewrite kept under
+    * that key at another label is withdrawn. As [[write]] in all else. [[StoreError.Invalid]],
+    * writing nothing, when `d.applied`'s policy version or application version is no longer
+    * current.
+    */
+  final def declassified(d: Declassified, integrity: Integrity, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Written] =
+    Declassified.row(d, integrity).left.map(StoreError.Invalid(_)).flatMap(keepDeclassified(_, at))
+
+  /** The primitive under [[declassified]], which alone makes a [[Declassified.Row]]: keeps
+    * `row` as it says, after rechecking in its own statement that `row.applied`'s policy and
+    * application versions are both current. It writes below the floor; besides it, only the
+    * plugin's own withdrawals do, each one bit at a key a reader could already see.
+    */
+  def keepDeclassified(row: Declassified.Row, at: Instant)(using Tx^): Either[StoreError, Written]
 }
 
 object DocumentKeeper {
@@ -147,5 +177,13 @@ object DocumentKeeper {
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = keeper.forReview(version, day, at)
+
+    def declassifying(label: Label, pointer: Pointer)(using
+        Tx^
+    ): Either[StoreError, Option[PolicyApplication]] = keeper.declassifying(label, pointer)
+
+    def keepDeclassified(row: Declassified.Row, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Written] = keeper.keepDeclassified(row.believedAtMost(most), at)
   }
 }

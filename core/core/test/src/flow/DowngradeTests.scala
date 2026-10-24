@@ -1,9 +1,14 @@
 package grit.core.flow
 
+import grit.core.document.{Declassified, DocText, Pointer, PolicyApplication}
 import grit.core.durable.{Flow, Flows, InMemoryDurable, Step, StepName}
-import grit.core.id.WorkflowId
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, WorkflowId}
+import grit.core.period.Probability
+import grit.core.place.{Namespace, Place}
+import grit.core.tool.ToolName
 import grit.core.visibility.Integrity.Level
-import grit.core.visibility.{Compartment, Integrity}
+import grit.core.visibility.Level as Classified
+import grit.core.visibility.{Compartment, DeclassificationPolicy, Integrity, Label}
 
 import utest.*
 
@@ -109,5 +114,73 @@ object DowngradeTests extends TestSuite {
         "approval: raises integrity, by the answering person, to their own integrity, free text"
       )
     }
+
+    test(
+      "the declassification removes its compartment when every check answer is below DeclassifyBelow, and nothing otherwise"
+    ) {
+      def made(label: Label, leak: Double): Option[Label] =
+        raised(
+          Declassified.declassification,
+          (
+            rewrite = rewrite,
+            source = source(label, card),
+            applied = applied(card),
+            leak = Probability.clamped(leak)
+          )
+        ).map(_.label)
+      (
+        made(Label.at(Classified.Confidential, team, other), 0.09),
+        made(Label.at(Classified.Confidential, team, other), 0.1),
+        made(Label.at(Classified.Confidential, other), 0.0),
+        made(Label.Unmapped.join(Label.at(Classified.Internal, team)), 0.0)
+      ) ==> (Some(Label.at(Classified.Confidential, other)), None, None, None)
+    }
+
+    test(
+      "the declassification refuses an application that names another document than its source"
+    ) {
+      def made(applying: Pointer): Boolean =
+        raised(
+          Declassified.declassification,
+          (
+            rewrite = rewrite,
+            source = source(Label.at(Classified.Internal, team), card),
+            applied = applied(applying),
+            leak = Probability.Zero
+          )
+        ).isDefined
+      (made(card), made(otherCard)) ==> (true, false)
+    }
   }
+
+  private val other: Compartment =
+    Compartment.of("other").getOrElse(throw new java.lang.AssertionError("other is a compartment"))
+
+  private def pointer(path: String): Pointer =
+    Pointer
+      .of(ToolName("drive_read_file"), "file" -> ujson.Str(path))
+      .getOrElse(throw new java.lang.AssertionError("a pointer"))
+
+  private val card = pointer("card")
+  private val otherCard = pointer("other-card")
+
+  private val rewrite: DocText =
+    DocText.of("a rewrite").getOrElse(throw new java.lang.AssertionError("a text"))
+
+  private def source(label: Label, read: Pointer): Declassified.Source =
+    Declassified.Source(
+      DocumentVersionId.of(7).getOrElse(throw new java.lang.AssertionError("a version")),
+      PluginName.of("cards").getOrElse(throw new java.lang.AssertionError("a plugin")),
+      DocKey.of("card").getOrElse(throw new java.lang.AssertionError("a key")),
+      Place.under(Namespace.Task, Vector("cards")),
+      label,
+      read
+    )
+
+  private def applied(document: Pointer): PolicyApplication =
+    PolicyApplication(
+      DeclassificationPolicy(DeclassificationPolicy.Over.Compartment(team), 1),
+      document,
+      1
+    )
 }

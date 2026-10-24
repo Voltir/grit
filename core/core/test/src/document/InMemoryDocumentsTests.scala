@@ -1,9 +1,9 @@
 package grit.core.document
 
-import grit.core.id.PluginName
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
-import grit.core.visibility.{Clearance, Visibility}
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Visibility}
 import grit.dbos.sql.TestTx
 
 /** The documents contract, kept by the in-memory fake. */
@@ -32,4 +32,18 @@ object InMemoryDocumentsTests extends DocumentContract {
 
   // Rooms are places, which the fake needs no row for.
   protected def room(origin: Origin): Unit = ()
+
+  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
+    documents.policy(over, version, revoked)
+
+  protected def application(
+      pointer: Pointer,
+      version: Int,
+      over: Option[DeclassificationPolicy.Over]
+  ): Unit = documents.application(pointer, version, over)
+
+  protected def audited(
+      v: DocumentVersionId
+  ): Option[(source: DocumentVersionId, policy: Int, application: Int)] =
+    documents.declassification(v)
 }

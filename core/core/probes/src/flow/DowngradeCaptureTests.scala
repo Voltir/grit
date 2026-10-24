@@ -75,6 +75,37 @@ object DowngradeCaptureTests extends TestSuite {
       |val p = Flow.program[Any, String, Held]("p", Vector(node))(steps => in => node.raise(using steps))
       |""".stripMargin
 
+  private val downgradeMade =
+    """val n = new Downgrade[Int, Int](Downgrade.Described("x", Downgrade.Axis.Classification,
+      |  Downgrade.Authority.Policy, Downgrade.Capacity.Text), (i: Int) => i)""".stripMargin
+  private val declassificationOutside =
+    "val n = grit.core.document.Declassified.declassification"
+  private val declassifiedMade =
+    """import grit.core.document.*
+      |def f(t: DocText, s: Declassified.Source, a: PolicyApplication,
+      |  p: grit.core.period.Probability, l: grit.core.visibility.Label) =
+      |  new Declassified(t, s, a, p, l)""".stripMargin
+  private val rowMade =
+    """import grit.core.document.*
+      |def f(d: Declassified, k: grit.core.id.DocKey, p: grit.core.place.Place, t: DocText) =
+      |  new Declassified.Row(k, d.label, Integrity.Member, p, t, ujson.Obj(), d.source, d.applied,
+      |    d.judged)""".stripMargin
+
+  /** Inside grit.core.document, where the declassification is made: its rule is pure. */
+  private val inside =
+    """package grit.core.document
+      |import grit.core.flow.*
+      |import grit.core.store.Tx
+      |val described = Downgrade.Described("x", Downgrade.Axis.Classification,
+      |  Downgrade.Authority.Policy, Downgrade.Capacity.Text)
+      |""".stripMargin
+  private val pureRule = "val n = new Downgrade[Int, Int](described, (i: Int) => i)"
+  private val txRule =
+    """def n(using tx: Tx^) =
+      |  new Downgrade[Int, Int](described, (i: Int) => { val _ = Tx.clearance(tx); i })""".stripMargin
+
+  private lazy val insideCompiled = Probes.batch(inside, List(pureRule, txRule))
+
   private lazy val compiled = Probes.batch(
     prelude,
     List(
@@ -94,7 +125,11 @@ object DowngradeCaptureTests extends TestSuite {
       raiseControl,
       raiseKept,
       programControl,
-      programKept
+      programKept,
+      downgradeMade,
+      declassificationOutside,
+      declassifiedMade,
+      rowMade
     )
   )
 
@@ -151,7 +186,7 @@ object DowngradeCaptureTests extends TestSuite {
       )
     }
 
-    test("a description of free text by a code rule cannot be built outside the package") {
+    test("a description of free text by a code rule cannot be built outside grit.core") {
       assert(says("object Described in object Downgrade does not take parameters")(probe(textRule)))
     }
 
@@ -185,6 +220,40 @@ object DowngradeCaptureTests extends TestSuite {
 
     test("a program's raise returned past the program is refused") {
       assert(says("is not visible from any in value p.")(probe(programKept)))
+    }
+
+    test("nothing outside grit.core makes a downgrade, nor reaches the declassification") {
+      assert(
+        says(
+          "private[core] constructor Downgrade can only be accessed from package grit.core in package grit."
+        )(probe(downgradeMade)),
+        says(
+          "private[core] value declassification can only be accessed from package grit.core in package grit."
+        )(probe(declassificationOutside))
+      )
+    }
+
+    test("a Declassified, or the row a keeper keeps of one, is made only in grit.core.document") {
+      assert(
+        says(
+          "private[document] constructor Declassified can only be accessed from package grit.core.document in package grit.core."
+        )(probe(declassifiedMade)),
+        says(
+          "private[document] constructor Row can only be accessed from package grit.core.document in package grit.core."
+        )(probe(rowMade))
+      )
+    }
+
+    test("a declassification's rule capturing a Tx is refused where downgrades are made") {
+      insideCompiled.errors(pureRule) ==> Nil
+      assert(
+        says(
+          """Found:    (i: Int) ->{tx} Int
+            |Required: Int -> Int
+            |
+            |Note that capability `tx` cannot flow into capture set {}.""".stripMargin
+        )(insideCompiled.errors(txRule))
+      )
     }
   }
 }

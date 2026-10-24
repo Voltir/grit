@@ -76,7 +76,8 @@ In dependency order, each with the core packages it imports:
 - **`flow`**: values that carry the integrity they are believed at (ADR 0036): unchecked
   (`Tainted`) or checked (`Trusted`), raised only by a `Downgrade`, a described node a flow
   lists and applies only through the `Raise` it hands where it sits: an extraction endorses a
-  bounded value, the sanitiser raises a text; and a turn's cell, which only falls. Raw values become these only through `Mint`, which only `grit.turn`,
+  bounded value, the sanitiser raises a text; and a turn's cell, which only falls. Downgrades
+  are made here, but for the declassification, which `document` makes. Raw values become these only through `Mint`, which only `grit.turn`,
   `grit.act` and `grit.kit` may name (enola-intent.yaml). ← `visibility`, `durable`
 - **`approval`**: a person's answer to a gated tool call. ← `id`
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
@@ -90,7 +91,9 @@ In dependency order, each with the core packages it imports:
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
   `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
-  key, or a withdrawal, supersedes it. ← `id`, `place`, `visibility`, `store`, `tool`
+  key, or a withdrawal, supersedes it; and a document's declassified rewrite, under a
+  compartment's policy applied to it, the one write kept below its transaction's floor.
+  ← `id`, `place`, `period`, `visibility`, `store`, `flow`, `tool`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is

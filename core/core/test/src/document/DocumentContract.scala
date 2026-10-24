@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{DocKey, DocumentVersionId, PluginName}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, ShortHash}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
@@ -15,9 +15,11 @@ import grit.core.visibility.Integrity
 import grit.core.visibility.{
   Clearance,
   Compartments,
+  DeclassificationPolicy,
   Label,
   Labelled,
   Labeller,
+  Level,
   Room,
   TestLabels,
   Visibility
@@ -62,6 +64,27 @@ abstract class DocumentContract extends TestSuite {
   /** Runs `body` as [[opened]] does, labelling places as `visibility` does. */
   protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A
 
+  /** Records the `version`th of `over`'s policy, a revocation when `revoked`, as the operator's
+    * row does, committed.
+    */
+  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit
+
+  /** Records the `version`th application to the document `pointer` reads, of `over`'s policy or
+    * a removal, as the operator's row does, committed.
+    */
+  protected def application(
+      pointer: Pointer,
+      version: Int,
+      over: Option[DeclassificationPolicy.Over]
+  ): Unit
+
+  /** The audit row of the declassified version `v`: the version it was made from, and the policy
+    * and application versions it was made under; `None` when it has none.
+    */
+  protected def audited(
+      v: DocumentVersionId
+  ): Option[(source: DocumentVersionId, policy: Int, application: Int)]
+
   /** Runs `body` in one transaction opened publicly, committed when it returns: what every
     * case but the labelled ones writes and reads at.
     */
@@ -86,6 +109,23 @@ abstract class DocumentContract extends TestSuite {
     got(DocumentTerms.of(got(DocLabel.of(label)), DocWeight.Unscaled, 30.days, bound))
 
   private val Empty: ujson.Value = ujson.Obj()
+
+  /** The policy over the compartment `c`, a name no other test's policy uses. */
+  private def over(c: String): DeclassificationPolicy.Over =
+    DeclassificationPolicy.Over.Compartment(TestLabels.compartment(c))
+
+  /** A pointer at the drive file `id`, an id no other test's application names. */
+  private def file(id: String): Pointer =
+    got(Pointer.of(ToolName("drive_read_file"), "file" -> ujson.Str(id)))
+
+  /** A rewrite of `body`, of the `cards` document `card` at `label` that `read` reads. */
+  private def declassified(
+      body: String,
+      label: Label,
+      read: Pointer,
+      applied: PolicyApplication
+  ): Declassified =
+    TestDeclassified.of(body, "cards", "card", place("cards"), label, read, applied)
 
   /** A pointer at README.md as read at `ref`. */
   private def readme(ref: String): Pointer =
@@ -1410,6 +1450,93 @@ abstract class DocumentContract extends TestSuite {
         transaction(keys(ok(shelf(p).referring(held, 10)))),
         transaction(keys(ok(shelf(p).referring(near, 10))))
       ) ==> (Vector("long"), Vector())
+    }
+
+    test(
+      "declassifying gives a document's current application when its label holds the application's compartment and that compartment's policy is current; none otherwise, and none for an unmapped label"
+    ) {
+      val k = keeper(name("doc-declassifying"), terms())
+      val (team, bare) = (over("dc-team"), over("dc-bare"))
+      val (applied, unapplied, unpolicied) = (file("dc-a"), file("dc-b"), file("dc-c"))
+      val held = Label.at(Level.Internal, TestLabels.compartment("dc-team"))
+      policy(team, 1, revoked = false)
+      application(applied, 1, Some(team))
+      application(unpolicied, 1, Some(bare))
+      def asked(label: Label, pointer: Pointer) =
+        transaction(ok(k.declassifying(label, pointer))).map(a => (a.policy, a.version))
+      val before = (
+        asked(held, applied),
+        asked(Label.at(Level.Internal), applied),
+        asked(Label.Unmapped.join(held), applied),
+        asked(held, unapplied),
+        asked(Label.at(Level.Internal, TestLabels.compartment("dc-bare")), unpolicied)
+      )
+      policy(team, 2, revoked = true)
+      (before, asked(held, applied)) ==> (
+        (Some((DeclassificationPolicy(team, 1), 1)), None, None, None, None),
+        None
+      )
+    }
+
+    test(
+      "a declassified rewrite is kept at its source's label without the compartment, at its place, under a key core derives, with its audit row"
+    ) {
+      val p = name("doc-declassified")
+      val k = keeper(p, terms())
+      val team = over("dk-team")
+      val card = file("dk-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("dk-team"))
+      policy(team, 1, revoked = false)
+      application(card, 1, Some(team))
+      val confidential = Clearance.of(Label.at(Level.Confidential))
+      val written = opened(confidential) {
+        val applied = ok(k.declassifying(source, card))
+          .getOrElse(throw new java.lang.AssertionError("no application"))
+        ok(k.declassified(declassified("the gist", source, card, applied), Integrity.Member, at(1)))
+      }
+      val v = written match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      val derived = key(s"cards:${ShortHash.of("card")}")
+      (
+        written.kept,
+        opened(confidential)(
+          ok(shelf(p).current(derived, Label.at(Level.Internal)))
+            .map(d => (DocText.value(d.text), d.place, d.pointer))
+        ),
+        audited(v).map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
+      ) ==> (
+        Label.at(Level.Internal),
+        Some(("the gist", place("cards"), None)),
+        Some((1L, 1, 1))
+      )
+    }
+
+    test(
+      "a declassified rewrite whose policy or application version is no longer current is refused, writing nothing"
+    ) {
+      val p = name("doc-declassified-stale")
+      val k = keeper(p, terms())
+      val team = over("ds-team")
+      val card = file("ds-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("ds-team"))
+      def applied = transaction(ok(k.declassifying(source, card)))
+        .getOrElse(throw new java.lang.AssertionError("no application"))
+      def kept(a: PolicyApplication) =
+        transaction(
+          k.declassified(declassified("gist", source, card, a), Integrity.Member, at(1))
+        ).left
+          .map(_.isInstanceOf[StoreError.Invalid])
+      policy(team, 1, revoked = false)
+      application(card, 1, Some(team))
+      val first = applied
+      policy(team, 2, revoked = false)
+      val second = applied
+      application(card, 2, Some(team))
+      val internal = Clearance.of(Label.at(Level.Internal))
+      (kept(first), kept(second), opened(internal)(keys(ok(shelf(p).newest(10))))) ==>
+        (Left(true), Left(true), Vector())
     }
   }
 }

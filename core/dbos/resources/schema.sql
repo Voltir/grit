@@ -1078,6 +1078,75 @@ CREATE TABLE IF NOT EXISTS grit.document_refs (
 CREATE UNIQUE INDEX IF NOT EXISTS document_refs_key ON grit.document_refs (version, kind, md5(ref));
 CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md5(ref));
 
+-- Each version of a compartment's declassification policy (DeclassificationPolicy): operator
+-- text addressed to the rewriting model and the checking classifier, saying what to remove and
+-- what to write in its place. `over` 'compartment:<c>'; `text` NULL for a revocation; the
+-- current is the highest version. Kept at its compartment's own group's grant
+-- (`classification_id`, interned by grit.intern_classification), read only under a clearance
+-- dominating it. Written by its compartment's steward or an administrator; until commands
+-- exist, by the operator:
+--   INSERT INTO grit.declassification_policies (over, version, classification_id, text, set_at, set_by)
+--   VALUES ('compartment:<c>', 1,
+--           grit.intern_classification(ROW(2, ARRAY['<c>'])::grit.classification), -- its grant
+--           '<policy text>', now(), '<steward account>');
+-- A revocation is a row of the next version with `text` NULL. The job's next run withdraws the
+-- rewrites made under older versions.
+-- Retention: kept: a version neither current nor named by a grit.declassifications row is
+-- deleted each collector sweep (SqlDeclassifications.forget); the rest, one row per version at
+-- human rate: tens.
+CREATE TABLE IF NOT EXISTS grit.declassification_policies (
+    over              TEXT NOT NULL CHECK (over ~ '^compartment:[a-z0-9-]{1,32}$'),
+    version           INTEGER NOT NULL CHECK (version >= 1),
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    text              TEXT CHECK (char_length(text) <= 4000),
+    set_at            TIMESTAMPTZ NOT NULL,
+    set_by            TEXT NOT NULL REFERENCES grit.identities(account),
+    PRIMARY KEY (over, version)
+);
+
+-- Each version of the application of a policy to one document (PolicyApplication), by the
+-- pointer that reads it, as grit.documents.pointer holds it: the compartment whose policy
+-- rewrites it, or NULL when it is removed. The current is the highest version, so a document has
+-- at most one. Only documents an application names are ever rewritten. Until commands exist,
+-- the operator copies the card's own pointer, so it cannot drift:
+--   INSERT INTO grit.declassification_applications (pointer, version, over, set_at, set_by)
+--   SELECT pointer, 1, 'compartment:<c>', now(), '<account>'
+--     FROM grit.documents
+--    WHERE plugin = 'knowledge' AND key = '<card key>' AND superseded_at IS NULL;
+-- A removal is a row of the next version with `over` NULL. The job's next run withdraws the
+-- document's earlier rewrite.
+-- Retention: kept: as grit.declassification_policies: tens.
+CREATE TABLE IF NOT EXISTS grit.declassification_applications (
+    pointer    JSONB NOT NULL,
+    version    INTEGER NOT NULL CHECK (version >= 1),
+    over       TEXT CHECK (over ~ '^compartment:[a-z0-9-]{1,32}$'),
+    set_at     TIMESTAMPTZ NOT NULL,
+    set_by     TEXT NOT NULL REFERENCES grit.identities(account),
+    PRIMARY KEY (pointer, version)
+);
+
+-- Each declassified document version (DocumentKeeper.declassified): the document version it was
+-- made from, that document's pointer, the policy and application versions it was made under,
+-- and the check's highest probability.
+-- Retention: ledger: with its version (Target.Document), by cascade; at most the plugin's
+-- document bound current.
+CREATE TABLE IF NOT EXISTS grit.declassifications (
+    document_version    BIGINT PRIMARY KEY REFERENCES grit.documents(version) ON DELETE CASCADE,
+    source_version      BIGINT NOT NULL,
+    pointer             JSONB NOT NULL,
+    over                TEXT NOT NULL,
+    policy_version      INTEGER NOT NULL,
+    application_version INTEGER NOT NULL,
+    judged              REAL NOT NULL CHECK (judged >= 0 AND judged <= 1),
+    made_at             TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (over, policy_version) REFERENCES grit.declassification_policies (over, version),
+    FOREIGN KEY (pointer, application_version)
+        REFERENCES grit.declassification_applications (pointer, version)
+);
+CREATE INDEX IF NOT EXISTS idx_declassifications_over
+    ON grit.declassifications (over, policy_version);
+CREATE INDEX IF NOT EXISTS idx_declassifications_pointer ON grit.declassifications (pointer);
+
 -- A plugin's document put up for review on a day (DocumentKeeper.forReview), and what became
 -- of its prompt (DocumentReviews): posted at `address`, or dropped; the verdict its rater gave,
 -- the latest standing. Keyed by the document's key, label and day, so a label outlives the

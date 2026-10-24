@@ -6,18 +6,21 @@ import grit.core.document.{
   DocumentSearch,
   DocumentShelf,
   DocumentStore,
-  DocumentTerms
+  DocumentTerms,
+  Pointer
 }
-import grit.core.id.PluginName
+import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
-import grit.core.visibility.{Clearance, Visibility}
+import grit.core.tool.ToolName
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Visibility}
 import grit.dbos.sql.{
   LiveDb,
   SqlDocumentReviews,
   SqlDocumentSearch,
   SqlDocuments,
   SqlSavepoints,
+  SqlStatements,
   SqlTombstones,
   TestPostgres
 }
@@ -59,4 +62,61 @@ object SqlDocumentsTests extends DocumentContract {
   protected def room(origin: Origin): Unit = {
     val _ = LiveDb.conversation(config, origin)
   }
+
+  /** `sql`, its parameters set by `bind`, run and committed. */
+  private def run(sql: String)(bind: java.sql.PreparedStatement => Unit): Unit =
+    LiveDb
+      .transaction(config)(SqlStatements.update(sql)(bind))
+      .fold(
+        e => throw new java.lang.AssertionError(s"$e"),
+        _ => ()
+      )
+
+  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
+    run(
+      """INSERT INTO grit.declassification_policies
+        |       (over, version, classification_id, text, set_at, set_by)
+        |VALUES (?, ?, 1, ?, now(), 'local')""".stripMargin
+    ) { ps =>
+      ps.setString(1, over.written)
+      ps.setInt(2, version)
+      ps.setString(3, if (revoked) null else "remove the team's details")
+    }
+
+  protected def application(
+      pointer: Pointer,
+      version: Int,
+      over: Option[DeclassificationPolicy.Over]
+  ): Unit =
+    run(
+      """INSERT INTO grit.declassification_applications (pointer, version, over, set_at, set_by)
+        |VALUES (?::jsonb, ?, ?, now(), 'local')""".stripMargin
+    ) { ps =>
+      ps.setString(
+        1,
+        ujson.Obj("arguments" -> pointer.arguments, "tool" -> ToolName.value(pointer.tool)).render()
+      )
+      ps.setInt(2, version)
+      ps.setString(3, over.map(_.written).orNull)
+    }
+
+  protected def audited(
+      v: DocumentVersionId
+  ): Option[(source: DocumentVersionId, policy: Int, application: Int)] =
+    LiveDb
+      .transaction(config)(
+        SqlStatements.many(
+          """SELECT source_version, policy_version, application_version
+          |  FROM grit.declassifications WHERE document_version = ?""".stripMargin
+        )(_.setLong(1, DocumentVersionId.value(v))) { rs =>
+          (
+            source = DocumentVersionId
+              .of(rs.getLong("source_version"))
+              .getOrElse(throw new java.lang.AssertionError("a source version")),
+            policy = rs.getInt("policy_version"),
+            application = rs.getInt("application_version")
+          )
+        }
+      )
+      .fold(e => throw new java.lang.AssertionError(s"$e"), _.headOption)
 }

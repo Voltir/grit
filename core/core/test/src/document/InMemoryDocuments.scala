@@ -8,7 +8,7 @@ import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.review.{DocumentLabel, DocumentReview, DocumentReviews, ReviewWord, Reviews}
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
-import grit.core.visibility.{Integrity, Item, Label}
+import grit.core.visibility.{DeclassificationPolicy, Integrity, Item, Label}
 
 /** An in-memory [[DocumentStore]], with each plugin's [[DocumentKeeper]], for tests, keeping
   * [[DocumentContract]]. Versions are numbered by one counter across every plugin. It marks
@@ -44,17 +44,64 @@ final class InMemoryDocuments extends DocumentStore {
       case _ => None
     })
 
+  // As `rows`: only ever replaced by a new immutable map. The operator's rows: each policy's
+  // versions, whether each holds text; each document's applications, by its pointer.
+  @caps.unsafe.untrackedCaptures
+  private var policies = Map.empty[(DeclassificationPolicy.Over, Int), Boolean]
+
+  @caps.unsafe.untrackedCaptures
+  private var applications = Map.empty[(Pointer, Int), Option[DeclassificationPolicy.Over]]
+
+  // As `rows`: each declassified version's audit row, by its version.
+  @caps.unsafe.untrackedCaptures
+  private var audits = Map.empty[Long, InMemoryDocuments.Audit]
+
+  /** Records the `version`th of `over`'s policy, revoking it when `revoked`, as an operator's
+    * row does.
+    */
+  def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean = false): Unit =
+    policies = policies.updated((over, version), !revoked)
+
+  /** Records the `version`th application to the document `pointer` reads: `over`'s policy, or
+    * none when removed, as an operator's row does.
+    */
+  def application(
+      pointer: Pointer,
+      version: Int,
+      over: Option[DeclassificationPolicy.Over]
+  ): Unit =
+    applications = applications.updated((pointer, version), over)
+
+  /** The audit row of the declassified version `v`, when it is one. */
+  def declassification(v: DocumentVersionId): Option[InMemoryDocuments.Audit] =
+    audits.get(DocumentVersionId.value(v))
+
+  /** `over`'s current policy, when its current version is not a revocation. */
+  private def inForce(over: DeclassificationPolicy.Over): Option[DeclassificationPolicy] =
+    policies
+      .collect { case ((o, v), held) if o == over => (v, held) }
+      .maxByOption(_._1)
+      .collect { case (v, true) => DeclassificationPolicy(over, v) }
+
+  /** The current application to the document `pointer` reads, when it is not a removal. */
+  private def applied(pointer: Pointer): Option[(DeclassificationPolicy.Over, Int)] =
+    applications
+      .collect { case ((p, v), over) if p == pointer => (v, over) }
+      .maxByOption(_._1)
+      .flatMap((v, over) => over.map(_ -> v))
+
   /** Its part of a transaction undone: what its keepers wrote, and the versions they marked. */
   val savepoints: Savepoints = new Savepoints {
     def atomic[A](body: Tx^ ?=> Either[StoreError, A])(using
         tx: Tx^
     ): Either[StoreError, A] = {
       // Its identity column is not rolled back, as a sequence is not: `last` stays.
-      val (before, upBefore) = (rows, ups)
+      val (before, upBefore, auditsBefore) = (rows, ups, audits)
       val out = tombstones.undoing(body(using tx))
       if (out.isLeft) {
         rows = before
         ups = upBefore
+        audits = auditsBefore
       }
       out
     }
@@ -73,9 +120,32 @@ final class InMemoryDocuments extends DocumentStore {
           pointer: Option[Pointer],
           at: Instant,
           refs: Set[DocRef]
+      )(using tx: Tx^): Either[StoreError, Written] =
+        put(
+          key,
+          label.join(Tx.clearance(tx).floor),
+          integrity,
+          place,
+          text,
+          data,
+          pointer,
+          at,
+          refs
+        )
+
+      /** As [[write]], kept at exactly `kept`. */
+      private def put(
+          key: DocKey,
+          kept: Label,
+          integrity: Integrity,
+          place: Place,
+          text: DocText,
+          data: ujson.Value,
+          pointer: Option[Pointer],
+          at: Instant,
+          refs: Set[DocRef]
       )(using tx: Tx^): Either[StoreError, Written] = {
         val clearance = Tx.clearance(tx)
-        val kept = label.join(clearance.floor)
         head(plugin, key, kept) match {
           case _ if refs.size > DocRef.Most =>
             Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs"))
@@ -142,6 +212,64 @@ final class InMemoryDocuments extends DocumentStore {
             } yield Some(version(w))
           case _ => Right(None)
         }
+
+      def declassifying(label: Label, pointer: Pointer)(using
+          Tx^
+      ): Either[StoreError, Option[PolicyApplication]] =
+        Right(for {
+          (over, version) <- applied(pointer)
+          policy <- inForce(over)
+          _ <- policy.lowered(label)
+        } yield PolicyApplication(policy, pointer, version))
+
+      def keepDeclassified(row: Declassified.Row, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Written] = {
+        val a = row.applied
+        if (
+          !inForce(a.policy.over).contains(a.policy) ||
+          !applied(a.document).contains((a.policy.over, a.version))
+        )
+          Left(
+            StoreError.Invalid(
+              "the declassification's policy or application is no longer current"
+            )
+          )
+        else
+          for {
+            written <- put(
+              row.key,
+              row.label,
+              row.integrity,
+              row.place,
+              row.text,
+              row.data,
+              None,
+              at,
+              Set.empty
+            )
+            _ <- rows
+              .collect {
+                case (_, r)
+                    if r.plugin == plugin && r.key == row.key && r.label != row.label &&
+                      r.superseded.isEmpty && r.text.nonEmpty =>
+                  r.label
+              }
+              .foldLeft[Either[StoreError, Unit]](Right(()))((acc, l) =>
+                acc.flatMap(_ => withdraw(row.key, l, at).map(_ => ()))
+              )
+          } yield {
+            written match {
+              case Written.Versioned(v, _, _) =>
+                audits = audits.updated(
+                  DocumentVersionId.value(v),
+                  (source = row.source, policy = a.policy.version, application = a.version)
+                )
+              case Written.Unchanged(_, _) => ()
+            }
+            written
+          }
+      }
 
       def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
           Tx^
@@ -442,6 +570,11 @@ final class InMemoryDocuments extends DocumentStore {
 }
 
 object InMemoryDocuments {
+
+  /** A declassified version's audit row: the version it was made from, and the policy and
+    * application versions it was made under.
+    */
+  type Audit = (source: DocumentVersionId, policy: Int, application: Int)
 
   /** One version's row: `label`, `integrity` and `room` as it is kept; `text` `None` for a
     * withdrawal.

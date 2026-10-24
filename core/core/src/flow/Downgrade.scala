@@ -12,7 +12,8 @@ import grit.core.visibility.{Integrity, Label}
   * `Durable.patch` (ADR 0004). Its rule runs only through a [[Raise]], which [[on]], [[step]]
   * and [[raise]] alone make. Two downgrades with one description are one.
   */
-final class Downgrade[-A, +B] private[flow] (
+// Widened from flow for the declassification in grit.core.document alone.
+final class Downgrade[-A, +B] private[core] (
     val described: Downgrade.Described[?],
     private[flow] val rule: A -> B
 ) extends Flow.Node {
@@ -67,7 +68,8 @@ object Downgrade {
     * far, and how much of its source's choosing passes. Made only by this package's constructors,
     * so no description pairs free text with a code rule above `Outside`.
     */
-  final case class Described[L] private[flow] (
+  // Widened from flow for the declassification in grit.core.document alone.
+  final case class Described[L] private[core] (
       name: String,
       axis: Axis[L],
       authority: Authority[L],
@@ -85,6 +87,7 @@ object Downgrade {
             authority match {
               case Authority.Rule(c) => s"by code, to at most ${Integrity.shown(c)}"
               case Authority.Person => "by the answering person, to their own integrity"
+              case Authority.Policy => "by a policy applied to a document, each result judged"
             }
           )
         case Axis.Classification =>
@@ -93,6 +96,8 @@ object Downgrade {
             authority match {
               case Authority.Rule(c) => s"by code, to no lower than ${Label.clearance(c)}"
               case Authority.Person => "by the answering person, to what their clearance reads"
+              case Authority.Policy =>
+                "by a compartment's policy applied to a document, each result judged"
             }
           )
       }
@@ -114,17 +119,19 @@ object Downgrade {
 
   /** Who decides a downgrade. `Rule`: code, never past `ceiling`. `Person`: the answering
     * person, at their own integrity; a person's downgrade is made on the step that recorded
-    * their answer.
+    * their answer. `Policy`: code applying a compartment's policy, which its owner wrote, to a
+    * document someone applied it to, each result checked by a judgment.
     */
   enum Authority[+L] {
     case Rule(ceiling: L)
     case Person
+    case Policy
   }
 
   /** How much of its source's choosing a downgrade lets pass: at most `n` bits (`Bounded`), or
     * free text, which on the integrity axis reaches `Outside` at most and stays `Tainted`.
-    * Classification's constructors, parked until a person approves a card, keep its rule there:
-    * free text with a person deciding, or bits with a rule deciding; free text by a rule never.
+    * On the classification axis free text passes only under an applied policy, checked
+    * ([[grit.core.document.Declassified.declassification]]).
     */
   enum Capacity {
     case Bits(n: Int)

@@ -4,6 +4,7 @@ import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, LocalDate, OffsetDateTime, ZoneOffset}
 
 import grit.core.document.{
+  Declassified,
   DocLabel,
   DocRef,
   DocText,
@@ -17,15 +18,17 @@ import grit.core.document.{
   Following,
   Placement,
   Pointer,
+  PolicyApplication,
   Shelved,
   Written
 }
 import grit.core.id.{DocKey, DocumentVersionId, PluginName}
+import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, Integrity, Label}
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Integrity, Label}
 
 /** [[DocumentStore]] over `grit.documents`, `grit.document_refs` and `grit.document_terms`, its
   * keepers putting up reviews in `grit.document_reviews` ([[SqlDocumentReviews]]), reading as
@@ -348,9 +351,22 @@ private[sql] object SqlDocuments {
         pointer: Option[Pointer],
         at: Instant,
         refs: Set[DocRef]
+    )(using tx: Tx^): Either[StoreError, Written] =
+      put(key, label.join(Tx.clearance(tx).floor), integrity, place, text, data, pointer, at, refs)
+
+    /** As [[write]], kept at exactly `kept`. */
+    private def put(
+        key: DocKey,
+        kept: Label,
+        integrity: Integrity,
+        place: Place,
+        text: DocText,
+        data: ujson.Value,
+        pointer: Option[Pointer],
+        at: Instant,
+        refs: Set[DocRef]
     )(using tx: Tx^): Either[StoreError, Written] = {
       val clearance: Clearance = Tx.clearance(tx)
-      val kept = label.join(clearance.floor)
       val held = refsJson(refs)
       if (refs.size > DocRef.Most)
         Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs, not ${refs.size}"))
@@ -442,6 +458,103 @@ private[sql] object SqlDocuments {
         tx: Tx^
     ): Either[StoreError, Option[DocumentVersionId]] =
       SqlLabels.intern(label).flatMap(withdrawn(key, _, at))
+
+    def declassifying(label: Label, pointer: Pointer)(using
+        tx: Tx^
+    ): Either[StoreError, Option[PolicyApplication]] =
+      rows(
+        """SELECT a.version AS application, a.over, p.version AS policy
+          |  FROM (SELECT version, over FROM grit.declassification_applications
+          |         WHERE pointer = ?::jsonb ORDER BY version DESC LIMIT 1) a
+          |  JOIN LATERAL (SELECT version, text FROM grit.declassification_policies q
+          |                 WHERE q.over = a.over ORDER BY version DESC LIMIT 1) p ON true
+          | WHERE p.text IS NOT NULL""".stripMargin
+      ) { ps =>
+        ps.setString(1, pointerJson(pointer))
+      }(rs =>
+        DeclassificationPolicy.Over
+          .read(rs.getString("over"))
+          .map(over =>
+            PolicyApplication(
+              DeclassificationPolicy(over, rs.getInt("policy")),
+              pointer,
+              rs.getInt("application")
+            )
+          )
+      ).map(_.headOption.filter(_.policy.lowered(label).isDefined))
+
+    def keepDeclassified(row: Declassified.Row, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Written] = {
+      val applied = row.applied
+      val over = applied.policy.over.written
+      for {
+        current <- rows(
+          """SELECT EXISTS (
+            |  SELECT 1 FROM grit.declassification_policies p, grit.declassification_applications a
+            |   WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
+            |     AND a.pointer = ?::jsonb AND a.version = ? AND a.over = p.over
+            |     AND NOT EXISTS (SELECT 1 FROM grit.declassification_policies q
+            |                      WHERE q.over = p.over AND q.version > p.version)
+            |     AND NOT EXISTS (SELECT 1 FROM grit.declassification_applications b
+            |                      WHERE b.pointer = a.pointer AND b.version > a.version)
+            |) AS current""".stripMargin
+        ) { ps =>
+          ps.setString(1, over)
+          ps.setInt(2, applied.policy.version)
+          ps.setString(3, pointerJson(applied.document))
+          ps.setInt(4, applied.version)
+        }(rs => Right(rs.getBoolean("current")))
+        _ <- Either.cond(
+          current.contains(true),
+          (),
+          StoreError.Invalid("the declassification's policy or application is no longer current")
+        )
+        written <- put(
+          row.key,
+          row.label,
+          row.integrity,
+          row.place,
+          row.text,
+          row.data,
+          None,
+          at,
+          Set.empty
+        )
+        id <- SqlLabels.intern(row.label)
+        others <- rows(
+          """SELECT classification_id FROM grit.documents
+            | WHERE plugin = ? AND key = ? AND classification_id <> ?
+            |   AND superseded_at IS NULL AND body IS NOT NULL""".stripMargin
+        ) { ps =>
+          ps.setString(1, PluginName.value(plugin))
+          ps.setString(2, DocKey.value(row.key))
+          ps.setInt(3, id)
+        }(rs => Right(rs.getInt("classification_id")))
+        _ <- others.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, other) =>
+          acc.flatMap(_ => withdrawn(row.key, other, at).map(_ => ()))
+        }
+        _ <- written match {
+          case Written.Versioned(version, _, _) =>
+            update(
+              """INSERT INTO grit.declassifications
+                |       (document_version, source_version, pointer, over, policy_version,
+                |        application_version, judged, made_at)
+                |VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?)""".stripMargin
+            ) { ps =>
+              ps.setLong(1, DocumentVersionId.value(version))
+              ps.setLong(2, DocumentVersionId.value(row.source))
+              ps.setString(3, pointerJson(applied.document))
+              ps.setString(4, over)
+              ps.setInt(5, applied.policy.version)
+              ps.setInt(6, applied.version)
+              ps.setFloat(7, Probability.value(row.judged).toFloat)
+              ps.setObject(8, utc(at))
+            }
+          case Written.Unchanged(_, _) => Right(0)
+        }
+      } yield written
+    }
 
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         tx: Tx^
