@@ -2,7 +2,7 @@ package grit.knowledge.card
 
 import java.time.Instant
 
-import grit.core.document.{Document, DocumentShelf}
+import grit.core.document.{Document, DocumentShelf, Pointer}
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Label
@@ -27,6 +27,12 @@ trait CardShelf extends caps.Pure {
   def linked(units: Set[Ref], until: Instant, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[CardShelf.Seen]]
+
+  /** Its current cards its transaction reads, most recent first, at most `n`, each by its
+    * version, the label it is kept at and the pointer that reads it: what a declassification is
+    * applied to ([[grit.core.document.DocumentKeeper.declassifying]]); never its text.
+    */
+  def pointed(n: Int)(using Tx^): Either[StoreError, Vector[CardShelf.Pointed]]
 }
 
 object CardShelf {
@@ -44,6 +50,10 @@ object CardShelf {
       label: Label
   ) extends caps.Pure
 
+  /** A current card as [[CardShelf.pointed]] sees it. */
+  final case class Pointed(version: DocumentVersionId, label: Label, pointer: Pointer)
+      extends caps.Pure
+
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
     def changed(since: Instant, until: Instant, n: Int, counts: Seen -> Boolean)(using
@@ -60,6 +70,16 @@ object CardShelf {
           card(until)(_).filter(_.unit.exists(units.contains)),
           _ => true
         )
+
+    def pointed(n: Int)(using Tx^): Either[StoreError, Vector[Pointed]] =
+      documents.newestWhere(n, _ => false)(
+        d =>
+          for {
+            _ <- CardKey.parse(DocKey.value(d.key)).toOption
+            pointer <- d.pointer
+          } yield Pointed(d.version, d.label, pointer),
+        _ => true
+      )
   }
 
   /** `d` as a card seen, or `None` when it is no card or written after `until`. */

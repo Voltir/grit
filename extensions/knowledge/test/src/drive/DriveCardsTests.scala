@@ -130,6 +130,13 @@ object DriveCardsTests extends TestSuite {
       )
     }
 
+    test(
+      "a Drive card's pointer is stored as {\"arguments\":{\"file\":\"<id>\"},\"tool\":\"<read>\"}, the form an application row holds"
+    ) {
+      cards(Vector(internal)).pointer("file-1").map(_.written.render()) ==>
+        Right(s"""{"arguments":{"file":"file-1"},"tool":"${ToolName.value(read)}"}""")
+    }
+
     test("a read's facts give its text at the time it last changed, its answer's text unread") {
       val stated = FactsGoldens.stated("read-file-text")
       val got = cards(Vector(internal)).fetched(Answer("not the facts", stated))

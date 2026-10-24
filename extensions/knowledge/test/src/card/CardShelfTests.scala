@@ -101,6 +101,21 @@ object CardShelfTests extends TestSuite {
       )
     }
 
+    test(
+      "pointed gives the current cards by version, label and pointer, most recent first, at most n"
+    ) {
+      val a = card("f1", None)
+      val b = card("f2", None)
+      val c = card("f3", None)
+      val (docs, versions) = kept(Vector(a -> at(1), b -> at(2), c -> at(3)))
+      CardShelf.over(docs.shelf(name)).pointed(2) ==> Right(
+        Vector(
+          CardShelf.Pointed(versions(2), Label.Public, c.pointer),
+          CardShelf.Pointed(versions(1), Label.Public, b.pointer)
+        )
+      )
+    }
+
     test("a card written after until is not seen, nor counted toward n") {
       val (docs, versions) = kept(
         Vector(card("f1", None) -> at(1), card("f2", None) -> at(2), card("f3", None) -> at(3))
