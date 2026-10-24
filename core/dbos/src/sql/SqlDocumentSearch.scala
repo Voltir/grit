@@ -87,8 +87,7 @@ final class SqlDocumentSearch extends DocumentSearch {
          |SELECT p.text FROM grit.declassification_policies p
          | WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
          |   AND p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
-         |   AND NOT EXISTS (SELECT 1 FROM grit.declassification_policies q
-         |                    WHERE q.over = p.over AND q.version > p.version)""".stripMargin
+         |   AND NOT ${SqlDeclassifications.PolicySuperseded}""".stripMargin
     ) { ps =>
       ps.setString(SqlClearance.Params + 1, policy.over.written)
       ps.setInt(SqlClearance.Params + 2, policy.version)

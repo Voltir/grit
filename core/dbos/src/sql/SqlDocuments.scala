@@ -453,12 +453,11 @@ private[sql] object SqlDocuments {
         tx: Tx^
     ): Either[StoreError, Option[PolicyApplication]] =
       rows(
-        """SELECT a.version AS application, a.over, p.version AS policy
-          |  FROM (SELECT version, over FROM grit.declassification_applications
-          |         WHERE pointer = ?::jsonb ORDER BY version DESC LIMIT 1) a
-          |  JOIN LATERAL (SELECT version, text FROM grit.declassification_policies q
-          |                 WHERE q.over = a.over ORDER BY version DESC LIMIT 1) p ON true
-          | WHERE p.text IS NOT NULL""".stripMargin
+        s"""SELECT a.version AS application, a.over, p.version AS policy
+          |  FROM grit.declassification_applications a
+          |  JOIN grit.declassification_policies p ON p.over = a.over
+          | WHERE a.pointer = ?::jsonb AND NOT ${SqlDeclassifications.ApplicationSuperseded}
+          |   AND NOT ${SqlDeclassifications.PolicySuperseded} AND p.text IS NOT NULL""".stripMargin
       ) { ps =>
         ps.setString(1, pointerJson(pointer))
       }(rs =>
@@ -480,14 +479,12 @@ private[sql] object SqlDocuments {
       val over = applied.policy.over.written
       for {
         current <- rows(
-          """SELECT EXISTS (
+          s"""SELECT EXISTS (
             |  SELECT 1 FROM grit.declassification_policies p, grit.declassification_applications a
             |   WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
             |     AND a.pointer = ?::jsonb AND a.version = ? AND a.over = p.over
-            |     AND NOT EXISTS (SELECT 1 FROM grit.declassification_policies q
-            |                      WHERE q.over = p.over AND q.version > p.version)
-            |     AND NOT EXISTS (SELECT 1 FROM grit.declassification_applications b
-            |                      WHERE b.pointer = a.pointer AND b.version > a.version)
+            |     AND NOT ${SqlDeclassifications.PolicySuperseded}
+            |     AND NOT ${SqlDeclassifications.ApplicationSuperseded}
             |) AS current""".stripMargin
         ) { ps =>
           ps.setString(1, over)
