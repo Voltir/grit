@@ -64,10 +64,22 @@ abstract class DocumentContract extends TestSuite {
   /** Runs `body` as [[opened]] does, labelling places as `visibility` does. */
   protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A
 
-  /** Records the `version`th of `over`'s policy, a revocation when `revoked`, as the operator's
-    * row does, committed.
+  /** Records the `version`th of `over`'s policy, kept at `kept`, as the operator's row does,
+    * committed: `text`, or a revocation when `None`.
     */
-  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit
+  protected def policyAt(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      text: Option[String],
+      kept: Label
+  ): Unit
+
+  /** As [[policyAt]], publicly, with [[Instructions]] unless `revoked`. */
+  private def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
+    policyAt(over, version, Option.unless(revoked)(Instructions), Label.Public)
+
+  /** A policy's text, as an operator writes one. */
+  private val Instructions: String = "remove the team's details"
 
   /** Records the `version`th application to the document `pointer` reads, of `over`'s policy or
     * a removal, as the operator's row does, committed.
@@ -1474,6 +1486,27 @@ abstract class DocumentContract extends TestSuite {
       policy(team, 2, revoked = true)
       (before, asked(held, applied)) ==> (
         (Some((DeclassificationPolicy(team, 1), 1)), None, None, None, None),
+        None
+      )
+    }
+
+    test(
+      "instructions are a policy version's text while it is its compartment's current one and the transaction reads the label it is kept at; none otherwise, and none once revoked"
+    ) {
+      val team = over("di-team")
+      val grant = Label.at(Level.Confidential, TestLabels.compartment("di-team"))
+      val cleared = Clearance.of(grant)
+      def read(clearance: Clearance, version: Int) =
+        opened(clearance)(ok(search.instructions(DeclassificationPolicy(team, version))))
+      policyAt(team, 1, Some("drop the venue"), grant)
+      val first = (read(cleared, 1), read(Clearance.of(Label.at(Level.Confidential)), 1))
+      policyAt(team, 2, Some("drop the venue and the date"), grant)
+      val second = (read(cleared, 1), read(cleared, 2))
+      policyAt(team, 3, None, grant)
+      (first, second, read(cleared, 2), read(cleared, 3)) ==> (
+        (Some("drop the venue"), None),
+        (None, Some("drop the venue and the date")),
+        None,
         None
       )
     }

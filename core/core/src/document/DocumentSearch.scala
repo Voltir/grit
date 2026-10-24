@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.DeclassificationPolicy
 
 /** A place where `plugin` keeps a current document. */
 final case class Shelved(plugin: PluginName, place: Place)
@@ -67,6 +68,13 @@ trait DocumentSearch {
     * in their order.
     */
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]]
+
+  /** The text of `policy`, saying what a rewrite under it removes and what it writes in its
+    * place; `None` when `policy`'s version is not its compartment's current one, the current one
+    * is a revocation, or its transaction does not read the label the policy is kept at (its
+    * compartment's own group's grant).
+    */
+  def instructions(policy: DeclassificationPolicy)(using Tx^): Either[StoreError, Option[String]]
 
   /** The versions among `versions` still kept whose plugin is enabled, in their order, each
     * with its plugin's label: what a window holding `versions` shows.

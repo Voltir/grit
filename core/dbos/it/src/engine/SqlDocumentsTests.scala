@@ -13,12 +13,13 @@ import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Clearance, DeclassificationPolicy, Visibility}
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Label, Visibility}
 import grit.dbos.sql.{
   LiveDb,
   SqlDocumentReviews,
   SqlDocumentSearch,
   SqlDocuments,
+  SqlLabels,
   SqlSavepoints,
   SqlStatements,
   SqlTombstones,
@@ -72,15 +73,21 @@ object SqlDocumentsTests extends DocumentContract {
         _ => ()
       )
 
-  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
+  protected def policyAt(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      text: Option[String],
+      kept: Label
+  ): Unit =
     run(
-      """INSERT INTO grit.declassification_policies
-        |       (over, version, classification_id, text, set_at, set_by)
-        |VALUES (?, ?, 1, ?, now(), 'local')""".stripMargin
+      s"""INSERT INTO grit.declassification_policies
+         |       (over, version, classification_id, text, set_at, set_by)
+         |VALUES (?, ?, ${SqlLabels.Interned}, ?, now(), 'local')""".stripMargin
     ) { ps =>
       ps.setString(1, over.written)
       ps.setInt(2, version)
-      ps.setString(3, if (revoked) null else "remove the team's details")
+      SqlLabels.bind(ps, 3, kept)
+      ps.setString(5, text.orNull)
     }
 
   protected def application(

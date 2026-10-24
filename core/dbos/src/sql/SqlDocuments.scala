@@ -62,6 +62,10 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
     reads.read(versions)
 
+  def instructions(policy: DeclassificationPolicy)(using
+      Tx^
+  ): Either[StoreError, Option[String]] = reads.instructions(policy)
+
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using
       tx: Tx^
   ): Either[StoreError, Unit] =

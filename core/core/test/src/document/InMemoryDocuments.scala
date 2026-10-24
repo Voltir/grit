@@ -45,9 +45,10 @@ final class InMemoryDocuments extends DocumentStore {
     })
 
   // As `rows`: only ever replaced by a new immutable map. The operator's rows: each policy's
-  // versions, whether each holds text; each document's applications, by its pointer.
+  // versions, each with its text (none for a revocation) and the label it is kept at; each
+  // document's applications, by its pointer.
   @caps.unsafe.untrackedCaptures
-  private var policies = Map.empty[(DeclassificationPolicy.Over, Int), Boolean]
+  private var policies = Map.empty[(DeclassificationPolicy.Over, Int), (Option[String], Label)]
 
   @caps.unsafe.untrackedCaptures
   private var applications = Map.empty[(Pointer, Int), Option[DeclassificationPolicy.Over]]
@@ -56,11 +57,16 @@ final class InMemoryDocuments extends DocumentStore {
   @caps.unsafe.untrackedCaptures
   private var audits = Map.empty[Long, InMemoryDocuments.Audit]
 
-  /** Records the `version`th of `over`'s policy, revoking it when `revoked`, as an operator's
-    * row does.
+  /** Records the `version`th of `over`'s policy, kept at `kept`, as an operator's row does:
+    * `text`, or a revocation when `None`.
     */
-  def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean = false): Unit =
-    policies = policies.updated((over, version), !revoked)
+  def policy(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      text: Option[String] = Some(InMemoryDocuments.Instructions),
+      kept: Label = Label.Public
+  ): Unit =
+    policies = policies.updated((over, version), (text, kept))
 
   /** Records the `version`th application to the document `pointer` reads: `over`'s policy, or
     * none when removed, as an operator's row does.
@@ -79,7 +85,7 @@ final class InMemoryDocuments extends DocumentStore {
   /** `over`'s current policy, when its current version is not a revocation. */
   private def inForce(over: DeclassificationPolicy.Over): Option[DeclassificationPolicy] =
     policies
-      .collect { case ((o, v), held) if o == over => (v, held) }
+      .collect { case ((o, v), (text, _)) if o == over => (v, text.isDefined) }
       .maxByOption(_._1)
       .collect { case (v, true) => DeclassificationPolicy(over, v) }
 
@@ -445,6 +451,18 @@ final class InMemoryDocuments extends DocumentStore {
         .flatMap(r => r.text.map(document(DocumentVersionId.value(v), r, _)))
     })
 
+  def instructions(policy: DeclassificationPolicy)(using
+      tx: Tx^
+  ): Either[StoreError, Option[String]] =
+    Right(
+      inForce(policy.over)
+        .filter(_ == policy)
+        .flatMap(p => policies.get((p.over, p.version)))
+        .collect {
+          case (Some(text), kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) => text
+        }
+    )
+
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using Tx^): Either[StoreError, Unit] = {
     terms = terms.map((p, t) => p -> (t._1, false)) ++ enabled.map((p, t) => p -> (t, true))
     Right(())
@@ -570,6 +588,9 @@ final class InMemoryDocuments extends DocumentStore {
 }
 
 object InMemoryDocuments {
+
+  /** The text a policy recorded without one given holds. */
+  val Instructions: String = "remove the team's details"
 
   /** A declassified version's audit row: the version it was made from, and the policy and
     * application versions it was made under.

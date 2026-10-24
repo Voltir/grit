@@ -158,6 +158,9 @@ object TopicDreamTests extends TestSuite {
           Tx^
       ): Either[StoreError, Vector[Document]] =
         documents.read(versions).map(_.filterNot(unread))
+      def instructions(policy: grit.core.visibility.DeclassificationPolicy)(using
+          Tx^
+      ): Either[StoreError, Option[String]] = documents.instructions(policy)
     }
 
     private given Tx = TestTx.fake

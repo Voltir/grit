@@ -262,6 +262,9 @@ object RetrievalAssemblerTests extends TestSuite {
       reads = reads :+ versions
       under.read(versions)
     }
+    def instructions(policy: grit.core.visibility.DeclassificationPolicy)(using
+        Tx^
+    ): Either[StoreError, Option[String]] = under.instructions(policy)
     // Only ever holds immutable vectors; nothing reads it but the test that owns it.
     @caps.unsafe.untrackedCaptures
     var reads = Vector.empty[Vector[DocumentVersionId]]

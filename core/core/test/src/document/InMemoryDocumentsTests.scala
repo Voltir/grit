@@ -3,7 +3,7 @@ package grit.core.document
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.review.DocumentReviews
 import grit.core.store.{Origin, Savepoints, Tombstones, Tx}
-import grit.core.visibility.{Clearance, DeclassificationPolicy, Visibility}
+import grit.core.visibility.{Clearance, DeclassificationPolicy, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** The documents contract, kept by the in-memory fake. */
@@ -33,8 +33,12 @@ object InMemoryDocumentsTests extends DocumentContract {
   // Rooms are places, which the fake needs no row for.
   protected def room(origin: Origin): Unit = ()
 
-  protected def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
-    documents.policy(over, version, revoked)
+  protected def policyAt(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      text: Option[String],
+      kept: Label
+  ): Unit = documents.policy(over, version, text, kept)
 
   protected def application(
       pointer: Pointer,
