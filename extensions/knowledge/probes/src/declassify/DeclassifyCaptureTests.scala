@@ -6,8 +6,9 @@ import utest.*
 
 /** What the compiler rejects of a plugin's code around a declassification: it calls
   * [[grit.core.act.Dreaming.declassify]] and keeps what it hands back, but never reads a rewrite's
-  * text, makes the declassification, reaches the move's raise or its primitives, or makes the row
-  * a keeper keeps below its floor. Each probe holds one breach; the control must compile.
+  * text or reaches the move's raise or its primitives. That it makes neither the declassification
+  * nor the row a keeper keeps is pinned in core's `DowngradeCaptureTests`. Each probe holds one
+  * breach; the control must compile.
   *
   * Expires: delete once capture and separation checking are no longer experimental. Until then
   * an upgrade can change what they reject silently; this suite is re-read at each Scala bump.
@@ -26,21 +27,16 @@ object DeclassifyCaptureTests extends TestSuite {
       |  m.declassify(MoveName("d"), v, a)
       |""".stripMargin
   private val textRead = "def f(d: Declassified) = d.text"
-  private val declassificationMade = "val n = Declassified.declassification"
   private val raiseReached =
     "def f(m: Dreaming^) = m.declassifier"
   private val primitiveCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
       |  m.rewrite(MoveName("d"), v, a)
       |""".stripMargin
-  private val rowMade =
-    """def f(k: DocumentKeeper, d: Declassified, at: java.time.Instant)(using grit.core.store.Tx^) =
-      |  k.keepDeclassified(new Declassified.Row(???, ???, ???, ???, ???, ???, d.source, d.applied, d.judged), at)
-      |""".stripMargin
 
   private lazy val compiled = Probes.batch(
     prelude,
-    List(control, textRead, declassificationMade, raiseReached, primitiveCalled, rowMade)
+    List(control, textRead, raiseReached, primitiveCalled)
   )
 
   private def says(text: String)(found: List[String]): Boolean = found.exists(_.contains(text))
@@ -50,16 +46,8 @@ object DeclassifyCaptureTests extends TestSuite {
       compiled.errors(control) ==> Nil
     }
 
-    test(
-      "a plugin reads no rewrite's text, makes no declassification, and makes no row a keeper keeps below its floor"
-    ) {
-      assert(
-        says("private[core] value text can only be accessed")(compiled.errors(textRead)),
-        says("private[core] value declassification can only be accessed")(
-          compiled.errors(declassificationMade)
-        ),
-        says("private[document] constructor Row can only be accessed")(compiled.errors(rowMade))
-      )
+    test("a plugin reads no rewrite's text") {
+      assert(says("private[core] value text can only be accessed")(compiled.errors(textRead)))
     }
 
     test("a plugin reaches neither a declassify's raise nor its primitives") {
