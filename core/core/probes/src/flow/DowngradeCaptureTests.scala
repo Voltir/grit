@@ -98,6 +98,26 @@ object DowngradeCaptureTests extends TestSuite {
       |  new Declassified.Row(k, d.label, Integrity.Member, p, t, ujson.Obj(), d.source, d.applied,
       |    d.judged)""".stripMargin
 
+  /** A program declaring the declassification, raising it on `source`: the control takes the
+    * source it was handed, the breach makes one.
+    */
+  private def declassifyingOn(source: String): String =
+    s"""import grit.core.document.*
+      |def f(t: DocText, s: Declassified.Source, a: PolicyApplication) =
+      |  Flow.program[Any, String, String]("p", Vector(grit.core.act.Declassifying.Node))(steps => in =>
+      |    grit.core.act.Declassifying.raise(using steps) match {
+      |      case Some(r) =>
+      |        r((rewrite = t, source = $source, applied = a,
+      |          leak = grit.core.period.Probability.Zero)).toString
+      |      case None => in
+      |    })""".stripMargin
+  private val sourceHanded = declassifyingOn("s")
+  private val sourceApplied =
+    declassifyingOn("Declassified.Source(s.version, s.plugin, s.key, s.place, s.label, s.pointer)")
+  private val sourceMade = declassifyingOn(
+    "new Declassified.Source(s.version, s.plugin, s.key, s.place, s.label, s.pointer)"
+  )
+
   /** Inside grit.core.document, where the declassification is made: its rule is pure. */
   private val inside =
     """package grit.core.document
@@ -137,6 +157,9 @@ object DowngradeCaptureTests extends TestSuite {
       declassificationOutside,
       declassifiedMade,
       rowMade,
+      sourceHanded,
+      sourceApplied,
+      sourceMade,
       declassifyingNodeOn,
       stepsForged
     )
@@ -250,6 +273,18 @@ object DowngradeCaptureTests extends TestSuite {
         says(
           "private[document] constructor Row can only be accessed from package grit.core.document in package grit.core."
         )(probe(rowMade))
+      )
+    }
+
+    test(
+      "a program declaring the declassification raises it outside grit.core only on a source core made"
+    ) {
+      probe(sourceHanded) ==> Nil
+      assert(
+        says("object Source in object Declassified does not take parameters")(probe(sourceApplied)),
+        says(
+          "private[core] constructor Source can only be accessed from package grit.core in package grit."
+        )(probe(sourceMade))
       )
     }
 
