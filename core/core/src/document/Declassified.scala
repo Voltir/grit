@@ -45,6 +45,50 @@ object Declassified {
       pointer: Pointer
   ) extends caps.Pure
 
+  /** What a kept rewrite was made from, as its data names it: its `source` version, and the
+    * compartment (`over`) and `policy` version of the policy, and the `application` version, it
+    * was made under. A rewrite is current while these are its source's current version and the
+    * versions in force.
+    */
+  final case class Made(
+      source: DocumentVersionId,
+      over: DeclassificationPolicy.Over,
+      policy: Int,
+      application: Int
+  ) extends caps.Pure {
+
+    /** `{"source", "over", "policy", "application"}`: a kept rewrite's data. */
+    def written: ujson.Obj =
+      ujson.Obj(
+        "source" -> ujson.Num(DocumentVersionId.value(source).toDouble),
+        "over" -> ujson.Str(over.written),
+        "policy" -> ujson.Num(policy.toDouble),
+        "application" -> ujson.Num(application.toDouble)
+      )
+  }
+
+  object Made {
+
+    /** A rewrite of `source` under `applied`. */
+    def of(source: DocumentVersionId, applied: PolicyApplication): Made =
+      Made(source, applied.policy.over, applied.policy.version, applied.version)
+
+    /** What `data` says a rewrite was made from ([[Made.written]]); `None` when it is no
+      * rewrite's data.
+      */
+    def read(data: ujson.Value): Option[Made] =
+      for {
+        o <- data.objOpt
+        source <- o.get("source").flatMap(_.numOpt).flatMap(n => DocumentVersionId.of(n.toLong))
+        over <- o
+          .get("over")
+          .flatMap(_.strOpt)
+          .flatMap(DeclassificationPolicy.Over.read(_).toOption)
+        policy <- o.get("policy").flatMap(_.numOpt).map(_.toInt)
+        application <- o.get("application").flatMap(_.numOpt).map(_.toInt)
+      } yield Made(source, over, policy, application)
+  }
+
   /** 0.1: the check's probability at or above which nothing is declassified. */
   val Below: Probability = Probability.clamped(0.1)
 
@@ -107,12 +151,7 @@ object Declassified {
           integrity,
           d.from.place,
           d.text,
-          ujson.Obj(
-            "source" -> ujson.Num(DocumentVersionId.value(d.source).toDouble),
-            "over" -> ujson.Str(d.applied.policy.over.written),
-            "policy" -> ujson.Num(d.applied.policy.version.toDouble),
-            "application" -> ujson.Num(d.applied.version.toDouble)
-          ),
+          Made.of(d.source, d.applied).written,
           d.source,
           d.applied,
           d.judged

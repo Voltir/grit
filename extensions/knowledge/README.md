@@ -67,12 +67,21 @@ Packages, in one-way order (each names only those before it):
   cards' titles) with the four verdicts a rater gives it (`TopicVerdict`). Its code never
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `strand`,
   `sync` or a source.
+- **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
+  current cards by their pointers, asks for each the application in force, withdraws in its scan
+  every rewrite not of a card's current version under the versions in force, and has core
+  rewrite and check each card due (`Dreaming.declassify`), keeping the rewrite below its floor or
+  remembering it withheld (`Withheld`, one document per label). A card is rewritten without a
+  compartment only when an operator applies that compartment's policy to its pointer; see
+  `grit.declassification_applications` in schema.sql. Its code never holds a card's or a
+  rewrite's text. Imports `card`.
 - **`plugin`**: wiring only. `Knowledge`, the plugin over a deployment's sources: its
   documents' terms, the `Sync` job, each source's sync schedules (the keys in `Knowledge`'s
   doc), and its export, a `CardShelf`; `StrandDocuments`, the strands plugin: the
   `StrandDream` job on a daily schedule per label it is declared at, and its documents' terms;
   `TopicDocuments`, the topics plugin, the same for `TopicDream`, needing the plugin that
-  exports its cards when given one (`DreamSchedules` holds what the two share); and
+  exports its cards when given one (`DreamSchedules` holds what the two share);
+  `DeclassifiedCards`, the plugin of `CardDeclassify` on one schedule, needing that plugin; and
   `StandingDocuments`, a plugin of its own over `standing`; and `Leaves`, which documents say
   again what a topic was written from, read by the eval's duplication measure alone, since
   the three plugins' key forms meet only here. Each is its own plugin because a
