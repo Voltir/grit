@@ -41,6 +41,11 @@ object SlotRuleTests extends TestSuite {
       every(7.minutes).after(at("2026-10-07T10:02:00Z")) ==> Some(at("2026-10-07T10:07:00Z"))
     }
 
+    test("Every's next slot before the epoch is the first multiple after it") {
+      every(5.minutes).after(at("1969-12-31T23:58:00Z")) ==> Some(at("1970-01-01T00:00:00Z"))
+      every(5.minutes).after(at("1969-12-31T23:50:00Z")) ==> Some(at("1969-12-31T23:55:00Z"))
+    }
+
     test("a slot exactly on a multiple is not after itself") {
       every(5.minutes).after(at("2026-10-07T10:05:00Z")) ==> Some(at("2026-10-07T10:10:00Z"))
       every(30.minutes).between(at("2026-10-07T10:00:00Z"), at("2026-10-07T11:00:00Z")).toVector ==>
