@@ -1575,5 +1575,39 @@ abstract class DocumentContract extends TestSuite {
       (policyStale, applicationStale, opened(internal)(keys(ok(shelf(p).newest(10))))) ==>
         (stale, stale, Vector())
     }
+
+    test("a rewrite at a new label withdraws the one at the old label") {
+      val p = name("doc-declassified-moved")
+      val k = keeper(p, terms())
+      val team = over("dm-team")
+      val card = file("dm-card")
+      val confidential = Clearance.of(Label.at(Level.Confidential))
+      policy(team, 1, revoked = false)
+      application(card, 1, Some(team))
+      def rewrite(body: String, level: Level): Written = {
+        val source = Label.at(level, TestLabels.compartment("dm-team"))
+        opened(confidential) {
+          val applied = ok(k.declassifying(source, card))
+            .getOrElse(throw new java.lang.AssertionError("no application"))
+          ok(k.declassified(declassified(body, source, card, applied), Integrity.Member, at(1)))
+        }
+      }
+      val derived = key(s"cards:${ShortHash.of("card")}")
+      def keptAt(level: Level) =
+        opened(confidential)(
+          ok(shelf(p).current(derived, Label.at(level))).map(d => DocText.value(d.text))
+        )
+      (
+        rewrite("the gist", Level.Internal).kept,
+        rewrite("the fuller gist", Level.Confidential).kept,
+        keptAt(Level.Internal),
+        keptAt(Level.Confidential)
+      ) ==> (
+        Label.at(Level.Internal),
+        Label.at(Level.Confidential),
+        None,
+        Some("the fuller gist")
+      )
+    }
   }
 }
