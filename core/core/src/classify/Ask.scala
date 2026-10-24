@@ -85,7 +85,7 @@ object Scored {
 
 /** Questions about a state of type `S`, asked together, and how their answers read into a
   * `T`. Built with [[Ask.choice]], [[Ask.score]] and [[Ask.yesNo]], combined with `zip` and
-  * `map`.
+  * `map`. How to word a question and its state: the `grit-model-text` skill.
   */
 final class Ask[S, T] private (
     val questions: Vector[Question],

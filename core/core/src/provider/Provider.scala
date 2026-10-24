@@ -48,7 +48,8 @@ enum Delta {
 }
 
 /** A model call's input: the system prompt, then `messages` in order, and the `tools` the
-  * model may call as `use` allows. With no tools the model can only answer in text.
+  * model may call as `use` allows. With no tools the model can only answer in text. What goes
+  * in `system` and what in `messages`, and how to word and fence it: the `grit-model-text` skill.
   */
 final case class ModelRequest(
     system: String,
