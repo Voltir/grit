@@ -63,9 +63,14 @@ object DeclassifiedCardsTests extends TestSuite {
 
     test("a label holding the unmapped mark, or a compartment not declared, is refused") {
       (
-        of(Label.Unmapped.join(Label.at(Level.Confidential))).isLeft,
-        of(Label.at(Level.Confidential, TestLabels.compartment("other"))).isLeft
-      ) ==> (true, true)
+        of(Label.Unmapped.join(Label.at(Level.Confidential))).left.toOption,
+        of(Label.at(Level.Confidential, TestLabels.compartment("other"))).left.toOption
+      ) ==> (
+        Some("the declassified cards plugin is declared at a label holding what no one labelled"),
+        Some(
+          "the declassified cards plugin's label confidential+other holds a compartment not declared"
+        )
+      )
     }
   }
 }

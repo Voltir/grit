@@ -229,13 +229,13 @@ object CardDeclassifyTests extends TestSuite {
       val _ = runs.card("c1", "The offsite moved to the city.")
       val changed = runs.run()
       val withheld = runs.run(leak = 0.9)
-      (Vector(first, again, policed, reapplied, changed).map(_.take(32)), runs.asked) ==> (
+      (Vector(first, again, policed, reapplied, changed), runs.asked) ==> (
         Vector(
-          "declassified cards: 1 written, 0",
-          "declassified cards: 0 written, 0",
-          "declassified cards: 1 written, 0",
-          "declassified cards: 1 written, 0",
-          "declassified cards: 1 written, 0"
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run"
         ),
         (4, 4)
       )
@@ -257,7 +257,7 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     test(
-      "a rewrite whose card is gone, or whose application or policy is no longer current, is withdrawn in the run's keep"
+      "a rewrite whose card is gone, or whose application or policy is no longer current, is withdrawn in the run's scan"
     ) {
       val runs = new Runs
       Vector("a", "b", "c").foreach { id =>
@@ -294,10 +294,17 @@ object CardDeclassifyTests extends TestSuite {
       )
     }
 
-    test("its parameters read back as written; a perRun under 1 does not read") {
+    test("its parameters read back as written; a perRun under 1, or not whole, does not read") {
       val job = new CardDeclassify(5, Cards)
-      (job.read(job.write(DeclassifyParams(3))), job.read(ujson.Obj("perRun" -> 0)).isLeft) ==>
-        (Right(DeclassifyParams(3)), true)
+      (
+        job.read(job.write(DeclassifyParams(3))),
+        job.read(ujson.Obj("perRun" -> 0)),
+        job.read(ujson.Obj("perRun" -> 1.5))
+      ) ==> (
+        Right(DeclassifyParams(3)),
+        Left("a declassify's parameters hold perRun, a whole number at least 1: {\"perRun\":0}"),
+        Left("a declassify's parameters hold perRun, a whole number at least 1: {\"perRun\":1.5}")
+      )
     }
   }
 }
