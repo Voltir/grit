@@ -35,6 +35,9 @@ final class DeclassifiedCards private (
 
   override val needs: Vector[Exports[?]] = Vector(cards)
 
+  // Not DreamSchedules.documents: that marks undeclared each document at a label its schedules
+  // are not at, and a rewrite is kept below `at`, without its policy's compartment, so every
+  // one would be undeclared and withdrawn by the sweep.
   override val documents: Option[Documents] = Some(new Documents {
     val terms: DocumentTerms = kept
     val posting: Option[DocumentPosting] = None
