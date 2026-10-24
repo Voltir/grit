@@ -25,7 +25,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.dbos.sql.{Opener, SqlSchedules}
+import grit.dbos.sql.{Opener, SqlDeclassifications, SqlSchedules}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -62,7 +62,7 @@ private[engine] final class Collector(
     * retention each plugin declares, at most [[Batch]] for each enabled plugin under its
     * terms in force, collected, spared or deferred at `now` under `settings`; then the
     * tombstones ended, and the documents' reviews put up, longer ago than the ledger window
-    * forgotten.
+    * forgotten, and the declassification versions nothing needs ([[SqlDeclassifications.forget]]).
     */
   def once(settings: LifecycleSettings, now: Instant): Either[StoreError, Swept] =
     for {
@@ -102,6 +102,7 @@ private[engine] final class Collector(
       _ <- Transact.write(dataSource, opener)(
         documentReviews.forget(now.minusMillis(settings.windows.ledger.toMillis))
       )
+      _ <- Transact.write(dataSource, opener)(SqlDeclassifications.forget)
     } yield swept
 
   /** Each of `due` collected at `now`, after `done`. */
