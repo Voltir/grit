@@ -35,7 +35,24 @@ Sort text by who wrote it and how far it is trusted:
 - Escape the closing tag inside content you fence, so a document cannot end its own fence.
 - Long material (thousands of tokens) goes first, the ask last: Anthropic reports up to 30% better answers with
   the query at the end of multi-document input.
-- Classifier (Jev) state is already structured JSON; it needs no tags.
+
+## Judges (Classifier)
+
+A judge is not a Claude model, and Anthropic's guidance above does not carry over. `Classifier.ask` sends a
+state (`StateJson[S]`) and questions (`Ask[S, T]`, built from `Question`s) as one request, shaped on Jev's
+`POST /v1/systemone`; Jev's docs are the source ([docs.typesafe.ai](https://docs.typesafe.ai), especially
+"Model jaggedness" for the model a deployment runs).
+
+- **The state is fenced by its JSON.** Each field is a named string, and serialisation escapes anything inside it.
+  Add no XML tags inside fields: they add tokens, and Jev loses accuracy as the state grows.
+- **Questions name the fields they read** ("compare text with source"). `StateJson[S]`'s field names are part of
+  `S`'s contract, documented where `S` is.
+- **Send only what the questions need.** Filter in code first; unrelated material costs accuracy.
+- **State can steer the answer.** Jev does not treat state as hostile: an injected instruction, or text arguing
+  for its own classification, can move a probability. Make the criteria explicit, and test a judge against a
+  state written to fool it before trusting its gate.
+- **Instructions and criteria must agree.** Write them as one plain request a person would read the same way;
+  split an interpretation into two literal questions and combine them in code.
 
 ## Wording
 
