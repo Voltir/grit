@@ -3,14 +3,13 @@
 Status: accepted (2026-10-06); revised (2026-10-16, 2026-10-18)
 
 Context: grit first served several people with no visibility model: one database was one
-trust boundary, so everyone who could write to the conversations a database held could see
-everything it held. Every room's closings, documents and plugin tools could reach every other
-room's window. That boundary is superseded here; visibility narrows it and never widens it.
-Turned down:
+trust boundary, so whoever could write to its conversations could see everything it held, and
+any room's closings, documents and plugin tools reached every room's window. Visibility
+narrows that boundary, never widens it. Turned down:
 
 - Visibility by place, a document kept at a workspace's root reaching every channel under it:
-  the place tree says what a thing is about, not who may see it (ADR 0013 ranks by place and
-  decides nothing: locality is not visibility), and a sharing set fits no place.
+  the place tree says what a thing is about, not who may see it (ADR 0013 ranks by place;
+  locality is not visibility), and a sharing set fits no place.
 - Reader sets: they go stale as membership does.
 - A label stored as a set of atoms, so a deployment could insert a level: such a set has more
   values than there are labels, and its join folds a malformed one into a valid one.
@@ -37,7 +36,7 @@ Decision:
   reads everywhere up to the label its place is written at outside grit (`Tx.writable`), and
   public rows alone where nothing writes. It is no trusted subject: it reads no more than the
   place may receive, and a post rechecks in its own transaction that the place still dominates
-  what it posts, since a place's label may fall in between.
+  what it posts, as a place's label may fall.
 - **A room has one label in force**, set by one rule in core (ADR 0033). What is said in a
   room takes its label, so a reply is never above its room; a conversation keeps the label it
   was created at (strong tranquility).
@@ -61,13 +60,12 @@ Decision:
 Consequences:
 
 - A document or a closing can be drawn on in any room whose clearance dominates its label.
-- Derived data is kept per label: a plugin keeps a variant per label it derives at, and serves
-  the one its reader may read.
-- Under the default, with no compartment declared and every room public, nothing a reader
-  reads changes.
+- Derived data is kept per label: a plugin keeps a variant per label and serves the one its
+  reader may read.
+- By default (no compartment declared, every room public), no reader reads anything new.
 - A judge's error leaks through one outbound call or one summary, never through a window.
-- A start that drops a declared compartment is refused, since it could make a stored label
-  readable to a clearance that could not read it.
+- A start that drops a declared compartment is refused: it could make a stored label readable
+  to a clearance that could not read it.
 - Enforced by the compiler (no transaction opens without a subject), the law
   (`only-dbos-names-maintenance`), and `LabelContract`, which binds dominance, join and meet
   in Scala to the same in SQL. Row-level security is the later enforcement in the database.
