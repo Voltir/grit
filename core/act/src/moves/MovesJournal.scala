@@ -104,10 +104,15 @@ private[moves] object AskMade {
     case Store extends Kind("store")
     case Uncleared extends Kind("uncleared")
 
-    /** A strand's summary found its strand's messages changed since its scan: nothing was
-      * asked.
+    /** A strand's summary found its strand's messages changed since its scan, or a rewrite or
+      * check found its source or the application in force for it changed: nothing was asked.
       */
     case Changed extends Kind("changed")
+
+    /** A rewrite or check found its source's file had no pieces at the revision named: nothing
+      * was asked.
+      */
+    case Unpieced extends Kind("unpieced")
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at

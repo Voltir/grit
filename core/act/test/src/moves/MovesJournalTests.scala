@@ -508,6 +508,13 @@ object MovesJournalTests extends TestSuite {
       )
     }
 
+    test("a rewrite or check whose source's file had no pieces is written unpieced, with its why") {
+      pinned[AskMade](
+        AskMade.Refused(AskMade.Kind.Unpieced, "no pieces", "v2:ab"),
+        """{"refused":"unpieced","why":"no pieces","digest":"v2:ab"}"""
+      )
+    }
+
     test("a strand's summary records none of what its members said, and its reply's level") {
       val (world, root) = MovesContract.strand()
       val seen = StrandWorld.right(

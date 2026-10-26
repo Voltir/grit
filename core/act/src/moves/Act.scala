@@ -270,10 +270,25 @@ private[moves] object Act {
     */
   final case class Sourced(source: Declassified.Source, level: Integrity)
 
+  /** The refusal kind a rewrite or check that read nothing records for `why`. */
+  def unreadKind(why: Declassifying.Unread): AskMade.Kind = why match {
+    case Declassifying.Unread.Lapsed => AskMade.Kind.Changed
+    case Declassifying.Unread.Unpieced => AskMade.Kind.Unpieced
+  }
+
+  /** The reason a refusal of `kind` says a rewrite or check read nothing; `None` for a kind
+    * that says no such thing. The inverse of [[unreadKind]].
+    */
+  def unreadOf(kind: AskMade.Kind): Option[Declassifying.Unread] = kind match {
+    case AskMade.Kind.Changed => Some(Declassifying.Unread.Lapsed)
+    case AskMade.Kind.Unpieced => Some(Declassifying.Unread.Unpieced)
+    case _ => None
+  }
+
   /** A rewrite's `ask:{n}`: what its reading names read in one transaction for its acting's
     * subject ([[Declassifying.read]]), then asked of the dream role's pins as
-    * [[Declassifying.request]]; beside it, what it read of the source. A refusal of kind
-    * `Changed` in the words of why it read nothing ([[Declassifying.Unread.why]]).
+    * [[Declassifying.request]]; beside it, what it read of the source. A refusal of the kind
+    * [[unreadKind]] gives why it read nothing, in the words of [[Declassifying.Unread.why]].
     */
   val rewrite: Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])] = {
     import MovesJournal.given
@@ -282,7 +297,7 @@ private[moves] object Act {
         env.db.read(r.acting.subject)(Declassifying.read(r.reading)) match {
           case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), r.digest), None)
           case Right(Left(why)) =>
-            (AskMade.Refused(AskMade.Kind.Changed, why.why, r.digest), None)
+            (AskMade.Refused(unreadKind(why), why.why, r.digest), None)
           case Right(Right(shown)) =>
             (
               texted(env, r.acting, Dreams, Declassifying.request(shown), r.digest),
@@ -302,7 +317,7 @@ private[moves] object Act {
       c =>
         env.db.read(c.acting.subject)(Declassifying.read(c.reading)) match {
           case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), c.digest)
-          case Right(Left(why)) => AskMade.Refused(AskMade.Kind.Changed, why.why, c.digest)
+          case Right(Left(why)) => AskMade.Refused(unreadKind(why), why.why, c.digest)
           case Right(Right(shown)) =>
             val state = Declassifying.state(shown, c.rewrite)
             judged(

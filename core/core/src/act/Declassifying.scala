@@ -198,12 +198,6 @@ object Declassifying {
     case Unpieced extends Unread("its source's file has no pieces at the revision it names")
   }
 
-  object Unread {
-
-    /** The reason whose words are `why`; `None` when none is. */
-    def said(why: String): Option[Unread] = Unread.values.find(_.why == why)
-  }
-
   /** What a rewrite is made from, as one transaction reads it: its source, the text of its file
     * at `reading.revision` ([[grit.core.files.Pieces.text]] of at most [[SourcePieces]] pieces,
     * cut at [[SourceChars]] at a word, [[grit.core.message.Cut.head]]) and its policy's text; or

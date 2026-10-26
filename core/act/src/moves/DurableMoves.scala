@@ -260,11 +260,11 @@ object DurableMoves {
         readable
       )
 
-    /** Why a rewrite's or check's step read nothing, as its refusal of kind `Changed` says; `None`
-      * for any other record, and for a refusal in no reason's words, which diverges.
+    /** Why a rewrite's or check's step read nothing, as its refusal's kind says ([[Act.unreadOf]]);
+      * `None` for any other record.
       */
     private def unread(made: AskMade): Option[Declassifying.Unread] = made match {
-      case AskMade.Refused(AskMade.Kind.Changed, why, _, _) => Declassifying.Unread.said(why)
+      case AskMade.Refused(kind, _, _, _) => Act.unreadOf(kind)
       case _ => None
     }
 
