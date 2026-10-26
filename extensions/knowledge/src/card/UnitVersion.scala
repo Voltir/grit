@@ -46,9 +46,7 @@ object UnitVersion {
       case Some(value) =>
         value.strOpt
           .flatMap(of(_).toOption)
-          .toRight(
-            s"its version, ${value.strOpt.getOrElse(ujson.write(value))}, is no git SHA or instant"
-          )
+          .toRight(s"its version, ${CardField.shown(value)}, is no git SHA or instant")
       case None => Left("it holds no version")
     }
 

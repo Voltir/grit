@@ -6,7 +6,7 @@ import grit.core.id.{CorpusName, DocKey}
 import grit.core.json.Fields
 import grit.core.place.Place
 import grit.core.visibility.Label
-import grit.knowledge.card.{Scope, UnitVersion}
+import grit.knowledge.card.{CardField, Scope, UnitVersion}
 import grit.knowledge.ref.CardKey
 
 /** A card a run holds, as its `held` keep reads it: its key, its unit's path, the label it is
@@ -75,20 +75,19 @@ object Held {
               .flatMap(Scope.parse(_).left.map(_ => ()))
               .map(Some(_))
               .left
-              .map(_ => s"its scope, ${shown(value)}, is no scope")
+              .map(_ => s"its scope, ${CardField.shown(value)}, is no scope")
         }
         within <- data.flatMap(_.get("within")) match {
           case None => Right(None)
           case Some(value) =>
-            value.strOpt.map(Some(_)).toRight(s"its within, ${shown(value)}, is no string")
+            value.strOpt
+              .map(Some(_))
+              .toRight(s"its within, ${CardField.shown(value)}, is no string")
         }
       } yield new Held(key, path, document.label, version, scope, within, document.place != at)
       fields.fold(Read.Damaged(key, path, document.label, _), Read.Ours(_))
     }
   }
-
-  /** A field's value as a reply names it: a string as it is, anything else as JSON. */
-  private def shown(value: ujson.Value): String = value.strOpt.getOrElse(ujson.write(value))
 
   /** A document as [[read]] reads it. */
   enum Read extends caps.Pure {
