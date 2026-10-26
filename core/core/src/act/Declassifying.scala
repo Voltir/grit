@@ -1,5 +1,6 @@
 package grit.core.act
 
+import grit.core.classify.Ask
 import grit.core.document.{Declassified, DocText, DocumentKeeper, DocumentSearch, PolicyApplication}
 import grit.core.durable.{Flow, Steps}
 import grit.core.files.{PieceSearch, Pieces}
@@ -122,17 +123,23 @@ object Declassifying {
     * writer speaks of what it shares or leaves out (`first`); each `named` as a retry tells the
     * writer.
     */
-  val Floor: Vector[Screen.Fixed] = Vector(
-    Screen.Fixed(
-      "Does `text` refer to itself as a rewrite, version or edit of another document, or to " +
-        "instructions it was given?",
-      "refers to itself as a rewrite or its instructions"
-    ),
-    Screen.Fixed(
-      "Does `text` speak in the first person singular, as 'I', about what it shares, includes " +
-        "or leaves out?",
-      "speaks as its writer about what it shares or leaves out"
-    )
+  val Floor: Vector[Screen.Fixed] = Vector(Meta, Speaks)
+
+  /** The source's [[Floor]] alone, asked about the text its rewrite was shown: what a rewrite's
+    * floor answers are excused against.
+    */
+  val Baseline: Ask[Screen.Text, Screen.Baseline] = Screen.baseline(Meta, Vector(Speaks))
+
+  private lazy val Meta = Screen.Fixed(
+    "Does `text` refer to itself as a rewrite, version or edit of another document, or to " +
+      "instructions it was given?",
+    "refers to itself as a rewrite or its instructions"
+  )
+
+  private lazy val Speaks = Screen.Fixed(
+    "Does `text` speak in the first person singular, as 'I', about what it shares, includes " +
+      "or leaves out?",
+    "speaks as its writer about what it shares or leaves out"
   )
 
   /** The screen a rewrite under `checks` is asked: [[Floor]], then `checks`' signals. */

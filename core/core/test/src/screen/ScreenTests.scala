@@ -67,12 +67,9 @@ object ScreenTests extends TestSuite {
       screen.shape ==> Screen.Shape(2, Vector(Must.Absent, Must.Present, Must.Absent))
     }
 
-    test("the baseline asks the floor alone, and a screen with no floor has none") {
-      val bare = Screen(Vector.empty, Signals(codename, Vector.empty), Vector.empty)
-      (screen.baseline.map(b => instructions(b.questions)), bare.baseline.isEmpty) ==> (
-        Some(Vector(meta.question, first.question)),
-        true
-      )
+    test("the baseline asks its floor's questions alone, in order") {
+      instructions(Screen.baseline(meta, Vector(first)).questions) ==>
+        Vector(meta.question, first.question)
     }
 
     test("the state screened is the text alone") {

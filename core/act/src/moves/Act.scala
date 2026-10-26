@@ -343,22 +343,11 @@ private[moves] object Act {
                   Some(screen.shape)
                 )
               case Declassifying.Of.Source(_) =>
-                screen.baseline match {
-                  case Some(ask) =>
-                    (
-                      judged(
-                        env,
-                        s.acting,
-                        Request.of(Screen.Text(shown.text), ask),
-                        ask,
-                        s.digest
-                      ),
-                      Some(Screen.Shape(screen.floor.size, Vector.empty))
-                    )
-                  // Declassifying.Floor is not empty, so its screen always has a baseline.
-                  case None =>
-                    (AskMade.Refused(AskMade.Kind.Model, "its screen has no floor", s.digest), None)
-                }
+                val ask = Declassifying.Baseline
+                (
+                  judged(env, s.acting, Request.of(Screen.Text(shown.text), ask), ask, s.digest),
+                  Some(Screen.Shape(Declassifying.Floor.size, Vector.empty))
+                )
             }
         }
       }

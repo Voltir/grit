@@ -161,11 +161,7 @@ final class ScriptedDreaming(
   ): Either[MoveError, Either[Declassifying.Unread, Screen.Baseline]] =
     Declassifying.sourced(name).left.map(MoveError.Model(_)).flatMap { sourcing =>
       screening(sourcing, source, revision, applied) { shown =>
-        Declassifying
-          .screen(shown.checks)
-          .baseline
-          .map(Posed.judge(Screen.Text(shown.text), _))
-          .toRight(MoveError.Model("its screen has no floor"))
+        Right(Posed.judge(Screen.Text(shown.text), Declassifying.Baseline))
       }
     }
 

@@ -22,18 +22,6 @@ final case class Screen(floor: Vector[Screen.Fixed], first: Signals, rest: Vecto
     Screen.yesNos(head, asked.drop(1)).readBy(Screen.read(shape, _))
   }
 
-  /** Its floor's questions alone, read as a source's [[Screen.Baseline]] as
-    * [[Screen.readBaseline]] reads them; `None` when it has no floor, which then never fires.
-    */
-  def baseline: Option[Ask[Screen.Text, Screen.Baseline]] = {
-    val size = floor.size
-    floor.headOption.map { head =>
-      Screen
-        .yesNos(head.question, floor.drop(1).map(_.question))
-        .readBy(Screen.readBaseline(size, _))
-    }
-  }
-
   def shape: Screen.Shape = Screen.Shape(floor.size, signals.map(_.must))
 
   /** What `fired` names, in screen order: the floor first, then the signals; a position this
@@ -95,6 +83,12 @@ object Screen {
   /** As [[read]], for a baseline of `floor` questions. */
   def readBaseline(floor: Int, answers: Vector[Answer]): Either[ClassifierError, Baseline] =
     probabilities(floor, answers).map(Baseline(_))
+
+  /** A floor's questions alone, `first` then `rest`, read as a source's [[Baseline]] as
+    * [[readBaseline]] reads them.
+    */
+  def baseline(first: Fixed, rest: Vector[Fixed]): Ask[Text, Baseline] =
+    yesNos(first.question, rest.map(_.question)).readBy(readBaseline(1 + rest.size, _))
 
   private def question(signal: Signal): String = signal.must match {
     case Must.Absent => absent(signal.infer)
