@@ -58,6 +58,9 @@ In dependency order, each with the core packages it imports:
   probability per option), the pure readers of its answers, and the deployment's classifier
   behind its clearance check. Above the packages that record what a classifier answered.
   ← `id`, `message`, `place`, `visibility`, `route`
+- **`screen`**: a text checked by a classifier for its axis's floor and a steward's signals,
+  each absent or present, passed by code only when every one holds; a steward's examples
+  benched against the signals first. Names no axis. ← `either`, `period`, `classify`
 - **`spend`**: what grit spends on model calls, read back (a day's, a conversation's, a turn's),
   and the daily budget. ← `id`, `message`, `model`, `store`
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates
