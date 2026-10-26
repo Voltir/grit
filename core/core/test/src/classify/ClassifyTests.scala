@@ -166,6 +166,15 @@ object ClassifyTests extends TestSuite {
       )
     }
 
+    test("readBy asks the same questions and reads their answers by its reader alone") {
+      val summed = urgent.zip(urgent).readBy { answers =>
+        Right(answers.collect { case Answer.YesNo(p) => p }.sum)
+      }
+      val canned = new Canned(Answer.YesNo(0.25), Answer.YesNo(0.5))
+      canned.ask(Ticket("x"), summed).map(_.value) ==> Right(0.75)
+      canned.asked.size ==> 2
+    }
+
     test("asking a question twice is two questions") {
       val canned = new Canned(Answer.YesNo(0.1), Answer.YesNo(0.9))
       canned.ask(Ticket("x"), urgent.zip(urgent)).map(_.value) ==> Right((0.1, 0.9))

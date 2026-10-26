@@ -107,6 +107,12 @@ final class Ask[S, T] private (
 
   def map[U](f: T -> U): Ask[S, U] = new Ask(questions, answers => reader(answers).map(f))
 
+  /** These questions, their answers read by `by` alone: for a reader whose refusals may not
+    * quote a question, as this one's do.
+    */
+  def readBy[U](by: Vector[Answer] -> Either[ClassifierError, U]): Ask[S, U] =
+    new Ask(questions, by)
+
   /** Both sets of questions, in one request. */
   def zip[U](other: Ask[S, U]): Ask[S, (T, U)] = {
     val n = questions.size
