@@ -26,6 +26,20 @@ Checks that do not read (none of either kind of example, a blank or multi-line s
 `must` neither `absent` nor `present`, a text past its bound) stop every rewrite under that
 version: nothing new is shared until they are fixed.
 
+## The bench
+
+Before a version rewrites anything, the job benches its checks (`Dreaming.bench`): each
+example is screened by the version's signals alone, without the shared questions. The bench
+passes when every `accept` example passes and every `refuse` example is refused. Its verdict
+is kept in `grit.declassification_benches`, by position only, under a digest of the checks
+and of the screen's own questions and thresholds. Nothing is rewritten under a version until
+its bench passes under its checks as they are now: change a version's checks and it is
+benched again on the job's next run. The job's reply names each bench: `policy v3 benched`,
+or `policy v3 unchecked:` and the first example that failed with its deciding signal
+("accept example 1 refused by signal 4 (0.63)"), or the checks' fault. A failing bench is
+fixed by changing the examples or the signals; it tests only the leaks you thought to write
+down.
+
 Each rewrite is shown to a classifier alone, as `text`, never beside its source or the
 policy. It is asked two questions every policy shares, then one question per signal, in
 order. The questions each signal becomes, and the thresholds the answers are held to, are

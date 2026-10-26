@@ -31,9 +31,13 @@ final case class DeclassifyParams(perRun: Int) extends caps.Pure
   * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
   * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
   * `withhold-{i}`) so it is not asked again at those versions; one whose file is not yet pieced
-  * at its revision is tried again next run. Replies [[Tally.line]]. Its `limits`, so that
-  * `perRunMost` declassifies each retried fit: asks, twice `perRunMost` (a rewrite and its
-  * retry); judgments, three times (both attempts' screens and their source's); no calls.
+  * at its revision is tried again next run. Before any card, it benches each version in force
+  * over its cards that has no bench of its checks as they are now ([[Dreaming.bench]],
+  * `bench-{i}`; [[grit.core.act.Declassifying.unbenched]]), so a card is rewritten under it
+  * in the same run once its bench passes. Replies [[Tally.line]]. Its `limits`, so that
+  * `perRunMost` declassifies each retried fit beside the benches: asks, twice `perRunMost` (a
+  * rewrite and its retry); judgments, nine times (both attempts' screens and their source's,
+  * three; and room for the benches' asks, at most seven a version); no calls.
   */
 final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
     extends DreamingJob[DeclassifyParams] {
@@ -56,7 +60,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
 
   override val limits: MoveLimits = {
     val most = perRunMost.max(0)
-    MoveLimits.of(2 * most, 0, 3 * most).getOrElse(MoveLimits.Zero)
+    MoveLimits.of(2 * most, 0, 9 * most).getOrElse(MoveLimits.Zero)
   }
 
   def run(run: Trusted[JobRun[DeclassifyParams]], moves: Dreaming^): String = {
@@ -72,8 +76,24 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
     ) match {
       case Left(e) => Tally.stopped(s"scanning its cards: ${MoveError.said(e)}").line
       case Right(scan) =>
+        val benched = scan.bench.zipWithIndex.foldLeft(Tally.of(scan)) { case (done, (p, i)) =>
+          done.benched(
+            p,
+            moves.bench(CardMoves.numbered("bench", i), p) match {
+              case Left(e) => s"not benched: ${MoveError.said(e)}"
+              case Right(Declassifying.Benching.Kept(b)) =>
+                b.line.fold("benched")(l => s"unchecked: ${l.said}")
+              case Right(
+                    Declassifying.Benching.Unbenched(Declassifying.Unbenched.Unreadable(why))
+                  ) =>
+                s"unchecked: ${why.said}"
+              case Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed)) =>
+                "not read"
+            }
+          )
+        }
         scan.due.zipWithIndex
-          .foldLeft(Tally.of(scan)) { case (done, (Due(source, revision, applied), i)) =>
+          .foldLeft(benched) { case (done, (Due(source, revision, applied), i)) =>
             moves.declassify(CardMoves.numbered("rewrite", i), source, revision, applied) match {
               case Left(e) => done.unwritten(source, MoveError.said(e))
               case Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)) =>
@@ -117,7 +137,7 @@ object CardDeclassify {
   /** The scan, at its transaction's floor: each card in force (its version, revision and
     * application), every own document but the withholding, and every withholding entry, that
     * reads as no rewrite at those withdrawn or forgotten, and those due, at most `most`, most
-    * recent first.
+    * recent first; and the versions in force over them due a bench.
     */
   private def scanned(shelf: CardShelf, keeper: DocumentKeeper, most: Int, at: Instant)(using
       tx: Tx^
@@ -131,6 +151,9 @@ object CardDeclassify {
           .map(_.map(a => Due(c.version, UnitVersion.value(c.revision), a.applied)))
       )
       inForce = applied.flatten
+      bench <- traverse(inForce.map(_.applied.policy.over).distinct)(
+        Declassifying.unbenched(keeper, _)
+      )
       current = inForce.map(_.made).toSet
       own <- keeper.newest(Int.MaxValue)
       (rewrites, stale) = own
@@ -144,7 +167,7 @@ object CardDeclassify {
       _ <- if (kept.size == held.size) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
       done = rewrites.flatMap(d => Declassified.Made.read(d.data)).toSet ++ kept
       due = inForce.filterNot(d => done.contains(d.made))
-    } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0))
+    } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0), bench.flatten)
   }
 }
 
@@ -162,15 +185,20 @@ private[declassify] final case class Due(
 }
 
 /** What a declassify's scan came to: the cards `due` a rewrite; how many rewrites it
-  * `withdrew`; and how many due it `left` past its most.
+  * `withdrew`; how many due it `left` past its most; and the policy versions due a `bench`.
   */
-private[declassify] final case class Scanned(due: Vector[Due], withdrew: Int, left: Int)
-    extends caps.Pure
+private[declassify] final case class Scanned(
+    due: Vector[Due],
+    withdrew: Int,
+    left: Int,
+    bench: Vector[DeclassificationPolicy]
+) extends caps.Pure
 
 private[declassify] object Scanned {
 
   /** Its record: `{"due": [{"source", "revision", "over", "policy", "application",
-    * "pointer"}...], "withdrew", "left"}`, the pointer as [[Pointer.written]] writes it.
+    * "pointer"}...], "withdrew", "left", "bench": [{"over", "policy"}...]}`, the pointer as
+    * [[Pointer.written]] writes it; a record without `bench` benched none.
     */
   given Journaled[Scanned] = Journaled.json(
     s =>
@@ -181,7 +209,10 @@ private[declassify] object Scanned {
           due
         }),
         "withdrew" -> s.withdrew,
-        "left" -> s.left
+        "left" -> s.left,
+        "bench" -> ujson.Arr.from(
+          s.bench.map(p => ujson.Obj("over" -> p.over.written, "policy" -> p.version))
+        )
       ),
     v => {
       def count(key: String): Either[String, Int] =
@@ -214,7 +245,25 @@ private[declassify] object Scanned {
           .flatMap(ds => traverse(ds.toVector)(due))
         withdrew <- count("withdrew")
         left <- count("left")
-      } yield Scanned(dues, withdrew, left)
+        bench <- v.objOpt.flatMap(_.get("bench")).flatMap(_.arrOpt) match {
+          case None => Right(Vector.empty)
+          case Some(ps) =>
+            traverse(ps.toVector)(p =>
+              for {
+                over <- p.objOpt
+                  .flatMap(_.get("over"))
+                  .flatMap(_.strOpt)
+                  .toRight("a declassify's bench has no compartment")
+                  .flatMap(DeclassificationPolicy.Over.read)
+                version <- p.objOpt
+                  .flatMap(_.get("policy"))
+                  .flatMap(_.numOpt)
+                  .map(_.toInt)
+                  .toRight("a declassify's bench has no version")
+              } yield DeclassificationPolicy(over, version)
+            )
+        }
+      } yield Scanned(dues, withdrew, left, bench)
     }
   )
 }
@@ -230,7 +279,8 @@ private[declassify] case object Kept extends caps.Pure {
   * found `unpieced` (no pieces of their file at their card's revision yet), found `unchecked`
   * (their policy version in force has no passing bench) and `withdrawn`; how
   * many cards it `left` for the next run past its most; the cards not rewritten, each by its
-  * version, and why; and why it stopped, if it did. [[line]] is its reply.
+  * version, and why; each policy version it `benched`, and how; and why it stopped, if it did.
+  * [[line]] is its reply.
   */
 final case class Tally(
     written: Int,
@@ -241,19 +291,24 @@ final case class Tally(
     withdrawn: Int,
     left: Int,
     unwritten: Vector[(DocumentVersionId, String)],
+    benches: Vector[(DeclassificationPolicy, String)],
     stopped: Option[String]
 ) extends caps.Pure {
 
   /** `declassified cards: {written} written, {withheld} withheld, {unapplied} unapplied,
     * {unpieced} unpieced, {unchecked} unchecked, {withdrawn} withdrawn, {left plus unwritten}
-    * left for the next run`,
-    * then `; not written: {version} ({why})` for at most [[NotWritten.Shown]] of them and `and
-    * {n} more` for the rest; then, when it stopped, `; stopped: {why}`.
+    * left for the next run`; then for each bench `; policy v{n} {how}`: `benched` when it
+    * passed, `unchecked: {its first failing example}` ([[grit.core.screen.Benched.Line]]) or
+    * `unchecked: {its checks' fault}`, `not read` when the run does not read its checks, or
+    * `not benched: {why}`; then `; not written: {version} ({why})` for at most
+    * [[NotWritten.Shown]] of them and `and {n} more` for the rest; then, when it stopped,
+    * `; stopped: {why}`.
     */
   def line: String =
     s"declassified cards: $written written, $withheld withheld, $unapplied unapplied, " +
       s"$unpieced unpieced, $unchecked unchecked, $withdrawn withdrawn, " +
       s"${left + unwritten.size} left for the next run" +
+      benches.map((p, how) => s"; policy v${p.version} $how").mkString +
       NotWritten.tail(unwritten.map((v, why) => (DocumentVersionId.value(v).toString, why))) +
       NotWritten.stopped(stopped)
 
@@ -267,14 +322,17 @@ final case class Tally(
 
   private[declassify] def unscreened: Tally = copy(unchecked = unchecked + 1)
 
+  private[declassify] def benched(policy: DeclassificationPolicy, how: String): Tally =
+    copy(benches = benches :+ (policy, how))
+
   private[declassify] def unwritten(source: DocumentVersionId, why: String): Tally =
     copy(unwritten = unwritten :+ (source, why))
 }
 
 object Tally {
   private[declassify] def of(scan: Scanned): Tally =
-    Tally(0, 0, 0, 0, 0, scan.withdrew, scan.left, Vector.empty, None)
+    Tally(0, 0, 0, 0, 0, scan.withdrew, scan.left, Vector.empty, Vector.empty, None)
 
   private[declassify] def stopped(why: String): Tally =
-    Tally(0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
+    Tally(0, 0, 0, 0, 0, 0, 0, Vector.empty, Vector.empty, Some(why))
 }

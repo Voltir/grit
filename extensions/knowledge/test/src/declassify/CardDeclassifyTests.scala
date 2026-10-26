@@ -173,14 +173,16 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     /** The `version`th policy over `team`, a revocation when `text` is `None`, with `checks` as
-      * its row holds them.
+      * its row holds them, kept at `kept`; and, when `benched`, a passing bench of those checks.
       */
     def policy(
         version: Int,
         text: Option[String] = Some("Remove where the offsite is."),
-        checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks)
+        checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks),
+        benched: Boolean = true,
+        kept: Label = Floor
     ): Unit =
-      documents.policy(Over, version, text, Floor, checks)
+      documents.policy(Over, version, text, kept, checks, benched)
 
     /** The `version`th application to the card of `id`, a removal when `applied` is false. */
     def apply(id: String, version: Int, applied: Boolean = true): Unit =
@@ -362,8 +364,54 @@ object CardDeclassifyTests extends TestSuite {
       runs.policy(1, checks = Some(ujson.Obj("signals" -> ujson.Arr())))
       runs.apply("c1", 1)
       (runs.run(), runs.kept, runs.asked) ==> (
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 1 unchecked, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 1 unchecked, 0 withdrawn, 0 left for the next run; policy v1 unchecked: checks: not of their shape",
         Vector(),
+        (0, 0)
+      )
+    }
+
+    test(
+      "the version in force is benched before any card, and a card rewritten under it in the same run; while its checks stand, it is not benched again"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.policy(1, benched = false)
+      runs.apply("c1", 1)
+      // The accept example screens clean, the refuse example is refused, then the rewrite's
+      // screen (the floor and the one signal) is clean.
+      val first = runs.run(screens = Vector(Vector(0.1), Vector(0.9), Vector(0.0, 0.0, 0.0)))
+      val _ = runs.card("c2")
+      runs.apply("c2", 1)
+      val second = runs.run()
+      (first, second, runs.kept.size, runs.asked) ==> (
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v1 benched",
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+        2,
+        (2, 4)
+      )
+    }
+
+    test(
+      "a failing bench is tallied by its first failing example and that example's deciding signal, and nothing is rewritten under it"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.policy(1, benched = false)
+      runs.apply("c1", 1)
+      (runs.run(screens = Vector(Vector(0.63), Vector(0.9))), runs.kept, runs.asked) ==> (
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 1 unchecked, 0 withdrawn, 0 left for the next run; policy v1 unchecked: accept example 1 refused by signal 1 (0.63)",
+        Vector(),
+        (0, 2)
+      )
+    }
+
+    test("a version whose checks the run cannot read is tallied not read, and asked nothing") {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.policy(1, benched = false, kept = Label.at(Level.Confidential, Team))
+      runs.apply("c1", 1)
+      (runs.run(), runs.asked) ==> (
+        "declassified cards: 0 written, 0 withheld, 1 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v1 not read",
         (0, 0)
       )
     }
