@@ -17,7 +17,6 @@ import grit.core.flow.{Tainted, TestTainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.Message
 import grit.core.need.Needs
-import grit.core.period.Probability
 import grit.core.provider.ModelRequest
 import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}

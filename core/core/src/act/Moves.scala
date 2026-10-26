@@ -17,7 +17,6 @@ import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
-import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}

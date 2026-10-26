@@ -54,6 +54,7 @@ final class InMemoryDocuments extends DocumentStore {
     (text: Option[String], checks: Option[ujson.Value], kept: Label)
   ]
 
+  // As `policies`: only ever replaced by a new immutable map.
   @caps.unsafe.untrackedCaptures
   private var applications = Map.empty[(Pointer, Int), Option[DeclassificationPolicy.Over]]
 
