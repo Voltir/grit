@@ -28,7 +28,6 @@ import grit.core.id.{CallSlot, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.Message
 import grit.core.need.Needs
-import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
