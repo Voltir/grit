@@ -310,6 +310,19 @@ final class InMemoryPieces extends PieceStore {
       rows.get(id).filter(p => sets.get(p.set).exists(reads)).flatMap(kept(id, _))
     })
 
+  def file(plugin: PluginName, pointer: Pointer, revision: String, label: Label, first: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[KeptPiece]] =
+    Right(
+      sets.toVector
+        .filter((_, r) =>
+          r.plugin == plugin && r.file.pointer == pointer && r.file.revision == revision &&
+            r.label == label && r.superseded.isEmpty && r.unread.isEmpty && reads(r)
+        )
+        .minByOption(_._1)
+        .fold(Vector.empty)((s, _) => of(s).take(first max 0).flatMap((id, p) => kept(id, p)))
+    )
+
   def placed(ids: Vector[PieceId], at: Instant)(using Tx^): Either[StoreError, Unit] = {
     ids.flatMap(i => rows.get(PieceId.value(i))).map(_.set).distinct.foreach { s =>
       sets.get(s).foreach { r =>

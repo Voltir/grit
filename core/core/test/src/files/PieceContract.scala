@@ -248,6 +248,58 @@ abstract class PieceContract extends TestSuite {
     }
 
     test(
+      "a file's pieces at a revision are its current pieces at exactly that label, in its order, at most first; none at another revision or label, none once marked unread, none the transaction does not read"
+    ) {
+      val p = name("pieces-file")
+      val k = keeper(p, PieceKeeper.Bound)
+      val trial = Clearance.of(TestLabels.Trial)
+      def kept(revision: String, texts: String*)(using Tx^) =
+        ok(
+          k.keep(
+            file("a", revision),
+            Here,
+            Integrity.Member,
+            texts.map(piece(_)).toVector,
+            0,
+            at(1)
+          )
+        )
+      def read(clearance: Clearance, revision: String, label: Label, first: Int = 10) =
+        opened(clearance)(
+          ok(store.file(p, TestPieces.pointer("a"), revision, label, first)).map(_.piece)
+        )
+      transaction(kept("r1", "alpha one", "beta two"))
+      opened(trial)(kept("r1", "trial one"))
+      val first = (
+        read(Clearance.of(Label.Public), "r1", Label.Public),
+        read(trial, "r1", TestLabels.Trial),
+        read(Clearance.of(Label.Public), "r1", TestLabels.Trial),
+        read(Clearance.of(Label.Public), "r2", Label.Public)
+      )
+      // Alpha keeps its id, older than gamma's: the file's order is not its pieces' ids'.
+      transaction(kept("r2", "gamma three", "alpha one", "delta four"))
+      val second = (
+        read(Clearance.of(Label.Public), "r2", Label.Public, first = 2),
+        read(Clearance.of(Label.Public), "r1", Label.Public)
+      )
+      transaction(ok(k.unread("a", "r3", Here, "too large", at(3))))
+      val unread = (
+        read(Clearance.of(Label.Public), "r3", Label.Public),
+        read(Clearance.of(Label.Public), "r2", Label.Public)
+      )
+      (first, second, unread) ==> (
+        (
+          Vector(piece("alpha one"), piece("beta two")),
+          Vector(piece("trial one")),
+          Vector(),
+          Vector()
+        ),
+        (Vector(piece("gamma three"), piece("alpha one")), Vector()),
+        (Vector(), Vector())
+      )
+    }
+
+    test(
       "a file's pieces withdrawn at their label are no longer current, and marked for deletion"
     ) {
       val p = name("pieces-withdraw")

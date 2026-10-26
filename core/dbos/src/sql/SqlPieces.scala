@@ -3,6 +3,7 @@ package grit.dbos.sql
 import java.sql.ResultSet
 import java.time.Instant
 
+import grit.core.document.Pointer
 import grit.core.files.{
   Anchor,
   FormatName,
@@ -104,6 +105,29 @@ final class SqlPieces(tombstones: Tombstones) extends PieceStore {
         val byId = found.map(k => k.id -> k).toMap
         ids.flatMap(byId.get)
       }
+
+  def file(plugin: PluginName, pointer: Pointer, revision: String, label: Label, first: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[KeptPiece]] =
+    if (first <= 0) Right(Vector.empty)
+    else
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT $Columns FROM grit.pieces p JOIN $Labelled d ON d.id = p.set_id
+           | WHERE d.id = (SELECT s.id FROM grit.piece_sets s
+           |                WHERE s.plugin = ? AND s.pointer = ?::jsonb AND s.revision = ?
+           |                  AND s.classification_id = ${SqlDocuments.LabelId}
+           |                  AND s.superseded_at IS NULL AND s.unread IS NULL
+           |                  AND ${SqlClearance.kept("s")}
+           |                ORDER BY s.id LIMIT 1)
+           | ORDER BY p.ordinal LIMIT ?""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+        ps.setString(SqlClearance.Params + 2, SqlDocuments.pointerJson(pointer))
+        ps.setString(SqlClearance.Params + 3, revision)
+        SqlLabels.bind(ps, SqlClearance.Params + 4, label)
+        ps.setInt(SqlClearance.Params + 6, first)
+      }(kept)
 
   def placed(ids: Vector[PieceId], at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     if (ids.isEmpty) Right(())

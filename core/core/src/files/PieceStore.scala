@@ -75,6 +75,15 @@ trait PieceSearch {
 
   /** The pieces among `ids` still kept and read by its transaction, in their order. */
   def read(ids: Vector[PieceId])(using Tx^): Either[StoreError, Vector[KeptPiece]]
+
+  /** The pieces of `plugin`'s file that `pointer` reads, at `revision` ([[PiecedFile.revision]]),
+    * current at exactly `label`, in their file's order, at most `first`; of two such files (one
+    * file kept under two refs), the one kept first. Empty when there is none, it was marked
+    * unread, or its transaction does not read `label`.
+    */
+  def file(plugin: PluginName, pointer: Pointer, revision: String, label: Label, first: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[KeptPiece]]
 }
 
 object PieceSearch {
