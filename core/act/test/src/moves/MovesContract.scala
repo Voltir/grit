@@ -1052,6 +1052,30 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a declassify whose version in force has no passing bench of its checks as they are now (none, a failing one, or one of checks since changed) is Unapplied as unchecked, asking nothing"
+    ) {
+      def tried(benched: Shelves -> Unit) = {
+        val shelves = Shelves(needed = Vector(Cards))
+        val (source, policy) = applied(shelves, "c1")
+        benched(shelves)
+        declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+          Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+        }
+      }
+      val unbenched = tried(s => s.documents.unbench(Team, 1))
+      val failed = tried(s => s.documents.bench(Team, 1, Failing))
+      val changed = tried(s =>
+        s.documents
+          .policy(Team, 1, Some(Instructions), Declassing, Some(Unbenched), benched = false)
+      )
+      (unbenched, failed, changed) ==> (
+        (Seen(Vector(Right("unapplied unchecked"))), Vector()),
+        (Seen(Vector(Right("unapplied unchecked"))), Vector()),
+        (Seen(Vector(Right("unapplied unchecked"))), Vector())
+      )
+    }
+
+    test(
       "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied as lapsed or Kept"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
@@ -1474,6 +1498,26 @@ object MovesContract {
 
   /** The model a declassifying run's every reply says served it. */
   val Served = "test/summary"
+
+  /** A failed bench: its accept example refused by its first signal. */
+  val Failing: grit.core.screen.Benched =
+    grit.core.screen.Benched
+      .read(
+        false,
+        ujson.Arr(
+          ujson.Obj("at" -> 0, "kind" -> "accept", "must" -> "absent", "p" -> 0.9, "signal" -> 0)
+        )
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** Checks that read, other than a policy's by default, and benched nowhere. */
+  val Unbenched: ujson.Value = ujson.Obj(
+    "signals" -> ujson.Arr(ujson.Obj("infer" -> "when the team meets", "must" -> "absent")),
+    "examples" -> ujson.Obj(
+      "accept" -> ujson.Arr("The team meets."),
+      "refuse" -> ujson.Arr("The team meets on the 4th.")
+    )
+  )
 
   /** One check's answers, each a sure no. */
   val Clean: Vector[Vector[Double]] = Vector(Vector(0.0, 0.0, 0.0))

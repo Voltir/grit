@@ -228,7 +228,7 @@ private[declassify] case object Kept extends caps.Pure {
 /** What a declassify run came to: how many rewrites it `written`, `withheld` (the check kept
   * them back, or the model wrote nothing that may be shared), found `unapplied` since its scan,
   * found `unpieced` (no pieces of their file at their card's revision yet), found `unchecked`
-  * (their policy version in force has no checks that read) and `withdrawn`; how
+  * (their policy version in force has no passing bench) and `withdrawn`; how
   * many cards it `left` for the next run past its most; the cards not rewritten, each by its
   * version, and why; and why it stopped, if it did. [[line]] is its reply.
   */

@@ -300,7 +300,8 @@ trait Dreaming extends Keeping {
     * passed; `Kept` when an absent signal fired, or anything fired on the retry, or the model
     * wrote [[Declassifying.Nothing]] (no check asked);
     * `Unapplied`, asking nothing more, when any step reads nothing, with why
-    * ([[Declassifying.Unread]]: `Unchecked` when its policy's checks do not read). Each ask is
+    * ([[Declassifying.Unread]]: `Unchecked`, before the rewrite, when its policy version has no
+    * passing bench of its checks as they are now, [[Declassifying.onBench]]). Each ask is
     * counted, limited and refused as an ask or a judgment is ([[ask]]), and a screen refused is
     * that refusal, never a declassification. A rewrite stopped at its length limit, or blank, is
     * neither a rewrite nor a withholding: [[MoveError.Model]] saying which

@@ -68,16 +68,47 @@ final class InMemoryDocuments extends DocumentStore {
     Map.empty[(DeclassificationPolicy.Over, Int), (Declassified.Screening, Benched)]
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as an operator's row does:
-    * `text`, or a revocation when `None`, with `checks` as the row's column holds them.
+    * `text`, or a revocation when `None`, with `checks` as the row's column holds them; and,
+    * when `benched` and those checks read, a passing bench of them, as the job's bench move
+    * keeps one ([[grit.core.act.Declassifying.screening]]). Its bench is left as it was
+    * otherwise.
     */
   def policy(
       over: DeclassificationPolicy.Over,
       version: Int,
       text: Option[String] = Some(InMemoryDocuments.Instructions),
       kept: Label = Label.Public,
-      checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks)
-  ): Unit =
+      checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks),
+      benched: Boolean = true
+  ): Unit = {
     policies = policies.updated((over, version), (text, checks, kept))
+    if (benched)
+      Checks.read(checks).foreach { read =>
+        Benched.read(true, ujson.Arr()).foreach { pass =>
+          benches = benches.updated(
+            (over, version),
+            (grit.core.act.Declassifying.screening(read), pass)
+          )
+        }
+      }
+  }
+
+  /** Records `benched` as the bench of `over`'s `version`th policy, under the screening of its
+    * checks as they are now, as the job's bench move keeps one; nothing when they do not read.
+    */
+  def bench(over: DeclassificationPolicy.Over, version: Int, benched: Benched): Unit =
+    policies.get((over, version)).map(_.checks).map(Checks.read).foreach {
+      case Right(read) =>
+        benches = benches.updated(
+          (over, version),
+          (grit.core.act.Declassifying.screening(read), benched)
+        )
+      case Left(_) => ()
+    }
+
+  /** Forgets the bench of `over`'s `version`th policy, as if none had been kept. */
+  def unbench(over: DeclassificationPolicy.Over, version: Int): Unit =
+    benches = benches - ((over, version))
 
   /** Records the `version`th application to the document `pointer` reads: `over`'s policy, or
     * none when removed, as an operator's row does.

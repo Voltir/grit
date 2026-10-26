@@ -3,15 +3,16 @@ package grit.core.act
 import grit.core.classify.Ask
 import grit.core.document.{Declassified, DocText, DocumentKeeper, DocumentSearch, PolicyApplication}
 import grit.core.durable.{Flow, Steps}
+import grit.core.either.Traversal
 import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.id.{DocumentVersionId, PluginName, Sha256}
 import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
-import grit.core.screen.{Checks, Fired, Screen, Screened, Signal}
+import grit.core.screen.{Benched, Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Integrity
+import grit.core.visibility.{DeclassificationPolicy, Integrity}
 
 /** What [[Dreaming.declassify]] asks and comes to: the rewrite's text for the model, the check's
   * for the classifier, and the declassification it is lowered by.
@@ -185,6 +186,85 @@ object Declassifying {
   /** The screen a rewrite under `checks` is asked: [[Floor]], then `checks`' signals. */
   def screen(checks: Checks): Screen = Screen(Floor, checks.signals, Vector.empty)
 
+  /** The screening of `checks`, what a bench of them is kept under: a digest of their canonical
+    * form ([[Checks.canonical]]) with [[Floor]]'s questions, the signals' two templates
+    * ([[Screen.absent]], [[Screen.present]]) and the two thresholds ([[Screen.Infers]],
+    * [[Screen.States]]); not the retry's wording, which a bench never asks.
+    */
+  def screening(checks: Checks): Declassified.Screening =
+    Declassified.Screening.of(
+      Sha256.text(
+        ujson.write(
+          ujson.Obj(
+            "checks" -> ujson.read(checks.canonical),
+            "floor" -> ujson.Arr.from(Floor.map(f => ujson.Str(f.question))),
+            "absent" -> Screen.absent("{infer}"),
+            "present" -> Screen.present("{infer}"),
+            "infers" -> Probability.value(Screen.Infers),
+            "states" -> Probability.value(Screen.States)
+          )
+        )
+      )
+    )
+
+  /** Where a policy version stands on its bench, as one transaction reads it. */
+  enum OnBench extends caps.Pure {
+
+    /** Its checks are not read here: not cleared for its label, no such version, or a
+      * revocation.
+      */
+    case Unread
+
+    /** No bench is kept under the [[screening]] of its checks as they are now: none is, its
+      * checks changed since, or they do not read.
+      */
+    case Stale
+
+    /** Its bench under its current screening, passing or not. */
+    case Kept(benched: Benched)
+  }
+
+  /** `policy` on its bench: the one rule [[read]] refuses under (anything but a passing `Kept`
+    * is [[Unread.Unchecked]]) and [[unbenched]] lists by.
+    */
+  def onBench(keeper: DocumentKeeper, policy: DeclassificationPolicy)(using
+      Tx^
+  ): Either[StoreError, OnBench] =
+    keeper.checks(policy).flatMap {
+      case None => Right(OnBench.Unread)
+      case Some(read) =>
+        read.checks match {
+          case Left(_) => Right(OnBench.Stale)
+          case Right(checks) =>
+            keeper.benched(policy).map {
+              case Some((at, benched)) if at == screening(checks) => OnBench.Kept(benched)
+              case _ => OnBench.Stale
+            }
+        }
+    }
+
+  /** Whether `on` lets a version be rewritten under: a passing bench under its current checks. */
+  private def passed(on: OnBench): Boolean = on match {
+    case OnBench.Kept(benched) => benched.passed
+    case OnBench.Unread | OnBench.Stale => false
+  }
+
+  /** The versions of `over` due a bench this run: each of [[DocumentKeeper.benchable]]'s that
+    * is not `Kept` [[onBench]].
+    */
+  def unbenched(keeper: DocumentKeeper, over: DeclassificationPolicy.Over)(using
+      Tx^
+  ): Either[StoreError, Vector[DeclassificationPolicy]] =
+    keeper
+      .benchable(over)
+      .flatMap(versions =>
+        Traversal
+          .traverse(versions)(p => onBench(keeper, p).map(on => (p, on)))
+          .map(_.collect { case (p, OnBench.Unread | OnBench.Stale) =>
+            p
+          })
+      )
+
   /** What a screening step screens, read in its own step by `reading`: a rewrite's `attempt`,
     * `text`, by [[screen]]; or the source's text as the rewrite was shown it, by [[Floor]] alone
     * (its [[Screen.Baseline]]).
@@ -216,10 +296,11 @@ object Declassifying {
       */
     case Lapsed extends Unread("its source, or the application in force for it, changed")
 
-    /** Its policy's checks, read with its text, do not read ([[grit.core.screen.Checks.read]]):
-      * nothing under it is screened, so nothing is rewritten. Which fault, its checks' read says.
+    /** Its policy version in force has no passing bench of its checks as they are now
+      * ([[onBench]]), as when they do not read: nothing is rewritten under
+      * it. Which fault or example, the bench says.
       */
-    case Unchecked extends Unread("its policy version in force has no checks that read")
+    case Unchecked extends Unread("its policy version in force is not benched, or failed its bench")
 
     /** Its source's plugin keeps no pieces of its file at `revision` at its label. */
     case Unpieced extends Unread("its source's file has no pieces at the revision it names")
@@ -242,29 +323,33 @@ object Declassifying {
               case None => Right(Left(Unread.Lapsed))
               case Some((_, Left(_))) => Right(Left(Unread.Unchecked))
               case Some((instructions, Right(checks))) =>
-                reading.pieces
-                  .file(d.plugin, pointer, reading.revision, d.label, SourcePieces)
-                  .map { pieces =>
-                    if (pieces.isEmpty) Left(Unread.Unpieced)
-                    else
-                      Right(
-                        Shown(
-                          Declassified.Source(
-                            d.version,
-                            d.plugin,
-                            d.key,
-                            d.place,
-                            d.label,
-                            pointer,
-                            reading.revision
-                          ),
-                          Cut.head(Pieces.text(pieces.map(_.piece)), SourceChars),
-                          instructions,
-                          checks,
-                          pieces.foldLeft(d.integrity)((at, p) => at.meet(p.integrity))
-                        )
-                      )
-                  }
+                onBench(reading.keeper, reading.applied.policy).flatMap { on =>
+                  if (!passed(on)) Right(Left(Unread.Unchecked))
+                  else
+                    reading.pieces
+                      .file(d.plugin, pointer, reading.revision, d.label, SourcePieces)
+                      .map { pieces =>
+                        if (pieces.isEmpty) Left(Unread.Unpieced)
+                        else
+                          Right(
+                            Shown(
+                              Declassified.Source(
+                                d.version,
+                                d.plugin,
+                                d.key,
+                                d.place,
+                                d.label,
+                                pointer,
+                                reading.revision
+                              ),
+                              Cut.head(Pieces.text(pieces.map(_.piece)), SourceChars),
+                              instructions,
+                              checks,
+                              pieces.foldLeft(d.integrity)((at, p) => at.meet(p.integrity))
+                            )
+                          )
+                      }
+                }
             }
           }
       }

@@ -517,7 +517,7 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
-      "a rewrite or check whose policy version in force has no checks that read is written unchecked, and reads back as unchecked"
+      "a rewrite or check whose policy version in force has no passing bench is written unchecked, and reads back as unchecked"
     ) {
       val made =
         AskMade.Refused(Act.unreadKind(Declassifying.Unread.Unchecked), "no checks", "v2:ab")
