@@ -763,18 +763,36 @@ abstract class MovesContract extends TestSuite {
       got ==> Seen(Vector(Right("unneeded others")))
     }
 
-    test("a declassify makes a Declassified only when all three check answers are below Below") {
+    test(
+      "a declassify makes a Declassified only when its screen fires nothing: an absent answer at Infers keeps it back, and a floor answer at Infers asks the source's floor once, which excuses it only at Infers"
+    ) {
       val shelves = Shelves(needed = Vector(Cards))
       val (source, policy) = applied(shelves, "c1")
-      val leaks = Vector(Vector(0.05, 0.05, 0.09), Vector(0.05, 0.1, 0.05), Vector(0.0, 0.0, 0.6))
-      val (got, _) = declassifying(declassifies(3, 3), shelves, Rewrote, leaks) { m =>
+      // Each screen asks meta, first and the policy's one absent signal; a source's, the floor.
+      val leaks = Vector(
+        Vector(0.0, 0.0, 0.39),
+        Vector(0.0, 0.0, 0.4),
+        Vector(0.5, 0.0, 0.2),
+        Vector(0.4, 0.0),
+        Vector(0.5, 0.0, 0.2),
+        Vector(0.39, 0.0)
+      )
+      val (got, _) = declassifying(declassifies(4, 6), shelves, Rewrote, leaks) { m =>
         Seen(
-          Vector("a", "b", "c").map(n =>
+          Vector("a", "b", "c", "d", "e").map(n =>
             m.declassify(name(n), source, Revision, policy).map(outcome)
           )
         )
       }
-      got ==> Seen(Vector(Right("made internal judged 0.09"), Right("kept 0.1"), Right("kept 0.6")))
+      got ==> Seen(
+        Vector(
+          Right("made internal judged 0.39"),
+          Right("kept 0.4"),
+          Right("made internal judged 0.2"),
+          Right("kept 0.5"),
+          Left(MoveError.OverLimit(MoveKind.Ask, 4))
+        )
+      )
     }
 
     test(

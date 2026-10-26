@@ -7,6 +7,7 @@ import grit.core.document.{
   DocumentShelf,
   DocumentStore,
   DocumentTerms,
+  InMemoryDocuments,
   Pointer
 }
 import grit.core.id.{DocumentVersionId, PluginName}
@@ -109,13 +110,11 @@ object SqlDocumentsTests extends DocumentContract {
       ps.setString(3, over.map(_.written).orNull)
     }
 
-  protected def audited(
-      v: DocumentVersionId
-  ): Option[(source: DocumentVersionId, policy: Int, application: Int)] =
+  protected def audited(v: DocumentVersionId): Option[InMemoryDocuments.Audit] =
     LiveDb
       .transaction(config)(
         SqlStatements.many(
-          """SELECT source_version, policy_version, application_version
+          """SELECT source_version, policy_version, application_version, attempt
           |  FROM grit.declassifications WHERE document_version = ?""".stripMargin
         )(_.setLong(1, DocumentVersionId.value(v))) { rs =>
           (
@@ -123,7 +122,8 @@ object SqlDocumentsTests extends DocumentContract {
               .of(rs.getLong("source_version"))
               .getOrElse(throw new java.lang.AssertionError("a source version")),
             policy = rs.getInt("policy_version"),
-            application = rs.getInt("application_version")
+            application = rs.getInt("application_version"),
+            attempt = rs.getInt("attempt")
           )
         }
       )

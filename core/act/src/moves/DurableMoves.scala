@@ -19,8 +19,8 @@ import grit.core.act.{
   Piecing,
   Posed
 }
-import grit.core.classify.{Answer, AnswersJson, Ask, Request}
-import grit.core.document.{DocText, DocumentKeeper, PolicyApplication}
+import grit.core.classify.{Answer, AnswersJson, Ask, ClassifierError, Request}
+import grit.core.document.{Declassified, DocText, DocumentKeeper, PolicyApplication}
 import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.files.PieceKeeper
 import grit.core.flow.{Extracted, Mint, Shape, Tainted, Trusted}
@@ -33,6 +33,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.IntegrityTree
 import grit.core.schema.Typed
+import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -214,33 +215,62 @@ object DurableMoves {
         }
       }
 
-    protected def check(
+    protected def screen(
         name: MoveName,
         source: DocumentVersionId,
         revision: String,
         applied: PolicyApplication,
-        rewrite: DocText
-    ): Either[MoveError, Either[Declassifying.Unread, Probability]] =
-      Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
-        refused(checking, MoveKind.Judge).toLeft(()).flatMap { _ =>
-          val digest = MovesJournal.check(source, revision, applied, rewrite)
-          val asked = made(
-            Act.ask(Act.check),
-            Act.Checking(checking, acting, reading(source, revision, applied), rewrite, digest)
-          )
-          val same = MovesJournal.sameCheck(asked.made.digest, source, revision, applied, rewrite)
-          unread(asked.made) match {
-            case Some(why) if same => Right(Left(why))
-            case _ =>
-              settled(checking, asked, same) {
-                case AskMade.Judged(_, written, at, _) =>
-                  Some(
-                    judgedBack(Declassifying.Check, written)
-                      .map(p => Asked(Mint.tainted(p, acting.integrity), at))
-                  )
-                case _ => None
-              }.map(a => Right(Trusted.asIs(a.reply).extract))
-          }
+        rewrite: DocText,
+        attempt: Declassified.Attempt
+    ): Either[MoveError, Either[Declassifying.Unread, Screened]] =
+      Declassifying.checked(name, attempt).left.map(MoveError.Model(_)).flatMap { checking =>
+        screened(
+          checking,
+          Declassifying.Of.Rewrite(reading(source, revision, applied), rewrite, attempt),
+          MovesJournal.check(source, revision, applied, rewrite, attempt)
+        )(Screen.read)
+      }
+
+    protected def baseline(
+        name: MoveName,
+        source: DocumentVersionId,
+        revision: String,
+        applied: PolicyApplication
+    ): Either[MoveError, Either[Declassifying.Unread, Screen.Baseline]] =
+      Declassifying.sourced(name).left.map(MoveError.Model(_)).flatMap { sourcing =>
+        screened(
+          sourcing,
+          Declassifying.Of.Source(reading(source, revision, applied)),
+          MovesJournal.baseline(source, revision, applied)
+        ) { (shape, answers) =>
+          if (shape.musts.nonEmpty)
+            Left(ClassifierError.Unreadable("its record asked signals of a source"))
+          else Screen.readBaseline(shape.floor, answers)
+        }
+      }
+
+    /** The screening `name` of `of`, under `digest`: its answers as recorded, read by `read` in
+      * the shape they were asked in; why not, when it read nothing and asked nothing.
+      */
+    private def screened[S](name: MoveName, of: Declassifying.Of, digest: String)(
+        read: (Screen.Shape, Vector[Answer]) -> Either[ClassifierError, S]
+    ): Either[MoveError, Either[Declassifying.Unread, S]] =
+      refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
+        val (asked, shape) =
+          made(Act.askBeside(Act.screening), Act.Screening(name, acting, of, digest))
+        val same = MovesJournal.sameScreening(asked.made.digest, digest)
+        unread(asked.made) match {
+          case Some(why) if same => Right(Left(why))
+          case _ =>
+            settled(name, asked, same) {
+              case AskMade.Judged(_, written, at, _) =>
+                shape.map(s =>
+                  answersBack(written)
+                    .flatMap(read(s, _).left.map(e => MoveError.Model(Act.unanswered(e))))
+                    .map(r => Asked(Mint.tainted(r, acting.integrity), at))
+                )
+              case _ => None
+            }.map(a => Right(Trusted.asIs(a.reply).extract))
         }
       }
 
@@ -550,6 +580,12 @@ object DurableMoves {
 
   /** `written`, a judgment's recorded answers, read by `questions` again. */
   private def judgedBack[T](questions: Ask[?, T], written: String): Either[MoveError, T] =
+    answersBack(written).flatMap(
+      questions.read(_).left.map(e => MoveError.Model(Act.unanswered(e)))
+    )
+
+  /** `written`, a judgment's recorded answers, as answers again. */
+  private def answersBack(written: String): Either[MoveError, Vector[Answer]] =
     scala.util
       .Try(ujson.read(written))
       .toEither
@@ -559,7 +595,6 @@ object DurableMoves {
       .flatMap(_.toVector.foldLeft[Either[String, Vector[Answer]]](Right(Vector())) { (acc, a) =>
         acc.flatMap(done => AnswersJson.read(a).map(done :+ _))
       })
-      .flatMap(questions.read(_).left.map(Act.unanswered))
       .left
       .map(MoveError.Model(_))
 

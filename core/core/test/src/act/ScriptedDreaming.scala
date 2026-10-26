@@ -19,6 +19,7 @@ import grit.core.message.Message
 import grit.core.need.Needs
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
+import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label, Recorded}
@@ -137,24 +138,58 @@ final class ScriptedDreaming(
         )
     }
 
-  protected def check(
+  protected def screen(
       name: MoveName,
       source: DocumentVersionId,
       revision: String,
       applied: PolicyApplication,
-      rewrite: DocText
-  ): Either[MoveError, Either[Declassifying.Unread, Probability]] =
-    Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
-      shown(source, revision, applied) match {
-        case Left(e) =>
-          making(checking, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
-        case Right(Left(why)) =>
-          making(checking, MoveKind.Judge, limits.judgments)(Right(Left(why)))
-        case Right(Right(shown)) =>
-          val state = Declassifying.state(shown, rewrite)
-          ask(checking, TestTainted.at(Posed.judge(state, Declassifying.Check), integrity))
-            .map(a => Right(Trusted.asIs(a.reply).extract))
+      rewrite: DocText,
+      attempt: Declassified.Attempt
+  ): Either[MoveError, Either[Declassifying.Unread, Screened]] =
+    Declassifying.checked(name, attempt).left.map(MoveError.Model(_)).flatMap { checking =>
+      screening(checking, source, revision, applied) { shown =>
+        Right(
+          Posed.judge(Screen.Text(DocText.value(rewrite)), Declassifying.screen(shown.checks).ask)
+        )
       }
+    }
+
+  protected def baseline(
+      name: MoveName,
+      source: DocumentVersionId,
+      revision: String,
+      applied: PolicyApplication
+  ): Either[MoveError, Either[Declassifying.Unread, Screen.Baseline]] =
+    Declassifying.sourced(name).left.map(MoveError.Model(_)).flatMap { sourcing =>
+      screening(sourcing, source, revision, applied) { shown =>
+        Declassifying
+          .screen(shown.checks)
+          .baseline
+          .map(Posed.judge(Screen.Text(shown.text), _))
+          .toRight(MoveError.Model("its screen has no floor"))
+      }
+    }
+
+  /** The judgment `name` that `posed` makes of what a rewrite of `source` is made from, as its
+    * rewrite read it; why not, when it read nothing, made as a judgment all the same.
+    */
+  private def screening[S](
+      name: MoveName,
+      source: DocumentVersionId,
+      revision: String,
+      applied: PolicyApplication
+  )(
+      posed: Declassifying.Shown -> Either[MoveError, Posed[S]]
+  ): Either[MoveError, Either[Declassifying.Unread, S]] =
+    shown(source, revision, applied) match {
+      case Left(e) =>
+        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
+      case Right(Left(why)) =>
+        making(name, MoveKind.Judge, limits.judgments)(Right(Left(why)))
+      case Right(Right(shown)) =>
+        posed(shown).flatMap(p =>
+          ask(name, TestTainted.at(p, integrity)).map(a => Right(Trusted.asIs(a.reply).extract))
+        )
     }
 
   /** What a rewrite of `source`, its file at `revision`, under `applied` is made from, read as

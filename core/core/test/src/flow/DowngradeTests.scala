@@ -1,10 +1,12 @@
 package grit.core.flow
 
+import grit.core.classify.Answer
 import grit.core.document.{Declassified, DocText, Pointer, PolicyApplication}
 import grit.core.durable.{Flow, Flows, InMemoryDurable, Step, StepName}
 import grit.core.id.{DocKey, DocumentVersionId, PluginName, WorkflowId}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
+import grit.core.screen.{Must, Screen, Screened}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity.Level
 import grit.core.visibility.Level as Classified
@@ -116,24 +118,42 @@ object DowngradeTests extends TestSuite {
     }
 
     test(
-      "the declassification removes its compartment when its leak is below Declassified.Below and the policy lowers the label; nothing otherwise"
+      "the declassification removes its compartment only when its screen fired nothing against the source's floor, and the policy lowers the label; nothing otherwise"
     ) {
-      def made(label: Label, leak: Double): Option[Label] =
+      val confidential = Label.at(Classified.Confidential, team, other)
+      def made(
+          label: Label,
+          answers: Vector[Double],
+          baseline: Option[Vector[Double]] = None
+      ): Option[(Label, Double, Int)] =
         raised(
           Declassified.declassification,
           (
             rewrite = rewrite,
             source = source(label, card),
             applied = applied(card),
-            leak = Probability.clamped(leak)
+            screened = screened(answers),
+            baseline = baseline.map(floor),
+            attempt = Declassified.Attempt.Second
           )
-        ).map(_.label)
+        ).map(d => (d.label, Probability.value(d.judged), d.attempt.number))
       (
-        made(Label.at(Classified.Confidential, team, other), 0.09),
-        made(Label.at(Classified.Confidential, team, other), 0.1),
-        made(Label.at(Classified.Confidential, other), 0.0),
-        made(Label.Unmapped.join(Label.at(Classified.Internal, team)), 0.0)
-      ) ==> (Some(Label.at(Classified.Confidential, other)), None, None, None)
+        made(confidential, Vector(0.39, 0.0, 0.2, 0.5)),
+        made(confidential, Vector(0.0, 0.0, 0.4, 0.9)),
+        made(confidential, Vector(0.0, 0.0, 0.0, 0.49)),
+        made(confidential, Vector(0.4, 0.0, 0.0, 0.9)),
+        made(confidential, Vector(0.4, 0.0, 0.0, 0.9), Some(Vector(0.4, 0.0))),
+        made(Label.at(Classified.Confidential, other), Vector(0.0, 0.0, 0.0, 0.9)),
+        made(Label.Unmapped.join(Label.at(Classified.Internal, team)), Vector(0.0, 0.0, 0.0, 0.9))
+      ) ==> (
+        Some((Label.at(Classified.Confidential, other), 0.39, 2)),
+        None,
+        None,
+        None,
+        Some((Label.at(Classified.Confidential, other), 0.0, 2)),
+        None,
+        None
+      )
     }
 
     test(
@@ -146,7 +166,9 @@ object DowngradeTests extends TestSuite {
             rewrite = rewrite,
             source = source(Label.at(Classified.Internal, team), card),
             applied = applied(applying),
-            leak = Probability.Zero
+            screened = screened(Vector(0.0, 0.0, 0.0, 1.0)),
+            baseline = None,
+            attempt = Declassified.Attempt.First
           )
         ).isDefined
       (made(card), made(otherCard)) ==> (true, false)
@@ -166,6 +188,18 @@ object DowngradeTests extends TestSuite {
 
   private val rewrite: DocText =
     DocText.of("a rewrite").getOrElse(throw new java.lang.AssertionError("a text"))
+
+  /** A rewrite's screen answering `answers`: a floor of two, then an absent and a present signal. */
+  private def screened(answers: Vector[Double]): Screened =
+    Screen
+      .read(Screen.Shape(2, Vector(Must.Absent, Must.Present)), answers.map(Answer.YesNo(_)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** A source's floor answering `answers`. */
+  private def floor(answers: Vector[Double]): Screen.Baseline =
+    Screen
+      .readBaseline(2, answers.map(Answer.YesNo(_)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   private def source(label: Label, read: Pointer): Declassified.Source =
     Declassified.Source(

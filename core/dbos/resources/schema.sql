@@ -1130,7 +1130,8 @@ CREATE TABLE IF NOT EXISTS grit.declassification_applications (
 
 -- Each declassified document version (DocumentKeeper.declassified): the document version it was
 -- made from, that document's pointer, the policy and application versions it was made under,
--- and the check's highest probability.
+-- its screen's judged probability (Screened.judged), and which attempt passed (1, or 2 for
+-- the one retry).
 -- Retention: ledger: with its version (Target.Document), by cascade; at most the plugin's
 -- document bound current.
 CREATE TABLE IF NOT EXISTS grit.declassifications (
@@ -1141,6 +1142,7 @@ CREATE TABLE IF NOT EXISTS grit.declassifications (
     policy_version      INTEGER NOT NULL,
     application_version INTEGER NOT NULL,
     judged              REAL NOT NULL CHECK (judged >= 0 AND judged <= 1),
+    attempt             SMALLINT NOT NULL CHECK (attempt IN (1, 2)),
     made_at             TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (over, policy_version) REFERENCES grit.declassification_policies (over, version),
     FOREIGN KEY (pointer, application_version)

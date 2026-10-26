@@ -13,6 +13,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
+import grit.core.screen.{Must, Screen}
 import grit.core.stitch.{Strand, StrandDigest, StrandWorld}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
@@ -607,7 +608,7 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
-      "a v1 rewrite or check digest is still compared under v1's form; a new one is v2 and differs by revision"
+      "a v1 rewrite digest is still compared under v1's form; a new one is v2 and differs by revision"
     ) {
       val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
       val applied = PolicyApplication(
@@ -618,23 +619,70 @@ object MovesJournalTests extends TestSuite {
         TestPieces.pointer("f"),
         1
       )
-      val rewrite = DocText.of("The team meets offsite.").getOrElse(sys.error("no text"))
-      // Recorded by the build before v2, of the same source, application and rewrite.
+      // Recorded by the build before v2, of the same source and application.
       val v1Rewrite = "v1:f5dd4d46732897e2e7253e2142d1ac41ffcf66d8cca45a7b6ebd24bf19698299"
-      val v1Check = "v1:1b496f70387cf51430faee0be1acb208efdda5992a0a38627609faf9bd1489a5"
       val (r1, r2) =
         (MovesJournal.rewrite(source, "r1", applied), MovesJournal.rewrite(source, "r2", applied))
       (
         MovesJournal.sameRewrite(v1Rewrite, source, "r1", applied),
-        MovesJournal.sameCheck(v1Check, source, "r1", applied, rewrite),
         r1.take(3),
-        MovesJournal.check(source, "r1", applied, rewrite).take(3),
         r1 == r2,
-        MovesJournal.check(source, "r1", applied, rewrite) ==
-          MovesJournal.check(source, "r2", applied, rewrite),
         MovesJournal.sameRewrite(r1, source, "r1", applied),
         MovesJournal.sameRewrite(r1, source, "r2", applied)
-      ) ==> (true, true, "v2:", "v2:", false, false, true, false)
+      ) ==> (true, "v2:", false, true, false)
+    }
+
+    test(
+      "a screening digest is v3, of its kind, revision, attempt and rewrite; a v1 or v2 check digest compares unequal"
+    ) {
+      val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
+      val applied = PolicyApplication(
+        DeclassificationPolicy(
+          DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team")),
+          1
+        ),
+        TestPieces.pointer("f"),
+        1
+      )
+      def text(s: String) = DocText.of(s).getOrElse(sys.error("no text"))
+      val rewrite = text("The team meets offsite.")
+      val first = Declassified.Attempt.First
+      val check = MovesJournal.check(source, "r1", applied, rewrite, first)
+      // Recorded by the builds before the screen, of the same source, application and rewrite.
+      val v1Check = "v1:1b496f70387cf51430faee0be1acb208efdda5992a0a38627609faf9bd1489a5"
+      val v2Check = "v2:" + check.drop(3)
+      val others = Vector(
+        MovesJournal.check(source, "r2", applied, rewrite, first),
+        MovesJournal.check(source, "r1", applied, rewrite, Declassified.Attempt.Second),
+        MovesJournal.check(source, "r1", applied, text("The team meets."), first),
+        MovesJournal.baseline(source, "r1", applied)
+      )
+      (
+        check.take(3),
+        MovesJournal.baseline(source, "r1", applied).take(3),
+        MovesJournal.sameScreening(check, check),
+        others.filter(MovesJournal.sameScreening(_, check)),
+        MovesJournal.sameScreening(v1Check, check),
+        MovesJournal.sameScreening(v2Check, check)
+      ) ==> ("v3:", "v3:", true, Vector(), false, false)
+    }
+
+    test(
+      "a screening's step is written with its shape, floor size and each signal's must, beside its answers, and reads back as written; one that read nothing has no shape"
+    ) {
+      val call = AskMade.Call("jev", Usage.Zero, Tokens(250))
+      val judged = AskMade.Judged("v3:ab", """[{"yes":0.1},{"yes":0.2}]""", Label.Public, call)
+      val shape = Screen.Shape(2, Vector(Must.Absent, Must.Present))
+      pinned[(AskMade, Option[Screen.Shape])](
+        (judged, Some(shape)),
+        s"""{"screen":${MovesJournal.askMade.encode(
+            judged
+          )},"shape":{"floor":2,"musts":["absent","present"]}}"""
+      )
+      pinned[(AskMade, Option[Screen.Shape])](
+        (AskMade.Refused(AskMade.Kind.Unchecked, "no checks", "v3:ab"), None),
+        """{"screen":{"refused":"unchecked","why":"no checks","digest":"v3:ab"}}"""
+      )
     }
 
     test(

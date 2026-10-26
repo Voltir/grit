@@ -107,7 +107,7 @@ object Benched {
       ujson.Obj(
         "at" -> e.at,
         "kind" -> kindName(e.kind),
-        "must" -> mustName(e.must),
+        "must" -> e.must.written,
         "p" -> Probability.value(e.p),
         "signal" -> e.signal
       )
@@ -132,18 +132,13 @@ object Benched {
     case Kind.Refuse => "refuse"
   }
 
-  private def mustName(m: Must): String = m match {
-    case Must.Absent => "absent"
-    case Must.Present => "present"
-  }
-
   private def example(entry: ujson.Value): Option[Example] =
     for {
       fields <- entry.objOpt
       if fields.keySet == Set("at", "kind", "must", "p", "signal")
       at <- fields.get("at").flatMap(_.numOpt).flatMap(whole)
       kind <- fields.get("kind").flatMap(_.strOpt).flatMap(k => Kind.values.find(kindName(_) == k))
-      must <- fields.get("must").flatMap(_.strOpt).flatMap(m => Must.values.find(mustName(_) == m))
+      must <- fields.get("must").flatMap(_.strOpt).flatMap(m => Must.values.find(_.written == m))
       p <- fields.get("p").flatMap(_.numOpt).flatMap(Probability.of)
       signal <- fields.get("signal").flatMap(_.numOpt).flatMap(whole)
     } yield Example(kind, at, signal, must, p)

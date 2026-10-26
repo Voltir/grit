@@ -3,10 +3,11 @@ package grit.core.screen
 import grit.core.either.Traversal
 
 /** Whether a screened text must not let a reader infer a signal (`Absent`) or must state it
-  * (`Present`).
+  * (`Present`); `written`, as checks, a bench row and a screening's record write it.
   */
-enum Must extends caps.Pure {
-  case Absent, Present
+enum Must(val written: String) extends caps.Pure {
+  case Absent extends Must("absent")
+  case Present extends Must("present")
 }
 
 /** A fact a screen looks for, `infer`, one line, and whether it must be absent or present. */
@@ -34,7 +35,7 @@ final case class Checks private[screen] (signals: Signals, examples: Examples) e
         "examples" -> ujson
           .Obj("accept" -> texts(examples.accept), "refuse" -> texts(examples.refuse)),
         "signals" -> ujson.Arr.from(signals.all.map { s =>
-          ujson.Obj("infer" -> s.infer, "must" -> Checks.mustName(s.must))
+          ujson.Obj("infer" -> s.infer, "must" -> s.must.written)
         })
       )
     )
@@ -104,11 +105,6 @@ object Checks {
     case Fault.NotText => "not text"
   }
 
-  private[screen] def mustName(must: Must): String = must match {
-    case Must.Absent => "absent"
-    case Must.Present => "present"
-  }
-
   /** Where in the checks a shape or count fault lies. */
   enum Part extends caps.Pure {
     case Checks, Signals, Examples, Accept, Refuse
@@ -170,7 +166,7 @@ object Checks {
       must <- fields
         .get("must")
         .flatMap(_.strOpt)
-        .flatMap(m => Must.values.find(mustName(_) == m))
+        .flatMap(m => Must.values.find(_.written == m))
         .toRight(Unreadable.Signal(at, Fault.Must))
     } yield Signal(infer, must)
 

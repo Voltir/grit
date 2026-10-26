@@ -12,6 +12,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Place, Service}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
+import grit.core.screen.{Must, Screen}
 import grit.core.stitch.{Strand, StrandDigest}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
@@ -322,17 +323,40 @@ object MovesJournal {
   def rewrite(source: DocumentVersionId, revision: String, applied: PolicyApplication): String =
     v2(rewriteForm(source, Some(revision), applied))
 
-  /** The digest of the check of `rewrite`, made from `source`, its file at `revision`, under
-    * `applied`, v2: the rewrite's form ([[rewrite]]), then `rewrite`, [[Declassifying.About]]
-    * and each of [[Declassifying.Check]]'s questions as [[judgment]] writes them.
+  /** The digest of the screen of `rewrite`'s `attempt`, made from `source`, its file at
+    * `revision`, under `applied`, v3: its kind, `rewrite`; the rewrite's form ([[rewrite]]); the
+    * attempt's number and `rewrite`; then [[Declassifying.Floor]]'s questions and the signals'
+    * two templates ([[Screen.absent]], [[Screen.present]]). The policy's checks are read in the
+    * step and are in no digest: its version stands for them.
     */
   def check(
       source: DocumentVersionId,
       revision: String,
       applied: PolicyApplication,
-      rewrite: DocText
+      rewrite: DocText,
+      attempt: Declassified.Attempt
   ): String =
-    v2(checkForm(rewriteForm(source, Some(revision), applied), rewrite))
+    v3(
+      "rewrite" + rewriteForm(source, Some(revision), applied) + count(attempt.number) +
+        text(DocText.value(rewrite)) + floorForm + text(Screen.absent(Infer)) +
+        text(Screen.present(Infer))
+    )
+
+  /** The digest of the screen of `source`'s text, its file at `revision`, as a rewrite under
+    * `applied` is shown it, v3: its kind, `source`; the rewrite's form ([[rewrite]]); then
+    * [[Declassifying.Floor]]'s questions.
+    */
+  def baseline(source: DocumentVersionId, revision: String, applied: PolicyApplication): String =
+    v3("source" + rewriteForm(source, Some(revision), applied) + floorForm)
+
+  /** Whether `recorded`, a screening's digest from an earlier run, is `digest`, which
+    * [[check]] or [[baseline]] gives: v3's alone, so a digest of the check before the screen
+    * (v1, v2) differs.
+    */
+  def sameScreening(recorded: String, digest: String): Boolean = recorded match {
+    case s"v3:$_" => recorded == digest
+    case _ => false
+  }
 
   /** As [[sameAsk]], for a rewrite: a v1 digest compared under v1's form, which names no
     * revision.
@@ -349,27 +373,12 @@ object MovesJournal {
       case _ => false
     }
 
-  /** As [[sameAsk]], for a rewrite's check: a v1 digest compared under v1's form, which names
-    * no revision.
-    */
-  def sameCheck(
-      recorded: String,
-      source: DocumentVersionId,
-      revision: String,
-      applied: PolicyApplication,
-      rewrite: DocText
-  ): Boolean = recorded match {
-    case s"v1:$_" => recorded == v1(checkForm(rewriteForm(source, None, applied), rewrite))
-    case s"v2:$_" => recorded == check(source, revision, applied, rewrite)
-    case _ => false
-  }
+  /** [[Declassifying.Floor]]'s questions in a screening's form: their count, then each. */
+  private def floorForm: String =
+    count(Declassifying.Floor.size) + Declassifying.Floor.map(f => text(f.question)).mkString
 
-  /** The canonical form of a check of `rewrite`, made under the rewrite form `made`. */
-  private def checkForm(made: String, rewrite: DocText): String =
-    "check" + made + text(DocText.value(rewrite)) + text(Declassifying.About) + {
-      val questions = Request.of(Declassifying.State("", "", ""), Declassifying.Check).questions
-      count(questions.size) + questions.map(question).mkString
-    }
+  /** What stands for a signal's text in the templates a screening's digest holds. */
+  private val Infer = "{infer}"
 
   /** The canonical form of a rewrite, which [[rewrite]] hashes: the source's id, then, in v2's
     * form, its file's `revision`; the policy's over and version, which stand for its
@@ -448,6 +457,8 @@ object MovesJournal {
   private def v1(form: String): String = "v1:" + sha(form)
 
   private def v2(form: String): String = "v2:" + sha(form)
+
+  private def v3(form: String): String = "v3:" + sha(form)
 
   private def sha(form: String): String = Sha256.text(form).hex
 
@@ -555,6 +566,54 @@ object MovesJournal {
             )
         }
       } yield (made, sourced)
+  )
+
+  /** A screening's `ask:{n}`: `{"screen":a}`, `a` its ask's record as [[askMade]] writes it,
+    * with `"shape":{"floor","musts"}` when it read what it screened: its floor's size and each
+    * signal's `must` ([[Must.written]]), what its answers are read by, and never a signal's text.
+    */
+  private[moves] given screened: Journaled[(AskMade, Option[Screen.Shape])] = Journaled.json(
+    (made, shape) =>
+      ujson.Obj.from(
+        Vector[(String, ujson.Value)]("screen" -> writeAsk(made)) ++ shape.map(s =>
+          "shape" -> ujson.Obj(
+            "floor" -> s.floor.toDouble,
+            "musts" -> ujson.Arr.from(s.musts.map(m => ujson.Str(m.written)))
+          )
+        )
+      ),
+    v =>
+      for {
+        o <- fields(v, "screen")
+        made <- o.get("screen").toRight("screen: no record").flatMap(readAsk)
+        shape <- o.get("shape") match {
+          case None => Right(None)
+          case Some(s) =>
+            for {
+              f <- fields(s, "screen.shape")
+              floor <- f
+                .get("floor")
+                .flatMap(_.numOpt)
+                .filter(d => d >= 0 && d.isWhole && d <= Int.MaxValue)
+                .map(_.toInt)
+                .toRight("screen.shape: no floor")
+              musts <- f
+                .get("musts")
+                .flatMap(_.arrOpt)
+                .toRight("screen.shape: no musts")
+                .flatMap(
+                  _.toVector.foldLeft[Either[String, Vector[Must]]](Right(Vector.empty))((acc, m) =>
+                    acc.flatMap(done =>
+                      m.strOpt
+                        .flatMap(w => Must.values.find(_.written == w))
+                        .map(done :+ _)
+                        .toRight("screen.shape: a must neither absent nor present")
+                    )
+                  )
+                )
+            } yield Some(Screen.Shape(floor, musts))
+        }
+      } yield (made, shape)
   )
 
   given recorded: Journaled[Either[String, Unit]] = Journaled.json(

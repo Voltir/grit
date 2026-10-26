@@ -4,7 +4,7 @@ import grit.core.flow.Downgrade
 import grit.core.id.{DocKey, DocumentVersionId, PluginName, ShortHash}
 import grit.core.period.Probability
 import grit.core.place.Place
-import grit.core.screen.Checks
+import grit.core.screen.{Checks, Screen, Screened}
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Label}
 
 /** `policy` applied to the document `document` reads, by the `version`th application to that
@@ -30,16 +30,17 @@ object PolicyApplication {
 }
 
 /** A rewrite of the document version `source`, without `applied`'s compartment, by the
-  * declassification ([[Declassified.declassification]]); the highest of the check's
-  * probabilities that it keeps what the policy removes, hints at it, or instructs its reader is
-  * `judged`. Only [[DocumentKeeper.declassified]] keeps it, at `label`, deriving every field of
-  * the row from it; nothing outside core reads its text.
+  * declassification ([[Declassified.declassification]]), its screen passed on its `attempt`;
+  * `judged`, that screen's [[grit.core.screen.Screened.judged]]. Only
+  * [[DocumentKeeper.declassified]] keeps it, at `label`, deriving every field of the row from
+  * it; nothing outside core reads its text.
   */
 final class Declassified private[document] (
     private[core] val text: DocText,
     private[core] val from: Declassified.Source,
     val applied: PolicyApplication,
     val judged: Probability,
+    val attempt: Declassified.Attempt,
     val label: Label
 ) extends caps.Pure {
   def source: DocumentVersionId = from.version
@@ -108,18 +109,29 @@ object Declassified {
       } yield Made(source, revision, over, policy, application)
   }
 
-  /** 0.1: the check's probability at or above which nothing is declassified. */
-  val Below: Probability = Probability.clamped(0.1)
+  /** Which ask of a declassify wrote the rewrite: its first, or the one retry. */
+  enum Attempt(val number: Int) extends caps.Pure {
+    case First extends Attempt(1)
+    case Second extends Attempt(2)
+  }
 
-  /** A declassification: `rewrite`, made from `source` under `applied`, at its policy's
-    * `lowered` of the source's label, when `leak`, the highest of the check's probabilities, is
-    * below [[Below]]; `None` otherwise, when `lowered` is `None`, and when `applied` names
-    * another document than `source`'s pointer reads. Its check judges the rewrite only against
-    * its own policy and source: what the policy fails to name passes, and were rewrites ever
-    * declassified again, each step's residual would add to the last's.
+  /** A declassification: `rewrite`, its `attempt`, made from `source` under `applied`, at its
+    * policy's `lowered` of the source's label, when its `screened` answers fire nothing against
+    * the source's `baseline` ([[grit.core.screen.Screened.fired]]); `None` otherwise, when
+    * `lowered` is `None`, and when `applied` names another document than `source`'s pointer
+    * reads. Its screen judges the rewrite only against its own policy's signals and its own
+    * source: what the policy fails to name passes, and were rewrites ever declassified again,
+    * each step's residual would add to the last's.
     */
   private[core] val declassification: Downgrade[
-    (rewrite: DocText, source: Source, applied: PolicyApplication, leak: Probability),
+    (
+        rewrite: DocText,
+        source: Source,
+        applied: PolicyApplication,
+        screened: Screened,
+        baseline: Option[Screen.Baseline],
+        attempt: Attempt
+    ),
     Option[Declassified]
   ] =
     new Downgrade(
@@ -130,16 +142,27 @@ object Declassified {
         Downgrade.Capacity.Text
       ),
       in =>
-        if (in.leak >= Below || in.applied.document != in.source.pointer) None
+        if (!in.screened.fired(in.baseline).passes || in.applied.document != in.source.pointer)
+          None
         else
           in.applied.policy
             .lowered(in.source.label)
-            .map(new Declassified(in.rewrite, in.source, in.applied, in.leak, _))
+            .map(
+              new Declassified(
+                in.rewrite,
+                in.source,
+                in.applied,
+                in.screened.judged(in.baseline),
+                in.attempt,
+                _
+              )
+            )
     )
 
   /** What [[DocumentKeeper.declassified]] keeps of a declassified rewrite, every field derived
     * from it: its text at `label`, believed at `integrity`, at `place`, under `key`, with
-    * `data`, and no pointer or refs; and its audit row, of `source`, `applied` and `judged`.
+    * `data`, and no pointer or refs; and its audit row, of `source`, `applied`, `judged` and
+    * `attempt`.
     */
   final class Row private[document] (
       val key: DocKey,
@@ -150,10 +173,22 @@ object Declassified {
       val data: ujson.Value,
       val source: DocumentVersionId,
       val applied: PolicyApplication,
-      val judged: Probability
+      val judged: Probability,
+      val attempt: Attempt
   ) extends caps.Pure {
     private[document] def believedAtMost(most: Integrity): Row =
-      new Row(key, label, integrity.meet(most), place, text, data, source, applied, judged)
+      new Row(
+        key,
+        label,
+        integrity.meet(most),
+        place,
+        text,
+        data,
+        source,
+        applied,
+        judged,
+        attempt
+      )
   }
 
   /** `d`'s row, believed at `integrity`: under its source's plugin and a hash of its source's
@@ -173,7 +208,8 @@ object Declassified {
           Made.of(d.source, d.from.revision, d.applied).written,
           d.source,
           d.applied,
-          d.judged
+          d.judged,
+          d.attempt
         )
       )
 }

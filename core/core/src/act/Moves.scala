@@ -22,6 +22,7 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
+import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolName}
@@ -286,20 +287,22 @@ trait Dreaming extends Keeping {
 
   /** `source`, a document of the acting plugin or one of its needs, rewritten under `applied`
     * from the text of its file at `revision` (as its plugin's pieces of it name it,
-    * [[grit.core.files.PiecedFile.revision]]), and checked. It is asked as a [[Posed.Text]] of
+    * [[grit.core.files.PiecedFile.revision]]), and screened. It is asked as a [[Posed.Text]] of
     * [[Declassifying.request]], the policy's text and the file's alone, read in this move's own
-    * step (`ask:{name}`), of the catalog's `dream` role; then as a judgment of
-    * [[Declassifying.Check]]'s three questions about [[Declassifying.state]], read again in its
-    * own step (`ask:{name}-check`); then lowered by the declassification the run's program
-    * declared ([[Declassifying.Node]]). [[Declassifying.Outcome]]: `Made`; `Kept` when a
-    * question's probability is at or above [[Declassified.Below]], or the model wrote
-    * [[Declassifying.Nothing]] (no check asked); `Unapplied`, asking nothing more, when either
-    * step reads nothing, with why ([[Declassifying.Unread]]). Each ask is counted, limited and
-    * refused as an ask or a judgment is ([[ask]]), and a check refused is that refusal, never a
-    * declassification. A rewrite stopped at its length limit, or blank, is neither a rewrite
-    * nor a withholding: [[MoveError.Model]] saying which ([[Declassifying.written]]), no check
-    * asked. [[MoveError.Undeclared]], no move made, when the program did not declare the
-    * declassification.
+    * step (`ask:{name}`), of the catalog's `dream` role; then the rewrite alone is screened by
+    * [[Declassifying.screen]] of the policy's checks, read again in its own step
+    * (`ask:{name}-check`); when a floor answer fires ([[Screened.floorFires]]), the source's
+    * text by [[Declassifying.Floor]] alone, once, in its own (`ask:{name}-source`); then lowered
+    * by the declassification the run's program declared ([[Declassifying.Node]]) when nothing
+    * fired against the source's floor ([[Screened.fired]]). [[Declassifying.Outcome]]: `Made`;
+    * `Kept` when something fired, or the model wrote [[Declassifying.Nothing]] (no check asked);
+    * `Unapplied`, asking nothing more, when any step reads nothing, with why
+    * ([[Declassifying.Unread]]: `Unchecked` when its policy's checks do not read). Each ask is
+    * counted, limited and refused as an ask or a judgment is ([[ask]]), and a screen refused is
+    * that refusal, never a declassification. A rewrite stopped at its length limit, or blank, is
+    * neither a rewrite nor a withholding: [[MoveError.Model]] saying which
+    * ([[Declassifying.written]]), no check asked. [[MoveError.Undeclared]], no move made, when
+    * the program did not declare the declassification.
     */
   final def declassify(
       name: MoveName,
@@ -316,15 +319,33 @@ trait Dreaming extends Keeping {
               Right(Declassifying.Outcome.Unapplied(why))
             case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
             case Declassifying.Rewritten.Made(text, from) =>
-              check(name, source, revision, applied, text).map {
-                case Left(why) => Declassifying.Outcome.Unapplied(why)
-                case Right(leak) =>
-                  raise((rewrite = text, source = from, applied = applied, leak = leak)) match {
-                    case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
-                    case None if leak >= Declassified.Below =>
-                      Declassifying.Outcome.Kept(Some(leak))
-                    // The rewrite's source is no longer the application's document.
-                    case None => Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)
+              val attempt = Declassified.Attempt.First
+              screen(name, source, revision, applied, text, attempt).flatMap {
+                case Left(why) => Right(Declassifying.Outcome.Unapplied(why))
+                case Right(screened) =>
+                  val against
+                      : Either[MoveError, Either[Declassifying.Unread, Option[Screen.Baseline]]] =
+                    if (!screened.floorFires) Right(Right(None))
+                    else baseline(name, source, revision, applied).map(_.map(Some(_)))
+                  against.map {
+                    case Left(why) => Declassifying.Outcome.Unapplied(why)
+                    case Right(base) =>
+                      raise(
+                        (
+                          rewrite = text,
+                          source = from,
+                          applied = applied,
+                          screened = screened,
+                          baseline = base,
+                          attempt = attempt
+                        )
+                      ) match {
+                        case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
+                        case None if !screened.fired(base).passes =>
+                          Declassifying.Outcome.Kept(Some(screened.judged(base)))
+                        // The rewrite's source is no longer the application's document.
+                        case None => Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)
+                      }
                   }
               }
           }
@@ -347,16 +368,29 @@ trait Dreaming extends Keeping {
       applied: PolicyApplication
   ): Either[MoveError, Tainted[Declassifying.Rewritten]]
 
-  /** [[declassify]]'s check of `rewrite`, `{name}-check`: the highest of its probabilities; why
-    * not, when it read nothing and asked nothing.
+  /** [[declassify]]'s screen of `rewrite`, its `attempt` ([[Declassifying.checked]]), read again
+    * as its rewrite's was: its answers; why not, when it read nothing and asked nothing.
     */
-  protected def check(
+  protected def screen(
       name: MoveName,
       source: DocumentVersionId,
       revision: String,
       applied: PolicyApplication,
-      rewrite: DocText
-  ): Either[MoveError, Either[Declassifying.Unread, Probability]]
+      rewrite: DocText,
+      attempt: Declassified.Attempt
+  ): Either[MoveError, Either[Declassifying.Unread, Screened]]
+
+  /** [[declassify]]'s screen of its source's text as the rewrite was shown it
+    * ([[Declassifying.sourced]]), the floor alone, read again as its rewrite's was: the
+    * [[Screen.Baseline]] a rewrite's floor answers are excused against; why not, when it read
+    * nothing and asked nothing.
+    */
+  protected def baseline(
+      name: MoveName,
+      source: DocumentVersionId,
+      revision: String,
+      applied: PolicyApplication
+  ): Either[MoveError, Either[Declassifying.Unread, Screen.Baseline]]
 }
 
 object Dreaming {

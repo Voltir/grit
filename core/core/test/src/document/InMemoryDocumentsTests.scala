@@ -47,8 +47,6 @@ object InMemoryDocumentsTests extends DocumentContract {
       over: Option[DeclassificationPolicy.Over]
   ): Unit = documents.application(pointer, version, over)
 
-  protected def audited(
-      v: DocumentVersionId
-  ): Option[(source: DocumentVersionId, policy: Int, application: Int)] =
+  protected def audited(v: DocumentVersionId): Option[InMemoryDocuments.Audit] =
     documents.declassification(v)
 }

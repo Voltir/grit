@@ -533,8 +533,8 @@ private[sql] object SqlDocuments {
             update(
               """INSERT INTO grit.declassifications
                 |       (document_version, source_version, pointer, over, policy_version,
-                |        application_version, judged, made_at)
-                |VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?)""".stripMargin
+                |        application_version, judged, attempt, made_at)
+                |VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?)""".stripMargin
             ) { ps =>
               ps.setLong(1, DocumentVersionId.value(version))
               ps.setLong(2, DocumentVersionId.value(row.source))
@@ -543,7 +543,8 @@ private[sql] object SqlDocuments {
               ps.setInt(5, applied.policy.version)
               ps.setInt(6, applied.version)
               ps.setFloat(7, Probability.value(row.judged).toFloat)
-              ps.setObject(8, utc(at))
+              ps.setShort(8, row.attempt.number.toShort)
+              ps.setObject(9, utc(at))
             }
           case Written.Unchanged(_, _) => Right(0)
         }

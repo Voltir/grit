@@ -57,6 +57,7 @@ import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
+import grit.core.screen.Screen
 import grit.core.stitch.{Strand, StrandExcerpts}
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
@@ -254,14 +255,13 @@ private[moves] object Act {
       digest: String
   ) extends Acted
 
-  /** The check `name` of `rewrite`, read again as its [[Rewriting]] read it, `reading`, under
-    * `digest`.
+  /** The screening `name` of what `of` names, read again as its rewrite's [[Rewriting]] read
+    * it, under `digest`.
     */
-  final case class Checking(
+  final case class Screening(
       name: MoveName,
       acting: Acting,
-      reading: Declassifying.Reading,
-      rewrite: DocText,
+      of: Declassifying.Of,
       digest: String
   ) extends Acted
 
@@ -309,27 +309,59 @@ private[moves] object Act {
     )
   }
 
-  /** A rewrite's check's `ask:{n}`: read again as its rewrite's was, then, when it read the
-    * same, the classifier's answers to [[Declassifying.Check]] about [[Declassifying.state]];
-    * a refusal of kind `Changed` in the words of why it read nothing.
+  /** A screening's `ask:{n}`: read again as its rewrite's was ([[Declassifying.read]]), then,
+    * when it read the same, the classifier's answers about the text it names alone
+    * ([[grit.core.screen.Screen.Text]]): a rewrite's to [[Declassifying.screen]] of the policy's
+    * checks, a source's to its floor ([[grit.core.screen.Screen.baseline]]); beside them, the
+    * [[grit.core.screen.Screen.Shape]] they were asked in. A refusal of the kind
+    * [[unreadKind]] gives why it read nothing.
     */
-  val check: Step[MovesEnv, Checking, AskMade] = {
+  val screening: Step[MovesEnv, Screening, (AskMade, Option[Screen.Shape])] = {
     import MovesJournal.given
-    Step[MovesEnv, Checking, AskMade](Asks.move)(env =>
-      c =>
-        env.db.read(c.acting.subject)(Declassifying.read(c.reading)) match {
-          case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), c.digest)
-          case Right(Left(why)) => AskMade.Refused(unreadKind(why), why.why, c.digest)
-          case Right(Right(shown)) =>
-            val state = Declassifying.state(shown, c.rewrite)
-            judged(
-              env,
-              c.acting,
-              Request.of(state, Declassifying.Check),
-              Declassifying.Check,
-              c.digest
-            )
+    Step[MovesEnv, Screening, (AskMade, Option[Screen.Shape])](Asks.move)(env =>
+      s => {
+        val reading = s.of match {
+          case Declassifying.Of.Rewrite(reading, _, _) => reading
+          case Declassifying.Of.Source(reading) => reading
         }
+        env.db.read(s.acting.subject)(Declassifying.read(reading)) match {
+          case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
+          case Right(Left(why)) => (AskMade.Refused(unreadKind(why), why.why, s.digest), None)
+          case Right(Right(shown)) =>
+            val screen = Declassifying.screen(shown.checks)
+            s.of match {
+              case Declassifying.Of.Rewrite(_, text, _) =>
+                val ask = screen.ask
+                (
+                  judged(
+                    env,
+                    s.acting,
+                    Request.of(Screen.Text(DocText.value(text)), ask),
+                    ask,
+                    s.digest
+                  ),
+                  Some(screen.shape)
+                )
+              case Declassifying.Of.Source(_) =>
+                screen.baseline match {
+                  case Some(ask) =>
+                    (
+                      judged(
+                        env,
+                        s.acting,
+                        Request.of(Screen.Text(shown.text), ask),
+                        ask,
+                        s.digest
+                      ),
+                      Some(Screen.Shape(screen.floor.size, Vector.empty))
+                    )
+                  // Declassifying.Floor is not empty, so its screen always has a baseline.
+                  case None =>
+                    (AskMade.Refused(AskMade.Kind.Model, "its screen has no floor", s.digest), None)
+                }
+            }
+        }
+      }
     )
   }
 

@@ -129,7 +129,7 @@ In dependency order, each with the core packages it imports:
 - **`act`**: what an actor may do, and under what (ADR 0034): who acts, its moves within their
   limits, and what they come to; and the declassifying move's model-facing text. ← `id`,
   `place`, `visibility`, `message`, `classify`, `store`, `document`, `period`, `spend`,
-  `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`, `stitch`
+  `durable`, `flow`, `provider`, `tool`, `schema`, `sanitise`, `stitch`, `screen`
 - **`job`**: jobs and their schedules (ADRs 0021, 0029). ← `id`, `clock`, `visibility`,
   `message`, `store`, `document`, `flow`, `act`
 - **`inbox`**: the `Inbox` trait the engine takes messages through. ← `id`, `identity`,

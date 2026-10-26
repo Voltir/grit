@@ -98,12 +98,11 @@ abstract class DocumentContract extends TestSuite {
       over: Option[DeclassificationPolicy.Over]
   ): Unit
 
-  /** The audit row of the declassified version `v`: the version it was made from, and the policy
-    * and application versions it was made under; `None` when it has none.
+  /** The audit row of the declassified version `v`: the version it was made from, the policy
+    * and application versions it was made under, and which attempt wrote it; `None` when it has
+    * none.
     */
-  protected def audited(
-      v: DocumentVersionId
-  ): Option[(source: DocumentVersionId, policy: Int, application: Int)]
+  protected def audited(v: DocumentVersionId): Option[InMemoryDocuments.Audit]
 
   /** Runs `body` in one transaction opened publicly, committed when it returns: what every
     * case but the labelled ones writes and reads at.
@@ -143,9 +142,20 @@ abstract class DocumentContract extends TestSuite {
       body: String,
       label: Label,
       read: Pointer,
-      applied: PolicyApplication
+      applied: PolicyApplication,
+      attempt: Declassified.Attempt = Declassified.Attempt.First
   ): Declassified =
-    TestDeclassified.of(body, "cards", "card", place("cards"), label, read, Revision, applied)
+    TestDeclassified.of(
+      body,
+      "cards",
+      "card",
+      place("cards"),
+      label,
+      read,
+      Revision,
+      applied,
+      attempt
+    )
 
   /** The revision of the file a test's rewrite is made from. */
   private val Revision: String = "r7"
@@ -1523,7 +1533,7 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "a declassified rewrite is kept at its source's label without the compartment, at its place, under a key core derives, with data naming its source, its file's revision and the versions it was made under, and its audit row"
+      "a declassified rewrite is kept at its source's label without the compartment, at its place, under a key core derives, with data naming its source, its file's revision and the versions it was made under, and its audit row, which keeps the attempt that passed"
     ) {
       val p = name("doc-declassified")
       val k = keeper(p, terms())
@@ -1537,7 +1547,13 @@ abstract class DocumentContract extends TestSuite {
         val applied = ok(k.declassifying(source, card))
           .map(_.applied)
           .getOrElse(throw new java.lang.AssertionError("no application"))
-        ok(k.declassified(declassified("the gist", source, card, applied), Integrity.Member, at(1)))
+        ok(
+          k.declassified(
+            declassified("the gist", source, card, applied, Declassified.Attempt.Second),
+            Integrity.Member,
+            at(1)
+          )
+        )
       }
       val v = written match {
         case Written.Versioned(v, _, _) => v
@@ -1550,7 +1566,7 @@ abstract class DocumentContract extends TestSuite {
           ok(shelf(p).current(derived, Label.at(Level.Internal)))
             .map(d => (DocText.value(d.text), d.place, d.pointer, Declassified.Made.read(d.data)))
         ),
-        audited(v).map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
+        audited(v).map(a => (DocumentVersionId.value(a.source), a.policy, a.application, a.attempt))
       ) ==> (
         Label.at(Level.Internal),
         Some(
@@ -1561,7 +1577,7 @@ abstract class DocumentContract extends TestSuite {
             Some(Declassified.Made(got(DocumentVersionId.of(1).toRight("")), Revision, team, 1, 1))
           )
         ),
-        Some((1L, 1, 1))
+        Some((1L, 1, 1, 2))
       )
     }
 

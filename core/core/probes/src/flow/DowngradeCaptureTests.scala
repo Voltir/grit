@@ -91,33 +91,36 @@ object DowngradeCaptureTests extends TestSuite {
     """import grit.core.document.*
       |def f(t: DocText, s: Declassified.Source, a: PolicyApplication,
       |  p: grit.core.period.Probability, l: grit.core.visibility.Label) =
-      |  new Declassified(t, s, a, p, l)""".stripMargin
+      |  new Declassified(t, s, a, p, Declassified.Attempt.First, l)""".stripMargin
   private val rowMade =
     """import grit.core.document.*
       |def f(d: Declassified, k: grit.core.id.DocKey, p: grit.core.place.Place, t: DocText) =
       |  new Declassified.Row(k, d.label, Integrity.Member, p, t, ujson.Obj(), d.source, d.applied,
-      |    d.judged)""".stripMargin
+      |    d.judged, d.attempt)""".stripMargin
 
   /** A program declaring the declassification, whose body raises it: what a plugin may build. */
   private val declassifying =
     """import grit.core.document.*
-      |def program(t: DocText, s: Declassified.Source, a: PolicyApplication) =
+      |def program(t: DocText, s: Declassified.Source, a: PolicyApplication,
+      |  d: grit.core.screen.Screened) =
       |  Flow.program[Any, String, String]("p", Vector(grit.core.act.Declassifying.Node))(steps => in =>
       |    grit.core.act.Declassifying.raise(using steps) match {
       |      case Some(r) =>
-      |        r((rewrite = t, source = s, applied = a,
-      |          leak = grit.core.period.Probability.Zero)).toString
+      |        r((rewrite = t, source = s, applied = a, screened = d, baseline = None,
+      |          attempt = Declassified.Attempt.First)).toString
       |      case None => in
       |    })
       |""".stripMargin
   private val declassifyingRun =
     declassifying +
-      """def f(t: DocText, s: Declassified.Source, a: PolicyApplication, d: Durable^) =
-        |  program(t, s, a).run((), "x")(using d)""".stripMargin
+      """def f(t: DocText, s: Declassified.Source, a: PolicyApplication,
+        |  e: grit.core.screen.Screened, d: Durable^) =
+        |  program(t, s, a, e).run((), "x")(using d)""".stripMargin
   private val declassifyingWalked =
     declassifying +
-      """def f(t: DocText, s: Declassified.Source, a: PolicyApplication) =
-        |  program(t, s, a).walk("x", ???, Vector())""".stripMargin
+      """def f(t: DocText, s: Declassified.Source, a: PolicyApplication,
+        |  e: grit.core.screen.Screened) =
+        |  program(t, s, a, e).walk("x", ???, Vector())""".stripMargin
 
   /** Inside grit.core.document, where the declassification is made: its rule is pure. */
   private val inside =

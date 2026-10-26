@@ -93,7 +93,7 @@ object CardDeclassifyTests extends TestSuite {
     val pieces = new InMemoryPieces
     private val counts = new Counts
 
-    /** How many rewrites and checks were asked, across runs. */
+    /** How many rewrites and screens (a rewrite's or its source's) were asked, across runs. */
     def asked: (Int, Int) = (counts.rewrites, counts.checks)
 
     /** The card of the Drive file `id` at `revision`, holding `says` at [[Floor]], its file
@@ -186,8 +186,8 @@ object CardDeclassifyTests extends TestSuite {
     def apply(id: String, version: Int, applied: Boolean = true): Unit =
       documents.application(pointer(id), version, Option.when(applied)(Over))
 
-    /** One run with `perRun`, its rewrites answered "The team meets offsite." and each check's
-      * three questions `leak`: its reply.
+    /** One run with `perRun`, its rewrites answered "The team meets offsite." and every question
+      * of each screen, a rewrite's or a source's, `leak`: its reply.
       */
     def run(perRun: Int = 5, leak: Double = 0.0): String = {
       val job = new CardDeclassify(5, Cards)
@@ -223,9 +223,10 @@ object CardDeclassifyTests extends TestSuite {
           counts.rewrite()
           Right(Asked(TestTainted.at(reply, Integrity.Member), Floor))
         },
-        _ => {
+        request => {
           counts.check()
-          Right(Asked(TestTainted.at(Vector.fill(3)(Answer.YesNo(leak)), Integrity.Member), Floor))
+          val answers = Vector.fill(request.questions.size)(Answer.YesNo(leak))
+          Right(Asked(TestTainted.at(answers, Integrity.Member), Floor))
         }
       )
       job.run(TestTainted.trusted(JobRun(DeclassifyParams(perRun), Now, Now)), moves)
@@ -269,7 +270,7 @@ object CardDeclassifyTests extends TestSuite {
         .fold(Vector.empty)(_.toVector)
   }
 
-  /** How many rewrites and checks a world's runs asked. */
+  /** How many rewrites and screens a world's runs asked. */
   private final class Counts {
     // Counted by the scripts; one test's, read on its one thread.
     @caps.unsafe.untrackedCaptures
@@ -359,16 +360,17 @@ object CardDeclassifyTests extends TestSuite {
       )
     }
 
-    test("a check that keeps a rewrite back is withheld, and not asked again at those versions") {
+    test("a screen that keeps a rewrite back is withheld, and not asked again at those versions") {
       val runs = new Runs
       val _ = runs.card("c1")
       runs.policy(1)
       runs.apply("c1", 1)
+      // Its floor fires too, so its source's floor is asked: two screens, once.
       (runs.run(leak = 0.5), runs.run(leak = 0.5), runs.kept, runs.asked) ==> (
         "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
         "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
         Vector(),
-        (1, 1)
+        (1, 2)
       )
     }
 

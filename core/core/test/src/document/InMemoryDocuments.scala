@@ -282,7 +282,12 @@ final class InMemoryDocuments extends DocumentStore {
               case Written.Versioned(v, _, _) =>
                 audits = audits.updated(
                   DocumentVersionId.value(v),
-                  (source = row.source, policy = a.policy.version, application = a.version)
+                  (
+                    source = row.source,
+                    policy = a.policy.version,
+                    application = a.version,
+                    attempt = row.attempt.number
+                  )
                 )
               case Written.Unchanged(_, _) => ()
             }
@@ -604,10 +609,10 @@ object InMemoryDocuments {
     )
   )
 
-  /** A declassified version's audit row: the version it was made from, and the policy and
-    * application versions it was made under.
+  /** A declassified version's audit row: the version it was made from, the policy and
+    * application versions it was made under, and the number of the attempt that wrote it.
     */
-  type Audit = (source: DocumentVersionId, policy: Int, application: Int)
+  type Audit = (source: DocumentVersionId, policy: Int, application: Int, attempt: Int)
 
   /** One version's row: `label`, `integrity` and `room` as it is kept; `text` `None` for a
     * withdrawal.
