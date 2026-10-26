@@ -88,8 +88,8 @@ encodings must replay every history of its epoch
 
 ## In a git worktree
 
-Build and test with Mill, and read the code with `scripts/scout --root .` from the
-worktree: it answers from the worktree's own compiled output. Metals serves the main checkout
+Build and test with Mill, and read the code with scout, passing the worktree as `root` (CLI:
+`scripts/scout --root .`): it answers from the worktree's own compiled output. Metals serves the main checkout
 only. A CLI `./mill` and Metals never block each other (separate build directories).
 
 A targeted `scripts/check` right after `--it` can leave two Mill daemons: the exiting one
@@ -100,8 +100,11 @@ deletes `out/mill-daemon/socketPort`, orphaning the live one, and the next `./mi
 ## JVMs
 
 - One JVM-heavy job at a time on this machine: no parallel Mill, test or grit runs.
+- Keep one warm Mill for the whole task: `./mill`, never `--no-daemon`, and no `./mill shutdown`
+  between steps.
 - Stamp what you start; kill only your own, by PID. Never `pkill` by pattern: Nick may
   have grit or a demo open elsewhere.
 - On Mill "Connection refused": `./mill shutdown` and retry.
 - At the end: `./mill shutdown` in your checkout. `scripts/check` shuts down the lint
-  tier's daemon itself, and on a timeout the timed-out tier's.
+  tier's daemon itself, and on a timeout the timed-out tier's. Then find any process whose
+  `/proc/<pid>/cwd` is under your checkout, other than your own shell, and kill it by PID.

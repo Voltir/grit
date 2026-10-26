@@ -53,6 +53,10 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 - Edit straight from that file text: an Edit's old_string may be copied from `show` (with or
   without `body`), `family`, or `tests` with `test` or `body`, without a Read first. Read a
   line range only when an Edit fails to match. Several changes a few lines apart are one Edit.
+- After an edit, scout is current again for every file a compile that succeeds covered:
+  `./mill <module>.compile` for main sources, `<module>.test.compile` (or the suite's run) for
+  tests. Go back to scout then, not `sed`. Until then, the lines you edited are what your
+  Edit's new_string says: copy the next old_string from it rather than reading them back.
 - An edit must fail loudly when it does not apply, so source is changed with Edit (and Write
   for a new file), never `sed -i`, python or a heredoc, which change nothing silently on a
   mismatch. The one exception is a mechanical change across many sites (a rename): a script
@@ -61,15 +65,12 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 - A line range scout printed is not a cue for `sed -n`: to read a member's body, private
   ones included, ask for it by name (`show` with `body: ["m1", "m2"]`, `private: true`); for a
   test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
-  is for what scout cannot name (a test file's imports, a region inside one body). Nor is a
-  `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
+  is for what scout cannot name (a test file's imports, a region inside a body you have not
+  edited). Nor is a `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
   lists a stage's reads, run those first.
 - Adding a member to an implementation or a fake: `file` it for its members, then `show` it
   with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
   Never read the implementation whole to learn its shape.
-- Ask for private members (`private: true`) only to edit them or to understand an
-  implementation; otherwise trust the public interface and referential transparency to
-  understand the code. Name the members you need in `body`.
 - A query that failed to answer what you needed goes in your report: the query, what you
   wanted, what came back.
 
@@ -125,12 +126,9 @@ reading the doc each item names rather than assuming its rule.
   the reviewer runs it after your report), and each probe suite the plan names run by name;
   databases by the
   `grit-local-db` skill.
-- **Checks cost real time.** Keep one warm Mill for the whole task: `./mill`, never
-  `--no-daemon`, and no `./mill shutdown` between steps except once to clear a "Connection
-  refused". One Mill job at a time. While editing, compile, don't test: after each burst of
-  edits, `./mill <module>.compile` (seconds, warm), which also keeps scout's answers current —
-  it reads compiled output, so a file edited since its compile is tagged stale and its lines
-  may not match. Run a test only to see it red or green: the suite of the test the commit is
+- **Checks cost real time.** Mill and JVMs by `grit-test-cycle`'s JVMs section. While editing,
+  compile, don't test: after each burst of edits, `./mill <module>.compile` (seconds, warm).
+  Run a test only to see it red or green: the suite of the test the commit is
   about (`scripts/check <Suite>`), red before the change and green after. Run the module's
   check and the law once per commit, when its edits are done. Before reporting, run the unit
   suites your change reaches, by name, and the probes the plan names: hand back only work you
@@ -151,9 +149,6 @@ reading the doc each item names rather than assuming its rule.
   re-derives what was defined once.
 - Commit in the repo's message style (see `git log`), one item per commit, ending with the
   attribution line the brief gives.
-- At the end, after `./mill shutdown` (and `MILL_OUTPUT_DIR=out/lint ./mill shutdown` if
-  lint ran): find any process whose `/proc/<pid>/cwd` is under the worktree, other than your
-  own shell, and kill it by PID. Never `pkill -f`.
 
 ## Report
 
