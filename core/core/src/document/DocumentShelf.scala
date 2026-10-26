@@ -111,10 +111,11 @@ trait DocumentKeeper extends DocumentShelf {
 
   /** The application in force for the document `pointer` reads, kept at `label`: its current
     * application, when `label` holds its compartment and that compartment's policy is current;
-    * `None` otherwise, and for a label holding the unmapped mark. Its `instructions`, saying what
-    * a rewrite under it removes and what it writes in its place, only when its transaction reads
-    * the label the policy is kept at (its compartment's own group's grant). Read from the
-    * operator's rows as this transaction sees them now.
+    * `None` otherwise, and for a label holding the unmapped mark. Its policy's `instructions`,
+    * saying what a rewrite under it removes and what it writes in its place, and its `checks`, as
+    * [[grit.core.screen.Checks.read]] reads them, only when its transaction reads the label the
+    * policy is kept at (its compartment's own group's grant). Read from the operator's rows as
+    * this transaction sees them now.
     */
   def declassifying(label: Label, pointer: Pointer)(using
       Tx^

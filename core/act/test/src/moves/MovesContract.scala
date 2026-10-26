@@ -889,6 +889,19 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a declassify whose policy's checks do not read is Unapplied as unchecked, asking nothing"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      // The same version, its checks rewritten to ones that do not read.
+      shelves.documents.policy(Team, 1, Some(Instructions), Declassing, Some(ujson.Obj()))
+      val (got, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+        Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+      }
+      (got, shown) ==> (Seen(Vector(Right("unapplied unchecked"))), Vector())
+    }
+
+    test(
       "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied as lapsed or Kept"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
@@ -1395,7 +1408,7 @@ object MovesContract {
   }
 
   /** What a declassify came to: `made {label} judged {p}`, `kept {p}`, `kept nothing`,
-    * `unapplied lapsed` or `unapplied unpieced`.
+    * `unapplied lapsed`, `unapplied unpieced` or `unapplied unchecked`.
     */
   def outcome(o: Declassifying.Outcome): String = o match {
     case Declassifying.Outcome.Made(t) =>

@@ -77,6 +77,8 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
                 done.lapsed
               case Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Unpieced)) =>
                 done.lagging
+              case Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Unchecked)) =>
+                done.unscreened
               case Right(Declassifying.Outcome.Kept(_)) =>
                 val made = Declassified.Made.of(source, revision, applied)
                 moves.keep(CardMoves.numbered("withhold", i), run.tainted.map(_ => made))(
@@ -222,7 +224,8 @@ private[declassify] case object Kept extends caps.Pure {
 
 /** What a declassify run came to: how many rewrites it `written`, `withheld` (the check kept
   * them back, or the model wrote nothing that may be shared), found `unapplied` since its scan,
-  * found `unpieced` (no pieces of their file at their card's revision yet) and `withdrawn`; how
+  * found `unpieced` (no pieces of their file at their card's revision yet), found `unchecked`
+  * (their policy version in force has no checks that read) and `withdrawn`; how
   * many cards it `left` for the next run past its most; the cards not rewritten, each by its
   * version, and why; and why it stopped, if it did. [[line]] is its reply.
   */
@@ -231,6 +234,7 @@ final case class Tally(
     withheld: Int,
     unapplied: Int,
     unpieced: Int,
+    unchecked: Int,
     withdrawn: Int,
     left: Int,
     unwritten: Vector[(DocumentVersionId, String)],
@@ -238,13 +242,15 @@ final case class Tally(
 ) extends caps.Pure {
 
   /** `declassified cards: {written} written, {withheld} withheld, {unapplied} unapplied,
-    * {unpieced} unpieced, {withdrawn} withdrawn, {left plus unwritten} left for the next run`,
+    * {unpieced} unpieced, {unchecked} unchecked, {withdrawn} withdrawn, {left plus unwritten}
+    * left for the next run`,
     * then `; not written: {version} ({why})` for at most [[NotWritten.Shown]] of them and `and
     * {n} more` for the rest; then, when it stopped, `; stopped: {why}`.
     */
   def line: String =
     s"declassified cards: $written written, $withheld withheld, $unapplied unapplied, " +
-      s"$unpieced unpieced, $withdrawn withdrawn, ${left + unwritten.size} left for the next run" +
+      s"$unpieced unpieced, $unchecked unchecked, $withdrawn withdrawn, " +
+      s"${left + unwritten.size} left for the next run" +
       NotWritten.tail(unwritten.map((v, why) => (DocumentVersionId.value(v).toString, why))) +
       NotWritten.stopped(stopped)
 
@@ -256,14 +262,16 @@ final case class Tally(
 
   private[declassify] def lagging: Tally = copy(unpieced = unpieced + 1)
 
+  private[declassify] def unscreened: Tally = copy(unchecked = unchecked + 1)
+
   private[declassify] def unwritten(source: DocumentVersionId, why: String): Tally =
     copy(unwritten = unwritten :+ (source, why))
 }
 
 object Tally {
   private[declassify] def of(scan: Scanned): Tally =
-    Tally(0, 0, 0, 0, scan.withdrew, scan.left, Vector.empty, None)
+    Tally(0, 0, 0, 0, 0, scan.withdrew, scan.left, Vector.empty, None)
 
   private[declassify] def stopped(why: String): Tally =
-    Tally(0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
+    Tally(0, 0, 0, 0, 0, 0, 0, Vector.empty, Some(why))
 }

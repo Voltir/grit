@@ -26,6 +26,7 @@ import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
+import grit.core.screen.Checks
 import grit.core.store.{StoreError, Tombstones, Tx}
 import grit.core.visibility.{Clearance, DeclassificationPolicy, Integrity, Label}
 
@@ -452,7 +453,9 @@ private[sql] object SqlDocuments {
         s"""WITH ${SqlClearance.With}
           |SELECT a.version AS application, a.over, p.version AS policy,
           |       CASE WHEN p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
-          |            THEN p.text END AS text
+          |            THEN p.text END AS text,
+          |       CASE WHEN p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+          |            THEN p.checks END AS checks
           |  FROM grit.declassification_applications a
           |  JOIN grit.declassification_policies p ON p.over = a.over
           | WHERE a.pointer = ?::jsonb AND NOT ${SqlDeclassifications.ApplicationSuperseded}
@@ -469,7 +472,9 @@ private[sql] object SqlDocuments {
                 pointer,
                 rs.getInt("application")
               ),
+              // The text is NOT NULL here, so it is NULL only when the clearance does not read it.
               Option(rs.getString("text"))
+                .map(text => (text, Checks.read(Option(rs.getString("checks")).map(ujson.read(_)))))
             )
           )
       ).map(_.headOption.filter(_.applied.policy.lowered(label).isDefined))

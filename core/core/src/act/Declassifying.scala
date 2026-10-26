@@ -189,10 +189,15 @@ object Declassifying {
   enum Unread(val why: String) extends caps.Pure {
 
     /** Its source is not kept, holds nothing, is not read, is not one of `readable`'s or has no
-      * pointer; or `applied` is not the application in force for it, or its policy's text is
-      * not read ([[DocumentKeeper.declassifying]]).
+      * pointer; or `applied` is not the application in force for it, or its policy's text and
+      * checks are not read ([[DocumentKeeper.declassifying]]).
       */
     case Lapsed extends Unread("its source, or the application in force for it, changed")
+
+    /** Its policy's checks, read with its text, do not read ([[grit.core.screen.Checks.read]]):
+      * nothing under it is screened, so nothing is rewritten. Which fault, its checks' read says.
+      */
+    case Unchecked extends Unread("its policy version in force has no checks that read")
 
     /** Its source's plugin keeps no pieces of its file at `revision` at its label. */
     case Unpieced extends Unread("its source's file has no pieces at the revision it names")
@@ -211,9 +216,10 @@ object Declassifying {
         case None => Right(Left(Unread.Lapsed))
         case Some((d, pointer)) =>
           reading.keeper.declassifying(d.label, pointer).flatMap { inForce =>
-            inForce.filter(_.applied == reading.applied).flatMap(_.instructions) match {
+            inForce.filter(_.applied == reading.applied).flatMap(_.policy) match {
               case None => Right(Left(Unread.Lapsed))
-              case Some(instructions) =>
+              case Some((_, Left(_))) => Right(Left(Unread.Unchecked))
+              case Some((instructions, Right(_))) =>
                 reading.pieces
                   .file(d.plugin, pointer, reading.revision, d.label, SourcePieces)
                   .map { pieces =>

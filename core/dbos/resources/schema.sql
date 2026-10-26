@@ -1079,16 +1079,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS document_refs_key ON grit.document_refs (versi
 CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md5(ref));
 
 -- Each version of a compartment's declassification policy (DeclassificationPolicy): operator
--- text addressed to the rewriting model and the checking classifier, saying what to remove and
--- what to write in its place. `over` 'compartment:<c>'; `text` NULL for a revocation; the
--- current is the highest version. Kept at its compartment's own group's grant
+-- text addressed to the rewriting model, saying what to remove and what to write in its place,
+-- and `checks`, the steward's signals a rewrite is screened for and the examples they are
+-- benched on, as grit.core.screen.Checks reads them (the questions each signal is asked:
+-- Screen.absent and Screen.present). `over` 'compartment:<c>'; `text` NULL for a revocation;
+-- the current is the highest version. A version whose checks do not read rewrites nothing. Kept at its compartment's own group's grant
 -- (`classification_id`, interned by grit.intern_classification), read only under a clearance
 -- dominating it. Written by its compartment's steward or an administrator; until commands
 -- exist, by the operator:
---   INSERT INTO grit.declassification_policies (over, version, classification_id, text, set_at, set_by)
+--   INSERT INTO grit.declassification_policies (over, version, classification_id, text, checks, set_at, set_by)
 --   VALUES ('compartment:<c>', 1,
 --           grit.intern_classification(ROW(2, ARRAY['<c>'])::grit.classification), -- its grant
---           '<policy text>', now(), '<steward account>');
+--           '<policy text>', '<checks JSON>', now(), '<steward account>');
 -- A revocation is a row of the next version with `text` NULL. The job's next run withdraws the
 -- rewrites made under older versions.
 -- Retention: kept: a version neither current nor named by a grit.declassifications row is
@@ -1099,6 +1101,7 @@ CREATE TABLE IF NOT EXISTS grit.declassification_policies (
     version           INTEGER NOT NULL CHECK (version >= 1),
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
     text              TEXT CHECK (char_length(text) <= 4000),
+    checks            JSONB CHECK (checks IS NULL OR octet_length(checks::text) <= 32768),
     set_at            TIMESTAMPTZ NOT NULL,
     set_by            TEXT NOT NULL REFERENCES grit.identities(account),
     PRIMARY KEY (over, version)

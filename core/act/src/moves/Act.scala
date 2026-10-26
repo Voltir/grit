@@ -274,6 +274,7 @@ private[moves] object Act {
   def unreadKind(why: Declassifying.Unread): AskMade.Kind = why match {
     case Declassifying.Unread.Lapsed => AskMade.Kind.Changed
     case Declassifying.Unread.Unpieced => AskMade.Kind.Unpieced
+    case Declassifying.Unread.Unchecked => AskMade.Kind.Unchecked
   }
 
   /** The reason a refusal of `kind` says a rewrite or check read nothing; `None` for a kind
@@ -282,6 +283,7 @@ private[moves] object Act {
   def unreadOf(kind: AskMade.Kind): Option[Declassifying.Unread] = kind match {
     case AskMade.Kind.Changed => Some(Declassifying.Unread.Lapsed)
     case AskMade.Kind.Unpieced => Some(Declassifying.Unread.Unpieced)
+    case AskMade.Kind.Unchecked => Some(Declassifying.Unread.Unchecked)
     case _ => None
   }
 

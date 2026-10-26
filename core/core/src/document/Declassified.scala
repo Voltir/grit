@@ -4,6 +4,7 @@ import grit.core.flow.Downgrade
 import grit.core.id.{DocKey, DocumentVersionId, PluginName, ShortHash}
 import grit.core.period.Probability
 import grit.core.place.Place
+import grit.core.screen.Checks
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Label}
 
 /** `policy` applied to the document `document` reads, by the `version`th application to that
@@ -17,12 +18,14 @@ final case class PolicyApplication private[grit] (
 
 object PolicyApplication {
 
-  /** An application in force, `applied`, with its policy's `instructions` when its transaction
-    * reads them ([[DocumentKeeper.declassifying]]).
+  /** An application in force, `applied`, with its policy's `instructions` and `checks` when its
+    * transaction reads the policy's label ([[DocumentKeeper.declassifying]]), both or neither.
     */
   final class InForce private[grit] (
       val applied: PolicyApplication,
-      private[core] val instructions: Option[String]
+      private[core] val policy: Option[
+        (instructions: String, checks: Either[Checks.Unreadable, Checks])
+      ]
   ) extends caps.Pure
 }
 

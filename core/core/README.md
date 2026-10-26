@@ -96,7 +96,7 @@ In dependency order, each with the core packages it imports:
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
   key, or a withdrawal, supersedes it; and a document's declassified rewrite, under a
   compartment's policy applied to it, the one write kept below its transaction's floor.
-  ← `id`, `place`, `period`, `visibility`, `store`, `flow`, `tool`
+  ← `id`, `place`, `period`, `visibility`, `store`, `flow`, `tool`, `screen`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is

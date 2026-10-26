@@ -1,7 +1,7 @@
 package grit.act.moves
 
 import grit.core.act.MovesFixtures.shown
-import grit.core.act.{Answer, Called}
+import grit.core.act.{Answer, Called, Declassifying}
 import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.document.{Declassified, DocText, PolicyApplication}
 import grit.core.durable.Journaled
@@ -513,6 +513,17 @@ object MovesJournalTests extends TestSuite {
         AskMade.Refused(AskMade.Kind.Unpieced, "no pieces", "v2:ab"),
         """{"refused":"unpieced","why":"no pieces","digest":"v2:ab"}"""
       )
+    }
+
+    test(
+      "a rewrite or check whose policy version in force has no checks that read is written unchecked, and reads back as unchecked"
+    ) {
+      val made =
+        AskMade.Refused(Act.unreadKind(Declassifying.Unread.Unchecked), "no checks", "v2:ab")
+      (
+        pinned[AskMade](made, """{"refused":"unchecked","why":"no checks","digest":"v2:ab"}"""),
+        Act.unreadOf(AskMade.Kind.Unchecked)
+      ) ==> ((), Some(Declassifying.Unread.Unchecked))
     }
 
     test("a strand's summary records none of what its members said, and its reply's level") {

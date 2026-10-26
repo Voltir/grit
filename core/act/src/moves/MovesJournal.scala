@@ -113,6 +113,9 @@ private[moves] object AskMade {
       * was asked.
       */
     case Unpieced extends Kind("unpieced")
+
+    /** A rewrite or check found its policy's checks do not read: nothing was asked. */
+    case Unchecked extends Kind("unchecked")
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at

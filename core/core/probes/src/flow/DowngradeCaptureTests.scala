@@ -140,7 +140,7 @@ object DowngradeCaptureTests extends TestSuite {
       |import grit.core.document.PolicyApplication
       |""".stripMargin
   private val inForceApplied = "def f(i: PolicyApplication.InForce) = i.applied"
-  private val inForceRead = "def f(i: PolicyApplication.InForce) = i.instructions"
+  private val inForceRead = "def f(i: PolicyApplication.InForce) = i.policy"
 
   private lazy val pluginCompiled = Probes.batch(plugin, List(inForceApplied, inForceRead))
 
@@ -288,12 +288,12 @@ object DowngradeCaptureTests extends TestSuite {
     }
 
     test(
-      "an application in force is read outside grit.core, and its policy's text is not"
+      "an application in force is read outside grit.core, and its policy's text and checks are not"
     ) {
       pluginCompiled.errors(inForceApplied) ==> Nil
       assert(
         says(
-          "private[core] value instructions can only be accessed from package grit.core in package grit."
+          "private[core] value policy can only be accessed from package grit.core in package grit."
         )(pluginCompiled.errors(inForceRead))
       )
     }

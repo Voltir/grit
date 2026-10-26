@@ -9,6 +9,7 @@ import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.review.{DocumentLabel, DocumentReviews, ReviewWord}
+import grit.core.screen.Checks
 import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -65,18 +66,25 @@ abstract class DocumentContract extends TestSuite {
   protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as the operator's row does,
-    * committed: `text`, or a revocation when `None`.
+    * committed: `text`, or a revocation when `None`, and `checks` as its column holds them.
     */
   protected def policyAt(
       over: DeclassificationPolicy.Over,
       version: Int,
       text: Option[String],
-      kept: Label
+      kept: Label,
+      checks: Option[ujson.Value]
   ): Unit
 
-  /** As [[policyAt]], publicly, with [[Instructions]] unless `revoked`. */
+  /** As [[policyAt]], publicly, with [[Instructions]] unless `revoked`, and checks that read. */
   private def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
-    policyAt(over, version, Option.unless(revoked)(Instructions), Label.Public)
+    policyAt(
+      over,
+      version,
+      Option.unless(revoked)(Instructions),
+      Label.Public,
+      Some(InMemoryDocuments.Checks)
+    )
 
   /** A policy's text, as an operator writes one. */
   private val Instructions: String = "remove the team's details"
@@ -1468,7 +1476,7 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "declassifying gives the application in force with its policy's text when the transaction reads the policy's label, the application without text when it does not, and none otherwise"
+      "declassifying gives the application in force with its policy's text and checks when the transaction reads the policy's label, the application with neither when it does not, and none otherwise; NULL checks read as Missing"
     ) {
       val k = keeper(name("doc-declassifying"), terms())
       val (team, bare) = (over("dc-team"), over("dc-bare"))
@@ -1476,12 +1484,13 @@ abstract class DocumentContract extends TestSuite {
       val held = Label.at(Level.Internal, TestLabels.compartment("dc-team"))
       val grant = Label.at(Level.Confidential, TestLabels.compartment("dc-team"))
       val cleared = Clearance.of(grant)
-      policyAt(team, 1, Some("drop the venue"), grant)
+      val checks = Checks.read(Some(InMemoryDocuments.Checks))
+      policyAt(team, 1, Some("drop the venue"), grant, Some(InMemoryDocuments.Checks))
       application(applied, 1, Some(team))
       application(unpolicied, 1, Some(bare))
       def asked(clearance: Clearance, label: Label, pointer: Pointer) =
         opened(clearance)(ok(k.declassifying(label, pointer)))
-          .map(i => (i.applied.policy, i.applied.version, i.instructions))
+          .map(i => (i.applied.policy, i.applied.version, i.policy))
       val first = (
         asked(cleared, held, applied),
         asked(Clearance.of(Label.Public), held, applied),
@@ -1490,19 +1499,25 @@ abstract class DocumentContract extends TestSuite {
         asked(cleared, held, unapplied),
         asked(cleared, Label.at(Level.Internal, TestLabels.compartment("dc-bare")), unpolicied)
       )
-      policyAt(team, 2, Some("drop the venue and the date"), grant)
+      policyAt(team, 2, Some("drop the venue and the date"), grant, None)
       val second = asked(cleared, held, applied)
-      policyAt(team, 3, None, grant)
+      policyAt(team, 3, None, grant, None)
       (first, second, asked(cleared, held, applied)) ==> (
         (
-          Some((DeclassificationPolicy(team, 1), 1, Some("drop the venue"))),
+          Some((DeclassificationPolicy(team, 1), 1, Some(("drop the venue", checks)))),
           Some((DeclassificationPolicy(team, 1), 1, None)),
           None,
           None,
           None,
           None
         ),
-        Some((DeclassificationPolicy(team, 2), 1, Some("drop the venue and the date"))),
+        Some(
+          (
+            DeclassificationPolicy(team, 2),
+            1,
+            Some(("drop the venue and the date", Left(Checks.Unreadable.Missing)))
+          )
+        ),
         None
       )
     }

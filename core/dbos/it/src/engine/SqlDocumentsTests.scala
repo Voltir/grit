@@ -77,17 +77,19 @@ object SqlDocumentsTests extends DocumentContract {
       over: DeclassificationPolicy.Over,
       version: Int,
       text: Option[String],
-      kept: Label
+      kept: Label,
+      checks: Option[ujson.Value]
   ): Unit =
     run(
       s"""INSERT INTO grit.declassification_policies
-         |       (over, version, classification_id, text, set_at, set_by)
-         |VALUES (?, ?, ${SqlLabels.Interned}, ?, now(), 'local')""".stripMargin
+         |       (over, version, classification_id, text, checks, set_at, set_by)
+         |VALUES (?, ?, ${SqlLabels.Interned}, ?, ?::jsonb, now(), 'local')""".stripMargin
     ) { ps =>
       ps.setString(1, over.written)
       ps.setInt(2, version)
       SqlLabels.bind(ps, 3, kept)
       ps.setString(5, text.orNull)
+      ps.setString(6, checks.map(ujson.write(_)).orNull)
     }
 
   protected def application(

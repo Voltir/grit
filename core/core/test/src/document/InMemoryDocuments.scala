@@ -7,6 +7,7 @@ import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.review.{DocumentLabel, DocumentReview, DocumentReviews, ReviewWord, Reviews}
+import grit.core.screen.Checks
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Item, Label}
 
@@ -45,10 +46,13 @@ final class InMemoryDocuments extends DocumentStore {
     })
 
   // As `rows`: only ever replaced by a new immutable map. The operator's rows: each policy's
-  // versions, each with its text (none for a revocation) and the label it is kept at; each
-  // document's applications, by its pointer.
+  // versions, each with its text (none for a revocation), its checks as written and the label
+  // it is kept at; each document's applications, by its pointer.
   @caps.unsafe.untrackedCaptures
-  private var policies = Map.empty[(DeclassificationPolicy.Over, Int), (Option[String], Label)]
+  private var policies = Map.empty[
+    (DeclassificationPolicy.Over, Int),
+    (text: Option[String], checks: Option[ujson.Value], kept: Label)
+  ]
 
   @caps.unsafe.untrackedCaptures
   private var applications = Map.empty[(Pointer, Int), Option[DeclassificationPolicy.Over]]
@@ -58,15 +62,16 @@ final class InMemoryDocuments extends DocumentStore {
   private var audits = Map.empty[Long, InMemoryDocuments.Audit]
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as an operator's row does:
-    * `text`, or a revocation when `None`.
+    * `text`, or a revocation when `None`, with `checks` as the row's column holds them.
     */
   def policy(
       over: DeclassificationPolicy.Over,
       version: Int,
       text: Option[String] = Some(InMemoryDocuments.Instructions),
-      kept: Label = Label.Public
+      kept: Label = Label.Public,
+      checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks)
   ): Unit =
-    policies = policies.updated((over, version), (text, kept))
+    policies = policies.updated((over, version), (text, checks, kept))
 
   /** Records the `version`th application to the document `pointer` reads: `over`'s policy, or
     * none when removed, as an operator's row does.
@@ -85,7 +90,7 @@ final class InMemoryDocuments extends DocumentStore {
   /** `over`'s current policy, when its current version is not a revocation. */
   private def inForce(over: DeclassificationPolicy.Over): Option[DeclassificationPolicy] =
     policies
-      .collect { case ((o, v), (text, _)) if o == over => (v, text.isDefined) }
+      .collect { case ((o, v), row) if o == over => (v, row.text.isDefined) }
       .maxByOption(_._1)
       .collect { case (v, true) => DeclassificationPolicy(over, v) }
 
@@ -230,7 +235,8 @@ final class InMemoryDocuments extends DocumentStore {
           } yield new PolicyApplication.InForce(
             PolicyApplication(policy, pointer, version),
             policies.get((policy.over, policy.version)).collect {
-              case (Some(text), kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) => text
+              case (Some(text), checks, kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
+                (text, Checks.read(checks))
             }
           )
         )
@@ -586,6 +592,17 @@ object InMemoryDocuments {
 
   /** The text a policy recorded without one given holds. */
   val Instructions: String = "remove the team's details"
+
+  /** The checks a policy recorded without them given holds: one signal that must be absent, and
+    * one example of each kind, as [[grit.core.screen.Checks.read]] reads them.
+    */
+  val Checks: ujson.Value = ujson.Obj(
+    "signals" -> ujson.Arr(ujson.Obj("infer" -> "where the team meets", "must" -> "absent")),
+    "examples" -> ujson.Obj(
+      "accept" -> ujson.Arr("The team meets."),
+      "refuse" -> ujson.Arr("The team meets at the lake house.")
+    )
+  )
 
   /** A declassified version's audit row: the version it was made from, and the policy and
     * application versions it was made under.
