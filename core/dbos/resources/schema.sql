@@ -1082,7 +1082,8 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- text addressed to the rewriting model, saying what to remove and what to write in its place,
 -- and `checks`, the steward's signals a rewrite is screened for and the examples they are
 -- benched on, as grit.core.screen.Checks reads them (the questions each signal is asked:
--- Screen.absent and Screen.present). `over` 'compartment:<c>'; `text` NULL for a revocation;
+-- Screen.absent and Screen.present; how to write them: docs/declassification-signals.md).
+-- `over` 'compartment:<c>'; `text` NULL for a revocation;
 -- the current is the highest version. A version whose checks do not read rewrites nothing. Kept at its compartment's own group's grant
 -- (`classification_id`, interned by grit.intern_classification), read only under a clearance
 -- dominating it. Written by its compartment's steward or an administrator; until commands
