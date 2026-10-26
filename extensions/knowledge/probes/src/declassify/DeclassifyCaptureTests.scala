@@ -24,14 +24,14 @@ object DeclassifyCaptureTests extends TestSuite {
 
   private val control =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.declassify(MoveName("d"), v, a)
+      |  m.declassify(MoveName("d"), v, "r1", a)
       |""".stripMargin
   private val textRead = "def f(d: Declassified) = d.text"
   private val raiseReached =
     "def f(m: Dreaming^) = m.declassifier"
   private val primitiveCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.rewrite(MoveName("d"), v, a)
+      |  m.rewrite(MoveName("d"), v, "r1", a)
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(

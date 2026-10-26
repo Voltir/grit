@@ -34,9 +34,7 @@ import grit.core.document.{
   DocText,
   Document,
   DocumentKeeper,
-  DocumentSearch,
-  Pointer,
-  PolicyApplication
+  DocumentSearch
 }
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
@@ -45,7 +43,6 @@ import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
   CallSlot,
-  DocKey,
   DocumentVersionId,
   EntryId,
   FileHandle,
@@ -56,7 +53,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
-import grit.core.place.{Place, Service}
+import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
