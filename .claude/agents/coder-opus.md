@@ -58,6 +58,9 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
   fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
   is for what scout cannot name (a test file's imports, a region inside one body).
+- Adding a member to an implementation or a fake: `file` it for its members, then
+  `show Owner --body <the nearest sibling> --private` for the one you will write alongside.
+  Never read the implementation whole to learn its shape.
 - Ask for private members (`--private`) only to edit them or to understand an implementation;
   otherwise trust the public interface and referential transparency to understand the code.
   Name the members you need with `--body`.
