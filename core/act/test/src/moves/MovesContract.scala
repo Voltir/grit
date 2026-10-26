@@ -831,11 +831,12 @@ abstract class MovesContract extends TestSuite {
       }
       val system = Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>"
       val document = Message.User(s"<document>\n$FileText\n</document>")
+      // The draft is the first attempt's reply, named for the model that served it, at no cost.
       val draft = Message.Assistant(
         Vector(AssistantBlock.Text(Rewrote)),
         StopReason.EndTurn,
         grit.core.message.Usage.Zero,
-        ""
+        Served
       )
       (got, asked) ==> (
         Seen(Vector(Right("made internal judged 0.0"))),
@@ -1470,6 +1471,9 @@ object MovesContract {
 
   /** What a declassifying run's model rewrites it to. */
   val Rewrote = "The team meets offsite."
+
+  /** The model a declassifying run's every reply says served it. */
+  val Served = "test/summary"
 
   /** One check's answers, each a sure no. */
   val Clean: Vector[Vector[Double]] = Vector(Vector(0.0, 0.0, 0.0))

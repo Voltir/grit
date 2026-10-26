@@ -11,7 +11,7 @@ import grit.core.flow.Trusted
 import grit.core.id.{EntryId, JobName, PluginName, TurnRef, WorkflowId}
 import grit.core.inbox.InboundId
 import grit.core.job.{DreamingJob, Job, JobRun, Jobs, KeepingJob, Owned, PlainJob, Report, Slot}
-import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.spend.Budget
 import grit.core.store.{Db, Entry, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -297,12 +297,7 @@ object Run {
 
   /** `text` as the run's reply, written by its job at the run's version, at no cost. */
   private def saying(text: String, read: SlotRead.Read): Message.Assistant =
-    Message.Assistant(
-      Vector(AssistantBlock.Text(text)),
-      StopReason.EndTurn,
-      Usage.Zero,
-      s"job:${JobName.value(read.job)}@v${read.version}"
-    )
+    Message.said(text, s"job:${JobName.value(read.job)}@v${read.version}")
 
   private def awaited(records: RunRecords, turn: TurnRef, report: Report)(using
       Tx^

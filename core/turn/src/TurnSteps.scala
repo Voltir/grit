@@ -8,7 +8,7 @@ import grit.core.context.{AssemblyNote, Retrieved, Window}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Grade, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
@@ -625,12 +625,7 @@ private[turn] object TurnSteps {
       classification: Label,
       at: Instant
   )(using Tx^): Either[StoreError, Boolean] = {
-    val reply = Message.Assistant(
-      Vector(AssistantBlock.Text(Uncleared.reply(Uncleared(classification)))),
-      StopReason.EndTurn,
-      Usage.Zero,
-      "grit" // no model wrote it
-    )
+    val reply = Message.said(Uncleared.reply(Uncleared(classification)), "grit")
     for {
       next <- entries.lockNext(turn.conversationId)
       level <- entries.believed(turn)

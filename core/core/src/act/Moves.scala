@@ -333,7 +333,7 @@ trait Dreaming extends Keeping {
               case Declassifying.Rewritten.Unapplied(why) =>
                 Right(Declassifying.Outcome.Unapplied(why))
               case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
-              case Declassifying.Rewritten.Made(text, from) =>
+              case Declassifying.Rewritten.Made(text, from, by) =>
                 screen(name, source, revision, applied, text, at).flatMap {
                   case Left(why) => Right(Declassifying.Outcome.Unapplied(why))
                   case Right(screened) =>
@@ -361,7 +361,8 @@ trait Dreaming extends Keeping {
                             Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed))
                           case None =>
                             val retry = at match {
-                              case Declassified.Attempt.First => Declassifying.Again.of(text, fired)
+                              case Declassified.Attempt.First =>
+                                Declassifying.Again.of(text, by, fired)
                               case Declassified.Attempt.Second => None
                             }
                             retry.fold(

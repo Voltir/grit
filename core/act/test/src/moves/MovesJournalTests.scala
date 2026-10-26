@@ -649,7 +649,7 @@ object MovesJournalTests extends TestSuite {
         (for {
           text <- DocText.of(draft).left.map(_.toString)
           screened <- Screen.read(shape, answers.map(Judged.YesNo(_))).left.map(_.said)
-          a <- Declassifying.Again.of(text, screened.fired(None)).toRight("no retry")
+          a <- Declassifying.Again.of(text, "m", screened.fired(None)).toRight("no retry")
         } yield a).fold(e => throw new java.lang.AssertionError(e), identity)
       val floor = again("The draft.", Vector(0.5, 0.0, 0.9))
       val digest = MovesJournal.retry(source, "r1", applied, floor)

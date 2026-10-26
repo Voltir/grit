@@ -6,7 +6,7 @@ import grit.core.durable.{Flow, Steps}
 import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
 import grit.core.id.{DocumentVersionId, PluginName}
-import grit.core.message.{AssistantBlock, Cut, Message, StopReason, Usage}
+import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
 import grit.core.screen.{Checks, Fired, Screen, Screened, Signal}
@@ -65,14 +65,18 @@ object Declassifying {
   def retried(name: MoveName): Either[String, MoveName] =
     MoveName.of(s"${MoveName.value(name)}-retry")
 
-  /** A second attempt: the first's `draft`, and what its screen `fired`: floor and present only. */
-  final case class Again private[act] (draft: DocText, fired: Fired) extends caps.Pure
+  /** A second attempt: the first's `draft`, the model that wrote it, `by`, and what its screen
+    * `fired`: floor and present only.
+    */
+  final case class Again private[act] (draft: DocText, by: String, fired: Fired) extends caps.Pure
 
   object Again {
 
-    /** A retry of `draft` when `fired` holds floor or present failures and no absent one. */
-    def of(draft: DocText, fired: Fired): Option[Again] =
-      if (fired.passes || fired.absent.nonEmpty) None else Some(Again(draft, fired))
+    /** A retry of `draft`, which `by` wrote, when `fired` holds floor or present failures and no
+      * absent one.
+      */
+    def of(draft: DocText, by: String, fired: Fired): Option[Again] =
+      if (fired.passes || fired.absent.nonEmpty) None else Some(Again(draft, by, fired))
   }
 
   /** 64: the most pieces of its file a rewrite reads ([[grit.core.files.PieceSearch.file]]),
@@ -90,12 +94,7 @@ object Declassifying {
   def request(shown: Shown, again: Option[Again]): ModelRequest = {
     val first = framed(shown.instructions, shown.text)
     again.fold(first) { a =>
-      val draft = Message.Assistant(
-        Vector(AssistantBlock.Text(DocText.value(a.draft))),
-        StopReason.EndTurn,
-        Usage.Zero,
-        ""
-      )
+      val draft = Message.said(DocText.value(a.draft), a.by)
       val told = Message.User(feedback(screen(shown.checks).failed(a.fired)))
       first.copy(messages = first.messages ++ Vector(draft, told))
     }
@@ -286,8 +285,8 @@ object Declassifying {
   /** What a rewrite's ask came to, as [[Dreaming]]'s primitive hands it back. */
   enum Rewritten extends caps.Pure {
 
-    /** The model wrote `text` from `from`. */
-    case Made(text: DocText, from: Declassified.Source)
+    /** The model `by` (as its reply names it) wrote `text` from `from`. */
+    case Made(text: DocText, from: Declassified.Source, by: String)
 
     /** The model wrote [[Nothing]]. */
     case Withheld

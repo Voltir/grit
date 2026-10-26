@@ -208,7 +208,7 @@ object ScriptedMovesTests extends MovesContract {
     val answers = new Leaks(leaks)
     def reply(n: Int): Message.Assistant = {
       val text = if (n == 0) rewrite else retry.getOrElse(rewrite)
-      Message.Assistant(Vector(AssistantBlock.Text(text)), stop, Usage.Zero, "m")
+      Message.Assistant(Vector(AssistantBlock.Text(text)), stop, Usage.Zero, Served)
     }
     val world = new StrandWorld
     val moves = new ScriptedDreaming(

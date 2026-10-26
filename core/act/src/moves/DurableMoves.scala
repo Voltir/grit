@@ -207,7 +207,7 @@ object DurableMoves {
                 sourced.map { s =>
                   Declassifying.written(message).left.map(MoveError.Model(_)).map { text =>
                     val rewritten = text.fold(Declassifying.Rewritten.Withheld)(
-                      Declassifying.Rewritten.Made(_, s.source)
+                      Declassifying.Rewritten.Made(_, s.source, message.model)
                     )
                     Asked(Mint.tainted(rewritten, s.level), at)
                   }
