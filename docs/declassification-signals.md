@@ -40,6 +40,12 @@ The shared questions catch a rewrite that describes itself ("here is the edited 
 differential: when the rewrite sounds that way, the source is asked the same questions, and
 a voice the source already has is excused. A rewrite of a memo written as "I" may say "I".
 
+A rewrite that fails only the shared questions or a `present` signal is written once more:
+the writer is shown its draft and told what failed, by the shared question's wording or as
+"does not state" the signal, never a score. A rewrite in which an `absent` signal is
+inferred is not retried, since a retry tends to reword the fact rather than remove it; it is
+kept back, as is a retry that fails anything (`grit.core.act.Declassifying.Again`).
+
 ## Rules for signals
 
 1. Write each signal as a fact a reader could learn from the shared text: a "that ..." clause
