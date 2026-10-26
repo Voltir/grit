@@ -296,8 +296,10 @@ trait Dreaming extends Keeping {
     * [[Declassifying.Nothing]] (no check asked); `Unapplied`, asking nothing more, when either
     * step reads nothing, with why ([[Declassifying.Unread]]). Each ask is counted, limited and
     * refused as an ask or a judgment is ([[ask]]), and a check refused is that refusal, never a
-    * declassification. [[MoveError.Undeclared]], no move made, when the program did not
-    * declare the declassification.
+    * declassification. A rewrite stopped at its length limit, or blank, is neither a rewrite
+    * nor a withholding: [[MoveError.Model]] saying which ([[Declassifying.written]]), no check
+    * asked. [[MoveError.Undeclared]], no move made, when the program did not declare the
+    * declassification.
     */
   final def declassify(
       name: MoveName,

@@ -202,12 +202,12 @@ object DurableMoves {
             settled(name, asked, same) {
               case AskMade.Made(_, message, at, _) =>
                 sourced.map { s =>
-                  val rewritten = Declassifying
-                    .written(message)
-                    .fold(Declassifying.Rewritten.Withheld)(
+                  Declassifying.written(message).left.map(MoveError.Model(_)).map { text =>
+                    val rewritten = text.fold(Declassifying.Rewritten.Withheld)(
                       Declassifying.Rewritten.Made(_, s.source)
                     )
-                  Right(Asked(Mint.tainted(rewritten, s.level), at))
+                    Asked(Mint.tainted(rewritten, s.level), at)
+                  }
                 }
               case _ => None
             }.map(_.reply)

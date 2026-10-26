@@ -58,7 +58,7 @@ import grit.core.files.{
 }
 import grit.core.flow.{Shape, Tainted, TestTainted}
 import grit.core.id.{DocKey, DocumentVersionId, FileHandle, PluginName}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.need.{Needs, PluginReads}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place, Service}
@@ -126,15 +126,16 @@ abstract class MovesContract extends TestSuite {
 
   /** What `use` returns, given moves as [[dreaming]]'s within `limits` over `shelves` and no
     * strands, every transaction opened at [[Declassing]]: a text ask's model replying `rewrite`,
-    * and the `i`th judgment's classifier answering yes to each of its questions with the `i`th
-    * of `leaks`, in order (the last again once they run out); and each text ask's system text
-    * and user messages, as the model was shown them, in order.
+    * stopping as `stop` says, and the `i`th judgment's classifier answering yes to each of its
+    * questions with the `i`th of `leaks`, in order (the last again once they run out); and each
+    * text ask's system text and user messages, as the model was shown them, in order.
     */
   def declassifying[A <: caps.Pure](
       limits: MoveLimits,
       shelves: Shelves,
       rewrite: String,
-      leaks: Vector[Vector[Double]]
+      leaks: Vector[Vector[Double]],
+      stop: StopReason = StopReason.EndTurn
   )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])])
 
   /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose piece moves keep
@@ -845,6 +846,34 @@ abstract class MovesContract extends TestSuite {
         true,
         true,
         false
+      )
+    }
+
+    test(
+      "a declassify whose rewrite stopped at its length limit, or came back empty, is no rewrite and no withholding: the model's failure, saying which, asking no check"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val (cut, cutAsked) =
+        declassifying(declassifies(1, 1), shelves, Rewrote, Clean, StopReason.MaxTokens) { m =>
+          Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+        }
+      val (empty, emptyAsked) = declassifying(declassifies(1, 1), shelves, " ", Clean) { m =>
+        Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+      }
+      (cut, empty, cutAsked.size, emptyAsked.size) ==> (
+        Seen(
+          Vector(
+            Left(
+              MoveError.Model(
+                "its rewrite stopped at its reply's length limit, so it was cut short"
+              )
+            )
+          )
+        ),
+        Seen(Vector(Left(MoveError.Model("its rewrite came back empty")))),
+        1,
+        1
       )
     }
 

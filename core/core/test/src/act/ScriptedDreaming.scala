@@ -122,12 +122,18 @@ final class ScriptedDreaming(
         )
       case Right(Right(shown)) =>
         val posed = Posed.Text(Declassifying.request(shown))
-        ask(name, TestTainted.at(posed, integrity.meet(shown.integrity))).map(a =>
-          a.reply.map(m =>
-            Declassifying
-              .written(m)
-              .fold(Declassifying.Rewritten.Withheld)(Declassifying.Rewritten.Made(_, shown.source))
-          )
+        ask(name, TestTainted.at(posed, integrity.meet(shown.integrity))).flatMap(a =>
+          Declassifying
+            .written(Trusted.asIs(a.reply).extract)
+            .left
+            .map(MoveError.Model(_))
+            .map(text =>
+              a.reply.map(_ =>
+                text.fold(Declassifying.Rewritten.Withheld)(
+                  Declassifying.Rewritten.Made(_, shown.source)
+                )
+              )
+            )
         )
     }
 

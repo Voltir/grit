@@ -34,14 +34,15 @@ object MovesFixtures {
     * call's arguments the next of `shapes` (the last again once they run out;
     * `{"answer": answer}` when there are none), the `i`th call of its `n`th answer `call-{n}`,
     * or `call-{n}-{i}` from its second. With `crash`, the process dies inside the first call.
-    * Each reply reports `upstream` as who served it.
+    * Each reply reports `upstream` as who served it; a text answer stops as `stop` says.
     */
   final class Answering(
       answer: String,
       crash: Boolean = false,
       shapes: Vector[ujson.Value] = Vector(),
       calling: Int = 1,
-      upstream: Option[String] = None
+      upstream: Option[String] = None,
+      stop: StopReason = StopReason.EndTurn
   ) extends Models {
     // Written and read only on the test's own thread, through the calls the moves make on it.
     @caps.unsafe.untrackedCaptures
@@ -61,7 +62,7 @@ object MovesFixtures {
         requests = requests :+ r
         pairs = pairs :+ pinned.assignment.ref
         if (armed) { armed = false; throw new InMemoryDurable.Crash }
-        val (blocks, stop) = r.use match {
+        val (blocks, stopped) = r.use match {
           case ToolUse.Required if calling > 0 =>
             val tool = r.tools.headOption.fold("none")(_.name)
             val made = (0 until calling).toVector.map { i =>
@@ -75,14 +76,14 @@ object MovesFixtures {
             }
             (made, StopReason.ToolUse)
           case ToolUse.Required =>
-            (Vector(AssistantBlock.Text(answer)), StopReason.EndTurn)
+            (Vector(AssistantBlock.Text(answer)), stop)
           case ToolUse.Auto | ToolUse.Off =>
-            (Vector(AssistantBlock.Text(answer)), StopReason.EndTurn)
+            (Vector(AssistantBlock.Text(answer)), stop)
         }
         Right(
           Message.Assistant(
             blocks,
-            stop,
+            stopped,
             Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
             "test/summary",
             upstream

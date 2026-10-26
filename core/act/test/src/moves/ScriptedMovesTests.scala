@@ -191,12 +191,13 @@ object ScriptedMovesTests extends MovesContract {
       limits: MoveLimits,
       shelves: MovesContract.Shelves,
       rewrite: String,
-      leaks: Vector[Vector[Double]]
+      leaks: Vector[Vector[Double]],
+      stop: StopReason
   )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
     val shown = new Shown
     val answers = new Leaks(leaks)
     val reply: Message.Assistant =
-      Message.Assistant(Vector(AssistantBlock.Text(rewrite)), StopReason.EndTurn, Usage.Zero, "m")
+      Message.Assistant(Vector(AssistantBlock.Text(rewrite)), stop, Usage.Zero, "m")
     val world = new StrandWorld
     val moves = new ScriptedDreaming(
       limits,

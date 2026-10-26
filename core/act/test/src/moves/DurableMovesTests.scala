@@ -54,7 +54,7 @@ import grit.core.host.TempBlobs
 import grit.core.id.{CallSlot, ConversationId, EdgeName, FileHandle, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.Principal
 import grit.core.job.InMemorySchedules
-import grit.core.message.Message
+import grit.core.message.{Message, StopReason}
 import grit.core.need.Needs
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
@@ -165,7 +165,8 @@ object DurableMovesTests extends MovesContract {
       limits: MoveLimits,
       shelves: MovesContract.Shelves,
       rewrite: String,
-      leaks: Vector[Vector[Double]]
+      leaks: Vector[Vector[Double]],
+      stop: StopReason
   )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
     val w = new MovesWorld(
       broken = false,
@@ -179,9 +180,15 @@ object DurableMovesTests extends MovesContract {
       leaks.map(ls => Right(Answers(ls.map(Judged.YesNo(_)), Spent, "test/judge")))
     )
     val (got, requests) =
-      w.answering(limits, new StrandWorld, shelves.needs, rewrite, judging, DurableMoves.Within)(
-        use
-      )
+      w.answering(
+        limits,
+        new StrandWorld,
+        shelves.needs,
+        rewrite,
+        judging,
+        DurableMoves.Within,
+        stop
+      )(use)
     (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
   }
 }
@@ -366,8 +373,8 @@ final class MovesWorld(
   ): (A, Vector[ModelRequest]) =
     answering(limits, world, needs, Answer, new Judging(), DurableMoves.Within)(use)
 
-  /** As [[dreaming]], its text asks answered `answer`, its judgments by `classifier`, and its
-    * program declaring `declared`.
+  /** As [[dreaming]], its text asks answered `answer`, stopping as `stop` says, its judgments by
+    * `classifier`, and its program declaring `declared`.
     */
   def answering[A <: caps.Pure](
       limits: MoveLimits,
@@ -375,11 +382,12 @@ final class MovesWorld(
       needs: Needs,
       answer: String,
       classifier: Classifier^,
-      declared: Vector[Flow.Node]
+      declared: Vector[Flow.Node],
+      stop: StopReason = StopReason.EndTurn
   )(
       use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
-    val models = new Answering(answer)
+    val models = new Answering(answer, stop = stop)
     val dreams =
       MovesWorld.dreams(acting, limits, keeper, world, needs, documents, declared, pieces)(use)
     var out: Option[A] = None

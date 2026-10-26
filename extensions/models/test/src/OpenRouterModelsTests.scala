@@ -31,11 +31,11 @@ object OpenRouterModelsTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "the seed's dream role is its own rung, claude-haiku-5.5 at 4096 tokens, and part of its version"
+      "the seed's dream role is its own rung, claude-haiku-5.5 at 8192 tokens, and part of its version"
     ) {
       val haiku = ModelId.of("anthropic/claude-haiku-5.5").map(ModelRef(_, None))
       (
-        haiku.map(Assignment(_, 4096, None)),
+        haiku.map(Assignment(_, 8192, None)),
         seed.dream.first.assignment == seed.pin.summary.first.assignment,
         seed.withPolicy(seed.policy.copy(dream = seed.policy.summary)).version == seed.version
       ) ==> (Some(seed.dream.first.assignment), false, false)

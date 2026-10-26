@@ -88,13 +88,25 @@ object Declassifying {
     placeholder.system +: placeholder.messages.collect { case Message.User(t) => t }
   }
 
-  /** What `reply` rewrote, its text blocks joined and trimmed; `None` when that is blank or
-    * [[Nothing]].
+  /** What `reply` rewrote, its text blocks joined and trimmed; `None` when that is [[Nothing]].
+    * Why it is no rewrite, when it did not end as a whole reply ([[StopReason.EndTurn]]; one
+    * stopped at its length limit is cut short), or is blank.
     */
-  def written(reply: Message.Assistant): Option[DocText] =
-    Some(reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim)
-      .filter(_ != Nothing)
-      .flatMap(DocText.of(_).toOption)
+  def written(reply: Message.Assistant): Either[String, Option[DocText]] = {
+    val text = reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+    reply.stop match {
+      case StopReason.MaxTokens => Left(CutShort)
+      case StopReason.EndTurn if text == Nothing => Right(None)
+      case StopReason.EndTurn => DocText.of(text).map(Some(_)).left.map(_ => Blank)
+      case _ => Left(Unended)
+    }
+  }
+
+  private val CutShort = "its rewrite stopped at its reply's length limit, so it was cut short"
+
+  private val Blank = "its rewrite came back empty"
+
+  private val Unended = "its rewrite did not end as a whole reply"
 
   /** A rewrite as the classifier is shown it, `{"about", "instructions", "source", "text"}`:
     * [[About]], the policy's `instructions`, the `source` it was made from as the rewrite was
@@ -252,7 +264,7 @@ object Declassifying {
     /** The model wrote `text` from `from`. */
     case Made(text: DocText, from: Declassified.Source)
 
-    /** The model wrote [[Nothing]], or nothing at all. */
+    /** The model wrote [[Nothing]]. */
     case Withheld
 
     /** No ask was made: [[read]] read nothing, `why`. */

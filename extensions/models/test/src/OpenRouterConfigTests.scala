@@ -230,7 +230,7 @@ object OpenRouterConfigTests extends TestSuite {
         Right(("s/m", 4096, None)),
         Right(("q/m", 1024, None)),
         Right(("h/m", 4096, None)),
-        Right(("d/m", 4096, None))
+        Right(("d/m", 8192, None))
       )
       // With nothing set but the key, the query runs on the seed's own budget.
       OpenRouterConfig
