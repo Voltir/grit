@@ -184,29 +184,28 @@ object DurableMoves {
     protected def rewrite(
         name: MoveName,
         source: DocumentVersionId,
+        revision: String,
         applied: PolicyApplication
     ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
-        val digest = MovesJournal.rewrite(source, applied)
-        val (asked, sourced) = made(
-          Act.askBeside(Act.rewrite),
-          Act.Rewriting(name, acting, source, applied, reads.documents, keeper, readable, digest)
-        )
-        val same = MovesJournal.sameRewrite(asked.made.digest, source, applied)
-        (asked.made, sourced) match {
-          case (AskMade.Refused(AskMade.Kind.Changed, _, _, _), _) if same =>
-            Right(Mint.tainted(Declassifying.Rewritten.Unapplied, acting.integrity))
+        val digest = MovesJournal.rewrite(source, revision, applied)
+        val (asked, sourced) =
+          made(
+            Act.askBeside(Act.rewrite),
+            Act.Rewriting(name, acting, reading(source, revision, applied), digest)
+          )
+        val same = MovesJournal.sameRewrite(asked.made.digest, source, revision, applied)
+        unread(asked.made) match {
+          case Some(why) if same =>
+            Right(Mint.tainted(Declassifying.Rewritten.Unapplied(why), acting.integrity))
           case _ =>
             settled(name, asked, same) {
               case AskMade.Made(_, message, at, _) =>
                 sourced.map { s =>
                   val rewritten = Declassifying
                     .written(message)
-                    .fold(
-                      Declassifying.Rewritten.Withheld
-                    )(text =>
-                      Declassifying.Rewritten
-                        .Made(text, s.plugin, s.key, s.place, s.label, s.pointer)
+                    .fold(Declassifying.Rewritten.Withheld)(
+                      Declassifying.Rewritten.Made(_, s.source)
                     )
                   Right(Asked(Mint.tainted(rewritten, s.level), at))
                 }
@@ -218,29 +217,20 @@ object DurableMoves {
     protected def check(
         name: MoveName,
         source: DocumentVersionId,
+        revision: String,
         applied: PolicyApplication,
         rewrite: DocText
-    ): Either[MoveError, Option[Probability]] =
+    ): Either[MoveError, Either[Declassifying.Unread, Probability]] =
       Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
         refused(checking, MoveKind.Judge).toLeft(()).flatMap { _ =>
-          val digest = MovesJournal.check(source, applied, rewrite)
+          val digest = MovesJournal.check(source, revision, applied, rewrite)
           val asked = made(
             Act.ask(Act.check),
-            Act.Checking(
-              checking,
-              acting,
-              source,
-              applied,
-              rewrite,
-              reads.documents,
-              keeper,
-              readable,
-              digest
-            )
+            Act.Checking(checking, acting, reading(source, revision, applied), rewrite, digest)
           )
-          val same = MovesJournal.sameCheck(asked.made.digest, source, applied, rewrite)
-          asked.made match {
-            case AskMade.Refused(AskMade.Kind.Changed, _, _, _) if same => Right(None)
+          val same = MovesJournal.sameCheck(asked.made.digest, source, revision, applied, rewrite)
+          unread(asked.made) match {
+            case Some(why) if same => Right(Left(why))
             case _ =>
               settled(checking, asked, same) {
                 case AskMade.Judged(_, written, at, _) =>
@@ -249,10 +239,34 @@ object DurableMoves {
                       .map(p => Asked(Mint.tainted(p, acting.integrity), at))
                   )
                 case _ => None
-              }.map(a => Some(Trusted.asIs(a.reply).extract))
+              }.map(a => Right(Trusted.asIs(a.reply).extract))
           }
         }
       }
+
+    /** What a rewrite of `source`, its file at `revision`, under `applied` reads, as this run. */
+    private def reading(
+        source: DocumentVersionId,
+        revision: String,
+        applied: PolicyApplication
+    ): Declassifying.Reading =
+      Declassifying.Reading(
+        source,
+        revision,
+        applied,
+        reads.documents,
+        reads.pieces,
+        keeper,
+        readable
+      )
+
+    /** Why a rewrite's or check's step read nothing, as its refusal of kind `Changed` says; `None`
+      * for any other record, and for a refusal in no reason's words, which diverges.
+      */
+    private def unread(made: AskMade): Option[Declassifying.Unread] = made match {
+      case AskMade.Refused(AskMade.Kind.Changed, why, _, _) => Declassifying.Unread.said(why)
+      case _ => None
+    }
 
     /** The plugins whose documents its summaries and rewrites read: its own and its needs'. */
     private def readable: Vector[PluginName] = plugin +: needs.plugins

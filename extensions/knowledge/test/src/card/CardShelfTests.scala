@@ -37,12 +37,16 @@ object CardShelfTests extends TestSuite {
 
   private def at(s: Int): Instant = Instant.EPOCH.plusSeconds(s.toLong)
 
-  /** A card of the Drive file `id`, titled `title` when given. */
-  private def card(id: String, title: Option[String]): Card =
+  /** A card of the Drive file `id` at `version`, titled `title` when given. */
+  private def card(
+      id: String,
+      title: Option[String],
+      version: String = "2026-01-01T00:00:00Z"
+  ): Card =
     Card.file(
       corpus,
       id,
-      right(UnitVersion.of("2026-01-01T00:00:00Z")),
+      right(UnitVersion.of(version)),
       right(CardSummary.of("What the file holds.", Vector.empty)),
       right(Pointer.of(drive, "file" -> ujson.Str(id))),
       title
@@ -102,16 +106,17 @@ object CardShelfTests extends TestSuite {
     }
 
     test(
-      "pointed gives the current cards by version, label and pointer, most recent first, at most n"
+      "pointed gives the current cards by version, their file's revision, label and pointer, most recent first, at most n"
     ) {
+      val sha = "0123456789abcdef0123456789abcdef01234567"
       val a = card("f1", None)
       val b = card("f2", None)
-      val c = card("f3", None)
+      val c = card("f3", None, sha)
       val (docs, versions) = kept(Vector(a -> at(1), b -> at(2), c -> at(3)))
       CardShelf.over(docs.shelf(name)).pointed(2) ==> Right(
         Vector(
-          CardShelf.Pointed(versions(2), Label.Public, c.pointer),
-          CardShelf.Pointed(versions(1), Label.Public, b.pointer)
+          CardShelf.Pointed(versions(2), sha, Label.Public, c.pointer),
+          CardShelf.Pointed(versions(1), "2026-01-01T00:00:00Z", Label.Public, b.pointer)
         )
       )
     }

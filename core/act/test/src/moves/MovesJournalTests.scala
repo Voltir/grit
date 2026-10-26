@@ -3,10 +3,12 @@ package grit.act.moves
 import grit.core.act.MovesFixtures.shown
 import grit.core.act.{Answer, Called}
 import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
+import grit.core.document.{Declassified, DocText, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
+import grit.core.files.TestPieces
 import grit.core.flow.{TestTainted, Trusted}
-import grit.core.id.{ConversationId, DocumentVersionId, ToolCallId}
+import grit.core.id.{ConversationId, DocKey, DocumentVersionId, PluginName, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
@@ -14,7 +16,17 @@ import grit.core.schema.JsonSchema
 import grit.core.stitch.{Strand, StrandDigest, StrandWorld}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.{Facts, Integrity, Label, Level, Provenance, Readers, ResultPart}
+import grit.core.visibility.{
+  DeclassificationPolicy,
+  Facts,
+  Integrity,
+  Label,
+  Level,
+  Provenance,
+  Readers,
+  ResultPart,
+  TestLabels
+}
 
 import utest.*
 
@@ -573,6 +585,64 @@ object MovesJournalTests extends TestSuite {
       ) ==> (
         "v1:fe412c8e2e684e93d4c008f8ea2a09f1a0cd827174fb7bca724eb8f1c5010991",
         "v1:d6b59dee7b0a3d0a65058b41912ef4937241a3bfaa7d0c8c00f3777561b78cb6"
+      )
+    }
+
+    test(
+      "a v1 rewrite or check digest is still compared under v1's form; a new one is v2 and differs by revision"
+    ) {
+      val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
+      val applied = PolicyApplication(
+        DeclassificationPolicy(
+          DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team")),
+          1
+        ),
+        TestPieces.pointer("f"),
+        1
+      )
+      val rewrite = DocText.of("The team meets offsite.").getOrElse(sys.error("no text"))
+      // Recorded by the build before v2, of the same source, application and rewrite.
+      val v1Rewrite = "v1:f5dd4d46732897e2e7253e2142d1ac41ffcf66d8cca45a7b6ebd24bf19698299"
+      val v1Check = "v1:1b496f70387cf51430faee0be1acb208efdda5992a0a38627609faf9bd1489a5"
+      val (r1, r2) =
+        (MovesJournal.rewrite(source, "r1", applied), MovesJournal.rewrite(source, "r2", applied))
+      (
+        MovesJournal.sameRewrite(v1Rewrite, source, "r1", applied),
+        MovesJournal.sameCheck(v1Check, source, "r1", applied, rewrite),
+        r1.take(3),
+        MovesJournal.check(source, "r1", applied, rewrite).take(3),
+        r1 == r2,
+        MovesJournal.check(source, "r1", applied, rewrite) ==
+          MovesJournal.check(source, "r2", applied, rewrite),
+        MovesJournal.sameRewrite(r1, source, "r1", applied),
+        MovesJournal.sameRewrite(r1, source, "r2", applied)
+      ) ==> (true, true, "v2:", "v2:", false, false, true, false)
+    }
+
+    test(
+      "a rewrite's step is written with what it read of its source, its version and its file's revision among it, and reads back as written"
+    ) {
+      val j = summon[Journaled[(AskMade, Option[Act.Sourced])]]
+      val from = Declassified.Source(
+        DocumentVersionId.of(7).getOrElse(sys.error("no version")),
+        PluginName.of("cards").getOrElse(sys.error("no plugin")),
+        DocKey.of("k").getOrElse(sys.error("no key")),
+        Place.Everywhere,
+        Label.Public,
+        TestPieces.pointer("f"),
+        "r1"
+      )
+      val step = (
+        AskMade.Refused(AskMade.Kind.Model, "down", "v2:ab"),
+        Some(Act.Sourced(from, Integrity.Member))
+      )
+      val written = j.encode(step)
+      val source = ujson.read(written)("source").obj
+      (source.keys.toVector, source("version"), source("revision"), j.decode(written)) ==> (
+        Vector("version", "plugin", "key", "place", "label", "pointer", "revision", "level"),
+        ujson.Num(7),
+        ujson.Str("r1"),
+        Right(step)
       )
     }
 

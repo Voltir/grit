@@ -21,6 +21,7 @@ import grit.core.act.{
 }
 import grit.core.classify.{Answer as Judged, Ask, ClassifierError, StateJson}
 import grit.core.document.{
+  Declassified,
   DocLabel,
   DocText,
   DocWeight,
@@ -41,11 +42,15 @@ import grit.core.files.{
   Format,
   FormatName,
   Formats,
+  InMemoryPieces,
   KeptPiece,
   Kind,
   Locus,
   OpenFile,
   PagedText,
+  PieceKeeper,
+  PiecedFile,
+  Pieces,
   ReadLimits,
   TestPieces,
   Understood,
@@ -762,18 +767,22 @@ abstract class MovesContract extends TestSuite {
       val (source, policy) = applied(shelves, "c1")
       val leaks = Vector(Vector(0.05, 0.05, 0.09), Vector(0.05, 0.1, 0.05), Vector(0.0, 0.0, 0.6))
       val (got, _) = declassifying(declassifies(3, 3), shelves, Rewrote, leaks) { m =>
-        Seen(Vector("a", "b", "c").map(n => m.declassify(name(n), source, policy).map(outcome)))
+        Seen(
+          Vector("a", "b", "c").map(n =>
+            m.declassify(name(n), source, Revision, policy).map(outcome)
+          )
+        )
       }
       got ==> Seen(Vector(Right("made internal judged 0.09"), Right("kept 0.1"), Right("kept 0.6")))
     }
 
     test(
-      "a declassify's rewrite is kept without its compartment, audited with its source, the policy version and the application version"
+      "a declassify's rewrite is kept without its compartment, audited with its source, the policy version and the application version, its data naming its file's revision"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
       val (source, policy) = applied(shelves, "c1")
       val (got, _) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
-        m.declassify(name("d"), source, policy) match {
+        m.declassify(name("d"), source, Revision, policy) match {
           case Right(Declassifying.Outcome.Made(t)) =>
             val kept = m.keep(name("k"), t)((d, keeper, at) =>
               keeper
@@ -789,51 +798,85 @@ abstract class MovesContract extends TestSuite {
         }
       }
       val written = got.moves.headOption.flatMap(_.toOption).map(_.split(" ", 2).toVector)
-      val audit = written
-        .flatMap(_.headOption)
-        .flatMap(_.toLongOption)
-        .flatMap(DocumentVersionId.of)
+      val version =
+        written.flatMap(_.headOption).flatMap(_.toLongOption).flatMap(DocumentVersionId.of)
+      val audit = version
         .flatMap(shelves.documents.declassification)
         .map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
-      (written.flatMap(_.lift(1)), audit) ==> (
-        Some(Label.written(Label.at(Level.Internal))),
-        Some((DocumentVersionId.value(source), 1, 1))
-      )
-    }
-
-    test("a declassify's rewrite ask holds only its source's text and its policy's") {
-      val shelves = Shelves(needed = Vector(Cards))
-      val (source, policy) = applied(shelves, "c1")
-      val _ = card(shelves, "c2", "The second card, which nothing applies to.")
-      val (_, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
-        Seen(Vector(m.declassify(name("d"), source, policy).map(outcome)))
-      }
-      shown ==> Vector(
-        (
-          Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>",
-          Vector(s"<document>\n$CardText\n</document>")
+      val revision = version.toVector
+        .flatMap(v =>
+          shelves.documents
+            .read(Vector(v))(using TestTx.fake(grit.core.visibility.Clearance.of(Declassing)))
+            .fold(_ => Vector(), identity)
         )
+        .flatMap(d => Declassified.Made.read(d.data))
+        .map(_.revision)
+      (written.flatMap(_.lift(1)), audit, revision) ==> (
+        Some(Label.written(Label.at(Level.Internal))),
+        Some((DocumentVersionId.value(source), 1, 1)),
+        Vector(Revision)
       )
     }
 
     test(
-      "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied or Kept"
+      "a declassify's rewrite ask holds its file's text at the revision named, cut at SourceChars, and the policy; never its card's text"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      // A second card's file, which the move does not name, and the first's grown past the cut.
+      val _ = card(shelves, "c2", "The second card, which nothing applies to.")
+      pieced(shelves, "c2", paragraphs = Vector("The second file."))
+      val tail = Vector.fill(1600)("boots").mkString(" ")
+      pieced(shelves, "c1", paragraphs = FilePieces :+ tail)
+      val (_, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+        Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+      }
+      val document = shown.flatMap(_._2).headOption.getOrElse("")
+      val cut = document.stripPrefix("<document>\n").stripSuffix("\n</document>")
+      (
+        shown.map(_._1),
+        cut.startsWith(s"$FileText\n\nboots boots"),
+        cut.length <= Declassifying.SourceChars && cut.length > Declassifying.SourceChars - 10,
+        cut.endsWith("boots…"),
+        document.contains(CardText) || document.contains("second")
+      ) ==> (
+        Vector(Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>"),
+        true,
+        true,
+        true,
+        false
+      )
+    }
+
+    test(
+      "a declassify whose file has no pieces at the revision named is Unapplied as unpieced, asking nothing"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      val (got, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
+        Seen(Vector(m.declassify(name("d"), source, "r2", policy).map(outcome)))
+      }
+      (got, shown) ==> (Seen(Vector(Right("unapplied unpieced"))), Vector())
+    }
+
+    test(
+      "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied as lapsed or Kept"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
       val (source, policy) = applied(shelves, "c1")
       val (withheld, _) =
         declassifying(declassifies(1, 0), shelves, Declassifying.Nothing, Clean) { m =>
-          Seen(Vector(m.declassify(name("w"), source, policy).map(outcome)))
+          Seen(Vector(m.declassify(name("w"), source, Revision, policy).map(outcome)))
         }
       // A later application of the same policy: the one the move names is no longer in force.
       shelves.documents.application(file("c1"), 2, Some(Team))
       val (removed, shown) =
         declassifying(declassifies(1, 0), shelves, Rewrote, Clean) { m =>
-          Seen(Vector(m.declassify(name("r"), source, policy).map(outcome)))
+          Seen(Vector(m.declassify(name("r"), source, Revision, policy).map(outcome)))
         }
       (withheld, removed, shown) ==> (
         Seen(Vector(Right("kept nothing"))),
-        Seen(Vector(Right("unapplied"))),
+        Seen(Vector(Right("unapplied lapsed"))),
         Vector()
       )
     }
@@ -1041,11 +1084,12 @@ abstract class MovesContract extends TestSuite {
 object MovesContract {
 
   /** The documents a dreaming run's keeps keep its plugin's in, [[MovesWorld.Notes]], and
-    * where its `needs` read theirs.
+    * where its `needs` read theirs; and the `pieces` its declassifies read.
     */
   final case class Shelves(
       documents: InMemoryDocuments = new InMemoryDocuments,
-      needed: Vector[Exports[?]] = Vector.empty
+      needed: Vector[Exports[?]] = Vector.empty,
+      pieces: InMemoryPieces = new InMemoryPieces
   ) {
 
     /** [[MovesWorld.Notes]]' needs, each over its own documents in `documents`. */
@@ -1265,18 +1309,64 @@ object MovesContract {
       case other => throw new java.lang.AssertionError(s"not written: $other")
     }
 
-  /** [[card]] `key` in `shelves`, [[Team]]'s policy of [[Instructions]] kept at [[Declassing]],
-    * and the policy applied to the card: the card's version and the application.
+  /** [[card]] `key` in `shelves`, its file [[pieced]] at [[Revision]], [[Team]]'s policy of
+    * [[Instructions]] kept at [[Declassing]], and the policy applied to the card: the card's
+    * version and the application.
     */
   def applied(shelves: Shelves, key: String): (DocumentVersionId, PolicyApplication) = {
     val v = card(shelves, key)
+    pieced(shelves, key)
     shelves.documents.policy(Team, 1, Some(Instructions), Declassing)
     shelves.documents.application(file(key), 1, Some(Team))
     (v, PolicyApplication(DeclassificationPolicy(Team, 1), file(key), 1))
   }
 
-  /** What a declassify came to: `made {label} judged {p}`, `kept {p}`, `kept nothing` or
-    * `unapplied`.
+  /** The revision of the file [[applied]]'s card reads, whose pieces [[pieced]] keeps. */
+  val Revision = "r1"
+
+  /** The heading of [[pieced]]'s pieces. */
+  val Heading = "Offsite"
+
+  /** The paragraphs of [[pieced]]'s pieces: more than its card says. */
+  val FilePieces: Vector[String] =
+    Vector("The offsite moved to the lake house, on the 4th of May.", "Bring boots.")
+
+  /** What a rewrite is shown of [[pieced]]'s file. */
+  val FileText = s"# $Heading\n\n${FilePieces.mkString("\n\n")}"
+
+  /** The file [[card]] `key`'s pointer reads, at `revision`, kept in `shelves` as [[Cards]]'
+    * pieces at [[Declassing]]: one piece under [[Heading]] for each of `paragraphs`, in order.
+    */
+  def pieced(
+      shelves: Shelves,
+      key: String,
+      revision: String = Revision,
+      paragraphs: Vector[String] = FilePieces
+  ): Unit = {
+    val kept = shelves.pieces
+      .keeper(Cards.name, PieceKeeper.Bound)
+      .keep(
+        PiecedFile(
+          key,
+          s"$key.pdf",
+          revision,
+          Kind.Pdf,
+          FormatName("paged-text"),
+          1,
+          file(key),
+          Pieces.Target
+        ),
+        Here,
+        Integrity.Member,
+        TestPieces.paragraphs(Vector(Heading), paragraphs),
+        0,
+        Instant.EPOCH
+      )(using TestTx.fake(grit.core.visibility.Clearance.of(Declassing)))
+    kept.fold(e => throw new java.lang.AssertionError(s"not pieced: $e"), _ => ())
+  }
+
+  /** What a declassify came to: `made {label} judged {p}`, `kept {p}`, `kept nothing`,
+    * `unapplied lapsed` or `unapplied unpieced`.
     */
   def outcome(o: Declassifying.Outcome): String = o match {
     case Declassifying.Outcome.Made(t) =>
@@ -1284,7 +1374,7 @@ object MovesContract {
       s"made ${Label.written(d.label)} judged ${Probability.value(d.judged)}"
     case Declassifying.Outcome.Kept(judged) =>
       s"kept ${judged.fold("nothing")(p => Probability.value(p).toString)}"
-    case Declassifying.Outcome.Unapplied => "unapplied"
+    case Declassifying.Outcome.Unapplied(why) => s"unapplied ${why.toString.toLowerCase}"
   }
 
   /** Limits of `asks` asks, no calls and `judgments` judgments. */

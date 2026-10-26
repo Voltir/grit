@@ -12,6 +12,7 @@ import grit.core.document.{
   PolicyApplication
 }
 import grit.core.durable.Journaled
+import grit.core.files.PieceSearch
 import grit.core.flow.{Extracted, Shape, Tainted, Trusted}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
@@ -284,41 +285,44 @@ trait Dreaming extends Keeping {
   ): Either[MoveError, Option[Dreaming.Summarised[T]]]
 
   /** `source`, a document of the acting plugin or one of its needs, rewritten under `applied`
-    * and checked. It is asked as a [[Posed.Text]] of [[Declassifying.request]], the policy's
-    * text and `source`'s head alone, read in this move's own step (`ask:{name}`), of the
-    * catalog's `dream` role; then as a judgment of [[Declassifying.Check]]'s three questions
-    * about [[Declassifying.state]], read again in its own step (`ask:{name}-check`); then
-    * lowered by the declassification the run's program declared ([[Declassifying.Node]]).
-    * [[Declassifying.Outcome]]: `Made`; `Kept` when a question's probability is at or above
-    * [[Declassified.Below]], or the model wrote [[Declassifying.Nothing]] (no check asked);
-    * `Unapplied`, asking nothing more, when either step reads nothing ([[Declassifying.read]]).
-    * Each ask is counted, limited and refused as an ask or a judgment is ([[ask]]), and a
-    * check refused is that refusal, never a declassification. [[MoveError.Undeclared]], no move
-    * made, when the program did not declare the declassification.
+    * from the text of its file at `revision` (as its plugin's pieces of it name it,
+    * [[grit.core.files.PiecedFile.revision]]), and checked. It is asked as a [[Posed.Text]] of
+    * [[Declassifying.request]], the policy's text and the file's alone, read in this move's own
+    * step (`ask:{name}`), of the catalog's `dream` role; then as a judgment of
+    * [[Declassifying.Check]]'s three questions about [[Declassifying.state]], read again in its
+    * own step (`ask:{name}-check`); then lowered by the declassification the run's program
+    * declared ([[Declassifying.Node]]). [[Declassifying.Outcome]]: `Made`; `Kept` when a
+    * question's probability is at or above [[Declassified.Below]], or the model wrote
+    * [[Declassifying.Nothing]] (no check asked); `Unapplied`, asking nothing more, when either
+    * step reads nothing, with why ([[Declassifying.Unread]]). Each ask is counted, limited and
+    * refused as an ask or a judgment is ([[ask]]), and a check refused is that refusal, never a
+    * declassification. [[MoveError.Undeclared]], no move made, when the program did not
+    * declare the declassification.
     */
   final def declassify(
       name: MoveName,
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication
   ): Either[MoveError, Declassifying.Outcome] =
     declassifier match {
       case None => Left(MoveError.Undeclared(Declassified.declassification.described.name))
       case Some(raise) =>
-        rewrite(name, source, applied).flatMap { rewritten =>
+        rewrite(name, source, revision, applied).flatMap { rewritten =>
           Trusted.asIs(rewritten).extract match {
-            case Declassifying.Rewritten.Unapplied => Right(Declassifying.Outcome.Unapplied)
+            case Declassifying.Rewritten.Unapplied(why) =>
+              Right(Declassifying.Outcome.Unapplied(why))
             case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
-            case Declassifying.Rewritten.Made(text, plugin, key, place, label, pointer) =>
-              check(name, source, applied, text).map {
-                case None => Declassifying.Outcome.Unapplied
-                case Some(leak) =>
-                  // Rewritten from its document's own text, at no file revision.
-                  val from = Declassified.Source(source, plugin, key, place, label, pointer, "")
+            case Declassifying.Rewritten.Made(text, from) =>
+              check(name, source, revision, applied, text).map {
+                case Left(why) => Declassifying.Outcome.Unapplied(why)
+                case Right(leak) =>
                   raise((rewrite = text, source = from, applied = applied, leak = leak)) match {
                     case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
                     case None if leak >= Declassified.Below =>
                       Declassifying.Outcome.Kept(Some(leak))
-                    case None => Declassifying.Outcome.Unapplied
+                    // The rewrite's source is no longer the application's document.
+                    case None => Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)
                   }
               }
           }
@@ -337,31 +341,34 @@ trait Dreaming extends Keeping {
   protected def rewrite(
       name: MoveName,
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication
   ): Either[MoveError, Tainted[Declassifying.Rewritten]]
 
-  /** [[declassify]]'s check of `rewrite`, `{name}-check`: the highest of its probabilities;
-    * `None` when it read nothing and asked nothing.
+  /** [[declassify]]'s check of `rewrite`, `{name}-check`: the highest of its probabilities; why
+    * not, when it read nothing and asked nothing.
     */
   protected def check(
       name: MoveName,
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication,
       rewrite: DocText
-  ): Either[MoveError, Option[Probability]]
+  ): Either[MoveError, Either[Declassifying.Unread, Probability]]
 }
 
 object Dreaming {
 
   /** What a dreaming run reads: its scans, `strands` and, given its plugin, that plugin's
     * `needs`; its summaries, their strands' messages through `excerpts` and their documents
-    * through `documents`.
+    * through `documents`; `pieces`, the kept files' pieces its declassifies read.
     */
   final case class Reads(
       strands: StrandShelf,
       needs: PluginName -> Needs,
       excerpts: StrandExcerpts,
-      documents: DocumentSearch
+      documents: DocumentSearch,
+      pieces: PieceSearch
   )
 
   /** A summary's reply, and the versions of `shown` it was shown, in their order. */

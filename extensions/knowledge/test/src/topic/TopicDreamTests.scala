@@ -17,6 +17,7 @@ import grit.core.document.{
   Pointer,
   Shelved
 }
+import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, CorpusName, DocKey, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
@@ -124,12 +125,13 @@ object TopicDreamTests extends TestSuite {
           val reply = if (isAttach) attach(system, shown) else write(shown)
           Right(Asked(TestTainted.at(reply, Integrity.Authority), Label.Public))
         }
+      val pieces = new InMemoryPieces
       val moves = new ScriptedDreaming(
         dream.limits,
         floor,
         Plugin,
         Terms,
-        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, reading(unread)),
+        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, reading(unread), pieces),
         answer,
         documents = documents,
         at = now,

@@ -517,7 +517,8 @@ object RunFixtures {
           strands.shelf,
           plugin => Needs.over(plugin, Vector.empty),
           strands.excerpts,
-          documents
+          documents,
+          pieces
         )
       )
 

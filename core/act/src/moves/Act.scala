@@ -29,6 +29,7 @@ import grit.core.act.{
 import grit.core.classify.{AnswersJson, Ask, ClassifierError, Reply, Request}
 import grit.core.clock.Clock
 import grit.core.document.{
+  Declassified,
   DocLabel,
   DocText,
   Document,
@@ -248,77 +249,47 @@ private[moves] object Act {
         }
     }
 
-  /** The rewrite `name` of `source` under `applied`, read through `documents` and `keeper` as
-    * one of `readable`'s ([[Declassifying.read]]), under `digest`.
-    */
+  /** The rewrite `name` as `reading` reads it ([[Declassifying.read]]), under `digest`. */
   final case class Rewriting(
       name: MoveName,
       acting: Acting,
-      source: DocumentVersionId,
-      applied: PolicyApplication,
-      documents: DocumentSearch,
-      keeper: DocumentKeeper,
-      readable: Vector[PluginName],
+      reading: Declassifying.Reading,
       digest: String
   ) extends Acted
 
-  /** The check `name` of `rewrite`, made from `source` under `applied`, read again as its
-    * [[Rewriting]] read it, under `digest`.
+  /** The check `name` of `rewrite`, read again as its [[Rewriting]] read it, `reading`, under
+    * `digest`.
     */
   final case class Checking(
       name: MoveName,
       acting: Acting,
-      source: DocumentVersionId,
-      applied: PolicyApplication,
+      reading: Declassifying.Reading,
       rewrite: DocText,
-      documents: DocumentSearch,
-      keeper: DocumentKeeper,
-      readable: Vector[PluginName],
       digest: String
   ) extends Acted
 
-  /** What a rewrite's step read of its source, beside its ask: the source's `plugin`, `key`,
-    * `place` and `label`, the `pointer` that reads it, and `level`, the acting's integrity met
-    * with the source's.
+  /** What a rewrite's step read of its `source`, beside its ask, and `level`, the acting's
+    * integrity met with its text's.
     */
-  final case class Sourced(
-      plugin: PluginName,
-      key: DocKey,
-      place: Place,
-      label: Label,
-      pointer: Pointer,
-      level: Integrity
-  )
+  final case class Sourced(source: Declassified.Source, level: Integrity)
 
-  /** A rewrite's `ask:{n}`: its source, the source's pointer, the application in force for it
-    * and its policy's text read in one transaction for its acting's subject, then, when they
-    * are as its input names them, asked of the dream role's pins as [[Declassifying.request]];
-    * beside it, what it read of the source. A refusal of kind `Changed` when it read nothing.
+  /** A rewrite's `ask:{n}`: what its reading names read in one transaction for its acting's
+    * subject ([[Declassifying.read]]), then asked of the dream role's pins as
+    * [[Declassifying.request]]; beside it, what it read of the source. A refusal of kind
+    * `Changed` in the words of why it read nothing ([[Declassifying.Unread.why]]).
     */
   val rewrite: Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])] = {
     import MovesJournal.given
     Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])](Asks.move)(env =>
       r =>
-        env.db.read(r.acting.subject)(
-          Declassifying.read(r.source, r.applied, r.documents, r.keeper, r.readable)
-        ) match {
+        env.db.read(r.acting.subject)(Declassifying.read(r.reading)) match {
           case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), r.digest), None)
-          case Right(None) => (AskMade.Refused(AskMade.Kind.Changed, Changed, r.digest), None)
-          case Right(Some(shown)) =>
-            val d = shown.source
-            val request = Declassifying.request(shown.instructions, d.text)
+          case Right(Left(why)) =>
+            (AskMade.Refused(AskMade.Kind.Changed, why.why, r.digest), None)
+          case Right(Right(shown)) =>
             (
-              texted(env, r.acting, Dreams, request, r.digest),
-              Some(
-                Sourced(
-                  d.plugin,
-                  d.key,
-                  d.place,
-                  d.label,
-                  shown.pointer,
-                  r.acting.integrity.meet(d.integrity)
-                )
-              )
+              texted(env, r.acting, Dreams, Declassifying.request(shown), r.digest),
+              Some(Sourced(shown.source, r.acting.integrity.meet(shown.integrity)))
             )
         }
     )
@@ -326,19 +297,17 @@ private[moves] object Act {
 
   /** A rewrite's check's `ask:{n}`: read again as its rewrite's was, then, when it read the
     * same, the classifier's answers to [[Declassifying.Check]] about [[Declassifying.state]];
-    * a refusal of kind `Changed` when it read nothing.
+    * a refusal of kind `Changed` in the words of why it read nothing.
     */
   val check: Step[MovesEnv, Checking, AskMade] = {
     import MovesJournal.given
     Step[MovesEnv, Checking, AskMade](Asks.move)(env =>
       c =>
-        env.db.read(c.acting.subject)(
-          Declassifying.read(c.source, c.applied, c.documents, c.keeper, c.readable)
-        ) match {
+        env.db.read(c.acting.subject)(Declassifying.read(c.reading)) match {
           case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), c.digest)
-          case Right(None) => AskMade.Refused(AskMade.Kind.Changed, Changed, c.digest)
-          case Right(Some(shown)) =>
-            val state = Declassifying.state(shown.instructions, shown.source.text, c.rewrite)
+          case Right(Left(why)) => AskMade.Refused(AskMade.Kind.Changed, why.why, c.digest)
+          case Right(Right(shown)) =>
+            val state = Declassifying.state(shown, c.rewrite)
             judged(
               env,
               c.acting,

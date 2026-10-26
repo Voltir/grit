@@ -12,7 +12,7 @@ import utest.*
   * The rules every vet and declassify keeps are [[MovesContract]]'s.
   */
 object DurableTreeTests extends TestSuite {
-  import MovesContract.{Seen, applied, declassifies, judgments, name, outcome, vetted}
+  import MovesContract.{Revision, Seen, applied, declassifies, judgments, name, outcome, vetted}
 
   val tests = Tests {
     test("a vet in a program that does not declare the tree is undeclared, and spends no name") {
@@ -48,7 +48,9 @@ object DurableTreeTests extends TestSuite {
         new grit.core.act.MovesFixtures.Judging(),
         Vector(IntegrityTree.Node)
       ) { m =>
-        Seen(Vector("d", "d").map(n => m.declassify(name(n), source, policy).map(outcome)))
+        Seen(
+          Vector("d", "d").map(n => m.declassify(name(n), source, Revision, policy).map(outcome))
+        )
       }
       val undeclared = Left(MoveError.Undeclared("declassification"))
       (got, asked) ==> (Seen(Vector(undeclared, undeclared)), Vector())

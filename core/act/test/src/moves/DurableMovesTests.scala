@@ -47,6 +47,7 @@ import grit.core.files.{
   NoFiles,
   PagedText,
   PieceKeeper,
+  PieceSearch,
   PutKey
 }
 import grit.core.host.TempBlobs
@@ -171,7 +172,8 @@ object DurableMovesTests extends MovesContract {
       MovesContract.Declassing,
       Integrity.Authority,
       documents = shelves.documents,
-      compartments = MovesContract.Declared
+      compartments = MovesContract.Declared,
+      pieces = shelves.pieces
     )
     val judging = new Judging(
       leaks.map(ls => Right(Answers(ls.map(Judged.YesNo(_)), Spent, "test/judge")))
@@ -193,7 +195,8 @@ object DurableMovesTests extends MovesContract {
   * its classifier are cleared for `floor`; what is said at its places is capped by `capped`
   * ([[MovesContract.Probe]]'s at [[MovesContract.ProbeOutput]]). When `broken`, the day's spend
   * cannot be read, and the acting's allowance is daily, so every ask's admission fails. Its run
-  * starts believed at `integrity`, and its places are labelled by `rooms`.
+  * starts believed at `integrity`, and its places are labelled by `rooms`; its pieces, kept by
+  * its piece moves and read by its declassifies, are in `pieces`.
   */
 final class MovesWorld(
     broken: Boolean,
@@ -203,7 +206,8 @@ final class MovesWorld(
     answer: Outcome = Outcome.Done(MovesContract.Read),
     rooms: RoomLabels = RoomLabels.Public,
     val documents: InMemoryDocuments = new InMemoryDocuments,
-    compartments: Compartments = Compartments.Shipped
+    compartments: Compartments = Compartments.Shipped,
+    val pieces: InMemoryPieces = new InMemoryPieces
 ) extends caps.SharedCapability {
   import MovesContract.*
   import MovesWorld.*
@@ -319,9 +323,6 @@ final class MovesWorld(
   /** [[Notes]]' documents as it writes them. */
   val keeper: DocumentKeeper = documents.keeper(Notes, NotesTerms)
 
-  /** Where [[Notes]]' piece moves keep its pieces. */
-  val pieces: InMemoryPieces = new InMemoryPieces
-
   /** Short write transactions, each opened at `floor`. */
   val jot: Jot = new Jot {
     def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
@@ -379,7 +380,8 @@ final class MovesWorld(
       use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
     val models = new Answering(answer)
-    val dreams = MovesWorld.dreams(acting, limits, keeper, world, needs, documents, declared)(use)
+    val dreams =
+      MovesWorld.dreams(acting, limits, keeper, world, needs, documents, declared, pieces)(use)
     var out: Option[A] = None
     durable.run(Turn.workflowId) { _ =>
       out = Some(
@@ -403,7 +405,8 @@ object MovesWorld {
       world: StrandWorld,
       needs: Needs = Needs.over(Notes, Vector.empty),
       documents: DocumentSearch = new InMemoryDocuments,
-      declared: Vector[Flow.Node] = DurableMoves.Within
+      declared: Vector[Flow.Node] = DurableMoves.Within,
+      pieces: PieceSearch = new InMemoryPieces
   )(use: Dreaming^ -> A): Flow[KeepingEnv, Unit, Nothing, A] =
     Flow.program[KeepingEnv, Unit, A]("moves", declared)(steps =>
       _ =>
@@ -413,7 +416,7 @@ object MovesWorld {
           Notes,
           keeper,
           new InMemoryPieces().keeper(Notes, PieceKeeper.Bound),
-          Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents)
+          Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents, pieces)
         )(use)(using steps)
     )
 

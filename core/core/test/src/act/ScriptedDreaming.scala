@@ -111,24 +111,22 @@ final class ScriptedDreaming(
   protected def rewrite(
       name: MoveName,
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication
   ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
-    shown(source, applied) match {
+    shown(source, revision, applied) match {
       case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
-      case Right(None) =>
+      case Right(Left(why)) =>
         making(name, MoveKind.Ask, limits.asks)(
-          Right(TestTainted.at(Declassifying.Rewritten.Unapplied, integrity))
+          Right(TestTainted.at(Declassifying.Rewritten.Unapplied(why), integrity))
         )
-      case Right(Some(shown)) =>
-        val d = shown.source
-        val posed = Posed.Text(Declassifying.request(shown.instructions, d.text))
-        ask(name, TestTainted.at(posed, integrity.meet(d.integrity))).map(a =>
+      case Right(Right(shown)) =>
+        val posed = Posed.Text(Declassifying.request(shown))
+        ask(name, TestTainted.at(posed, integrity.meet(shown.integrity))).map(a =>
           a.reply.map(m =>
             Declassifying
               .written(m)
-              .fold(Declassifying.Rewritten.Withheld)(t =>
-                Declassifying.Rewritten.Made(t, d.plugin, d.key, d.place, d.label, shown.pointer)
-              )
+              .fold(Declassifying.Rewritten.Withheld)(Declassifying.Rewritten.Made(_, shown.source))
           )
         )
     }
@@ -136,31 +134,40 @@ final class ScriptedDreaming(
   protected def check(
       name: MoveName,
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication,
       rewrite: DocText
-  ): Either[MoveError, Option[Probability]] =
+  ): Either[MoveError, Either[Declassifying.Unread, Probability]] =
     Declassifying.checked(name).left.map(MoveError.Model(_)).flatMap { checking =>
-      shown(source, applied) match {
+      shown(source, revision, applied) match {
         case Left(e) =>
           making(checking, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
-        case Right(None) => making(checking, MoveKind.Judge, limits.judgments)(Right(None))
-        case Right(Some(shown)) =>
-          val state = Declassifying.state(shown.instructions, shown.source.text, rewrite)
+        case Right(Left(why)) =>
+          making(checking, MoveKind.Judge, limits.judgments)(Right(Left(why)))
+        case Right(Right(shown)) =>
+          val state = Declassifying.state(shown, rewrite)
           ask(checking, TestTainted.at(Posed.judge(state, Declassifying.Check), integrity))
-            .map(a => Some(Trusted.asIs(a.reply).extract))
+            .map(a => Right(Trusted.asIs(a.reply).extract))
       }
     }
 
-  /** What a rewrite of `source` under `applied` is made from, read as its keeps read. */
+  /** What a rewrite of `source`, its file at `revision`, under `applied` is made from, read as
+    * its keeps read.
+    */
   private def shown(
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication
-  ): Either[StoreError, Option[Declassifying.Shown]] =
+  ): Either[StoreError, Either[Declassifying.Unread, Declassifying.Shown]] =
     Declassifying.read(
-      source,
-      applied,
-      reads.documents,
-      documents.keeper(plugin, terms),
-      plugin +: needs.plugins
+      Declassifying.Reading(
+        source,
+        revision,
+        applied,
+        reads.documents,
+        reads.pieces,
+        documents.keeper(plugin, terms),
+        plugin +: needs.plugins
+      )
     )(using opened)
 }

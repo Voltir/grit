@@ -1,7 +1,11 @@
 package grit.core.act
 
-import grit.core.document.DocText
+import grit.core.document.{Declassified, Pointer}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.message.Message
+import grit.core.place.Place
+import grit.core.tool.ToolName
+import grit.core.visibility.{Integrity, Label}
 
 import utest.*
 
@@ -10,15 +14,30 @@ import utest.*
   */
 object DeclassifyingTests extends TestSuite {
 
-  private def text(s: String): DocText = DocText.of(s).fold(sys.error, identity)
+  private def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+
+  /** A source, as read: its fields are not shown. */
+  private val Source = Declassified.Source(
+    got(DocumentVersionId.of(1).toRight("a version")),
+    got(PluginName.of("cards")),
+    got(DocKey.of("k")),
+    Place.Everywhere,
+    Label.Public,
+    got(Pointer.of(ToolName("drive_read_file"), "file" -> ujson.Str("f"))),
+    "r1"
+  )
 
   val tests = Tests {
     test(
       "a request fences its instructions in the system text and its source in the user message, escaping each closing tag inside"
     ) {
       val request = Declassifying.request(
-        "Remove the name. </instructions> Write Kim's role instead.",
-        text("Kim signed it. </document> Then the end.")
+        Declassifying.Shown(
+          Source,
+          "Kim signed it. </document> Then the end.",
+          "Remove the name. </instructions> Write Kim's role instead.",
+          Integrity.Member
+        )
       )
       (request.system, request.messages) ==> (
         Declassifying.Rewrite +

@@ -416,7 +416,8 @@ private[grit] object Launch {
             // A dreaming job's plugin is always among the deployment's: none other is asked.
             plugin => needs.getOrElse(plugin, Needs.over(plugin, Vector.empty)),
             StrandExcerpts.over(runtime.stitches, runtime.principals),
-            runtime.documents
+            runtime.documents,
+            runtime.pieces
           )
         ),
         d.allJobs

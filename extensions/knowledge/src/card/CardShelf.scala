@@ -29,8 +29,9 @@ trait CardShelf extends caps.Pure {
   ): Either[StoreError, Vector[CardShelf.Seen]]
 
   /** Its current cards its transaction reads, most recent first, at most `n`, each by its
-    * version, the label it is kept at and the pointer that reads it: what a declassification is
-    * applied to ([[grit.core.document.DocumentKeeper.declassifying]]); never its text.
+    * version, its file's revision, the label it is kept at and the pointer that reads it: what a
+    * declassification is applied to ([[grit.core.document.DocumentKeeper.declassifying]]); never
+    * its text. A card whose data names no revision is not among them.
     */
   def pointed(n: Int)(using Tx^): Either[StoreError, Vector[CardShelf.Pointed]]
 }
@@ -50,9 +51,15 @@ object CardShelf {
       label: Label
   ) extends caps.Pure
 
-  /** A current card as [[CardShelf.pointed]] sees it. */
-  final case class Pointed(version: DocumentVersionId, label: Label, pointer: Pointer)
-      extends caps.Pure
+  /** A current card by its version, its file's `revision` (its [[UnitVersion]], as
+    * [[UnitVersion.value]] writes it), the label it is kept at and the pointer that reads it.
+    */
+  final case class Pointed(
+      version: DocumentVersionId,
+      revision: String,
+      label: Label,
+      pointer: Pointer
+  ) extends caps.Pure
 
   /** The cards among `documents`, the knowledge plugin's own. */
   def over(documents: DocumentShelf): CardShelf = new CardShelf {
@@ -73,7 +80,11 @@ object CardShelf {
 
     def pointed(n: Int)(using Tx^): Either[StoreError, Vector[Pointed]] =
       cardsWhere(documents, n, _ => false)(
-        (_, d) => d.pointer.map(Pointed(d.version, d.label, _)),
+        (_, d) =>
+          for {
+            pointer <- d.pointer
+            revision <- d.data.objOpt.flatMap(_.get("version")).flatMap(_.strOpt)
+          } yield Pointed(d.version, revision, d.label, pointer),
         _ => true
       )
   }

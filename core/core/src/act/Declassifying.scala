@@ -1,24 +1,16 @@
 package grit.core.act
 
 import grit.core.classify.{Ask, StateJson}
-import grit.core.document.{
-  Declassified,
-  DocText,
-  Document,
-  DocumentKeeper,
-  DocumentSearch,
-  Pointer,
-  PolicyApplication
-}
+import grit.core.document.{Declassified, DocText, DocumentKeeper, DocumentSearch, PolicyApplication}
 import grit.core.durable.{Flow, Steps}
+import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
-import grit.core.id.{DocKey, DocumentVersionId, PluginName}
-import grit.core.message.{AssistantBlock, Cut, Message}
+import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.period.Probability
-import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.Integrity
 
 /** What [[Dreaming.declassify]] asks and comes to: the rewrite's text for the model, the check's
   * for the classifier, and the declassification it is lowered by.
@@ -57,14 +49,18 @@ object Declassifying {
   def checked(name: MoveName): Either[String, MoveName] =
     MoveName.of(s"${MoveName.value(name)}-check")
 
-  /** The rewrite's request. Its system text is [[Rewrite]], then `instructions` fenced in
-    * `<instructions>` tags, which the policy's people wrote and the model must follow. Its one
-    * user message is the head of `source` within [[SourceChars]], fenced in `<document>` tags,
-    * which is material only. A closing tag inside either text is escaped (`&lt;/`), so neither
-    * can end its own fence.
+  /** 64: the most pieces of its file a rewrite reads ([[grit.core.files.PieceSearch.file]]),
+    * well past [[SourceChars]] for pieces near [[grit.core.files.Pieces.Target]].
     */
-  def request(instructions: String, source: DocText): ModelRequest =
-    framed(instructions, Cut.head(DocText.value(source), SourceChars))
+  val SourcePieces: Int = 64
+
+  /** The rewrite's request. Its system text is [[Rewrite]], then `shown.instructions` fenced in
+    * `<instructions>` tags, which the policy's people wrote and the model must follow. Its one
+    * user message is `shown.text`, fenced in `<document>` tags, which is material only. A
+    * closing tag inside either text is escaped (`&lt;/`), so neither can end its own fence.
+    */
+  def request(shown: Shown): ModelRequest =
+    framed(shown.instructions, shown.text)
 
   /** [[request]]'s framing of `instructions` and of `source`, which is already cut: the system
     * text and the user message, each closing tag escaped.
@@ -115,9 +111,9 @@ object Declassifying {
     )
   )
 
-  /** The state the check of `rewrite`, made from `source` under `instructions`, is about. */
-  def state(instructions: String, source: DocText, rewrite: DocText): State =
-    State(instructions, Cut.head(DocText.value(source), SourceChars), DocText.value(rewrite))
+  /** The state the check of `rewrite`, made from `shown`, is about: the only place it is built. */
+  def state(shown: Shown, rewrite: DocText): State =
+    State(shown.instructions, shown.text, DocText.value(rewrite))
 
   /** What the classifier is told of every rewrite, before the questions. */
   val About: String =
@@ -164,54 +160,103 @@ object Declassifying {
         Probability.clamped(math.max(kept, math.max(hinted, instructs)))
       }
 
-  /** What a rewrite of `source` under `applied` is made from, as one transaction reads it: the
-    * source, its pointer and its policy's text; `None` when `source` is not kept, holds
-    * nothing, is not read by the transaction, is not one of `readable`'s, has no pointer,
-    * `applied` is not the application in force for it, or its policy's text is not read
-    * ([[DocumentKeeper.declassifying]]).
+  /** What a rewrite of `source`, its file at `revision`, under `applied` reads, through
+    * `documents`, `pieces` and `keeper`, as one of `readable`'s plugins.
     */
-  def read(
+  final case class Reading(
       source: DocumentVersionId,
+      revision: String,
       applied: PolicyApplication,
       documents: DocumentSearch,
+      pieces: PieceSearch,
       keeper: DocumentKeeper,
       readable: Vector[PluginName]
-  )(using Tx^): Either[StoreError, Option[Shown]] =
-    documents.read(Vector(source)).flatMap { found =>
-      found.find(d => readable.contains(d.plugin)).flatMap(d => d.pointer.map((d, _))) match {
-        case None => Right(None)
+  )
+
+  /** Why a rewrite read nothing to rewrite, and `why` in words. */
+  enum Unread(val why: String) extends caps.Pure {
+
+    /** Its source is not kept, holds nothing, is not read, is not one of `readable`'s or has no
+      * pointer; or `applied` is not the application in force for it, or its policy's text is
+      * not read ([[DocumentKeeper.declassifying]]).
+      */
+    case Lapsed extends Unread("its source, or the application in force for it, changed")
+
+    /** Its source's plugin keeps no pieces of its file at `revision` at its label. */
+    case Unpieced extends Unread("its source's file has no pieces at the revision it names")
+  }
+
+  object Unread {
+
+    /** The reason whose words are `why`; `None` when none is. */
+    def said(why: String): Option[Unread] = Unread.values.find(_.why == why)
+  }
+
+  /** What a rewrite is made from, as one transaction reads it: its source, the text of its file
+    * at `reading.revision` ([[grit.core.files.Pieces.text]] of at most [[SourcePieces]] pieces,
+    * cut at [[SourceChars]] at a word, [[grit.core.message.Cut.head]]) and its policy's text; or
+    * why not.
+    */
+  def read(reading: Reading)(using Tx^): Either[StoreError, Either[Unread, Shown]] =
+    reading.documents.read(Vector(reading.source)).flatMap { found =>
+      found
+        .find(d => reading.readable.contains(d.plugin))
+        .flatMap(d => d.pointer.map((d, _))) match {
+        case None => Right(Left(Unread.Lapsed))
         case Some((d, pointer)) =>
-          keeper
-            .declassifying(d.label, pointer)
-            .map(
-              _.filter(_.applied == applied).flatMap(_.instructions).map(Shown(d, pointer, _))
-            )
+          reading.keeper.declassifying(d.label, pointer).flatMap { inForce =>
+            inForce.filter(_.applied == reading.applied).flatMap(_.instructions) match {
+              case None => Right(Left(Unread.Lapsed))
+              case Some(instructions) =>
+                reading.pieces
+                  .file(d.plugin, pointer, reading.revision, d.label, SourcePieces)
+                  .map { pieces =>
+                    if (pieces.isEmpty) Left(Unread.Unpieced)
+                    else
+                      Right(
+                        Shown(
+                          Declassified.Source(
+                            d.version,
+                            d.plugin,
+                            d.key,
+                            d.place,
+                            d.label,
+                            pointer,
+                            reading.revision
+                          ),
+                          Cut.head(Pieces.text(pieces.map(_.piece)), SourceChars),
+                          instructions,
+                          pieces.foldLeft(d.integrity)((at, p) => at.meet(p.integrity))
+                        )
+                      )
+                  }
+            }
+          }
       }
     }
 
-  /** A rewrite's source, its pointer and its policy's text, as [[read]] read them. */
-  final case class Shown(source: Document, pointer: Pointer, instructions: String)
+  /** A rewrite's `source`, its file's `text` as the model is shown it, its policy's
+    * `instructions`, and the `integrity` the text is believed at (its source's met with its
+    * pieces').
+    */
+  final case class Shown(
+      source: Declassified.Source,
+      text: String,
+      instructions: String,
+      integrity: Integrity
+  )
 
   /** What a rewrite's ask came to, as [[Dreaming]]'s primitive hands it back. */
   enum Rewritten extends caps.Pure {
 
-    /** The model wrote `text` from the document version read by `pointer`, `plugin`'s under
-      * `key`, kept at `place` and `label`.
-      */
-    case Made(
-        text: DocText,
-        plugin: PluginName,
-        key: DocKey,
-        place: Place,
-        label: Label,
-        pointer: Pointer
-    )
+    /** The model wrote `text` from `from`. */
+    case Made(text: DocText, from: Declassified.Source)
 
     /** The model wrote [[Nothing]], or nothing at all. */
     case Withheld
 
-    /** No ask was made: [[read]] read nothing. */
-    case Unapplied
+    /** No ask was made: [[read]] read nothing, `why`. */
+    case Unapplied(why: Unread)
   }
 
   /** What a declassifying move came to. */
@@ -225,10 +270,8 @@ object Declassifying {
       */
     case Kept(judged: Option[Probability])
 
-    /** No ask, or no check, was made: its application is no longer in force for its source, or
-      * its source or its policy's text is not read.
-      */
-    case Unapplied
+    /** No ask, or no check, was made: its source read nothing to rewrite, `why`. */
+    case Unapplied(why: Unread)
   }
 
   /** The declassification, as a run's program declares it ([[grit.core.durable.Flow.program]]'s

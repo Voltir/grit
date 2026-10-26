@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
 import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentTerms, InMemoryDocuments}
+import grit.core.files.InMemoryPieces
 import grit.core.flow.TestTainted
 import grit.core.id.{ConversationId, DocKey, PluginName}
 import grit.core.job.JobRun
@@ -77,12 +78,13 @@ object StrandDreamTests extends TestSuite {
       val dream = new StrandDream(5, labels)
       heard.run()
       val needs = Needs.over(Plugin, Vector.empty)
+      val pieces = new InMemoryPieces
       val moves = new ScriptedDreaming(
         dream.limits,
         floor,
         Plugin,
         Terms,
-        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, documents),
+        Dreaming.Reads(w.shelf, _ => needs, w.excerpts, documents, pieces),
         (_, messages) =>
           answer(heard.ask(messages.collect { case Message.User(t) => t }))
             .map(v => Asked(TestTainted.at(v, Integrity.Member), floor)),

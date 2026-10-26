@@ -15,6 +15,15 @@ import grit.core.document.{
   Pointer,
   Written
 }
+import grit.core.files.{
+  FormatName,
+  InMemoryPieces,
+  Kind,
+  PieceKeeper,
+  PiecedFile,
+  Pieces,
+  TestPieces
+}
 import grit.core.flow.TestTainted
 import grit.core.id.{CorpusName, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
@@ -66,6 +75,9 @@ object CardDeclassifyTests extends TestSuite {
 
   private val Now = Instant.parse("2026-10-23T12:00:00Z")
 
+  /** A card's file's first revision, as its [[UnitVersion]] writes it. */
+  private val First = "2026-01-01T00:00:00Z"
+
   /** The knowledge plugin's export, over the real [[CardShelf]]. */
   private object Cards extends Exports[CardShelf] {
     val name: PluginName = Knowledge
@@ -78,21 +90,30 @@ object CardDeclassifyTests extends TestSuite {
   /** A world of cards and the declassify plugin's documents, run run by run. */
   private final class Runs {
     val documents = new InMemoryDocuments
+    val pieces = new InMemoryPieces
     private val counts = new Counts
 
     /** How many rewrites and checks were asked, across runs. */
     def asked: (Int, Int) = (counts.rewrites, counts.checks)
 
-    /** The card of the Drive file `id`, holding `says` at [[Floor]]: its version. */
-    def card(id: String, says: String = "The offsite is at the lake house."): DocumentVersionId = {
+    /** The card of the Drive file `id` at `revision`, holding `says` at [[Floor]], its file
+      * [[pieced]] at that revision unless not `withPieces`: its version.
+      */
+    def card(
+        id: String,
+        says: String = "The offsite is at the lake house.",
+        revision: String = First,
+        withPieces: Boolean = true
+    ): DocumentVersionId = {
       val c = Card.file(
         Corpus,
         id,
-        right(UnitVersion.of("2026-01-01T00:00:00Z")),
+        right(UnitVersion.of(revision)),
         right(CardSummary.of(says, Vector.empty)),
         pointer(id),
         Some(id)
       )
+      if (withPieces) pieced(id, revision)
       documents
         .keeper(Knowledge, CardTerms)
         .write(
@@ -110,6 +131,30 @@ object CardDeclassifyTests extends TestSuite {
         case Right(Written.Versioned(v, _, _)) => v
         case other => throw new java.lang.AssertionError(other.toString)
       }
+    }
+
+    /** The Drive file `id` at `revision`, kept as the knowledge plugin's pieces at [[Floor]]. */
+    def pieced(id: String, revision: String): Unit = {
+      val kept = pieces
+        .keeper(Knowledge, PieceKeeper.Bound)
+        .keep(
+          PiecedFile(
+            id,
+            id,
+            revision,
+            Kind.Pdf,
+            FormatName("paged-text"),
+            1,
+            pointer(id),
+            Pieces.Target
+          ),
+          Place.Everywhere,
+          Integrity.Member,
+          TestPieces.paragraphs(Vector("Offsite"), Vector("The offsite is at the lake house.")),
+          0,
+          Now
+        )(using TestTx.fake(Clearance.of(Floor)))
+      kept.fold(e => throw new java.lang.AssertionError(s"not pieced: $e"), _ => ())
     }
 
     /** The card of `id` withdrawn. */
@@ -161,7 +206,7 @@ object CardDeclassifyTests extends TestSuite {
         Floor,
         Plugin,
         Terms,
-        Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents),
+        Dreaming.Reads(world.shelf, _ => needs, world.excerpts, documents, pieces),
         (_, _) => Left(MoveError.Model("no JSON reply scripted")),
         // Positional: a named argument lifts the capturing script into a val it cannot flow into.
         documents,
@@ -209,13 +254,33 @@ object CardDeclassifyTests extends TestSuite {
       runs.policy(1)
       runs.apply("applied", 1)
       (runs.run(), runs.kept, runs.asked) ==> (
-        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
         Vector(("internal", "The team meets offsite.")),
         (1, 1)
       )
     }
 
-    test("a card is rewritten once per card version, policy version and application version") {
+    test(
+      "an unpieced card is tallied unpieced, not lapsed, and rewritten once its file is pieced"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1", withPieces = false)
+      runs.policy(1)
+      runs.apply("c1", 1)
+      val unpieced = runs.run()
+      val asked = runs.asked
+      runs.pieced("c1", First)
+      (unpieced, asked, runs.run(), runs.kept) ==> (
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 1 unpieced, 0 withdrawn, 0 left for the next run",
+        (0, 0),
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
+        Vector(("internal", "The team meets offsite."))
+      )
+    }
+
+    test(
+      "a card is rewritten once per card version, revision, policy version and application version"
+    ) {
       val runs = new Runs
       val _ = runs.card("c1")
       runs.policy(1)
@@ -228,19 +293,22 @@ object CardDeclassifyTests extends TestSuite {
       val reapplied = runs.run()
       val _ = runs.card("c1", "The offsite moved to the city.")
       val changed = runs.run()
+      val _ = runs.card("c1", "The offsite moved to the city.", revision = "2026-02-01T00:00:00Z")
+      val revised = runs.run()
       val withheld = runs.run(leak = 0.9)
-      (Vector(first, again, policed, reapplied, changed), runs.asked) ==> (
+      (Vector(first, again, policed, reapplied, changed, revised), runs.asked) ==> (
         Vector(
-          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
-          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
-          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run",
-          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run",
-          "declassified cards: 1 written, 0 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run"
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run",
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run"
         ),
-        (4, 4)
+        (5, 5)
       )
       withheld ==>
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run"
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run"
     }
 
     test("a check that keeps a rewrite back is withheld, and not asked again at those versions") {
@@ -249,8 +317,8 @@ object CardDeclassifyTests extends TestSuite {
       runs.policy(1)
       runs.apply("c1", 1)
       (runs.run(leak = 0.5), runs.run(leak = 0.5), runs.kept, runs.asked) ==> (
-        "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
         Vector(),
         (1, 1)
       )
@@ -273,9 +341,9 @@ object CardDeclassifyTests extends TestSuite {
       runs.policy(2)
       val superseded = runs.run(leak = 0.9)
       (made, lapsed, superseded, runs.kept) ==> (
-        "declassified cards: 3 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 2 withdrawn, 0 left for the next run",
-        "declassified cards: 0 written, 1 withheld, 0 unapplied, 1 withdrawn, 0 left for the next run",
+        "declassified cards: 3 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 2 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run",
         Vector()
       )
     }
@@ -288,8 +356,8 @@ object CardDeclassifyTests extends TestSuite {
       }
       runs.policy(1)
       (runs.run(perRun = 2), runs.run(perRun = 2), runs.kept.size) ==> (
-        "declassified cards: 2 written, 0 withheld, 0 unapplied, 0 withdrawn, 1 left for the next run",
-        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 withdrawn, 0 left for the next run",
+        "declassified cards: 2 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 1 left for the next run",
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
         3
       )
     }

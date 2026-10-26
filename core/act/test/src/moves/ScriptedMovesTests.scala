@@ -82,7 +82,13 @@ object ScriptedMovesTests extends MovesContract {
       Floor,
       MovesWorld.Notes,
       MovesWorld.NotesTerms,
-      Dreaming.Reads(world.shelf, _ => shelves.needs, world.excerpts, shelves.documents),
+      Dreaming.Reads(
+        world.shelf,
+        _ => shelves.needs,
+        world.excerpts,
+        shelves.documents,
+        shelves.pieces
+      ),
       (system, messages) => {
         shown.add(system, messages.collect { case Message.User(t) => t })
         Right(Asked(TestTainted.at(Answered, Believed), Floor))
@@ -197,7 +203,13 @@ object ScriptedMovesTests extends MovesContract {
       Declassing,
       MovesWorld.Notes,
       MovesWorld.NotesTerms,
-      Dreaming.Reads(world.shelf, _ => shelves.needs, world.excerpts, shelves.documents),
+      Dreaming.Reads(
+        world.shelf,
+        _ => shelves.needs,
+        world.excerpts,
+        shelves.documents,
+        shelves.pieces
+      ),
       (_, _) => Left(MoveError.Model("no JSON reply scripted")),
       // Positional, as `dreaming`'s scripts are.
       shelves.documents,
