@@ -25,7 +25,7 @@ import grit.core.files.{
   TestPieces
 }
 import grit.core.flow.TestTainted
-import grit.core.id.{CorpusName, DocumentVersionId, PluginName}
+import grit.core.id.{CorpusName, DocKey, DocumentVersionId, PluginName}
 import grit.core.job.JobRun
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.need.{Needs, PluginReads}
@@ -62,7 +62,7 @@ object CardDeclassifyTests extends TestSuite {
     right(DocumentTerms.of(right(DocLabel.of("knowledge card")), DocWeight.Unscaled, 30.days, 100))
   private val Terms =
     right(
-      DocumentTerms.of(right(DocLabel.of("declassified card")), DocWeight.Unscaled, 30.days, 100)
+      DocumentTerms.of(right(DocLabel.of("document")), DocWeight.Unscaled, 30.days, 100)
     )
   private val Corpus = right(CorpusName.of("shared"))
   private val Drive = right(ToolName.of("drive_read"))
@@ -233,6 +233,34 @@ object CardDeclassifyTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
         .filterNot(_.key == Withheld.Key)
         .map(d => (Label.written(d.label), DocText.value(d.text)))
+
+    /** The plugin's own document `key`, holding `text` and `data`, written at [[Floor]] as an
+      * earlier build of it might have.
+      */
+    def own(key: String, text: String, data: ujson.Value): Unit = {
+      val written = documents
+        .keeper(Plugin, Terms)
+        .write(
+          right(DocKey.of(key)),
+          Floor,
+          Integrity.Authority,
+          Place.Everywhere,
+          right(DocText.of(text)),
+          data,
+          None,
+          Now
+        )(using TestTx.fake(Clearance.of(Floor)))
+      written.fold(e => throw new java.lang.AssertionError(s"$e"), _ => ())
+    }
+
+    /** The entries the withholding at [[Floor]] holds as written, read or not. */
+    def withholding: Vector[ujson.Value] =
+      documents
+        .keeper(Plugin, Terms)
+        .current(Withheld.Key, Floor)(using TestTx.fake(Clearance.of(Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .flatMap(_.data.objOpt.flatMap(_.get("withheld")).flatMap(_.arrOpt))
+        .fold(Vector.empty)(_.toVector)
   }
 
   /** How many rewrites and checks a world's runs asked. */
@@ -344,6 +372,30 @@ object CardDeclassifyTests extends TestSuite {
         "declassified cards: 3 written, 0 withheld, 0 unapplied, 0 unpieced, 0 withdrawn, 0 left for the next run",
         "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 2 withdrawn, 0 left for the next run",
         "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 1 withdrawn, 0 left for the next run",
+        Vector()
+      )
+    }
+
+    test(
+      "a rewrite with no revision in its data, or any own document but the withholding that reads as no current rewrite, is withdrawn in the run's scan and its card rewritten; a withholding entry with no revision is forgotten"
+    ) {
+      val runs = new Runs
+      val v = runs.card("c1")
+      runs.policy(1)
+      runs.apply("c1", 1)
+      // As an earlier build kept them: a rewrite of the card's own text, and its withholding.
+      val unrevised = ujson.Obj(
+        "source" -> ujson.Num(DocumentVersionId.value(v).toDouble),
+        "over" -> ujson.Str(Over.written),
+        "policy" -> ujson.Num(1),
+        "application" -> ujson.Num(1)
+      )
+      runs.own("knowledge:old", "The team meets.", unrevised)
+      runs.own("stray", "Nothing a rewrite names.", ujson.Obj())
+      runs.own(DocKey.value(Withheld.Key), "…", ujson.Obj("withheld" -> ujson.Arr(unrevised)))
+      (runs.run(), runs.kept, runs.withholding) ==> (
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 2 withdrawn, 0 left for the next run",
+        Vector(("internal", "The team meets offsite.")),
         Vector()
       )
     }

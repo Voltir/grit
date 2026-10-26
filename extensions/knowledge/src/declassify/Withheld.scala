@@ -25,25 +25,30 @@ object Withheld {
   private val Text: DocText =
     DocText.of("…").fold(e => throw new IllegalStateException(e), identity)
 
-  /** What is withheld at `floor`: none when there is no such document, or its data does not
-    * read.
+  /** Each entry withheld at `floor`, as [[Declassified.Made.read]] reads it (`None`: one that
+    * does not read, such as one with no revision); none when there is no such document, or its
+    * data holds no list.
     */
   def read(keeper: DocumentKeeper, floor: Label)(using
       Tx^
-  ): Either[StoreError, Vector[Declassified.Made]] =
+  ): Either[StoreError, Vector[Option[Declassified.Made]]] =
     keeper
       .current(Key, floor)
       .map(
         _.flatMap(_.data.objOpt.flatMap(_.get("withheld")).flatMap(_.arrOpt))
-          .fold(Vector.empty)(_.toVector.flatMap(Declassified.Made.read))
+          .fold(Vector.empty)(_.toVector.map(Declassified.Made.read))
       )
 
-  /** `made` joined to what is withheld at its transaction's floor ([[Tx.floor]]), as [[kept]]. */
+  /** `made` joined to what is withheld at its transaction's floor ([[Tx.floor]]), as [[kept]];
+    * an entry that does not read is dropped.
+    */
   private[declassify] def joined(keeper: DocumentKeeper, made: Declassified.Made, at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Kept.type] = {
     val floor = Tx.floor(tx)
-    read(keeper, floor).flatMap(held => kept(keeper, floor, held.filterNot(_ == made) :+ made, at))
+    read(keeper, floor).flatMap(held =>
+      kept(keeper, floor, held.flatten.filterNot(_ == made) :+ made, at)
+    )
   }
 
   /** `withheld` as what is withheld at `floor`, written `at`, in no one room: withdrawn when it

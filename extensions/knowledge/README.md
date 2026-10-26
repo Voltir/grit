@@ -68,9 +68,10 @@ Packages, in one-way order (each names only those before it):
   holds a message's or a card's text. Imports `ref`, `card` and `grit.prose`; never `strand`,
   `sync` or a source.
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
-  current cards by their pointers, asks for each the application in force, withdraws in its scan
-  every rewrite not of a card's current version under the versions in force, and has core
-  rewrite and check each card due (`Dreaming.declassify`), keeping the rewrite below its floor or
+  current cards by their pointers and revisions, asks for each the application in force,
+  withdraws in its scan every own document but its withholding that is not a rewrite of a card's
+  current version and revision under the versions in force, and has core rewrite its file's
+  text and check it for each card due (`Dreaming.declassify`), keeping the rewrite below its floor or
   remembering it withheld (`Withheld`, one document per label). A card is rewritten without a
   compartment only when an operator applies that compartment's policy to its pointer; see
   `grit.declassification_applications` in schema.sql. Its code never holds a card's or a

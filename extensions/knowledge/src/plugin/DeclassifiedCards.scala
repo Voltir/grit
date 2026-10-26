@@ -11,12 +11,13 @@ import grit.knowledge.card.CardShelf
 import grit.knowledge.declassify.{CardDeclassify, DeclassifyParams}
 
 /** The declassified-cards plugin: for each card of `cards` with an application in force, one
-  * document holding its rewrite under that application's policy, below the card's label by the
-  * policy's compartment, by its job [[CardDeclassify]] on one schedule at `at` by `rule`, keyed
-  * `cards-declassify-{label}` with the label's written form, `+` written `-`, whose runs read
-  * only what `at` dominates and rewrite at most [[DeclassifiedCards.PerRun]] cards each. A
-  * rewrite is withdrawn at the first run after its card changes or goes, or its policy or
-  * application is superseded. Its documents: label "declassified card", weight 1, kept 30 days
+  * document holding the rewrite of its file's text under that application's policy, below the
+  * card's label by the policy's compartment, by its job [[CardDeclassify]] on one schedule at
+  * `at` by `rule`, keyed `cards-declassify-{label}` with the label's written form, `+` written
+  * `-`, whose runs read only what `at` dominates and rewrite at most [[DeclassifiedCards.PerRun]]
+  * cards each. A rewrite is withdrawn at the first run after its card or its file changes or
+  * goes, or its policy or application is superseded. Its documents: label "document" (a turn's
+  * model reads a rewrite as a document, never told it was declassified), weight 1, kept 30 days
   * after a version stops being current, bounded at [[DeclassifiedCards.Bound]]; it posts
   * nothing.
   */
@@ -85,7 +86,7 @@ object DeclassifiedCards {
       )
       key <- keyed.headOption.map(_._1).toRight("the declassified cards plugin has no schedule")
       terms <- DocLabel
-        .of("declassified card")
+        .of("document")
         .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 30.days, Bound))
     } yield new DeclassifiedCards(name, key, at, rule, terms, cards)
 }

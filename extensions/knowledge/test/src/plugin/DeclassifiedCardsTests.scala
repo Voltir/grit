@@ -4,6 +4,7 @@ import java.time.{LocalTime, ZoneOffset}
 
 import scala.concurrent.duration.*
 
+import grit.core.document.DocLabel
 import grit.core.id.{PluginName, ScheduleKey}
 import grit.core.job.{Interval, SlotRule}
 import grit.core.need.PluginReads
@@ -33,18 +34,22 @@ object DeclassifiedCardsTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "its one schedule runs cards-declassify at its label by its rule, keyed by the label, needing the cards' plugin"
+      "its one schedule runs cards-declassify at version 2 at its label by its rule, keyed by the label, needing the cards' plugin; its documents are labelled document"
     ) {
       val at = Label.at(Level.Confidential, TestLabels.trial)
       of(at).map(p =>
         (
-          p.schedules.map(d => (ScheduleKey.value(d.key), d.job.name, d.rule, d.clearance)),
-          p.needs.map(_.name)
+          p.schedules.map(d =>
+            (ScheduleKey.value(d.key), d.job.name, d.job.version, d.rule, d.clearance)
+          ),
+          p.needs.map(_.name),
+          p.documents.map(d => DocLabel.value(d.terms.label))
         )
       ) ==> Right(
         (
-          Vector(("cards-declassify-confidential-trial", CardDeclassify.Name, Rule, at)),
-          Vector(Cards.name)
+          Vector(("cards-declassify-confidential-trial", CardDeclassify.Name, 2, Rule, at)),
+          Vector(Cards.name),
+          Some("document")
         )
       )
     }

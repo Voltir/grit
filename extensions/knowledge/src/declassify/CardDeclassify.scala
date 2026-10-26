@@ -17,25 +17,29 @@ import grit.knowledge.card.{CardMoves, CardShelf, NotWritten}
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure
 
-/** The job `cards-declassify`, version 1, over the cards `cards` exports. A run reads at most
-  * [[CardDeclassify.Cards]] current cards, most recent first, by their pointers alone, and the
-  * application in force for each ([[grit.core.document.DocumentKeeper.declassifying]]); in its
-  * scan it withdraws each of its plugin's rewrites that is not of a card's current version under
-  * the policy and application versions in force for it, and forgets each it withheld so; then
-  * it declassifies ([[Dreaming.declassify]], `rewrite-{i}`) each card in force that has neither
-  * a rewrite nor a withholding at those versions, at most `perRun` (and at most `perRunMost`),
-  * most recent first, the rest left for the next run: a rewrite made is kept below its floor
-  * (`keep-{i}`, [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's
-  * earlier one; one the check kept back, or the model withheld, is remembered at its floor
-  * ([[Withheld]], `withhold-{i}`) so it is not asked again at those versions. Replies
-  * [[Tally.line]]. Its `limits`: asks and judgments, `perRunMost`; no calls.
+/** The job `cards-declassify`, version 2, over the cards `cards` exports. A run reads at most
+  * [[CardDeclassify.Cards]] current cards, most recent first, by their pointers and their files'
+  * revisions alone, and the application in force for each
+  * ([[grit.core.document.DocumentKeeper.declassifying]]). In its scan it withdraws every one of
+  * its plugin's own documents but its withholding ([[Withheld]]) whose data does not read as a
+  * rewrite of a card's current version and revision under the policy and application versions
+  * in force for it ([[Declassified.Made.read]]), whatever wrote it, and forgets each entry it
+  * withheld that is not so. Then it declassifies ([[Dreaming.declassify]], `rewrite-{i}`, from
+  * the card's file's text at its revision) each card in force that has neither a rewrite nor a
+  * withholding at those versions, at most `perRun` (and at most `perRunMost`), most recent
+  * first, the rest left for the next run: a rewrite made is kept below its floor (`keep-{i}`,
+  * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
+  * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
+  * `withhold-{i}`) so it is not asked again at those versions; one whose file is not yet pieced
+  * at its revision is tried again next run. Replies [[Tally.line]]. Its `limits`: asks and
+  * judgments, `perRunMost`; no calls.
   */
 final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
     extends DreamingJob[DeclassifyParams] {
 
   val name: JobName = CardDeclassify.Name
 
-  val version: Int = 1
+  val version: Int = 2
 
   def write(params: DeclassifyParams): ujson.Value = ujson.Obj("perRun" -> params.perRun)
 
@@ -105,9 +109,10 @@ object CardDeclassify {
 
   private val Scan: MoveName = MoveName("scan")
 
-  /** The scan, at its transaction's floor: each card in force (its version and application),
-    * every rewrite or withholding not at the versions in force withdrawn or forgotten, and those
-    * due, at most `most`, most recent first.
+  /** The scan, at its transaction's floor: each card in force (its version, revision and
+    * application), every own document but the withholding, and every withholding entry, that
+    * reads as no rewrite at those withdrawn or forgotten, and those due, at most `most`, most
+    * recent first.
     */
   private def scanned(shelf: CardShelf, keeper: DocumentKeeper, most: Int, at: Instant)(using
       tx: Tx^
@@ -123,15 +128,16 @@ object CardDeclassify {
       inForce = applied.flatten
       current = inForce.map(_.made).toSet
       own <- keeper.newest(Int.MaxValue)
-      rewrites = own.flatMap(d => Declassified.Made.read(d.data).map(d -> _))
-      stale = rewrites.filterNot((_, m) => current.contains(m))
-      withdrawn <- stale.foldLeft[Either[StoreError, Int]](Right(0))((n, s) =>
-        n.flatMap(k => keeper.withdraw(s._1.key, s._1.label, at).map(v => k + v.size))
+      (rewrites, stale) = own
+        .filterNot(_.key == Withheld.Key)
+        .partition(d => Declassified.Made.read(d.data).exists(current.contains))
+      withdrawn <- stale.foldLeft[Either[StoreError, Int]](Right(0))((n, d) =>
+        n.flatMap(k => keeper.withdraw(d.key, d.label, at).map(v => k + v.size))
       )
       held <- Withheld.read(keeper, floor)
-      kept = held.filter(current.contains)
-      _ <- if (kept == held) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
-      done = rewrites.map(_._2).filter(current.contains).toSet ++ kept
+      kept = held.flatten.filter(current.contains)
+      _ <- if (kept.size == held.size) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
+      done = rewrites.flatMap(d => Declassified.Made.read(d.data)).toSet ++ kept
       due = inForce.filterNot(d => done.contains(d.made))
     } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0))
   }
