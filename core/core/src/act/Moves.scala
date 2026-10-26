@@ -312,7 +312,8 @@ trait Dreaming extends Keeping {
               check(name, source, applied, text).map {
                 case None => Declassifying.Outcome.Unapplied
                 case Some(leak) =>
-                  val from = Declassified.Source(source, plugin, key, place, label, pointer)
+                  // Rewritten from its document's own text, at no file revision.
+                  val from = Declassified.Source(source, plugin, key, place, label, pointer, "")
                   raise((rewrite = text, source = from, applied = applied, leak = leak)) match {
                     case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
                     case None if leak >= Declassified.Below =>

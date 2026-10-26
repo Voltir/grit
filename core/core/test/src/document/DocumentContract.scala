@@ -137,7 +137,10 @@ abstract class DocumentContract extends TestSuite {
       read: Pointer,
       applied: PolicyApplication
   ): Declassified =
-    TestDeclassified.of(body, "cards", "card", place("cards"), label, read, applied)
+    TestDeclassified.of(body, "cards", "card", place("cards"), label, read, Revision, applied)
+
+  /** The revision of the file a test's rewrite is made from. */
+  private val Revision: String = "r7"
 
   /** A pointer at README.md as read at `ref`. */
   private def readme(ref: String): Pointer =
@@ -1505,7 +1508,7 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "a declassified rewrite is kept at its source's label without the compartment, at its place, under a key core derives, with its audit row"
+      "a declassified rewrite is kept at its source's label without the compartment, at its place, under a key core derives, with data naming its source, its file's revision and the versions it was made under, and its audit row"
     ) {
       val p = name("doc-declassified")
       val k = keeper(p, terms())
@@ -1530,12 +1533,19 @@ abstract class DocumentContract extends TestSuite {
         written.kept,
         opened(confidential)(
           ok(shelf(p).current(derived, Label.at(Level.Internal)))
-            .map(d => (DocText.value(d.text), d.place, d.pointer))
+            .map(d => (DocText.value(d.text), d.place, d.pointer, Declassified.Made.read(d.data)))
         ),
         audited(v).map(a => (DocumentVersionId.value(a.source), a.policy, a.application))
       ) ==> (
         Label.at(Level.Internal),
-        Some(("the gist", place("cards"), None)),
+        Some(
+          (
+            "the gist",
+            place("cards"),
+            None,
+            Some(Declassified.Made(got(DocumentVersionId.of(1).toRight("")), Revision, team, 1, 1))
+          )
+        ),
         Some((1L, 1, 1))
       )
     }

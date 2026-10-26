@@ -174,7 +174,8 @@ object DowngradeTests extends TestSuite {
       DocKey.of("card").getOrElse(throw new java.lang.AssertionError("a key")),
       Place.under(Namespace.Task, Vector("cards")),
       label,
-      read
+      read,
+      "r1"
     )
 
   private def applied(document: Pointer): PolicyApplication =

@@ -12,8 +12,8 @@ import grit.core.visibility.Label
 object TestDeclassified {
 
   /** `body`, a rewrite of version 1 of `plugin`'s document `key` at `label` and `place`, which
-    * `read` reads, under `applied`, judged to leak nothing; throws when the declassification
-    * makes none.
+    * `read` reads, its file at `revision`, under `applied`, judged to leak nothing; throws when
+    * the declassification makes none.
     */
   def of(
       body: String,
@@ -22,6 +22,7 @@ object TestDeclassified {
       place: Place,
       label: Label,
       read: Pointer,
+      revision: String,
       applied: PolicyApplication
   ): Declassified = {
     def got[A](e: Either[String, A]): A =
@@ -36,7 +37,8 @@ object TestDeclassified {
           got(DocKey.of(key)),
           place,
           label,
-          read
+          read,
+          revision
         ),
         applied = applied,
         leak = Probability.Zero

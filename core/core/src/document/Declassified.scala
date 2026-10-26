@@ -45,33 +45,37 @@ final class Declassified private[document] (
 object Declassified {
 
   /** The document version a rewrite is made from, as it was read: its version, its plugin and
-    * key, its place, its label, and the pointer that reads it.
+    * key, its place, its label, the pointer that reads it, and the `revision` of the file whose
+    * text was rewritten.
     */
-  final case class Source private[core] (
+  final case class Source(
       version: DocumentVersionId,
       plugin: PluginName,
       key: DocKey,
       place: Place,
       label: Label,
-      pointer: Pointer
+      pointer: Pointer,
+      revision: String
   ) extends caps.Pure
 
-  /** What a kept rewrite was made from, as its data names it: its `source` version, and the
-    * compartment (`over`) and `policy` version of the policy, and the `application` version, it
-    * was made under. A rewrite is current while these are its source's current version and the
-    * versions in force.
+  /** What a kept rewrite was made from, as its data names it: its `source` version and file
+    * `revision`, and the compartment (`over`) and `policy` version of the policy, and the
+    * `application` version, it was made under. A rewrite is current while these are its
+    * source's current version and revision and the versions in force.
     */
   final case class Made(
       source: DocumentVersionId,
+      revision: String,
       over: DeclassificationPolicy.Over,
       policy: Int,
       application: Int
   ) extends caps.Pure {
 
-    /** `{"source", "over", "policy", "application"}`: a kept rewrite's data. */
+    /** `{"source", "revision", "over", "policy", "application"}`: a kept rewrite's data. */
     def written: ujson.Obj =
       ujson.Obj(
         "source" -> ujson.Num(DocumentVersionId.value(source).toDouble),
+        "revision" -> ujson.Str(revision),
         "over" -> ujson.Str(over.written),
         "policy" -> ujson.Num(policy.toDouble),
         "application" -> ujson.Num(application.toDouble)
@@ -80,24 +84,25 @@ object Declassified {
 
   object Made {
 
-    /** A rewrite of `source` under `applied`. */
-    def of(source: DocumentVersionId, applied: PolicyApplication): Made =
-      Made(source, applied.policy.over, applied.policy.version, applied.version)
+    /** A rewrite of `source`, its file at `revision`, under `applied`. */
+    def of(source: DocumentVersionId, revision: String, applied: PolicyApplication): Made =
+      Made(source, revision, applied.policy.over, applied.policy.version, applied.version)
 
     /** What `data` says a rewrite was made from ([[Made.written]]); `None` when it is no
-      * rewrite's data.
+      * rewrite's data, or one without a revision.
       */
     def read(data: ujson.Value): Option[Made] =
       for {
         o <- data.objOpt
         source <- o.get("source").flatMap(_.numOpt).flatMap(n => DocumentVersionId.of(n.toLong))
+        revision <- o.get("revision").flatMap(_.strOpt)
         over <- o
           .get("over")
           .flatMap(_.strOpt)
           .flatMap(DeclassificationPolicy.Over.read(_).toOption)
         policy <- o.get("policy").flatMap(_.numOpt).map(_.toInt)
         application <- o.get("application").flatMap(_.numOpt).map(_.toInt)
-      } yield Made(source, over, policy, application)
+      } yield Made(source, revision, over, policy, application)
   }
 
   /** 0.1: the check's probability at or above which nothing is declassified. */
@@ -162,7 +167,7 @@ object Declassified {
           integrity,
           d.from.place,
           d.text,
-          Made.of(d.source, d.applied).written,
+          Made.of(d.source, d.from.revision, d.applied).written,
           d.source,
           d.applied,
           d.judged

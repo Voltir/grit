@@ -71,7 +71,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
               case Left(e) => done.unwritten(source, MoveError.said(e))
               case Right(Declassifying.Outcome.Unapplied) => done.lapsed
               case Right(Declassifying.Outcome.Kept(_)) =>
-                val made = Declassified.Made.of(source, applied)
+                val made = Declassified.Made.of(source, CardDeclassify.Unrevised, applied)
                 moves.keep(CardMoves.numbered("withhold", i), run.tainted.map(_ => made))(
                   (m, keeper, at) => Withheld.joined(keeper, m, at)
                 ) match {
@@ -102,6 +102,9 @@ object CardDeclassify {
 
   private val Scan: MoveName = MoveName("scan")
 
+  /** "": the file revision a card's rewrite is made at, from its card's own text. */
+  private[declassify] val Unrevised: String = ""
+
   /** The scan, at its transaction's floor: each card in force (its version and application),
     * every rewrite or withholding not at the versions in force withdrawn or forgotten, and those
     * due, at most `most`, most recent first.
@@ -116,7 +119,7 @@ object CardDeclassify {
         keeper.declassifying(c.label, c.pointer).map(_.map(a => (c.version, a.applied)))
       )
       inForce = applied.flatten
-      current = inForce.map(Declassified.Made.of(_, _)).toSet
+      current = inForce.map(Declassified.Made.of(_, Unrevised, _)).toSet
       own <- keeper.newest(Int.MaxValue)
       rewrites = own.flatMap(d => Declassified.Made.read(d.data).map(d -> _))
       stale = rewrites.filterNot((_, m) => current.contains(m))
@@ -127,7 +130,7 @@ object CardDeclassify {
       kept = held.filter(current.contains)
       _ <- if (kept == held) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
       done = rewrites.map(_._2).filter(current.contains).toSet ++ kept
-      due = inForce.filterNot((v, a) => done.contains(Declassified.Made.of(v, a)))
+      due = inForce.filterNot((v, a) => done.contains(Declassified.Made.of(v, Unrevised, a)))
     } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0))
   }
 }
@@ -151,7 +154,7 @@ private[declassify] object Scanned {
     s =>
       ujson.Obj(
         "due" -> ujson.Arr.from(s.due.map { (v, a) =>
-          val due = Declassified.Made.of(v, a).written
+          val due = Declassified.Made.of(v, CardDeclassify.Unrevised, a).written
           due("pointer") = a.document.written
           due
         }),

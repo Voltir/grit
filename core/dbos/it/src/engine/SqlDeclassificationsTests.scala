@@ -105,6 +105,7 @@ object SqlDeclassificationsTests extends TestSuite {
             Place.under(Namespace.Task, Vector("fx")),
             source,
             a,
+            "r1",
             applied
           )
         keeper.declassified(d, Integrity.Member, Instant.parse("2026-03-01T00:00:00Z")) match {
