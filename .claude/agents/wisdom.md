@@ -77,7 +77,8 @@ breaks, for whom, and the smallest change that fixes it. Check, as hard as the d
   checked against that doc, not taken from the plan.
 
 Say plainly when something is fine; do not invent findings. Separate what you verified in
-the code (cite `file:line` or the scout query) from what you infer.
+the code (cite the symbol, `Owner.member`, or the scout query; never a line number) from what
+you infer.
 
 ## Questions
 

@@ -57,7 +57,9 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 - A line range scout printed is not a cue for `sed -n`: to read a member's body, private
   ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
   fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
-  is for what scout cannot name (a test file's imports, a region inside one body).
+  is for what scout cannot name (a test file's imports, a region inside one body). Nor is a
+  `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
+  lists a stage's reads, run those first.
 - Adding a member to an implementation or a fake: `file` it for its members, then
   `show Owner --body <the nearest sibling> --private` for the one you will write alongside.
   Never read the implementation whole to learn its shape.

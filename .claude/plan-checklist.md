@@ -31,4 +31,11 @@ that applies in its plan; a reviewer checks each against the plan and says which
   `family` of any trait it resembles, `uses` of the nearest candidate), and says why that is not
   reused or extended. Two of a thing that differ only in a type, a failure type or a name are one
   thing; a word already meaning something else in grit is not reused for a new idea.
+- **Code by symbol, and each stage carries its reads.** A plan names code as `Owner.member` (a
+  place inside a body: the member and a quoted phrase), never by file and line: a line number is
+  stale after the first edit, and it sends the coder who builds the plan to `sed` instead of scout.
+  Each checkpoint or stage lists the scout queries its coder runs before its first edit: what it
+  changes (`show --body`), the sibling it writes alongside, the helpers it calls, the callers
+  (`uses`), and the tests and fakes it extends (`tests --test`, `file`). Every query resolves
+  against the branch the stage is built on; the reviewer runs them.
 - **Park, don't widen.** What surfaced and is not in scope is listed as parked, not folded in.
