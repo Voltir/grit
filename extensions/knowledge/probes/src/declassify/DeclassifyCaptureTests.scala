@@ -20,11 +20,12 @@ object DeclassifyCaptureTests extends TestSuite {
       |import grit.core.act.*
       |import grit.core.document.*
       |import grit.core.id.DocumentVersionId
+      |import grit.core.visibility.DeclassificationPolicy
       |""".stripMargin
 
   private val control =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.declassify(MoveName("d"), v, "r1", a)
+      |  (m.declassify(MoveName("d"), v, "r1", a), m.bench(MoveName("b"), a.policy))
       |""".stripMargin
   private val textRead = "def f(d: Declassified) = d.text"
   private val raiseReached =
@@ -41,16 +42,28 @@ object DeclassifyCaptureTests extends TestSuite {
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
       |  m.baseline(MoveName("d"), v, "r1", a)
       |""".stripMargin
+  private val exampleCalled =
+    """def f(m: Dreaming^, p: DeclassificationPolicy) =
+      |  m.example(MoveName("b-0"), p, 0)
+      |""".stripMargin
 
   private lazy val compiled = Probes.batch(
     prelude,
-    List(control, textRead, raiseReached, primitiveCalled, screenCalled, baselineCalled)
+    List(
+      control,
+      textRead,
+      raiseReached,
+      primitiveCalled,
+      screenCalled,
+      baselineCalled,
+      exampleCalled
+    )
   )
 
   private def says(text: String)(found: List[String]): Boolean = found.exists(_.contains(text))
 
   val tests = Tests {
-    test("control: a plugin's code calls declassify") {
+    test("control: a plugin's code calls declassify and bench") {
       compiled.errors(control) ==> Nil
     }
 
@@ -63,7 +76,8 @@ object DeclassifyCaptureTests extends TestSuite {
         says("protected method declassifier")(compiled.errors(raiseReached)),
         says("protected method rewrite")(compiled.errors(primitiveCalled)),
         says("protected method screen")(compiled.errors(screenCalled)),
-        says("protected method baseline")(compiled.errors(baselineCalled))
+        says("protected method baseline")(compiled.errors(baselineCalled)),
+        says("protected method example")(compiled.errors(exampleCalled))
       )
     }
   }

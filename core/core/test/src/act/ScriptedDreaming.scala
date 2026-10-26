@@ -21,7 +21,7 @@ import grit.core.provider.ModelRequest
 import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Integrity, Label, Recorded}
+import grit.core.visibility.{DeclassificationPolicy, Integrity, Label, Recorded}
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
   * `reads`' strands and `plugin`'s needs beside its documents, and whose summaries read what
@@ -165,6 +165,27 @@ final class ScriptedDreaming(
       screening(sourcing, source, revision, applied) { shown =>
         Right(Posed.judge(Screen.Text(shown.text), Declassifying.Baseline))
       }
+    }
+
+  protected def example(
+      name: MoveName,
+      policy: DeclassificationPolicy,
+      at: Int
+  ): Either[MoveError, Either[Declassifying.Unbenched, Tainted[Declassifying.Examined]]] =
+    Declassifying.exhibit(documents.keeper(plugin, terms), policy, at)(using opened) match {
+      case Left(e) =>
+        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
+      case Right(Left(why)) => making(name, MoveKind.Judge, limits.judgments)(Right(Left(why)))
+      case Right(Right(Declassifying.Exhibit(screening, None))) =>
+        making(name, MoveKind.Judge, limits.judgments)(
+          Right(Right(TestTainted.at(Declassifying.Examined(screening, None), integrity)))
+        )
+      case Right(Right(Declassifying.Exhibit(screening, Some(e)))) =>
+        ask(name, TestTainted.at(Posed.judge(e.text, e.screen.ask), integrity)).map(a =>
+          Right(
+            a.reply.map(s => Declassifying.Examined(screening, Some((kind = e.kind, screened = s))))
+          )
+        )
     }
 
   /** The judgment `name` that `posed` makes of what a rewrite of `source` is made from, as its

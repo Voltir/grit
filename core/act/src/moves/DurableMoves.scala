@@ -36,7 +36,7 @@ import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.Integrity
+import grit.core.visibility.{DeclassificationPolicy, Integrity}
 
 /** A planner's moves as durable steps ([[Act]]'s), over `grit.act.phase`'s `Asking` and
   * `Calling`.
@@ -258,7 +258,7 @@ object DurableMoves {
         read: (Screen.Shape, Vector[Answer]) -> Either[ClassifierError, S]
     ): Either[MoveError, Either[Declassifying.Unread, S]] =
       refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
-        val (asked, shape) =
+        val (asked, beside) =
           made(Act.askBeside(Act.screening), Act.Screening(name, acting, of, digest))
         val same = MovesJournal.sameScreening(asked.made.digest, digest)
         unread(asked.made) match {
@@ -266,13 +266,55 @@ object DurableMoves {
           case _ =>
             settled(name, asked, same) {
               case AskMade.Judged(_, written, at, _) =>
-                shape.map(s =>
-                  answersBack(written)
-                    .flatMap(read(s, _).left.map(e => MoveError.Model(Act.unanswered(e))))
-                    .map(r => Asked(Mint.tainted(r, acting.integrity), at))
-                )
+                beside
+                  .collect { case Act.Beside.Shaped(shape) => shape }
+                  .map(s =>
+                    answersBack(written)
+                      .flatMap(read(s, _).left.map(e => MoveError.Model(Act.unanswered(e))))
+                      .map(r => Asked(Mint.tainted(r, acting.integrity), at))
+                  )
               case _ => None
             }.map(a => Right(Trusted.asIs(a.reply).extract))
+        }
+      }
+
+    protected def example(
+        name: MoveName,
+        policy: DeclassificationPolicy,
+        at: Int
+    ): Either[MoveError, Either[Declassifying.Unbenched, Tainted[Declassifying.Examined]]] =
+      refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
+        val digest = MovesJournal.example(policy, at)
+        val (asked, beside) = made(
+          Act.askBeside(Act.screening),
+          Act.Screening(name, acting, Declassifying.Of.Example(keeper, policy, at), digest)
+        )
+        val same = MovesJournal.sameScreening(asked.made.digest, digest)
+        def mint(e: Declassifying.Examined) = Mint.tainted(e, acting.integrity)
+        (beside, asked.made) match {
+          case (Some(Act.Beside.Unreadable(why)), _) if same =>
+            Right(Left(Declassifying.Unbenched.Unreadable(why)))
+          case (Some(Act.Beside.Ended(screening)), _) if same =>
+            Right(Right(mint(Declassifying.Examined(screening, None))))
+          case (None, AskMade.Refused(AskMade.Kind.Changed, _, _, _)) if same =>
+            Right(Left(Declassifying.Unbenched.Lapsed))
+          case _ =>
+            settled(name, asked, same) {
+              case AskMade.Judged(_, written, at, _) =>
+                beside.collect { case Act.Beside.Example(kind, shape, screening) =>
+                  answersBack(written)
+                    .flatMap(
+                      Screen.read(shape, _).left.map(e => MoveError.Model(Act.unanswered(e)))
+                    )
+                    .map(s =>
+                      Asked(
+                        mint(Declassifying.Examined(screening, Some((kind = kind, screened = s)))),
+                        at
+                      )
+                    )
+                }
+              case _ => None
+            }.map(a => Right(a.reply))
         }
       }
 

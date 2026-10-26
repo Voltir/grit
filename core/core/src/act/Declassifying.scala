@@ -2,7 +2,7 @@ package grit.core.act
 
 import grit.core.classify.Ask
 import grit.core.document.{Declassified, DocText, DocumentKeeper, DocumentSearch, PolicyApplication}
-import grit.core.durable.{Flow, Steps}
+import grit.core.durable.{Flow, Journaled, Steps}
 import grit.core.either.Traversal
 import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
@@ -10,7 +10,7 @@ import grit.core.id.{DocumentVersionId, PluginName, Sha256}
 import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
-import grit.core.screen.{Benched, Checks, Fired, Screen, Screened, Signal}
+import grit.core.screen.{Bench, Benched, Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
 
@@ -65,6 +65,12 @@ object Declassifying {
     */
   def retried(name: MoveName): Either[String, MoveName] =
     MoveName.of(s"${MoveName.value(name)}-retry")
+
+  /** The name of the bench `name`'s ask of its example `at`: `{name}-{at}`; or why not, when
+    * that is over [[MoveName]]'s length.
+    */
+  def examined(name: MoveName, at: Int): Either[String, MoveName] =
+    MoveName.of(s"${MoveName.value(name)}-$at")
 
   /** A second attempt: the first's `draft`, the model that wrote it, `by`, and what its screen
     * `fired`: floor and present only.
@@ -272,7 +278,84 @@ object Declassifying {
   enum Of {
     case Rewrite(reading: Reading, text: DocText, attempt: Declassified.Attempt)
     case Source(reading: Reading)
+
+    /** A bench's example `at` of `policy`'s checks, as [[exhibit]] reads it through `keeper`. */
+    case Example(keeper: DocumentKeeper, policy: DeclassificationPolicy, at: Int)
   }
+
+  /** Why a bench's ask screened nothing. */
+  enum Unbenched extends caps.Pure {
+
+    /** Its checks do not read: `why`, by position. */
+    case Unreadable(why: Checks.Unreadable)
+
+    /** Its checks are not read here (not cleared for its label, no such version, or a
+      * revocation), or changed between the bench's asks.
+      */
+    case Lapsed
+  }
+
+  /** What a bench came to: `Kept`, its verdict kept as its version's bench; or `Unbenched`,
+    * keeping none.
+    */
+  enum Benching extends caps.Pure {
+    case Kept(benched: Benched)
+    case Unbenched(why: Declassifying.Unbenched)
+  }
+
+  /** A bench's keep's record: `{"passed", "examples"}`, its examples as [[Benched.write]]
+    * writes them, read back by [[Benched.read]].
+    */
+  given benchedRecord: Journaled[Benched] = Journaled.json(
+    b => ujson.Obj("passed" -> b.passed, "examples" -> Benched.write(b)),
+    v =>
+      for {
+        o <- v.objOpt.toRight("bench: expected an object")
+        passed <- o.get("passed").flatMap(_.boolOpt).toRight("bench: no passed")
+        examples <- o.get("examples").toRight("bench: no examples")
+        benched <- Benched.read(passed, examples)
+      } yield benched
+  )
+
+  /** A bench's example as its ask reads it, of the checks under `screening`: its `kind`, its
+    * `text` and the `screen` it is asked by (the checks' signals alone, [[Bench.screen]]); or
+    * `None` past the last.
+    */
+  final case class Exhibit(
+      screening: Declassified.Screening,
+      example: Option[(kind: Benched.Kind, text: Screen.Text, screen: Screen)]
+  ) extends caps.Pure
+
+  /** What a bench's ask came to, of the checks under `screening`: its example's `kind` and its
+    * answers, `screened`; or `None` past the last.
+    */
+  final case class Examined(
+      screening: Declassified.Screening,
+      example: Option[(kind: Benched.Kind, screened: Screened)]
+  ) extends caps.Pure
+
+  /** `policy`'s example `at` (accept then refuse, from 0), as one transaction reads its checks
+    * through `keeper`; or why not.
+    */
+  def exhibit(keeper: DocumentKeeper, policy: DeclassificationPolicy, at: Int)(using
+      Tx^
+  ): Either[StoreError, Either[Unbenched, Exhibit]] =
+    keeper.checks(policy).map {
+      case None => Left(Unbenched.Lapsed)
+      case Some(read) =>
+        read.checks match {
+          case Left(why) => Left(Unbenched.Unreadable(why))
+          case Right(checks) =>
+            Right(
+              Exhibit(
+                screening(checks),
+                Bench
+                  .example(checks, at)
+                  .map(e => (kind = e.kind, text = e.text, screen = Bench.screen(checks)))
+              )
+            )
+        }
+    }
 
   /** What a rewrite of `source`, its file at `revision`, under `applied` reads, through
     * `documents`, `pieces` and `keeper`, as one of `readable`'s plugins.

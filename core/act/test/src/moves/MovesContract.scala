@@ -65,6 +65,7 @@ import grit.core.place.{Namespace, Place, Service}
 import grit.core.plugin.{Exports, InMemoryPlugins}
 import grit.core.provider.ModelRequest
 import grit.core.schema.{JsonSchema, Typed}
+import grit.core.screen.Checks
 import grit.core.stitch.{Strand, StrandWorld}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -1076,6 +1077,69 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
+      "a bench asks one judgment per example, of its signals alone, ends at the ask that finds none, and keeps its verdict as the version's bench, under which a declassify is made"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      shelves.documents.unbench(Team, 1)
+      // The accept example screens clean; the refuse example is refused by the one signal. Then
+      // the declassify's own screen, clean.
+      val leaks = Vector(Vector(0.1), Vector(0.9), Vector(0.0, 0.0, 0.0))
+      val (got, asked) = declassifying(declassifies(1, 4), shelves, Rewrote, leaks) { m =>
+        Seen(
+          Vector(
+            m.bench(name("b"), policy.policy).map(benching),
+            m.declassify(name("d"), source, Revision, policy).map(outcome)
+          )
+        )
+      }
+      (got, asked.size, benchOf(shelves, policy.policy)) ==> (
+        Seen(
+          Vector(Right("kept passed accept 0 0.1, refuse 0 0.9"), Right("made internal judged 0.0"))
+        ),
+        1,
+        "kept passed accept 0 0.1, refuse 0 0.9"
+      )
+    }
+
+    test("a bench with a refused ask keeps nothing, and is that refusal") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (_, policy) = applied(shelves, "c1")
+      shelves.documents.unbench(Team, 1)
+      val (got, _) = declassifying(judgments(1), shelves, Rewrote, Vector(Vector(0.1))) { m =>
+        Seen(Vector(m.bench(name("b"), policy.policy).map(benching)))
+      }
+      (got, benchOf(shelves, policy.policy)) ==> (
+        Seen(Vector(Left(MoveError.OverLimit(MoveKind.Judge, 1)))),
+        "stale"
+      )
+    }
+
+    test(
+      "a bench of checks that do not read is Unbenched with their fault, and of checks not read here Unbenched as lapsed, keeping nothing"
+    ) {
+      def tried(set: Shelves -> Unit) = {
+        val shelves = Shelves(needed = Vector(Cards))
+        val (_, policy) = applied(shelves, "c1")
+        set(shelves)
+        val (got, _) = declassifying(judgments(2), shelves, Rewrote, Clean) { m =>
+          Seen(Vector(m.bench(name("b"), policy.policy).map(benching)))
+        }
+        (got, benchOf(shelves, policy.policy))
+      }
+      val unreadable =
+        tried(s => s.documents.policy(Team, 1, Some(Instructions), Declassing, Some(ujson.Obj())))
+      val above = Label.at(Level.Confidential, TestLabels.compartment("team"))
+      val unread =
+        tried(s => s.documents.policy(Team, 1, Some(Instructions), above, benched = false))
+      val fault = Checks.read(Some(ujson.Obj())).left.map(_.said).fold(identity, _ => "reads")
+      (unreadable, unread) ==> (
+        (Seen(Vector(Right(s"unbenched $fault"))), "stale"),
+        (Seen(Vector(Right("unbenched lapsed"))), "unread")
+      )
+    }
+
+    test(
       "a declassify whose application is no longer in force, or whose model wrote NOTHING, makes no check and is Unapplied as lapsed or Kept"
     ) {
       val shelves = Shelves(needed = Vector(Cards))
@@ -1650,6 +1714,32 @@ object MovesContract {
       s"kept ${judged.fold("nothing")(p => Probability.value(p).toString)}"
     case Declassifying.Outcome.Unapplied(why) => s"unapplied ${why.toString.toLowerCase}"
   }
+
+  /** What a bench came to: `kept {passed|failed} {kind} {at} {p}, …`, each example's deciding
+    * answer; `unbenched {fault}`; or `unbenched lapsed`.
+    */
+  def benching(b: Declassifying.Benching): String = b match {
+    case Declassifying.Benching.Kept(benched) =>
+      s"kept ${if (benched.passed) "passed" else "failed"} " + benched.examples
+        .map(e => s"${e.kind.toString.toLowerCase} ${e.at} ${Probability.value(e.p)}")
+        .mkString(", ")
+    case Declassifying.Benching.Unbenched(Declassifying.Unbenched.Unreadable(why)) =>
+      s"unbenched ${why.said}"
+    case Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed) => "unbenched lapsed"
+  }
+
+  /** `policy` on its bench in `shelves`, read at [[Declassing]]: as [[benching]] says a kept
+    * one, else `stale` or `unread`.
+    */
+  def benchOf(shelves: Shelves, policy: DeclassificationPolicy): String =
+    Declassifying.onBench(shelves.documents.keeper(Cards.name, terms("cards")), policy)(using
+      TestTx.fake(grit.core.visibility.Clearance.of(Declassing))
+    ) match {
+      case Right(Declassifying.OnBench.Kept(b)) => benching(Declassifying.Benching.Kept(b))
+      case Right(Declassifying.OnBench.Stale) => "stale"
+      case Right(Declassifying.OnBench.Unread) => "unread"
+      case Left(e) => s"$e"
+    }
 
   /** Limits of `asks` asks, no calls and `judgments` judgments. */
   def declassifies(asks: Int, judgments: Int): MoveLimits =

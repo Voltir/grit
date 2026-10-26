@@ -140,12 +140,40 @@ object DowngradeCaptureTests extends TestSuite {
   /** In grit but outside grit.core, where a plugin's job reads the application in force. */
   private val plugin =
     """package grit.outside
-      |import grit.core.document.PolicyApplication
+      |import java.time.Instant
+      |import grit.core.act.Declassifying
+      |import grit.core.document.{Declassified, DocumentKeeper, PolicyApplication}
+      |import grit.core.screen.Benched
+      |import grit.core.store.Tx
+      |import grit.core.visibility.DeclassificationPolicy
       |""".stripMargin
   private val inForceApplied = "def f(i: PolicyApplication.InForce) = i.applied"
   private val inForceRead = "def f(i: PolicyApplication.InForce) = i.policy"
+  private val checksApplied = "def f(c: Declassified.PolicyChecks) = c.policy"
+  private val checksRead = "def f(c: Declassified.PolicyChecks) = c.checks"
+  private val benchRead =
+    """def f(k: DocumentKeeper, p: DeclassificationPolicy)(using Tx^) =
+      |  (k.benched(p), Declassifying.onBench(k, p), Declassifying.unbenched(k, p.over))""".stripMargin
+  private val benchRowMade =
+    """def f(p: DeclassificationPolicy, s: Declassified.Screening, b: Benched) =
+      |  new Declassified.BenchRow(p, s, b)""".stripMargin
+  private val benchedKept =
+    "def f(k: DocumentKeeper, b: Benched, at: Instant)(using Tx^) = k.keepBenched(b, at)"
+  private val screeningMade = "def s = Declassified.Screening.of(grit.core.id.Sha256.text(\"x\"))"
 
-  private lazy val pluginCompiled = Probes.batch(plugin, List(inForceApplied, inForceRead))
+  private lazy val pluginCompiled = Probes.batch(
+    plugin,
+    List(
+      inForceApplied,
+      inForceRead,
+      checksApplied,
+      checksRead,
+      benchRead,
+      benchRowMade,
+      benchedKept,
+      screeningMade
+    )
+  )
 
   private lazy val compiled = Probes.batch(
     prelude,
@@ -293,11 +321,31 @@ object DowngradeCaptureTests extends TestSuite {
     test(
       "an application in force is read outside grit.core, and its policy's text and checks are not"
     ) {
-      pluginCompiled.errors(inForceApplied) ==> Nil
+      (pluginCompiled.errors(inForceApplied), pluginCompiled.errors(checksApplied)) ==> (Nil, Nil)
       assert(
         says(
           "private[core] value policy can only be accessed from package grit.core in package grit."
-        )(pluginCompiled.errors(inForceRead))
+        )(pluginCompiled.errors(inForceRead)),
+        says(
+          "private[core] value checks can only be accessed from package grit.core in package grit."
+        )(pluginCompiled.errors(checksRead))
+      )
+    }
+
+    test(
+      "a bench is read outside grit.core, but its row is made only there, and keepBenched takes nothing else"
+    ) {
+      pluginCompiled.errors(benchRead) ==> Nil
+      assert(
+        says(
+          "private[core] constructor BenchRow can only be accessed from package grit.core in package grit."
+        )(pluginCompiled.errors(benchRowMade)),
+        says("Required: grit.core.document.Declassified.BenchRow")(
+          pluginCompiled.errors(benchedKept)
+        ),
+        says("can only be accessed from package grit.core in package grit.")(
+          pluginCompiled.errors(screeningMade)
+        )
       )
     }
 

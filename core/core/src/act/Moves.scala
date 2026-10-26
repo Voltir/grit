@@ -21,11 +21,11 @@ import grit.core.place.Service
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
-import grit.core.screen.{Screen, Screened}
+import grit.core.screen.{Bench, Benched, Screen, Screened}
 import grit.core.stitch.{Strand, StrandExcerpts, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.Label
+import grit.core.visibility.{DeclassificationPolicy, Label}
 
 /** What an ask poses, and what its reply reads as: `R`. Each shape is answered by its own
   * model and recorded as that model replied; `R` is read from the record on every run.
@@ -378,6 +378,56 @@ trait Dreaming extends Keeping {
         attempt(Declassified.Attempt.First, None, None)
     }
 
+  /** `policy`'s examples benched ([[grit.core.screen.Bench]]): `ask:{name}-{i}` for each `i`
+    * from 0, each reading the version's checks again in its own step and screening its
+    * example `i` by their signals alone, until one finds none past the last; then, every ask
+    * answered, the verdict kept as the version's bench (`keep:{name}`,
+    * [[DocumentKeeper.keepBenched]]) under the screening every ask read
+    * ([[Declassifying.screening]]), and `Kept`. `Unbenched`, keeping nothing: `Unreadable`
+    * when its checks do not read, `Lapsed` when they are not read here or changed between its
+    * asks. Each ask is counted, limited and refused as a judgment is ([[ask]]): a refused or
+    * failed ask is that refusal, keeping nothing, as a keep that fails is
+    * [[MoveError.Store]]; the version is benched again next time.
+    */
+  final def bench(
+      name: MoveName,
+      policy: DeclassificationPolicy
+  ): Either[MoveError, Declassifying.Benching] = {
+    // Its asks from `at`, each read, until one past the last: every one asked, or why not.
+    def asks(
+        at: Int,
+        done: Vector[Tainted[Declassifying.Examined]]
+    ): Either[MoveError, Either[Declassifying.Unbenched, Vector[Tainted[Declassifying.Examined]]]] =
+      Declassifying
+        .examined(name, at)
+        .left
+        .map(MoveError.Model(_))
+        .flatMap(example(_, policy, at))
+        .flatMap {
+          case Left(why) => Right(Left(why))
+          case Right(asked) =>
+            if (Trusted.asIs(asked).extract.example.isEmpty) Right(Right(done :+ asked))
+            else asks(at + 1, done :+ asked)
+        }
+    asks(0, Vector.empty).flatMap {
+      case Left(why) => Right(Declassifying.Benching.Unbenched(why))
+      case Right(asked) =>
+        val read = asked.map(Trusted.asIs(_).extract)
+        (asked.headOption, read.map(_.screening).distinct) match {
+          case (Some(first), Vector(screening)) =>
+            val benched = Bench.verdict(read.flatMap(_.example.map(e => (e.kind, e.screened))))
+            val row = asked
+              .foldLeft(first.map(_ => ()))((all, a) => all.zip(a).map(_ => ()))
+              .map(_ => new Declassified.BenchRow(policy, screening, benched))
+            import Declassifying.benchedRecord
+            keep(name, row)((r, keeper, at) => keeper.keepBenched(r, at).map(_ => r.benched))
+              .map(Declassifying.Benching.Kept(_))
+          // Its checks changed between its asks: what it asked is of no one screening.
+          case _ => Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed))
+        }
+    }
+  }
+
   /** The declassification, as the run's program declared it ([[Declassifying.raise]]): `None`
     * when it did not.
     */
@@ -419,6 +469,16 @@ trait Dreaming extends Keeping {
       revision: String,
       applied: PolicyApplication
   ): Either[MoveError, Either[Declassifying.Unread, Screen.Baseline]]
+
+  /** [[bench]]'s ask `name`: `policy`'s example `at` as [[Declassifying.exhibit]] reads it in
+    * its own step, screened, believed at the run's integrity; why not, when it read nothing and
+    * asked nothing.
+    */
+  protected def example(
+      name: MoveName,
+      policy: DeclassificationPolicy,
+      at: Int
+  ): Either[MoveError, Either[Declassifying.Unbenched, Tainted[Declassifying.Examined]]]
 }
 
 object Dreaming {

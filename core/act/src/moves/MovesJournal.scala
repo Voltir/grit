@@ -12,11 +12,11 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.place.{Place, Service}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.schema.JsonSchema
-import grit.core.screen.{Must, Screen}
+import grit.core.screen.{Benched, Checks, Must, Screen}
 import grit.core.stitch.{Strand, StrandDigest}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
-import grit.core.visibility.{Facts, Integrity, Label}
+import grit.core.visibility.{DeclassificationPolicy, Facts, Integrity, Label}
 
 /** What an `ask:{n}` step recorded, a job's ask or a workflow's judgment alike. */
 private[moves] trait Asked {
@@ -105,8 +105,9 @@ private[moves] object AskMade {
     case Store extends Kind("store")
     case Uncleared extends Kind("uncleared")
 
-    /** A strand's summary found its strand's messages changed since its scan, or a rewrite or
-      * check found its source or the application in force for it changed: nothing was asked.
+    /** A strand's summary found its strand's messages changed since its scan, a rewrite or
+      * check found its source or the application in force for it changed, or a bench's ask
+      * found its version's checks not read: nothing was asked.
       */
     case Changed extends Kind("changed")
 
@@ -115,8 +116,13 @@ private[moves] object AskMade {
       */
     case Unpieced extends Kind("unpieced")
 
-    /** A rewrite or check found its policy's checks do not read: nothing was asked. */
+    /** A rewrite or check found its policy version in force has no passing bench, or a bench's
+      * ask found its checks do not read: nothing was asked.
+      */
     case Unchecked extends Kind("unchecked")
+
+    /** A bench's ask found no example at its position: nothing was asked. */
+    case Ended extends Kind("ended")
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at
@@ -348,6 +354,17 @@ object MovesJournal {
     */
   def baseline(source: DocumentVersionId, revision: String, applied: PolicyApplication): String =
     v3("source" + rewriteForm(source, Some(revision), applied) + floorForm)
+
+  /** The digest of a bench's ask of `policy`'s example `at`, v3: its kind, `example`; the
+    * policy's compartment and version; `at`; then the signals' two templates
+    * ([[Screen.absent]], [[Screen.present]]). The checks are read in the step and are in no
+    * digest: a change to them changes the screening the step records beside its ask.
+    */
+  def example(policy: DeclassificationPolicy, at: Int): String =
+    v3(
+      "example" + text(policy.over.written) + count(policy.version) + count(at) +
+        text(Screen.absent(Infer)) + text(Screen.present(Infer))
+    )
 
   /** The digest of the retry `again` of a rewrite of `source`, its file at `revision`, under
     * `applied`, v3: its kind, `retry`; the rewrite's form ([[rewrite]]); the draft; the
@@ -594,50 +611,157 @@ object MovesJournal {
   /** A screening's `ask:{n}`: `{"screen":a}`, `a` its ask's record as [[askMade]] writes it,
     * with `"shape":{"floor","musts"}` when it read what it screened: its floor's size and each
     * signal's `must` ([[Must.written]]), what its answers are read by, and never a signal's text.
+    * A bench's example adds `"example":{"kind","screening"}`; its ask past the last is
+    * `"ended":{"screening"}`, and one whose checks do not read `"unreadable":u`, `u` the fault
+    * by position alone ([[unreadable]]).
     */
-  private[moves] given screened: Journaled[(AskMade, Option[Screen.Shape])] = Journaled.json(
-    (made, shape) =>
+  private[moves] given screened: Journaled[(AskMade, Option[Act.Beside])] = Journaled.json(
+    (made, beside) =>
       ujson.Obj.from(
-        Vector[(String, ujson.Value)]("screen" -> writeAsk(made)) ++ shape.map(s =>
-          "shape" -> ujson.Obj(
-            "floor" -> s.floor.toDouble,
-            "musts" -> ujson.Arr.from(s.musts.map(m => ujson.Str(m.written)))
-          )
-        )
+        Vector[(String, ujson.Value)]("screen" -> writeAsk(made)) ++ (beside match {
+          case None => Vector()
+          case Some(Act.Beside.Shaped(s)) => Vector("shape" -> writeShape(s))
+          case Some(Act.Beside.Example(kind, s, screening)) =>
+            Vector(
+              "shape" -> writeShape(s),
+              "example" -> ujson
+                .Obj("kind" -> kindKey(kind), "screening" -> screening.written)
+            )
+          case Some(Act.Beside.Ended(screening)) =>
+            Vector("ended" -> ujson.Obj("screening" -> screening.written))
+          case Some(Act.Beside.Unreadable(why)) => Vector("unreadable" -> unreadable(why))
+        })
       ),
     v =>
       for {
         o <- fields(v, "screen")
         made <- o.get("screen").toRight("screen: no record").flatMap(readAsk)
-        shape <- o.get("shape") match {
-          case None => Right(None)
-          case Some(s) =>
+        beside <- (o.get("shape"), o.get("example"), o.get("ended"), o.get("unreadable")) match {
+          case (None, None, None, None) => Right(None)
+          case (Some(s), None, None, None) => readShape(s).map(s => Some(Act.Beside.Shaped(s)))
+          case (Some(s), Some(e), None, None) =>
             for {
-              f <- fields(s, "screen.shape")
-              floor <- f
-                .get("floor")
-                .flatMap(_.numOpt)
-                .filter(d => d >= 0 && d.isWhole && d <= Int.MaxValue)
-                .map(_.toInt)
-                .toRight("screen.shape: no floor")
-              musts <- f
-                .get("musts")
-                .flatMap(_.arrOpt)
-                .toRight("screen.shape: no musts")
-                .flatMap(
-                  _.toVector.foldLeft[Either[String, Vector[Must]]](Right(Vector.empty))((acc, m) =>
-                    acc.flatMap(done =>
-                      m.strOpt
-                        .flatMap(w => Must.values.find(_.written == w))
-                        .map(done :+ _)
-                        .toRight("screen.shape: a must neither absent nor present")
-                    )
-                  )
-                )
-            } yield Some(Screen.Shape(floor, musts))
+              shape <- readShape(s)
+              f <- fields(e, "screen.example")
+              kind <- f
+                .get("kind")
+                .flatMap(_.strOpt)
+                .flatMap(k => Benched.Kind.values.find(kindKey(_) == k))
+                .toRight("screen.example: no kind")
+              screening <- readScreening(f, "screen.example")
+            } yield Some(Act.Beside.Example(kind, shape, screening))
+          case (None, None, Some(e), None) =>
+            fields(e, "screen.ended")
+              .flatMap(readScreening(_, "screen.ended"))
+              .map(s => Some(Act.Beside.Ended(s)))
+          case (None, None, None, Some(u)) =>
+            readUnreadable(u).map(why => Some(Act.Beside.Unreadable(why)))
+          case _ => Left("screen: no one reading beside its ask")
         }
-      } yield (made, shape)
+      } yield (made, beside)
   )
+
+  private def writeShape(s: Screen.Shape): ujson.Value =
+    ujson.Obj(
+      "floor" -> s.floor.toDouble,
+      "musts" -> ujson.Arr.from(s.musts.map(m => ujson.Str(m.written)))
+    )
+
+  private def readShape(s: ujson.Value): Either[String, Screen.Shape] =
+    for {
+      f <- fields(s, "screen.shape")
+      floor <- f.get("floor").flatMap(whole).toRight("screen.shape: no floor")
+      musts <- f
+        .get("musts")
+        .flatMap(_.arrOpt)
+        .toRight("screen.shape: no musts")
+        .flatMap(
+          _.toVector.foldLeft[Either[String, Vector[Must]]](Right(Vector.empty))((acc, m) =>
+            acc.flatMap(done =>
+              m.strOpt
+                .flatMap(w => Must.values.find(_.written == w))
+                .map(done :+ _)
+                .toRight("screen.shape: a must neither absent nor present")
+            )
+          )
+        )
+    } yield Screen.Shape(floor, musts)
+
+  private def readScreening(
+      f: collection.Map[String, ujson.Value],
+      at: String
+  ): Either[String, Declassified.Screening] =
+    f.get("screening")
+      .flatMap(_.strOpt)
+      .flatMap(Declassified.Screening.read)
+      .toRight(s"$at: no screening")
+
+  private def whole(v: ujson.Value): Option[Int] =
+    v.numOpt.filter(d => d >= 0 && d.isWhole && d <= Int.MaxValue).map(_.toInt)
+
+  private def kindKey(k: Benched.Kind): String = k match {
+    case Benched.Kind.Accept => "accept"
+    case Benched.Kind.Refuse => "refuse"
+  }
+
+  /** Checks' fault `why` by position alone, `{"fault": f}` with the positions and parts it
+    * names: `missing`; `shape` of a `part`; `count` of a `part` and its `most`; `signal` at an
+    * `at` and its `is`; `example` of a `kind` at an `at` and its `is`.
+    */
+  def unreadable(why: Checks.Unreadable): ujson.Value = why match {
+    case Checks.Unreadable.Missing => ujson.Obj("fault" -> "missing")
+    case Checks.Unreadable.Shape(part) => ujson.Obj("fault" -> "shape", "part" -> partKey(part))
+    case Checks.Unreadable.Count(part, most) =>
+      ujson.Obj("fault" -> "count", "part" -> partKey(part), "most" -> most)
+    case Checks.Unreadable.Signal(at, fault) =>
+      ujson.Obj("fault" -> "signal", "at" -> at, "is" -> faultKey(fault))
+    case Checks.Unreadable.Example(kind, at, fault) =>
+      ujson.Obj("fault" -> "example", "kind" -> kindKey(kind), "at" -> at, "is" -> faultKey(fault))
+  }
+
+  /** What [[unreadable]] wrote, read back; or why not. */
+  def readUnreadable(v: ujson.Value): Either[String, Checks.Unreadable] = {
+    def part(f: collection.Map[String, ujson.Value]) =
+      f.get("part")
+        .flatMap(_.strOpt)
+        .flatMap(p => Checks.Part.values.find(partKey(_) == p))
+        .toRight("unreadable: no part")
+    def at(f: collection.Map[String, ujson.Value]) =
+      f.get("at").flatMap(whole).toRight("unreadable: no position")
+    def is(f: collection.Map[String, ujson.Value]) =
+      f.get("is")
+        .flatMap(_.strOpt)
+        .flatMap(k => Checks.Fault.values.find(faultKey(_) == k))
+        .toRight("unreadable: no fault")
+    fields(v, "unreadable").flatMap { f =>
+      f.get("fault").flatMap(_.strOpt) match {
+        case Some("missing") => Right(Checks.Unreadable.Missing)
+        case Some("shape") => part(f).map(Checks.Unreadable.Shape(_))
+        case Some("count") =>
+          for {
+            p <- part(f)
+            most <- f.get("most").flatMap(whole).toRight("unreadable: no most")
+          } yield Checks.Unreadable.Count(p, most)
+        case Some("signal") =>
+          for { a <- at(f); i <- is(f) } yield Checks.Unreadable.Signal(a, i)
+        case Some("example") =>
+          for {
+            k <- f
+              .get("kind")
+              .flatMap(_.strOpt)
+              .flatMap(k => Benched.Kind.values.find(kindKey(_) == k))
+              .toRight("unreadable: no kind")
+            a <- at(f)
+            i <- is(f)
+          } yield Checks.Unreadable.Example(k, a, i)
+        case _ => Left("unreadable: no fault named")
+      }
+    }
+  }
+
+  private def partKey(p: Checks.Part): String = p.toString.toLowerCase
+
+  private def faultKey(f: Checks.Fault): String = f.toString.toLowerCase
 
   given recorded: Journaled[Either[String, Unit]] = Journaled.json(
     {

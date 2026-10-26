@@ -13,7 +13,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Service}
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.schema.JsonSchema
-import grit.core.screen.{Must, Screen}
+import grit.core.screen.{Benched, Checks, Must, Screen}
 import grit.core.stitch.{Strand, StrandDigest, StrandWorld}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.tool.{Outcome, ToolName}
@@ -715,16 +715,77 @@ object MovesJournalTests extends TestSuite {
       val call = AskMade.Call("jev", Usage.Zero, Tokens(250))
       val judged = AskMade.Judged("v3:ab", """[{"yes":0.1},{"yes":0.2}]""", Label.Public, call)
       val shape = Screen.Shape(2, Vector(Must.Absent, Must.Present))
-      pinned[(AskMade, Option[Screen.Shape])](
-        (judged, Some(shape)),
+      pinned[(AskMade, Option[Act.Beside])](
+        (judged, Some(Act.Beside.Shaped(shape))),
         s"""{"screen":${MovesJournal.askMade.encode(
             judged
           )},"shape":{"floor":2,"musts":["absent","present"]}}"""
       )
-      pinned[(AskMade, Option[Screen.Shape])](
+      pinned[(AskMade, Option[Act.Beside])](
         (AskMade.Refused(AskMade.Kind.Unchecked, "no checks", "v3:ab"), None),
         """{"screen":{"refused":"unchecked","why":"no checks","digest":"v3:ab"}}"""
       )
+    }
+
+    test(
+      "a bench's ask is written with its example's kind and its checks' screening beside its shape, or past the last with the screening alone, and reads back as written"
+    ) {
+      val call = AskMade.Call("jev", Usage.Zero, Tokens(250))
+      val judged = AskMade.Judged("v3:ab", """[{"yes":0.1}]""", Label.Public, call)
+      val hex = "0123456789abcdef" * 4
+      val screening =
+        Declassified.Screening.read(hex).getOrElse(throw new java.lang.AssertionError("hex"))
+      val ended = AskMade.Refused(AskMade.Kind.Ended, "no example at its position", "v3:ab")
+      pinned[(AskMade, Option[Act.Beside])](
+        (
+          judged,
+          Some(
+            Act.Beside.Example(Benched.Kind.Refuse, Screen.Shape(0, Vector(Must.Absent)), screening)
+          )
+        ),
+        s"""{"screen":${MovesJournal.askMade.encode(
+            judged
+          )},"shape":{"floor":0,"musts":["absent"]},"example":{"kind":"refuse","screening":"$hex"}}"""
+      )
+      pinned[(AskMade, Option[Act.Beside])](
+        (ended, Some(Act.Beside.Ended(screening))),
+        s"""{"screen":{"refused":"ended","why":"no example at its position","digest":"v3:ab"},"ended":{"screening":"$hex"}}"""
+      )
+    }
+
+    test(
+      "a bench's ask of checks that do not read writes the fault by position alone, and reads it back as written"
+    ) {
+      val refused = AskMade.Refused(AskMade.Kind.Unchecked, "said", "v3:ab")
+      val faults = Vector(
+        Checks.Unreadable.Missing -> """{"fault":"missing"}""",
+        Checks.Unreadable.Shape(Checks.Part.Signals) -> """{"fault":"shape","part":"signals"}""",
+        Checks.Unreadable.Count(Checks.Part.Accept, 3) ->
+          """{"fault":"count","part":"accept","most":3}""",
+        Checks.Unreadable
+          .Signal(4, Checks.Fault.Long) -> """{"fault":"signal","at":4,"is":"long"}""",
+        Checks.Unreadable.Example(Benched.Kind.Accept, 1, Checks.Fault.Blank) ->
+          """{"fault":"example","kind":"accept","at":1,"is":"blank"}"""
+      )
+      faults.foreach { (why, written) =>
+        pinned[(AskMade, Option[Act.Beside])](
+          (refused, Some(Act.Beside.Unreadable(why))),
+          s"""{"screen":{"refused":"unchecked","why":"said","digest":"v3:ab"},"unreadable":$written}"""
+        )
+      }
+    }
+
+    test(
+      "a bench's ask is digested v3, of its policy's compartment and version, its position and both templates, never its checks"
+    ) {
+      val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
+      val asked = MovesJournal.example(DeclassificationPolicy(team, 3), 1)
+      (
+        asked.take(3),
+        asked == MovesJournal.example(DeclassificationPolicy(team, 3), 1),
+        asked == MovesJournal.example(DeclassificationPolicy(team, 4), 1),
+        asked == MovesJournal.example(DeclassificationPolicy(team, 3), 2)
+      ) ==> ("v3:", true, false, false)
     }
 
     test(

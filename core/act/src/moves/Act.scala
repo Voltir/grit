@@ -57,7 +57,7 @@ import grit.core.place.Service
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
-import grit.core.screen.Screen
+import grit.core.screen.{Benched, Checks, Screen}
 import grit.core.stitch.{Strand, StrandExcerpts}
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
@@ -317,44 +317,89 @@ private[moves] object Act {
     * ([[grit.core.screen.Screen.Text]]): a rewrite's to [[Declassifying.screen]] of the policy's
     * checks, a source's to its floor ([[grit.core.screen.Screen.baseline]]); beside them, the
     * [[grit.core.screen.Screen.Shape]] they were asked in. A refusal of the kind
-    * [[unreadKind]] gives why it read nothing.
+    * [[unreadKind]] gives why it read nothing. A bench's example is read by
+    * [[Declassifying.exhibit]] and asked its checks' signals, beside it its kind, shape and the
+    * checks' screening ([[Beside.Example]]); past the last, a refusal `ended` beside the
+    * screening; checks that do not read, a refusal `unchecked` beside why; checks not read
+    * here, a refusal `changed`.
     */
-  val screening: Step[MovesEnv, Screening, (AskMade, Option[Screen.Shape])] = {
+  val screening: Step[MovesEnv, Screening, (AskMade, Option[Beside])] = {
     import MovesJournal.given
-    Step[MovesEnv, Screening, (AskMade, Option[Screen.Shape])](Asks.move)(env =>
+    Step[MovesEnv, Screening, (AskMade, Option[Beside])](Asks.move)(env =>
       s => {
-        val reading = s.of match {
-          case Declassifying.Of.Rewrite(reading, _, _) => reading
-          case Declassifying.Of.Source(reading) => reading
-        }
-        env.db.read(s.acting.subject)(Declassifying.read(reading)) match {
-          case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
-          case Right(Left(why)) => (AskMade.Refused(unreadKind(why), why.why, s.digest), None)
-          case Right(Right(shown)) =>
-            val screen = Declassifying.screen(shown.checks)
-            s.of match {
-              case Declassifying.Of.Rewrite(_, text, _) =>
-                val ask = screen.ask
+        def read(reading: Declassifying.Reading)(
+            asked: Declassifying.Shown => (AskMade, Option[Beside])
+        ): (AskMade, Option[Beside]) =
+          env.db.read(s.acting.subject)(Declassifying.read(reading)) match {
+            case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
+            case Right(Left(why)) => (AskMade.Refused(unreadKind(why), why.why, s.digest), None)
+            case Right(Right(shown)) => asked(shown)
+          }
+        s.of match {
+          case Declassifying.Of.Rewrite(reading, text, _) =>
+            read(reading) { shown =>
+              val screen = Declassifying.screen(shown.checks)
+              val ask = screen.ask
+              (
+                judged(
+                  env,
+                  s.acting,
+                  Request.of(Screen.Text(DocText.value(text)), ask),
+                  ask,
+                  s.digest
+                ),
+                Some(Beside.Shaped(screen.shape))
+              )
+            }
+          case Declassifying.Of.Source(reading) =>
+            read(reading) { shown =>
+              val ask = Declassifying.Baseline
+              (
+                judged(env, s.acting, Request.of(Screen.Text(shown.text), ask), ask, s.digest),
+                Some(Beside.Shaped(Screen.Shape(Declassifying.Floor.size, Vector.empty)))
+              )
+            }
+          case Declassifying.Of.Example(keeper, policy, at) =>
+            env.db.read(s.acting.subject)(Declassifying.exhibit(keeper, policy, at)) match {
+              case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
+              case Right(Left(Declassifying.Unbenched.Lapsed)) =>
+                (AskMade.Refused(AskMade.Kind.Changed, "its checks are not read", s.digest), None)
+              case Right(Left(Declassifying.Unbenched.Unreadable(why))) =>
                 (
-                  judged(
-                    env,
-                    s.acting,
-                    Request.of(Screen.Text(DocText.value(text)), ask),
-                    ask,
-                    s.digest
-                  ),
-                  Some(screen.shape)
+                  AskMade.Refused(AskMade.Kind.Unchecked, why.said, s.digest),
+                  Some(Beside.Unreadable(why))
                 )
-              case Declassifying.Of.Source(_) =>
-                val ask = Declassifying.Baseline
+              case Right(Right(Declassifying.Exhibit(screening, None))) =>
                 (
-                  judged(env, s.acting, Request.of(Screen.Text(shown.text), ask), ask, s.digest),
-                  Some(Screen.Shape(Declassifying.Floor.size, Vector.empty))
+                  AskMade.Refused(AskMade.Kind.Ended, "no example at its position", s.digest),
+                  Some(Beside.Ended(screening))
+                )
+              case Right(Right(Declassifying.Exhibit(screening, Some(e)))) =>
+                val ask = e.screen.ask
+                (
+                  judged(env, s.acting, Request.of(e.text, ask), ask, s.digest),
+                  Some(Beside.Example(e.kind, e.screen.shape, screening))
                 )
             }
         }
       }
     )
+  }
+
+  /** What a screening's step recorded beside its ask, never a signal's or an example's text. */
+  enum Beside extends caps.Pure {
+
+    /** It asked in `shape`. */
+    case Shaped(shape: Screen.Shape)
+
+    /** A bench's example of `kind`, asked in `shape`, of the checks under `screening`. */
+    case Example(kind: Benched.Kind, shape: Screen.Shape, screening: Declassified.Screening)
+
+    /** A bench's ask past the last example of the checks under `screening`: nothing asked. */
+    case Ended(screening: Declassified.Screening)
+
+    /** A bench's checks do not read, `why`: nothing asked. */
+    case Unreadable(why: Checks.Unreadable)
   }
 
   /** The JSON ask's `ask:{n}`: admitted, then the model's reply, shaped and repaired. */
