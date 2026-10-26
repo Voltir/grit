@@ -95,6 +95,7 @@ object SqlDeclassificationsTests extends TestSuite {
         val applied = keeper
           .declassifying(source, a)
           .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+          .map(_.applied)
           .getOrElse(throw new java.lang.AssertionError("no application"))
         val d =
           TestDeclassified.of(

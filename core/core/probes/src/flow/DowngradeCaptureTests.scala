@@ -134,6 +134,16 @@ object DowngradeCaptureTests extends TestSuite {
 
   private lazy val insideCompiled = Probes.batch(inside, List(pureRule, txRule))
 
+  /** In grit but outside grit.core, where a plugin's job reads the application in force. */
+  private val plugin =
+    """package grit.outside
+      |import grit.core.document.PolicyApplication
+      |""".stripMargin
+  private val inForceApplied = "def f(i: PolicyApplication.InForce) = i.applied"
+  private val inForceRead = "def f(i: PolicyApplication.InForce) = i.instructions"
+
+  private lazy val pluginCompiled = Probes.batch(plugin, List(inForceApplied, inForceRead))
+
   private lazy val compiled = Probes.batch(
     prelude,
     List(
@@ -274,6 +284,17 @@ object DowngradeCaptureTests extends TestSuite {
         says(
           "private[document] constructor Row can only be accessed from package grit.core.document in package grit.core."
         )(probe(rowMade))
+      )
+    }
+
+    test(
+      "an application in force is read outside grit.core, and its policy's text is not"
+    ) {
+      pluginCompiled.errors(inForceApplied) ==> Nil
+      assert(
+        says(
+          "private[core] value instructions can only be accessed from package grit.core in package grit."
+        )(pluginCompiled.errors(inForceRead))
       )
     }
 

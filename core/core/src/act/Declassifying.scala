@@ -167,8 +167,8 @@ object Declassifying {
   /** What a rewrite of `source` under `applied` is made from, as one transaction reads it: the
     * source, its pointer and its policy's text; `None` when `source` is not kept, holds
     * nothing, is not read by the transaction, is not one of `readable`'s, has no pointer,
-    * `applied` is not the application in force for it ([[DocumentKeeper.declassifying]]), or
-    * its policy's text is not read ([[DocumentSearch.instructions]]).
+    * `applied` is not the application in force for it, or its policy's text is not read
+    * ([[DocumentKeeper.declassifying]]).
     */
   def read(
       source: DocumentVersionId,
@@ -181,11 +181,11 @@ object Declassifying {
       found.find(d => readable.contains(d.plugin)).flatMap(d => d.pointer.map((d, _))) match {
         case None => Right(None)
         case Some((d, pointer)) =>
-          keeper.declassifying(d.label, pointer).flatMap {
-            case Some(a) if a == applied =>
-              documents.instructions(applied.policy).map(_.map(Shown(d, pointer, _)))
-            case _ => Right(None)
-          }
+          keeper
+            .declassifying(d.label, pointer)
+            .map(
+              _.filter(_.applied == applied).flatMap(_.instructions).map(Shown(d, pointer, _))
+            )
       }
     }
 

@@ -7,7 +7,6 @@ import scala.concurrent.duration.*
 import grit.core.document.{DocLabel, DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
 import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.DeclassificationPolicy
 
 /** [[DocumentSearch]] over `grit.documents` and `grit.document_terms`: reads only, so it needs
   * no tombstones, and what it is handed to cannot write a document.
@@ -78,18 +77,4 @@ final class SqlDocumentSearch extends DocumentSearch {
         val byVersion = found.map(d => d.version -> d).toMap
         versions.flatMap(byVersion.get)
       }
-
-  def instructions(policy: DeclassificationPolicy)(using
-      tx: Tx^
-  ): Either[StoreError, Option[String]] =
-    cleared(
-      s"""WITH ${SqlClearance.With}
-         |SELECT p.text FROM grit.declassification_policies p
-         | WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
-         |   AND p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
-         |   AND NOT ${SqlDeclassifications.PolicySuperseded}""".stripMargin
-    ) { ps =>
-      ps.setString(SqlClearance.Params + 1, policy.over.written)
-      ps.setInt(SqlClearance.Params + 2, policy.version)
-    }(rs => Right(rs.getString("text"))).map(_.headOption)
 }

@@ -15,6 +15,17 @@ final case class PolicyApplication private[grit] (
     version: Int
 ) extends caps.Pure
 
+object PolicyApplication {
+
+  /** An application in force, `applied`, with its policy's `instructions` when its transaction
+    * reads them ([[DocumentKeeper.declassifying]]).
+    */
+  final class InForce private[grit] (
+      val applied: PolicyApplication,
+      private[core] val instructions: Option[String]
+  ) extends caps.Pure
+}
+
 /** A rewrite of the document version `source`, without `applied`'s compartment, by the
   * declassification ([[Declassified.declassification]]); the highest of the check's
   * probabilities that it keeps what the policy removes, hints at it, or instructs its reader is

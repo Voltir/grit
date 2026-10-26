@@ -113,7 +113,7 @@ object CardDeclassify {
     for {
       pointed <- shelf.pointed(Cards)
       applied <- traverse(pointed)(c =>
-        keeper.declassifying(c.label, c.pointer).map(_.map(a => (c.version, a)))
+        keeper.declassifying(c.label, c.pointer).map(_.map(a => (c.version, a.applied)))
       )
       inForce = applied.flatten
       current = inForce.map(Declassified.Made.of(_, _)).toSet

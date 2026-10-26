@@ -61,10 +61,6 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
     reads.read(versions)
 
-  def instructions(policy: DeclassificationPolicy)(using
-      Tx^
-  ): Either[StoreError, Option[String]] = reads.instructions(policy)
-
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using
       tx: Tx^
   ): Either[StoreError, Unit] =
@@ -451,26 +447,32 @@ private[sql] object SqlDocuments {
 
     def declassifying(label: Label, pointer: Pointer)(using
         tx: Tx^
-    ): Either[StoreError, Option[PolicyApplication]] =
-      rows(
-        s"""SELECT a.version AS application, a.over, p.version AS policy
+    ): Either[StoreError, Option[PolicyApplication.InForce]] =
+      cleared(
+        s"""WITH ${SqlClearance.With}
+          |SELECT a.version AS application, a.over, p.version AS policy,
+          |       CASE WHEN p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
+          |            THEN p.text END AS text
           |  FROM grit.declassification_applications a
           |  JOIN grit.declassification_policies p ON p.over = a.over
           | WHERE a.pointer = ?::jsonb AND NOT ${SqlDeclassifications.ApplicationSuperseded}
           |   AND NOT ${SqlDeclassifications.PolicySuperseded} AND p.text IS NOT NULL""".stripMargin
       ) { ps =>
-        ps.setString(1, pointerJson(pointer))
+        ps.setString(SqlClearance.Params + 1, pointerJson(pointer))
       }(rs =>
         DeclassificationPolicy.Over
           .read(rs.getString("over"))
           .map(over =>
-            PolicyApplication(
-              DeclassificationPolicy(over, rs.getInt("policy")),
-              pointer,
-              rs.getInt("application")
+            new PolicyApplication.InForce(
+              PolicyApplication(
+                DeclassificationPolicy(over, rs.getInt("policy")),
+                pointer,
+                rs.getInt("application")
+              ),
+              Option(rs.getString("text"))
             )
           )
-      ).map(_.headOption.filter(_.policy.lowered(label).isDefined))
+      ).map(_.headOption.filter(_.applied.policy.lowered(label).isDefined))
 
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         tx: Tx^

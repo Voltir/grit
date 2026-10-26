@@ -220,13 +220,20 @@ final class InMemoryDocuments extends DocumentStore {
         }
 
       def declassifying(label: Label, pointer: Pointer)(using
-          Tx^
-      ): Either[StoreError, Option[PolicyApplication]] =
-        Right(for {
-          (over, version) <- applied(pointer)
-          policy <- inForce(over)
-          _ <- policy.lowered(label)
-        } yield PolicyApplication(policy, pointer, version))
+          tx: Tx^
+      ): Either[StoreError, Option[PolicyApplication.InForce]] =
+        Right(
+          for {
+            (over, version) <- applied(pointer)
+            policy <- inForce(over)
+            _ <- policy.lowered(label)
+          } yield new PolicyApplication.InForce(
+            PolicyApplication(policy, pointer, version),
+            policies.get((policy.over, policy.version)).collect {
+              case (Some(text), kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) => text
+            }
+          )
+        )
 
       def keepDeclassified(row: Declassified.Row, at: Instant)(using
           Tx^
@@ -450,18 +457,6 @@ final class InMemoryDocuments extends DocumentStore {
         .filter(reads)
         .flatMap(r => r.text.map(document(DocumentVersionId.value(v), r, _)))
     })
-
-  def instructions(policy: DeclassificationPolicy)(using
-      tx: Tx^
-  ): Either[StoreError, Option[String]] =
-    Right(
-      inForce(policy.over)
-        .filter(_ == policy)
-        .flatMap(p => policies.get((p.over, p.version)))
-        .collect {
-          case (Some(text), kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) => text
-        }
-    )
 
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using Tx^): Either[StoreError, Unit] = {
     terms = terms.map((p, t) => p -> (t._1, false)) ++ enabled.map((p, t) => p -> (t, true))

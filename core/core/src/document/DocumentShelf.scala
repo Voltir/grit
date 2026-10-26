@@ -110,13 +110,15 @@ trait DocumentKeeper extends DocumentShelf {
   ): Either[StoreError, Boolean]
 
   /** The application in force for the document `pointer` reads, kept at `label`: its current
-    * application, when `label` holds the application's compartment and that compartment's
-    * policy is current; `None` otherwise, and for a label holding the unmapped mark. Read from
-    * the operator's rows as this transaction sees them now.
+    * application, when `label` holds its compartment and that compartment's policy is current;
+    * `None` otherwise, and for a label holding the unmapped mark. Its `instructions`, saying what
+    * a rewrite under it removes and what it writes in its place, only when its transaction reads
+    * the label the policy is kept at (its compartment's own group's grant). Read from the
+    * operator's rows as this transaction sees them now.
     */
   def declassifying(label: Label, pointer: Pointer)(using
       Tx^
-  ): Either[StoreError, Option[PolicyApplication]]
+  ): Either[StoreError, Option[PolicyApplication.InForce]]
 
   /** Keeps `d` as the current document of this plugin under a key derived from its source's
     * plugin and key (never repeating the source's key), at `d.label`, below this transaction's
@@ -180,7 +182,7 @@ object DocumentKeeper {
 
     def declassifying(label: Label, pointer: Pointer)(using
         Tx^
-    ): Either[StoreError, Option[PolicyApplication]] = keeper.declassifying(label, pointer)
+    ): Either[StoreError, Option[PolicyApplication.InForce]] = keeper.declassifying(label, pointer)
 
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         Tx^

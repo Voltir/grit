@@ -49,7 +49,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.visibility.{DeclassificationPolicy, Label}
+import grit.core.visibility.Label
 import grit.dbos.internal.Reader
 
 /** A restored database's stores as they stood at `at`, for an assembler to read a window from
@@ -340,10 +340,6 @@ object AsOf {
       under.search(shelves, query, limit, earlier(at, this.at))
     def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions).map(_.filter(d => before(d.written, at)))
-    // Read as they stand now: a reply's window reads no policy, and the eval rewrites nothing.
-    def instructions(policy: DeclassificationPolicy)(using
-        Tx^
-    ): Either[StoreError, Option[String]] = under.instructions(policy)
   }
 
   /** `under`'s documents, each read asked for as of any moment read as of `at` ([[documentsAsOf]]). */
@@ -358,10 +354,6 @@ object AsOf {
     ): Either[StoreError, Vector[DocumentSearch.Hit]] = under.search(shelves, query, limit, at)
     def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions)
-    // As [[Documents]]' own.
-    def instructions(policy: DeclassificationPolicy)(using
-        Tx^
-    ): Either[StoreError, Option[String]] = under.instructions(policy)
   }
 
   private final class Stitches(under: StitchStore, conversations: ConversationStore, at: Instant)

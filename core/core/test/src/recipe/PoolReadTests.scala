@@ -340,8 +340,6 @@ object PoolReadTests extends TestSuite {
           Tx^
       ) = Left(error)
       def read(versions: Vector[grit.core.id.DocumentVersionId])(using Tx^) = Left(error)
-      def instructions(policy: grit.core.visibility.DeclassificationPolicy)(using Tx^) =
-        Left(error)
     }
 
     def rooms(error: StoreError): RoomReads = new RoomReads {

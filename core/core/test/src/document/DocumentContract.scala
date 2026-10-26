@@ -1465,48 +1465,41 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
-      "declassifying gives a document's current application when its label holds the application's compartment and that compartment's policy is current; none otherwise, and none for an unmapped label"
+      "declassifying gives the application in force with its policy's text when the transaction reads the policy's label, the application without text when it does not, and none otherwise"
     ) {
       val k = keeper(name("doc-declassifying"), terms())
       val (team, bare) = (over("dc-team"), over("dc-bare"))
       val (applied, unapplied, unpolicied) = (file("dc-a"), file("dc-b"), file("dc-c"))
       val held = Label.at(Level.Internal, TestLabels.compartment("dc-team"))
-      policy(team, 1, revoked = false)
+      val grant = Label.at(Level.Confidential, TestLabels.compartment("dc-team"))
+      val cleared = Clearance.of(grant)
+      policyAt(team, 1, Some("drop the venue"), grant)
       application(applied, 1, Some(team))
       application(unpolicied, 1, Some(bare))
-      def asked(label: Label, pointer: Pointer) =
-        transaction(ok(k.declassifying(label, pointer))).map(a => (a.policy, a.version))
-      val before = (
-        asked(held, applied),
-        asked(Label.at(Level.Internal), applied),
-        asked(Label.Unmapped.join(held), applied),
-        asked(held, unapplied),
-        asked(Label.at(Level.Internal, TestLabels.compartment("dc-bare")), unpolicied)
+      def asked(clearance: Clearance, label: Label, pointer: Pointer) =
+        opened(clearance)(ok(k.declassifying(label, pointer)))
+          .map(i => (i.applied.policy, i.applied.version, i.instructions))
+      val first = (
+        asked(cleared, held, applied),
+        asked(Clearance.of(Label.Public), held, applied),
+        asked(cleared, Label.at(Level.Internal), applied),
+        asked(cleared, Label.Unmapped.join(held), applied),
+        asked(cleared, held, unapplied),
+        asked(cleared, Label.at(Level.Internal, TestLabels.compartment("dc-bare")), unpolicied)
       )
-      policy(team, 2, revoked = true)
-      (before, asked(held, applied)) ==> (
-        (Some((DeclassificationPolicy(team, 1), 1)), None, None, None, None),
-        None
-      )
-    }
-
-    test(
-      "instructions are a policy version's text while it is its compartment's current one and the transaction reads the label it is kept at; none otherwise, and none once revoked"
-    ) {
-      val team = over("di-team")
-      val grant = Label.at(Level.Confidential, TestLabels.compartment("di-team"))
-      val cleared = Clearance.of(grant)
-      def read(clearance: Clearance, version: Int) =
-        opened(clearance)(ok(search.instructions(DeclassificationPolicy(team, version))))
-      policyAt(team, 1, Some("drop the venue"), grant)
-      val first = (read(cleared, 1), read(Clearance.of(Label.at(Level.Confidential)), 1))
       policyAt(team, 2, Some("drop the venue and the date"), grant)
-      val second = (read(cleared, 1), read(cleared, 2))
+      val second = asked(cleared, held, applied)
       policyAt(team, 3, None, grant)
-      (first, second, read(cleared, 2), read(cleared, 3)) ==> (
-        (Some("drop the venue"), None),
-        (None, Some("drop the venue and the date")),
-        None,
+      (first, second, asked(cleared, held, applied)) ==> (
+        (
+          Some((DeclassificationPolicy(team, 1), 1, Some("drop the venue"))),
+          Some((DeclassificationPolicy(team, 1), 1, None)),
+          None,
+          None,
+          None,
+          None
+        ),
+        Some((DeclassificationPolicy(team, 2), 1, Some("drop the venue and the date"))),
         None
       )
     }
@@ -1524,6 +1517,7 @@ abstract class DocumentContract extends TestSuite {
       val confidential = Clearance.of(Label.at(Level.Confidential))
       val written = opened(confidential) {
         val applied = ok(k.declassifying(source, card))
+          .map(_.applied)
           .getOrElse(throw new java.lang.AssertionError("no application"))
         ok(k.declassified(declassified("the gist", source, card, applied), Integrity.Member, at(1)))
       }
@@ -1555,6 +1549,7 @@ abstract class DocumentContract extends TestSuite {
       val card = file("ds-card")
       val source = Label.at(Level.Internal, TestLabels.compartment("ds-team"))
       def applied = transaction(ok(k.declassifying(source, card)))
+        .map(_.applied)
         .getOrElse(throw new java.lang.AssertionError("no application"))
       def kept(a: PolicyApplication) =
         transaction(
@@ -1588,6 +1583,7 @@ abstract class DocumentContract extends TestSuite {
         val source = Label.at(level, TestLabels.compartment("dm-team"))
         opened(confidential) {
           val applied = ok(k.declassifying(source, card))
+            .map(_.applied)
             .getOrElse(throw new java.lang.AssertionError("no application"))
           ok(k.declassified(declassified(body, source, card, applied), Integrity.Member, at(1)))
         }
