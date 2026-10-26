@@ -30,7 +30,7 @@ section usually settles a question; read its alternatives only when the question
 - **Code:** scout first: your `mcp__scout__*` tools, or `scripts/scout <query>` through Bash
   when they are missing. It answers questions about grit's Scala from the compiled TASTy, in
   less text than reading the file. Start an unfamiliar part with `area`, then `show` with every
-  symbol you need in one call (`--body` for bodies), `family` for a trait's implementations,
+  symbol you need in one call (`body: ["member"]` for bodies; list arguments are JSON arrays), `family` for a trait's implementations,
   `uses` for who calls something, `tests` for what a suite pins, `find` for whether a name a
   doc mentions still exists. A branch or worktree: pass its path as `root` (`--root <path>`).
   Fall back to Grep and line-range Reads for what it can't answer, and say so.

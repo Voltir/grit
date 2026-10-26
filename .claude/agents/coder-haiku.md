@@ -26,31 +26,35 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   `root: <your worktree>`: the server keeps what it has read between calls. The CLI
   (`scripts/scout <query> … --root .`) is the fallback. Bash
   (`grep -n`, `sed -n`) is for what scout cannot name, or a quick text search; say in your
-  report when you fell back. Every symbol you need goes in one call (`show Flow,Step,Flows`).
-- Which query, for what: a signature and doc, `show Moves.ask`; a body to edit,
-  `show Turn --body looping --private`; where a file's imports end, `file TurnEnv`; every
-  caller, `uses Moves.ask,Moves.keep`; a name you don't know, `find '*Shelf*'`; a test or
-  helper, `tests TurnToolsTests --test "<prefix>"` or `--body helper`.
-- Edit straight from that file text: an Edit's old_string may be copied from `show`, `show --body`,
-  `family`, `tests --test` or `tests --body` output without a Read first. Read a line range only
-  when an Edit fails to match. Several changes a few lines apart are one Edit.
+  report when you fell back. Every symbol you need goes in one call
+  (`show {"symbols": ["Flow", "Step", "Flows"]}`).
+- Which query, for what, as MCP arguments (each call also takes `root`; a list argument is a
+  JSON array of quoted strings, `["Turn"]`, never a bare word or one comma-joined string): a
+  signature and doc, `show {"symbols": ["Moves.ask"]}`; a body to edit,
+  `show {"symbols": ["Turn"], "body": ["looping"], "private": true}`; where a file's imports
+  end, `file {"target": "TurnEnv"}`; every caller, `uses {"symbols": ["Moves.ask", "Moves.keep"]}`;
+  a name you don't know, `find {"pattern": "*Shelf*"}`; a test or helper,
+  `tests {"suite": "TurnToolsTests", "test": "<prefix>"}` or `{"suite": …, "body": ["helper"]}`.
+- Edit straight from that file text: an Edit's old_string may be copied from `show` (with or
+  without `body`), `family`, or `tests` with `test` or `body`, without a Read first. Read a line
+  range only when an Edit fails to match. Several changes a few lines apart are one Edit.
 - Change source with Edit (and Write for a new file), which fails loudly on a mismatch; never
   `sed -i`, python or a heredoc, which change nothing silently when the text differs.
 - A line range scout printed is not a cue for `sed -n`: to read a member's body, private
-  ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
-  fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
+  ones included, ask for it by name (`show` with `body: ["m1", "m2"]`, `private: true`); for a
+  test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
   is for what scout cannot name (a test file's imports, a region inside one body). Nor is a
   `File.scala:N` in a brief: it points at a definition; `show` that. When the brief lists
   reads, run those first.
-- Adding a member to an implementation or a fake: `file` it for its members, then
-  `show Owner --body <the nearest sibling> --private` for the one you will write alongside.
+- Adding a member to an implementation or a fake: `file` it for its members, then `show` it
+  with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
   Never read the implementation whole to learn its shape.
-- Ask for private members (`--private`) only to edit them or to understand an implementation;
-  otherwise trust the public interface and referential transparency to understand the code. Name
-  the members you need (`show Render --body oneLine,caseItem --private`); `--private` on a whole
-  type with no `--body` lists every internal helper.
-- A suite and its helpers are reached through `tests <Suite>` (`--test "<prefix>"` for a test's
-  text, `--body h` for a helper's); `show` does not find test sources.
+- Ask for private members (`private: true`) only to edit them or to understand an
+  implementation; otherwise trust the public interface and referential transparency to
+  understand the code. Name the members you need in `body`; `private: true` on a whole type with
+  no `body` lists every internal helper.
+- A suite and its helpers are reached through `tests` (`test` for a test's text, `body` for a
+  helper's); `show` finds a test-source name only when main sources lack it.
 - Report every query that failed to answer what you needed: the query, what you wanted, what came
   back.
 

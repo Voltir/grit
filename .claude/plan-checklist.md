@@ -34,8 +34,9 @@ that applies in its plan; a reviewer checks each against the plan and says which
 - **Code by symbol, and each stage carries its reads.** A plan names code as `Owner.member` (a
   place inside a body: the member and a quoted phrase), never by file and line: a line number is
   stale after the first edit, and it sends the coder who builds the plan to `sed` instead of scout.
-  Each checkpoint or stage lists the scout queries its coder runs before its first edit: what it
-  changes (`show --body`), the sibling it writes alongside, the helpers it calls, the callers
-  (`uses`), and the tests and fakes it extends (`tests --test`, `file`). Every query resolves
-  against the branch the stage is built on; the reviewer runs them.
+  Each checkpoint or stage lists the scout queries its coder runs before its first edit, written
+  as MCP calls (`show {"symbols": ["Turn"], "body": ["looping"]}`): what it changes, the sibling
+  it writes alongside, the helpers it calls, the callers (`uses`), and the tests and fakes it
+  extends (`tests` with `test` or `body`, `file`). Every query resolves against the branch the
+  stage is built on; the reviewer runs them.
 - **Park, don't widen.** What surfaced and is not in scope is listed as parked, not folded in.

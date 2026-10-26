@@ -36,18 +36,22 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   reads and searches are for what scout cannot name, or a quick text search; avoid whole-file
   reads. `scripts/scout <query> --help` gives each query's flags and says which printed lines
   are the file's own text.
-- Which query, for what:
-  - an unfamiliar part of grit: `area <name>`;
-  - a name you don't know: `find '*Shelf*'`, `find '*.placed'`;
-  - a signature and its doc, before calling it: `show Moves.ask` — every symbol you need in
-    one call (`show Flow,Step,Flows`);
-  - a body you are about to edit, private or not: `show Turn --body looping,settle --private`;
-  - where a file's imports end and its definitions lie, or where to add one: `file TurnEnv`;
-  - every caller before changing a signature: `uses Moves.ask,Moves.keep` (one call);
-  - a trait and its implementations: `family Durable`;
-  - a test or a helper: `tests TurnToolsTests --test "<name prefix>"`, `--body helper`.
-- Edit straight from that file text: an Edit's old_string may be copied from `show`,
-  `show --body`, `family`, `tests --test` or `tests --body` output without a Read first. Read a
+- Which query, for what, as MCP arguments (each call also takes `root`; a list argument is a
+  JSON array of quoted strings, `["Turn"]`, never a bare word or one comma-joined string):
+  - an unfamiliar part of grit: `area {"names": ["knowledge"]}`;
+  - a name you don't know: `find {"pattern": "*Shelf*"}`;
+  - a signature and its doc, before calling it: `show {"symbols": ["Moves.ask"]}` — every
+    symbol you need in one call (`{"symbols": ["Flow", "Step", "Flows"]}`);
+  - a body you are about to edit, private or not:
+    `show {"symbols": ["Turn"], "body": ["looping", "settle"], "private": true}`;
+  - where a file's imports end and its definitions lie, or where to add one:
+    `file {"target": "TurnEnv"}`;
+  - every caller before changing a signature: `uses {"symbols": ["Moves.ask", "Moves.keep"]}`;
+  - a trait and its implementations: `family {"trait": "Durable"}`;
+  - a test or a helper: `tests {"suite": "TurnToolsTests", "test": "<name prefix>"}`,
+    `tests {"suite": "TurnToolsTests", "body": ["helper"]}`.
+- Edit straight from that file text: an Edit's old_string may be copied from `show` (with or
+  without `body`), `family`, or `tests` with `test` or `body`, without a Read first. Read a
   line range only when an Edit fails to match. Several changes a few lines apart are one Edit.
 - An edit must fail loudly when it does not apply, so source is changed with Edit (and Write
   for a new file), never `sed -i`, python or a heredoc, which change nothing silently on a
@@ -55,17 +59,17 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   may make it, and its commit message shows it applied, the count of matches before and after
   and a clean compile.
 - A line range scout printed is not a cue for `sed -n`: to read a member's body, private
-  ones included, ask for it by name (`show Owner --body m1,m2 --private`); for a test or a
-  fixture helper, `tests Suite --test "<name prefix>"` or `tests Suite --body helper`. `sed`
+  ones included, ask for it by name (`show` with `body: ["m1", "m2"]`, `private: true`); for a
+  test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
   is for what scout cannot name (a test file's imports, a region inside one body). Nor is a
   `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
   lists a stage's reads, run those first.
-- Adding a member to an implementation or a fake: `file` it for its members, then
-  `show Owner --body <the nearest sibling> --private` for the one you will write alongside.
+- Adding a member to an implementation or a fake: `file` it for its members, then `show` it
+  with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
   Never read the implementation whole to learn its shape.
-- Ask for private members (`--private`) only to edit them or to understand an implementation;
-  otherwise trust the public interface and referential transparency to understand the code.
-  Name the members you need with `--body`.
+- Ask for private members (`private: true`) only to edit them or to understand an
+  implementation; otherwise trust the public interface and referential transparency to
+  understand the code. Name the members you need in `body`.
 - A query that failed to answer what you needed goes in your report: the query, what you
   wanted, what came back.
 
