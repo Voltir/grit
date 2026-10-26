@@ -1,10 +1,10 @@
 package grit.core.document
 
 import grit.core.flow.Downgrade
-import grit.core.id.{DocKey, DocumentVersionId, PluginName, ShortHash}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, Sha256, ShortHash}
 import grit.core.period.Probability
 import grit.core.place.Place
-import grit.core.screen.{Checks, Screen, Screened}
+import grit.core.screen.{Benched, Checks, Screen, Screened}
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Label}
 
 /** `policy` applied to the document `document` reads, by the `version`th application to that
@@ -212,4 +212,41 @@ object Declassified {
           d.attempt
         )
       )
+
+  /** What a policy version's bench is kept under ([[grit.core.act.Declassifying.screening]]):
+    * a digest of its checks and of the screen's own questions and thresholds, so a bench goes
+    * stale when either changes.
+    */
+  opaque type Screening = Sha256
+
+  object Screening {
+    private[core] def of(digest: Sha256): Screening = digest
+
+    /** The screening [[written]] wrote; `None` for other text. */
+    private[grit] def read(hex: String): Option[Screening] = Sha256.read(hex)
+
+    extension (s: Screening) {
+
+      /** As 64 lowercase hex digits. */
+      def written: String = Sha256.hex(s)
+    }
+
+    given CanEqual[Screening, Screening] = CanEqual.derived
+  }
+
+  /** A policy version's checks as [[DocumentKeeper.checks]] read them, or why they do not read.
+    */
+  final class PolicyChecks private[grit] (
+      val policy: DeclassificationPolicy,
+      private[core] val checks: Either[Checks.Unreadable, Checks]
+  ) extends caps.Pure
+
+  /** A policy version's bench, kept by [[DocumentKeeper.keepBenched]]: `benched`, the verdict
+    * on `policy`'s examples, under `screening`. Made only by [[grit.core.act.Dreaming.bench]].
+    */
+  final class BenchRow private[core] (
+      val policy: DeclassificationPolicy,
+      val screening: Screening,
+      val benched: Benched
+  ) extends caps.Pure
 }

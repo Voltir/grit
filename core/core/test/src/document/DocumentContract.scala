@@ -4,12 +4,12 @@ import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{DocKey, DocumentVersionId, PluginName, ShortHash}
+import grit.core.id.{DocKey, DocumentVersionId, PluginName, Sha256, ShortHash}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.review.{DocumentLabel, DocumentReviews, ReviewWord}
-import grit.core.screen.Checks
+import grit.core.screen.{Benched, Checks}
 import grit.core.store.{Origin, Savepoints, StoreError, Tombstones, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -1644,6 +1644,88 @@ abstract class DocumentContract extends TestSuite {
         Label.at(Level.Confidential),
         None,
         Some("the fuller gist")
+      )
+    }
+
+    test(
+      "a bench row is kept for a version and read back; one under a new screening replaces it, and one for a version not kept is Invalid, keeping nothing"
+    ) {
+      val k = keeper(name("doc-bench"), terms())
+      val team = over("db-team")
+      policy(team, 1, revoked = false)
+      val v1 = DeclassificationPolicy(team, 1)
+      val passing = got(Benched.read(true, ujson.Arr()))
+      val failing = got(
+        Benched.read(
+          false,
+          ujson.Arr(
+            ujson.Obj("at" -> 0, "kind" -> "accept", "must" -> "absent", "p" -> 0.63, "signal" -> 3)
+          )
+        )
+      )
+      val (first, second) =
+        (Declassified.Screening.of(Sha256.text("a")), Declassified.Screening.of(Sha256.text("b")))
+      val before = transaction(ok(k.benched(v1)))
+      transaction(ok(k.keepBenched(new Declassified.BenchRow(v1, first, failing), at(1))))
+      val kept = transaction(ok(k.benched(v1)))
+      transaction(ok(k.keepBenched(new Declassified.BenchRow(v1, second, passing), at(2))))
+      val replaced = transaction(ok(k.benched(v1)))
+      val absent = DeclassificationPolicy(team, 2)
+      val refused =
+        transaction(k.keepBenched(new Declassified.BenchRow(absent, first, passing), at(3)))
+      (
+        before,
+        kept,
+        replaced,
+        refused.left.map(_.isInstanceOf[StoreError.Invalid]),
+        transaction(ok(k.benched(absent)))
+      ) ==> (
+        None,
+        Some((first, failing)),
+        Some((second, passing)),
+        Left(true),
+        None
+      )
+    }
+
+    test("benchable gives the version in force, and none once it is revoked") {
+      val k = keeper(name("doc-benchable"), terms())
+      val team = over("dbl-team")
+      policy(team, 1, revoked = false)
+      policy(team, 2, revoked = false)
+      val inForce = transaction(ok(k.benchable(team)))
+      policy(team, 3, revoked = true)
+      (inForce, transaction(ok(k.benchable(team)))) ==> (
+        Vector(DeclassificationPolicy(team, 2)),
+        Vector()
+      )
+    }
+
+    test(
+      "checks gives a version's checks, in force or not, only when the transaction reads its policy's label; none for a revocation or a version not kept"
+    ) {
+      val k = keeper(name("doc-checks"), terms())
+      val team = over("dck-team")
+      val grant = Label.at(Level.Confidential, TestLabels.compartment("dck-team"))
+      policyAt(team, 1, Some("drop the venue"), grant, Some(InMemoryDocuments.Checks))
+      policyAt(team, 2, Some("drop the date"), grant, None)
+      policyAt(team, 3, None, grant, None)
+      def asked(clearance: Clearance, version: Int) =
+        opened(clearance)(ok(k.checks(DeclassificationPolicy(team, version))))
+          .map(c => (c.policy.version, c.checks))
+      val cleared = Clearance.of(grant)
+      (
+        asked(cleared, 1),
+        asked(cleared, 2),
+        asked(Clearance.of(Label.Public), 1),
+        asked(cleared, 3),
+        asked(cleared, 4)
+      ) ==> (
+        Some((1, Checks.read(Some(InMemoryDocuments.Checks)))),
+        Some((2, Left(Checks.Unreadable.Missing))),
+        None,
+        None,
+        None
       )
     }
   }

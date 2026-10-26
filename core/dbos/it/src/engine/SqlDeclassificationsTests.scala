@@ -123,5 +123,35 @@ object SqlDeclassificationsTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       (forgot, kept) ==> (2, Vector("fx-a:1", "fx-a:2", "fx-b:2", "p1", "p3"))
     }
+
+    test("a policy version's bench is forgotten with its version, and kept with one kept") {
+      def version(v: Int): Unit =
+        run(
+          """INSERT INTO grit.declassification_policies
+            |       (over, version, classification_id, text, set_at, set_by)
+            |VALUES ('compartment:fb', ?, 1, 'remove it', now(), 'local')""".stripMargin
+        )(_.setInt(1, v))
+      def bench(v: Int): Unit =
+        run(
+          """INSERT INTO grit.declassification_benches
+            |       (over, policy_version, screening, passed, examples, benched_at)
+            |VALUES ('compartment:fb', ?, repeat('a', 64), true, '[]', now())""".stripMargin
+        )(_.setInt(1, v))
+      version(1)
+      bench(1)
+      version(2)
+      bench(2)
+      val _ = LiveDb
+        .transaction(config)(SqlDeclassifications.forget)
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+      LiveDb
+        .transaction(config)(
+          SqlStatements.many(
+            """SELECT policy_version FROM grit.declassification_benches
+              | WHERE over = 'compartment:fb' ORDER BY policy_version""".stripMargin
+          )(_ => ())(_.getInt("policy_version"))
+        )
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity) ==> Vector(2)
+    }
   }
 }

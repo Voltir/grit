@@ -7,7 +7,7 @@ import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.review.{DocumentLabel, DocumentReview, DocumentReviews, ReviewWord, Reviews}
-import grit.core.screen.Checks
+import grit.core.screen.{Benched, Checks}
 import grit.core.store.{InMemoryTombstones, Savepoints, StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Item, Label}
 
@@ -61,6 +61,11 @@ final class InMemoryDocuments extends DocumentStore {
   // As `rows`: each declassified version's audit row, by its version.
   @caps.unsafe.untrackedCaptures
   private var audits = Map.empty[Long, InMemoryDocuments.Audit]
+
+  // As `rows`: each policy version's bench, the screening it was kept under and its verdict.
+  @caps.unsafe.untrackedCaptures
+  private var benches =
+    Map.empty[(DeclassificationPolicy.Over, Int), (Declassified.Screening, Benched)]
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as an operator's row does:
     * `text`, or a revocation when `None`, with `checks` as the row's column holds them.
@@ -295,6 +300,36 @@ final class InMemoryDocuments extends DocumentStore {
             written
           }
       }
+
+      def checks(policy: DeclassificationPolicy)(using
+          tx: Tx^
+      ): Either[StoreError, Option[Declassified.PolicyChecks]] =
+        Right(policies.get((policy.over, policy.version)).collect {
+          case (Some(_), checks, kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
+            new Declassified.PolicyChecks(policy, Checks.read(checks))
+        })
+
+      def benchable(over: DeclassificationPolicy.Over)(using
+          Tx^
+      ): Either[StoreError, Vector[DeclassificationPolicy]] = Right(inForce(over).toVector)
+
+      def benched(policy: DeclassificationPolicy)(using
+          Tx^
+      ): Either[StoreError, Option[(Declassified.Screening, Benched)]] =
+        Right(benches.get((policy.over, policy.version)))
+
+      def keepBenched(row: Declassified.BenchRow, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Unit] =
+        if (!policies.contains((row.policy.over, row.policy.version)))
+          Left(StoreError.Invalid("no such policy version is kept"))
+        else {
+          benches = benches.updated(
+            (row.policy.over, row.policy.version),
+            (row.screening, row.benched)
+          )
+          Right(())
+        }
 
       def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
           Tx^

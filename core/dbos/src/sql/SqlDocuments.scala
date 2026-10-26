@@ -26,7 +26,7 @@ import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
-import grit.core.screen.Checks
+import grit.core.screen.{Benched, Checks}
 import grit.core.store.{StoreError, Tombstones, Tx}
 import grit.core.visibility.{Clearance, DeclassificationPolicy, Integrity, Label}
 
@@ -550,6 +550,80 @@ private[sql] object SqlDocuments {
         }
       } yield written
     }
+
+    def checks(policy: DeclassificationPolicy)(using
+        tx: Tx^
+    ): Either[StoreError, Option[Declassified.PolicyChecks]] =
+      cleared(
+        s"""WITH ${SqlClearance.With}
+          |SELECT p.checks
+          |  FROM grit.declassification_policies p
+          | WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
+          |   AND p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, policy.over.written)
+        ps.setInt(SqlClearance.Params + 2, policy.version)
+      }(rs =>
+        Right(
+          new Declassified.PolicyChecks(
+            policy,
+            Checks.read(Option(rs.getString("checks")).map(ujson.read(_)))
+          )
+        )
+      ).map(_.headOption)
+
+    def benchable(over: DeclassificationPolicy.Over)(using
+        tx: Tx^
+    ): Either[StoreError, Vector[DeclassificationPolicy]] =
+      rows(
+        s"""SELECT p.version FROM grit.declassification_policies p
+          | WHERE p.over = ? AND p.text IS NOT NULL
+          |   AND NOT ${SqlDeclassifications.PolicySuperseded}""".stripMargin
+      )(ps => ps.setString(1, over.written))(rs =>
+        Right(DeclassificationPolicy(over, rs.getInt("version")))
+      )
+
+    def benched(policy: DeclassificationPolicy)(using
+        tx: Tx^
+    ): Either[StoreError, Option[(Declassified.Screening, Benched)]] =
+      rows(
+        """SELECT screening, passed, examples::text AS examples
+          |  FROM grit.declassification_benches
+          | WHERE over = ? AND policy_version = ?""".stripMargin
+      ) { ps =>
+        ps.setString(1, policy.over.written)
+        ps.setInt(2, policy.version)
+      }(rs =>
+        Right(
+          for {
+            screening <- Declassified.Screening.read(rs.getString("screening"))
+            benched <- Benched
+              .read(rs.getBoolean("passed"), ujson.read(rs.getString("examples")))
+              .toOption
+          } yield (screening, benched)
+        )
+      ).map(_.headOption.flatten)
+
+    def keepBenched(row: Declassified.BenchRow, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] =
+      update(
+        """INSERT INTO grit.declassification_benches
+          |       (over, policy_version, screening, passed, examples, benched_at)
+          |SELECT p.over, p.version, ?, ?, ?::jsonb, ?
+          |  FROM grit.declassification_policies p
+          | WHERE p.over = ? AND p.version = ?
+          |ON CONFLICT (over, policy_version) DO UPDATE
+          |   SET screening = EXCLUDED.screening, passed = EXCLUDED.passed,
+          |       examples = EXCLUDED.examples, benched_at = EXCLUDED.benched_at""".stripMargin
+      ) { ps =>
+        ps.setString(1, row.screening.written)
+        ps.setBoolean(2, row.benched.passed)
+        ps.setString(3, Benched.write(row.benched).render())
+        ps.setObject(4, utc(at))
+        ps.setString(5, row.policy.over.written)
+        ps.setInt(6, row.policy.version)
+      }.flatMap(n => Either.cond(n > 0, (), StoreError.Invalid("no such policy version is kept")))
 
     def forReview(version: DocumentVersionId, day: LocalDate, at: Instant)(using
         tx: Tx^

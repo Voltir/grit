@@ -35,7 +35,19 @@ object DurableKeepingTests extends TestSuite {
 
   /** A keeper that writes as `inner` does, counting its writes. */
   private final class Counting(inner: DocumentKeeper) extends DocumentKeeper {
-    export inner.{current, declassifying, forReview, keepDeclassified, newest, referring, withdraw}
+    export inner.{
+      benchable,
+      benched,
+      checks,
+      current,
+      declassifying,
+      forReview,
+      keepBenched,
+      keepDeclassified,
+      newest,
+      referring,
+      withdraw
+    }
     // A counter only the test's assertions read; the keeper's writes bump it on the test's thread.
     @caps.unsafe.untrackedCaptures
     var writes = 0

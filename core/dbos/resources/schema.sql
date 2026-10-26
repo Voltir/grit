@@ -1084,7 +1084,8 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- benched on, as grit.core.screen.Checks reads them (the questions each signal is asked:
 -- Screen.absent and Screen.present; how to write them: docs/declassification-signals.md).
 -- `over` 'compartment:<c>'; `text` NULL for a revocation;
--- the current is the highest version. A version whose checks do not read rewrites nothing. Kept at its compartment's own group's grant
+-- the current is the highest version. A version rewrites nothing until the job's bench of its
+-- checks passes (grit.declassification_benches); one whose checks do not read never does. Kept at its compartment's own group's grant
 -- (`classification_id`, interned by grit.intern_classification), read only under a clearance
 -- dominating it. Written by its compartment's steward or an administrator; until commands
 -- exist, by the operator:
@@ -1152,6 +1153,25 @@ CREATE TABLE IF NOT EXISTS grit.declassifications (
 CREATE INDEX IF NOT EXISTS idx_declassifications_over
     ON grit.declassifications (over, policy_version);
 CREATE INDEX IF NOT EXISTS idx_declassifications_pointer ON grit.declassifications (pointer);
+
+-- The bench of a policy version's examples (Bench): whether every accept example passed the
+-- version's signals and every refuse example was refused, under `screening` (the digest of the
+-- version's checks and the screen's code); per example, by position, its deciding signal and that
+-- signal's probability of yes. It holds no text and nothing labelled, so it has no label of its own.
+-- A version is rewritten under only with a passing row under its current screening.
+-- Written only by the bench move (DocumentKeeper.keepBenched).
+-- Retention: kept: with its policy version, by cascade: tens.
+CREATE TABLE IF NOT EXISTS grit.declassification_benches (
+    over           TEXT NOT NULL,
+    policy_version INTEGER NOT NULL,
+    screening      TEXT NOT NULL CHECK (screening ~ '^[0-9a-f]{64}$'),
+    passed         BOOLEAN NOT NULL,
+    examples       JSONB NOT NULL CHECK (octet_length(examples::text) <= 2048),
+    benched_at     TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (over, policy_version),
+    FOREIGN KEY (over, policy_version)
+        REFERENCES grit.declassification_policies (over, version) ON DELETE CASCADE
+);
 
 -- A plugin's document put up for review on a day (DocumentKeeper.forReview), and what became
 -- of its prompt (DocumentReviews): posted at `address`, or dropped; the verdict its rater gave,

@@ -4,8 +4,9 @@ import java.time.{Instant, LocalDate}
 
 import grit.core.id.{DocKey, DocumentVersionId}
 import grit.core.place.Place
+import grit.core.screen.Benched
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.{Integrity, Label}
+import grit.core.visibility.{DeclassificationPolicy, Integrity, Label}
 
 /** One plugin's documents as it reads them: the current ones, withdrawals left out, and only
   * those its transaction reads ([[grit.core.store.Tx.clearance]]): a document kept in the
@@ -141,6 +142,35 @@ trait DocumentKeeper extends DocumentShelf {
     * plugin's own withdrawals do, each one bit at a key a reader could already see.
     */
   def keepDeclassified(row: Declassified.Row, at: Instant)(using Tx^): Either[StoreError, Written]
+
+  /** `policy`'s checks, as [[grit.core.screen.Checks.read]] reads them, only when its
+    * transaction reads the label the policy is kept at; `None` otherwise, when no such version
+    * is kept, and for a revocation. Read from the operator's rows as this transaction sees them
+    * now.
+    */
+  def checks(policy: DeclassificationPolicy)(using
+      Tx^
+  ): Either[StoreError, Option[Declassified.PolicyChecks]]
+
+  /** The versions of `over` a bench may be due for: the version in force (its compartment's
+    * highest, not a revocation), as this transaction sees the operator's rows now; whether one
+    * is due is [[grit.core.act.Declassifying.unbenched]]'s to say.
+    */
+  def benchable(over: DeclassificationPolicy.Over)(using
+      Tx^
+  ): Either[StoreError, Vector[DeclassificationPolicy]]
+
+  /** The bench kept for `policy`, with the screening it was kept under; `None` when none is, or
+    * when the one kept does not read, so the version is benched again.
+    */
+  def benched(policy: DeclassificationPolicy)(using
+      Tx^
+  ): Either[StoreError, Option[(Declassified.Screening, Benched)]]
+
+  /** Keeps `row` as its policy version's bench, replacing the one kept before.
+    * [[StoreError.Invalid]], keeping nothing, when no such policy version is kept.
+    */
+  def keepBenched(row: Declassified.BenchRow, at: Instant)(using Tx^): Either[StoreError, Unit]
 }
 
 object DocumentKeeper {
@@ -188,5 +218,21 @@ object DocumentKeeper {
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         Tx^
     ): Either[StoreError, Written] = keeper.keepDeclassified(row.believedAtMost(most), at)
+
+    def checks(policy: DeclassificationPolicy)(using
+        Tx^
+    ): Either[StoreError, Option[Declassified.PolicyChecks]] = keeper.checks(policy)
+
+    def benchable(over: DeclassificationPolicy.Over)(using
+        Tx^
+    ): Either[StoreError, Vector[DeclassificationPolicy]] = keeper.benchable(over)
+
+    def benched(policy: DeclassificationPolicy)(using
+        Tx^
+    ): Either[StoreError, Option[(Declassified.Screening, Benched)]] = keeper.benched(policy)
+
+    def keepBenched(row: Declassified.BenchRow, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Unit] = keeper.keepBenched(row, at)
   }
 }
