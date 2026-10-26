@@ -17,7 +17,7 @@ import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure
 
-/** The job `cards-declassify`, version 2, over the cards `cards` exports. A run reads at most
+/** The job `cards-declassify`, version 3, over the cards `cards` exports. A run reads at most
   * [[CardDeclassify.Cards]] current cards, most recent first, by their pointers and their files'
   * revisions alone, and the application in force for each
   * ([[grit.core.document.DocumentKeeper.declassifying]]). In its scan it withdraws every one of
@@ -31,15 +31,16 @@ final case class DeclassifyParams(perRun: Int) extends caps.Pure
   * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
   * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
   * `withhold-{i}`) so it is not asked again at those versions; one whose file is not yet pieced
-  * at its revision is tried again next run. Replies [[Tally.line]]. Its `limits`: asks and
-  * judgments, `perRunMost`; no calls.
+  * at its revision is tried again next run. Replies [[Tally.line]]. Its `limits`, so that
+  * `perRunMost` declassifies each retried fit: asks, twice `perRunMost` (a rewrite and its
+  * retry); judgments, three times (both attempts' screens and their source's); no calls.
   */
 final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
     extends DreamingJob[DeclassifyParams] {
 
   val name: JobName = CardDeclassify.Name
 
-  val version: Int = 2
+  val version: Int = 3
 
   def write(params: DeclassifyParams): ujson.Value = ujson.Obj("perRun" -> params.perRun)
 
@@ -53,8 +54,10 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
         s"a declassify's parameters hold perRun, a whole number at least 1: ${ujson.write(params).take(100)}"
       )
 
-  override val limits: MoveLimits =
-    MoveLimits.of(perRunMost.max(0), 0, perRunMost.max(0)).getOrElse(MoveLimits.Zero)
+  override val limits: MoveLimits = {
+    val most = perRunMost.max(0)
+    MoveLimits.of(2 * most, 0, 3 * most).getOrElse(MoveLimits.Zero)
+  }
 
   def run(run: Trusted[JobRun[DeclassifyParams]], moves: Dreaming^): String = {
     val most = run.extract.params.perRun.min(limits.asks)

@@ -187,9 +187,14 @@ object CardDeclassifyTests extends TestSuite {
       documents.application(pointer(id), version, Option.when(applied)(Over))
 
     /** One run with `perRun`, its rewrites answered "The team meets offsite." and every question
-      * of each screen, a rewrite's or a source's, `leak`: its reply.
+      * of each screen, a rewrite's or a source's, `leak`; or, given `screens`, the `i`th screen
+      * across runs answering `screens(i)` in order, cycling: its reply.
       */
-    def run(perRun: Int = 5, leak: Double = 0.0): String = {
+    def run(
+        perRun: Int = 5,
+        leak: Double = 0.0,
+        screens: Vector[Vector[Double]] = Vector()
+    ): String = {
       val job = new CardDeclassify(5, Cards)
       val world = new StrandWorld
       val needs = Needs.over(
@@ -224,8 +229,11 @@ object CardDeclassifyTests extends TestSuite {
           Right(Asked(TestTainted.at(reply, Integrity.Member), Floor))
         },
         request => {
+          val at = counts.checks
           counts.check()
-          val answers = Vector.fill(request.questions.size)(Answer.YesNo(leak))
+          val answers =
+            if (screens.isEmpty) Vector.fill(request.questions.size)(Answer.YesNo(leak))
+            else screens(at % screens.size).map(Answer.YesNo(_))
           Right(Asked(TestTainted.at(answers, Integrity.Member), Floor))
         }
       )
@@ -436,6 +444,22 @@ object CardDeclassifyTests extends TestSuite {
       )
     }
 
+    test(
+      "a run of its most cards, each retried after its source was asked, is not cut short by its limits"
+    ) {
+      val runs = new Runs
+      Vector("a", "b", "c", "d", "e").foreach { id =>
+        val _ = runs.card(id)
+        runs.apply(id, 1)
+      }
+      runs.policy(1)
+      // Each card: `meta` fires, its source's floor does not excuse it, and the retry passes.
+      val screens = Vector(Vector(0.5, 0.0, 0.0), Vector(0.0, 0.0), Vector(0.0, 0.0, 0.0))
+      (runs.run(screens = screens), runs.asked) ==> (
+        "declassified cards: 5 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+        (10, 15)
+      )
+    }
     test("its parameters read back as written; a perRun under 1, or not whole, does not read") {
       val job = new CardDeclassify(5, Cards)
       (
