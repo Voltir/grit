@@ -38,5 +38,19 @@ object UnitVersion {
     case Changed(at) => at.toString
   }
 
+  /** The version `data` names under `version`, or why it names none: it holds no `version`, or
+    * the one it holds is no version ([[of]]).
+    */
+  def inData(data: ujson.Value): Either[String, UnitVersion] =
+    data.objOpt.flatMap(_.get("version")) match {
+      case Some(value) =>
+        value.strOpt
+          .flatMap(of(_).toOption)
+          .toRight(
+            s"its version, ${value.strOpt.getOrElse(ujson.write(value))}, is no git SHA or instant"
+          )
+      case None => Left("it holds no version")
+    }
+
   private val Hex = "[0-9a-f]{40}|[0-9a-f]{64}".r
 }

@@ -66,15 +66,7 @@ object Held {
     } yield (key, path)
     owned.fold(Read.Theirs) { (key, path) =>
       val fields = for {
-        version <- data.flatMap(_.get("version")) match {
-          case Some(value) =>
-            value.strOpt
-              .toRight(())
-              .flatMap(UnitVersion.of(_).left.map(_ => ()))
-              .left
-              .map(_ => s"its version, ${shown(value)}, is no git SHA or instant")
-          case None => Left("it holds no version")
-        }
+        version <- UnitVersion.inData(document.data)
         scope <- data.flatMap(_.get("scope")) match {
           case None => Right(None)
           case Some(value) =>

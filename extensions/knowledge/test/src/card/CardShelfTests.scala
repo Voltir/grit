@@ -115,8 +115,13 @@ object CardShelfTests extends TestSuite {
       val (docs, versions) = kept(Vector(a -> at(1), b -> at(2), c -> at(3)))
       CardShelf.over(docs.shelf(name)).pointed(2) ==> Right(
         Vector(
-          CardShelf.Pointed(versions(2), sha, Label.Public, c.pointer),
-          CardShelf.Pointed(versions(1), "2026-01-01T00:00:00Z", Label.Public, b.pointer)
+          CardShelf.Pointed(versions(2), right(UnitVersion.of(sha)), Label.Public, c.pointer),
+          CardShelf.Pointed(
+            versions(1),
+            right(UnitVersion.of("2026-01-01T00:00:00Z")),
+            Label.Public,
+            b.pointer
+          )
         )
       )
     }

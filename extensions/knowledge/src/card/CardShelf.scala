@@ -51,12 +51,12 @@ object CardShelf {
       label: Label
   ) extends caps.Pure
 
-  /** A current card by its version, its file's `revision` (its [[UnitVersion]], as
-    * [[UnitVersion.value]] writes it), the label it is kept at and the pointer that reads it.
+  /** A current card by its version, its file's `revision` as its data names it
+    * ([[UnitVersion.inData]]), the label it is kept at and the pointer that reads it.
     */
   final case class Pointed(
       version: DocumentVersionId,
-      revision: String,
+      revision: UnitVersion,
       label: Label,
       pointer: Pointer
   ) extends caps.Pure
@@ -83,7 +83,7 @@ object CardShelf {
         (_, d) =>
           for {
             pointer <- d.pointer
-            revision <- d.data.objOpt.flatMap(_.get("version")).flatMap(_.strOpt)
+            revision <- UnitVersion.inData(d.data).toOption
           } yield Pointed(d.version, revision, d.label, pointer),
         _ => true
       )

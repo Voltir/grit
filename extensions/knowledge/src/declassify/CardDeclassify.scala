@@ -12,7 +12,7 @@ import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
-import grit.knowledge.card.{CardMoves, CardShelf, NotWritten}
+import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
 
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure
@@ -123,7 +123,7 @@ object CardDeclassify {
       applied <- traverse(pointed)(c =>
         keeper
           .declassifying(c.label, c.pointer)
-          .map(_.map(a => Due(c.version, c.revision, a.applied)))
+          .map(_.map(a => Due(c.version, UnitVersion.value(c.revision), a.applied)))
       )
       inForce = applied.flatten
       current = inForce.map(_.made).toSet
