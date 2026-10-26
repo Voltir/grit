@@ -2,7 +2,7 @@ package grit.act.moves
 
 import grit.core.act.MovesFixtures.shown
 import grit.core.act.{Answer, Called, Declassifying}
-import grit.core.classify.{Ask, Criterion, Level as Rung, Request, StateJson}
+import grit.core.classify.{Answer as Judged, Ask, Criterion, Level as Rung, Request, StateJson}
 import grit.core.document.{Declassified, DocText, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.edge.RequestState
@@ -624,12 +624,54 @@ object MovesJournalTests extends TestSuite {
       val (r1, r2) =
         (MovesJournal.rewrite(source, "r1", applied), MovesJournal.rewrite(source, "r2", applied))
       (
-        MovesJournal.sameRewrite(v1Rewrite, source, "r1", applied),
+        MovesJournal.sameRewrite(v1Rewrite, source, "r1", applied, None),
         r1.take(3),
         r1 == r2,
-        MovesJournal.sameRewrite(r1, source, "r1", applied),
-        MovesJournal.sameRewrite(r1, source, "r2", applied)
+        MovesJournal.sameRewrite(r1, source, "r1", applied, None),
+        MovesJournal.sameRewrite(r1, source, "r2", applied, None)
       ) ==> (true, "v2:", false, true, false)
+    }
+
+    test(
+      "a retry digest is v3, of its draft and what fired; a first rewrite's digest is no retry's, nor a retry's a first's"
+    ) {
+      val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
+      val applied = PolicyApplication(
+        DeclassificationPolicy(
+          DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team")),
+          1
+        ),
+        TestPieces.pointer("f"),
+        1
+      )
+      val shape = Screen.Shape(2, Vector(Must.Present))
+      def again(draft: String, answers: Vector[Double]): Declassifying.Again =
+        (for {
+          text <- DocText.of(draft).left.map(_.toString)
+          screened <- Screen.read(shape, answers.map(Judged.YesNo(_))).left.map(_.said)
+          a <- Declassifying.Again.of(text, screened.fired(None)).toRight("no retry")
+        } yield a).fold(e => throw new java.lang.AssertionError(e), identity)
+      val floor = again("The draft.", Vector(0.5, 0.0, 0.9))
+      val digest = MovesJournal.retry(source, "r1", applied, floor)
+      val first = MovesJournal.rewrite(source, "r1", applied)
+      (
+        digest.take(3),
+        digest == MovesJournal.retry(
+          source,
+          "r1",
+          applied,
+          again("Another.", Vector(0.5, 0.0, 0.9))
+        ),
+        digest == MovesJournal.retry(
+          source,
+          "r1",
+          applied,
+          again("The draft.", Vector(0.0, 0.0, 0.2))
+        ),
+        MovesJournal.sameRewrite(digest, source, "r1", applied, Some(floor)),
+        MovesJournal.sameRewrite(first, source, "r1", applied, Some(floor)),
+        MovesJournal.sameRewrite(digest, source, "r1", applied, None)
+      ) ==> ("v3:", false, false, true, false, false)
     }
 
     test(

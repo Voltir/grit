@@ -34,7 +34,8 @@ object MovesFixtures {
     * call's arguments the next of `shapes` (the last again once they run out;
     * `{"answer": answer}` when there are none), the `i`th call of its `n`th answer `call-{n}`,
     * or `call-{n}-{i}` from its second. With `crash`, the process dies inside the first call.
-    * Each reply reports `upstream` as who served it; a text answer stops as `stop` says.
+    * Each reply reports `upstream` as who served it; a text answer stops as `stop` says, and is
+    * `answer`, or from its second the next of `later` (the last again once they run out).
     */
   final class Answering(
       answer: String,
@@ -42,7 +43,8 @@ object MovesFixtures {
       shapes: Vector[ujson.Value] = Vector(),
       calling: Int = 1,
       upstream: Option[String] = None,
-      stop: StopReason = StopReason.EndTurn
+      stop: StopReason = StopReason.EndTurn,
+      later: Vector[String] = Vector()
   ) extends Models {
     // Written and read only on the test's own thread, through the calls the moves make on it.
     @caps.unsafe.untrackedCaptures
@@ -55,6 +57,14 @@ object MovesFixtures {
     private var armed = crash
     @caps.unsafe.untrackedCaptures
     private var shaped = 0
+    @caps.unsafe.untrackedCaptures
+    private var texted = 0
+    private def text(): AssistantBlock = {
+      val all = answer +: later
+      val t = all.lift(texted).orElse(all.lastOption).getOrElse(answer)
+      texted += 1
+      AssistantBlock.Text(t)
+    }
     def catalog(): Either[String, Catalog] = Right(TestCatalog)
     def provider(pinned: Pinned): Provider^ = new Provider {
       def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] = {
@@ -76,9 +86,9 @@ object MovesFixtures {
             }
             (made, StopReason.ToolUse)
           case ToolUse.Required =>
-            (Vector(AssistantBlock.Text(answer)), stop)
+            (Vector(text()), stop)
           case ToolUse.Auto | ToolUse.Off =>
-            (Vector(AssistantBlock.Text(answer)), stop)
+            (Vector(text()), stop)
         }
         Right(
           Message.Assistant(

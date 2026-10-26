@@ -291,10 +291,14 @@ trait Dreaming extends Keeping {
     * step (`ask:{name}`), of the catalog's `dream` role; then the rewrite alone is screened by
     * [[Declassifying.screen]] of the policy's checks, read again in its own step
     * (`ask:{name}-check`); when a floor answer fires ([[Screened.floorFires]]), the source's
-    * text by [[Declassifying.Floor]] alone, once, in its own (`ask:{name}-source`); then lowered
-    * by the declassification the run's program declared ([[Declassifying.Node]]) when nothing
-    * fired against the source's floor ([[Screened.fired]]). [[Declassifying.Outcome]]: `Made`;
-    * `Kept` when something fired, or the model wrote [[Declassifying.Nothing]] (no check asked);
+    * text by [[Declassifying.Baseline]], once for both attempts, in its own (`ask:{name}-source`);
+    * then lowered by the declassification the run's program declared ([[Declassifying.Node]])
+    * when nothing fired against the source's floor ([[Screened.fired]]). When only floor
+    * questions or present signals fired ([[Declassifying.Again]]), the rewrite is asked once more
+    * (`ask:{name}-retry`, as [[Declassifying.request]] of the draft and what fired) and screened
+    * again (`ask:{name}-retry-check`). [[Declassifying.Outcome]]: `Made`, of the attempt that
+    * passed; `Kept` when an absent signal fired, or anything fired on the retry, or the model
+    * wrote [[Declassifying.Nothing]] (no check asked);
     * `Unapplied`, asking nothing more, when any step reads nothing, with why
     * ([[Declassifying.Unread]]: `Unchecked` when its policy's checks do not read). Each ask is
     * counted, limited and refused as an ask or a judgment is ([[ask]]), and a screen refused is
@@ -312,43 +316,64 @@ trait Dreaming extends Keeping {
     declassifier match {
       case None => Left(MoveError.Undeclared(Declassified.declassification.described.name))
       case Some(raise) =>
-        rewrite(name, source, revision, applied).flatMap { rewritten =>
-          Trusted.asIs(rewritten).extract match {
-            case Declassifying.Rewritten.Unapplied(why) =>
-              Right(Declassifying.Outcome.Unapplied(why))
-            case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
-            case Declassifying.Rewritten.Made(text, from) =>
-              val attempt = Declassified.Attempt.First
-              screen(name, source, revision, applied, text, attempt).flatMap {
-                case Left(why) => Right(Declassifying.Outcome.Unapplied(why))
-                case Right(screened) =>
-                  val against
-                      : Either[MoveError, Either[Declassifying.Unread, Option[Screen.Baseline]]] =
-                    if (!screened.floorFires) Right(Right(None))
-                    else baseline(name, source, revision, applied).map(_.map(Some(_)))
-                  against.map {
-                    case Left(why) => Declassifying.Outcome.Unapplied(why)
-                    case Right(base) =>
-                      raise(
-                        (
-                          rewrite = text,
-                          source = from,
-                          applied = applied,
-                          screened = screened,
-                          baseline = base,
-                          attempt = attempt
-                        )
-                      ) match {
-                        case Some(d) => Declassifying.Outcome.Made(rewritten.map(_ => d))
-                        case None if !screened.fired(base).passes =>
-                          Declassifying.Outcome.Kept(Some(screened.judged(base)))
-                        // The rewrite's source is no longer the application's document.
-                        case None => Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)
-                      }
-                  }
-              }
+        // One attempt: its rewrite (`again` for the retry), its screen, and the source's floor
+        // when its floor fires and `known`, the source's floor as an earlier attempt read it,
+        // is none.
+        def attempt(
+            at: Declassified.Attempt,
+            again: Option[Declassifying.Again],
+            known: Option[Screen.Baseline]
+        ): Either[MoveError, Declassifying.Outcome] = {
+          val asked = again match {
+            case None => Right(name)
+            case Some(_) => Declassifying.retried(name).left.map(MoveError.Model(_))
+          }
+          asked.flatMap(rewrite(_, source, revision, applied, again)).flatMap { rewritten =>
+            Trusted.asIs(rewritten).extract match {
+              case Declassifying.Rewritten.Unapplied(why) =>
+                Right(Declassifying.Outcome.Unapplied(why))
+              case Declassifying.Rewritten.Withheld => Right(Declassifying.Outcome.Kept(None))
+              case Declassifying.Rewritten.Made(text, from) =>
+                screen(name, source, revision, applied, text, at).flatMap {
+                  case Left(why) => Right(Declassifying.Outcome.Unapplied(why))
+                  case Right(screened) =>
+                    val against
+                        : Either[MoveError, Either[Declassifying.Unread, Option[Screen.Baseline]]] =
+                      if (!screened.floorFires || known.nonEmpty) Right(Right(known))
+                      else baseline(name, source, revision, applied).map(_.map(Some(_)))
+                    against.flatMap {
+                      case Left(why) => Right(Declassifying.Outcome.Unapplied(why))
+                      case Right(base) =>
+                        val fired = screened.fired(base)
+                        raise(
+                          (
+                            rewrite = text,
+                            source = from,
+                            applied = applied,
+                            screened = screened,
+                            baseline = base,
+                            attempt = at
+                          )
+                        ) match {
+                          case Some(d) => Right(Declassifying.Outcome.Made(rewritten.map(_ => d)))
+                          // The rewrite's source is no longer the application's document.
+                          case None if fired.passes =>
+                            Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed))
+                          case None =>
+                            val retry = at match {
+                              case Declassified.Attempt.First => Declassifying.Again.of(text, fired)
+                              case Declassified.Attempt.Second => None
+                            }
+                            retry.fold(
+                              Right(Declassifying.Outcome.Kept(Some(screened.judged(base))))
+                            )(a => attempt(Declassified.Attempt.Second, Some(a), base))
+                        }
+                    }
+                }
+            }
           }
         }
+        attempt(Declassified.Attempt.First, None, None)
     }
 
   /** The declassification, as the run's program declared it ([[Declassifying.raise]]): `None`
@@ -356,15 +381,17 @@ trait Dreaming extends Keeping {
     */
   protected def declassifier: Option[Declassifying.Raising^]
 
-  /** [[declassify]]'s first ask, `name`: what it read and the model wrote, believed at the meet
-    * of the run, its source and the reply; [[Declassifying.Rewritten.Unapplied]] when it read
-    * nothing and asked nothing.
+  /** [[declassify]]'s rewrite `name`, its first, or with `again` its retry
+    * ([[Declassifying.request]]): what it read and the model wrote, believed at the meet of the
+    * run, its source and the reply; [[Declassifying.Rewritten.Unapplied]] when it read nothing
+    * and asked nothing.
     */
   protected def rewrite(
       name: MoveName,
       source: DocumentVersionId,
       revision: String,
-      applied: PolicyApplication
+      applied: PolicyApplication,
+      again: Option[Declassifying.Again]
   ): Either[MoveError, Tainted[Declassifying.Rewritten]]
 
   /** [[declassify]]'s screen of `rewrite`, its `attempt` ([[Declassifying.checked]]), read again

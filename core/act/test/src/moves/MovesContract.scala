@@ -125,18 +125,20 @@ abstract class MovesContract extends TestSuite {
   ): (A, Vector[(String, Vector[String])])
 
   /** What `use` returns, given moves as [[dreaming]]'s within `limits` over `shelves` and no
-    * strands, every transaction opened at [[Declassing]]: a text ask's model replying `rewrite`,
-    * stopping as `stop` says, and the `i`th judgment's classifier answering yes to each of its
-    * questions with the `i`th of `leaks`, in order (the last again once they run out); and each
-    * text ask's system text and user messages, as the model was shown them, in order.
+    * strands, every transaction opened at [[Declassing]]: the first text ask's model replying
+    * `rewrite`, every later one `retry` (`rewrite` when none), stopping as `stop` says, and the
+    * `i`th judgment's classifier answering yes to each of its questions with the `i`th of
+    * `leaks`, in order (the last again once they run out); and each text ask's request, as the
+    * model was shown it, in order.
     */
   def declassifying[A <: caps.Pure](
       limits: MoveLimits,
       shelves: Shelves,
       rewrite: String,
       leaks: Vector[Vector[Double]],
-      stop: StopReason = StopReason.EndTurn
-  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])])
+      stop: StopReason = StopReason.EndTurn,
+      retry: Option[String] = None
+  )(use: Dreaming^ -> A): (A, Vector[ModelRequest])
 
   /** What `use` returns, given moves as [[keeping]]'s within `limits`, whose piece moves keep
     * [[MovesWorld.Notes]]' pieces in transactions opened at [[Floor]], reading the file
@@ -775,9 +777,11 @@ abstract class MovesContract extends TestSuite {
         Vector(0.5, 0.0, 0.2),
         Vector(0.4, 0.0),
         Vector(0.5, 0.0, 0.2),
-        Vector(0.39, 0.0)
+        Vector(0.39, 0.0),
+        // The retry the floor's failure asks, failing as the first did.
+        Vector(0.5, 0.0, 0.2)
       )
-      val (got, _) = declassifying(declassifies(4, 6), shelves, Rewrote, leaks) { m =>
+      val (got, _) = declassifying(declassifies(5, 7), shelves, Rewrote, leaks) { m =>
         Seen(
           Vector("a", "b", "c", "d", "e").map(n =>
             m.declassify(name(n), source, Revision, policy).map(outcome)
@@ -790,11 +794,138 @@ abstract class MovesContract extends TestSuite {
           Right("kept 0.4"),
           Right("made internal judged 0.2"),
           Right("kept 0.5"),
-          Left(MoveError.OverLimit(MoveKind.Ask, 4))
+          Left(MoveError.OverLimit(MoveKind.Ask, 5))
         )
       )
     }
 
+    test("a first attempt refused by an absent signal is Kept, with no retry") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = applied(shelves, "c1")
+      // An absent answer at Infers alone, then with the floor's (unexcused by the source's).
+      val (alone, aloneAsked) =
+        declassifying(declassifies(2, 2), shelves, Rewrote, Vector(Vector(0.0, 0.0, 0.4))) { m =>
+          Seen(Vector(m.declassify(name("a"), source, Revision, policy).map(outcome)))
+        }
+      val floored = Vector(Vector(0.5, 0.0, 0.4), Vector(0.0, 0.0))
+      val (both, bothAsked) = declassifying(declassifies(2, 4), shelves, Rewrote, floored) { m =>
+        Seen(Vector(m.declassify(name("b"), source, Revision, policy).map(outcome)))
+      }
+      (alone, aloneAsked.size, both, bothAsked.size) ==> (
+        Seen(Vector(Right("kept 0.4"))),
+        1,
+        Seen(Vector(Right("kept 0.5"))),
+        1
+      )
+    }
+    test(
+      "refused only by the floor or a missing present signal, it is asked once more, with the draft and the feedback, never a score"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = stating(shelves, "c1")
+      // `first` fires, unexcused by the source's floor, and the present signal is missing; then
+      // the retry passes.
+      val leaks = Vector(Vector(0.0, 0.5, 0.0, 0.2), Vector(0.0, 0.0), Vector(0.0, 0.0, 0.0, 0.9))
+      val (got, asked) = declassifying(declassifies(2, 3), shelves, Rewrote, leaks) { m =>
+        Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+      }
+      val system = Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>"
+      val document = Message.User(s"<document>\n$FileText\n</document>")
+      val draft = Message.Assistant(
+        Vector(AssistantBlock.Text(Rewrote)),
+        StopReason.EndTurn,
+        grit.core.message.Usage.Zero,
+        ""
+      )
+      (got, asked) ==> (
+        Seen(Vector(Right("made internal judged 0.0"))),
+        Vector(
+          ModelRequest(system, Vector(document)),
+          ModelRequest(system, Vector(document, draft, Message.User(Retold)))
+        )
+      )
+    }
+    test("a retry is made at most once") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = stating(shelves, "c1")
+      // The present signal missing on each attempt.
+      val (got, asked) =
+        declassifying(declassifies(3, 3), shelves, Rewrote, Vector(Vector(0.0, 0.0, 0.0, 0.2))) {
+          m => Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+        }
+      (got, asked.size) ==> (Seen(Vector(Right("kept 0.0"))), 2)
+    }
+    test(
+      "the source is asked only when a floor fires, once for both attempts, before or after the retry"
+    ) {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = stating(shelves, "c1")
+      def declassified(judgments: Int, leaks: Vector[Vector[Double]]) =
+        declassifying(declassifies(2, judgments), shelves, Rewrote, leaks) { m =>
+          Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
+        }._1
+      // No floor fires: no source asked, so two judgments are enough.
+      val never = declassified(2, Vector(Vector(0.0, 0.0, 0.0, 0.2), Vector(0.0, 0.0, 0.0, 0.9)))
+      // Only the retry's floor fires: the source is asked after it, and excuses it.
+      val after = declassified(
+        3,
+        Vector(Vector(0.0, 0.0, 0.0, 0.2), Vector(0.5, 0.0, 0.0, 0.9), Vector(0.5, 0.0))
+      )
+      // The first's floor fires: the source is asked before the retry, and its answers, which do
+      // not excuse it, judge the retry's too; a second source ask would be excused by the last.
+      val before = declassified(
+        4,
+        Vector(
+          Vector(0.5, 0.0, 0.0, 0.9),
+          Vector(0.0, 0.0),
+          Vector(0.5, 0.0, 0.0, 0.9),
+          Vector(0.5, 0.0)
+        )
+      )
+      (never, after, before) ==> (
+        Seen(Vector(Right("made internal judged 0.0"))),
+        Seen(Vector(Right("made internal judged 0.0"))),
+        Seen(Vector(Right("kept 0.5")))
+      )
+    }
+    test("a passing retry is declassified as attempt 2") {
+      val shelves = Shelves(needed = Vector(Cards))
+      val (source, policy) = stating(shelves, "c1")
+      val leaks = Vector(Vector(0.0, 0.0, 0.0, 0.2), Vector(0.0, 0.0, 0.0, 0.9))
+      val retried = "The team meets offsite, by the water."
+      val (got, _) =
+        declassifying(declassifies(2, 2), shelves, Rewrote, leaks, retry = Some(retried)) { m =>
+          m.declassify(name("d"), source, Revision, policy) match {
+            case Right(Declassifying.Outcome.Made(t)) =>
+              val attempt = grit.core.flow.Trusted.asIs(t).extract.attempt
+              val kept = m.keep(name("k"), t)((d, keeper, at) =>
+                keeper.declassified(d, Integrity.Authority, at).map {
+                  case Written.Versioned(v, _, _) => Kept(DocumentVersionId.value(v).toString)
+                  case w => Kept(w.toString)
+                }
+              )
+              Seen(Vector(Right(attempt.toString), kept.map(_.label)))
+            case other => Seen(Vector(other.map(outcome)))
+          }
+        }
+      val version = got.moves
+        .lift(1)
+        .flatMap(_.toOption)
+        .flatMap(_.toLongOption)
+        .flatMap(DocumentVersionId.of)
+      val text = version.toVector
+        .flatMap(v =>
+          shelves.documents
+            .read(Vector(v))(using TestTx.fake(grit.core.visibility.Clearance.of(Declassing)))
+            .fold(_ => Vector(), identity)
+        )
+        .map(d => DocText.value(d.text))
+      (
+        got.moves.headOption,
+        text,
+        version.flatMap(shelves.documents.declassification).map(_.attempt)
+      ) ==> (Some(Right("Second")), Vector(retried), Some(2))
+    }
     test(
       "a declassify's rewrite is kept without its compartment, audited with its source, the policy version and the application version, its data naming its file's revision"
     ) {
@@ -850,10 +981,10 @@ abstract class MovesContract extends TestSuite {
       val (_, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
         Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
       }
-      val document = shown.flatMap(_._2).headOption.getOrElse("")
+      val document = shown.flatMap(users).headOption.getOrElse("")
       val cut = document.stripPrefix("<document>\n").stripSuffix("\n</document>")
       (
-        shown.map(_._1),
+        shown.map(_.system),
         cut.startsWith(s"$FileText\n\nboots boots"),
         cut.length <= Declassifying.SourceChars && cut.length > Declassifying.SourceChars - 10,
         cut.endsWith("boots…"),
@@ -1342,6 +1473,41 @@ object MovesContract {
 
   /** One check's answers, each a sure no. */
   val Clean: Vector[Vector[Double]] = Vector(Vector(0.0, 0.0, 0.0))
+
+  /** What [[stating]]'s present signal must see stated. */
+  val Stated = "that the team meets offsite"
+
+  /** The retry [[stating]]'s screen asks when only `first` and its present signal fired, as
+    * the model is told it.
+    */
+  val Retold: String =
+    "Your rewrite was not accepted: it speaks as its writer about what it shares or leaves " +
+      s"out; and it does not state $Stated. Write the document again. The check is an " +
+      "imperfect test of the real goal. Don't reword things just to get past it: write so that " +
+      "a reader genuinely could not infer these things."
+
+  /** As [[applied]], [[Team]]'s policy's checks one absent signal, then one present of
+    * [[Stated]]: its screen asks meta, first, the absent one, then the present one.
+    */
+  def stating(shelves: Shelves, key: String): (DocumentVersionId, PolicyApplication) = {
+    val got = applied(shelves, key)
+    val checks = ujson.Obj(
+      "signals" -> ujson.Arr(
+        ujson.Obj("infer" -> "where the team meets", "must" -> "absent"),
+        ujson.Obj("infer" -> Stated, "must" -> "present")
+      ),
+      "examples" -> ujson.Obj(
+        "accept" -> ujson.Arr("The team meets offsite."),
+        "refuse" -> ujson.Arr("The team meets at the lake house.")
+      )
+    )
+    shelves.documents.policy(Team, 1, Some(Instructions), Declassing, Some(checks))
+    got
+  }
+
+  /** The text of each of `request`'s user messages, in order. */
+  def users(request: ModelRequest): Vector[String] =
+    request.messages.collect { case Message.User(t) => t }
 
   /** The pointer at the drive file `id`. */
   def file(id: String): Pointer =

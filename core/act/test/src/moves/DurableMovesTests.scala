@@ -166,8 +166,9 @@ object DurableMovesTests extends MovesContract {
       shelves: MovesContract.Shelves,
       rewrite: String,
       leaks: Vector[Vector[Double]],
-      stop: StopReason
-  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
+      stop: StopReason,
+      retry: Option[String]
+  )(use: Dreaming^ -> A): (A, Vector[ModelRequest]) = {
     val w = new MovesWorld(
       broken = false,
       MovesContract.Declassing,
@@ -179,17 +180,16 @@ object DurableMovesTests extends MovesContract {
     val judging = new Judging(
       leaks.map(ls => Right(Answers(ls.map(Judged.YesNo(_)), Spent, "test/judge")))
     )
-    val (got, requests) =
-      w.answering(
-        limits,
-        new StrandWorld,
-        shelves.needs,
-        rewrite,
-        judging,
-        DurableMoves.Within,
-        stop
-      )(use)
-    (got, requests.map(r => (r.system, r.messages.collect { case Message.User(t) => t })))
+    w.answering(
+      limits,
+      new StrandWorld,
+      shelves.needs,
+      rewrite,
+      judging,
+      DurableMoves.Within,
+      stop,
+      retry.toVector
+    )(use)
   }
 }
 
@@ -373,8 +373,9 @@ final class MovesWorld(
   ): (A, Vector[ModelRequest]) =
     answering(limits, world, needs, Answer, new Judging(), DurableMoves.Within)(use)
 
-  /** As [[dreaming]], its text asks answered `answer`, stopping as `stop` says, its judgments by
-    * `classifier`, and its program declaring `declared`.
+  /** As [[dreaming]], its text asks answered `answer`, from the second the next of `later` (the
+    * last again), stopping as `stop` says, its judgments by `classifier`, and its program
+    * declaring `declared`.
     */
   def answering[A <: caps.Pure](
       limits: MoveLimits,
@@ -383,11 +384,12 @@ final class MovesWorld(
       answer: String,
       classifier: Classifier^,
       declared: Vector[Flow.Node],
-      stop: StopReason = StopReason.EndTurn
+      stop: StopReason = StopReason.EndTurn,
+      later: Vector[String] = Vector()
   )(
       use: Dreaming^ -> A
   ): (A, Vector[ModelRequest]) = {
-    val models = new Answering(answer, stop = stop)
+    val models = new Answering(answer, stop = stop, later = later)
     val dreams =
       MovesWorld.dreams(acting, limits, keeper, world, needs, documents, declared, pieces)(use)
     var out: Option[A] = None

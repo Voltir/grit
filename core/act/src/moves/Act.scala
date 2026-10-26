@@ -247,11 +247,14 @@ private[moves] object Act {
         }
     }
 
-  /** The rewrite `name` as `reading` reads it ([[Declassifying.read]]), under `digest`. */
+  /** The rewrite `name` as `reading` reads it ([[Declassifying.read]]), the first or, with
+    * `again`, the retry, under `digest`.
+    */
   final case class Rewriting(
       name: MoveName,
       acting: Acting,
       reading: Declassifying.Reading,
+      again: Option[Declassifying.Again],
       digest: String
   ) extends Acted
 
@@ -302,7 +305,7 @@ private[moves] object Act {
             (AskMade.Refused(unreadKind(why), why.why, r.digest), None)
           case Right(Right(shown)) =>
             (
-              texted(env, r.acting, Dreams, Declassifying.request(shown), r.digest),
+              texted(env, r.acting, Dreams, Declassifying.request(shown, r.again), r.digest),
               Some(Sourced(shown.source, r.acting.integrity.meet(shown.integrity)))
             )
         }

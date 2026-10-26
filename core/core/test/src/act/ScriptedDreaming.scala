@@ -112,7 +112,8 @@ final class ScriptedDreaming(
       name: MoveName,
       source: DocumentVersionId,
       revision: String,
-      applied: PolicyApplication
+      applied: PolicyApplication,
+      again: Option[Declassifying.Again]
   ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
     shown(source, revision, applied) match {
       case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
@@ -121,7 +122,7 @@ final class ScriptedDreaming(
           Right(TestTainted.at(Declassifying.Rewritten.Unapplied(why), integrity))
         )
       case Right(Right(shown)) =>
-        val posed = Posed.Text(Declassifying.request(shown))
+        val posed = Posed.Text(Declassifying.request(shown, again))
         ask(name, TestTainted.at(posed, integrity.meet(shown.integrity))).flatMap(a =>
           Declassifying
             .written(Trusted.asIs(a.reply).extract)

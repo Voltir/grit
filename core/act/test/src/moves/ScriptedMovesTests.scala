@@ -20,6 +20,7 @@ import grit.core.files.{FileError, Files, Formats, InMemoryPieces, KeptPiece}
 import grit.core.flow.TestTainted
 import grit.core.id.FileHandle
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
+import grit.core.provider.ModelRequest
 import grit.core.stitch.StrandWorld
 import grit.core.tool.Outcome
 import grit.core.visibility.{Integrity, Recorded}
@@ -161,6 +162,14 @@ object ScriptedMovesTests extends MovesContract {
     def add(system: String, users: Vector[String]): Unit = all = all :+ (system, users)
   }
 
+  private final class Requests {
+    // As `Shown`'s.
+    @caps.unsafe.untrackedCaptures
+    var all: Vector[ModelRequest] = Vector.empty
+
+    def add(request: ModelRequest): Unit = all = all :+ request
+  }
+
   private final class Replies(shapes: Vector[ujson.Value]) {
     // Counts the replies given; one test's, read on its one thread, so no other reader sees
     // it change.
@@ -192,12 +201,15 @@ object ScriptedMovesTests extends MovesContract {
       shelves: MovesContract.Shelves,
       rewrite: String,
       leaks: Vector[Vector[Double]],
-      stop: StopReason
-  )(use: Dreaming^ -> A): (A, Vector[(String, Vector[String])]) = {
-    val shown = new Shown
+      stop: StopReason,
+      retry: Option[String]
+  )(use: Dreaming^ -> A): (A, Vector[ModelRequest]) = {
+    val asked = new Requests
     val answers = new Leaks(leaks)
-    val reply: Message.Assistant =
-      Message.Assistant(Vector(AssistantBlock.Text(rewrite)), stop, Usage.Zero, "m")
+    def reply(n: Int): Message.Assistant = {
+      val text = if (n == 0) rewrite else retry.getOrElse(rewrite)
+      Message.Assistant(Vector(AssistantBlock.Text(text)), stop, Usage.Zero, "m")
+    }
     val world = new StrandWorld
     val moves = new ScriptedDreaming(
       limits,
@@ -218,11 +230,12 @@ object ScriptedMovesTests extends MovesContract {
       Integrity.Authority,
       Recorded.Empty,
       request => {
-        shown.add(request.system, request.messages.collect { case Message.User(t) => t })
-        Right(Asked(TestTainted.at(reply, Believed), Declassing))
+        val n = asked.all.size
+        asked.add(request)
+        Right(Asked(TestTainted.at(reply(n), Believed), Declassing))
       },
       _ => Right(Asked(TestTainted.at(answers.next(), Believed), Declassing))
     )
-    (use(moves), shown.all)
+    (use(moves), asked.all)
   }
 }

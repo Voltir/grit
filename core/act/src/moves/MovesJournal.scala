@@ -349,6 +349,27 @@ object MovesJournal {
   def baseline(source: DocumentVersionId, revision: String, applied: PolicyApplication): String =
     v3("source" + rewriteForm(source, Some(revision), applied) + floorForm)
 
+  /** The digest of the retry `again` of a rewrite of `source`, its file at `revision`, under
+    * `applied`, v3: its kind, `retry`; the rewrite's form ([[rewrite]]); the draft; the
+    * positions that fired, floor, absent then present; then [[Declassifying.feedback]] of every
+    * floor question, which holds its frame and its join.
+    */
+  def retry(
+      source: DocumentVersionId,
+      revision: String,
+      applied: PolicyApplication,
+      again: Declassifying.Again
+  ): String =
+    v3(
+      "retry" + rewriteForm(source, Some(revision), applied) +
+        text(DocText.value(again.draft)) + positions(again.fired.floor) +
+        positions(again.fired.absent) + positions(again.fired.present) +
+        text(Declassifying.feedback(Declassifying.Floor.map(Left(_))))
+    )
+
+  /** `at` in a digest's form: their count, then each. */
+  private def positions(at: Vector[Int]): String = count(at.size) + at.map(count).mkString
+
   /** Whether `recorded`, a screening's digest from an earlier run, is `digest`, which
     * [[check]] or [[baseline]] gives: v3's alone, so a digest of the check before the screen
     * (v1, v2) differs.
@@ -365,11 +386,13 @@ object MovesJournal {
       recorded: String,
       source: DocumentVersionId,
       revision: String,
-      applied: PolicyApplication
+      applied: PolicyApplication,
+      again: Option[Declassifying.Again]
   ): Boolean =
-    recorded match {
-      case s"v1:$_" => recorded == v1(rewriteForm(source, None, applied))
-      case s"v2:$_" => recorded == rewrite(source, revision, applied)
+    (recorded, again) match {
+      case (s"v1:$_", None) => recorded == v1(rewriteForm(source, None, applied))
+      case (s"v2:$_", None) => recorded == rewrite(source, revision, applied)
+      case (s"v3:$_", Some(a)) => recorded == retry(source, revision, applied, a)
       case _ => false
     }
 

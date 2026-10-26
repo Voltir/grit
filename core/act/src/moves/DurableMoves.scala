@@ -185,16 +185,19 @@ object DurableMoves {
         name: MoveName,
         source: DocumentVersionId,
         revision: String,
-        applied: PolicyApplication
+        applied: PolicyApplication,
+        again: Option[Declassifying.Again]
     ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
       refused(name, MoveKind.Ask).toLeft(()).flatMap { _ =>
-        val digest = MovesJournal.rewrite(source, revision, applied)
+        val digest = again.fold(MovesJournal.rewrite(source, revision, applied))(
+          MovesJournal.retry(source, revision, applied, _)
+        )
         val (asked, sourced) =
           made(
             Act.askBeside(Act.rewrite),
-            Act.Rewriting(name, acting, reading(source, revision, applied), digest)
+            Act.Rewriting(name, acting, reading(source, revision, applied), again, digest)
           )
-        val same = MovesJournal.sameRewrite(asked.made.digest, source, revision, applied)
+        val same = MovesJournal.sameRewrite(asked.made.digest, source, revision, applied, again)
         unread(asked.made) match {
           case Some(why) if same =>
             Right(Mint.tainted(Declassifying.Rewritten.Unapplied(why), acting.integrity))

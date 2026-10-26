@@ -31,7 +31,7 @@ object DeclassifyCaptureTests extends TestSuite {
     "def f(m: Dreaming^) = m.declassifier"
   private val primitiveCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication) =
-      |  m.rewrite(MoveName("d"), v, "r1", a)
+      |  m.rewrite(MoveName("d"), v, "r1", a, None)
       |""".stripMargin
   private val screenCalled =
     """def f(m: Dreaming^, v: DocumentVersionId, a: PolicyApplication, t: DocText) =

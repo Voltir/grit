@@ -6,10 +6,10 @@ import grit.core.durable.{Flow, Steps}
 import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
 import grit.core.id.{DocumentVersionId, PluginName}
-import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
+import grit.core.message.{AssistantBlock, Cut, Message, StopReason, Usage}
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
-import grit.core.screen.{Checks, Screen, Screened}
+import grit.core.screen.{Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.Integrity
 
@@ -59,6 +59,22 @@ object Declassifying {
   def sourced(name: MoveName): Either[String, MoveName] =
     MoveName.of(s"${MoveName.value(name)}-source")
 
+  /** The name of the second rewrite of the declassifying move `name`: `{name}-retry`; or why
+    * not, when that is over [[MoveName]]'s length.
+    */
+  def retried(name: MoveName): Either[String, MoveName] =
+    MoveName.of(s"${MoveName.value(name)}-retry")
+
+  /** A second attempt: the first's `draft`, and what its screen `fired`: floor and present only. */
+  final case class Again private[act] (draft: DocText, fired: Fired) extends caps.Pure
+
+  object Again {
+
+    /** A retry of `draft` when `fired` holds floor or present failures and no absent one. */
+    def of(draft: DocText, fired: Fired): Option[Again] =
+      if (fired.passes || fired.absent.nonEmpty) None else Some(Again(draft, fired))
+  }
+
   /** 64: the most pieces of its file a rewrite reads ([[grit.core.files.PieceSearch.file]]),
     * well past [[SourceChars]] for pieces near [[grit.core.files.Pieces.Target]].
     */
@@ -67,10 +83,35 @@ object Declassifying {
   /** The rewrite's request. Its system text is [[Rewrite]], then `shown.instructions` fenced in
     * `<instructions>` tags, which the policy's people wrote and the model must follow. Its one
     * user message is `shown.text`, fenced in `<document>` tags, which is material only. A
-    * closing tag inside either text is escaped (`&lt;/`), so neither can end its own fence.
+    * closing tag inside either text is escaped (`&lt;/`), so neither can end its own fence. For
+    * `again`, a retry, its draft follows as the model's own turn, then one user message, the
+    * [[feedback]] naming what fired of [[screen]] of `shown.checks`, never a score.
     */
-  def request(shown: Shown): ModelRequest =
-    framed(shown.instructions, shown.text)
+  def request(shown: Shown, again: Option[Again]): ModelRequest = {
+    val first = framed(shown.instructions, shown.text)
+    again.fold(first) { a =>
+      val draft = Message.Assistant(
+        Vector(AssistantBlock.Text(DocText.value(a.draft))),
+        StopReason.EndTurn,
+        Usage.Zero,
+        ""
+      )
+      val told = Message.User(feedback(screen(shown.checks).failed(a.fired)))
+      first.copy(messages = first.messages ++ Vector(draft, told))
+    }
+  }
+
+  /** "Your rewrite was not accepted: it {each, '; and it '}. Write the document again. The check
+    * is an imperfect test of the real goal. Don't reword things just to get past it: write so
+    * that a reader genuinely could not infer these things.", each of `failed` in order, a floor
+    * question by its `named`, a signal as "does not state {infer}".
+    */
+  def feedback(failed: Vector[Either[Screen.Fixed, Signal]]): String =
+    "Your rewrite was not accepted: it " +
+      failed.map(_.fold(_.named, s => s"does not state ${s.infer}")).mkString("; and it ") +
+      ". Write the document again. The check is an imperfect test of the real goal. Don't " +
+      "reword things just to get past it: write so that a reader genuinely could not infer " +
+      "these things."
 
   /** [[request]]'s framing of `instructions` and of `source`, which is already cut: the system
     * text and the user message, each closing tag escaped.
