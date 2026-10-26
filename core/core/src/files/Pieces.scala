@@ -7,7 +7,7 @@ import scala.util.matching.Regex
 import grit.core.id.Sha256
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Text}
+import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
@@ -130,6 +130,24 @@ object Pieces {
     close()
     (done.take(PerFile), (done.size - PerFile).max(0))
   }
+
+  /** `pieces`' text as a reader reads their file: each piece's [[Piece.text]] in order, a blank
+    * line apart, each preceded, where its heading path differs from the piece before's, by the
+    * headings from where they differ, as markdown headings at their depth (at most 6).
+    */
+  def text(pieces: Vector[Piece]): String =
+    pieces
+      .foldLeft((Vector.empty[String], Vector.empty[String])) { case ((parts, before), p) =>
+        val same = p.heading.zip(before).takeWhile(_ == _).size
+        val headings = p.heading.zipWithIndex
+          .drop(same)
+          .map((h, depth) =>
+            Markdown.write(Doc(Vector(Block.Heading(Level.of(depth + 1), Text.plain(h)))))
+          )
+        (parts ++ headings :+ p.text, p.heading)
+      }
+      ._1
+      .mkString("\n\n")
 
   private def oneLine(s: String): String = s.replace('\n', ' ').trim
 

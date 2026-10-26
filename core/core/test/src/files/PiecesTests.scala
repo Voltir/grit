@@ -167,5 +167,36 @@ object PiecesTests extends TestSuite {
         here.fingerprint == elsewhere.fingerprint
       ) ==> (true, false, false)
     }
+
+    test(
+      "a file's text from its pieces is each piece's markdown in order, each heading path written where it changes, as headings at their depth"
+    ) {
+      def piece(path: Vector[String], text: String) =
+        Piece(path, Doc(Vector(para(text))), Anchor(text, "", "", 0))
+      val pieces = Vector(
+        piece(Vector(), "Intro."),
+        piece(Vector("Tour"), "First leg."),
+        piece(Vector("Tour"), "Second leg."),
+        piece(Vector("Tour", "Dates"), "In May."),
+        piece(Vector("Venues"), "Halls."),
+        piece(Vector("Venues", "Old", "Older"), "Gone."),
+        piece(Vector("Venues"), "Back.")
+      )
+      Pieces.text(pieces) ==>
+        Vector(
+          "Intro.",
+          "# Tour",
+          "First leg.",
+          "Second leg.",
+          "## Dates",
+          "In May.",
+          "# Venues",
+          "Halls.",
+          "## Old",
+          "### Older",
+          "Gone.",
+          "Back."
+        ).mkString("\n\n")
+    }
   }
 }
