@@ -354,7 +354,7 @@ object TopicDream {
     * shown. Shown no discussion, it is told only of the topics and cards, and that a card goes to
     * a topic shown or `aside`.
     */
-  private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
+  private[topic] def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
     val topicsShown =
       "the topics, each a `<document label=\"topic\">` holding how its text begins, numbered " +
         "from 1 in the order shown"
@@ -418,7 +418,7 @@ object TopicDream {
   /** The attach ask's reply: with no `discussions` and no `new` topic when it was shown no
     * discussion (`discussions`).
     */
-  private def attachReply(discussions: Boolean): Typed[Placing] = {
+  private[topic] def attachReply(discussions: Boolean): Typed[Placing] = {
     def numbers(what: String) = ujson.Obj(
       "type" -> "array",
       "items" -> ujson.Obj("type" -> "integer", "minimum" -> 1),
