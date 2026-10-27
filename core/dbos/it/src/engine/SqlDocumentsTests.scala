@@ -79,18 +79,26 @@ object SqlDocumentsTests extends DocumentContract {
       version: Int,
       text: Option[String],
       kept: Label,
-      checks: Option[ujson.Value]
+      checks: Option[ujson.Value],
+      status: InMemoryDocuments.Status
   ): Unit =
     run(
       s"""INSERT INTO grit.declassification_policies
-         |       (over, version, classification_id, text, checks, set_at, set_by)
-         |VALUES (?, ?, ${SqlLabels.Interned}, ?, ?::jsonb, now(), 'local')""".stripMargin
+         |       (over, version, classification_id, text, checks, status, on_publish, set_at, set_by)
+         |VALUES (?, ?, ${SqlLabels.Interned}, ?, ?::jsonb, ?, ?, now(), 'local')""".stripMargin
     ) { ps =>
       ps.setString(1, over.written)
       ps.setInt(2, version)
       SqlLabels.bind(ps, 3, kept)
       ps.setString(5, text.orNull)
       ps.setString(6, checks.map(ujson.write(_)).orNull)
+      val onPublish = status match {
+        case InMemoryDocuments.Status.Draft => None
+        case InMemoryDocuments.Status.Withdraw => Some("withdraw")
+        case InMemoryDocuments.Status.Keep => Some("keep")
+      }
+      ps.setString(7, if (onPublish.isEmpty) "draft" else "published")
+      ps.setString(8, onPublish.orNull)
     }
 
   protected def application(

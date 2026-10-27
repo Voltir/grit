@@ -51,7 +51,12 @@ final class InMemoryDocuments extends DocumentStore {
   @caps.unsafe.untrackedCaptures
   private var policies = Map.empty[
     (DeclassificationPolicy.Over, Int),
-    (text: Option[String], checks: Option[ujson.Value], kept: Label)
+    (
+        text: Option[String],
+        checks: Option[ujson.Value],
+        kept: Label,
+        status: InMemoryDocuments.Status
+    )
   ]
 
   // As `policies`: only ever replaced by a new immutable map.
@@ -68,10 +73,10 @@ final class InMemoryDocuments extends DocumentStore {
     Map.empty[(DeclassificationPolicy.Over, Int), (Declassified.Screening, Benched)]
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as an operator's row does:
-    * `text`, or a revocation when `None`, with `checks` as the row's column holds them; and,
-    * when `benched` and those checks read, a passing bench of them, as the job's bench move
-    * keeps one ([[grit.core.act.Declassifying.screening]]). Its bench is left as it was
-    * otherwise.
+    * `text`, or a revocation when `None`, with `checks` as the row's column holds them, at
+    * `status`; and, when `benched` and those checks read, a passing bench of them, as the job's
+    * bench move keeps one ([[grit.core.act.Declassifying.screening]]). Its bench is left as it
+    * was otherwise.
     */
   def policy(
       over: DeclassificationPolicy.Over,
@@ -79,9 +84,10 @@ final class InMemoryDocuments extends DocumentStore {
       text: Option[String] = Some(InMemoryDocuments.Instructions),
       kept: Label = Label.Public,
       checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks),
-      benched: Boolean = true
+      benched: Boolean = true,
+      status: InMemoryDocuments.Status = InMemoryDocuments.Status.Withdraw
   ): Unit = {
-    policies = policies.updated((over, version), (text, checks, kept))
+    policies = policies.updated((over, version), (text, checks, kept, status))
     if (benched)
       Checks.read(checks).foreach { read =>
         Benched.read(true, ujson.Arr()).foreach { pass =>
@@ -106,6 +112,18 @@ final class InMemoryDocuments extends DocumentStore {
       case Left(_) => ()
     }
 
+  /** `over`'s `version`th policy at `status`, as the operator's publish sets it; nothing when no
+    * such version is kept.
+    */
+  def publish(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      status: InMemoryDocuments.Status
+  ): Unit =
+    policies.get((over, version)).foreach { row =>
+      policies = policies.updated((over, version), (row.text, row.checks, row.kept, status))
+    }
+
   /** Forgets the bench of `over`'s `version`th policy, as if none had been kept. */
   def unbench(over: DeclassificationPolicy.Over, version: Int): Unit =
     benches = benches - ((over, version))
@@ -124,12 +142,43 @@ final class InMemoryDocuments extends DocumentStore {
   def declassification(v: DocumentVersionId): Option[InMemoryDocuments.Audit] =
     audits.get(DocumentVersionId.value(v))
 
-  /** `over`'s current policy, when its current version is not a revocation. */
+  /** `over`'s policy in force: its newest published version, when that is not a revocation. */
   private def inForce(over: DeclassificationPolicy.Over): Option[DeclassificationPolicy] =
-    policies
-      .collect { case ((o, v), row) if o == over => (v, row.text.isDefined) }
-      .maxByOption(_._1)
-      .collect { case (v, true) => DeclassificationPolicy(over, v) }
+    published(over).lastOption.collect { case (v, true, _) => DeclassificationPolicy(over, v) }
+
+  /** `over`'s published versions, oldest first: each with whether it holds text, and whether it
+    * was published to withdraw.
+    */
+  private def published(over: DeclassificationPolicy.Over): Vector[(Int, Boolean, Boolean)] =
+    policies.toVector
+      .collect {
+        case ((o, v), row) if o == over && row.status != InMemoryDocuments.Status.Draft =>
+          (v, row.text.isDefined, row.status == InMemoryDocuments.Status.Withdraw)
+      }
+      .sortBy(_._1)
+
+  /** The lowest version whose rewrites stand under `policy`, in force
+    * ([[PolicyApplication.InForce.keptFrom]]).
+    */
+  private def keptFrom(policy: DeclassificationPolicy): Int =
+    published(policy.over)
+      .collect { case (v, text, withdraw) if v <= policy.version && (withdraw || !text) => v }
+      .lastOption
+      .getOrElse(1)
+
+  /** `over`'s latest draft above its newest published version, when there is one. */
+  private def drafted(over: DeclassificationPolicy.Over): Option[DeclassificationPolicy] = {
+    val above = published(over).lastOption.fold(0)(_._1)
+    policies.keys
+      .collect {
+        case (o, v)
+            if o == over && v > above &&
+              policies.get((o, v)).exists(_.status == InMemoryDocuments.Status.Draft) =>
+          v
+      }
+      .maxOption
+      .map(DeclassificationPolicy(over, _))
+  }
 
   /** The current application to the document `pointer` reads, when it is not a removal. */
   private def applied(pointer: Pointer): Option[(DeclassificationPolicy.Over, Int)] =
@@ -271,8 +320,9 @@ final class InMemoryDocuments extends DocumentStore {
             _ <- policy.lowered(label)
           } yield new PolicyApplication.InForce(
             PolicyApplication(policy, pointer, version),
+            keptFrom(policy),
             policies.get((policy.over, policy.version)).collect {
-              case (Some(text), checks, kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
+              case (Some(text), checks, kept, _) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
                 (text, Checks.read(checks))
             }
           )
@@ -336,13 +386,14 @@ final class InMemoryDocuments extends DocumentStore {
           tx: Tx^
       ): Either[StoreError, Option[Declassified.PolicyChecks]] =
         Right(policies.get((policy.over, policy.version)).collect {
-          case (Some(_), checks, kept) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
+          case (Some(_), checks, kept, _) if Tx.clearance(tx).reads(Item.Kept(None), kept) =>
             new Declassified.PolicyChecks(policy, Checks.read(checks))
         })
 
       def benchable(over: DeclassificationPolicy.Over)(using
           Tx^
-      ): Either[StoreError, Vector[DeclassificationPolicy]] = Right(inForce(over).toVector)
+      ): Either[StoreError, Vector[DeclassificationPolicy]] =
+        Right(inForce(over).toVector ++ drafted(over))
 
       def benched(policy: DeclassificationPolicy)(using
           Tx^
@@ -675,6 +726,21 @@ object InMemoryDocuments {
       "refuse" -> ujson.Arr("The team meets at the lake house.")
     )
   )
+
+  /** Where a policy version stands, as its row's `status` and `on_publish` hold them. */
+  enum Status extends caps.Pure {
+
+    /** Written, not yet published (`draft`): never in force. */
+    case Draft
+
+    /** Published to withdraw the rewrites made under earlier versions (`withdraw`), as every
+      * revocation is.
+      */
+    case Withdraw
+
+    /** Published to keep each earlier rewrite until this version decides its document (`keep`). */
+    case Keep
+  }
 
   /** A declassified version's audit row: the version it was made from, the policy and
     * application versions it was made under, and the number of the attempt that wrote it.

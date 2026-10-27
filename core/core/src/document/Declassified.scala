@@ -20,9 +20,14 @@ object PolicyApplication {
 
   /** An application in force, `applied`, with its policy's `instructions` and `checks` when its
     * transaction reads the policy's label ([[DocumentKeeper.declassifying]]), both or neither.
+    * `keptFrom` is the lowest policy version of its compartment whose rewrites of its document
+    * stand until `applied`'s policy version decides it ([[Declassified.Made.stands]]): that
+    * version's own when it was published to withdraw; else the highest earlier version published
+    * to withdraw, or revoked; else 1.
     */
   final class InForce private[grit] (
       val applied: PolicyApplication,
+      val keptFrom: Int,
       private[core] val policy: Option[
         (instructions: String, checks: Either[Checks.Unreadable, Checks])
       ]

@@ -452,6 +452,7 @@ private[sql] object SqlDocuments {
       cleared(
         s"""WITH ${SqlClearance.With}
           |SELECT a.version AS application, a.over, p.version AS policy,
+          |       ${SqlDeclassifications.KeptFrom} AS kept_from,
           |       CASE WHEN p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
           |            THEN p.text END AS text,
           |       CASE WHEN p.classification_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
@@ -459,7 +460,7 @@ private[sql] object SqlDocuments {
           |  FROM grit.declassification_applications a
           |  JOIN grit.declassification_policies p ON p.over = a.over
           | WHERE a.pointer = ?::jsonb AND NOT ${SqlDeclassifications.ApplicationSuperseded}
-          |   AND NOT ${SqlDeclassifications.PolicySuperseded} AND p.text IS NOT NULL""".stripMargin
+          |   AND ${SqlDeclassifications.PolicyInForce}""".stripMargin
       ) { ps =>
         ps.setString(SqlClearance.Params + 1, pointerJson(pointer))
       }(rs =>
@@ -472,6 +473,7 @@ private[sql] object SqlDocuments {
                 pointer,
                 rs.getInt("application")
               ),
+              rs.getInt("kept_from"),
               // The text is NOT NULL here, so it is NULL only when the clearance does not read it.
               Option(rs.getString("text"))
                 .map(text => (text, Checks.read(Option(rs.getString("checks")).map(ujson.read(_)))))
@@ -488,9 +490,8 @@ private[sql] object SqlDocuments {
         current <- rows(
           s"""SELECT EXISTS (
             |  SELECT 1 FROM grit.declassification_policies p, grit.declassification_applications a
-            |   WHERE p.over = ? AND p.version = ? AND p.text IS NOT NULL
+            |   WHERE p.over = ? AND p.version = ? AND ${SqlDeclassifications.PolicyInForce}
             |     AND a.pointer = ?::jsonb AND a.version = ? AND a.over = p.over
-            |     AND NOT ${SqlDeclassifications.PolicySuperseded}
             |     AND NOT ${SqlDeclassifications.ApplicationSuperseded}
             |) AS current""".stripMargin
         ) { ps =>
@@ -577,8 +578,12 @@ private[sql] object SqlDocuments {
     ): Either[StoreError, Vector[DeclassificationPolicy]] =
       rows(
         s"""SELECT p.version FROM grit.declassification_policies p
-          | WHERE p.over = ? AND p.text IS NOT NULL
-          |   AND NOT ${SqlDeclassifications.PolicySuperseded}""".stripMargin
+          | WHERE p.over = ?
+          |   AND (${SqlDeclassifications.PolicyInForce}
+          |        OR (p.status = 'draft' AND NOT ${SqlDeclassifications.PolicyOutranked}
+          |            AND NOT EXISTS (SELECT 1 FROM grit.declassification_policies l
+          |                             WHERE l.over = p.over AND l.version > p.version)))
+          | ORDER BY p.version""".stripMargin
       )(ps => ps.setString(1, over.written))(rs =>
         Right(DeclassificationPolicy(over, rs.getInt("version")))
       )

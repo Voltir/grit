@@ -66,24 +66,32 @@ abstract class DocumentContract extends TestSuite {
   protected def openedUnder[A](clearance: Clearance, visibility: Visibility)(body: (Tx^) ?=> A): A
 
   /** Records the `version`th of `over`'s policy, kept at `kept`, as the operator's row does,
-    * committed: `text`, or a revocation when `None`, and `checks` as its column holds them.
+    * committed: `text`, or a revocation when `None`, and `checks` as its column holds them, at
+    * `status`.
     */
   protected def policyAt(
       over: DeclassificationPolicy.Over,
       version: Int,
       text: Option[String],
       kept: Label,
-      checks: Option[ujson.Value]
+      checks: Option[ujson.Value],
+      status: InMemoryDocuments.Status = InMemoryDocuments.Status.Withdraw
   ): Unit
 
   /** As [[policyAt]], publicly, with [[Instructions]] unless `revoked`, and checks that read. */
-  private def policy(over: DeclassificationPolicy.Over, version: Int, revoked: Boolean): Unit =
+  private def policy(
+      over: DeclassificationPolicy.Over,
+      version: Int,
+      revoked: Boolean,
+      status: InMemoryDocuments.Status = InMemoryDocuments.Status.Withdraw
+  ): Unit =
     policyAt(
       over,
       version,
       Option.unless(revoked)(Instructions),
       Label.Public,
-      Some(InMemoryDocuments.Checks)
+      Some(InMemoryDocuments.Checks),
+      status
     )
 
   /** A policy's text, as an operator writes one. */
@@ -1688,17 +1696,103 @@ abstract class DocumentContract extends TestSuite {
       )
     }
 
-    test("benchable gives the version in force, and none once it is revoked") {
+    test(
+      "benchable gives the version in force and the latest draft above it, and neither a draft below it nor anything once it is revoked"
+    ) {
       val k = keeper(name("doc-benchable"), terms())
       val team = over("dbl-team")
       policy(team, 1, revoked = false)
-      policy(team, 2, revoked = false)
+      policy(team, 2, revoked = false, InMemoryDocuments.Status.Draft)
+      policy(team, 3, revoked = false)
       val inForce = transaction(ok(k.benchable(team)))
-      policy(team, 3, revoked = true)
-      (inForce, transaction(ok(k.benchable(team)))) ==> (
-        Vector(DeclassificationPolicy(team, 2)),
+      policy(team, 4, revoked = false, InMemoryDocuments.Status.Draft)
+      policy(team, 5, revoked = false, InMemoryDocuments.Status.Draft)
+      val drafted = transaction(ok(k.benchable(team)))
+      policy(team, 6, revoked = true)
+      (inForce, drafted, transaction(ok(k.benchable(team)))) ==> (
+        Vector(DeclassificationPolicy(team, 3)),
+        Vector(DeclassificationPolicy(team, 3), DeclassificationPolicy(team, 5)),
         Vector()
       )
+    }
+
+    test(
+      "a draft is never in force: declassifying gives the newest published version, and none while every version is a draft"
+    ) {
+      val k = keeper(name("doc-drafted"), terms())
+      val team = over("dd-team")
+      val card = file("dd-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("dd-team"))
+      def inForce = transaction(ok(k.declassifying(source, card))).map(_.applied.policy.version)
+      application(card, 1, Some(team))
+      policy(team, 1, revoked = false, InMemoryDocuments.Status.Draft)
+      val drafted = inForce
+      policy(team, 2, revoked = false, InMemoryDocuments.Status.Keep)
+      val published = inForce
+      policy(team, 3, revoked = false, InMemoryDocuments.Status.Draft)
+      (drafted, published, inForce) ==> (None, Some(2), Some(2))
+    }
+
+    test(
+      "keptFrom is the version in force when it was published to withdraw, else the last below it published to withdraw or revoked, else 1"
+    ) {
+      val k = keeper(name("doc-kept-from"), terms())
+      val (team, kin) = (over("dkf-team"), over("dkf-kin"))
+      val (card, other) = (file("dkf-card"), file("dkf-other"))
+      def keptFrom(c: Pointer, compartment: String) =
+        transaction(
+          ok(k.declassifying(Label.at(Level.Internal, TestLabels.compartment(compartment)), c))
+        ).map(i => (i.applied.policy.version, i.keptFrom))
+      application(card, 1, Some(team))
+      application(other, 1, Some(kin))
+      policy(kin, 1, revoked = false, InMemoryDocuments.Status.Keep)
+      policy(kin, 2, revoked = false, InMemoryDocuments.Status.Keep)
+      val chained = keptFrom(other, "dkf-kin")
+      policy(team, 1, revoked = false)
+      policy(team, 2, revoked = false, InMemoryDocuments.Status.Keep)
+      val kept = keptFrom(card, "dkf-team")
+      policy(team, 3, revoked = false)
+      val withdrawn = keptFrom(card, "dkf-team")
+      policy(team, 4, revoked = false, InMemoryDocuments.Status.Keep)
+      policy(team, 5, revoked = false, InMemoryDocuments.Status.Draft)
+      policy(team, 6, revoked = false, InMemoryDocuments.Status.Keep)
+      val afterWithdraw = keptFrom(card, "dkf-team")
+      policy(team, 7, revoked = true)
+      policy(team, 8, revoked = false, InMemoryDocuments.Status.Keep)
+      (chained, kept, withdrawn, afterWithdraw, keptFrom(card, "dkf-team")) ==> (
+        Some((2, 1)),
+        Some((2, 1)),
+        Some((3, 3)),
+        Some((6, 3)),
+        Some((8, 7))
+      )
+    }
+
+    test(
+      "keepDeclassified refuses a version no longer in force, under either mode, and not one a draft sits above"
+    ) {
+      val p = name("doc-declassified-published")
+      val k = keeper(p, terms())
+      val team = over("dp-team")
+      val card = file("dp-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("dp-team"))
+      def applied = transaction(ok(k.declassifying(source, card)))
+        .map(_.applied)
+        .getOrElse(throw new java.lang.AssertionError("no application"))
+      def kept(a: PolicyApplication, body: String) =
+        transaction(
+          k.declassified(declassified(body, source, card, a), Integrity.Member, at(1))
+        ).isRight
+      application(card, 1, Some(team))
+      policy(team, 1, revoked = false)
+      val first = applied
+      policy(team, 2, revoked = false, InMemoryDocuments.Status.Keep)
+      val second = applied
+      val underKeep = kept(first, "gist")
+      policy(team, 3, revoked = false, InMemoryDocuments.Status.Draft)
+      val belowDraft = kept(second, "gist")
+      policy(team, 4, revoked = false)
+      (underKeep, belowDraft, kept(second, "gist again")) ==> (false, true, false)
     }
 
     test(

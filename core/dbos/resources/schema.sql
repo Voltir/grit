@@ -1083,30 +1083,54 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- and `checks`, the steward's signals a rewrite is screened for and the examples they are
 -- benched on, as grit.core.screen.Checks reads them (the questions each signal is asked:
 -- Screen.absent and Screen.present; how to write them: docs/declassification-signals.md).
--- `over` 'compartment:<c>'; `text` NULL for a revocation;
--- the current is the highest version. A version rewrites nothing until the job's bench of its
--- checks passes (grit.declassification_benches); one whose checks do not read never does. Kept at its compartment's own group's grant
--- (`classification_id`, interned by grit.intern_classification), read only under a clearance
--- dominating it. Written by its compartment's steward or an administrator; until commands
--- exist, by the operator:
+-- `over` 'compartment:<c>'; `text` NULL for a revocation. A version is a `draft` or
+-- `published`; only the newest published version is in force, and only when it is not a
+-- revocation (SqlDeclassifications.PolicyInForce): a draft changes nothing that crosses.
+-- A version rewrites nothing until the job's bench of its checks passes
+-- (grit.declassification_benches); one whose checks do not read never does. Kept at its
+-- compartment's own group's grant (`classification_id`, interned by
+-- grit.intern_classification), read only under a clearance dominating it. Written by its
+-- compartment's steward or an administrator; until commands exist, by the operator, as a draft
+-- (`status` defaults to 'draft'):
 --   INSERT INTO grit.declassification_policies (over, version, classification_id, text, checks, set_at, set_by)
---   VALUES ('compartment:<c>', 1,
+--   VALUES ('compartment:<c>', <n>,
 --           grit.intern_classification(ROW(2, ARRAY['<c>'])::grit.classification), -- its grant
 --           '<policy text>', '<checks JSON>', now(), '<steward account>');
--- A revocation is a row of the next version with `text` NULL. The job's next run withdraws the
--- rewrites made under older versions.
--- Retention: kept: a version neither current nor named by a grit.declassifications row is
--- deleted each collector sweep (SqlDeclassifications.forget); the rest, one row per version at
--- human rate: tens.
+-- `checks` are signals and examples, as grit.core.screen.Checks reads them; how to write them:
+-- docs/declassification-signals.md. While a version of its compartment is in force over a
+-- card, the job benches the latest draft above it as it does the version in force (once for its
+-- checks as they are; again when they change). Publish it, choosing what happens
+-- to rewrites made under earlier versions:
+--   UPDATE grit.declassification_policies p SET status = 'published', on_publish = '<keep|withdraw>'
+--    WHERE p.over = 'compartment:<c>' AND p.version = <n> AND p.status = 'draft'
+--      AND EXISTS (SELECT 1 FROM grit.declassification_benches b
+--                   WHERE b.over = p.over AND b.policy_version = p.version AND b.passed);
+-- (0 rows: not benched, or failed.) 'keep' (a refinement): each earlier rewrite goes on being
+-- shared until this version rewrites its document (the new rewrite replaces it) or withholds it
+-- (it is withdrawn), from the newest version published to withdraw on (Declassified.Made.stands).
+-- 'withdraw' (a tightening): they stop crossing at the next run, and their documents are
+-- rewritten under this version. A compartment's first version, or the first after a revocation,
+-- has nothing in force to be benched beside: insert it with status 'published' and on_publish
+-- 'withdraw'; the job benches it before anything is rewritten under it.
+-- A revocation is a published version with `text` NULL (on_publish 'withdraw'): the job's next
+-- run withdraws every rewrite.
+-- Retention: kept: a version below a published one (a draft never published, or one since
+-- outranked), named by no grit.declassifications row, and not its compartment's newest published
+-- to withdraw, is deleted each collector sweep (SqlDeclassifications.forget); the rest, one row
+-- per version at human rate: tens.
 CREATE TABLE IF NOT EXISTS grit.declassification_policies (
     over              TEXT NOT NULL CHECK (over ~ '^compartment:[a-z0-9-]{1,32}$'),
     version           INTEGER NOT NULL CHECK (version >= 1),
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
     text              TEXT CHECK (char_length(text) <= 4000),
     checks            JSONB CHECK (checks IS NULL OR octet_length(checks::text) <= 32768),
+    status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+    on_publish        TEXT CHECK (on_publish IN ('withdraw', 'keep')),
     set_at            TIMESTAMPTZ NOT NULL,
     set_by            TEXT NOT NULL REFERENCES grit.identities(account),
-    PRIMARY KEY (over, version)
+    PRIMARY KEY (over, version),
+    CONSTRAINT declassification_policies_published
+        CHECK ((status = 'draft') = (on_publish IS NULL) AND (text IS NOT NULL OR on_publish = 'withdraw'))
 );
 
 -- Each version of the application of a policy to one document (PolicyApplication), by the

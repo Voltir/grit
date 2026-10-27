@@ -111,8 +111,9 @@ trait DocumentKeeper extends DocumentShelf {
   ): Either[StoreError, Boolean]
 
   /** The application in force for the document `pointer` reads, kept at `label`: its current
-    * application, when `label` holds its compartment and that compartment's policy is current;
-    * `None` otherwise, and for a label holding the unmapped mark. Its policy's `instructions`,
+    * application, when `label` holds its compartment and that compartment has a policy version
+    * in force: its newest published version, unless that is a revocation (a draft is never in
+    * force); `None` otherwise, and for a label holding the unmapped mark. Its policy's `instructions`,
     * saying what a rewrite under it removes and what it writes in its place, and its `checks`, as
     * [[grit.core.screen.Checks.read]] reads them, only when its transaction reads the label the
     * policy is kept at (its compartment's own group's grant). Read from the operator's rows as
@@ -128,8 +129,8 @@ trait DocumentKeeper extends DocumentShelf {
     * believed at `integrity`, holding its text, data naming only its source version and
     * application, and no pointer or refs; and records it as declassified. A rewrite kept under
     * that key at another label is withdrawn. As [[write]] in all else. [[StoreError.Invalid]],
-    * writing nothing, when `d.applied`'s policy version or application version is no longer
-    * current.
+    * writing nothing, when `d.applied`'s policy version is no longer in force ([[declassifying]])
+    * or its application version no longer current.
     */
   final def declassified(d: Declassified, integrity: Integrity, at: Instant)(using
       Tx^
@@ -137,8 +138,9 @@ trait DocumentKeeper extends DocumentShelf {
     Declassified.row(d, integrity).left.map(StoreError.Invalid(_)).flatMap(keepDeclassified(_, at))
 
   /** The primitive under [[declassified]], which alone makes a [[Declassified.Row]]: keeps
-    * `row` as it says, after rechecking in its own statement that `row.applied`'s policy and
-    * application versions are both current. It writes below the floor; besides it, only the
+    * `row` as it says, after rechecking in its own statement that `row.applied`'s policy version
+    * is in force ([[declassifying]]) and its application version current. It writes below the
+    * floor; besides it, only the
     * plugin's own withdrawals do, each one bit at a key a reader could already see.
     */
   def keepDeclassified(row: Declassified.Row, at: Instant)(using Tx^): Either[StoreError, Written]
@@ -152,9 +154,10 @@ trait DocumentKeeper extends DocumentShelf {
       Tx^
   ): Either[StoreError, Option[Declassified.PolicyChecks]]
 
-  /** The versions of `over` a bench may be due for: the version in force (its compartment's
-    * highest, not a revocation), as this transaction sees the operator's rows now; whether one
-    * is due is [[grit.core.act.Declassifying.unbenched]]'s to say.
+  /** The versions of `over` a bench may be due for, oldest first: the version in force (see
+    * [[declassifying]]) and its latest draft above every published version, as this transaction
+    * sees the operator's rows now; whether one is due is
+    * [[grit.core.act.Declassifying.unbenched]]'s to say.
     */
   def benchable(over: DeclassificationPolicy.Over)(using
       Tx^

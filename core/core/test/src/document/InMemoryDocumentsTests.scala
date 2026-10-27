@@ -38,8 +38,9 @@ object InMemoryDocumentsTests extends DocumentContract {
       version: Int,
       text: Option[String],
       kept: Label,
-      checks: Option[ujson.Value]
-  ): Unit = documents.policy(over, version, text, kept, checks, benched = false)
+      checks: Option[ujson.Value],
+      status: InMemoryDocuments.Status
+  ): Unit = documents.policy(over, version, text, kept, checks, benched = false, status)
 
   protected def application(
       pointer: Pointer,
