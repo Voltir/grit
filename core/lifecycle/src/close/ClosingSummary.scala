@@ -2,6 +2,7 @@ package grit.lifecycle.close
 
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Balance, Edit, Ground, Line, Section}
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
 import grit.lifecycle.transcript.Labelled
 
@@ -15,9 +16,9 @@ object ClosingSummary {
   /** What the writer wrote: `prose`, `outcome`, and its `edits` in the order written. */
   final case class Written(prose: String, outcome: Option[String], edits: Vector[Edit])
 
-  /** The system prompt, before the parts asked for; it names the known lines' labels only
-    * when `labels`, since a writer told of labels it is never shown takes them for the parts'
-    * own.
+  /** The system prompt, before the parts asked for, ending with [[Fenced.Rule]]; it names the
+    * known lines' labels only when `labels`, since a writer told of labels it is never shown
+    * takes them for the parts' own.
     */
   def system(labels: Boolean): String =
     "You keep the books of a conversation. A stretch of it has ended, and you record what " +
@@ -39,11 +40,11 @@ object ClosingSummary {
       "decided it), by tool (a tool's result showed it), or by assistant (only the " +
       "assistant said it), as \"- The api stays on 3000 [u4] by person\". Lines known elsewhere were shown from the person's other " +
       "conversations: an Open or Standing item that restates one is not new, like a line " +
-      "already known."
+      "already known.\n\n" + Fenced.Rule
 
   /** The system prompt for a period grit only heard, before the parts asked for: people spoke
     * to each other, never to grit, so what it records is reported speech. It names the known
-    * lines' labels only when `labels`, as [[system]] does.
+    * lines' labels only when `labels`, as [[system]] does, and ends with [[Fenced.Rule]].
     */
   def overheard(labels: Boolean): String =
     "You keep the books of a team's conversation that the assistant only overheard: nobody " +
@@ -56,7 +57,7 @@ object ClosingSummary {
       "names, dates and file paths out in full, and numbers, times and identifiers in digits, " +
       "exactly as written, never \"as discussed\", " +
       "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
-      "never repeat one. Report only what was said; add nothing nobody said."
+      "never repeat one. Report only what was said; add nothing nobody said.\n\n" + Fenced.Rule
 
   private def labelledLike(labels: Boolean): String =
     if (labels) ", each line labelled like [o1] or [s1]" else ""
@@ -83,7 +84,9 @@ object ClosingSummary {
     * are shown as known elsewhere, before the transcript, at most [[ElsewhereChars]] of
     * them, and unlabelled: they cannot be cited. When `overheard` (grit only heard the
     * period), it is asked under [[overheard]] instead of [[system]], its prose and outcome as
-    * reported speech.
+    * reported speech. Its user message holds the known lines fenced in `<already_known>` (or
+    * says nothing is known), then the lines known elsewhere in `<known_elsewhere>`, then the
+    * transcript ([[Labelled.fenced]]), each fenced ([[Fenced]]).
     */
   def request(
       transcript: Labelled,
@@ -138,12 +141,17 @@ object ClosingSummary {
       else {
         def section(title: String, prefix: String) =
           shown.collect {
-            case (label, l) if label.startsWith(prefix) => s"[$label] ${l.text}"
+            case (label, l) if label.startsWith(prefix) =>
+              Fenced.Part.Material(s"[$label] ${l.text}")
           } match {
             case Vector() => Vector.empty
-            case lines => (s"$title:" +: lines)
+            case lines => Fenced.Part.Words(s"$title:") +: lines
           }
-        ("Already known:" +: (section("Open", "o") ++ section("Standing", "s"))).mkString("\n")
+        Fenced(
+          Tag.AlreadyKnown,
+          Vector.empty,
+          section("Open", "o") ++ section("Standing", "s")
+        ).rendered
       }
     val system: String =
       if (overheard) ClosingSummary.overheard(shown.nonEmpty)
@@ -152,15 +160,12 @@ object ClosingSummary {
       if (elsewhere.isEmpty) ""
       else
         "Known elsewhere (shown from other places; never record it here):\n" +
-          elsewhere.mkString("\n").take(ElsewhereChars) + "\n\n"
+          Fenced.in(Tag.KnownElsewhere, elsewhere.mkString("\n").take(ElsewhereChars)).rendered +
+          "\n\n"
     ModelRequest(
       (system +: parts).mkString("\n") +
         (if (parts.size > 1) "\nWrite none under a part with nothing in it." else ""),
-      Vector(
-        Message.User(
-          s"$known_\n\n${elsewhere_}Transcript:\n${visible(transcript).text}"
-        )
-      )
+      Vector(Message.User(s"$known_\n\n$elsewhere_${visible(transcript).text}"))
     )
   }
 

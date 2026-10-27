@@ -101,21 +101,21 @@ object PeriodTranscript {
       case _ => false
     })
 
-  /** The most characters a tool line holds that grounds nothing (an error, or one below
-    * Outside), its label and an ending "…" included.
+  /** The most characters of a tool line's result when the line grounds nothing (an error, or
+    * one below Outside), an ending "…" included.
     */
   val ToolChars = 120
 
-  /** The most characters a tool line holds that can ground ([[Labelled.supports]]), its label
-    * and an ending "…" included: enough of a result to show what it established.
+  /** The most characters of a tool line's result when the line can ground
+    * ([[Labelled.supports]]), an ending "…" included: enough to show what it established.
     */
   val GroundingToolChars = 4000
 
   /** `entries` as [[Labelled]]: each person's message (`u` to grit, `h` heard) and reply
     * text as [[of]] renders it with `speakers`, but a person's message mentioning the
     * assistant, which presents as `persona`, as their words to it (`[h1] Ana, to the
-    * assistant: …`, the mention taken out); and each tool result as its call as shown, " → ",
-    * and its content on one line, "failed: " first when it failed, clipped to
+    * assistant: …`, the mention taken out); and each tool result as its call as shown, " →",
+    * " failed:" when it failed, and its content on one line as the line's result, clipped to
     * [[GroundingToolChars]] when it can ground ([[Labelled.supports]]), else to [[ToolChars]];
     * each line knows the entry it was rendered from, and a tool line the name its call among
     * `entries` gave.
@@ -130,22 +130,23 @@ object PeriodTranscript {
       })
       .collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
       .toMap
-    // Who wrote each line, which entry it is, and its text after the label.
-    val written: Vector[(Labelled.Source, Entry, String)] = entries.flatMap(e =>
+    // Who wrote each line, which entry it is, its text after the label, and a tool's result.
+    val written: Vector[(Labelled.Source, Entry, String, Option[String])] = entries.flatMap(e =>
       e.payload match {
         case Payload.Result(result, shown) =>
           val content = result.content.trim.split("\\s+").mkString(" ")
-          val failed = if (result.isError) "failed: " else ""
+          val failed = if (result.isError) " failed:" else ""
           val source = Labelled.Source.Tool(!result.isError, called.get(result.callId))
-          Some((source, e, s"$shown → $failed$content"))
+          val chars = if (Labelled.supports(source, e.integrity)) GroundingToolChars else ToolChars
+          Some((source, e, s"$shown →$failed", Some(Cut.head(content, chars))))
         case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(l => (Labelled.Source.Person, e, addressed(l, persona).shown))
+          line(e, speakers).map(l => (Labelled.Source.Person, e, addressed(l, persona).shown, None))
         case Payload.Heard(_) =>
-          line(e, speakers).map(l => (Labelled.Source.Heard, e, addressed(l, persona).shown))
-        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e, l.shown))
+          line(e, speakers).map(l => (Labelled.Source.Heard, e, addressed(l, persona).shown, None))
+        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e, l.shown, None))
       }
     )
-    Labelled.of(written.zipWithIndex.map { case ((source, e, text), i) =>
+    Labelled.of(written.zipWithIndex.map { case ((source, e, text, result), i) =>
       val letter = source match {
         case Labelled.Source.Person => "u"
         case Labelled.Source.Heard => "h"
@@ -153,16 +154,7 @@ object PeriodTranscript {
         case Labelled.Source.Tool(_, _) => "t"
       }
       val label = s"$letter${i + 1}"
-      val rendered = s"[$label] $text"
-      val clipped = source match {
-        case Labelled.Source.Tool(_, _) =>
-          Cut.head(
-            rendered,
-            if (Labelled.supports(source, e.integrity)) GroundingToolChars else ToolChars
-          )
-        case _ => rendered
-      }
-      Labelled.Line(label, e.id, source, clipped, e.integrity)
+      Labelled.Line(label, e.id, source, s"[$label] $text", result, e.integrity)
     })
   }
 

@@ -3,6 +3,7 @@ package grit.lifecycle.transcript
 import grit.core.id.EntryId
 import grit.core.message.Cut
 import grit.core.period.{Cited, Ground}
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.visibility.Integrity
 
 /** A period's transcript as the closing writer reads it: each line under a label, `u` for
@@ -11,25 +12,25 @@ import grit.core.visibility.Integrity
   */
 final case class Labelled private (lines: Vector[Labelled.Line]) {
 
-  /** Its lines that fit in `chars` characters as [[text]] renders them: while they do not, each
-    * tool line longer than [[PeriodTranscript.ToolChars]] cut back to that, earliest first; then
-    * its last lines, whole, that fit. So a long result is cut before an earlier line is dropped.
+  /** Its lines that fit in `chars` characters as [[fenced]] holds them, a blank line between,
+    * the fence's own tags not counted: while they do not, each tool line's result longer than
+    * [[PeriodTranscript.ToolChars]] cut back to that, earliest first; then its last lines,
+    * whole, that fit. So a long result is cut before an earlier line is dropped.
     */
   def within(chars: Int): Labelled = {
-    val size = lines.map(_.rendered.length).sum + 2 * (lines.size - 1).max(0)
+    val size = lines.map(_.length).sum + 2 * (lines.size - 1).max(0)
     val (cut, _) = lines.foldLeft((Vector.empty[Labelled.Line], size - chars)) {
       case ((done, over), l) =>
-        val short = Cut.head(l.rendered, PeriodTranscript.ToolChars)
-        l.source match {
-          case Labelled.Source.Tool(_, _) if over > 0 && short.length < l.rendered.length =>
-            (done :+ l.copy(rendered = short), over - (l.rendered.length - short.length))
+        l.result.map(r => (r, Cut.head(r, PeriodTranscript.ToolChars))) match {
+          case Some((r, short)) if over > 0 && short.length < r.length =>
+            (done :+ l.copy(result = Some(short)), over - (r.length - short.length))
           case _ => (done :+ l, over)
         }
     }
     val kept = cut.reverseIterator
       .scanLeft((0, Option.empty[Labelled.Line])) { case ((used, _), l) =>
         // Each line after the first costs the blank line before it.
-        (used + l.rendered.length + 2, Some(l))
+        (used + l.length + 2, Some(l))
       }
       .drop(1)
       .takeWhile { case (used, _) => used - 2 <= chars }
@@ -39,8 +40,18 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
     Labelled(kept)
   }
 
-  /** Its lines, one per row, each `[{label}] …`, a blank line between. */
-  def text: String = lines.map(_.rendered).mkString("\n\n")
+  /** Its lines fenced in `<transcript>`, each as [[Labelled.Line.parts]], a blank line between. */
+  def fenced: Fenced =
+    Fenced(
+      Tag.Transcript,
+      Vector.empty,
+      lines.zipWithIndex.flatMap { (l, i) =>
+        Vector.fill(i.min(1))(Fenced.Part.Words("")) ++ l.parts
+      }
+    )
+
+  /** [[fenced]], rendered. */
+  def text: String = fenced.rendered
 
   /** The ground `cited` labels give: `Person` when any names a person's line, else `Tool`
     * when any names a tool line whose result succeeded, else `Claimed`. A tool line whose
@@ -67,7 +78,7 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
     val lines = named(labels)
     Cited.of(
       lines.map(_.entry),
-      lines.collect { case Labelled.Line(_, _, Labelled.Source.Tool(_, Some(tool)), _, _) =>
+      lines.collect { case Labelled.Line(_, _, Labelled.Source.Tool(_, Some(tool)), _, _, _) =>
         tool
       }.toSet
     )
@@ -94,16 +105,28 @@ object Labelled {
     case Tool(succeeded: Boolean, tool: Option[String])
   }
 
-  /** A line: its `label`, the `entry` it was rendered from, what it `rendered` as,
-    * `[{label}] …`, who wrote it, and the `integrity` its row is believed at.
+  /** A line: its `label`, the `entry` it was rendered from, what it `said`, `[{label}] …` (a
+    * tool line's call as shown), a tool line's `result`, who wrote it, and the `integrity` its
+    * row is believed at.
     */
   final case class Line private[transcript] (
       label: String,
       entry: EntryId,
       source: Source,
-      rendered: String,
+      said: String,
+      result: Option[String],
       integrity: Integrity
-  )
+  ) {
+
+    /** `said`, material, then a tool line's `result`, material fenced in `<tool_output>`. */
+    def parts: Vector[Fenced.Part] =
+      Fenced.Part.Material(said) +:
+        result.map(r => Fenced.Part.In(Fenced.in(Tag.ToolOutput, r))).toVector
+
+    /** Its characters as its parts render, a newline between: what [[Labelled.within]] counts. */
+    private[transcript] def length: Int =
+      said.length + result.fold(0)(r => 1 + Fenced.in(Tag.ToolOutput, r).rendered.length)
+  }
 
   /** Whether a tool line from `source`, believed at `integrity`, is one [[Labelled.ground]]
     * counts as a tool's support: its result succeeded, and it is believed at Outside or above.

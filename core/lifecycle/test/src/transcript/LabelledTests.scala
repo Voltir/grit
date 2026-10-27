@@ -27,24 +27,35 @@ object LabelledTests extends TestSuite {
     replied(6, "The api uses port 3000.")
   )
 
+  /** `lines` as the transcript's fence holds them, a blank line between. */
+  private def fenced(lines: String*): String =
+    lines.mkString("<transcript>\n", "\n\n", "\n</transcript>")
+
+  /** A tool line: `head`, then `result` in its own fence. */
+  private def tool(head: String, result: String): String =
+    s"$head\n<tool_output>\n$result\n</tool_output>"
+
   val tests = Tests {
     test(
-      "the writer's transcript labels each line, a tool call as one line with its result"
+      "the writer's transcript labels each line in one fence, a tool call as one line with its result in its own"
     ) {
       TestTranscripts.labelled(period*).text ==>
-        Vector(
+        fenced(
           "[u1] User: What port does the api use?",
-          "[t2] search \"port\" . → No matches.",
-          "[t3] read missing.yml → failed: missing.yml does not exist",
-          "[t4] read config.yml → 1 port: 3000 2 host: localhost",
-          "[t5] edit config.yml → failed: The person declined this call; it did not run.",
+          tool("[t2] search \"port\" . →", "No matches."),
+          tool("[t3] read missing.yml → failed:", "missing.yml does not exist"),
+          tool("[t4] read config.yml →", "1 port: 3000 2 host: localhost"),
+          tool(
+            "[t5] edit config.yml → failed:",
+            "The person declined this call; it did not run."
+          ),
           "[u6] User: We decided the api stays on 3000.",
           "[a7] Assistant: The api uses port 3000."
-        ).mkString("\n\n")
+        )
     }
 
     test(
-      "a tool line that can ground shows its result up to 4,000 chars; an error, or one below Outside, one line of 120"
+      "a tool line that can ground shows up to 4,000 chars of its result; an error, or one below Outside, 120"
     ) {
       def shown(e: Entry) = TestTranscripts.labelled(e).text
       def xs(n: Int) = Vector.fill(n)("x").mkString(" ")
@@ -55,25 +66,27 @@ object LabelledTests extends TestSuite {
         shown(result(0, "read big.txt", big, error = true)),
         shown(result(0, "read big.txt", big).copy(integrity = Integrity.Untrusted))
       ) ==> (
-        "[t1] read big.txt → " + xs(1990) + "…",
-        "[t1] read big.txt → " + xs(1990) + "…",
-        "[t1] read big.txt → failed: " + xs(46) + "…",
-        "[t1] read big.txt → " + xs(50) + "…"
+        fenced(tool("[t1] read big.txt →", xs(2000) + "…")),
+        fenced(tool("[t1] read big.txt →", xs(2000) + "…")),
+        fenced(tool("[t1] read big.txt → failed:", xs(60) + "…")),
+        fenced(tool("[t1] read big.txt →", xs(60) + "…"))
       )
     }
 
-    test("a long tool line is cut back to one line before an earlier line is dropped") {
+    test(
+      "a tool line over the bound keeps ToolChars of its result, cut before an earlier line is dropped"
+    ) {
       val t = TestTranscripts.labelled(
         said(0, "What does big.txt hold?"),
         result(1, "read big.txt", "x " * 1000),
         replied(2, "Only x.")
       )
       (t.within(500).text, t.within(500).ground(Vector("u1"))) ==> (
-        Vector(
+        fenced(
           "[u1] User: What does big.txt hold?",
-          "[t2] read big.txt → " + Vector.fill(50)("x").mkString(" ") + "…",
+          tool("[t2] read big.txt →", Vector.fill(60)("x").mkString(" ") + "…"),
           "[a3] Assistant: Only x."
-        ).mkString("\n\n"),
+        ),
         Some(Ground.Person)
       )
     }
@@ -83,7 +96,7 @@ object LabelledTests extends TestSuite {
     ) {
       val posted = TestTranscripts.entry(0, Payload.Posted("The engine's open issues."))
       labelledBy(Map(1L -> "Nick"))(posted, heard(1, "why this?")).text ==>
-        "[a1] Assistant: The engine's open issues.\n\n[h2] Nick: why this?"
+        fenced("[a1] Assistant: The engine's open issues.", "[h2] Nick: why this?")
       PeriodTranscript.overheard(Vector(posted, heard(1, "why this?"))) ==> true
     }
 
@@ -107,13 +120,13 @@ object LabelledTests extends TestSuite {
         said(2, "When is the freeze?"),
         replied(3, "Friday.")
       ).text ==>
-        Vector(
+        fenced(
           "[h1] Ana: Is the freeze on Thursday?",
           "[h2] Ben: It moved to Friday.",
           "[u3] User: When is the freeze?",
           "[a4] Assistant: Friday."
-        ).mkString("\n\n")
-      labelledBy(Map(0L -> "Ana"))(said(0, "Ship it.")).text ==> "[u1] Ana: Ship it."
+        )
+      labelledBy(Map(0L -> "Ana"))(said(0, "Ship it.")).text ==> fenced("[u1] Ana: Ship it.")
     }
 
     test(
@@ -125,11 +138,11 @@ object LabelledTests extends TestSuite {
         heard(1, "thanks @pip, and @Ana too"),
         said(2, "@Pipkin is on it")
       ).text ==>
-        Vector(
+        fenced(
           "[h1] Ana, to the assistant: what moved the freeze?",
           "[h2] Ben, to the assistant: thanks, and @Ana too",
           "[u3] Cy: @Pipkin is on it"
-        ).mkString("\n\n")
+        )
     }
 
     test(
@@ -196,10 +209,15 @@ object LabelledTests extends TestSuite {
 
     test("whole lines are kept from the end under the cap, and a label cut grounds nothing") {
       val t = TestTranscripts.labelled(period*)
-      val last =
-        "[u6] User: We decided the api stays on 3000.\n\n[a7] Assistant: The api uses port 3000."
-      t.within(last.length).text ==> last
-      t.within(last.length - 1).text ==> "[a7] Assistant: The api uses port 3000."
+      val lines =
+        Vector(
+          "[u6] User: We decided the api stays on 3000.",
+          "[a7] Assistant: The api uses port 3000."
+        )
+      // The cap counts the lines, a blank line between, not the fence around them.
+      val last = lines.mkString("\n\n")
+      t.within(last.length).text ==> fenced(lines*)
+      t.within(last.length - 1).text ==> fenced("[a7] Assistant: The api uses port 3000.")
       // u6 was cut: a citation of it counts for nothing.
       t.within(last.length - 1).ground(Vector("u6")) ==> Some(Ground.Claimed)
       t.within(last.length).ground(Vector("u6")) ==> Some(Ground.Person)

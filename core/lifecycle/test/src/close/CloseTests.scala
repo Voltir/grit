@@ -213,9 +213,8 @@ object CloseTests extends TestSuite {
         .map(_.toString)
         .exists(
           _.contains(
-            "Known elsewhere (shown from other places; never record it here):\n" + lines
-              .mkString("\n") +
-              "\n\nTranscript:"
+            "Known elsewhere (shown from other places; never record it here):\n" +
+              "<known_elsewhere>\n" + lines.mkString("\n") + "\n</known_elsewhere>\n\n<transcript>"
           )
         ) ==> true
     }
