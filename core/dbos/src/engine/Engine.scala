@@ -100,6 +100,9 @@ final class Engine private (
   val administration: grit.core.admin.Administration =
     new grit.dbos.sql.SqlAdministration(jot, opener)
 
+  def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
+    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins)
+
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no

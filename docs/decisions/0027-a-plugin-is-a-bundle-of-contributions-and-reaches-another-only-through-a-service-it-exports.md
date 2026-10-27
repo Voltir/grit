@@ -1,6 +1,6 @@
 # 0027. A plugin is a bundle of contributions to core's points, and reaches another only through a service it exports
 
-Status: accepted (2026-10-05); revised (2026-10-18)
+Status: accepted (2026-10-05); revised (2026-10-27)
 
 Context: a plugin is posted each closed period and keeps cache documents (ADR 0011); anything
 more was the kit's, which offered Digest's `recent_activity` because it recognised Digest by
@@ -14,7 +14,8 @@ Decision:
 - **A plugin is a name, a version and a set of optional contributions**, each to a point core
   owns: posting from closed periods (cache documents); ledger documents (ADR 0028); tools the
   turn runs itself over grit's store, as `about` is, never hosted by an edge; prompt
-  fragments for the windows of the places it scopes; and jobs (ADR 0029). A plugin whose tool
+  fragments for the windows of the places it scopes; jobs (ADR 0029); and commands a person
+  gives it through an edge, run with no model and no turn (ADR 0048). A plugin whose tool
   must touch a workspace or a service contributes a `Hosted` description, and an edge runs it
   (ADR 0017). The kit wires every plugin's contributions the same way and names no plugin.
 - **What a plugin derives is built only from closings** (ADR 0011), because a consumer of the
@@ -33,7 +34,8 @@ Decision:
   `moduleDeps`, which refuse a cycle), so a dependent is always built against its
   dependency's own version. It reaches the dependency at runtime only through a service value
   the dependency exports, a trait over its own documents, handed over when the deployment is
-  built: to its tools, and to its dreaming jobs' scans, in the scan's transaction. No plugin
+  built: to its tools, and to its dreaming jobs' scans, in the scan's transaction. A command
+  reaches only its own plugin's documents. No plugin
   reads or writes another's documents directly. Core alone shows a model another plugin's
   documents for a dreaming job's summary (ADR 0042), and only those of the plugins the job's
   plugin needs, read under the transaction's labels and believed at the meet of what was read.

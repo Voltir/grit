@@ -6,7 +6,7 @@ import java.util.concurrent.{CountDownLatch, TimeUnit}
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.clock.Clock
-import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores}
+import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores, PluginCommands}
 import grit.core.files.Intake
 import grit.core.id.{AttesterName, Declarer, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm}
@@ -173,6 +173,7 @@ object Kit {
     metered(link, deployment.budget, clock.now()).foreach(log.info)
     val report: Attesting.Report => Unit =
       reported(_, said => log.info(said), said => log.warn(said), said => log.error(said))
+    val commands = link.commands(deployment.plugins)
     // The edges first: DBOS runs what it recovers as soon as it launches, and a turn's call to a
     // place no live edge serves is answered as not served.
     Serving.open(
@@ -185,7 +186,8 @@ object Kit {
             link.jot,
             report
           ),
-          files
+          files,
+          commands
         ),
       env,
       clock,
@@ -263,7 +265,8 @@ object Kit {
                       said => log.error(said)
                     )
                   ),
-                  files
+                  files,
+                  link.commands(deployment.plugins)
                 ),
                 env,
                 deployment.budget,
@@ -529,8 +532,9 @@ object Kit {
   private def stores(
       link: Link^,
       attesting: Attesting^,
-      files: Intake^
-  ): EdgeStores^{link, attesting, files} =
+      files: Intake^,
+      commands: PluginCommands^
+  ): EdgeStores^{link, attesting, files, commands} =
     EdgeStores(
       link.inbox,
       link.administration,
@@ -545,7 +549,8 @@ object Kit {
       link.jot,
       link,
       attesting,
-      files
+      files,
+      commands
     )
 
   /** The voucher an edge attesting as `attester` records through: of [[trustOf]]'s realms and

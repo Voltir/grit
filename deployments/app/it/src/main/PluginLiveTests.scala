@@ -9,6 +9,7 @@ import scala.util.Using
 import grit.core.clock.{Clock, SetClock}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
+import grit.core.edge.CommandError
 import grit.core.flow.TestTainted
 import grit.core.id.{
   CloseRef,
@@ -21,16 +22,27 @@ import grit.core.id.{
   ToolCallId,
   WorkflowId
 }
-import grit.core.identity.Account
+import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.need.Needs
+import grit.core.need.{Needs, PluginReads}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
+import grit.core.plugin.{
+  Answered,
+  CacheDocs,
+  CachePosting,
+  DocumentPosting,
+  Documents,
+  KeepingCommand,
+  Plugin,
+  PluginCommand,
+  PostRef,
+  ReadingCommand
+}
 import grit.core.route.Routed
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.tool.{Args, Bound, Field, Outcome, Repairs, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.Integrity
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -41,7 +53,8 @@ import grit.lifecycle.post.{PostEnv, Posting}
 import utest.*
 
 /** Plugins over DBOS against a real Postgres: posting from closing entries alone, the
-  * cursor and the plugin's writes committing together, and Digest's backfill and surface.
+  * cursor and the plugin's writes committing together, Digest's backfill and surface, and a
+  * plugin's commands as an edge runs them for a person in a room.
   */
 object PluginLiveTests extends TestSuite {
 
@@ -164,7 +177,271 @@ object PluginLiveTests extends TestSuite {
       plugins
     )
 
+  /** What the commands below read: a key, and a text to keep under it. */
+  private final case class Note(key: String, text: String) extends caps.Pure
+
+  private def noting(called: ToolName): ToolSpec[Note] =
+    ToolSpec(
+      called,
+      "Keeps a note.",
+      Args
+        .of((key = Field.text("The key."), text = Field.text("The text.")))
+        .map(a => Note(a.key, a.text))
+    )
+
+  /** Writes `text` under `key` at public, believed at the most, kept at `notes`. */
+  private def write(own: DocumentKeeper, key: String, text: String, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    (for {
+      k <- DocKey.of(key)
+      t <- DocText.of(text)
+    } yield (k, t)) match {
+      case Left(why) => Left(StoreError.Invalid(why))
+      case Right((k, t)) =>
+        own
+          .write(
+            k,
+            grit.core.visibility.Label.Public,
+            Integrity.Authority,
+            Place.under(Namespace.Task, Vector("notes")),
+            t,
+            ujson.Obj(),
+            None,
+            at
+          )
+          .map(_ => ())
+    }
+
+  /** `note`: keeps the note, answering Done; a text of `refuse` is kept first, then refused. */
+  private object Keeps extends KeepingCommand[Note] {
+    val spec: ToolSpec[Note] = noting(ToolName("note"))
+    def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] =
+      write(own, args.key, args.text, at).map(_ =>
+        if (args.text == "refuse") Answered.Refused("refused")
+        else Answered.Done(s"kept ${args.key}")
+      )
+  }
+
+  /** `twice`: keeps the note under its key and under its key with `-2`. */
+  private object Twice extends KeepingCommand[Note] {
+    val spec: ToolSpec[Note] = noting(ToolName("twice"))
+    def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] =
+      for {
+        _ <- write(own, args.key, args.text, at)
+        _ <- write(own, s"${args.key}-2", args.text, at)
+      } yield Answered.Done("kept twice")
+  }
+
+  /** `list`: the texts of the notes its transaction reads, sorted, joined by commas. */
+  private object Lists extends ReadingCommand[Note] {
+    val spec: ToolSpec[Note] = noting(ToolName("list"))
+    def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] =
+      own.documents
+        .newest(10)
+        .map(ds => Answered.Done(ds.map(d => DocText.value(d.text)).sorted.mkString(",")))
+  }
+
+  /** `sneak`: a reading command writing through a keeper it was built with. */
+  private final class Sneaks(keeper: DocumentKeeper) extends ReadingCommand[Note] {
+    val spec: ToolSpec[Note] = noting(ToolName("sneak"))
+    def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] =
+      write(keeper, args.key, args.text, at).map(_ => Answered.Done("wrote"))
+  }
+
+  private def terms(label: String, bound: Int, full: DocumentTerms.Full): DocumentTerms =
+    (for {
+      l <- DocLabel.of(label)
+      t <- DocumentTerms.of(l, DocWeight.Unscaled, 1.day, bound, full = full)
+    } yield t).fold(e => sys.error(e), identity)
+
+  /** Notes, bound at 10; its commands are `note`, `list` and `sneak` over `sneaking`. */
+  private final class Notebook(sneaking: DocumentKeeper) extends Plugin {
+    val name: PluginName = PluginLiveTests.name("notebook")
+    val version = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms = notebookTerms
+      val posting: Option[DocumentPosting] = None
+    })
+    override val commands: Vector[PluginCommand[?]] = Vector(Keeps, Lists, new Sneaks(sneaking))
+  }
+  private val notebookTerms = terms("notes", 10, DocumentTerms.Full.Withdraw)
+
+  /** A ledger of one record, refusing a second; its command is `twice`. */
+  private object Ledger extends Plugin {
+    val name: PluginName = PluginLiveTests.name("ledger")
+    val version = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms = PluginLiveTests.terms("records", 1, DocumentTerms.Full.Refuse)
+      val posting: Option[DocumentPosting] = None
+    })
+    override val commands: Vector[PluginCommand[?]] = Vector(Twice)
+  }
+
+  private def place(text: String): Place =
+    Place.read(text).fold(e => sys.error(e), identity)
+
+  /** Labelled internal, and its speech capped at outside. */
+  private val team = place("slack:T1/C-team")
+
+  /** Labelled internal, capped nowhere. */
+  private val desk = place("slack:T1/C-desk")
+
+  /** Labelled confidential. */
+  private val board = place("slack:T1/C-board")
+  private val ann = TestAccounts.account("slack:T1/U-ann")
+  private val bea = TestAccounts.account("slack:T1/U-bea")
+  private val nobody = TestAccounts.account("slack:T1/U-nobody")
+
+  /** [[ann]] cleared internal, [[bea]] confidential; the rooms above labelled and capped. */
+  private val commanded: grit.core.visibility.Visibility = {
+    import grit.core.visibility.*
+    val internal = Label.at(Level.Internal)
+    val confidential = Label.at(Level.Confidential)
+    (for {
+      labels <- RoomLabels
+        .of(
+          Vector(team -> internal, desk -> internal, board -> confidential),
+          Labelled.Mapped(Label.Public)
+        )
+        .left
+        .map(_.written)
+      compartments <- Compartments.of(Vector()).left.map(_.toString)
+      staff <- GroupName.of("staff").left.map(_.toString)
+      bosses <- GroupName.of("bosses").left.map(_.toString)
+      v <- Visibility
+        .of(
+          compartments,
+          labels,
+          Vector(Group(staff, Set(ann)), Group(bosses, Set(bea))),
+          Vector(Grant(staff, internal), Grant(bosses, confidential)),
+          caps = Vector(Cap(team, Integrity.Outside))
+        )
+        .left
+        .map(_.toString)
+    } yield v).fold(e => sys.error(e), identity)
+  }
+
+  /** An engine under [[commanded]] with [[ann]] and [[bea]] seen, and its commands of `plugins`. */
+  private def commanding[A](suite: String)(
+      body: (DbConfig, Engine^, grit.core.edge.PluginCommands^) => A
+  ): A = {
+    val config = TestPostgres.freshDatabase(suite)
+    val engine = LiveEngine.open(config, "test", visibility = commanded)
+    try {
+      engine.jot.write(Subject.Public)(
+        engine.principals.name(ann, "Ann").flatMap(_ => engine.principals.name(bea, "Bea"))
+      ) ==> Right(())
+      val plugins = Vector(new Notebook(engine.keeper(name("notebook"), notebookTerms)), Ledger)
+      body(config, engine, engine.commands(plugins))
+    } finally engine.close()
+  }
+
+  /** Every current document of `plugin`, as (key, label, integrity), read at maintenance's clearance. */
+  private def kept(
+      config: DbConfig,
+      engine: Engine^,
+      plugin: String
+  ): Vector[(String, String, String)] =
+    LiveDb
+      .transaction(config)(engine.reads(name(plugin)).documents.newest(10))
+      .fold(
+        e => sys.error(e.toString),
+        _.map(d =>
+          (
+            DocKey.value(d.key),
+            grit.core.visibility.Label.written(d.label),
+            Integrity.written(d.integrity)
+          )
+        ).sorted
+      )
+
+  private def note(key: String, text: String): ujson.Value = ujson.Obj("key" -> key, "text" -> text)
+
+  private val at = Instant.parse("2026-10-27T10:00:00Z")
+
   val tests = Tests {
+    test(
+      "a keeping command keeps at the room's label, believed at no more than the edge gave, answering Done"
+    ) {
+      commanding("command_keeps") { (config, engine, commands) =>
+        commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
+          Right(Answered.Done("kept k"))
+        kept(config, engine, "notebook") ==> Vector(("k", "internal", "member"))
+      }
+    }
+
+    test("an edge's integrity above the room's cap is cut to the cap") {
+      commanding("command_capped") { (config, engine, commands) =>
+        commands.run(ann, team, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
+          Right(Answered.Done("kept k"))
+        kept(config, engine, "notebook") ==> Vector(("k", "internal", "outside"))
+      }
+    }
+
+    test("a refused command keeps nothing it wrote first") {
+      commanding("command_refused") { (config, engine, commands) =>
+        commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "refuse"), at) ==>
+          Right(Answered.Refused("refused"))
+        kept(config, engine, "notebook") ==> Vector()
+      }
+    }
+
+    test("a reading command that writes is Left(Store(DatabaseError))") {
+      commanding("command_sneaks") { (config, engine, commands) =>
+        val ran = commands.run(ann, desk, Integrity.Member, ToolName("sneak"), note("k", "x"), at)
+        assertMatch(ran) {
+          case Left(CommandError.Store(_, StoreError.DatabaseError(cause)))
+              if cause.contains("read-only") =>
+        }
+        kept(config, engine, "notebook") ==> Vector()
+      }
+    }
+
+    test("a write past the bound is Left(Store(Full)), keeping nothing") {
+      commanding("command_full") { (config, engine, commands) =>
+        commands.run(ann, desk, Integrity.Member, ToolName("twice"), note("k", "x"), at) ==>
+          Left(CommandError.Store(ToolName("twice"), StoreError.Full(1)))
+        kept(config, engine, "ledger") ==> Vector()
+      }
+    }
+
+    test("a command reads nothing above its asker's clearance") {
+      commanding("command_cleared") { (_, _, commands) =>
+        commands.run(bea, board, Integrity.Member, ToolName("note"), note("b", "board"), at) ==>
+          Right(Answered.Done("kept b"))
+        commands.run(ann, board, Integrity.Member, ToolName("note"), note("a", "staff"), at) ==>
+          Right(Answered.Done("kept a"))
+        (
+          commands.run(ann, board, Integrity.Member, ToolName("list"), note("", ""), at),
+          commands.run(bea, board, Integrity.Member, ToolName("list"), note("", ""), at)
+        ) ==> (Right(Answered.Done("staff")), Right(Answered.Done("board,staff")))
+      }
+    }
+
+    test("unknown names, unread arguments and unlinked accounts are Left, keeping nothing") {
+      commanding("command_unread") { (config, engine, commands) =>
+        (
+          commands.run(ann, desk, Integrity.Member, ToolName("forget"), note("k", "x"), at),
+          commands.run(ann, desk, Integrity.Member, ToolName("note"), ujson.Obj("key" -> "k"), at),
+          commands.run(nobody, desk, Integrity.Member, ToolName("note"), note("k", "x"), at)
+        ) ==> (
+          Left(CommandError.Unknown(ToolName("forget"))),
+          Left(CommandError.Unread(ToolName("note"), "`text` is missing: it takes text.")),
+          Left(CommandError.NotVouched(nobody))
+        )
+        kept(config, engine, "notebook") ==> Vector()
+      }
+    }
+
     test(
       "Digest enabled on a database with closed periods posts them all into their room's document, and lists them"
     ) {
