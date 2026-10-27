@@ -87,7 +87,9 @@ object ExplanationTextTests extends TestSuite {
           .lift(4)
       ) ==> (
         Some("No one I know asked this, so I tell no one's clearance."),
-        Some("This turn is my own, not a person's, so there is no person's clearance to tell.")
+        Some(
+          "I am acting on my own here, not for a person, so there is no person's clearance to tell."
+        )
       )
     }
   }

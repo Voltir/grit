@@ -17,15 +17,14 @@ object DriveEdge {
     * default.
     */
   val Instructions: String =
-    "drive_list lists the shared drives, or what is directly in one folder or shared drive; " +
-      "drive_search finds Drive files by the words in them; and drive_read reads one by its id: " +
+    "You can list the shared drives, or what is directly in one folder or shared drive; " +
+      "search Drive files by the words in them; and read one file by its id: " +
       "a Doc, a Sheet or a text file whole, and a PDF, a Word file, an Excel file or a Slides " +
       "deck a part at a time, starting with its outline. " +
       "Files in folders that no one has labelled yet are not shown, so a folder may look " +
       "empty when it isn't. If someone asks about such a folder, tell them an administrator " +
-      "can open it to you with the label command, typing " +
-      s"${DriveItems.Opening}: the link Drive shows for the folder, or " +
-      "the folder's id from a list or a search."
+      s"can open it to you by typing ${DriveItems.Opening}: the link Drive shows for the " +
+      "folder, or the folder's id from a list or a search."
 
   /** The edge named for `reading`'s service, serving [[DriveTools.List]], [[DriveTools.Search]]
     * and [[DriveTools.Read]] there over Drive's API at `api`, and the Slides API at `slides`,

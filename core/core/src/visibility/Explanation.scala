@@ -56,7 +56,7 @@ object Explanation {
     asker match {
       case Asker.Nobody => "No one I know asked this, so I tell no one's clearance."
       case Asker.Grit =>
-        "This turn is my own, not a person's, so there is no person's clearance to tell."
+        "I am acting on my own here, not for a person, so there is no person's clearance to tell."
       case Asker.Person(accounts) => "I know you by " + accounts.map(shown).mkString("; ") + "."
     }
 

@@ -311,6 +311,15 @@ object DriveEdgeTests extends TestSuite {
     }
 
     test(
+      "what the model is told of Drive names no tool and no command a person would not type, words it may echo"
+    ) {
+      (
+        DriveEdge.Instructions.contains("drive_"),
+        DriveEdge.Instructions.contains("label command")
+      ) ==> (false, false)
+    }
+
+    test(
       "what the model is told of Drive, and of drive_read, names a Slides deck among the files read a part at a time"
     ) {
       val partly = "a PDF, a Word file, an Excel file or a Slides deck a part at a time"
