@@ -1807,7 +1807,10 @@ abstract class DocumentContract extends TestSuite {
       def kept(a: PolicyApplication, body: String) =
         transaction(
           k.declassified(declassified(body, source, card, a), Integrity.Member, at(1))
-        ).isRight
+        ).map(_ => ())
+      val refused = Left(
+        StoreError.Invalid("the declassification's policy or application is no longer current")
+      )
       application(card, 1, Some(team))
       policy(team, 1, revoked = false)
       val first = applied
@@ -1817,7 +1820,7 @@ abstract class DocumentContract extends TestSuite {
       policy(team, 3, revoked = false, InMemoryDocuments.Status.Draft)
       val belowDraft = kept(second, "gist")
       policy(team, 4, revoked = false)
-      (underKeep, belowDraft, kept(second, "gist again")) ==> (false, true, false)
+      (underKeep, belowDraft, kept(second, "gist again")) ==> (refused, Right(()), refused)
     }
 
     test(

@@ -782,7 +782,7 @@ object MovesJournalTests extends TestSuite {
     }
 
     test(
-      "a bench's ask is digested v3, of its policy's compartment and version, its position and both templates, never its checks"
+      "a bench's ask is digested v3, and differs by its policy's version and by its position"
     ) {
       val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
       val asked = MovesJournal.example(DeclassificationPolicy(team, 3), 1)

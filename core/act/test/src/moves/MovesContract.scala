@@ -993,23 +993,20 @@ abstract class MovesContract extends TestSuite {
       val (_, shown) = declassifying(declassifies(1, 1), shelves, Rewrote, Clean) { m =>
         Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
       }
-      val document = shown.flatMap(users).headOption.getOrElse("")
-      val cut = document.stripPrefix("<document>\n").stripSuffix("\n</document>")
+      // FileText is 80 characters; with its blank line, 1,319 words of "boots" and the ellipsis
+      // are the most whole words within SourceChars (7,996 characters).
       (
         shown.map(_.system),
-        cut.startsWith(s"$FileText\n\nboots boots"),
-        cut.length <= Declassifying.SourceChars && cut.length > Declassifying.SourceChars - 10,
-        cut.endsWith("boots…"),
-        document.contains(CardText) || document.contains("second")
+        shown.flatMap(users)
       ) ==> (
         Vector(
           Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>" +
             "\n\n" + grit.core.prompt.Fenced.Rule
         ),
-        true,
-        true,
-        true,
-        false
+        Vector(
+          "<document>\n" + s"$FileText\n\n" + Vector.fill(1319)("boots").mkString(" ") + "…" +
+            "\n</document>"
+        )
       )
     }
 

@@ -236,8 +236,11 @@ object ChecksTests extends TestSuite {
           ujson.Obj("must" -> "present", "infer" -> "that a tour is planned")
         )
       )
-      assert(read(reordered).map(_.canonical) == read(checks()).map(_.canonical))
-      assert(read(reordered).map(_.canonical).exists(_.nonEmpty))
+      read(reordered).map(_.canonical) ==> Right(
+        """{"examples":{"accept":["A tour is planned for spring."],"refuse":["KETTAMA plays in May."]},""" +
+          """"signals":[{"infer":"that the tour's codename is KETTAMA","must":"absent"},""" +
+          """{"infer":"that a tour is planned","must":"present"}]}"""
+      )
     }
   }
 }

@@ -133,7 +133,9 @@ object DeclassifyingTests extends TestSuite {
       )
     }
 
-    test("a screening changes with any character of its checks; equal checks screen equally") {
+    test(
+      "a screening differs between checks whose signals and examples differ; equal checks screen equally"
+    ) {
       (
         Declassifying.screening(marked("a")) == Declassifying.screening(marked("a")),
         Declassifying.screening(marked("a")) == Declassifying.screening(marked("b"))

@@ -62,14 +62,27 @@ object ScreenCaptureTests extends TestSuite {
   private lazy val compiled =
     Probes.batch(prelude, readControl :: checksControl :: made ++ checksMadeOutside)
 
+  /** The probes reaching a constructor through a case class's `apply`. */
+  private val applied = Set(
+    screenedMade,
+    baselineMade,
+    firedMade,
+    benchedMade,
+    lineMade,
+    checksMade,
+    signalMade,
+    signalsMade,
+    examplesMade
+  )
+
   /** Whether `probe` is rejected for reaching a constructor private to `grit.core.screen`:
-    * through `new` or `copy`, named; through a case class's `apply`, which is as private, as
-    * its object taking no parameters.
+    * through `new` or `copy`, named; through a case class's `apply` ([[applied]]), which is as
+    * private, as its object taking no parameters.
     */
   private def private_(probe: String): Boolean =
     compiled.errors(probe).exists { e =>
       e.contains("can only be accessed from package grit.core.screen in package grit.core.") ||
-      e.contains("does not take parameters")
+      (applied(probe) && e.contains("does not take parameters"))
     }
 
   val tests = Tests {

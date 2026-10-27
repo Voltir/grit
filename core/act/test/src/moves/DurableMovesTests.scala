@@ -405,7 +405,8 @@ final class MovesWorld(
 
 object MovesWorld {
 
-  /** As [[keeps]], its moves also scanning `world`'s strands and `needs` and summarising what
+  /** As [[keeps]], keeping its pieces in a keeper of its own that `pieces` does not read; its
+    * moves also scanning `world`'s strands and `needs`, reading `pieces`, and summarising what
     * they said.
     */
   def dreams[A <: caps.Pure](
