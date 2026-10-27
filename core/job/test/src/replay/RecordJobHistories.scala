@@ -39,13 +39,37 @@ object RecordJobHistories {
         floor: Label = Label.Public,
         crashRecord: Boolean = false,
         crashModel: Boolean = false,
-        shapes: Vector[ujson.Value] = Vector()
+        shapes: Vector[ujson.Value] = Vector(),
+        judged: Vector[Vector[Double]] = Vector(),
+        declassing: Boolean = false
     )(run: (World, InMemoryDurable) => WorkflowId): (String, History) = {
-      val w =
-        new World(cap, floor, crashRecord = crashRecord, crashModel = crashModel, shapes = shapes)
+      val w = new World(
+        cap,
+        floor,
+        crashRecord = crashRecord,
+        crashModel = crashModel,
+        shapes = shapes,
+        judged = screened(judged*),
+        declassing = declassing
+      )
       val id = run(w, w.durable)
       name -> History("run", id, Turn.Epoch, "recorded", w.durable.history(id))
     }
+
+    /** A run of [[Declassifier]] over a world [[World.declassified]], its classifier answering
+      * the bench's two examples with `bench`, then the declassify's judgments with `leaks`.
+      */
+    def declassifying(name: String, bench: Vector[Vector[Double]], leaks: Vector[Double]*) =
+      record(name, floor = Declassing, judged = bench ++ leaks, declassing = true) { (w, d) =>
+        w.declassified()
+        val turn = w.started(w.declared("declassify", 1))
+        d.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Declassifier(1))))
+        turn.workflowId
+      }
+    // Each example's answers of the two signals, absent then present: the accept example
+    // passes, the refuse example is refused; or the accept example is refused too.
+    val passing = Vector(Vector(0.0, 0.9), Vector(0.9, 0.9))
+    val failing = Vector(Vector(0.9, 0.9), Vector(0.9, 0.9))
 
     /** A run of `probing(1)` over `w`'s schedule `key` with the count `n`. */
     def probed(w: World, d: InMemoryDurable, n: Int, key: String = "probe"): WorkflowId = {
@@ -154,6 +178,34 @@ object RecordJobHistories {
         d.run(turn.workflowId)(Run.body(w.env(), dreamingJobs(new Gatherer(1))))
         turn.workflowId
       },
+      // A declassifying job's bench passes, then its declassify, each screen asking meta,
+      // first, the absent signal and the present one, and the source meta and first. The first
+      // attempt misses the present signal; its retry passes, no floor answer asking the source.
+      declassifying(
+        "run-declassified-retried",
+        passing,
+        Vector(0.0, 0.0, 0.0, 0.2),
+        Vector(0.0, 0.0, 0.0, 0.9)
+      ),
+      // The first attempt's floor fires, so the source is asked before the retry, and does not
+      // excuse it; the retry passes.
+      declassifying(
+        "run-declassified-sourced-first",
+        passing,
+        Vector(0.0, 0.5, 0.0, 0.9),
+        Vector(0.0, 0.0),
+        Vector(0.0, 0.0, 0.0, 0.9)
+      ),
+      // Only the retry's floor fires: the source is asked after it, and excuses it.
+      declassifying(
+        "run-declassified-sourced-after",
+        passing,
+        Vector(0.0, 0.0, 0.0, 0.2),
+        Vector(0.0, 0.5, 0.0, 0.9),
+        Vector(0.0, 0.5)
+      ),
+      // The bench fails, its accept example refused: the declassify is unchecked, asking nothing.
+      declassifying("run-bench-failed", failing),
       // The process died recording the ask's cost: its model call is recorded, its record not.
       // Coming back at another version, the run's reply step meets that move.
       record("run-moved-then-redeployed", crashRecord = true) { (w, d) =>

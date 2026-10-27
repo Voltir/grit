@@ -1,0 +1,84 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-18",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"read\",\"slot\":\"declared:deployment:declassify@2026-10-07T09:00:00Z\",\"job\":\"remind\",\"version\":1,\"started\":\"2026-10-07T09:00:00Z\",\"params\":1,\"report\":{\"kind\":\"kept\"},\"integrity\":\"authority+unmapped\"}"
+    },
+    {
+      "name": "ask:bench-0",
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:282c69c3a10873c3e110ad05d125b52b633bc821dba92eb768866ff9b73cd288\",\"answers\":[{\"yes\":0},{\"yes\":0.9}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":288,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":0,\"musts\":[\"absent\",\"present\"]},\"example\":{\"kind\":\"accept\",\"screening\":\"95691b75b4ce03e4eb214c8697562260c7ff7d76e6ea0d349c076f9505f4d6b5\"}}"
+    },
+    {
+      "name": "ask:bench-0:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:bench-1",
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:0cd6d25ca32970956ac5b62dcbc57ee3fd4ffa7debf2a145810a9847d0677307\",\"answers\":[{\"yes\":0.9},{\"yes\":0.9}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":298,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":0,\"musts\":[\"absent\",\"present\"]},\"example\":{\"kind\":\"refuse\",\"screening\":\"95691b75b4ce03e4eb214c8697562260c7ff7d76e6ea0d349c076f9505f4d6b5\"}}"
+    },
+    {
+      "name": "ask:bench-1:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:bench-2",
+      "output": "{\"screen\":{\"refused\":\"ended\",\"why\":\"no example at its position\",\"digest\":\"v3:3f9a6bb3ac2e4feb1ec8482346a70672e86cc2114dfa0620c198acbe3e2c75cf\"},\"ended\":{\"screening\":\"95691b75b4ce03e4eb214c8697562260c7ff7d76e6ea0d349c076f9505f4d6b5\"}}"
+    },
+    {
+      "name": "keep:bench",
+      "output": "{\"kept\":\"{\\\"passed\\\":true,\\\"examples\\\":[{\\\"at\\\":0,\\\"kind\\\":\\\"accept\\\",\\\"must\\\":\\\"absent\\\",\\\"p\\\":0,\\\"signal\\\":0},{\\\"at\\\":0,\\\"kind\\\":\\\"refuse\\\",\\\"must\\\":\\\"absent\\\",\\\"p\\\":0.9,\\\"signal\\\":0}]}\"}"
+    },
+    {
+      "name": "ask:rewrite",
+      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v2:58a9b495a4914ce563dc7177f1f6e5d155ac6ee8e7f916b30d71116121094c0e\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1429}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
+    },
+    {
+      "name": "ask:rewrite:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:rewrite-check",
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:c065e1edf463ba58c0b4d708cb21a4ffe72d3604a0d6e5920dcf4bc83fa7ac57\",\"answers\":[{\"yes\":0},{\"yes\":0},{\"yes\":0},{\"yes\":0.2}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
+    },
+    {
+      "name": "ask:rewrite-check:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:rewrite-retry",
+      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v3:666fa6dfb59516f323cbbc082b28c053d20a043909cd0edbf7a98eba9896df19\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1768}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
+    },
+    {
+      "name": "ask:rewrite-retry:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:rewrite-retry-check",
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:c771162364c51c22fadc4a5b6a0a57486e4dab1049588f1b08c7e9ba166cef1d\",\"answers\":[{\"yes\":0},{\"yes\":0.5},{\"yes\":0},{\"yes\":0.9}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
+    },
+    {
+      "name": "ask:rewrite-retry-check:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "ask:rewrite-source",
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:6ebc8943f67ecb0e3334db75fe0c0cce49eeae12dbe97d526ed5183ea77b417a\",\"answers\":[{\"yes\":0},{\"yes\":0.5}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":429,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[]}}"
+    },
+    {
+      "name": "ask:rewrite-source:record",
+      "output": "{\"recorded\":true}"
+    },
+    {
+      "name": "keep:keep",
+      "output": "{\"kept\":\"\\\"made\\\"\"}"
+    },
+    {
+      "name": "reply",
+      "output": "{\"kind\":\"replied\",\"text\":\"bench passed, rewrite made\"}"
+    }
+  ]
+}

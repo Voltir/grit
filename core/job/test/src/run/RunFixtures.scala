@@ -5,8 +5,28 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.act.moves.{MoveRecords, MovesEnv}
-import grit.core.act.MovesFixtures.{Answering, FakeDb, Judging, PerChar, replied, shown}
-import grit.core.act.{Asked, Dreaming, Keeping, MoveError, MoveLimits, MoveName, Moves, Posed}
+import grit.core.act.MovesFixtures.{
+  Answering,
+  Dream,
+  FakeDb,
+  Judged,
+  Judging,
+  PerChar,
+  Summary,
+  replied,
+  shown
+}
+import grit.core.act.{
+  Asked,
+  Declassifying,
+  Dreaming,
+  Keeping,
+  MoveError,
+  MoveLimits,
+  MoveName,
+  Moves,
+  Posed
+}
 import grit.core.classify.{Answers, Ask, ClassifierError, Criterion, Decision, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{
@@ -16,6 +36,8 @@ import grit.core.document.{
   DocumentKeeper,
   DocumentTerms,
   InMemoryDocuments,
+  Pointer,
+  PolicyApplication,
   Written
 }
 import grit.core.durable.{InMemoryDurable, Journaled}
@@ -29,7 +51,16 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.files.{InMemoryPieces, NoFiles, PieceKeeper}
+import grit.core.files.{
+  FormatName,
+  InMemoryPieces,
+  Kind,
+  NoFiles,
+  PieceKeeper,
+  PiecedFile,
+  Pieces,
+  TestPieces
+}
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
   CallSlot,
@@ -88,10 +119,13 @@ import grit.core.visibility.{
   Clearance,
   Cleared,
   Compartments,
+  DeclassificationPolicy,
   Label,
+  Level,
   Party,
   RoomLabels,
   Subject,
+  TestLabels,
   Visibility
 }
 import grit.dbos.sql.TestTx
@@ -244,6 +278,91 @@ object RunFixtures {
         .merge
   }
 
+  /** `remind` at `version` as [[Notes]]' dreaming job that declassifies, as a declassifying
+    * plugin's job does: its run benches [[Applied]]'s policy in its bench `bench`; then
+    * declassifies [[Declassed]] under [[Applied]], from its file at [[Revision]], in its
+    * declassify `rewrite`; and keeps a rewrite made in its keep `keep`. It replies the bench's
+    * verdict and the declassify's outcome, or the error that stopped each.
+    */
+  final class Declassifier(val version: Int) extends DreamingJob[Count] {
+    val name = remind.name
+    def write(params: Count): ujson.Value = remind.write(params)
+    def read(params: ujson.Value): Either[String, Count] = remind.read(params)
+
+    /** Two asks, a rewrite and its retry; seven judgments, a bench's two and a declassify's
+      * three.
+      */
+    override def limits: MoveLimits = MoveLimits.of(2, 0, 7).fold(sys.error, identity)
+    def run(run: Trusted[JobRun[Count]], moves: Dreaming^): String = {
+      val benched = moves.bench(move("bench"), Applied.policy) match {
+        case Left(e) => MoveError.said(e)
+        case Right(Declassifying.Benching.Kept(b)) => if (b.passed) "passed" else "failed"
+        case Right(Declassifying.Benching.Unbenched(why)) => s"unbenched $why"
+      }
+      val declassified = moves.declassify(move("rewrite"), Declassed, Revision, Applied) match {
+        case Left(e) => MoveError.said(e)
+        case Right(Declassifying.Outcome.Made(rewrite)) =>
+          moves
+            .keep(move("keep"), rewrite)((d, keeper, at) =>
+              keeper.declassified(d, Integrity.Authority, at).map(_ => Noted("made"))
+            )
+            .fold(MoveError.said, _.label)
+        case Right(Declassifying.Outcome.Kept(_)) => "kept back"
+        case Right(Declassifying.Outcome.Unapplied(why)) => s"unapplied $why"
+      }
+      s"bench $benched, rewrite $declassified"
+    }
+  }
+
+  /** Internal, in the compartment `team`: what a declassifying world reads at. */
+  val Declassing: Label = Label.at(Level.Internal, TestLabels.compartment("team"))
+
+  /** [[Declassing]]'s compartment declared. */
+  val DeclassingCompartments: Compartments =
+    Compartments.of(Vector(TestLabels.compartment("team"))).fold(c => sys.error(s"$c"), identity)
+
+  /** The policy over `team`. */
+  val Team: DeclassificationPolicy.Over =
+    DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
+
+  /** The document [[World.declassified]] keeps, the first a world writes. */
+  val Declassed: DocumentVersionId =
+    DocumentVersionId.of(1).fold(sys.error("no version 1"))(identity)
+
+  /** The drive file [[Declassed]] is read from. */
+  val DeclassedFile: Pointer =
+    Pointer.of(ToolName("drive_read_file"), "file" -> ujson.Str("c1")).fold(sys.error, identity)
+
+  /** The revision of [[DeclassedFile]] whose pieces [[World.declassified]] keeps. */
+  val Revision = "r1"
+
+  /** [[Team]]'s policy's first version applied to [[DeclassedFile]] in its first application. */
+  val Applied: PolicyApplication =
+    PolicyApplication(DeclassificationPolicy(Team, 1), DeclassedFile, 1)
+
+  /** Checks of one absent signal, then one present: a declassify's screen asks meta, first, the
+    * absent one, then the present one; its source's, meta and first; a bench's each example, the
+    * two signals.
+    */
+  val Stating: ujson.Value = ujson.Obj(
+    "signals" -> ujson.Arr(
+      ujson.Obj("infer" -> "where the team meets", "must" -> "absent"),
+      ujson.Obj("infer" -> "that the team meets offsite", "must" -> "present")
+    ),
+    "examples" -> ujson.Obj(
+      "accept" -> ujson.Arr("The team meets offsite."),
+      "refuse" -> ujson.Arr("The team meets at the lake house.")
+    )
+  )
+
+  /** A classifier's script answering its `i`th judgment yes to each question with the `i`th of
+    * `leaks`.
+    */
+  def screened(leaks: Vector[Double]*): Vector[Either[ClassifierError, Answers]] =
+    leaks.toVector.map(ls =>
+      Right(Answers(ls.map(grit.core.classify.Answer.YesNo(_)), Judged, "test/judge"))
+    )
+
   /** `text` kept under `key` at [[Notes]]' place, publicly, believed a member's: its version. */
   private def noted(keeper: DocumentKeeper, key: String, text: String, at: Instant)(using
       Tx^
@@ -389,7 +508,8 @@ object RunFixtures {
     * `crashModel`, inside the first model call. Required to call a tool, the model calls it
     * `calling` times, each with the next of `shapes` ([[Answering]]). Its classifier answers with the next of `judged`, or
     * each question of its kind when there are none ([[Judging]]). Its model's replies report
-    * `upstream` as who served them.
+    * `upstream` as who served them. When `declassing`, [[Declassing]]'s compartment is
+    * declared, and its models and classifier are cleared for `floor`.
     */
   final class World(
       cap: Option[String] = None,
@@ -402,21 +522,31 @@ object RunFixtures {
       shapes: Vector[ujson.Value] = Vector(),
       judged: Vector[Either[ClassifierError, Answers]] = Vector(),
       calling: Int = 1,
-      upstream: Option[String] = None
+      upstream: Option[String] = None,
+      declassing: Boolean = false
   ) extends caps.SharedCapability {
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val deliveries: InMemoryDeliveries = new InMemoryDeliveries
     val clock: SetClock = new SetClock(Due.plusSeconds(30))
-    private val visibility: Visibility =
+    private val visibility: Visibility = {
+      val modelsCleared =
+        if (!declassing) Vector.empty
+        else
+          Vector(
+            Cleared(Party.of(Summary).getOrElse(sys.error("no upstream")), floor),
+            Cleared(Party.of(Dream).getOrElse(sys.error("no upstream")), floor),
+            Cleared(Party.Service(grit.core.classify.TestClassifiers.Service), floor)
+          )
       Visibility
         .of(
-          Compartments.Shipped,
+          if (declassing) DeclassingCompartments else Compartments.Shipped,
           RoomLabels.Public,
           Vector.empty,
           Vector.empty,
-          Vector(Cleared(Party.Service(Probe), trust))
+          Cleared(Party.Service(Probe), trust) +: modelsCleared
         )
         .fold(r => sys.error(r.toString), identity)
+    }
     private val db = new FakeDb(Clearance.of(floor), visibility)
     val durable: InMemoryDurable =
       new InMemoryDurable(resolve = _ => Clearance.of(floor), visibility = visibility)
@@ -448,6 +578,60 @@ object RunFixtures {
     /** [[Notes]]' terms in force, so a summary reads its documents. */
     def declareNotes(): Unit = {
       val _ = documents.declare(Vector(Notes -> NotesTerms))(using TestTx.fake)
+    }
+
+    /** [[Declassed]], a [[Notes]] document at [[Declassing]] that [[DeclassedFile]] reads, the
+      * file pieced at [[Revision]], and [[Applied]] in force over it: [[Team]]'s policy, its
+      * checks [[Stating]], benched passing.
+      */
+    def declassified(): Unit = {
+      val tx = TestTx.fake(Clearance.of(Declassing))
+      (for {
+        key <- DocKey.of("c1")
+        text <- DocText.of("The offsite is at the lake house.")
+      } yield (key, text)).fold(sys.error, identity) match {
+        case (key, text) =>
+          documents
+            .keeper(Notes, NotesTerms)
+            .write(
+              key,
+              Declassing,
+              Integrity.Member,
+              NotesPlace,
+              text,
+              ujson.Obj(),
+              Some(DeclassedFile),
+              Instant.EPOCH
+            )(using tx) match {
+            case Right(Written.Versioned(v, _, _)) if v == Declassed => ()
+            case other => sys.error(s"not written as Declassed: $other")
+          }
+      }
+      pieces
+        .keeper(Notes, PieceKeeper.Bound)
+        .keep(
+          PiecedFile(
+            "c1",
+            "c1.pdf",
+            Revision,
+            Kind.Pdf,
+            FormatName("paged-text"),
+            1,
+            DeclassedFile,
+            Pieces.Target
+          ),
+          NotesPlace,
+          Integrity.Member,
+          TestPieces.paragraphs(
+            Vector("Offsite"),
+            Vector("The offsite moved to the lake house, on the 4th of May.")
+          ),
+          0,
+          Instant.EPOCH
+        )(using tx)
+        .fold(e => sys.error(s"not pieced: $e"), _ => ())
+      documents.policy(Team, 1, Some("Remove where the offsite is."), Declassing, Some(Stating))
+      documents.application(DeclassedFile, 1, Some(Team))
     }
     val models: Answering = new Answering(Answer, crashModel, shapes, calling, upstream)
     val classifier: Judging = new Judging(judged)

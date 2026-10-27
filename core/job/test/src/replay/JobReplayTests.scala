@@ -31,13 +31,16 @@ object JobReplayTests extends TestSuite {
     "keep" -> 64, // what was kept
     "keep:scan" -> 1024, // the strands a dreaming run scanned, by ids and counts
     "keep:gather" -> 1536, // two strands and the versions to show, by ids and counts
+    "keep:bench" -> 384, // a bench's verdict and each example's deciding answer
     "DBOS.recv" -> 64, // an edge's ring
     "DBOS.sleep" -> 64, // when the wait ends
     "reply" -> 256 // the run's reply
   )
 
-  /** The most bytes one history's steps may record in all, about twice the most today's do. */
-  private val Whole = 1600
+  /** The most bytes one history's steps may record in all, about twice the most today's do: a
+    * declassifying run's bench, and its declassify's retry with its source asked.
+    */
+  private val Whole = 8000
 
   private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
     History.recorded(epoch)
@@ -63,9 +66,18 @@ object JobReplayTests extends TestSuite {
   private def gathered(history: History): Boolean =
     history.steps.exists(_.name == "keep:gather")
 
-  /** A step's family as [[Budgets]] holds it: a dreaming run's scan apart from other keeps. */
+  /** Whether `history` declassified: it holds [[Declassifier]]'s bench, which its every run
+    * makes.
+    */
+  private def declassified(history: History): Boolean =
+    history.steps.exists(_.name == "keep:bench")
+
+  /** A step's family as [[Budgets]] holds it: a dreaming run's scan, and a bench's keep, apart
+    * from other keeps.
+    */
   private def family(name: String): String =
-    if (name == "keep:scan" || name == "keep:gather") name else RecordedSizes.familyOf(name)
+    if (Set("keep:scan", "keep:gather", "keep:bench").contains(name)) name
+    else RecordedSizes.familyOf(name)
 
   /** What [[probes]] at version 1 replies when `history` is replayed under today's body, or why
     * the replay failed: a move whose input's digest no longer matches the one recorded replies
@@ -128,7 +140,11 @@ object JobReplayTests extends TestSuite {
         "run-moved-then-redeployed",
         "run-kept",
         "run-dreamed",
-        "run-dreamed-many"
+        "run-dreamed-many",
+        "run-declassified-retried",
+        "run-declassified-sourced-first",
+        "run-declassified-sourced-after",
+        "run-bench-failed"
       ).map(_ + ".json")
       expected.filterNot(runs.contains) ==> Vector()
     }
@@ -148,8 +164,10 @@ object JobReplayTests extends TestSuite {
     }
 
     test("every run history that asked or called replays under today's body, at its own version") {
-      failing(h => moved(h) && !kept(h) && !dreamed(h) && !gathered(h), jobsOf(probing(1))) ==>
-        Vector()
+      failing(
+        h => moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && !declassified(h),
+        jobsOf(probing(1))
+      ) ==> Vector()
     }
 
     test("every run history that kept replays under today's body, its keeping job at its version") {
@@ -167,13 +185,19 @@ object JobReplayTests extends TestSuite {
     ) {
       failing(gathered, dreamingJobs(new Gatherer(1))) ==> Vector()
     }
+    test(
+      "every run history that declassified replays under today's body, its dreaming job at its version"
+    ) {
+      failing(declassified, dreamingJobs(new Declassifier(1))) ==> Vector()
+    }
 
     test(
       "every run history that asked or called, and replied, replies under today's body as it recorded"
     ) {
       val replied = histories.collect {
         case (path, Right(h))
-            if moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && recorded(h).nonEmpty =>
+            if moved(h) && !kept(h) && !dreamed(h) && !gathered(h) && !declassified(h) &&
+              recorded(h).nonEmpty =>
           (path, h)
       }
       // Every one that recorded a reply is compared: one whose reply no longer parses would
