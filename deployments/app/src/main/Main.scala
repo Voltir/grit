@@ -359,9 +359,10 @@ object Main {
                     case Left(refused) => sys.error(refused.message(clock.now()))
                   }
                 try {
-                  val running = ownEngine(started, deployment, secrets, run)
-                  serveHere(running, Place.of(directory), hosted, instructions, offered)
-                  running
+                  // Its edge first: DBOS runs what it recovers as soon as it launches, and a
+                  // turn's call to a directory no live edge serves is answered as not served.
+                  serveHere(started, Place.of(directory), hosted, instructions, offered)
+                  ownEngine(started, deployment, secrets, run)
                 } catch {
                   case e: Throwable =>
                     // DBOS's threads are non-daemon: an engine that is not handed on is closed.

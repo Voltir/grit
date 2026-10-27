@@ -104,7 +104,33 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): FileArea^ = {
+    val area = files(engine, d, s)
+    launched(engine, d, s, run, sweeping, finished, area)
+    area
+  }
+
+  /** `engine`'s file area for `d`, as [[apply]] makes it, after logging `database: <endpoint>`;
+    * nothing launched, so an edge can keep files in it before [[launched]] runs anything.
+    * Throws when its directory cannot be made ([[area]]).
+    */
+  private[grit] def files(engine: Engine^, d: Deployment, s: Secrets): FileArea^ = {
     Log.info(s"database: ${s.database.endpoint}")
+    val temp = Path.of(System.getProperty("java.io.tmpdir"))
+    area(engine, d, filesDir(s.files, s.database, temp))
+  }
+
+  /** `d`'s workflows launched on `engine` as [[apply]] launches them, over `files`, the area
+    * [[files]] made for it. Throws as [[apply]] does.
+    */
+  private[grit] def launched(
+      engine: Engine^,
+      d: Deployment,
+      s: Secrets,
+      run: Run,
+      sweeping: Boolean,
+      finished: String => Unit,
+      files: FileArea^
+  ): Unit = {
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
       case Some(key) =>
@@ -112,7 +138,6 @@ private[grit] object Launch {
         new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
     }
     val temp = Path.of(System.getProperty("java.io.tmpdir"))
-    val files = area(engine, d, filesDir(s.files, s.database, temp))
     asking(
       engine,
       d,
@@ -149,7 +174,6 @@ private[grit] object Launch {
         }
       }
     }
-    files
   }
 
   /** `runtime`'s file area (ADR 0045): its rows in `runtime`'s store, written in its short

@@ -81,7 +81,8 @@ object Kit {
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
     * those already opened. Once the engine opens, and before any edge does, what the deployment's
-    * identities no longer trust is ended ([[Engine.untrust]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
+    * identities no longer trust is ended ([[Engine.untrust]]); its edges open before any of its
+    * workflows runs ([[opened]]). Each finished turn is logged in one line at INFO under [[TurnLog]].
     * When `deployment` declares a review, heard messages are picked for it every
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
     * Each edge that is an attester the deployment trusts is asked for a look once its edges
@@ -101,34 +102,7 @@ object Kit {
             val stopped = new CountDownLatch(1)
             val closed = new CountDownLatch(1)
             try {
-              val files = Launch(
-                engine,
-                deployment,
-                secrets,
-                Launch.Run.Served,
-                sweeping = true,
-                said => turns.info(said)
-              )
-              val link: Link^{engine} = engine
-              metered(link, deployment.budget, clock.now()).foreach(log.info)
-              val report: Attesting.Report => Unit =
-                reported(_, said => log.info(said), said => log.warn(said), said => log.error(said))
-              Serving.open(
-                deployment.edges.toList,
-                edge =>
-                  stores(
-                    link,
-                    new Attesting(
-                      voucherOf(engine, deployment.identities, edge.attester),
-                      link.jot,
-                      report
-                    ),
-                    files
-                  ),
-                env,
-                clock,
-                said => log.info(said)
-              ) match {
+              opened(engine, deployment, secrets, env, clock, said => turns.info(said), log) match {
                 case Left(failure) => Left(failure)
                 case Right(opened) =>
                   // On ctrl-c or SIGTERM: stop the loop, then hold the JVM open until the edges
@@ -151,7 +125,7 @@ object Kit {
                             Picking.round(
                               review,
                               engine.reviews,
-                              link.jot,
+                              engine.jot,
                               deployment.budget,
                               now
                             ) match {
@@ -173,6 +147,68 @@ object Kit {
               closed.countDown()
             }
         }
+    }
+  }
+
+  /** `deployment`'s edges opened on `engine` in order ([[Serving.open]]), each over its stores and
+    * `engine`'s file area, and only then its workflows launched, sweeping, each finished turn's
+    * line told to `finished` ([[Launch.apply]]): what DBOS starts at launch, a turn recovered
+    * mid-round among it, finds every edge this process serves registered, so its calls to their
+    * places are sent. An edge refusing to open is the failure: those opened are closed and
+    * nothing is launched. Throws as [[Launch.apply]] does, having closed the edges. What the
+    * spend so far is, and each edge's opening, is logged to `log` at INFO; each edge that is an
+    * attester the deployment trusts reports to `log` as [[reported]] says.
+    */
+  private[grit] def opened(
+      engine: Engine^,
+      deployment: Deployment,
+      secrets: Secrets,
+      env: Map[String, String],
+      clock: Clock^,
+      finished: String => Unit,
+      log: org.slf4j.Logger
+  ): Either[KitFailure, Serving.Opened^] = {
+    val files = Launch.files(engine, deployment, secrets)
+    val link: Link^{engine} = engine
+    metered(link, deployment.budget, clock.now()).foreach(log.info)
+    val report: Attesting.Report => Unit =
+      reported(_, said => log.info(said), said => log.warn(said), said => log.error(said))
+    // The edges first: DBOS runs what it recovers as soon as it launches, and a turn's call to a
+    // place no live edge serves is answered as not served.
+    Serving.open(
+      deployment.edges.toList,
+      edge =>
+        stores(
+          link,
+          new Attesting(
+            voucherOf(engine, deployment.identities, edge.attester),
+            link.jot,
+            report
+          ),
+          files
+        ),
+      env,
+      clock,
+      said => log.info(said)
+    ) match {
+      case Left(failure) => Left(failure)
+      case Right(opened) =>
+        try
+          Launch.launched(
+            engine,
+            deployment,
+            secrets,
+            Launch.Run.Served,
+            sweeping = true,
+            finished,
+            files
+          )
+        catch {
+          case e: Throwable =>
+            opened.close()
+            throw e
+        }
+        Right(opened)
     }
   }
 
