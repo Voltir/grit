@@ -123,6 +123,17 @@ trait DocumentKeeper extends DocumentShelf {
       Tx^
   ): Either[StoreError, Option[PolicyApplication.InForce]]
 
+  /** The compartment the current application to the document `pointer` reads names, when
+    * `label` holds it, whether or not a version of its policy is in force: what [[benchable]]
+    * is asked over, so that a compartment's first version is benched while still a draft.
+    * `None` when the document has no application or its current one is a removal, and as
+    * [[declassifying]] for `label`. Read from the operator's rows as this transaction sees them
+    * now.
+    */
+  def applying(label: Label, pointer: Pointer)(using
+      Tx^
+  ): Either[StoreError, Option[DeclassificationPolicy.Over]]
+
   /** Keeps `d` as the current document of this plugin under a key derived from its source's
     * plugin and key (never repeating the source's key), at `d.label`, below this transaction's
     * floor (the *-property's one exception besides the trusted subject), at its source's place,
@@ -217,6 +228,10 @@ object DocumentKeeper {
     def declassifying(label: Label, pointer: Pointer)(using
         Tx^
     ): Either[StoreError, Option[PolicyApplication.InForce]] = keeper.declassifying(label, pointer)
+
+    def applying(label: Label, pointer: Pointer)(using
+        Tx^
+    ): Either[StoreError, Option[DeclassificationPolicy.Over]] = keeper.applying(label, pointer)
 
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         Tx^

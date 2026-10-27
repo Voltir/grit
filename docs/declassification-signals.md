@@ -79,9 +79,8 @@ Publishing picks what happens to the rewrites made under earlier versions:
 
 A chain of `keep` publishes keeps the rewrites from the newest version published to withdraw
 on (`PolicyApplication.InForce.keptFrom`). A revocation, a published version with no text,
-withdraws every rewrite. A compartment's first version, or the first after a revocation, has
-no version in force to be benched beside, so it is inserted published, to withdraw; nothing is
-rewritten under it until its bench passes.
+withdraws every rewrite. A compartment's first version, or the first after a revocation, is
+drafted and benched like any other, and published to withdraw.
 
 ## Rules for signals
 

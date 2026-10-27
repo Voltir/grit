@@ -492,6 +492,27 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     test(
+      "a compartment's first version is benched as a draft and rewrites nothing; once published, the next run rewrites under it without benching it again"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.apply("c1", 1)
+      runs.policy(1, benched = false, status = InMemoryDocuments.Status.Draft)
+      // The accept example screens clean and the refuse example is refused.
+      val drafted = (runs.run(screens = Vector(Vector(0.1), Vector(0.9))), runs.made)
+      runs.publish(1, InMemoryDocuments.Status.Withdraw)
+      (drafted, runs.run(), runs.made, runs.asked) ==> (
+        (
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v1 benched",
+          Vector()
+        ),
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+        Vector(1),
+        (1, 3)
+      )
+    }
+
+    test(
       "keep: an earlier version's rewrite stands once a version is published to keep, through a run that rewrites nothing, until that version rewrites its card (replacing it) or withholds it (withdrawn at the next scan)"
     ) {
       val runs = new Runs

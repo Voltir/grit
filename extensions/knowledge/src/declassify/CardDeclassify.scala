@@ -32,10 +32,12 @@ final case class DeclassifyParams(perRun: Int) extends caps.Pure
   * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
   * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
   * `withhold-{i}`) so it is not asked again at those versions; one whose file is not yet pieced
-  * at its revision is tried again next run. Before any card, it benches each version in force
-  * over its cards that has no bench of its checks as they are now ([[Dreaming.bench]],
-  * `bench-{i}`; [[grit.core.act.Declassifying.unbenched]]), so a card is rewritten under it
-  * in the same run once its bench passes. Replies [[Tally.line]]. Its `limits`, so that
+  * at its revision is tried again next run. Before any card, it benches each version over its
+  * cards' applications, in force or the latest draft (a compartment's first version included),
+  * that has no bench of its checks as they are now ([[Dreaming.bench]], `bench-{i}`;
+  * [[grit.core.act.Declassifying.unbenched]]), so a card is rewritten under a version in force
+  * in the same run once its bench passes, and a draft is benched before it is published.
+  * Replies [[Tally.line]]. Its `limits`, so that
   * `perRunMost` declassifies each retried fit beside the benches: asks, twice `perRunMost` (a
   * rewrite and its retry); judgments, nine times (both attempts' screens and their source's,
   * three; and room for the benches' asks, at most seven a version); no calls.
@@ -139,7 +141,7 @@ object CardDeclassify {
     * application), every own document but the withholding that reads as no rewrite standing
     * under them withdrawn, every withholding entry not at them forgotten, and those due (with
     * neither a rewrite nor a withholding at them), at most `most`, most recent first; and the
-    * versions over them due a bench.
+    * versions due a bench over the compartments the cards' applications name, in force or not.
     */
   private def scanned(shelf: CardShelf, keeper: DocumentKeeper, most: Int, at: Instant)(using
       tx: Tx^
@@ -147,15 +149,14 @@ object CardDeclassify {
     val floor = Tx.floor(tx)
     for {
       pointed <- shelf.pointed(Cards)
-      applied <- traverse(pointed)(c =>
+      applying <- traverse(pointed)(c => keeper.applying(c.label, c.pointer).map(_.map(c -> _)))
+      applied <- traverse(applying.flatten)((c, _) =>
         keeper
           .declassifying(c.label, c.pointer)
           .map(_.map(a => (Due(c.version, UnitVersion.value(c.revision), a.applied), a)))
       )
       inForce = applied.flatten.map(_._1)
-      bench <- traverse(inForce.map(_.applied.policy.over).distinct)(
-        Declassifying.unbenched(keeper, _)
-      )
+      bench <- traverse(applying.flatten.map(_._2).distinct)(Declassifying.unbenched(keeper, _))
       current = inForce.map(_.made).toSet
       held <- Withheld.read(keeper, floor)
       decided = held.flatten.toSet

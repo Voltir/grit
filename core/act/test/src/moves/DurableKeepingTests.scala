@@ -36,6 +36,7 @@ object DurableKeepingTests extends TestSuite {
   /** A keeper that writes as `inner` does, counting its writes. */
   private final class Counting(inner: DocumentKeeper) extends DocumentKeeper {
     export inner.{
+      applying,
       benchable,
       benched,
       checks,

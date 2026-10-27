@@ -390,6 +390,11 @@ final class InMemoryDocuments extends DocumentStore {
             new Declassified.PolicyChecks(policy, Checks.read(checks))
         })
 
+      def applying(label: Label, pointer: Pointer)(using
+          Tx^
+      ): Either[StoreError, Option[DeclassificationPolicy.Over]] =
+        Right(applied(pointer).map(_._1).filter(_.lowered(label).isDefined))
+
       def benchable(over: DeclassificationPolicy.Over)(using
           Tx^
       ): Either[StoreError, Vector[DeclassificationPolicy]] =

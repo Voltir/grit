@@ -481,6 +481,17 @@ private[sql] object SqlDocuments {
           )
       ).map(_.headOption.filter(_.applied.policy.lowered(label).isDefined))
 
+    def applying(label: Label, pointer: Pointer)(using
+        tx: Tx^
+    ): Either[StoreError, Option[DeclassificationPolicy.Over]] =
+      rows(
+        s"""SELECT a.over FROM grit.declassification_applications a
+          | WHERE a.pointer = ?::jsonb AND a.over IS NOT NULL
+          |   AND NOT ${SqlDeclassifications.ApplicationSuperseded}""".stripMargin
+      )(ps => ps.setString(1, pointerJson(pointer)))(rs =>
+        DeclassificationPolicy.Over.read(rs.getString("over"))
+      ).map(_.headOption.filter(_.lowered(label).isDefined))
+
     def keepDeclassified(row: Declassified.Row, at: Instant)(using
         tx: Tx^
     ): Either[StoreError, Written] = {

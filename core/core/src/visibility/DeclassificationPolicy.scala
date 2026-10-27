@@ -13,13 +13,7 @@ final case class DeclassificationPolicy private[grit] (
   /** `label` without its compartment; `None` when `label` does not hold it, or holds the
     * unmapped mark.
     */
-  def lowered(label: Label): Option[Label] = over match {
-    case DeclassificationPolicy.Over.Compartment(c) =>
-      val marks = Label.marks(label)
-      Option.when(!Label.unmapped(label) && marks.contains(c))(
-        Label.marked(Label.level(label), marks.filterNot(_ == c))
-      )
-  }
+  def lowered(label: Label): Option[Label] = over.lowered(label)
 }
 
 object DeclassificationPolicy {
@@ -31,6 +25,15 @@ object DeclassificationPolicy {
     /** Its stored form, `compartment:<name>`. */
     def written: String = this match {
       case Compartment(c) => s"compartment:${grit.core.visibility.Compartment.name(c)}"
+    }
+
+    /** `label` without this; `None` when `label` does not hold it, or holds the unmapped mark. */
+    def lowered(label: Label): Option[Label] = this match {
+      case Compartment(c) =>
+        val marks = Label.marks(label)
+        Option.when(!Label.unmapped(label) && marks.contains(c))(
+          Label.marked(Label.level(label), marks.filterNot(_ == c))
+        )
     }
   }
 

@@ -38,8 +38,8 @@ Decision:
 - **Drafted, benched, published.** A version is a draft or published. Each run benches the
   version in force and its latest draft (`DocumentKeeper.benchable`); the operator's publish
   updates nothing without a passing bench, and picks the mode. A compartment's first version
-  has nothing in force to be benched beside, so it is inserted published, and rewrites nothing
-  until its own bench passes.
+  is drafted and benched like any other: a run benches the versions over the compartments its
+  documents' applications name (`DocumentKeeper.applying`), in force or not.
 - **Two meanings of current.** *In force*, for writing and rewriting: the newest published
   version with text, under its document's newest application; only one version ever is.
   *Stands*, for retention (`Declassified.Made.stands`): a rewrite under the version in force,

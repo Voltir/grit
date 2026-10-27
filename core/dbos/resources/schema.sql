@@ -1110,8 +1110,7 @@ CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md
 -- (it is withdrawn), from the newest version published to withdraw on (Declassified.Made.stands).
 -- 'withdraw' (a tightening): they stop crossing at the next run, and their documents are
 -- rewritten under this version. A compartment's first version, or the first after a revocation,
--- has nothing in force to be benched beside: insert it with status 'published' and on_publish
--- 'withdraw'; the job benches it before anything is rewritten under it.
+-- is drafted, benched and published like any other, published with on_publish 'withdraw'.
 -- A revocation is a published version with `text` NULL (on_publish 'withdraw'): the job's next
 -- run withdraws every rewrite.
 -- Retention: kept: a version below a published one (a draft never published, or one since

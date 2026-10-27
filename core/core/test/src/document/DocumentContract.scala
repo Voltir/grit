@@ -1734,6 +1734,31 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
+      "applying gives the current application's compartment while its only version is a draft, which benchable gives; none for a label without the compartment, or once the application is removed"
+    ) {
+      val k = keeper(name("doc-applying"), terms())
+      val team = over("da-team")
+      val card = file("da-card")
+      val source = Label.at(Level.Internal, TestLabels.compartment("da-team"))
+      def applying(label: Label) = transaction(ok(k.applying(label, card)))
+      val unapplied = applying(source)
+      application(card, 1, Some(team))
+      policy(team, 1, revoked = false, InMemoryDocuments.Status.Draft)
+      val drafted = (
+        applying(source),
+        applying(Label.at(Level.Internal)),
+        transaction(ok(k.declassifying(source, card))).map(_.applied.policy.version),
+        transaction(ok(k.benchable(team)))
+      )
+      application(card, 2, None)
+      (unapplied, drafted, applying(source)) ==> (
+        None,
+        (Some(team), None, None, Vector(DeclassificationPolicy(team, 1))),
+        None
+      )
+    }
+
+    test(
       "keptFrom is the version in force when it was published to withdraw, else the last below it published to withdraw or revoked, else 1"
     ) {
       val k = keeper(name("doc-kept-from"), terms())
