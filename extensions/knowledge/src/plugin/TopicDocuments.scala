@@ -111,8 +111,8 @@ object TopicDocuments {
   /** 10: the most topics one run writes. */
   val PerRun: Int = 10
 
-  /** 30: the most days one `grit backfill topics` reaches back. */
-  val BackfillMost: Int = 30
+  /** 45: the most days one `grit backfill topics` reaches back. */
+  val BackfillMost: Int = 45
 
   /** 0.15¢ (in USD): the most one topic a backfilled day writes costs, the run's attach ask
     * shared among its topics. Measured on the dream model (Haiku 5.5, $0.10 / $0.50 per million

@@ -229,24 +229,24 @@ object ServeChoiceTests extends TestSuite {
     ) {
       (
         Main.backfillTopics(Vector("--yes", "--days", "3")),
-        Main.backfillTopics(Vector("--days", "30", "--per-run", "4"))
+        Main.backfillTopics(Vector("--days", "45", "--per-run", "4"))
       ) ==> (
         Right(Main.BackfillTopics(3, TopicDocuments.PerRun, yes = true)),
-        Right(Main.BackfillTopics(30, 4, yes = false))
+        Right(Main.BackfillTopics(45, 4, yes = false))
       )
     }
 
     test(
-      "backfill topics refuses days missing or outside 1 to 30, a per-run under 1, and anything else, by name"
+      "backfill topics refuses days missing or outside 1 to 45, a per-run under 1, and anything else, by name"
     ) {
       (
         Main.backfillTopics(Vector()),
-        Main.backfillTopics(Vector("--days", "31")),
+        Main.backfillTopics(Vector("--days", "46")),
         Main.backfillTopics(Vector("--days", "2", "--per-run", "0")),
         Main.backfillTopics(Vector("--days", "2", "--what"))
       ) ==> (
-        Left("--days is required: a whole number of days from 1 to 30"),
-        Left("--days is a whole number of days from 1 to 30, not '31'"),
+        Left("--days is required: a whole number of days from 1 to 45"),
+        Left("--days is a whole number of days from 1 to 45, not '46'"),
         Left("--per-run is a whole number of topics above zero, not '0'"),
         Left("backfill topics takes --days, --per-run and --yes, not '--what'")
       )

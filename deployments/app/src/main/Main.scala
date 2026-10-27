@@ -173,7 +173,8 @@ import grit.turn.TurnLoop
   *     takes serve's tokens and variables, and, like serve, never attaches. Threads still
   *     inside idle are left for serve.
   *   - **`backfill topics --days N [--per-run n] [--yes]`: `grit backfill topics`**, the
-  *     topics plugin's job run for each of the N days before today (1 to 30), oldest first, at
+  *     topics plugin's job run for each of the N days before today (1 to
+  *     [[TopicDocuments.BackfillMost]]), oldest first, at
   *     each of its labels, one run at a time, on serve's database ([[Kit.runOnce]],
   *     [[TopicDocuments.backfill]]), at most `n` topics a run ([[TopicDocuments.PerRun]] when
   *     absent): how a topic data version's reset completes. It prints the database and asks
