@@ -139,24 +139,37 @@ object PeriodTranscript {
       .flatMap(e => speakers.of(e.id).map(e.turnSeq -> _))
       .toMap
     // Who wrote each line, which entry it is, its text after the label, and a tool's result.
-    val written: Vector[(Labelled.Source, Entry, String, Option[String])] = entries.flatMap(e =>
-      e.payload match {
-        case d: Payload.Declined =>
-          val who = askers.getOrElse(e.turnSeq, "User")
-          Some((Labelled.Source.Person, e, Payload.declined(who, d, payloads), None))
-        case Payload.Result(result, shown) =>
-          val content = result.content.trim.split("\\s+").mkString(" ")
-          val failed = if (result.isError) " failed:" else ""
-          val source = Labelled.Source.Tool(!result.isError, called.get(result.callId))
-          val chars = if (Labelled.supports(source, e.integrity)) GroundingToolChars else ToolChars
-          Some((source, e, s"$shown →$failed", Some(Cut.head(content, chars))))
-        case Payload.Message(Message.User(_)) =>
-          line(e, speakers).map(l => (Labelled.Source.Person, e, addressed(l, persona).shown, None))
-        case Payload.Heard(_) =>
-          line(e, speakers).map(l => (Labelled.Source.Heard, e, addressed(l, persona).shown, None))
-        case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e, l.shown, None))
-      }
-    )
+    val written: Vector[(Labelled.Source, Entry, String, Option[Labelled.Result])] =
+      entries.flatMap(e =>
+        e.payload match {
+          case d: Payload.Declined =>
+            val who = askers.getOrElse(e.turnSeq, "User")
+            Some((Labelled.Source.Person, e, Payload.declined(who, d, payloads), None))
+          case Payload.Result(result, shown) =>
+            val content = result.content.trim.split("\\s+").mkString(" ")
+            val failed = if (result.isError) " failed:" else ""
+            val source = Labelled.Source.Tool(!result.isError, called.get(result.callId))
+            val chars =
+              if (Labelled.supports(source, e.integrity)) GroundingToolChars else ToolChars
+            Some(
+              (
+                source,
+                e,
+                s"$shown →$failed",
+                Some(Labelled.Result(shown, Cut.head(content, chars)))
+              )
+            )
+          case Payload.Message(Message.User(_)) =>
+            line(e, speakers).map(l =>
+              (Labelled.Source.Person, e, addressed(l, persona).shown, None)
+            )
+          case Payload.Heard(_) =>
+            line(e, speakers).map(l =>
+              (Labelled.Source.Heard, e, addressed(l, persona).shown, None)
+            )
+          case _ => line(e, speakers).map(l => (Labelled.Source.Assistant, e, l.shown, None))
+        }
+      )
     Labelled.of(written.zipWithIndex.map { case ((source, e, text, result), i) =>
       val letter = source match {
         case Labelled.Source.Person => "u"

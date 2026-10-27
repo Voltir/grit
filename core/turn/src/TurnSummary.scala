@@ -147,7 +147,14 @@ object TurnSummary {
       case Payload.Exchange(reply) => line(Payload.Message(reply), payloads)
       // The heard message an unprompted turn is rooted on.
       case Payload.Heard(text) => Some(Vector(Fenced.Part.Material(s"Overheard: $text")))
-      case Payload.Result(result, _) => line(Payload.Message(result), payloads)
+      case Payload.Result(Message.ToolResult(id, content, isError), shown) =>
+        val kind = if (isError) "Tool error" else "Tool result"
+        Some(
+          Vector(
+            Fenced.Part.Words(s"$kind (${ToolCallId.value(id)}):"),
+            Fenced.Part.In(Fenced.toolOutput(shown, content.take(ToolResultChars)))
+          )
+        )
       case Payload.Message(Message.User(text)) =>
         Some(Vector(Fenced.Part.Material(s"User: $text")))
       case d: Payload.Declined =>
@@ -161,14 +168,9 @@ object TurnSummary {
         Option.when(said.nonEmpty)(
           Vector(Fenced.Part.Material(s"Assistant: ${said.mkString("\n")}"))
         )
-      case Payload.Message(Message.ToolResult(id, content, isError)) =>
-        val kind = if (isError) "Tool error" else "Tool result"
-        Some(
-          Vector(
-            Fenced.Part.Words(s"$kind (${ToolCallId.value(id)}):"),
-            Fenced.Part.In(Fenced.in(Tag.ToolOutput, content.take(ToolResultChars)))
-          )
-        )
+      // A result kept with no call shown is shown under its call's id.
+      case Payload.Message(r: Message.ToolResult) =>
+        line(Payload.Result(r, ToolCallId.value(r.callId)), payloads)
       // A post is the first entry of a turn that never runs, so never a summarised turn's.
       case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _, _) |
           Payload.Agenda(_) | Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) |

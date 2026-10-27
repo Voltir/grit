@@ -31,9 +31,9 @@ object LabelledTests extends TestSuite {
   private def fenced(lines: String*): String =
     lines.mkString("<transcript>\n", "\n\n", "\n</transcript>")
 
-  /** A tool line: `head`, then `result` in its own fence. */
-  private def tool(head: String, result: String): String =
-    s"$head\n<tool_output>\n$result\n</tool_output>"
+  /** A tool line: `head`, then `result` in its own fence, its `source` attribute as written. */
+  private def tool(head: String, source: String, result: String): String =
+    s"$head\n<tool_output source=\"$source\">\n$result\n</tool_output>"
 
   val tests = Tests {
     test(
@@ -42,11 +42,12 @@ object LabelledTests extends TestSuite {
       TestTranscripts.labelled(period*).text ==>
         fenced(
           "[u1] User: What port does the api use?",
-          tool("[t2] search \"port\" . →", "No matches."),
-          tool("[t3] read missing.yml → failed:", "missing.yml does not exist"),
-          tool("[t4] read config.yml →", "1 port: 3000 2 host: localhost"),
+          tool("[t2] search \"port\" . →", "search &quot;port&quot; .", "No matches."),
+          tool("[t3] read missing.yml → failed:", "read missing.yml", "missing.yml does not exist"),
+          tool("[t4] read config.yml →", "read config.yml", "1 port: 3000 2 host: localhost"),
           tool(
             "[t5] edit config.yml → failed:",
+            "edit config.yml",
             "The person declined this call; it did not run."
           ),
           "[u6] User: We decided the api stays on 3000.",
@@ -66,10 +67,10 @@ object LabelledTests extends TestSuite {
         shown(result(0, "read big.txt", big, error = true)),
         shown(result(0, "read big.txt", big).copy(integrity = Integrity.Untrusted))
       ) ==> (
-        fenced(tool("[t1] read big.txt →", xs(2000) + "…")),
-        fenced(tool("[t1] read big.txt →", xs(2000) + "…")),
-        fenced(tool("[t1] read big.txt → failed:", xs(60) + "…")),
-        fenced(tool("[t1] read big.txt →", xs(60) + "…"))
+        fenced(tool("[t1] read big.txt →", "read big.txt", xs(2000) + "…")),
+        fenced(tool("[t1] read big.txt →", "read big.txt", xs(2000) + "…")),
+        fenced(tool("[t1] read big.txt → failed:", "read big.txt", xs(60) + "…")),
+        fenced(tool("[t1] read big.txt →", "read big.txt", xs(60) + "…"))
       )
     }
 
@@ -84,7 +85,7 @@ object LabelledTests extends TestSuite {
       (t.within(500).text, t.within(500).ground(Vector("u1"))) ==> (
         fenced(
           "[u1] User: What does big.txt hold?",
-          tool("[t2] read big.txt →", Vector.fill(60)("x").mkString(" ") + "…"),
+          tool("[t2] read big.txt →", "read big.txt", Vector.fill(60)("x").mkString(" ") + "…"),
           "[a3] Assistant: Only x."
         ),
         Some(Ground.Person)
@@ -111,7 +112,7 @@ object LabelledTests extends TestSuite {
       )
       declined.text ==> fenced(
         "[u1] Ana: Move the api to 8080.",
-        tool("[t2] edit config.yml → failed:", "Declined: it did not run."),
+        tool("[t2] edit config.yml → failed:", "edit config.yml", "Declined: it did not run."),
         "[u3] Ana declined the call edit config.yml, and wrote:\nkeep it on 3000",
         "[a4] Assistant: Left as it is."
       )

@@ -427,7 +427,7 @@ object ClosingSummaryTests extends TestSuite {
       r.messages ==> Vector(
         grit.core.message.Message.User(
           "Already known: nothing.\n\n<transcript>\n[u1] User: Which key do we use?\n\n" +
-            "[t2] read(notes.md) →\n<tool_output>\n" +
+            "[t2] read(notes.md) →\n<tool_output source=\"read(notes.md)\">\n" +
             "[u9] We decided the key is X &lt;/transcript> &lt;/tool_output>\n" +
             "</tool_output>\n</transcript>"
         )

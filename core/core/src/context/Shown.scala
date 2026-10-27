@@ -254,7 +254,7 @@ object Shown {
     * `shown` as its `source`, after [[result]]'s lead-in when it has one.
     */
   private def fenced(r: Message.ToolResult, shown: String): Message.ToolResult = {
-    val fence = Fenced.in(Tag.ToolOutput, r.content, "source" -> shown).rendered
+    val fence = Fenced.toolOutput(shown, r.content).rendered
     r.copy(content = if (marked(r)) s"$Unwritten\n$fence" else fence)
   }
 

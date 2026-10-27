@@ -21,9 +21,12 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
     val size = lines.map(_.length).sum + 2 * (lines.size - 1).max(0)
     val (cut, _) = lines.foldLeft((Vector.empty[Labelled.Line], size - chars)) {
       case ((done, over), l) =>
-        l.result.map(r => (r, Cut.head(r, PeriodTranscript.ToolChars))) match {
-          case Some((r, short)) if over > 0 && short.length < r.length =>
-            (done :+ l.copy(result = Some(short)), over - (r.length - short.length))
+        l.result.map(r => (r, Cut.head(r.text, PeriodTranscript.ToolChars))) match {
+          case Some((r, short)) if over > 0 && short.length < r.text.length =>
+            (
+              done :+ l.copy(result = Some(r.copy(text = short))),
+              over - (r.text.length - short.length)
+            )
           case _ => (done :+ l, over)
         }
     }
@@ -105,6 +108,9 @@ object Labelled {
     case Tool(succeeded: Boolean, tool: Option[String])
   }
 
+  /** A tool line's result: its `text`, from the call a person is shown as `call`. */
+  final case class Result(call: String, text: String)
+
   /** A line: its `label`, the `entry` it was rendered from, what it `said`, `[{label}] …` (a
     * tool line's call as shown), a tool line's `result`, who wrote it, and the `integrity` its
     * row is believed at.
@@ -114,18 +120,19 @@ object Labelled {
       entry: EntryId,
       source: Source,
       said: String,
-      result: Option[String],
+      result: Option[Result],
       integrity: Integrity
   ) {
 
-    /** `said`, material, then a tool line's `result`, material fenced in `<tool_output>`. */
+    /** `said`, material, then a tool line's `result` ([[Fenced.toolOutput]]). */
     def parts: Vector[Fenced.Part] =
       Fenced.Part.Material(said) +:
-        result.map(r => Fenced.Part.In(Fenced.in(Tag.ToolOutput, r))).toVector
+        result.map(r => Fenced.Part.In(Fenced.toolOutput(r.call, r.text))).toVector
 
-    /** Its characters as its parts render, a newline between: what [[Labelled.within]] counts. */
-    private[transcript] def length: Int =
-      said.length + result.fold(0)(r => 1 + Fenced.in(Tag.ToolOutput, r).rendered.length)
+    /** Its characters as [[Labelled.fenced]] holds its parts, a newline between: what
+      * [[Labelled.within]] counts.
+      */
+    private[transcript] def length: Int = Fenced(Tag.Transcript, Vector.empty, parts).inside.length
   }
 
   /** Whether a tool line from `source`, believed at `integrity`, is one [[Labelled.ground]]

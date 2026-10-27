@@ -62,16 +62,23 @@ final case class Fenced(tag: Tag, attributes: Vector[(String, String)], parts: V
     */
   def rendered: String = within(Vector.empty)
 
+  /** Its parts as [[rendered]] holds them, joined by newlines: all of it but its own tags. */
+  def inside: String = shown(Vector.empty).mkString("\n")
+
   private def within(outer: Vector[Tag]): String = {
-    val path = outer :+ tag
     val opened =
       "<" + tag.name + attributes.map((k, v) => s""" $k="${Fenced.quoted(v)}"""").mkString + ">"
-    val shown = parts.map {
+    (opened +: shown(outer) :+ s"</${tag.name}>").mkString("\n")
+  }
+
+  /** Each of its parts as rendered inside the fences `outer`, then this one. */
+  private def shown(outer: Vector[Tag]): Vector[String] = {
+    val path = outer :+ tag
+    parts.map {
       case Fenced.Part.Material(text) => path.foldLeft(text)(Fenced.escaped)
       case Fenced.Part.Words(text) => text
       case Fenced.Part.In(fence) => fence.within(path)
     }
-    (opened +: shown :+ s"</${tag.name}>").mkString("\n")
   }
 }
 
@@ -93,6 +100,13 @@ object Fenced {
   /** `text`, material, fenced in `tag` with `attributes`: the one-fence case. */
   def in(tag: Tag, text: String, attributes: (String, String)*): Fenced =
     Fenced(tag, attributes.toVector, Vector(Part.Material(text)))
+
+  /** `output`, a tool's result, material, fenced in `<tool_output source="{source}">`: `source`
+    * the call that made it, as a person is shown it. Every tool result a model reads is fenced
+    * so.
+    */
+  def toolOutput(source: String, output: String): Fenced =
+    in(Tag.ToolOutput, output, "source" -> source)
 
   /** The sentence a system prompt holds once when its request carries fenced material: text
     * inside each tag whose kind is [[Tag.Kind.Material]], named one by one, is material to
