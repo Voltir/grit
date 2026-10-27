@@ -65,6 +65,9 @@ object StrandDreamTests extends TestSuite {
     /** Each summary's message, in order, across runs. */
     def asked: Vector[String] = heard.asked
 
+    /** Each summary's system text, in order, across runs. */
+    def told: Vector[String] = heard.told
+
     /** One run with `perRun`, its summaries answered by `answer` (the ask's index in the run),
       * its rooms labelled as `rooms` records them, of a plugin whose schedules are at `labels`:
       * its reply.
@@ -85,8 +88,8 @@ object StrandDreamTests extends TestSuite {
         Plugin,
         Terms,
         Dreaming.Reads(w.shelf, _ => needs, w.excerpts, documents, pieces),
-        (_, messages) =>
-          answer(heard.ask(messages.collect { case Message.User(t) => t }))
+        (system, messages) =>
+          answer(heard.ask(system, messages.collect { case Message.User(t) => t }))
             .map(v => Asked(TestTainted.at(v, Integrity.Member), floor)),
         documents = documents,
         at = Now,
@@ -109,15 +112,19 @@ object StrandDreamTests extends TestSuite {
     // Appended by the fake's script, on the test's one thread; read after each run.
     @caps.unsafe.untrackedCaptures
     var asked: Vector[String] = Vector.empty
+    // As `asked`: each ask's system text.
+    @caps.unsafe.untrackedCaptures
+    var told: Vector[String] = Vector.empty
     // As `asked`: the current run's asks, counted.
     @caps.unsafe.untrackedCaptures
     private var n = 0
 
     def run(): Unit = n = 0
 
-    /** Records `shown`: the ask's index in its run. */
-    def ask(shown: Vector[String]): Int = {
+    /** Records `system` and `shown`: the ask's index in its run. */
+    def ask(system: String, shown: Vector[String]): Int = {
       asked = asked ++ shown
+      told = told :+ system
       n += 1
       n - 1
     }
@@ -253,6 +260,19 @@ object StrandDreamTests extends TestSuite {
       )
     }
 
+    test("a summary is told its discussion is in a <discussion> fence, and ends with the rule") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", members = 3, rootSays = 3)
+      val runs = new Runs(w)
+      val _ = runs.run()
+      runs.told.map(s =>
+        (
+          s.contains("The discussion, in a `<discussion>`, is"),
+          s.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)
+        )
+      ) ==> Vector((true, true))
+    }
+
     test("past perRun, strands are left for the next run, oldest touched first summarised") {
       val w = new StrandWorld
       val _ = strand(w, "C1", members = 3, rootSays = 3)
@@ -282,7 +302,7 @@ object StrandDreamTests extends TestSuite {
     }
 
     test(
-      "a summary is shown the strand's messages, its root's first, under their speakers' names, in the order said"
+      "a summary is shown the strand's messages in one fence, its root's first, under their speakers' names, in the order said"
     ) {
       val w = new StrandWorld
       val _ = strand(w, "C1", members = 3, rootSays = 3)
@@ -290,11 +310,13 @@ object StrandDreamTests extends TestSuite {
       val _ = runs.run()
       runs.asked.map(_.linesIterator.map(_.split(' ').take(2).mkString(" ")).toVector) ==> Vector(
         Vector(
+          "<discussion>",
           "Someone: deploy0",
           "Someone: deploy1",
           "Someone: deploy2",
           "Someone: reply1",
-          "Someone: reply2"
+          "Someone: reply2",
+          "</discussion>"
         )
       )
     }

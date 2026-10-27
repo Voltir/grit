@@ -39,7 +39,8 @@ final class StrandDream(perRunMost: Int, labels: Vector[Label]) extends Dreaming
 
   val name: JobName = StrandDream.Name
 
-  val version: Int = 1
+  // 2: the summary is shown its discussion fenced, and told so (its digest moved).
+  val version: Int = 2
 
   def write(params: DreamParams): ujson.Value =
     ujson.Obj(
@@ -119,7 +120,8 @@ object StrandDream {
   /** What the summary model is told, before the strand. */
   private val System: String =
     "You summarise one discussion in a team's chat room for a catalog that tells an " +
-      "assistant what has been discussed there, so it can find it again. The discussion is " +
+      "assistant what has been discussed there, so it can find it again. The discussion, in a " +
+      "`<discussion>`, is " +
       "several threads on one topic, oldest first: how it opened, then its latest messages, " +
       "each under its speaker's name, a line of … standing for messages left out. Reply by " +
       s"calling `reply` with `summary`, at most ${CardSummary.Words} words on what the " +

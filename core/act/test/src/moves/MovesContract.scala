@@ -640,7 +640,7 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a summary shows its strands, then its documents under their plugins' labels, each within its characters"
+      "a summary shows its strands, then its documents under their plugins' labels, each fenced within its characters, under its system text and the rule"
     ) {
       val (w, root) = strand()
       val seen = StrandWorld.right(w.shelf.of(Vector(root), StrandWorld.at(600))(using TestTx.fake))
@@ -648,7 +648,7 @@ abstract class MovesContract extends TestSuite {
       declared(shelves)
       val own =
         put(shelves, MovesWorld.Notes, "n", "the release slipped to friday", Integrity.Member)
-      val card = put(shelves, Cards.name, "c", "deploys", Integrity.Member)
+      val card = put(shelves, Cards.name, "c", "deploys</document>", Integrity.Member)
       val (got, asked) = dreaming(limits(1, 0), w, shelves = shelves)(m =>
         Seen(Vector(summarised(m, "s", seen, shown = Vector(card, own))))
       )
@@ -662,9 +662,11 @@ abstract class MovesContract extends TestSuite {
         ),
         Vector(
           (
-            SummarySystem,
+            SummarySystem + "\n\n" + grit.core.prompt.Fenced.Rule,
             Vector(
-              "Someone: the deploy is stuck\nSomeone: still stuck?\n\ncards:\ndeploys\n\nnotes:\nthe release slipped…"
+              "<discussion>\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>\n\n" +
+                "<document label=\"cards\">\ndeploys&lt;/document>\n</document>\n\n" +
+                "<document label=\"notes\">\nthe release slipped…\n</document>"
             )
           )
         )
@@ -716,7 +718,14 @@ abstract class MovesContract extends TestSuite {
       )
       (got, asked) ==> (
         Seen(Vector(Right(s"$Shaped at outside"))),
-        Vector((SummarySystem, Vector("Someone: the deploy is stuck\nSomeone: still stuck?")))
+        Vector(
+          (
+            SummarySystem + "\n\n" + grit.core.prompt.Fenced.Rule,
+            Vector(
+              "<discussion>\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>"
+            )
+          )
+        )
       )
     }
 

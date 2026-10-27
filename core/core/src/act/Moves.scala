@@ -18,6 +18,7 @@ import grit.core.id.{DocumentVersionId, PluginName}
 import grit.core.message.{Cut, Message}
 import grit.core.need.Needs
 import grit.core.place.Service
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
 import grit.core.sanitise.{IntegrityTree, Reason, Suspicions, Verdict, Vetted}
 import grit.core.schema.{Conforming, JsonSchema, Typed}
@@ -264,7 +265,8 @@ trait Dreaming extends Keeping {
       body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
 
-  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text, then one user message: what
+  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text ([[Dreaming.told]]), then one
+    * user message ([[Dreaming.shown]]): what
     * each of `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]]
     * shows them within `summary`'s `chars`, strand by strand; then the text of each of `shown`,
     * its head within `summary`'s `documentChars` cut at a word, in their order, each under its
@@ -503,16 +505,26 @@ object Dreaming {
     */
   final case class Summary[T](system: String, chars: Int, documentChars: Int, reply: Typed[T])
 
-  /** The user message a summary is asked in: each of `excerpts`, then each of `documents`
-    * under its label, its text's head within `documentChars` ([[grit.core.message.Cut.head]]),
-    * a blank line between each. One excerpt and no documents is that excerpt alone.
+  /** The user message a summary is asked in: each of `excerpts` fenced in `<discussion>`, then
+    * each of `documents` in `<document label="{label}">`, its text's head within
+    * `documentChars` ([[grit.core.message.Cut.head]], cut before it is fenced), a blank line
+    * between each ([[Fenced]]).
     */
   def shown(
       excerpts: Vector[String],
       documents: Vector[(DocLabel, DocText)],
       documentChars: Int
   ): String =
-    (excerpts ++ documents.map((label, text) =>
-      s"${DocLabel.value(label)}:\n${Cut.head(DocText.value(text), documentChars)}"
-    )).mkString("\n\n")
+    (excerpts.map(Fenced.in(Tag.Discussion, _)) ++ documents.map((label, text) =>
+      Fenced.in(
+        Tag.Document,
+        Cut.head(DocText.value(text), documentChars),
+        "label" -> DocLabel.value(label)
+      )
+    )).map(_.rendered).mkString("\n\n")
+
+  /** A summary's system text as it is asked, `system` then a blank line and [[Fenced.Rule]]:
+    * what the material [[shown]] fences is.
+    */
+  def told(system: String): String = system + "\n\n" + Fenced.Rule
 }

@@ -59,7 +59,8 @@ final class TopicDream(perRunMost: Int, zone: ZoneId, cards: Option[Exported[Car
 
   val name: JobName = TopicDream.Name
 
-  val version: Int = 3
+  // 4: its asks are shown discussions and documents fenced, and told so (their digests moved).
+  val version: Int = 4
 
   def write(params: TopicParams): ujson.Value = TopicParams.write(params)
 
@@ -355,10 +356,11 @@ object TopicDream {
     */
   private def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
     val topicsShown =
-      "the topics, each under `topic:`, how its text begins, numbered from 1 in the order shown"
+      "the topics, each a `<document label=\"topic\">` holding how its text begins, numbered " +
+        "from 1 in the order shown"
     val cardsShown =
-      "the cards, each a document describing a file under its label, numbered from 1 in the " +
-        "order shown"
+      "the cards, each a `<document>` describing a file, its label in `label`, numbered from 1 " +
+        "in the order shown"
     if (strands == 0)
       "You sort a team's recent documents into topics: what the team comes back to across " +
         "rooms and days. You are shown, in this order, " +
@@ -371,7 +373,8 @@ object TopicDream {
     else
       "You sort a team's recent discussions and documents into topics: what the team comes " +
         s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
-        "each a block of messages under their speakers' names, oldest first, numbered from 1 in " +
+        "each a `<discussion>` of messages under their speakers' names, oldest first, numbered " +
+        "from 1 in " +
         "the order shown" +
         (if (topics) s"; then $topicsShown" else "") +
         (if (cards) s"; then $cardsShown. " else ". ") +
@@ -395,9 +398,10 @@ object TopicDream {
   private def writeSystem(day: LocalDate): String =
     "You keep one topic of a team's knowledge: a durable subject, written as a lead and dated " +
       s"passages. You are shown the discussions and the cards attached to it on $day and the " +
-      "other cards it holds, each discussion a block of messages under their speakers' names " +
-      "and each card a document describing a file under its label; then, when the topic " +
-      "exists, its text under `topic:`: its lead, then its passages newest first, each under " +
+      "other cards it holds, each discussion a `<discussion>` of messages under their speakers' " +
+      "names and each card a `<document>` describing a file, its label in `label`; then, when " +
+      "the topic exists, its text in a `<document label=\"topic\">`: its lead, then its " +
+      "passages newest first, each under " +
       s"its day. Reply by calling `reply` with `lead`, what the topic is about now, in at most " +
       s"$LeadChars characters of markdown, and `passage`, in markdown, what $day's discussions " +
       "and cards add to it: what was decided, what is known and what is still open, naming " +

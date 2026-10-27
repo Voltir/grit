@@ -313,14 +313,14 @@ object TopicDreamTests extends TestSuite {
     ujson.Obj("lead" -> lead, "passage" -> passage)
 
   /** How many discussions, topics and cards an attach ask's message shows: each discussion a
-    * block of lines before the first document, each document a block under its label.
+    * `<discussion>` fence, each document a `<document>` fence under its label.
     */
   private def counted(shown: String): (Int, Int, Int) = {
-    val blocks = shown.split("\n\n").toVector
+    def opened(tag: String) = tag.r.findAllIn(shown).size
     (
-      blocks.takeWhile(b => !b.startsWith("topic:\n") && !b.startsWith("knowledge card:\n")).size,
-      blocks.count(_.startsWith("topic:\n")),
-      blocks.count(_.startsWith("knowledge card:\n"))
+      opened("(?m)^<discussion>$"),
+      opened("(?m)^<document label=\"topic\">$"),
+      opened("(?m)^<document label=\"knowledge card\">$")
     )
   }
 
@@ -650,6 +650,26 @@ object TopicDreamTests extends TestSuite {
           "naming its day.",
         "Never call something unverified, unknown or unconfirmed that a card shown states."
       ).filterNot(system.contains) ==> Vector()
+    }
+
+    test("the attach and write asks name the fences they are shown in, and end with the rule") {
+      val w = new StrandWorld
+      val _ = strand(w, "C1", "deploy pipeline")
+      val runs = new Runs(w)
+      val _ = runs.run()
+      val systems =
+        Vector("attach", "write").map(k => runs.asked.find(_.kind == k).fold("")(_.system))
+      systems.map(s =>
+        (
+          Vector("`<discussion>`", "`<document label=\"topic\">`", "`<document>`").filter(
+            s.contains
+          ),
+          s.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)
+        )
+      ) ==> Vector(
+        (Vector("`<discussion>`"), true),
+        (Vector("`<discussion>`", "`<document label=\"topic\">`", "`<document>`"), true)
+      )
     }
 
     test("a topic's write ask is shown every card it holds, not only those attached that day") {

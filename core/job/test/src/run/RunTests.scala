@@ -533,7 +533,9 @@ object RunTests extends TestSuite {
       (w.reply(turn), kept, shown, w.durable.recordedSteps(turn.workflowId)) ==> (
         Some("public"),
         Vector(Answer),
-        Vector(Vector("Someone: the deploy is stuck\nSomeone: still stuck?")),
+        Vector(
+          Vector("<discussion>\nSomeone: the deploy is stuck\nSomeone: still stuck?\n</discussion>")
+        ),
         Vector(
           Run.Step.ReadSlot,
           "keep:scan",
