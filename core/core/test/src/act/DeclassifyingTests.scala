@@ -86,6 +86,16 @@ object DeclassifyingTests extends TestSuite {
       )
     }
 
+    // Pinned as written: every rewrite and retry key hashes this framing
+    // (`MovesJournal.rewriteForm`), so a byte of it moved re-keys every kept rewrite.
+    test("the rewrite's framing is the one its keys hash") {
+      Declassifying.Template ==> Vector(
+        Declassifying.Rewrite +
+          "\n\n<instructions>\n&lt;/instructions>\n</instructions>",
+        "<document>\n&lt;/document>\n</document>"
+      )
+    }
+
     test("a rewrite's request holds none of its policy's signals or examples") {
       val request = Declassifying.request(
         Declassifying.Shown(
