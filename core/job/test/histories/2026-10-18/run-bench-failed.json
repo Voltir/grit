@@ -34,7 +34,7 @@
     },
     {
       "name": "ask:rewrite",
-      "output": "{\"rewrite\":{\"refused\":\"unchecked\",\"why\":\"its policy version in force is not benched, or failed its bench\",\"digest\":\"v2:58a9b495a4914ce563dc7177f1f6e5d155ac6ee8e7f916b30d71116121094c0e\"}}"
+      "output": "{\"rewrite\":{\"refused\":\"unread:unchecked\",\"why\":\"its policy version in force is not benched, or failed its bench\",\"digest\":\"v2:a03394742a22f4a5f8bbe807941285d5a983096c071c6fcb0f0da257c03e9866\"}}"
     },
     {
       "name": "reply",

@@ -504,27 +504,24 @@ object MovesJournalTests extends TestSuite {
         false
       )
       pinned[AskMade](
-        AskMade.Refused(AskMade.Kind.Changed, "moved", "v1:ab"),
+        AskMade.Refused(AskMade.Kind.StrandChanged, "moved", "v1:ab"),
         """{"refused":"changed","why":"moved","digest":"v1:ab"}"""
       )
     }
 
-    test("a rewrite or check whose source's file had no pieces is written unpieced, with its why") {
-      pinned[AskMade](
-        AskMade.Refused(AskMade.Kind.Unpieced, "no pieces", "v2:ab"),
-        """{"refused":"unpieced","why":"no pieces","digest":"v2:ab"}"""
-      )
-    }
-
     test(
-      "a rewrite or check whose policy version in force has no passing bench is written unchecked, and reads back as unchecked"
+      "a rewrite or check that read nothing is written unread with its reason's case, and reads back as written"
     ) {
-      val made =
-        AskMade.Refused(Act.unreadKind(Declassifying.Unread.Unchecked), "no checks", "v2:ab")
-      (
-        pinned[AskMade](made, """{"refused":"unchecked","why":"no checks","digest":"v2:ab"}"""),
-        Act.unreadOf(AskMade.Kind.Unchecked)
-      ) ==> ((), Some(Declassifying.Unread.Unchecked))
+      Vector(
+        Declassifying.Unread.Lapsed -> "lapsed",
+        Declassifying.Unread.Unchecked -> "unchecked",
+        Declassifying.Unread.Unpieced -> "unpieced"
+      ).foreach { (why, key) =>
+        pinned[AskMade](
+          AskMade.Refused(AskMade.Kind.Unread(why), "said", "v2:ab"),
+          s"""{"refused":"unread:$key","why":"said","digest":"v2:ab"}"""
+        )
+      }
     }
 
     test("a strand's summary records none of what its members said, and its reply's level") {
@@ -723,8 +720,15 @@ object MovesJournalTests extends TestSuite {
           )},"shape":{"floor":2,"musts":["absent","present"]}}"""
       )
       pinned[(AskMade, Option[Act.Beside])](
-        (AskMade.Refused(AskMade.Kind.Unchecked, "no checks", "v3:ab"), None),
-        """{"screen":{"refused":"unchecked","why":"no checks","digest":"v3:ab"}}"""
+        (
+          AskMade.Refused(
+            AskMade.Kind.Unread(Declassifying.Unread.Unchecked),
+            "no checks",
+            "v3:ab"
+          ),
+          None
+        ),
+        """{"screen":{"refused":"unread:unchecked","why":"no checks","digest":"v3:ab"}}"""
       )
     }
 
@@ -757,7 +761,8 @@ object MovesJournalTests extends TestSuite {
     test(
       "a bench's ask of checks that do not read writes the fault by position alone, and reads it back as written"
     ) {
-      val refused = AskMade.Refused(AskMade.Kind.Unchecked, "said", "v3:ab")
+      val refused =
+        AskMade.Refused(AskMade.Kind.Unread(Declassifying.Unread.Unchecked), "said", "v3:ab")
       val faults = Vector(
         Checks.Unreadable.Missing -> """{"fault":"missing"}""",
         Checks.Unreadable.Shape(Checks.Part.Signals) -> """{"fault":"shape","part":"signals"}""",
@@ -771,7 +776,7 @@ object MovesJournalTests extends TestSuite {
       faults.foreach { (why, written) =>
         pinned[(AskMade, Option[Act.Beside])](
           (refused, Some(Act.Beside.Unreadable(why))),
-          s"""{"screen":{"refused":"unchecked","why":"said","digest":"v3:ab"},"unreadable":$written}"""
+          s"""{"screen":{"refused":"unread:unchecked","why":"said","digest":"v3:ab"},"unreadable":$written}"""
         )
       }
     }

@@ -274,27 +274,10 @@ private[moves] object Act {
     */
   final case class Sourced(source: Declassified.Source, level: Integrity)
 
-  /** The refusal kind a rewrite or check that read nothing records for `why`. */
-  def unreadKind(why: Declassifying.Unread): AskMade.Kind = why match {
-    case Declassifying.Unread.Lapsed => AskMade.Kind.Changed
-    case Declassifying.Unread.Unpieced => AskMade.Kind.Unpieced
-    case Declassifying.Unread.Unchecked => AskMade.Kind.Unchecked
-  }
-
-  /** The reason a refusal of `kind` says a rewrite or check read nothing; `None` for a kind
-    * that says no such thing. The inverse of [[unreadKind]].
-    */
-  def unreadOf(kind: AskMade.Kind): Option[Declassifying.Unread] = kind match {
-    case AskMade.Kind.Changed => Some(Declassifying.Unread.Lapsed)
-    case AskMade.Kind.Unpieced => Some(Declassifying.Unread.Unpieced)
-    case AskMade.Kind.Unchecked => Some(Declassifying.Unread.Unchecked)
-    case _ => None
-  }
-
   /** A rewrite's `ask:{n}`: what its reading names read in one transaction for its acting's
     * subject ([[Declassifying.read]]), then asked of the dream role's pins as
-    * [[Declassifying.request]]; beside it, what it read of the source. A refusal of the kind
-    * [[unreadKind]] gives why it read nothing, in the words of [[Declassifying.Unread.why]].
+    * [[Declassifying.request]]; beside it, what it read of the source. A refusal
+    * `Unread(why)` says why it read nothing, in the words of [[Declassifying.Unread.why]].
     */
   val rewrite: Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])] = {
     import MovesJournal.given
@@ -303,7 +286,7 @@ private[moves] object Act {
         env.db.read(r.acting.subject)(Declassifying.read(r.reading)) match {
           case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), r.digest), None)
           case Right(Left(why)) =>
-            (AskMade.Refused(unreadKind(why), why.why, r.digest), None)
+            (AskMade.Refused(AskMade.Kind.Unread(why), why.why, r.digest), None)
           case Right(Right(shown)) =>
             (
               texted(env, r.acting, Dreams, Declassifying.request(shown, r.again), r.digest),
@@ -317,15 +300,16 @@ private[moves] object Act {
     * when it read the same, the classifier's answers about the text it names alone
     * ([[grit.core.screen.Screen.Text]]): a rewrite's to [[Declassifying.screen]] of the policy's
     * checks, a source's to its floor ([[grit.core.screen.Screen.baseline]]); beside them, the
-    * [[grit.core.screen.Screen.Shape]] they were asked in. A refusal of the kind
-    * [[unreadKind]] gives why it read nothing. A bench's example is read by
+    * [[grit.core.screen.Screen.Shape]] they were asked in. A refusal `Unread(why)` says why it
+    * read nothing. A bench's example is read by
     * [[Declassifying.exhibit]] and asked its checks' signals, beside it its kind, shape and the
-    * checks' screening ([[Beside.Example]]); past the last, a refusal `ended` beside the
-    * screening; checks that do not read, a refusal `unchecked` beside why; checks not read
-    * here, a refusal `changed`.
+    * checks' screening ([[Beside.Example]]); past the last, a refusal `Ended` beside the
+    * screening; checks that do not read, a refusal `Unread(Unchecked)` beside why; checks not
+    * read here, a refusal `Unread(Unchecked)` with nothing beside it.
     */
   val screening: Step[MovesEnv, Screening, (AskMade, Option[Beside])] = {
     import MovesJournal.given
+    val Unchecked = AskMade.Kind.Unread(Declassifying.Unread.Unchecked)
     Step[MovesEnv, Screening, (AskMade, Option[Beside])](Asks.move)(env =>
       s => {
         def read(reading: Declassifying.Reading)(
@@ -333,7 +317,8 @@ private[moves] object Act {
         ): (AskMade, Option[Beside]) =
           env.db.read(s.acting.subject)(Declassifying.read(reading)) match {
             case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
-            case Right(Left(why)) => (AskMade.Refused(unreadKind(why), why.why, s.digest), None)
+            case Right(Left(why)) =>
+              (AskMade.Refused(AskMade.Kind.Unread(why), why.why, s.digest), None)
             case Right(Right(shown)) => asked(shown)
           }
         s.of match {
@@ -364,10 +349,10 @@ private[moves] object Act {
             env.db.read(s.acting.subject)(Declassifying.exhibit(keeper, policy, at)) match {
               case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
               case Right(Left(Declassifying.Unbenched.Lapsed)) =>
-                (AskMade.Refused(AskMade.Kind.Changed, "its checks are not read", s.digest), None)
+                (AskMade.Refused(Unchecked, "its checks are not read", s.digest), None)
               case Right(Left(Declassifying.Unbenched.Unreadable(why))) =>
                 (
-                  AskMade.Refused(AskMade.Kind.Unchecked, why.said, s.digest),
+                  AskMade.Refused(Unchecked, why.said, s.digest),
                   Some(Beside.Unreadable(why))
                 )
               case Right(Right(Declassifying.Exhibit(screening, None))) =>
@@ -434,7 +419,7 @@ private[moves] object Act {
       s =>
         env.db.read(s.acting.subject)(read(s)) match {
           case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest)
-          case Right(None) => AskMade.Refused(AskMade.Kind.Changed, Changed, s.digest)
+          case Right(None) => AskMade.Refused(AskMade.Kind.StrandChanged, Changed, s.digest)
           case Right(Some((strands, documents))) =>
             val text = Dreaming.shown(
               strands.map(_.excerpt.text),

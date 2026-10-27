@@ -156,7 +156,7 @@ object DurableMoves {
           reply.schema
         )
         asked.made match {
-          case AskMade.Refused(AskMade.Kind.Changed, _, _, _) if same => Right(None)
+          case AskMade.Refused(AskMade.Kind.StrandChanged, _, _, _) if same => Right(None)
           case _ =>
             settled(name, asked, same) {
               case AskMade.Shaped(_, written, at, level, _, _) =>
@@ -296,7 +296,10 @@ object DurableMoves {
             Right(Left(Declassifying.Unbenched.Unreadable(why)))
           case (Some(Act.Beside.Ended(screening)), _) if same =>
             Right(Right(mint(Declassifying.Examined(screening, None))))
-          case (None, AskMade.Refused(AskMade.Kind.Changed, _, _, _)) if same =>
+          case (
+                None,
+                AskMade.Refused(AskMade.Kind.Unread(Declassifying.Unread.Unchecked), _, _, _)
+              ) if same =>
             Right(Left(Declassifying.Unbenched.Lapsed))
           case _ =>
             settled(name, asked, same) {
@@ -334,11 +337,11 @@ object DurableMoves {
         readable
       )
 
-    /** Why a rewrite's or check's step read nothing, as its refusal's kind says ([[Act.unreadOf]]);
-      * `None` for any other record.
+    /** Why a rewrite's or check's step read nothing, as its refusal's kind says; `None` for any
+      * other record.
       */
     private def unread(made: AskMade): Option[Declassifying.Unread] = made match {
-      case AskMade.Refused(kind, _, _, _) => Act.unreadOf(kind)
+      case AskMade.Refused(AskMade.Kind.Unread(why), _, _, _) => Some(why)
       case _ => None
     }
 

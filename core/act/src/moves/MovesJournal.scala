@@ -99,30 +99,48 @@ private[moves] enum AskMade extends Asked {
 }
 
 private[moves] object AskMade {
-  enum Kind(val key: String) {
-    case Capped extends Kind("capped")
-    case Model extends Kind("model")
-    case Store extends Kind("store")
-    case Uncleared extends Kind("uncleared")
 
-    /** A strand's summary found its strand's messages changed since its scan, a rewrite or
-      * check found its source or the application in force for it changed, or a bench's ask
-      * found its version's checks not read: nothing was asked.
-      */
-    case Changed extends Kind("changed")
-
-    /** A rewrite or check found its source's file had no pieces at the revision named: nothing
-      * was asked.
-      */
-    case Unpieced extends Kind("unpieced")
-
-    /** A rewrite or check found its policy version in force has no passing bench, or a bench's
-      * ask found its checks do not read: nothing was asked.
-      */
-    case Unchecked extends Kind("unchecked")
+  /** Why an ask was refused: an ask's own refusals, and one case per core move whose read can
+    * fail; extensions add none.
+    */
+  enum Kind {
+    case Capped, Model, Store, Uncleared
 
     /** A bench's ask found no example at its position: nothing was asked. */
-    case Ended extends Kind("ended")
+    case Ended
+
+    /** A strand's summary found its strand's messages changed since its scan: nothing was
+      * asked.
+      */
+    case StrandChanged
+
+    /** A rewrite, check or bench's ask read nothing, for `why`: nothing was asked. A bench's
+      * ask whose checks do not read, or are not read here, is `Unread(Unchecked)`.
+      */
+    case Unread(why: Declassifying.Unread)
+
+    /** Its recorded form: `capped`, `model`, `store`, `uncleared`, `ended`, `changed`
+      * (StrandChanged), or `unread:lapsed`, `unread:unchecked`, `unread:unpieced`.
+      */
+    def key: String = this match {
+      case Capped => "capped"
+      case Model => "model"
+      case Store => "store"
+      case Uncleared => "uncleared"
+      case Ended => "ended"
+      case StrandChanged => "changed"
+      case Unread(Declassifying.Unread.Lapsed) => "unread:lapsed"
+      case Unread(Declassifying.Unread.Unchecked) => "unread:unchecked"
+      case Unread(Declassifying.Unread.Unpieced) => "unread:unpieced"
+    }
+  }
+
+  object Kind {
+
+    /** The kind whose [[Kind.key]] is `key`; `None` for any other text. */
+    def read(key: String): Option[Kind] =
+      (Vector(Capped, Model, Store, Uncleared, Ended, StrandChanged) ++
+        Declassifying.Unread.values.toVector.map(Unread(_))).find(_.key == key)
   }
 
   /** One model's or classifier's call's cost: `usage` of `model`, its request estimated at
@@ -174,8 +192,9 @@ private[moves] object CallMade {
   *   - an ask's `ask:{n}`: `{"ok":{"digest":d,"message":m,"at":l,"estimate":e}}`, `m` a message
   *     as an entry holds it ([[grit.core.store.PayloadJson]]), `l` a label's written form, `e`
   *     its request's estimated tokens; or
-  *     `{"refused":"capped"|"model"|"store"|"changed","why":w,"digest":d}` (`changed` a
-  *     strand's summary's alone), or `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
+  *     `{"refused":k,"why":w,"digest":d}`, `k` an [[AskMade.Kind.key]] (`changed` a strand's
+  *     summary's alone, `unread:…` a declassify's), or
+  *     `{"refused":"uncleared","why":w,"digest":d,"at":l}`, `l` the label no model or
   *     classifier it could go to was cleared for;
   *   - a JSON ask's `ask:{n}`: `{"shaped":{"digest":d,"reply":j,"at":l,"level":i,"calls":[c…]}}`,
   *     `j` its conforming JSON, `i` an [[grit.core.visibility.Integrity.written]], or `{"unshaped":{"digest":d,"why":w,"calls":[c…]}}`, or refused as
@@ -1069,7 +1088,7 @@ object MovesJournal {
           } yield AskMade.Made(digest, message, at, Tokens(estimate.toLong))
         case (_, Some(key), _, _) =>
           for {
-            kind <- AskMade.Kind.values.find(_.key == key).toRight(s"ask: no refusal $key")
+            kind <- AskMade.Kind.read(key).toRight(s"ask: no refusal $key")
             why <- str(o, "why")
             digest <- str(o, "digest")
             at <- o.get("at") match {
