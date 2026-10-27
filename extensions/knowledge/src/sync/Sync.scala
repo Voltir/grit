@@ -12,6 +12,7 @@ import grit.core.id.{CorpusName, DocumentVersionId, FileHandle, JobName}
 import grit.core.job.{JobRun, KeepingJob}
 import grit.core.message.Message
 import grit.core.place.Place
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.sanitise.{IntegrityTree, Reason, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
@@ -61,7 +62,8 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
 
   val name: JobName = Sync.Name
 
-  val version: Int = 6
+  // 7: the summary's ask fences the file (its digest moved).
+  val version: Int = 7
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)
@@ -108,21 +110,33 @@ object Sync {
     // A literal of the job name's grammar: every test of the job throws here if not.
     JobName.of("knowledge-sync").fold(why => throw new IllegalStateException(why), identity)
 
-  /** The ask summarising `head`, told first that it is `subject` ([[Step.Summarise]]). */
-  private[sync] def summarising(subject: String, head: String): Posed.Json[CardSummary] =
-    Posed.Json(System, Vector(Message.User(s"$subject:\n\n$head")), CardSummary.Reply)
+  /** The ask summarising `head`, told that it is `subject` ([[Step.Summarise]]): one user
+    * message, `<document><source>{subject}</source><document_content>{head}
+    * </document_content></document>`, fenced ([[Fenced]]).
+    */
+  private[sync] def summarising(subject: String, head: String): Posed.Json[CardSummary] = {
+    val file = Fenced(
+      Tag.Document,
+      Vector.empty,
+      Vector(
+        Fenced.Part.In(Fenced.in(Tag.Source, subject)),
+        Fenced.Part.In(Fenced.in(Tag.DocumentContent, head))
+      )
+    )
+    Posed.Json(System, Vector(Message.User(file.rendered)), CardSummary.Reply)
+  }
 
   /** What the summary model is told, before the file. */
   private val System: String =
     "You summarise one file for a catalog that tells an assistant what each file holds, so it " +
-      "can choose which to read. The line before the file says what it is and where it is " +
-      "kept: call it what that line calls it, whatever its text looks like. The catalog shows " +
+      "can choose which to read. The file's <source> says what it is and where it is " +
+      "kept: call it what its source calls it, whatever its text looks like. The catalog shows " +
       "the file's path beside your summary, so do not repeat its path or its type (\"This CSV " +
       "file…\", \"README for…\"): begin with what it holds. Reply by calling " +
       "`reply` with `summary`, " +
       s"at most ${CardSummary.Words} words on what the file is and what it holds, and `terms`, " +
       s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +
-      "that the summary leaves out."
+      "that the summary leaves out.\n\n" + Fenced.Rule
 
   /** One run of `source`, asking for at most `perRun` summaries, its slot due at `due`, its run
     * `start`: its reply.
