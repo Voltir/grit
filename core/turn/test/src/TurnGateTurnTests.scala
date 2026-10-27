@@ -193,7 +193,7 @@ object TurnGateTurnTests extends TestSuite {
       summarizer.requests.filter(_.tools.exists(_.name == "reply")).map(_.messages) ==> Vector(
         Vector(
           Message.User(
-            "BEGIN ITEM\nalpha\nEND ITEM\n\nQuestion: Does it say alpha?\n\n" +
+            "<item>\nalpha\n</item>\n\nQuestion: Does it say alpha?\n\n" +
               "Answer with true for yes or false for no, or null when the item does not say."
           )
         )

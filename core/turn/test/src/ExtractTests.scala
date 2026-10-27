@@ -198,7 +198,7 @@ object ExtractTests extends TestSuite {
       request.system ==> Extraction.System
       request.messages ==> Vector(
         Message.User(
-          "BEGIN ITEM\nIssue 7: the build fails.\nEND ITEM\n\nQuestion: Is it closed?\n\n" +
+          "<item>\nIssue 7: the build fails.\n</item>\n\nQuestion: Is it closed?\n\n" +
             "Answer with true for yes or false for no, or null when the item does not say."
         )
       )
