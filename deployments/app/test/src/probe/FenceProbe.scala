@@ -25,16 +25,42 @@ import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
   *
   * {{{set -a; . ./.env; set +a; ./mill grit.app.test.runMain grit.app.probe.FenceProbe}}}
   *
-  * With `--dry`, prints each request as grit builds it now, and asks nothing.
+  * With `--dry`, prints each request as grit builds it now, and asks nothing. Options, each
+  * followed by its value: `--model` (default `openai/gpt-oss-120b`), `--max-tokens` (500),
+  * `--budget` in dollars (0.02), `--only`, asking only the samples whose names start with it,
+  * and `--arms`, `before`, `after` or `both` (the default).
   *
   * Not a test: `./mill __.test` makes no model calls.
   */
 object FenceProbe {
 
-  private val Model = "openai/gpt-oss-120b"
   private val Repeats = 3
-  private val MaxTokens = 500
-  private val Budget = BigDecimal("0.02")
+
+  /** One run's choices, as [[main]]'s options set them. */
+  private final case class Run(
+      model: String = "openai/gpt-oss-120b",
+      maxTokens: Int = 500,
+      budget: BigDecimal = BigDecimal("0.02"),
+      only: String = "",
+      arms: Set[String] = Set("before", "after")
+  )
+
+  private def parsed(args: List[String], run: Run): Either[String, Run] = args match {
+    case Nil => Right(run)
+    case "--model" :: v :: rest => parsed(rest, run.copy(model = v))
+    case "--max-tokens" :: v :: rest =>
+      v.toIntOption.toRight(s"--max-tokens $v").flatMap(n => parsed(rest, run.copy(maxTokens = n)))
+    case "--budget" :: v :: rest =>
+      scala.util
+        .Try(BigDecimal(v))
+        .toOption
+        .toRight(s"--budget $v")
+        .flatMap(b => parsed(rest, run.copy(budget = b)))
+    case "--only" :: v :: rest => parsed(rest, run.copy(only = v))
+    case "--arms" :: "both" :: rest => parsed(rest, run.copy(arms = Set("before", "after")))
+    case "--arms" :: (v @ ("before" | "after")) :: rest => parsed(rest, run.copy(arms = Set(v)))
+    case other => Left(s"unknown option: ${other.mkString(" ")}")
+  }
 
   def main(args: Array[String]): Unit =
     if (args.headOption.contains("--dry"))
@@ -42,18 +68,20 @@ object FenceProbe {
         println(s"===== ${b.name}\n--- system\n${b.request.system}")
         b.request.messages.foreach(m => println(s"--- ${m.getClass.getSimpleName}\n$m"))
       }
-    else asked()
+    else parsed(args.toList, Run()).fold(println, asked)
 
-  private def asked(): Unit = {
+  private def asked(r: Run): Unit = {
     val env = sys.env ++ Map(
-      ModelRole.Dream.modelVar -> Model,
+      ModelRole.Dream.modelVar -> r.model,
       // A blank upstream variable is unset: the model's upstream is left open.
       ModelRole.Dream.upstreamVar -> "",
-      ModelRole.Dream.maxTokensVar -> MaxTokens.toString
+      ModelRole.Dream.maxTokensVar -> r.maxTokens.toString
     )
     OpenRouterConfig.forRole(env, ModelRole.Dream) match {
       case Left(invalid) => println(invalid)
-      case Right(config) => run(new OpenRouterProvider(config))
+      case Right(config) =>
+        println(s"model ${r.model}, max tokens ${r.maxTokens}")
+        run(new OpenRouterProvider(config), r)
     }
   }
 
@@ -86,25 +114,26 @@ object FenceProbe {
         .map(ms => after.copy(system = literal("system").str, messages = ms))
   }
 
-  private def run(provider: Provider): Unit = {
+  private def run(provider: Provider, r: Run): Unit = {
     val all = literals
     var spent = BigDecimal(0)
-    FenceRequests.all.foreach { b =>
+    FenceRequests.all.filter(_.name.startsWith(r.only)).foreach { b =>
       before(b.request, all(b.name)) match {
         case Left(why) => println(s"${b.name}: before does not fit: $why")
         case Right(old) =>
-          Vector("before" -> old, "after" -> b.request).foreach { (arm, request) =>
-            val read = (1 to Repeats).toVector.map { _ =>
-              if (spent > Budget) "skipped: budget"
-              else
-                provider.complete(request) match {
-                  case Left(e) => s"failed: $e"
-                  case Right(reply) =>
-                    spent += reply.usage.costUsd.getOrElse(BigDecimal(0))
-                    score(b.name, reply)
-                }
-            }
-            println(s"${b.name} $arm: ${read.mkString(" | ")}")
+          Vector("before" -> old, "after" -> b.request).filter((arm, _) => r.arms(arm)).foreach {
+            (arm, request) =>
+              val read = (1 to Repeats).toVector.map { _ =>
+                if (spent > r.budget) "skipped: budget"
+                else
+                  provider.complete(request) match {
+                    case Left(e) => s"failed: $e"
+                    case Right(reply) =>
+                      spent += reply.usage.costUsd.getOrElse(BigDecimal(0))
+                      score(b.name, reply)
+                  }
+              }
+              println(s"${b.name} $arm: ${read.mkString(" | ")}")
           }
       }
     }
