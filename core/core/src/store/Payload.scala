@@ -131,5 +131,16 @@ object Payload {
     */
   def saysNothing(text: String): Boolean = Attached.replaceAllIn(text, "").isBlank
 
+  /** `declined` as the words of `who`, the person who declined it: "{who} declined the call
+    * {call}, and wrote:", a newline, then their reason; the call named as its [[Result]] among
+    * `payloads` shows it, else by its id. Every view of a declined call says it this way.
+    */
+  def declined(who: String, declined: Declined, payloads: Vector[Payload]): String = {
+    val call = payloads
+      .collectFirst { case Result(r, shown) if r.callId == declined.call => shown }
+      .getOrElse(ToolCallId.value(declined.call))
+    s"$who declined the call $call, and wrote:\n${declined.reason}"
+  }
+
   private val Attached = """\[file: [^\]]*\]""".r
 }

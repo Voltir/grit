@@ -115,7 +115,7 @@ object PeriodTranscript {
     * text as [[of]] renders it with `speakers`, but a person's message mentioning the
     * assistant, which presents as `persona`, as their words to it (`[h1] Ana, to the
     * assistant: …`, the mention taken out); a declined call's reason as a `u` line of the
-    * person its turn answers (`User` unnamed), "declined the call {shown}, and wrote: …"; and
+    * person its turn answers (`User` unnamed), as [[Payload.declined]] says it; and
     * each tool result as its call as shown, " →",
     * " failed:" when it failed, and its content on one line as the line's result, clipped to
     * [[GroundingToolChars]] when it can ground ([[Labelled.supports]]), else to [[ToolChars]];
@@ -132,11 +132,8 @@ object PeriodTranscript {
       })
       .collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
       .toMap
-    // Each call as shown, by its id; and the name of whoever each turn answers, by the turn.
-    val shownCalls: Map[ToolCallId, String] = entries
-      .map(_.payload)
-      .collect { case Payload.Result(r, shown) => r.callId -> shown }
-      .toMap
+    // The name of whoever each turn answers, by the turn.
+    val payloads = entries.map(_.payload)
     val askers: Map[TurnSeq, String] = entries.reverse
       .filter(_.payload.said.nonEmpty)
       .flatMap(e => speakers.of(e.id).map(e.turnSeq -> _))
@@ -144,17 +141,9 @@ object PeriodTranscript {
     // Who wrote each line, which entry it is, its text after the label, and a tool's result.
     val written: Vector[(Labelled.Source, Entry, String, Option[String])] = entries.flatMap(e =>
       e.payload match {
-        case Payload.Declined(call, reason) =>
+        case d: Payload.Declined =>
           val who = askers.getOrElse(e.turnSeq, "User")
-          val named = shownCalls.getOrElse(call, ToolCallId.value(call))
-          Some(
-            (
-              Labelled.Source.Person,
-              e,
-              s"$who: declined the call $named, and wrote: $reason",
-              None
-            )
-          )
+          Some((Labelled.Source.Person, e, Payload.declined(who, d, payloads), None))
         case Payload.Result(result, shown) =>
           val content = result.content.trim.split("\\s+").mkString(" ")
           val failed = if (result.isError) " failed:" else ""

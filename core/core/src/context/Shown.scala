@@ -267,8 +267,7 @@ object Shown {
     * `<tool_output source="{its call, as a person is shown it}">` ([[Fenced]]), after
     * [[result]]'s lead-in when it has one; a declined call's reason ([[Payload.Declined]]) as
     * the message of the person the turn answers, the speaker of its first message (else "The
-    * person you are answering"), "{who} declined the call {shown}, and wrote:" then their
-    * words pasted ([[pasted]]), once the tool results it sits among end, so a reply's results
+    * person you are answering"), as [[Payload.declined]] says it, pasted ([[pasted]]), once the tool results it sits among end, so a reply's results
     * stay together; nothing for any other entry, a draft among them.
     */
   def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] = {
@@ -276,12 +275,7 @@ object Shown {
       .find(_.payload.said.nonEmpty)
       .flatMap(e => speakers.of(e.id))
       .getOrElse("The person you are answering")
-    val calls = entries
-      .map(_.payload)
-      .collect { case Payload.Result(r, shown) =>
-        r.callId -> shown
-      }
-      .toMap
+    val payloads = entries.map(_.payload)
     val (shown, held) = entries.foldLeft((Vector.empty[Message], Vector.empty[Message])) {
       case ((out, held), e) =>
         val message = e.payload match {
@@ -293,12 +287,8 @@ object Shown {
           case _ => None
         }
         (e.payload, message) match {
-          case (Payload.Declined(call, reason), _) =>
-            val named = calls.getOrElse(call, ToolCallId.value(call))
-            (
-              out,
-              held :+ Message.User(pasted(s"$who declined the call $named, and wrote:\n$reason"))
-            )
+          case (d: Payload.Declined, _) =>
+            (out, held :+ Message.User(pasted(Payload.declined(who, d, payloads))))
           case (_, Some(r: Message.ToolResult)) => (out :+ r, held)
           case (_, Some(m)) => (out ++ held :+ m, Vector.empty)
           case (_, None) => (out, held)

@@ -112,7 +112,7 @@ object LabelledTests extends TestSuite {
       declined.text ==> fenced(
         "[u1] Ana: Move the api to 8080.",
         tool("[t2] edit config.yml → failed:", "Declined: it did not run."),
-        "[u3] Ana: declined the call edit config.yml, and wrote: keep it on 3000",
+        "[u3] Ana declined the call edit config.yml, and wrote:\nkeep it on 3000",
         "[a4] Assistant: Left as it is."
       )
       declined.ground(Vector("u3")) ==> Some(Ground.Person)

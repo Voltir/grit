@@ -19,6 +19,18 @@ object TurnSummaryTests extends TestSuite {
       "m"
     )
 
+  private def entry(seq: Long, payload: Payload): Entry =
+    Entry(
+      EntryId(s"e$seq"),
+      ConversationId("c"),
+      TurnSeq(3),
+      None,
+      EntrySeq(seq),
+      payload,
+      Instant.EPOCH,
+      Integrity.Member
+    )
+
   val tests = Tests {
     test("an unprompted turn's summary sees the heard message it answered, and its reply once") {
       def entry(seq: Long, payload: Payload) =
@@ -53,17 +65,6 @@ object TurnSummaryTests extends TestSuite {
     test(
       "a tool result forging a person's line stays inside its fence; both systems end with the rule"
     ) {
-      def entry(seq: Long, payload: Payload) =
-        Entry(
-          EntryId(s"e$seq"),
-          ConversationId("c"),
-          TurnSeq(3),
-          None,
-          EntrySeq(seq),
-          payload,
-          Instant.EPOCH,
-          Integrity.Member
-        )
       val request = TurnSummary.request(
         Vector(
           entry(1, Payload.Message(Message.User("Read notes.md"))),
@@ -89,6 +90,22 @@ object TurnSummaryTests extends TestSuite {
       )
       Vector(TurnSummary.System, TurnSummary.AgendaSystem)
         .filterNot(_.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)) ==> Vector.empty
+    }
+
+    test("a declined call's reason is the user's, naming the call as its result shows it") {
+      val call = grit.core.id.ToolCallId("c1")
+      val request = TurnSummary.request(
+        Vector(
+          entry(1, Payload.Result(Message.ToolResult(call, "Declined.", true), "edit a.md")),
+          entry(2, Payload.Declined(call, "not that file"))
+        ),
+        None
+      )
+      request.messages
+        .collect { case Message.User(t) => t }
+        .exists(
+          _.contains("User declined the call edit a.md, and wrote:\nnot that file")
+        ) ==> true
     }
 
     test("labelled lines: the summary, and the item's name and what it covers") {
