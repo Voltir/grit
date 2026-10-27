@@ -22,7 +22,9 @@ rule 10 (the elision test, and what a doc must and must not say) and the Tests s
 open another rule's section only when a change turns on it. `docs/capture-checking.md`
 has every compile trap met so far: search it for the error when one appears, rather than
 reading it up front. Read the module README for the package you touch. When a brief names
-sections of a long file (a plan, the roadmap), read those sections, not the whole file.
+sections of a long file (a plan, the roadmap), read those sections, not the whole file: for a
+plan, your stage's section and the shared one it links, not its review sections (the
+stage repeats what it needs from them).
 Never read `.env`. No model calls unless the brief allows one and states a budget.
 
 ## Reading and editing code
@@ -67,7 +69,8 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
   is for what scout cannot name (a test file's imports, a region inside a body you have not
   edited). Nor is a `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
-  lists a stage's reads, run those first.
+  lists a stage's reads, run the before-the-first-edit ones first and each
+  point-of-use read when you reach the code it names, not up front.
 - Adding a member to an implementation or a fake: `file` it for its members, then `show` it
   with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
   Never read the implementation whole to learn its shape.

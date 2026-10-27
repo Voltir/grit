@@ -34,9 +34,17 @@ that applies in its plan; a reviewer checks each against the plan and says which
 - **Code by symbol, and each stage carries its reads.** A plan names code as `Owner.member` (a
   place inside a body: the member and a quoted phrase), never by file and line: a line number is
   stale after the first edit, and it sends the coder who builds the plan to `sed` instead of scout.
-  Each checkpoint or stage lists the scout queries its coder runs before its first edit, written
-  as MCP calls (`show {"symbols": ["Turn"], "body": ["looping"]}`): what it changes, the sibling
-  it writes alongside, the helpers it calls, the callers (`uses`), and the tests and fakes it
-  extends (`tests` with `test` or `body`, `file`). Every query resolves against the branch the
-  stage is built on; the reviewer runs them.
+  Each checkpoint or stage lists its scout queries, written as MCP calls
+  (`show {"symbols": ["Turn"], "body": ["looping"]}`), in two groups. **Before the first edit:**
+  only what it changes, the sibling it writes alongside, and the callers (`uses`) of a signature
+  it changes. **At point of use:** the helpers it calls and the tests and fakes it extends
+  (`tests` with `test` or `body`, `file`), each read when the coder reaches it. Text read early is
+  carried through every turn after it. Every query resolves against the branch the stage is
+  built on, its own earlier stages included; the reviewer runs them.
+- **A stage reads only itself.** Each checkpoint or stage is one self-contained section: its goal,
+  the invariants it must keep, its reads, its commits and how each is verified. Design the stages
+  share sits in one short section they link to. The review sections (Elision, Capture and
+  separation, Sharing, Turned down, Parked) serve the reviewer, not the coder: a stage repeats the
+  signature or line it needs from them. The brief names the stage's section and the shared one,
+  and the coder reads those alone.
 - **Park, don't widen.** What surfaced and is not in scope is listed as parked, not folded in.

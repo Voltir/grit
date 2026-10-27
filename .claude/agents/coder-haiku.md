@@ -49,7 +49,8 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
   is for what scout cannot name (a test file's imports, a region inside a body you have not
   edited). Nor is a `File.scala:N` in a brief: it points at a definition; `show` that. When the brief lists
-  reads, run those first.
+  reads, run the before-the-first-edit ones first and each
+  point-of-use read when you reach the code it names, not up front.
 - Adding a member to an implementation or a fake: `file` it for its members, then `show` it
   with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
   Never read the implementation whole to learn its shape.
