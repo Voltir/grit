@@ -3,6 +3,7 @@ package grit.core.sanitise
 import scala.util.matching.Regex
 
 import grit.core.context.SectionTag
+import grit.core.prompt.Stripped
 
 /** What code finds in a text before the classifier is asked: each of [[Reason.Hidden]],
   * [[Reason.Encoded]], [[Reason.Marker]] and [[Reason.OverBound]] that fired, in that order.
@@ -25,12 +26,6 @@ object HardFlags {
       ).flatten
     )
 
-  /** Zero-width and invisible formatting characters, bidirectional controls, the byte order
-    * mark, the soft hyphen, and Unicode's tag characters.
-    */
-  private val Invisible: Regex =
-    "[\\x{200B}-\\x{200F}\\x{2060}-\\x{2064}\\x{FEFF}\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}\\x{00AD}\\x{E0000}-\\x{E007F}]".r
-
   private val Base64: Regex = "(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])".r
 
   private val Hex: Regex = "(?<![0-9A-Fa-f])[0-9A-Fa-f]{65,}(?![0-9A-Fa-f])".r
@@ -44,7 +39,7 @@ object HardFlags {
     text.startsWith(tag) || text.contains("\n" + tag)
 
   private def hidden(text: String): Boolean =
-    Invisible.findFirstIn(text).nonEmpty || Word.findAllIn(text).exists(mixed)
+    Stripped.hides(text) || Word.findAllIn(text).exists(mixed)
 
   /** Whether `word` mixes Latin letters with Cyrillic or Greek ones: a homoglyph's mark. */
   private def mixed(word: String): Boolean = {

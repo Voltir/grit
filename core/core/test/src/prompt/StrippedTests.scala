@@ -17,11 +17,14 @@ object StrippedTests extends TestSuite {
         "Reads a file."
     }
 
-    test("each control, bidi, zero-width and tag character is removed; line feed and tab kept") {
-      val hidden = Vector(0x0, 0x7, 0xb, 0xd, 0x1b, 0x1f, 0x7f, 0x80, 0x9f, 0x200b, 0x200c, 0x200d,
-        0x2060, 0xfeff, 0x202a, 0x202e, 0x2066, 0x2069, 0xe0000, 0xe007f)
+    test(
+      "each control, bidi, zero-width, soft hyphen and tag character is removed; line feed, tab and carriage return kept"
+    ) {
+      val hidden = Vector(0x0, 0x7, 0xb, 0x1b, 0x1f, 0x7f, 0x80, 0x9f, 0xad, 0x200b, 0x200c, 0x200d,
+        0x200e, 0x200f, 0x2060, 0x2061, 0x2064, 0xfeff, 0x202a, 0x202e, 0x2066, 0x2069, 0xe0000,
+        0xe007f)
         .map(c => new String(Character.toChars(c)))
-      Stripped.of(hidden.mkString("a\tb\n", "", "c")) ==> "a\tb\nc"
+      Stripped.of(hidden.mkString("a\tb\r\n", "", "c")) ==> "a\tb\r\nc"
     }
 
     test("every guidance tag is removed in any form, and no material tag") {

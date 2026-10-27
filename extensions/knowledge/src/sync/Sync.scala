@@ -19,7 +19,7 @@ import grit.core.visibility.{Integrity, Label}
 import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
 import grit.knowledge.ref.CardKey
 
-/** The job `knowledge-sync`, version 6, over `sources`. A run, for the source its parameters
+/** The job `knowledge-sync`, version 8, over `sources`. A run, for the source its parameters
   * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
   * writes a card at its own floor for each new or changed unit (a file's from one summary, with
   * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
@@ -63,7 +63,7 @@ final class Sync(sources: Vector[Source[?]]) extends KeepingJob[SyncParams] {
   val name: JobName = Sync.Name
 
   // 7: the summary's ask fences the file (its digest moved).
-  val version: Int = 7
+  val version: Int = 8
 
   def write(params: SyncParams): ujson.Value =
     ujson.Obj("source" -> CorpusName.value(params.source), "perRun" -> params.perRun)

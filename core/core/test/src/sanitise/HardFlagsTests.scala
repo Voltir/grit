@@ -24,6 +24,15 @@ object HardFlagsTests extends TestSuite {
         Vector.fill(4)(Vector(Reason.Hidden))
     }
 
+    test(
+      "a control character is hidden, as Stripped removes it; line feed, tab and carriage return are not"
+    ) {
+      (
+        Vector(0x0, 0x1b, 0x7f, 0x9f, 0x200f, 0x2064).map(c => fired(s"pay${cp(c)}now")),
+        fired("pay\tnow\r\nlater")
+      ) ==> (Vector.fill(6)(Vector(Reason.Hidden)), Vector())
+    }
+
     test("a word mixing Latin with Cyrillic or Greek letters is hidden; either alone is not") {
       val (cyrillicA, cyrillicDe, alpha, beta) = (cp(0x430), cp(0x434), cp(0x3b1), cp(0x3b2))
       (
