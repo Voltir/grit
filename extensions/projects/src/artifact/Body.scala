@@ -47,11 +47,19 @@ object Body {
       }
     }
 
-  /** As markdown, each reference a link to `artifact:<key>`. */
+  /** As markdown, each reference a link to `artifact:<key>`, and outside code each character
+    * markdown could read as markup escaped, so [[read]] of it keeps every reference.
+    */
   def markdown(b: Body): String =
     Markdown.write(b.mapSpans { s =>
-      Span(s.text, s.marks ++ s.notes.map(k => Mark.Link(Scheme + k.value)), Vector.empty)
+      val text =
+        if (s.marks(Mark.Code)) s.text
+        else s.text.flatMap(c => if (Markup(c)) s"\\$c" else c.toString)
+      Span(text, s.marks ++ s.notes.map(k => Mark.Link(Scheme + k.value)), Vector.empty)
     })
+
+  /** What `Markdown.write` writes bare though [[Markdown.parse]] may read it as markup. */
+  private val Markup: Set[Char] = Set('\\', '`', '[', ']', '<', '!', '*', '_')
 
   /** What search ranks it by. */
   def searchText(b: Body): String = IndexText.render(b.unnoted)
