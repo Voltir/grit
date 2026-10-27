@@ -1239,7 +1239,10 @@ CREATE TABLE IF NOT EXISTS grit.document_terms (
     weight    DOUBLE PRECISION NOT NULL CHECK (weight > 0),
     retention INTERVAL NOT NULL,
     bound     INTEGER NOT NULL CHECK (bound >= 1),
-    enabled   BOOLEAN NOT NULL
+    enabled   BOOLEAN NOT NULL,
+    -- DocumentTerms.keepLast and DocumentTerms.Full.
+    keep_last INTEGER NOT NULL DEFAULT 0 CHECK (keep_last >= 0),
+    when_full TEXT NOT NULL DEFAULT 'withdraw' CHECK (when_full IN ('withdraw', 'refuse'))
 );
 
 -- A job's schedule (grit.core.job, ADR 0029): its job by name, its slot rule (SlotRuleJson), its

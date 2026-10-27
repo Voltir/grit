@@ -17,14 +17,22 @@ final class SqlDocumentSearch extends DocumentSearch {
   def declared()(using tx: Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
     rows(
       """SELECT plugin, label, weight, (extract(epoch FROM retention) * 1000000)::bigint AS micros,
-        |       bound
+        |       bound, keep_last, when_full
         |  FROM grit.document_terms WHERE enabled ORDER BY plugin COLLATE "C"""".stripMargin
     )(_ => ()) { rs =>
       for {
         plugin <- PluginName.of(rs.getString("plugin"))
         label <- DocLabel.of(rs.getString("label"))
         weight <- DocWeight.of(rs.getDouble("weight"))
-        terms <- DocumentTerms.of(label, weight, rs.getLong("micros").micros, rs.getInt("bound"))
+        full <- SqlDocuments.fullOf(rs.getString("when_full"))
+        terms <- DocumentTerms.of(
+          label,
+          weight,
+          rs.getLong("micros").micros,
+          rs.getInt("bound"),
+          rs.getInt("keep_last"),
+          full
+        )
       } yield plugin -> terms
     }
 

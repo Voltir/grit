@@ -303,5 +303,6 @@ object StitchLab {
     case StoreError.DuplicateId(id) => s"duplicate id ${EntryId.value(id)}"
     case StoreError.DatabaseError(cause) => s"database error: $cause"
     case StoreError.Invalid(cause) => s"invalid: $cause"
+    case StoreError.Full(bound) => s"full at $bound"
   }
 }

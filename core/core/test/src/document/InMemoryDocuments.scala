@@ -252,9 +252,14 @@ final class InMemoryDocuments extends DocumentStore {
               if r.text.contains(text) && r.place == place && r.data == data &&
                 r.pointer == pointer && r.integrity == integrity && r.refs == refs =>
             Right(Written.Unchanged(version(v), kept))
+          case _
+              if under.full == DocumentTerms.Full.Refuse &&
+                holding(plugin).count((_, r) => !(r.key == key && r.label == kept)) >=
+                under.bound =>
+            Left(StoreError.Full(under.bound))
           case before =>
             for {
-              _ <- before.fold(Right(()))((v, r) => supersede(v, r, at))
+              _ <- before.fold(Right(()))((v, r) => supersede(v, r, at, under.keepLast))
               v = insert(
                 Row(
                   plugin,
@@ -294,7 +299,8 @@ final class InMemoryDocuments extends DocumentStore {
         head(plugin, key, label) match {
           case Some((v, r)) if r.text.nonEmpty =>
             for {
-              _ <- supersede(v, r, at)
+              _ <- supersede(v, r, at, under.keepLast)
+              _ <- marked(plugin, key, label, 0, under.keepLast)
               w = insert(
                 r.copy(
                   text = None,
@@ -537,11 +543,34 @@ final class InMemoryDocuments extends DocumentStore {
   def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
     Right(terms.toVector.collect { case (p, (t, true)) => p -> t })
 
-  /** `r`, version `v`, no longer current from `at`, and marked for deletion. */
-  private def supersede(v: Long, r: Row, at: Instant)(using Tx^): Either[StoreError, Unit] = {
+  /** `r`, version `v`, no longer current from `at`; the version of its key and label leaving the
+    * `keepLast` newest superseded is marked for deletion.
+    */
+  private def supersede(v: Long, r: Row, at: Instant, keepLast: Int)(using
+      Tx^
+  ): Either[StoreError, Unit] = {
     rows = rows.updated(v, r.copy(superseded = Some(at)))
-    tombstones.write(Target.Document(version(v)), at).map(_ => ())
+    marked(r.plugin, r.key, r.label, keepLast, 1)
   }
+
+  /** Marks for deletion `n` of `plugin`'s superseded versions holding something under `key` at
+    * `label`, from the `from`th newest (0 the newest), each as of when it stopped being current.
+    */
+  private def marked(plugin: PluginName, key: DocKey, label: Label, from: Int, n: Int)(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    rows.toVector
+      .flatMap((v, r) =>
+        r.superseded
+          .filter(_ => r.plugin == plugin && r.key == key && r.label == label && r.text.nonEmpty)
+          .map(s => (v, s))
+      )
+      .sortBy((v, s) => (s, v))
+      .reverse
+      .slice(from, from + n)
+      .foldLeft[Either[StoreError, Unit]](Right(()))((acc, vs) =>
+        acc.flatMap(_ => tombstones.write(Target.Document(version(vs._1)), vs._2).map(_ => ()))
+      )
 
   /** Whether `r` held something current at `at`: written before it, superseded by none
     * written before it.

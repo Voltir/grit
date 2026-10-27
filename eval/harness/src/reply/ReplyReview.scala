@@ -312,6 +312,7 @@ object ReplyReview {
     case StoreError.DuplicateId(_) => "duplicate id"
     case StoreError.DatabaseError(_) => "database error"
     case StoreError.Invalid(_) => "invalid"
+    case StoreError.Full(_) => "full"
   }
 
   /** One review file's content: a capture's turns as picked, written at `at` under

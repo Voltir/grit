@@ -69,14 +69,16 @@ trait DocumentKeeper extends DocumentShelf {
     * at, and `current(key, kept)` finds it again. Under posting and a job's run the floor is
     * [[grit.core.store.Tx.cleared]], so that is `label join Tx.cleared(tx)`; a person's turn may
     * write above what it reads back. The version before under that key and label, if any, stops
-    * being current and is marked for deletion ([[grit.core.retention.Target.Document]]); a document
-    * under the key at another label is untouched. [[Written.Unchanged]] when the current version
+    * being current; the one leaving its terms' `keepLast` newest such versions is marked for
+    * deletion ([[grit.core.retention.Target.Document]]) as of when it stopped being current; a
+    * document under the key at another label is untouched. [[Written.Unchanged]] when the current version
     * there holds the same place, text, data, pointer, integrity and refs; [[StoreError.Invalid]],
     * writing nothing, for more than [[DocRef.Most]] refs or for `data` over [[Document.DataMost]]
-    * bytes as compact JSON. Past the bound, counted over every label,
-    * the current documents placed least recently (ties by key, then label in its written form,
-    * bytewise) are withdrawn as [[withdraw]] does, never the one written: a high variant few
-    * readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at
+    * bytes as compact JSON. Past the bound, counted over every label, under
+    * [[DocumentTerms.Full.Refuse]] it is [[StoreError.Full]], writing nothing; under
+    * [[DocumentTerms.Full.Withdraw]] the current documents placed least recently (ties by key,
+    * then label in its written form, bytewise) are withdrawn as [[withdraw]] does, never the one
+    * written: a high variant few readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at
     * that label meanwhile: posting never does, as it runs one at a time per plugin, but two runs of
     * a plugin's keeping jobs can, each keeping in its own transaction.
     */
@@ -95,7 +97,8 @@ trait DocumentKeeper extends DocumentShelf {
   /** Withdraws the current document under `key` at exactly `label`, at `at`: a version holding
     * nothing and no refs, kept at that label and in that document's room and believed as it was, becomes
     * current there, and both
-    * are marked for deletion. The withdrawal's version, or `None` when `key` had no current
+    * are marked for deletion, with every version before it its terms' `keepLast` kept, each as of
+    * when it stopped being current. The withdrawal's version, or `None` when `key` had no current
     * document at `label`.
     */
   def withdraw(key: DocKey, label: Label, at: Instant)(using

@@ -148,5 +148,6 @@ object Inputs {
     case StoreError.DuplicateId(_) => "duplicate id"
     case StoreError.DatabaseError(_) => "database error"
     case StoreError.Invalid(_) => "invalid"
+    case StoreError.Full(_) => "full"
   }
 }

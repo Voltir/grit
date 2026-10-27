@@ -33,13 +33,19 @@ object DocumentTermsTests extends TestSuite {
         DocWeight.of(w) ==> Left(s"a document weight is positive and finite, not $w")
     }
 
-    test("terms keep their documents a minute or more, and at least one current") {
+    test(
+      "terms keep their documents a minute or more, at least one current, and their last 0 or more"
+    ) {
       DocumentTerms.of(label, DocWeight.Unscaled, 1.minute, 1).map(t => (t.retention, t.bound)) ==>
         Right((1.minute, 1))
       DocumentTerms.of(label, DocWeight.Unscaled, 59.seconds, 1) ==>
         Left("documents are kept a minute or more after they stop being current, not 59 seconds")
       DocumentTerms.of(label, DocWeight.Unscaled, 1.day, 0) ==>
         Left("a plugin's documents are bounded at 1 or more, not 0")
+      DocumentTerms.of(label, DocWeight.Unscaled, 1.day, 1, keepLast = 0).map(_.keepLast) ==>
+        Right(0)
+      DocumentTerms.of(label, DocWeight.Unscaled, 1.day, 1, keepLast = -1) ==>
+        Left("a plugin keeps its last 0 or more versions of a key, not -1")
     }
   }
 }

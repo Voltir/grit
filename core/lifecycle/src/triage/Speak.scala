@@ -192,5 +192,7 @@ private[triage] object Speak {
     case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
     case StoreError.DatabaseError(cause) => cause
     case StoreError.Invalid(cause) => cause
+    case StoreError.Full(bound) =>
+      s"its plugin already holds the $bound documents it may, so nothing was kept"
   }
 }

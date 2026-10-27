@@ -357,5 +357,9 @@ object TurnTools {
       TurnFailure.Store(s"entry ${EntryId.value(id)} already exists")
     case StoreError.DatabaseError(cause) => TurnFailure.Store(cause)
     case StoreError.Invalid(cause) => TurnFailure.Store(cause)
+    case StoreError.Full(bound) =>
+      TurnFailure.Store(
+        s"its plugin already holds the $bound documents it may, so nothing was kept"
+      )
   }
 }

@@ -70,17 +70,21 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
       _ <- enabled.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (plugin, terms)) =>
         acc.flatMap(_ =>
           update(
-            """INSERT INTO grit.document_terms (plugin, label, weight, retention, bound, enabled)
-              |VALUES (?, ?, ?, ? * interval '1 microsecond', ?, true)
+            """INSERT INTO grit.document_terms
+              |       (plugin, label, weight, retention, bound, enabled, keep_last, when_full)
+              |VALUES (?, ?, ?, ? * interval '1 microsecond', ?, true, ?, ?)
               |ON CONFLICT (plugin) DO UPDATE
               |   SET label = EXCLUDED.label, weight = EXCLUDED.weight,
-              |       retention = EXCLUDED.retention, bound = EXCLUDED.bound, enabled = true""".stripMargin
+              |       retention = EXCLUDED.retention, bound = EXCLUDED.bound, enabled = true,
+              |       keep_last = EXCLUDED.keep_last, when_full = EXCLUDED.when_full""".stripMargin
           ) { ps =>
             ps.setString(1, PluginName.value(plugin))
             ps.setString(2, DocLabel.value(terms.label))
             ps.setDouble(3, DocWeight.value(terms.weight))
             ps.setLong(4, terms.retention.toMicros)
             ps.setInt(5, terms.bound)
+            ps.setInt(6, terms.keepLast)
+            ps.setString(7, whenFull(terms.full))
           }.map(_ => ())
         )
       }
@@ -396,9 +400,10 @@ private[sql] object SqlDocuments {
                 case Vector((current, true)) => Right(Written.Unchanged(current, kept))
                 case before =>
                   for {
+                    _ <- roomFor(key, id)
                     _ <- before.foldLeft[Either[StoreError, Unit]](Right(())) {
                       case (acc, (v, _)) =>
-                        acc.flatMap(_ => supersede(v, at))
+                        acc.flatMap(_ => supersede(v, key, id, at))
                     }
                     written <- rows(
                       s"""INSERT INTO grit.documents
@@ -672,7 +677,8 @@ private[sql] object SqlDocuments {
         .current(plugin, DocKey.value(key), label, "body IS NOT NULL")(versionOf)
         .flatMap(_.fold(Right(None)) { current =>
           for {
-            _ <- supersede(current, at)
+            _ <- supersede(current, key, label, at)
+            _ <- marked(key, label, 0, terms.keepLast)
             written <- rows(
               """INSERT INTO grit.documents
                 |       (plugin, key, place, body, written_at, last_placed, classification_id, room_id,
@@ -693,8 +699,63 @@ private[sql] object SqlDocuments {
           } yield Some(withdrawal)
         })
 
-    private def supersede(version: DocumentVersionId, at: Instant)(using Tx^) =
-      SqlKept.Documents.supersede(Target.Document(version), tombstones, at)
+    /** `version`, of `key` at the label whose id is `label`, no longer current from `at`; the
+      * version leaving the `keepLast` newest superseded there is marked for deletion.
+      */
+    private def supersede(version: DocumentVersionId, key: DocKey, label: Int, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] =
+      update("UPDATE grit.documents SET superseded_at = ? WHERE version = ?") { ps =>
+        ps.setObject(1, utc(at))
+        ps.setLong(2, DocumentVersionId.value(version))
+      }.flatMap(_ => marked(key, label, terms.keepLast, 1))
+
+    /** Marks for deletion `n` of the superseded versions holding something under `key` at the
+      * label whose id is `label`, from the `from`th newest (0 the newest), each as of when it
+      * stopped being current.
+      */
+    private def marked(key: DocKey, label: Int, from: Int, n: Int)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] =
+      if (n <= 0) Right(())
+      else
+        rows(
+          """SELECT version, superseded_at FROM grit.documents
+            | WHERE plugin = ? AND key = ? AND classification_id = ?
+            |   AND superseded_at IS NOT NULL AND body IS NOT NULL
+            | ORDER BY superseded_at DESC, version DESC
+            | OFFSET ? LIMIT ?""".stripMargin
+        ) { ps =>
+          ps.setString(1, PluginName.value(plugin))
+          ps.setString(2, DocKey.value(key))
+          ps.setInt(3, label)
+          ps.setInt(4, from)
+          ps.setInt(5, n)
+        }(rs => versionOf(rs).map(_ -> instant(rs, "superseded_at"))).flatMap(
+          _.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (v, ended)) =>
+            acc.flatMap(_ => tombstones.write(Target.Document(v), ended).map(_ => ()))
+          }
+        )
+
+    /** [[StoreError.Full]] when its terms refuse past the bound and the current documents but
+      * `kept`'s at the label whose id is `label`, of every label, are at it already.
+      */
+    private def roomFor(kept: DocKey, label: Int)(using tx: Tx^): Either[StoreError, Unit] =
+      terms.full match {
+        case DocumentTerms.Full.Withdraw => Right(())
+        case DocumentTerms.Full.Refuse =>
+          rows(
+            """SELECT count(*) AS held FROM grit.documents
+              | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
+              |   AND NOT (key = ? AND classification_id = ?)""".stripMargin
+          ) { ps =>
+            ps.setString(1, PluginName.value(plugin))
+            ps.setString(2, DocKey.value(kept))
+            ps.setInt(3, label)
+          }(rs => Right(rs.getLong("held"))).flatMap { held =>
+            if (held.exists(_ >= terms.bound)) Left(StoreError.Full(terms.bound)) else Right(())
+          }
+      }
 
     /** The keys and labels past the bound once one is written under `kept` at the label whose
       * id is `label`, with that label's id: the current documents but it, of every label,
@@ -731,6 +792,19 @@ private[sql] object SqlDocuments {
     ujson.Arr
       .from(refs.toVector.map(r => ujson.Obj("kind" -> r.kind, "ref" -> r.ref)))
       .render()
+
+  /** `full` as `grit.document_terms.when_full` holds it. */
+  def whenFull(full: DocumentTerms.Full): String = full match {
+    case DocumentTerms.Full.Withdraw => "withdraw"
+    case DocumentTerms.Full.Refuse => "refuse"
+  }
+
+  /** The [[DocumentTerms.Full]] `column` holds ([[whenFull]]), or why not. */
+  def fullOf(column: String): Either[String, DocumentTerms.Full] = column match {
+    case "withdraw" => Right(DocumentTerms.Full.Withdraw)
+    case "refuse" => Right(DocumentTerms.Full.Refuse)
+    case other => Left(s"a plugin's terms say $other when full, not withdraw or refuse")
+  }
 
   def versionOf(rs: ResultSet): Either[String, DocumentVersionId] =
     DocumentVersionId.of(rs.getLong("version")).toRight("a document's version")

@@ -486,12 +486,18 @@ object CollectorLiveTests extends TestSuite {
       terms <- DocumentTerms.of(label, DocWeight.Unscaled, 2.minutes, 10)
     } yield terms).getOrElse(sys.error("terms"))
 
-  /** A plugin with documents under [[Terms]] that it never posts to. */
-  private final class Keeping(val name: PluginName) extends Plugin {
+  /** [[Terms]], keeping the newest superseded version of each key whatever its age. */
+  private val KeepOne: DocumentTerms =
+    DocumentTerms
+      .of(Terms.label, Terms.weight, Terms.retention, Terms.bound, keepLast = 1)
+      .getOrElse(sys.error("terms"))
+
+  /** A plugin with documents under `kept` that it never posts to. */
+  private final class Keeping(val name: PluginName, kept: DocumentTerms = Terms) extends Plugin {
     val version: Int = 1
     override val documents: Option[Documents] = Some(new Documents with DocumentPosting {
       val posting: Option[DocumentPosting] = Some(this)
-      val terms: DocumentTerms = Terms
+      val terms: DocumentTerms = kept
       def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
         Right(())
     })
@@ -499,17 +505,18 @@ object CollectorLiveTests extends TestSuite {
 
   private val documents = new SqlDocuments(tombstones)
 
-  /** `texts` written in turn under one key of `plugin`'s at `at`: their versions. */
+  /** `texts` written in turn under one key of `plugin`'s at `at`, under `terms`: their versions. */
   private def wrote(
       config: DbConfig,
       plugin: PluginName,
       at: Instant,
-      texts: String*
+      texts: Vector[String],
+      terms: DocumentTerms = Terms
   ): Vector[DocumentVersionId] = {
-    val keeper = documents.keeper(plugin, Terms)
+    val keeper = documents.keeper(plugin, terms)
     val key = DocKey.of("k").getOrElse(sys.error("key"))
     val here = Place.under(Namespace.Task, Vector("collect"))
-    texts.toVector.map { t =>
+    texts.map { t =>
       val text = DocText.of(t).getOrElse(sys.error("text"))
       LiveDb.transaction(config, Clearance.of(Label.Public))(
         keeper.write(key, Label.Public, Integrity.Member, here, text, ujson.Obj(), None, at)
@@ -1193,8 +1200,23 @@ object CollectorLiveTests extends TestSuite {
       val engine = launched(config, 1.day, Vector(new Keeping(p)))
       try {
         val now = Instant.now()
-        val versions = wrote(config, p, now, "first", "second")
+        val versions = wrote(config, p, now, Vector("first", "second"))
         engine.sweep(now.plusSeconds(60)).map(_.collected) ==> Right(Vector())
+        engine.sweep(now.plusSeconds(180)).map(_.collected) ==>
+          Right(versions.take(1).map(Target.Document(_)))
+        LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
+          Right(versions.drop(1))
+      } finally engine.close()
+    }
+
+    test("a version among the last keepLast outlives retention") {
+      val config = TestPostgres.freshDatabase("collect_keep_last")
+      val p = PluginName.of("keeping").getOrElse(sys.error("name"))
+      val engine = launched(config, 1.day, Vector(new Keeping(p, KeepOne)))
+      try {
+        val now = Instant.now()
+        val versions = wrote(config, p, now, Vector("first", "second", "third"), KeepOne)
+        // second, superseded with first, is the newest superseded: only first goes.
         engine.sweep(now.plusSeconds(180)).map(_.collected) ==>
           Right(versions.take(1).map(Target.Document(_)))
         LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
@@ -1245,7 +1267,7 @@ object CollectorLiveTests extends TestSuite {
       val engine = launched(config, 2.minutes, Vector(new Keeping(p)))
       try {
         val now = Instant.now()
-        val Vector(v) = wrote(config, p, now.minusSeconds(3600), "kept"): @unchecked
+        val Vector(v) = wrote(config, p, now.minusSeconds(3600), Vector("kept")): @unchecked
         val keeper = documents.keeper(p, Terms)
         val day = java.time.LocalDate.parse("2026-03-01")
         LiveDb.transaction(config, Clearance.of(Label.Public))(
@@ -1268,7 +1290,7 @@ object CollectorLiveTests extends TestSuite {
       LiveEngine.open(config, "test").close()
       LiveDb.transaction(config)(documents.declare(Vector(p -> Terms))) ==> Right(())
       val now = Instant.now()
-      val versions = wrote(config, p, now, "first", "second")
+      val versions = wrote(config, p, now, Vector("first", "second"))
       val engine = launched(config, 2.minutes)
       try {
         engine.sweep(now).map(s => (s.disabled, s.collected)) ==> Right((Vector(p), Vector()))
@@ -1288,7 +1310,7 @@ object CollectorLiveTests extends TestSuite {
       val first = launched(config, 2.minutes)
       val versions =
         try {
-          val written = wrote(config, p, now, "kept")
+          val written = wrote(config, p, now, Vector("kept"))
           first.sweep(now).map(_.disabled) ==> Right(Vector(p))
           written
         } finally first.close()

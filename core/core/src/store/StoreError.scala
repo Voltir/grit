@@ -18,4 +18,9 @@ enum StoreError {
     * their rules; `cause` says which and why.
     */
   case Invalid(cause: String)
+
+  /** A write past its plugin's `bound` current documents, under terms that refuse past it
+    * ([[grit.core.document.DocumentTerms.Full.Refuse]]); nothing was written.
+    */
+  case Full(bound: Int)
 }

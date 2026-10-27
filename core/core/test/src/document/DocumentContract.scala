@@ -132,8 +132,15 @@ abstract class DocumentContract extends TestSuite {
   private def at(minute: Int): Instant =
     Instant.parse("2026-03-01T00:00:00Z").plusSeconds(60L * minute)
 
-  private def terms(bound: Int = 100, label: String = "notes"): DocumentTerms =
-    got(DocumentTerms.of(got(DocLabel.of(label)), DocWeight.Unscaled, 30.days, bound))
+  private def terms(
+      bound: Int = 100,
+      label: String = "notes",
+      keepLast: Int = 0,
+      full: DocumentTerms.Full = DocumentTerms.Full.Withdraw
+  ): DocumentTerms =
+    got(
+      DocumentTerms.of(got(DocLabel.of(label)), DocWeight.Unscaled, 30.days, bound, keepLast, full)
+    )
 
   private val Empty: ujson.Value = ujson.Obj()
 
@@ -774,9 +781,10 @@ abstract class DocumentContract extends TestSuite {
 
     test("declare puts the terms given in force; one left out is no longer declared, but kept") {
       val (p, q) = (name("doc-declare-p"), name("doc-declare-q"))
-      transaction(ok(store.declare(Vector(p -> terms(label = "p's"), q -> terms(bound = 3)))))
+      val ledger = terms(bound = 3, keepLast = 20, full = DocumentTerms.Full.Refuse)
+      transaction(ok(store.declare(Vector(p -> terms(label = "p's"), q -> ledger))))
       transaction(ok(search.declared())).sortBy((n, _) => PluginName.value(n)) ==>
-        Vector(p -> terms(label = "p's"), q -> terms(bound = 3))
+        Vector(p -> terms(label = "p's"), q -> ledger)
       transaction(ok(store.declare(Vector(q -> terms(bound = 4)))))
       transaction(ok(search.declared())) ==> Vector(q -> terms(bound = 4))
       // p has terms and no document: kept until removed, so the sweep can mark it.
@@ -1238,6 +1246,61 @@ abstract class DocumentContract extends TestSuite {
         transaction(keys(ok(shelf(p).referring(ref("strand", "s-0"), 10)))),
         transaction(keys(ok(shelf(p).referring(over, 10))))
       ) ==> (None, Vector("j"), Vector())
+    }
+
+    test("a ledger that refuses past its bound writes nothing and withdraws none") {
+      val p = name("doc-refuse")
+      val k = keeper(p, terms(bound = 2, full = DocumentTerms.Full.Refuse))
+      put(k, "a", "words a", 1)
+      put(k, "b", "words b", 2)
+      val refused = transaction(
+        k.write(
+          key("c"),
+          Label.Public,
+          Integrity.Member,
+          place("here"),
+          text("words c"),
+          Empty,
+          None,
+          at(3)
+        )
+      )
+      (
+        refused,
+        transaction(ok(shelf(p).current(key("c"), Label.Public))),
+        keys(transaction(ok(shelf(p).newest(10))))
+      ) ==> (Left(StoreError.Full(2)), None, Vector("b", "a"))
+    }
+
+    test("a new version of a held key is written at the bound") {
+      val p = name("doc-refuse-held")
+      val k = keeper(p, terms(bound = 2, full = DocumentTerms.Full.Refuse))
+      put(k, "a", "words a", 1)
+      put(k, "b", "words b", 2)
+      put(k, "a", "new words a", 3)
+      texts(transaction(ok(shelf(p).newest(10)))) ==> Vector("new words a", "words b")
+    }
+
+    test("the keepLast newest superseded versions are not marked; the one before them is") {
+      val p = name("doc-keep-last")
+      val k = keeper(p, terms(keepLast = 2))
+      val v = (1 to 5).map(m => put(k, "k", s"words $m", m))
+      // v(0) stopped being current at minute 2, v(1) at 3; v(2) and v(3) are the last two.
+      transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(10), 10))).toSet ==>
+        Set(Tombstone(Target.Document(v(0)), at(2)), Tombstone(Target.Document(v(1)), at(3)))
+    }
+
+    test(
+      "a withdrawal marks every version keepLast kept, each as of when it stopped being current"
+    ) {
+      val p = name("doc-keep-last-withdrawn")
+      val k = keeper(p, terms(keepLast = 2))
+      val v = (1 to 3).map(m => put(k, "k", s"words $m", m))
+      val withdrawal = transaction(ok(k.withdraw(key("k"), Label.Public, at(4)))).toVector
+      transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(10), 10))).toSet ==>
+        (Vector(v(0) -> at(2), v(1) -> at(3), v(2) -> at(4)) ++ withdrawal.map(_ -> at(4)))
+          .map((w, t) => Tombstone(Target.Document(w), t))
+          .toSet
     }
 
     test("a write whose data is over 32,768 bytes compact is refused and writes nothing") {

@@ -38,27 +38,46 @@ object DocWeight {
 /** How a plugin's documents are kept and drawn on (ADR 0028): `label` heads each where a
   * window shows one; `weight` scales each search score before it ranks beside entries; a
   * version that stopped being current is deleted `retention` after (under the raw window, a
-  * window rebuilt while its entries are kept may lack it); past `bound` current documents, a
-  * write withdraws the least recently placed.
+  * window rebuilt while its entries are kept may lack it), unless it is among the `keepLast`
+  * newest versions of a key and label that still has a current one, kept whatever its age; past
+  * `bound` current documents, `full` says what a write of a new key does.
   */
 final case class DocumentTerms private (
     label: DocLabel,
     weight: DocWeight,
     retention: FiniteDuration,
-    bound: Int
+    bound: Int,
+    keepLast: Int,
+    full: DocumentTerms.Full
 )
 
 object DocumentTerms {
 
-  /** These terms, or why not: `retention` under a minute, `bound` under 1. */
+  /** What a write that would hold more than `bound` current documents does. */
+  enum Full extends caps.Pure {
+
+    /** Withdraws the current documents placed least recently, never the one written. */
+    case Withdraw
+
+    /** Writes nothing ([[grit.core.store.StoreError.Full]]): for a ledger of records no bound
+      * may forget.
+      */
+    case Refuse
+  }
+
+  /** These terms, or why not: `retention` under a minute, `bound` under 1, `keepLast` negative. */
   def of(
       label: DocLabel,
       weight: DocWeight,
       retention: FiniteDuration,
-      bound: Int
+      bound: Int,
+      keepLast: Int = 0,
+      full: Full = Full.Withdraw
   ): Either[String, DocumentTerms] =
     if (retention < 1.minute)
       Left(s"documents are kept a minute or more after they stop being current, not $retention")
     else if (bound < 1) Left(s"a plugin's documents are bounded at 1 or more, not $bound")
-    else Right(new DocumentTerms(label, weight, retention, bound))
+    else if (keepLast < 0)
+      Left(s"a plugin keeps its last 0 or more versions of a key, not $keepLast")
+    else Right(new DocumentTerms(label, weight, retention, bound, keepLast, full))
 }
