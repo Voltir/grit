@@ -426,6 +426,7 @@ object TurnOfferTests extends TestSuite {
           TurnPrompt.Candour,
           TurnPrompt.Answering,
           TurnPrompt.Security,
+          TurnPrompt.Material,
           TurnPrompt.edge(origin)
         ) ++
           TurnPrompt.destination(origin) ++ TurnPrompt.called(persona, origin) :+
@@ -625,10 +626,12 @@ object TurnOfferTests extends TestSuite {
     test(
       "a service above the asker's clearance, or unplaced, offers nothing and is not named in the prompt; a workspace so offers nothing, its tools said not to be available here"
     ) {
-      val (recorded, set, prompt) = inSlack(inTrial(Label.Public))
+      val (recorded, set, told) = inSlack(inTrial(Label.Public))
       namesOf(set) ==> Vector("about")
       recorded.advertised ==> Vector.empty
       recorded.reached ==> Map.empty
+      // The base's tag names hold "elsewhere" (<known_elsewhere>); no service is named there.
+      val prompt = told.replace(TurnPrompt.Material.text, "")
       assert(!prompt.contains("vault"), !prompt.contains("attic"), !prompt.contains("elsewhere"))
       assert(
         prompt.contains(
@@ -734,6 +737,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.Security.text,
+        TurnPrompt.Material.text,
         TurnPrompt.edge(slack).text,
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
@@ -748,6 +752,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.Security.text,
+        TurnPrompt.Material.text,
         TurnPrompt.edge(tui).text,
         TurnPrompt.room(tui, Label.Public).text,
         TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text
@@ -766,6 +771,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.Security.text,
+        TurnPrompt.Material.text,
         "You are in a direct message with one person, who alone reads it. Your replies are " +
           "rendered from Markdown; keep them short.",
         "Your reply is posted in this direct message and nowhere else. You can post anywhere " +
@@ -791,6 +797,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.Security.text,
+        TurnPrompt.Material.text,
         TurnPrompt.edge(slack).text,
         "A heading shows as a bold line.",
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
@@ -824,6 +831,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.Security.text,
+        TurnPrompt.Material.text,
         TurnPrompt.edge(slack).text,
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
@@ -890,6 +898,7 @@ object TurnOfferTests extends TestSuite {
             TurnPrompt.Candour,
             TurnPrompt.Answering,
             TurnPrompt.Security,
+            TurnPrompt.Material,
             TurnPrompt.edge(slack)
           ) ++
             TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
@@ -992,6 +1001,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour,
         TurnPrompt.Answering,
         TurnPrompt.Security,
+        TurnPrompt.Material,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
         TurnPrompt.room(slack, Label.Public),
