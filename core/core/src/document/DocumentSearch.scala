@@ -117,8 +117,12 @@ trait DocumentStore extends DocumentSearch {
   /** The plugins with documents or terms kept, enabled or not. */
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]]
 
-  /** Deletes `version`: [[read]] no longer finds it. Nothing when it is gone already. */
-  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Unit]
+  /** Deletes `version`, so [[read]] no longer finds it, and answers true; true too when it is gone
+    * already. A superseded version among the `keepLast` newest of its key and label, under its
+    * plugin's terms last declared, while that key holds a current document at that label, is
+    * kept: false.
+    */
+  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean]
 
   /** Deletes every version of `plugin`'s documents and its terms, and ends at `at` the
     * tombstones pending on those versions, so none is left naming a version gone.

@@ -68,27 +68,58 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
     for {
       _ <- update("UPDATE grit.document_terms SET enabled = false WHERE enabled")(_ => ())
       _ <- enabled.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (plugin, terms)) =>
-        acc.flatMap(_ =>
-          update(
-            """INSERT INTO grit.document_terms
+        acc
+          .flatMap(_ =>
+            rows("SELECT keep_last FROM grit.document_terms WHERE plugin = ?")(
+              _.setString(1, PluginName.value(plugin))
+            )(rs => Right(rs.getInt("keep_last"))).map(_.headOption)
+          )
+          .flatMap(before =>
+            update(
+              """INSERT INTO grit.document_terms
               |       (plugin, label, weight, retention, bound, enabled, keep_last, when_full)
               |VALUES (?, ?, ?, ? * interval '1 microsecond', ?, true, ?, ?)
               |ON CONFLICT (plugin) DO UPDATE
               |   SET label = EXCLUDED.label, weight = EXCLUDED.weight,
               |       retention = EXCLUDED.retention, bound = EXCLUDED.bound, enabled = true,
               |       keep_last = EXCLUDED.keep_last, when_full = EXCLUDED.when_full""".stripMargin
-          ) { ps =>
-            ps.setString(1, PluginName.value(plugin))
-            ps.setString(2, DocLabel.value(terms.label))
-            ps.setDouble(3, DocWeight.value(terms.weight))
-            ps.setLong(4, terms.retention.toMicros)
-            ps.setInt(5, terms.bound)
-            ps.setInt(6, terms.keepLast)
-            ps.setString(7, whenFull(terms.full))
-          }.map(_ => ())
-        )
+            ) { ps =>
+              ps.setString(1, PluginName.value(plugin))
+              ps.setString(2, DocLabel.value(terms.label))
+              ps.setDouble(3, DocWeight.value(terms.weight))
+              ps.setLong(4, terms.retention.toMicros)
+              ps.setInt(5, terms.bound)
+              ps.setInt(6, terms.keepLast)
+              ps.setString(7, whenFull(terms.full))
+            }.flatMap(_ =>
+              if (before.exists(_ > terms.keepLast)) pastWindow(plugin, terms.keepLast)
+              else Right(())
+            )
+          )
       }
     } yield ()
+
+  /** Marks for deletion each of `plugin`'s superseded versions holding something that is not
+    * among the `keepLast` newest of its key and label, each as of when it stopped being current:
+    * what a lowered `keepLast` leaves that no later write would mark.
+    */
+  private def pastWindow(plugin: PluginName, keepLast: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] =
+    rows(
+      """SELECT version, superseded_at FROM (
+        |  SELECT version, superseded_at,
+        |         row_number() OVER (PARTITION BY key, classification_id
+        |                            ORDER BY superseded_at DESC, version DESC) AS newest
+        |    FROM grit.documents
+        |   WHERE plugin = ? AND superseded_at IS NOT NULL AND body IS NOT NULL) d
+        | WHERE newest > ?
+        | ORDER BY version""".stripMargin
+    ) { ps =>
+      ps.setString(1, PluginName.value(plugin))
+      ps.setInt(2, keepLast)
+    }(rs => versionOf(rs).map(_ -> instant(rs, "superseded_at")))
+      .flatMap(tombstoned(tombstones, _))
 
   def placed(versions: Vector[DocumentVersionId], at: Instant)(using
       tx: Tx^
@@ -134,8 +165,30 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
         |) kept ORDER BY plugin COLLATE "C"""".stripMargin
     )(_ => ())(rs => PluginName.of(rs.getString("plugin")))
 
-  def forget(version: DocumentVersionId)(using tx: Tx^): Either[StoreError, Unit] =
-    SqlKept.Documents.forget(DocumentVersionId.value(version))
+  // A version a raised keepLast takes back into its key's window is kept: its pending tombstone,
+  // written under the lower one, is the collector's to spare.
+  def forget(version: DocumentVersionId)(using tx: Tx^): Either[StoreError, Boolean] =
+    rows(
+      """WITH v AS (SELECT * FROM grit.documents WHERE version = ?),
+        |kept AS (
+        |  SELECT 1 FROM v JOIN grit.document_terms t ON t.plugin = v.plugin
+        |   WHERE v.superseded_at IS NOT NULL AND v.body IS NOT NULL
+        |     AND EXISTS (SELECT 1 FROM grit.documents c
+        |                  WHERE c.plugin = v.plugin AND c.key = v.key
+        |                    AND c.classification_id = v.classification_id
+        |                    AND c.superseded_at IS NULL AND c.body IS NOT NULL)
+        |     AND (SELECT count(*) FROM grit.documents n
+        |           WHERE n.plugin = v.plugin AND n.key = v.key
+        |             AND n.classification_id = v.classification_id
+        |             AND n.superseded_at IS NOT NULL AND n.body IS NOT NULL
+        |             AND (n.superseded_at, n.version) > (v.superseded_at, v.version)) < t.keep_last),
+        |gone AS (DELETE FROM grit.documents
+        |          WHERE version = ? AND NOT EXISTS (SELECT 1 FROM kept) RETURNING version)
+        |SELECT NOT EXISTS (SELECT 1 FROM kept) AS forgot""".stripMargin
+    ) { ps =>
+      ps.setLong(1, DocumentVersionId.value(version))
+      ps.setLong(2, DocumentVersionId.value(version))
+    }(rs => Right(rs.getBoolean("forgot"))).map(_.headOption.contains(true))
 
   def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     for {
@@ -746,11 +799,8 @@ private[sql] object SqlDocuments {
           ps.setInt(3, label)
           ps.setInt(4, from)
           ps.setInt(5, n)
-        }(rs => versionOf(rs).map(_ -> instant(rs, "superseded_at"))).flatMap(
-          _.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (v, ended)) =>
-            acc.flatMap(_ => tombstones.write(Target.Document(v), ended).map(_ => ()))
-          }
-        )
+        }(rs => versionOf(rs).map(_ -> instant(rs, "superseded_at")))
+          .flatMap(tombstoned(tombstones, _))
 
     /** [[StoreError.Full]] when its terms refuse past the bound and the current documents but
       * `kept`'s at the label whose id is `label`, of every label, are at it already.
@@ -820,6 +870,14 @@ private[sql] object SqlDocuments {
     case "refuse" => Right(DocumentTerms.Full.Refuse)
     case other => Left(s"a plugin's terms say $other when full, not withdraw or refuse")
   }
+
+  /** Each of `versions` marked for deletion in `tombstones`, as of when it stopped being current. */
+  def tombstoned(tombstones: Tombstones, versions: Vector[(DocumentVersionId, Instant)])(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    versions.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (v, ended)) =>
+      acc.flatMap(_ => tombstones.write(Target.Document(v), ended).map(_ => ()))
+    }
 
   def versionOf(rs: ResultSet): Either[String, DocumentVersionId] =
     DocumentVersionId.of(rs.getLong("version")).toRight("a document's version")

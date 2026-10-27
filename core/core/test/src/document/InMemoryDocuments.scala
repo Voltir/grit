@@ -640,8 +640,21 @@ final class InMemoryDocuments extends DocumentStore {
     })
 
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using Tx^): Either[StoreError, Unit] = {
+    val before = terms
     terms = terms.map((p, t) => p -> (t._1, false)) ++ enabled.map((p, t) => p -> (t, true))
-    Right(())
+    // A lowered keepLast marks what it no longer keeps, which no later write would.
+    enabled
+      .filter((p, t) => before.get(p).exists(_._1.keepLast > t.keepLast))
+      .flatMap((p, t) =>
+        rows.values
+          .filter(r => r.plugin == p && r.superseded.nonEmpty && r.text.nonEmpty)
+          .map(r => (p, r.key, r.label, t.keepLast))
+          .toVector
+          .distinct
+      )
+      .foldLeft[Either[StoreError, Unit]](Right(()))((acc, kl) =>
+        acc.flatMap(_ => marked(kl._1, kl._2, kl._3, kl._4, rows.size))
+      )
   }
 
   def placed(
@@ -674,11 +687,30 @@ final class InMemoryDocuments extends DocumentStore {
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]] =
     Right((rows.values.map(_.plugin).toVector ++ terms.keys).distinct)
 
-  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Unit] = {
+  def forget(version: DocumentVersionId)(using Tx^): Either[StoreError, Boolean] = {
     val v = DocumentVersionId.value(version)
-    rows = rows - v
-    ups = ups.map((u, up) => u -> (if (up.version.contains(v)) up.copy(version = None) else up))
-    Right(())
+    def same(r: Row, o: Row) = o.plugin == r.plugin && o.key == r.key && o.label == r.label
+    val windowed = rows
+      .get(v)
+      .exists(r =>
+        r.superseded.exists(ended =>
+          r.text.nonEmpty &&
+            rows.values.exists(c => same(r, c) && c.superseded.isEmpty && c.text.nonEmpty) &&
+            terms
+              .get(r.plugin)
+              .exists((t, _) =>
+                rows.count((n, o) =>
+                  same(r, o) && o.text.nonEmpty &&
+                    o.superseded.exists(s => s.isAfter(ended) || (s == ended && n > v))
+                ) < t.keepLast
+              )
+        )
+      )
+    if (!windowed) {
+      rows = rows - v
+      ups = ups.map((u, up) => u -> (if (up.version.contains(v)) up.copy(version = None) else up))
+    }
+    Right(!windowed)
   }
 
   def remove(plugin: PluginName, at: Instant)(using Tx^): Either[StoreError, Unit] = {

@@ -1304,6 +1304,40 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
+      "lowering keepLast marks every version past the new window, each as of when it stopped " +
+        "being current; declaring it unchanged marks none"
+    ) {
+      val p = name("doc-keep-last-lowered")
+      transaction(ok(store.declare(Vector(p -> terms(keepLast = 4)))))
+      val k = keeper(p, terms(keepLast = 4))
+      val v = (1 to 6).map(m => put(k, "k", s"words $m", m))
+      (7 to 8).foreach(m => put(k, "j", s"words $m", m))
+      def due = transaction(ok(tombstones.declaredDue(Target.Kind.Document, p, at(10), 10))).toSet
+      // v(0) left the four kept at minute 6.
+      transaction(ok(store.declare(Vector(p -> terms(keepLast = 4)))))
+      due ==> Set(Tombstone(Target.Document(v(0)), at(2)))
+      // Under "k", v(4) is the newest superseded and stays; under "j", j(0) is.
+      transaction(ok(store.declare(Vector(p -> terms(keepLast = 1)))))
+      due ==> (1 to 4).map(i => Tombstone(Target.Document(v(i - 1)), at(i + 1))).toSet
+    }
+
+    test(
+      "forget spares a superseded version among its key's keepLast newest while the key is " +
+        "current, answering false; one past them, or of a withdrawn key, it deletes"
+    ) {
+      val p = name("doc-forget-kept")
+      transaction(ok(store.declare(Vector(p -> terms(keepLast = 2)))))
+      val k = keeper(p, terms(keepLast = 2))
+      val v = (1 to 4).map(m => put(k, "k", s"words $m", m))
+      // v(1) and v(2) are the two newest superseded; v(0) is past them.
+      transaction(ok(store.forget(v(1)))) ==> false
+      transaction(ok(store.forget(v(0)))) ==> true
+      transaction(ok(k.withdraw(key("k"), Label.Public, at(5))))
+      transaction(ok(store.forget(v(2)))) ==> true
+      texts(transaction(ok(search.read(v.toVector)))).sorted ==> Vector("words 2", "words 4")
+    }
+
+    test(
       "search finds its plugin's current documents, never another plugin's, a superseded version or a withdrawal"
     ) {
       val (p, q) = (name("doc-own-search"), name("doc-own-search-other"))

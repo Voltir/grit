@@ -305,11 +305,13 @@ private[engine] final class Collector(
           _ <- pieces.remove(plugin, now)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
+      // A version its key's keepLast, raised since it was marked, keeps again is spared, and
+      // marked again when it leaves that window.
       case Target.Document(version) =>
-        for {
-          _ <- documents.forget(version)
-          _ <- tombstones.collected(target, now)
-        } yield Outcome.Collected
+        documents.forget(version).flatMap {
+          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
+          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
+        }
       // A schedule declared again since it ended is pending: its tombstone is spared, and
       // armed again when it next ends.
       case Target.Schedule(id) =>

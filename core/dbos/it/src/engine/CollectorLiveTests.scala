@@ -1224,6 +1224,23 @@ object CollectorLiveTests extends TestSuite {
       } finally engine.close()
     }
 
+    test("a version inside a raised keepLast is spared, not collected") {
+      val config = TestPostgres.freshDatabase("collect_keep_last_raised")
+      val p = PluginName.of("keeping").getOrElse(sys.error("name"))
+      val engine = launched(config, 1.day, Vector(new Keeping(p)))
+      try {
+        val now = Instant.now()
+        // Under keepLast 0, first and second are marked as each is superseded.
+        val versions = wrote(config, p, now, Vector("first", "second", "third"))
+        LiveDb.transaction(config)(documents.declare(Vector(p -> KeepOne))) ==> Right(())
+        // second is now the newest superseded, inside the window: spared; first is past it.
+        engine.sweep(now.plusSeconds(180)).map(s => (s.collected, s.spared)) ==>
+          Right((versions.take(1).map(Target.Document(_)), Vector(Target.Document(versions(1)))))
+        LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
+          Right(versions.drop(1))
+      } finally engine.close()
+    }
+
     test(
       "a kept file's pieces no longer current go their plugin's declared retention after, not before"
     ) {
