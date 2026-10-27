@@ -12,5 +12,15 @@ object FenceProbeTests extends TestSuite {
         (b.name, FenceProbe.before(b.request, literals(b.name)).map(_ == b.request))
       ) ==> FenceRequests.all.map(b => (b.name, Right(false)))
     }
+
+    test("each turn arm's request differs from its sample's request after fencing") {
+      val turns = FenceRequests.all.filter(_.name.startsWith("turn-"))
+      turns.map(b =>
+        (b.name, FenceProbe.turnArms(b.request).map((arm, r) => (arm, r != b.request)))
+      ) ==>
+        turns.map(b =>
+          (b.name, Vector("reminder" -> true, "user-role" -> true, "material" -> true))
+        )
+    }
   }
 }
