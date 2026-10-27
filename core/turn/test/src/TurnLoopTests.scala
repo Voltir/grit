@@ -127,6 +127,28 @@ object TurnLoopTests extends TestSuite {
       told(ToolUse.Required, AfterToolResult.InLastResult) ==> asked.messages
     }
 
+    test("the last call's note ending a tool result follows its fence's close, outside it") {
+      val result: Message.ToolResult =
+        Message.ToolResult(ToolCallId("c1"), "3 lines", isError = false)
+      val entry = grit.core.store.Entry(
+        grit.core.id.EntryId("r"),
+        grit.core.id.ConversationId("c"),
+        grit.core.id.TurnSeq(0),
+        None,
+        grit.core.id.EntrySeq(1),
+        grit.core.store.Payload.Result(result, "read a.md"),
+        java.time.Instant.EPOCH,
+        grit.core.visibility.Integrity.Member
+      )
+      val shown = grit.core.context.Shown.turn(Vector(entry), grit.core.store.Speakers.none)
+      val asked = grit.core.provider.ModelRequest("s", shown)
+      TurnLoop.told(ToolUse.Off, asked, AfterToolResult.InLastResult).messages ==> Vector(
+        result.copy(content =
+          s"<tool_output source=\"read a.md\">\n3 lines\n</tool_output>\n\n${TurnLoop.LastCall}"
+        )
+      )
+    }
+
     test("tool guidance names each offered tool in the system prompt, for a pair that needs it") {
       val tools = Vector(
         grit.core.provider.ToolSchema("read", "Reads a file.\nMore about reading.", ujson.Obj()),

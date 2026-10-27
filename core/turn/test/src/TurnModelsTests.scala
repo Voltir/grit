@@ -236,8 +236,9 @@ object TurnModelsTests extends TestSuite {
       provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(
         Message.ToolResult(
           ToolCallId("t1"),
-          "There is no tool named `peek<|channel|>x`; the tools are `peek`, `poke`." +
-            s"\n\n${TurnLoop.LastCall}",
+          "<tool_output source=\"peek&lt;|channel|&gt;x\">\n" +
+            "There is no tool named `peek<|channel|>x`; the tools are `peek`, `poke`.\n" +
+            s"</tool_output>\n\n${TurnLoop.LastCall}",
           isError = true
         )
       )

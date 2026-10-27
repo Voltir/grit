@@ -9,6 +9,7 @@ import grit.core.context.{
   Packing,
   Prepared,
   Querying,
+  Unfenced,
   Window
 }
 import grit.core.durable.InMemoryDurable
@@ -690,7 +691,7 @@ object TurnRouteTests extends TestSuite {
         routedBody(entries, provider, new RecordingProvider, new Asking, db, catalog, tools = parts)
       )
       val results = provider.asked.drop(1).flatMap(_.messages).collect {
-        case Message.ToolResult(_, content, isError) => (content, isError)
+        case Message.ToolResult(_, content, isError) => (Unfenced(content), isError)
       }
       results ==> Vector(("Page 213 says yes.", false))
     }

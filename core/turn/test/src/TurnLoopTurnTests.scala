@@ -5,11 +5,12 @@ import scala.concurrent.duration.DurationInt
 import grit.assembly.estimate.CharEstimate
 import grit.core.agenda.{Agenda, Placement}
 import grit.core.approval.Approval
+import grit.core.context.{Shown, Unfenced}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
-import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload, Speakers}
 import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
@@ -70,6 +71,16 @@ object TurnLoopTurnTests extends TestSuite {
       case Payload.Result(result, _) => result: Message
     }
 
+  /** The turn's kept calls and results, as the model is shown them. */
+  private def shownExchange(entries: InMemoryEntryStore, turn: TurnRef): Vector[Message] =
+    Shown.turn(
+      own(entries, turn).filter(_.payload match {
+        case Payload.Exchange(_) | Payload.Result(_, _) => true
+        case _ => false
+      }),
+      Speakers.none
+    )
+
   /** Three rounds: `peek` a, then `peek` b and c, then the answer. */
   private def threeRounds: Scripted = new Scripted((_, n) =>
     Right(n match {
@@ -115,10 +126,11 @@ object TurnLoopTurnTests extends TestSuite {
         Message.ToolResult(ToolCallId("t3"), "gamma", isError = false)
       )
       // Each call is shown its window, then the turn's own messages so far.
+      val shown = shownExchange(entries, turn)
       provider.requests.map(_.messages) ==> Vector(
         Vector(Message.User("read them")),
-        Message.User("read them") +: kept.take(2),
-        Message.User("read them") +: kept
+        Message.User("read them") +: shown.take(2),
+        Message.User("read them") +: shown
       )
       provider.requests.map(r => (r.tools.map(_.name), r.use)) ==>
         Vector.fill(3)((Vector("peek", "poke"), ToolUse.Auto))
@@ -209,7 +221,7 @@ object TurnLoopTurnTests extends TestSuite {
       looped(new InMemoryDurable, store, entries, turn, provider, new Files(files)) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
       entries.windows ==> 1
-      val kept = exchange(store, turn)
+      val kept = shownExchange(store, turn)
       provider.requests.map(_.messages) ==> Vector(
         Vector(Message.User("read them")),
         Message.User("read them") +: kept.take(2),
@@ -418,7 +430,9 @@ object TurnLoopTurnTests extends TestSuite {
       ws.reads ==> 0
       val denied = Outcome.Declined(Some("not that file")).result(ToolCallId("t1"))
       exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(denied)
-      provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(denied)
+      provider.requests.lastOption.flatMap(_.messages.lastOption).collect {
+        case r: Message.ToolResult => Unfenced(r)
+      } ==> Some(denied)
     }
 
     test("an unknown tool and unreadable arguments are results the model reads") {
@@ -479,7 +493,7 @@ object TurnLoopTurnTests extends TestSuite {
         Some(Message.User(TurnLoop.LastCall))
       )
       provider.requests.lastOption.map(_.messages.dropRight(1)) ==>
-        provider.requests.headOption.map(_.messages ++ exchange(entries, turn))
+        provider.requests.headOption.map(_.messages ++ shownExchange(entries, turn))
       assert(!texts(entries).exists(_.contains(TurnLoop.LastCall)))
       // Each call billed beside the estimate of what it was sent, the note included.
       ledger.rows.take(2).map(_._5) ==> provider.requests.map(CharEstimate.request)

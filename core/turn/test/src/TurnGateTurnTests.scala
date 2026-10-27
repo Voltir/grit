@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.context.{AssemblyError, AssemblyRequest, Window}
+import grit.core.context.{AssemblyError, AssemblyRequest, Unfenced, Window}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
   ConversationId,
@@ -58,10 +58,12 @@ object TurnGateTurnTests extends TestSuite {
     )
   }
 
-  /** What `request` shows as the result of the call `id`; `None` when it shows none. */
+  /** What `request` shows the tool wrote as the result of the call `id`; `None` when it shows
+    * none.
+    */
   private def resultOf(request: ModelRequest, id: String): Option[String] =
     request.messages.collectFirst {
-      case Message.ToolResult(call, content, _) if ToolCallId.value(call) == id => content
+      case Message.ToolResult(call, content, _) if ToolCallId.value(call) == id => Unfenced(content)
     }
 
   /** The stub peek's result `t1` is shown as while hidden. */

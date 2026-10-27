@@ -9,6 +9,7 @@ import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 
 /** What the model is shown of an entry a window names: the one definition, which an
@@ -243,17 +244,28 @@ object Shown {
     * number and tab as `read` numbers a file's lines).
     */
   def result(r: Message.ToolResult): Message.ToolResult =
-    if (r.content.split("\n", -1).exists(l => tagged(Numbered.replaceFirstIn(l, "")).nonEmpty))
-      r.copy(content = s"$Unwritten\n${r.content}")
-    else r
+    if (marked(r)) r.copy(content = s"$Unwritten\n${r.content}") else r
+
+  /** Whether [[result]] shows `r` under [[Unwritten]]. */
+  private def marked(r: Message.ToolResult): Boolean =
+    r.content.split("\n", -1).exists(l => tagged(Numbered.replaceFirstIn(l, "")).nonEmpty)
+
+  /** `r`, the result of the call shown as `shown`, its content fenced in `<tool_output>` with
+    * `shown` as its `source`, after [[result]]'s lead-in when it has one.
+    */
+  private def fenced(r: Message.ToolResult, shown: String): Message.ToolResult = {
+    val fence = Fenced.in(Tag.ToolOutput, r.content, "source" -> shown).rendered
+    r.copy(content = if (marked(r)) s"$Unwritten\n$fence" else fence)
+  }
 
   /** A line number and a tab at a line's start, as `read` shows a file's lines. */
   private val Numbered = """^\s*\d+\t""".r
 
   /** The turn's own `entries` as the model is shown them, in order: the person's messages,
     * the heard message a turn is rooted on among them, as [[of]] shows them with `speakers`,
-    * its replies that called tools as they are, and each tool result as [[result]] shows it;
-    * nothing for any other entry, a draft among them.
+    * its replies that called tools as they are, and each tool result's content fenced in
+    * `<tool_output source="{its call, as a person is shown it}">` ([[Fenced]]), after
+    * [[result]]'s lead-in when it has one; nothing for any other entry, a draft among them.
     */
   def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] =
     entries.flatMap { e =>
@@ -262,7 +274,7 @@ object Shown {
         case Payload.Heard(_) | Payload.Posted(_) => of(e, speakers)
         case Payload.Message(m) => Some(m)
         case Payload.Exchange(reply) => Some(reply)
-        case Payload.Result(r, _) => Some(result(r))
+        case Payload.Result(r, shown) => Some(fenced(r, shown))
         case _ => None
       }
     }

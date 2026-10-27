@@ -3,6 +3,7 @@ package grit.turn
 import scala.collection.immutable.VectorMap
 
 import grit.core.approval.Approval
+import grit.core.context.Unfenced
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
 import grit.core.id.{TestCallSlots, TestPrincipalIds, ToolCallId}
@@ -48,13 +49,15 @@ object TurnHostedTests extends TestSuite {
   private def model(first: (String, String, String)*): Scripted =
     new Scripted((_, n) => Right(if (n == 0) calling("", first*) else calling("done")))
 
-  /** The tool results the model was sent on its second call, in order. */
+  /** The tool results the model was sent on its second call, in order, each as its tool wrote
+    * it ([[grit.core.context.Unfenced]]).
+    */
   private def results(provider: Scripted): Vector[Message.ToolResult] =
     provider.requests
       .drop(1)
       .headOption
       .toVector
-      .flatMap(_.messages.collect { case r: Message.ToolResult => r })
+      .flatMap(_.messages.collect { case r: Message.ToolResult => Unfenced(r) })
 
   private def served(
       durable: InMemoryDurable,
