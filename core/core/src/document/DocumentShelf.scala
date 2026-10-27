@@ -72,7 +72,8 @@ trait DocumentKeeper extends DocumentShelf {
     * being current and is marked for deletion ([[grit.core.retention.Target.Document]]); a document
     * under the key at another label is untouched. [[Written.Unchanged]] when the current version
     * there holds the same place, text, data, pointer, integrity and refs; [[StoreError.Invalid]],
-    * writing nothing, for more than [[DocRef.Most]] refs. Past the bound, counted over every label,
+    * writing nothing, for more than [[DocRef.Most]] refs or for `data` over [[Document.DataMost]]
+    * bytes as compact JSON. Past the bound, counted over every label,
     * the current documents placed least recently (ties by key, then label in its written form,
     * bytewise) are withdrawn as [[withdraw]] does, never the one written: a high variant few
     * readers place tends to go first. A `DatabaseError` when another transaction wrote `key` at

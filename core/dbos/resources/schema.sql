@@ -1053,7 +1053,10 @@ CREATE TABLE IF NOT EXISTS grit.documents (
     classification_id      SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.classifications(id),
     room_id       UUID REFERENCES grit.places(id),
     -- How far it may be believed (ADR 0036), as its writer gave it; a withdrawal's, its document's.
-    integrity_id  SMALLINT NOT NULL REFERENCES grit.integrity_labels(id)
+    integrity_id  SMALLINT NOT NULL REFERENCES grit.integrity_labels(id),
+    -- DocText.Most; and Document.DataMost compact, which JSONB's text form may grow by half.
+    CONSTRAINT documents_body_most CHECK (octet_length(body) <= 65536),
+    CONSTRAINT documents_data_most CHECK (octet_length(data::text) <= 65536)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key, classification_id)

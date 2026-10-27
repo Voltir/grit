@@ -1240,6 +1240,31 @@ abstract class DocumentContract extends TestSuite {
       ) ==> (None, Vector("j"), Vector())
     }
 
+    test("a write whose data is over 32,768 bytes compact is refused and writes nothing") {
+      val p = name("doc-data-most")
+      val k = keeper(p, terms())
+      // `{"pad":"…"}` is ten bytes besides its padding.
+      def padded(bytes: Int): ujson.Value = ujson.Obj("pad" -> "x" * (bytes - 10))
+      val refused = transaction(
+        k.write(
+          key("k"),
+          Label.Public,
+          Integrity.Member,
+          place("here"),
+          text("words"),
+          padded(Document.DataMost + 1),
+          None,
+          at(1)
+        )
+      )
+      put(k, "j", "most", 2, data = padded(Document.DataMost))
+      assertMatch(refused) { case Left(StoreError.Invalid(_)) => }
+      (
+        transaction(ok(shelf(p).current(key("k"), Label.Public))),
+        keys(transaction(ok(shelf(p).newest(10))))
+      ) ==> (None, Vector("j"))
+    }
+
     test(
       "a document put up is offered only to a place written at a label dominating its own, and only to a transaction reading it"
     ) {

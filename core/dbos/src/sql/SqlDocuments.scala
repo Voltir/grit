@@ -357,6 +357,8 @@ private[sql] object SqlDocuments {
       val held = refsJson(refs)
       if (refs.size > DocRef.Most)
         Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs, not ${refs.size}"))
+      else if (Document.oversized(data).nonEmpty)
+        Left(StoreError.Invalid(Document.oversized(data).mkString))
       else
         SqlLabels.intern(kept).flatMap { id =>
           rows(

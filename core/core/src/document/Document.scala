@@ -6,14 +6,21 @@ import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.visibility.{Integrity, Label}
 
-/** What a document says: not blank. */
+/** What a document says: not blank, at most [[DocText.Most]] bytes as UTF-8. */
 opaque type DocText = String
 
 object DocText {
 
-  /** `text`, or why not: blank. */
-  def of(text: String): Either[String, DocText] =
-    Either.cond(!text.isBlank, text, "a document's text is not blank")
+  /** 65,536: the most bytes, as UTF-8, a document's text holds. */
+  val Most: Int = 65536
+
+  /** `text`, or why not: blank, or over [[Most]] bytes. */
+  def of(text: String): Either[String, DocText] = {
+    val bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+    if (text.isBlank) Left("a document's text is not blank")
+    else if (bytes > Most) Left(s"a document's text is at most $Most bytes as UTF-8, not $bytes")
+    else Right(text)
+  }
 
   def value(t: DocText): String = t
 }
@@ -57,6 +64,24 @@ final case class Document(
     placement: Placement,
     following: Option[Following]
 )
+
+object Document {
+
+  /** 32,768: the most bytes a document's data holds as compact JSON (stored, it may grow by
+    * half, under the table's 65,536).
+    */
+  val DataMost: Int = 32768
+
+  /** Why `data` may not be a document's: over [[DataMost]] bytes as compact JSON; none when it
+    * may.
+    */
+  def oversized(data: ujson.Value): Option[String] = {
+    val bytes = data.render().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+    Option.when(bytes > DataMost)(
+      s"a document's data is at most $DataMost bytes as compact JSON, not $bytes"
+    )
+  }
+}
 
 /** What a write did, and `kept`, the label its key's document is kept at: the one a read finds
   * it under ([[DocumentShelf.current]]).

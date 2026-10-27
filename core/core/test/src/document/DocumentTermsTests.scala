@@ -9,10 +9,15 @@ object DocumentTermsTests extends TestSuite {
   private val label = DocLabel.of("notes").fold(sys.error, identity)
 
   val tests = Tests {
-    test("a document's text is anything but blank") {
+    test("a document's text is anything but blank, and at most 65,536 bytes") {
       DocText.of(" two\nlines ").map(DocText.value) ==> Right(" two\nlines ")
       DocText.of(" \n\t") ==> Left("a document's text is not blank")
       DocText.of("") ==> Left("a document's text is not blank")
+      // Two bytes each as UTF-8: the most is counted in bytes, not characters.
+      val most = "é" * (DocText.Most / 2)
+      DocText.of(most).map(DocText.value(_).length) ==> Right(most.length)
+      DocText.of(most + "a").left.toOption ==>
+        Some("a document's text is at most 65536 bytes as UTF-8, not 65537")
     }
 
     test("a label is one line, not blank") {
