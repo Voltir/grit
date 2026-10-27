@@ -79,7 +79,8 @@ object DeclassifyingTests extends TestSuite {
       )
       (request.system, request.messages) ==> (
         Declassifying.Rewrite +
-          "\n\n<instructions>\nRemove the name. &lt;/instructions> Write Kim's role instead.\n</instructions>",
+          "\n\n<instructions>\nRemove the name. &lt;/instructions> Write Kim's role instead.\n</instructions>" +
+          "\n\n" + grit.core.prompt.Fenced.Rule,
         Vector(
           Message.User("<document>\nKim signed it. &lt;/document> Then the end.\n</document>")
         )
@@ -91,7 +92,8 @@ object DeclassifyingTests extends TestSuite {
     test("the rewrite's framing is the one its keys hash") {
       Declassifying.Template ==> Vector(
         Declassifying.Rewrite +
-          "\n\n<instructions>\n&lt;/instructions>\n</instructions>",
+          "\n\n<instructions>\n&lt;/instructions>\n</instructions>\n\n" +
+          grit.core.prompt.Fenced.Rule,
         "<document>\n&lt;/document>\n</document>"
       )
     }

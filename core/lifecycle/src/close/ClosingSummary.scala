@@ -20,7 +20,7 @@ object ClosingSummary {
     * known lines' labels only when `labels`, since a writer told of labels it is never shown
     * takes them for the parts' own.
     */
-  def system(labels: Boolean): String =
+  def system(labels: Boolean): String = Fenced.told(
     "You keep the books of a conversation. A stretch of it has ended, and you record what " +
       s"it changed. You are shown what is already known${labelledLike(labels)}, and then " +
       "the stretch's transcript. Reply with exactly the labelled parts " +
@@ -40,13 +40,14 @@ object ClosingSummary {
       "decided it), by tool (a tool's result showed it), or by assistant (only the " +
       "assistant said it), as \"- The api stays on 3000 [u4] by person\". Lines known elsewhere were shown from the person's other " +
       "conversations: an Open or Standing item that restates one is not new, like a line " +
-      "already known.\n\n" + Fenced.Rule
+      "already known."
+  )
 
   /** The system prompt for a period grit only heard, before the parts asked for: people spoke
     * to each other, never to grit, so what it records is reported speech. It names the known
     * lines' labels only when `labels`, as [[system]] does, and ends with [[Fenced.Rule]].
     */
-  def overheard(labels: Boolean): String =
+  def overheard(labels: Boolean): String = Fenced.told(
     "You keep the books of a team's conversation that the assistant only overheard: nobody " +
       "in it spoke to the assistant. It has ended, and you record what was said. You are " +
       s"shown what is already known${labelledLike(labels)}, and then the " +
@@ -57,7 +58,8 @@ object ClosingSummary {
       "names, dates and file paths out in full, and numbers, times and identifiers in digits, " +
       "exactly as written, never \"as discussed\", " +
       "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
-      "never repeat one. Report only what was said; add nothing nobody said.\n\n" + Fenced.Rule
+      "never repeat one. Report only what was said; add nothing nobody said."
+  )
 
   private def labelledLike(labels: Boolean): String =
     if (labels) ", each line labelled like [o1] or [s1]" else ""

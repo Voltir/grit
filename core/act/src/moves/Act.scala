@@ -54,6 +54,7 @@ import grit.core.id.{
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, NameRepair, Pinned, Pins}
 import grit.core.place.Service
+import grit.core.prompt.Fenced
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.route.{Routed, Uncleared}
 import grit.core.schema.Typed
@@ -422,7 +423,7 @@ private[moves] object Act {
 
   /** A summary's `ask:{n}`: its strands' messages and its documents read in one transaction for
     * its acting's subject, then, when every strand's are the ones its scan digested, asked of
-    * the dream role's pins as a JSON ask under [[Dreaming.told]] of its system text, of one
+    * the dream role's pins as a JSON ask under [[Fenced.told]] of its system text, of one
     * user message, [[Dreaming.shown]] of each strand's excerpt and each document read under
     * its plugin's label; its `level` the
     * acting's integrity met with every message's and document's.
@@ -443,7 +444,7 @@ private[moves] object Act {
             val messages = Vector(Message.User(text))
             val level = (strands.map(_.integrity) ++ documents.map(_._1.integrity))
               .foldLeft(s.acting.integrity)(_.meet(_))
-            val told = Dreaming.told(s.system)
+            val told = Fenced.told(s.system)
             shaping(env, s.acting, Dreams, told, messages, s.reply, s.digest, level)
               .withShown(documents.map(_._1.version))
         }

@@ -34,7 +34,7 @@
     },
     {
       "name": "ask:rewrite",
-      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v2:58a9b495a4914ce563dc7177f1f6e5d155ac6ee8e7f916b30d71116121094c0e\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1429}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
+      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v2:a03394742a22f4a5f8bbe807941285d5a983096c071c6fcb0f0da257c03e9866\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1600}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
     },
     {
       "name": "ask:rewrite:record",
@@ -42,7 +42,7 @@
     },
     {
       "name": "ask:rewrite-check",
-      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:c065e1edf463ba58c0b4d708cb21a4ffe72d3604a0d6e5920dcf4bc83fa7ac57\",\"answers\":[{\"yes\":0},{\"yes\":0},{\"yes\":0},{\"yes\":0.2}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:544274861e4f8619207d808558fac548e82da2d9920a082633e0e6c9c268c6a5\",\"answers\":[{\"yes\":0},{\"yes\":0},{\"yes\":0},{\"yes\":0.2}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
     },
     {
       "name": "ask:rewrite-check:record",
@@ -50,7 +50,7 @@
     },
     {
       "name": "ask:rewrite-retry",
-      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v3:666fa6dfb59516f323cbbc082b28c053d20a043909cd0edbf7a98eba9896df19\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1768}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
+      "output": "{\"rewrite\":{\"ok\":{\"digest\":\"v3:a8a2c3228c8aee25ce360fd0d5d086727adc0eaf8723019208aae710cc501134\",\"message\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"hello\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"test/summary\",\"stop\":\"end_turn\"}},\"at\":\"internal+team\",\"estimate\":1939}},\"source\":{\"version\":1,\"plugin\":\"notes\",\"key\":\"c1\",\"place\":\"task:notes\",\"label\":\"internal+team\",\"pointer\":{\"arguments\":{\"file\":\"c1\"},\"tool\":\"drive_read_file\"},\"revision\":\"r1\",\"level\":\"member\"}}"
     },
     {
       "name": "ask:rewrite-retry:record",
@@ -58,7 +58,7 @@
     },
     {
       "name": "ask:rewrite-retry-check",
-      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:c771162364c51c22fadc4a5b6a0a57486e4dab1049588f1b08c7e9ba166cef1d\",\"answers\":[{\"yes\":0},{\"yes\":0},{\"yes\":0},{\"yes\":0.9}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
+      "output": "{\"screen\":{\"judged\":{\"digest\":\"v3:f4e5920a3c36c3e2c65749da8a44a4ef04eb7b866930547360dcb179c5bfa84b\",\"answers\":[{\"yes\":0},{\"yes\":0},{\"yes\":0},{\"yes\":0.9}],\"model\":\"test/judge\",\"usage\":{\"input\":300,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.000013\"},\"estimate\":596,\"upstream\":\"service:test\",\"at\":\"internal+team\"}},\"shape\":{\"floor\":2,\"musts\":[\"absent\",\"present\"]}}"
     },
     {
       "name": "ask:rewrite-retry-check:record",

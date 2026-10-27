@@ -27,7 +27,7 @@ import grit.core.visibility.{DeclassificationPolicy, Integrity, Label, Recorded}
   * `reads`' strands and `plugin`'s needs beside its documents, and whose summaries read what
   * strands' members said and the documents shown (`plugin`'s and its needs') through `reads`,
   * in a transaction opened as its keeps' are, and ask it of `jsons` as one user message
-  * ([[Dreaming.shown]]) under [[Dreaming.told]] of the summary's system text. Under the rules every [[Dreaming]]
+  * ([[Dreaming.shown]]) under [[grit.core.prompt.Fenced.told]] of the summary's system text. Under the rules every [[Dreaming]]
   * keeps, which `grit.act.moves.MovesContract` holds it to beside the durable moves: a summary
   * is an ask, named and limited as one; one whose strand's messages changed since its scan
   * asks nothing and is `None`; its reply is believed at the meet of the summary, the run, every
@@ -99,7 +99,8 @@ final class ScriptedDreaming(
           docs.map((d, label) => (label, d.text)),
           documentChars
         )
-        val posed = Posed.Json(Dreaming.told(system), Vector(Message.User(text)), reply)
+        val posed =
+          Posed.Json(grit.core.prompt.Fenced.told(system), Vector(Message.User(text)), reply)
         ask(name, TestTainted.at(posed, believed))
           .map(a => Some(Dreaming.Summarised(a, docs.map(_._1.version))))
     }

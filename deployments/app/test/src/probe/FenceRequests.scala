@@ -12,7 +12,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{StrictSchemas, ToolGuidance}
 import grit.core.period.Balance
 import grit.core.persona.Persona
-import grit.core.prompt.SystemPrompt
+import grit.core.prompt.{Fenced, SystemPrompt}
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.store.{Entry, Origin, Payload, Speakers}
 import grit.core.visibility.Integrity
@@ -108,7 +108,7 @@ object FenceRequests {
 
   private def dream(d: FenceSamples.Dream): ModelRequest =
     Shaping.request(
-      Dreaming.told(AttachAsk.system(d.excerpts.size, d.topics.nonEmpty)),
+      Fenced.told(AttachAsk.system(d.excerpts.size, d.topics.nonEmpty)),
       Vector(
         Message.User(Dreaming.shown(d.excerpts, d.topics.map(t => (label("topic"), text(t))), 400))
       ),

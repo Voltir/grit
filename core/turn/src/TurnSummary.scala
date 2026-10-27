@@ -13,22 +13,22 @@ import grit.core.store.{Entry, Payload}
   */
 object TurnSummary {
 
-  val System: String =
+  val System: String = Fenced.told(
     "You write the memory of a conversation. Summarise the exchange below in one or two " +
       "sentences: what was asked, and what was answered or decided. Keep names, numbers, " +
-      "file names and identifiers exactly as written. Reply with the summary only.\n\n" +
-      Fenced.Rule
+      "file names and identifiers exactly as written. Reply with the summary only."
+  )
 
   /** The system prompt when the summary also names and describes the turn's item. */
-  val AgendaSystem: String =
+  val AgendaSystem: String = Fenced.told(
     "You write the memory of a conversation. Read the exchange below and reply with exactly " +
       "three lines and nothing else:\n" +
       "Summary: one or two sentences: what was asked, and what was answered or decided. Keep " +
       "names, numbers, file names and identifiers exactly as written.\n" +
       "Topic: the name of the topic this exchange belongs to, at most four words. If the " +
       "topic already has a name, repeat it.\n" +
-      "About: one line saying what the topic covers so far, this exchange included.\n\n" +
-      Fenced.Rule
+      "About: one line saying what the topic covers so far, this exchange included."
+  )
 
   /** What the request says of an item with no name yet. Worded so it has nothing a model
     * could repeat as a name: "Topic so far: new, not yet named." came back live as the

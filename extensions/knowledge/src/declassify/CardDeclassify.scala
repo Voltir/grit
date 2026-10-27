@@ -17,7 +17,7 @@ import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure
 
-/** The job `cards-declassify`, version 3, over the cards `cards` exports. A run reads at most
+/** The job `cards-declassify`, version 4, over the cards `cards` exports. A run reads at most
   * [[CardDeclassify.Cards]] current cards, most recent first, by their pointers and their files'
   * revisions alone, and the application in force for each
   * ([[grit.core.document.DocumentKeeper.declassifying]]). In its scan it withdraws every one of
@@ -45,7 +45,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
 
   val name: JobName = CardDeclassify.Name
 
-  val version: Int = 3
+  val version: Int = 4
 
   def write(params: DeclassifyParams): ujson.Value = ujson.Obj("perRun" -> params.perRun)
 

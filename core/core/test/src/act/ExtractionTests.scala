@@ -54,7 +54,8 @@ object ExtractionTests extends TestSuite {
           "Is the ticket open?",
           Shape.YesNo
         ),
-        Extraction.System.contains("<item>")
+        Extraction.System.contains("<item>"),
+        Extraction.System.endsWith("\n\n" + grit.core.prompt.Fenced.Rule)
       ) ==> (
         Vector(
           grit.core.message.Message.User(
@@ -63,6 +64,7 @@ object ExtractionTests extends TestSuite {
               s"Answer with ${Shape.YesNo.accepts}, or null when the item does not say."
           )
         ),
+        true,
         true
       )
     }

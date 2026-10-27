@@ -34,7 +34,7 @@ object DeclassifiedCardsTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "its one schedule runs cards-declassify at version 3 at its label by its rule, keyed by the label, needing the cards' plugin; its documents are labelled document"
+      "its one schedule runs cards-declassify at version 4 at its label by its rule, keyed by the label, needing the cards' plugin; its documents are labelled document"
     ) {
       val at = Label.at(Level.Confidential, TestLabels.trial)
       of(at).map(p =>
@@ -47,7 +47,7 @@ object DeclassifiedCardsTests extends TestSuite {
         )
       ) ==> Right(
         (
-          Vector(("cards-declassify-confidential-trial", CardDeclassify.Name, 3, Rule, at)),
+          Vector(("cards-declassify-confidential-trial", CardDeclassify.Name, 4, Rule, at)),
           Vector(Cards.name),
           Some("document")
         )

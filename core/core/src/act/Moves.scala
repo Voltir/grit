@@ -265,7 +265,7 @@ trait Dreaming extends Keeping {
       body: (I, DocumentKeeper, StrandShelf, Needs, Instant) -> Tx^ ?-> Either[StoreError, A]
   ): Either[MoveError, A]
 
-  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text ([[Dreaming.told]]), then one
+  /** As [[ask]] of a [[Posed.Json]] of `summary`'s system text ([[Fenced.told]]), then one
     * user message ([[Dreaming.shown]]): what
     * each of `seen`'s members said before its `asOf`, as [[grit.core.stitch.Stitching.excerpt]]
     * shows them within `summary`'s `chars`, strand by strand; then the text of each of `shown`,
@@ -522,9 +522,4 @@ object Dreaming {
         "label" -> DocLabel.value(label)
       )
     )).map(_.rendered).mkString("\n\n")
-
-  /** A summary's system text as it is asked, `system` then a blank line and [[Fenced.Rule]]:
-    * what the material [[shown]] fences is.
-    */
-  def told(system: String): String = system + "\n\n" + Fenced.Rule
 }

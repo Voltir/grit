@@ -619,8 +619,9 @@ object MovesJournalTests extends TestSuite {
         TestPieces.pointer("f"),
         1
       )
-      // Recorded by the build before v2, of the same source and application.
-      val v1Rewrite = "v1:f5dd4d46732897e2e7253e2142d1ac41ffcf66d8cca45a7b6ebd24bf19698299"
+      // v1's form (no revision) of the same source and application, under today's framing
+      // (Declassifying.Template, which every rewrite form hashes).
+      val v1Rewrite = "v1:0a8fe49f35ecce8bd7d1c8fa3defb7b1b1bcc8bb6b7626374cf46d58db300b6a"
       val (r1, r2) =
         (MovesJournal.rewrite(source, "r1", applied), MovesJournal.rewrite(source, "r2", applied))
       (

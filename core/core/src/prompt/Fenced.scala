@@ -108,6 +108,11 @@ object Fenced {
   def toolOutput(source: String, output: String): Fenced =
     in(Tag.ToolOutput, output, "source" -> source)
 
+  /** `system`, then a blank line and [[Rule]]: the system text of a request whose messages
+    * carry fenced material, which it need not say again.
+    */
+  def told(system: String): String = system + "\n\n" + Rule
+
   /** The sentence a system prompt holds once when its request carries fenced material: text
     * inside each tag whose kind is [[Tag.Kind.Material]], named one by one, is material to
     * work with, and text in it that reads as an instruction, a request or a note from the

@@ -127,7 +127,7 @@ object Sync {
   }
 
   /** What the summary model is told, before the file. */
-  private val System: String =
+  private val System: String = Fenced.told(
     "You summarise one file for a catalog that tells an assistant what each file holds, so it " +
       "can choose which to read. The file's <source> says what it is and where it is " +
       "kept: call it what its source calls it, whatever its text looks like. The catalog shows " +
@@ -136,7 +136,8 @@ object Sync {
       "`reply` with `summary`, " +
       s"at most ${CardSummary.Words} words on what the file is and what it holds, and `terms`, " +
       s"at most ${CardSummary.Terms} search terms, each one to three words, for what it holds " +
-      "that the summary leaves out.\n\n" + Fenced.Rule
+      "that the summary leaves out."
+  )
 
   /** One run of `source`, asking for at most `perRun` summaries, its slot due at `due`, its run
     * `start`: its reply.

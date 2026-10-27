@@ -839,7 +839,8 @@ abstract class MovesContract extends TestSuite {
       val (got, asked) = declassifying(declassifies(2, 3), shelves, Rewrote, leaks) { m =>
         Seen(Vector(m.declassify(name("d"), source, Revision, policy).map(outcome)))
       }
-      val system = Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>"
+      val system = Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>" +
+        "\n\n" + grit.core.prompt.Fenced.Rule
       val document = Message.User(s"<document>\n$FileText\n</document>")
       // The draft is the first attempt's reply, named for the model that served it, at no cost.
       val draft = Message.Assistant(
@@ -1001,7 +1002,10 @@ abstract class MovesContract extends TestSuite {
         cut.endsWith("boots…"),
         document.contains(CardText) || document.contains("second")
       ) ==> (
-        Vector(Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>"),
+        Vector(
+          Declassifying.Rewrite + s"\n\n<instructions>\n$Instructions\n</instructions>" +
+            "\n\n" + grit.core.prompt.Fenced.Rule
+        ),
         true,
         true,
         true,
