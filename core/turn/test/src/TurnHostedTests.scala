@@ -831,8 +831,9 @@ object TurnHostedTests extends TestSuite {
       provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(3)) ==>
         Some(
           Vector(
-            "Instructions from /checkout/AGENTS.md:",
-            "Be brief.",
+            "<place_instructions source=\"/checkout/AGENTS.md\">\n" +
+              "Instructions from /checkout/AGENTS.md:",
+            "Be brief.\n</place_instructions>",
             dated
           )
         )
