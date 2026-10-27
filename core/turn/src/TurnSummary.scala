@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.agenda.Agenda
 import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Payload}
 
@@ -15,7 +16,8 @@ object TurnSummary {
   val System: String =
     "You write the memory of a conversation. Summarise the exchange below in one or two " +
       "sentences: what was asked, and what was answered or decided. Keep names, numbers, " +
-      "file names and identifiers exactly as written. Reply with the summary only."
+      "file names and identifiers exactly as written. Reply with the summary only.\n\n" +
+      Fenced.Rule
 
   /** The system prompt when the summary also names and describes the turn's item. */
   val AgendaSystem: String =
@@ -25,7 +27,8 @@ object TurnSummary {
       "names, numbers, file names and identifiers exactly as written.\n" +
       "Topic: the name of the topic this exchange belongs to, at most four words. If the " +
       "topic already has a name, repeat it.\n" +
-      "About: one line saying what the topic covers so far, this exchange included."
+      "About: one line saying what the topic covers so far, this exchange included.\n\n" +
+      Fenced.Rule
 
   /** What the request says of an item with no name yet. Worded so it has nothing a model
     * could repeat as a name: "Topic so far: new, not yet named." came back live as the
@@ -43,17 +46,25 @@ object TurnSummary {
   def id(turn: TurnRef): EntryId =
     EntryId(s"summary:${WorkflowId.value(turn.workflowId)}")
 
-  /** The request that summarises the turn whose entries are `own`, as one transcript. With
-    * `item`, the item its message is in, as it stands, it also asks for the item's name
-    * and what it covers ([[read]]).
+  /** The request that summarises the turn whose entries are `own`, as one transcript fenced in
+    * `<transcript>`, each tool result's content within [[ToolResultChars]] in its own
+    * `<tool_output>`. With `item`, the item its message is in, as it stands, it also asks for
+    * the item's name and what it covers ([[read]]), its name and about so far fenced in
+    * `<document>` before the transcript. Its system text ends with [[Fenced.Rule]].
     */
   def request(own: Vector[Entry], item: Option[Agenda.Item] = None): ModelRequest = {
-    val transcript = own.flatMap(e => line(e.payload)).mkString("\n\n")
+    val lines = own.flatMap(e => line(e.payload))
+    val transcript = Fenced(
+      Tag.Transcript,
+      Vector.empty,
+      lines.zipWithIndex.flatMap((l, i) => Vector.fill(i.min(1))(Fenced.Part.Words("")) ++ l)
+    ).rendered
     item match {
       case None => ModelRequest(System, Vector(Message.User(transcript)))
       case Some(t) =>
         val so = t.name.fold(ItemUnnamed)(n =>
-          s"Topic so far: $n${t.summary.fold("")(a => s" (about: $a)")}."
+          "Topic so far:\n" +
+            Fenced.in(Tag.Document, n + t.summary.fold("")(a => s" (about: $a)")).rendered
         )
         ModelRequest(AgendaSystem, Vector(Message.User(s"$so\n\n$transcript")))
     }
@@ -126,22 +137,32 @@ object TurnSummary {
     Some(reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim)
       .filter(_.nonEmpty)
 
-  private def line(payload: Payload): Option[String] = payload match {
+  /** `payload`'s line of the transcript, as the parts of its fence: what was said, material; a
+    * tool result's head as grit's words, then its content, cut, in `<tool_output>`.
+    */
+  private def line(payload: Payload): Option[Vector[Fenced.Part]] = payload match {
     case Payload.Exchange(reply) => line(Payload.Message(reply))
     // The heard message an unprompted turn is rooted on.
-    case Payload.Heard(text) => Some(s"Overheard: $text")
+    case Payload.Heard(text) => Some(Vector(Fenced.Part.Material(s"Overheard: $text")))
     case Payload.Result(result, _) => line(Payload.Message(result))
-    case Payload.Message(Message.User(text)) => Some(s"User: $text")
+    case Payload.Message(Message.User(text)) => Some(Vector(Fenced.Part.Material(s"User: $text")))
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect {
         case AssistantBlock.Text(t) => t
         case AssistantBlock.ToolCall(id, name, arguments) =>
           s"[called $name (${ToolCallId.value(id)}) with ${arguments.render()}]"
       }
-      Option.when(said.nonEmpty)(s"Assistant: ${said.mkString("\n")}")
+      Option.when(said.nonEmpty)(
+        Vector(Fenced.Part.Material(s"Assistant: ${said.mkString("\n")}"))
+      )
     case Payload.Message(Message.ToolResult(id, content, isError)) =>
       val kind = if (isError) "Tool error" else "Tool result"
-      Some(s"$kind (${ToolCallId.value(id)}): ${content.take(ToolResultChars)}")
+      Some(
+        Vector(
+          Fenced.Part.Words(s"$kind (${ToolCallId.value(id)}):"),
+          Fenced.Part.In(Fenced.in(Tag.ToolOutput, content.take(ToolResultChars)))
+        )
+      )
     // A post is the first entry of a turn that never runs, so never a summarised turn's.
     case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _, _) | Payload.Agenda(_) |
         Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) | Payload.Draft(_) |

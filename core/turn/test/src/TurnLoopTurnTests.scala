@@ -136,7 +136,7 @@ object TurnLoopTurnTests extends TestSuite {
       val summarised = summarizer.requests.flatMap(_.messages).collect { case Message.User(t) => t }
       assert(
         summarised.exists(t =>
-          t.contains("[called peek (t1)") && t.contains("Tool result (t1): alpha")
+          t.contains("[called peek (t1)") && t.contains("Tool result (t1):\n<tool_output>\nalpha")
         )
       )
       // A later turn's window holds the reply, not the exchange.

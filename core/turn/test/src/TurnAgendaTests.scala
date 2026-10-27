@@ -367,7 +367,10 @@ object TurnAgendaTests extends TestSuite {
       summarizer.requests.lift(1).flatMap(_.messages.headOption) match {
         case Some(Message.User(text)) =>
           assert(
-            text.startsWith("Topic so far: Knots and hitches under (about: which knot holds.).")
+            text.startsWith(
+              "Topic so far:\n<document>\nKnots and hitches under (about: which knot holds.)\n" +
+                "</document>\n\n<transcript>\n"
+            )
           )
         case other => assert(other.toString == "a user message")
       }

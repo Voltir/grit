@@ -410,8 +410,8 @@ object TurnTests extends TestSuite {
         "user: hello",
         "assistant: stub reply to: hello",
         // The stub quotes its request; it gives no labelled lines, so all of it is the summary.
-        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\nUser: hello\n\n" +
-          "Assistant: stub reply to: hello"
+        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\n" +
+          "<transcript>\nUser: hello\n\nAssistant: stub reply to: hello\n</transcript>"
       )
       provider.requests.map(_.system) ==> Vector(system)
     }
@@ -564,7 +564,8 @@ object TurnTests extends TestSuite {
           TurnSummary.AgendaSystem,
           Vector(
             Message.User(
-              "This exchange starts a topic that has no name yet: give it one.\n\nUser: two\n\nAssistant: stub reply to: two"
+              "This exchange starts a topic that has no name yet: give it one.\n\n" +
+                "<transcript>\nUser: two\n\nAssistant: stub reply to: two\n</transcript>"
             )
           )
         )
@@ -607,8 +608,8 @@ object TurnTests extends TestSuite {
       texts(entries) ==> Vector(
         "user: hello",
         "assistant: stub reply to: hello",
-        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\nUser: hello\n\n" +
-          "Assistant: stub reply to: hello"
+        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\n" +
+          "<transcript>\nUser: hello\n\nAssistant: stub reply to: hello\n</transcript>"
       )
     }
 
