@@ -22,8 +22,9 @@ import grit.core.visibility.Compartment
   * up for review (`documentReviews`, by plugin), `jot`, the short transactions it writes those
   * in,
   * `desks`, where it registers places it hosts tools in, `attesting`, through which its
-  * source says who the accounts of the realms its attester answers for are, and `files`, the
-  * file area it keeps the files it fetches in (ADR 0045).
+  * source says who the accounts of the realms its attester answers for are, `files`, the
+  * file area it keeps the files it fetches in (ADR 0045), and `commands`, the plugins' commands
+  * it runs for the people it serves (ADR 0048).
   */
 final case class EdgeStores(
     inbox: Inbox,
@@ -39,7 +40,8 @@ final case class EdgeStores(
     jot: Jot,
     desks: Desks^,
     attesting: Attesting^,
-    files: Intake
+    files: Intake,
+    commands: PluginCommands = PluginCommands.None
 )
 
 /** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its

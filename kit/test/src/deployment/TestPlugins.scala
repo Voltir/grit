@@ -1,11 +1,14 @@
 package grit.kit.deployment
 
+import java.time.Instant
+
 import scala.concurrent.duration.*
 
 import grit.core.act.{Keeping, Moves}
-import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
+import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName}
+import grit.core.identity.Principal
 import grit.core.job.{
   Declared,
   DreamingJob,
@@ -18,7 +21,17 @@ import grit.core.job.{
   ScheduleDesk
 }
 import grit.core.need.{Needs, PluginReads, Unneeded}
-import grit.core.plugin.{DocumentPosting, Documents, Exports, PluginRun, PluginTool}
+import grit.core.plugin.{
+  Answered,
+  DocumentPosting,
+  Documents,
+  Exports,
+  KeepingCommand,
+  PluginCommand,
+  PluginRun,
+  PluginTool,
+  ReadingCommand
+}
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.tool.{Args, Believed, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Compartment
@@ -163,6 +176,42 @@ object TestPlugins {
   /** Names `compartments`, and contributes nothing. */
   final class Naming(val name: PluginName, override val compartments: Vector[Compartment])
       extends grit.core.plugin.Plugin {
+    val version: Int = 1
+  }
+
+  /** What a test command reads: one word. */
+  final case class Word(word: String) extends caps.Pure
+
+  private def saying(called: ToolName): ToolSpec[Word] =
+    ToolSpec(
+      called,
+      "Says a word.",
+      Args.of((word = Field.text("The word."))).map(a => Word(a.word))
+    )
+
+  /** A reading command named `called`, answering the word it is given. */
+  final class Says(called: ToolName) extends ReadingCommand[Word] {
+    val spec: ToolSpec[Word] = saying(called)
+    def run(args: Word, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = Right(Answered.Done(args.word))
+  }
+
+  /** A keeping command named `called`, answering the word it is given and keeping nothing. */
+  final class Notes(called: ToolName) extends KeepingCommand[Word] {
+    val spec: ToolSpec[Word] = saying(called)
+    def run(args: Word, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = Right(Answered.Done(args.word))
+  }
+
+  /** Its commands are `commands`, beside `tools` and `documents`. */
+  final class Commanding(
+      val name: PluginName,
+      override val commands: Vector[PluginCommand[?]],
+      override val tools: Vector[PluginTool[?]] = Vector.empty,
+      override val documents: Option[Documents] = None
+  ) extends grit.core.plugin.Plugin {
     val version: Int = 1
   }
 

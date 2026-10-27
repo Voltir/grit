@@ -864,6 +864,65 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test("a command named as a tool is refused, naming both") {
+      def commanding(p: String, called: ToolName, tools: Vector[grit.core.plugin.PluginTool[?]]) =
+        new TestPlugins.Commanding(
+          name(p),
+          Vector(new TestPlugins.Says(called)),
+          tools
+        )
+      val refused = Vector(
+        // as its own plugin's tool, as another plugin's, as grit's own, as another command
+        Deployments.of(plugins =
+          Vector(commanding("a", ToolName("keys"), Vector(new TestPlugins.Keys(name("k")).tools*)))
+        ),
+        Deployments.of(plugins =
+          Vector(new TestPlugins.Keys(name("k")), commanding("a", ToolName("keys"), Vector()))
+        ),
+        Deployments.of(plugins = Vector(commanding("a", ToolName("about"), Vector()))),
+        Deployments.of(plugins =
+          Vector(
+            commanding("a", ToolName("say"), Vector()),
+            commanding("b", ToolName("say"), Vector())
+          )
+        )
+      ).map(_.map(_ => ()))
+      refused ==> Vector(
+        Left(DeploymentRefusal.CommandRepeated(ToolName("keys"))),
+        Left(DeploymentRefusal.CommandRepeated(ToolName("keys"))),
+        Left(DeploymentRefusal.CommandRepeated(ToolName("about"))),
+        Left(DeploymentRefusal.CommandRepeated(ToolName("say")))
+      )
+      Deployments
+        .of(plugins =
+          Vector(
+            commanding("a", ToolName("say"), Vector()),
+            commanding("b", ToolName("tell"), Vector())
+          )
+        )
+        .map(_ => ()) ==> Right(())
+    }
+
+    test("a keeping command of a plugin with no documents is refused") {
+      val notes = new TestPlugins.Notes(ToolName("note"))
+      (
+        Deployments
+          .of(plugins = Vector(new TestPlugins.Commanding(name("p"), Vector(notes))))
+          .map(_ => ()),
+        Deployments
+          .of(plugins =
+            Vector(
+              new TestPlugins.Commanding(
+                name("p"),
+                Vector(notes),
+                documents = Some(TestPlugins.Tallies)
+              )
+            )
+          )
+          .map(_ => ())
+      ) ==> (Left(DeploymentRefusal.CommandUnshelved(name("p"), ToolName("note"))), Right(()))
+    }
+
     test("a plugin's keeping job is refused unless its plugin keeps documents") {
       val tally = new TestPlugins.Tallying("tally")
       Deployments

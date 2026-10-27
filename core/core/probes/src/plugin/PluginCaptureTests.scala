@@ -5,9 +5,10 @@ import grit.core.durable.Probes.{classpath, erased, flowsInto, heldImpure, optio
 
 import utest.*
 
-/** What capture checking rejects about a plugin (ADR 0027): a plugin, its tools' runs and the
-  * services it exports hold no capability, so a deployment can be built outside any and a
-  * service handed between plugins carries none. Pinned by compiling probe sources against
+/** What capture checking rejects about a plugin (ADR 0027): a plugin, its tools' runs, its
+  * commands and the services it exports hold no capability, so a deployment can be built outside
+  * any, a service handed between plugins carries none, and a command reads only through the
+  * transaction its edge opens for its asker (ADR 0048). Pinned by compiling probe sources against
   * core with core's own flags, as `grit.core.tool.ToolCaptureTests` does; `assertCompileError`
   * cannot see capture errors (docs/capture-checking.md).
   */
@@ -17,6 +18,7 @@ object PluginCaptureTests extends TestSuite {
     """package probe
       |import grit.core.document.*
       |import grit.core.id.{CallSlot, PluginName}
+      |import grit.core.identity.Principal
       |import grit.core.job.*
       |import grit.core.need.*
       |import grit.core.plugin.*
@@ -55,6 +57,20 @@ object PluginCaptureTests extends TestSuite {
       |  override val documents: Option[Documents] = Some(Noted)
       |  override val tools: Vector[PluginTool[?]] = Vector(Recent)
       |  def service(own: PluginReads): Activity = new Lines(own)
+      |}
+      |final case class Said(word: String) extends caps.Pure
+      |object Saying {
+      |  val spec: ToolSpec[Said] = ToolSpec(ToolName("say"), "Says a word.", Args.of((word = Field.text("The word."))).map(a => Said(a.word)))
+      |}
+      |object Says extends ReadingCommand[Said] {
+      |  val spec: ToolSpec[Said] = Saying.spec
+      |  def run(args: Said, by: Principal.Person, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, Answered] =
+      |    own.cache.newest("", 1).map(n => Answered.Done(args.word + n.size))
+      |}
+      |object Notes extends KeepingCommand[Said] {
+      |  val spec: ToolSpec[Said] = Saying.spec
+      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, at: java.time.Instant)(using Tx^): Either[StoreError, Answered] =
+      |    Right(Answered.Done(args.word))
       |}
       |final class Reader(val name: PluginName, kept: Kept) extends Plugin {
       |  val version: Int = 1
@@ -126,6 +142,26 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** A reading command holding a store, through which it could open a transaction for any
+    * subject rather than read for its asker in the one it is handed.
+    */
+  private val commandHoldsDb =
+    """final class ReadsAsAnyone(db: Db^) extends ReadingCommand[Said] {
+      |  val spec: ToolSpec[Said] = Saying.spec
+      |  def run(args: Said, by: Principal.Person, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, Answered] =
+      |    db.read(Subject.Public)(Right(Answered.Done(args.word)))
+      |}
+      |""".stripMargin
+
+  /** A keeping command that keeps the transaction it is handed. */
+  private val commandKeepsTx =
+    """final class KeepsCommandTx extends KeepingCommand[Said] {
+      |  var kept: Option[Tx^] = None
+      |  val spec: ToolSpec[Said] = Saying.spec
+      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, at: java.time.Instant)(using t: Tx^): Either[StoreError, Answered] = { kept = Some(t); Right(Answered.Done(args.word)) }
+      |}
+      |""".stripMargin
+
   /** A tool whose run reads a store it captured, not the one the kit hands it. */
   private val toolHoldsDb =
     """final class ToolHolds(db: Db^) extends PluginTool[Int] {
@@ -145,7 +181,9 @@ object PluginCaptureTests extends TestSuite {
     runKeepsReads,
     runStashesReads,
     serviceKeepsTx,
-    toolHoldsDb
+    toolHoldsDb,
+    commandHoldsDb,
+    commandKeepsTx
   )
 
   private val allowed =
@@ -153,6 +191,7 @@ object PluginCaptureTests extends TestSuite {
       |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
       |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
       |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
+      |  val commands: Vector[PluginCommand[?]] = Vector(Says, Notes)
       |}
       |""".stripMargin
 
@@ -168,6 +207,8 @@ object PluginCaptureTests extends TestSuite {
       runStashesReads,
       serviceKeepsTx,
       toolHoldsDb,
+      commandHoldsDb,
+      commandKeepsTx,
       allowed
     )
   )
@@ -233,6 +274,16 @@ object PluginCaptureTests extends TestSuite {
     test("a PluginTool holding a Db is rejected") {
       val errs = errors(toolHoldsDb)
       assert(heldImpure(errs))
+    }
+
+    test("a ReadingCommand holding a Db is rejected: it cannot choose whom it reads for") {
+      val errs = errors(commandHoldsDb)
+      assert(heldImpure(errs))
+    }
+
+    test("a KeepingCommand that keeps the Tx it is given is rejected") {
+      val errs = errors(commandKeepsTx)
+      assert(flowsInto("{any}")(errs))
     }
 
     test("capture checking is what rejects each breach") {

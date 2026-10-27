@@ -25,7 +25,7 @@ import grit.core.need.{PluginDocs, PluginReads, Unneeded}
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Place, Reaches, Service, WorksIn}
-import grit.core.plugin.Plugin
+import grit.core.plugin.{KeepingCommand, Plugin}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
@@ -221,6 +221,14 @@ enum DeploymentRefusal {
   /** `plugin`'s keeping or dreaming job `job` would keep documents `plugin` does not have. */
   case KeepsUnshelved(plugin: PluginName, job: JobName)
 
+  /** A plugin's command is named `name`, as another command is or as one of the tools
+    * [[ToolRepeated]] counts: an edge offers commands beside tools, by name alone.
+    */
+  case CommandRepeated(name: ToolName)
+
+  /** `plugin`'s keeping command `name` would keep documents `plugin` does not have. */
+  case CommandUnshelved(plugin: PluginName, name: ToolName)
+
   /** Two of the jobs, every plugin's and the deployment's own, are named `name`: a run names
     * its job by name alone.
     */
@@ -301,6 +309,10 @@ enum DeploymentRefusal {
       s"a tool of ${PluginName.value(plugin)} books ${JobName.value(job)}, which is not among its jobs"
     case KeepsUnshelved(plugin, job) =>
       s"${PluginName.value(plugin)}'s job ${JobName.value(job)} keeps its documents, and it has none"
+    case CommandRepeated(name) =>
+      s"a command is named ${ToolName.value(name)}, as another command or a tool is"
+    case CommandUnshelved(plugin, name) =>
+      s"${PluginName.value(plugin)}'s command ${ToolName.value(name)} keeps its documents, and it has none"
     case JobRepeated(name) => s"two jobs are named ${JobName.value(name)}"
     case ScheduleRepeated(id) => s"two declared schedules are ${ScheduleId.value(id)}"
     case ScheduleJobless(id, job) =>
@@ -431,6 +443,7 @@ object Deployment {
     // grit's own, then every plugin's: a name taken twice is the second one's to give up.
     val toolNames =
       Names.all ++ Vector(TurnVerdict.Name) ++ plugins.flatMap(_.tools.map(_.described.name))
+    val commandNames = plugins.flatMap(_.commands.map(_.spec.name))
     for {
       _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
       // One edge per attester: two would leave which source answers to chance.
@@ -473,6 +486,20 @@ object Deployment {
         .diff(toolNames.distinct)
         .headOption
         .map(DeploymentRefusal.ToolRepeated(_))
+        .toLeft(())
+      _ <- commandNames
+        .find(n => (toolNames ++ commandNames).count(_ == n) > 1)
+        .map(DeploymentRefusal.CommandRepeated(_))
+        .toLeft(())
+      // A keeping command keeps under its plugin's terms: with none, it would have nothing to keep.
+      _ <- plugins
+        .flatMap(p =>
+          p.commands.collect {
+            case k: KeepingCommand[?] if p.documents.isEmpty =>
+              DeploymentRefusal.CommandUnshelved(p.name, k.spec.name)
+          }
+        )
+        .headOption
         .toLeft(())
       // Binding reads no document (it holds no transaction), so binding over none decides
       // which tools ask for a plugin their own does not need, as the engine's start would.

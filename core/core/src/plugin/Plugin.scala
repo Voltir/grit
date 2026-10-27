@@ -55,6 +55,9 @@ trait Plugin extends caps.Pure {
     */
   def compartments: Vector[Compartment] = Vector.empty
 
+  /** The commands a person may give it through an edge (ADR 0048). */
+  def commands: Vector[PluginCommand[?]] = Vector.empty
+
   /** Whether it is posted closed periods: it has a cache or a posting to its documents. */
   final def posts: Boolean = cache.nonEmpty || documents.exists(_.posting.nonEmpty)
 }
