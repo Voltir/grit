@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.Allotment
-import grit.core.message.{AssistantBlock, Message, StopReason}
+import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -158,23 +158,35 @@ object TurnLoop {
     request.copy(messages = sent)
   }
 
-  /** `request` with its tools named in its system prompt under
-    * [[ToolGuidance.SystemLines]]: after a blank line, `Tools you may call:`, then the tools
-    * fenced in `<grit_tool_descriptions>` ([[Fenced]]), a line per tool, `- name: ` and the
-    * first line of its description as [[Stripped.of]] leaves it, trimmed. Unchanged under
-    * [[ToolGuidance.SchemaOnly]], or when it offers none.
+  /** 1,000: the most characters of a tool's description a model is offered, after
+    * [[Stripped.of]], cut at a word ([[Cut.head]]).
     */
-  def guided(request: ModelRequest, guidance: ToolGuidance): ModelRequest = guidance match {
-    case ToolGuidance.SchemaOnly => request
-    case ToolGuidance.SystemLines if request.tools.isEmpty => request
-    case ToolGuidance.SystemLines =>
-      val lines = request.tools.map(t =>
-        Fenced.Part.Material(
-          s"- ${t.name}: ${Stripped.of(t.description).trim.linesIterator.nextOption().getOrElse("")}"
-        )
+  val DescribedChars: Int = 1000
+
+  /** `request` as a model is offered its tools: each tool's description [[Stripped.of]], then
+    * cut at a word to [[DescribedChars]]; and under [[ToolGuidance.SystemLines]], when it offers
+    * any, its tools named in its system prompt: after a blank line, `Tools you may call:`, then
+    * the tools fenced in `<grit_tool_descriptions>` ([[Fenced]]), a line per tool, `- name: `
+    * and the first line of that description, trimmed.
+    */
+  def guided(request: ModelRequest, guidance: ToolGuidance): ModelRequest = {
+    val offered = request.copy(tools =
+      request.tools.map(t =>
+        t.copy(description = Cut.head(Stripped.of(t.description), DescribedChars))
       )
-      val listed = Fenced(Tag.ToolDescriptions, Vector.empty, lines).rendered
-      request.copy(system = s"${request.system}\n\nTools you may call:\n$listed")
+    )
+    guidance match {
+      case ToolGuidance.SchemaOnly => offered
+      case ToolGuidance.SystemLines if offered.tools.isEmpty => offered
+      case ToolGuidance.SystemLines =>
+        val lines = offered.tools.map(t =>
+          Fenced.Part.Material(
+            s"- ${t.name}: ${t.description.trim.linesIterator.nextOption().getOrElse("")}"
+          )
+        )
+        val listed = Fenced(Tag.ToolDescriptions, Vector.empty, lines).rendered
+        offered.copy(system = s"${offered.system}\n\nTools you may call:\n$listed")
+    }
   }
 
 }
