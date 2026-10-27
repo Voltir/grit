@@ -38,6 +38,9 @@ object CheckName {
   /** `s` as a check's name, or why not ([[Slug.check]]). */
   def of(s: String): Either[String, CheckName] = Slug.check("a check's name", s, Slug.Longest)
   def value(n: CheckName): String = n
+
+  /** A built-in check's name, a literal [[of]] accepts (`TransitionCheckTests` reads each back). */
+  private[projects] def builtin(s: String): CheckName = s
 }
 
 /** The name of a role a method shows artifacts to. */

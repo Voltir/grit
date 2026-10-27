@@ -29,7 +29,7 @@ No source file sits at the module's root.
 
 - **A check is deterministic.** `TransitionCheck` is pure, so it reaches no store
   (`TransitionCheckPurityTests`), but the clock, `Random` and the environment are untracked:
-  review holds a check to giving the same answer over the same artifact and heads. What a
+  review holds a check to giving the same answer over the same artifact, heads and kinds. What a
   check decides changing is a new `version`, which changes every digest naming it.
 - **Export normalises once.** `Markdown.write` writes for a reader, not for `Markdown.parse`,
   so a body read back from its export may differ from the one written; read again, it is

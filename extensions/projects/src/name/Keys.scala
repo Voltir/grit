@@ -16,7 +16,9 @@ object ProjectKey {
 /** An artifact's key, `<project>/<artifact>`: its id, never its title, so a rename moves no
   * reference to it.
   */
-opaque type ArtifactKey = String
+final case class ArtifactKey private (project: ProjectKey, local: String) extends caps.Pure {
+  def value: String = s"$project/$local"
+}
 
 object ArtifactKey {
 
@@ -27,18 +29,15 @@ object ArtifactKey {
     * [[Longest]] characters).
     */
   def of(project: ProjectKey, local: String): Either[String, ArtifactKey] =
-    Slug.check("an artifact's part of its key", local, Longest).map(l => s"$project/$l")
+    Slug.check("an artifact's part of its key", local, Longest).map(new ArtifactKey(project, _))
 
-  /** `s` as [[value]] writes a key, or why not: no `/`, or a part [[ProjectKey.of]] or [[of]]
-    * refuses.
+  /** `s` as [[ArtifactKey.value]] writes a key, or why not: no `/`, or a part
+    * [[ProjectKey.of]] or [[of]] refuses.
     */
   def read(s: String): Either[String, ArtifactKey] = s.indexOf('/') match {
     case -1 => Left(s"an artifact's key has no '/': $s")
     case i => ProjectKey.of(s.take(i)).flatMap(of(_, s.drop(i + 1)))
   }
-
-  def project(k: ArtifactKey): ProjectKey = k.takeWhile(_ != '/')
-  def value(k: ArtifactKey): String = k
 }
 
 /** The method version a project pinned: its name, its version and the digest it had then. */

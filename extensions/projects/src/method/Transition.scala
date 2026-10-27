@@ -1,0 +1,59 @@
+package grit.projects.method
+
+import grit.projects.name.{CheckName, KindName, RoleName, StateName}
+
+/** A kind of artifact: the state each starts in, its other states, those of them it ends in,
+  * and the `##` sections its body must hold.
+  */
+final case class ArtifactKind(
+    name: KindName,
+    first: StateName,
+    states: Vector[StateName],
+    ends: Set[StateName],
+    sections: Vector[String]
+) extends caps.Pure {
+
+  /** `first`, then `states`. */
+  def all: Vector[StateName] = first +: states
+}
+
+/** A move an artifact of `kind` may make from `from` to `to`: allowed only when each check
+  * holds, then doing its action.
+  */
+final case class Transition(
+    kind: KindName,
+    from: StateName,
+    to: StateName,
+    checks: Vector[CheckName],
+    action: TransitionAction
+) extends caps.Pure
+
+/** What a transition does besides moving its artifact: one of grit's, never a method's code. */
+enum TransitionAction extends caps.Pure {
+  case Nothing
+
+  /** Each `##` section of the artifact headed as a delta replaces or adds the section of that
+    * name in the artifact it cites as `into`, as OpenSpec's archive merges a change's spec
+    * deltas.
+    */
+  case MergeDeltas
+}
+
+/** What `role` is shown working on an artifact: it, and what it cites to `depth` links, of
+  * `kinds`; never what the project's conversations said.
+  */
+final case class RoleView private (role: RoleName, kinds: Set[KindName], depth: Int)
+    extends caps.Pure
+
+object RoleView {
+
+  /** 3: the most links a role view follows. */
+  val Deepest: Int = 3
+
+  /** This view, or why not: `depth` under 0 or over [[Deepest]], or `kinds` empty. */
+  def of(role: RoleName, kinds: Set[KindName], depth: Int): Either[String, RoleView] =
+    if (depth < 0 || depth > Deepest)
+      Left(s"a role view's depth is $depth, not 0 to $Deepest")
+    else if (kinds.isEmpty) Left("a role view shows no kind")
+    else Right(new RoleView(role, kinds, depth))
+}

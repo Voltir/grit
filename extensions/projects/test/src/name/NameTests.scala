@@ -7,8 +7,8 @@ object NameTests extends TestSuite {
   val tests = Tests {
     test("an artifact key reads back as written, naming its project") {
       val read = ArtifactKey.read("grit/add-search")
-      assert(read.map(ArtifactKey.value) == Right("grit/add-search"))
-      assert(read.map(k => ProjectKey.value(ArtifactKey.project(k))) == Right("grit"))
+      assert(read.map(_.value) == Right("grit/add-search"))
+      assert(read.map(k => ProjectKey.value(k.project)) == Right("grit"))
     }
     test("a name holding an uppercase letter is refused, naming the letter") {
       assert(
