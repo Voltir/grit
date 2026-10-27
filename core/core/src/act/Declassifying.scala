@@ -9,6 +9,7 @@ import grit.core.flow.{Raise, Tainted}
 import grit.core.id.{DocumentVersionId, PluginName, Sha256}
 import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
 import grit.core.period.Probability
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.provider.ModelRequest
 import grit.core.screen.{Bench, Benched, Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
@@ -93,8 +94,9 @@ object Declassifying {
 
   /** The rewrite's request. Its system text is [[Rewrite]], then `shown.instructions` fenced in
     * `<instructions>` tags, which the policy's people wrote and the model must follow. Its one
-    * user message is `shown.text`, fenced in `<document>` tags, which is material only. A
-    * closing tag inside either text is escaped (`&lt;/`), so neither can end its own fence. For
+    * user message is `shown.text`, fenced in `<document>` tags, which is material only. Each
+    * closing tag of its fence inside either text, in any case, is escaped ([[Fenced]]), so
+    * neither can end its own fence. For
     * `again`, a retry, its draft follows as the model's own turn, then one user message, the
     * [[feedback]] naming what fired of [[screen]] of `shown.checks`, never a score.
     */
@@ -120,20 +122,13 @@ object Declassifying {
       "these things."
 
   /** [[request]]'s framing of `instructions` and of `source`, which is already cut: the system
-    * text and the user message, each closing tag escaped.
+    * text and the user message, each fenced.
     */
   private def framed(instructions: String, source: String): ModelRequest =
     ModelRequest(
-      Rewrite + "\n\n<instructions>\n" + escaped(
-        instructions,
-        "instructions"
-      ) + "\n</instructions>",
-      Vector(Message.User("<document>\n" + escaped(source, "document") + "\n</document>"))
+      Rewrite + "\n\n" + Fenced.in(Tag.Instructions, instructions).rendered,
+      Vector(Message.User(Fenced.in(Tag.Document, source).rendered))
     )
-
-  /** `text` with its closing `tag` escaped, so it cannot close the fence around it. */
-  private def escaped(text: String, tag: String): String =
-    text.replace(s"</$tag>", s"&lt;/$tag>")
 
   /** The text [[request]] adds to its system text and user messages, as a model is shown it: the
     * system text, then each user message's text, framed around placeholders that each name a
