@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.context.{Width, Window}
 import grit.core.id.{TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message, StopReason}
+import grit.core.message.Message
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.triage.{Bound, Cues, Gate, Reading, Tags}
@@ -133,12 +133,4 @@ object WindowOnly {
     def complete(r: ModelRequest): Either[ProviderError, Message.Assistant] =
       answers.get(r).toRight(ProviderError.Unavailable("no answer kept for the request"))
   }
-
-  /** A reply of `text` alone, as the writer's kept answer is replayed. */
-  private[reply] def reply(
-      text: String,
-      usage: grit.core.message.Usage,
-      model: String
-  ): Message.Assistant =
-    Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, usage, model)
 }

@@ -18,6 +18,9 @@ enum SectionTag(val tag: String, val noun: String) {
   /** Turns left out between the messages on either side of it. */
   case Gap extends SectionTag("[gap]", "grit gap line")
 
-  /** A document a plugin keeps, shown by grit: not a turn of any conversation. */
+  /** A document a plugin keeps, shown by grit: not a turn of any conversation. What its line
+    * in a turn's window begins with; inside an ask's request a document is fenced instead, in
+    * [[grit.core.prompt.Tag.Document]].
+    */
   case Document extends SectionTag("[doc]", "grit document")
 }

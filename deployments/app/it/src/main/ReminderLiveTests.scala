@@ -155,7 +155,7 @@ object ReminderLiveTests extends TestSuite {
         Launch.area(
           engine,
           deployment,
-          Launch.filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+          Launch.filesDir(None, config, Launch.temp)
         ),
         _ => ()
       )

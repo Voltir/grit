@@ -304,7 +304,7 @@ object RehearseLiveTests extends TestSuite {
             engine,
             deployment,
             Launch
-              .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+              .filesDir(None, config, Launch.temp)
           ),
           _ => ()
         )
@@ -386,7 +386,7 @@ object RehearseLiveTests extends TestSuite {
               engine,
               standing,
               Launch
-                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+                .filesDir(None, config, Launch.temp)
             ),
             _ => ()
           )
@@ -446,7 +446,7 @@ object RehearseLiveTests extends TestSuite {
               engine,
               drafting,
               Launch
-                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+                .filesDir(None, config, Launch.temp)
             ),
             _ => ()
           )
@@ -507,7 +507,7 @@ object RehearseLiveTests extends TestSuite {
               engine,
               dreaming,
               Launch
-                .filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+                .filesDir(None, config, Launch.temp)
             ),
             _ => ()
           )

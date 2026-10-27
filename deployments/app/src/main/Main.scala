@@ -212,7 +212,7 @@ object Main {
     val env = exitOnLeft(DotEnv.load(envFile, sys.env))
     val log = env.getOrElse(
       "GRIT_LOG",
-      java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "grit-tui.log").toString
+      Launch.temp.resolve("grit-tui.log").toString
     )
     // Before anything loads slf4j (DBOS does): a log line on stderr would paint over the
     // screen.

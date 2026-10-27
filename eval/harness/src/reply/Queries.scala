@@ -91,7 +91,7 @@ object Queries {
         case Left(_) => done.copy(failed = done.failed + 1)
         case Right(Some(c)) =>
           done.copy(
-            answers = done.answers + (r -> WindowOnly.reply(c.answer, c.usage, c.reported)),
+            answers = done.answers + (r -> Message.said(c.answer, c.reported, c.usage)),
             cached = done.cached + 1
           )
         case Right(None) if !done.budget.allows(Usd) => done.copy(skipped = done.skipped + 1)

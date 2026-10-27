@@ -97,7 +97,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
           )
         }
         scan.due.zipWithIndex
-          .foldLeft(benched) { case (done, (Due(source, revision, applied), i)) =>
+          .foldLeft(benched) { case (done, (due @ Due(source, revision, applied), i)) =>
             moves.declassify(CardMoves.numbered("rewrite", i), source, revision, applied) match {
               case Left(e) => done.unwritten(source, MoveError.said(e))
               case Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Lapsed)) =>
@@ -107,8 +107,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
               case Right(Declassifying.Outcome.Unapplied(Declassifying.Unread.Unchecked)) =>
                 done.unscreened
               case Right(Declassifying.Outcome.Kept(_)) =>
-                val made = Declassified.Made.of(source, revision, applied)
-                moves.keep(CardMoves.numbered("withhold", i), run.tainted.map(_ => made))(
+                moves.keep(CardMoves.numbered("withhold", i), run.tainted.map(_ => due.made))(
                   (m, keeper, at) => CardDeclassify.withheld(keeper, m, at)
                 ) match {
                   case Left(e) => done.unwritten(source, MoveError.said(e))

@@ -30,11 +30,12 @@ enum Message {
 
 object Message {
 
-  /** `text` as an assistant message ended whole, costing nothing here: written by `by`, the
-    * model that served it earlier or, for a reply no model wrote, the name of what did.
+  /** `text` as an assistant message ended whole, costing `usage` (nothing, unless given):
+    * written by `by`, the model that served it earlier or, for a reply no model wrote, the
+    * name of what did.
     */
-  def said(text: String, by: String): Message.Assistant =
-    Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, Usage.Zero, by)
+  def said(text: String, by: String, usage: Usage = Usage.Zero): Message.Assistant =
+    Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, usage, by)
 }
 
 /** A block of an assistant message. */

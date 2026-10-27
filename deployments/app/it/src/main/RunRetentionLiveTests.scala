@@ -142,7 +142,7 @@ object RunRetentionLiveTests extends TestSuite {
         Launch.area(
           engine,
           d,
-          Launch.filesDir(None, config, java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))
+          Launch.filesDir(None, config, Launch.temp)
         ),
         _ => ()
       )

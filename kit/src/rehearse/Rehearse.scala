@@ -1,7 +1,5 @@
 package grit.kit.rehearse
 
-import java.nio.file.Path
-
 import grit.core.classify.ClearedClassifier
 import grit.core.clock.Clock
 import grit.core.id.{ShadowName, SourceId}
@@ -64,7 +62,7 @@ object Rehearse {
             Launch.area(
               r,
               d,
-              Launch.filesDir(None, config, Path.of(System.getProperty("java.io.tmpdir")))
+              Launch.filesDir(None, config, Launch.temp)
             ),
             _ => ()
           )

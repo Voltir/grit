@@ -115,9 +115,11 @@ private[grit] object Launch {
     */
   private[grit] def fileArea(engine: Engine^, d: Deployment, s: Secrets): FileArea^ = {
     Log.info(s"database: ${s.database.endpoint}")
-    val temp = Path.of(System.getProperty("java.io.tmpdir"))
     area(engine, d, filesDir(s.files, s.database, temp))
   }
+
+  /** The JVM's temporary directory (`java.io.tmpdir`). */
+  private[grit] def temp: Path = Path.of(System.getProperty("java.io.tmpdir"))
 
   /** `d`'s workflows launched on `engine` as [[apply]] launches them, over `files`, the area
     * [[fileArea]] made for it. Throws as [[apply]] does.
@@ -137,7 +139,6 @@ private[grit] object Launch {
         val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
         new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
     }
-    val temp = Path.of(System.getProperty("java.io.tmpdir"))
     asking(
       engine,
       d,
