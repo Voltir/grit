@@ -794,6 +794,24 @@ object MovesJournalTests extends TestSuite {
       ) ==> ("v3:", true, false, false)
     }
 
+    // Pinned as written: every check, baseline and bench key hashes the floor and the signals'
+    // templates, so a byte of either moved re-keys every screening a run recorded.
+    test("the check, baseline and bench digests are the ones every recorded screening holds") {
+      val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
+      val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
+      val applied = PolicyApplication(DeclassificationPolicy(team, 1), TestPieces.pointer("f"), 1)
+      val rewrite = DocText.of("The team meets offsite.").getOrElse(sys.error("no text"))
+      Vector(
+        MovesJournal.check(source, "r1", applied, rewrite, Declassified.Attempt.First),
+        MovesJournal.baseline(source, "r1", applied),
+        MovesJournal.example(DeclassificationPolicy(team, 3), 1)
+      ) ==> Vector(
+        "v3:93709e5202e09f489cd3ae1599fc237062621f151a100e72ced9d6f18c73d9d6",
+        "v3:db71504c0ed160fadab9ac24f8b13449b7a867ccd3b273ff0201b1758b438ddd",
+        "v3:eb1ed11d51bffa793e23e7b79313a7e754b725ad8760e51760b3677e602d2a4f"
+      )
+    }
+
     test(
       "a rewrite's step is written with what it read of its source, its version and its file's revision among it, and reads back as written"
     ) {

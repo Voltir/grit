@@ -140,6 +140,13 @@ object DeclassifyingTests extends TestSuite {
       ) ==> (true, false)
     }
 
+    // Pinned as written: a bench is kept under its screening, so a byte of the floor, the
+    // templates or the thresholds moved makes every kept bench stale.
+    test("a screening is the digest every kept bench of its checks is under") {
+      Declassifying.screening(marked("a")).written ==>
+        "55ae51b78f050bc1a20a6723ee8655e7c250c4fc65b3a23bbc7b274d98d29023"
+    }
+
     test(
       "onBench is Unread for checks not read here, Stale with no bench or one kept under other checks, and Kept with the bench under its checks as they are now"
     ) {
