@@ -103,7 +103,14 @@ object IntegrityTurn {
 
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       synchronized { kept = kept :+ request }
-      val results = request.messages.collect { case Message.ToolResult(_, content, _) => content }
+      // Each result as the call's tool wrote it: the lines inside its `<tool_output>` fence.
+      val results = request.messages.collect { case Message.ToolResult(_, content, _) =>
+        content.linesIterator
+          .dropWhile(!_.startsWith("<tool_output"))
+          .drop(1)
+          .takeWhile(_ != "</tool_output>")
+          .mkString("\n")
+      }
       val posted = request.messages.exists {
         case Message.Assistant(blocks, _, _, _, _) =>
           blocks.exists {
