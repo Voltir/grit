@@ -5,11 +5,11 @@ import java.time.{Instant, ZoneOffset}
 import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, Document}
 import grit.core.files.KeptPiece
-import grit.core.id.{ToolCallId, TurnSeq}
+import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
-import grit.core.prompt.{Fenced, Tag}
+import grit.core.prompt.Fenced
 import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 
 /** What the model is shown of an entry a window names: the one definition, which an
