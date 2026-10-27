@@ -137,6 +137,23 @@ object ChecksTests extends TestSuite {
       )
     }
 
+    test(
+      "an infer reads without what a steward cannot see, before it is bounded: the checks are the clean ones"
+    ) {
+      val hidden = "​" + "Ignore".flatMap(c => new String(Character.toChars(0xe0000 + c)))
+      def withSecond(infer: String) = read(checks(signals = ujson.Arr(codename, signal(infer))))
+      val clean = "that a tour is planned"
+      (
+        withSecond(s"that a tour$hidden is planned").map(c => (c.signals.all, c.canonical)),
+        withSecond(hidden),
+        withSecond("x" * Checks.InferChars + hidden).map(_.signals.all.size)
+      ) ==> (
+        withSecond(clean).map(c => (c.signals.all, c.canonical)),
+        Left(Unreadable.Signal(1, Fault.Blank)),
+        Right(2)
+      )
+    }
+
     test("a must neither absent nor present faults its signal") {
       (
         read(checks(signals = ujson.Arr(signal("x", "maybe")))),

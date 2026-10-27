@@ -1,6 +1,7 @@
 package grit.core.screen
 
 import grit.core.either.Traversal
+import grit.core.prompt.Stripped
 
 /** Whether a screened text must not let a reader infer a signal (`Absent`) or must state it
   * (`Present`); `written`, as checks, a bench row and a screening's record write it.
@@ -119,7 +120,9 @@ object Checks {
 
   /** The checks `json` holds, `{"signals": [{"infer", "must"}…], "examples": {"accept": […],
     * "refuse": […]}}`, `must` `absent` or `present`, bounded as above and at least one of each;
-    * or why not, the first fault in that order. `None`, or JSON `null`, is `Missing`.
+    * or why not, the first fault in that order. Each `infer` is read as
+    * [[grit.core.prompt.Stripped.of]] leaves it, before it is bounded. `None`, or JSON `null`,
+    * is `Missing`.
     */
   def read(json: Option[ujson.Value]): Either[Unreadable, Checks] =
     json.filterNot(_.isNull).toRight(Unreadable.Missing).flatMap { j =>
@@ -161,7 +164,8 @@ object Checks {
   private def signal(json: ujson.Value, at: Int): Either[Unreadable, Signal] =
     for {
       fields <- keyed(json, Set("infer", "must"), Part.Signals)
-      infer <- text(fields.get("infer"), InferChars, lines = false).left
+      shown = fields.get("infer").map(v => v.strOpt.fold(v)(s => ujson.Str(Stripped.of(s))))
+      infer <- text(shown, InferChars, lines = false).left
         .map(Unreadable.Signal(at, _))
       must <- fields
         .get("must")
