@@ -169,6 +169,18 @@ if [ -n "$sanitiser" ]; then
   failed=1
 fi
 
+# TRAP: Tx.connection is private[grit], so any grit package, a plugin's among them, may reach a
+# raw JDBC connection from the Tx^ it is handed, with no import edge the java.sql rules see:
+# grep every production source for it. Only grit.dbos may use it; tests may. A wildcard import
+# of Tx's members would hide a bare `connection(tx)` from this grep: review holds that.
+connection=$( { grep -lE 'Tx\.connection' -- "${production[@]}" || true; } |
+  grep -vE '^core/dbos/src/' || true)
+if [ -n "$connection" ]; then
+  echo "Only grit.dbos may name Tx.connection; these production sources do:" >&2
+  printf '  %s\n' $connection >&2
+  failed=1
+fi
+
 # TRAP: `check` grades cycles as NEW against the pinned baseline, so a cycle present when a
 # baseline was pinned (by this script when none exists, or by anyone) passes from then on.
 # There are none, so any cycle finding fails, at every confidence: `check` counts only those at
