@@ -1,14 +1,16 @@
 package grit.mcp.wire
 
+import grit.core.message.Cut
 import grit.core.tool.ToolName
 
 /** A tool a server listed that grit may offer: marked read-only (`readOnlyHint: true`), its
   * `x-mcp-header` annotations within the spec's constraints, and offered as `offered`, its
   * name under the server's prefix. `name` is the server's own; `does`, its title (the tool's,
   * else its annotations') and description as "Title: description", or whichever of them it
-  * has, as the server wrote them (a turn strips and cuts what a model is offered:
-  * `grit.turn.TurnLoop.guided`); `inputSchema`, its schema as listed; `params`, the arguments a
-  * call mirrors into headers, in the order the schema lists them.
+  * has, as the server wrote them but cut at a word to [[McpTool.StoredChars]] (a turn strips
+  * and cuts what a model is offered: `grit.turn.TurnLoop.guided`); `inputSchema`, its schema as
+  * listed; `params`, the arguments a call mirrors into headers, in the order the schema lists
+  * them.
   */
 final case class McpTool private (
     name: String,
@@ -19,6 +21,12 @@ final case class McpTool private (
 )
 
 object McpTool {
+
+  /** 8,000: the most characters of a tool's `does` kept, cut at a word ([[Cut.head]]), so a
+    * server cannot make an unbounded row of each tool set and each turn's recorded one. A
+    * storage bound, well past what a model is shown of it.
+    */
+  val StoredChars: Int = 8000
 
   /** An argument a call mirrors into a header: the one at `path`, a chain of `properties` keys
     * from the schema's root, sent as `Mcp-Param-{header}`.
@@ -90,7 +98,7 @@ object McpTool {
     } yield new McpTool(
       name,
       offered,
-      Vector(title.orElse(hinted), description).flatten.mkString(": "),
+      Cut.head(Vector(title.orElse(hinted), description).flatten.mkString(": "), StoredChars),
       ujson.Obj.from(schema),
       params
     )
