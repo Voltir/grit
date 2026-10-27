@@ -2,7 +2,7 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.document.{DocRef, Document, DocumentShelf}
+import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
 import grit.core.id.{
@@ -688,6 +688,10 @@ object Deployment {
         Right(None)
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
       def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
+        Right(Vector.empty)
+      def search(query: String, limit: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[DocumentSearch.Hit]] =
         Right(Vector.empty)
     }
   )

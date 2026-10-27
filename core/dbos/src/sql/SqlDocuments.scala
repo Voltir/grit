@@ -174,23 +174,27 @@ private[sql] object SqlDocuments {
   // pg_textsearch scores are negative, more negative is better. The planner may filter to the
   // shelves first, scoring rows that do not match 0; the guard drops them outside the LIMIT,
   // as SqlEntrySearch's queries do.
-  val Ranked: String =
+  /** The versions holding something that `which` selects of `d`, read by the transaction, ranked
+    * against the query: its parameters are the clearance's, the query, `which`'s, then the limit.
+    */
+  def ranked(which: String): String =
     s"""WITH ${SqlClearance.With}
        |SELECT $Columns, s FROM (
        |  SELECT d.*, d.body <@> to_bm25query(?, 'grit.idx_documents_bm25') AS s
        |    FROM $Labelled d
-       |   WHERE ${SqlClearance.kept(
-        "d"
-      )} AND EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS r(p text, place jsonb)
-       |                  WHERE d.plugin = r.p
-       |                    AND d.place = ARRAY(SELECT jsonb_array_elements_text(r.place)))
-       |     AND d.body IS NOT NULL
-       |     AND ${SqlKept.currentAt("d")}
+       |   WHERE ${SqlClearance.kept("d")} AND d.body IS NOT NULL AND $which
        |   ORDER BY s, d.written_at DESC, d.version DESC
        |   LIMIT ?
        |) ranked
        |WHERE s < 0
        |ORDER BY s, written_at DESC, version DESC""".stripMargin
+
+  /** [[ranked]] over the shelves a JSON parameter names, current at the instant bound twice. */
+  val Ranked: String =
+    ranked(s"""EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS r(p text, place jsonb)
+       |                  WHERE d.plugin = r.p
+       |                    AND d.place = ARRAY(SELECT jsonb_array_elements_text(r.place)))
+       |     AND ${SqlKept.currentAt("d")}""".stripMargin)
 
   def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
 
@@ -323,6 +327,17 @@ private[sql] object SqlDocuments {
           ps.setString(SqlClearance.Params + 4, ref.ref)
           ps.setInt(SqlClearance.Params + 5, n)
         }(document)
+
+    def search(query: String, limit: Int)(using
+        tx: Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+      if (query.isBlank || limit <= 0) Right(Vector.empty)
+      else
+        cleared(ranked("d.plugin = ? AND d.superseded_at IS NULL")) { ps =>
+          ps.setString(SqlClearance.Params + 1, query)
+          ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
+          ps.setInt(SqlClearance.Params + 3, limit)
+        }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
   }
 
   /** `plugin`'s documents as it writes them under `terms`, marking in `tombstones` each

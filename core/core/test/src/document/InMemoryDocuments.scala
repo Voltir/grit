@@ -590,29 +590,45 @@ final class InMemoryDocuments extends DocumentStore {
 
   def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
       Tx^
-  ): Either[StoreError, Vector[DocumentSearch.Hit]] = {
-    val words = InMemoryDocuments.words(query).distinct
+  ): Either[StoreError, Vector[DocumentSearch.Hit]] =
     Right(
-      if (words.isEmpty) Vector.empty
-      else
-        rows.toVector
-          .collect {
-            case (v, r @ Row(plugin, _, _, _, _, place, Some(text), _, _, _, _, _, _, _))
-                if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
-              val found = InMemoryDocuments.words(DocText.value(text))
-              val score = words.map(w => found.count(_ == w)).sum.toDouble
-              DocumentSearch.Hit(document(v, r, text), score)
-          }
-          .filter(_.score > 0)
-          .sortBy(h =>
-            (
-              -h.score,
-              -h.document.written.toEpochMilli,
-              -DocumentVersionId.value(h.document.version)
-            )
-          )
-          .take(limit max 0)
+      ranked(
+        rows.toVector.filter((_, r) =>
+          shelves.contains(Shelved(r.plugin, r.place)) && currentAt(r, at) && reads(r)
+        ),
+        query,
+        limit
+      )
     )
+
+  /** Of `candidates`, those whose text holds a word of `query`, scored by how often, best first,
+    * ties latest written first, at most `limit`.
+    */
+  private def ranked(
+      candidates: Vector[(Long, Row)],
+      query: String,
+      limit: Int
+  ): Vector[DocumentSearch.Hit] = {
+    val words = InMemoryDocuments.words(query).distinct
+    if (words.isEmpty) Vector.empty
+    else
+      candidates
+        .flatMap((v, r) =>
+          r.text.map { text =>
+            val found = InMemoryDocuments.words(DocText.value(text))
+            DocumentSearch
+              .Hit(document(v, r, text), words.map(w => found.count(_ == w)).sum.toDouble)
+          }
+        )
+        .filter(_.score > 0)
+        .sortBy(h =>
+          (
+            -h.score,
+            -h.document.written.toEpochMilli,
+            -DocumentVersionId.value(h.document.version)
+          )
+        )
+        .take(limit max 0)
   }
 
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
@@ -705,6 +721,11 @@ final class InMemoryDocuments extends DocumentStore {
           .take(n max 0)
           .flatMap((v, r) => r.text.map(document(v, r, _)))
       )
+
+    def search(query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+      Right(ranked(holding(plugin).filter((_, r) => reads(r)), query, limit))
   }
 
   /** `plugin`'s current version under `key` at `label`, holding something or a withdrawal. */

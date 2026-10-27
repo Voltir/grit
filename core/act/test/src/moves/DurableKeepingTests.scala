@@ -47,6 +47,7 @@ object DurableKeepingTests extends TestSuite {
       keepDeclassified,
       newest,
       referring,
+      search,
       withdraw
     }
     // A counter only the test's assertions read; the keeper's writes bump it on the test's thread.

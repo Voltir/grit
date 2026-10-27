@@ -1303,6 +1303,23 @@ abstract class DocumentContract extends TestSuite {
           .toSet
     }
 
+    test(
+      "search finds its plugin's current documents, never another plugin's, a superseded version or a withdrawal"
+    ) {
+      val (p, q) = (name("doc-own-search"), name("doc-own-search-other"))
+      val k = keeper(p, terms())
+      put(k, "a", "apple pie", 1)
+      put(k, "a", "apple tart", 2)
+      put(k, "b", "apple apple", 3)
+      put(k, "c", "apple", 4)
+      transaction(ok(k.withdraw(key("c"), Label.Public, at(5))))
+      put(k, "d", "pear", 6)
+      put(keeper(q, terms()), "a", "apple", 7)
+      // Two words each: "apple apple" holds the word twice, so it ranks first.
+      transaction(ok(shelf(p).search("apple", 10))).map(h => DocText.value(h.document.text)) ==>
+        Vector("apple apple", "apple tart")
+    }
+
     test("a write whose data is over 32,768 bytes compact is refused and writes nothing") {
       val p = name("doc-data-most")
       val k = keeper(p, terms())

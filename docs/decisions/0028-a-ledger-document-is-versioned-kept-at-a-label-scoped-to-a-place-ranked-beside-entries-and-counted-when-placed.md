@@ -1,13 +1,13 @@
 # 0028. A ledger document is versioned, kept at a label, scoped to a place, ranked beside entries, and counted when placed
 
-Status: accepted (2026-10-05); revised (2026-10-21)
+Status: accepted (2026-10-05); revised (2026-10-27)
 
 Context: ADR 0011 gives a plugin cache and ledger documents. A knowledge index needs the
 ledger: short documents (a summary pointing to where the full text lives, a topic, a rule)
 that outlive their closings, change as their sources change, are drawn on by windows as
-entries are, and are let go when unused. The close alternative was updating a document in
-place: a window could then no longer be rebuilt as it was, which replay and the eval both
-need. Counting use from searches was turned down: a search hit is a candidate, not a use.
+entries are, and are let go when unused. Updating a document in place was turned down: a window
+could then not be rebuilt as it was, which replay and the eval need. So was counting use from
+searches: a hit is a candidate, not a use.
 
 Decision:
 
@@ -25,11 +25,14 @@ Decision:
   entries' pool and budget, their scores multiplied by a weight their plugin declares,
   because a second index has statistics of its own (ADR 0005). The model is shown them as
   documents under their plugin's label, never as turns.
-- **A plugin declares its ledger's retention window and bound.** A superseded or withdrawn
-  version is kept for the retention window, so a window rebuilt as of a past turn shows what
-  that turn saw, then deleted through a tombstone (ADR 0014). Over the bound, counted over
-  every label, current documents are withdrawn least recently placed first, a document
-  counting as placed when written.
+- **A plugin declares its ledger's retention window, bound and what a full ledger does**
+  (`DocumentTerms`). A superseded or withdrawn version is kept for the retention window, so a
+  window rebuilt as of a past turn shows what that turn saw, then deleted through a tombstone
+  (ADR 0014); a key still current keeps its newest `keepLast` superseded versions whatever their
+  age. Over the bound, counted over every label, current documents are withdrawn least recently
+  placed first, a document counting as placed when written; a ledger of records no bound may
+  forget refuses a new key instead (`StoreError.Full`). A version holds at most 64 KiB of
+  text, 32 KiB of data.
 - **A withdrawal at a label below its writer's floor is accepted**: a withdrawal holds no
   body, so it discloses nothing of what the run read.
 - **A document may hold a pointer** (`Pointer`): the one hosted call that reads what it
@@ -40,7 +43,8 @@ Decision:
 - **A version may hold references** (`DocRef`, `grit.document_refs`): what it refers to
   outside it, in its plugin's own terms, at most `DocRef.Most`, none on a withdrawal. Core keeps
   them with the version, a write differing only in them being a new version, and finds a
-  plugin's current documents by one (`DocumentShelf.referring`), since a plugin runs no SQL;
+  plugin's current documents by one (`DocumentShelf.referring`), or by its text
+  (`DocumentShelf.search`), since a plugin runs no SQL;
   what a reference means is the plugin's.
 - **A plugin may put a current version up for review** (`DocumentKeeper.forReview`), once a
   day per key and label; an edge posts it through the same `Reviews` path as triage's prompts,
@@ -64,5 +68,4 @@ Consequences:
   versions it showed.
 - Recording a window's documents and counting follows add writes inside `record-window` and
   `append`, not steps, and a replayed turn counts nothing again; `append` records the versions it
-  counted followed (ADR 0040). Enforced by the replay gate (`TurnReplayTests`, `documented.json`) and
-  `DocumentContract`.
+  counted followed (ADR 0040). Enforced by the replay gate and `DocumentContract`.
