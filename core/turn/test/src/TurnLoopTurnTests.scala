@@ -5,7 +5,7 @@ import scala.concurrent.duration.DurationInt
 import grit.assembly.estimate.CharEstimate
 import grit.core.agenda.{Agenda, Placement}
 import grit.core.approval.Approval
-import grit.core.context.{Shown, Unfenced}
+import grit.core.context.Shown
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -414,7 +414,9 @@ object TurnLoopTurnTests extends TestSuite {
       ) ==> (true, Vector("600000"))
     }
 
-    test("a gated call declined is denied with the reason, and the model reads it") {
+    test(
+      "a gated call declined is denied, and the model reads the person's reason as their own message"
+    ) {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val provider = new Scripted((_, n) =>
@@ -428,11 +430,22 @@ object TurnLoopTurnTests extends TestSuite {
       durable.send(turn.workflowId, Approval.topic(ToolCallId("t1")), Approval.encode(no))
       looped(durable, entries, entries, turn, provider, ws)
       ws.reads ==> 0
-      val denied = Outcome.Declined(Some("not that file")).result(ToolCallId("t1"))
+      val denied: Message.ToolResult = Message.ToolResult(
+        ToolCallId("t1"),
+        "Declined: the person you are answering declined this call; it did not run.",
+        isError = true
+      )
       exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(denied)
-      provider.requests.lastOption.flatMap(_.messages.lastOption).collect {
-        case r: Message.ToolResult => Unfenced(r)
-      } ==> Some(denied)
+      provider.requests.lastOption.map(_.messages.takeRight(2)) ==> Some(
+        Vector(
+          denied.copy(content =
+            s"<tool_output source=\"poke a.txt\">\n${denied.content}\n</tool_output>"
+          ),
+          Message.User(
+            "The person you are answering declined the call poke a.txt, and wrote:\nnot that file"
+          )
+        )
+      )
     }
 
     test("an unknown tool and unreadable arguments are results the model reads") {

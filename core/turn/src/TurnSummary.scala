@@ -137,8 +137,9 @@ object TurnSummary {
     Some(reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim)
       .filter(_.nonEmpty)
 
-  /** `payload`'s line of the transcript, as the parts of its fence: what was said, material; a
-    * tool result's head as grit's words, then its content, cut, in `<tool_output>`.
+  /** `payload`'s line of the transcript, as the parts of its fence: what was said, material, a
+    * declined call's reason as the user's, naming the call; a tool result's head as grit's
+    * words, then its content, cut, in `<tool_output>`.
     */
   private def line(payload: Payload): Option[Vector[Fenced.Part]] = payload match {
     case Payload.Exchange(reply) => line(Payload.Message(reply))
@@ -146,6 +147,8 @@ object TurnSummary {
     case Payload.Heard(text) => Some(Vector(Fenced.Part.Material(s"Overheard: $text")))
     case Payload.Result(result, _) => line(Payload.Message(result))
     case Payload.Message(Message.User(text)) => Some(Vector(Fenced.Part.Material(s"User: $text")))
+    case Payload.Declined(id, reason) =>
+      Some(Vector(Fenced.Part.Material(s"User, declining ${ToolCallId.value(id)}: $reason")))
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect {
         case AssistantBlock.Text(t) => t

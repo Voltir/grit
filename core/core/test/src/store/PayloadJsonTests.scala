@@ -273,6 +273,13 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"ask","call":"c1","shown":"Run ls"}"""
     }
 
+    test("a declined call's reason is kept by its call, and reads back") {
+      val declined = Payload.Declined(ToolCallId("c1"), "not that file")
+      PayloadJson.write(declined).render() ==>
+        """{"kind":"declined","call":"c1","reason":"not that file"}"""
+      PayloadJson.read(PayloadJson.write(declined)) ==> Right(declined)
+    }
+
     test("an ask keeps its until as an instant; an ask recorded without until reads with none") {
       val until = java.time.Instant.parse("2026-10-21T18:30:00Z")
       PayloadJson.write(Payload.Ask(ToolCallId("c1"), "Run ls", Some(until))).render() ==>
@@ -385,6 +392,7 @@ object PayloadJsonTests extends TestSuite {
       } ++ samples.collect { case r: Message.ToolResult => Payload.Result(r, "read a.txt") } :+
         Payload.Summary("s") :+
         Payload.Query("q") :+ window :+ agenda :+ Payload.Attempt(ToolCallId("c1")) :+
+        Payload.Declined(ToolCallId("c1"), "not\nthat") :+
         Payload.Ask(ToolCallId("c1"), "Edit a.txt") :+
         Payload.Closed(
           PeriodSeq.First,

@@ -278,6 +278,39 @@ object TurnToolsTests extends TestSuite {
       ws.reads ==> 0
     }
 
+    test(
+      "a call declined with a reason keeps a result saying only that it was declined, and the reason as its own entry after it"
+    ) {
+      val ws = new Files(files)
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "go")
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
+      settle(entries, ws, turn, call("poke"), Approval.Declined(Some("not\nthat file")))
+      kept(entries, slot.resultId) ==> Some(
+        Payload.Result(
+          Message.ToolResult(
+            ToolCallId("c"),
+            "Declined: the person you are answering declined this call; it did not run.",
+            isError = true
+          ),
+          "poke a.txt"
+        )
+      )
+      kept(entries, slot.declinedId) ==> Some(Payload.Declined(ToolCallId("c"), "not\nthat file"))
+      def seq(id: EntryId): Option[Long] = entries
+        .list(conversation)(using TestTx.fake)
+        .getOrElse(Vector.empty)
+        .find(_.id == id)
+        .map(e => grit.core.id.EntrySeq.value(e.seq))
+      seq(slot.declinedId) ==> seq(slot.resultId).map(_ + 1)
+      // Declined with no reason, nothing more is kept.
+      val quiet = new InMemoryEntryStore
+      val again = say(quiet, "go")
+      settle(quiet, ws, again, call("poke"), Approval.Declined(None))
+      kept(quiet, TurnTools.Slot(TestCallSlots.at(again)).declinedId) ==> None
+      ws.reads ==> 0
+    }
+
     test("a refused call is answered with its outcome, and nothing runs") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

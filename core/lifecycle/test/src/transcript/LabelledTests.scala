@@ -1,6 +1,6 @@
 package grit.lifecycle.transcript
 
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, ToolCallId}
 import grit.core.period.{Cited, Ground}
 import grit.core.persona.Persona
 import grit.core.store.{Entry, Payload}
@@ -98,6 +98,24 @@ object LabelledTests extends TestSuite {
       labelledBy(Map(1L -> "Nick"))(posted, heard(1, "why this?")).text ==>
         fenced("[a1] Assistant: The engine's open issues.", "[h2] Nick: why this?")
       PeriodTranscript.overheard(Vector(posted, heard(1, "why this?"))) ==> true
+    }
+
+    test(
+      "a declined call's reason is a line of the person the turn answers, naming the call, and grounds Person"
+    ) {
+      val declined = labelledBy(Map(0L -> "Ana"))(
+        said(0, "Move the api to 8080."),
+        result(1, "edit config.yml", "Declined: it did not run.", error = true),
+        TestTranscripts.entry(2, Payload.Declined(ToolCallId("c1"), "keep it on 3000")),
+        replied(3, "Left as it is.")
+      )
+      declined.text ==> fenced(
+        "[u1] Ana: Move the api to 8080.",
+        tool("[t2] edit config.yml → failed:", "Declined: it did not run."),
+        "[u3] Ana: declined the call edit config.yml, and wrote: keep it on 3000",
+        "[a4] Assistant: Left as it is."
+      )
+      declined.ground(Vector("u3")) ==> Some(Ground.Person)
     }
 
     test("a cited person line grounds Person, then a tool line Tool; otherwise Claimed") {

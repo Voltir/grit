@@ -72,6 +72,13 @@ enum Payload {
     */
   case Result(result: grit.core.message.Message.ToolResult, shown: String)
 
+  /** What the person a turn answers said when they declined its call `call`, a gated one: their
+    * own words, kept beside the call's [[Result]], which says only that it was declined. Shown
+    * to the model as their message once the results of the reply that made the call end
+    * ([[grit.core.context.Shown.turn]]); no window includes it, and it is never searched.
+    */
+  case Declined(call: ToolCallId, reason: String)
+
   /** A tool call that asks a person first began to run, before its result was recorded: a
     * record that a crash may have cut it short. Never shown to the model, never searched.
     */

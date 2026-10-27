@@ -298,8 +298,8 @@ object ToolboxTests extends TestSuite {
           "Declined: the person you are answering declined this call; it did not run.",
           isError = true
         )
-      Outcome.Declined(Some("not now")).result(id).content ==>
-        "Declined: the person you are answering declined this call; it did not run. Their reason: not now"
+      // Their reason is their own message (Payload.Declined), never the result's.
+      Outcome.Declined(Some("not now")).result(id) ==> Outcome.Declined(None).result(id)
       Outcome.Unanswered.result(id) ==>
         Message.ToolResult(
           id,

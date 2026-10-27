@@ -127,6 +127,29 @@ object TurnLoopTests extends TestSuite {
       told(ToolUse.Required, AfterToolResult.InLastResult) ==> asked.messages
     }
 
+    test(
+      "a person's message right after tool results ends the last of them where a pair refuses a user there"
+    ) {
+      val first: Message.ToolResult = Message.ToolResult(ToolCallId("c1"), "r1", isError = true)
+      val last: Message.ToolResult = Message.ToolResult(ToolCallId("c2"), "r2", isError = false)
+      val said = "Ana declined the call edit a.md, and wrote:\nnot that one"
+      val reason: Message = Message.User(said)
+      val asked = grit.core.provider.ModelRequest(
+        "s",
+        Vector(Message.User("hi"), reply("", Vector("c1", "c2")), first, last, reason)
+      )
+      TurnLoop.told(ToolUse.Auto, asked, AfterToolResult.UserMessage) ==> asked
+      TurnLoop.told(ToolUse.Auto, asked, AfterToolResult.InLastResult).messages ==>
+        Vector(
+          Message.User("hi"),
+          reply("", Vector("c1", "c2")),
+          first,
+          last.copy(content = s"r2\n\n$said")
+        )
+      TurnLoop.told(ToolUse.Off, asked, AfterToolResult.InLastResult).messages.lastOption ==>
+        Some(last.copy(content = s"r2\n\n$said\n\n${TurnLoop.LastCall}"))
+    }
+
     test("the last call's note ending a tool result follows its fence's close, outside it") {
       val result: Message.ToolResult =
         Message.ToolResult(ToolCallId("c1"), "3 lines", isError = false)

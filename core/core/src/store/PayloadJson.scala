@@ -53,6 +53,8 @@ object PayloadJson {
     case Payload.Result(result, shown) =>
       ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
+    case Payload.Declined(call, reason) =>
+      ujson.Obj("kind" -> "declined", "call" -> ToolCallId.value(call), "reason" -> reason)
     case Payload.Ask(call, shown, until) =>
       val o = ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
       until.foreach(u => o("until") = u.toString)
@@ -152,6 +154,11 @@ object PayloadJson {
             case _ => Left("a draft holds an assistant's message")
           }
         case "attempt" => str(o, "call").map(c => Payload.Attempt(ToolCallId(c)))
+        case "declined" =>
+          for {
+            call <- str(o, "call")
+            reason <- str(o, "reason")
+          } yield Payload.Declined(ToolCallId(call), reason)
         case "ask" =>
           for {
             call <- str(o, "call")

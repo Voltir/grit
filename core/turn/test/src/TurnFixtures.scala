@@ -1153,6 +1153,8 @@ object TurnFixtures {
         case Payload.Result(Message.ToolResult(_, content, isError), _) =>
           Some(s"${if (isError) "error" else "result"}: $content")
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
+        case Payload.Declined(call, reason) =>
+          Some(s"declined: ${grit.core.id.ToolCallId.value(call)}: $reason")
         case Payload.Ask(call, shown, _) =>
           Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")

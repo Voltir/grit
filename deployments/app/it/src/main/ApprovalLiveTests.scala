@@ -28,7 +28,7 @@ object ApprovalLiveTests extends TestSuite {
   private val call = ToolCallId("edit-1")
 
   /** Calls `edit` on `notes.txt` while the last message is the user's; after a result,
-    * answers with it.
+    * answers with it, and after a person's message that follows one, with that.
     */
   private final class Editing extends Provider {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
@@ -37,14 +37,13 @@ object ApprovalLiveTests extends TestSuite {
         "path" -> "notes.txt",
         "edits" -> ujson.Arr(ujson.Obj("oldText" -> "draft", "newText" -> "final"))
       )
+      def answer(text: String) =
+        Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, usage, "m")
+      val called = request.messages.exists(_.isInstanceOf[Message.ToolResult])
       Right(request.messages.lastOption match {
-        case Some(Message.ToolResult(_, content, _)) =>
-          Message.Assistant(
-            Vector(AssistantBlock.Text(s"did: $content")),
-            StopReason.EndTurn,
-            usage,
-            "m"
-          )
+        case Some(Message.ToolResult(_, content, _)) => answer(s"did: $content")
+        // The person's words after its result: a declined call's reason.
+        case Some(Message.User(said)) if called => answer(s"heard: $said")
         case _ =>
           Message.Assistant(
             Vector(AssistantBlock.ToolCall(call, "edit", args)),
@@ -107,12 +106,15 @@ object ApprovalLiveTests extends TestSuite {
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a final\n"
           results(engine, turn).map(_._2) ==> Vector(false)
-          assert(reply(engine, turn).exists(_.startsWith("did: Edited notes.txt")))
+          // The result as the model reads it, fenced (Shown.turn).
+          assert(
+            reply(engine, turn).exists(r => r.startsWith("did: ") && r.contains("Edited notes.txt"))
+          )
         } finally engine.close()
       }
     }
 
-    test("a declined edit does not run, and the model reads the reason") {
+    test("a declined edit does not run, and the model reads the reason as the person's message") {
       checkout { root =>
         val engine = LiveEngine.open(TestPostgres.freshDatabase("decline_edit"), Turn.Epoch)
         try {
@@ -126,11 +128,11 @@ object ApprovalLiveTests extends TestSuite {
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
           results(engine, turn) ==> Vector(
             (
-              "Declined: the person you are answering declined this call; it did not run. Their reason: not yet",
+              "Declined: the person you are answering declined this call; it did not run.",
               true
             )
           )
-          assert(reply(engine, turn).exists(_.contains("Their reason: not yet")))
+          assert(reply(engine, turn).exists(r => r.startsWith("heard: ") && r.endsWith("not yet")))
         } finally engine.close()
       }
     }

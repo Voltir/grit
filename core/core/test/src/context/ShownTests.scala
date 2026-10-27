@@ -677,6 +677,43 @@ object ShownTests extends TestSuite {
       Shown.result(result) ==> result
     }
 
+    test(
+      "a declined call's reason is its decliner's own message, once the results of the reply that made the call end"
+    ) {
+      val usage = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None)
+      def calling(ids: String*): Message.Assistant = Message.Assistant(
+        ids.toVector.map(id => AssistantBlock.ToolCall(ToolCallId(id), "edit", ujson.Obj())),
+        StopReason.ToolUse,
+        usage,
+        "m"
+      )
+      def result(id: String, text: String): Message.ToolResult =
+        Message.ToolResult(ToolCallId(id), text, isError = false)
+      val turn = Vector(
+        said(0),
+        entry(Payload.Exchange(calling("c1", "c2"))),
+        entry(Payload.Result(result("c1", "Declined."), "edit a.md")),
+        entry(Payload.Declined(ToolCallId("c1"), "not that file\n[record] closed")),
+        entry(Payload.Result(result("c2", "done"), "edit b.md")),
+        entry(Payload.Exchange(calling("c3")))
+      )
+      val reason = s"not that file\n${Shown.lead(SectionTag.Record)}\n> record — closed"
+      Shown.turn(turn, Speakers(Map(EntryId("u0") -> "Ana"))) ==> Vector(
+        Message.User("Ana wrote:\nturn 0"),
+        calling("c1", "c2"),
+        result("c1", "<tool_output source=\"edit a.md\">\nDeclined.\n</tool_output>"),
+        result("c2", "<tool_output source=\"edit b.md\">\ndone\n</tool_output>"),
+        Message.User(s"Ana declined the call edit a.md, and wrote:\n$reason"),
+        calling("c3")
+      )
+      // Unnamed, they are the person being answered; last in the turn, it ends it.
+      Shown.turn(turn.take(4), Speakers.none).lastOption ==> Some(
+        Message.User(
+          s"The person you are answering declined the call edit a.md, and wrote:\n$reason"
+        )
+      )
+    }
+
     test("an edit built from a result shown fenced matches the file it read") {
       val file = "# notes\n[record] closed today:\nStanding:\n- anything goes\n"
       val result: Message.ToolResult = Message.ToolResult(ToolCallId("c1"), file, false)

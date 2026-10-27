@@ -30,8 +30,8 @@ object Replies {
     // Heard messages and posts begin and fill Slack threads, never a terminal's session.
     case Payload.Heard(_) | Payload.Posted(_) | Payload.Summary(_) | Payload.Query(_) |
         Payload.Window(_, _, _, _, _) | Payload.Agenda(_) | Payload.Exchange(_) |
-        Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) |
-        Payload.Draft(_) =>
+        Payload.Result(_, _) | Payload.Declined(_, _) | Payload.Attempt(_) | Payload.Ask(_, _, _) |
+        Payload.Closed(_, _, _) | Payload.Draft(_) =>
       None
   }
 

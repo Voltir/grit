@@ -136,24 +136,27 @@ object TurnLoop {
       "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
       "gap with a guess.]"
 
-  /** `request` as `use` says to send it: unchanged when `use` is [[ToolUse.Auto]] or
-    * [[ToolUse.Required]]; when it is [[ToolUse.Off]], with [[LastCall]] after its messages,
-    * as a user message, or, under
-    * [[AfterToolResult.InLastResult]] when its last message is a tool result, at the end of
-    * that result's content, after a blank line.
+  /** `request` as `use` and `after` say to send it: when `use` is [[ToolUse.Off]], with
+    * [[LastCall]] after its messages, as a user message; then, under
+    * [[AfterToolResult.InLastResult]], each user message right after a tool result moved to the
+    * end of that result's content, after a blank line (a declined call's reason, the note).
     */
-  def told(use: ToolUse, request: ModelRequest, after: AfterToolResult): ModelRequest =
-    use match {
-      case ToolUse.Auto | ToolUse.Required => request
-      case ToolUse.Off =>
-        (after, request.messages.lastOption) match {
-          case (AfterToolResult.InLastResult, Some(r: Message.ToolResult)) =>
-            request.copy(messages =
-              request.messages.init :+ r.copy(content = s"${r.content}\n\n$LastCall")
-            )
-          case _ => request.copy(messages = request.messages :+ Message.User(LastCall))
+  def told(use: ToolUse, request: ModelRequest, after: AfterToolResult): ModelRequest = {
+    val noted = use match {
+      case ToolUse.Auto | ToolUse.Required => request.messages
+      case ToolUse.Off => request.messages :+ Message.User(LastCall)
+    }
+    val sent = after match {
+      case AfterToolResult.UserMessage => noted
+      case AfterToolResult.InLastResult =>
+        noted.foldLeft(Vector.empty[Message]) {
+          case (init :+ (r: Message.ToolResult), Message.User(text)) =>
+            init :+ r.copy(content = s"${r.content}\n\n$text")
+          case (out, m) => out :+ m
         }
     }
+    request.copy(messages = sent)
+  }
 
   /** `request` with its tools named in its system prompt under
     * [[ToolGuidance.SystemLines]]: after a blank line, `Tools you may call:`, then the tools

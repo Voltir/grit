@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, Document}
 import grit.core.files.KeptPiece
-import grit.core.id.TurnSeq
+import grit.core.id.{ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
@@ -265,19 +265,47 @@ object Shown {
     * the heard message a turn is rooted on among them, as [[of]] shows them with `speakers`,
     * its replies that called tools as they are, and each tool result's content fenced in
     * `<tool_output source="{its call, as a person is shown it}">` ([[Fenced]]), after
-    * [[result]]'s lead-in when it has one; nothing for any other entry, a draft among them.
+    * [[result]]'s lead-in when it has one; a declined call's reason ([[Payload.Declined]]) as
+    * the message of the person the turn answers, the speaker of its first message (else "The
+    * person you are answering"), "{who} declined the call {shown}, and wrote:" then their
+    * words pasted ([[pasted]]), once the tool results it sits among end, so a reply's results
+    * stay together; nothing for any other entry, a draft among them.
     */
-  def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] =
-    entries.flatMap { e =>
-      e.payload match {
-        case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-        case Payload.Heard(_) | Payload.Posted(_) => of(e, speakers)
-        case Payload.Message(m) => Some(m)
-        case Payload.Exchange(reply) => Some(reply)
-        case Payload.Result(r, shown) => Some(fenced(r, shown))
-        case _ => None
+  def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] = {
+    val who = entries
+      .find(_.payload.said.nonEmpty)
+      .flatMap(e => speakers.of(e.id))
+      .getOrElse("The person you are answering")
+    val calls = entries
+      .map(_.payload)
+      .collect { case Payload.Result(r, shown) =>
+        r.callId -> shown
       }
+      .toMap
+    val (shown, held) = entries.foldLeft((Vector.empty[Message], Vector.empty[Message])) {
+      case ((out, held), e) =>
+        val message = e.payload match {
+          case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
+          case Payload.Heard(_) | Payload.Posted(_) => of(e, speakers)
+          case Payload.Message(m) => Some(m)
+          case Payload.Exchange(reply) => Some(reply)
+          case Payload.Result(r, shown) => Some(fenced(r, shown))
+          case _ => None
+        }
+        (e.payload, message) match {
+          case (Payload.Declined(call, reason), _) =>
+            val named = calls.getOrElse(call, ToolCallId.value(call))
+            (
+              out,
+              held :+ Message.User(pasted(s"$who declined the call $named, and wrote:\n$reason"))
+            )
+          case (_, Some(r: Message.ToolResult)) => (out :+ r, held)
+          case (_, Some(m)) => (out ++ held :+ m, Vector.empty)
+          case (_, None) => (out, held)
+        }
     }
+    shown ++ held
+  }
 
   /** A person's message `text`, the entry `entry`, as [[of]] shows it. */
   private def said(entry: Entry, text: String, speakers: Speakers): Message.User =

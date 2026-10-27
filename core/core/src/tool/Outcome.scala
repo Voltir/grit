@@ -87,18 +87,17 @@ enum Outcome {
   /** The result the model reads for the call `call`: `Done` is not an error, every other
     * case is. `Declined` and `Unanswered` each begin with their name ("Declined: …",
     * "Unanswered: …"), a declined one naming who declined as the person the model is answering
-    * (a gated call asks its turn's asker) and ending with their reason when they gave one;
-    * `Interrupted` says the call may have partly run and should be checked before it is
-    * tried again.
+    * (a gated call asks its turn's asker) and never holding their reason, which is kept as
+    * their own words ([[grit.core.store.Payload.Declined]]); `Interrupted` says the call may
+    * have partly run and should be checked before it is tried again.
     */
   def result(call: ToolCallId): Message.ToolResult = this match {
     case Done(text, _, _, _, _) => Message.ToolResult(call, text, isError = false)
     case Failed(why) => Message.ToolResult(call, why, isError = true)
-    case Declined(reason) =>
-      val said = reason.fold("")(r => s" Their reason: $r")
+    case Declined(_) =>
       Message.ToolResult(
         call,
-        s"Declined: the person you are answering declined this call; it did not run.$said",
+        "Declined: the person you are answering declined this call; it did not run.",
         isError = true
       )
     case Unanswered =>

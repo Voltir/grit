@@ -40,6 +40,9 @@ object TurnTools {
     /** The id of the entry keeping the call's result. */
     def resultId: EntryId = EntryId(s"result:$key")
 
+    /** The id of the entry keeping why the person declined the call, a gated one. */
+    def declinedId: EntryId = EntryId(s"declined:$key")
+
     /** The id of the entry recording that the call, a gated one, began. */
     def attemptId: EntryId = EntryId(s"attempt:$key")
 
@@ -249,7 +252,13 @@ object TurnTools {
           case None =>
             outcome().flatMap { o =>
               val result = Payload.Result(o.result(call), shown)
-              keep(slot.turn, slot.resultId, result, believed.of(o), at).flatMap(settledBy)
+              val reason = o match {
+                case Outcome.Declined(Some(said)) =>
+                  Some(slot.declinedId -> Payload.Declined(call, said))
+                case _ => None
+              }
+              keep(slot.turn, slot.resultId, result, believed.of(o), at, reason)
+                .flatMap(settledBy)
             }
         }
 
@@ -277,15 +286,17 @@ object TurnTools {
     }
 
     /** `payload` kept as `turn`'s entry `id`, dated `at`, after everything in the
-      * conversation, believed at `believed`'s integrity; the entry already there when one has
-      * that id.
+      * conversation, believed at `believed`'s integrity, and in the same write `person`'s
+      * payload, a person's words, under its id right after it, believed at the turn's
+      * integrity; the entry already there when one has that id.
       */
     private def keep(
         turn: TurnRef,
         id: EntryId,
         payload: Payload,
         believed: Either[Integrity, (Service, Accounted)],
-        at: Instant
+        at: Instant,
+        person: Option[(EntryId, Payload)]
     ): Either[TurnFailure, Entry] = {
       def write(using tx: Tx^): Either[StoreError, Entry] =
         for {
@@ -293,6 +304,15 @@ object TurnTools {
           output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
           entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
           _ <- entries.insert(entry)
+          _ <- person.fold[Either[StoreError, Unit]](Right(())) { (said, words) =>
+            for {
+              after <- entries.lockNext(turn.conversationId)
+              level <- entries.believed(turn)
+              _ <- entries.insert(
+                Entry(said, turn.conversationId, turn.turnSeq, None, after.seq, words, at, level)
+              )
+            } yield ()
+          }
         } yield entry
       jot.write(Subject.Turn(turn))(write) match {
         case Left(StoreError.DuplicateId(_)) =>
