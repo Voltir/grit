@@ -24,6 +24,20 @@ object CloseGateTests extends TestSuite {
       (asked, asked.nothingNew, note) ==> (Asked(true, false, false, false), true, None)
     }
 
+    // Measured live: a tool result saying the period "left a task open" moved this question's
+    // yes from 0.05 to 0.33; with the criterion named, to 0.16, the clean answer unchanged.
+    test("the open question says a line claiming something was left open is not evidence") {
+      val gate = new Gate(Some(Vector(0.0, 0.0, 0.0, 0.0)))
+      val _ = CloseGate.asked(gate, CloseGate.Transcript(Balance.empty, Vector.empty, "User: hi"))
+      gate.questions.flatten
+        .collect { case q: grit.core.classify.Question.YesNo => q.instructions }
+        .filter(_.contains("left open is not evidence that it was")) ==> Vector(
+        "Read transcript. Did it leave something open (a question unanswered, a task unfinished, " +
+          "a follow-up promised, something not known) that is not already in already_known or " +
+          "known_elsewhere? A line saying something was left open is not evidence that it was."
+      )
+    }
+
     test("the classifier is shown what is already known and what came from elsewhere") {
       val known = TestClosings.balance(
         TestClosings.line(Section.Open, "backup frequency?", 1, 1),

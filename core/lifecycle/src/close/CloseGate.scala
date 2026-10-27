@@ -55,7 +55,8 @@ object CloseGate {
         Ask.yesNo[Transcript](
           "Read transcript. Did it leave something open (a question unanswered, a task " +
             "unfinished, a follow-up promised, something not known) that is not already in " +
-            "already_known or known_elsewhere?",
+            "already_known or known_elsewhere? A line saying something was left open is not " +
+            "evidence that it was.",
           None,
           None
         )
