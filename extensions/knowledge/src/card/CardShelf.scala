@@ -51,12 +51,12 @@ object CardShelf {
       label: Label
   ) extends caps.Pure
 
-  /** A current card by its version, its file's `revision` as its data names it
-    * ([[UnitVersion.inData]]), the label it is kept at and the pointer that reads it.
+  /** A current card by its version, its file's version as its data names it (`cardVersion`,
+    * [[UnitVersion.inData]]), the label it is kept at and the pointer that reads it.
     */
   final case class Pointed(
       version: DocumentVersionId,
-      revision: UnitVersion,
+      cardVersion: UnitVersion,
       label: Label,
       pointer: Pointer
   ) extends caps.Pure

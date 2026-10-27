@@ -300,7 +300,7 @@ object DurableMoves {
                 None,
                 AskMade.Refused(AskMade.Kind.Unread(Declassifying.Unread.Unchecked), _, _, _)
               ) if same =>
-            Right(Left(Declassifying.Unbenched.Lapsed))
+            Right(Left(Declassifying.Unbenched.NotRead))
           case _ =>
             settled(name, asked, same) {
               case AskMade.Judged(_, written, at, _) =>

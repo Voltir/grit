@@ -168,7 +168,7 @@ object Kit {
       finished: String => Unit,
       log: org.slf4j.Logger
   ): Either[KitFailure, Serving.Opened^] = {
-    val files = Launch.files(engine, deployment, secrets)
+    val files = Launch.fileArea(engine, deployment, secrets)
     val link: Link^{engine} = engine
     metered(link, deployment.budget, clock.now()).foreach(log.info)
     val report: Attesting.Report => Unit =

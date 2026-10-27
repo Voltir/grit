@@ -242,7 +242,7 @@ object TurnOffer {
           TurnPrompt.Candour,
           TurnPrompt.Answering,
           TurnPrompt.Security,
-          TurnPrompt.Material,
+          TurnPrompt.TagRule,
           TurnPrompt.edge(conversation.origin)
         ) ++ TurnPrompt.rendered(conversation.origin, tooling.renders) ++
           TurnPrompt.destination(conversation.origin) ++

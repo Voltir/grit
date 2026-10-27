@@ -161,7 +161,7 @@ object FenceRequests {
           TurnPrompt.Candour,
           TurnPrompt.Answering,
           TurnPrompt.Security,
-          TurnPrompt.Material,
+          TurnPrompt.TagRule,
           TurnPrompt.edge(Thread)
         ) ++ TurnPrompt.destination(Thread)
       )

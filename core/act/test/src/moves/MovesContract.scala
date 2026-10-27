@@ -1126,7 +1126,7 @@ abstract class MovesContract extends TestSuite {
     }
 
     test(
-      "a bench of checks that do not read is Unbenched with their fault, and of checks not read here Unbenched as lapsed, keeping nothing"
+      "a bench of checks that do not read is Unbenched with their fault, and of checks not read here Unbenched as not read, keeping nothing"
     ) {
       def tried(set: Shelves -> Unit) = {
         val shelves = Shelves(needed = Vector(Cards))
@@ -1145,7 +1145,7 @@ abstract class MovesContract extends TestSuite {
       val fault = Checks.read(Some(ujson.Obj())).left.map(_.said).fold(identity, _ => "reads")
       (unreadable, unread) ==> (
         (Seen(Vector(Right(s"unbenched $fault"))), "stale"),
-        (Seen(Vector(Right("unbenched lapsed"))), "unread")
+        (Seen(Vector(Right("unbenched not read"))), "unread")
       )
     }
 
@@ -1726,7 +1726,7 @@ object MovesContract {
   }
 
   /** What a bench came to: `kept {passed|failed} {kind} {at} {p}, …`, each example's deciding
-    * answer; `unbenched {fault}`; or `unbenched lapsed`.
+    * answer; `unbenched {fault}`; or `unbenched not read`.
     */
   def benching(b: Declassifying.Benching): String = b match {
     case Declassifying.Benching.Kept(benched) =>
@@ -1735,7 +1735,7 @@ object MovesContract {
         .mkString(", ")
     case Declassifying.Benching.Unbenched(Declassifying.Unbenched.Unreadable(why)) =>
       s"unbenched ${why.said}"
-    case Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed) => "unbenched lapsed"
+    case Declassifying.Benching.Unbenched(Declassifying.Unbenched.NotRead) => "unbenched not read"
   }
 
   /** `policy` on its bench in `shelves`, read at [[Declassing]]: as [[benching]] says a kept

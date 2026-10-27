@@ -386,7 +386,7 @@ trait Dreaming extends Keeping {
     * answered, the verdict kept as the version's bench (`keep:{name}`,
     * [[DocumentKeeper.keepBenched]]) under the screening every ask read
     * ([[Declassifying.screening]]), and `Kept`. `Unbenched`, keeping nothing: `Unreadable`
-    * when its checks do not read, `Lapsed` when they are not read here or changed between its
+    * when its checks do not read, `NotRead` when they are not read here or changed between its
     * asks. Each ask is counted, limited and refused as a judgment is ([[ask]]): a refused or
     * failed ask is that refusal, keeping nothing, as a keep that fails is
     * [[MoveError.Store]]; the version is benched again next time.
@@ -425,7 +425,7 @@ trait Dreaming extends Keeping {
             keep(name, row)((r, keeper, at) => keeper.keepBenched(r, at).map(_ => r.benched))
               .map(Declassifying.Benching.Kept(_))
           // Its checks changed between its asks: what it asked is of no one screening.
-          case _ => Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed))
+          case _ => Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.NotRead))
         }
     }
   }

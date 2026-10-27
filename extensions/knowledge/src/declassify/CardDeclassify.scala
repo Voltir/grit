@@ -91,7 +91,7 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
                     Declassifying.Benching.Unbenched(Declassifying.Unbenched.Unreadable(why))
                   ) =>
                 s"unchecked: ${why.said}"
-              case Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.Lapsed)) =>
+              case Right(Declassifying.Benching.Unbenched(Declassifying.Unbenched.NotRead)) =>
                 "not read"
             }
           )
@@ -154,7 +154,7 @@ object CardDeclassify {
       applied <- traverse(applying.flatten)((c, _) =>
         keeper
           .declassifying(c.label, c.pointer)
-          .map(_.map(a => (Due(c.version, UnitVersion.value(c.revision), a.applied), a)))
+          .map(_.map(a => (Due(c.version, UnitVersion.value(c.cardVersion), a.applied), a)))
       )
       inForce = applied.flatten.map(_._1)
       bench <- traverse(applying.flatten.map(_._2).distinct)(Declassifying.unbenched(keeper, _))
@@ -212,8 +212,9 @@ object CardDeclassify {
     )
 }
 
-/** A card due a rewrite: its `source` version, its file's `revision`, and the application in
-  * force for it.
+/** A card due a rewrite: its `source` version, its file's `revision` as a rewrite records it
+  * (its card's [[grit.knowledge.card.CardShelf.Pointed.cardVersion]], written), and the
+  * application in force for it.
   */
 private[declassify] final case class Due(
     source: DocumentVersionId,

@@ -348,7 +348,7 @@ private[moves] object Act {
           case Declassifying.Of.Example(keeper, policy, at) =>
             env.db.read(s.acting.subject)(Declassifying.exhibit(keeper, policy, at)) match {
               case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
-              case Right(Left(Declassifying.Unbenched.Lapsed)) =>
+              case Right(Left(Declassifying.Unbenched.NotRead)) =>
                 (AskMade.Refused(Unchecked, "its checks are not read", s.digest), None)
               case Right(Left(Declassifying.Unbenched.Unreadable(why))) =>
                 (

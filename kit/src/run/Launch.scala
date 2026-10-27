@@ -104,7 +104,7 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): FileArea^ = {
-    val area = files(engine, d, s)
+    val area = fileArea(engine, d, s)
     launched(engine, d, s, run, sweeping, finished, area)
     area
   }
@@ -113,14 +113,14 @@ private[grit] object Launch {
     * nothing launched, so an edge can keep files in it before [[launched]] runs anything.
     * Throws when its directory cannot be made ([[area]]).
     */
-  private[grit] def files(engine: Engine^, d: Deployment, s: Secrets): FileArea^ = {
+  private[grit] def fileArea(engine: Engine^, d: Deployment, s: Secrets): FileArea^ = {
     Log.info(s"database: ${s.database.endpoint}")
     val temp = Path.of(System.getProperty("java.io.tmpdir"))
     area(engine, d, filesDir(s.files, s.database, temp))
   }
 
   /** `d`'s workflows launched on `engine` as [[apply]] launches them, over `files`, the area
-    * [[files]] made for it. Throws as [[apply]] does.
+    * [[fileArea]] made for it. Throws as [[apply]] does.
     */
   private[grit] def launched(
       engine: Engine^,

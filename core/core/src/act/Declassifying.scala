@@ -290,7 +290,7 @@ object Declassifying {
     /** Its checks are not read here (not cleared for its label, no such version, or a
       * revocation), or changed between the bench's asks.
       */
-    case Lapsed
+    case NotRead
   }
 
   /** What a bench came to: `Kept`, its verdict kept as its version's bench; or `Unbenched`,
@@ -339,7 +339,7 @@ object Declassifying {
       Tx^
   ): Either[StoreError, Either[Unbenched, Exhibit]] =
     keeper.checks(policy).map {
-      case None => Left(Unbenched.Lapsed)
+      case None => Left(Unbenched.NotRead)
       case Some(read) =>
         read.checks match {
           case Left(why) => Left(Unbenched.Unreadable(why))

@@ -132,7 +132,7 @@ object TurnPrompt {
     * nothing beyond calling it. A base-layer fragment of its own, so [[Base]]'s measured text
     * stays as it is.
     */
-  val Material: Fragment =
+  val TagRule: Fragment =
     Fragment(
       Layer.Base,
       Fragment.Grit,
