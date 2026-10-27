@@ -185,8 +185,10 @@ object Declassifying {
     "speaks as its writer about what it shares or leaves out"
   )
 
-  /** The screen a rewrite under `checks` is asked: [[Floor]], then `checks`' signals. */
-  def screen(checks: Checks): Screen = Screen(Floor, checks.signals, Vector.empty)
+  /** The screen a rewrite under `checks` is asked: a bench's ([[Bench.screen]]), [[Floor]]
+    * first.
+    */
+  def screen(checks: Checks): Screen = Bench.screen(checks).copy(floor = Floor)
 
   /** The screening of `checks`, what a bench of them is kept under: a digest of their canonical
     * form ([[Checks.canonical]]) with [[Floor]]'s questions, the signals' two templates
