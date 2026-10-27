@@ -37,7 +37,7 @@ object ApprovalLiveTests extends TestSuite {
         "path" -> "notes.txt",
         "edits" -> ujson.Arr(ujson.Obj("oldText" -> "draft", "newText" -> "final"))
       )
-      def answer(text: String) =
+      def answer(text: String): Message.Assistant =
         Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, usage, "m")
       val called = request.messages.exists(_.isInstanceOf[Message.ToolResult])
       Right(request.messages.lastOption match {
