@@ -70,7 +70,8 @@ Packages, in one-way order (each names only those before it):
 - **`declassify`**: `CardDeclassify`, the dreaming job `cards-declassify`, which reads the
   current cards by their pointers and revisions, asks for each the application in force,
   withdraws in its scan every own document but its withholding that is not a rewrite of a card's
-  current version and revision under the versions in force, and has core rewrite its file's
+  current version and revision that stands under the versions in force
+  (`Declassified.Made.stands`), and has core rewrite its file's
   text and check it for each card due (`Dreaming.declassify`), keeping the rewrite below its floor or
   remembering it withheld (`Withheld`, one document per label). A card is rewritten without a
   compartment only when an operator applies that compartment's policy to its pointer; see

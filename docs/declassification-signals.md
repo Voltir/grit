@@ -60,6 +60,29 @@ the writer is shown its draft and told what failed, by the shared question's wor
 inferred is not retried, since a retry tends to reword the fact rather than remove it; it is
 kept back, as is a retry that fails anything (`grit.core.act.Declassifying.Again`).
 
+## Drafting and publishing
+
+A new version is written as a draft, and a draft changes nothing anyone reads: only the
+newest published version is in force, written and rewritten under. While a version of the
+compartment is in force over a card, the job benches the latest draft above it, as it does
+the version in force, and its reply names the draft's bench, so a steward can fix the draft's
+checks and see it benched again on the next run. A draft is published only once its bench has passed: the statement
+beside `grit.declassification_policies` in `schema.sql` updates nothing otherwise.
+
+Publishing picks what happens to the rewrites made under earlier versions:
+
+- **keep** (a refinement): each goes on being shared until the new version decides its
+  document. A rewrite under the new version replaces it; a withholding withdraws it at the
+  job's next run. A run whose rewrite is not made, or fails, leaves it shared.
+- **withdraw** (a tightening): they stop being shared at the job's next run, and their
+  documents are rewritten under the new version.
+
+A chain of `keep` publishes keeps the rewrites from the newest version published to withdraw
+on (`PolicyApplication.InForce.keptFrom`). A revocation, a published version with no text,
+withdraws every rewrite. A compartment's first version, or the first after a revocation, has
+no version in force to be benched beside, so it is inserted published, to withdraw; nothing is
+rewritten under it until its bench passes.
+
 ## Rules for signals
 
 1. Write each signal as a fact a reader could learn from the shared text: a "that ..." clause

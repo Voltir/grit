@@ -22,9 +22,10 @@ final case class DeclassifyParams(perRun: Int) extends caps.Pure
   * revisions alone, and the application in force for each
   * ([[grit.core.document.DocumentKeeper.declassifying]]). In its scan it withdraws every one of
   * its plugin's own documents but its withholding ([[Withheld]]) whose data does not read as a
-  * rewrite of a card's current version and revision under the policy and application versions
-  * in force for it ([[Declassified.Made.read]]), whatever wrote it, and forgets each entry it
-  * withheld that is not so. Then it declassifies ([[Dreaming.declassify]], `rewrite-{i}`, from
+  * rewrite of a card's current version and revision that stands under the application in force
+  * for it ([[Declassified.Made.stands]]: made under its policy version in force, or, until that
+  * version withholds the card, an earlier one it was published to keep), whatever wrote it, and
+  * forgets each entry it withheld that is not at the versions in force. Then it declassifies ([[Dreaming.declassify]], `rewrite-{i}`, from
   * the card's file's text at its revision) each card in force that has neither a rewrite nor a
   * withholding at those versions, at most `perRun` (and at most `perRunMost`), most recent
   * first, the rest left for the next run: a rewrite made is kept below its floor (`keep-{i}`,
@@ -135,9 +136,10 @@ object CardDeclassify {
   private val Scan: MoveName = MoveName("scan")
 
   /** The scan, at its transaction's floor: each card in force (its version, revision and
-    * application), every own document but the withholding, and every withholding entry, that
-    * reads as no rewrite at those withdrawn or forgotten, and those due, at most `most`, most
-    * recent first; and the versions in force over them due a bench.
+    * application), every own document but the withholding that reads as no rewrite standing
+    * under them withdrawn, every withholding entry not at them forgotten, and those due (with
+    * neither a rewrite nor a withholding at them), at most `most`, most recent first; and the
+    * versions over them due a bench.
     */
   private def scanned(shelf: CardShelf, keeper: DocumentKeeper, most: Int, at: Instant)(using
       tx: Tx^
@@ -148,21 +150,33 @@ object CardDeclassify {
       applied <- traverse(pointed)(c =>
         keeper
           .declassifying(c.label, c.pointer)
-          .map(_.map(a => Due(c.version, UnitVersion.value(c.revision), a.applied)))
+          .map(_.map(a => (Due(c.version, UnitVersion.value(c.revision), a.applied), a)))
       )
-      inForce = applied.flatten
+      inForce = applied.flatten.map(_._1)
       bench <- traverse(inForce.map(_.applied.policy.over).distinct)(
         Declassifying.unbenched(keeper, _)
       )
       current = inForce.map(_.made).toSet
+      held <- Withheld.read(keeper, floor)
+      decided = held.flatten.toSet
+      cards = applied.flatten.map((d, a) => d.source -> (d, a)).toMap
       own <- keeper.newest(Int.MaxValue)
       (rewrites, stale) = own
         .filterNot(_.key == Withheld.Key)
-        .partition(d => Declassified.Made.read(d.data).exists(current.contains))
+        .partition(d =>
+          Declassified.Made
+            .read(d.data)
+            .exists(m =>
+              cards
+                .get(m.source)
+                .exists((due, a) =>
+                  m.stands(a, due.source, due.revision, decided.contains(due.made))
+                )
+            )
+        )
       withdrawn <- stale.foldLeft[Either[StoreError, Int]](Right(0))((n, d) =>
         n.flatMap(k => keeper.withdraw(d.key, d.label, at).map(v => k + v.size))
       )
-      held <- Withheld.read(keeper, floor)
       kept = held.flatten.filter(current.contains)
       _ <- if (kept.size == held.size) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
       done = rewrites.flatMap(d => Declassified.Made.read(d.data)).toSet ++ kept

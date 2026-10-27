@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.act.{Asked, Dreaming, MoveError, ScriptedDreaming}
 import grit.core.classify.Answer
 import grit.core.document.{
+  Declassified,
   DocLabel,
   DocText,
   DocWeight,
@@ -173,16 +174,31 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     /** The `version`th policy over `team`, a revocation when `text` is `None`, with `checks` as
-      * its row holds them, kept at `kept`; and, when `benched`, a passing bench of those checks.
+      * its row holds them, kept at `kept`, at `status`; and, when `benched`, a passing bench of
+      * those checks.
       */
     def policy(
         version: Int,
         text: Option[String] = Some("Remove where the offsite is."),
         checks: Option[ujson.Value] = Some(InMemoryDocuments.Checks),
         benched: Boolean = true,
-        kept: Label = Floor
+        kept: Label = Floor,
+        status: InMemoryDocuments.Status = InMemoryDocuments.Status.Withdraw
     ): Unit =
-      documents.policy(Over, version, text, kept, checks, benched)
+      documents.policy(Over, version, text, kept, checks, benched, status)
+
+    /** The `version`th policy published at `status`, as the operator's publish does. */
+    def publish(version: Int, status: InMemoryDocuments.Status): Unit =
+      documents.publish(Over, version, status)
+
+    /** The policy version each current rewrite was made under, as its data names it. */
+    def made: Vector[Int] =
+      documents
+        .keeper(Plugin, Terms)
+        .newest(Int.MaxValue)(using TestTx.fake(Clearance.of(Floor)))
+        .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
+        .filterNot(_.key == Withheld.Key)
+        .flatMap(d => Declassified.Made.read(d.data).map(_.policy))
 
     /** The `version`th application to the card of `id`, a removal when `applied` is false. */
     def apply(id: String, version: Int, applied: Boolean = true): Unit =
@@ -451,6 +467,151 @@ object CardDeclassifyTests extends TestSuite {
         "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 2 withdrawn, 0 left for the next run",
         "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
         Vector()
+      )
+    }
+
+    test(
+      "withdraw: a draft changes nothing, and once it is published to withdraw, the earlier version's rewrite is withdrawn at the next scan and the card rewritten under it"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.apply("c1", 1)
+      runs.policy(1)
+      val _ = runs.run()
+      runs.policy(2, status = InMemoryDocuments.Status.Draft)
+      val drafted = (runs.run(), runs.made)
+      runs.publish(2, InMemoryDocuments.Status.Withdraw)
+      (drafted, runs.run(), runs.made) ==> (
+        (
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+          Vector(1)
+        ),
+        "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        Vector(2)
+      )
+    }
+
+    test(
+      "keep: an earlier version's rewrite stands once a version is published to keep, through a run that rewrites nothing, until that version rewrites its card (replacing it) or withholds it (withdrawn at the next scan)"
+    ) {
+      val runs = new Runs
+      Vector("a", "b").foreach { id =>
+        val _ = runs.card(id)
+        runs.apply(id, 1)
+      }
+      runs.policy(1)
+      val _ = runs.run()
+      runs.policy(
+        2,
+        checks = Some(ujson.Obj("signals" -> ujson.Arr())),
+        status = InMemoryDocuments.Status.Keep
+      )
+      val unchecked = (runs.run(), runs.made)
+      runs.policy(2, status = InMemoryDocuments.Status.Keep)
+      val replaced = (runs.run(perRun = 1), runs.made)
+      val withheld = (runs.run(leak = 0.9), runs.made)
+      (unchecked, replaced, withheld, runs.run(), runs.made) ==> (
+        (
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 2 unchecked, 0 withdrawn, 0 left for the next run; policy v2 unchecked: checks: not of their shape",
+          Vector(1, 1)
+        ),
+        (
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 1 left for the next run",
+          Vector(2, 1)
+        ),
+        (
+          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+          Vector(2, 1)
+        ),
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        Vector(2)
+      )
+    }
+
+    test(
+      "a keep after a withdraw keeps the rewrites from the withdraw's version on, and none before it"
+    ) {
+      val runs = new Runs
+      Vector("a", "b").foreach { id =>
+        val _ = runs.card(id)
+        runs.apply(id, 1)
+      }
+      runs.policy(1)
+      val _ = runs.run()
+      runs.policy(2)
+      runs.policy(
+        3,
+        checks = Some(ujson.Obj("signals" -> ujson.Arr())),
+        status = InMemoryDocuments.Status.Keep
+      )
+      (runs.run(), runs.made) ==> (
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 2 unchecked, 2 withdrawn, 0 left for the next run; policy v3 unchecked: checks: not of their shape",
+        Vector()
+      )
+    }
+
+    test(
+      "a revocation withdraws every rewrite, though the versions before it were published to keep"
+    ) {
+      val runs = new Runs
+      val _ = runs.card("c1")
+      runs.apply("c1", 1)
+      runs.policy(1, status = InMemoryDocuments.Status.Keep)
+      runs.policy(2, status = InMemoryDocuments.Status.Keep)
+      val _ = runs.run()
+      runs.policy(3, text = None)
+      (runs.run(), runs.made) ==> (
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        Vector()
+      )
+    }
+
+    test(
+      "as a deployment's rows stand after the ALTER, v1 and v2 published to withdraw and v2's rewrites kept: while v2 is in force with NULL checks nothing is rewritten and its rewrites stand; once v3, benched as a draft, is published to keep, they stand through runs whose declassify is unapplied or fails, until v3 rewrites a card (replaced) or withholds it (withdrawn)"
+    ) {
+      val runs = new Runs
+      Vector("a", "b").foreach { id =>
+        val _ = runs.card(id)
+        runs.apply(id, 1)
+      }
+      runs.policy(1)
+      runs.policy(2)
+      val _ = runs.run()
+      runs.policy(2, checks = None)
+      val altered = (runs.run(), runs.made)
+      runs.policy(3, status = InMemoryDocuments.Status.Draft)
+      val drafted = (runs.run(), runs.made)
+      runs.publish(3, InMemoryDocuments.Status.Keep)
+      runs.documents.unbench(Over, 3)
+      val failedBench = (runs.run(leak = 0.9), runs.made)
+      runs.policy(3, status = InMemoryDocuments.Status.Keep)
+      val failed = (runs.run(screens = Vector(Vector())), runs.made)
+      val replaced = (runs.run(perRun = 1), runs.made)
+      val withheld = (runs.run(leak = 0.9), runs.made)
+      val stood =
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v2 unchecked: no checks"
+      val unread = "the classifier's answers do not read: 0 answers to 3 questions"
+      (altered, drafted, failedBench, failed, replaced, withheld, runs.run(), runs.made) ==> (
+        (stood, Vector(2, 2)),
+        (stood, Vector(2, 2)),
+        (
+          "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 2 unchecked, 0 withdrawn, 0 left for the next run; policy v3 unchecked: accept example 1 refused by signal 1 (0.90)",
+          Vector(2, 2)
+        ),
+        (
+          s"declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 2 left for the next run; not written: 2 ($unread), 1 ($unread)",
+          Vector(2, 2)
+        ),
+        (
+          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 1 left for the next run",
+          Vector(3, 2)
+        ),
+        (
+          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
+          Vector(3, 2)
+        ),
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        Vector(3)
       )
     }
 

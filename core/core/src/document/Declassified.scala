@@ -69,8 +69,8 @@ object Declassified {
 
   /** What a kept rewrite was made from, as its data names it: its `source` version and file
     * `revision`, and the compartment (`over`) and `policy` version of the policy, and the
-    * `application` version, it was made under. A rewrite is current while these are its
-    * source's current version and revision and the versions in force.
+    * `application` version, it was made under. A rewrite goes on being shared while it
+    * [[stands]].
     */
   final case class Made(
       source: DocumentVersionId,
@@ -89,6 +89,25 @@ object Declassified {
         "policy" -> ujson.Num(policy.toDouble),
         "application" -> ujson.Num(application.toDouble)
       )
+
+    /** Whether this rewrite stands as one of the document version `source`, its file at
+      * `revision`, under the application in force for it, `in`: it was made from them, under
+      * `in`'s application version, and under `in`'s policy version, or under an earlier one from
+      * `in.keptFrom` while `in`'s has not `decided` the document (withheld it). Only `in`'s own
+      * rewrites stand once its version was published to withdraw.
+      */
+    def stands(
+        in: PolicyApplication.InForce,
+        source: DocumentVersionId,
+        revision: String,
+        decided: Boolean
+    ): Boolean = {
+      val applied = in.applied
+      this.source == source && this.revision == revision && over == applied.policy.over &&
+      application == applied.version &&
+      (policy == applied.policy.version ||
+        (!decided && policy >= in.keptFrom && policy < applied.policy.version))
+    }
   }
 
   object Made {
