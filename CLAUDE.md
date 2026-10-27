@@ -45,6 +45,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
 | `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
+| `grit.projects` | `name`, `artifact`, `method`, `render` | core, prose | the plugin that keeps a project's artifacts under its method (ADR 0049) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.formats` | `limits`, `ooxml`, `pdf`, `choice` | core | the readers of PDF, Word and Excel files (ADR 0044), and PDFBox's quarantine |
 | `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |

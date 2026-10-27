@@ -9,7 +9,7 @@
 #   3. grit.prose names no other grit module (core/prose/README.md); that only its json
 #      package names ujson is enola-law.sh's grep, which sees fully qualified names too
 #   4. core names no extension, each extension names core alone (a plugin extension, such as
-#      grit.digest or grit.remind, names core and plugin extensions), and the kit names no
+#      grit.digest, grit.remind or grit.projects, names core and plugin extensions), and the kit names no
 #      plugin, edge extension, terminal UI or deployment (ADRs 0021, 0027; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #   6. grit.act names core alone: the turn, a job's moves and the lifecycle's asks share its
@@ -40,41 +40,41 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.dbos and the eval harness: what may not name grit.dbos.internal
   # (rule 1h). As outside-dbos, with eval's own sources in place of all of eval/.
   - name: outside-dbos-and-harness
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.turn, grit.act and grit.kit, the three that make integrity-carrying
   # values from raw ones (rule 1j).
   - name: outside-minters
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/mcp/**", "extensions/formats/**"]
 
   # Every module except grit.formats, for PDFBox's quarantine (STYLE rule 8). Within formats,
   # only its pdf package may name PDFBox: a grep in scripts/enola-law.sh.
   - name: outside-pdfbox
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # grit.formats' sources, for its rule: a reader names core alone.
   - {name: formats-code,   kind: module, match: ["extensions/formats/src", "extensions/formats/src/**"]}
@@ -122,7 +122,8 @@ components:
   - name: plugin-extensions
     kind: module
     match: ["extensions/digest/src", "extensions/digest/src/**",
-            "extensions/remind/src", "extensions/remind/src/**"]
+            "extensions/remind/src", "extensions/remind/src/**",
+            "extensions/projects/src", "extensions/projects/src/**"]
   - {name: tui-code,       kind: module, match: ["extensions/tui/src", "extensions/tui/src/**"]}
   - {name: kit-code,       kind: module, match: ["kit/src", "kit/src/**"]}
   - {name: mcp-code,       kind: module, match: ["extensions/mcp/src", "extensions/mcp/src/**"]}
@@ -166,7 +167,8 @@ components:
             "extensions/knowledge/src/plugin", "extensions/knowledge/src/plugin/**",
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**",
             "extensions/knowledge/src/drive", "extensions/knowledge/src/drive/**",
-            "extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**"]
+            "extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**",
+            "extensions/projects/src", "extensions/projects/src/**"]
   # Every edge extension's main sources: an edge a deployment serves (ADR 0023, ADR 0017). The
   # kit names none of them (kit-names-no-edge-or-deployment's `only` leaves them out), and
   # scripts/check --milestone --since reports each commit touching one and core together.

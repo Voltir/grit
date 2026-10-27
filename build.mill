@@ -373,6 +373,23 @@ object grit extends Module {
     }
   }
 
+  /* Projects: the plugin that keeps a project's artifacts as ledger documents, its methods as
+   * versioned data, and a project as one value with a stored form, a reader and a renderer
+   * (ADR 0049). Names core and prose alone. extensions/projects/README.md. */
+  object projects extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "projects"
+    def moduleDeps = Seq(core, prose)
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+
+    /* TransitionCheckPurityTests compiles probe sources against projects, with its own flags. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
+  }
+
   /* Reminders: the plugin whose job `remind` posts a person's reminder in the thread that
    * asked, and the tools that set, list and cancel them. Names only core.
    * extensions/remind/README.md. */
