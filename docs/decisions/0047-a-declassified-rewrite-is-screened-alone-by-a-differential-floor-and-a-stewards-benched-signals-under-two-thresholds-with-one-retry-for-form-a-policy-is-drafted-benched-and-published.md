@@ -62,5 +62,6 @@ Consequences:
   of 136 flipped at the threshold (0.44 to 0.37), and no answer moved more than 0.09.
 - A policy's signal and example text names the secret, so it is read only inside the
   screening, rewrite and bench steps; what leaves a step is answers and positions.
-- Enforced by the compiler (private constructors, `private[core]` checks), probes
-  (`DeclassifyCaptureTests`), the replay gate over job histories, and `ScreenTests`.
+- Enforced by the compiler (private constructors: `Checks` and a screen's verdicts are made
+  only in `grit.core.screen`), probes (`DeclassifyCaptureTests`), the replay gate over job
+  histories, and `ScreenTests`.
