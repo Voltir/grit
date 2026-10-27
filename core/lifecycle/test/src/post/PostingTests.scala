@@ -152,7 +152,8 @@ object PostingTests extends TestSuite {
         conversations.all
           .find(_.id == id)
           .fold(Clearance.of(Label.Public))(c => Clearance.inRoom(c.origin.room, c.label, c.label))
-      case Subject.Public | Subject.Turn(_) | Subject.Room(_) => Clearance.of(Label.Public)
+      case Subject.Public | Subject.Turn(_) | Subject.Room(_) | Subject.Asker(_, _) =>
+        Clearance.of(Label.Public)
     }
   }
 

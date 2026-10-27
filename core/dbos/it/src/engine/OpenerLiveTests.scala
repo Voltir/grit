@@ -5,8 +5,8 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.identity.{TestAccounts, Vouched}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.identity.{Evidence, Held, Principal, TestAccounts, Vouched}
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Integrity
@@ -89,6 +89,29 @@ object OpenerLiveTests extends TestSuite {
         .map(_.written)
       compartments <- Compartments.of(Vector(trial, finance)).left.map(_.toString)
       v <- Visibility.of(compartments, labels, Vector.empty, Vector.empty).left.map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+  )
+
+  private val internalTrial: DeclaredLabel = Label.at(Level.Internal, trial)
+
+  /** As [[rooms]], with [[cleared]] in a group cleared for [[internalTrial]]. */
+  private val askers: Opener = new Opener(
+    (for {
+      labels <- RoomLabels
+        .of(Vector(board -> confidentialTrial), Labelled.Mapped(internal))
+        .left
+        .map(_.written)
+      compartments <- Compartments.of(Vector(trial, finance)).left.map(_.toString)
+      name <- GroupName.of("trialists").left.map(_.toString)
+      v <- Visibility
+        .of(
+          compartments,
+          labels,
+          Vector(Group(name, Set(cleared))),
+          Vector(Grant(name, internalTrial))
+        )
+        .left
+        .map(_.toString)
     } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
   )
 
@@ -246,6 +269,20 @@ object OpenerLiveTests extends TestSuite {
       read.map(c =>
         Vector(internal, confidentialTrial, confidentialFinance).map(c.reads(Item.Kept(None), _))
       ) ==> Right(Vector(true, true, false))
+    }
+
+    test(
+      "an asker in a room reads the room's label met with their clearance: a document above their clearance in that room is not read"
+    ) {
+      val person: Principal.Person =
+        new Principal.Person(PrincipalId.Local, Set(Held(cleared, Evidence.Home, member = true)))
+      val read = Using.resource(
+        DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      )(conn => askers.open(Subject.Asker(person, board), conn).map(tx => Tx.clearance(tx)))
+      read.map(c =>
+        Vector(internalTrial, confidentialTrial, confidentialFinance)
+          .map(c.reads(Item.Kept(Some(board)), _))
+      ) ==> Right(Vector(true, false, false))
     }
 
     test("a transaction it opens labels places as the deployment's visibility does") {

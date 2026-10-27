@@ -2,6 +2,7 @@ package grit.core.visibility
 
 import grit.core.id.ConversationId
 import grit.core.id.TurnRef
+import grit.core.identity.Principal
 import grit.core.place.Place
 
 /** Whom a database transaction is opened for, which decides its [[Clearance]] as it opens
@@ -35,6 +36,13 @@ enum Subject {
     * unmapped, quiet or a direct message's). It reads no more than may be written to `place`.
     */
   case Room(place: Place)
+
+  /** A person's command in `room`: everything recorded or kept up to the label `room` is written
+    * at outside grit ([[grit.core.store.Tx.writable]]; public rows alone when nothing writes
+    * there) met with `person`'s clearance ([[grit.core.store.Tx.clearanceOf]]) as the transaction
+    * opens.
+    */
+  case Asker(person: Principal.Person, room: Place)
 
   /** Public rows alone, and what carries no label (settings, schedules, workflow state). */
   case Public
