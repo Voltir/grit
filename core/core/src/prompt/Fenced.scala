@@ -108,6 +108,10 @@ object Fenced {
   def toolOutput(source: String, output: String): Fenced =
     in(Tag.ToolOutput, output, "source" -> source)
 
+  /** `lines`, each a run of parts, in order, a blank line between each two. */
+  def joined(lines: Vector[Vector[Part]]): Vector[Part] =
+    lines.zipWithIndex.flatMap((l: Vector[Part], i: Int) => if (i == 0) l else Part.Words("") +: l)
+
   /** `system`, then a blank line and [[Rule]]: the system text of a request whose messages
     * carry fenced material, which it need not say again.
     */

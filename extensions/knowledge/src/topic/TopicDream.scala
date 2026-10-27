@@ -8,6 +8,7 @@ import grit.core.flow.Trusted
 import grit.core.id.{DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
 import grit.core.need.Exported
+import grit.core.prompt.Tag
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
 import grit.knowledge.card.{CardMoves, CardShelf}
@@ -356,10 +357,10 @@ object TopicDream {
     */
   private[topic] def attachSystem(strands: Int, topics: Boolean, cards: Boolean): String = {
     val topicsShown =
-      "the topics, each a `<document label=\"topic\">` holding how its text begins, numbered " +
+      s"the topics, each a `<$Document label=\"topic\">` holding how its text begins, numbered " +
         "from 1 in the order shown"
     val cardsShown =
-      "the cards, each a `<document>` describing a file, its label in `label`, numbered from 1 " +
+      s"the cards, each a `<$Document>` describing a file, its label in `label`, numbered from 1 " +
         "in the order shown"
     if (strands == 0)
       "You sort a team's recent documents into topics: what the team comes back to across " +
@@ -373,7 +374,7 @@ object TopicDream {
     else
       "You sort a team's recent discussions and documents into topics: what the team comes " +
         s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
-        "each a `<discussion>` of messages under their speakers' names, oldest first, numbered " +
+        s"each a `<$Discussion>` of messages under their speakers' names, oldest first, numbered " +
         "from 1 in " +
         "the order shown" +
         (if (topics) s"; then $topicsShown" else "") +
@@ -394,13 +395,17 @@ object TopicDream {
 
   private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
+  // The tags the prompts name, as Dreaming.shown fences what an ask is shown.
+  private val Discussion = Tag.Discussion.name
+  private val Document = Tag.Document.name
+
   /** What a write ask is told, before what it is shown. */
   private def writeSystem(day: LocalDate): String =
     "You keep one topic of a team's knowledge: a durable subject, written as a lead and dated " +
       s"passages. You are shown the discussions and the cards attached to it on $day and the " +
-      "other cards it holds, each discussion a `<discussion>` of messages under their speakers' " +
-      "names and each card a `<document>` describing a file, its label in `label`; then, when " +
-      "the topic exists, its text in a `<document label=\"topic\">`: its lead, then its " +
+      s"other cards it holds, each discussion a `<$Discussion>` of messages under their speakers' " +
+      s"names and each card a `<$Document>` describing a file, its label in `label`; then, when " +
+      s"the topic exists, its text in a `<$Document label=\"topic\">`: its lead, then its " +
       "passages newest first, each under " +
       s"its day. Reply by calling `reply` with `lead`, what the topic is about now, in at most " +
       s"$LeadChars characters of markdown, and `passage`, in markdown, what $day's discussions " +

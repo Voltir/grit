@@ -10,6 +10,7 @@ import grit.core.durable.Journaled
 import grit.core.flow.Trusted
 import grit.core.id.{ConversationId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
+import grit.core.prompt.Tag
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
@@ -121,7 +122,7 @@ object StrandDream {
   private val System: String =
     "You summarise one discussion in a team's chat room for a catalog that tells an " +
       "assistant what has been discussed there, so it can find it again. The discussion, in a " +
-      "`<discussion>`, is " +
+      s"`<${Tag.Discussion.name}>`, is " +
       "several threads on one topic, oldest first: how it opened, then its latest messages, " +
       "each under its speaker's name, a line of … standing for messages left out. Reply by " +
       s"calling `reply` with `summary`, at most ${CardSummary.Words} words on what the " +

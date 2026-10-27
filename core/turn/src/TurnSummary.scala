@@ -55,11 +55,7 @@ object TurnSummary {
   def request(own: Vector[Entry], item: Option[Agenda.Item] = None): ModelRequest = {
     val payloads = own.map(_.payload)
     val lines = payloads.flatMap(line(_, payloads))
-    val transcript = Fenced(
-      Tag.Transcript,
-      Vector.empty,
-      lines.zipWithIndex.flatMap((l, i) => Vector.fill(i.min(1))(Fenced.Part.Words("")) ++ l)
-    ).rendered
+    val transcript = Fenced(Tag.Transcript, Vector.empty, Fenced.joined(lines)).rendered
     item match {
       case None => ModelRequest(System, Vector(Message.User(transcript)))
       case Some(t) =>

@@ -45,13 +45,7 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
 
   /** Its lines fenced in `<transcript>`, each as [[Labelled.Line.parts]], a blank line between. */
   def fenced: Fenced =
-    Fenced(
-      Tag.Transcript,
-      Vector.empty,
-      lines.zipWithIndex.flatMap { (l, i) =>
-        Vector.fill(i.min(1))(Fenced.Part.Words("")) ++ l.parts
-      }
-    )
+    Fenced(Tag.Transcript, Vector.empty, Fenced.joined(lines.map(_.parts)))
 
   /** [[fenced]], rendered. */
   def text: String = fenced.rendered
