@@ -513,7 +513,7 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     test(
-      "keep: an earlier version's rewrite stands once a version is published to keep, through a run that rewrites nothing, until that version rewrites its card (replacing it) or withholds it (withdrawn at the next scan)"
+      "keep: an earlier version's rewrite stands once a version is published to keep, through a run that rewrites nothing, until that version rewrites its card (replacing it) or withholds it (withdrawn in that run)"
     ) {
       val runs = new Runs
       Vector("a", "b").foreach { id =>
@@ -541,10 +541,10 @@ object CardDeclassifyTests extends TestSuite {
           Vector(2, 1)
         ),
         (
-          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
-          Vector(2, 1)
+          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+          Vector(2)
         ),
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
         Vector(2)
       )
     }
@@ -588,7 +588,7 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     test(
-      "as a deployment's rows stand after the ALTER, v1 and v2 published to withdraw and v2's rewrites kept: while v2 is in force with NULL checks nothing is rewritten and its rewrites stand; once v3, benched as a draft, is published to keep, they stand through runs whose declassify is unapplied or fails, until v3 rewrites a card (replaced) or withholds it (withdrawn)"
+      "as a deployment's rows stand after the ALTER, v1 and v2 published to withdraw and v2's rewrites kept: while v2 is in force with NULL checks nothing is rewritten and its rewrites stand; once v3, benched as a draft, is published to keep, they stand through runs whose declassify is unapplied or fails, until v3 rewrites a card (replaced) or withholds it (withdrawn in that run)"
     ) {
       val runs = new Runs
       Vector("a", "b").foreach { id =>
@@ -628,10 +628,10 @@ object CardDeclassifyTests extends TestSuite {
           Vector(3, 2)
         ),
         (
-          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
-          Vector(3, 2)
+          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+          Vector(3)
         ),
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
+        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
         Vector(3)
       )
     }

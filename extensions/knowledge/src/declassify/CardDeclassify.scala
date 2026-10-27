@@ -3,7 +3,7 @@ package grit.knowledge.declassify
 import java.time.Instant
 
 import grit.core.act.{Declassifying, Dreaming, MoveError, MoveLimits, MoveName}
-import grit.core.document.{Declassified, DocumentKeeper, Pointer, PolicyApplication}
+import grit.core.document.{Declassified, Document, DocumentKeeper, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
 import grit.core.either.Traversal.traverse
 import grit.core.flow.Trusted
@@ -31,7 +31,8 @@ final case class DeclassifyParams(perRun: Int) extends caps.Pure
   * first, the rest left for the next run: a rewrite made is kept below its floor (`keep-{i}`,
   * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
   * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
-  * `withhold-{i}`) so it is not asked again at those versions; one whose file is not yet pieced
+  * `withhold-{i}`) so it is not asked again at those versions, and every earlier rewrite of it
+  * withdrawn in the same step ([[CardDeclassify.withheld]]); one whose file is not yet pieced
   * at its revision is tried again next run. Before any card, it benches each version over its
   * cards' applications, in force or the latest draft (a compartment's first version included),
   * that has no bench of its checks as they are now ([[Dreaming.bench]], `bench-{i}`;
@@ -108,10 +109,10 @@ final class CardDeclassify(perRunMost: Int, cards: Exported[CardShelf])
               case Right(Declassifying.Outcome.Kept(_)) =>
                 val made = Declassified.Made.of(source, revision, applied)
                 moves.keep(CardMoves.numbered("withhold", i), run.tainted.map(_ => made))(
-                  (m, keeper, at) => Withheld.joined(keeper, m, at)
+                  (m, keeper, at) => CardDeclassify.withheld(keeper, m, at)
                 ) match {
                   case Left(e) => done.unwritten(source, MoveError.said(e))
-                  case Right(_) => done.heldBack
+                  case Right(Withdrew(n)) => done.heldBack.withdrew(n)
                 }
               case Right(Declassifying.Outcome.Made(rewrite)) =>
                 moves.keep(CardMoves.numbered("keep", i), rewrite)((d, keeper, at) =>
@@ -161,29 +162,54 @@ object CardDeclassify {
       held <- Withheld.read(keeper, floor)
       decided = held.flatten.toSet
       cards = applied.flatten.map((d, a) => d.source -> (d, a)).toMap
-      own <- keeper.newest(Int.MaxValue)
-      (rewrites, stale) = own
-        .filterNot(_.key == Withheld.Key)
-        .partition(d =>
-          Declassified.Made
-            .read(d.data)
-            .exists(m =>
-              cards
-                .get(m.source)
-                .exists((due, a) =>
-                  m.stands(a, due.source, due.revision, decided.contains(due.made))
-                )
-            )
+      own <- rewrites(keeper)
+      (standing, stale) = own.partition((_, made) =>
+        made.exists(m =>
+          cards
+            .get(m.source)
+            .exists((due, a) => m.stands(a, due.source, due.revision, decided.contains(due.made)))
         )
-      withdrawn <- stale.foldLeft[Either[StoreError, Int]](Right(0))((n, d) =>
-        n.flatMap(k => keeper.withdraw(d.key, d.label, at).map(v => k + v.size))
       )
+      withdrawn <- withdrawAll(keeper, stale.map(_._1), at)
       kept = held.flatten.filter(current.contains)
       _ <- if (kept.size == held.size) Right(Kept) else Withheld.kept(keeper, floor, kept, at)
-      done = rewrites.flatMap(d => Declassified.Made.read(d.data)).toSet ++ kept
+      done = standing.flatMap(_._2).toSet ++ kept
       due = inForce.filterNot(d => done.contains(d.made))
     } yield Scanned(due.take(most), withdrawn, (due.size - most).max(0), bench.flatten)
   }
+
+  /** `made` withheld, as [[Withheld.joined]], and every own rewrite of its source withdrawn
+    * `at`, since none stands once the version in force has withheld it
+    * ([[Declassified.Made.stands]]): how many versions it withdrew.
+    */
+  private[declassify] def withheld(keeper: DocumentKeeper, made: Declassified.Made, at: Instant)(
+      using Tx^
+  ): Either[StoreError, Withdrew] =
+    for {
+      _ <- Withheld.joined(keeper, made, at)
+      own <- rewrites(keeper)
+      n <- withdrawAll(
+        keeper,
+        own.collect { case (d, Some(m)) if m.source == made.source => d },
+        at
+      )
+    } yield Withdrew(n)
+
+  /** Each own document but the withholding, with the rewrite its data names ([[Declassified.Made.read]]). */
+  private def rewrites(keeper: DocumentKeeper)(using
+      Tx^
+  ): Either[StoreError, Vector[(Document, Option[Declassified.Made])]] =
+    keeper
+      .newest(Int.MaxValue)
+      .map(_.filterNot(_.key == Withheld.Key).map(d => (d, Declassified.Made.read(d.data))))
+
+  /** `docs` withdrawn `at`: how many versions that withdrew. */
+  private def withdrawAll(keeper: DocumentKeeper, docs: Vector[Document], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Int] =
+    docs.foldLeft[Either[StoreError, Int]](Right(0))((n, d) =>
+      n.flatMap(k => keeper.withdraw(d.key, d.label, at).map(v => k + v.size))
+    )
 }
 
 /** A card due a rewrite: its `source` version, its file's `revision`, and the application in
@@ -289,6 +315,18 @@ private[declassify] case object Kept extends caps.Pure {
     Journaled.json(_ => ujson.True, v => Either.cond(v == ujson.True, Kept, "no keep"))
 }
 
+/** A withholding's result: how many versions of its source's rewrites it withdrew. */
+private[declassify] final case class Withdrew(n: Int) extends caps.Pure
+
+private[declassify] object Withdrew {
+
+  /** Its record: the count. */
+  given Journaled[Withdrew] = Journaled.json(
+    w => ujson.Num(w.n),
+    v => v.numOpt.map(n => Withdrew(n.toInt)).toRight("a withholding holds no count")
+  )
+}
+
 /** What a declassify run came to: how many rewrites it `written`, `withheld` (the check kept
   * them back, or the model wrote nothing that may be shared), found `unapplied` since its scan,
   * found `unpieced` (no pieces of their file at their card's revision yet), found `unchecked`
@@ -330,6 +368,8 @@ final case class Tally(
   private[declassify] def wrote: Tally = copy(written = written + 1)
 
   private[declassify] def heldBack: Tally = copy(withheld = withheld + 1)
+
+  private[declassify] def withdrew(n: Int): Tally = copy(withdrawn = withdrawn + n)
 
   private[declassify] def lapsed: Tally = copy(unapplied = unapplied + 1)
 

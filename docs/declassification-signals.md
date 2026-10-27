@@ -72,8 +72,8 @@ beside `grit.declassification_policies` in `schema.sql` updates nothing otherwis
 Publishing picks what happens to the rewrites made under earlier versions:
 
 - **keep** (a refinement): each goes on being shared until the new version decides its
-  document. A rewrite under the new version replaces it; a withholding withdraws it at the
-  job's next run. A run whose rewrite is not made, or fails, leaves it shared.
+  document. A rewrite under the new version replaces it; a withholding withdraws it in the
+  run that withholds. A run whose rewrite is not made, or fails, leaves it shared.
 - **withdraw** (a tightening): they stop being shared at the job's next run, and their
   documents are rewritten under the new version.
 
