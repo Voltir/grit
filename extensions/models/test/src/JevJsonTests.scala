@@ -1,7 +1,9 @@
 package grit.models
 
-import grit.core.classify.{Answer, ClassifierError, Question}
+import grit.core.act.Declassifying
+import grit.core.classify.{Answer, ClassifierError, Question, StateJson}
 import grit.core.message.Tokens
+import grit.core.screen.{Checks, Screen}
 
 import utest.*
 
@@ -80,6 +82,46 @@ object JevJsonTests extends TestSuite {
         Vector(Question.YesNo("Yes?", None, None))
       )
       assert(!body("questions")("q1").obj.contains("criteria"))
+    }
+
+    // The golden body is the request the screen's thresholds were measured with: the floor, then
+    // each signal in order under its template, keyed by position. A change to it changes what
+    // those measurements say.
+    test("request: the screen's Jev request is the body the spike sends") {
+      val checks = Checks.read(
+        Some(
+          ujson.Obj(
+            "signals" -> ujson.Arr(
+              ujson.Obj(
+                "infer" -> "that the company plans to sell its harbour division",
+                "must" -> "absent"
+              ),
+              ujson.Obj("infer" -> "the price or the buyer of any sale", "must" -> "absent"),
+              ujson.Obj("infer" -> "that the crane upgrade finishes in May", "must" -> "present")
+            ),
+            "examples" -> ujson.Obj(
+              "accept" -> ujson.Arr("The crane upgrade finishes in May."),
+              "refuse" -> ujson.Arr("The harbour division is up for sale.")
+            )
+          )
+        )
+      )
+      val text = Screen.Text(
+        "Quellmoor Marine: quarterly note\n\nThe harbour crane upgrade finishes in May. " +
+          "Crews move to the north quay afterwards."
+      )
+      val sent = checks.map(c =>
+        JevJson.body(
+          JevConfig.DefaultModel,
+          StateJson[Screen.Text].json(text),
+          Declassifying.screen(c).ask.questions
+        )
+      )
+      val golden = scala.io.Source
+        .fromInputStream(getClass.getResourceAsStream("/jev-screen-request.json"))
+        .mkString
+        .trim
+      assert(sent == Right(golden))
     }
 
     test("response: the docs' choice and noul answers, in the question's option order, priced") {
