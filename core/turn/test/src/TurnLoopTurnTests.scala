@@ -127,6 +127,13 @@ object TurnLoopTurnTests extends TestSuite {
       )
       // Each call is shown its window, then the turn's own messages so far.
       val shown = shownExchange(entries, turn)
+      shown.lift(1) ==> Some(
+        Message.ToolResult(
+          ToolCallId("t1"),
+          "<tool_output source=\"peek a.txt\">\nalpha\n</tool_output>",
+          isError = false
+        )
+      )
       provider.requests.map(_.messages) ==> Vector(
         Vector(Message.User("read them")),
         Message.User("read them") +: shown.take(2),

@@ -588,7 +588,7 @@ object CardDeclassifyTests extends TestSuite {
     }
 
     test(
-      "as a deployment's rows stand after the ALTER, v1 and v2 published to withdraw and v2's rewrites kept: while v2 is in force with NULL checks nothing is rewritten and its rewrites stand; once v3, benched as a draft, is published to keep, they stand through runs whose declassify is unapplied or fails, until v3 rewrites a card (replaced) or withholds it (withdrawn in that run)"
+      "rewrites kept under a version whose checks are NULL stand while it is in force, and through a version to keep drafted, failing its bench, or failing its declassify"
     ) {
       val runs = new Runs
       Vector("a", "b").foreach { id =>
@@ -607,12 +607,11 @@ object CardDeclassifyTests extends TestSuite {
       val failedBench = (runs.run(leak = 0.9), runs.made)
       runs.policy(3, status = InMemoryDocuments.Status.Keep)
       val failed = (runs.run(screens = Vector(Vector())), runs.made)
-      val replaced = (runs.run(perRun = 1), runs.made)
-      val withheld = (runs.run(leak = 0.9), runs.made)
+      // Replaced or withheld under the version to keep, after: the "keep:" test.
       val stood =
         "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v2 unchecked: no checks"
       val unread = "the classifier's answers do not read: 0 answers to 3 questions"
-      (altered, drafted, failedBench, failed, replaced, withheld, runs.run(), runs.made) ==> (
+      (altered, drafted, failedBench, failed) ==> (
         (stood, Vector(2, 2)),
         (stood, Vector(2, 2)),
         (
@@ -622,17 +621,7 @@ object CardDeclassifyTests extends TestSuite {
         (
           s"declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 2 left for the next run; not written: 2 ($unread), 1 ($unread)",
           Vector(2, 2)
-        ),
-        (
-          "declassified cards: 1 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 1 left for the next run",
-          Vector(3, 2)
-        ),
-        (
-          "declassified cards: 0 written, 1 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 1 withdrawn, 0 left for the next run",
-          Vector(3)
-        ),
-        "declassified cards: 0 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
-        Vector(3)
+        )
       )
     }
 
@@ -682,12 +671,15 @@ object CardDeclassifyTests extends TestSuite {
         val _ = runs.card(id)
         runs.apply(id, 1)
       }
-      runs.policy(1)
-      // Each card: `meta` fires, its source's floor does not excuse it, and the retry passes.
-      val screens = Vector(Vector(0.5, 0.0, 0.0), Vector(0.0, 0.0), Vector(0.0, 0.0, 0.0))
-      (runs.run(screens = screens), runs.asked) ==> (
-        "declassified cards: 5 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run",
-        (10, 15)
+      runs.policy(1, benched = false)
+      // The bench first: its accept example clean, its refuse example refused. Then each card:
+      // `meta` fires, its source's floor does not excuse it, and the retry passes.
+      val bench: Vector[Vector[Double]] = Vector(Vector(0.1), Vector(0.9))
+      val card: Vector[Vector[Double]] =
+        Vector(Vector(0.5, 0.0, 0.0), Vector(0.0, 0.0), Vector(0.0, 0.0, 0.0))
+      (runs.run(screens = bench ++ Vector.fill(5)(card).flatten), runs.asked) ==> (
+        "declassified cards: 5 written, 0 withheld, 0 unapplied, 0 unpieced, 0 unchecked, 0 withdrawn, 0 left for the next run; policy v1 benched",
+        (10, 17)
       )
     }
     test("its parameters read back as written; a perRun under 1, or not whole, does not read") {

@@ -91,7 +91,8 @@ object IntegrityTurn {
     * result yet, it reads `issue` through GitHub's `issue_read`; shown the injection anywhere,
     * it calls `slack_post` to [[Elsewhere]], once; shown a stub as the last result, it reads it
     * through `read_hidden` or asks it through `extract`, as `mode` says; once it has read the
-    * item or been answered, it posts to [[General]], once; then it answers.
+    * item or been answered, it posts to [[General]], once; then it answers. A tool result
+    * shown it outside a `<tool_output>` fence throws, failing the turn's model call.
     */
   final class Obeying(issue: Issue, mode: Mode) extends Provider {
     // Guarded by this provider's monitor: every read and write of it is inside `synchronized`.
@@ -104,8 +105,11 @@ object IntegrityTurn {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       synchronized { kept = kept :+ request }
       // Each result as the call's tool wrote it: the lines inside its `<tool_output>` fence.
-      val results = request.messages.collect { case Message.ToolResult(_, content, _) =>
-        content.linesIterator
+      val results = request.messages.collect { case Message.ToolResult(id, content, _) =>
+        val lines = content.linesIterator.toVector
+        if (!lines.exists(_.startsWith("<tool_output")))
+          sys.error(s"the result of $id reached the model unfenced")
+        lines
           .dropWhile(!_.startsWith("<tool_output"))
           .drop(1)
           .takeWhile(_ != "</tool_output>")

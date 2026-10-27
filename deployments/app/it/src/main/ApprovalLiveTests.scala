@@ -107,8 +107,9 @@ object ApprovalLiveTests extends TestSuite {
           Files.readString(root.resolve("notes.txt")) ==> "a final\n"
           results(engine, turn).map(_._2) ==> Vector(false)
           // The result as the model reads it, fenced (Shown.turn).
-          assert(
-            reply(engine, turn).exists(r => r.startsWith("did: ") && r.contains("Edited notes.txt"))
+          reply(engine, turn) ==> Some(
+            "did: <tool_output source=\"edit notes.txt\">\n" +
+              "Edited notes.txt: 1 replacement, starting on line 1.\n</tool_output>"
           )
         } finally engine.close()
       }
@@ -132,7 +133,11 @@ object ApprovalLiveTests extends TestSuite {
               true
             )
           )
-          assert(reply(engine, turn).exists(r => r.startsWith("heard: ") && r.endsWith("not yet")))
+          // The person's reason as Payload.declined renders it.
+          reply(engine, turn) ==> Some(
+            "heard: The person you are answering declined the call edit notes.txt, and wrote:\n" +
+              "not yet"
+          )
         } finally engine.close()
       }
     }

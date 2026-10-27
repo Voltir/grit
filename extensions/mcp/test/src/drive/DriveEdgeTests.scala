@@ -313,10 +313,12 @@ object DriveEdgeTests extends TestSuite {
     test(
       "what the model is told of Drive names no tool and no command a person would not type, words it may echo"
     ) {
+      val names = DriveTools.Offered.tools.map(t => ToolName.value(t.name))
       (
-        DriveEdge.Instructions.contains("drive_"),
+        names,
+        names.filter(DriveEdge.Instructions.contains),
         DriveEdge.Instructions.contains("label command")
-      ) ==> (false, false)
+      ) ==> (Vector("drive_list", "drive_search", "drive_read"), Vector(), false)
     }
 
     test(
