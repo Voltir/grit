@@ -66,6 +66,12 @@ object Screen {
   /** A present signal's question: "Does `text` state {infer}?" */
   def present(infer: String): String = s"Does `text` state $infer?"
 
+  /** The signals' two templates, [[absent]]'s and [[present]]'s, `{infer}` where a signal's
+    * text goes: what a digest of a screen's wording holds for its signals.
+    */
+  val Templates: (absent: String, present: String) =
+    (absent = absent("{infer}"), present = present("{infer}"))
+
   /** `answers` to a screen of `shape`, as recorded, read again: `Unreadable`, naming positions
     * alone, unless one yes/no each, in order, each a probability, or when `shape` has no
     * signal, as no screen does.

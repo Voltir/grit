@@ -192,7 +192,7 @@ object Declassifying {
 
   /** The screening of `checks`, what a bench of them is kept under: a digest of their canonical
     * form ([[Checks.canonical]]) with [[Floor]]'s questions, the signals' two templates
-    * ([[Screen.absent]], [[Screen.present]]) and the two thresholds ([[Screen.Infers]],
+    * ([[Screen.Templates]]) and the two thresholds ([[Screen.Infers]],
     * [[Screen.States]]); not the retry's wording, which a bench never asks.
     */
   def screening(checks: Checks): Declassified.Screening =
@@ -202,8 +202,8 @@ object Declassifying {
           ujson.Obj(
             "checks" -> ujson.read(checks.canonical),
             "floor" -> ujson.Arr.from(Floor.map(f => ujson.Str(f.question))),
-            "absent" -> Screen.absent("{infer}"),
-            "present" -> Screen.present("{infer}"),
+            "absent" -> Screen.Templates.absent,
+            "present" -> Screen.Templates.present,
             "infers" -> Probability.value(Screen.Infers),
             "states" -> Probability.value(Screen.States)
           )

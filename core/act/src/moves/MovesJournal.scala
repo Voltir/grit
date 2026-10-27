@@ -351,7 +351,7 @@ object MovesJournal {
   /** The digest of the screen of `rewrite`'s `attempt`, made from `source`, its file at
     * `revision`, under `applied`, v3: its kind, `rewrite`; the rewrite's form ([[rewrite]]); the
     * attempt's number and `rewrite`; then [[Declassifying.Floor]]'s questions and the signals'
-    * two templates ([[Screen.absent]], [[Screen.present]]). The policy's checks are read in the
+    * two templates ([[Screen.Templates]]). The policy's checks are read in the
     * step and are in no digest: its version stands for them.
     */
   def check(
@@ -363,8 +363,7 @@ object MovesJournal {
   ): String =
     v3(
       "rewrite" + rewriteForm(source, Some(revision), applied) + count(attempt.number) +
-        text(DocText.value(rewrite)) + floorForm + text(Screen.absent(Infer)) +
-        text(Screen.present(Infer))
+        text(DocText.value(rewrite)) + floorForm + templatesForm
     )
 
   /** The digest of the screen of `source`'s text, its file at `revision`, as a rewrite under
@@ -376,13 +375,13 @@ object MovesJournal {
 
   /** The digest of a bench's ask of `policy`'s example `at`, v3: its kind, `example`; the
     * policy's compartment and version; `at`; then the signals' two templates
-    * ([[Screen.absent]], [[Screen.present]]). The checks are read in the step and are in no
+    * ([[Screen.Templates]]). The checks are read in the step and are in no
     * digest: a change to them changes the screening the step records beside its ask.
     */
   def example(policy: DeclassificationPolicy, at: Int): String =
     v3(
       "example" + text(policy.over.written) + count(policy.version) + count(at) +
-        text(Screen.absent(Infer)) + text(Screen.present(Infer))
+        templatesForm
     )
 
   /** The digest of the retry `again` of a rewrite of `source`, its file at `revision`, under
@@ -436,8 +435,8 @@ object MovesJournal {
   private def floorForm: String =
     count(Declassifying.Floor.size) + Declassifying.Floor.map(f => text(f.question)).mkString
 
-  /** What stands for a signal's text in the templates a screening's digest holds. */
-  private val Infer = "{infer}"
+  /** [[Screen.Templates]] in a screening's form: absent's, then present's. */
+  private val templatesForm: String = text(Screen.Templates.absent) + text(Screen.Templates.present)
 
   /** The canonical form of a rewrite, which [[rewrite]] hashes: the source's id, then, in v2's
     * form, its file's `revision`; the policy's over and version, which stand for its
