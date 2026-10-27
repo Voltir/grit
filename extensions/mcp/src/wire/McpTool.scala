@@ -1,12 +1,15 @@
 package grit.mcp.wire
 
+import grit.core.message.Cut
+import grit.core.prompt.Stripped
 import grit.core.tool.ToolName
 
 /** A tool a server listed that grit may offer: marked read-only (`readOnlyHint: true`), its
   * `x-mcp-header` annotations within the spec's constraints, and offered as `offered`, its
   * name under the server's prefix. `name` is the server's own; `does`, its title (the tool's,
   * else its annotations') and description as "Title: description", or whichever of them it
-  * has; `inputSchema`, its schema as listed; `params`, the arguments a call mirrors into
+  * has, stripped ([[grit.core.prompt.Stripped.of]]) then cut at a word to
+  * [[McpTool.DescribedChars]]; `inputSchema`, its schema as listed; `params`, the arguments a call mirrors into
   * headers, in the order the schema lists them.
   */
 final case class McpTool private (
@@ -18,6 +21,11 @@ final case class McpTool private (
 )
 
 object McpTool {
+
+  /** 1,000: the most characters of a server's title and description a tool is offered with,
+    * after [[grit.core.prompt.Stripped.of]], cut at a word ([[Cut.head]]).
+    */
+  val DescribedChars: Int = 1000
 
   /** An argument a call mirrors into a header: the one at `path`, a chain of `properties` keys
     * from the schema's root, sent as `Mcp-Param-{header}`.
@@ -89,7 +97,10 @@ object McpTool {
     } yield new McpTool(
       name,
       offered,
-      Vector(title.orElse(hinted), description).flatten.mkString(": "),
+      Cut.head(
+        Stripped.of(Vector(title.orElse(hinted), description).flatten.mkString(": ")),
+        DescribedChars
+      ),
       ujson.Obj.from(schema),
       params
     )
