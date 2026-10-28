@@ -316,7 +316,20 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             pair <- (a.from, a.to) match {
               case (Some(f), Some(t)) => Right(Some((f, t)))
               case (None, None) => Right(None)
-              case _ => Left(ArgsError.Refused("to", "`from` and `to` are given together"))
+              case (Some(_), None) =>
+                Left(
+                  ArgsError.Refused(
+                    "to",
+                    "`to` is given with `from`: name both versions to diff, or neither"
+                  )
+                )
+              case (None, Some(_)) =>
+                Left(
+                  ArgsError.Refused(
+                    "from",
+                    "`from` is given with `to`: name both versions to diff, or neither"
+                  )
+                )
             }
           } yield Recalling(key, pair)
         )

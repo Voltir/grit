@@ -275,6 +275,16 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    test("history refuses a lone to by naming from") {
+      val projects = plugin()
+      val history = projects.commands.find(c => ToolName.value(c.spec.name) == "project_history")
+      val read = history.map(_.spec.args.read(ujson.Obj("key" -> "p/a", "to" -> 2)))
+      assert(read.exists(_.left.exists {
+        case ArgsError.Refused("from", _) => true
+        case _ => false
+      }))
+    }
+
     test("show at an instant shows that version's body") {
       val projects = plugin()
       val store = Store()
