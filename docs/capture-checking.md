@@ -345,6 +345,15 @@ give the helper an explicit result type that does not name the parameter.
 - *Fix:* bind the lambda to a `val` of the parameter's type, and pass the val
   (`TopicDreamTests`' `answer`, handed to `ScriptedDreaming`).
 
+**A `foldLeft` whose closure keeps a local `Vector` built with `.updated`.**
+
+- *Symptom:* under separation checking, at the fold, *"capability `any` cannot flow into
+  {whole\*}"*.
+- *Cause:* not pinned down. Likely the two traps above again: the accumulator's type is
+  inferred, and a `Vector` that `.updated` returns is a refined, capturing one.
+- *Fix:* write the loop as a `@tailrec` method over immutable arguments, which compiles
+  (`Brief.refill`).
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or

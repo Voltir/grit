@@ -4,7 +4,7 @@ The house rules no script checks. The gate enforces warnings, the law, format, d
 replay; these hold only if a plan states them and its review checks them. A planner answers each
 that applies in its plan; a reviewer checks each against the plan and says which it checked.
 
-- **Decision records** (`docs/decisions/README.md`, read in full). A new decision passes all four
+- **Decision records** (`docs/decisions/README.md`, read in full). A new decision passes all five
   threshold tests or gets no record. An existing record changed within the last 30 days (the
   latest date on its Status line) is revised in place (Status `revised (date)`, the commit saying
   what changed); one left alone for 30 days is never edited, and only a new record supersedes it.
