@@ -1394,7 +1394,7 @@ abstract class DocumentContract extends TestSuite {
 
     test(
       "lowering keepLast marks every version past the new window, each as of when it stopped " +
-        "being current; declaring it unchanged marks none"
+        "being current"
     ) {
       val p = name("doc-keep-last-lowered")
       transaction(ok(store.declare(Vector(p -> terms(keepLast = 4)))))
