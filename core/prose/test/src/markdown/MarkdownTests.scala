@@ -204,6 +204,18 @@ object MarkdownTests extends TestSuite {
       lost ==> Vector.empty
     }
 
+    test("text written for parse is escaped only where parse would read markup") {
+      val doc = Doc(
+        Vector(
+          para(
+            marked("see [a] then 2*3*4, ![x](y) and "),
+            marked("a]b", Mark.Link("u"))
+          )
+        )
+      )
+      Markdown.writeExact(doc) ==> "see [a] then 2*3\\*4, ![x\\](y) and [a\\]b](u)"
+      Markdown.parse(Markdown.writeExact(doc)) ==> doc
+    }
     test("a line break is written as a backslash at its line's end, and read back") {
       val doc = Doc(
         Vector(

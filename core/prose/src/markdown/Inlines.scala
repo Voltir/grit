@@ -251,16 +251,19 @@ private[markdown] object Inlines {
     case Lines, Heading, Cell
   }
 
-  /** `t` as inline markdown that [[parse]] reads back as `t`, for text [[parse]] makes, written
-    * at `place`: a `'\n'` is written as itself in a paragraph's lines and as a space elsewhere,
-    * and a character that could start a block at a line's start is escaped there (in a cell,
-    * nowhere). A `|` is left as it is, for a table's cells to escape. In a heading, every `#`
-    * is escaped, which could close it.
+  /** `t` as inline markdown, written at `place`: a `'\n'` is written as itself in a paragraph's
+    * lines and as a space elsewhere, and a character that could start a block at a line's
+    * start is escaped there (in a cell, nowhere). A `|` is left as it is, for a table's cells
+    * to escape. In a heading, every `#` is escaped, which could close it. Outside a cell, each
+    * character `markup` holds is escaped where [[parse]] would otherwise read it as markup,
+    * and bare elsewhere.
     */
-  def write(t: Text[Nothing], place: Place): String = {
+  def write(t: Text[Nothing], place: Place, markup: Char -> Boolean): String = {
     val heading = place == Place.Heading
     val spans = t.spans
     val out = new StringBuilder
+    // Where in `out` an escape `markup` asked for was written, each a candidate to drop.
+    val escapes = Vector.newBuilder[Int]
     // The marks open around the text so far, innermost first, each with its closer.
     var open = List.empty[(Mark, String)]
     def extent(i: Int, m: Mark): Int = spans.drop(i).takeWhile(_.marks(m)).size
@@ -292,16 +295,42 @@ private[markdown] object Inlines {
       }
       val text = if (place == Place.Lines) s.text else s.text.replace('\n', ' ')
       if (s.marks(Mark.Code)) out ++= code(text)
-      else
-        out ++= literal(
+      else {
+        val (written, at) = literal(
           text,
           place != Place.Cell && (out.isEmpty || out.lastOption.contains('\n')),
-          heading
+          heading,
+          if (place == Place.Cell) _ => false else markup
         )
+        escapes ++= at.map(_ + out.length)
+        out ++= written
+      }
     }
     open.foreach((_, closer) => out ++= closer)
-    out.toString
+    bare(out.toString, escapes.result())
   }
+
+  /** What [[parse]] may read as inline markup: [[write]] given it escapes each where it would. */
+  val Markup: Char -> Boolean = "\\`[]<!*_".contains(_)
+
+  /** `written` without each escape at `escapes` (ascending) that [[parse]] reads the same
+    * without, taken from the left. A `\` escaping a `\` at the very end stays: a paragraph's
+    * reader drops a trailing `\` before [[parse]] sees it.
+    */
+  private def bare(written: String, escapes: Vector[Int]): String =
+    if (escapes.isEmpty) written
+    else {
+      val reads = parse(written, open = false)
+      escapes
+        .foldLeft((written, 0)) { case ((text, gone), at) =>
+          val i = at - gone
+          val dropped = text.patch(i, "", 1)
+          val last = i + 2 == text.length && text.charAt(i + 1) == '\\'
+          if (!last && parse(dropped, open = false) == reads) (dropped, gone + 1)
+          else (text, gone)
+        }
+        ._1
+    }
 
   /** A code span reading as `t`: fenced with one more backtick than its longest run, and
     * padded with a space each side where the reader would otherwise trim or extend.
@@ -316,24 +345,31 @@ private[markdown] object Inlines {
 
   /** `s` with each character escaped that would otherwise start a block: at a line's start
     * (`lineStart` for the first) a block marker, `.` or `)` after a line's leading digits, and
-    * `#` in a heading. Inline markers are written bare: nothing parses this text back but a
-    * test, and a reader, person or model, takes `[`, `_` or `*` as they are.
+    * `#` in a heading; and each other character `markup` holds. Also where in the result each
+    * escape of the second kind is, for [[bare]] to drop the ones [[parse]] does not need.
     */
-  private def literal(s: String, lineStart: Boolean, heading: Boolean): String = {
+  private def literal(
+      s: String,
+      lineStart: Boolean,
+      heading: Boolean,
+      markup: Char -> Boolean
+  ): (String, Vector[Int]) = {
     val out = new StringBuilder
+    val asked = Vector.newBuilder[Int]
     var start = lineStart
     var digits = if (lineStart) 0 else -1
     s.indices.foreach { k =>
       val c = s.charAt(k)
-      val escaped =
+      val block =
         (start && "#>-+*~:|=`_<".contains(c)) ||
           (c == '#' && heading) ||
           ((c == '.' || c == ')') && digits > 0)
-      if (escaped) out += '\\'
+      if (block) out += '\\'
+      else if (markup(c)) { asked += out.length; out += '\\' }
       out += c
       start = c == '\n'
       digits = if (c == '\n') 0 else if (c.isDigit && digits >= 0 && digits < 9) digits + 1 else -1
     }
-    out.toString
+    (out.toString, asked.result())
   }
 }

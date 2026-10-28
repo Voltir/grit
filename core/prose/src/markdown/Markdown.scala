@@ -24,12 +24,20 @@ object Markdown {
     * ([[grit.prose.form.Cell.printed]]), a line break as `\` at its line's end (a space in a
     * heading or a cell), a list at any depth. Each span's text is written whole and bare, but
     * for what a block needs escaped: a line's leading block marker, `.` or `)` after a line's
-    * leading digits, `#` in a heading and `|` in a cell. [[parse]] reads back exactly a doc it
-    * made whose text holds no `\`, backtick, bracket, `<`, `!`, `*` or `_`; any other may read
-    * back as another, as may a number column (as words), a marked span starting or ending in a
-    * space, and a span marked strong then one marked emphasis ending inside a word.
+    * leading digits, `#` in a heading and `|` in a cell. Of a doc whose text holds no `\`,
+    * backtick, bracket, `<`, `!`, `*` or `_`, this is [[writeExact]]'s markdown; of any other,
+    * [[parse]] may read back another doc.
     */
-  def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks).mkString("\n")
+  def write(doc: Doc[Nothing]): String = Blocks.write(doc.blocks, _ => false).mkString("\n")
+
+  /** `doc` as markdown for [[parse]] to read back, as [[write]] writes it but for a `\`,
+    * backtick, bracket, `<`, `!`, `*` or `_` in text, escaped where [[parse]] would otherwise
+    * read it as markup and bare elsewhere. [[parse]] reads back exactly a doc it made, but for
+    * a number column (as words), a marked span starting or ending in a space, and a span
+    * marked strong then one marked emphasis ending inside a word.
+    */
+  def writeExact(doc: Doc[Nothing]): String =
+    Blocks.write(doc.blocks, Inlines.Markup).mkString("\n")
 
   /** `text` split into lines, carriage returns dropped. */
   private def lines(text: String): Vector[String] =

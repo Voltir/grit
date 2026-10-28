@@ -96,20 +96,25 @@ private[markdown] object Blocks {
 
   /** `blocks` as markdown lines, any blocks at all, that [[parse]] reads back as `blocks` when
     * it made them: a blank line between blocks, an item's lines under its marker's text, a
-    * quote's behind `> `.
+    * quote's behind `> `; their text as [[Inlines.write]] writes it under `markup`.
     */
-  def write(blocks: Vector[Block[Nothing]]): Vector[String] = blockLines(blocks, inItem = false)
+  def write(blocks: Vector[Block[Nothing]], markup: Char -> Boolean): Vector[String] =
+    blockLines(blocks, inItem = false, markup)
 
   /** `blocks` one under another: a blank line between each pair, except that in an item a
     * list under a paragraph is tight when the parser reads it as nested there.
     */
-  private def blockLines(blocks: Vector[Block[Nothing]], inItem: Boolean): Vector[String] = {
+  private def blockLines(
+      blocks: Vector[Block[Nothing]],
+      inItem: Boolean,
+      markup: Char -> Boolean
+  ): Vector[String] = {
     // Each of a run of lists of one kind under the other marker from the one before it.
     val written = blocks
       .foldLeft((Vector.empty[Vector[String]], Option.empty[(Int, Boolean)])) {
         case ((out, before), b) =>
           val apart = before.exists((kind, was) => kind == b.ordinal && !was)
-          (out :+ write(b, apart), Some((b.ordinal, apart)))
+          (out :+ write(b, apart, markup), Some((b.ordinal, apart)))
       }
       ._1
     written.zipWithIndex.foldLeft(Vector.empty[String]) { case (out, (ls, k)) =>
@@ -129,42 +134,46 @@ private[markdown] object Blocks {
     }
 
   /** `b`'s lines; `apart` writes a list under its other marker (`+`, or `)`). */
-  private def write(b: Block[Nothing], apart: Boolean): Vector[String] = b match {
-    // A line break is a backslash at its line's end (markdown's hard break), which the reader
-    // strips; an empty line is a lone backslash.
-    case Block.Paragraph(t) =>
-      val lines = Inlines.write(t, Inlines.Place.Lines).split("\n", -1).toVector
-      lines.zipWithIndex.map((l, k) => if (k < lines.length - 1 || l.isEmpty) l + "\\" else l)
-    case Block.Heading(level, t) =>
-      val text = Inlines.write(t, Inlines.Place.Heading)
-      Vector("#" * level.value + (if (text.isEmpty) "" else " " + text))
-    case Block.Bullets(items) => items.flatMap(item(if (apart) "+" else "-", _))
-    case Block.Numbered(start, items) =>
-      items.zipWithIndex.flatMap { (i, k) =>
-        val n = if (start.toLong + k <= 999999999L) start + k else start
-        item(s"$n${if (apart) ")" else "."}", i)
-      }
-    case Block.Quote(bs) =>
-      val inner = write(bs)
-      if (inner.isEmpty) Vector(">") else inner.map(l => if (l.isEmpty) ">" else "> " + l)
-    case Block.Code(language, lines) =>
-      val fence =
-        "`" * math.max(3, lines.flatMap(_.split("[^`]+").map(_.length)).maxOption.getOrElse(0) + 1)
-      (fence + language.getOrElse("")) +: lines :+ fence
-    case Block.Table(columns, rows) =>
-      def row(cells: Vector[Text[Nothing]]): String =
-        cells
-          .map(c => Inlines.write(c, Inlines.Place.Cell).replace("|", "\\|"))
-          .mkString("| ", " | ", " |")
-      row(columns.map(_.name)) +: columns.map(_ => "---").mkString("|", "|", "|") +:
-        rows.map(r => row(r.map(_.printed)))
-    // Not `---`, which after an item's marker would read as a rule rather than the item's.
-    case Block.Rule => Vector("***")
-  }
+  private def write(b: Block[Nothing], apart: Boolean, markup: Char -> Boolean): Vector[String] =
+    b match {
+      // A line break is a backslash at its line's end (markdown's hard break), which the reader
+      // strips; an empty line is a lone backslash.
+      case Block.Paragraph(t) =>
+        val lines = Inlines.write(t, Inlines.Place.Lines, markup).split("\n", -1).toVector
+        lines.zipWithIndex.map((l, k) => if (k < lines.length - 1 || l.isEmpty) l + "\\" else l)
+      case Block.Heading(level, t) =>
+        val text = Inlines.write(t, Inlines.Place.Heading, markup)
+        Vector("#" * level.value + (if (text.isEmpty) "" else " " + text))
+      case Block.Bullets(items) => items.flatMap(item(if (apart) "+" else "-", _, markup))
+      case Block.Numbered(start, items) =>
+        items.zipWithIndex.flatMap { (i, k) =>
+          val n = if (start.toLong + k <= 999999999L) start + k else start
+          item(s"$n${if (apart) ")" else "."}", i, markup)
+        }
+      case Block.Quote(bs) =>
+        val inner = write(bs, markup)
+        if (inner.isEmpty) Vector(">") else inner.map(l => if (l.isEmpty) ">" else "> " + l)
+      case Block.Code(language, lines) =>
+        val fence =
+          "`" * math.max(
+            3,
+            lines.flatMap(_.split("[^`]+").map(_.length)).maxOption.getOrElse(0) + 1
+          )
+        (fence + language.getOrElse("")) +: lines :+ fence
+      case Block.Table(columns, rows) =>
+        def row(cells: Vector[Text[Nothing]]): String =
+          cells
+            .map(c => Inlines.write(c, Inlines.Place.Cell, markup).replace("|", "\\|"))
+            .mkString("| ", " | ", " |")
+        row(columns.map(_.name)) +: columns.map(_ => "---").mkString("|", "|", "|") +:
+          rows.map(r => row(r.map(_.printed)))
+      // Not `---`, which after an item's marker would read as a rule rather than the item's.
+      case Block.Rule => Vector("***")
+    }
 
   /** An item under `marker`, its lines after the first indented to the marker's text. */
-  private def item(marker: String, i: Item[Nothing]): Vector[String] = {
-    val body = blockLines(i.blocks, inItem = true)
+  private def item(marker: String, i: Item[Nothing], markup: Char -> Boolean): Vector[String] = {
+    val body = blockLines(i.blocks, inItem = true, markup)
     val indent = " " * (marker.length + 1)
     body.headOption match {
       case None => Vector(marker)

@@ -88,6 +88,13 @@ object ProjectMarkdownTests extends TestSuite {
         read.map(_.artifacts.flatMap(a => Body.cites(a.body))) == Right(Vector(key("b")))
       )
     }
+    test(
+      "a body with brackets and asterisks in plain text shows them bare, and reads back the same"
+    ) {
+      val text = "Tagged [edges, projects]: 2 * 3 is six, snake_case [x] done."
+      val body = right(Body.read(text))
+      assert(Body.markdown(body) == text, Body.read(Body.markdown(body)) == Right(body))
+    }
     test("a parent cycle is refused, naming each artifact in it") {
       val cycle = Vector(
         artifact("a", "A", "x", parent = Some("b")),
