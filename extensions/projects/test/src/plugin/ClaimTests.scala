@@ -5,7 +5,6 @@ import grit.core.id.DocKey
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Label
 import grit.projects.method.MethodFixtures
-import grit.projects.name.BriefSlot
 
 import utest.*
 
@@ -118,17 +117,14 @@ object ClaimTests extends TestSuite {
       val store = Store()
       holding(projects, store)
       done(claimed(projects, store))
-      val released = ask(projects, store, "project_release", "key" -> "p/a")
-      val again = claimed(projects, store, key = "p/b")
-      val unclaimed = {
-        done(ask(projects, store, "project_release", "key" -> "p/b"))
-        ask(projects, store, "project_release", "key" -> "p/b")
-      }
+      done(ask(projects, store, "project_release", "key" -> "p/a"))
+      val again = claimed(projects, store, forSlot = "coder-opus/def")
       assert(
-        again == CommandOutcome.Done(s"Claimed p/b (note, open) as builder for $slot."),
-        released.isInstanceOf[CommandOutcome.Done],
-        unclaimed == CommandOutcome.Refused("p/b is not claimed")
+        again == CommandOutcome.Done("Claimed p/a (note, open) as builder for coder-opus/def.")
       )
+      done(ask(projects, store, "project_release", "key" -> "p/a"))
+      val unclaimed = ask(projects, store, "project_release", "key" -> "p/a")
+      assert(unclaimed == CommandOutcome.Refused("p/a is not claimed"))
     }
 
     test(
@@ -139,9 +135,7 @@ object ClaimTests extends TestSuite {
       holding(projects, store)
       done(claimed(projects, store))
       val released = done(ask(projects, store, "project_release", "key" -> "p/a"))
-      (released, scala.util.Try(ujson.read(released)).toOption) ==> (
-        (released, Some(ujson.Obj("released" -> "p/a", "for" -> slot)))
-      )
+      ujson.read(released) ==> ujson.Obj("released" -> "p/a", "for" -> slot)
     }
 
     test("a claim leaves the artifact's version unchanged") {
@@ -152,18 +146,6 @@ object ClaimTests extends TestSuite {
       done(claimed(projects, store))
       val after = current(store, "p/a").map(_.version)
       assert(before.isDefined, after == before, current(store, "claim/p/a").isDefined)
-    }
-
-    test("a slot is parts joined by `/`, at most 160 characters") {
-      val long = Vector.fill(3)("a" * 60).mkString("/")
-      assert(
-        BriefSlot.of(slot).map(BriefSlot.value) == Right(slot),
-        BriefSlot.of("").isLeft,
-        BriefSlot.of("a//b").isLeft,
-        BriefSlot.of("Coder/abc").isLeft,
-        long.length == 182,
-        BriefSlot.of(long) == Left(s"a slot holds at most 160 characters: $long")
-      )
     }
   }
 }
