@@ -26,20 +26,23 @@ object ProjectMarkdown {
         "version" -> project.pin.version.toString,
         "digest" -> project.pin.digest
       )
-    )) +: project.artifacts.map { a =>
-      val h = a.head
-      s"${h.key.value}.md" -> (front(
-        Vector(
-          "key" -> h.key.value,
-          "kind" -> KindName.value(h.kind),
-          "state" -> StateName.value(h.state),
-          "title" -> quoted(h.title),
-          "parent" -> h.parent.fold("null")(_.value),
-          "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
-          "by" -> h.by.fold("null")(quoted)
-        )
-      ) + "\n" + Body.markdown(a.body) + "\n")
-    }
+    )) +: project.artifacts.map(file)
+
+  /** `artifact`'s file as [[render]] writes it: its path, and its text. */
+  def file(artifact: Artifact): (String, String) = {
+    val h = artifact.head
+    s"${h.key.value}.md" -> (front(
+      Vector(
+        "key" -> h.key.value,
+        "kind" -> KindName.value(h.kind),
+        "state" -> StateName.value(h.state),
+        "title" -> quoted(h.title),
+        "parent" -> h.parent.fold("null")(_.value),
+        "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
+        "by" -> h.by.fold("null")(quoted)
+      )
+    ) + "\n" + Body.markdown(artifact.body) + "\n")
+  }
 
   /** Files as [[render]] writes them, as a project, or every file that is not one, with why: a
     * missing or unreadable [[Index]], a file whose front matter is not [[render]]'s, a file not

@@ -13,7 +13,9 @@ Packages, in one-way order (each names only those before it):
   an id, never a title), and `Pin`, the method version a project holds to.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),
-  `Artifact` and `Project`, which holds no dangling link and no parent cycle. Imports `name`.
+  `Artifact` and `Project`, which holds no dangling link and no parent cycle; and `ArtifactJson`,
+  an artifact and a project's index as ledger documents hold them (`Artifact.of` reads one
+  back). Imports `name`.
 - **`method`**: a methodology as versioned data: `Method` (its kinds, transitions and role
   views, every name declared and every check compiled in), `ArtifactKind`, `Transition`,
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
@@ -21,7 +23,10 @@ Packages, in one-way order (each names only those before it):
   Imports `name` and `artifact`.
 - **`render`**: a project for each consumer: `ProjectMarkdown`, the export (one file per
   artifact, front matter then body) and its reader, held to each other by the round-trip law
-  (`ProjectMarkdownTests`). Imports `name` and `artifact`.
+  (`ProjectMarkdownTests`); and `AnswerText`, what the commands answer, the same for every
+  edge. Imports `name` and `artifact`.
+- **`plugin`**: `Projects`, the plugin, and its commands (ADR 0048): the only writers of its
+  documents, each run in one transaction. Imports every package before it.
 
 No source file sits at the module's root.
 

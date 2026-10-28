@@ -1,0 +1,354 @@
+package grit.projects.plugin
+
+import java.time.Instant
+
+import scala.concurrent.duration.*
+
+import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
+import grit.core.identity.{Principal, TestAccounts}
+import grit.core.need.PluginReads
+import grit.core.plugin.{Answered, InMemoryPlugins, KeepingCommand, ReadingCommand}
+import grit.core.store.Tx
+import grit.core.tool.{ArgsError, ToolName}
+import grit.dbos.sql.TestTx
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.method.{Method, MethodFixtures, TransitionChecks}
+import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
+import grit.projects.render.ProjectMarkdown
+
+import utest.*
+
+object ProjectCommandsTests extends TestSuite {
+
+  import MethodFixtures.{change, note, right, state, transitions, views}
+
+  private val at: Instant = Instant.parse("2026-10-27T12:00:00Z")
+
+  private val person: Principal.Person =
+    TestAccounts.principal(TestAccounts.account("slack:T1/U1")) match {
+      case p: Principal.Person => p
+      case Principal.Grit => throw new java.lang.AssertionError("not a person")
+    }
+
+  /** What every write by [[person]] records as its author. */
+  private val by: String = "slack:T1/U1"
+
+  private val methodName: MethodName = MethodFixtures.method
+
+  private def method(moves: Vector[grit.projects.method.Transition] = transitions): Method =
+    Method
+      .of(methodName, 1, Vector(change, note), moves, views, TransitionChecks.all)
+      .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+
+  private def plugin(m: Method = method()): Projects =
+    Projects
+      .of(Vector(m), methodName)
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** A fresh store, and its projects keeper under `terms`. */
+  private final class Store(terms: DocumentTerms = Projects.Terms) {
+    val documents = new InMemoryDocuments
+    val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
+    def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
+    def count: Int =
+      inTx(keeper.newest(100_000)).fold(e => throw new java.lang.AssertionError(e.toString), _.size)
+  }
+
+  private def inTx[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
+
+  /** The answer to `name` with `args`, read and run as an edge runs a command. */
+  private def ask(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
+  ): Answered =
+    projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
+      case Some(c: KeepingCommand[a]) =>
+        val read = c.spec.args.read(ujson.Obj.from(args))
+        read.fold(
+          e => throw new java.lang.AssertionError(e.message),
+          a =>
+            inTx(c.run(a, person, store.keeper, at))
+              .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        )
+      case Some(c: ReadingCommand[a]) =>
+        val read = c.spec.args.read(ujson.Obj.from(args))
+        read.fold(
+          e => throw new java.lang.AssertionError(e.message),
+          a =>
+            inTx(c.run(a, person, store.reads, at))
+              .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        )
+      case _ => throw new java.lang.AssertionError(s"no command $name")
+    }
+
+  private def done(answer: Answered): String = answer match {
+    case Answered.Done(text) => text
+    case Answered.Refused(why) => throw new java.lang.AssertionError(s"refused: $why")
+  }
+
+  private def started(projects: Projects, store: Store): Unit =
+    done(ask(projects, store, "project_new", "project" -> "p"))
+
+  private def kept(
+      projects: Projects,
+      store: Store,
+      local: String,
+      kind: String,
+      body: String
+  ): Unit =
+    done(
+      ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> s"p/$local",
+        "kind" -> kind,
+        "title" -> s"Title $local",
+        "body" -> body
+      )
+    )
+
+  private def shown(projects: Projects, store: Store, key: String): String =
+    done(ask(projects, store, "project_show", "key" -> key))
+
+  val tests: Tests = Tests {
+
+    test("a move whose check fails is refused naming it, and keeps nothing") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "No reason given.")
+      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      val before = store.count
+      val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
+      assert(answer match {
+        case Answered.Refused(why) => why.contains("sections-present") && why.contains("Why")
+        case Answered.Done(_) => false
+      })
+      assert(store.count == before, shown(projects, store, "p/a").contains("state: building"))
+    }
+
+    test("a move whose checks hold keeps the new state and its mover") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "## Why\n\nBecause.")
+      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done"))
+      val text = shown(projects, store, "p/a")
+      assert(text.contains("state: done"), text.contains(s"by: \"$by\""))
+    }
+
+    test("a move no transition allows is refused, naming the states it may go to") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "Text.")
+      val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
+      assert(
+        answer == Answered.Refused(
+          "p/a (change, proposed) cannot move to done; it may move to building"
+        )
+      )
+    }
+
+    test("a move under a changed method digest is refused") {
+      val store = Store()
+      started(plugin(), store)
+      kept(plugin(), store, "a", "change", "Text.")
+      val changed = plugin(
+        method(transitions :+ MethodFixtures.move(note, "open", "closed", "sections-present"))
+      )
+      val answer = ask(changed, store, "project_move", "key" -> "p/a", "to" -> "building")
+      assert(answer match {
+        case Answered.Refused(why) => why.contains("changed") && why.contains("new version")
+        case Answered.Done(_) => false
+      })
+      assert(shown(changed, store, "p/a").contains("state: proposed"))
+    }
+
+    test("project_keep cannot change a state") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "Text.")
+      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      kept(projects, store, "a", "change", "Other text.")
+      val text = shown(projects, store, "p/a")
+      assert(text.contains("state: building"), text.contains("Other text."))
+      val keep = projects.commands.find(c => ToolName.value(c.spec.name) == "project_keep")
+      val withState = keep.map(
+        _.spec.args.read(
+          ujson.Obj("key" -> "p/a", "title" -> "t", "body" -> "b", "state" -> "done")
+        )
+      )
+      assert(withState.exists(_.left.exists {
+        case ArgsError.Unexpected("state", _) => true
+        case _ => false
+      }))
+    }
+
+    test("a keep naming an artifact the project lacks is refused, keeping nothing") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      val before = store.count
+      val answer = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/a",
+        "kind" -> "note",
+        "title" -> "A",
+        "body" -> "See [b](artifact:p/b)."
+      )
+      assert(answer match {
+        case Answered.Refused(why) => why.contains("p/b")
+        case Answered.Done(_) => false
+      })
+      assert(store.count == before)
+    }
+
+    test("a write past 20,000 documents is refused") {
+      val terms = Projects.Terms
+      assert(
+        terms.bound == 20_000,
+        terms.keepLast == 20,
+        terms.retention == 180.days,
+        terms.full == DocumentTerms.Full.Refuse
+      )
+      val projects = plugin()
+      val small = right(
+        DocumentTerms.of(terms.label, terms.weight, terms.retention, 2, terms.keepLast, terms.full)
+      )
+      val store = Store(small)
+      started(projects, store)
+      kept(projects, store, "a", "note", "Text.")
+      val answer = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/b",
+        "kind" -> "note",
+        "title" -> "B",
+        "body" -> "Text."
+      )
+      assert(answer == Answered.Refused(Projects.full(2)), store.count == 2)
+    }
+
+    test("export pages concatenate to ProjectMarkdown.render's files") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      val locals = Vector.tabulate(25)(i => f"a$i%02d")
+      locals.foreach(l => kept(projects, store, l, "note", s"Text of $l."))
+      val p = right(ProjectKey.of("p"))
+      val m = method()
+      val expected = right(
+        Project.of(
+          p,
+          right(Pin.of(m.name, m.version, m.digest)),
+          locals.map { l =>
+            Artifact(
+              ArtifactHead(
+                right(ArtifactKey.of(p, l)),
+                note.name,
+                state("open"),
+                s"Title $l",
+                None,
+                Vector.empty,
+                Some(by)
+              ),
+              right(Body.read(s"Text of $l."))
+            )
+          }
+        )
+      )
+      def pages(
+          after: Option[String],
+          got: Vector[(String, String)],
+          calls: Int
+      ): (Vector[(String, String)], Int) = {
+        val args = Vector("project" -> ujson.Str("p")) ++ after.map(a => "after" -> ujson.Str(a))
+        val page = ujson.read(done(ask(projects, store, "project_export", args*)))
+        val files = page("files").arr.toVector.map(f => f("path").str -> f("text").str)
+        page("next").strOpt match {
+          case Some(next) => pages(Some(next), got ++ files, calls + 1)
+          case None => (got ++ files, calls + 1)
+        }
+      }
+      val (files, calls) = pages(None, Vector.empty, 0)
+      assert(files == ProjectMarkdown.render(expected).sortBy(_._1), calls == 2)
+    }
+
+    test("project_show answers an artifact as its export file, and refuses a key it lacks") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Text.")
+      val text = shown(projects, store, "p/a")
+      assert(text.startsWith("---\nkey: p/a\nkind: note\nstate: open\n"), text.endsWith("Text.\n"))
+      assert(
+        ask(projects, store, "project_show", "key" -> "p/z") == Answered.Refused(
+          "project p has no artifact p/z"
+        )
+      )
+    }
+
+    test("project_list lists the heads of a kind and a state, by key") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "b", "note", "Text.")
+      kept(projects, store, "a", "note", "Text.")
+      kept(projects, store, "c", "change", "Text.")
+      done(ask(projects, store, "project_move", "key" -> "p/b", "to" -> "closed"))
+      val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
+      assert(open == "p/a (note, open): Title a")
+      val all = done(ask(projects, store, "project_list", "project" -> "p"))
+      assert(
+        all == "p/a (note, open): Title a\np/b (note, closed): Title b\np/c (change, proposed): Title c"
+      )
+    }
+
+    test("project_find finds artifacts by the words of their bodies") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "The cache is cold.")
+      kept(projects, store, "b", "note", "Nothing here.")
+      val found = done(ask(projects, store, "project_find", "query" -> "cache"))
+      assert(found == "p/a (note, open): Title a")
+    }
+
+    test("project_new refuses a project that exists, and a method not declared") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      assert(
+        ask(projects, store, "project_new", "project" -> "p") == Answered.Refused(
+          "project p exists already"
+        )
+      )
+      val unknown = ask(projects, store, "project_new", "project" -> "q", "method" -> "other")
+      assert(unknown == Answered.Refused("no method is named other; the methods here: grit"))
+    }
+
+    test("every command's does line tells a project artifact from a claude.ai Artifact") {
+      val lines = plugin().commands.map(_.spec.does)
+      assert(lines.size == 7, lines.forall(_.contains(Projects.NotClaudeAi)))
+    }
+
+    test("Projects.of refuses a default it lacks, and two methods of one name and version") {
+      val m = method()
+      val other = right(MethodName.of("other"))
+      assert(Projects.of(Vector(m), other) == Left(ProjectsRefusal.NoDefault(other)))
+      assert(
+        Projects.of(Vector(m, method(transitions.take(1) ++ transitions.drop(1))), methodName) ==
+          Left(ProjectsRefusal.Twice(methodName, 1))
+      )
+    }
+  }
+}

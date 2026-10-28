@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets
 
 import grit.core.document.{DocRef, DocText, Document}
 import grit.core.id.DocKey
-import grit.projects.name.{ArtifactKey, KindName, ProjectKey, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
 /** An artifact as the projects plugin's document holds it. */
 object ArtifactJson {
@@ -26,7 +26,7 @@ object ArtifactJson {
     val data = ujson.Obj(HeadField -> head(h), BodyField -> body)
     val headBytes = bytes(data) - bytes(body)
     val named = Vector(
-      "project" -> ProjectKey.value(h.key.project),
+      HoldingKind -> ProjectKey.value(h.key.project),
       "kind" -> KindName.value(h.kind),
       "state" -> StateName.value(h.state)
     ) ++ h.parent.map("parent" -> _.value) ++
@@ -41,6 +41,51 @@ object ArtifactJson {
         text <- DocText.of(s"${h.title}\n\n${Body.searchText(artifact.body)}")
       } yield (text, data, refs.toSet)
   }
+
+  /** The ref every artifact of `project` holds, or why not (see [[DocRef.of]]). */
+  def holding(project: ProjectKey): Either[String, DocRef] =
+    DocRef.of(HoldingKind, ProjectKey.value(project))
+
+  /** The ref `project`'s index holds, or why not (see [[DocRef.of]]). */
+  def indexing(project: ProjectKey): Either[String, DocRef] =
+    DocRef.of("pinned", ProjectKey.value(project))
+
+  /** `project`'s index as its document holds it, or why not: under the project's key, which no
+    * artifact's is; text naming the project and its method; its pin's method, version and
+    * digest, and `by`, as data; and the one ref [[indexing]] gives.
+    */
+  def index(
+      project: ProjectKey,
+      pin: Pin,
+      by: String
+  ): Either[String, (DocKey, DocText, ujson.Value, Set[DocRef])] = {
+    val method = MethodName.value(pin.method)
+    for {
+      key <- DocKey.of(ProjectKey.value(project))
+      text <- DocText.of(
+        s"project ${ProjectKey.value(project)}, method $method version ${pin.version}"
+      )
+      ref <- indexing(project)
+    } yield (
+      key,
+      text,
+      ujson.Obj("method" -> method, "version" -> pin.version, "digest" -> pin.digest, "by" -> by),
+      Set(ref)
+    )
+  }
+
+  /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
+  def pinOf(document: Document): Either[String, Pin] =
+    document.data.objOpt
+      .flatMap { d =>
+        for {
+          method <- d.get("method").flatMap(_.strOpt)
+          version <- d.get("version").flatMap(_.numOpt).filter(_.isWhole)
+          digest <- d.get("digest").flatMap(_.strOpt)
+        } yield (method, version.toInt, digest)
+      }
+      .toRight("its index holds no method, version and digest")
+      .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.of(_, v, d)))
 
   /** `document` as [[write]] wrote it, as an artifact, or why not. */
   private[artifact] def read(document: Document): Either[String, Artifact] =
@@ -71,6 +116,7 @@ object ArtifactJson {
       body <- Body.fromStored(stored)
     } yield Artifact(ArtifactHead(key, kind, state, title, parent, cites, by), body)
 
+  private val HoldingKind: String = "project"
   private val HeadField: String = "head"
   private val BodyField: String = "body"
 

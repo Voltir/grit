@@ -42,6 +42,14 @@ Decision:
   them together: read after render keeps every head and link, and after one pass is a fixed
   point (markdown normalises once).
 
+- **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
+  artifact, under its key, its head and stored body as data and refs naming its project, kind,
+  state, parent and cites; and an index under the project's key holding its pin. Only the
+  plugin's commands write them (ADR 0048), each in one transaction and recording its writer. A
+  keep never changes a state; a move runs its transition's checks over the heads and its
+  action, and is refused once the pinned method's digest has changed: a changed method is
+  declared as a new version. Past the bound a write is refused, never a document withdrawn.
+
 Consequences:
 
 - A team changes its method by declaring a new version, not by releasing grit; a project keeps
