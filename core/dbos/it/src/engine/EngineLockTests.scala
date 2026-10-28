@@ -13,13 +13,15 @@ import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
+  Pool,
   SqlConversationStore,
   SqlEntryStore,
   SqlPeriodStore,
+  SqlStatements,
   TestPostgres
 }
 
@@ -176,6 +178,28 @@ object EngineLockTests extends TestSuite {
         two.foreach(_.close())
         assert(two.isRight)
       } finally one.close()
+    }
+
+    test(
+      "an engine keeps its lock on a session of its own, outside its pool, across more transactions than the pool has sessions and a sweep"
+    ) {
+      val config = fresh("lock_pool")
+      val held = engine(config)
+      try {
+        Vector.fill(5 * Pool.Size)(held.db.read(Subject.Public)(SqlStatements.now).isRight) ==>
+          Vector.fill(5 * Pool.Size)(true)
+        assert(held.sweep(java.time.Instant.now()).isRight)
+        read(
+          config,
+          """SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+            | WHERE l.locktype = 'advisory' AND l.granted""".stripMargin
+        ) ==> Some("PostgreSQL JDBC Driver")
+        EngineLock.take(config).left.map {
+          case NotTaken.Held(holder) => holder.map(_.pid)
+          case other => other
+        } ==> Left(Some(4242L))
+      } finally held.close()
+      assert(free(config))
     }
 
     test("a holder's heartbeat advances") {
