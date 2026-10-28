@@ -19,11 +19,15 @@ object SubjectTests extends TestSuite {
 
   val tests: Tests = Tests {
 
-    test("Subject.Person(Principal.Grit, room) does not compile") {
+    test("Subject.Person takes a person; Subject.Person(Principal.Grit, room) does not compile") {
       val errors = typeCheckErrors(
         "grit.core.visibility.Subject.Person(grit.core.identity.Principal.Grit, grit.core.place.Place.Everywhere)"
       )
-      assert(asked != Subject.Public)
+      val person = asked match {
+        case Subject.Person(p, _) => Some(p.id)
+        case _ => None
+      }
+      assert(person == Some(PrincipalId.Local))
       assert(errors.exists(_.message.contains("Principal.Person")))
     }
   }
