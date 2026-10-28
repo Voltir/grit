@@ -26,7 +26,8 @@ object Body {
   val StoredMost: Int = Document.DataMost - 4096
 
   /** `markdown` as a body, a link to `artifact:<key>` its reference to that artifact, or why
-    * not: blank, a reference that is no artifact's key, or a stored form over [[StoredMost]].
+    * not: blank or holding no block, a reference that is no artifact's key, or a stored form
+    * over [[StoredMost]].
     */
   def read(markdown: String): Either[String, Body] =
     if (markdown.isBlank) Left("a body is blank")
@@ -37,14 +38,20 @@ object Body {
       }
       if (bad.nonEmpty) Left(s"a reference is no artifact's key: ${bad.mkString(", ")}")
       else {
-        val body: Body = parsed.mapSpans { s =>
+        checked(parsed.mapSpans { s =>
           val keys = referred(s).flatMap(r => ArtifactKey.read(r.href).toOption)
           Span(s.text, s.marks.filter(m => !isReference(m)), keys)
-        }
-        val size = ujson.write(stored(body)).getBytes(StandardCharsets.UTF_8).length
-        if (size > StoredMost) Left(s"a body's stored form is $size bytes, over $StoredMost")
-        else Right(body)
+        })
       }
+    }
+
+  /** `doc` as a body, or why not: it holds no block, or its stored form is over [[StoredMost]]. */
+  private def checked(doc: Doc[ArtifactKey]): Either[String, Body] =
+    if (doc.blocks.isEmpty) Left("a body is empty")
+    else {
+      val size = ujson.write(stored(doc)).getBytes(StandardCharsets.UTF_8).length
+      if (size > StoredMost) Left(s"a body's stored form is $size bytes, over $StoredMost")
+      else Right(doc)
     }
 
   /** As markdown, each reference a link to `artifact:<key>`, and outside code each character
@@ -76,16 +83,19 @@ object Body {
   def stored(b: Body): ujson.Value = ProseJson.write(b, k => ujson.Str(k.value))
 
   /** What [[stored]] wrote, as the body, or why not: a stored form [[ProseJson.read]] refuses
-    * (another version among them), or a reference that is no artifact's key.
+    * (another version among them), a reference that is no artifact's key, no block, or a
+    * stored form over [[StoredMost]].
     */
   def fromStored(json: ujson.Value): Either[String, Body] =
-    ProseJson.read(
-      json,
-      {
-        case ujson.Str(s) => ArtifactKey.read(s)
-        case other => Left(s"a reference is not a key: $other")
-      }
-    )
+    ProseJson
+      .read(
+        json,
+        {
+          case ujson.Str(s) => ArtifactKey.read(s)
+          case other => Left(s"a reference is not a key: $other")
+        }
+      )
+      .flatMap(checked)
 
   /** A link's target where the link refers to an artifact. */
   private final case class Referred(href: String) extends caps.Pure
