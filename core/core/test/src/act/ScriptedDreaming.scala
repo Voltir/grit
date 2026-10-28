@@ -89,7 +89,7 @@ final class ScriptedDreaming(
       docs.filter((d, _) => readable.contains(d.plugin))
     )
     read match {
-      case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
+      case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(e.described)))
       case Right((None, _)) => making(name, MoveKind.Ask, limits.asks)(Right(None))
       case Right((Some(strands), docs)) =>
         val believed = (strands.map(_.integrity) ++ docs.map(_._1.integrity))
@@ -117,7 +117,7 @@ final class ScriptedDreaming(
       again: Option[Declassifying.Again]
   ): Either[MoveError, Tainted[Declassifying.Rewritten]] =
     shown(source, revision, applied) match {
-      case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(described(e))))
+      case Left(e) => making(name, MoveKind.Ask, limits.asks)(Left(MoveError.Store(e.described)))
       case Right(Left(why)) =>
         making(name, MoveKind.Ask, limits.asks)(
           Right(TestTainted.at(Declassifying.Rewritten.Unapplied(why), integrity))
@@ -175,7 +175,7 @@ final class ScriptedDreaming(
   ): Either[MoveError, Either[Declassifying.Unbenched, Tainted[Declassifying.Examined]]] =
     Declassifying.exhibit(documents.keeper(plugin, terms), policy, at)(using opened) match {
       case Left(e) =>
-        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
+        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(e.described)))
       case Right(Left(why)) => making(name, MoveKind.Judge, limits.judgments)(Right(Left(why)))
       case Right(Right(Declassifying.Exhibit(screening, None))) =>
         making(name, MoveKind.Judge, limits.judgments)(
@@ -202,7 +202,7 @@ final class ScriptedDreaming(
   ): Either[MoveError, Either[Declassifying.Unread, S]] =
     shown(source, revision, applied) match {
       case Left(e) =>
-        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(described(e))))
+        making(name, MoveKind.Judge, limits.judgments)(Left(MoveError.Store(e.described)))
       case Right(Left(why)) =>
         making(name, MoveKind.Judge, limits.judgments)(Right(Left(why)))
       case Right(Right(shown)) =>

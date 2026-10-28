@@ -183,7 +183,7 @@ object Judging {
   /** Whether `budget`'s daily cap admits an ask for `subject` now; `Left`, why not. */
   private def admitted(env: MovesEnv^, budget: Budget, subject: Subject): Either[String, Unit] =
     Act.admission(env.records, env.db, env.clock, Allowance.Daily(budget), subject) match {
-      case Left(e) => Left(s"the day's spend is unread: ${Act.describe(e)}")
+      case Left(e) => Left(s"the day's spend is unread: ${e.described}")
       case Right((false, _, _)) => Left(Act.Capped)
       case Right((true, _, _)) => Right(())
     }

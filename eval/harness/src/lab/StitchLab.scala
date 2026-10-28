@@ -299,10 +299,5 @@ object StitchLab {
     } yield next
   }
 
-  private def said(e: StoreError): String = e match {
-    case StoreError.DuplicateId(id) => s"duplicate id ${EntryId.value(id)}"
-    case StoreError.DatabaseError(cause) => s"database error: $cause"
-    case StoreError.Invalid(cause) => s"invalid: $cause"
-    case StoreError.Full(bound) => s"full at $bound"
-  }
+  private def said(e: StoreError): String = s"${e.kind}: ${e.described}"
 }

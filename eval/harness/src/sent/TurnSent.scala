@@ -107,11 +107,11 @@ object TurnSent {
   def read(reader: Reader^, workflow: WorkflowId): Either[String, TurnSent] = {
     val id = WorkflowId.value(workflow)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.all.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $id unread: ${e.kind}")
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$id is not a turn's workflow id")
       recorded <- reader.workflow(workflow).toRight(s"DBOS does not know $id")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $id unread: ${Capture.kind(e)}")
+      steps <- reader.steps(workflow).left.map(e => s"steps of $id unread: ${e.kind}")
       offered <- TurnRecord.offer(steps).flatMap(_.toRight(s"$id recorded no offer"))
       conversation <- read("conversation")(reader.conversations.get(turn.conversationId))
         .flatMap(_.toRight(s"the conversation of $id is gone"))
@@ -139,7 +139,7 @@ object TurnSent {
           )
         )
         .left
-        .map(e => s"requests of $id unread: ${Capture.kind(e)}")
+        .map(e => s"requests of $id unread: ${e.kind}")
         .flatten
       rows <- read("ledger")(reader.ledger.of(workflow))
       opening <- read("conversation's first entry")(

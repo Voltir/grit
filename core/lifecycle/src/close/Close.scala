@@ -218,7 +218,7 @@ object Close {
           )
         )
       }
-      .fold(e => Judging.Pose.Made((Asked.Every, Some(s"gate unread: ${describe(e)}"))), identity)
+      .fold(e => Judging.Pose.Made((Asked.Every, Some(s"gate unread: ${e.described}"))), identity)
 
   /** The `check` step. */
   private def check(records: CloseRecords, attempt: CloseRef)(using
@@ -267,7 +267,7 @@ object Close {
         else Checked.Abandoned(s"its deadline moved to ${current.due}")
       case (Some(_), None) => Checked.Closed
       case (None, _) => Checked.Abandoned("no such period")
-    }).left.map(describe)
+    }).left.map(_.described)
 
   /** The entries of the attempt's period, from its turn `first` to its last. */
   private def own(
@@ -279,7 +279,7 @@ object Close {
     PeriodTranscript
       .entries(reads, env.records.entries, attempt.period, first, attempt.last)
       .left
-      .map(describe)
+      .map(_.described)
 
   /** What the period's windows showed from other conversations
     * ([[PeriodTranscript.elsewhere]]); none when unread.
@@ -290,7 +290,7 @@ object Close {
       entries: Either[String, Vector[Entry]]
   ): Vector[String] =
     entries
-      .flatMap(PeriodTranscript.elsewhere(reads, env.records.entries, _).left.map(describe))
+      .flatMap(PeriodTranscript.elsewhere(reads, env.records.entries, _).left.map(_.described))
       .getOrElse(Vector.empty)
 
   /** The period as one transcript ([[PeriodTranscript.of]]); empty when unread. */
@@ -350,7 +350,7 @@ object Close {
           known,
           cap,
           reason,
-          Left(describe(e)),
+          Left(e.described),
           reads(env, attempt)
         )
     }
@@ -522,7 +522,7 @@ object Close {
             case Sealed.Closed(_) => tombstones(records.tombstones, attempt.period, now)
             case Sealed.Abandoned => Right(())
           }
-        } yield outcome).left.map(describe)
+        } yield outcome).left.map(_.described)
     }
 
   /** What a seal of `period` at `now` marks for deletion: its raw entries, the closing of the
@@ -542,11 +542,4 @@ object Close {
       _ <- tombstones.write(Target.Quiet(period), now)
     } yield ()
 
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

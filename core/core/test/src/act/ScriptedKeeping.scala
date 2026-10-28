@@ -15,7 +15,7 @@ import grit.core.files.{
   Understood
 }
 import grit.core.flow.{Tainted, Trusted}
-import grit.core.id.{EntryId, FileHandle, PluginName}
+import grit.core.id.{FileHandle, PluginName}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.provider.ModelRequest
@@ -76,7 +76,7 @@ class ScriptedKeeping(
         documents.savepoints
           .atomic(body(Trusted.asIs(from).extract, kept, at))
           .left
-          .map(e => MoveError.Store(described(e)))
+          .map(e => MoveError.Store(e.described))
       }
     }
 
@@ -106,7 +106,7 @@ class ScriptedKeeping(
               at
             )
         }
-        done.left.map(e => MoveError.Store(described(e)))
+        done.left.map(e => MoveError.Store(e.described))
       }
     }
 
@@ -124,12 +124,4 @@ class ScriptedKeeping(
   /** A transaction of a run at `floor`, its rooms labelled as `rooms` records them. */
   protected def opened: Tx = TestTx.fake(Clearance.of(floor), Visibility.Shipped, rooms)
 
-  /** A store's failure, in the durable moves' words. */
-  protected def described(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

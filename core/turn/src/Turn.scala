@@ -10,7 +10,7 @@ import grit.core.store.{Db, ModelProfileStore, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
 import grit.core.visibility.{Classification, Label}
 
-import TurnFailure.{describe, reason}
+import TurnFailure.reason
 import TurnLoop.Round
 import TurnShown.{asked, gatedOffer, loopShape, offered, requestOf, shown, stubsAt}
 
@@ -333,7 +333,7 @@ object Turn {
     def needed[A](name: String)(using Journaled[Either[TurnFailure, A]]): Either[String, A] =
       recorded[A](name).flatMap(_.toRight(s"$workflow recorded no $name step"))
     def kept[A](what: String, read: Either[StoreError, A]): Either[String, A] =
-      read.left.map(e => s"$what of $workflow unread: ${describe(e)}")
+      read.left.map(e => s"$what of $workflow unread: ${e.described}")
     for {
       // The rounds asked, as each model call's input shows them, in order.
       rounds <- Flows

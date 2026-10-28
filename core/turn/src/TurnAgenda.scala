@@ -145,7 +145,7 @@ object TurnAgenda {
           None,
           Vector.empty,
           None,
-          Some(s"store: ${TurnFailure.describe(error)}")
+          Some(s"store: ${error.described}")
         )
       case Right((routed, all)) => place(classifier.asking(routed), estimator, turn, all)
     }

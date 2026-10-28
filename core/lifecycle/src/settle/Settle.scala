@@ -3,10 +3,10 @@ package grit.lifecycle.settle
 import grit.act.moves.Judging
 import grit.core.act.MoveName
 import grit.core.durable.{Durable, Flow, Flows, Step, StepName}
-import grit.core.id.{EntryId, SettleRef, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{SettleRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
 import grit.core.route.Routed
-import grit.core.store.{Speakers, StoreError, Tx}
+import grit.core.store.{Speakers, Tx}
 import grit.core.visibility.Subject
 import grit.lifecycle.transcript.PeriodTranscript
 
@@ -71,7 +71,7 @@ object Settle {
     )(env =>
       j => {
         val verdict = Verdict(env.clock.now(), j.ref.last, j.judgement)
-        env.records.periods.judged(j.ref.period, verdict).left.map(describe)
+        env.records.periods.judged(j.ref.period, verdict).left.map(_.described)
       }
     )
 
@@ -117,7 +117,7 @@ object Settle {
         )
         entries match {
           case Left(error) =>
-            Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${describe(error)}"))
+            Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${error.described}"))
           case Right(own) =>
             // Unread names are no names: each line is then its role's.
             val names = PeriodTranscript
@@ -131,7 +131,7 @@ object Settle {
         }
       }
       .fold(
-        error => Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${describe(error)}")),
+        error => Judging.Pose.Made(Judgement.Unanswered(s"transcript unread: ${error.described}")),
         identity
       )
   }
@@ -153,7 +153,7 @@ object Settle {
         else Checked.Asking(p.first)
       case (Some(_), None) => Checked.Abandoned("closed")
       case (None, _) => Checked.Abandoned("no such period")
-    }).left.map(describe)
+    }).left.map(_.described)
 
   private def shown(judgement: Judgement): String = judgement match {
     case Judgement.Weighed(nobody, _, _, model) =>
@@ -161,11 +161,4 @@ object Settle {
     case Judgement.Unanswered(why) => s"unanswered: $why"
   }
 
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

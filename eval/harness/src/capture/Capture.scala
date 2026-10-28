@@ -40,7 +40,7 @@ object Capture {
       reader.principals
     )
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.all.read(body).left.map(e => s"$what unread: ${kind(e)}")
+      reader.all.read(body).left.map(e => s"$what unread: ${e.kind}")
     def originOf(c: ConversationId): Either[String, Option[Origin]] =
       read("conversation")(reader.conversations.get(c)).map(_.map(_.origin))
     def opening(c: ConversationId): Either[String, CaseId] =
@@ -49,7 +49,7 @@ object Capture {
       )
     for {
       tagged <- read("tags")(reader.triage.tagged(Instant.EPOCH, dump.at))
-      starts <- reader.starts().left.map(e => s"engine starts unread: ${kind(e)}")
+      starts <- reader.starts().left.map(e => s"engine starts unread: ${e.kind}")
       settings <- read("settings")(reader.lifecycle.current())
       placed <- traverse(tagged)(t =>
         read("placement")(reader.stitches.placed(t.entry)).map(t -> _)
@@ -198,11 +198,4 @@ object Capture {
       }
     }
 
-  /** `e`'s kind: a store's error can quote what it was given, so its words are never kept. */
-  private[harness] def kind(e: StoreError): String = e match {
-    case StoreError.DuplicateId(_) => "duplicate id"
-    case StoreError.DatabaseError(_) => "database error"
-    case StoreError.Invalid(_) => "invalid"
-    case StoreError.Full(_) => "full"
-  }
 }

@@ -156,7 +156,7 @@ object Refound {
     val name = WorkflowId.value(workflow)
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
+      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${e.kind}")
       searched <- TurnRecord
         .retrieval(steps)
         .left
@@ -171,7 +171,7 @@ object Refound {
             kept <- reader.all
               .read(reader.documents.read(versions.distinct))
               .left
-              .map((e: StoreError) => s"the documents $name followed unread: ${Capture.kind(e)}")
+              .map((e: StoreError) => s"the documents $name followed unread: ${e.kind}")
             // `shipped` reads through an `AsOf`; at the dump it hides nothing, as a restored
             // capture is never written after it. Its documents are read at the dump, not at the
             // turn's root, where the shipped assembler draws them: the index as it is now.
@@ -180,7 +180,7 @@ object Refound {
               .search(AssemblyRequest(turn, Width.Deployed), r.written)(using every(reader))
               .left
               .map { case AssemblyError.Store(e) =>
-                s"the search of $name was not run again: ${Capture.kind(e)}"
+                s"the search of $name was not run again: ${e.kind}"
               }
           } yield Some(rank(r.results, results, versions, kept, current))
         case _ => Right(None)

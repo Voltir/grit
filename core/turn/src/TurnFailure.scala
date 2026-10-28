@@ -1,7 +1,6 @@
 package grit.turn
 
 import grit.act.phase.Faults
-import grit.core.id.EntryId
 import grit.core.route
 import grit.core.store.StoreError
 import grit.core.visibility.Label
@@ -34,17 +33,10 @@ object TurnFailure {
   /** A phase's store failure, as a turn's steps record it: [[TurnFailure.Store]]. */
   given Faults[TurnFailure] = reason => TurnFailure.Store(reason)
 
-  /** `error`, as a turn's steps record it: [[TurnFailure.Store]] saying [[describe]]. */
-  private[turn] def ofStore(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))
-
-  /** What `error` says. */
-  private[turn] def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
+  /** `error`, as a turn's steps record it: [[TurnFailure.Store]] saying
+    * [[StoreError.described]].
+    */
+  private[turn] def ofStore(error: StoreError): TurnFailure = TurnFailure.Store(error.described)
 
   /** What `failure` says. */
   private[turn] def reason(failure: TurnFailure): String = failure match {

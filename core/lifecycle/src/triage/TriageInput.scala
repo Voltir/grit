@@ -8,7 +8,7 @@ import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.recipe.{Pool, RoomReads, Section}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand, Tuning}
-import grit.core.store.{Conversation, Entry, Focus, Payload, Position, Reads, Speakers, StoreError}
+import grit.core.store.{Conversation, Entry, Focus, Payload, Position, Reads, Speakers}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** How triage's question is built from the store. */
@@ -43,7 +43,7 @@ object TriageInput {
       all <- db
         .read(reads.entries.list(turn.conversationId))
         .left
-        .map(e => s"thread unread: ${describe(e)}")
+        .map(e => s"thread unread: ${e.described}")
       heard <- all
         .collectFirst {
           case e @ Entry(_, _, seq, _, _, Payload.Heard(_) | Payload.Message(Message.User(_)), _, _)
@@ -64,7 +64,7 @@ object TriageInput {
           )
         }
         .left
-        .map(e => s"strand unread: ${describe(e)}")
+        .map(e => s"strand unread: ${e.described}")
       Along.Read(conversation, strand) = read
       position =
         if (all.minByOption(_.seq).exists(_.id == heard.id)) Position.Opening else Position.Reply
@@ -165,7 +165,7 @@ object TriageInput {
             before
           )
         ).left
-          .map(e => s"pool unread: ${describe(e)}")
+          .map(e => s"pool unread: ${e.described}")
       case _ => Right(VectorMap.empty)
     }
 
@@ -186,12 +186,4 @@ object TriageInput {
       s"no heard message at turn ${TurnSeq.value(turn.turnSeq)}"
     )
 
-  /** `error` in the words triage's journal keeps. */
-  private[triage] def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

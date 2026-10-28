@@ -3,7 +3,7 @@ package grit.eval.harness.jev
 import grit.core.classify.{Classifier, Request}
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
-import grit.core.store.{Focus, StoreError}
+import grit.core.store.Focus
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
@@ -117,7 +117,7 @@ object Inputs {
               under
             )
             .left
-            .map(e => s"${c.id.written}: stitch unread: ${kind(e)}")
+            .map(e => s"${c.id.written}: stitch unread: ${e.kind}")
     } yield {
       val read =
         TriageInput
@@ -144,10 +144,4 @@ object Inputs {
     }
   }
 
-  private def kind(e: StoreError): String = e match {
-    case StoreError.DuplicateId(_) => "duplicate id"
-    case StoreError.DatabaseError(_) => "database error"
-    case StoreError.Invalid(_) => "invalid"
-    case StoreError.Full(_) => "full"
-  }
 }

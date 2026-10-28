@@ -109,7 +109,7 @@ object Rebuild {
 
   private def unbuilt(turn: TurnRef)(e: AssemblyError): String = e match {
     case AssemblyError.Store(e) =>
-      s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${Capture.kind(e)}"
+      s"the window of ${WorkflowId.value(turn.workflowId)} was not rebuilt: ${e.kind}"
   }
 
   /** What a read for `turn` through `db` was routed for (ADR 0031): whom a query written from
@@ -119,9 +119,7 @@ object Rebuild {
   def routed(db: Db^, turn: TurnRef): Either[String, Routed] =
     db.read(Subject.Turn(turn))(Right(Routed.of))
       .left
-      .map(e =>
-        s"the routing of ${WorkflowId.value(turn.workflowId)} was not read: ${Capture.kind(e)}"
-      )
+      .map(e => s"the routing of ${WorkflowId.value(turn.workflowId)} was not read: ${e.kind}")
 
   /** The window of the turn `workflow` recorded, rebuilt by the shipped assembler over
     * `reader`'s database as it stood when the turn's `assemble` step started. A turn that
@@ -142,7 +140,7 @@ object Rebuild {
   ): Either[String, RebuiltWindow] = {
     val name = WorkflowId.value(workflow)
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.all.read(body).left.map(e => s"$what of $name unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $name unread: ${e.kind}")
     for {
       begun <- this.begun(reader, workflow)
       Begun(turn, steps, at, query) = begun
@@ -224,7 +222,7 @@ object Rebuild {
     val name = WorkflowId.value(workflow)
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
+      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${e.kind}")
       at <- steps
         .find(_.name == Turn.Step.Assemble)
         .toRight(s"$name recorded no assemble step")
@@ -232,7 +230,7 @@ object Rebuild {
       query <- reader.all
         .read(reader.entries.get(Turn.queryId(turn, 0)))
         .left
-        .map(e => s"query of $name unread: ${Capture.kind(e)}")
+        .map(e => s"query of $name unread: ${e.kind}")
         .map(
           _.flatMap(e =>
             e.payload match {

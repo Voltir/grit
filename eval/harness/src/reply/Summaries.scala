@@ -24,31 +24,30 @@ object Summaries {
     * summary step is left out. `Left` naming what could not be read, never a message's text.
     */
   def of(reader: Reader^, until: Instant, first: Int): Either[String, Vector[Summarised]] =
-    reader.turns(until).left.map(e => s"turn workflows unread: ${Capture.kind(e)}").flatMap {
-      workflows =>
-        workflows.foldLeft[Either[String, Vector[Summarised]]](Right(Vector.empty)) {
-          case (Right(done), (w, _)) if done.size < first =>
-            one(reader, w).map(done ++ _)
-          case (other, _) => other
-        }
+    reader.turns(until).left.map(e => s"turn workflows unread: ${e.kind}").flatMap { workflows =>
+      workflows.foldLeft[Either[String, Vector[Summarised]]](Right(Vector.empty)) {
+        case (Right(done), (w, _)) if done.size < first =>
+          one(reader, w).map(done ++ _)
+        case (other, _) => other
+      }
     }
 
   private def one(reader: Reader^, workflow: WorkflowId): Either[String, Option[Summarised]] = {
     val name = WorkflowId.value(workflow)
     TurnRef.fromWorkflowId(workflow).fold(Right(None)) { turn =>
       for {
-        steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
+        steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${e.kind}")
         kept <- reader.all
           .read(reader.entries.get(TurnSummary.id(turn)))
           .left
-          .map(e => s"summary of $name unread: ${Capture.kind(e)}")
+          .map(e => s"summary of $name unread: ${e.kind}")
         started = steps.find(_.name == Turn.Step.Summarise).flatMap(_.started)
         made <- (kept, started) match {
           case (Some(entry), Some(at)) =>
             reader.all
               .read(AsOf(reader, at).entries.list(turn.conversationId))
               .left
-              .map(e => s"entries of $name unread: ${Capture.kind(e)}")
+              .map(e => s"entries of $name unread: ${e.kind}")
               .map(all =>
                 Some(
                   Summarised(

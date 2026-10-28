@@ -3,7 +3,6 @@ package grit.lifecycle.shadow
 import grit.core.durable.Journaled
 import grit.core.durable.Journaled.outcome
 import grit.core.id.EntryId
-import grit.core.store.StoreError
 import grit.core.triage.{Shadowed, ShadowedJson}
 
 /** How the shadow's step outputs are recorded: `{"ok": value}` or `{"failed": reason}`, as
@@ -29,12 +28,4 @@ private[shadow] object ShadowJournal {
   /** A `record` step's output: whether the row was kept. */
   given recorded: Journaled[Either[String, Boolean]] = Journaled.flag
 
-  /** `error` in the words the journal keeps. */
-  def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

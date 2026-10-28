@@ -183,7 +183,7 @@ object Run {
             }
         }
       } yield read
-    }.fold(e => SlotRead.Unreadable(s"the store failed: ${describe(e)}"), identity)
+    }.fold(e => SlotRead.Unreadable(s"the store failed: ${e.described}"), identity)
 
   private def reply(
       records: RunRecords,
@@ -223,7 +223,7 @@ object Run {
             }
         }
       }
-      .fold(e => RunEnd.Failed(describe(e)), identity)
+      .fold(e => RunEnd.Failed(e.described), identity)
 
   /** What a run's `reply` step does unless its reply is kept already: write the job's reply, or
     * nothing under another version or with the job gone. Decided before the step, from what
@@ -313,11 +313,4 @@ object Run {
     case _ => ""
   }
 
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

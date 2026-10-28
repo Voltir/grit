@@ -88,7 +88,7 @@ private[triage] object Speak {
         case _ => Right(None)
       }
     } yield decided).left
-      .map(describe)
+      .map(_.described)
       .flatMap(
         _.toRight(s"${WorkflowId.value(turn.workflowId)}: the message or its conversation is gone")
       )
@@ -188,11 +188,4 @@ private[triage] object Speak {
         )
       )
 
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

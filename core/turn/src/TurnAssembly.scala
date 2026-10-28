@@ -185,7 +185,7 @@ private[turn] object TurnAssembly {
   private def request(p: Placed): AssemblyRequest = AssemblyRequest(p.turn, p.at.offer.width)
 
   private def failed(error: AssemblyError): TurnFailure = error match {
-    case AssemblyError.Store(e) => TurnFailure.Assembly(TurnFailure.describe(e))
+    case AssemblyError.Store(e) => TurnFailure.Assembly(e.described)
   }
 
   /** The `ask:needs` body: asked of the turn's classifier, cleared for what was read, about its
@@ -231,7 +231,7 @@ private[turn] object TurnAssembly {
                     )
                   )
                 } match {
-                  case Left(e) => unjudged(TurnFailure.describe(e))
+                  case Left(e) => unjudged(e.described)
                   case Right(state) =>
                     Pose.asking[TurnNeeds.State, Probability, Verdict](
                       env.classifier,
@@ -241,7 +241,7 @@ private[turn] object TurnAssembly {
                     )((answered, _) => Verdict.read(answered.map(_.value), TurnNeeds.Pass))
                 }
               }
-              .fold(e => unjudged(TurnFailure.describe(e)), identity)
+              .fold(e => unjudged(e.described), identity)
         }
     }
   }
@@ -342,7 +342,7 @@ private[turn] object TurnAssembly {
                   }
               }
             }
-            .fold(e => unjudged(TurnFailure.describe(e)), identity)
+            .fold(e => unjudged(e.described), identity)
       }
   }
 

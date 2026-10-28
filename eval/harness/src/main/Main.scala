@@ -436,7 +436,7 @@ object Main {
           current <- reader.all
             .read(reader.current())
             .left
-            .map(e => s"the current documents unread: ${Capture.kind(e)}")
+            .map(e => s"the current documents unread: ${e.kind}")
             .map(Refound.Current.of)
         } yield workflows
           .filter(_._2.created.isBefore(until))
@@ -590,7 +590,7 @@ object Main {
       counted <- opened(config) { reader =>
         val now = clock.now()
         def unread(what: String)(e: grit.core.store.StoreError) =
-          s"$what unread: ${Capture.kind(e)}"
+          s"$what unread: ${e.kind}"
         for {
           workflows <- reader.turns(manifest.dump.at).left.map(unread("turn workflows"))
           windows = workflows.map((w, _) =>
@@ -1177,7 +1177,7 @@ object Main {
         .read(reader.toolSets.get(o.drawn))
         .map(_.tools)
         .left
-        .map(e => s"tool set of ${WorkflowId.value(t.workflow)} unread: ${Capture.kind(e)}")
+        .map(e => s"tool set of ${WorkflowId.value(t.workflow)} unread: ${e.kind}")
     )
 
   /** The turns of the capture in `dir`, from `turns.jsonl`. */

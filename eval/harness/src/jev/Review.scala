@@ -78,7 +78,7 @@ object Review {
       reader.principals
     )
     val under = c.tuning.getOrElse(tuning)
-    def unread(what: String)(e: StoreError): String = s"${c.id.written}: $what unread: ${kind(e)}"
+    def unread(what: String)(e: StoreError): String = s"${c.id.written}: $what unread: ${e.kind}"
     for {
       ref <- TriageRef
         .fromWorkflowId(c.triage.workflow)
@@ -125,10 +125,4 @@ object Review {
     }
   }
 
-  private def kind(e: StoreError): String = e match {
-    case StoreError.DuplicateId(_) => "duplicate id"
-    case StoreError.DatabaseError(_) => "database error"
-    case StoreError.Invalid(_) => "invalid"
-    case StoreError.Full(_) => "full"
-  }
 }

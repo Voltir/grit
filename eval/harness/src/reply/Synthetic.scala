@@ -197,7 +197,7 @@ object Synthetic {
     reader.all
       .read(reader.conversations.find(origin))
       .left
-      .map(e => s"$name: its conversations unread: ${Capture.kind(e)}")
+      .map(e => s"$name: its conversations unread: ${e.kind}")
       .flatMap(
         _.map(_.id).toRight(
           s"$name: ${origin.place.written} is not in the database"

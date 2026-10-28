@@ -47,7 +47,7 @@ object Stitch {
       env: StitchEnv^,
       ref: StitchRef
   ): Judging.Pose[Either[String, Option[(EntryId, Placed)]]]^{env} = {
-    def unread(e: StoreError) = Judging.Pose.Made(Left(s"room unread: ${describe(e)}"))
+    def unread(e: StoreError) = Judging.Pose.Made(Left(s"room unread: ${e.described}"))
     Routed
       .reading(env.db.as(subject(ref))) { (routed, bounded) =>
         Stitching.placing(env.reads, bounded, ref.turn, env.tuning)(
@@ -69,7 +69,9 @@ object Stitch {
     Step.transact[StitchEnv, Made, Either[String, Boolean]](
       StepName("record-stitch"),
       p => subject(p.ref)
-    )(env => p => env.reads.stitches.record(p.root, p.placed, env.clock.now()).left.map(describe))
+    )(env =>
+      p => env.reads.stitches.record(p.root, p.placed, env.clock.now()).left.map(_.described)
+    )
 
   /** The placement workflow, from the opening's workflow id: what it did, for logs, at
     * whichever end; the placement is in the store.
@@ -95,11 +97,4 @@ object Stitch {
   def body(env: StitchEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     Flows.run(flow, env, workflowId).merge
 
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }

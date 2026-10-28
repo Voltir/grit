@@ -27,7 +27,7 @@ object LossWindow {
       until: Instant
   ): Either[String, Vector[(TurnRef, TurnGates)]] =
     for {
-      workflows <- reader.turns(until).left.map(e => s"turn workflows unread: ${Capture.kind(e)}")
+      workflows <- reader.turns(until).left.map(e => s"turn workflows unread: ${e.kind}")
       window = workflows.collect {
         case (w, recorded) if !recorded.created.isBefore(since) => TurnRef.fromWorkflowId(w)
       }.flatten
@@ -36,7 +36,7 @@ object LossWindow {
         reader
           .steps(turn.workflowId)
           .left
-          .map(e => s"steps of $id unread: ${Capture.kind(e)}")
+          .map(e => s"steps of $id unread: ${e.kind}")
           .flatMap(TurnGates.of(_).left.map(why => s"$id: $why"))
           .map(turn -> _)
       }
@@ -56,7 +56,7 @@ object LossWindow {
         reader.all
           .read((tx: Tx^) ?=> reader.entries.list(conversation))
           .left
-          .map((e: StoreError) => s"entries unread: ${Capture.kind(e)}")
+          .map((e: StoreError) => s"entries unread: ${e.kind}")
           .map(conversation -> _)
       }
       .map { listed =>

@@ -355,7 +355,7 @@ private[turn] object Rounding {
           .reads(env.db)
           .read(Subject.Turn(turn))(shown(env.records, turn, window))
           .left
-          .map(TurnFailure.describe)
+          .map(_.described)
         text <- TurnShown.textOf(showing, window, item.ref).toRight("the item is no longer kept")
         request <- Extract.request(text, question, shape, pin.settings.strict)
         typed <- Extraction.reply(shape)
@@ -390,7 +390,7 @@ private[turn] object Rounding {
               )
             ) match {
               case Right(()) | Left(StoreError.DuplicateId(_)) => Right(())
-              case Left(error) => Left(TurnFailure.describe(error))
+              case Left(error) => Left(error.described)
             }
           }
         }

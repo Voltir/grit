@@ -45,7 +45,7 @@ object Posting {
   private val posted: Step[PostEnv, Run, Either[String, Option[CloseOrdinal]]] =
     Step[PostEnv, Run, Either[String, Option[CloseOrdinal]]](
       StepName.keyed[Run]("post")(_.n.toString)
-    )(env => run => next(run.ref, run.plugin, env).left.map(describe))
+    )(env => run => next(run.ref, run.plugin, env).left.map(_.described))
 
   /** One period posted, or the run's end: at [[MaxPerRun]], with nothing left, or stopped. */
   private val round: Flow[PostEnv, Run, String, Either[Run, String]] =
@@ -137,14 +137,6 @@ object Posting {
         env.clock.now()
       )
     } yield Some(closed.order)
-
-  private def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${grit.core.id.EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 
   /** A step's output: `{"ok": ordinal}` for a period posted, `{"ok": null}` when there was
     * none, `{"failed": why}`. Recorded, so change it only with the workflow's epoch.

@@ -251,7 +251,7 @@ object ReplyReview {
     */
   def read(reader: Reader^, t: TurnCase, records: Boolean): Either[String, Reviewed] = {
     val w = WorkflowId.value(t.workflow)
-    def unread(what: String)(e: StoreError) = s"$w: $what unread: ${kind(e)}"
+    def unread(what: String)(e: StoreError) = s"$w: $what unread: ${e.kind}"
     val ref = TurnRef(t.conversation, t.turn)
     for {
       all <- reader.all.read(reader.entries.list(t.conversation)).left.map(unread("entries"))
@@ -307,13 +307,6 @@ object ReplyReview {
 
   private def said(m: Message.Assistant): String =
     m.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-
-  private def kind(e: StoreError): String = e match {
-    case StoreError.DuplicateId(_) => "duplicate id"
-    case StoreError.DatabaseError(_) => "database error"
-    case StoreError.Invalid(_) => "invalid"
-    case StoreError.Full(_) => "full"
-  }
 
   /** One review file's content: a capture's turns as picked, written at `at` under
     * [[ReplyGuide.Current]].

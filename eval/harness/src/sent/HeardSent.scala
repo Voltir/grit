@@ -49,7 +49,7 @@ object HeardSent {
   ): Either[String, HeardSent] = {
     val id = EntryId.value(entry)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.all.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $id unread: ${e.kind}")
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
@@ -75,7 +75,7 @@ object HeardSent {
           Stitching
             .offered(reads, reader.db.as(Subject.Conversation(turn.conversationId)), turn, tuning)
             .left
-            .map(e => s"stitch of $id unread: ${Capture.kind(e)}")
+            .map(e => s"stitch of $id unread: ${e.kind}")
       tags <- read("tags")(reader.triage.of(Vector(entry))).map(_.get(entry))
     } yield {
       val set = TriageQuestions.shipped(persona)

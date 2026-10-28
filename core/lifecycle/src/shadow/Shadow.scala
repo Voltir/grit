@@ -52,7 +52,7 @@ object Shadow {
         env.shadows
           .record(m.entry, m.ref.name, m.row, env.clock.now())
           .left
-          .map(ShadowJournal.describe)
+          .map(_.described)
     )
 
   /** The shadow workflow, from the shadow's workflow id: what it did, for logs, at whichever
@@ -111,7 +111,7 @@ object Shadow {
                 )
           }
           .fold(
-            e => Judging.Pose.Made(Left(s"thread unread: ${ShadowJournal.describe(e)}")),
+            e => Judging.Pose.Made(Left(s"thread unread: ${e.described}")),
             identity
           )
     }

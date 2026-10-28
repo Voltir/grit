@@ -32,8 +32,8 @@ object WindowOnly {
       tagged <- reader.all
         .read(reader.triage.tagged(Instant.EPOCH, until))
         .left
-        .map(e => s"triage unread: ${Capture.kind(e)}")
-      turns <- reader.turns(until).left.map(e => s"turn workflows unread: ${Capture.kind(e)}")
+        .map(e => s"triage unread: ${e.kind}")
+      turns <- reader.turns(until).left.map(e => s"turn workflows unread: ${e.kind}")
     } yield {
       val answered = turns.map(_._1).toSet
       tagged.flatMap { t =>

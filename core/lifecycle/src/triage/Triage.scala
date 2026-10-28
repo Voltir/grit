@@ -11,7 +11,7 @@ import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.route.Routed
 import grit.core.speech.{Decision, Outcome, SpeechJson}
 import grit.core.stitch.StitchReads
-import grit.core.store.{Payload, StoreError}
+import grit.core.store.Payload
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
 
@@ -54,7 +54,6 @@ object Triage {
     * then is weighed in its place ([[grit.core.speech.Silence.Continued]]).
     */
   val Wait: FiniteDuration = 6.seconds
-  import TriageInput.describe
   import TriageJournal.given
 
   /** The triage `ref`, with what its placement did, for logs (`kept`, empty or ending `; `). */
@@ -82,7 +81,7 @@ object Triage {
         ref => TurnRef(ref.period.conversationId, ref.turn),
         subject,
         {
-          case Placing.Unplaced.Unread(e) => s"thread unread: ${describe(e)}"
+          case Placing.Unplaced.Unread(e) => s"thread unread: ${e.described}"
           case Placing.Unplaced.Failed(why) => why
         },
         Wait
@@ -105,7 +104,7 @@ object Triage {
     Step.transact[TriageEnv, Tagged, Either[String, Boolean]](
       StepName("record"),
       t => subject(t.at.ref)
-    )(env => t => env.records.triage.record(t.entry, t.tags, env.clock.now()).left.map(describe))
+    )(env => t => env.records.triage.record(t.entry, t.tags, env.clock.now()).left.map(_.described))
 
   private val considered: Step[TriageEnv, Tagged, Either[String, Decision]] =
     Step.transact[TriageEnv, Tagged, Either[String, Decision]](
@@ -143,7 +142,7 @@ object Triage {
         env.records.speech
           .drafted(u.at.turn, Outcome.Failed(s"not started: ${u.why}"), None, env.clock.now())
           .left
-          .map(describe)
+          .map(_.described)
     )
 
   /** The triage workflow, from the heard message's workflow id: what it did, for logs, at
@@ -254,7 +253,7 @@ object Triage {
               }
           )
       }
-      .fold(e => Judging.Pose.Made(Left(s"thread unread: ${describe(e)}")), identity)
+      .fold(e => Judging.Pose.Made(Left(s"thread unread: ${e.described}")), identity)
   }
 
   /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's

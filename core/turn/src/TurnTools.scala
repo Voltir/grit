@@ -130,7 +130,7 @@ object TurnTools {
           level
         )
       )
-    } yield slot.askId).left.map(storeFailure)
+    } yield slot.askId).left.map(TurnFailure.ofStore)
   }
 
   /** `pending`, stamped at `at`, read against `tools` with `repairs`, ready to run, a call of
@@ -196,7 +196,7 @@ object TurnTools {
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
       settle(slot, call, named, Belief.From(from), at)(() =>
-        jot.write(Subject.Turn(slot.turn))(read).left.map(storeFailure)
+        jot.write(Subject.Turn(slot.turn))(read).left.map(TurnFailure.ofStore)
       )
 
     /** `free` run. */
@@ -246,7 +246,7 @@ object TurnTools {
       jot
         .write(Subject.Turn(slot.turn))(entries.get(slot.resultId))
         .left
-        .map(storeFailure)
+        .map(TurnFailure.ofStore)
         .flatMap {
           case Some(kept) => settledBy(kept)
           case None =>
@@ -281,7 +281,7 @@ object TurnTools {
         }
       jot.write(Subject.Turn(turn))(record) match {
         case Left(StoreError.DuplicateId(_)) => Right(true)
-        case other => other.left.map(storeFailure)
+        case other => other.left.map(TurnFailure.ofStore)
       }
     }
 
@@ -319,9 +319,9 @@ object TurnTools {
           jot
             .write(Subject.Turn(turn))(entries.get(id))
             .left
-            .map(storeFailure)
+            .map(TurnFailure.ofStore)
             .flatMap(_.toRight(TurnFailure.Store(s"entry ${EntryId.value(id)} vanished")))
-        case other => other.left.map(storeFailure)
+        case other => other.left.map(TurnFailure.ofStore)
       }
     }
   }
@@ -352,14 +352,4 @@ object TurnTools {
     case _ => Left(TurnFailure.Store(s"entry ${EntryId.value(kept.id)} is not a tool result"))
   }
 
-  private def storeFailure(error: StoreError): TurnFailure = error match {
-    case StoreError.DuplicateId(id) =>
-      TurnFailure.Store(s"entry ${EntryId.value(id)} already exists")
-    case StoreError.DatabaseError(cause) => TurnFailure.Store(cause)
-    case StoreError.Invalid(cause) => TurnFailure.Store(cause)
-    case StoreError.Full(bound) =>
-      TurnFailure.Store(
-        s"its plugin already holds the $bound documents it may, so nothing was kept"
-      )
-  }
 }

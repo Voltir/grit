@@ -856,7 +856,7 @@ private[turn] object TurnSteps {
           // asked only when its service is cleared for it.
         } yield (Routed.of, Judging(all, window, showing, strand, named))
       } match {
-      case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${TurnFailure.describe(e)}")
+      case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${e.described}")
       case Right((routed, Judging(all, window, showing, strand, named))) =>
         (
           all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),

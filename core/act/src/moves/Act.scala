@@ -284,7 +284,7 @@ private[moves] object Act {
     Step[MovesEnv, Rewriting, (AskMade, Option[Sourced])](Asks.move)(env =>
       r =>
         env.db.read(r.acting.subject)(Declassifying.read(r.reading)) match {
-          case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), r.digest), None)
+          case Left(e) => (AskMade.Refused(AskMade.Kind.Store, e.described, r.digest), None)
           case Right(Left(why)) =>
             (AskMade.Refused(AskMade.Kind.Unread(why), why.why, r.digest), None)
           case Right(Right(shown)) =>
@@ -316,7 +316,7 @@ private[moves] object Act {
             asked: Declassifying.Shown => (AskMade, Option[Beside])
         ): (AskMade, Option[Beside]) =
           env.db.read(s.acting.subject)(Declassifying.read(reading)) match {
-            case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
+            case Left(e) => (AskMade.Refused(AskMade.Kind.Store, e.described, s.digest), None)
             case Right(Left(why)) =>
               (AskMade.Refused(AskMade.Kind.Unread(why), why.why, s.digest), None)
             case Right(Right(shown)) => asked(shown)
@@ -347,7 +347,7 @@ private[moves] object Act {
             }
           case Declassifying.Of.Example(keeper, policy, at) =>
             env.db.read(s.acting.subject)(Declassifying.exhibit(keeper, policy, at)) match {
-              case Left(e) => (AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest), None)
+              case Left(e) => (AskMade.Refused(AskMade.Kind.Store, e.described, s.digest), None)
               case Right(Left(Declassifying.Unbenched.NotRead)) =>
                 (AskMade.Refused(Unchecked, "its checks are not read", s.digest), None)
               case Right(Left(Declassifying.Unbenched.Unreadable(why))) =>
@@ -418,7 +418,7 @@ private[moves] object Act {
     Step[MovesEnv, Summary[T], AskMade](Asks.move)(env =>
       s =>
         env.db.read(s.acting.subject)(read(s)) match {
-          case Left(e) => AskMade.Refused(AskMade.Kind.Store, describe(e), s.digest)
+          case Left(e) => AskMade.Refused(AskMade.Kind.Store, e.described, s.digest)
           case Right(None) => AskMade.Refused(AskMade.Kind.StrandChanged, Changed, s.digest)
           case Right(Some((strands, documents))) =>
             val text = Dreaming.shown(
@@ -701,7 +701,7 @@ private[moves] object Act {
           env.records.savepoints
             .atomic((tx: Tx^) ?=> body(k.value, k.keeper, at)(using tx))
             .left
-            .map(describe)
+            .map(_.described)
         }
       )
     )
@@ -734,7 +734,7 @@ private[moves] object Act {
               )
             }
         }
-        done.left.map(describe)
+        done.left.map(_.described)
       }
     )
   }
@@ -812,7 +812,7 @@ private[moves] object Act {
       digest: String
   ): Either[AskMade, (Label, Routed)] =
     admission(records, db, clock, acting.allowance, acting.subject) match {
-      case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, describe(e), digest))
+      case Left(e) => Left(AskMade.Refused(AskMade.Kind.Store, e.described, digest))
       case Right((false, _, _)) => Left(AskMade.Refused(AskMade.Kind.Capped, Capped, digest))
       case Right((true, at, routed)) => Right((at, routed))
     }
@@ -882,7 +882,7 @@ private[moves] object Act {
         }
       }
       .left
-      .map(describe)
+      .map(_.described)
 
   /** Why a classifier gave no answer that reads. */
   def unanswered(error: ClassifierError): String = error match {
@@ -900,7 +900,7 @@ private[moves] object Act {
     def unsent(kind: CallMade.Kind, why: String): Either[CallMade, Nothing] =
       Left(CallMade.Unsent(kind, why, digest))
     def stored[A](e: Either[StoreError, A]): Either[CallMade, A] =
-      e.left.map(err => CallMade.Unsent(CallMade.Kind.Store, describe(err), digest))
+      e.left.map(err => CallMade.Unsent(CallMade.Kind.Store, err.described, digest))
     val place = c.service.place
     val unserved = failed(Calling.unserved(c.service))
     val made = for {
@@ -986,11 +986,4 @@ private[moves] object Act {
 
   private[moves] val Capped = "The day's spend reached its cap, so no model was asked."
 
-  private[moves] def describe(error: StoreError): String = error match {
-    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
-    case StoreError.DatabaseError(cause) => cause
-    case StoreError.Invalid(cause) => cause
-    case StoreError.Full(bound) =>
-      s"its plugin already holds the $bound documents it may, so nothing was kept"
-  }
 }
