@@ -2,8 +2,8 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf}
-import grit.core.id.{DocKey, PrincipalId}
+import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
+import grit.core.id.{DocKey, DocumentVersionId, PrincipalId}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
@@ -36,7 +36,19 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** Every command, in the order a tool list shows them. */
   def all: Vector[PluginCommand[?]] =
-    Vector(New, Keep, Move, Show, List, Find, Export, ProjectClaim, ProjectRelease, ProjectBrief)
+    Vector(
+      New,
+      Keep,
+      Move,
+      Show,
+      History,
+      List,
+      Find,
+      Export,
+      ProjectClaim,
+      ProjectRelease,
+      ProjectBrief
+    )
 
   /** `project_new`. */
   object New extends KeepingCommand[Starting] {
@@ -246,8 +258,23 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           "body as markdown."
       ),
       Args
-        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
-        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Showing(_)))
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            at = Field
+              .text(
+                "An instant, ISO-8601 in UTC (`2026-10-27T12:00:00Z`): shows the version " +
+                  "current then instead of the current one."
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            when <- a.at.fold(Right(None))(t => parsed("at", t, instant).map(Some(_)))
+          } yield Showing(key, when)
+        )
     )
     def run(args: Showing, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
@@ -255,7 +282,79 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       for {
         project <- loaded(own.documents, args.key.project)
         found <- artifact(project, args.key)
-      } yield ProjectMarkdown.file(found._2)._2
+        version <- args.at.fold[Either[Stop, Artifact]](Right(found._2)) { when =>
+          stored(own.documents.asOf(found._1.key, found._1.label, when)).flatMap(
+            _.toRight(Stop.Refused(s"${args.key.value} had no version at $when"))
+              .flatMap(d => refuse(readable(d)))
+          )
+        }
+      } yield ProjectMarkdown.file(version)._2
+    }
+  }
+
+  /** `project_history`. */
+  object History extends ReadingCommand[Recalling] {
+    val spec: ToolSpec[Recalling] = ToolSpec(
+      ToolName("project_history"),
+      said(
+        s"Lists an artifact's kept versions, newest first, at most $HistoryMost, one line each " +
+          "(its version number, when it was written, by whom, its state and title); given " +
+          "`from` and `to`, two of those version numbers, answers instead a line diff of their " +
+          "export files, `- ` for a line only `from` holds and `+ ` for one only `to` holds."
+      ),
+      Args
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            from = Field.integer("The version to diff from.", 1, Long.MaxValue).optional,
+            to = Field.integer("The version to diff to.", 1, Long.MaxValue).optional
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            pair <- (a.from, a.to) match {
+              case (Some(f), Some(t)) => Right(Some((f, t)))
+              case (None, None) => Right(None)
+              case _ => Left(ArgsError.Refused("to", "`from` and `to` are given together"))
+            }
+          } yield Recalling(key, pair)
+        )
+    )
+    def run(args: Recalling, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = answered {
+      for {
+        project <- loaded(own.documents, args.key.project)
+        found <- artifact(project, args.key)
+        kept <- stored(own.documents.versions(found._1.key, found._1.label, HistoryMost))
+        text <- args.diff match {
+          case None =>
+            refuse(every(kept.map(listed))).map(AnswerText.versions(_, "No version is kept."))
+          case Some((from, to)) =>
+            def file(n: Long): Either[Stop, String] =
+              kept
+                .collectFirst {
+                  case DocumentVersion.Holding(d) if DocumentVersionId.value(d.version) == n => d
+                }
+                .toRight(
+                  Stop.Refused(
+                    s"${args.key.value} has no version $n among its $HistoryMost newest kept"
+                  )
+                )
+                .flatMap(d => refuse(readable(d)))
+                .map(a => ProjectMarkdown.file(a)._2)
+            for {
+              older <- file(from)
+              newer <- file(to)
+            } yield AnswerText.diff(
+              s"${args.key.value} version $from",
+              older,
+              s"${args.key.value} version $to",
+              newer
+            )
+        }
+      } yield text
     }
   }
 
@@ -550,8 +649,34 @@ private[plugin] object ProjectCommands {
   /** `project_move`'s arguments. */
   final case class Moving(key: ArtifactKey, to: StateName) extends caps.Pure
 
-  /** `project_show`'s arguments. */
-  final case class Showing(key: ArtifactKey) extends caps.Pure
+  /** `project_show`'s arguments: the version current `at`, or the current one. */
+  final case class Showing(key: ArtifactKey, at: Option[Instant]) extends caps.Pure
+
+  /** `project_history`'s arguments: the two version numbers to diff, from and to, if any. */
+  final case class Recalling(key: ArtifactKey, diff: Option[(Long, Long)]) extends caps.Pure
+
+  /** 50: the most versions `project_history` lists, and reads to find the two it diffs. */
+  private val HistoryMost: Int = 50
+
+  /** `version` as [[AnswerText.versions]] lists it, or why it does not read. */
+  private def listed(
+      version: DocumentVersion
+  ): Either[String, (version: Long, written: Instant, head: Option[ArtifactHead])] =
+    version match {
+      case DocumentVersion.Holding(d) =>
+        readable(d).map(a =>
+          (version = DocumentVersionId.value(d.version), written = d.written, head = Some(a.head))
+        )
+      case DocumentVersion.Withdrawal(v, written) =>
+        Right((version = DocumentVersionId.value(v), written = written, head = None))
+    }
+
+  /** `text` as an ISO-8601 instant, or why not. */
+  private def instant(text: String): Either[String, Instant] =
+    scala.util
+      .Try(Instant.parse(text))
+      .toOption
+      .toRight(s"`$text` is not an ISO-8601 instant such as 2026-10-27T12:00:00Z")
 
   /** `project_list`'s arguments. */
   final case class Listing(project: ProjectKey, kind: Option[KindName], state: Option[StateName])

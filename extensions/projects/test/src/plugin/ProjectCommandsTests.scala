@@ -201,6 +201,113 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    /** Keeps `p/a`, a change titled `title` holding `body`, `m` minutes after [[at]]. */
+    def keptAt(projects: Projects, store: Store, m: Int, title: String, body: String): Unit =
+      done(
+        askAt(at.plusSeconds(60L * m))(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/a",
+          "kind" -> "change",
+          "title" -> title,
+          "body" -> body
+        )
+      )
+
+    test("history lists versions newest first with who wrote each") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      keptAt(projects, store, 1, "First", "## Why\n\nOne.")
+      keptAt(projects, store, 2, "Second", "## Why\n\nTwo.")
+      done(
+        askAt(at.plusSeconds(180))(
+          projects,
+          store,
+          "project_move",
+          "key" -> "p/a",
+          "to" -> "building"
+        )
+      )
+      val lines =
+        done(ask(projects, store, "project_history", "key" -> "p/a")).linesIterator.toVector
+      val numbers = lines.map(_.takeWhile(_ != ' ').toLongOption)
+      (
+        numbers.flatten == numbers.flatten.sorted.reverse,
+        numbers.size,
+        lines.map(_.dropWhile(_ != ' '))
+      ) ==> (
+        (
+          true,
+          3,
+          Vector(
+            s" 2026-10-27T12:03:00Z by $by (building): Second",
+            s" 2026-10-27T12:02:00Z by $by (proposed): Second",
+            s" 2026-10-27T12:01:00Z by $by (proposed): First"
+          )
+        )
+      )
+    }
+
+    test("history of two versions is a line diff of their export files, older first") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      keptAt(projects, store, 1, "Same", "## Why\n\nOne.\n\nKept.")
+      keptAt(projects, store, 2, "Same", "## Why\n\nTwo.\n\nKept.")
+      val versions = done(ask(projects, store, "project_history", "key" -> "p/a")).linesIterator
+        .map(_.takeWhile(_ != ' '))
+        .toVector
+      val (newer, older) = (versions(0), versions(1))
+      val diff = done(
+        ask(
+          projects,
+          store,
+          "project_history",
+          "key" -> "p/a",
+          "from" -> older.toLong,
+          "to" -> newer.toLong
+        )
+      ).linesIterator.toVector
+      (diff.take(2), diff.filter(l => l.startsWith("-") || l.startsWith("+")).drop(2)) ==> (
+        (Vector(s"--- p/a version $older", s"+++ p/a version $newer"), Vector("- One.", "+ Two."))
+      )
+    }
+
+    test("show at an instant shows that version's body") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      keptAt(projects, store, 1, "First", "## Why\n\nOne.")
+      keptAt(projects, store, 3, "Second", "## Why\n\nTwo.")
+      def shownAt(m: Int) =
+        ask(
+          projects,
+          store,
+          "project_show",
+          "key" -> "p/a",
+          "at" -> at.plusSeconds(60L * m).toString
+        )
+      (
+        shownAt(2) match {
+          case Answered.Done(text) => text.linesIterator.toVector.lastOption
+          case Answered.Refused(why) => Some(why)
+        },
+        shownAt(3) match {
+          case Answered.Done(text) => text.linesIterator.toVector.lastOption
+          case Answered.Refused(why) => Some(why)
+        },
+        shownAt(0)
+      ) ==> (
+        (
+          Some("One."),
+          Some("Two."),
+          Answered.Refused("p/a had no version at 2026-10-27T12:00:00Z")
+        )
+      )
+    }
+
     test("project_list lists the heads of a kind and a state, by key") {
       val projects = plugin()
       val store = Store()
@@ -242,7 +349,7 @@ object ProjectCommandsTests extends TestSuite {
 
     test("every command's does line tells a project artifact from a claude.ai Artifact") {
       val lines = plugin().commands.map(_.spec.does)
-      assert(lines.size == 10, lines.forall(_.endsWith(Projects.NotClaudeAi)))
+      assert(lines.size == 11, lines.forall(_.endsWith(Projects.NotClaudeAi)))
     }
 
     test(

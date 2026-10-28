@@ -59,6 +59,14 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
+  ): Answered = askAt(at)(projects, store, name, args*)
+
+  /** As [[ask]], asked at `when`. */
+  def askAt(when: Instant)(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
   ): Answered =
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
       case Some(c: KeepingCommand[a]) =>
@@ -66,7 +74,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, person, store.keeper, at))
+            inTx(c.run(a, person, store.keeper, when))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case Some(c: ReadingCommand[a]) =>
@@ -74,7 +82,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, person, store.reads, at))
+            inTx(c.run(a, person, store.reads, when))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")
