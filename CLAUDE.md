@@ -173,6 +173,30 @@ passes vacuously and `lint` still exits 0; `enola-law.sh` greps for that. A rule
 adopted until it has been watched failing on a planted breach. The known traps are
 commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
 
+## How grit's work is planned
+
+grit plans itself with grit. Milestones, plans, stages, mechanism notes and the backlog are
+artifacts of the project `grit` in a grit deployment, `kalandra` (its own repository, beside this
+one), on the database `grit_kalandra`, kept under the `projects` plugin's method
+([ADR 0049](docs/decisions/0049-a-projects-method-is-versioned-data-whose-checks-are-compiled-in-and-a-project-is-one-value-held-to-its-export-by-a-round-trip-law.md)).
+They are read and written only through it: `bin/kalandra <command> '<json>'` in that repository,
+or its MCP server's tools (`project_list`, `project_show`, `project_find`, `project_keep`,
+`project_move`, `project_history`, …). A project artifact is not a claude.ai Artifact. There are no
+planning files in this repository.
+
+- **Start of a session:** the artifact a session or subagent type is working on is claimed for its
+  slot, and a SessionStart or SubagentStart hook injects that artifact's brief. Read what it cites
+  before acting; the brief names the process that governs the work.
+- **During the work:** the store is updated as part of the work, not after it: a step is not done
+  until its artifact's state says so. An idea that surfaces mid-task becomes a `note`, not part of
+  the change.
+- **Databases:** `grit` is a person's own and off limits to agents; an agent's runs use its own
+  database, and `grit_kalandra` is durable: never reset or dropped (the `grit-local-db` skill).
+
+This is a first step toward a modality grit is built for: a repository whose coordination and
+feature work go through a grit deployment, later with a coding sandbox, so that grit's own
+subagents write code beside developer-driven harnesses like Claude Code.
+
 ## Working agreements
 
 - **Verify against the source, not the summary.** Three claims in this project's original
