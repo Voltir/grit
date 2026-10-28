@@ -29,53 +29,9 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
 
 ## Reading and editing code
 
-- Read Scala through scout first. It answers with less text than a file read,
-  resolved by the compiler, in a form an Edit can match. Use its MCP tools
-  (`mcp__scout__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
-  ToolSearch `select:mcp__scout__show,…` if they are listed as deferred), passing
-  `root: <your worktree>`: the server keeps what it has read between calls. The CLI
-  (`scripts/scout <query> … --root .`) is the fallback when the MCP tools are missing. Bash
-  reads and searches are for what scout cannot name, or a quick text search; avoid whole-file
-  reads. `scripts/scout <query> --help` gives each query's flags and says which printed lines
-  are the file's own text.
-- Which query, for what, as MCP arguments (each call also takes `root`; a list argument is a
-  JSON array of quoted strings, `["Turn"]`, never a bare word or one comma-joined string):
-  - an unfamiliar part of grit: `area {"names": ["knowledge"]}`;
-  - a name you don't know: `find {"pattern": "*Shelf*"}`;
-  - a signature and its doc, before calling it: `show {"symbols": ["Moves.ask"]}` — every
-    symbol you need in one call (`{"symbols": ["Flow", "Step", "Flows"]}`);
-  - a body you are about to edit, private or not:
-    `show {"symbols": ["Turn"], "body": ["looping", "settle"], "private": true}`;
-  - where a file's imports end and its definitions lie, or where to add one:
-    `file {"target": "TurnEnv"}`;
-  - every caller before changing a signature: `uses {"symbols": ["Moves.ask", "Moves.keep"]}`;
-  - a trait and its implementations: `family {"trait": "Durable"}`;
-  - a test or a helper: `tests {"suite": "TurnToolsTests", "test": "<name prefix>"}`,
-    `tests {"suite": "TurnToolsTests", "body": ["helper"]}`.
-- Edit straight from that file text: an Edit's old_string may be copied from `show` (with or
-  without `body`), `family`, or `tests` with `test` or `body`, without a Read first. Read a
-  line range only when an Edit fails to match. Several changes a few lines apart are one Edit.
-- After an edit, scout is current again for every file a compile that succeeds covered:
-  `./mill <module>.compile` for main sources, `<module>.test.compile` (or the suite's run) for
-  tests. Go back to scout then, not `sed`. Until then, the lines you edited are what your
-  Edit's new_string says: copy the next old_string from it rather than reading them back.
-- An edit must fail loudly when it does not apply, so source is changed with Edit (and Write
-  for a new file), never `sed -i`, python or a heredoc, which change nothing silently on a
-  mismatch. The one exception is a mechanical change across many sites (a rename): a script
-  may make it, and its commit message shows it applied, the count of matches before and after
-  and a clean compile.
-- A line range scout printed is not a cue for `sed -n`: to read a member's body, private
-  ones included, ask for it by name (`show` with `body: ["m1", "m2"]`, `private: true`); for a
-  test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
-  is for what scout cannot name (a test file's imports, a region inside a body you have not
-  edited). Nor is a `File.scala:N` in a plan or brief: it points at a definition; `show` that. When the plan
-  lists a stage's reads, run the before-the-first-edit ones first and each
-  point-of-use read when you reach the code it names, not up front.
-- Adding a member to an implementation or a fake: `file` it for its members, then `show` it
-  with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
-  Never read the implementation whole to learn its shape.
-- A query that failed to answer what you needed goes in your report: the query, what you
-  wanted, what came back.
+Before your first query, read `.claude/rules/reading-scala.md`: how Scala is read and edited
+here (scout first, with `root` your worktree; what not to read; editing from scout's text). It
+is the one home of those rules; this definition does not repeat them.
 
 ## Rules
 

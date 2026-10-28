@@ -19,47 +19,10 @@ You build exactly one task in grit, from the brief you are given, and commit it.
   to make a probe or test pass.
 
 ## Reading and editing code
-- Read Scala through scout first. It answers with less text than a file read,
-  resolved by the compiler, in a form an Edit can match. Use its MCP tools
-  (`mcp__scout__show`, `file`, `find`, `uses`, `tests`, `family`, `area`; load them with
-  ToolSearch `select:mcp__scout__show,…` if they are listed as deferred), passing
-  `root: <your worktree>`: the server keeps what it has read between calls. The CLI
-  (`scripts/scout <query> … --root .`) is the fallback. Bash
-  (`grep -n`, `sed -n`) is for what scout cannot name, or a quick text search; say in your
-  report when you fell back. Every symbol you need goes in one call
-  (`show {"symbols": ["Flow", "Step", "Flows"]}`).
-- Which query, for what, as MCP arguments (each call also takes `root`; a list argument is a
-  JSON array of quoted strings, `["Turn"]`, never a bare word or one comma-joined string): a
-  signature and doc, `show {"symbols": ["Moves.ask"]}`; a body to edit,
-  `show {"symbols": ["Turn"], "body": ["looping"], "private": true}`; where a file's imports
-  end, `file {"target": "TurnEnv"}`; every caller, `uses {"symbols": ["Moves.ask", "Moves.keep"]}`;
-  a name you don't know, `find {"pattern": "*Shelf*"}`; a test or helper,
-  `tests {"suite": "TurnToolsTests", "test": "<prefix>"}` or `{"suite": …, "body": ["helper"]}`.
-- Edit straight from that file text: an Edit's old_string may be copied from `show` (with or
-  without `body`), `family`, or `tests` with `test` or `body`, without a Read first. Read a line
-  range only when an Edit fails to match. Several changes a few lines apart are one Edit.
-- After an edit, scout is current again for every file a compile that succeeds covered:
-  `./mill <module>.compile` for main sources, `<module>.test.compile` (or the suite's run) for
-  tests. Go back to scout then, not `sed`. Until then, the lines you edited are what your
-  Edit's new_string says: copy the next old_string from it rather than reading them back.
-- Change source with Edit (and Write for a new file), which fails loudly on a mismatch; never
-  `sed -i`, python or a heredoc, which change nothing silently when the text differs.
-- A line range scout printed is not a cue for `sed -n`: to read a member's body, private
-  ones included, ask for it by name (`show` with `body: ["m1", "m2"]`, `private: true`); for a
-  test or a fixture helper, `tests` with `test: "<name prefix>"` or `body: ["helper"]`. `sed`
-  is for what scout cannot name (a test file's imports, a region inside a body you have not
-  edited). Nor is a `File.scala:N` in a brief: it points at a definition; `show` that. When the brief lists
-  reads, run the before-the-first-edit ones first and each
-  point-of-use read when you reach the code it names, not up front.
-- Adding a member to an implementation or a fake: `file` it for its members, then `show` it
-  with `body: ["<the nearest sibling>"]`, `private: true`, for the one you will write alongside.
-  Never read the implementation whole to learn its shape.
-- Name the members you need in `body`: `private: true` on a whole type with no `body` lists
-  every internal helper.
-- A suite and its helpers are reached through `tests` (`test` for a test's text, `body` for a
-  helper's); `show` finds a test-source name only when main sources lack it.
-- Report every query that failed to answer what you needed: the query, what you wanted, what came
-  back.
+
+Before your first query, read `.claude/rules/reading-scala.md`: how Scala is read and edited
+here (scout first, with `root` your worktree; what not to read; editing from scout's text). It
+is the one home of those rules; this definition does not repeat them.
 
 ## How
 1. Write the brief's test first and run only its suite: see it fail on an assertion, not on a

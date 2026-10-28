@@ -72,22 +72,10 @@ of the current epoch: guard it with `Durable.patch`, or start a new `Turn.Epoch`
 
 Read Scala through scout first: the `scout` MCP server, or `scripts/scout` (a native binary built
 outside this repository; the script says where it looks). It answers from the compiler's TASTy, in
-less text than a file read, and works in any worktree (`--root`; with none, the checkout above the
-working directory).
-
-- `area` — with no name, the areas and what each covers; `area <name>[,name…]`, a map of one
-  part of grit: start here on an unfamiliar task.
-- `find <pattern>` — when you don't know a name: `find '*Shelf*'`, `find '*.placed'`.
-- `show <Sym>[,Sym…]` — signatures and docs, the types they name traced a level, and the tests
-  that exercise them; `--body <members>` for bodies. Several symbols per call.
-- `family <Trait>` — a trait and its implementations. `uses <Owner.member>` — every direct
-  reference, compiler-exact. `tests <Suite>` — a suite's tests and helpers.
-- The definition lines it prints are the file's own text: an Edit may copy them as `old_string`
-  without a Read first. `scripts/scout <query> --help` says which lines are file text.
-- Ask for private members (`--private`) only to edit them or to understand an implementation;
-  otherwise trust the public interface and referential transparency.
-- It reads compiled output: compile the module first if its TASTy is stale. Bash reads remain
-  for what it can't answer. Metals is for the editor ([`docs/editor-tooling.md`](docs/editor-tooling.md)).
+less text than a file read, and works in any worktree (`--root`). How to use it, what not to read
+and how to edit from its text: [`.claude/rules/reading-scala.md`](.claude/rules/reading-scala.md),
+which loads when a `.scala` file is first touched. Metals is for the editor
+([`docs/editor-tooling.md`](docs/editor-tooling.md)).
 
 ## Style rules
 

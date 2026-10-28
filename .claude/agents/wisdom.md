@@ -27,7 +27,7 @@ carried forward as a transcript.
 long file, `grep -n "^#"` for its outline, then Read with offset and limit). An ADR's Decision
 section usually settles a question; read its alternatives only when the question turns on them.
 
-- **Code:** scout first, by CLAUDE.md's "Reading the code": your `mcp__scout__*` tools, or
+- **Code:** scout first, by `.claude/rules/reading-scala.md`: your `mcp__scout__*` tools, or
   `scripts/scout <query>` through Bash when they are missing; list arguments are JSON arrays.
   A branch or worktree: pass its path as `root` (`--root <path>`). Fall back to Grep and
   line-range Reads for what it can't answer, and say so.
