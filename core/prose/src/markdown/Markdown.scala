@@ -7,10 +7,23 @@ import grit.prose.form.Doc
   */
 object Markdown {
 
-  /** A whole piece of markdown, as prose. An emphasis or code span left unclosed is
-    * literal text; a code fence left unclosed runs to the end.
+  /** A whole piece of markdown, as prose. A single newline inside a paragraph is a line break
+    * under [[Newline.Break]] and a space under [[Newline.Space]]; a line ending in `\` or two
+    * spaces is a break under both. An emphasis or code span left unclosed is literal text; a
+    * code fence left unclosed runs to the end.
     */
-  def parse(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(text), open = false))
+  def parse(text: String, newline: Newline = Newline.Break): Doc[Nothing] =
+    Doc(Blocks.parse(lines(text), open = false, newline))
+
+  /** What a single newline inside a paragraph means. */
+  enum Newline {
+
+    /** A line break: a reply, as a chat shows the lines a model wrote. */
+    case Break
+
+    /** A space: a document, its lines wrapped at its source's width, as CommonMark reads it. */
+    case Space
+  }
 
   /** The start of markdown still arriving -- a reply as it streams -- as prose that the
     * rest will only extend: an unclosed span runs to the end, a delimiter or a line that
@@ -18,7 +31,8 @@ object Markdown {
     * code. So each prefix renders close to the last, rather than flipping between
     * literal markers and styled text as tokens land.
     */
-  def parsePrefix(text: String): Doc[Nothing] = Doc(Blocks.parse(lines(held(text)), open = true))
+  def parsePrefix(text: String): Doc[Nothing] =
+    Doc(Blocks.parse(lines(held(text)), open = true, Newline.Break))
 
   /** `doc` as markdown, for a reader, not for [[parse]]: a table's cells as they print
     * ([[grit.prose.form.Cell.printed]]), a line break as `\` at its line's end (a space in a

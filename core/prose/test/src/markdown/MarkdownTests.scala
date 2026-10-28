@@ -181,7 +181,8 @@ object MarkdownTests extends TestSuite {
       }
       def leads(s: String): Boolean =
         s.headOption.exists(c => c.isDigit || "#>-+*~:|=`_<".contains(c))
-      val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse).distinct
+      val docs =
+        (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse(_)).distinct
       docs.flatMap { d =>
         val written = Markdown.write(d)
         spans(d.blocks)
@@ -195,7 +196,7 @@ object MarkdownTests extends TestSuite {
       // never makes. A doc whose text holds `\`, a backtick, a bracket, `<`, `!`, `*` or `_`
       // is written bare (see above), so it may read back otherwise.
       def bare(d: Doc[Nothing]): Boolean = !shown(d.blocks).exists("\\`[]<!*_".contains(_))
-      val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse)
+      val docs = (Parsed ++ (0 to Sample.length).map(Sample.take)).map(Markdown.parse(_))
       val lost = docs.distinct.filter(bare).flatMap { d =>
         val written = Markdown.write(d)
         val read = Markdown.parse(written)
@@ -316,9 +317,22 @@ object MarkdownTests extends TestSuite {
       ) ==> "``a`b`` and ``` `` ```"
     }
 
-    test("paragraphs, with the line breaks inside them kept") {
+    test("paragraphs of a reply, each newline inside them kept as a break") {
       Markdown.parse("one\ntwo\n\nthree") ==> Doc(
         Vector(Block.Paragraph(plain("one\ntwo")), Block.Paragraph(plain("three")))
+      )
+    }
+    test("a document's wrapped lines read as one paragraph, in an item too, with no breaks") {
+      Markdown.parse("one\ntwo\nthree\n\n- four\n  five\nsix", Markdown.Newline.Space) ==> Doc(
+        Vector(
+          Block.Paragraph(plain("one two three")),
+          Block.Bullets(Vector(Item(Vector(Block.Paragraph(plain("four five six"))))))
+        )
+      )
+    }
+    test("in a document, a line ending in a backslash or two spaces is still a break") {
+      Markdown.parse("one\\\ntwo  \nthree", Markdown.Newline.Space) ==> Doc(
+        Vector(Block.Paragraph(plain("one\ntwo\nthree")))
       )
     }
 

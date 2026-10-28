@@ -95,6 +95,10 @@ object ProjectMarkdownTests extends TestSuite {
       val body = right(Body.read(text))
       assert(Body.markdown(body) == text, Body.read(Body.markdown(body)) == Right(body))
     }
+    test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
+      val body = right(Body.read("A plan wrapped\nat its source's width,\nas files are."))
+      assert(Body.markdown(body) == "A plan wrapped at its source's width, as files are.")
+    }
     test("a parent cycle is refused, naming each artifact in it") {
       val cycle = Vector(
         artifact("a", "A", "x", parent = Some("b")),

@@ -25,14 +25,14 @@ object Body {
     */
   val StoredMost: Int = Document.DataMost - 4096
 
-  /** `markdown` as a body, a link to `artifact:<key>` its reference to that artifact, or why
-    * not: blank or holding no block, a reference that is no artifact's key, or a stored form
-    * over [[StoredMost]].
+  /** `markdown` as a body, its wrapped lines joined ([[Markdown.Newline.Space]]), a link to
+    * `artifact:<key>` its reference to that artifact, or why not: blank or holding no block, a
+    * reference that is no artifact's key, or a stored form over [[StoredMost]].
     */
   def read(markdown: String): Either[String, Body] =
     if (markdown.isBlank) Left("a body is blank")
     else {
-      val parsed = Markdown.parse(markdown)
+      val parsed = Markdown.parse(markdown, Markdown.Newline.Space)
       val bad = parsed.mapSpans(s => Span(s.text, s.marks, referred(s))).notes.collect {
         case Referred(href) if ArtifactKey.read(href).isLeft => href
       }

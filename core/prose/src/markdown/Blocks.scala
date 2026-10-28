@@ -13,10 +13,15 @@ import grit.prose.form.{Block, Cell, Column, Item, Level, Text}
   */
 private[markdown] object Blocks {
 
-  /** `lines` as blocks. When `open`, they end where a reply still arriving has got to, and
-    * the last block's inline text is read as unfinished ([[Inlines.parse]]).
+  /** `lines` as blocks, a single newline inside a paragraph meaning `newline`. When `open`,
+    * they end where a reply still arriving has got to, and the last block's inline text is
+    * read as unfinished ([[Inlines.parse]]).
     */
-  def parse(lines: Vector[String], open: Boolean): Vector[Block[Nothing]] = {
+  def parse(
+      lines: Vector[String],
+      open: Boolean,
+      newline: Markdown.Newline
+  ): Vector[Block[Nothing]] = {
     val n = lines.length
     val out = Vector.newBuilder[Block[Nothing]]
 
@@ -55,12 +60,12 @@ private[markdown] object Blocks {
                         case None => more = false
                       }
                     }
-                    out += Block.Quote(parse(inner.result(), atEnd(j)))
+                    out += Block.Quote(parse(inner.result(), atEnd(j), newline))
                     i = j
                   } else
                     marker(line) match {
                       case Some(first) =>
-                        val (list, next) = items(lines, i, first, open)
+                        val (list, next) = items(lines, i, first, open, newline)
                         out += list
                         i = next
                       case None =>
@@ -80,10 +85,8 @@ private[markdown] object Blocks {
                         } else {
                           var j = i + 1
                           while (j < n && !blank(lines(j)) && !interrupts(lines(j))) j += 1
-                          val text = lines
-                            .slice(i, j)
-                            .map(l => dropColumns(l, indentOf(l)).stripTrailing().stripSuffix("\\"))
-                            .mkString("\n")
+                          val text =
+                            joined(lines.slice(i, j).map(l => dropColumns(l, indentOf(l))), newline)
                           out += Block.Paragraph(Inlines.parse(text, atEnd(j)))
                           i = j
                         }
@@ -195,12 +198,30 @@ private[markdown] object Blocks {
       content: Int
   )
 
+  /** A paragraph's `lines` as its inline text, each without its trailing spaces and `\`: a
+    * line ending in `\` or two spaces ends in a `'\n'`, and any other but the last in one under
+    * [[Markdown.Newline.Break]] and a space under [[Markdown.Newline.Space]].
+    */
+  private def joined(lines: Vector[String], newline: Markdown.Newline): String = {
+    val out = new StringBuilder
+    lines.zipWithIndex.foreach { (l, k) =>
+      val text = l.stripTrailing()
+      out ++= text.stripSuffix("\\")
+      if (k < lines.length - 1) {
+        val hard = text.endsWith("\\") || l.endsWith("  ")
+        out += (if (hard || newline == Markdown.Newline.Break) '\n' else ' ')
+      }
+    }
+    out.toString
+  }
+
   /** The list starting at line `i`, whose first marker is `first`, and the line after it. */
   private def items(
       lines: Vector[String],
       i: Int,
       first: Marker,
-      open: Boolean
+      open: Boolean,
+      newline: Markdown.Newline
   ): (Block[Nothing], Int) = {
     val n = lines.length
     val out = Vector.newBuilder[Item[Nothing]]
@@ -234,7 +255,11 @@ private[markdown] object Blocks {
             } else going = false
           }
           out += Item(
-            parse(body.result(), open && (k until n).forall(q => blank(lines(q))) && n - k <= 1)
+            parse(
+              body.result(),
+              open && (k until n).forall(q => blank(lines(q))) && n - k <= 1,
+              newline
+            )
           )
           // The next item, if the list goes on: blank lines between items are allowed.
           var q = k
