@@ -6,7 +6,9 @@ import grit.core.id.PluginName
 import grit.core.retention.{Target, Tombstone}
 
 /** What grit has decided to delete, kept until the collector has deleted it: nothing in grit
-  * deletes a row or a workflow history that no tombstone names.
+  * deletes a record (a row with a history, or a workflow history) that no tombstone names. Live
+  * state with no history (a lock such as a claim, a cursor, a counter) is removed by the write
+  * that ends it instead.
   */
 trait Tombstones {
 

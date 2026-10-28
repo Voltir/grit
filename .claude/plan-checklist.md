@@ -5,9 +5,10 @@ replay; these hold only if a plan states them and its review checks them. A plan
 that applies in its plan; a reviewer checks each against the plan and says which it checked.
 
 - **Decision records** (`docs/decisions/README.md`, read in full). A new decision passes all five
-  threshold tests or gets no record. An existing record changed within the last 30 days (the
-  latest date on its Status line) is revised in place (Status `revised (date)`, the commit saying
-  what changed); one left alone for 30 days is never edited, and only a new record supersedes it.
+  threshold tests or gets no record. An existing record is revised in place (Status `revised
+  (date)`, the commit saying what changed) for as long as the decision its title states stays
+  true; a change that makes its title false is a new record, the old one deleted in the same
+  commit and every reference to it retargeted.
 - **Every table bounded.** Each new table, column or recurring writer, a step recorded every round
   included, states its deletion path and its steady-state size.
 - **Schema.** A change to `schema.sql` comes with the `ALTER` for an existing database, tested

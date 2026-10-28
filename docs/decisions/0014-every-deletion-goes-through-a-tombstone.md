@@ -1,6 +1,6 @@
 # 0014. Every deletion goes through a tombstone
 
-Status: accepted (2026-09-26)
+Status: accepted (2026-09-26); revised (2026-10-28)
 
 Context: grit keeps data under windows: a closed period's raw entries and workflow histories
 for one, closings, period rows and usage for a longer one, plugin documents for as long as
@@ -35,6 +35,10 @@ Decision:
   plugin enabled again) spares the tombstone instead. Collecting is idempotent.
 - The one deletion no tombstone names is the collector's forgetting of tombstones ended
   longer ago than the ledger window.
+- **Tombstones govern records, not live state.** A row that is live state with no history (a
+  lock such as a claim, a cursor, a counter) is removed by the write that ends it, and its
+  table declares itself kept with what bounds it: tombstoning a release would hold the next
+  claim until it was collected.
 - **Every table declares its retention class** in `schema.sql`: journal (the retention
   window), ledger (the ledger window), cache (rebuilt from closings, deleted with them) or
   kept, with what bounds it.
