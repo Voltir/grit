@@ -22,7 +22,7 @@ import grit.core.job.{
 }
 import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.plugin.{
-  Answered,
+  CommandOutcome,
   DocumentPosting,
   Documents,
   Exports,
@@ -194,7 +194,7 @@ object TestPlugins {
     val spec: ToolSpec[Word] = saying(called)
     def run(args: Word, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = Right(Answered.Done(args.word))
+    ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
 
   /** A keeping command named `called`, answering the word it is given and keeping nothing. */
@@ -202,7 +202,7 @@ object TestPlugins {
     val spec: ToolSpec[Word] = saying(called)
     def run(args: Word, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = Right(Answered.Done(args.word))
+    ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
 
   /** Its commands are `commands`, beside `tools` and `documents`. */

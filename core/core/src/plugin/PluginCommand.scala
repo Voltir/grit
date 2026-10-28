@@ -25,7 +25,7 @@ trait ReadingCommand[A <: caps.Pure] extends PluginCommand[A] {
   /** What `args`, given by `by` at `at`, come to over `own`. */
   def run(args: A, by: Principal.Person, own: PluginReads, at: Instant)(using
       Tx^
-  ): Either[StoreError, Answered]
+  ): Either[StoreError, CommandOutcome]
 }
 
 /** A command that may keep its plugin's documents. A deployment is refused one whose plugin keeps
@@ -35,15 +35,15 @@ trait KeepingCommand[A <: caps.Pure] extends PluginCommand[A] {
 
   /** As [[ReadingCommand.run]], keeping through `own`, which believes each document at no more
     * than its edge gave, met with its room's cap: committed only when it answers
-    * [[Answered.Done]].
+    * [[CommandOutcome.Done]].
     */
   def run(args: A, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
       Tx^
-  ): Either[StoreError, Answered]
+  ): Either[StoreError, CommandOutcome]
 }
 
 /** What a command answers its asker, to them alone. */
-enum Answered extends caps.Pure {
+enum CommandOutcome extends caps.Pure {
 
   /** It did what it was asked; `text` says what. */
   case Done(text: String)

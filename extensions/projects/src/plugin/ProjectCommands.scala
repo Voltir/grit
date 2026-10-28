@@ -7,7 +7,7 @@ import grit.core.id.{DocKey, DocumentVersionId, PrincipalId}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
-import grit.core.plugin.{Answered, KeepingCommand, PluginCommand, ReadingCommand}
+import grit.core.plugin.{CommandOutcome, KeepingCommand, PluginCommand, ReadingCommand}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
@@ -74,7 +74,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Starting, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       val p = ProjectKey.value(args.project)
       val named = args.method.getOrElse(default)
       for {
@@ -140,7 +140,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Keeping, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
@@ -217,7 +217,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Moving, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
@@ -278,7 +278,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Showing, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
         found <- artifact(project, args.key)
@@ -336,7 +336,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Recalling, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
         found <- artifact(project, args.key)
@@ -397,7 +397,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Listing, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       loaded(own.documents, args.project).map { project =>
         val heads = project.artifacts
           .map(_.head)
@@ -431,7 +431,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Finding, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         hits <- stored(own.documents.search(args.query, Found, at))
         // A project's index is no artifact: its key has no `/`.
@@ -464,7 +464,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Exporting, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.project)
         whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
@@ -512,7 +512,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Claiming, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       val slot = BriefSlot.value(args.slot)
       for {
         project <- loaded(own, args.key.project)
@@ -581,7 +581,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Releasing, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         claims <- claimsHolding(own, ArtifactJson.claiming(args.key))
         claim <- claims.headOption.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
@@ -620,7 +620,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(args: Briefing, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] = answered {
+    ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
         method <- refuse(declared(project.pin))
@@ -729,11 +729,12 @@ private[plugin] object ProjectCommands {
     def artifacts: Vector[Artifact] = documents.map(_._2)
   }
 
-  private def answered(step: Either[Stop, String]): Either[StoreError, Answered] = step match {
-    case Right(text) => Right(Answered.Done(text))
-    case Left(Stop.Refused(why)) => Right(Answered.Refused(why))
-    case Left(Stop.Store(e)) => Left(e)
-  }
+  private def answered(step: Either[Stop, String]): Either[StoreError, CommandOutcome] =
+    step match {
+      case Right(text) => Right(CommandOutcome.Done(text))
+      case Left(Stop.Refused(why)) => Right(CommandOutcome.Refused(why))
+      case Left(Stop.Store(e)) => Left(e)
+    }
 
   private def refuse[A](e: Either[String, A]): Either[Stop, A] = e.left.map(Stop.Refused(_))
 

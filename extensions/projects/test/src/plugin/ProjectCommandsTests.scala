@@ -3,7 +3,7 @@ package grit.projects.plugin
 import scala.concurrent.duration.*
 
 import grit.core.document.DocumentTerms
-import grit.core.plugin.Answered
+import grit.core.plugin.CommandOutcome
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.method.{Example, MethodFixtures}
@@ -28,8 +28,8 @@ object ProjectCommandsTests extends TestSuite {
       val before = store.count
       val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
       assert(answer match {
-        case Answered.Refused(why) => why.contains("sections-present") && why.contains("Why")
-        case Answered.Done(_) => false
+        case CommandOutcome.Refused(why) => why.contains("sections-present") && why.contains("Why")
+        case CommandOutcome.Done(_) => false
       })
       assert(store.count == before, shown(projects, store, "p/a").contains("state: building"))
     }
@@ -52,7 +52,7 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "change", "Text.")
       val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
       assert(
-        answer == Answered.Refused(
+        answer == CommandOutcome.Refused(
           "p/a (change, proposed) cannot move to done; it may move to building"
         )
       )
@@ -67,8 +67,8 @@ object ProjectCommandsTests extends TestSuite {
       )
       val answer = ask(changed, store, "project_move", "key" -> "p/a", "to" -> "building")
       assert(answer match {
-        case Answered.Refused(why) => why.contains("changed") && why.contains("new version")
-        case Answered.Done(_) => false
+        case CommandOutcome.Refused(why) => why.contains("changed") && why.contains("new version")
+        case CommandOutcome.Done(_) => false
       })
       assert(shown(changed, store, "p/a").contains("state: proposed"))
     }
@@ -109,8 +109,8 @@ object ProjectCommandsTests extends TestSuite {
         "body" -> "See [b](artifact:p/b)."
       )
       assert(answer match {
-        case Answered.Refused(why) => why.contains("p/b")
-        case Answered.Done(_) => false
+        case CommandOutcome.Refused(why) => why.contains("p/b")
+        case CommandOutcome.Done(_) => false
       })
       assert(store.count == before)
     }
@@ -139,7 +139,7 @@ object ProjectCommandsTests extends TestSuite {
         "title" -> "B",
         "body" -> "Text."
       )
-      assert(answer == Answered.Refused(Projects.full(2)), store.count == 2)
+      assert(answer == CommandOutcome.Refused(Projects.full(2)), store.count == 2)
     }
 
     test("export pages concatenate to ProjectMarkdown.render's files") {
@@ -195,7 +195,7 @@ object ProjectCommandsTests extends TestSuite {
       val text = shown(projects, store, "p/a")
       assert(text.startsWith("---\nkey: p/a\nkind: note\nstate: open\n"), text.endsWith("Text.\n"))
       assert(
-        ask(projects, store, "project_show", "key" -> "p/z") == Answered.Refused(
+        ask(projects, store, "project_show", "key" -> "p/z") == CommandOutcome.Refused(
           "project p has no artifact p/z"
         )
       )
@@ -301,19 +301,19 @@ object ProjectCommandsTests extends TestSuite {
         )
       (
         shownAt(2) match {
-          case Answered.Done(text) => text.linesIterator.toVector.lastOption
-          case Answered.Refused(why) => Some(why)
+          case CommandOutcome.Done(text) => text.linesIterator.toVector.lastOption
+          case CommandOutcome.Refused(why) => Some(why)
         },
         shownAt(3) match {
-          case Answered.Done(text) => text.linesIterator.toVector.lastOption
-          case Answered.Refused(why) => Some(why)
+          case CommandOutcome.Done(text) => text.linesIterator.toVector.lastOption
+          case CommandOutcome.Refused(why) => Some(why)
         },
         shownAt(0)
       ) ==> (
         (
           Some("One."),
           Some("Two."),
-          Answered.Refused("p/a had no version at 2026-10-27T12:00:00Z")
+          CommandOutcome.Refused("p/a had no version at 2026-10-27T12:00:00Z")
         )
       )
     }
@@ -351,12 +351,12 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       assert(
-        ask(projects, store, "project_new", "project" -> "p") == Answered.Refused(
+        ask(projects, store, "project_new", "project" -> "p") == CommandOutcome.Refused(
           "project p exists already"
         )
       )
       val unknown = ask(projects, store, "project_new", "project" -> "q", "method" -> "other")
-      assert(unknown == Answered.Refused("no method is named other; the methods here: grit"))
+      assert(unknown == CommandOutcome.Refused("no method is named other; the methods here: grit"))
     }
 
     test("every command's does line tells a project artifact from a claude.ai Artifact") {
@@ -371,7 +371,7 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
-      def briefed(args: (String, ujson.Value)*): Answered =
+      def briefed(args: (String, ujson.Value)*): CommandOutcome =
         ask(projects, store, "project_brief", ("key" -> ujson.Str("p/a")) +: args*)
       val text = done(briefed("role" -> "builder"))
       val pin = method().digest.hex.take(Brief.PinDigits)
@@ -380,12 +380,13 @@ object ProjectCommandsTests extends TestSuite {
       assert(
         text.startsWith(s"p/a | change | proposed | Title a | grit v1 | pin $pin\n"),
         text.contains("Because."),
-        stranger == Answered.Refused(
+        stranger == CommandOutcome.Refused(
           "method grit version 1 shows no role reviewer; its roles: builder"
         ),
         small match {
-          case Answered.Refused(why) => why.startsWith("p/a alone is ") && why.endsWith(", over 10")
-          case Answered.Done(_) => false
+          case CommandOutcome.Refused(why) =>
+            why.startsWith("p/a alone is ") && why.endsWith(", over 10")
+          case CommandOutcome.Done(_) => false
         }
       )
     }

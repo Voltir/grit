@@ -29,9 +29,9 @@ import grit.core.need.{Needs, PluginReads}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{
-  Answered,
   CacheDocs,
   CachePosting,
+  CommandOutcome,
   DocumentPosting,
   Documents,
   KeepingCommand,
@@ -218,10 +218,10 @@ object PluginLiveTests extends TestSuite {
     val spec: ToolSpec[Note] = noting(ToolName("note"))
     def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] =
+    ): Either[StoreError, CommandOutcome] =
       write(own, args.key, args.text, at).map(_ =>
-        if (args.text == "refuse") Answered.Refused("refused")
-        else Answered.Done(s"kept ${args.key}")
+        if (args.text == "refuse") CommandOutcome.Refused("refused")
+        else CommandOutcome.Done(s"kept ${args.key}")
       )
   }
 
@@ -230,11 +230,11 @@ object PluginLiveTests extends TestSuite {
     val spec: ToolSpec[Note] = noting(ToolName("twice"))
     def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] =
+    ): Either[StoreError, CommandOutcome] =
       for {
         _ <- write(own, args.key, args.text, at)
         _ <- write(own, s"${args.key}-2", args.text, at)
-      } yield Answered.Done("kept twice")
+      } yield CommandOutcome.Done("kept twice")
   }
 
   /** `list`: the texts of the notes its transaction reads, sorted, joined by commas. */
@@ -242,10 +242,10 @@ object PluginLiveTests extends TestSuite {
     val spec: ToolSpec[Note] = noting(ToolName("list"))
     def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] =
+    ): Either[StoreError, CommandOutcome] =
       own.documents
         .newest(10)
-        .map(ds => Answered.Done(ds.map(d => DocText.value(d.text)).sorted.mkString(",")))
+        .map(ds => CommandOutcome.Done(ds.map(d => DocText.value(d.text)).sorted.mkString(",")))
   }
 
   /** `sneak`: a reading command writing through a keeper it was built with. */
@@ -253,8 +253,8 @@ object PluginLiveTests extends TestSuite {
     val spec: ToolSpec[Note] = noting(ToolName("sneak"))
     def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
-    ): Either[StoreError, Answered] =
-      write(keeper, args.key, args.text, at).map(_ => Answered.Done("wrote"))
+    ): Either[StoreError, CommandOutcome] =
+      write(keeper, args.key, args.text, at).map(_ => CommandOutcome.Done("wrote"))
   }
 
   private def terms(label: String, bound: Int, full: DocumentTerms.Full): DocumentTerms =
@@ -374,7 +374,7 @@ object PluginLiveTests extends TestSuite {
     ) {
       commanding("command_keeps") { (config, engine, commands) =>
         commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
-          Right(Answered.Done("kept k"))
+          Right(CommandOutcome.Done("kept k"))
         kept(config, engine, "notebook") ==> Vector(("k", "internal", "member"))
       }
     }
@@ -382,7 +382,7 @@ object PluginLiveTests extends TestSuite {
     test("an edge's integrity above the room's cap is cut to the cap") {
       commanding("command_capped") { (config, engine, commands) =>
         commands.run(ann, team, Integrity.Member, ToolName("note"), note("k", "hello"), at) ==>
-          Right(Answered.Done("kept k"))
+          Right(CommandOutcome.Done("kept k"))
         kept(config, engine, "notebook") ==> Vector(("k", "internal", "outside"))
       }
     }
@@ -390,7 +390,7 @@ object PluginLiveTests extends TestSuite {
     test("a refused command keeps nothing it wrote first") {
       commanding("command_refused") { (config, engine, commands) =>
         commands.run(ann, desk, Integrity.Member, ToolName("note"), note("k", "refuse"), at) ==>
-          Right(Answered.Refused("refused"))
+          Right(CommandOutcome.Refused("refused"))
         kept(config, engine, "notebook") ==> Vector()
       }
     }
@@ -417,13 +417,13 @@ object PluginLiveTests extends TestSuite {
     test("a command reads nothing above its asker's clearance") {
       commanding("command_cleared") { (_, _, commands) =>
         commands.run(bea, board, Integrity.Member, ToolName("note"), note("b", "board"), at) ==>
-          Right(Answered.Done("kept b"))
+          Right(CommandOutcome.Done("kept b"))
         commands.run(ann, board, Integrity.Member, ToolName("note"), note("a", "staff"), at) ==>
-          Right(Answered.Done("kept a"))
+          Right(CommandOutcome.Done("kept a"))
         (
           commands.run(ann, board, Integrity.Member, ToolName("list"), note("", ""), at),
           commands.run(bea, board, Integrity.Member, ToolName("list"), note("", ""), at)
-        ) ==> (Right(Answered.Done("staff")), Right(Answered.Done("board,staff")))
+        ) ==> (Right(CommandOutcome.Done("staff")), Right(CommandOutcome.Done("board,staff")))
       }
     }
 

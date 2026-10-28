@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.identity.Account
 import grit.core.place.Place
-import grit.core.plugin.Answered
+import grit.core.plugin.CommandOutcome
 import grit.core.provider.ToolSchema
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
@@ -34,7 +34,7 @@ trait PluginCommands extends caps.SharedCapability {
       name: ToolName,
       args: ujson.Value,
       at: Instant
-  ): Either[CommandError, Answered]
+  ): Either[CommandError, CommandOutcome]
 }
 
 object PluginCommands {
@@ -49,7 +49,7 @@ object PluginCommands {
         name: ToolName,
         args: ujson.Value,
         at: Instant
-    ): Either[CommandError, Answered] = Left(CommandError.Unknown(name))
+    ): Either[CommandError, CommandOutcome] = Left(CommandError.Unknown(name))
   }
 }
 

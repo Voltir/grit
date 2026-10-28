@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
-import grit.core.plugin.{Answered, InMemoryPlugins, KeepingCommand, ReadingCommand}
+import grit.core.plugin.{CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
 import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.dbos.sql.TestTx
@@ -59,7 +59,7 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): Answered = askAt(at)(projects, store, name, args*)
+  ): CommandOutcome = askAt(at)(projects, store, name, args*)
 
   /** As [[ask]], asked at `when`. */
   def askAt(when: Instant)(
@@ -67,7 +67,7 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): Answered =
+  ): CommandOutcome =
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
       case Some(c: KeepingCommand[a]) =>
         val read = c.spec.args.read(ujson.Obj.from(args))
@@ -88,9 +88,9 @@ object CommandFixtures {
       case _ => throw new java.lang.AssertionError(s"no command $name")
     }
 
-  def done(answer: Answered): String = answer match {
-    case Answered.Done(text) => text
-    case Answered.Refused(why) => throw new java.lang.AssertionError(s"refused: $why")
+  def done(answer: CommandOutcome): String = answer match {
+    case CommandOutcome.Done(text) => text
+    case CommandOutcome.Refused(why) => throw new java.lang.AssertionError(s"refused: $why")
   }
 
   def started(projects: Projects, store: Store): Unit =

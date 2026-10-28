@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import grit.core.document.{DocRef, Document}
 import grit.core.id.DocKey
-import grit.core.plugin.Answered
+import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Label
 import grit.projects.method.MethodFixtures
 import grit.projects.name.BriefSlot
@@ -42,7 +42,7 @@ object ClaimTests extends TestSuite {
       key: String = "p/a",
       role: String = "builder",
       forSlot: String = slot
-  ): Answered =
+  ): CommandOutcome =
     ask(projects, store, "project_claim", "key" -> key, "role" -> role, "for" -> forSlot)
 
   /** A project `p` holding two notes, `p/a` and `p/b`. */
@@ -61,7 +61,7 @@ object ClaimTests extends TestSuite {
       done(claimed(projects, store))
       val second = claimed(projects, store, forSlot = "other")
       assert(
-        second == Answered.Refused(
+        second == CommandOutcome.Refused(
           s"p/a is claimed already, as builder for $slot by $by since $at; " +
             "project_release frees it"
         )
@@ -76,10 +76,10 @@ object ClaimTests extends TestSuite {
       val second = claimed(projects, store, key = "p/b")
       val elsewhere = claimed(projects, store, key = "p/b", forSlot = "other")
       assert(
-        second == Answered.Refused(
+        second == CommandOutcome.Refused(
           s"$slot works p/a already, claimed since $at; release it with project_release first"
         ),
-        elsewhere == Answered.Done("Claimed p/b (note, open) as builder for other.")
+        elsewhere == CommandOutcome.Done("Claimed p/b (note, open) as builder for other.")
       )
     }
 
@@ -90,7 +90,7 @@ object ClaimTests extends TestSuite {
       val before = store.count
       val answer = claimed(projects, store, role = "reviewer")
       assert(
-        answer == Answered.Refused(
+        answer == CommandOutcome.Refused(
           "method grit version 1 shows no role reviewer; its roles: builder"
         ),
         store.count == before
@@ -104,7 +104,7 @@ object ClaimTests extends TestSuite {
       val answer = claimed(projects, store)
       val claim = current(store, "claim/p/a")
       assert(
-        answer == Answered.Done(s"Claimed p/a (note, open) as builder for $slot."),
+        answer == CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $slot."),
         claim.map(_.data) == Some(
           ujson.Obj("claimed" -> ujson.Obj("by" -> by, "for" -> slot, "role" -> "builder"))
         ),
@@ -125,9 +125,9 @@ object ClaimTests extends TestSuite {
         ask(projects, store, "project_release", "key" -> "p/b")
       }
       assert(
-        again == Answered.Done(s"Claimed p/b (note, open) as builder for $slot."),
-        released.isInstanceOf[Answered.Done],
-        unclaimed == Answered.Refused("p/b is not claimed")
+        again == CommandOutcome.Done(s"Claimed p/b (note, open) as builder for $slot."),
+        released.isInstanceOf[CommandOutcome.Done],
+        unclaimed == CommandOutcome.Refused("p/b is not claimed")
       )
     }
 

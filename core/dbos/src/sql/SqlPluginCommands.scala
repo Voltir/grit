@@ -11,7 +11,7 @@ import grit.core.edge.{CommandError, PluginCommands}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
-import grit.core.plugin.{Answered, KeepingCommand, Plugin, ReadingCommand}
+import grit.core.plugin.{CommandOutcome, KeepingCommand, Plugin, ReadingCommand}
 import grit.core.provider.ToolSchema
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -21,7 +21,7 @@ import grit.core.visibility.{Integrity, Subject}
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
   * and then the command run under [[Subject.Person]], both opened through `opener`. A reading
   * command's connection is read-only and always rolled back; a keeping command's is committed
-  * only when it answers [[Answered.Done]]. A keeping command of a plugin with no documents,
+  * only when it answers [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
   * which a deployment refuses, is not offered.
   */
 private[dbos] final class SqlPluginCommands(
@@ -61,7 +61,7 @@ private[dbos] final class SqlPluginCommands(
       name: ToolName,
       args: ujson.Value,
       at: Instant
-  ): Either[CommandError, Answered] =
+  ): Either[CommandError, CommandOutcome] =
     runnable.find(_._1 == name).map(_._2) match {
       case None => Left(CommandError.Unknown(name))
       case Some(Runnable.Reading(plugin, command)) =>
@@ -78,7 +78,7 @@ private[dbos] final class SqlPluginCommands(
       name: ToolName,
       args: ujson.Value,
       at: Instant
-  ): Either[CommandError, Answered] =
+  ): Either[CommandError, CommandOutcome] =
     command.spec.args.read(args) match {
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
@@ -98,7 +98,7 @@ private[dbos] final class SqlPluginCommands(
       name: ToolName,
       args: ujson.Value,
       at: Instant
-  ): Either[CommandError, Answered] =
+  ): Either[CommandError, CommandOutcome] =
     command.spec.args.read(args) match {
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
@@ -111,13 +111,13 @@ private[dbos] final class SqlPluginCommands(
     }
 
   /** `body` run for the person `by` is linked to, in `room`, on one connection: read-only and
-    * rolled back unless `keeps`, and then committed only on [[Answered.Done]]. A store call of
+    * rolled back unless `keeps`, and then committed only on [[CommandOutcome.Done]]. A store call of
     * `body` failing, by a `Left` or a throw, is [[CommandError.Store]]; the database failing
     * otherwise, [[CommandError.Unavailable]].
     */
   private def transaction(by: Account, room: Place, name: ToolName, keeps: Boolean)(
-      body: (Principal.Person, Tx^) => Either[StoreError, Answered]
-  ): Either[CommandError, Answered] =
+      body: (Principal.Person, Tx^) => Either[StoreError, CommandOutcome]
+  ): Either[CommandError, CommandOutcome] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
@@ -125,7 +125,7 @@ private[dbos] final class SqlPluginCommands(
         val asked = opener
           .open(Subject.Public, conn)
           .flatMap(tx => SqlIdentities.person(by)(using tx))
-        val ran: Either[CommandError, Answered] = asked match {
+        val ran: Either[CommandError, CommandOutcome] = asked match {
           case Left(e) => Left(CommandError.Unavailable(e.toString))
           case Right(Some(person: Principal.Person)) =>
             opener.open(Subject.Person(person, room), conn) match {
@@ -140,7 +140,7 @@ private[dbos] final class SqlPluginCommands(
           case Right(_) => Left(CommandError.NotVouched(by))
         }
         ran match {
-          case Right(Answered.Done(_)) if keeps => conn.commit()
+          case Right(CommandOutcome.Done(_)) if keeps => conn.commit()
           case _ => conn.rollback()
         }
         ran

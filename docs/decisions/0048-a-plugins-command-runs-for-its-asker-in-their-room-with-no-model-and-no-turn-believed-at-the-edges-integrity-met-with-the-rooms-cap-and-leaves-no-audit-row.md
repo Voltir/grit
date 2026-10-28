@@ -22,7 +22,7 @@ Decision:
 - **A plugin may contribute commands** (`Plugin.commands`), each a `PluginCommand` that names
   itself and reads its arguments by a `ToolSpec`, as a tool does. An edge runs one by name for
   the person behind an account, through `PluginCommands` (in `EdgeStores`), with no model and
-  no turn, and answers at once (`Answered.Done` or `Answered.Refused`), to that person alone.
+  no turn, and answers at once (`CommandOutcome.Done` or `CommandOutcome.Refused`), to that person alone.
   It runs in the edge's process over the store (ADR 0002).
 - **It reads for its asker in their room** (`Subject.Person`): everything up to the label the
   room is written at outside grit met with the asker's clearance. The asker is a person, never
