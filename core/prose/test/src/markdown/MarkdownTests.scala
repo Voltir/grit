@@ -217,6 +217,19 @@ object MarkdownTests extends TestSuite {
       Markdown.writeExact(doc) ==> "see [a] then 2*3\\*4, ![x\\](y) and [a\\]b](u)"
       Markdown.parse(Markdown.writeExact(doc)) ==> doc
     }
+    test(
+      "emphasis starting a line, before a space, is written with _ and never reads as a bullet"
+    ) {
+      val doc = Doc(
+        Vector(
+          para(marked(" a ", Mark.Emphasis), Span.plain("b\n"), marked(" c ", Mark.Emphasis))
+        )
+      )
+      Markdown.write(doc) ==> "_ a _b\\\n_ c _"
+      Markdown.parse(Markdown.write(doc)).blocks.map(_.ordinal) ==> Vector(
+        Block.Paragraph(plain("")).ordinal
+      )
+    }
     test("a line break is written as a backslash at its line's end, and read back") {
       val doc = Doc(
         Vector(

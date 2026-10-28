@@ -7,10 +7,11 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, S
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.json.ProseJson
 
-/** Projects from a seed, their titles and bodies holding exactly the hazards `Markdown.write`'s
-  * doc names: `\`, a backtick, brackets, `<`, `!`, `*` and `_` in text, marked spans starting or
-  * ending in a space, and a span marked strong then one marked emphasis ending inside a word;
-  * beside them, references to other artifacts of the project.
+/** Projects from a seed, their titles and bodies holding exactly the hazards
+  * `Markdown.writeExact`'s doc names: `\`, a backtick, brackets, `<`, `!`, `*` and `_` in text,
+  * marked spans starting or ending in a space, and a span marked strong then one marked emphasis
+  * ending inside a word; and line breaks, some after a space, which a body reads back only when
+  * written as breaks; beside them, references to other artifacts of the project.
   */
 object ProjectGen {
 
@@ -86,6 +87,7 @@ object ProjectGen {
               )
             case 4 if others.nonEmpty =>
               Vector(Span(w, Set.empty, Vector(others(r.nextInt(others.size)))))
+            case 5 => Vector(Span.plain(w + (if (r.nextBoolean()) " \n" else "\n")))
             case _ => Vector(Span.plain(w + " "))
           }
         }

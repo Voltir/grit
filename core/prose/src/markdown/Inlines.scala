@@ -272,13 +272,15 @@ private[markdown] object Inlines {
       case Mark.Strong => 1
       case _ => 2
     }
-    // A delimiter beside another of its character would read as one run: `_` after a `*`.
+    // A delimiter beside another of its character would read as one run: `_` after a `*`. A
+    // `*` starting a line, before a space, would read as a bullet: emphasis there is `_`.
     def delimiters(m: Mark): (String, String) = {
       val alt = out.lastOption.contains('*')
+      val lineStart = place == Place.Lines && (out.isEmpty || out.lastOption.contains('\n'))
       m match {
         case Mark.Link(href) => ("[", s"]($href)")
         case Mark.Strong => if (alt) ("__", "__") else ("**", "**")
-        case _ => if (alt) ("_", "_") else ("*", "*")
+        case _ => if (alt || lineStart) ("_", "_") else ("*", "*")
       }
     }
     spans.indices.foreach { i =>
