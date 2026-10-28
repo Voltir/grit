@@ -3,6 +3,7 @@ package grit.projects.plugin
 import scala.concurrent.duration.*
 
 import grit.core.document.DocumentTerms
+import grit.core.identity.Principal
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
@@ -25,13 +26,18 @@ object ProjectCommandsTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "a", "change", "No reason given.")
       done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
-      val before = store.count
+      def versions =
+        done(ask(projects, store, "project_history", "key" -> "p/a")).linesIterator.size
+      val before = versions
       val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
-      assert(answer match {
-        case CommandOutcome.Refused(why) => why.contains("sections-present") && why.contains("Why")
-        case CommandOutcome.Done(_) => false
-      })
-      assert(store.count == before, shown(projects, store, "p/a").contains("state: building"))
+      assert(
+        answer == CommandOutcome.Refused(
+          "p/a cannot move to done: sections-present: its body lacks ## Why"
+        ),
+        before == 2,
+        versions == before,
+        shown(projects, store, "p/a").contains("state: building")
+      )
     }
 
     test("a move whose checks hold keeps the new state and its mover") {
@@ -39,10 +45,10 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
-      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
-      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done"))
+      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "to" -> "done"))
       val text = shown(projects, store, "p/a")
-      assert(text.contains("state: done"), text.contains(s"by: \"$by\""))
+      assert(text.contains("state: done"), text.contains(s"by: \"$otherBy\""))
     }
 
     test("a move no transition allows is refused, naming the states it may go to") {
@@ -66,11 +72,13 @@ object ProjectCommandsTests extends TestSuite {
         method(transitions :+ MethodFixtures.move(note, "open", "closed", "sections-present"))
       )
       val answer = ask(changed, store, "project_move", "key" -> "p/a", "to" -> "building")
-      assert(answer match {
-        case CommandOutcome.Refused(why) => why.contains("changed") && why.contains("new version")
-        case CommandOutcome.Done(_) => false
-      })
-      assert(shown(changed, store, "p/a").contains("state: proposed"))
+      assert(
+        answer == CommandOutcome.Refused(
+          "project p holds to method grit version 1, whose rules have changed since the project started; " +
+            "declare a new version of the method rather than changing this one"
+        ),
+        shown(changed, store, "p/a").contains("state: proposed")
+      )
     }
 
     test("project_keep cannot change a state") {
@@ -139,7 +147,12 @@ object ProjectCommandsTests extends TestSuite {
         "title" -> "B",
         "body" -> "Text."
       )
-      assert(answer == CommandOutcome.Refused(Projects.full(2)), store.count == 2)
+      assert(
+        answer == CommandOutcome.Refused(
+          "this deployment keeps at most 2 project documents and holds that many already, so nothing was kept"
+        ),
+        store.count == 2
+      )
     }
 
     test("export pages concatenate to ProjectMarkdown.render's files") {
@@ -201,10 +214,17 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
-    /** Keeps `p/a`, a change titled `title` holding `body`, `m` minutes after [[at]]. */
-    def keptAt(projects: Projects, store: Store, m: Int, title: String, body: String): Unit =
+    /** Keeps `p/a`, a change titled `title` holding `body`, `m` minutes after [[at]], as `who`. */
+    def keptAt(
+        projects: Projects,
+        store: Store,
+        m: Int,
+        title: String,
+        body: String,
+        who: Principal.Person = person
+    ): Unit =
       done(
-        askAt(at.plusSeconds(60L * m))(
+        askAs(who, at.plusSeconds(60L * m))(
           projects,
           store,
           "project_keep",
@@ -220,7 +240,7 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       keptAt(projects, store, 1, "First", "## Why\n\nOne.")
-      keptAt(projects, store, 2, "Second", "## Why\n\nTwo.")
+      keptAt(projects, store, 2, "Second", "## Why\n\nTwo.", other)
       done(
         askAt(at.plusSeconds(180))(
           projects,
@@ -243,7 +263,7 @@ object ProjectCommandsTests extends TestSuite {
           3,
           Vector(
             s" 2026-10-27T12:03:00Z by $by (building): Second",
-            s" 2026-10-27T12:02:00Z by $by (proposed): Second",
+            s" 2026-10-27T12:02:00Z by $otherBy (proposed): Second",
             s" 2026-10-27T12:01:00Z by $by (proposed): First"
           )
         )

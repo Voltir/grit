@@ -21,14 +21,23 @@ object CommandFixtures {
 
   val at: Instant = Instant.parse("2026-10-27T12:00:00Z")
 
-  val person: Principal.Person =
-    TestAccounts.principal(TestAccounts.account("slack:T1/U1")) match {
+  private def personOf(account: String): Principal.Person =
+    TestAccounts.principal(TestAccounts.account(account)) match {
       case p: Principal.Person => p
       case Principal.Grit => throw new java.lang.AssertionError("not a person")
     }
 
+  /** Who asks, unless a test asks as [[other]]. */
+  val person: Principal.Person = personOf("slack:T1/U1")
+
   /** What every write by [[person]] records as its author. */
   val by: String = "slack:T1/U1"
+
+  /** A second person, for a test telling who wrote what. */
+  val other: Principal.Person = personOf("slack:T1/U2")
+
+  /** What every write by [[other]] records as its author. */
+  val otherBy: String = "slack:T1/U2"
 
   val methodName: MethodName = MethodFixtures.method
 
@@ -59,10 +68,18 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
-  ): CommandOutcome = askAt(at)(projects, store, name, args*)
+  ): CommandOutcome = askAs(person, at)(projects, store, name, args*)
 
   /** As [[ask]], asked at `when`. */
   def askAt(when: Instant)(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
+  ): CommandOutcome = askAs(person, when)(projects, store, name, args*)
+
+  /** As [[ask]], asked by `who` at `when`. */
+  def askAs(who: Principal.Person, when: Instant = at)(
       projects: Projects,
       store: Store,
       name: String,
@@ -74,7 +91,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, person, store.keeper, when))
+            inTx(c.run(a, who, store.keeper, when))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case Some(c: ReadingCommand[a]) =>
@@ -82,7 +99,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, person, store.reads, when))
+            inTx(c.run(a, who, store.reads, when))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")
