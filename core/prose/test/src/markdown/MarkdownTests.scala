@@ -329,6 +329,21 @@ object MarkdownTests extends TestSuite {
         Doc(Vector(para(marked("a`b", Mark.Code), marked(" and "), marked("``", Mark.Code))))
       ) ==> "``a`b`` and ``` `` ```"
     }
+    test("a code span of backticks at a line's start reads back as a code span") {
+      // At a paragraph's start, after a line break, and holding a line break of its own,
+      // which a code span reads as a space.
+      def doc(spans: Span[Nothing]*): Doc[Nothing] = Doc(Vector(para(spans*)))
+      val cases = Vector(
+        doc(marked("a``b", Mark.Code)) -> doc(marked("a``b", Mark.Code)),
+        doc(Span.plain("x\n"), marked("a``b", Mark.Code)) ->
+          doc(Span.plain("x\n"), marked("a``b", Mark.Code)),
+        doc(marked("a\n``b", Mark.Code)) -> doc(marked("a ``b", Mark.Code))
+      )
+      for {
+        written <- Vector(Markdown.write, Markdown.writeExact)
+        (d, back) <- cases
+      } Markdown.parse(written(d)) ==> back
+    }
 
     test("paragraphs of a reply, each newline inside them kept as a break") {
       Markdown.parse("one\ntwo\n\nthree") ==> Doc(

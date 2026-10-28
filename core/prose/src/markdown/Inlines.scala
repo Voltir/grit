@@ -296,7 +296,8 @@ private[markdown] object Inlines {
         open = (m, closer) :: open
       }
       val text = if (place == Place.Lines) s.text else s.text.replace('\n', ' ')
-      if (s.marks(Mark.Code)) out ++= code(text)
+      // A code span on one line, as it reads back: across two, its first could open a fence.
+      if (s.marks(Mark.Code)) out ++= code(s.text.replace('\n', ' '))
       else {
         val (written, at) = literal(
           text,

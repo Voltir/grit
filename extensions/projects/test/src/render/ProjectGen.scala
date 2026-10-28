@@ -11,7 +11,8 @@ import grit.prose.json.ProseJson
   * `Markdown.writeExact`'s doc names: `\`, a backtick, brackets, `<`, `!`, `*` and `_` in text,
   * marked spans starting or ending in a space, and a span marked strong then one marked emphasis
   * ending inside a word; and line breaks, some after a space, which a body reads back only when
-  * written as breaks; beside them, references to other artifacts of the project.
+  * written as breaks; code holding a line break before two backticks, which reads back with a
+  * space for it; beside them, references to other artifacts of the project.
   */
 object ProjectGen {
 
@@ -78,7 +79,8 @@ object ProjectGen {
           r.nextInt(7) match {
             case 0 => Vector(Span(w, Set(Mark.Strong)))
             case 1 => Vector(Span(s" $w ", Set(Mark.Emphasis)))
-            case 2 => Vector(Span(w, Set(Mark.Code)))
+            case 2 =>
+              Vector(Span(if (r.nextInt(3) == 0) s"$w\n``$w" else w, Set(Mark.Code)))
             case 3 =>
               Vector(
                 Span("ab", Set(Mark.Strong)),
