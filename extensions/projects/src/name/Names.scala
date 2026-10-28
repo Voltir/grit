@@ -1,12 +1,18 @@
 package grit.projects.name
 
+import grit.core.id.Slug
+
 /** The name of a method, as a deployment declares it. */
 opaque type MethodName = String
 
 object MethodName {
 
-  /** `s` as a method's name, or why not ([[Slug.check]]). */
-  def of(s: String): Either[String, MethodName] = Slug.check("a method's name", s, Slug.Longest)
+  /** 64: the most characters a method's name holds. */
+  val Longest: Int = 64
+
+  /** `s` as a method's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  def of(s: String): Either[String, MethodName] =
+    Slug.check("a method's name", s, Some(Longest), leadingDigit = true)
   def value(n: MethodName): String = n
 }
 
@@ -15,8 +21,12 @@ opaque type KindName = String
 
 object KindName {
 
-  /** `s` as a kind's name, or why not ([[Slug.check]]). */
-  def of(s: String): Either[String, KindName] = Slug.check("a kind's name", s, Slug.Longest)
+  /** 64: the most characters a kind's name holds. */
+  val Longest: Int = 64
+
+  /** `s` as a kind's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  def of(s: String): Either[String, KindName] =
+    Slug.check("a kind's name", s, Some(Longest), leadingDigit = true)
   def value(n: KindName): String = n
 }
 
@@ -25,8 +35,12 @@ opaque type StateName = String
 
 object StateName {
 
-  /** `s` as a state's name, or why not ([[Slug.check]]). */
-  def of(s: String): Either[String, StateName] = Slug.check("a state's name", s, Slug.Longest)
+  /** 64: the most characters a state's name holds. */
+  val Longest: Int = 64
+
+  /** `s` as a state's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  def of(s: String): Either[String, StateName] =
+    Slug.check("a state's name", s, Some(Longest), leadingDigit = true)
   def value(n: StateName): String = n
 }
 
@@ -35,8 +49,12 @@ opaque type CheckName = String
 
 object CheckName {
 
-  /** `s` as a check's name, or why not ([[Slug.check]]). */
-  def of(s: String): Either[String, CheckName] = Slug.check("a check's name", s, Slug.Longest)
+  /** 64: the most characters a check's name holds. */
+  val Longest: Int = 64
+
+  /** `s` as a check's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  def of(s: String): Either[String, CheckName] =
+    Slug.check("a check's name", s, Some(Longest), leadingDigit = true)
   def value(n: CheckName): String = n
 
   /** A built-in check's name, a literal [[of]] accepts (`TransitionCheckTests` reads each back). */
@@ -48,8 +66,12 @@ opaque type RoleName = String
 
 object RoleName {
 
-  /** `s` as a role's name, or why not ([[Slug.check]]). */
-  def of(s: String): Either[String, RoleName] = Slug.check("a role's name", s, Slug.Longest)
+  /** 64: the most characters a role's name holds. */
+  val Longest: Int = 64
+
+  /** `s` as a role's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  def of(s: String): Either[String, RoleName] =
+    Slug.check("a role's name", s, Some(Longest), leadingDigit = true)
   def value(n: RoleName): String = n
 }
 
@@ -64,6 +86,9 @@ object BriefSlot {
   /** 160: the most characters a slot holds. */
   val Longest: Int = 160
 
+  /** 64: the most characters a part of a slot holds. */
+  val PartLongest: Int = 64
+
   /** `s` as a slot, or why not: over [[Longest]] characters, or not parts joined by `/`, each
     * as [[Slug.check]] takes a name.
     */
@@ -73,21 +98,12 @@ object BriefSlot {
       s.split("/", -1)
         .toVector
         .foldLeft[Either[String, Unit]](Right(()))((acc, part) =>
-          acc.flatMap(_ => Slug.check("a part of a slot", part, Slug.Longest).map(_ => ()))
+          acc.flatMap(_ =>
+            Slug
+              .check("a part of a slot", part, Some(PartLongest), leadingDigit = true)
+              .map(_ => ())
+          )
         )
         .map(_ => s)
   def value(s: BriefSlot): String = s
-}
-
-/** The one form every name and key part here takes. */
-object Slug {
-
-  /** 64: the most characters a name holds. */
-  val Longest: Int = 64
-
-  /** `s`, or why it is not `what`: as [[grit.core.id.Slug.check]] says, at most `longest`
-    * characters and free to start with a digit.
-    */
-  def check(what: String, s: String, longest: Int): Either[String, String] =
-    grit.core.id.Slug.check(what, s, Some(longest), leadingDigit = true)
 }

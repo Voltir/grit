@@ -9,7 +9,7 @@ to other artifacts as notes on their spans.
 Packages, in one-way order (each names only those before it):
 
 - **`name`**: the names a method and a project use: `MethodName`, `KindName`, `StateName`,
-  `CheckName`, `RoleName` (each a `Slug`), `ProjectKey`, `ArtifactKey` (`<project>/<artifact>`,
+  `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `ArtifactKey` (`<project>/<artifact>`,
   an id, never a title), `Pin`, the method version a project holds to, and `BriefSlot`, what
   an artifact is claimed for.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:

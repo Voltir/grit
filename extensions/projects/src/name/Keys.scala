@@ -1,6 +1,6 @@
 package grit.projects.name
 
-import grit.core.id.Sha256
+import grit.core.id.{Sha256, Slug}
 
 /** A project's key: the first part of each of its artifacts' keys. */
 opaque type ProjectKey = String
@@ -11,7 +11,8 @@ object ProjectKey {
   val Longest: Int = 40
 
   /** `s` as a project's key, or why not ([[Slug.check]], at most [[Longest]] characters). */
-  def of(s: String): Either[String, ProjectKey] = Slug.check("a project's key", s, Longest)
+  def of(s: String): Either[String, ProjectKey] =
+    Slug.check("a project's key", s, Some(Longest), leadingDigit = true)
   def value(k: ProjectKey): String = k
 }
 
@@ -31,7 +32,9 @@ object ArtifactKey {
     * [[Longest]] characters).
     */
   def of(project: ProjectKey, local: String): Either[String, ArtifactKey] =
-    Slug.check("an artifact's part of its key", local, Longest).map(new ArtifactKey(project, _))
+    Slug
+      .check("an artifact's part of its key", local, Some(Longest), leadingDigit = true)
+      .map(new ArtifactKey(project, _))
 
   /** `s` as [[ArtifactKey.value]] writes a key, or why not: no `/`, or a part
     * [[ProjectKey.of]] or [[of]] refuses.
