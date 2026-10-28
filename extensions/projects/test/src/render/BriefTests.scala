@@ -65,6 +65,20 @@ object BriefTests extends TestSuite {
       )
     }
 
+    test("an artifact that fits once a larger one is pointed out is given whole") {
+      val judged = artifact("j", "note", "j", "J", cites = Vector("a", "b"))
+      val pr = project(
+        Vector(judged, artifact("a", "note", "a", fifty * 10), artifact("b", "note", "b", fifty))
+      )
+      // `b`, the farther, is pointed out first, then `a`; with `a` a pointer, `b` fits whole.
+      val expected =
+        header + "\n\nJ\n\n## Cited\n\n- p/a (note, a, 500 chars)\n\n### p/b — b\n\n" + fifty
+      assert(
+        Brief.of(pr, key("j"), everything, expected.length).map(b => (b.text, b.pointed)) ==
+          Right((expected, Vector(key("a"))))
+      )
+    }
+
     test("what does not fit is a pointer line, the farthest citation first") {
       val judged = artifact("j", "note", "j", "J", cites = Vector("a", "b", "c"))
       val pr = project(

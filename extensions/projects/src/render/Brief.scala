@@ -30,8 +30,9 @@ enum BriefRefusal extends caps.Pure {
   * markdown together. The links followed are the artifact's `parent` and its `cites`, in its head
   * and its body, up to the view's depth; a path may pass through artifacts of kinds the view does
   * not name, but only artifacts of its kinds are cited. Pointers replace the farthest whole
-  * citations first; `pointed` lists the keys shown as pointers, and a citation that does not fit
-  * even as a pointer is left out.
+  * citations first; then each pointer, nearest first, is given whole again if it still fits.
+  * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a
+  * pointer is left out.
   */
 final case class Brief private (artifact: ArtifactKey, text: String, pointed: Vector[ArtifactKey])
     extends caps.Pure
@@ -127,13 +128,31 @@ object Brief {
           )
       }
 
+  /** `items` with each pointer, nearest first, given whole again when the text still fits: one
+    * pointed out before a larger one was can fit once that one is a pointer too.
+    */
+  @tailrec
+  private def refill(
+      ownText: String,
+      items: Vector[(Artifact, Boolean)],
+      chars: Int,
+      from: Int = 0
+  ): Vector[(Artifact, Boolean)] =
+    items.zipWithIndex.find { case ((_, whole), j) => j >= from && !whole } match {
+      case None => items
+      case Some(((a, _), i)) =>
+        val tried = items.zipWithIndex.map { case (item, j) => if (j == i) (a, true) else item }
+        refill(ownText, if (render(ownText, tried).length <= chars) tried else items, chars, i + 1)
+    }
+
   private def fit(
       judged: ArtifactKey,
       ownText: String,
       cited: Vector[(Artifact, Int)],
       chars: Int
   ): Brief = {
-    val kept = shrink(ownText, cited.map { case (a, _) => (a, true) }, chars)
+    val kept =
+      refill(ownText, shrink(ownText, cited.map { case (a, _) => (a, true) }, chars), chars)
     new Brief(
       judged,
       render(ownText, kept),
