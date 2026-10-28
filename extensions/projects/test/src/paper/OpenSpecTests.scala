@@ -159,16 +159,18 @@ object OpenSpecTests extends TestSuite {
         )
       )
     }
-    test("archiving is refused citing no other artifact, citing no spec first, or past the cap") {
+    test("archiving is refused citing no spec, or past the cap") {
       val tasked = theChange("tasked", cites = Vector.empty)
-      val citesTask = theChange("tasked", cites = Vector("p/2fa-task", "p/auth"))
+      val citesTask = theChange("tasked", cites = Vector("p/2fa-task"))
       val full = artifact(theSpec.head, "## Purpose\n\n" + "a" * (Body.StoredMost - 200))
       val big = theChange("tasked", body = "## Delta: More\n\n" + "b" * 400)
       val done = artifact(theTask.head.copy(state = state("done")), "Do it.")
       assert(
-        merged(Vector(theSpec, tasked)) == Left(MoveRefusal.NoInto(tasked.head, state("archived"))),
+        merged(Vector(theSpec, tasked)) == Left(
+          MoveRefusal.NoInto(tasked.head, state("archived"), spec.name)
+        ),
         merged(Vector(theSpec, citesTask, done)) == Left(
-          MoveRefusal.IntoKind(citesTask.head, state("archived"), done.head, spec.name)
+          MoveRefusal.NoInto(citesTask.head, state("archived"), spec.name)
         ),
         merged(Vector(full, big)) match {
           case Left(MoveRefusal.Unmerged(head, _, into, why)) =>
@@ -176,6 +178,29 @@ object OpenSpecTests extends TestSuite {
           case _ => false
         }
       )
+    }
+    test("a merge into a change citing two specs is refused, naming both") {
+      val billing = artifact(head("p/billing", spec, "current"), "## Purpose\n\nBill people.")
+      val both = theChange("tasked", cites = Vector("p/auth", "p/billing"))
+      assert(
+        merged(Vector(theSpec, billing, both)) == Left(
+          MoveRefusal.IntoSeveral(
+            both.head,
+            state("archived"),
+            spec.name,
+            Vector(key("p/auth"), key("p/billing"))
+          )
+        )
+      )
+    }
+    test("the spec is found whatever the order of cites") {
+      val taskFirst = theChange("tasked", cites = Vector("p/2fa-task", "p/auth"))
+      val done = artifact(theTask.head.copy(state = state("done")), "Do it.")
+      val (first, last) = (
+        merged(Vector(theSpec, theChange("tasked"), done)),
+        merged(Vector(theSpec, taskFirst, done))
+      )
+      assert(first.exists(_.nonEmpty), last == first)
     }
     test("project_move to archived keeps the spec merged, recording its mover") {
       import CommandFixtures.{ask, by, done as answered, shown, Store}

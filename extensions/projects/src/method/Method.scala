@@ -55,15 +55,15 @@ final case class Method private (
         case TransitionAction.Nothing => Right(Moved(moved, None))
         case TransitionAction.MergeDeltas(kind) =>
           for {
-            into <- a.head.cites
-              .find(_ != key)
+            into <- a.head.cites.distinct
+              .filter(_ != key)
               .flatMap(k => artifacts.find(_.head.key == k))
-              .toRight(MoveRefusal.NoInto(a.head, to))
-            _ <- Either.cond(
-              into.head.kind == kind,
-              (),
-              MoveRefusal.IntoKind(a.head, to, into.head, kind)
-            )
+              .filter(_.head.kind == kind) match {
+              case Vector(one) => Right(one)
+              case Vector() => Left(MoveRefusal.NoInto(a.head, to, kind))
+              case several =>
+                Left(MoveRefusal.IntoSeveral(a.head, to, kind, several.map(_.head.key)))
+            }
             body <- Body
               .merged(into.body, a.body)
               .left
@@ -207,13 +207,13 @@ enum MoveRefusal extends caps.Pure {
   /** These of its transition's checks did not hold, each with what failed. */
   case Unheld(head: ArtifactHead, to: StateName, failed: Vector[(CheckName, String)])
 
-  /** Its transition merges deltas, and its head cites no other artifact to merge them into. */
-  case NoInto(head: ArtifactHead, to: StateName)
+  /** Its transition merges deltas into the one `wanted` its head cites, and it cites none. */
+  case NoInto(head: ArtifactHead, to: StateName, wanted: KindName)
 
-  /** Its transition merges deltas into a `wanted`, and the first other artifact its head cites,
-    * `into`, is of another kind.
+  /** Its transition merges deltas into the one `wanted` its head cites, and it cites each of
+    * `cited`, several.
     */
-  case IntoKind(head: ArtifactHead, to: StateName, into: ArtifactHead, wanted: KindName)
+  case IntoSeveral(head: ArtifactHead, to: StateName, wanted: KindName, cited: Vector[ArtifactKey])
 
   /** Its deltas merged into `into` are no body: `why`, a stored form over [[Body.StoredMost]]. */
   case Unmerged(head: ArtifactHead, to: StateName, into: ArtifactHead, why: String)

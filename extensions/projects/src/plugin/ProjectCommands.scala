@@ -832,12 +832,13 @@ private[plugin] object ProjectCommands {
     case MoveRefusal.Unheld(head, to, failed) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: " +
         failed.map((name, why) => s"${CheckName.value(name)}: $why").mkString("; ")
-    case MoveRefusal.NoInto(head, to) =>
+    case MoveRefusal.NoInto(head, to, wanted) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
-        "first artifact it cites, and it cites none; cite the artifact to merge them into"
-    case MoveRefusal.IntoKind(head, to, into, wanted) =>
+        s"one ${KindName.value(wanted)} it cites, and it cites none; cite the one to merge them into"
+    case MoveRefusal.IntoSeveral(head, to, wanted, cited) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
-        s"first artifact it cites, which must be a ${KindName.value(wanted)}, and ${shown(into)} is not"
+        s"one ${KindName.value(wanted)} it cites, and it cites ${cited.map(_.value).mkString(", ")}; " +
+        "cite only the one to merge them into"
     case MoveRefusal.Unmerged(head, to, into, why) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: its deltas merged into " +
         s"${into.key.value} would be too long ($why)"

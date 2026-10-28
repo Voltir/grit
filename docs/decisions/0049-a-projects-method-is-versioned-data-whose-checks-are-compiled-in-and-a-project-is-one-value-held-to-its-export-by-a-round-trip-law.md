@@ -30,8 +30,9 @@ Decision:
   the deployment compiles, judging one artifact over its project's heads and its method's kinds,
   pure and deterministic (review holds the latter); what it decides changing is a new version. What a transition does besides moving is grit's
   (`TransitionAction`, a closed set), never a method's code: nothing, or merging the moved
-  artifact's `Delta: <name>` sections into the first other artifact it cites, of a kind the
-  transition names, each replacing that artifact's section `<name>` or added after its last.
+  artifact's `Delta: <name>` sections into the one artifact it cites of the kind the
+  transition names (cite order means nothing), each replacing that artifact's section `<name>`
+  or added after its last.
 - **A method's digest pins it**: it covers the method's data, whatever its declared order, and
   each named check's name and version, so a check whose decision changes under its name
   changes the digest. A project pins its method's name, version and digest (`Pin`).
