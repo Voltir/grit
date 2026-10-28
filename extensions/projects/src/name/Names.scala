@@ -85,16 +85,9 @@ object Slug {
   /** 64: the most characters a name holds. */
   val Longest: Int = 64
 
-  /** `s`, or why it is not `what`: empty, over `longest` characters, or holding a character
-    * other than a lowercase ASCII letter, a digit or `-`, or starting with `-`.
+  /** `s`, or why it is not `what`: as [[grit.core.id.Slug.check]] says, at most `longest`
+    * characters and free to start with a digit.
     */
   def check(what: String, s: String, longest: Int): Either[String, String] =
-    if (s.isEmpty) Left(s"$what is empty")
-    else if (s.length > longest) Left(s"$what is over $longest characters: $s")
-    else if (s.startsWith("-")) Left(s"$what starts with '-': $s")
-    else
-      s.find(c => !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-')) match {
-        case Some(c) => Left(s"$what holds '$c', not a lowercase letter, a digit or '-': $s")
-        case None => Right(s)
-      }
+    grit.core.id.Slug.check(what, s, Some(longest), leadingDigit = true)
 }

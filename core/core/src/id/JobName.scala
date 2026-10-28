@@ -7,15 +7,12 @@ opaque type JobName = String
 
 object JobName {
 
-  private val Valid = "[a-z][a-z0-9-]*".r
-
   /** The name `text` is, or why it is none. */
   def of(text: String): Either[String, JobName] =
-    Either.cond(
-      Valid.matches(text),
-      text,
-      "a job's name is lowercase letters, digits and dashes, starting with a letter"
-    )
+    Slug
+      .check("a job's name", text, None, leadingDigit = false)
+      .left
+      .map(_ => "a job's name is lowercase letters, digits and dashes, starting with a letter")
 
   def value(name: JobName): String = name
 }

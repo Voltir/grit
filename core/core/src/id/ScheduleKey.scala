@@ -7,15 +7,12 @@ opaque type ScheduleKey = String
 
 object ScheduleKey {
 
-  private val Valid = "[a-z][a-z0-9-]*".r
-
   /** The key `text` is, or why it is none. */
   def of(text: String): Either[String, ScheduleKey] =
-    Either.cond(
-      Valid.matches(text),
-      text,
-      "a schedule's key is lowercase letters, digits and dashes, starting with a letter"
-    )
+    Slug
+      .check("a schedule's key", text, None, leadingDigit = false)
+      .left
+      .map(_ => "a schedule's key is lowercase letters, digits and dashes, starting with a letter")
 
   def value(key: ScheduleKey): String = key
 }
