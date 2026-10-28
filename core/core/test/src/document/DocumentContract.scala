@@ -1439,7 +1439,9 @@ abstract class DocumentContract extends TestSuite {
       put(k, "d", "pear", 6)
       put(keeper(q, terms()), "a", "apple", 7)
       // Two words each: "apple apple" holds the word twice, so it ranks first.
-      transaction(ok(shelf(p).search("apple", 10))).map(h => DocText.value(h.document.text)) ==>
+      transaction(ok(shelf(p).search("apple", 10, at(8)))).map(h =>
+        DocText.value(h.document.text)
+      ) ==>
         Vector("apple apple", "apple tart")
     }
 

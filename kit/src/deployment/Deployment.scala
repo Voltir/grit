@@ -724,7 +724,7 @@ object Deployment {
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
       def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
         Right(Vector.empty)
-      def search(query: String, limit: Int)(using
+      def search(query: String, limit: Int, at: Instant)(using
           Tx^
       ): Either[StoreError, Vector[DocumentSearch.Hit]] =
         Right(Vector.empty)

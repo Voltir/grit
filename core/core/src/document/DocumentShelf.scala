@@ -73,10 +73,12 @@ trait DocumentShelf {
     */
   def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]]
 
-  /** Its current documents this transaction reads whose text matches `query`, best first, at most
-    * `limit`, equally good matches latest written first; none when `limit` is not positive.
+  /** Its documents current at `at` that this transaction reads and whose text matches `query`,
+    * as [[DocumentSearch.search]] finds them over this plugin's every place.
     */
-  def search(query: String, limit: Int)(using Tx^): Either[StoreError, Vector[DocumentSearch.Hit]]
+  def search(query: String, limit: Int, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]]
 }
 
 /** One plugin's documents as it writes them, under the terms it declared. */
@@ -235,10 +237,10 @@ object DocumentKeeper {
 
     def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
       keeper.referring(ref, n)
-    def search(query: String, limit: Int)(using
+    def search(query: String, limit: Int, at: Instant)(using
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] =
-      keeper.search(query, limit)
+      keeper.search(query, limit, at)
 
     def write(
         key: DocKey,

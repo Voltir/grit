@@ -773,10 +773,10 @@ final class InMemoryDocuments extends DocumentStore {
           .flatMap((v, r) => r.text.map(document(v, r, _)))
       )
 
-    def search(query: String, limit: Int)(using
+    def search(query: String, limit: Int, at: Instant)(using
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] =
-      Right(ranked(holding(plugin).filter((_, r) => reads(r)), query, limit))
+      shelved(Vector(plugin), at).flatMap(InMemoryDocuments.this.search(_, query, limit, at))
   }
 
   /** `plugin`'s current version under `key` at `label`, holding something or a withdrawal. */

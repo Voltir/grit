@@ -443,16 +443,12 @@ private[sql] object SqlDocuments {
           ps.setInt(SqlClearance.Params + 5, n)
         }(document)
 
-    def search(query: String, limit: Int)(using
-        tx: Tx^
-    ): Either[StoreError, Vector[DocumentSearch.Hit]] =
-      if (query.isBlank || limit <= 0) Right(Vector.empty)
-      else
-        cleared(ranked("d.plugin = ? AND d.superseded_at IS NULL")) { ps =>
-          ps.setString(SqlClearance.Params + 1, query)
-          ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
-          ps.setInt(SqlClearance.Params + 3, limit)
-        }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
+    def search(query: String, limit: Int, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] = {
+      val reads = new SqlDocumentSearch
+      reads.shelved(Vector(plugin), at).flatMap(reads.search(_, query, limit, at))
+    }
   }
 
   /** `plugin`'s documents as it writes them under `terms`, marking in `tombstones` each

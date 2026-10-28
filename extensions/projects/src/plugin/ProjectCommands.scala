@@ -433,7 +433,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         Tx^
     ): Either[StoreError, Answered] = answered {
       for {
-        hits <- stored(own.documents.search(args.query, Found))
+        hits <- stored(own.documents.search(args.query, Found, at))
         // A project's index is no artifact: its key has no `/`.
         documents = hits.map(_.document).filter(d => ArtifactKey.read(DocKey.value(d.key)).isRight)
         artifacts <- refuse(every(documents.map(readable)))

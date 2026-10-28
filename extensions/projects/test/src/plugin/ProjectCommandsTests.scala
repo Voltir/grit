@@ -340,7 +340,9 @@ object ProjectCommandsTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "a", "note", "The cache is cold.")
       kept(projects, store, "b", "note", "Nothing here.")
-      val found = done(ask(projects, store, "project_find", "query" -> "cache"))
+      // A find reads the documents current at its moment: kept before it.
+      val found =
+        done(askAt(at.plusSeconds(1))(projects, store, "project_find", "query" -> "cache"))
       assert(found == "p/a (note, open): Title a")
     }
 
