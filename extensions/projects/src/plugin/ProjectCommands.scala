@@ -12,9 +12,10 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{Method, TransitionAction}
+import grit.projects.method.{Method, RoleView, TransitionAction}
 import grit.projects.name.{
   ArtifactKey,
+  BriefSlot,
   CheckName,
   KindName,
   MethodName,
@@ -396,37 +397,72 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Claiming] = ToolSpec(
       ToolName("project_claim"),
       said(
-        "Claims an artifact for whoever asks, until project_release frees it; the artifact " +
-          "itself is not changed. Refused, naming who holds it, when it is claimed already. Of " +
-          "two claims made at the same moment, the later fails with a store error, and asked " +
-          "again is refused naming the first. A claim kept where the asker cannot read it (at " +
-          "another label) is not seen, so it refuses nothing."
+        "Claims an artifact for a session or agent to work in a role, until project_release " +
+          "frees it; the artifact itself is not changed. Refused, naming who holds it, when it " +
+          "is claimed already; refused, naming the artifact, when what it is claimed for works " +
+          "another; and refused for a role the project's method lacks. Claims made at the same " +
+          "moment are not refused: of two for one artifact, the later fails with a store error " +
+          "(asked again, it is refused naming the first), and two for one session or agent on " +
+          "different artifacts may both be kept. A claim kept where the asker cannot read it " +
+          "(at another label) is not seen, so it refuses nothing."
       ),
       Args
-        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
-        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Claiming(_)))
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            role = Field.text("The role working on it, one its project's method declares."),
+            `for` = Field.text(
+              "What it is claimed for: the session, or the agent type in it, whose brief is " +
+                s"written; parts joined by `/`, at most ${BriefSlot.Longest} characters."
+            )
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            role <- parsed("role", a.role, RoleName.of)
+            slot <- parsed("for", a.`for`, BriefSlot.of)
+          } yield Claiming(key, role, slot)
+        )
     )
     def run(args: Claiming, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
         Tx^
     ): Either[StoreError, Answered] = answered {
+      val slot = BriefSlot.value(args.slot)
       for {
         project <- loaded(own, args.key.project)
+        method <- refuse(declared(project.pin))
+        _ <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
-        claims <- claimsOn(own, args.key)
-        _ <- claims.headOption match {
+        onArtifact <- claimsHolding(own, ArtifactJson.claiming(args.key))
+        _ <- onArtifact.headOption match {
           case Some(first) =>
-            refuse(ArtifactJson.claimer(first)).flatMap(holder =>
+            refuse(ArtifactJson.claimed(first)).flatMap(c =>
               Left(
                 Stop.Refused(
-                  s"${args.key.value} is claimed already, by $holder since ${first.written}; " +
+                  s"${args.key.value} is claimed already, as ${RoleName.value(c.role)} for " +
+                    s"${BriefSlot.value(c.slot)} by ${c.by} since ${first.written}; " +
                     "project_release frees it"
                 )
               )
             )
           case None => Right(())
         }
-        claim <- refuse(ArtifactJson.claim(args.key, author(by)))
+        forSlot <- claimsHolding(own, ArtifactJson.claimedFor(args.slot))
+        _ <- forSlot.headOption match {
+          case Some(first) =>
+            refuse(ArtifactJson.claimed(first)).flatMap(c =>
+              Left(
+                Stop.Refused(
+                  s"$slot works ${c.artifact.value} already, claimed since ${first.written}; " +
+                    "release it with project_release first"
+                )
+              )
+            )
+          case None => Right(())
+        }
+        claim <- refuse(ArtifactJson.claim(args.key, author(by), args.slot, args.role))
         (key, text, data, refs) = claim
         _ <- written(
           own.write(
@@ -441,7 +477,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             refs
           )
         )
-      } yield s"Claimed ${shown(a.head)} for ${author(by)}."
+      } yield s"Claimed ${shown(a.head)} as ${RoleName.value(args.role)} for $slot."
     }
   }
 
@@ -460,7 +496,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         Tx^
     ): Either[StoreError, Answered] = answered {
       for {
-        claims <- claimsOn(own, args.key)
+        claims <- claimsHolding(own, ArtifactJson.claiming(args.key))
         claim <- claims.headOption.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
         _ <- stored(own.withdraw(claim.key, claim.label, at))
       } yield s"Released ${args.key.value}."
@@ -498,15 +534,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       for {
         project <- loaded(own.documents, args.key.project)
         method <- refuse(declared(project.pin))
-        view <- method.views
-          .find(_.role == args.role)
-          .toRight(
-            Stop.Refused(
-              s"method ${MethodName.value(method.name)} version ${method.version} shows no role " +
-                s"${RoleName.value(args.role)}; its roles: " +
-                method.views.map(v => RoleName.value(v.role)).sorted.mkString(", ")
-            )
-          )
+        view <- viewOf(method, args.role)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         brief <- Brief.of(whole, args.key, view, args.chars).left.map {
           case BriefRefusal.Unknown(k) =>
@@ -563,7 +591,7 @@ private[plugin] object ProjectCommands {
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
 
   /** `project_claim`'s arguments. */
-  final case class Claiming(key: ArtifactKey) extends caps.Pure
+  final case class Claiming(key: ArtifactKey, role: RoleName, slot: BriefSlot) extends caps.Pure
 
   /** `project_release`'s arguments. */
   final case class Releasing(key: ArtifactKey) extends caps.Pure
@@ -628,11 +656,23 @@ private[plugin] object ProjectCommands {
     } yield Loaded(pin, artifacts)
   }
 
-  /** The live claims on `artifact` that `own` reads: none, or the one there is. */
-  private def claimsOn(own: DocumentShelf, artifact: ArtifactKey)(using
+  /** The newest live claim holding `ref` that `own` reads, if any, or why not. */
+  private def claimsHolding(own: DocumentShelf, ref: Either[String, DocRef])(using
       Tx^
   ): Either[Stop, Vector[Document]] =
-    refuse(ArtifactJson.claiming(artifact)).flatMap(ref => stored(own.referring(ref, 1)))
+    refuse(ref).flatMap(r => stored(own.referring(r, 1)))
+
+  /** What `role` is shown under `method`, or a refusal naming the roles it declares. */
+  private def viewOf(method: Method, role: RoleName): Either[Stop, RoleView] =
+    method.views
+      .find(_.role == role)
+      .toRight(
+        Stop.Refused(
+          s"method ${MethodName.value(method.name)} version ${method.version} shows no role " +
+            s"${RoleName.value(role)}; its roles: " +
+            method.views.map(v => RoleName.value(v.role)).sorted.mkString(", ")
+        )
+      )
 
   /** `document` as an artifact, or why not, naming it. */
   private def readable(document: Document): Either[String, Artifact] =

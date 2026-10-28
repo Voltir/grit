@@ -10,7 +10,8 @@ Packages, in one-way order (each names only those before it):
 
 - **`name`**: the names a method and a project use: `MethodName`, `KindName`, `StateName`,
   `CheckName`, `RoleName` (each a `Slug`), `ProjectKey`, `ArtifactKey` (`<project>/<artifact>`,
-  an id, never a title), and `Pin`, the method version a project holds to.
+  an id, never a title), `Pin`, the method version a project holds to, and `BriefSlot`, what
+  an artifact is claimed for.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),
   `Artifact` and `Project`, which holds no dangling link and no parent cycle; and `ArtifactJson`,

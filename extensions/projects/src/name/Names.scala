@@ -53,6 +53,32 @@ object RoleName {
   def value(n: RoleName): String = n
 }
 
+/** What an artifact is claimed for: the one session, or one agent type in it, that a brief is
+  * written for. An edge's own name for it, which grit never reads apart, such as
+  * `coder-opus/<sha1 of a directory>`; one slot works one artifact at a time.
+  */
+opaque type BriefSlot = String
+
+object BriefSlot {
+
+  /** 160: the most characters a slot holds. */
+  val Longest: Int = 160
+
+  /** `s` as a slot, or why not: over [[Longest]] characters, or not parts joined by `/`, each
+    * as [[Slug.check]] takes a name.
+    */
+  def of(s: String): Either[String, BriefSlot] =
+    if (s.length > Longest) Left(s"a slot holds at most $Longest characters: $s")
+    else
+      s.split("/", -1)
+        .toVector
+        .foldLeft[Either[String, Unit]](Right(()))((acc, part) =>
+          acc.flatMap(_ => Slug.check("a part of a slot", part, Slug.Longest).map(_ => ()))
+        )
+        .map(_ => s)
+  def value(s: BriefSlot): String = s
+}
+
 /** The one form every name and key part here takes. */
 object Slug {
 

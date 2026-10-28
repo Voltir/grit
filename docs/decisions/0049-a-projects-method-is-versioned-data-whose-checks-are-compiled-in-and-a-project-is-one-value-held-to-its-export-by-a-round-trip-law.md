@@ -50,7 +50,9 @@ Decision:
   action, and is refused once the pinned method's digest has changed: a changed method is
   declared as a new version. Past the bound a write is refused, never a document withdrawn.
   A claim on an artifact is a document of its own, `claim/<artifact>`, so claiming never
-  re-versions a body; a second claim is refused naming the first, and a release withdraws it.
+  re-versions a body. It is made as a role for a slot, the session or agent its brief is
+  written for; an artifact has one live claim and a slot works one artifact, a second refused
+  naming the first. A release withdraws it.
 
 Consequences:
 
