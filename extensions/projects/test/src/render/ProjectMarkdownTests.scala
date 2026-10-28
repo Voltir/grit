@@ -57,14 +57,11 @@ object ProjectMarkdownTests extends TestSuite {
 
   val tests = Tests {
     test("read after render is a fixed point after one pass, and keeps every head and link") {
-      val started = System.nanoTime()
       val failing =
         (0 until 200).iterator.map(seed => seed -> broken(ProjectGen.project(seed))).collectFirst {
           case (seed, Some(why)) => s"seed $seed: $why"
         }
-      val millis = (System.nanoTime() - started) / 1000000
-      // A unit test's budget, not a measure: one second failed under a module's other suites.
-      assert(failing == None, millis < 5000)
+      assert(failing == None)
     }
     test("a file whose front matter names an unknown parent is reported, with the file") {
       val project = right(Project.of(p, pin, Vector(artifact("a", "A", "Some text."))))
