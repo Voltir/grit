@@ -3,6 +3,7 @@ package grit.core.host
 import java.io.{ByteArrayInputStream, IOException, InputStream}
 import java.nio.file.Files
 import java.time.Instant
+import java.util.concurrent.{CyclicBarrier, TimeUnit}
 
 import grit.core.id.Sha256
 
@@ -76,6 +77,26 @@ abstract class BlobsContract extends TestSuite {
         }
         (got, blobs.clearPending(later), blobs.kept()) ==>
           (Right((Right(0), Right(1), true)), Right(0), Right(Vector.empty))
+      }
+    }
+
+    test("receives on many threads at once each keep their own blob") {
+      fresh { blobs =>
+        val n = 32
+        val start = new CyclicBarrier(n)
+        val inside = new CyclicBarrier(n)
+        val kept = new Array[Option[Either[BlobError, Either[BlobError, Unit]]]](n)
+        val threads = (0 until n).map { i =>
+          Thread.ofPlatform().start { () =>
+            val _ = start.await(5, TimeUnit.SECONDS)
+            kept(i) = Some(blobs.receive(bytes(s"blob $i"), 100) { p =>
+              val _ = inside.await(5, TimeUnit.SECONDS)
+              p.keep()
+            })
+          }
+        }
+        threads.foreach(_.join())
+        (kept.count(_ == Some(Right(Right(())))), blobs.kept().map(_.size)) ==> (n, Right(n))
       }
     }
   }

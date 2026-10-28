@@ -14,13 +14,25 @@ import grit.core.id.Sha256
 final class TempBlobs(dir: Path) extends Blobs {
 
   /** Each pending blob's number and when it was written. */
-  // Only ever replaced by a new immutable map, as a directory's listing would be.
+  // Only ever replaced by a new immutable map, as a directory's listing would be, and only
+  // under this object's lock, so receives on several threads lose none (as files would not).
   @caps.unsafe.untrackedCaptures
   private var pending = Map.empty[Long, Instant]
 
   // A number, as `pending`.
   @caps.unsafe.untrackedCaptures
   private var last = 0L
+
+  /** A new pending blob's number, written now. */
+  private def written(): Long = synchronized {
+    last += 1
+    pending = pending.updated(last, Instant.now())
+    last
+  }
+
+  private def isPending(id: Long): Boolean = synchronized(pending.contains(id))
+
+  private def done(id: Long): Unit = synchronized { pending = pending.removed(id) }
 
   def receive[A](in: InputStream^, max: Long)(body: Pending^ => A): Either[BlobError, A] =
     (try Right(in.readNBytes((max + 1).min(Int.MaxValue.toLong).toInt).toVector)
@@ -29,15 +41,13 @@ final class TempBlobs(dir: Path) extends Blobs {
     }).flatMap { read =>
       if (read.size > max) Left(BlobError.TooLarge(max))
       else {
-        last += 1
-        val id = last
-        pending = pending.updated(id, Instant.now())
+        val id = written()
         try
           Right(body(new Pending {
             def sha256: Sha256 = Sha256.digest(read)
             def bytes: Long = read.size.toLong
             def keep(): Either[BlobError, Unit] =
-              if (!pending.contains(id)) Left(BlobError.Failed("its pending blob was cleared"))
+              if (!isPending(id)) Left(BlobError.Failed("its pending blob was cleared"))
               else {
                 val out = Files.newOutputStream(dir.resolve(sha256.hex))
                 try read.foreach(b => out.write(b.toInt))
@@ -45,7 +55,7 @@ final class TempBlobs(dir: Path) extends Blobs {
                 Right(())
               }
           }))
-        finally pending = pending.removed(id)
+        finally done(id)
       }
     }
 
@@ -63,7 +73,7 @@ final class TempBlobs(dir: Path) extends Blobs {
     Right(())
   }
 
-  def clearPending(before: Instant): Either[BlobError, Int] = {
+  def clearPending(before: Instant): Either[BlobError, Int] = synchronized {
     val gone = pending.filter((_, written) => written.isBefore(before)).keySet
     pending = pending.removedAll(gone)
     Right(gone.size)
