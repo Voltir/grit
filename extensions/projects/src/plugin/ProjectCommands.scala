@@ -115,7 +115,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         "Keeps an artifact of a project: a new one, of the kind given, in its kind's first " +
           "state; or a new version of one kept already, its kind and state unchanged (only " +
           "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
-          "that artifact. Refused for a parent or a cite the project lacks."
+          "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
+          "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused " +
+          "for a parent or a cite the project lacks."
       ),
       Args
         .of(
@@ -124,17 +126,28 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             kind = Field.text("Its kind, for a new artifact.").optional,
             title = Field.text("Its title."),
             body = Field.text("Its body, as markdown."),
-            parent = Field.text("The key of its parent artifact.").optional,
-            cites = Field.texts("The keys of the artifacts it cites.", 0, DocRef.Most).optional
+            parent = Field
+              .text("The key of its parent artifact, or \"\" for none; left as it is if omitted.")
+              .optional,
+            cites = Field
+              .texts(
+                "The keys of the artifacts it cites; left as they are if omitted.",
+                0,
+                DocRef.Most
+              )
+              .optional
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
             kind <- a.kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
-            parent <- a.parent
-              .fold(Right(None))(p => parsed("parent", p, ArtifactKey.read).map(Some(_)))
-            cites <- each("cites", a.cites.getOrElse(Nil).toVector, ArtifactKey.read)
+            parent <- a.parent.fold(Right(None)) { p =>
+              if (p.isEmpty) Right(Some(None))
+              else parsed("parent", p, ArtifactKey.read).map(k => Some(Some(k)))
+            }
+            cites <- a.cites
+              .fold(Right(None))(cs => each("cites", cs.toVector, ArtifactKey.read).map(Some(_)))
           } yield Keeping(key, kind, a.title, a.body, parent, cites)
         )
     )
@@ -174,8 +187,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             kind,
             state,
             args.title,
-            args.parent,
-            args.cites,
+            args.parent.getOrElse(existing.flatMap(_._2.head.parent)),
+            args.cites.getOrElse(existing.fold(Vector.empty)(_._2.head.cites)),
             Some(author(by))
           ),
           body
@@ -654,14 +667,16 @@ private[plugin] object ProjectCommands {
   /** `project_new`'s arguments. */
   final case class Starting(project: ProjectKey, method: Option[MethodName]) extends caps.Pure
 
-  /** `project_keep`'s arguments. */
+  /** `project_keep`'s arguments; a `parent` or `cites` of `None` leaves an existing artifact's
+    * as it was (a new one's, none).
+    */
   final case class Keeping(
       key: ArtifactKey,
       kind: Option[KindName],
       title: String,
       body: String,
-      parent: Option[ArtifactKey],
-      cites: Vector[ArtifactKey]
+      parent: Option[Option[ArtifactKey]],
+      cites: Option[Vector[ArtifactKey]]
   ) extends caps.Pure
 
   /** `project_move`'s arguments. */

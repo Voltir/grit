@@ -102,6 +102,47 @@ object ProjectCommandsTests extends TestSuite {
       }))
     }
 
+    test("keeping a body alone leaves the head's cites and parent as they were") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "b", "note", "Cited.")
+      done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/a",
+          "kind" -> "note",
+          "title" -> "A",
+          "body" -> "Text.",
+          "parent" -> "p/b",
+          "cites" -> ujson.Arr("p/b")
+        )
+      )
+      done(ask(projects, store, "project_keep", "key" -> "p/a", "title" -> "A", "body" -> "New."))
+      val text = shown(projects, store, "p/a")
+      assert(text.contains("parent: p/b\ncites: [p/b]\n"), text.contains("New."))
+    }
+    test("an empty cites clears them, and an empty parent clears it") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "b", "note", "Cited.")
+      def keep(args: (String, ujson.Value)*): String =
+        done(
+          ask(
+            projects,
+            store,
+            "project_keep",
+            (Vector[(String, ujson.Value)]("key" -> "p/a", "title" -> "A", "body" -> "Text.") ++
+              args)*
+          )
+        )
+      keep("kind" -> "note", "parent" -> "p/b", "cites" -> ujson.Arr("p/b"))
+      keep("cites" -> ujson.Arr(), "parent" -> "")
+      assert(shown(projects, store, "p/a").contains("parent: null\ncites: []\n"))
+    }
     test("a keep naming an artifact the project lacks is refused, keeping nothing") {
       val projects = plugin()
       val store = Store()
