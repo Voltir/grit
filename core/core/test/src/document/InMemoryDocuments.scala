@@ -734,6 +734,25 @@ final class InMemoryDocuments extends DocumentStore {
           .flatMap((v, r) => r.text.map(document(v, r, _)))
       )
 
+    def asOf(key: DocKey, label: Label, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[Document]] =
+      Right(
+        history(plugin, key, label)
+          .find((_, r) => !r.written.isAfter(at) && r.superseded.forall(_.isAfter(at)))
+          .flatMap((v, r) => r.text.map(document(v, r, _)))
+      )
+
+    def versions(key: DocKey, label: Label, n: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentVersion]] =
+      Right(history(plugin, key, label).take(n max 0).map { (v, r) =>
+        r.text match {
+          case Some(t) => DocumentVersion.Holding(document(v, r, t))
+          case None => DocumentVersion.Withdrawal(version(v), r.written)
+        }
+      })
+
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
       Right(
         holding(plugin)
@@ -765,6 +784,17 @@ final class InMemoryDocuments extends DocumentStore {
     rows.find((_, r) =>
       r.plugin == plugin && r.key == key && r.label == label && r.superseded.isEmpty
     )
+
+  /** `plugin`'s versions under `key` at `label` still kept that the transaction reads, latest
+    * written first.
+    */
+  private def history(plugin: PluginName, key: DocKey, label: Label)(using
+      Tx^
+  ): Vector[(Long, Row)] =
+    rows.toVector
+      .filter((_, r) => r.plugin == plugin && r.key == key && r.label == label && reads(r))
+      .sortBy((v, r) => (r.written, v))
+      .reverse
 
   /** Whether the transaction reads `r`, kept in its room at its label. */
   private def reads(r: Row)(using tx: Tx^): Boolean =

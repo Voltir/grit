@@ -1062,6 +1062,8 @@ CREATE TABLE IF NOT EXISTS grit.documents (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key, classification_id)
     WHERE superseded_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_plugin ON grit.documents (plugin, written_at);
+-- A key's history at a label, superseded versions included (DocumentShelf.asOf, .versions).
+CREATE INDEX IF NOT EXISTS idx_documents_history ON grit.documents (plugin, key, classification_id, written_at DESC);
 -- Its own statistics, apart from the entries' (ADR 0005): scores are scaled by each plugin's
 -- weight before they rank beside entries. Queries name it:
 -- to_bm25query(q, 'grit.idx_documents_bm25').

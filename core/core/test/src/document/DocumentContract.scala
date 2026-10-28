@@ -807,6 +807,95 @@ abstract class DocumentContract extends TestSuite {
       transaction(ok(store.forget(one)))
     }
 
+    test(
+      "as of an instant between two versions is the earlier; from the second's write, the second"
+    ) {
+      val p = name("doc-as-of")
+      val k = keeper(p, terms())
+      put(k, "k", "first words", 1)
+      put(k, "k", "second words", 3)
+      def asOf(m: Int) = transaction(ok(shelf(p).asOf(key("k"), Label.Public, at(m))))
+        .map(d => DocText.value(d.text))
+      (asOf(1), asOf(2), asOf(3), asOf(9)) ==> (
+        (Some("first words"), Some("first words"), Some("second words"), Some("second words"))
+      )
+    }
+
+    test("as of before the first write, or during a withdrawal, is None") {
+      val p = name("doc-as-of-none")
+      val k = keeper(p, terms())
+      put(k, "k", "words", 2)
+      transaction(ok(k.withdraw(key("k"), Label.Public, at(4))))
+      def asOf(m: Int) = transaction(ok(shelf(p).asOf(key("k"), Label.Public, at(m))))
+        .map(d => DocText.value(d.text))
+      (asOf(1), asOf(3), asOf(5)) ==> ((None, Some("words"), None))
+    }
+
+    test("as of an instant whose version retention deleted is None, never the one before it") {
+      val p = name("doc-as-of-deleted")
+      val k = keeper(p, terms())
+      put(k, "k", "first words", 1)
+      val two = put(k, "k", "second words", 3)
+      put(k, "k", "third words", 5)
+      transaction(ok(store.forget(two)))
+      def asOf(m: Int) = transaction(ok(shelf(p).asOf(key("k"), Label.Public, at(m))))
+        .map(d => DocText.value(d.text))
+      (asOf(2), asOf(4), asOf(6)) ==> ((Some("first words"), None, Some("third words")))
+    }
+
+    test("versions are newest first, withdrawals included, and leave out what retention deleted") {
+      val p = name("doc-versions")
+      val k = keeper(p, terms())
+      val one = put(k, "k", "first words", 1)
+      val two = put(k, "k", "second words", 2)
+      val three = put(k, "k", "third words", 3)
+      put(k, "other", "another key's words", 3)
+      val gone = transaction(ok(k.withdraw(key("k"), Label.Public, at(4)))).toVector
+      transaction(ok(store.forget(two)))
+      def listed(n: Int) = transaction(ok(shelf(p).versions(key("k"), Label.Public, n))).map {
+        case DocumentVersion.Holding(d) => (d.version, Some(DocText.value(d.text)), d.written)
+        case DocumentVersion.Withdrawal(v, written) => (v, None, written)
+      }
+      (listed(10), listed(2), listed(0)) ==> (
+        (
+          gone.map(v => (v, None, at(4))) ++ Vector(
+            (three, Some("third words"), at(3)),
+            (one, Some("first words"), at(1))
+          ),
+          gone.map(v => (v, None, at(4))) :+ (three, Some("third words"), at(3)),
+          Vector()
+        )
+      )
+    }
+
+    test("the history of a variant above Tx.cleared is empty, and none as of any instant") {
+      val p = name("doc-history-above")
+      val k = keeper(p, terms())
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("high"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("high words"),
+            Empty,
+            None,
+            at(1)
+          )
+        )
+      )
+      def seen(clearance: Clearance) = opened(clearance)(
+        (
+          ok(shelf(p).versions(key("high"), TestLabels.Trial, 10)).size,
+          ok(shelf(p).asOf(key("high"), TestLabels.Trial, at(2))).map(d => DocText.value(d.text))
+        )
+      )
+      (seen(Clearance.of(Label.Public)), seen(Clearance.of(TestLabels.Trial))) ==> (
+        ((0, None), (1, Some("high words")))
+      )
+    }
+
     test("remove deletes a plugin's every version and ends their tombstones; another's stay") {
       val (p, q) = (name("doc-remove-p"), name("doc-remove-q"))
       val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))

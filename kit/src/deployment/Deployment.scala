@@ -1,8 +1,10 @@
 package grit.kit.deployment
 
+import java.time.Instant
+
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf}
+import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
 import grit.core.id.{
@@ -713,6 +715,12 @@ object Deployment {
     new DocumentShelf {
       def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
         Right(None)
+      def asOf(key: DocKey, label: Label, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Option[Document]] = Right(None)
+      def versions(key: DocKey, label: Label, n: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[DocumentVersion]] = Right(Vector.empty)
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
       def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
         Right(Vector.empty)

@@ -100,3 +100,13 @@ enum Written {
 
   def kept: Label
 }
+
+/** One version of a key at a label, as its history lists it ([[DocumentShelf.versions]]). */
+enum DocumentVersion {
+
+  /** A version holding something. */
+  case Holding(document: Document)
+
+  /** A withdrawal of the key, written at `written`: it holds nothing. */
+  case Withdrawal(version: DocumentVersionId, written: Instant)
+}

@@ -15,6 +15,7 @@ import grit.core.document.{
   DocumentShelf,
   DocumentStore,
   DocumentTerms,
+  DocumentVersion,
   Following,
   Placement,
   Pointer,
@@ -282,6 +283,41 @@ private[sql] object SqlDocuments {
   def pointerOf(json: String): Either[String, Pointer] =
     Pointer.read(ujson.read(json)).left.map(why => s"a document's $why")
 
+  /** [[DocumentShelf.asOf]]'s statement, served by `idx_documents_history`; its parameters after
+    * [[SqlClearance.With]]'s are set by [[bindAsOf]].
+    */
+  private[sql] val AsOf: String =
+    s"""WITH ${SqlClearance.With}
+       |SELECT $Columns FROM $Labelled d
+       | WHERE plugin = ? AND key = ? AND classification_id = $LabelId
+       |   AND written_at <= ? AND (superseded_at IS NULL OR superseded_at > ?)
+       |   AND ${SqlClearance.kept("d")}
+       | ORDER BY written_at DESC, version DESC LIMIT 1""".stripMargin
+
+  /** Sets [[AsOf]]'s parameters after [[SqlClearance.With]]'s. */
+  private[sql] def bindAsOf(
+      ps: PreparedStatement,
+      plugin: PluginName,
+      key: DocKey,
+      label: Label,
+      at: Instant
+  ): Unit = {
+    ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+    ps.setString(SqlClearance.Params + 2, DocKey.value(key))
+    SqlLabels.bind(ps, SqlClearance.Params + 3, label)
+    ps.setObject(SqlClearance.Params + 5, utc(at))
+    ps.setObject(SqlClearance.Params + 6, utc(at))
+  }
+
+  /** The version `rs` holds ([[Columns]]), a withdrawal included, or why it does not read. */
+  def historied(rs: ResultSet): Either[String, DocumentVersion] =
+    if (Option(rs.getString("body")).isEmpty)
+      DocumentVersionId
+        .of(rs.getLong("version"))
+        .toRight("a document's version")
+        .map(DocumentVersion.Withdrawal(_, instant(rs, "written_at")))
+    else document(rs).map(DocumentVersion.Holding(_))
+
   /** The version `rs` holds ([[Columns]]), or why not: one withdrawn holds nothing. */
   def document(rs: ResultSet): Either[String, Document] =
     for {
@@ -346,6 +382,32 @@ private[sql] object SqlDocuments {
         ps.setString(SqlClearance.Params + 2, DocKey.value(key))
         SqlLabels.bind(ps, SqlClearance.Params + 3, label)
       }(document).map(_.headOption)
+
+    def asOf(key: DocKey, label: Label, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Option[Document]] =
+      cleared(AsOf)(bindAsOf(_, plugin, key, label, at))(historied).map(_.headOption.flatMap {
+        case DocumentVersion.Holding(d) => Some(d)
+        case DocumentVersion.Withdrawal(_, _) => None
+      })
+
+    def versions(key: DocKey, label: Label, n: Int)(using
+        tx: Tx^
+    ): Either[StoreError, Vector[DocumentVersion]] =
+      if (n <= 0) Right(Vector.empty)
+      else
+        cleared(
+          s"""WITH ${SqlClearance.With}
+             |SELECT $Columns FROM $Labelled d
+             | WHERE plugin = ? AND key = ? AND classification_id = $LabelId
+             |   AND ${SqlClearance.kept("d")}
+             | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
+        ) { ps =>
+          ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+          ps.setString(SqlClearance.Params + 2, DocKey.value(key))
+          SqlLabels.bind(ps, SqlClearance.Params + 3, label)
+          ps.setInt(SqlClearance.Params + 5, n)
+        }(historied)
 
     def newest(n: Int)(using tx: Tx^): Either[StoreError, Vector[Document]] =
       if (n <= 0) Right(Vector.empty)

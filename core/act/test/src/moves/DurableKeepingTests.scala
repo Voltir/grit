@@ -37,6 +37,7 @@ object DurableKeepingTests extends TestSuite {
   private final class Counting(inner: DocumentKeeper) extends DocumentKeeper {
     export inner.{
       applying,
+      asOf,
       benchable,
       benched,
       checks,
@@ -48,6 +49,7 @@ object DurableKeepingTests extends TestSuite {
       newest,
       referring,
       search,
+      versions,
       withdraw
     }
     // A counter only the test's assertions read; the keeper's writes bump it on the test's thread.

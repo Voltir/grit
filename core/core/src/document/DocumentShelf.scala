@@ -22,6 +22,21 @@ trait DocumentShelf {
     */
   def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]]
 
+  /** The version of `key` kept at exactly `label` that was current at `at` (written by then, and
+    * superseded by none written by then), when this transaction reads it and it is still kept;
+    * `None` otherwise, for a withdrawal, and when retention deleted that version, even though
+    * one before it is kept.
+    */
+  def asOf(key: DocKey, label: Label, at: Instant)(using Tx^): Either[StoreError, Option[Document]]
+
+  /** The versions of `key` kept at exactly `label` that are still kept and that this transaction
+    * reads, withdrawals included, most recently written first, at most `n`; none when `n` is not
+    * positive.
+    */
+  def versions(key: DocKey, label: Label, n: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[DocumentVersion]]
+
   /** Its current documents this transaction reads, every key's and label's, most recently
     * written first, at most `n`; none when `n` is not positive.
     */
@@ -207,6 +222,14 @@ object DocumentKeeper {
 
     def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
       keeper.current(key, label)
+
+    def asOf(key: DocKey, label: Label, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[Document]] = keeper.asOf(key, label, at)
+
+    def versions(key: DocKey, label: Label, n: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentVersion]] = keeper.versions(key, label, n)
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
 
