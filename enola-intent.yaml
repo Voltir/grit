@@ -347,6 +347,18 @@ rules:
     mode: strict
     because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
 
+  - id: only-dbos-imports-hikari-data-source
+    forbid_name: outside-dbos
+    pattern: "* -> com.zaxxer.hikari.HikariDataSource"
+    mode: strict
+    because: "STYLE rule 8: the connection pool, like JDBC, is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-hikari-config
+    forbid_name: outside-dbos
+    pattern: "* -> com.zaxxer.hikari.HikariConfig"
+    mode: strict
+    because: "STYLE rule 8: the connection pool, like JDBC, is quarantined to grit.dbos"
+
   # -------------------------------------------------------------------------------------
   # 1c. Only grit.models and grit.mcp import the JDK HTTP client: each is an egress of its
   # own, grit.models for model calls and grit.mcp for MCP servers and Drive's REST API, and
