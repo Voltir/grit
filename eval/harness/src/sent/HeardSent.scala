@@ -8,7 +8,6 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Capture
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** What Jev was asked of a heard message, and what it answered: the `entry`, its `turn`; the

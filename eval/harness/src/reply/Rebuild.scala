@@ -25,7 +25,6 @@ import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Capture
 import grit.models.Seed
 import grit.turn.{Turn, TurnRecord}
 

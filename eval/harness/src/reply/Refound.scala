@@ -11,7 +11,6 @@ import grit.core.place.Place
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Capture
 import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 

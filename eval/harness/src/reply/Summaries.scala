@@ -7,7 +7,6 @@ import grit.core.message.{Cost, Message, Tokens}
 import grit.core.provider.ModelRequest
 import grit.core.store.Payload
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Capture
 import grit.turn.{Turn, TurnSummary}
 
 /** A turn's summary, to set beside other models': the turn's workflow, the summary it kept

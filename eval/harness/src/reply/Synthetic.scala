@@ -15,7 +15,7 @@ import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.core.visibility.Subject
 import grit.dbos.internal.{Reader, Scratch}
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.capture.{Capture, Parts, TurnCapture}
+import grit.eval.harness.capture.{Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
 import grit.models.Seed
