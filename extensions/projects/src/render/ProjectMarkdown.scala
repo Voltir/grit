@@ -24,7 +24,7 @@ object ProjectMarkdown {
         "key" -> ProjectKey.value(project.key),
         "method" -> MethodName.value(project.pin.method),
         "version" -> project.pin.version.toString,
-        "digest" -> project.pin.digest
+        "digest" -> project.pin.digest.hex
       )
     )) +: project.artifacts.map(file)
 
@@ -86,7 +86,7 @@ object ProjectMarkdown {
       version <- fields("version").toIntOption.toRight(
         s"version is not a number: ${fields("version")}"
       )
-      pin <- Pin.of(method, version, fields("digest"))
+      pin <- Pin.read(method, version, fields("digest"))
     } yield (key, pin)
 
   private def artifact(path: String, text: String): Either[String, Artifact] =

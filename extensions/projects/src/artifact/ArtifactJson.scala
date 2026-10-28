@@ -78,7 +78,12 @@ object ArtifactJson {
     } yield (
       key,
       text,
-      ujson.Obj("method" -> method, "version" -> pin.version, "digest" -> pin.digest, "by" -> by),
+      ujson.Obj(
+        "method" -> method,
+        "version" -> pin.version,
+        "digest" -> pin.digest.hex,
+        "by" -> by
+      ),
       Set(ref)
     )
   }
@@ -154,7 +159,7 @@ object ArtifactJson {
         } yield (method, version.toInt, digest)
       }
       .toRight("its index holds no method, version and digest")
-      .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.of(_, v, d)))
+      .flatMap((m, v, d) => MethodName.of(m).flatMap(Pin.read(_, v, d)))
 
   /** `document` as [[write]] wrote it, as an artifact, or why not. */
   private[artifact] def read(document: Document): Either[String, Artifact] =

@@ -25,7 +25,7 @@ enum BriefRefusal extends caps.Pure {
   * the claim) and `project_brief` show the same text for the project as it stood at the claim.
   *
   * The header line is `<key> | <kind> | <state> | <title> | <method> v<version> | pin <digest>`,
-  * the digest its first 12 hex characters. `n` in a pointer, and the size [[BriefRefusal.Over]]
+  * the digest its first [[PinDigits]] hex characters. `n` in a pointer, and the size [[BriefRefusal.Over]]
   * carries, are the characters of the artifact's body markdown, and of its header line and body
   * markdown together. The links followed are the artifact's `parent` and its `cites`, in its head
   * and its body, up to the view's depth; a path may pass through artifacts of kinds the view does
@@ -43,6 +43,9 @@ object Brief {
     * 10,000 with its envelope.
     */
   val HookChars: Int = 9500
+
+  /** 12: the hex digits of the pin's digest a header line shows. */
+  val PinDigits: Int = 12
 
   /** `judged`'s brief for `view` within `project`, at most `chars` characters; `Left` with
     * [[BriefRefusal.Unknown]] when `judged` is no artifact of `project`, and with
@@ -65,7 +68,7 @@ object Brief {
   private def headerLine(project: Project, a: Artifact): String =
     s"${a.head.key.value} | ${KindName.value(a.head.kind)} | ${StateName.value(a.head.state)} | " +
       s"${a.head.title} | ${MethodName.value(project.pin.method)} v${project.pin.version} | " +
-      s"pin ${project.pin.digest.take(12)}"
+      s"pin ${project.pin.digest.hex.take(PinDigits)}"
 
   /** What `a` links to: its parent, and what its head and its body cite. */
   private def neighbours(a: Artifact): Vector[ArtifactKey] =

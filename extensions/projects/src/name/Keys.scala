@@ -1,5 +1,7 @@
 package grit.projects.name
 
+import grit.core.id.Sha256
+
 /** A project's key: the first part of each of its artifacts' keys. */
 opaque type ProjectKey = String
 
@@ -41,16 +43,21 @@ object ArtifactKey {
 }
 
 /** The method version a project pinned: its name, its version and the digest it had then. */
-final case class Pin private (method: MethodName, version: Int, digest: String) extends caps.Pure
+final case class Pin private (method: MethodName, version: Int, digest: Sha256) extends caps.Pure
 
 object Pin {
 
-  /** These as a pin, or why not: `version` under 1, or `digest` not 64 lowercase hex digits. */
-  def of(method: MethodName, version: Int, digest: String): Either[String, Pin] =
+  /** These as a pin, or why not: `version` under 1. */
+  def of(method: MethodName, version: Int, digest: Sha256): Either[String, Pin] =
     if (version < 1) Left(s"a pinned version is under 1: $version")
-    else if (
-      digest.length != 64 || !digest.forall(c => c >= '0' && c <= '9' || c >= 'a' && c <= 'f')
-    )
-      Left(s"a pinned digest is not 64 lowercase hex digits: $digest")
     else Right(new Pin(method, version, digest))
+
+  /** These as a pin, the digest as written ([[Sha256.read]]), or why not: `version` under 1, or
+    * `digest` not 64 lowercase hex digits.
+    */
+  def read(method: MethodName, version: Int, digest: String): Either[String, Pin] =
+    Sha256
+      .read(digest)
+      .toRight(s"a pinned digest is not 64 lowercase hex digits: $digest")
+      .flatMap(of(method, version, _))
 }

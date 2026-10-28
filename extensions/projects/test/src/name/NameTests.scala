@@ -18,7 +18,7 @@ object NameTests extends TestSuite {
       )
     }
     test("a pin under version 1 is refused") {
-      val pin = MethodName.of("grit").flatMap(Pin.of(_, 0, "ab" * 32))
+      val pin = MethodName.of("grit").flatMap(Pin.read(_, 0, "ab" * 32))
       assert(pin == Left("a pinned version is under 1: 0"))
     }
   }

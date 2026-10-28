@@ -84,12 +84,29 @@ object MethodTests extends TestSuite {
           TransitionChecks.all
         )
         .map(_.digest)
-      assert(forward == reversed, more.isRight, forward != more, forward.map(_.length) == Right(64))
+      assert(forward == reversed, more.isRight, forward != more)
     }
     test("a check's version bump changes the digest") {
       val at1 = Method.of(method, 1, kinds, transitions, views, Vector(sectionsAt(1))).map(_.digest)
       val at2 = Method.of(method, 1, kinds, transitions, views, Vector(sectionsAt(2))).map(_.digest)
       assert(at1.isRight, at1 != at2)
+    }
+    test("a role view's change changes the digest, and reordering views does not") {
+      val reviewer = right(RoleView.of(role("reviewer"), Set(note.name), 2))
+      def digest(vs: Vector[RoleView]) =
+        Method.of(method, 1, kinds, transitions, vs, TransitionChecks.all).map(_.digest)
+      val deeper = right(RoleView.of(role("reviewer"), Set(note.name), 3))
+      assert(
+        digest(views :+ reviewer) == digest(reviewer +: views),
+        digest(views :+ reviewer).isRight,
+        digest(views :+ reviewer) != digest(views :+ deeper)
+      )
+    }
+    test("a method's digest is pinned: a change to it refuses every pinned project's moves") {
+      // Every project records this digest in its pin; a digest that drifts makes each one stale.
+      val digest =
+        Method.of(method, 1, kinds, transitions, views, TransitionChecks.all).map(_.digest.hex)
+      assert(digest == Right("f49dd63d8bcf94b8f37cf4b2ed0768c1945cc7381a6f6fe43523eb29c597c1c8"))
     }
   }
 }

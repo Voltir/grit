@@ -14,7 +14,7 @@ object BriefTests extends TestSuite {
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
-  private val pin: Pin = right(Pin.of(right(MethodName.of("m")), 1, "0f" * 32))
+  private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
 
   /** The header of judged `p/j`, titled `j`, under method `m` version 1 and that pin. */
   private val header = "p/j | note | open | j | m v1 | pin 0f0f0f0f0f0f"

@@ -70,6 +70,10 @@ object MethodFixtures {
   /** Project `p` of `artifacts`, pinned to a digest no method has: the bench reads no pin. */
   def project(artifacts: Artifact*): Project =
     right(
-      Project.of(right(ProjectKey.of("p")), right(Pin.of(method, 1, "0f" * 32)), artifacts.toVector)
+      Project.of(
+        right(ProjectKey.of("p")),
+        right(Pin.read(method, 1, "0f" * 32)),
+        artifacts.toVector
+      )
     )
 }

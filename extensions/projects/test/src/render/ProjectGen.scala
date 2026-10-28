@@ -40,7 +40,7 @@ object ProjectGen {
       Artifact(head, body(r, others))
     }
     val pin = right(
-      Pin.of(
+      Pin.read(
         right(MethodName.of("m")),
         1 + r.nextInt(3),
         Vector.fill(32)(f"${r.nextInt(256)}%02x").mkString

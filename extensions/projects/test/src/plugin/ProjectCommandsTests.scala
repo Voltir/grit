@@ -8,7 +8,7 @@ import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.method.{Example, MethodFixtures}
 import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
-import grit.projects.render.ProjectMarkdown
+import grit.projects.render.{Brief, ProjectMarkdown}
 
 import utest.*
 
@@ -372,7 +372,7 @@ object ProjectCommandsTests extends TestSuite {
       def briefed(args: (String, ujson.Value)*): Answered =
         ask(projects, store, "project_brief", ("key" -> ujson.Str("p/a")) +: args*)
       val text = done(briefed("role" -> "builder"))
-      val pin = method().digest.take(12)
+      val pin = method().digest.hex.take(Brief.PinDigits)
       val stranger = briefed("role" -> "reviewer")
       val small = briefed("role" -> "builder", "chars" -> 10)
       assert(

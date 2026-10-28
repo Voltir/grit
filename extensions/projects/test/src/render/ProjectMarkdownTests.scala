@@ -11,7 +11,7 @@ object ProjectMarkdownTests extends TestSuite {
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private val p: ProjectKey = right(ProjectKey.of("p"))
-  private val pin: Pin = right(Pin.of(right(MethodName.of("m")), 1, "0f" * 32))
+  private val pin: Pin = right(Pin.read(right(MethodName.of("m")), 1, "0f" * 32))
 
   private def key(local: String): ArtifactKey = right(ArtifactKey.of(p, local))
 

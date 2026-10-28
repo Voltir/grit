@@ -1,10 +1,8 @@
 package grit.projects.method
 
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-
 import scala.annotation.tailrec
 
+import grit.core.id.Sha256
 import grit.projects.artifact.{Artifact, ArtifactHead, Body}
 import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, RoleName, StateName}
 
@@ -72,11 +70,10 @@ final case class Method private (
       }
     } yield done
 
-  /** A SHA-256 digest, 64 lowercase hex digits, of its data and of each check's name and
-    * version: equal for equal methods, whatever order their kinds, transitions, role views,
-    * states and checks are declared in.
+  /** The digest of its data and of each check's name and version: equal for equal methods,
+    * whatever order their kinds, transitions, role views, states and checks are declared in.
     */
-  def digest: String = {
+  def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
     def names(ns: Iterable[String]): String = field(ns.toVector.sorted.map(field).mkString)
     val lines =
@@ -101,13 +98,10 @@ final case class Method private (
           v.depth.toString
         )
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
-    val whole = (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)
-      .mkString("\n")
-    MessageDigest
-      .getInstance("SHA-256")
-      .digest(whole.getBytes(StandardCharsets.UTF_8))
-      .map(b => f"${b & 0xff}%02x")
-      .mkString
+    Sha256.text(
+      (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)
+        .mkString("\n")
+    )
   }
 }
 
