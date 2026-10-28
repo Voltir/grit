@@ -100,42 +100,62 @@ object ArtifactJsonTests extends TestSuite {
       val a = Artifact(head("a"), right(Body.read("Some text.")))
       val (text, data, refs) = right(ArtifactJson.write(a))
       val noKey = Artifact.of(kept("p", text, data, refs))
-      assert(noKey.left.exists(_.contains("key")))
+      assert(noKey == Left("its key is no artifact's: an artifact's key has no '/': p"))
       val noState = ujson.Obj(
         "head" -> ujson.Obj.from(data("head").obj.toSeq.filterNot(_._1 == "state")),
         "body" -> data("body")
       )
       val stateless = Artifact.of(kept("p/a", text, noState, refs))
-      assert(stateless.left.exists(_.contains("state")))
+      assert(stateless == Left("its head holds no state"))
     }
 
     test("a head past 4 KiB beside its body is refused, naming its size") {
       val a = Artifact(head("a").copy(title = "x" * 5000), right(Body.read("Some text.")))
       val written = ArtifactJson.write(a)
-      assert(written.left.exists(_.contains(s"over ${ArtifactJson.HeadMost}")))
+      assert(
+        written.map(_ => ()) == Left(
+          "its head is 5095 bytes, over 4096: shorten its title or cite fewer"
+        )
+      )
     }
 
     test("an artifact citing more than a document's refs hold is refused, naming how many") {
       val cites = Vector.tabulate(300)(i => key(s"a$i"))
       val a = Artifact(head("a", cites), right(Body.read("Some text.")))
       val written = ArtifactJson.write(a)
-      assert(written.left.exists(_.contains(s"over ${DocRef.Most}")))
+      assert(written.map(_ => ()) == Left("it would hold 303 references, over 256: cite fewer"))
     }
 
-    test("a stored body that is empty or past its most is refused") {
-      val empty = Body.fromStored(stored(Vector.empty))
-      assert(empty.left.exists(_.contains("empty")))
-      val words = Block.Paragraph(Text.of(Vector(Span.plain("word " * 7000))))
-      val large = Body.fromStored(stored(Vector(words)))
-      assert(large.left.exists(_.contains(s"over ${Body.StoredMost}")))
+    test("a stored body past its most is refused, naming its size") {
+      val why = Body
+        .fromStored(stored(Vector(Block.Paragraph(Text.of(Vector(Span.plain("word " * 7000)))))))
+        .map(_ => ())
+      assert(why == Left("a body's stored form is 35063 bytes, over 28672"))
     }
 
     test("an artifact whose stored body is empty is reported, not read") {
       val a = Artifact(head("a"), right(Body.read("Some text.")))
       val (text, data, refs) = right(ArtifactJson.write(a))
       val emptied = ujson.Obj("head" -> data("head"), "body" -> stored(Vector.empty))
-      val read = Artifact.of(kept("p/a", text, emptied, refs))
-      assert(read.left.exists(_.contains("empty")))
+      assert(Artifact.of(kept("p/a", text, emptied, refs)) == Left("a body is empty"))
+    }
+    // A pin of the stored form: projects' documents are kept 180 days, and each is read back
+    // through these keys.
+    test("an artifact is stored as its head and its body, under these keys") {
+      val a = Artifact(
+        head("a", Vector(key("b"))).copy(parent = Some(key("p0"))),
+        right(Body.read("See [b](artifact:p/b)."))
+      )
+      val (text, data, _) = right(ArtifactJson.write(a))
+      val rendered = data.render()
+      val shown = DocText.value(text)
+      assert(
+        rendered ==
+          """{"head":{"kind":"note","state":"open","title":"A title","parent":"p/p0",""" +
+          """"cites":["p/b"],"by":"nick"},"body":{"v":1,"notes":["p/b"],"blocks":""" +
+          """[{"type":"para","text":[{"t":"See "},{"t":"b","n":[0]},{"t":"."}]}]}}"""
+      )
+      assert(shown == "A title\n\nSee b.")
     }
   }
 }
