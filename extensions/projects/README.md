@@ -23,8 +23,9 @@ Packages, in one-way order (each names only those before it):
   Imports `name` and `artifact`.
 - **`render`**: a project for each consumer: `ProjectMarkdown`, the export (one file per
   artifact, front matter then body) and its reader, held to each other by the round-trip law
-  (`ProjectMarkdownTests`); and `AnswerText`, what the commands answer, the same for every
-  edge. Imports `name` and `artifact`.
+  (`ProjectMarkdownTests`); `AnswerText`, what the commands answer, the same for every edge;
+  and `Brief`, what a session on one artifact is given, a pure function of the project's value
+  (`BriefTests`). Imports `name`, `artifact` and `method` (a brief is shaped by a role view).
 - **`plugin`**: `Projects`, the plugin, and its commands (ADR 0048): the only writers of its
   documents, each run in one transaction. Imports every package before it.
 
