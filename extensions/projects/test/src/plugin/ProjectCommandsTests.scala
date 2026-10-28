@@ -1,18 +1,12 @@
 package grit.projects.plugin
 
-import java.time.Instant
-
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
-import grit.core.identity.{Principal, TestAccounts}
-import grit.core.need.PluginReads
-import grit.core.plugin.{Answered, InMemoryPlugins, KeepingCommand, ReadingCommand}
-import grit.core.store.Tx
+import grit.core.document.DocumentTerms
+import grit.core.plugin.Answered
 import grit.core.tool.{ArgsError, ToolName}
-import grit.dbos.sql.TestTx
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.{Method, MethodFixtures, TransitionChecks}
+import grit.projects.method.MethodFixtures
 import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
 import grit.projects.render.ProjectMarkdown
 
@@ -20,98 +14,8 @@ import utest.*
 
 object ProjectCommandsTests extends TestSuite {
 
-  import MethodFixtures.{change, note, right, state, transitions, views}
-
-  private val at: Instant = Instant.parse("2026-10-27T12:00:00Z")
-
-  private val person: Principal.Person =
-    TestAccounts.principal(TestAccounts.account("slack:T1/U1")) match {
-      case p: Principal.Person => p
-      case Principal.Grit => throw new java.lang.AssertionError("not a person")
-    }
-
-  /** What every write by [[person]] records as its author. */
-  private val by: String = "slack:T1/U1"
-
-  private val methodName: MethodName = MethodFixtures.method
-
-  private def method(moves: Vector[grit.projects.method.Transition] = transitions): Method =
-    Method
-      .of(methodName, 1, Vector(change, note), moves, views, TransitionChecks.all)
-      .fold(why => throw new java.lang.AssertionError(why.toString), identity)
-
-  private def plugin(m: Method = method()): Projects =
-    Projects
-      .of(Vector(m), methodName)
-      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-
-  /** A fresh store, and its projects keeper under `terms`. */
-  private final class Store(terms: DocumentTerms = Projects.Terms) {
-    val documents = new InMemoryDocuments
-    val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
-    def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
-    def count: Int =
-      inTx(keeper.newest(100_000)).fold(e => throw new java.lang.AssertionError(e.toString), _.size)
-  }
-
-  private def inTx[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
-
-  /** The answer to `name` with `args`, read and run as an edge runs a command. */
-  private def ask(
-      projects: Projects,
-      store: Store,
-      name: String,
-      args: (String, ujson.Value)*
-  ): Answered =
-    projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
-      case Some(c: KeepingCommand[a]) =>
-        val read = c.spec.args.read(ujson.Obj.from(args))
-        read.fold(
-          e => throw new java.lang.AssertionError(e.message),
-          a =>
-            inTx(c.run(a, person, store.keeper, at))
-              .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-        )
-      case Some(c: ReadingCommand[a]) =>
-        val read = c.spec.args.read(ujson.Obj.from(args))
-        read.fold(
-          e => throw new java.lang.AssertionError(e.message),
-          a =>
-            inTx(c.run(a, person, store.reads, at))
-              .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-        )
-      case _ => throw new java.lang.AssertionError(s"no command $name")
-    }
-
-  private def done(answer: Answered): String = answer match {
-    case Answered.Done(text) => text
-    case Answered.Refused(why) => throw new java.lang.AssertionError(s"refused: $why")
-  }
-
-  private def started(projects: Projects, store: Store): Unit =
-    done(ask(projects, store, "project_new", "project" -> "p"))
-
-  private def kept(
-      projects: Projects,
-      store: Store,
-      local: String,
-      kind: String,
-      body: String
-  ): Unit =
-    done(
-      ask(
-        projects,
-        store,
-        "project_keep",
-        "key" -> s"p/$local",
-        "kind" -> kind,
-        "title" -> s"Title $local",
-        "body" -> body
-      )
-    )
-
-  private def shown(projects: Projects, store: Store, key: String): String =
-    done(ask(projects, store, "project_show", "key" -> key))
+  import CommandFixtures.*
+  import MethodFixtures.{note, right, state, transitions}
 
   val tests: Tests = Tests {
 
@@ -338,7 +242,33 @@ object ProjectCommandsTests extends TestSuite {
 
     test("every command's does line tells a project artifact from a claude.ai Artifact") {
       val lines = plugin().commands.map(_.spec.does)
-      assert(lines.size == 7, lines.forall(_.contains(Projects.NotClaudeAi)))
+      assert(lines.size == 10, lines.forall(_.endsWith(Projects.NotClaudeAi)))
+    }
+
+    test(
+      "project_brief gives a role's brief, refusing a role not declared and a budget too small"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "## Why\n\nBecause.")
+      def briefed(args: (String, ujson.Value)*): Answered =
+        ask(projects, store, "project_brief", ("key" -> ujson.Str("p/a")) +: args*)
+      val text = done(briefed("role" -> "builder"))
+      val pin = method().digest.take(12)
+      val stranger = briefed("role" -> "reviewer")
+      val small = briefed("role" -> "builder", "chars" -> 10)
+      assert(
+        text.startsWith(s"p/a | change | proposed | Title a | grit v1 | pin $pin\n"),
+        text.contains("Because."),
+        stranger == Answered.Refused(
+          "method grit version 1 shows no role reviewer; its roles: builder"
+        ),
+        small match {
+          case Answered.Refused(why) => why.startsWith("p/a alone is ") && why.endsWith(", over 10")
+          case Answered.Done(_) => false
+        }
+      )
     }
 
     test("Projects.of refuses a default it lacks, and two methods of one name and version") {

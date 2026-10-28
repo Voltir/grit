@@ -13,8 +13,17 @@ import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
 import grit.projects.method.{Method, TransitionAction}
-import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, Pin, ProjectKey, StateName}
-import grit.projects.render.{AnswerText, ProjectMarkdown}
+import grit.projects.name.{
+  ArtifactKey,
+  CheckName,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  RoleName,
+  StateName
+}
+import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
   * `default`.
@@ -25,7 +34,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   import ProjectCommands.*
 
   /** Every command, in the order a tool list shows them. */
-  def all: Vector[PluginCommand[?]] = Vector(New, Keep, Move, Show, List, Find, Export)
+  def all: Vector[PluginCommand[?]] =
+    Vector(New, Keep, Move, Show, List, Find, Export, ProjectClaim, ProjectRelease, ProjectBrief)
 
   /** `project_new`. */
   object New extends KeepingCommand[Starting] {
@@ -381,6 +391,133 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     }
   }
 
+  /** `project_claim`. */
+  object ProjectClaim extends KeepingCommand[Claiming] {
+    val spec: ToolSpec[Claiming] = ToolSpec(
+      ToolName("project_claim"),
+      said(
+        "Claims an artifact for whoever asks, until project_release frees it; the artifact " +
+          "itself is not changed. Refused, naming who holds it, when it is claimed already. Of " +
+          "two claims made at the same moment, the later fails with a store error, and asked " +
+          "again is refused naming the first. A claim kept where the asker cannot read it (at " +
+          "another label) is not seen, so it refuses nothing."
+      ),
+      Args
+        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
+        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Claiming(_)))
+    )
+    def run(args: Claiming, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = answered {
+      for {
+        project <- loaded(own, args.key.project)
+        found <- artifact(project, args.key)
+        (document, a) = found
+        claims <- claimsOn(own, args.key)
+        _ <- claims.headOption match {
+          case Some(first) =>
+            refuse(ArtifactJson.claimer(first)).flatMap(holder =>
+              Left(
+                Stop.Refused(
+                  s"${args.key.value} is claimed already, by $holder since ${first.written}; " +
+                    "project_release frees it"
+                )
+              )
+            )
+          case None => Right(())
+        }
+        claim <- refuse(ArtifactJson.claim(args.key, author(by)))
+        (key, text, data, refs) = claim
+        _ <- written(
+          own.write(
+            key,
+            document.label,
+            Integrity.Authority,
+            Place.Everywhere,
+            text,
+            data,
+            None,
+            at,
+            refs
+          )
+        )
+      } yield s"Claimed ${shown(a.head)} for ${author(by)}."
+    }
+  }
+
+  /** `project_release`. */
+  object ProjectRelease extends KeepingCommand[Releasing] {
+    val spec: ToolSpec[Releasing] = ToolSpec(
+      ToolName("project_release"),
+      said(
+        "Frees an artifact's claim, so it may be claimed again. Refused when it is not claimed."
+      ),
+      Args
+        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
+        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Releasing(_)))
+    )
+    def run(args: Releasing, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = answered {
+      for {
+        claims <- claimsOn(own, args.key)
+        claim <- claims.headOption.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
+        _ <- stored(own.withdraw(claim.key, claim.label, at))
+      } yield s"Released ${args.key.value}."
+    }
+  }
+
+  /** `project_brief`. */
+  object ProjectBrief extends ReadingCommand[Briefing] {
+    val spec: ToolSpec[Briefing] = ToolSpec(
+      ToolName("project_brief"),
+      said(
+        "Gives the brief for working on an artifact in a role: a header line, its body whole, " +
+          "then what the role is shown of what it cites, nearest first, as pointer lines once " +
+          s"past `chars` characters (${Brief.HookChars} when not given). Refused for a role the " +
+          "project's method lacks, or an artifact that alone does not fit."
+      ),
+      Args
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            role = Field.text("The role working on it."),
+            chars = Field.count("The most characters the brief holds.", 1, BriefMost).optional
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            role <- parsed("role", a.role, RoleName.of)
+          } yield Briefing(key, role, a.chars.getOrElse(Brief.HookChars))
+        )
+    )
+    def run(args: Briefing, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Answered] = answered {
+      for {
+        project <- loaded(own.documents, args.key.project)
+        method <- refuse(declared(project.pin))
+        view <- method.views
+          .find(_.role == args.role)
+          .toRight(
+            Stop.Refused(
+              s"method ${MethodName.value(method.name)} version ${method.version} shows no role " +
+                s"${RoleName.value(args.role)}; its roles: " +
+                method.views.map(v => RoleName.value(v.role)).sorted.mkString(", ")
+            )
+          )
+        whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
+        brief <- Brief.of(whole, args.key, view, args.chars).left.map {
+          case BriefRefusal.Unknown(k) =>
+            Stop.Refused(s"project ${ProjectKey.value(k.project)} has no artifact ${k.value}")
+          case BriefRefusal.Over(size) =>
+            Stop.Refused(s"${args.key.value} alone is $size characters, over ${args.chars}")
+        }
+      } yield brief.text
+    }
+  }
+
   /** The latest version of the method `name`, if one is declared. */
   private def latest(name: MethodName): Option[Method] =
     methods.filter(_.name == name).maxByOption(_.version)
@@ -424,6 +561,18 @@ private[plugin] object ProjectCommands {
 
   /** `project_export`'s arguments. */
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
+
+  /** `project_claim`'s arguments. */
+  final case class Claiming(key: ArtifactKey) extends caps.Pure
+
+  /** `project_release`'s arguments. */
+  final case class Releasing(key: ArtifactKey) extends caps.Pure
+
+  /** `project_brief`'s arguments. */
+  final case class Briefing(key: ArtifactKey, role: RoleName, chars: Int) extends caps.Pure
+
+  /** 100,000: the most characters `project_brief` is asked to give. */
+  private val BriefMost: Int = 100_000
 
   /** Why a command stopped: its store failed, or it refused, in words its asker reads. */
   private enum Stop extends caps.Pure {
@@ -478,6 +627,12 @@ private[plugin] object ProjectCommands {
       artifacts <- refuse(every(documents.map(d => readable(d).map(d -> _))))
     } yield Loaded(pin, artifacts)
   }
+
+  /** The live claims on `artifact` that `own` reads: none, or the one there is. */
+  private def claimsOn(own: DocumentShelf, artifact: ArtifactKey)(using
+      Tx^
+  ): Either[Stop, Vector[Document]] =
+    refuse(ArtifactJson.claiming(artifact)).flatMap(ref => stored(own.referring(ref, 1)))
 
   /** `document` as an artifact, or why not, naming it. */
   private def readable(document: Document): Either[String, Artifact] =

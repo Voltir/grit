@@ -74,6 +74,38 @@ object ArtifactJson {
     )
   }
 
+  /** The ref the claim on `artifact` holds, or why not (see [[DocRef.of]]). */
+  def claiming(artifact: ArtifactKey): Either[String, DocRef] =
+    DocRef.of("claims", artifact.value)
+
+  /** The claim on `artifact` by `by` as its document holds it, or why not: under
+    * `claim/<artifact>`, which no artifact's or index's key is; text naming both; `claimed`,
+    * holding `by` and `for` (the artifact's key), as data; and the one ref [[claiming]] gives.
+    */
+  def claim(
+      artifact: ArtifactKey,
+      by: String
+  ): Either[String, (DocKey, DocText, ujson.Value, Set[DocRef])] =
+    for {
+      key <- DocKey.of(s"claim/${artifact.value}")
+      text <- DocText.of(s"${artifact.value} claimed by $by")
+      ref <- claiming(artifact)
+    } yield (
+      key,
+      text,
+      ujson.Obj(ClaimedField -> ujson.Obj("by" -> by, "for" -> artifact.value)),
+      Set(ref)
+    )
+
+  /** Who holds the claim `document` is, as [[claim]] wrote it, or why not. */
+  def claimer(document: Document): Either[String, String] =
+    document.data.objOpt
+      .flatMap(_.get(ClaimedField))
+      .flatMap(_.objOpt)
+      .flatMap(_.get("by"))
+      .flatMap(_.strOpt)
+      .toRight(s"the claim ${DocKey.value(document.key)} names no claimer")
+
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
   def pinOf(document: Document): Either[String, Pin] =
     document.data.objOpt
@@ -119,6 +151,7 @@ object ArtifactJson {
   private val HoldingKind: String = "project"
   private val HeadField: String = "head"
   private val BodyField: String = "body"
+  private val ClaimedField: String = "claimed"
 
   private def head(h: ArtifactHead): ujson.Value =
     ujson.Obj(

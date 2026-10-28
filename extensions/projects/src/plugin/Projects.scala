@@ -11,9 +11,11 @@ import grit.projects.name.MethodName
 /** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
   * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
   * commands: `project_new`, `project_keep` (never a state), `project_move` (only as the
-  * project's pinned method allows, refused once that method's digest has changed), and the
-  * reading `project_show`, `project_list`, `project_find` and `project_export`. Each write
-  * records its writer as the artifact's `by`.
+  * project's pinned method allows, refused once that method's digest has changed),
+  * `project_claim` and `project_release` (a claim on an artifact, kept as its own document, so
+  * the artifact keeps its version), and the reading `project_show`, `project_list`,
+  * `project_find`, `project_export` and `project_brief`. Each write records its writer as the
+  * artifact's `by`, and a claim its claimer.
   */
 final class Projects private (methods: Vector[Method], default: MethodName) extends Plugin {
   val name: PluginName = Projects.Name

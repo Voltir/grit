@@ -49,6 +49,8 @@ Decision:
   keep never changes a state; a move runs its transition's checks over the heads and its
   action, and is refused once the pinned method's digest has changed: a changed method is
   declared as a new version. Past the bound a write is refused, never a document withdrawn.
+  A claim on an artifact is a document of its own, `claim/<artifact>`, so claiming never
+  re-versions a body; a second claim is refused naming the first, and a release withdraws it.
 
 Consequences:
 
