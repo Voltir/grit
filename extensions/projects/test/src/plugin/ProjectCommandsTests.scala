@@ -6,7 +6,7 @@ import grit.core.document.DocumentTerms
 import grit.core.plugin.Answered
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.method.MethodFixtures
+import grit.projects.method.{Example, MethodFixtures}
 import grit.projects.name.{ArtifactKey, MethodName, Pin, ProjectKey}
 import grit.projects.render.ProjectMarkdown
 
@@ -274,11 +274,38 @@ object ProjectCommandsTests extends TestSuite {
     test("Projects.of refuses a default it lacks, and two methods of one name and version") {
       val m = method()
       val other = right(MethodName.of("other"))
-      assert(Projects.of(Vector(m), other) == Left(ProjectsRefusal.NoDefault(other)))
       assert(
-        Projects.of(Vector(m, method(transitions.take(1) ++ transitions.drop(1))), methodName) ==
+        Projects.of(Vector(m -> Vector.empty), other) == Left(ProjectsRefusal.NoDefault(other))
+      )
+      assert(
+        Projects.of(
+          Vector(m, method(transitions.take(1) ++ transitions.drop(1))).map(_ -> Vector.empty),
+          methodName
+        ) ==
           Left(ProjectsRefusal.Twice(methodName, 1))
       )
+    }
+    test("a method whose example fails is refused, naming the example and its move") {
+      val m = method()
+      val bare = MethodFixtures.artifact(
+        MethodFixtures.head("p/a", MethodFixtures.change, "proposed"),
+        "No reason given."
+      )
+      val done = Example.Move(MethodFixtures.key("p/a"), state("done"), Example.Expect.Allowed)
+      val example = Example(
+        "a bare change is done",
+        MethodFixtures.project(bare),
+        Vector(
+          Example.Move(MethodFixtures.key("p/a"), state("building"), Example.Expect.Allowed),
+          done
+        )
+      )
+      assert(Projects.of(Vector(m -> Vector(example)), methodName) match {
+        case Left(ProjectsRefusal.Unbenched(name, 1, Vector(failed))) =>
+          name == methodName && failed.example == "a bare change is done" && failed.at == 2 &&
+          failed.move == done
+        case _ => false
+      })
     }
   }
 }

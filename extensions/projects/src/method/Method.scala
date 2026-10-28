@@ -5,7 +5,8 @@ import java.security.MessageDigest
 
 import scala.annotation.tailrec
 
-import grit.projects.name.{CheckName, KindName, MethodName, RoleName, StateName}
+import grit.projects.artifact.{Artifact, ArtifactHead}
+import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, RoleName, StateName}
 
 /** A methodology version (ADR 0049): the kinds of artifact a project of it holds, the states
   * each passes through, the transitions between them, what each role is shown, and the compiled
@@ -25,6 +26,36 @@ final case class Method private (
     */
   def from(kind: KindName, state: StateName): Vector[Transition] =
     transitions.filter(t => t.kind == kind && t.from == state)
+
+  /** `key` moved to `to` over `artifacts`, its project's, when a transition allows it and each
+    * of its checks holds, its action done; or why not. The moved artifacts keep their `by`: the
+    * mover records itself.
+    */
+  def move(
+      artifacts: Vector[Artifact],
+      key: ArtifactKey,
+      to: StateName
+  ): Either[MoveRefusal, Moved] =
+    for {
+      a <- artifacts.find(_.head.key == key).toRight(MoveRefusal.Missing(key))
+      leaving = from(a.head.kind, a.head.state)
+      transition <- leaving
+        .find(_.to == to)
+        .toRight(MoveRefusal.NoTransition(a.head, to, leaving.map(_.to).distinct))
+      heads = artifacts.map(_.head)
+      failed = transition.checks.flatMap { name =>
+        checks.find(_.name == name) match {
+          case Some(check) => check.holds(a, heads, kinds).left.toOption.map(name -> _)
+          case None => Some(name -> "it is not compiled in")
+        }
+      }
+      _ <- Either.cond(failed.isEmpty, (), MoveRefusal.Unheld(a.head, to, failed))
+      moved = Artifact(a.head.copy(state = to), a.body)
+      done <- transition.action match {
+        case TransitionAction.Nothing => Right(Moved(moved, None))
+        case TransitionAction.MergeDeltas => Left(MoveRefusal.NotYet(a.head, to))
+      }
+    } yield done
 
   /** A SHA-256 digest, 64 lowercase hex digits, of its data and of each check's name and
     * version: equal for equal methods, whatever order their kinds, transitions, role views,
@@ -142,6 +173,27 @@ object Method {
     }
     from(Set(kind.first), Set(kind.first))
   }
+}
+
+/** An allowed move: the artifact in its new state, and the one its transition's action changed,
+  * as changed, if any.
+  */
+final case class Moved(artifact: Artifact, changed: Option[Artifact]) extends caps.Pure
+
+/** Why an artifact may not move. */
+enum MoveRefusal extends caps.Pure {
+
+  /** The project holds no artifact of this key. */
+  case Missing(key: ArtifactKey)
+
+  /** No transition of its kind leads from its state to `to`; `may`, the states one leads to. */
+  case NoTransition(head: ArtifactHead, to: StateName, may: Vector[StateName])
+
+  /** These of its transition's checks did not hold, each with what failed. */
+  case Unheld(head: ArtifactHead, to: StateName, failed: Vector[(CheckName, String)])
+
+  /** Its transition merges deltas, which grit cannot do yet. */
+  case NotYet(head: ArtifactHead, to: StateName)
 }
 
 /** Why some data is not a method. */

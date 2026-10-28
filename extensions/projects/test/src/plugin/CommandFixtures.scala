@@ -39,7 +39,7 @@ object CommandFixtures {
 
   def plugin(m: Method = method()): Projects =
     Projects
-      .of(Vector(m), methodName)
+      .of(Vector(m -> Vector.empty), methodName)
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
   /** A fresh store, and its projects keeper under `terms`. */

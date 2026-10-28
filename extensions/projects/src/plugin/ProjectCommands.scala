@@ -12,7 +12,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{Method, RoleView, TransitionAction}
+import grit.projects.method.{Method, MoveRefusal, RoleView}
 import grit.projects.name.{
   ArtifactKey,
   BriefSlot,
@@ -219,48 +219,21 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           )
         )
         found <- artifact(project, args.key)
-        (document, a) = found
-        from = method.from(a.head.kind, a.head.state)
-        transition <- from
-          .find(_.to == args.to)
-          .toRight(
-            Stop.Refused(
-              s"${shown(a.head)} cannot move to ${StateName.value(args.to)}; " +
-                (if (from.isEmpty) "nothing moves it on"
-                 else
-                   s"it may move to ${from.map(t => StateName.value(t.to)).distinct.mkString(", ")}")
-            )
-          )
-        failed = transition.checks.flatMap { name =>
-          method.checks.find(_.name == name) match {
-            case Some(check) =>
-              check
-                .holds(a, project.artifacts.map(_.head), method.kinds)
-                .left
-                .toOption
-                .map(why => s"${CheckName.value(name)}: $why")
-            case None => Some(s"${CheckName.value(name)} is not compiled in")
+        (document, _) = found
+        done <- method
+          .move(project.artifacts, args.key, args.to)
+          .left
+          .map(r => Stop.Refused(refusal(r)))
+        writer = Some(author(by))
+        moved = Artifact(done.artifact.head.copy(by = writer), done.artifact.body)
+        _ <- kept(own, moved, Some(document.label), at)
+        _ <- done.changed.fold(Right(())) { c =>
+          artifact(project, c.head.key).flatMap { (into, _) =>
+            kept(own, Artifact(c.head.copy(by = writer), c.body), Some(into.label), at)
           }
         }
-        _ <- Either.cond(
-          failed.isEmpty,
-          (),
-          Stop.Refused(
-            s"${a.head.key.value} cannot move to ${StateName.value(args.to)}: ${failed.mkString("; ")}"
-          )
-        )
-        _ <- transition.action match {
-          case TransitionAction.Nothing => Right(())
-          case TransitionAction.MergeDeltas =>
-            Left(
-              Stop.Refused(
-                s"moving to ${StateName.value(args.to)} merges deltas, which this version of grit cannot do yet"
-              )
-            )
-        }
-        moved = Artifact(a.head.copy(state = args.to, by = Some(author(by))), a.body)
-        _ <- kept(own, moved, Some(document.label), at)
-      } yield s"Moved ${shown(moved.head)}."
+      } yield s"Moved ${shown(moved.head)}." +
+        done.changed.fold("")(c => s" Merged its deltas into ${shown(c.head)}.")
     }
   }
 
@@ -722,6 +695,21 @@ private[plugin] object ProjectCommands {
 
   private def shown(h: ArtifactHead): String =
     s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
+
+  /** Why a move was refused, in words its mover can act on. */
+  private def refusal(r: MoveRefusal): String = r match {
+    case MoveRefusal.Missing(key) =>
+      s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}"
+    case MoveRefusal.NoTransition(head, to, may) =>
+      s"${shown(head)} cannot move to ${StateName.value(to)}; " +
+        (if (may.isEmpty) "nothing moves it on"
+         else s"it may move to ${may.map(StateName.value).mkString(", ")}")
+    case MoveRefusal.Unheld(head, to, failed) =>
+      s"${head.key.value} cannot move to ${StateName.value(to)}: " +
+        failed.map((name, why) => s"${CheckName.value(name)}: $why").mkString("; ")
+    case MoveRefusal.NotYet(_, to) =>
+      s"moving to ${StateName.value(to)} merges deltas, which this version of grit cannot do yet"
+  }
 
   private def parsed[A](
       field: String,

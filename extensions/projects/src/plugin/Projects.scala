@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
 import grit.core.id.PluginName
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
-import grit.projects.method.Method
+import grit.projects.method.{Example, Method, MethodBench}
 import grit.projects.name.MethodName
 
 /** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
@@ -60,15 +60,28 @@ object Projects {
     s"this deployment keeps at most $bound project documents and holds that many already, " +
       "so nothing was kept"
 
-  /** The plugin, or why not: `default` not among `methods`, or two of one name and version. */
-  def of(methods: Vector[Method], default: MethodName): Either[ProjectsRefusal, Projects] =
-    methods.groupBy(m => (m.name, m.version)).collectFirst {
+  /** The plugin of these methods, each with its worked examples, or why not: two of one name and
+    * version, `default` not among them, or a method failing its examples ([[MethodBench]]).
+    */
+  def of(
+      methods: Vector[(Method, Vector[Example])],
+      default: MethodName
+  ): Either[ProjectsRefusal, Projects] = {
+    val declared = methods.map(_._1)
+    declared.groupBy(m => (m.name, m.version)).collectFirst {
       case ((name, version), same) if same.size > 1 => ProjectsRefusal.Twice(name, version)
     } match {
       case Some(twice) => Left(twice)
-      case None if !methods.exists(_.name == default) => Left(ProjectsRefusal.NoDefault(default))
-      case None => Right(new Projects(methods, default))
+      case None if !declared.exists(_.name == default) => Left(ProjectsRefusal.NoDefault(default))
+      case None =>
+        val unbenched: Vector[ProjectsRefusal] = methods.flatMap {
+          (m: Method, examples: Vector[Example]) =>
+            val failed = MethodBench.failures(m, examples)
+            if (failed.isEmpty) None else Some(ProjectsRefusal.Unbenched(m.name, m.version, failed))
+        }
+        unbenched.headOption.toLeft(new Projects(declared, default))
     }
+  }
 
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms
@@ -84,4 +97,9 @@ enum ProjectsRefusal extends caps.Pure {
 
   /** Two methods share a name and a version. */
   case Twice(method: MethodName, version: Int)
+
+  /** A method's worked examples came out otherwise than expected: each such, with its first such
+    * move.
+    */
+  case Unbenched(method: MethodName, version: Int, failed: Vector[MethodBench.Failed])
 }

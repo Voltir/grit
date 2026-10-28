@@ -1,7 +1,16 @@
 package grit.projects.method
 
-import grit.projects.artifact.{Artifact, ArtifactHead, Body}
-import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, RoleName, StateName}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.name.{
+  ArtifactKey,
+  CheckName,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  RoleName,
+  StateName
+}
 
 /** Names and a small method for the method package's suites. */
 object MethodFixtures {
@@ -57,4 +66,10 @@ object MethodFixtures {
     ArtifactHead(key(k), kindOf.name, state(in), k, parent.map(key), cites.map(key), None)
 
   def artifact(h: ArtifactHead, body: String): Artifact = Artifact(h, right(Body.read(body)))
+
+  /** Project `p` of `artifacts`, pinned to a digest no method has: the bench reads no pin. */
+  def project(artifacts: Artifact*): Project =
+    right(
+      Project.of(right(ProjectKey.of("p")), right(Pin.of(method, 1, "0f" * 32)), artifacts.toVector)
+    )
 }

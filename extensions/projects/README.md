@@ -20,8 +20,10 @@ Packages, in one-way order (each names only those before it):
 - **`method`**: a methodology as versioned data: `Method` (its kinds, transitions and role
   views, every name declared and every check compiled in), `ArtifactKind`, `Transition`,
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
-  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView`.
-  Imports `name` and `artifact`.
+  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView`;
+  `Method.move`, the one move a live `project_move` and a bench replay both make; and
+  `MethodBench`, which replays a method's worked examples (`Example`), so a method that does
+  not do what its author says is refused. Imports `name` and `artifact`.
 - **`render`**: a project for each consumer: `ProjectMarkdown`, the export (one file per
   artifact, front matter then body) and its reader, held to each other by the round-trip law
   (`ProjectMarkdownTests`); `AnswerText`, what the commands answer, the same for every edge;
