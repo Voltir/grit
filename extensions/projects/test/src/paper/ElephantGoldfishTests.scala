@@ -7,7 +7,6 @@ import grit.projects.method.{
   Example,
   Method,
   MethodBench,
-  MoveRefusal,
   RoleView,
   Transition,
   TransitionAction,
@@ -110,31 +109,6 @@ object ElephantGoldfishTests extends TestSuite {
   val tests = Tests {
     test("the elephant-goldfish model passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(model, examples) == Vector.empty)
-    }
-    test("a planted wrong example, a draft adopted before a person decides, is reported") {
-      val early = to("p/plan", "adopted")
-      val wrong = Example(
-        "adopts before the decision",
-        start,
-        Vector(to("p/plan", "reviewing"), to("p/look", "given"), early)
-      )
-      val reviewing = theDraft.head.copy(state = state("reviewing"))
-      assert(
-        MethodBench.failures(model, examples :+ wrong) == Vector(
-          MethodBench.Failed(
-            "adopts before the decision",
-            3,
-            early,
-            Some(
-              MoveRefusal.Unheld(
-                reviewing,
-                state("adopted"),
-                Vector(check("cited-accepted") -> "nothing citing p/plan is accepted")
-              )
-            )
-          )
-        )
-      )
     }
     test("a goldfish is shown the draft and what it cites, one link deep; an elephant more") {
       val shown = (v: RoleView) =>

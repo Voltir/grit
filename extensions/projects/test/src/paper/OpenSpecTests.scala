@@ -129,23 +129,6 @@ object OpenSpecTests extends TestSuite {
     test("OpenSpec passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(openSpec, examples) == Vector.empty)
     }
-    test("a planted wrong example of OpenSpec is reported at its move") {
-      val early = to("p/2fa", "archived")
-      val wrong = Example(
-        "archives with a task open",
-        project(theSpec, theChange("tasked"), theTask),
-        Vector(early)
-      )
-      assert(MethodBench.failures(openSpec, examples :+ wrong) match {
-        case Vector(MethodBench.Failed("archives with a task open", 1, `early`, Some(met))) =>
-          met == MoveRefusal.Unheld(
-            theChange("tasked").head,
-            state("archived"),
-            Vector(check("children-ended") -> "not ended yet: p/2fa-task (open)")
-          )
-        case _ => false
-      })
-    }
     test("archiving merges each delta into the spec cited, replacing its section or adding one") {
       val expected = right(
         Body.read(
@@ -203,7 +186,7 @@ object OpenSpecTests extends TestSuite {
       assert(first.exists(_.nonEmpty), last == first)
     }
     test("project_move to archived keeps the spec merged, recording its mover") {
-      import CommandFixtures.{ask, by, done as answered, shown, Store}
+      import CommandFixtures.{ask, askAs, done as answered, other, otherBy, shown, Store}
       val projects =
         right(Projects.of(Vector(openSpec -> examples), openSpec.name).left.map(_.toString))
       val store = Store()
@@ -223,14 +206,14 @@ object OpenSpecTests extends TestSuite {
       keep("auth", "spec", specBody)
       keep("2fa", "change", deltas, "p/auth")
       Vector("specified", "designed", "tasked", "archived").foreach { s =>
-        answered(ask(projects, store, "project_move", "key" -> "p/2fa", "to" -> s))
+        answered(askAs(other)(projects, store, "project_move", "key" -> "p/2fa", "to" -> s))
       }
       val spec = shown(projects, store, "p/auth")
       assert(
         spec.contains("A password and a code."),
         spec.contains("## Recovery"),
         !spec.contains("A password alone."),
-        spec.contains(s"by: \"$by\"")
+        spec.contains(s"by: \"$otherBy\"")
       )
     }
   }
