@@ -18,11 +18,15 @@ object TransitionCheckTests extends TestSuite {
         head("p/a", change, "done", parent = Some("p/epic")),
         head("p/b", change, "building", parent = Some("p/epic")),
         head("p/c", note, "open"),
-        head("p/d", note, "closed", parent = Some("p/epic"))
+        head("p/d", note, "closed", parent = Some("p/epic")),
+        head("p/e", note, "open", parent = Some("p/epic"))
       )
+      val unended = Set(key("p/b"), key("p/e"))
       assert(
-        ChildrenEnded.holds(parent, heads, kinds) == Left("not ended yet: p/b (building)"),
-        ChildrenEnded.holds(parent, heads.filterNot(_.key == key("p/b")), kinds) == Right(())
+        ChildrenEnded.holds(parent, heads, kinds) == Left(
+          "not ended yet: p/b (building), p/e (open)"
+        ),
+        ChildrenEnded.holds(parent, heads.filterNot(h => unended(h.key)), kinds) == Right(())
       )
     }
     test("cited-accepted holds once an artifact citing it is accepted") {
@@ -39,15 +43,20 @@ object TransitionCheckTests extends TestSuite {
       )
     }
     test("sections-present names each section its kind lists that its body lacks") {
-      val kinds = Vector(change.copy(sections = Vector("Why", "How")))
+      val kinds = Vector(change.copy(sections = Vector("Why", "How", "Risks")))
       val why = artifact(
         head("p/x", change, "building"),
         "## Why\n\nBecause.\n\n### How\n\nNested, not a section."
       )
-      val both = artifact(head("p/x", change, "building"), "## Why\n\nBecause.\n\n## How\n\nSo.")
+      val all = artifact(
+        head("p/x", change, "building"),
+        "## Why\n\nBecause.\n\n## How\n\nSo.\n\n## Risks\n\nNone."
+      )
       assert(
-        SectionsPresent.holds(why, Vector(why.head), kinds) == Left("its body lacks ## How"),
-        SectionsPresent.holds(both, Vector(both.head), kinds) == Right(())
+        SectionsPresent.holds(why, Vector(why.head), kinds) == Left(
+          "its body lacks ## How, ## Risks"
+        ),
+        SectionsPresent.holds(all, Vector(all.head), kinds) == Right(())
       )
     }
     test("every built-in's name is one CheckName.of accepts") {
