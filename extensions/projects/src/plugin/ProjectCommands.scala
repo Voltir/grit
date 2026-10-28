@@ -707,8 +707,15 @@ private[plugin] object ProjectCommands {
     case MoveRefusal.Unheld(head, to, failed) =>
       s"${head.key.value} cannot move to ${StateName.value(to)}: " +
         failed.map((name, why) => s"${CheckName.value(name)}: $why").mkString("; ")
-    case MoveRefusal.NotYet(_, to) =>
-      s"moving to ${StateName.value(to)} merges deltas, which this version of grit cannot do yet"
+    case MoveRefusal.NoInto(head, to) =>
+      s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
+        "first artifact it cites, and it cites none; cite the artifact to merge them into"
+    case MoveRefusal.IntoKind(head, to, into, wanted) =>
+      s"${head.key.value} cannot move to ${StateName.value(to)}: that merges its deltas into the " +
+        s"first artifact it cites, which must be a ${KindName.value(wanted)}, and ${shown(into)} is not"
+    case MoveRefusal.Unmerged(head, to, into, why) =>
+      s"${head.key.value} cannot move to ${StateName.value(to)}: its deltas merged into " +
+        s"${into.key.value} would be too long ($why)"
   }
 
   private def parsed[A](

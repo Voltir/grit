@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets
 
 import grit.core.document.Document
 import grit.projects.name.ArtifactKey
-import grit.prose.form.{Block, Doc, Mark, Span}
+import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.index.IndexText
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
@@ -78,6 +78,53 @@ object Body {
   def sections(b: Body): Vector[String] = b.blocks.collect {
     case Block.Heading(level, text) if level.value == 2 => text.plain.trim
   }
+
+  /** `Delta: `: what a `##` heading starts with when its section is a delta to the section named
+    * by the rest.
+    */
+  val Delta: String = "Delta: "
+
+  /** `into` with each of `deltas`' delta sections merged in, in order: a section is a `##`
+    * heading and the blocks up to the next heading of rank 2 or less, and a delta, headed
+    * `Delta: <name>`, replaces `into`'s section `<name>` or is added after its last; or why not:
+    * a merged stored form over [[StoredMost]]. `into` itself when `deltas` holds none.
+    */
+  def merged(into: Body, deltas: Body): Either[String, Body] = {
+    val changes = sectionsOf(deltas.blocks).collect {
+      case Section(Some(title), blocks) if title.startsWith(Delta) =>
+        Change(title.drop(Delta.length).trim, blocks.drop(1))
+    }
+    val doc = changes.foldLeft(into.blocks) { (blocks, change) =>
+      val replacing = Block.Heading(Level.of(2), Text.plain(change.name)) +: change.blocks
+      val sections = sectionsOf(blocks)
+      if (sections.exists(_.title.contains(change.name)))
+        sections.flatMap(s => if (s.title.contains(change.name)) replacing else s.blocks)
+      else blocks ++ replacing
+    }
+    if (changes.isEmpty) Right(into) else checked(Doc(doc))
+  }
+
+  /** Blocks from a heading of rank 2 or less up to the next, or those before the first;
+    * `title`, the heading's when it is of rank 2.
+    */
+  private final case class Section(title: Option[String], blocks: Vector[Block[ArtifactKey]])
+
+  /** A delta: the section it replaces or adds, and the blocks under it. */
+  private final case class Change(name: String, blocks: Vector[Block[ArtifactKey]])
+
+  /** `blocks` cut before each heading of rank 2 or less. */
+  private def sectionsOf(blocks: Vector[Block[ArtifactKey]]): Vector[Section] =
+    blocks.foldLeft(Vector.empty[Section]) { (cut, block) =>
+      block match {
+        case Block.Heading(level, text) if level.value <= 2 =>
+          cut :+ Section(Option.when(level.value == 2)(text.plain.trim), Vector(block))
+        case _ =>
+          cut.lastOption match {
+            case Some(last) => cut.init :+ last.copy(blocks = last.blocks :+ block)
+            case None => Vector(Section(None, Vector(block)))
+          }
+      }
+    }
 
   /** As stored: prose's stored form ([[ProseJson]]), each reference by its key. */
   def stored(b: Body): ujson.Value = ProseJson.write(b, k => ujson.Str(k.value))

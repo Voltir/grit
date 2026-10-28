@@ -32,11 +32,14 @@ final case class Transition(
 enum TransitionAction extends caps.Pure {
   case Nothing
 
-  /** Each `##` section of the artifact headed as a delta replaces or adds the section of that
-    * name in the artifact it cites as `into`, as OpenSpec's archive merges a change's spec
-    * deltas.
+  /** Merges the moved artifact's deltas into the first other artifact its head cites, which is
+    * of kind `into`, as OpenSpec's archive merges a change's spec deltas into its spec: each `##`
+    * section headed `Delta: <name>` ([[grit.projects.artifact.Body.merged]]) replaces that artifact's section `<name>`,
+    * or is added after its last; that artifact is kept unchanged when there is no delta. Refused
+    * in the move ([[MoveRefusal]]) when its head cites no other artifact, when that artifact is
+    * of another kind, or when the merged body is over its cap.
     */
-  case MergeDeltas
+  case MergeDeltas(into: KindName)
 }
 
 /** What `role` is shown working on an artifact: it, and what it cites to `depth` links, of

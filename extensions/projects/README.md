@@ -34,6 +34,10 @@ Packages, in one-way order (each names only those before it):
 
 No source file sits at the module's root.
 
+The tests' `paper` package is the paper check: OpenSpec (`OpenSpecTests`) and the
+elephant-goldfish model (`ElephantGoldfishTests`) written as method data, each passing
+`Method.of` and its worked examples, and a wrong example of each reported.
+
 ## What the code cannot say
 
 - **A check is deterministic.** `TransitionCheck` is pure, so it reaches no store

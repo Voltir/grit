@@ -5,7 +5,7 @@ import java.security.MessageDigest
 
 import scala.annotation.tailrec
 
-import grit.projects.artifact.{Artifact, ArtifactHead}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body}
 import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, RoleName, StateName}
 
 /** A methodology version (ADR 0049): the kinds of artifact a project of it holds, the states
@@ -53,7 +53,22 @@ final case class Method private (
       moved = Artifact(a.head.copy(state = to), a.body)
       done <- transition.action match {
         case TransitionAction.Nothing => Right(Moved(moved, None))
-        case TransitionAction.MergeDeltas => Left(MoveRefusal.NotYet(a.head, to))
+        case TransitionAction.MergeDeltas(kind) =>
+          for {
+            into <- a.head.cites
+              .find(_ != key)
+              .flatMap(k => artifacts.find(_.head.key == k))
+              .toRight(MoveRefusal.NoInto(a.head, to))
+            _ <- Either.cond(
+              into.head.kind == kind,
+              (),
+              MoveRefusal.IntoKind(a.head, to, into.head, kind)
+            )
+            body <- Body
+              .merged(into.body, a.body)
+              .left
+              .map(MoveRefusal.Unmerged(a.head, to, into.head, _))
+          } yield Moved(moved, Option.when(body != into.body)(Artifact(into.head, body)))
       }
     } yield done
 
@@ -99,9 +114,9 @@ final case class Method private (
 object Method {
 
   /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind,
-    * state, role or check named twice; an end state, a transition or a role view naming a kind
-    * or state not declared; a transition from an end state; a check not in `compiled`; a state
-    * its kind's first cannot reach.
+    * state, role or check named twice; an end state, a transition (its action's kind among them)
+    * or a role view naming a kind or state not declared; a transition from an end state; a check
+    * not in `compiled`; a state its kind's first cannot reach.
     */
   def of(
       name: MethodName,
@@ -136,9 +151,9 @@ object Method {
                 Option.when(k.ends(t.from))(FromEnd(k.name, t.from))
           }
         } ++
-        views
-          .flatMap(_.kinds.toVector.sortBy(KindName.value))
-          .distinct
+        (transitions.collect { case Transition(_, _, _, _, TransitionAction.MergeDeltas(into)) =>
+          into
+        } ++ views.flatMap(_.kinds.toVector.sortBy(KindName.value))).distinct
           .filterNot(declared.contains)
           .map(UndeclaredKind(_)) ++
         named.filterNot(compiled.map(_.name).contains).map(NotCompiled(_)) ++
@@ -192,8 +207,16 @@ enum MoveRefusal extends caps.Pure {
   /** These of its transition's checks did not hold, each with what failed. */
   case Unheld(head: ArtifactHead, to: StateName, failed: Vector[(CheckName, String)])
 
-  /** Its transition merges deltas, which grit cannot do yet. */
-  case NotYet(head: ArtifactHead, to: StateName)
+  /** Its transition merges deltas, and its head cites no other artifact to merge them into. */
+  case NoInto(head: ArtifactHead, to: StateName)
+
+  /** Its transition merges deltas into a `wanted`, and the first other artifact its head cites,
+    * `into`, is of another kind.
+    */
+  case IntoKind(head: ArtifactHead, to: StateName, into: ArtifactHead, wanted: KindName)
+
+  /** Its deltas merged into `into` are no body: `why`, a stored form over [[Body.StoredMost]]. */
+  case Unmerged(head: ArtifactHead, to: StateName, into: ArtifactHead, why: String)
 }
 
 /** Why some data is not a method. */

@@ -33,6 +33,18 @@ object MethodTests extends TestSuite {
       val made = Method.of(method, 1, kinds, transitions, views, Vector.empty)
       assert(made == Left(Vector(NotCompiled(check("sections-present")))))
     }
+    test("a transition merging deltas into an undeclared kind is refused, naming it") {
+      val merging = Transition(
+        change.name,
+        state("building"),
+        state("done"),
+        Vector.empty,
+        TransitionAction.MergeDeltas(kind("spec"))
+      )
+      val made =
+        Method.of(method, 1, kinds, transitions.updated(1, merging), views, TransitionChecks.all)
+      assert(made == Left(Vector(UndeclaredKind(kind("spec")))))
+    }
     test("an unreachable state is refused") {
       val made = Method.of(method, 1, kinds, transitions.drop(1), views, TransitionChecks.all)
       assert(
