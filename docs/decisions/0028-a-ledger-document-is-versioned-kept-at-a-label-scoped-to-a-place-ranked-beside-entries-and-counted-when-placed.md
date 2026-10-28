@@ -17,8 +17,7 @@ Decision:
   Withdrawing a document is a version with no body. A plugin's version moves its posting
   cursor, never its ledger.
 - **A document is kept at its label joined with its writer's floor** (`DocumentKeeper.write`,
-  `Clearance.floor`, ADR 0030), never below what its writer could read, in the writer's own
-  room or none, and believed at the integrity its writer gives (ADR 0036). A plugin reads
+  `Clearance.floor`, ADR 0030), in the writer's own room or none, and believed at the integrity its writer gives (ADR 0036). A plugin reads
   only what its transaction is cleared for (`DocumentShelf`).
 - **A ledger document has a place** (ADR 0013), and a window's candidates include the current
   documents whose label the window reads, wherever their place. They rank in the
@@ -56,8 +55,6 @@ Decision:
   placement. The step that appends a turn's reply, or its draft, counts in its own
   transaction each of the window's documents whose pointer one of the turn's calls followed
   and that succeeded. Any other measure of use is its plugin's own.
-- **A document's source content goes to a model only as any send does**: to a party cleared
-  for it (ADR 0031).
 
 Consequences:
 

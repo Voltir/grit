@@ -34,9 +34,8 @@ Decision:
   `moduleDeps`, which refuse a cycle), so a dependent is always built against its
   dependency's own version. It reaches the dependency at runtime only through a service value
   the dependency exports, a trait over its own documents, handed over when the deployment is
-  built: to its tools, and to its dreaming jobs' scans, in the scan's transaction. A command
-  reaches only its own plugin's documents. No plugin
-  reads or writes another's documents directly. Core alone shows a model another plugin's
+  built: to its tools, and to its dreaming jobs' scans, in the scan's transaction (a command
+  reaches no service: ADR 0048). No plugin reads or writes another's documents directly. Core alone shows a model another plugin's
   documents for a dreaming job's summary (ADR 0042), and only those of the plugins the job's
   plugin needs, read under the transaction's labels and believed at the meet of what was read.
 - **`Deployment.of` refuses a plugin whose dependency is not among the deployment's

@@ -28,11 +28,10 @@ Decision:
   an end state, or a state its kind's first cannot reach.
 - **Its checks are compiled in.** A transition names its checks; each is a `TransitionCheck`
   the deployment compiles, judging one artifact over its project's heads and its method's kinds,
-  pure and deterministic (review holds the latter); what it decides changing is a new version. What a transition does besides moving is grit's
-  (`TransitionAction`, a closed set), never a method's code: nothing, or merging the moved
-  artifact's `Delta: <name>` sections into the one artifact it cites of the kind the
-  transition names (cite order means nothing), each replacing that artifact's section `<name>`
-  or added after its last.
+  pure and deterministic; what it decides changing is a new version. What a transition does
+  besides moving is grit's (`TransitionAction`, a closed set), never a method's code: nothing,
+  or merging the moved artifact's `Delta: <name>` sections into the one artifact it cites of
+  the kind the transition names.
 - **A method's digest pins it**: it covers the method's data, whatever its declared order, and
   each named check's name and version, so a check whose decision changes under its name
   changes the digest. A project pins its method's name, version and digest (`Pin`).
@@ -47,7 +46,6 @@ Decision:
   matter then markdown, and a file holding the project's key and pin. The round-trip law holds
   them together: read after render keeps every head and link, and after one pass is a fixed
   point (markdown normalises once).
-
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
   artifact, under its key, its head and stored body as data and refs naming its project, kind,
   state, parent and cites; and an index under the project's key holding its pin. Only the

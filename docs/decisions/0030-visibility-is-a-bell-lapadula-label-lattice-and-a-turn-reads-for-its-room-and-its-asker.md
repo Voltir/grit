@@ -30,15 +30,13 @@ Decision:
 - **The simple security property and the *-property.** Every database transaction is opened
   for a subject (`Subject`) and carries that subject's clearance: it reads only rows its
   clearance dominates, and what it labels is kept at least at the subject's current level
-  (`Clearance.floor`). Only `grit.dbos` opens a transaction as the trusted subject
-  (`Maintenance`), for work that moves rows and derives nothing.
+  (`Clearance.floor`). Only `grit.dbos` opens a transaction at the clearance that reads every
+  row (`Maintenance.clearance`), for work that moves rows and derives nothing.
 - **An edge acting for a room with no conversation** (`Subject.Room`: a review's channel)
   reads everywhere up to the label its place is written at outside grit (`Tx.writable`), and
   public rows alone where nothing writes. It is no trusted subject: it reads no more than the
   place may receive, and a post rechecks in its own transaction that the place still dominates
   what it posts, as a place's label may fall.
-- **A person's command in a room** (`Subject.Person`, ADR 0048) reads up to the room's written
-  label met with that person's clearance; its asker is never grit.
 - **A room has one label in force**, set by one rule in core (ADR 0033). What is said in a
   room takes its label, so a reply is never above its room; a conversation keeps the label it
   was created at (strong tranquility).
@@ -70,4 +68,4 @@ Consequences:
   to a clearance that could not read it.
 - Enforced by the compiler (no transaction opens without a subject), the law
   (`only-dbos-names-maintenance`), and `LabelContract`, which binds dominance, join and meet
-  in Scala to the same in SQL. Row-level security is the later enforcement in the database.
+  in Scala to the same in SQL.
