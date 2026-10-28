@@ -234,7 +234,7 @@ object Main {
              exitOnLeft(slackCommand(env)).naming(
                PlaceNames.of(driveEdge.map(_.names).toVector)
              ),
-             exitOnLeft(backfill(env)),
+             exitOnLeft(Backfill.read(env)),
              exitOnLeft(replyNote(env))
            )
          )
@@ -322,7 +322,8 @@ object Main {
           ).swap.toOption
         )
       else if (backfilling)
-        backfillDays(env)
+        Backfill
+          .days(env)
           .flatMap { days =>
             Kit
               .catchUp(
@@ -1328,26 +1329,6 @@ object Main {
       )
     }
 
-  /** The variable saying how many days back `grit backfill` reads, and `grit serve` hears
-    * before each join of its bot ([[backfill]]).
-    */
-  private val DaysVar = "GRIT_BACKFILL_DAYS"
-
-  /** The variable bounding how many messages `grit serve` hears before each join. */
-  private val MessagesVar = "GRIT_BACKFILL_MESSAGES"
-
-  /** The variable bounding how many joins a day `grit serve` hears what came before. */
-  private val JoinsVar = "GRIT_BACKFILL_JOINS_PER_DAY"
-
-  /** The days read when [[DaysVar]] is unset. */
-  private[main] val DefaultDays: Int = Backfill.Default.days
-
-  /** The days `grit backfill` reads ([[DaysVar]]); why not, naming the variable, when it is
-    * not a whole number above zero.
-    */
-  private[main] def backfillDays(env: Map[String, String]): Either[String, Int] =
-    above(env, DaysVar, DefaultDays, "a whole number of days above zero")
-
   /** `grit backfill topics`'s arguments: how many `days` before today, at most `perRun` topics
     * a run, and whether to run without asking (`yes`).
     */
@@ -1440,33 +1421,6 @@ object Main {
         .map(_.message)
     } yield println(TopicDocuments.backfilled(ran.map(_.spent)))
   }
-
-  /** How `grit serve` bounds what it hears before each join of its bot: [[DaysVar]],
-    * [[MessagesVar]] and [[JoinsVar]], [[Backfill.Default]]'s where one is unset; why not,
-    * naming the first variable that is not a whole number above zero.
-    */
-  private[main] def backfill(env: Map[String, String]): Either[String, Backfill] =
-    for {
-      days <- backfillDays(env)
-      messages <- above(env, MessagesVar, Backfill.Default.messages, "a whole number above zero")
-      joins <- above(env, JoinsVar, Backfill.Default.joinsPerDay, "a whole number above zero")
-      bounds <- Backfill.of(days, messages, joins)
-    } yield bounds
-
-  /** `variable`'s whole number above zero in `env`, `default` when unset; why not, saying it
-    * is `what`, when it is not one.
-    */
-  private def above(
-      env: Map[String, String],
-      variable: String,
-      default: Int,
-      what: String
-  ): Either[String, Int] =
-    env.get(variable) match {
-      case None => Right(default)
-      case Some(raw) =>
-        raw.trim.toIntOption.filter(_ > 0).toRight(s"$variable is $what, not '$raw'")
-    }
 
   private val ThemeVar = "GRIT_THEME"
 

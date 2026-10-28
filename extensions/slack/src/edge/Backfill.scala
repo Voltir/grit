@@ -17,6 +17,49 @@ object Backfill {
   /** 2 days, 100 messages, 10 joins a day. */
   val Default: Backfill = new Backfill(2, 100, 10)
 
+  /** The variable saying how many days back `grit backfill` reads, and a join's backfill hears
+    * ([[read]]); unset, [[Default]]'s days.
+    */
+  val DaysVar: String = "GRIT_BACKFILL_DAYS"
+
+  /** The variable bounding how many messages a join's backfill hears; unset, [[Default]]'s. */
+  val MessagesVar: String = "GRIT_BACKFILL_MESSAGES"
+
+  /** The variable bounding how many joins a day a join's backfill hears; unset, [[Default]]'s. */
+  val JoinsVar: String = "GRIT_BACKFILL_JOINS_PER_DAY"
+
+  /** A join's bounds as `env` gives them: each variable unset takes [[Default]]'s; why not,
+    * naming the first variable that is not a whole number above zero.
+    */
+  def read(env: Map[String, String]): Either[String, Backfill] =
+    for {
+      daysRead <- days(env)
+      messages <- above(env, MessagesVar, Default.messages, "a whole number above zero")
+      joins <- above(env, JoinsVar, Default.joinsPerDay, "a whole number above zero")
+      bounds <- of(daysRead, messages, joins)
+    } yield bounds
+
+  /** The days `grit backfill` reads ([[DaysVar]]); why not, naming the variable, when it is not
+    * a whole number of days above zero.
+    */
+  def days(env: Map[String, String]): Either[String, Int] =
+    above(env, DaysVar, Default.days, "a whole number of days above zero")
+
+  /** `variable`'s whole number above zero in `env`, `default` when unset; why not, saying it is
+    * `what`, when it is not one.
+    */
+  private def above(
+      env: Map[String, String],
+      variable: String,
+      default: Int,
+      what: String
+  ): Either[String, Int] =
+    env.get(variable) match {
+      case None => Right(default)
+      case Some(raw) =>
+        raw.trim.toIntOption.filter(_ > 0).toRight(s"$variable is $what, not '$raw'")
+    }
+
   /** These, or why not: each at least 1. */
   def of(days: Int, messages: Int, joinsPerDay: Int): Either[String, Backfill] =
     Vector("days" -> days, "messages" -> messages, "joinsPerDay" -> joinsPerDay)
