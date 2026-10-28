@@ -26,7 +26,7 @@ import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
 
-/** The assembly eval (roadmap/mechanisms/assembly-eval.md): every case in [[Cases]], as
+/** The assembly eval: every case in [[Cases]], as
   * written and buried in filler, under every strategy, scored on how many of its `[must]`
   * entries the window holds and what the window costs in estimated tokens. It runs in a
   * throwaway Postgres (`TestPostgres`), so retrieval ranks with the real pg_textsearch. A

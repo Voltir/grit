@@ -246,8 +246,7 @@ object grit extends Module {
     }
   }
 
-  /* Durable turn: the per-turn workflow, written against core's seams, not DBOS.
-   * roadmap/mechanisms/durable-turn.md. */
+  /* Durable turn: the per-turn workflow, written against core's seams, not DBOS (ADR 0038). */
   object turn extends GritPublished with Placed {
     def folder = os.sub / "core" / "turn"
     def moduleDeps = Seq(core, act)
@@ -404,7 +403,7 @@ object grit extends Module {
   }
 
   /* Models: the frontier provider, and later the relevance judge. A quarantine module
-   * once it has an HTTP client. roadmap/mechanisms/models.md. */
+   * once it has an HTTP client; every call goes to a cleared pair (ADR 0031). */
   object models extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "models"
     def moduleDeps = Seq(core)
@@ -508,8 +507,7 @@ object grit extends Module {
     }
   }
 
-  /* Assembly: builds each turn's context window from memory.
-   * roadmap/mechanisms/assembly.md. */
+  /* Assembly: builds each turn's context window from memory (ADR 0040). */
   object assembly extends GritPublished with Placed {
     def folder = os.sub / "core" / "assembly"
     def moduleDeps = Seq(core)
@@ -523,8 +521,7 @@ object grit extends Module {
   /* The eval's labelled cases and how they are written into a database, over core's traits
    * alone, so the harness can build its synthetic reference from them. Its integration
    * sources are the assembly eval: every assembler over those cases, in a throwaway Postgres
-   * so retrieval ranks with the real pg_textsearch; a report, not a gate.
-   * roadmap/mechanisms/assembly-eval.md. */
+   * so retrieval ranks with the real pg_textsearch; a report, not a gate. */
   object eval extends GritModule with Placed {
     def folder = os.sub / "eval"
     def moduleDeps = Seq(grit.core)

@@ -13,4 +13,4 @@ profiles), which `OpenRouterConfig.policy` overrides per run from the environmen
 quarantine module (STYLE rule 8) once it holds an HTTP client, and subject to the classified
 boundary: nothing leaves the machine unless its destination is approved.
 
-Design: `roadmap/mechanisms/models.md`.
+Where a model call may go: [ADR 0031](../../docs/decisions/0031-a-write-out-of-grit-names-its-place-every-party-grit-sends-to-is-cleared-and-every-model-call-goes-to-a-cleared-pair-or-is-not-made.md).
