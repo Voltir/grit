@@ -185,6 +185,8 @@ object grit extends Module {
       /* On an upgrade, run grit.dbos.it: CrashFidelityTests pins the two DBOSExecutor
        * internals DbosDurableTests' in-process crash relies on. */
       mvn"dev.dbos:transact:1.2.0",
+      /* The pool grit's own transactions share (grit.dbos.sql.Pool); the version DBOS brings. */
+      mvn"com.zaxxer:HikariCP:7.1.0",
       mvn"org.slf4j:slf4j-simple:2.0.20",
       mvn"org.postgresql:postgresql:42.7.13"
     )

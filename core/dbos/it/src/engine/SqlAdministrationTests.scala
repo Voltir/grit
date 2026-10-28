@@ -11,7 +11,15 @@ import grit.core.identity.{Account, Standing, Vouched}
 import grit.core.place.Place
 import grit.core.store.{Origin, Tx, Voucher}
 import grit.core.visibility.RoomAccess
-import grit.dbos.sql.{DbConfig, LiveDb, SqlPlaces, SqlStatements, TestPostgres}
+import grit.dbos.sql.{
+  DbConfig,
+  LiveDb,
+  Opener,
+  SqlAdministration,
+  SqlPlaces,
+  SqlStatements,
+  TestPostgres
+}
 
 /** The administration contract, kept by the engine's administration against a real Postgres. */
 object SqlAdministrationTests extends AdministrationContract {
@@ -34,10 +42,11 @@ object SqlAdministrationTests extends AdministrationContract {
   protected def fresh(): Administration = {
     val c = TestPostgres.freshDatabase(s"sql_administration_${made.incrementAndGet()}")
     val engine = LiveEngine.open(c, "test", visibility = Declared)
-    try {
-      current = Some(Fresh(c, engine.voucher(Set(T1), Set.empty)))
-      engine.administration
-    } finally engine.close()
+    try current = Some(Fresh(c, engine.voucher(Set(T1), Set.empty)))
+    finally engine.close()
+    // As the engine builds its administration, over sessions of the suite's own: closing the
+    // engine closed its pool.
+    new SqlAdministration(LiveDb.jot(c, Declared), new Opener(Declared))
   }
 
   private def under[A](body: (Tx^) ?=> A): A = LiveDb.under(fresh0.config, Declared)(body)

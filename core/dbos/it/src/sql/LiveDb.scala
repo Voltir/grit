@@ -185,4 +185,16 @@ object LiveDb {
         }
       }
     }
+
+  /** Short write transactions on `config`'s database, labelling places as `visibility` does: an
+    * engine's [[grit.core.store.Jot]], over sessions that outlive no engine, for a store a
+    * suite keeps after the engine that migrated its database has closed.
+    */
+  def jot(config: DbConfig, visibility: Visibility): grit.core.store.Jot = {
+    val ds = new org.postgresql.ds.PGSimpleDataSource()
+    ds.setURL(config.jdbcUrl)
+    ds.setUser(config.user)
+    ds.setPassword(config.password)
+    new SqlJot(ds, new Opener(visibility))
+  }
 }

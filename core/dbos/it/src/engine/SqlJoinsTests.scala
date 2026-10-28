@@ -10,7 +10,7 @@ import grit.core.model.Grade
 import grit.core.place.Place
 import grit.core.store.{Tx, Voucher}
 import grit.core.visibility.{RoomAccess, Visibility}
-import grit.dbos.sql.{DbConfig, LiveDb, SqlPlaces, SqlStatements, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlJoins, SqlPlaces, SqlStatements, TestPostgres}
 
 /** The joins contract, kept by the engine's joins against a real Postgres. */
 object SqlJoinsTests extends JoinsContract {
@@ -33,10 +33,11 @@ object SqlJoinsTests extends JoinsContract {
   protected def fresh(): Joins = {
     val c = TestPostgres.freshDatabase(s"sql_joins_${made.incrementAndGet()}")
     val engine = LiveEngine.open(c, "test")
-    try {
-      current = Some(Fresh(c, engine.voucher(Set(T1), Set.empty)))
-      engine.joins
-    } finally engine.close()
+    try current = Some(Fresh(c, engine.voucher(Set(T1), Set.empty)))
+    finally engine.close()
+    // As the engine builds its joins, over sessions of the suite's own: closing the engine
+    // closed its pool.
+    new SqlJoins(LiveDb.jot(c, Visibility.Shipped))
   }
 
   private def under[A](body: (Tx^) ?=> A): A =

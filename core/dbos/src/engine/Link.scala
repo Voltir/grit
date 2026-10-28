@@ -36,6 +36,7 @@ import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   DbConfig,
   Opener,
+  Pool,
   SqlConversationStore,
   SqlDb,
   SqlDocumentSearch,
@@ -53,7 +54,7 @@ import grit.dbos.sql.{
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.{StepInfo, WorkflowState}
-import org.postgresql.ds.PGSimpleDataSource
+import com.zaxxer.hikari.HikariDataSource
 
 /** An edge's view of a database's engine (ADR 0015): its inbox, reads, streams and turn
   * status, and the edge it registers, whether this process runs the engine ([[Engine]]) or
@@ -180,11 +181,14 @@ object Link {
       visibility: Visibility,
       clock: Clock^
   ): Link^ = {
-    val ds = new PGSimpleDataSource()
-    ds.setURL(config.jdbcUrl)
-    ds.setUser(config.user)
-    ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), version, identity, budget, visibility, clock)
+    val pool = Pool.open(config, readOnly = false)
+    try
+      new Attached(config, pool, new DBOSClient(pool), version, identity, budget, visibility, clock)
+    catch {
+      case e: Throwable =>
+        pool.close()
+        throw e
+    }
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */
@@ -266,7 +270,7 @@ object Link {
 /** A [[Link]] to an engine another process runs. */
 private[engine] final class Attached(
     config: DbConfig,
-    dataSource: PGSimpleDataSource,
+    dataSource: HikariDataSource,
     client: DBOSClient,
     epoch: String,
     identity: ProcessIdentity,
@@ -362,7 +366,7 @@ private[engine] final class Attached(
 
   def awaitTurn(turn: TurnRef): String = Link.awaitTurn(client, turn)
 
-  def holder(): Option[Holder] = EngineLock.holder(config)
+  def holder(): Option[Holder] = EngineLock.holder(dataSource)
 
   def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
     holder() match {
@@ -394,5 +398,7 @@ private[engine] final class Attached(
 
   def close(): Unit =
     try desks.forEach(_.close())
-    finally client.close()
+    finally
+      try client.close()
+      finally dataSource.close()
 }

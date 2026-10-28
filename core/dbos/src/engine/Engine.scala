@@ -22,7 +22,7 @@ import grit.core.spend.Budget
 import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Voucher}
 import grit.core.triage.Shadowing
 import grit.core.visibility.{Compartment, Visibility}
-import grit.dbos.sql.{DbConfig, Opener, SqlDb, SqlJot, SqlLabels, SqlVoucher}
+import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlJot, SqlLabels, SqlVoucher}
 import grit.dbos.workflow.{
   Closes,
   DurableWorkflow,
@@ -41,7 +41,7 @@ import dev.dbos.transact.migrations.MigrationManager
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.{ListWorkflowsInput, WorkflowState}
 import dev.dbos.transact.{DBOS, DBOSClient}
-import org.postgresql.ds.PGSimpleDataSource
+import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
 
 /** grit over one Postgres: the stores, the turn, close, settle, posting, triage, placement, shadow and job run workflows, the
@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory
   */
 final class Engine private (
     dbos: DBOS,
-    dataSource: PGSimpleDataSource,
+    dataSource: HikariDataSource,
     lock: EngineLock^,
     config: DbConfig,
     epoch: String,
@@ -398,10 +398,10 @@ final class Engine private (
   def awaitTurn(turn: TurnRef): String = Link.awaitTurn(client, turn)
 
   /** The engine holding this database's lock: this one, while it holds it. */
-  def holder(): Option[Holder] = EngineLock.holder(config)
+  def holder(): Option[Holder] = EngineLock.holder(dataSource)
 
   /** Stops every pass ([[every]]) and the sweep, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
-    * still running (interrupted by the stop) to return, then releases the lock: no body this
+    * still running (interrupted by the stop) to return, closes its pool, then releases the lock: no body this
     * engine ran outlives its lock, unless one ignores its interrupt past the wait, which is
     * logged. Also what losing the lock does. Once; later calls return at once.
     */
@@ -417,7 +417,9 @@ final class Engine private (
           LoggerFactory
             .getLogger("grit.engine")
             .warn(s"workflow bodies still running after ${Engine.BodiesWithin}: releasing the lock")
-      } finally lock.close()
+      } finally
+        try dataSource.close()
+        finally lock.close()
     }
 }
 
@@ -535,11 +537,13 @@ object Engine {
       clock: Clock^
   ): Engine^ = {
     val dbos = new DBOS(dbosConfig)
-    val ds = new PGSimpleDataSource()
-    ds.setURL(config.jdbcUrl)
-    ds.setUser(config.user)
-    ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config, epoch, identity, budget, visibility, clock)
+    val pool = Pool.open(config, readOnly = false)
+    try new Engine(dbos, pool, lock, config, epoch, identity, budget, visibility, clock)
+    catch {
+      case e: Throwable =>
+        pool.close()
+        throw e
+    }
   }
 
   /** Applies `core/dbos/resources/schema.sql` idempotently. */

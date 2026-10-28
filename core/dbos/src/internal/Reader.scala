@@ -36,6 +36,7 @@ import grit.dbos.engine.{Build, Link}
 import grit.dbos.sql.{
   DbConfig,
   Opener,
+  Pool,
   SqlConversationStore,
   SqlDb,
   SqlDocumentSearch,
@@ -62,13 +63,13 @@ import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
-import org.postgresql.ds.PGSimpleDataSource
+import com.zaxxer.hikari.HikariDataSource
 
 /** The database `config` names, read without an engine: no DBOS executor, no lock, so nothing
   * there is recovered or run. Every session is opened `READ ONLY` in Postgres
   * (`default_transaction_read_only`), so a write through any of these stores fails with
   * `DatabaseError`. For tools reading a copy, or a live database beside its engine. Closing it
-  * closes its DBOS client.
+  * closes its DBOS client and its sessions.
   */
 trait Reader extends caps.SharedCapability, AutoCloseable {
 
@@ -150,25 +151,25 @@ object Reader {
     * engine of this version has opened has neither), cannot be read.
     */
   def open(config: DbConfig): Reader^ = {
-    val ds = new PGSimpleDataSource()
-    ds.setURL(config.jdbcUrl)
-    ds.setUser(config.user)
-    ds.setPassword(config.password)
-    // A startup parameter: Postgres itself makes every transaction on these sessions read-only,
-    // whatever the driver or DBOS's client does with them.
-    ds.setOptions("-c default_transaction_read_only=on")
-    // Read at the shipped visibility's maintenance: grit.compartments carries no label.
-    val shipped = new Opener(Visibility.Shipped)
-    val opener = new SqlDb(ds, shipped)
-      .transaction(conn => shipped.maintained(conn))(Opener.recorded)
-      .fold(
-        e => throw new IllegalStateException(s"the database is unread: $e"),
-        identity
-      )
-    new Opened(ds, new DBOSClient(ds), opener)
+    val pool = Pool.open(config, readOnly = true)
+    try {
+      // Read at the shipped visibility's maintenance: grit.compartments carries no label.
+      val shipped = new Opener(Visibility.Shipped)
+      val opener = new SqlDb(pool, shipped)
+        .transaction(conn => shipped.maintained(conn))(Opener.recorded)
+        .fold(
+          e => throw new IllegalStateException(s"the database is unread: $e"),
+          identity
+        )
+      new Opened(pool, new DBOSClient(pool), opener)
+    } catch {
+      case e: Throwable =>
+        pool.close()
+        throw e
+    }
   }
 
-  private final class Opened(ds: PGSimpleDataSource, client: DBOSClient, opener: Opener)
+  private final class Opened(ds: HikariDataSource, client: DBOSClient, opener: Opener)
       extends Reader {
     private val sql = new SqlDb(ds, opener)
     val db: Db = sql
@@ -250,6 +251,8 @@ object Reader {
     def starts(): Either[StoreError, Vector[Build.Started]] =
       db.read(Subject.Public)(EngineStarts.all())
 
-    def close(): Unit = client.close()
+    def close(): Unit =
+      try client.close()
+      finally ds.close()
   }
 }

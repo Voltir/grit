@@ -3,6 +3,7 @@ package grit.dbos.engine
 import java.sql.{Connection, DriverManager}
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant, ZoneId}
+import javax.sql.DataSource
 
 import scala.concurrent.duration.*
 import scala.util.Using
@@ -133,15 +134,11 @@ object EngineLock {
       case NonFatal(e) => Left(NotTaken.Unreachable(Option(e.getMessage).getOrElse(e.toString)))
     }
 
-  /** The engine holding the lock on the database `config` names, read on a short connection
-    * of its own; `None` when none holds it, it has not written its row, or the database
-    * cannot be read.
+  /** The engine holding the lock on `dataSource`'s database; `None` when none holds it, it has
+    * not written its row, or the database cannot be read.
     */
-  def holder(config: DbConfig): Option[Holder] =
-    try
-      Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password))(
-        heldBy
-      )
+  def holder(dataSource: DataSource): Option[Holder] =
+    try Using.resource(dataSource.getConnection())(heldBy)
     catch { case NonFatal(_) => None }
 
   /** The row of the process holding the lock: only a row whose connection holds it, so a row
