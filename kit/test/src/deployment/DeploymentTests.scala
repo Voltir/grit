@@ -864,7 +864,7 @@ object DeploymentTests extends TestSuite {
       )
     }
 
-    test("a command named as a tool is refused, naming both") {
+    test("a command named as a tool or as another command is refused, naming the repeated name") {
       def commanding(p: String, called: ToolName, tools: Vector[grit.core.plugin.PluginTool[?]]) =
         new TestPlugins.Commanding(
           name(p),
