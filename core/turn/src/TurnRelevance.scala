@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.act.MoveName
 import grit.core.classify.{Answered, Ask, ClassifierError, StateJson}
-import grit.core.context.{Briefs, Results, Retrieved}
+import grit.core.context.{JudgeText, Results, Retrieved}
 import grit.core.period.Probability
 
 /** How a turn judges what its search found (ADR 0040): its first [[Judged]] of the
@@ -68,7 +68,7 @@ object TurnRelevance {
   }
 
   /** What one call is shown: `{"message": ..., "candidates": [...]}`, the turn's own messages
-    * and each candidate, as [[Briefs]] gives them.
+    * and each candidate, as [[JudgeText]] gives them.
     */
   final case class State(message: String, candidates: Vector[String])
 
@@ -87,8 +87,8 @@ object TurnRelevance {
     )
   }
 
-  /** `briefs` as one call shows them. */
-  def state(briefs: Briefs): State = State(briefs.message, briefs.found.map(_._2))
+  /** `judgeText` as one call shows them. */
+  def state(judgeText: JudgeText): State = State(judgeText.message, judgeText.found.map(_._2))
 
   /** One yes/no question per candidate of `state`, in order, read as each one's probability
     * of yes; `None` when it has none, so nothing is asked.
@@ -100,18 +100,18 @@ object TurnRelevance {
     }
 
   /** Each of `batch`'s verdict, in its order, from `answered`, the answers to [[ask]] of
-    * `briefs`' [[state]]: each found candidate passed or rejected by its probability, all
-    * unjudged when `answered` is a failure, and one `briefs` left out unjudged as [[Gone]].
+    * `judgeText`' [[state]]: each found candidate passed or rejected by its probability, all
+    * unjudged when `answered` is a failure, and one `judgeText` left out unjudged as [[Gone]].
     */
   def verdicts(
       batch: Vector[Retrieved],
-      briefs: Briefs,
+      judgeText: JudgeText,
       answered: Either[ClassifierError, Answered[Vector[Probability]]]
   ): Vector[(Retrieved, Verdict)] = {
     val each: Vector[Either[ClassifierError, Probability]] =
-      answered.fold(e => briefs.found.map(_ => Left(e)), _.value.map(Right(_)))
+      answered.fold(e => judgeText.found.map(_ => Left(e)), _.value.map(Right(_)))
     val judged: Map[Retrieved, Verdict] =
-      briefs.found.map(_._1).zip(each).map((r, p) => r -> Verdict.read(p, Pass)).toMap
+      judgeText.found.map(_._1).zip(each).map((r, p) => r -> Verdict.read(p, Pass)).toMap
     batch.map(r => r -> judged.getOrElse(r, Verdict.Unjudged(Gone)))
   }
 

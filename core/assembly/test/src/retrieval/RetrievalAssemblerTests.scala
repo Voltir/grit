@@ -18,8 +18,8 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.context.{
   AssemblyNote,
   AssemblyRequest,
-  Briefs,
   ContextAssembler,
+  JudgeText,
   Packing,
   Prepared,
   Querying,
@@ -1095,15 +1095,15 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test(
-      "briefs show the turn's message and each found candidate cut to the characters asked, and leave out one gone"
+      "judge texts show the turn's message and each found candidate cut to the characters asked, and leave out one gone"
     ) {
       val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
-      retrieval(entries, 80, new Scripted("t2:5", "t0:1")).briefs(
+      retrieval(entries, 80, new Scripted("t2:5", "t0:1")).judgeText(
         AssemblyRequest(TurnRef(c1, TurnSeq(10))),
         Vector(Retrieved.Own(TurnSeq(0)), Retrieved.Own(TurnSeq(42))),
         chars = 24
       )(using new FakeDb) ==> Right(
-        Briefs(
+        JudgeText(
           "Where should my probe po",
           Vector(Retrieved.Own(TurnSeq(0)) -> "Which database do probes")
         )
@@ -1131,15 +1131,15 @@ object RetrievalAssemblerTests extends TestSuite {
         Retrieved.Doc(a),
         Retrieved.Near(api, TurnSeq(0))
       )
-      val briefs = retrieval(
+      val texts = retrieval(
         world,
         1000,
         new Scripted(),
         documents = docs,
         entries = Some(listing)
-      ).briefs(AssemblyRequest(TurnRef(c1, TurnSeq(0))), found, chars = 40)(using new FakeDb)
+      ).judgeText(AssemblyRequest(TurnRef(c1, TurnSeq(0))), found, chars = 40)(using new FakeDb)
       (
-        briefs.map(_.found.map(_._1)),
+        texts.map(_.found.map(_._1)),
         docs.reads,
         listing.listed.count(_ == api)
       ) ==> (Right(found), Vector(Vector(b, a)), 1)

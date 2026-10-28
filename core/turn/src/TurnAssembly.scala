@@ -308,7 +308,7 @@ private[turn] object TurnAssembly {
       }
     )
 
-  /** The `ask:relevance-n` body: batch `n` of what was found, briefed as the route bounds it,
+  /** The `ask:relevance-n` body: batch `n` of what was found, given judge text as the route bounds it,
     * asked of the turn's classifier when it is cleared for what was read; each candidate
     * unjudged when nothing can be asked.
     */
@@ -324,12 +324,12 @@ private[turn] object TurnAssembly {
           val db = pins.reads(env.db)
           Routed
             .reading(db, Subject.Turn(s.at.turn)) { (routed, _) =>
-              env.assembler.briefs(request(s.at), batch, TurnRelevance.Chars)(using
+              env.assembler.judgeText(request(s.at), batch, TurnRelevance.Chars)(using
                 routed.bound(db)
               ) match {
                 case Left(e) => unjudged(TurnFailure.reason(failed(e)))
-                case Right(briefs) =>
-                  val state = TurnRelevance.state(briefs)
+                case Right(judgeText) =>
+                  val state = TurnRelevance.state(judgeText)
                   TurnRelevance.ask(state) match {
                     case None => unjudged(TurnRelevance.Gone)
                     case Some(questions) =>
@@ -338,7 +338,7 @@ private[turn] object TurnAssembly {
                         routed,
                         state,
                         questions
-                      )((answered, _) => TurnRelevance.verdicts(batch, briefs, answered))
+                      )((answered, _) => TurnRelevance.verdicts(batch, judgeText, answered))
                   }
               }
             }

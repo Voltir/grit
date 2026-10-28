@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.act.MoveName
 import grit.core.classify.{Answer, Answered, Ask, ClassifierError, Question}
-import grit.core.context.{Briefs, Results, Retrieved}
+import grit.core.context.{JudgeText, Results, Retrieved}
 import grit.core.id.TurnSeq
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
@@ -19,8 +19,8 @@ object TurnRelevanceTests extends TestSuite {
   private def ranked(count: Int): Results =
     Results((0 until count).toVector.map(n => found(n) -> (count - n).toDouble))
 
-  private def briefed(batch: Vector[Retrieved]): Briefs =
-    Briefs("the message", batch.map(r => r -> s"brief of $r"))
+  private def judgeTextOf(batch: Vector[Retrieved]): JudgeText =
+    JudgeText("the message", batch.map(r => r -> s"brief of $r"))
 
   private def answered(ps: Double*): Either[ClassifierError, Answered[Vector[Probability]]] =
     Right(
@@ -34,7 +34,7 @@ object TurnRelevanceTests extends TestSuite {
   val tests = Tests {
     test("a candidate at the pass mark passes and one under it is rejected") {
       val batch = Vector(found(0), found(1))
-      TurnRelevance.verdicts(batch, briefed(batch), answered(0.5, 0.49)) ==> Vector(
+      TurnRelevance.verdicts(batch, judgeTextOf(batch), answered(0.5, 0.49)) ==> Vector(
         found(0) -> Verdict.Passed(Probability.clamped(0.5)),
         found(1) -> Verdict.Rejected(Probability.clamped(0.49))
       )
@@ -42,8 +42,8 @@ object TurnRelevanceTests extends TestSuite {
 
     test("a candidate gone before it was briefed is unjudged, the others read in order") {
       val batch = Vector(found(0), found(1), found(2))
-      val briefs = briefed(Vector(found(0), found(2)))
-      TurnRelevance.verdicts(batch, briefs, answered(0.1, 0.9)) ==> Vector(
+      val texts = judgeTextOf(Vector(found(0), found(2)))
+      TurnRelevance.verdicts(batch, texts, answered(0.1, 0.9)) ==> Vector(
         found(0) -> Verdict.Rejected(Probability.clamped(0.1)),
         found(1) -> Verdict.Unjudged(TurnRelevance.Gone),
         found(2) -> Verdict.Passed(Probability.clamped(0.9))
@@ -54,7 +54,7 @@ object TurnRelevanceTests extends TestSuite {
       val results = ranked(3)
       val batch = results.ranked.map(_._1)
       val verdicts =
-        TurnRelevance.verdicts(batch, briefed(batch), Left(ClassifierError.Unavailable("down")))
+        TurnRelevance.verdicts(batch, judgeTextOf(batch), Left(ClassifierError.Unavailable("down")))
       (verdicts, TurnRelevance.admitted(results, verdicts)) ==> (
         batch.map(_ -> Verdict.Unjudged("unavailable: down")),
         results

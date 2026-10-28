@@ -5,8 +5,8 @@ import grit.core.context.{
   AssemblyError,
   AssemblyNote,
   AssemblyRequest,
-  Briefs,
   ContextAssembler,
+  JudgeText,
   Packing,
   Prepared,
   Querying,
@@ -133,15 +133,15 @@ final class RetrievalAssembler(
     }
 
   /** Each found as the window would show it. */
-  def briefs(
+  def judgeText(
       request: AssemblyRequest,
       retrieved: Vector[Retrieved],
       chars: Int
-  )(using Db^): Either[AssemblyError, Briefs] =
+  )(using Db^): Either[AssemblyError, JudgeText] =
     based(request).flatMap { base =>
-      val message = Briefs.text(Shown.turn(base.own, base.read.speakers), chars)
+      val message = JudgeText.text(Shown.turn(base.own, base.read.speakers), chars)
       looked(request, base, retrieved).map((found: Vector[Candidate], speakers: Speakers) =>
-        Briefs(message, found.map(c => c.key -> Briefs.text(shownOf(c, speakers), chars)))
+        JudgeText(message, found.map(c => c.key -> JudgeText.text(shownOf(c, speakers), chars)))
       )
     }
 

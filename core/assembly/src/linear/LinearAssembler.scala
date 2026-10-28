@@ -3,8 +3,8 @@ package grit.assembly.linear
 import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
-  Briefs,
   ContextAssembler,
+  JudgeText,
   Packing,
   Prepared,
   Querying,
@@ -52,17 +52,17 @@ final class LinearAssembler(
   ): Either[AssemblyError, Results] = Right(Results.empty)
 
   /** The turn's own messages, and nothing found: it never searches. */
-  def briefs(
+  def judgeText(
       request: AssemblyRequest,
       retrieved: Vector[Retrieved],
       chars: Int
-  )(using db: Db^): Either[AssemblyError, Briefs] =
+  )(using db: Db^): Either[AssemblyError, JudgeText] =
     db.read(Subject.Turn(request.turn)) {
       for {
         all <- entries.list(request.turn.conversationId)
         own = all.filter(_.turnSeq == request.turn.turnSeq)
         speakers <- principals.speakers(own.map(_.id))
-      } yield Briefs(Briefs.text(Shown.turn(own, speakers), chars), Vector.empty)
+      } yield JudgeText(JudgeText.text(Shown.turn(own, speakers), chars), Vector.empty)
     }.left
       .map(AssemblyError.Store(_))
 

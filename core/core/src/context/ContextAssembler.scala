@@ -7,7 +7,7 @@ import grit.core.store.{Db, Nearby, StoreError}
 
 /** Chooses what the model sees on a turn: a fresh window over the store, computed each turn,
   * never carried from the last one, in four reads a turn records apart ([[prepare]],
-  * [[search]], [[briefs]], [[assemble]]), so a turn resumed after a crash repeats none of the
+  * [[search]], [[judgeText]], [[assemble]]), so a turn resumed after a crash repeats none of the
   * calls it makes between them. It holds no write capability and no model; each read is made
   * for its turn ([[grit.core.visibility.Subject.Turn]]) over entries recorded before it.
   * `AssemblyError.Store` when a store fails or the conversation is gone.
@@ -30,11 +30,11 @@ trait ContextAssembler extends caps.Pure {
     * judge is shown them, each cut to `chars` characters; one gone since it was found is left
     * out.
     */
-  def briefs(
+  def judgeText(
       request: AssemblyRequest,
       retrieved: Vector[Retrieved],
       chars: Int
-  )(using Db^): Either[AssemblyError, Briefs]
+  )(using Db^): Either[AssemblyError, JudgeText]
 
   /** `request.turn`'s window. Drawn: the window with no search. Searched: that window's recent
     * part, then each admitted result still there and still a candidate, in its order, each one
@@ -138,9 +138,9 @@ enum Packing {
 }
 
 /** The turn's own messages as one text, and what was found, each as text, in the order asked. */
-final case class Briefs(message: String, found: Vector[(Retrieved, String)])
+final case class JudgeText(message: String, found: Vector[(Retrieved, String)])
 
-object Briefs {
+object JudgeText {
 
   /** `messages` as a judge reads them: each one's text, a reply's text blocks and a tool
     * result's content among them, one after another on lines of their own, cut to `chars`

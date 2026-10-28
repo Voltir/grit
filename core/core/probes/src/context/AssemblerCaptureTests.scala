@@ -29,8 +29,8 @@ object AssemblerCaptureTests extends TestSuite {
        |        Right(Prepared.Drawn(Querying.Drawn(Vector(AssemblyNote.FellBack($use)))))
        |      def search(request: AssemblyRequest, written: Querying.Written)(using Db^): Either[AssemblyError, Results] =
        |        Right(Results.empty)
-       |      def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using Db^): Either[AssemblyError, Briefs] =
-       |        Right(Briefs("", Vector.empty))
+       |      def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using Db^): Either[AssemblyError, JudgeText] =
+       |        Right(JudgeText("", Vector.empty))
        |      def assemble(request: AssemblyRequest, packing: Packing)(using Db^): Either[AssemblyError, Window] =
        |        Right(Window(Vector.empty))
        |    }

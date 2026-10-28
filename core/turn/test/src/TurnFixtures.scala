@@ -13,8 +13,8 @@ import grit.core.context.{
   AssemblyError,
   AssemblyNote,
   AssemblyRequest,
-  Briefs,
   ContextAssembler,
+  JudgeText,
   Prepared,
   Results,
   Retrieved,
@@ -1179,9 +1179,9 @@ object TurnFixtures {
     def search(request: AssemblyRequest, written: grit.core.context.Querying.Written)(using
         Db^
     ): Either[AssemblyError, Results] = Right(Results.empty)
-    def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+    def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
-    ): Either[AssemblyError, Briefs] = Right(Briefs("", Vector.empty))
+    ): Either[AssemblyError, JudgeText] = Right(JudgeText("", Vector.empty))
     def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
     ): Either[AssemblyError, Window] = window(request)
@@ -1206,7 +1206,7 @@ object TurnFixtures {
   def ownTurn(n: Int): Retrieved = Retrieved.Own(TurnSeq(n.toLong))
 
   /** An assembler whose every query is written: it finds `found` earlier turns of its own, best
-    * first, each briefed as `candidate n`, an even one `relevant candidate n`, then `padding`
+    * first, each given the text `candidate n`, an even one `relevant candidate n`, then `padding`
     * dots, cut to the characters asked; its window is the linear one, noted with the query's
     * note and the own turns it was handed to pack ([[AssemblyNote.Recalled]]).
     */
@@ -1228,11 +1228,14 @@ object TurnFixtures {
         Db^
     ): Either[AssemblyError, Results] =
       Right(Results((0 until found).toVector.map(n => ownTurn(n) -> (found - n).toDouble)))
-    override def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+    override def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
-    ): Either[AssemblyError, Briefs] =
+    ): Either[AssemblyError, JudgeText] =
       Right(
-        Briefs("hello", retrieved.map(r => r -> (Searching.brief(r) + "." * padding).take(chars)))
+        JudgeText(
+          "hello",
+          retrieved.map(r => r -> (Searching.brief(r) + "." * padding).take(chars))
+        )
       )
     override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
@@ -1247,7 +1250,7 @@ object TurnFixtures {
 
   object Searching {
 
-    /** How [[Searching]] briefs `found`. */
+    /** How [[Searching]] writes the judge text for `found`. */
     def brief(found: Retrieved): String = found match {
       case Retrieved.Own(t) if TurnSeq.value(t) % 2 == 0 =>
         s"relevant candidate ${TurnSeq.value(t)}"

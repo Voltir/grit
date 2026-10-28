@@ -10,8 +10,8 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
-  Briefs,
   ContextAssembler,
+  JudgeText,
   Packing,
   Prepared,
   Querying,
@@ -164,9 +164,9 @@ object TurnCaptureTests extends TestSuite {
     def search(request: AssemblyRequest, written: Querying.Written)(using
         Db^
     ): Either[AssemblyError, Results] = under.search(request, written)
-    def briefs(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
+    def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
-    ): Either[AssemblyError, Briefs] = under.briefs(request, retrieved, chars)
+    ): Either[AssemblyError, JudgeText] = under.judgeText(request, retrieved, chars)
     def assemble(request: AssemblyRequest, packing: Packing)(using
         Db^
     ): Either[AssemblyError, Window] =

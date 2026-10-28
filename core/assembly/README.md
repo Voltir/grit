@@ -20,7 +20,7 @@ In dependency order:
   asked for it. ← `linear`
 
 Neither makes a call: a `ContextAssembler` is pure, its window drawn in reads a turn records
-apart (`prepare`, `search`, `briefs`, `assemble`), the query written and what it found judged
+apart (`prepare`, `search`, `judgeText`, `assemble`), the query written and what it found judged
 between them (ADR 0040).
 Each draws its window as wide as it was built to, or within the budget (and, for retrieval,
 the hits per search) a request's `Width` names. Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
