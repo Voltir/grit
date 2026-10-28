@@ -84,9 +84,7 @@ private[dbos] object SqlIdentities {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT l.principal_id, p.kind,
-            |       (SELECT jsonb_agg(jsonb_build_array(n.account, n.vouched, n.member))
-            |          FROM grit.links n WHERE n.principal_id = l.principal_id)::text AS held
+          s"""SELECT l.principal_id, p.kind, ${heldOf("l.principal_id")} AS held
             |  FROM grit.links l
             |  JOIN grit.principals p ON p.id = l.principal_id
             | WHERE l.account = ?""".stripMargin
@@ -108,6 +106,13 @@ private[dbos] object SqlIdentities {
       case Some((id, kind, held)) => principal(id, kind, held).map(Some(_))
     }
   }
+
+  /** The accounts linked now to the principal whose id the SQL expression `id` gives, as
+    * [[principal]] reads them as `held`: a JSON array's text, NULL for none.
+    */
+  def heldOf(id: String): String =
+    s"""(SELECT jsonb_agg(jsonb_build_array(n.account, n.vouched, n.member))
+       |   FROM grit.links n WHERE n.principal_id = $id)::text""".stripMargin
 
   /** The principal `id`, of `kind` (`grit.principals.kind`), holding `held`, a JSON array of
     * `[account, vouched, member]` triples as `grit.links` gives them; `Invalid` when a stored

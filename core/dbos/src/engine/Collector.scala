@@ -25,7 +25,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.dbos.sql.{Opener, SqlDeclassifications, SqlSchedules}
+import grit.dbos.sql.{Opener, SqlClaims, SqlDeclassifications, SqlSchedules}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -303,6 +303,7 @@ private[engine] final class Collector(
           _ <- cursors.remove(plugin)
           _ <- documents.remove(plugin, now)
           _ <- pieces.remove(plugin, now)
+          _ <- SqlClaims.remove(plugin)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
       // A version its key's keepLast, raised since it was marked, keeps again is spared, and

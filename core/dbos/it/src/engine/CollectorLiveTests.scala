@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
+import grit.core.claim.{ClaimHolder, ClaimRole, Claimed}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
@@ -35,6 +36,7 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
+  PrincipalIds,
   ScheduleId,
   ScheduleKey,
   SourceId,
@@ -43,7 +45,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
-import grit.core.identity.Account
+import grit.core.identity.{Account, Principal}
 import grit.core.job.{Declared, Ending, JobTests, SlotRule}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
@@ -66,6 +68,7 @@ import grit.dbos.sql.{
   DbConfig,
   LiveDb,
   SqlCacheDocs,
+  SqlClaims,
   SqlDocuments,
   SqlEntryStore,
   SqlLifecycleStore,
@@ -1299,7 +1302,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a plugin not enabled loses its documents, terms and their tombstones after the ledger window"
+      "a plugin not enabled loses its documents, terms, claims and their tombstones after the ledger window"
     ) {
       val config = TestPostgres.freshDatabase("collect_disabled_documents")
       val p = PluginName.of("unkept").getOrElse(sys.error("name"))
@@ -1308,12 +1311,27 @@ object CollectorLiveTests extends TestSuite {
       LiveDb.transaction(config)(documents.declare(Vector(p -> Terms))) ==> Right(())
       val now = Instant.now()
       val versions = wrote(config, p, now, Vector("first", "second"))
+      val subject = DocKey.of("first").getOrElse(sys.error("key"))
+      val claims = new SqlClaims(p)
+      val public = Clearance.of(Label.Public)
+      LiveDb.transaction(config, public)(
+        for {
+          holder <- ClaimHolder.of("session").left.map(StoreError.Invalid(_))
+          role <- ClaimRole.of("builder").left.map(StoreError.Invalid(_))
+          local = new Principal.Person(PrincipalIds.stored("local"), Set.empty)
+          made <- claims.claim(subject, holder, role, local, Label.Public, now)
+        } yield made match {
+          case Claimed.Made(_) => true
+          case _ => false
+        }
+      ) ==> Right(true)
       val engine = launched(config, 2.minutes)
       try {
         engine.sweep(now).map(s => (s.disabled, s.collected)) ==> Right((Vector(p), Vector()))
         engine.sweep(now.plusSeconds(180)).map(_.collected) ==> Right(Vector(Target.Disabled(p)))
         LiveDb.transaction(config)(documents.read(versions)) ==> Right(Vector())
         LiveDb.transaction(config)(documents.kept()) ==> Right(Vector())
+        LiveDb.transaction(config, public)(claims.release(subject, Label.Public)) ==> Right(None)
         LiveDb.transaction(config)(
           tombstones.due(Target.Kind.Document, now.plusSeconds(3600), 10)
         ) ==> Right(Vector())

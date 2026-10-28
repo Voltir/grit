@@ -45,8 +45,8 @@ enum Target {
     */
   case Restarted(plugin: PluginName)
 
-  /** A plugin not enabled: its documents, their terms, its cursor and runs. Spared while it is
-    * enabled.
+  /** A plugin not enabled: its documents, their terms, its pieces, its cursor and runs, and its
+    * claims. Spared while it is enabled.
     */
   case Disabled(plugin: PluginName)
 

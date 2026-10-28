@@ -16,15 +16,16 @@ object PluginCaptureTests extends TestSuite {
 
   private val prelude =
     """package probe
+      |import grit.core.claim.*
       |import grit.core.document.*
-      |import grit.core.id.{CallSlot, PluginName}
+      |import grit.core.id.{CallSlot, DocKey, PluginName}
       |import grit.core.identity.Principal
       |import grit.core.job.*
       |import grit.core.need.*
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*
-      |import grit.core.visibility.Subject
+      |import grit.core.visibility.{Label, Subject}
       |
       |trait Activity extends caps.Pure {
       |  def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]]
@@ -162,6 +163,18 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** A plugin's claims, read and written through a store they captured rather than the
+    * transaction each call is handed.
+    */
+  private val claimsHoldDb =
+    """final class ClaimsHold(db: Db^) extends Claims {
+      |  def claim(subject: DocKey, holder: ClaimHolder, role: ClaimRole, by: Principal.Person, label: Label, at: java.time.Instant)(using Tx^): Either[StoreError, Claimed] =
+      |    db.read(Subject.Public)(Right(Claimed.Taken(None)))
+      |  def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
+      |    db.read(Subject.Public)(Right(None))
+      |}
+      |""".stripMargin
+
   /** A tool whose run reads a store it captured, not the one the kit hands it. */
   private val toolHoldsDb =
     """final class ToolHolds(db: Db^) extends PluginTool[Int] {
@@ -183,7 +196,8 @@ object PluginCaptureTests extends TestSuite {
     serviceKeepsTx,
     toolHoldsDb,
     commandHoldsDb,
-    commandKeepsTx
+    commandKeepsTx,
+    claimsHoldDb
   )
 
   private val allowed =
@@ -209,6 +223,7 @@ object PluginCaptureTests extends TestSuite {
       toolHoldsDb,
       commandHoldsDb,
       commandKeepsTx,
+      claimsHoldDb,
       allowed
     )
   )
@@ -284,6 +299,11 @@ object PluginCaptureTests extends TestSuite {
     test("a KeepingCommand that keeps the Tx it is given is rejected") {
       val errs = errors(commandKeepsTx)
       assert(flowsInto("{any}")(errs))
+    }
+
+    test("a plugin's Claims holding a Db is rejected") {
+      val errs = errors(claimsHoldDb)
+      assert(heldImpure(errs))
     }
 
     test("capture checking is what rejects each breach") {

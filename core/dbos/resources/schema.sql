@@ -1083,6 +1083,27 @@ CREATE TABLE IF NOT EXISTS grit.document_refs (
 CREATE UNIQUE INDEX IF NOT EXISTS document_refs_key ON grit.document_refs (version, kind, md5(ref));
 CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md5(ref));
 
+-- Each plugin's live claims (grit.core.claim.Claims): `holder` works the plugin's `subject` as
+-- `role`, made by `principal_id` at `made_at`. At each label (`classification_id`, its maker's
+-- label joined with their transaction's floor) a plugin holds one claim per subject and one per
+-- holder; `room_id` is the room it was made in (grit.core.visibility.Item.Kept), NULL for none.
+-- Never versioned: a release deletes its row.
+-- Retention: kept: bounded by what people claim and release; deleted by its release, and with a
+-- plugin no longer enabled (Target.Disabled). Steady state: one row of about 250 bytes per live
+-- claim, tens of rows.
+CREATE TABLE IF NOT EXISTS grit.claims (
+    plugin            TEXT NOT NULL,
+    subject           TEXT NOT NULL CHECK (length(subject) BETWEEN 1 AND 200),
+    holder            TEXT NOT NULL CHECK (length(holder) BETWEEN 1 AND 160),
+    role              TEXT NOT NULL CHECK (length(role) BETWEEN 1 AND 64),
+    principal_id      TEXT NOT NULL REFERENCES grit.principals(id),
+    made_at           TIMESTAMPTZ NOT NULL,
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    room_id           UUID REFERENCES grit.places(id),
+    PRIMARY KEY (plugin, subject, classification_id),
+    CONSTRAINT claims_holder UNIQUE (plugin, holder, classification_id)
+);
+
 -- Each version of a compartment's declassification policy (DeclassificationPolicy): operator
 -- text addressed to the rewriting model, saying what to remove and what to write in its place,
 -- and `checks`, the steward's signals a rewrite is screened for and the examples they are
