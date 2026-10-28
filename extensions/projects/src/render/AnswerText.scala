@@ -3,7 +3,7 @@ package grit.projects.render
 import java.time.Instant
 
 import grit.projects.artifact.ArtifactHead
-import grit.projects.name.{KindName, StateName}
+import grit.projects.name.{ArtifactKey, BriefSlot, KindName, StateName}
 
 /** What the projects plugin's commands answer, the same for every edge that asks. */
 object AnswerText {
@@ -61,6 +61,12 @@ object AnswerText {
       } else { out += s"+ ${b(j)}"; j += 1 }
     (Vector(s"--- $from", s"+++ $to") ++ out.result()).mkString("\n")
   }
+
+  /** A freed claim as a JSON object a program reads: `released`, the artifact's key, and `for`,
+    * the slot it was claimed for, which no longer works it.
+    */
+  def released(key: ArtifactKey, slot: BriefSlot): String =
+    ujson.write(ujson.Obj("released" -> key.value, "for" -> BriefSlot.value(slot)))
 
   /** A page of export files as a JSON object a program reads: `files`, each its `path` and its
     * `text`, in order; and `next`, the path to ask for the page after from, or `null` on the

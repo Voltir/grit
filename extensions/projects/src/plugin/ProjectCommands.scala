@@ -558,7 +558,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Releasing] = ToolSpec(
       ToolName("project_release"),
       said(
-        "Frees an artifact's claim, so it may be claimed again. Refused when it is not claimed."
+        "Frees an artifact's claim, so it may be claimed again, answering a JSON object: " +
+          "`released`, the artifact's key, and `for`, the slot it was claimed for. Refused when " +
+          "it is not claimed."
       ),
       Args
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
@@ -570,8 +572,11 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       for {
         claims <- claimsHolding(own, ArtifactJson.claiming(args.key))
         claim <- claims.headOption.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
+        held <- refuse(
+          ArtifactJson.claimed(claim).left.map(why => s"${args.key.value}'s claim: $why")
+        )
         _ <- stored(own.withdraw(claim.key, claim.label, at))
-      } yield s"Released ${args.key.value}."
+      } yield AnswerText.released(args.key, held.slot)
     }
   }
 

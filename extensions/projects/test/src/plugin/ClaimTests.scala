@@ -126,8 +126,21 @@ object ClaimTests extends TestSuite {
       }
       assert(
         again == Answered.Done(s"Claimed p/b (note, open) as builder for $slot."),
-        released == Answered.Done("Released p/a."),
+        released.isInstanceOf[Answered.Done],
         unclaimed == Answered.Refused("p/b is not claimed")
+      )
+    }
+
+    test(
+      "release, given only the key, answers a JSON object naming the key and the slot it freed"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      val released = done(ask(projects, store, "project_release", "key" -> "p/a"))
+      (released, scala.util.Try(ujson.read(released)).toOption) ==> (
+        (released, Some(ujson.Obj("released" -> "p/a", "for" -> slot)))
       )
     }
 
