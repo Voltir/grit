@@ -278,7 +278,7 @@ object OpenerLiveTests extends TestSuite {
         new Principal.Person(PrincipalId.Local, Set(Held(cleared, Evidence.Home, member = true)))
       val read = Using.resource(
         DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
-      )(conn => askers.open(Subject.Asker(person, board), conn).map(tx => Tx.clearance(tx)))
+      )(conn => askers.open(Subject.Person(person, board), conn).map(tx => Tx.clearance(tx)))
       read.map(c =>
         Vector(internalTrial, confidentialTrial, confidentialFinance)
           .map(c.reads(Item.Kept(Some(board)), _))

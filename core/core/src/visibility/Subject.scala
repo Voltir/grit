@@ -42,7 +42,7 @@ enum Subject {
     * there) met with `person`'s clearance ([[grit.core.store.Tx.clearanceOf]]) as the transaction
     * opens.
     */
-  case Asker(person: Principal.Person, room: Place)
+  case Person(person: Principal.Person, room: Place)
 
   /** Public rows alone, and what carries no label (settings, schedules, workflow state). */
   case Public

@@ -24,7 +24,7 @@ Decision:
   the person behind an account, through `PluginCommands` (in `EdgeStores`), with no model and
   no turn, and answers at once (`Answered.Done` or `Answered.Refused`), to that person alone.
   It runs in the edge's process over the store (ADR 0002).
-- **It reads for its asker in their room** (`Subject.Asker`): everything up to the label the
+- **It reads for its asker in their room** (`Subject.Person`): everything up to the label the
   room is written at outside grit met with the asker's clearance. The asker is a person, never
   grit, and is resolved from the account as the transaction opens; an account no person is
   linked to runs nothing.
@@ -48,6 +48,6 @@ Consequences:
 - An edge offers commands as tools are offered (`PluginCommands.offered`), so one schema
   reader serves both.
 - Who asked is recorded only where a plugin's data says so.
-- Enforced by the compiler (`Subject.Asker` takes a person), probes in `PluginCaptureTests`
+- Enforced by the compiler (`Subject.Person` takes a person, never grit), probes in `PluginCaptureTests`
   (a command holding a `Db`, a command keeping its `Tx`), `Deployment.of`, and
   `PluginLiveTests`.

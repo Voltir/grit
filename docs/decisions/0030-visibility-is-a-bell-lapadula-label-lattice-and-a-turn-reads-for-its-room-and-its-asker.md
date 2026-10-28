@@ -37,7 +37,7 @@ Decision:
   public rows alone where nothing writes. It is no trusted subject: it reads no more than the
   place may receive, and a post rechecks in its own transaction that the place still dominates
   what it posts, as a place's label may fall.
-- **A person's command in a room** (`Subject.Asker`, ADR 0048) reads up to the room's written
+- **A person's command in a room** (`Subject.Person`, ADR 0048) reads up to the room's written
   label met with that person's clearance; its asker is never grit.
 - **A room has one label in force**, set by one rule in core (ADR 0033). What is said in a
   room takes its label, so a reply is never above its room; a conversation keeps the label it

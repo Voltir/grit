@@ -18,7 +18,7 @@ trait PluginCommands extends caps.SharedCapability {
 
   /** Runs the command `name` with `args`, given through `by` in `room` at `at`, in one transaction
     * opened for the person `by` is linked to then, in `room`
-    * ([[grit.core.visibility.Subject.Asker]]); what it keeps is kept at `room`'s label joined
+    * ([[grit.core.visibility.Subject.Person]]); what it keeps is kept at `room`'s label joined
     * with the transaction's floor and believed at no more than `believed` (the integrity the edge
     * gives what `by` says there) met with `room`'s declared cap. [[CommandError.Unknown]] for a
     * name no enabled plugin's command has; [[CommandError.Unread]] with the reason, for arguments

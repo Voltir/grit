@@ -19,7 +19,7 @@ import grit.core.visibility.{Integrity, Subject}
 
 /** [[PluginCommands]] over `dataSource`, of `plugins`' commands: each run is one transaction on
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
-  * and then the command run under [[Subject.Asker]], both opened through `opener`. A reading
+  * and then the command run under [[Subject.Person]], both opened through `opener`. A reading
   * command's connection is read-only and always rolled back; a keeping command's is committed
   * only when it answers [[Answered.Done]]. A keeping command of a plugin with no documents,
   * which a deployment refuses, is not offered.
@@ -128,7 +128,7 @@ private[dbos] final class SqlPluginCommands(
         val ran: Either[CommandError, Answered] = asked match {
           case Left(e) => Left(CommandError.Unavailable(e.toString))
           case Right(Some(person: Principal.Person)) =>
-            opener.open(Subject.Asker(person, room), conn) match {
+            opener.open(Subject.Person(person, room), conn) match {
               case Left(e) => Left(CommandError.Unavailable(e.toString))
               case Right(tx) =>
                 try body(person, tx).left.map(CommandError.Store(name, _))
