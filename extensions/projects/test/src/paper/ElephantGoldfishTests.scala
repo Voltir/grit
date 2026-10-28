@@ -56,7 +56,10 @@ object ElephantGoldfishTests extends TestSuite {
   )
   private val goldfish = right(RoleView.of(role("goldfish"), Set(source.name, draft.name), 1))
 
-  private val model: Method = right(
+  /** The elephant-goldfish model as method data, for the plugin's suites to run its commands
+    * under.
+    */
+  private[projects] val model: Method = right(
     Method
       .of(
         right(MethodName.of("elephant-goldfish")),

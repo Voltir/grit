@@ -2,6 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
+import grit.core.claim.{ClaimHolder, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
 import grit.core.id.{DocKey, DocumentVersionId, PrincipalId}
 import grit.core.identity.{Account, Principal}
@@ -72,9 +73,13 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Starting(p, m)
         )
     )
-    def run(args: Starting, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
-    ): Either[StoreError, CommandOutcome] = answered {
+    def run(
+        args: Starting,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val p = ProjectKey.value(args.project)
       val named = args.method.getOrElse(default)
       for {
@@ -151,9 +156,13 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Keeping(key, kind, a.title, a.body, parent, cites)
         )
     )
-    def run(args: Keeping, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
-    ): Either[StoreError, CommandOutcome] = answered {
+    def run(
+        args: Keeping,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
@@ -228,9 +237,13 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Moving(key, to)
         )
     )
-    def run(args: Moving, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
-    ): Either[StoreError, CommandOutcome] = answered {
+    def run(
+        args: Moving,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
@@ -523,58 +536,48 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Claiming(key, role, slot)
         )
     )
-    def run(args: Claiming, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
-    ): Either[StoreError, CommandOutcome] = answered {
+    def run(
+        args: Claiming,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val slot = BriefSlot.value(args.slot)
+      val key = args.key.value
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
         _ <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
-        onArtifact <- claimsHolding(own, ArtifactJson.claiming(args.key))
-        _ <- onArtifact.headOption match {
-          case Some(first) =>
-            refuse(ArtifactJson.claimed(first)).flatMap(c =>
-              Left(
-                Stop.Refused(
-                  s"${args.key.value} is claimed already, as ${RoleName.value(c.role)} for " +
-                    s"${BriefSlot.value(c.slot)} by ${c.by} since ${first.written}; " +
+        claimed <- stored(
+          claims.claim(document.key, args.slot, args.role, by, document.label, at)
+        )
+        _ <- claimed match {
+          case Claimed.Made(_) => Right(())
+          case Claimed.Taken(first) =>
+            Left(
+              Stop.Refused(
+                first.fold(s"$key is claimed already; project_release frees it")(c =>
+                  s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
+                    s"${ClaimHolder.value(c.holder)} by ${author(c.by)} since ${c.made}; " +
                     "project_release frees it"
                 )
               )
             )
-          case None => Right(())
-        }
-        forSlot <- claimsHolding(own, ArtifactJson.claimedFor(args.slot))
-        _ <- forSlot.headOption match {
-          case Some(first) =>
-            refuse(ArtifactJson.claimed(first)).flatMap(c =>
-              Left(
-                Stop.Refused(
-                  s"$slot works ${c.artifact.value} already, claimed since ${first.written}; " +
+          case Claimed.Holding(other) =>
+            Left(
+              Stop.Refused(
+                other.fold(
+                  s"$slot works another artifact already; release it with project_release first"
+                )(c =>
+                  s"$slot works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
                     "release it with project_release first"
                 )
               )
             )
-          case None => Right(())
         }
-        claim <- refuse(ArtifactJson.claim(args.key, author(by), args.slot, args.role))
-        (key, text, data, refs) = claim
-        _ <- written(
-          own.write(
-            key,
-            document.label,
-            Integrity.Authority,
-            Place.Everywhere,
-            text,
-            data,
-            None,
-            at,
-            refs
-          )
-        )
       } yield s"Claimed ${shown(a.head)} as ${RoleName.value(args.role)} for $slot."
     }
   }
@@ -592,17 +595,20 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
         .refine(a => parsed("key", a.key, ArtifactKey.read).map(Releasing(_)))
     )
-    def run(args: Releasing, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
-    ): Either[StoreError, CommandOutcome] = answered {
+    def run(
+        args: Releasing,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
-        claims <- claimsHolding(own, ArtifactJson.claiming(args.key))
-        claim <- claims.headOption.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
-        held <- refuse(
-          ArtifactJson.claimed(claim).left.map(why => s"${args.key.value}'s claim: $why")
-        )
-        _ <- stored(own.withdraw(claim.key, claim.label, at))
-      } yield AnswerText.released(args.key, held.slot)
+        project <- loaded(own, args.key.project)
+        found <- artifact(project, args.key)
+        (document, _) = found
+        freed <- stored(claims.release(document.key, document.label))
+        claim <- freed.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
+      } yield AnswerText.released(args.key, claim.holder)
     }
   }
 
@@ -787,12 +793,6 @@ private[plugin] object ProjectCommands {
       artifacts <- refuse(every(documents.map(d => readable(d).map(d -> _))))
     } yield Loaded(pin, artifacts)
   }
-
-  /** The newest live claim holding `ref` that `own` reads, if any, or why not. */
-  private def claimsHolding(own: DocumentShelf, ref: Either[String, DocRef])(using
-      Tx^
-  ): Either[Stop, Vector[Document]] =
-    refuse(ref).flatMap(r => stored(own.referring(r, 1)))
 
   /** What `role` is shown under `method`, or a refusal naming the roles it declares. */
   private def viewOf(method: Method, role: RoleName): Either[Stop, RoleView] =

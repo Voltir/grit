@@ -70,7 +70,7 @@ object PluginCaptureTests extends TestSuite {
       |}
       |object Notes extends KeepingCommand[Said] {
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
+      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
       |    Right(CommandOutcome.Done(args.word))
       |}
       |final class Reader(val name: PluginName, kept: Kept) extends Plugin {
@@ -159,7 +159,7 @@ object PluginCaptureTests extends TestSuite {
     """final class KeepsCommandTx extends KeepingCommand[Said] {
       |  var kept: Option[Tx^] = None
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, at: java.time.Instant)(using t: Tx^): Either[StoreError, CommandOutcome] = { kept = Some(t); Right(CommandOutcome.Done(args.word)) }
+      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using t: Tx^): Either[StoreError, CommandOutcome] = { kept = Some(t); Right(CommandOutcome.Done(args.word)) }
       |}
       |""".stripMargin
 

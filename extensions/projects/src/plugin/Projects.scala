@@ -12,8 +12,8 @@ import grit.projects.name.MethodName
   * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
   * commands: `project_new`, `project_keep` (never a state), `project_move` (only as the
   * project's pinned method allows, refused once that method's digest has changed),
-  * `project_claim` and `project_release` (a claim on an artifact, kept as its own document, so
-  * the artifact keeps its version), and the reading `project_show`, `project_list`,
+  * `project_claim` and `project_release` (a claim on an artifact, one of the plugin's claims and
+  * never a document, so the artifact keeps its version), and the reading `project_show`, `project_list`,
   * `project_find`, `project_export` and `project_brief`. Each write records its writer as the
   * artifact's `by`, and a claim its claimer.
   */

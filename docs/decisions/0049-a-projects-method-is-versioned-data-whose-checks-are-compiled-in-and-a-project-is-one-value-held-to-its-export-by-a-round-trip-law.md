@@ -52,9 +52,10 @@ Decision:
   plugin's commands write them (ADR 0048), each in one transaction and recording its writer. A
   keep never changes a state; a move is refused once the pinned method's digest has changed.
   Past the bound a write is refused, never a document withdrawn.
-  A claim is a document of its own, `claim/<artifact>`, so claiming never re-versions a body,
-  made as a role for a slot (the session or agent its brief is for): one live claim per
-  artifact and one artifact per slot.
+  A claim is one of the plugin's claims (`grit.core.claim.Claims`, the table `grit.claims`),
+  never a document, so claiming never re-versions a body and a re-claim writes no version: made
+  as a role for a slot (the session or agent its brief is for) at its artifact's label, one live
+  claim per artifact and one artifact per slot at each label, and deleted by its release.
 
 Consequences:
 

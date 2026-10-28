@@ -4,16 +4,7 @@ import java.nio.charset.StandardCharsets
 
 import grit.core.document.{DocRef, DocText, Document}
 import grit.core.id.DocKey
-import grit.projects.name.{
-  ArtifactKey,
-  BriefSlot,
-  KindName,
-  MethodName,
-  Pin,
-  ProjectKey,
-  RoleName,
-  StateName
-}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
 /** An artifact as the projects plugin's document holds it. */
 object ArtifactJson {
@@ -88,66 +79,6 @@ object ArtifactJson {
     )
   }
 
-  /** The ref the claim on `artifact` holds, or why not (see [[DocRef.of]]). */
-  def claiming(artifact: ArtifactKey): Either[String, DocRef] =
-    DocRef.of("claims", artifact.value)
-
-  /** The ref every claim made for `slot` holds, or why not (see [[DocRef.of]]). */
-  def claimedFor(slot: BriefSlot): Either[String, DocRef] =
-    DocRef.of("claimed-for", BriefSlot.value(slot))
-
-  /** The claim on `artifact`, authorised by `by`, for `slot` as `role`, as its document holds
-    * it, or why not: under `claim/<artifact>`, which no artifact's or index's key is; text naming
-    * them; `claimed`, holding `by`, `for` (the slot) and `role`, as data; and the refs
-    * [[claiming]] and [[claimedFor]] give.
-    */
-  def claim(
-      artifact: ArtifactKey,
-      by: String,
-      slot: BriefSlot,
-      role: RoleName
-  ): Either[String, (DocKey, DocText, ujson.Value, Set[DocRef])] = {
-    val forSlot = BriefSlot.value(slot)
-    val as = RoleName.value(role)
-    for {
-      key <- DocKey.of(s"$ClaimPrefix${artifact.value}")
-      text <- DocText.of(s"${artifact.value} claimed as $as for $forSlot by $by")
-      on <- claiming(artifact)
-      held <- claimedFor(slot)
-    } yield (
-      key,
-      text,
-      ujson.Obj(ClaimedField -> ujson.Obj("by" -> by, "for" -> forSlot, "role" -> as)),
-      Set(on, held)
-    )
-  }
-
-  /** What the claim `document` is, as [[claim]] wrote it, or why not: who authorised it, the
-    * slot it is for, its role, and the artifact it claims.
-    */
-  def claimed(
-      document: Document
-  ): Either[String, (by: String, slot: BriefSlot, role: RoleName, artifact: ArtifactKey)] = {
-    val named = DocKey.value(document.key)
-    for {
-      fields <- document.data.objOpt
-        .flatMap(_.get(ClaimedField))
-        .flatMap(_.objOpt)
-        .flatMap(d =>
-          for {
-            by <- d.get("by").flatMap(_.strOpt)
-            slot <- d.get("for").flatMap(_.strOpt)
-            role <- d.get("role").flatMap(_.strOpt)
-          } yield (by, slot, role)
-        )
-        .toRight(s"the claim $named holds no by, for and role")
-      (by, s, r) = fields
-      slot <- BriefSlot.of(s)
-      role <- RoleName.of(r)
-      artifact <- ArtifactKey.read(named.stripPrefix(ClaimPrefix))
-    } yield (by = by, slot = slot, role = role, artifact = artifact)
-  }
-
   /** The pin of the index `document` holds, as [[index]] wrote it, or why not. */
   def pinOf(document: Document): Either[String, Pin] =
     document.data.objOpt
@@ -193,8 +124,6 @@ object ArtifactJson {
   private val HoldingKind: String = "project"
   private val HeadField: String = "head"
   private val BodyField: String = "body"
-  private val ClaimedField: String = "claimed"
-  private val ClaimPrefix: String = "claim/"
 
   private def head(h: ArtifactHead): ujson.Value =
     ujson.Obj(

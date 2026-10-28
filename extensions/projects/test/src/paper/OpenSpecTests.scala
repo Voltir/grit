@@ -53,7 +53,8 @@ object OpenSpecTests extends TestSuite {
   private def step(k: ArtifactKind, from: String, to: String, checks: String*): Transition =
     Transition(k.name, state(from), state(to), checks.toVector.map(check), TransitionAction.Nothing)
 
-  private val openSpec: Method = right(
+  /** OpenSpec as method data, for the plugin's suites to run its commands under. */
+  private[projects] val openSpec: Method = right(
     Method
       .of(
         right(MethodName.of("openspec")),

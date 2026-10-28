@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.act.{Keeping, Moves}
+import grit.core.claim.Claims
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName}
@@ -200,8 +201,8 @@ object TestPlugins {
   /** A keeping command named `called`, answering the word it is given and keeping nothing. */
   final class Notes(called: ToolName) extends KeepingCommand[Word] {
     val spec: ToolSpec[Word] = saying(called)
-    def run(args: Word, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
+    def run(args: Word, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
+        using Tx^
     ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
 

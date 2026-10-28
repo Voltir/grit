@@ -1,6 +1,6 @@
 # 0048. A plugin's command runs for its asker in their room, with no model and no turn, believed at the edge's integrity met with the room's cap, and leaves no audit row
 
-Status: accepted (2026-10-27)
+Status: accepted (2026-10-27); revised (2026-10-28)
 
 Context: some plugins keep records a person changes directly: a project's artifacts, a
 ledger's entries. Until now a plugin changed its documents only by posting, its jobs and its
@@ -32,8 +32,8 @@ Decision:
   it holds no `Db`, `Reads` or `Jot` through which to open one under a subject of its own, and
   cannot keep the one it is handed.
 - **A reading command is handed its plugin's reads in a read-only transaction**; a write
-  through it is refused by the database. **A keeping command is handed its plugin's keeper**,
-  and what it keeps is believed at no more than the integrity the edge gives what the account
+  through it is refused by the database. **A keeping command is handed its plugin's keeper
+  and its claims** (`grit.core.claim.Claims`, live rows that are never versioned), and what it keeps is believed at no more than the integrity the edge gives what the account
   says there, met with the room's declared cap, as an inbound message is (ADR 0036). It is
   committed only when it answers `Done`; a refusal or a failed store call keeps nothing.
 - **Names are unique across a deployment's commands and tools**, and a keeping command's plugin

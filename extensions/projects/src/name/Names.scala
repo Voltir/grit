@@ -1,5 +1,6 @@
 package grit.projects.name
 
+import grit.core.claim.{ClaimHolder, ClaimRole}
 import grit.core.id.Slug
 
 /** The name of a method, as a deployment declares it. */
@@ -61,8 +62,8 @@ object CheckName {
   private[projects] def builtin(s: String): CheckName = s
 }
 
-/** The name of a role a method shows artifacts to. */
-opaque type RoleName = String
+/** The name of a role a method shows artifacts to, and a claim is made as. */
+opaque type RoleName <: ClaimRole = ClaimRole
 
 object RoleName {
 
@@ -71,15 +72,15 @@ object RoleName {
 
   /** `s` as a role's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
   def of(s: String): Either[String, RoleName] =
-    Slug.check("a role's name", s, Some(Longest), leadingDigit = true)
-  def value(n: RoleName): String = n
+    Slug.check("a role's name", s, Some(Longest), leadingDigit = true).flatMap(ClaimRole.of)
+  def value(n: RoleName): String = ClaimRole.value(n)
 }
 
 /** What an artifact is claimed for: the one session, or one agent type in it, that a brief is
   * written for. An edge's own name for it, which grit never reads apart, such as
   * `coder-opus/<sha1 of a directory>`; one slot works one artifact at a time.
   */
-opaque type BriefSlot = String
+opaque type BriefSlot <: ClaimHolder = ClaimHolder
 
 object BriefSlot {
 
@@ -104,6 +105,6 @@ object BriefSlot {
               .map(_ => ())
           )
         )
-        .map(_ => s)
-  def value(s: BriefSlot): String = s
+        .flatMap(_ => ClaimHolder.of(s))
+  def value(s: BriefSlot): String = ClaimHolder.value(s)
 }

@@ -6,6 +6,7 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.claim.Claims
 import grit.core.clock.{Clock, SetClock}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
@@ -216,8 +217,8 @@ object PluginLiveTests extends TestSuite {
   /** `note`: keeps the note, answering Done; a text of `refuse` is kept first, then refused. */
   private object Keeps extends KeepingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("note"))
-    def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
+    def run(args: Note, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
+        using Tx^
     ): Either[StoreError, CommandOutcome] =
       write(own, args.key, args.text, at).map(_ =>
         if (args.text == "refuse") CommandOutcome.Refused("refused")
@@ -228,8 +229,8 @@ object PluginLiveTests extends TestSuite {
   /** `twice`: keeps the note under its key and under its key with `-2`. */
   private object Twice extends KeepingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("twice"))
-    def run(args: Note, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
-        Tx^
+    def run(args: Note, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
+        using Tx^
     ): Either[StoreError, CommandOutcome] =
       for {
         _ <- write(own, args.key, args.text, at)

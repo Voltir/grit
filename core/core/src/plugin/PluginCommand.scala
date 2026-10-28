@@ -2,6 +2,7 @@ package grit.core.plugin
 
 import java.time.Instant
 
+import grit.core.claim.Claims
 import grit.core.document.DocumentKeeper
 import grit.core.identity.Principal
 import grit.core.need.PluginReads
@@ -34,10 +35,10 @@ trait ReadingCommand[A <: caps.Pure] extends PluginCommand[A] {
 trait KeepingCommand[A <: caps.Pure] extends PluginCommand[A] {
 
   /** As [[ReadingCommand.run]], keeping through `own`, which believes each document at no more
-    * than its edge gave, met with its room's cap: committed only when it answers
-    * [[CommandOutcome.Done]].
+    * than its edge gave, met with its room's cap, and claiming through `claims`, its plugin's:
+    * committed only when it answers [[CommandOutcome.Done]].
     */
-  def run(args: A, by: Principal.Person, own: DocumentKeeper, at: Instant)(using
+  def run(args: A, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(using
       Tx^
   ): Either[StoreError, CommandOutcome]
 }

@@ -20,8 +20,9 @@ import grit.core.visibility.{Integrity, Subject}
 /** [[PluginCommands]] over `dataSource`, of `plugins`' commands: each run is one transaction on
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
   * and then the command run under [[Subject.Person]], both opened through `opener`. A reading
-  * command's connection is read-only and always rolled back; a keeping command's is committed
-  * only when it answers [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
+  * command's connection is read-only and always rolled back; a keeping command, handed its
+  * plugin's keeper and claims ([[SqlClaims]]), is committed only when it answers
+  * [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
   * which a deployment refuses, is not offered.
   */
 private[dbos] final class SqlPluginCommands(
@@ -106,7 +107,7 @@ private[dbos] final class SqlPluginCommands(
           // As an inbound entry is believed (SqlEntryStore): no more than the room's cap.
           val most = Tx.visibility(tx).capOf(room).fold(believed)(believed.meet)
           val own = DocumentKeeper.believedAtMost(documents.keeper(plugin.name, terms), most)
-          command.run(a, person, own, at)(using tx)
+          command.run(a, person, own, new SqlClaims(plugin.name), at)(using tx)
         }
     }
 
