@@ -30,11 +30,8 @@ object TransitionChecks {
         heads: Vector[ArtifactHead],
         kinds: Vector[ArtifactKind]
     ): Either[String, Unit] = {
-      val open = heads.filter { h =>
-        h.parent.contains(judged.head.key) && !kinds.exists(k =>
-          k.name == h.kind && k.ends(h.state)
-        )
-      }
+      val open =
+        heads.filter(h => h.parent.contains(judged.head.key) && !ArtifactKind.ends(kinds, h))
       if (open.isEmpty) Right(())
       else
         Left(

@@ -13,7 +13,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{Method, MoveRefusal, RoleView}
+import grit.projects.method.{ArtifactKind, Method, MoveRefusal, RoleView}
 import grit.projects.name.{
   ArtifactKey,
   BriefSlot,
@@ -628,13 +628,28 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       said(
         "Withdraws an artifact: it leaves the project and its export, and project_show with an " +
           s"`at` before now, and project_history, still read it for ${Projects.Terms.retention.toDays} " +
-          "days. Its children are not touched. Refused, withdrawing nothing, while it is " +
-          "claimed, or while another artifact has it as parent or cites it, naming them: " +
-          "withdraw those first."
+          "days. Refused, withdrawing nothing, while another artifact has it as parent or cites " +
+          "it, naming them. With cascade, also withdraws every artifact under it by parent, and " +
+          "removes their citations from ended artifacts that cite them (a new version of each, " +
+          "written by you); refused, naming them, while an artifact under it has not ended or " +
+          "an artifact not ended cites one of them. Refused while any artifact it would change " +
+          "is claimed. Answers every artifact withdrawn and every one rewritten."
       ),
       Args
-        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
-        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Withdrawing(_)))
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            cascade = Field
+              .flag(
+                "Whether to withdraw everything under it too, dropping ended artifacts' " +
+                  "citations of them; false when not given."
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          parsed("key", a.key, ArtifactKey.read).map(Withdrawing(_, a.cascade.getOrElse(false)))
+        )
     )
 
     def run(
@@ -643,28 +658,48 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
-    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+    )(using tx: Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
-        found <- artifact(project, args.key)
-        (document, _) = found
-        rest = project.artifacts.filterNot(_.head.key == args.key)
-        _ <- Project.referrers(args.key, rest) match {
-          case Vector() => Right(())
-          case named =>
+        whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
+        ended <-
+          if (args.cascade)
+            refuse(declared(project.pin))
+              .map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
+          else Right[Stop, ArtifactHead -> Boolean](_ => false)
+        // What is left is a Project, so its export reads back (ADR 0049).
+        done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
+        held = project.documents.map((d, a) => a.head.key -> (d, a)).toMap
+        gone = done.gone.flatMap(held.get)
+        uncited = done.uncited.flatMap(a => held.get(a.head.key).map((d, _) => d -> a))
+        _ <- unclaimed(claims, gone ++ done.uncited.flatMap(a => held.get(a.head.key)), at)
+        _ <- uncited.find((d, _) => !d.label.dominates(Tx.floor(tx))) match {
+          case None => Right(())
+          case Some((d, a)) =>
             Left(
               Stop.Refused(
-                s"${args.key.value} is named by ${named.map(_.value).mkString(", ")}: " +
-                  "withdraw them first"
+                s"${a.head.key.value} cites what would be withdrawn, but is kept " +
+                  s"${Label.described(d.label)}, below what this room writes " +
+                  s"(${Label.clearance(Tx.floor(tx))}): withdraw from a room at its label"
               )
             )
         }
-        // The export of what is left reads back (ADR 0049) only if it is a project.
-        _ <- refuse(Project.of(args.key.project, project.pin, rest))
-        _ <- unclaimed(claims, Vector(found), at)
-        gone <- stored(own.withdraw(document.key, document.label, at))
-        _ <- gone.toRight(Stop.Refused(s"${args.key.value} is already withdrawn"))
-      } yield AnswerText.withdrawn(Vector(args.key), Vector.empty, Projects.Terms.retention)
+        writer = Some(author(by))
+        _ <- uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
+          so.flatMap(_ => kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at))
+        }
+        _ <- gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
+          so.flatMap(_ =>
+            stored(own.withdraw(d.key, d.label, at)).flatMap(
+              _.toRight(Stop.Refused(s"${a.head.key.value} was withdrawn meanwhile")).map(_ => ())
+            )
+          )
+        }
+      } yield AnswerText.withdrawn(
+        done.gone,
+        done.uncited.map(_.head.key),
+        Projects.Terms.retention
+      )
     }
   }
 
@@ -831,7 +866,7 @@ private[plugin] object ProjectCommands {
   final case class Releasing(key: ArtifactKey) extends caps.Pure
 
   /** `project_withdraw`'s arguments. */
-  final case class Withdrawing(key: ArtifactKey) extends caps.Pure
+  final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
 
   /** `project_claims`'s arguments. */
   final case class Surveying(project: Option[ProjectKey]) extends caps.Pure

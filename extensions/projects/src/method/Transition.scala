@@ -1,5 +1,6 @@
 package grit.projects.method
 
+import grit.projects.artifact.ArtifactHead
 import grit.projects.name.{CheckName, KindName, RoleName, StateName}
 
 /** A kind of artifact: the state each starts in, its other states, those of them it ends in,
@@ -15,6 +16,13 @@ final case class ArtifactKind(
 
   /** `first`, then `states`. */
   def all: Vector[StateName] = first +: states
+}
+
+object ArtifactKind {
+
+  /** Whether `head` is in an end state of its kind among `kinds`; false for a kind none is. */
+  def ends(kinds: Vector[ArtifactKind], head: ArtifactHead): Boolean =
+    kinds.exists(k => k.name == head.kind && k.ends(head.state))
 }
 
 /** A move an artifact of `kind` may make from `from` to `to`: allowed only when each check

@@ -47,6 +47,28 @@ object WithdrawTests extends TestSuite {
       case CommandOutcome.Refused(why) => s"refused: $why"
     }
 
+  /** Project `p`: `p/a` open, `p/b` under it and `p/c` under `p/b`, both closed; `p/d` closed,
+    * citing `p/b` in its head and `p/c` and `p/a` in its body; and `p/e` open, citing none.
+    */
+  private def cascading(projects: Projects, store: Store): Unit = {
+    started(projects, store)
+    keptAt(projects, store, 1, "a", "One.")
+    keptAt(projects, store, 1, "b", "Under a.", "parent" -> "p/a")
+    keptAt(projects, store, 1, "c", "Under b.", "parent" -> "p/b")
+    keptAt(
+      projects,
+      store,
+      1,
+      "d",
+      "See [c](artifact:p/c) and [a](artifact:p/a).",
+      "cites" -> ujson.Arr("p/b")
+    )
+    keptAt(projects, store, 1, "e", "Alone.")
+    Vector("b", "c", "d").foreach(k =>
+      done(ask(projects, store, "project_move", "key" -> s"p/$k", "to" -> "closed"))
+    )
+  }
+
   val tests: Tests = Tests {
 
     test(
@@ -97,10 +119,102 @@ object WithdrawTests extends TestSuite {
         lastShown(projects, store, "p/a", None)
       ) ==> (
         (
-          CommandOutcome.Refused("p/a is named by p/b, p/c: withdraw them first"),
+          CommandOutcome.Refused(
+            "p/a is named by p/b, p/c: withdraw them first, or withdraw it with cascade"
+          ),
           "One."
         )
       )
+    }
+
+    test(
+      "with cascade, it and everything under it are withdrawn, and an ended artifact citing one is rewritten not to, by the withdrawer"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      cascading(projects, store)
+      val answer = askAs(other, at.plusSeconds(120))(
+        projects,
+        store,
+        "project_withdraw",
+        "key" -> "p/a",
+        "cascade" -> true
+      )
+      val d = shown(projects, store, "p/d")
+      (
+        answer,
+        d.linesIterator.filter(l => l.startsWith("cites:") || l.startsWith("by:")).toVector,
+        d.linesIterator.toVector.lastOption,
+        done(ask(projects, store, "project_list", "project" -> "p")).linesIterator
+          .map(_.takeWhile(_ != ' '))
+          .toVector,
+        ask(projects, store, "project_export", "project" -> "p").getClass
+      ) ==> (
+        (
+          CommandOutcome.Done(
+            "Withdrawn: p/a, p/b, p/c\nCitations of them dropped from: p/d\nTheir history " +
+              "stays readable for 180 days: project_show with an `at` before now, and " +
+              "project_history."
+          ),
+          Vector("cites: []", s"by: \"$otherBy\""),
+          Some("See c and a."),
+          Vector("p/d", "p/e"),
+          classOf[CommandOutcome.Done]
+        )
+      )
+    }
+
+    test(
+      "a cascade is refused, withdrawing nothing, while an artifact under it has not ended, or one not ended cites one of them"
+    ) {
+      val projects = plugin()
+      def cascade(store: Store) = withdrawnAt(3)(projects, store, "key" -> "p/a", "cascade" -> true)
+      val open = Store()
+      cascading(projects, open)
+      keptAt(projects, open, 2, "f", "Under c.", "parent" -> "p/c")
+      val citing = Store()
+      cascading(projects, citing)
+      keptAt(projects, citing, 2, "f", "Cites [b](artifact:p/b).")
+      (cascade(open), cascade(citing), lastShown(projects, citing, "p/a", None)) ==> (
+        (
+          CommandOutcome.Refused(
+            "p/a has artifacts under it not ended: p/f: end or withdraw them first"
+          ),
+          CommandOutcome.Refused(
+            "artifacts not ended cite what would be withdrawn: p/f: end them, or drop their " +
+              "citations, first"
+          ),
+          "One."
+        )
+      )
+    }
+
+    test(
+      "a cascade is refused, withdrawing nothing, while an ended artifact it would rewrite is claimed"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      cascading(projects, store)
+      done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/h",
+          "kind" -> "change",
+          "title" -> "Title h",
+          "body" -> "## Why\n\nSee [b](artifact:p/b)."
+        )
+      )
+      done(ask(projects, store, "project_move", "key" -> "p/h", "to" -> "building"))
+      done(ask(projects, store, "project_move", "key" -> "p/h", "to" -> "done"))
+      done(
+        ask(projects, store, "project_claim", "key" -> "p/h", "role" -> "builder", "for" -> "slot")
+      )
+      (
+        withdrawnAt(3)(projects, store, "key" -> "p/a", "cascade" -> true),
+        lastShown(projects, store, "p/a", None)
+      ) ==> ((CommandOutcome.Refused("p/h is claimed for slot: release it first"), "One."))
     }
 
     test("a claimed artifact's withdrawal is refused, withdrawing nothing") {

@@ -63,6 +63,10 @@ object Body {
   /** What search ranks it by. */
   def searchText(b: Body): String = IndexText.render(b.unnoted)
 
+  /** `b` with its references to `keys` dropped, the text they were on kept. */
+  def uncited(b: Body, keys: Set[ArtifactKey]): Body =
+    b.mapSpans(s => Span(s.text, s.marks, s.notes.filterNot(keys)))
+
   /** The artifacts its text refers to, in reading order, each once. */
   def cites(b: Body): Vector[ArtifactKey] = b.notes.distinct
 
