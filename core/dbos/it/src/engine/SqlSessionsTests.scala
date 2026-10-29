@@ -56,7 +56,7 @@ object SqlSessionsTests extends TestSuite {
   private def header(
       local: String,
       label: Label,
-      holder: Option[ClaimHolder] = None
+      holder: Option[ClaimHolder]
   ): Session.Header =
     Session.Header(id(local), None, ann, label, Worktree, holder)
 
