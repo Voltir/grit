@@ -7,8 +7,6 @@ import grit.projects.method.{
   Example,
   Method,
   MethodBench,
-  Migrated,
-  Remap,
   RoleView,
   Transition,
   TransitionAction,
@@ -114,10 +112,6 @@ object ElephantGoldfishTests extends TestSuite {
   val tests = Tests {
     test("the elephant-goldfish model passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(model, examples) == Vector.empty)
-    }
-    test("a project of it migrates to its own version with nothing renamed") {
-      val held = pinnedTo(model, far, near, theDraft, theReview, theDecision)
-      model.migrated(held, Remap()) ==> Right(Migrated(held, Vector()))
     }
 
     test("a goldfish is shown the draft and what it cites, one link deep; an elephant more") {

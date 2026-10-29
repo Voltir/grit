@@ -14,7 +14,7 @@ import utest.*
   * claims ([[grit.core.claim.Claims]]), never a document, made for one slot (what a brief is
   * written for) as one role at its artifact's label; an artifact has one live claim, and a slot
   * works one artifact, at each label, until it lapses (`ClaimsContract` holds the store to it,
-  * races and leases included).
+  * leases included).
   */
 object ClaimTests extends TestSuite {
 
@@ -155,36 +155,37 @@ object ClaimTests extends TestSuite {
     }
 
     test(
-      "under grit's, OpenSpec's and elephant-goldfish's methods a claim is refused twice, freed and made again"
+      "under grit's, OpenSpec's and elephant-goldfish's methods a second claim is refused, and the freed key is claimed again"
     ) {
       val under = Vector(
-        (method(), "note", "builder"),
-        (OpenSpecTests.openSpec, "task", "author"),
-        (ElephantGoldfishTests.model, "source", "elephant")
+        (method(), "note", "open", "builder"),
+        (OpenSpecTests.openSpec, "task", "open", "author"),
+        (ElephantGoldfishTests.model, "source", "current", "elephant")
       )
-      val answers = under.map { (m, kind, role) =>
+      under.map { (m, kind, first, role) =>
         val projects = Projects
           .of(Vector(m -> Vector.empty), m.name)
           .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         val store = Store()
         started(projects, store)
         kept(projects, store, "a", kind, "Text.")
-        val first = claimed(projects, store, role = role)
-        val second = claimed(projects, store, role = role, forSlot = "other")
-        val freed = ask(projects, store, "project_release", "key" -> "p/a")
-        val again = claimed(projects, store, role = role, forSlot = "other")
         (
-          first.isInstanceOf[CommandOutcome.Done],
-          second == CommandOutcome.Refused(
-            s"p/a is claimed already, as $role for $slot by $by since $at; " +
-              s"it lapses at $lapse unless they keep working; project_release frees it"
-          ),
-          freed.isInstanceOf[CommandOutcome.Done] &&
-            ujson.read(done(freed)) == ujson.Obj("released" -> "p/a", "for" -> slot),
-          again.isInstanceOf[CommandOutcome.Done]
+          claimed(projects, store, role = role),
+          claimed(projects, store, role = role, forSlot = "other"),
+          ujson.read(done(ask(projects, store, "project_release", "key" -> "p/a"))),
+          claimed(projects, store, role = role, forSlot = "other")
+        ) ==> (
+          (
+            CommandOutcome.Done(s"Claimed p/a ($kind, $first) as $role for $slot."),
+            CommandOutcome.Refused(
+              s"p/a is claimed already, as $role for $slot by $by since $at; " +
+                s"it lapses at $lapse unless they keep working; project_release frees it"
+            ),
+            ujson.Obj("released" -> "p/a", "for" -> slot),
+            CommandOutcome.Done(s"Claimed p/a ($kind, $first) as $role for other.")
+          )
         )
       }
-      assert(answers == Vector.fill(3)((true, true, true, true)))
     }
 
     test("a claim leaves the artifact's version unchanged") {

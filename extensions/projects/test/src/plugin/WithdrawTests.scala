@@ -47,6 +47,14 @@ object WithdrawTests extends TestSuite {
       case CommandOutcome.Refused(why) => s"refused: $why"
     }
 
+  /** The store's count of artifacts, and the last lines `project_show` answers for `p/a` and
+    * for its citers `p/b` and `p/d`.
+    */
+  private final case class Seen(count: Int, shown: Vector[String])
+
+  private def seen(projects: Projects, store: Store): Seen =
+    Seen(store.count, Vector("p/a", "p/b", "p/d").map(lastShown(projects, store, _, None)))
+
   /** Project `p`: `p/a` open, `p/b` under it and `p/c` under `p/b`, both closed; `p/d` closed,
     * citing `p/b` in its head and `p/c` and `p/a` in its body; and `p/e` open, citing none.
     */
@@ -175,7 +183,8 @@ object WithdrawTests extends TestSuite {
       val citing = Store()
       cascading(projects, citing)
       keptAt(projects, citing, 2, "f", "Cites [b](artifact:p/b).")
-      (cascade(open), cascade(citing), lastShown(projects, citing, "p/a", None)) ==> (
+      val before = (seen(projects, open), seen(projects, citing))
+      (cascade(open), cascade(citing), (seen(projects, open), seen(projects, citing))) ==> (
         (
           CommandOutcome.Refused(
             "p/a has artifacts under it not ended: p/f: end or withdraw them first"
@@ -184,8 +193,12 @@ object WithdrawTests extends TestSuite {
             "artifacts not ended cite what would be withdrawn: p/f: end them, or drop their " +
               "citations, first"
           ),
-          "One."
+          before
         )
+      )
+      before._2 ==> Seen(
+        7,
+        Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a).")
       )
     }
 
@@ -211,10 +224,19 @@ object WithdrawTests extends TestSuite {
       done(
         ask(projects, store, "project_claim", "key" -> "p/h", "role" -> "builder", "for" -> "slot")
       )
+      val before = seen(projects, store)
       (
         withdrawnAt(3)(projects, store, "key" -> "p/a", "cascade" -> true),
-        lastShown(projects, store, "p/a", None)
-      ) ==> ((CommandOutcome.Refused("p/h is claimed for slot: release it first"), "One."))
+        seen(projects, store),
+        lastShown(projects, store, "p/h", None)
+      ) ==> (
+        (
+          CommandOutcome.Refused("p/h is claimed for slot: release it first"),
+          before,
+          "See [b](artifact:p/b)."
+        )
+      )
+      before ==> Seen(7, Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a)."))
     }
 
     test("a claimed artifact's withdrawal is refused, withdrawing nothing") {

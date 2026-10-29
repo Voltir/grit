@@ -66,13 +66,13 @@ object StaleTests extends TestSuite {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      keptOn(projects, store, 0, "a", "note", "Alone.")
+      keptOn(projects, store, 0, "e", "note", "Cited by d alone.")
       keptOn(projects, store, 0, "b", "note", "Cited by c.")
-      keptOn(projects, store, 1, "e", "note", "Cited by d alone.")
-      keptOn(projects, store, 0, "d", "note", "See [e](artifact:p/e).")
-      movedOn(projects, store, 0, "d", "closed")
+      keptOn(projects, store, 1, "d", "note", "See [e](artifact:p/e).")
+      movedOn(projects, store, 1, "d", "closed")
+      keptOn(projects, store, 2, "a", "note", "Alone.")
       keptOn(projects, store, 30, "c", "note", "See [b](artifact:p/b).")
-      staleOn(projects, store, 35, 2) ==> "p/a (note, open): Title a\np/e (note, open): Title e"
+      staleOn(projects, store, 35, 2) ==> "p/e (note, open): Title e\np/a (note, open): Title a"
     }
 
     test(

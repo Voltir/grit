@@ -27,6 +27,16 @@ object MigrationTests extends TestSuite {
       Vector.empty
     )
 
+  /** An issue: open, like a note, then closed. */
+  private val issue =
+    ArtifactKind(
+      kind("issue"),
+      state("open"),
+      Vector(state("closed")),
+      Set(state("closed")),
+      Vector.empty
+    )
+
   /** Version 2 of these kinds, each state reached from the kind's first. */
   private def version2(kinds: ArtifactKind*): Method =
     Method
@@ -71,11 +81,18 @@ object MigrationTests extends TestSuite {
     }
 
     test("an artifact's override gives it alone its kind, over the kind mapping") {
-      val to = version2(note, backlog)
-      to.migrated(project(n, m), Remap(artifacts = Map(key("p/n") -> backlog.name))) ==> Right(
+      val to = version2(issue, backlog)
+      to.migrated(
+        project(n, m),
+        Remap(kinds = Map(note.name -> issue.name), artifacts = Map(key("p/n") -> backlog.name))
+      ) ==> Right(
         Migrated(
-          pinnedTo(to, Artifact(n.head.copy(kind = backlog.name), n.body), m),
-          Vector(key("p/n"))
+          pinnedTo(
+            to,
+            Artifact(n.head.copy(kind = backlog.name), n.body),
+            Artifact(m.head.copy(kind = issue.name), m.body)
+          ),
+          Vector(key("p/m"), key("p/n"))
         )
       )
     }

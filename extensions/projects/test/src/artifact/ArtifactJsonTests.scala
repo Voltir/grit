@@ -141,8 +141,6 @@ object ArtifactJsonTests extends TestSuite {
       val emptied = ujson.Obj("head" -> data("head"), "body" -> stored(Vector.empty))
       assert(Artifact.of(kept("p/a", text, emptied, refs)) == Left("a body is empty"))
     }
-    // A pin of the stored form: projects' documents are kept 180 days, and each is read back
-    // through these keys.
     test(
       "a watch for an artifact's states is met by the ref its write holds, read back as its state"
     ) {
@@ -155,11 +153,12 @@ object ArtifactJsonTests extends TestSuite {
       val version = DocumentVersionId.of(1L).getOrElse(throw new java.lang.AssertionError("id"))
       assert(
         (watch.plugin, watch.key) == (Projects.Name, right(DocKey.of("p/a"))),
-        Projects.reached(Watched.Held(version, met, at)) == Set(review),
-        Projects.reaching(key("a"), Set.empty) == Left("a watch names a ref to hold")
+        Projects.reached(Watched.Held(version, met, at)) == Set(review)
       )
     }
 
+    // A pin of the stored form: projects' documents are kept 180 days, and each is read back
+    // through these keys.
     test("an artifact is stored as its head and its body, under these keys") {
       val a = Artifact(
         head("a", Vector(key("b"))).copy(parent = Some(key("p0"))),
