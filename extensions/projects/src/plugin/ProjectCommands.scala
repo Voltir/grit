@@ -48,6 +48,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       Export,
       ProjectClaim,
       ProjectRelease,
+      ProjectClaims,
       ProjectBrief
     )
 
@@ -562,7 +563,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
                 first.fold(s"$key is claimed already; project_release frees it")(c =>
                   s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
                     s"${ClaimHolder.value(c.holder)} by ${author(c.by)} since ${c.made}; " +
-                    "project_release frees it"
+                    s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
                 )
               )
             )
@@ -573,6 +574,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
                   s"$slot works another artifact already; release it with project_release first"
                 )(c =>
                   s"$slot works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
+                    s"it lapses at ${c.lapses} unless they keep working; " +
                     "release it with project_release first"
                 )
               )
@@ -609,6 +611,47 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         freed <- stored(claims.release(document.key, document.label))
         claim <- freed.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
       } yield AnswerText.released(args.key, claim.holder)
+    }
+  }
+
+  /** `project_claims`. A keeping command only for its plugin's claims, which a reading command is
+    * not handed; it keeps nothing.
+    */
+  object ProjectClaims extends KeepingCommand[Surveying] {
+    val spec: ToolSpec[Surveying] = ToolSpec(
+      ToolName("project_claims"),
+      said(
+        "Lists the artifacts claimed now, only one project's when given, answering a JSON " +
+          "object: `claims`, each its artifact's `key`, its `role`, `for`, the slot it is " +
+          "claimed for, `by`, who claimed it, `since`, when, and `lapses`, when it stops " +
+          "holding unless whoever works it keeps working. Ordered by key."
+      ),
+      Args
+        .of((project = Field.text("Only claims on this project's artifacts.").optional))
+        .refine(a =>
+          a.project
+            .fold(Right(None))(p => parsed("project", p, ProjectKey.of).map(Some(_)))
+            .map(Surveying(_))
+        )
+    )
+
+    def run(
+        args: Surveying,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      stored(claims.live(at)).map { live =>
+        val held = live.flatMap(c =>
+          ArtifactKey
+            .read(DocKey.value(c.subject))
+            .toOption
+            .filter(k => args.project.forall(_ == k.project))
+            .map(k => (k, c, author(c.by)))
+        )
+        AnswerText.claims(held)
+      }
     }
   }
 
@@ -732,6 +775,9 @@ private[plugin] object ProjectCommands {
 
   /** `project_release`'s arguments. */
   final case class Releasing(key: ArtifactKey) extends caps.Pure
+
+  /** `project_claims`'s arguments. */
+  final case class Surveying(project: Option[ProjectKey]) extends caps.Pure
 
   /** `project_brief`'s arguments. */
   final case class Briefing(key: ArtifactKey, role: RoleName, chars: Int) extends caps.Pure

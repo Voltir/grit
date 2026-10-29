@@ -2,6 +2,7 @@ package grit.projects.render
 
 import java.time.Instant
 
+import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.ClaimHolder
 import grit.projects.artifact.ArtifactHead
 import grit.projects.name.{ArtifactKey, KindName, StateName}
@@ -68,6 +69,27 @@ object AnswerText {
     */
   def released(key: ArtifactKey, slot: ClaimHolder): String =
     ujson.write(ujson.Obj("released" -> key.value, "for" -> ClaimHolder.value(slot)))
+
+  /** Live claims as a JSON object a program reads: `claims`, each its artifact's `key`, its
+    * `role`, `for`, the slot it is claimed for, `by`, who claimed it (written as given), `since`,
+    * when it was made, and `lapses`, when it lapses unless its slot keeps working; in the order
+    * given.
+    */
+  def claims(held: Vector[(ArtifactKey, Claim, String)]): String =
+    ujson.write(
+      ujson.Obj(
+        "claims" -> ujson.Arr.from(held.map { (key, c, by) =>
+          ujson.Obj(
+            "key" -> key.value,
+            "role" -> ClaimRole.value(c.role),
+            "for" -> ClaimHolder.value(c.holder),
+            "by" -> by,
+            "since" -> c.made.toString,
+            "lapses" -> c.lapses.toString
+          )
+        })
+      )
+    )
 
   /** A page of export files as a JSON object a program reads: `files`, each its `path` and its
     * `text`, in order; and `next`, the path to ask for the page after from, or `null` on the

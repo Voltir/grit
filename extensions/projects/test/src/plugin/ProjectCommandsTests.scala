@@ -422,7 +422,7 @@ object ProjectCommandsTests extends TestSuite {
 
     test("every command's does line tells a project artifact from a claude.ai Artifact") {
       val lines = plugin().commands.map(_.spec.does)
-      assert(lines.size == 11, lines.forall(_.endsWith(Projects.NotClaudeAi)))
+      assert(lines.size == 12, lines.forall(_.endsWith(Projects.NotClaudeAi)))
     }
 
     test(

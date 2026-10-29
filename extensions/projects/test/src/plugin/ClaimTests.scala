@@ -1,6 +1,6 @@
 package grit.projects.plugin
 
-import grit.core.claim.{Claim, ClaimRole}
+import grit.core.claim.{Claim, ClaimRole, Claims}
 import grit.core.document.Document
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
@@ -10,10 +10,11 @@ import grit.projects.paper.{ElephantGoldfishTests, OpenSpecTests}
 
 import utest.*
 
-/** `project_claim` and `project_release`: a claim is one of the plugin's claims
-  * ([[grit.core.claim.Claims]]), never a document, made for one slot (what a brief is written
-  * for) as one role at its artifact's label; an artifact has one live claim, and a slot works
-  * one artifact, at each label (`ClaimsContract` holds the store to it, races included).
+/** `project_claim`, `project_release` and `project_claims`: a claim is one of the plugin's
+  * claims ([[grit.core.claim.Claims]]), never a document, made for one slot (what a brief is
+  * written for) as one role at its artifact's label; an artifact has one live claim, and a slot
+  * works one artifact, at each label, until it lapses (`ClaimsContract` holds the store to it,
+  * races and leases included).
   */
 object ClaimTests extends TestSuite {
 
@@ -21,6 +22,9 @@ object ClaimTests extends TestSuite {
   import MethodFixtures.right
 
   /** The slot every claim here is for, unless another is named. */
+  /** When a claim made at `at` that no session works lapses. */
+  private val lapse = at.plusMillis(Claims.Lease.toMillis)
+
   private val slot: String = "coder-opus/abc"
 
   private def current(store: Store, key: String): Option[Document] =
@@ -54,7 +58,7 @@ object ClaimTests extends TestSuite {
       assert(
         second == CommandOutcome.Refused(
           s"p/a is claimed already, as builder for $slot by $by since $at; " +
-            "project_release frees it"
+            s"it lapses at $lapse unless they keep working; project_release frees it"
         )
       )
     }
@@ -68,7 +72,8 @@ object ClaimTests extends TestSuite {
       val elsewhere = claimed(projects, store, key = "p/b", forSlot = "other")
       assert(
         second == CommandOutcome.Refused(
-          s"$slot works p/a already, claimed since $at; release it with project_release first"
+          s"$slot works p/a already, claimed since $at; it lapses at $lapse unless they keep " +
+            "working; release it with project_release first"
         ),
         elsewhere == CommandOutcome.Done("Claimed p/b (note, open) as builder for other.")
       )
@@ -171,7 +176,8 @@ object ClaimTests extends TestSuite {
         (
           first.isInstanceOf[CommandOutcome.Done],
           second == CommandOutcome.Refused(
-            s"p/a is claimed already, as $role for $slot by $by since $at; project_release frees it"
+            s"p/a is claimed already, as $role for $slot by $by since $at; " +
+              s"it lapses at $lapse unless they keep working; project_release frees it"
           ),
           freed.isInstanceOf[CommandOutcome.Done] &&
             ujson.read(done(freed)) == ujson.Obj("released" -> "p/a", "for" -> slot),
@@ -189,6 +195,57 @@ object ClaimTests extends TestSuite {
       done(claimed(projects, store))
       val after = current(store, "p/a").map(_.version)
       assert(before.isDefined, after == before)
+    }
+
+    test("a claim no one works lapses, and another slot takes it") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      val taken = askAt(lapse)(
+        projects,
+        store,
+        "project_claim",
+        "key" -> "p/a",
+        "role" -> "builder",
+        "for" -> "other"
+      )
+      assert(taken == CommandOutcome.Done("Claimed p/a (note, open) as builder for other."))
+    }
+
+    test("a claim made again by its slot renews it, and it is listed once") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      val again = claimed(projects, store)
+      val listed = ujson.read(done(ask(projects, store, "project_claims")))
+      assert(
+        again == CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $slot."),
+        listed("claims").arr.size == 1
+      )
+    }
+
+    test("project_claims answers each live claim's key, role, slot, who and when, and lapse") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store, key = "p/b"))
+      done(claimed(projects, store, forSlot = "other"))
+      val listed = ujson.read(done(ask(projects, store, "project_claims")))
+      val lapsed = ujson.read(done(askAt(lapse)(projects, store, "project_claims")))
+      def one(key: String, slot: String) = ujson.Obj(
+        "key" -> key,
+        "role" -> "builder",
+        "for" -> slot,
+        "by" -> by,
+        "since" -> at.toString,
+        "lapses" -> lapse.toString
+      )
+      assert(
+        listed == ujson.Obj("claims" -> ujson.Arr(one("p/a", "other"), one("p/b", slot))),
+        lapsed == ujson.Obj("claims" -> ujson.Arr())
+      )
     }
   }
 }
