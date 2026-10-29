@@ -23,7 +23,10 @@ this file holds the package order and the rules the code's signatures cannot sta
   - A session's recordings lock its row, and number its log's lines from it (`SqlSessions`).
   - An engine, a link and a reader each run their short transactions, and their DBOS client's
     reads, on one `Pool` of their own. A connection that keeps session state past its
-    transaction opens its own instead: the engine lock's, a desk's `LISTEN`, a rehearsal's.
+    transaction opens its own instead: the engine lock's, a desk's `LISTEN`, a watch's
+    listener (`SqlWatch`), a rehearsal's.
+  - The writers a watch waits on send their notices inside their transaction (`SqlNotices`),
+    so a listener hears a write only once it commits.
 
   Imports nothing else in dbos.
 - **`workflow`**: DBOS behind `Durable`. `DurableWorkflow` registers every body under the fixed

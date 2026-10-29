@@ -24,8 +24,9 @@ import grit.core.visibility.Compartment
   * `desks`, where it registers places it hosts tools in, `attesting`, through which its
   * source says who the accounts of the realms its attester answers for are, `files`, the
   * file area it keeps the files it fetches in (ADR 0045), `commands`, the plugins' commands
-  * it runs for the people it serves (ADR 0048), and `sessions`, where it records the working
-  * sessions of the harness it serves (ADR 0050).
+  * it runs for the people it serves (ADR 0048), `sessions`, where it records the working
+  * sessions of the harness it serves (ADR 0050), and `watch`, what it waits on in the store for
+  * them (ADR 0051).
   */
 final case class EdgeStores(
     inbox: Inbox,
@@ -43,7 +44,8 @@ final case class EdgeStores(
     attesting: Attesting^,
     files: Intake,
     commands: PluginCommands = PluginCommands.None,
-    sessions: EdgeSessions = EdgeSessions.Refusing
+    sessions: EdgeSessions = EdgeSessions.Refusing,
+    watch: EdgeWatch = EdgeWatch.Refusing
 )
 
 /** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its

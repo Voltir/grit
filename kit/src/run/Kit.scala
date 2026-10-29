@@ -551,7 +551,8 @@ object Kit {
       attesting,
       files,
       commands,
-      link.sessions
+      link.sessions,
+      link.watch
     )
 
   /** The voucher an edge attesting as `attester` records through: of [[trustOf]]'s realms and

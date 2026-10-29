@@ -132,6 +132,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The working sessions an edge records for the people it serves. */
   val sessions: grit.core.edge.EdgeSessions
 
+  /** What an edge waits on in the store for the people it serves; closed with the link. */
+  val watch: grit.core.edge.EdgeWatch
+
   /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
     * edge's first ingest would.
     */
@@ -338,6 +341,10 @@ private[engine] final class Attached(
 
   val sessions: grit.core.edge.EdgeSessions = new grit.dbos.sql.SqlEdgeSessions(jot)
 
+  private[dbos] val watching: SqlWatch = new SqlWatch(config, dataSource, opener)
+
+  val watch: grit.core.edge.EdgeWatch = watching
+
   val inbox: Inbox =
     new SqlInbox(
       dataSource,
@@ -402,8 +409,10 @@ private[engine] final class Attached(
     }
 
   def close(): Unit =
-    try desks.forEach(_.close())
-    finally
+    try {
+      watching.close()
+      desks.forEach(_.close())
+    } finally
       try client.close()
       finally dataSource.close()
 }

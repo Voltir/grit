@@ -15,7 +15,7 @@ import grit.core.plugin.{CommandOutcome, KeepingCommand, Plugin, ReadingCommand}
 import grit.core.provider.ToolSchema
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.visibility.{Integrity, Subject}
+import grit.core.visibility.Integrity
 
 /** [[PluginCommands]] over `dataSource`, of `plugins`' commands: each run is one transaction on
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
@@ -123,23 +123,17 @@ private[dbos] final class SqlPluginCommands(
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         conn.setReadOnly(!keeps)
-        val asked = opener
-          .open(Subject.Public, conn)
-          .flatMap(tx => SqlIdentities.person(by)(using tx))
-        val ran: Either[CommandError, CommandOutcome] = asked match {
-          case Left(e) => Left(CommandError.Unavailable(e.toString))
-          case Right(Some(person: Principal.Person)) =>
-            opener.open(Subject.Person(person, room), conn) match {
-              case Left(e) => Left(CommandError.Unavailable(e.toString))
-              case Right(tx) =>
-                try body(person, tx).left.map(CommandError.Store(name, _))
-                catch {
-                  case NonFatal(e) =>
-                    Left(CommandError.Store(name, SqlEntryStore.databaseError(e)))
-                }
+        val ran: Either[CommandError, CommandOutcome] =
+          SqlAsking.as(conn, opener, by, room) { (person, tx) =>
+            try body(person, tx).left.map(CommandError.Store(name, _))
+            catch {
+              case NonFatal(e) => Left(CommandError.Store(name, SqlEntryStore.databaseError(e)))
             }
-          case Right(_) => Left(CommandError.NotVouched(by))
-        }
+          } match {
+            case Left(SqlAsking.Unasked.NotVouched) => Left(CommandError.NotVouched(by))
+            case Left(SqlAsking.Unasked.Unavailable(cause)) => Left(CommandError.Unavailable(cause))
+            case Right(ran) => ran
+          }
         ran match {
           case Right(CommandOutcome.Done(_)) if keeps => conn.commit()
           case _ => conn.rollback()

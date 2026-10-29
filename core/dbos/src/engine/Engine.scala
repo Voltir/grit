@@ -107,6 +107,10 @@ final class Engine private (
 
   val sessions: grit.core.edge.EdgeSessions = new grit.dbos.sql.SqlEdgeSessions(jot)
 
+  private[dbos] val watching: SqlWatch = new SqlWatch(config, dataSource, opener)
+
+  val watch: grit.core.edge.EdgeWatch = watching
+
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
@@ -404,7 +408,7 @@ final class Engine private (
   /** The engine holding this database's lock: this one, while it holds it. */
   def holder(): Option[Holder] = EngineLock.holder(dataSource)
 
-  /** Stops every pass ([[every]]) and the sweep, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
+  /** Stops every pass ([[every]]) and the sweep, lapses every watch ([[watch]]), stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
     * still running (interrupted by the stop) to return, closes its pool, then releases the lock: no body this
     * engine ran outlives its lock, unless one ignores its interrupt past the wait, which is
     * logged. Also what losing the lock does. Once; later calls return at once.
@@ -414,6 +418,7 @@ final class Engine private (
       try {
         passes.forEach(_.interrupt())
         passes.forEach(_.join(Engine.BodiesWithin.toMillis))
+        watching.close()
         desks.forEach(_.close())
         try client.close()
         finally dbos.shutdown()
