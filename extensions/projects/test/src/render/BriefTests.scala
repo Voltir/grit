@@ -4,7 +4,16 @@ import scala.util.Random
 
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.method.RoleView
-import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, RoleName, StateName}
+import grit.projects.name.{
+  ArtifactKey,
+  KindName,
+  LocalKey,
+  MethodName,
+  Pin,
+  ProjectKey,
+  RoleName,
+  StateName
+}
 
 import utest.*
 
@@ -127,6 +136,55 @@ object BriefTests extends TestSuite {
         twoLinks.map(_.text.contains("p/c")) == Right(false),
         threeLinks.map(_.text.contains("### p/c — c")) == Right(true),
         threeLinks.map(_.text.contains("p/d")) == Right(false)
+      )
+    }
+
+    test("a parent is followed up the artifact's own chain, never from what it cites") {
+      // j's parent is m, whose parent is r; j cites c, whose parent is the index i.
+      val pr = project(
+        Vector(
+          artifact("j", "note", "j", "J", parent = Some("m"), cites = Vector("c")),
+          artifact("m", "note", "m", "M", parent = Some("r")),
+          artifact("r", "note", "r", "R"),
+          artifact("c", "note", "c", "C", parent = Some("i")),
+          artifact("i", "note", "i", "I")
+        )
+      )
+      Brief
+        .of(pr, key("j"), view(Set("note"), 2), 10000)
+        .map(_.text.linesIterator.filter(_.startsWith("### ")).toVector) ==> Right(
+        Vector("### p/c — c", "### p/m — m", "### p/r — r")
+      )
+    }
+
+    test(
+      "carried artifacts are given whole, cited or not, never pointed out, before what is cited"
+    ) {
+      val judged = artifact("j", "note", "j", "J", cites = Vector("a", "rules"))
+      val pr = project(
+        Vector(
+          judged,
+          artifact("a", "note", "a", fifty),
+          artifact("rules", "note", "rules", fifty),
+          artifact("more", "note", "more", "M")
+        )
+      )
+      val carrying = right(
+        RoleView.of(
+          right(RoleName.of("builder")),
+          Set(right(KindName.of("note"))),
+          1,
+          Set(right(LocalKey.of("rules")), right(LocalKey.of("more")), right(LocalKey.of("none")))
+        )
+      )
+      val carried =
+        header + "\n\nJ\n\n## Carried\n\n### p/more — more\n\nM\n\n### p/rules — rules\n\n" + fifty
+      val expected = carried + "\n\n## Cited\n\n- p/a (note, a, 50 chars)"
+      assert(
+        Brief.of(pr, key("j"), carrying, expected.length).map(b => (b.text, b.pointed)) ==
+          Right((expected, Vector(key("a")))),
+        Brief.of(pr, key("j"), carrying, carried.length - 1) ==
+          Left(BriefRefusal.Over(carried.length))
       )
     }
 

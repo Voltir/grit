@@ -12,12 +12,15 @@ enum BriefRefusal extends caps.Pure {
   /** `judged` is no artifact of the project. */
   case Unknown(judged: ArtifactKey)
 
-  /** The artifact alone, its header line and body markdown, is `size` characters, over the budget. */
+  /** The artifact with what its view carries, the text before `## Cited`, is `size` characters,
+    * over the budget.
+    */
   case Over(size: Int)
 }
 
 /** What a session working on one artifact is given (ADR 0049), as text: a header line (key, kind,
   * state, title, method, version and the pin's short digest), the artifact's body whole, then a
+  * `## Carried` section with each artifact its role view carries, whole and in key order, then a
   * `## Cited` section with each artifact its role view reaches, nearest first, under its own
   * `### <key> — <title>` heading, whole or, past the budget, as a pointer line
   * `- <key> (<kind>, <title>, <n> chars)`; artifacts at the same distance in key order. A function
@@ -26,10 +29,11 @@ enum BriefRefusal extends caps.Pure {
   *
   * The header line is `<key> | <kind> | <state> | <title> | <method> v<version> | pin <digest>`,
   * the digest its first [[PinDigits]] hex characters. `n` in a pointer, and the size [[BriefRefusal.Over]]
-  * carries, are the characters of the artifact's body markdown, and of its header line and body
-  * markdown together. The links followed are the artifact's `parent` and its `cites`, in its head
-  * and its body, up to the view's depth; a path may pass through artifacts of kinds the view does
-  * not name, but only artifacts of its kinds are cited. Pointers replace the farthest whole
+  * carries, are the characters of the artifact's body markdown, and of the text before `## Cited`.
+  * The links followed, up to the view's depth, are every `cites`, in a head and a body, and the
+  * `parent` of the artifact and of each of its ancestors, never of an artifact reached by a cite;
+  * a path may pass through artifacts of kinds the view does not name, but only artifacts of its
+  * kinds are cited, and none it carries. Pointers replace the farthest whole
   * citations first; then each pointer, nearest first, is given whole again if it still fits.
   * `pointed` lists the keys shown as pointers, and a citation that does not fit even as a
   * pointer is left out.
@@ -44,7 +48,7 @@ object Brief {
 
   /** `judged`'s brief for `view` within `project`, at most `chars` characters; `Left` with
     * [[BriefRefusal.Unknown]] when `judged` is no artifact of `project`, and with
-    * [[BriefRefusal.Over]] when the artifact alone does not fit.
+    * [[BriefRefusal.Over]] when the artifact and what its view carries do not fit.
     */
   def of(
       project: Project,
@@ -55,9 +59,23 @@ object Brief {
     project.artifacts.find(_.head.key == judged) match {
       case None => Left(BriefRefusal.Unknown(judged))
       case Some(own) =>
-        val ownText = headerLine(project, own) + "\n\n" + Body.markdown(own.body)
+        val carried = project.artifacts
+          .filter(a => a.head.key != judged && view.carried.contains(a.head.key.local))
+          .sortBy(_.head.key.value)
+        val ownText = headerLine(project, own) + "\n\n" + Body.markdown(own.body) +
+          (if (carried.isEmpty) ""
+           else "\n\n## Carried\n\n" + carried.map(section).mkString("\n\n"))
+        val held = carried.map(_.head.key).toSet
         if (ownText.length > chars) Left(BriefRefusal.Over(ownText.length))
-        else Right(fit(judged, ownText, reach(project, judged, view), chars))
+        else
+          Right(
+            fit(
+              judged,
+              ownText,
+              reach(project, judged, view).filterNot(c => held(c._1.head.key)),
+              chars
+            )
+          )
     }
 
   private def headerLine(project: Project, a: Artifact): String =
@@ -65,12 +83,9 @@ object Brief {
       s"${a.head.title} | ${MethodName.value(project.pin.method)} v${project.pin.version} | " +
       s"pin ${project.pin.digest.hex.take(PinDigits)}"
 
-  /** What `a` links to: its parent, and what its head and its body cite. */
-  private def neighbours(a: Artifact): Vector[ArtifactKey] =
-    (a.head.parent.toVector ++ a.head.cites ++ Body.cites(a.body)).distinct
-
   /** The artifacts of the view's kinds within its depth of `judged`, with their distances,
-    * nearest first and in key order at a distance; the path may pass through other kinds.
+    * nearest first and in key order at a distance; the path may pass through other kinds, and
+    * follows parents only up `judged`'s own chain.
     */
   private def reach(
       project: Project,
@@ -79,6 +94,16 @@ object Brief {
   ): Vector[(Artifact, Int)] = {
     def at(keys: Vector[ArtifactKey]): Vector[Artifact] =
       keys.flatMap(k => project.artifacts.find(_.head.key == k).toVector)
+    // `judged` and its ancestors: the one chain whose parents are followed.
+    @tailrec def up(k: ArtifactKey, chain: Set[ArtifactKey]): Set[ArtifactKey] =
+      at(Vector(k)).flatMap(_.head.parent).headOption match {
+        case Some(parent) if !chain(parent) => up(parent, chain + parent)
+        case _ => chain
+      }
+    val chain = up(judged, Set(judged))
+    def neighbours(a: Artifact): Vector[ArtifactKey] =
+      ((if (chain(a.head.key)) a.head.parent.toVector else Vector()) ++ a.head.cites ++
+        Body.cites(a.body)).distinct
     val (_, _, reached) =
       (1 to view.depth).foldLeft((Set(judged), Vector(judged), Vector.empty[(Artifact, Int)])) {
         case ((seen, frontier, out), d) =>

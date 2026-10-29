@@ -9,8 +9,8 @@ to other artifacts as notes on their spans.
 Packages, in one-way order (each names only those before it):
 
 - **`name`**: the names a method and a project use: `MethodName`, `KindName`, `StateName`,
-  `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `ArtifactKey` (`<project>/<artifact>`,
-  an id, never a title), `Pin`, the method version a project holds to, and `BriefSlot`, what
+  `CheckName`, `RoleName` (each core's `Slug`, free to start with a digit), `ProjectKey`, `LocalKey` (an artifact's part of its key), `ArtifactKey`
+  (`<project>/<artifact>`, an id, never a title), `Pin`, the method version a project holds to, and `BriefSlot`, what
   an artifact is claimed for.
 - **`artifact`**: what a project is: `ArtifactHead` (everything but the body), `Body` (opaque:
   its prose and its stored form in one file, so a stored-form version bump is one migration),
@@ -20,7 +20,8 @@ Packages, in one-way order (each names only those before it):
 - **`method`**: a methodology as versioned data: `Method` (its kinds, transitions and role
   views, every name declared and every check compiled in), `ArtifactKind`, `Transition`,
   `TransitionCheck` (compiled, pure, deterministic and versioned; the built-ins in
-  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView`;
+  `TransitionChecks`), `TransitionAction` (grit's, never a method's code) and `RoleView` (what a role is shown, and
+  what it always carries);
   `Method.move`, the one move a live `project_move` and a bench replay both make; and
   `MethodBench`, which replays a method's worked examples (`Example`), so a method that does
   not do what its author says is refused. Imports `name` and `artifact`.

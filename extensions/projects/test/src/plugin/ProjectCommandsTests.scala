@@ -473,7 +473,7 @@ object ProjectCommandsTests extends TestSuite {
         ),
         small match {
           case CommandOutcome.Refused(why) =>
-            why.startsWith("p/a alone is ") && why.endsWith(", over 10")
+            why.startsWith("p/a with what its role always carries is ") && why.endsWith(", over 10")
           case CommandOutcome.Done(_) => false
         }
       )

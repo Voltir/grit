@@ -8,6 +8,7 @@ import grit.projects.name.{
   ArtifactKey,
   CheckName,
   KindName,
+  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -147,7 +148,8 @@ final case class Method private (
   }
 
   /** The digest of its data and of each check's name and version: equal for equal methods,
-    * whatever order their kinds, transitions, role views, states and checks are declared in.
+    * whatever order their kinds, transitions, role views, states and checks are declared in. A
+    * view carrying nothing digests as it did before views could carry, so earlier pins hold.
     */
   def digest: Sha256 = {
     def field(s: String): String = s"${s.length}:$s"
@@ -172,7 +174,7 @@ final case class Method private (
       } ++ views.map { v =>
         "view " + field(RoleName.value(v.role)) + names(v.kinds.map(KindName.value)) + field(
           v.depth.toString
-        )
+        ) + (if (v.carried.isEmpty) "" else names(v.carried.map(LocalKey.value)))
       } ++ checks.map(c => "check " + field(CheckName.value(c.name)) + field(c.version.toString))
     Sha256.text(
       (Vector(field(MethodName.value(name)), field(version.toString)) ++ lines.sorted)

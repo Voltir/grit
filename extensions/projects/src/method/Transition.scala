@@ -1,7 +1,7 @@
 package grit.projects.method
 
 import grit.projects.artifact.ArtifactHead
-import grit.projects.name.{CheckName, KindName, RoleName, StateName}
+import grit.projects.name.{CheckName, KindName, LocalKey, RoleName, StateName}
 
 /** A kind of artifact: the state each starts in, its other states, those of them it ends in,
   * and the `##` sections its body must hold.
@@ -51,10 +51,15 @@ enum TransitionAction extends caps.Pure {
 }
 
 /** What `role` is shown working on an artifact: it, and what it cites to `depth` links, of
-  * `kinds`; never what the project's conversations said.
+  * `kinds`; whole, whatever it cites, each artifact of the project whose local key is one of
+  * `carried`; never what the project's conversations said.
   */
-final case class RoleView private (role: RoleName, kinds: Set[KindName], depth: Int)
-    extends caps.Pure
+final case class RoleView private (
+    role: RoleName,
+    kinds: Set[KindName],
+    depth: Int,
+    carried: Set[LocalKey]
+) extends caps.Pure
 
 object RoleView {
 
@@ -62,9 +67,14 @@ object RoleView {
   val Deepest: Int = 3
 
   /** This view, or why not: `depth` under 0 or over [[Deepest]], or `kinds` empty. */
-  def of(role: RoleName, kinds: Set[KindName], depth: Int): Either[String, RoleView] =
+  def of(
+      role: RoleName,
+      kinds: Set[KindName],
+      depth: Int,
+      carried: Set[LocalKey] = Set.empty
+  ): Either[String, RoleView] =
     if (depth < 0 || depth > Deepest)
       Left(s"a role view's depth is $depth, not 0 to $Deepest")
     else if (kinds.isEmpty) Left("a role view shows no kind")
-    else Right(new RoleView(role, kinds, depth))
+    else Right(new RoleView(role, kinds, depth, carried))
 }

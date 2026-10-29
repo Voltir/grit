@@ -993,7 +993,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           case BriefRefusal.Unknown(k) =>
             Stop.Refused(s"project ${ProjectKey.value(k.project)} has no artifact ${k.value}")
           case BriefRefusal.Over(size) =>
-            Stop.Refused(s"${args.key.value} alone is $size characters, over ${args.chars}")
+            Stop.Refused(
+              s"${args.key.value} with what its role always carries is $size characters, " +
+                s"over ${args.chars}"
+            )
         }
       } yield brief.text
     }
