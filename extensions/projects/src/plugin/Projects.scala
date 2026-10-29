@@ -18,7 +18,7 @@ import grit.projects.name.{ArtifactKey, MethodName, StateName}
   * never a document, so the artifact keeps its version), `project_withdraw` (an artifact no
   * other names, or with what is under it, ended citers rewritten; its history kept as of an
   * instant), and the reading `project_show`, `project_list`,
-  * `project_find`, `project_export` and `project_brief`. Each write records its writer as the
+  * `project_find` (ended artifacts only when asked), `project_export` and `project_brief`. Each write records its writer as the
   * artifact's `by`, and a claim its claimer.
   */
 final class Projects private (methods: Vector[Method], default: MethodName) extends Plugin {

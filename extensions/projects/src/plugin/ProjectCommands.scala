@@ -448,33 +448,60 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       ToolName("project_find"),
       said(
         s"Finds the artifacts whose titles and bodies best match some words, best first, at " +
-          s"most $Found, one line each: only one project's, when given."
+          s"most $Found, one line each: only one project's, when given. Leaves out ended " +
+          "artifacts (in an end state of their kind, such as done, dropped or closed) unless " +
+          "`ended` is true. Pass `ended: true` when asking what was tried before, what was " +
+          "decided against, or why something was decided: dropped notes and ended milestones " +
+          "hold the alternatives that were rejected."
       ),
       Args
         .of(
           (
             query = Field.text("The words to find."),
-            project = Field.text("Only artifacts of this project.").optional
+            project = Field.text("Only artifacts of this project.").optional,
+            ended = Field
+              .flag(
+                "Whether to find ended artifacts too: true when asking what was tried, " +
+                  "rejected or decided, and why; false when not given."
+              )
+              .optional
           )
         )
         .refine(a =>
           a.project
             .fold(Right(None))(p => parsed("project", p, ProjectKey.of).map(Some(_)))
-            .map(Finding(a.query, _))
+            .map(Finding(a.query, _, a.ended.getOrElse(false)))
         )
     )
     def run(args: Finding, by: Principal.Person, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
-        hits <- stored(own.documents.search(args.query, Found, at))
+        hits <- stored(own.documents.search(args.query, FoundAmong, at))
         // A project's index is no artifact: its key has no `/`.
         documents = hits.map(_.document).filter(d => ArtifactKey.read(DocKey.value(d.key)).isRight)
         artifacts <- refuse(every(documents.map(readable)))
         heads = artifacts
           .map(_.head)
           .filter(h => args.project.forall(_ == h.key.project))
-      } yield AnswerText.heads(heads, "Nothing matches.")
+        // An artifact of a project whose method is not declared here is never left out.
+        ends <-
+          if (args.ended) Right(Map.empty[ProjectKey, ArtifactHead -> Boolean])
+          else
+            heads
+              .map(_.key.project)
+              .distinct
+              .foldLeft[Either[Stop, Map[ProjectKey, ArtifactHead -> Boolean]]](Right(Map.empty)) {
+                (so, p) =>
+                  so.flatMap(m =>
+                    pinned(own.documents, p)
+                      .map(pin => ending(pin).toOption.fold(m)(m.updated(p, _)))
+                  )
+              }
+      } yield AnswerText.heads(
+        heads.filterNot(h => ends.get(h.key.project).exists(_(h))).take(Found),
+        "Nothing matches."
+      )
     }
   }
 
@@ -663,9 +690,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         project <- loaded(own, args.key.project)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         ended <-
-          if (args.cascade)
-            refuse(declared(project.pin))
-              .map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
+          if (args.cascade) ending(project.pin)
           else Right[Stop, ArtifactHead -> Boolean](_ => false)
         // What is left is a Project, so its export reads back (ADR 0049).
         done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
@@ -798,6 +823,12 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       .toRight(
         s"the method ${MethodName.value(pin.method)} version ${pin.version} is not declared here"
       )
+
+  /** Whether an artifact of a project holding to `pin` is in an end state of its kind, or why
+    * not: `pin`'s method is not declared here.
+    */
+  private def ending(pin: Pin): Either[Stop, ArtifactHead -> Boolean] =
+    refuse(declared(pin)).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
 }
 
 private[plugin] object ProjectCommands {
@@ -854,7 +885,8 @@ private[plugin] object ProjectCommands {
       extends caps.Pure
 
   /** `project_find`'s arguments. */
-  final case class Finding(query: String, project: Option[ProjectKey]) extends caps.Pure
+  final case class Finding(query: String, project: Option[ProjectKey], ended: Boolean)
+      extends caps.Pure
 
   /** `project_export`'s arguments. */
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
@@ -914,18 +946,17 @@ private[plugin] object ProjectCommands {
   /** 20: the most artifacts `project_find` answers. */
   private val Found: Int = 20
 
+  /** 100: how many best matches `project_find` reads, before leaving out another project's and
+    * ended ones, to answer [[Found]] of.
+    */
+  private val FoundAmong: Int = 100
+
   /** `project` and its artifacts as `own` holds them, or why not. */
   private def loaded(own: DocumentShelf, project: ProjectKey)(using
       Tx^
   ): Either[Stop, Loaded] = {
-    val p = ProjectKey.value(project)
     for {
-      indexing <- refuse(ArtifactJson.indexing(project))
-      indexes <- stored(own.referring(indexing, 1))
-      index <- indexes.headOption.toRight(
-        Stop.Refused(s"there is no project $p; start it with project_new")
-      )
-      pin <- refuse(ArtifactJson.pinOf(index).left.map(why => s"project $p cannot be read: $why"))
+      pin <- pinned(own, project)
       holding <- refuse(ArtifactJson.holding(project))
       documents <- stored(own.referring(holding, Projects.Terms.bound))
       artifacts <- refuse(every(documents.map(d => readable(d).map(d -> _))))
@@ -947,6 +978,19 @@ private[plugin] object ProjectCommands {
   /** `document` as an artifact, or why not, naming it. */
   private def readable(document: Document): Either[String, Artifact] =
     Artifact.of(document).left.map(why => s"${DocKey.value(document.key)} cannot be read: $why")
+
+  /** The pin `project`'s index holds as `own` holds it, or why not. */
+  private def pinned(own: DocumentShelf, project: ProjectKey)(using Tx^): Either[Stop, Pin] = {
+    val p = ProjectKey.value(project)
+    for {
+      indexing <- refuse(ArtifactJson.indexing(project))
+      indexes <- stored(own.referring(indexing, 1))
+      index <- indexes.headOption.toRight(
+        Stop.Refused(s"there is no project $p; start it with project_new")
+      )
+      pin <- refuse(ArtifactJson.pinOf(index).left.map(why => s"project $p cannot be read: $why"))
+    } yield pin
+  }
 
   /** The artifact `key` of `project`, with its document, or why not. */
   private def artifact(project: Loaded, key: ArtifactKey): Either[Stop, (Document, Artifact)] =

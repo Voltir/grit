@@ -407,6 +407,28 @@ object ProjectCommandsTests extends TestSuite {
       assert(found == "p/a (note, open): Title a")
     }
 
+    test("project_find leaves out ended artifacts unless asked for them") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "The cache is cold.")
+      kept(projects, store, "b", "note", "The cache was dropped.")
+      done(ask(projects, store, "project_move", "key" -> "p/b", "to" -> "closed"))
+      def found(more: (String, ujson.Value)*) =
+        done(
+          askAt(at.plusSeconds(1))(
+            projects,
+            store,
+            "project_find",
+            (Seq("query" -> ujson.Str("cache")) ++ more)*
+          )
+        ).linesIterator.toVector.sorted
+      assert(found() == Vector("p/a (note, open): Title a"))
+      assert(
+        found("ended" -> true) == Vector("p/a (note, open): Title a", "p/b (note, closed): Title b")
+      )
+    }
+
     test("project_new refuses a project that exists, and a method not declared") {
       val projects = plugin()
       val store = Store()
