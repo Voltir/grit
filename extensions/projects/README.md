@@ -30,7 +30,8 @@ Packages, in one-way order (each names only those before it):
   and `Brief`, what a session on one artifact is given, a pure function of the project's value
   (`BriefTests`). Imports `name`, `artifact` and `method` (a brief is shaped by a role view).
 - **`plugin`**: `Projects`, the plugin, and its commands (ADR 0048): the only writers of its
-  documents, each run in one transaction. Imports every package before it.
+  documents, each run in one transaction; and `Projects.reaching`, the watch an edge waits on an
+  artifact's state with (ADR 0051). Imports every package before it.
 
 No source file sits at the module's root.
 

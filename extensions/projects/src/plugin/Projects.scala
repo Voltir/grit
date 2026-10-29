@@ -3,10 +3,12 @@ package grit.projects.plugin
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms}
-import grit.core.id.PluginName
+import grit.core.edge.{WatchFor, Watched}
+import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
+import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Example, Method, MethodBench}
-import grit.projects.name.MethodName
+import grit.projects.name.{ArtifactKey, MethodName, StateName}
 
 /** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
   * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
@@ -82,6 +84,15 @@ object Projects {
         unbenched.headOption.toLeft(new Projects(declared, default))
     }
   }
+
+  /** A watch for the artifact `key` to be in one of `states`, or why not: no states, or a key
+    * no document's may be.
+    */
+  def reaching(key: ArtifactKey, states: Set[StateName]): Either[String, WatchFor.Holding] =
+    DocKey.of(key.value).flatMap(WatchFor.Holding.of(Name, _, states.map(ArtifactJson.stateRef)))
+
+  /** The states a watch from [[reaching]] was met in: those of its refs that name one. */
+  def reached(held: Watched.Held): Set[StateName] = held.refs.flatMap(ArtifactJson.stateOf)
 
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms

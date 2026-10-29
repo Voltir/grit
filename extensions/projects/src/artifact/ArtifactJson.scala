@@ -28,7 +28,7 @@ object ArtifactJson {
     val named = Vector(
       HoldingKind -> ProjectKey.value(h.key.project),
       "kind" -> KindName.value(h.kind),
-      "state" -> StateName.value(h.state)
+      StateKind -> StateName.value(h.state)
     ) ++ h.parent.map("parent" -> _.value) ++
       (h.cites ++ Body.cites(artifact.body)).distinct.map("cites" -> _.value)
     if (headBytes > HeadMost)
@@ -120,6 +120,17 @@ object ArtifactJson {
       stored <- document.data.objOpt.flatMap(_.get(BodyField)).toRight("its data holds no body")
       body <- Body.fromStored(stored)
     } yield Artifact(ArtifactHead(key, kind, state, title, parent, cites, by), body)
+
+  /** The ref an artifact in `state` holds, as [[write]] names it. */
+  def stateRef(state: StateName): DocRef =
+    // A literal kind DocRef.of accepts, and a state's name, which is a slug.
+    DocRef.of(StateKind, StateName.value(state)).fold(e => sys.error(e), identity)
+
+  /** The state `ref` names, when it is the ref [[stateRef]] gives. */
+  def stateOf(ref: DocRef): Option[StateName] =
+    if (ref.kind == StateKind) StateName.of(ref.ref).toOption else None
+
+  private val StateKind: String = "state"
 
   private val HoldingKind: String = "project"
   private val HeadField: String = "head"

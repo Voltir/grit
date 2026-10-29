@@ -13,12 +13,14 @@ import grit.core.document.{
   DocumentTerms,
   InMemoryDocuments
 }
-import grit.core.id.{DocKey, PluginName}
+import grit.core.edge.Watched
+import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.Tx
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.TestTx
 import grit.projects.name.{ArtifactKey, KindName, ProjectKey, StateName}
+import grit.projects.plugin.Projects
 import grit.projects.render.ProjectGen
 import grit.prose.form.{Block, Doc, Span, Text}
 import grit.prose.json.ProseJson
@@ -141,6 +143,23 @@ object ArtifactJsonTests extends TestSuite {
     }
     // A pin of the stored form: projects' documents are kept 180 days, and each is read back
     // through these keys.
+    test(
+      "a watch for an artifact's states is met by the ref its write holds, read back as its state"
+    ) {
+      val review = right(StateName.of("review"))
+      val merged = right(StateName.of("merged"))
+      val (_, _, refs) =
+        right(ArtifactJson.write(Artifact(head("a").copy(state = review), right(Body.read("x")))))
+      val watch = right(Projects.reaching(key("a"), Set(review, merged)))
+      val met = watch.refs.intersect(refs)
+      val version = DocumentVersionId.of(1L).getOrElse(throw new java.lang.AssertionError("id"))
+      assert(
+        (watch.plugin, watch.key) == (Projects.Name, right(DocKey.of("p/a"))),
+        Projects.reached(Watched.Held(version, met, at)) == Set(review),
+        Projects.reaching(key("a"), Set.empty) == Left("a watch names a ref to hold")
+      )
+    }
+
     test("an artifact is stored as its head and its body, under these keys") {
       val a = Artifact(
         head("a", Vector(key("b"))).copy(parent = Some(key("p0"))),
