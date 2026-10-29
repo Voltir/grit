@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
 import java.time.Instant
+import java.util.concurrent.{Callable, CountDownLatch, Executors, TimeUnit}
 
 import scala.util.Using
 
@@ -87,6 +88,22 @@ object ClaimsLiveTests extends TestSuite {
       }
     }
 
+  /** Whether, within 10 seconds, some session waits on a lock another holds. */
+  private def waiting(): Boolean = {
+    val deadline = System.nanoTime() + 10_000_000_000L
+    def blocked: Boolean = LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.createStatement()) { st =>
+        Using.resource(st.executeQuery("SELECT count(*) FROM pg_locks WHERE NOT granted")) { rs =>
+          rs.next()
+          rs.getLong(1) > 0
+        }
+      }
+    }
+    while (!blocked && System.nanoTime() < deadline) Thread.sleep(10)
+    blocked
+  }
+
   val tests = Tests {
     test("claim, release and claim again write no document version and no tombstone") {
       val c = new SqlClaims(PluginName.of("claims-unversioned").getOrElse(sys.error("name")))
@@ -132,6 +149,61 @@ object ClaimsLiveTests extends TestSuite {
       val early = held("forgotten-1")
       ok(LiveDb.transaction(config)(SqlClaims.forget(due)))
       assert(early == 1L, held("forgotten-1") == 0L)
+    }
+
+    test("of two transactions claiming one subject at once, the second waits and is refused") {
+      val c = new SqlClaims(ok(PluginName.of("claims-raced")))
+      val made = new CountDownLatch(1)
+      val commit = new CountDownLatch(1)
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val first = pool.submit(new Callable[Claimed] {
+          def call(): Claimed = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            val got = ok(
+              c.claim(
+                ok(DocKey.of("p/race")),
+                ok(ClaimHolder.of("race-1")),
+                builder,
+                by,
+                Label.Public,
+                at
+              )
+            )
+            made.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+            got
+          }
+        })
+        assert(made.await(10, TimeUnit.SECONDS))
+        val second = pool.submit(new Callable[Either[StoreError, Claimed]] {
+          def call(): Either[StoreError, Claimed] =
+            LiveDb.transaction(config, Clearance.of(Label.Public))(
+              c.claim(
+                ok(DocKey.of("p/race")),
+                ok(ClaimHolder.of("race-2")),
+                builder,
+                by,
+                Label.Public,
+                at
+              )
+            )
+        })
+        val waited = waiting()
+        commit.countDown()
+        val one = first.get(10, TimeUnit.SECONDS)
+        // The claim read back names its person's accounts; the one made, as it was given.
+        val refused = second.get(10, TimeUnit.SECONDS).map {
+          case Claimed.Taken(Some(t)) => Claimed.Taken(Some(t.copy(by = by)))
+          case other => other
+        }
+        (waited, refused) ==> ((
+          true,
+          one match {
+            case Claimed.Made(claim) => Right(Claimed.Taken(Some(claim)))
+            case other => Right(other)
+          }
+        ))
+      } finally pool.shutdownNow()
     }
   }
 }
