@@ -1,6 +1,6 @@
 # 0027. A plugin is a bundle of contributions to core's points, and reaches another only through a service it exports
 
-Status: accepted (2026-10-05); revised (2026-10-27)
+Status: accepted (2026-10-05); revised (2026-10-29)
 
 Context: a plugin is posted each closed period and keeps cache documents (ADR 0011); anything
 more was the kit's, which offered Digest's `recent_activity` because it recognised Digest by
@@ -43,7 +43,8 @@ Decision:
 - **A plugin never reads a dependency while posting**: each plugin's cursor moves on its own,
   so a dependency read there may be half posted. Tools, fragments and jobs read it.
 - **A plugin owns no table**: its rows are in grit's generic plugin tables
-  (`grit.plugin_docs`, `grit.plugin_cursors`, `grit.documents`), keyed by its name. Plugin
+  (`grit.plugin_docs`, `grit.plugin_cursors`, `grit.documents`, `grit.claims`), keyed by its
+  name. Plugin
   tables would need an owner for a deployment's schema, which no record gives.
 
 Consequences:

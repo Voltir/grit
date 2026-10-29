@@ -1,6 +1,6 @@
 # 0014. Every deletion goes through a tombstone
 
-Status: accepted (2026-09-26); revised (2026-10-28)
+Status: accepted (2026-09-26); revised (2026-10-29)
 
 Context: grit keeps data under windows: a closed period's raw entries and workflow histories
 for one, closings, period rows and usage for a longer one, plugin documents for as long as
@@ -24,7 +24,8 @@ Decision:
 - **Whatever knows a thing is finished writes a tombstone on it**, in the transaction that
   knows it: a seal on its period's raw entries, on the closing it replaces and on its
   conversation going quiet; a plugin's posting, cursor restart or document version on what it
-  left behind; the sweep on a plugin no longer enabled; an ended schedule on its row. A
+  left behind; the sweep on a plugin no longer enabled, and on a session's log and row once
+  kept long enough after it ends (ADR 0050); an ended schedule on its row. A
   tombstone names its target (`grit.core.retention.Target`) and when it was written, at most
   one per target: a second write keeps the first time.
 - **One collector deletes, and only what a due tombstone names**, once its kind's window has
@@ -33,15 +34,16 @@ Decision:
   tombstone behind the ones due since), then its rows and the tombstone's end in one
   transaction. What finds its target alive again (a quiet conversation with a later period, a
   plugin enabled again) spares the tombstone instead. Collecting is idempotent.
-- The one deletion no tombstone names is the collector's forgetting of tombstones ended
-  longer ago than the ledger window.
+- Besides live state, the one deletion no tombstone names is the collector's forgetting of
+  tombstones ended longer ago than the ledger window.
 - **Tombstones govern records, not live state.** A row that is live state with no history (a
-  lock such as a claim, a cursor, a counter) is removed by the write that ends it, and its
-  table declares itself kept with what bounds it: tombstoning a release would hold the next
-  claim until it was collected.
+  lock such as a claim, a cursor, a counter) is removed by the write that ends it, or by the
+  sweep once it has lapsed, with no tombstone: tombstoning a release would hold the next claim
+  until it was collected.
 - **Every table declares its retention class** in `schema.sql`: journal (the retention
-  window), ledger (the ledger window), cache (rebuilt from closings, deleted with them) or
-  kept, with what bounds it.
+  window), ledger (the ledger window), cache (rebuilt from closings, deleted with them),
+  expiring (deleted once its own expiry passes) or kept, each with what deletes it and what
+  bounds it.
 
 Consequences:
 

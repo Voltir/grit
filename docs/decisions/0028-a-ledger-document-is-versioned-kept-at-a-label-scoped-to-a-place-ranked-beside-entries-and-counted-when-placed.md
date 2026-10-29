@@ -1,6 +1,6 @@
 # 0028. A ledger document is versioned, kept at a label, scoped to a place, ranked beside entries, and counted when placed
 
-Status: accepted (2026-10-05); revised (2026-10-27)
+Status: accepted (2026-10-05); revised (2026-10-28)
 
 Context: ADR 0011 gives a plugin cache and ledger documents. A knowledge index needs the
 ledger: short documents (a summary pointing to where the full text lives, a topic, a rule)

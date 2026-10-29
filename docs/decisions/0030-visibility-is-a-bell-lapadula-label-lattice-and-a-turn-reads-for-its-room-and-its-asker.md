@@ -1,6 +1,6 @@
 # 0030. Visibility is a Bell–LaPadula label lattice, and a turn reads for its room and its asker
 
-Status: accepted (2026-10-06); revised (2026-10-27)
+Status: accepted (2026-10-06); revised (2026-10-28)
 
 Context: grit first served several people with no visibility model: one database was one
 trust boundary, so whoever could write to its conversations could see everything it held, and

@@ -17,10 +17,11 @@ Decision: `EdgeWatch.until` waits for a `WatchFor`, data a request carries: a pl
 document holding one of some refs, or a commit at or after an instant by a session's holder or
 in a worktree.
 
-- **Writers notice as they commit.** A write that versions a document sends `plugin/key`, and a
-  recording that logs a commit sends an empty notice, inside the writer's own transaction, so a
-  rolled-back write is never heard. A new writer of either sends the same.
-- **One listener per process,** on a connection of its own, rings only the watches a notice may
+- **Writers notice as they commit.** A write that keeps a document's body sends `plugin/key`
+  (a withdrawal, which no watch can meet, sends none), and a recording that logs a commit sends
+  an empty notice, inside the writer's own transaction, so a rolled-back write is never heard.
+  A new writer of either sends the same.
+- **One listener per engine or link,** on a connection of its own, rings only the watches a notice may
   meet. A watch registers, the listener is up, and only then does the watch read; the listener
   rings every watch each time it begins listening, so no commit after a watch begins goes
   unread. While it is down, watches read again on a fixed interval.
@@ -31,6 +32,8 @@ in a worktree.
   blocks its caller's thread for its whole wait.
 
 Consequences: waiting costs a read per notice that may meet it, not per interval. No table, no
-recorded step and no workflow is added, so replay is unaffected. Every writer of a document
-version or a session's commit must notice; one that does not leaves its watches waiting until
-they lapse. Enforced by `SqlNoticesTests` and `SqlWatchTests`.
+recorded step and no workflow is added, so replay is unaffected. Every writer of a document's
+body or a session's commit must notice; one that does not leaves its watches waiting until
+they lapse. The desk's own wait (ADR 0017) still listens on its registration connection: a
+second listener per process, folded into this one when grit's own turn waits on the store.
+Enforced by `SqlNoticesTests` and `SqlWatchTests`.
