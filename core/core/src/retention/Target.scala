@@ -6,11 +6,13 @@ import grit.core.id.{
   ConversationId,
   DocumentVersionId,
   FileHandle,
+  Harness,
   PeriodRef,
   PeriodSeq,
   PieceSetId,
   PluginName,
-  ScheduleId
+  ScheduleId,
+  SessionId
 }
 import grit.core.period.{CloseOrdinal, Windows}
 
@@ -68,6 +70,16 @@ enum Target {
     */
   case PieceSet(set: PieceSetId)
 
+  /** A working session's log, [[grit.core.session.Session.LogKept]] after it ended. Spared when
+    * it was recorded on since its tombstone was written.
+    */
+  case SessionEvents(id: SessionId)
+
+  /** A working session's row, and any log it still has, [[grit.core.session.Session.Kept]] after
+    * it ended. Spared when it was recorded on since its tombstone was written.
+    */
+  case Session(id: SessionId)
+
   def kind: Target.Kind = this match {
     case Raw(_) => Target.Kind.Raw
     case Superseded(_) => Target.Kind.Superseded
@@ -79,6 +91,8 @@ enum Target {
     case Schedule(_) => Target.Kind.Schedule
     case File(_) => Target.Kind.File
     case PieceSet(_) => Target.Kind.PieceSet
+    case SessionEvents(_) => Target.Kind.SessionEvents
+    case Session(_) => Target.Kind.Session
   }
 }
 
@@ -96,11 +110,13 @@ object Target {
     case Schedule extends Kind("schedule")
     case File extends Kind("file")
     case PieceSet extends Kind("piece-set")
+    case SessionEvents extends Kind("session-events")
+    case Session extends Kind("session")
 
     /** How long after its tombstone is written a target of this kind is deleted: `windows`'
       * retention for Raw, PostRuns, Restarted and Schedule; its ledger window for Superseded,
       * Quiet and Disabled; for Document and PieceSet, its plugin's declared retention; for File,
-      * none, as its tombstone is written once its own expiry has passed.
+      * SessionEvents and Session, none, as each tombstone is written once its own time has passed.
       */
     def retention(windows: Windows): Retention = this match {
       case Kind.Raw | Kind.PostRuns | Kind.Restarted | Kind.Schedule =>
@@ -108,6 +124,7 @@ object Target {
       case Kind.Superseded | Kind.Quiet | Kind.Disabled => Retention.For(windows.ledger)
       case Kind.Document | Kind.PieceSet => Retention.Declared
       case Kind.File => Retention.For(Duration.Zero)
+      case Kind.SessionEvents | Kind.Session => Retention.For(Duration.Zero)
     }
   }
 
@@ -120,7 +137,7 @@ object Target {
   /** `target`'s stored key, beside its kind's name: `{conversation}:{period}` for a period's,
     * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's, `{version}`
     * for a document's, its id for a schedule's, its handle's number for a file's, its number for
-    * a piece set's.
+    * a piece set's, `{harness}:{local}` for a session's.
     */
   def key(target: Target): String = target match {
     case Raw(p) => period(p)
@@ -134,6 +151,8 @@ object Target {
     case Schedule(id) => ScheduleId.value(id)
     case File(handle) => FileHandle.value(handle).toString
     case PieceSet(set) => PieceSetId.value(set).toString
+    case SessionEvents(id) => session(id)
+    case Session(id) => session(id)
   }
 
   /** The target of `kind` stored under `key`, or why it is none. */
@@ -146,6 +165,18 @@ object Target {
             .map(seq => make(PeriodRef(ConversationId(c), seq)))
             .toRight(s"${kind.name} $key: not a period")
         case _ => Left(s"${kind.name} $key: not a period")
+      }
+    // A harness's name is a slug, holding no `:`: the first one ends it.
+    def sessionOf(make: SessionId => Target) =
+      key.indexOf(':') match {
+        case -1 => Left(s"${kind.name} $key: not a session's")
+        case i =>
+          Harness
+            .of(key.take(i))
+            .flatMap(SessionId.of(_, key.drop(i + 1)))
+            .map(make)
+            .left
+            .map(why => s"${kind.name} $key: $why")
       }
     def pluginOf(make: PluginName => Target) =
       PluginName.of(key).map(make).left.map(why => s"${kind.name} $key: $why")
@@ -172,6 +203,8 @@ object Target {
           .flatMap(PieceSetId.of)
           .map(PieceSet(_))
           .toRight(s"piece-set $key: not a set's number")
+      case Kind.SessionEvents => sessionOf(SessionEvents(_))
+      case Kind.Session => sessionOf(Session(_))
       case Kind.PostRuns =>
         key.split(':') match {
           case Array(p, v, c) =>
@@ -187,4 +220,6 @@ object Target {
 
   private def period(p: PeriodRef): String =
     s"${ConversationId.value(p.conversationId)}:${PeriodSeq.value(p.seq)}"
+
+  private def session(id: SessionId): String = s"${Harness.value(id.harness)}:${id.local}"
 }

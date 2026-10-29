@@ -33,12 +33,14 @@ import grit.core.id.{
   EdgeName,
   EntryId,
   EntrySeq,
+  Harness,
   PeriodRef,
   PeriodSeq,
   PluginName,
   PrincipalIds,
   ScheduleId,
   ScheduleKey,
+  SessionId,
   SourceId,
   TriageRef,
   TurnRef,
@@ -61,6 +63,7 @@ import grit.core.period.{
 import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
+import grit.core.session.{Event, Session}
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject}
 import grit.core.visibility.{Integrity, Provenance, Readers}
@@ -71,6 +74,7 @@ import grit.dbos.sql.{
   SqlClaims,
   SqlDocuments,
   SqlEntryStore,
+  SqlIdentities,
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlPeriodStore,
@@ -78,6 +82,7 @@ import grit.dbos.sql.{
   SqlPluginCursors,
   SqlPluginDocs,
   SqlSchedules,
+  SqlSessions,
   SqlSpeechStore,
   SqlTombstones,
   SqlUsageLedger,
@@ -549,6 +554,54 @@ object CollectorLiveTests extends TestSuite {
   private val Morning = Instant.parse("2026-10-07T08:00:00Z")
 
   /** The deployment's daily schedules of one job, declared and read through the SQL store. */
+  /** Working sessions of one person, recorded and read through the SQL store. */
+  private final class Sessions(config: DbConfig) {
+    private val store = new SqlSessions
+
+    private lazy val ann: Principal.Person =
+      LiveDb
+        .transaction(config) {
+          val account = grit.core.identity.TestAccounts.account("slack:T1/U-ann")
+          SqlIdentities.enroll(Set(account)).flatMap(_ => SqlIdentities.person(account))
+        }
+        .fold(e => sys.error(s"$e"), identity) match {
+        case Some(p: Principal.Person) => p
+        case other => sys.error(s"ann is no person: $other")
+      }
+
+    def id(local: String): SessionId =
+      Harness.of("claude-code").flatMap(SessionId.of(_, local)).fold(sys.error, identity)
+
+    /** `kinds` recorded on `local`, the i-th at `at` plus i seconds, its `n` `from` plus i. */
+    def record(local: String, at: Instant, kinds: Vector[Event.Kind], from: Long = 1): Unit = {
+      val events = kinds.zipWithIndex.map((k, i) =>
+        Event.of(from + i, at.plusSeconds(i.toLong), k, Event.Shape.Empty).fold(sys.error, identity)
+      )
+      LiveDb
+        .transaction(config)(
+          store.record(Session.Header(id(local), None, ann, Label.Public), events)
+        )
+        .fold(e => sys.error(s"$e"), _ => ())
+    }
+
+    /** How many lines `local`'s log holds, or `None` once its row is gone. */
+    def lines(local: String): Option[Int] =
+      LiveDb
+        .transaction(config)(store.read(id(local)))
+        .fold(e => sys.error(s"$e"), identity)
+        .map(_ =>
+          LiveDb.connected(config) { c =>
+            val ps = c.prepareStatement(
+              "SELECT count(*) FROM grit.session_events e JOIN grit.sessions s ON s.id = e.session WHERE s.local = ?"
+            )
+            ps.setString(1, local)
+            val rs = ps.executeQuery()
+            rs.next()
+            rs.getInt(1)
+          }
+        )
+  }
+
   private final class Schedules(config: DbConfig) {
     private val store = new SqlSchedules(tombstones)
     private val job = new JobTests.Counting("standup")
@@ -1413,6 +1466,64 @@ object CollectorLiveTests extends TestSuite {
             blobs.kept()
           ) ==> (Right(None), Right(1), Right(1), Right(Vector()))
         }
+      } finally engine.close()
+    }
+
+    test(
+      "a session's log goes a month after it ended and its row half a year after; one that never said it ended ends a day after its last event"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_sessions")
+      val engine = launched(config, 1.day)
+      try {
+        val s = new Sessions(config)
+        val t = Instant.parse("2026-01-01T00:00:00Z")
+        s.record("said", t, Vector(Event.Kind.Started, Event.Kind.Edited, Event.Kind.Ended))
+        s.record("silent", t, Vector(Event.Kind.Started, Event.Kind.Edited, Event.Kind.Ran))
+        // `said` ended at t+2s; `silent` last did something at t+2s, so ends a day later.
+        val logKept = t.plusSeconds(2).plusMillis(Session.LogKept.toMillis)
+        val kept = t.plusSeconds(2).plusMillis(Session.Kept.toMillis)
+        val day = Session.Unended.toSeconds
+        // A sweep marks what is due; the next collects it.
+        def swept(at: Instant) =
+          engine.sweep(at).flatMap(_ => engine.sweep(at.plusSeconds(1))).map(_.collected)
+        val before = swept(logKept.minusSeconds(2))
+        val logGone = swept(logKept)
+        val linesThen = (s.lines("said"), s.lines("silent"))
+        val silentLogGone = swept(logKept.plusSeconds(day))
+        val rowsKept = swept(kept.minusSeconds(2))
+        val rowGone = swept(kept)
+        val silentRowGone = swept(kept.plusSeconds(day))
+        assert(
+          before == Right(Vector()),
+          logGone == Right(Vector(Target.SessionEvents(s.id("said")))),
+          linesThen == (Some(0), Some(3)),
+          silentLogGone == Right(Vector(Target.SessionEvents(s.id("silent")))),
+          rowsKept == Right(Vector()),
+          rowGone == Right(Vector(Target.Session(s.id("said")))),
+          silentRowGone == Right(Vector(Target.Session(s.id("silent")))),
+          (s.lines("said"), s.lines("silent")) == (None, None)
+        )
+      } finally engine.close()
+    }
+
+    test("a session recorded on since its log's tombstone was written is spared, its log kept") {
+      val config = TestPostgres.freshDatabase("collect_session_spared")
+      val engine = launched(config, 1.day)
+      try {
+        val s = new Sessions(config)
+        val t = Instant.parse("2026-01-01T00:00:00Z")
+        s.record("back", t, Vector(Event.Kind.Started, Event.Kind.Ended))
+        val due = t.plusSeconds(1).plusMillis(Session.LogKept.toMillis)
+        // Marked as the sweep marks it, then resumed before the collector takes it.
+        LiveDb.transaction(config)(tombstones.write(Target.SessionEvents(s.id("back")), due)) ==>
+          Right(true)
+        s.record("back", due, Vector(Event.Kind.Started), from = 3)
+        val swept = engine.sweep(due.plusSeconds(1))
+        assert(
+          swept.map(r => (r.collected, r.spared)) ==
+            Right((Vector(), Vector(Target.SessionEvents(s.id("back"))))),
+          s.lines("back") == Some(3)
+        )
       } finally engine.close()
     }
   }

@@ -27,7 +27,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.triage.{Shadowing, TriageShadows}
-import grit.dbos.sql.{Opener, SqlSchedules}
+import grit.dbos.sql.{Opener, SqlSchedules, SqlSessions}
 import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
 import dev.dbos.transact.DBOSClient
@@ -90,6 +90,18 @@ private[engine] final class Sweeper(
   private def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     Transact.read(dataSource, opener)(body)
 
+  /** Every session whose log or row has been kept long enough since it ended marked for
+    * deletion at `now`, at most [[Collector.Batch]] of each ([[SqlSessions.due]]).
+    */
+  private def expire(now: Instant): Either[StoreError, Unit] =
+    write(
+      SqlSessions
+        .due(now, Collector.Batch)
+        .flatMap(_.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, t) =>
+          acc.flatMap(_ => tombstones.write(t, now).map(_ => ()))
+        })
+    )
+
   /** Closes and asks, then posts, then collects: see [[Engine.sweep]]. */
   def once(now: Instant): Either[StoreError, Swept] =
     for {
@@ -114,6 +126,7 @@ private[engine] final class Sweeper(
       shadowed <- declared().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, s) =>
         acc.flatMap(done => shadow(s, now).map(done + _))
       }
+      _ <- expire(now)
       collected <- collector.once(settings, now)
     } yield closed + asked + posted + shadowed + collected
 

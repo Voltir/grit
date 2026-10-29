@@ -25,7 +25,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.dbos.sql.{Opener, SqlClaims, SqlDeclassifications, SqlSchedules}
+import grit.dbos.sql.{Opener, SqlClaims, SqlDeclassifications, SqlSchedules, SqlSessions}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -172,7 +172,7 @@ private[engine] final class Collector(
             case None => Named.none
           })
       case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) | Target.Schedule(_) |
-          Target.File(_) | Target.PieceSet(_) =>
+          Target.File(_) | Target.PieceSet(_) | Target.SessionEvents(_) | Target.Session(_) =>
         Right(Named.none)
     }
 
@@ -331,6 +331,18 @@ private[engine] final class Collector(
           _ <- pieces.forget(set)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
+      // A session recorded on since its tombstone was written is spared, and marked again once
+      // it has ended for long enough.
+      case Target.SessionEvents(id) =>
+        SqlSessions.forgetLog(id, now).flatMap {
+          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
+          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
+        }
+      case Target.Session(id) =>
+        SqlSessions.forget(id, now).flatMap {
+          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
+          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
+        }
     }
 }
 

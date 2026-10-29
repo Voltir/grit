@@ -6,11 +6,13 @@ import grit.core.id.{
   ConversationId,
   DocumentVersionId,
   FileHandle,
+  Harness,
   PeriodRef,
   PeriodSeq,
   PieceSetId,
   PluginName,
-  ScheduleId
+  ScheduleId,
+  SessionId
 }
 import grit.core.period.{CloseOrdinal, Windows}
 
@@ -25,6 +27,9 @@ object TargetTests extends TestSuite {
   private val schedule = ScheduleId.of("declared:plugin:digest:daily").fold(sys.error, identity)
   private val file = FileHandle.of(41).getOrElse(sys.error("file"))
   private val set = PieceSetId.of(43).getOrElse(sys.error("set"))
+  // A harness's name is a slug, so a session's own id may hold the key's separator.
+  private val session =
+    Harness.of("claude-code").flatMap(SessionId.of(_, "a:b")).fold(sys.error, identity)
 
   private val all: Vector[Target] = Vector(
     Target.Raw(p),
@@ -36,7 +41,9 @@ object TargetTests extends TestSuite {
     Target.Document(version),
     Target.Schedule(schedule),
     Target.File(file),
-    Target.PieceSet(set)
+    Target.PieceSet(set),
+    Target.SessionEvents(session),
+    Target.Session(session)
   )
 
   val tests = Tests {
@@ -52,7 +59,9 @@ object TargetTests extends TestSuite {
         ("document", "42"),
         ("schedule", "declared:plugin:digest:daily"),
         ("file", "41"),
-        ("piece-set", "43")
+        ("piece-set", "43"),
+        ("session-events", "claude-code:a:b"),
+        ("session", "claude-code:a:b")
       )
     }
 
@@ -68,11 +77,18 @@ object TargetTests extends TestSuite {
         Left("schedule asked:7: asked:7 is no schedule's id")
       Target.read(Target.Kind.File, "f41") ==> Left("file f41: not a file's handle")
       Target.read(Target.Kind.PieceSet, "0") ==> Left("piece-set 0: not a set's number")
+      Target.read(Target.Kind.Session, "Claude:a") ==>
+        Left(
+          "session Claude:a: a harness's name holds 'C', not a lowercase letter, a digit or '-': Claude"
+        )
+      Target.read(Target.Kind.SessionEvents, "grit") ==> Left(
+        "session-events grit: not a session's"
+      )
       Target.Kind.named("purge") ==> None
     }
 
     test(
-      "raw, posting runs, restarts and schedules keep the raw window; documents and piece sets their plugin's; files none, past their own expiry; the rest the ledger's"
+      "raw, posting runs, restarts and schedules keep the raw window; documents and piece sets their plugin's; files and sessions none, past their own expiry; the rest the ledger's"
     ) {
       val w = Windows.of(1.hour, 2.days, 9.days).fold(sys.error, identity)
       Target.Kind.values.toVector.map(k => (k, k.retention(w))) ==> Vector(
@@ -85,7 +101,9 @@ object TargetTests extends TestSuite {
         (Target.Kind.Document, Retention.Declared),
         (Target.Kind.Schedule, Retention.For(2.days)),
         (Target.Kind.File, Retention.For(Duration.Zero)),
-        (Target.Kind.PieceSet, Retention.Declared)
+        (Target.Kind.PieceSet, Retention.Declared),
+        (Target.Kind.SessionEvents, Retention.For(Duration.Zero)),
+        (Target.Kind.Session, Retention.For(Duration.Zero))
       )
     }
   }

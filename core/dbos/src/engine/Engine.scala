@@ -239,7 +239,9 @@ final class Engine private (
     * going, and every other plugin with a cursor, documents or document terms is marked for deletion
     * ([[grit.core.retention.Target.Disabled]]); every declared shadow variant none of whose
     * shadows is queued or running has its oldest unshadowed messages enqueued, as many as its
-    * day's cap covers ([[grit.core.triage.Shadowing.batch]]); then every tombstone whose kind's retention (for a document version, its plugin's declared one) has passed is collected
+    * day's cap covers ([[grit.core.triage.Shadowing.batch]]); every working session whose log or
+    * row has been kept long enough since it ended is marked for deletion
+    * ([[grit.core.retention.Target.SessionEvents]], [[grit.core.retention.Target.Session]]); then every tombstone whose kind's retention (for a document version, its plugin's declared one) has passed is collected
     * ([[grit.core.retention.Target]]): its workflows deleted, unless one is still queued or
     * running, which defers it to a later sweep, then its rows. No workflow is ever
     * deleted to be run again: what did not finish its work is reported `stuck`

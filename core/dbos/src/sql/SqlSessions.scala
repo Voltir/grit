@@ -1,9 +1,11 @@
 package grit.dbos.sql
 
 import java.sql.ResultSet
+import java.time.Instant
 
 import grit.core.id.{Harness, SessionId}
 import grit.core.identity.Principal
+import grit.core.retention.Target
 import grit.core.session.{Event, Log, Session, Sessions}
 import grit.core.store.{StoreError, Tx}
 
@@ -166,6 +168,80 @@ private[dbos] final class SqlSessions extends Sessions {
 }
 
 private[dbos] object SqlSessions {
+
+  /** When the session `s` counts as ended ([[Session.ends]]), its one parameter
+    * [[Session.Unended]] in seconds.
+    */
+  private val Ends: String =
+    "coalesce(s.ended_at, s.last_event_at + make_interval(secs => ?))"
+
+  /** Up to `n` sessions whose log has been kept [[Session.LogKept]] since they ended at `now`,
+    * oldest ended first, as [[Target.SessionEvents]]; then up to `n` whose row has been kept
+    * [[Session.Kept]], as [[Target.Session]].
+    */
+  def due(now: Instant, n: Int)(using Tx^): Either[StoreError, Vector[Target]] =
+    for {
+      logs <- endedBefore(now.minusMillis(Session.LogKept.toMillis), n, logged = true)
+      rows <- endedBefore(now.minusMillis(Session.Kept.toMillis), n, logged = false)
+    } yield logs.map(Target.SessionEvents(_)) ++ rows.map(Target.Session(_))
+
+  /** `id`'s log deleted, when it has been kept [[Session.LogKept]] since the session ended at
+    * `now`, or the session is gone; `false`, deleting nothing, when it has not.
+    */
+  def forgetLog(id: SessionId, now: Instant)(using Tx^): Either[StoreError, Boolean] =
+    whenEnded(id, now.minusMillis(Session.LogKept.toMillis))(
+      "DELETE FROM grit.session_events WHERE session = ?"
+    )
+
+  /** `id`'s row and any log it still has deleted, when it has been kept [[Session.Kept]] since
+    * the session ended at `now`, or the session is gone; `false`, deleting nothing, when not.
+    */
+  def forget(id: SessionId, now: Instant)(using Tx^): Either[StoreError, Boolean] =
+    whenEnded(id, now.minusMillis(Session.Kept.toMillis))("DELETE FROM grit.sessions WHERE id = ?")
+
+  /** `delete`, bound to `id`'s row's id, run when the session ended before `before`, its row
+    * locked against a recording meanwhile; whether it ran, or the session is gone.
+    */
+  private def whenEnded(id: SessionId, before: Instant)(delete: String)(using
+      Tx^
+  ): Either[StoreError, Boolean] =
+    SqlStatements
+      .one(
+        s"""SELECT s.id, $Ends <= ? AS ended FROM grit.sessions s
+           | WHERE s.harness = ? AND s.local = ? FOR UPDATE""".stripMargin
+      ) { ps =>
+        ps.setLong(1, Session.Unended.toSeconds)
+        ps.setObject(2, SqlDocuments.utc(before))
+        ps.setString(3, Harness.value(id.harness))
+        ps.setString(4, id.local)
+      }(rs => (rs.getLong("id"), rs.getBoolean("ended")))
+      .flatMap {
+        case None => Right(true)
+        case Some((_, false)) => Right(false)
+        case Some((row, true)) =>
+          SqlStatements.update(delete)(_.setLong(1, row)).map(_ => true)
+      }
+
+  /** Up to `n` sessions that ended before `before`, oldest ended first; with `logged`, only
+    * those whose log holds a line.
+    */
+  private def endedBefore(before: Instant, n: Int, logged: Boolean)(using
+      Tx^
+  ): Either[StoreError, Vector[SessionId]] =
+    SqlStatements
+      .many(
+        s"""SELECT s.harness, s.local FROM grit.sessions s
+           | WHERE $Ends <= ?
+           |   AND (NOT ? OR EXISTS (SELECT 1 FROM grit.session_events e WHERE e.session = s.id))
+           | ORDER BY $Ends, s.id LIMIT ?""".stripMargin
+      ) { ps =>
+        ps.setLong(1, Session.Unended.toSeconds)
+        ps.setObject(2, SqlDocuments.utc(before))
+        ps.setBoolean(3, logged)
+        ps.setLong(4, Session.Unended.toSeconds)
+        ps.setInt(5, n max 0)
+      }(rs => Harness.of(rs.getString("harness")).flatMap(SessionId.of(_, rs.getString("local"))))
+      .flatMap(SqlStatements.valid)
 
   /** A session's row as a recording reads it under its lock. */
   private final case class Row(id: Long, next: Int, ended: Option[java.time.Instant])
