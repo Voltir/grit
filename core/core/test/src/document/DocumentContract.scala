@@ -897,6 +897,21 @@ abstract class DocumentContract extends TestSuite {
     }
 
     test(
+      "two versions written at one instant: versions lists the later written first, and as of that instant is it"
+    ) {
+      val p = name("doc-tie")
+      val k = keeper(p, terms())
+      val first = put(k, "k", "first words", 1)
+      val second = put(k, "k", "second words", 1)
+      val listed = transaction(ok(shelf(p).versions(key("k"), Label.Public, 10))).map {
+        case DocumentVersion.Holding(d) => d.version
+        case DocumentVersion.Withdrawal(v, _) => v
+      }
+      val asOf = transaction(ok(shelf(p).asOf(key("k"), Label.Public, at(1)))).map(_.version)
+      (listed, asOf) ==> ((Vector(second, first), Some(second)))
+    }
+
+    test(
       "labels are those a key has a kept version at that the transaction reads, withdrawn ones too, the newest written first, each once"
     ) {
       val p = name("doc-labels")
