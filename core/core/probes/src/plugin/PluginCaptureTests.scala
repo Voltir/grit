@@ -18,11 +18,12 @@ object PluginCaptureTests extends TestSuite {
     """package probe
       |import grit.core.claim.*
       |import grit.core.document.*
-      |import grit.core.id.{CallSlot, DocKey, PluginName}
+      |import grit.core.id.{CallSlot, DocKey, PluginName, SessionId}
       |import grit.core.identity.Principal
       |import grit.core.job.*
       |import grit.core.need.*
       |import grit.core.plugin.*
+      |import grit.core.session.{Event, Session, Sessions}
       |import grit.core.store.*
       |import grit.core.tool.*
       |import grit.core.visibility.{Label, Subject}
@@ -175,6 +176,18 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
+  /** A session record read and written through a store it captured rather than the
+    * transaction each call is handed.
+    */
+  private val sessionsHoldDb =
+    """final class SessionsHold(db: Db^) extends Sessions {
+      |  def record(header: Session.Header, events: Vector[Event])(using Tx^): Either[StoreError, Sessions.Recorded] =
+      |    db.read(Subject.Public)(Right(Sessions.Recorded(0, false)))
+      |  def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] =
+      |    db.read(Subject.Public)(Right(None))
+      |}
+      |""".stripMargin
+
   /** A tool whose run reads a store it captured, not the one the kit hands it. */
   private val toolHoldsDb =
     """final class ToolHolds(db: Db^) extends PluginTool[Int] {
@@ -197,7 +210,8 @@ object PluginCaptureTests extends TestSuite {
     toolHoldsDb,
     commandHoldsDb,
     commandKeepsTx,
-    claimsHoldDb
+    claimsHoldDb,
+    sessionsHoldDb
   )
 
   private val allowed =
@@ -224,6 +238,7 @@ object PluginCaptureTests extends TestSuite {
       commandHoldsDb,
       commandKeepsTx,
       claimsHoldDb,
+      sessionsHoldDb,
       allowed
     )
   )
@@ -303,6 +318,11 @@ object PluginCaptureTests extends TestSuite {
 
     test("a plugin's Claims holding a Db is rejected") {
       val errs = errors(claimsHoldDb)
+      assert(heldImpure(errs))
+    }
+
+    test("a Sessions holding a Db is rejected") {
+      val errs = errors(sessionsHoldDb)
       assert(heldImpure(errs))
     }
 

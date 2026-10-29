@@ -20,6 +20,7 @@ this file holds the package order and the rules the code's signatures cannot sta
   - Joins and leaves lock each room's row while they are ordered (`SqlJoins`); each admin
     command runs in one transaction, each change with one audit row (`SqlAdministration`).
   - Each period seal is numbered in commit order (`SqlPeriodStore`).
+  - A session's recordings lock its row, and number its log's lines from it (`SqlSessions`).
   - An engine, a link and a reader each run their short transactions, and their DBOS client's
     reads, on one `Pool` of their own. A connection that keeps session state past its
     transaction opens its own instead: the engine lock's, a desk's `LISTEN`, a rehearsal's.

@@ -1104,6 +1104,62 @@ CREATE TABLE IF NOT EXISTS grit.claims (
     CONSTRAINT claims_holder UNIQUE (plugin, holder, classification_id)
 );
 
+-- Each working session's record (grit.core.session.Sessions): a grit turn's or a harness's,
+-- named by `harness` and the harness's own id for it, `local`; `parent` the session that started
+-- it, when one did (a subagent's), never a foreign key, since either may be deleted first. Kept
+-- at its label (`classification_id`, its writer's label joined with the transaction's floor) in
+-- `room_id`, as grit.claims keeps one. `next_seq` is its log's next line, past
+-- grit.core.session.Log.HardCap once the log is full; the counters count its logged events.
+-- Each recording locks its row. The counters and times are unindexed, and the sweep reads the
+-- table whole, so updates leave the page's free space to them.
+-- Retention: expiring: deleted by the collector (Target.Session) once a tombstone names it,
+-- which the sweep writes Session.Kept after the session ends: at `ended_at`, or Session.Unended
+-- after `last_event_at`. Steady state: about 2 KB a row (its summary), ten sessions a day,
+-- about 4 MB.
+CREATE TABLE IF NOT EXISTS grit.sessions (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    harness           TEXT NOT NULL CHECK (harness ~ '^[a-z][a-z0-9-]{0,63}$'),
+    local             TEXT NOT NULL CHECK (length(local) BETWEEN 1 AND 200),
+    parent_harness    TEXT,
+    parent_local      TEXT,
+    principal_id      TEXT NOT NULL REFERENCES grit.principals(id),
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    room_id           UUID REFERENCES grit.places(id),
+    started_at        TIMESTAMPTZ NOT NULL,
+    ended_at          TIMESTAMPTZ,
+    last_event_at     TIMESTAMPTZ NOT NULL,
+    summary           TEXT CHECK (length(summary) BETWEEN 1 AND 2000),
+    next_seq          INTEGER NOT NULL DEFAULT 1 CHECK (next_seq BETWEEN 1 AND 5001),
+    tool_calls        BIGINT NOT NULL DEFAULT 0 CHECK (tool_calls >= 0),
+    edits             BIGINT NOT NULL DEFAULT 0 CHECK (edits >= 0),
+    commits           BIGINT NOT NULL DEFAULT 0 CHECK (commits >= 0),
+    bytes_read        BIGINT NOT NULL DEFAULT 0 CHECK (bytes_read >= 0),
+    UNIQUE (harness, local),
+    CHECK ((parent_harness IS NULL) = (parent_local IS NULL))
+) WITH (fillfactor = 90);
+
+-- Each working session's log (grit.core.session.Log): a line at each `seq` from 1, the source's
+-- own ordinal `n` for its event (unique in the session, so an event recorded again is known),
+-- its `kind` in grit's words (Log.Line.kind) and `shape`, what it was and never its content,
+-- kept as written (json, not jsonb, whose text form adds spaces). At most Log.HardCap lines, the
+-- last an `overflow` when more were offered.
+-- Retention: expiring: deleted by the collector (Target.SessionEvents) once a tombstone names its
+-- session, which the sweep writes Session.LogKept after the session ends; with its session's row
+-- by cascade. Steady state: about 420 bytes a line, two long sessions of about 4,500 lines and
+-- 25 of about 100 a day, kept a month: about 150 MB; 1.7 GB if every session filled its log.
+-- Deleted a whole session at a time, so dead rows are vacuumed early.
+CREATE TABLE IF NOT EXISTS grit.session_events (
+    session BIGINT NOT NULL REFERENCES grit.sessions(id) ON DELETE CASCADE,
+    seq     INTEGER NOT NULL CHECK (seq BETWEEN 1 AND 5000),
+    n       BIGINT NOT NULL CHECK (n > 0),
+    at      TIMESTAMPTZ NOT NULL,
+    kind    TEXT NOT NULL CHECK (kind IN ('started', 'read', 'edited', 'ran', 'commit', 'closing',
+                                          'ended', 'overflow')),
+    shape   JSON NOT NULL CHECK (octet_length(shape::text) <= 300),
+    PRIMARY KEY (session, seq),
+    CONSTRAINT session_events_n UNIQUE (session, n)
+) WITH (autovacuum_vacuum_scale_factor = 0.05);
+
 -- Each version of a compartment's declassification policy (DeclassificationPolicy): operator
 -- text addressed to the rewriting model, saying what to remove and what to write in its place,
 -- and `checks`, the steward's signals a rewrite is screened for and the examples they are

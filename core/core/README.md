@@ -100,6 +100,9 @@ In dependency order, each with the core packages it imports:
 - **`claim`**: which holder works a plugin's subject, as which role: one live claim per subject
   and per holder at each label, never versioned, deleted by its release. ← `id`, `identity`,
   `visibility`, `store`
+- **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
+  when and its counters, and a capped log of its events in grit's words, an event recorded again
+  known by its source's ordinal. ← `id`, `identity`, `visibility`, `store`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is
