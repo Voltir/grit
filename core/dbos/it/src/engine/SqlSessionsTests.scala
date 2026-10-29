@@ -50,7 +50,7 @@ object SqlSessionsTests extends TestSuite {
   private def id(local: String): SessionId =
     ok(Harness.of("claude-code").flatMap(SessionId.of(_, local)))
 
-  private def header(local: String, label: Label = Label.Public): Session.Header =
+  private def header(local: String, label: Label): Session.Header =
     Session.Header(id(local), None, ann, label)
 
   private def event(n: Long, kind: Event.Kind = Event.Kind.Edited): Event =
