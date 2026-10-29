@@ -1177,6 +1177,10 @@ CREATE TABLE IF NOT EXISTS grit.session_events (
     CONSTRAINT session_events_n UNIQUE (session, n)
 ) WITH (autovacuum_vacuum_scale_factor = 0.05);
 
+-- A session's newest events of one kind (Sessions.lately): its last commits, edits and reads.
+-- Steady state: about 40 bytes a line beside the table's.
+CREATE INDEX IF NOT EXISTS idx_session_events_kind ON grit.session_events (session, kind, seq DESC);
+
 -- Each version of a compartment's declassification policy (DeclassificationPolicy): operator
 -- text addressed to the rewriting model, saying what to remove and what to write in its place,
 -- and `checks`, the steward's signals a rewrite is screened for and the examples they are

@@ -1,6 +1,7 @@
 package grit.dbos.sql
 
 import grit.core.edge.EdgeSessions
+import grit.core.id.SessionId
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
 import grit.core.session.Session
@@ -11,6 +12,10 @@ import grit.core.visibility.Subject
 private[dbos] final class SqlEdgeSessions(jot: Jot) extends EdgeSessions {
 
   private val sessions = new SqlSessions
+
+  // Jot opens read-write transactions alone; this one only reads.
+  def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]] =
+    jot.write(Subject.Room(room))(sessions.lately(id))
 
   def record(
       by: Account,

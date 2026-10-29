@@ -127,4 +127,26 @@ object Session {
         Left("a session's counters are never negative")
       else Right(Counters(toolCalls, edits, commits, bytesRead))
   }
+
+  /** What a session did lately: its record, its commits, and what it edited and read (a file's
+    * path, or what a read named when it was no file), each newest first.
+    */
+  final case class Lately(
+      session: Session,
+      commits: Vector[Lately.Commit],
+      edited: Vector[String],
+      read: Vector[String]
+  ) extends caps.Pure
+
+  object Lately {
+
+    /** 10: the most commits, and the most edited and read, a [[Sessions.lately]] read holds. */
+    val Most: Int = 10
+
+    /** 200: the newest edits, and the newest reads, a [[Sessions.lately]] read looks among. */
+    val Scanned: Int = 200
+
+    /** A commit the session made at `at`: its sha, and its subject when its shape kept one. */
+    final case class Commit(at: Instant, sha: String, subject: Option[String]) extends caps.Pure
+  }
 }

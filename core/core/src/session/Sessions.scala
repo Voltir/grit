@@ -29,6 +29,14 @@ trait Sessions extends caps.Pure {
 
   /** The session `id`, when this transaction reads it. */
   def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]]
+
+  /** The session `id` and what it did lately, when this transaction reads it: its last
+    * [[Session.Lately.Most]] commits, leaving out any whose shape names no [[Event.Shape.Sha]];
+    * and the last [[Session.Lately.Most]] distinct paths ([[Event.Shape.Path]], else
+    * [[Event.Shape.Named]]) among its last [[Session.Lately.Scanned]] edits, and likewise its
+    * reads. What it last said is the record's [[Session.summary]], its last closing.
+    */
+  def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]]
 }
 
 object Sessions {

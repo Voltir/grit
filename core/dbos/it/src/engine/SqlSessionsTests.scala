@@ -208,5 +208,51 @@ object SqlSessionsTests extends TestSuite {
         read("s-high", High).map(_.lastEvent) == Some(t0.plusSeconds(1))
       )
     }
+
+    test("lately reads its newest commits with a sha, and what it last edited and read, distinct") {
+      def shaped(n: Long, kind: Event.Kind, fields: (String, ujson.Value)*): Event =
+        ok(Event.of(n, t0.plusSeconds(n), kind, ok(Event.Shape.of(ujson.Obj.from(fields)))))
+      val commits = (1L to 12L).map(n =>
+        shaped(n, Event.Kind.Commit, "sha" -> s"c$n", "subject" -> s"commit $n", "worktree" -> "/w")
+      ) :+ shaped(13, Event.Kind.Commit, "subject" -> "no sha")
+      val edits = Vector("a", "b", "a", "c").zipWithIndex.map((p, i) =>
+        shaped(20L + i, Event.Kind.Edited, "path" -> p, "ok" -> true)
+      )
+      val reads = Vector(
+        shaped(30, Event.Kind.Read(3), "path" -> "x.scala", "bytes" -> 3),
+        shaped(31, Event.Kind.Read(9), "named" -> "Ledger.post", "tool" -> "show", "bytes" -> 9),
+        shaped(32, Event.Kind.Read(3), "path" -> "x.scala", "bytes" -> 3)
+      )
+      ok(
+        record(
+          "s-lately",
+          (commits ++ edits ++ reads :+ event(40, Event.Kind.Closing(summary))).toVector
+        )
+      )
+      ok(
+        record(
+          "s-scanned",
+          shaped(1, Event.Kind.Edited, "path" -> "old.scala") +:
+            (2L to 201L).map(n => shaped(n, Event.Kind.Edited, "path" -> "new.scala")).toVector
+        )
+      )
+      ok(record("s-hidden", Vector(event(1)), TestLabels.Trial, High))
+      def lately(local: String) =
+        LiveDb.transaction(config, Low)(ok(sessions.lately(id(local))))
+      val got = lately("s-lately")
+      assert(
+        got.map(_.commits) == Some(
+          (12L to 3L by -1L)
+            .map(n => Session.Lately.Commit(t0.plusSeconds(n), s"c$n", Some(s"commit $n")))
+            .toVector
+        ),
+        got.map(l => (l.edited, l.read)) ==
+          Some((Vector("c", "a", "b"), Vector("x.scala", "Ledger.post"))),
+        got.flatMap(_.session.summary) == Some(summary),
+        lately("s-scanned").map(_.edited) == Some(Vector("new.scala")),
+        lately("s-hidden") == None,
+        lately("s-none") == None
+      )
+    }
   }
 }

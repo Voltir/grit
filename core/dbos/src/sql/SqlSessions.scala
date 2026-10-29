@@ -61,6 +61,59 @@ private[dbos] final class SqlSessions extends Sessions {
       .flatMap(found => SqlStatements.valid(found.map(_.left.map(_.toString))))
       .map(_.headOption)
 
+  def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] =
+    read(id).flatMap {
+      case None => Right(None)
+      case Some(session) =>
+        for {
+          commits <- SqlStatements.many(
+            s"""SELECT e.at, e.shape->>'${Event.Shape.Sha}' AS sha,
+               |       e.shape->>'${Event.Shape.Subject}' AS subject
+               |  FROM grit.session_events e
+               | WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
+               |   AND e.shape->>'${Event.Shape.Sha}' IS NOT NULL
+               | ORDER BY e.seq DESC LIMIT ?""".stripMargin
+          ) { ps =>
+            ps.setString(1, Harness.value(id.harness))
+            ps.setString(2, id.local)
+            ps.setString(3, Event.Kind.Commit.name)
+            ps.setInt(4, Session.Lately.Most)
+          }(rs =>
+            Session.Lately.Commit(
+              SqlDocuments.instant(rs, "at"),
+              rs.getString("sha"),
+              Option(rs.getString("subject"))
+            )
+          )
+          edited <- named(id, Event.Kind.Edited)
+          read <- named(id, Event.Kind.Read(0))
+        } yield Some(Session.Lately(session, commits, edited, read))
+    }
+
+  /** The last [[Session.Lately.Most]] distinct paths, else names, among `id`'s last
+    * [[Session.Lately.Scanned]] events of `kind`, newest first.
+    */
+  private def named(id: SessionId, kind: Event.Kind)(using
+      Tx^
+  ): Either[StoreError, Vector[String]] =
+    SqlStatements.many(
+      s"""SELECT w.p FROM (
+         |  SELECT coalesce(e.shape->>'${Event.Shape.Path}', e.shape->>'${Event.Shape.Named}') AS p,
+         |         e.seq
+         |    FROM grit.session_events e
+         |   WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
+         |   ORDER BY e.seq DESC LIMIT ?
+         |) w
+         | WHERE w.p IS NOT NULL
+         | GROUP BY w.p ORDER BY max(w.seq) DESC LIMIT ?""".stripMargin
+    ) { ps =>
+      ps.setString(1, Harness.value(id.harness))
+      ps.setString(2, id.local)
+      ps.setString(3, kind.name)
+      ps.setInt(4, Session.Lately.Scanned)
+      ps.setInt(5, Session.Lately.Most)
+    }(_.getString("p"))
+
   /** The row of `header`'s session inserted, started at `at`, unless it has one. */
   private def begin(header: Session.Header, at: java.time.Instant)(using
       tx: Tx^
@@ -186,6 +239,9 @@ private[dbos] final class SqlSessions extends Sessions {
 }
 
 private[dbos] object SqlSessions {
+
+  /** The row id of the session its two parameters name, its harness then its local id. */
+  private val Keyed: String = "(SELECT id FROM grit.sessions WHERE harness = ? AND local = ?)"
 
   /** When the session `s` counts as ended ([[Session.ends]]), its one parameter
     * [[Session.Unended]] in seconds.

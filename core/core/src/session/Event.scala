@@ -71,6 +71,24 @@ object Event {
       */
     val Worktree: String = "worktree"
 
+    /** `path`: the key an edit's or a read's shape names its file under; what
+      * [[Sessions.lately]] lists.
+      */
+    val Path: String = "path"
+
+    /** `named`: what a read named when it was no file: a symbol, a test, a query; what
+      * [[Sessions.lately]] lists beside [[Path]].
+      */
+    val Named: String = "named"
+
+    /** `sha`: the key a commit's shape names its commit under; a commit without one is not in
+      * [[Sessions.lately]].
+      */
+    val Sha: String = "sha"
+
+    /** `subject`: the key a commit's shape names its subject line under, when it kept one. */
+    val Subject: String = "subject"
+
     /** A commit's shape: `o` with the worktree `at` it was made in under [[Worktree]], in place of
       * any value `o` held there; or why not, as [[of]].
       */

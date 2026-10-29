@@ -150,5 +150,26 @@ object SqlEdgeSessionsTests extends TestSuite {
         read("s-4") == None
       )
     }
+
+    test("lately reads in the room: a session kept there is read in it, and none elsewhere") {
+      val _ = nick
+      val edit = ok(
+        Event.of(1, t0, Event.Kind.Edited, ok(Event.Shape.of(ujson.Obj("path" -> "A.scala"))))
+      )
+      ok(
+        edge.record(
+          Nick,
+          Workshop,
+          Vector(EdgeSessions.Batch(id("s-5"), None, fs("/work/grit"), None, Vector(edit)))
+        )
+      )
+      val elsewhere = Place.under(Namespace.Task, Vector("elsewhere"))
+      assert(
+        edge.lately(Workshop, id("s-5")).map(_.map(l => (l.session.id, l.edited))) ==
+          Right(Some((id("s-5"), Vector("A.scala")))),
+        edge.lately(elsewhere, id("s-5")) == Right(None),
+        edge.lately(Workshop, id("s-none")) == Right(None)
+      )
+    }
   }
 }

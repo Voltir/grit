@@ -187,6 +187,8 @@ object PluginCaptureTests extends TestSuite {
       |    db.read(Subject.Public)(Right(Sessions.Recorded(0, false)))
       |  def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] =
       |    db.read(Subject.Public)(Right(None))
+      |  def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] =
+      |    Right(None)
       |}
       |""".stripMargin
 
