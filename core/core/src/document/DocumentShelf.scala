@@ -37,6 +37,12 @@ trait DocumentShelf {
       Tx^
   ): Either[StoreError, Vector[DocumentVersion]]
 
+  /** The labels at which `key` has a version still kept that this transaction reads, withdrawals
+    * included, each once, the label of the most recently written such version first: where
+    * [[versions]] and [[asOf]] find a key no longer current.
+    */
+  def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]]
+
   /** Its current documents this transaction reads, every key's and label's, most recently
     * written first, at most `n`; none when `n` is not positive.
     */
@@ -232,6 +238,8 @@ object DocumentKeeper {
     def versions(key: DocKey, label: Label, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[DocumentVersion]] = keeper.versions(key, label, n)
+
+    def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]] = keeper.labels(key)
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = keeper.newest(n)
 

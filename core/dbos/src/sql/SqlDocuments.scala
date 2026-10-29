@@ -409,6 +409,18 @@ private[sql] object SqlDocuments {
           ps.setInt(SqlClearance.Params + 5, n)
         }(historied)
 
+    def labels(key: DocKey)(using tx: Tx^): Either[StoreError, Vector[Label]] =
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT label_level, label_compartments FROM $Labelled d
+           | WHERE plugin = ? AND key = ? AND ${SqlClearance.kept("d")}
+           | GROUP BY classification_id, label_level, label_compartments
+           | ORDER BY max(written_at) DESC, max(version) DESC""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+        ps.setString(SqlClearance.Params + 2, DocKey.value(key))
+      }(rs => Right(SqlLabels.read(rs)))
+
     def newest(n: Int)(using tx: Tx^): Either[StoreError, Vector[Document]] =
       if (n <= 0) Right(Vector.empty)
       else

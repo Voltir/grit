@@ -721,6 +721,7 @@ object Deployment {
       def versions(key: DocKey, label: Label, n: Int)(using
           Tx^
       ): Either[StoreError, Vector[DocumentVersion]] = Right(Vector.empty)
+      def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]] = Right(Vector.empty)
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
       def referring(ref: DocRef, n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
         Right(Vector.empty)

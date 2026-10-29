@@ -896,6 +896,38 @@ abstract class DocumentContract extends TestSuite {
       )
     }
 
+    test(
+      "labels are those a key has a kept version at that the transaction reads, withdrawn ones too, the newest written first, each once"
+    ) {
+      val p = name("doc-labels")
+      val k = keeper(p, terms())
+      def high(m: Int) = opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text(s"high words $m"),
+            Empty,
+            None,
+            at(m)
+          )
+        )
+      )
+      high(1)
+      put(k, "k", "public words", 2)
+      high(3)
+      transaction(ok(k.withdraw(key("k"), Label.Public, at(4))))
+      put(k, "other", "another key's words", 5)
+      def seen(clearance: Clearance) = opened(clearance)(ok(shelf(p).labels(key("k"))))
+      (
+        seen(Clearance.of(TestLabels.Trial)),
+        seen(Clearance.of(Label.Public)),
+        opened(Clearance.of(TestLabels.Trial))(ok(shelf(p).labels(key("none"))))
+      ) ==> ((Vector(Label.Public, TestLabels.Trial), Vector(Label.Public), Vector()))
+    }
+
     test("remove deletes a plugin's every version and ends their tombstones; another's stay") {
       val (p, q) = (name("doc-remove-p"), name("doc-remove-q"))
       val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))

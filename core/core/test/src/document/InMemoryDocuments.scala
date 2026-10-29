@@ -753,6 +753,16 @@ final class InMemoryDocuments extends DocumentStore {
         }
       })
 
+    def labels(key: DocKey)(using Tx^): Either[StoreError, Vector[Label]] =
+      Right(
+        rows.toVector
+          .filter((_, r) => r.plugin == plugin && r.key == key && reads(r))
+          .sortBy((v, r) => (r.written, v))
+          .reverse
+          .map(_._2.label)
+          .distinct
+      )
+
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
       Right(
         holding(plugin)
