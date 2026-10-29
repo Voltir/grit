@@ -662,22 +662,22 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       said(
         "Gives the brief for working on an artifact in a role: a header line, its body whole, " +
           "then what the role is shown of what it cites, nearest first, as pointer lines once " +
-          s"past `chars` characters (${Brief.HookChars} when not given). Refused for a role the " +
-          "project's method lacks, or an artifact that alone does not fit."
+          "past `chars` characters. Refused for a role the project's method lacks, or an " +
+          "artifact that alone does not fit."
       ),
       Args
         .of(
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
             role = Field.text("The role working on it."),
-            chars = Field.count("The most characters the brief holds.", 1, BriefMost).optional
+            chars = Field.count("The most characters the brief holds.", 1, BriefMost)
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
             role <- parsed("role", a.role, RoleName.of)
-          } yield Briefing(key, role, a.chars.getOrElse(Brief.HookChars))
+          } yield Briefing(key, role, a.chars)
         )
     )
     def run(args: Briefing, by: Principal.Person, own: PluginReads, at: Instant)(using

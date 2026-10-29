@@ -39,11 +39,6 @@ final case class Brief private (artifact: ArtifactKey, text: String, pointed: Ve
 
 object Brief {
 
-  /** 9,500: the most characters a brief given through a session hook holds, under the hook's
-    * 10,000 with its envelope.
-    */
-  val HookChars: Int = 9500
-
   /** 12: the hex digits of the pin's digest a header line shows. */
   val PinDigits: Int = 12
 

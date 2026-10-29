@@ -426,7 +426,7 @@ object ProjectCommandsTests extends TestSuite {
     }
 
     test(
-      "project_brief gives a role's brief, refusing a role not declared and a budget too small"
+      "project_brief gives a role's brief, refusing a role not declared, no budget and one too small"
     ) {
       val projects = plugin()
       val store = Store()
@@ -434,11 +434,16 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
       def briefed(args: (String, ujson.Value)*): CommandOutcome =
         ask(projects, store, "project_brief", ("key" -> ujson.Str("p/a")) +: args*)
-      val text = done(briefed("role" -> "builder"))
+      val text = done(briefed("role" -> "builder", "chars" -> 7000))
       val pin = method().digest.hex.take(Brief.PinDigits)
-      val stranger = briefed("role" -> "reviewer")
+      val stranger = briefed("role" -> "reviewer", "chars" -> 7000)
       val small = briefed("role" -> "builder", "chars" -> 10)
+      val unbudgeted = projects.commands
+        .find(c => ToolName.value(c.spec.name) == "project_brief")
+        .map(_.spec.args.read(ujson.Obj("key" -> "p/a", "role" -> "builder")).left.map(_.message))
+        .map(_.map(_ => ()))
       assert(
+        unbudgeted == Some(Left("`chars` is missing: it takes a whole number from 1 to 100000.")),
         text.startsWith(s"p/a | change | proposed | Title a | grit v1 | pin $pin\n"),
         text.contains("Because."),
         stranger == CommandOutcome.Refused(

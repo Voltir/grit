@@ -114,8 +114,8 @@ object ElephantGoldfishTests extends TestSuite {
       assert(MethodBench.failures(model, examples) == Vector.empty)
     }
     test("a goldfish is shown the draft and what it cites, one link deep; an elephant more") {
-      val shown = (v: RoleView) =>
-        right(Brief.of(start, key("p/plan"), v, Brief.HookChars).left.map(_.toString)).text
+      val shown =
+        (v: RoleView) => right(Brief.of(start, key("p/plan"), v, 9500).left.map(_.toString)).text
       val fish = shown(goldfish)
       val big = shown(elephant)
       assert(
