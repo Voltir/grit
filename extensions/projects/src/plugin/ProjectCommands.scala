@@ -2,9 +2,9 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{ClaimHolder, ClaimRole, Claimed, Claims}
+import grit.core.claim.{ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
-import grit.core.id.{DocKey, DocumentVersionId, PrincipalId}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PrincipalId}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place

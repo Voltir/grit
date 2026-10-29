@@ -2,7 +2,7 @@ package grit.core.claim
 
 import java.time.Instant
 
-import grit.core.id.{DocKey, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, PluginName}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{StoreError, Tx}
@@ -15,8 +15,12 @@ import utest.*
   */
 abstract class ClaimsContract extends TestSuite {
 
-  /** `plugin`'s claims in the store under test. */
-  protected def claims(plugin: PluginName): Claims
+  /** `plugin`'s claims in the store under test, each holder in `worked` having worked a session
+    * whose last event is at its time, kept where every transaction here reads it.
+    */
+  protected def claims(plugin: PluginName, worked: Map[ClaimHolder, Instant]): Claims
+
+  private def claims(plugin: PluginName): Claims = claims(plugin, Map.empty)
 
   /** The person `account` is linked to, seen by the store under test. */
   protected def person(account: Account): Principal.Person
@@ -41,6 +45,11 @@ abstract class ClaimsContract extends TestSuite {
 
   private val at: Instant = Instant.parse("2026-03-01T00:00:00Z")
 
+  /** When a claim made at `at` that no session works lapses. */
+  private val lapse: Instant = at.plusMillis(Claims.Lease.toMillis)
+
+  private val hour: Instant = at.plusSeconds(3600)
+
   private lazy val ann: Principal.Person = person(TestAccounts.account("slack:T1/U-ann"))
 
   private def claim(
@@ -48,9 +57,11 @@ abstract class ClaimsContract extends TestSuite {
       subject: String,
       by: String,
       label: Label = Label.Public,
-      clearance: Clearance = Low
+      clearance: Clearance = Low,
+      when: Instant = at,
+      role: ClaimRole = builder
   ): Claimed =
-    opened(clearance)(ok(c.claim(key(subject), holder(by), builder, ann, label, at)))
+    opened(clearance)(ok(c.claim(key(subject), holder(by), role, ann, label, when)))
 
   private def release(
       c: Claims,
@@ -60,8 +71,17 @@ abstract class ClaimsContract extends TestSuite {
   ): Option[Claim] =
     opened(clearance)(ok(c.release(key(subject), label)))
 
-  private def made(subject: String, by: String, label: Label = Label.Public): Claim =
-    Claim(key(subject), holder(by), builder, ann, at, label)
+  private def live(c: Claims, when: Instant): Vector[Claim] =
+    opened(Low)(ok(c.live(when)))
+
+  private def made(
+      subject: String,
+      by: String,
+      label: Label = Label.Public,
+      when: Instant = at,
+      active: Option[Instant] = None
+  ): Claim =
+    Claim(key(subject), holder(by), builder, ann, when, label, active.getOrElse(when))
 
   val tests = Tests {
     test("a claim made is the claim given, kept at its label") {
@@ -138,6 +158,63 @@ abstract class ClaimsContract extends TestSuite {
       )
       val kept = claim(c, "p/a", "s1", Label.Public, room)
       assert(kept == Claimed.Made(made("p/a", "s1", TestLabels.Trial)))
+    }
+
+    test(
+      "a claim no session works lapses its lease after it is made, and another holder takes it"
+    ) {
+      val c = claims(plugin("claims-lapse"))
+      claim(c, "p/a", "lapse-1")
+      val early = claim(c, "p/a", "lapse-2", when = lapse.minusMillis(1))
+      val taken = claim(c, "p/a", "lapse-2", when = lapse)
+      assert(
+        early == Claimed.Taken(Some(made("p/a", "lapse-1"))),
+        taken == Claimed.Made(made("p/a", "lapse-2", when = lapse))
+      )
+    }
+
+    test("a session working as its holder keeps a claim live for a lease after its last event") {
+      val c = claims(plugin("claims-worked"), Map(holder("worked-1") -> hour))
+      claim(c, "p/a", "worked-1")
+      val kept = claim(c, "p/a", "worked-2", when = lapse)
+      val after = hour.plusMillis(Claims.Lease.toMillis)
+      val taken = claim(c, "p/a", "worked-2", when = after)
+      assert(
+        kept == Claimed.Taken(Some(made("p/a", "worked-1", active = Some(hour)))),
+        taken == Claimed.Made(made("p/a", "worked-2", when = after))
+      )
+    }
+
+    test("a re-claim by its holder renews it: one claim, its role the new one, first made kept") {
+      val c = claims(plugin("claims-renew"), Map(holder("renew-1") -> hour))
+      val reviewer = ok(ClaimRole.of("reviewer"))
+      claim(c, "p/a", "renew-1")
+      val renewed = claim(c, "p/a", "renew-1", when = hour, role = reviewer)
+      val one = made("p/a", "renew-1", active = Some(hour)).copy(role = reviewer)
+      assert(renewed == Claimed.Made(one), live(c, hour) == Vector(one))
+    }
+
+    test("a claim its subject's label left behind frees its holder once lapsed") {
+      val c = claims(plugin("claims-relabel"))
+      claim(c, "p/a", "relabel-1")
+      val missed = release(c, "p/a", TestLabels.Trial, High)
+      val holding = claim(c, "p/b", "relabel-1", when = lapse.minusMillis(1))
+      val freed = claim(c, "p/b", "relabel-1", when = lapse)
+      assert(
+        missed == None,
+        holding == Claimed.Holding(Some(made("p/a", "relabel-1"))),
+        freed == Claimed.Made(made("p/b", "relabel-1", when = lapse))
+      )
+    }
+
+    test("live lists the claims not lapsed at its time, by subject") {
+      val c = claims(plugin("claims-live"))
+      claim(c, "p/b", "live-1")
+      claim(c, "p/a", "live-2", when = hour)
+      assert(
+        live(c, hour) == Vector(made("p/a", "live-2", when = hour), made("p/b", "live-1")),
+        live(c, lapse) == Vector(made("p/a", "live-2", when = hour))
+      )
     }
   }
 }

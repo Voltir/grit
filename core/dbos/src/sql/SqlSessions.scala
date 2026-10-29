@@ -3,7 +3,7 @@ package grit.dbos.sql
 import java.sql.ResultSet
 import java.time.Instant
 
-import grit.core.id.{Harness, SessionId}
+import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.Principal
 import grit.core.retention.Target
 import grit.core.session.{Event, Log, Session, Sessions}
@@ -23,6 +23,7 @@ private[dbos] final class SqlSessions extends Sessions {
         for {
           _ <- begin(header, first.at)
           row <- lock(header.id)
+          _ <- header.holder.fold[Either[StoreError, Unit]](Right(()))(holding(row, _))
           known <- SqlStatements.many(
             """SELECT n FROM grit.session_events
               | WHERE session = ? AND n IN (SELECT jsonb_array_elements_text(?::jsonb)::bigint)""".stripMargin
@@ -67,9 +68,9 @@ private[dbos] final class SqlSessions extends Sessions {
         .update(
           s"""INSERT INTO grit.sessions
              |       (harness, local, parent_harness, parent_local, principal_id,
-             |        classification_id, room_id, place, started_at, last_event_at)
+             |        classification_id, room_id, place, started_at, last_event_at, holder)
              |VALUES (?, ?, ?, ?, ?, ?, ${SqlDocuments.RoomId},
-             |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?)
+             |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?, ?)
              |ON CONFLICT (harness, local) DO NOTHING""".stripMargin
         ) { ps =>
           ps.setString(1, Harness.value(header.id.harness))
@@ -82,10 +83,20 @@ private[dbos] final class SqlSessions extends Sessions {
           ps.setString(8, SqlDocuments.path(header.at).render())
           ps.setObject(9, SqlDocuments.utc(at))
           ps.setObject(10, SqlDocuments.utc(at))
+          ps.setString(11, header.holder.map(ClaimHolder.value).orNull)
         }
         .map(_ => ())
     }
   }
+
+  /** `row` working as `holder` from now on, when it works as none yet. */
+  private def holding(row: Row, holder: ClaimHolder)(using Tx^): Either[StoreError, Unit] =
+    SqlStatements
+      .update("UPDATE grit.sessions SET holder = ? WHERE id = ? AND holder IS NULL") { ps =>
+        ps.setString(1, ClaimHolder.value(holder))
+        ps.setLong(2, row.id)
+      }
+      .map(_ => ())
 
   /** `id`'s row, locked until the transaction ends; `Invalid` when the transaction does not
     * read it.
@@ -300,6 +311,8 @@ private[dbos] object SqlSessions {
         rs.getLong("commits"),
         rs.getLong("bytes_read")
       )
+      holder <- Option(rs.getString("holder"))
+        .fold[Either[String, Option[ClaimHolder]]](Right(None))(ClaimHolder.of(_).map(Some(_)))
     } yield Session(
       self,
       parent,
@@ -311,7 +324,8 @@ private[dbos] object SqlSessions {
       SqlDocuments.instant(rs, "last_event_at"),
       summary,
       counters,
-      rs.getInt("next_seq") > Log.HardCap
+      rs.getInt("next_seq") > Log.HardCap,
+      holder
     )
   }
 }

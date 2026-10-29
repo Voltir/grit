@@ -2,7 +2,7 @@ package grit.projects.render
 
 import java.time.Instant
 
-import grit.core.claim.ClaimHolder
+import grit.core.id.ClaimHolder
 import grit.projects.artifact.ArtifactHead
 import grit.projects.name.{ArtifactKey, KindName, StateName}
 

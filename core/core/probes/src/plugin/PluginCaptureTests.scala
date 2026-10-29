@@ -18,7 +18,7 @@ object PluginCaptureTests extends TestSuite {
     """package probe
       |import grit.core.claim.*
       |import grit.core.document.*
-      |import grit.core.id.{CallSlot, DocKey, PluginName, SessionId}
+      |import grit.core.id.{CallSlot, ClaimHolder, DocKey, PluginName, SessionId}
       |import grit.core.identity.Principal
       |import grit.core.job.*
       |import grit.core.need.*
@@ -173,6 +173,8 @@ object PluginCaptureTests extends TestSuite {
       |    db.read(Subject.Public)(Right(Claimed.Taken(None)))
       |  def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
       |    db.read(Subject.Public)(Right(None))
+      |  def live(at: java.time.Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+      |    Right(Vector.empty)
       |}
       |""".stripMargin
 

@@ -24,7 +24,14 @@ private[dbos] final class SqlEdgeSessions(jot: Jot) extends EdgeSessions {
             sum.flatMap { logged =>
               sessions
                 .record(
-                  Session.Header(batch.id, batch.parent, person, Tx.floor(tx), batch.at),
+                  Session.Header(
+                    batch.id,
+                    batch.parent,
+                    person,
+                    Tx.floor(tx),
+                    batch.at,
+                    batch.holder
+                  ),
                   batch.events
                 )
                 .map(logged + _.logged)

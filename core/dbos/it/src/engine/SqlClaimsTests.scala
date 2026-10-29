@@ -1,8 +1,10 @@
 package grit.dbos.engine
 
+import java.time.Instant
+
 import grit.core.claim.{Claims, ClaimsContract}
-import grit.core.id.PluginName
-import grit.core.identity.{Account, Principal}
+import grit.core.id.{ClaimHolder, PluginName}
+import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.store.Tx
 import grit.core.visibility.Clearance
 import grit.dbos.sql.{LiveDb, SqlClaims, SqlIdentities, TestPostgres}
@@ -17,7 +19,12 @@ object SqlClaimsTests extends ClaimsContract {
     c
   }
 
-  protected def claims(plugin: PluginName): Claims = new SqlClaims(plugin)
+  protected def claims(plugin: PluginName, worked: Map[ClaimHolder, Instant]): Claims = {
+    worked.foreach((holder, at) =>
+      HolderSessions.work(config, person(TestAccounts.account("slack:T1/U-ann")), holder, at)
+    )
+    new SqlClaims(plugin)
+  }
 
   protected def person(account: Account): Principal.Person =
     LiveDb

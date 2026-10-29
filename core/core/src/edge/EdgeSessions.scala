@@ -1,6 +1,6 @@
 package grit.core.edge
 
-import grit.core.id.SessionId
+import grit.core.id.{ClaimHolder, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.session.Event
@@ -13,7 +13,7 @@ trait EdgeSessions extends caps.SharedCapability {
     * (an event recorded again changes nothing), all of them in one transaction opened in `room`
     * ([[grit.core.visibility.Subject.Room]]): every batch is kept, or none. A session new to the
     * record begins with the person `by` is linked to then as its runner, the transaction's floor
-    * as its label, its batch's `parent` and `at`, and no room. How many lines were logged,
+    * as its label, its batch's `parent`, `at` and `holder`, and no room. How many lines were logged,
     * overflow lines included. [[StoreError.Invalid]] when no person is linked to `by`, or when a
     * session is kept where the transaction does not read; [[StoreError.DatabaseError]] when the
     * database could not open, write or commit it.
@@ -23,11 +23,14 @@ trait EdgeSessions extends caps.SharedCapability {
 
 object EdgeSessions {
 
-  /** `events` of the session `id`, a child of `parent` when it has one, worked at `at`. */
+  /** `events` of the session `id`, a child of `parent` when it has one, worked at `at`, as the
+    * claim holder `holder` when its harness names one.
+    */
   final case class Batch(
       id: SessionId,
       parent: Option[SessionId],
       at: Place,
+      holder: Option[ClaimHolder],
       events: Vector[Event]
   )
 

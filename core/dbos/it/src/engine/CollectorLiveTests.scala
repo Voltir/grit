@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
-import grit.core.claim.{ClaimHolder, ClaimRole, Claimed}
+import grit.core.claim.{ClaimRole, Claimed}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
@@ -25,6 +25,7 @@ import grit.core.files.{
 }
 import grit.core.host.TempBlobs
 import grit.core.id.{
+  ClaimHolder,
   CloseRef,
   ConversationId,
   Declarer,
@@ -585,7 +586,8 @@ object CollectorLiveTests extends TestSuite {
               None,
               ann,
               Label.Public,
-              Place.under(Namespace.Fs, Vector("/work/grit"))
+              Place.under(Namespace.Fs, Vector("/work/grit")),
+              None
             ),
             events
           )

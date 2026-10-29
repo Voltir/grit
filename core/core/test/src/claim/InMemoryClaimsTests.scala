@@ -1,6 +1,8 @@
 package grit.core.claim
 
-import grit.core.id.PluginName
+import java.time.Instant
+
+import grit.core.id.{ClaimHolder, PluginName}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.store.Tx
 import grit.core.visibility.Clearance
@@ -11,7 +13,8 @@ object InMemoryClaimsTests extends ClaimsContract {
 
   private val store = new InMemoryClaims
 
-  protected def claims(plugin: PluginName): Claims = store.of(plugin)
+  protected def claims(plugin: PluginName, worked: Map[ClaimHolder, Instant]): Claims =
+    store.of(plugin, worked.get)
 
   protected def person(account: Account): Principal.Person =
     TestAccounts.principal(account) match {

@@ -5,7 +5,7 @@ import java.util.concurrent.{ConcurrentLinkedQueue, CyclicBarrier, TimeUnit}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.id.{Harness, SessionId}
+import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.place.{Namespace, Place}
 import grit.core.session.{Event, Log, Session, Sessions}
@@ -53,8 +53,12 @@ object SqlSessionsTests extends TestSuite {
 
   private val Worktree: Place = Place.under(Namespace.Fs, Vector("/work/grit"))
 
-  private def header(local: String, label: Label): Session.Header =
-    Session.Header(id(local), None, ann, label, Worktree)
+  private def header(
+      local: String,
+      label: Label,
+      holder: Option[ClaimHolder] = None
+  ): Session.Header =
+    Session.Header(id(local), None, ann, label, Worktree, holder)
 
   private def event(n: Long, kind: Event.Kind = Event.Kind.Edited): Event =
     ok(Event.of(n, t0.plusSeconds(n), kind, ok(Event.Shape.of(ujson.Obj("n" -> n.toInt)))))
@@ -63,9 +67,10 @@ object SqlSessionsTests extends TestSuite {
       local: String,
       events: Vector[Event],
       label: Label = Label.Public,
-      clearance: Clearance = Low
+      clearance: Clearance = Low,
+      holder: Option[ClaimHolder] = None
   ): Either[StoreError, Sessions.Recorded] =
-    LiveDb.transaction(config, clearance)(sessions.record(header(local, label), events))
+    LiveDb.transaction(config, clearance)(sessions.record(header(local, label, holder), events))
 
   private def read(local: String, clearance: Clearance = Low): Option[Session] =
     LiveDb.transaction(config, clearance)(ok(sessions.read(id(local))))
@@ -115,10 +120,22 @@ object SqlSessionsTests extends TestSuite {
             lastEvent = t0.plusSeconds(7),
             summary = Some(summary),
             counters = ok(Session.Counters.read(4, 1, 1, 100)),
-            full = false
+            full = false,
+            holder = None
           )
         )
       )
+    }
+
+    test("a session works as the holder the first header naming one gives, and keeps it") {
+      val first = ok(ClaimHolder.of("coder/first"))
+      val second = ok(ClaimHolder.of("coder/second"))
+      record("s-holder", Vector(event(1)))
+      val none = read("s-holder").flatMap(_.holder)
+      record("s-holder", Vector(event(2)), holder = Some(first))
+      record("s-holder", Vector(event(3)), holder = Some(second))
+      record("s-holder", Vector(event(4)))
+      assert(none == None, read("s-holder").flatMap(_.holder) == Some(first))
     }
 
     test("recording the same events again changes nothing") {

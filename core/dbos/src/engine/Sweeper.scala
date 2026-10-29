@@ -27,7 +27,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.triage.{Shadowing, TriageShadows}
-import grit.dbos.sql.{Opener, SqlSchedules, SqlSessions}
+import grit.dbos.sql.{Opener, SqlClaims, SqlSchedules, SqlSessions}
 import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
 import dev.dbos.transact.DBOSClient
@@ -91,7 +91,8 @@ private[engine] final class Sweeper(
     Transact.read(dataSource, opener)(body)
 
   /** Every session whose log or row has been kept long enough since it ended marked for
-    * deletion at `now`, at most [[Collector.Batch]] of each ([[SqlSessions.due]]).
+    * deletion at `now`, at most [[Collector.Batch]] of each ([[SqlSessions.due]]); then the
+    * claims lapsed longer than a session counts as unended deleted ([[SqlClaims.forget]]).
     */
   private def expire(now: Instant): Either[StoreError, Unit] =
     write(
@@ -100,6 +101,7 @@ private[engine] final class Sweeper(
         .flatMap(_.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, t) =>
           acc.flatMap(_ => tombstones.write(t, now).map(_ => ()))
         })
+        .flatMap(_ => SqlClaims.forget(now))
     )
 
   /** Closes and asks, then posts, then collects: see [[Engine.sweep]]. */

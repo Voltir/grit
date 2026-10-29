@@ -4,14 +4,15 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.id.SessionId
+import grit.core.id.{ClaimHolder, SessionId}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.visibility.Label
 
 /** A working session's record, as a transaction reads it: who ran it, at what label, where it
   * worked (`at`, as its [[Session.Header]] said), when it started and last did something, when
-  * it ended if it said so, its summary, and its counters. `full` when its log reached [[Log.HardCap]]: what it did since is not logged or counted.
+  * it ended if it said so, its summary, its counters, and the claim holder it works as. `full`
+  * when its log reached [[Log.HardCap]]: what it did since is not logged or counted.
   */
 final case class Session(
     id: SessionId,
@@ -24,7 +25,8 @@ final case class Session(
     lastEvent: Instant,
     summary: Option[Session.Summary],
     counters: Session.Counters,
-    full: Boolean
+    full: Boolean,
+    holder: Option[ClaimHolder]
 ) {
 
   /** When it counts as ended: `ended`, or [[Session.Unended]] after its last event. */
@@ -57,14 +59,16 @@ object Session {
   /** What a session's row begins with, the first time an event is recorded on it. `label` is
     * kept joined with the recording transaction's floor, in that transaction's own room when it
     * has one. `at` is where the session worked, not a room: a harness session's worktree under
-    * `fs`, a turn's conversation's place; it carries no label.
+    * `fs`, a turn's conversation's place; it carries no label. `holder` is the claim holder it
+    * works as, whose claims its work keeps from lapsing ([[grit.core.claim.Claim.lapses]]).
     */
   final case class Header(
       id: SessionId,
       parent: Option[SessionId],
       by: Principal.Person,
       label: Label,
-      at: Place
+      at: Place,
+      holder: Option[ClaimHolder]
   )
 
   /** What a session said it came to as it closed: 1 to [[Summary.Longest]] characters. */

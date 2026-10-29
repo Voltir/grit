@@ -10,7 +10,9 @@ trait Sessions extends caps.Pure {
 
   /** Records `events` on the session `header` names, beginning its row from `header` when there
     * is none, started at the earliest event's time; an existing row keeps its own parent,
-    * person and label.
+    * person, label and holder, except that a row with no holder takes the first header naming
+    * one. A harness names its holder only on the event that starts a session, so a session
+    * first recorded mid-life has none.
     *   - An event whose `n` a line of the log already holds is a repeat and is ignored, as is a
     *     second event of one `n` in `events`: recording again is a no-op.
     *   - The rest are logged in `n` order ([[Log.admit]]) and counted ([[Session.Counters]]); an

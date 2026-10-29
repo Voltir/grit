@@ -3,7 +3,7 @@ package grit.dbos.engine
 import java.time.Instant
 
 import grit.core.edge.EdgeSessions
-import grit.core.id.{Harness, SessionId}
+import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.{Namespace, Place}
 import grit.core.session.{Event, Session}
@@ -83,14 +83,18 @@ object SqlEdgeSessionsTests extends TestSuite {
 
   val tests = Tests {
 
-    test("each session begins with its account's person, the room's label, its parent and place") {
+    test(
+      "each session begins with its account's person, the room's label, its parent, place and holder"
+    ) {
       val _ = nick
+      val slot = ClaimHolder.of("coder/abc").toOption
       val recorded = edge.record(
         Nick,
         Workshop,
         Vector(
-          EdgeSessions.Batch(id("s-1"), None, fs("/work/grit"), Vector(event(1), event(2))),
-          EdgeSessions.Batch(id("s-1/a-1"), Some(id("s-1")), fs("/work/spike"), Vector(event(3)))
+          EdgeSessions.Batch(id("s-1"), None, fs("/work/grit"), None, Vector(event(1), event(2))),
+          EdgeSessions
+            .Batch(id("s-1/a-1"), Some(id("s-1")), fs("/work/spike"), slot, Vector(event(3)))
         )
       )
       val parent = read("s-1")
@@ -99,8 +103,9 @@ object SqlEdgeSessionsTests extends TestSuite {
         recorded == Right(3),
         parent.map(s => (s.by, s.label, s.parent, s.at)) ==
           Some((nick, TestLabels.Trial, None, fs("/work/grit"))),
-        child.map(s => (s.by, s.label, s.parent, s.at)) ==
-          Some((nick, TestLabels.Trial, Some(id("s-1")), fs("/work/spike"))),
+        child.map(s => (s.by, s.label, s.parent, s.at, s.holder)) ==
+          Some((nick, TestLabels.Trial, Some(id("s-1")), fs("/work/spike"), slot)),
+        parent.flatMap(_.holder) == None,
         read("s-1", Low) == None
       )
     }
@@ -110,7 +115,7 @@ object SqlEdgeSessionsTests extends TestSuite {
       val refused = edge.record(
         stranger,
         Workshop,
-        Vector(EdgeSessions.Batch(id("s-2"), None, fs("/work/grit"), Vector(event(1))))
+        Vector(EdgeSessions.Batch(id("s-2"), None, fs("/work/grit"), None, Vector(event(1))))
       )
       assert(
         refused == Left(StoreError.Invalid("no person is linked to workshop:local/stranger")),
@@ -125,7 +130,7 @@ object SqlEdgeSessionsTests extends TestSuite {
       ok(
         LiveDb.transaction(config, High)(
           store.record(
-            Session.Header(id("s-3"), None, nick, TestLabels.Trial, elsewhere),
+            Session.Header(id("s-3"), None, nick, TestLabels.Trial, elsewhere, None),
             Vector(event(1))
           )
         )
@@ -134,8 +139,8 @@ object SqlEdgeSessionsTests extends TestSuite {
         Nick,
         Place.under(Namespace.Task, Vector("elsewhere")),
         Vector(
-          EdgeSessions.Batch(id("s-4"), None, elsewhere, Vector(event(1))),
-          EdgeSessions.Batch(id("s-3"), None, elsewhere, Vector(event(2)))
+          EdgeSessions.Batch(id("s-4"), None, elsewhere, None, Vector(event(1))),
+          EdgeSessions.Batch(id("s-3"), None, elsewhere, None, Vector(event(2)))
         )
       )
       assert(

@@ -21,8 +21,9 @@ Decision:
   it has one, and where it worked (a harness session's worktree, a turn's conversation's place:
   a place with no label meaning, so that who is working where is one equality read), when it
   started, last did something and ended, its closing summary, and counters of its tool calls, edits,
-  commits and bytes read. A session that never says it ended counts as ended a fixed time after
-  its last event.
+  commits and bytes read, and the claim holder it works as when its start names one, whose claims
+  its last event keeps from lapsing. A session that never says it ended counts as ended a fixed
+  time after its last event.
 - **Its log is lines in grit's words** (`grit.session_events`): `started`, `read`, `edited`,
   `ran`, `commit`, `closing`, `ended`, each with a small shape of what it was and never its
   content. Up to a fixed number of lines, the last an `overflow` standing for every event after

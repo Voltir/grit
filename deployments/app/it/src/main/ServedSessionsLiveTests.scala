@@ -70,6 +70,7 @@ object ServedSessionsLiveTests extends TestSuite {
         id,
         None,
         Place.under(Namespace.Fs, Vector("/work/grit")),
+        None,
         Vector(event)
       )
       val room = Place.under(Namespace.Task, Vector("served"))

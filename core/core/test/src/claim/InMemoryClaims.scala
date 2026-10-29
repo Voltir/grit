@@ -2,7 +2,7 @@ package grit.core.claim
 
 import java.time.Instant
 
-import grit.core.id.{DocKey, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, PluginName}
 import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
@@ -18,8 +18,19 @@ final class InMemoryClaims {
   @caps.unsafe.untrackedCaptures
   private var rows = Vector.empty[Row]
 
-  /** `plugin`'s claims. */
-  def of(plugin: PluginName): Claims = new Claims {
+  /** `plugin`'s claims, each holder's sessions last working at `worked` of it, as the store's
+    * sessions this transaction reads would say.
+    */
+  def of(plugin: PluginName, worked: ClaimHolder -> Option[Instant]): Claims = new Claims {
+
+    /** `r`'s claim, active as `worked` says. */
+    private def read(r: Row): Claim = {
+      val c = r.claim
+      c.copy(active = worked(c.holder).filter(_.isAfter(c.made)).getOrElse(c.made))
+    }
+
+    private def lapsed(r: Row, at: Instant): Boolean = !at.isBefore(read(r).lapses)
+
     def claim(
         subject: DocKey,
         holder: ClaimHolder,
@@ -30,15 +41,24 @@ final class InMemoryClaims {
     )(using tx: Tx^): Either[StoreError, Claimed] = {
       val clearance = Tx.clearance(tx)
       val kept = label.join(clearance.floor)
-      val atLabel = rows.filter(r => r.plugin == plugin && r.claim.label == kept)
-      def shown(r: Row): Option[Claim] = Option.when(reads(r))(r.claim)
+      def here(r: Row): Boolean = r.plugin == plugin && r.claim.label == kept
+      rows = rows.filterNot(r =>
+        here(r) && (r.claim.subject == subject || r.claim.holder == holder) && lapsed(r, at)
+      )
+      val atLabel = rows.filter(here)
+      def shown(r: Row): Option[Claim] = Option.when(reads(r))(read(r))
       (atLabel.find(_.claim.subject == subject), atLabel.find(_.claim.holder == holder)) match {
+        case (Some(mine), _) if mine.claim.holder == holder && reads(mine) =>
+          val renewed = mine.copy(claim = mine.claim.copy(role = role))
+          rows = rows.map(r => if (r == mine) renewed else r)
+          Right(Claimed.Made(read(renewed)))
         case (Some(first), _) => Right(Claimed.Taken(shown(first)))
         case (None, Some(other)) => Right(Claimed.Holding(shown(other)))
         case (None, None) =>
-          val made = Claim(subject, holder, role, by, at, kept)
-          rows = rows :+ Row(plugin, made, clearance.own.map(_.room))
-          Right(Claimed.Made(made))
+          val made =
+            Row(plugin, Claim(subject, holder, role, by, at, kept, at), clearance.own.map(_.room))
+          rows = rows :+ made
+          Right(Claimed.Made(read(made)))
       }
     }
 
@@ -48,9 +68,17 @@ final class InMemoryClaims {
       ) match {
         case Some(held) =>
           rows = rows.filterNot(_ == held)
-          Right(Some(held.claim))
+          Right(Some(read(held)))
         case None => Right(None)
       }
+
+    def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
+      Right(
+        rows
+          .filter(r => r.plugin == plugin && reads(r) && !lapsed(r, at))
+          .map(read)
+          .sortBy(c => (DocKey.value(c.subject), c.made))
+      )
   }
 
   private def reads(r: Row)(using tx: Tx^): Boolean =

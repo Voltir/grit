@@ -1,8 +1,8 @@
 package grit.projects.plugin
 
-import grit.core.claim.{Claim, ClaimHolder, ClaimRole}
+import grit.core.claim.{Claim, ClaimRole}
 import grit.core.document.Document
-import grit.core.id.DocKey
+import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Label
 import grit.projects.method.MethodFixtures
@@ -104,7 +104,8 @@ object ClaimTests extends TestSuite {
               right(ClaimRole.of("builder")),
               person,
               at,
-              Label.Public
+              Label.Public,
+              at
             )
           )
         )

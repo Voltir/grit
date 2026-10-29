@@ -56,7 +56,7 @@ object CommandFixtures {
   final class Store(terms: DocumentTerms = Projects.Terms) {
     val documents = new InMemoryDocuments
     val keeper: DocumentKeeper = documents.keeper(Projects.Name, terms)
-    val claims: Claims = new InMemoryClaims().of(Projects.Name)
+    val claims: Claims = new InMemoryClaims().of(Projects.Name, _ => None)
     def reads: PluginReads = PluginReads(new InMemoryPlugins().docs(Projects.Name), keeper)
     def count: Int =
       inTx(keeper.newest(100_000)).fold(e => throw new java.lang.AssertionError(e.toString), _.size)

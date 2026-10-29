@@ -1083,14 +1083,18 @@ CREATE TABLE IF NOT EXISTS grit.document_refs (
 CREATE UNIQUE INDEX IF NOT EXISTS document_refs_key ON grit.document_refs (version, kind, md5(ref));
 CREATE INDEX IF NOT EXISTS idx_document_refs_ref ON grit.document_refs (kind, md5(ref));
 
--- Each plugin's live claims (grit.core.claim.Claims): `holder` works the plugin's `subject` as
+-- Each plugin's claims (grit.core.claim.Claims): `holder` works the plugin's `subject` as
 -- `role`, made by `principal_id` at `made_at`. At each label (`classification_id`, its maker's
 -- label joined with their transaction's floor) a plugin holds one claim per subject and one per
--- holder; `room_id` is the room it was made in (grit.core.visibility.Item.Kept), NULL for none.
--- Never versioned: a release deletes its row.
--- Retention: kept: bounded by what people claim and release; deleted by its release, and with a
--- plugin no longer enabled (Target.Disabled). Steady state: one row of about 250 bytes per live
--- claim, tens of rows.
+-- holder among those not lapsed; `room_id` is the room it was made in
+-- (grit.core.visibility.Item.Kept), NULL for none. Its lease is computed when read, never
+-- written: the latest of `made_at` and its holder's sessions' `last_event_at`
+-- (grit.sessions.holder), plus grit.core.claim.Claims.Lease. Never versioned: a release deletes
+-- its row.
+-- Retention: expiring: deleted by its release, by a claim taking it over once lapsed, by the
+-- sweep once lapsed longer than grit.core.session.Session.Unended, and with a plugin no longer
+-- enabled (Target.Disabled). Steady state: one row of about 250 bytes per live claim, tens of
+-- rows.
 CREATE TABLE IF NOT EXISTS grit.claims (
     plugin            TEXT NOT NULL,
     subject           TEXT NOT NULL CHECK (length(subject) BETWEEN 1 AND 200),
@@ -1110,7 +1114,9 @@ CREATE TABLE IF NOT EXISTS grit.claims (
 -- at its label (`classification_id`, its writer's label joined with the transaction's floor) in
 -- `room_id`, the writing transaction's own room, NULL when it has none (an edge's), as
 -- grit.claims keeps one. `place` is where it worked (Session.Header.at), segments as
--- grit.documents.place holds them: no grit.places row, and no label meaning. `next_seq` is its log's next line, past
+-- grit.documents.place holds them: no grit.places row, and no label meaning. `holder` is the
+-- claim holder it works as (grit.claims.holder), set by the first recording naming one and
+-- never changed after, so it keeps updates HOT. `next_seq` is its log's next line, past
 -- grit.core.session.Log.HardCap once the log is full; the counters count its logged events.
 -- Each recording locks its row. The counters and times are unindexed, and the sweep reads the
 -- table whole, so updates leave the page's free space to them.
@@ -1129,6 +1135,7 @@ CREATE TABLE IF NOT EXISTS grit.sessions (
     room_id           UUID REFERENCES grit.places(id),
     place             TEXT[] NOT NULL
                       CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
+    holder            TEXT CHECK (length(holder) BETWEEN 1 AND 160),
     started_at        TIMESTAMPTZ NOT NULL,
     ended_at          TIMESTAMPTZ,
     last_event_at     TIMESTAMPTZ NOT NULL,
@@ -1144,6 +1151,9 @@ CREATE TABLE IF NOT EXISTS grit.sessions (
 
 -- The sessions that worked at a place, as who is there reads them.
 CREATE INDEX IF NOT EXISTS idx_sessions_place ON grit.sessions (place);
+
+-- The sessions working as a claim holder, whose last events are a claim's lease.
+CREATE INDEX IF NOT EXISTS idx_sessions_holder ON grit.sessions (holder) WHERE holder IS NOT NULL;
 
 -- Each working session's log (grit.core.session.Log): a line at each `seq` from 1, the source's
 -- own ordinal `n` for its event (unique in the session, so an event recorded again is known),

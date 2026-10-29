@@ -1,7 +1,7 @@
 package grit.projects.name
 
-import grit.core.claim.{ClaimHolder, ClaimRole}
-import grit.core.id.Slug
+import grit.core.claim.ClaimRole
+import grit.core.id.{ClaimHolder, Slug}
 
 /** The name of a method, as a deployment declares it. */
 opaque type MethodName = String

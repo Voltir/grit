@@ -98,8 +98,8 @@ In dependency order, each with the core packages it imports:
   compartment's policy applied to it, the one write kept below its transaction's floor.
   ← `id`, `place`, `period`, `visibility`, `store`, `flow`, `tool`, `screen`
 - **`claim`**: which holder works a plugin's subject, as which role: one live claim per subject
-  and per holder at each label, never versioned, deleted by its release. ← `id`, `identity`,
-  `visibility`, `store`
+  and per holder at each label, never versioned, leased on the sessions working as its holder,
+  deleted by its release or once lapsed. ← `id`, `identity`, `visibility`, `store`
 - **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
   when and its counters, and a capped log of its events in grit's words, an event recorded again
   known by its source's ordinal. ← `id`, `identity`, `visibility`, `store`
