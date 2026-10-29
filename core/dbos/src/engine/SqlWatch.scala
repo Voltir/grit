@@ -1,7 +1,5 @@
 package grit.dbos.engine
 
-import java.sql.DriverManager
-import java.util.Properties
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import java.util.concurrent.{ConcurrentHashMap, Semaphore, TimeUnit}
 import javax.sql.DataSource
@@ -134,16 +132,15 @@ final class SqlWatch private[dbos] (
     var backoff = SqlWatch.FirstBackoff
     while (!closed.get) {
       try {
-        Using.resource(DriverManager.getConnection(config.jdbcUrl, SqlWatch.properties(config))) {
-          conn =>
-            SqlNotices.listen(conn, Vector(SqlNotices.Documents, SqlNotices.Sessions))
-            up.set(true)
-            backoff = SqlWatch.FirstBackoff
-            waiters.forEach(_.ring())
-            while (!closed.get) {
-              val heard = SqlNotices.drain(conn, SqlWatch.Drain)
-              if (heard.nonEmpty) waiters.forEach(w => if (heard.exists(w.hears)) w.ring())
-            }
+        Using.resource(config.connect(SqlWatch.ApplicationName)) { conn =>
+          SqlNotices.listen(conn, Vector(SqlNotices.Documents, SqlNotices.Sessions))
+          up.set(true)
+          backoff = SqlWatch.FirstBackoff
+          waiters.forEach(_.ring())
+          while (!closed.get) {
+            val heard = SqlNotices.drain(conn, SqlWatch.Drain)
+            if (heard.nonEmpty) waiters.forEach(w => if (heard.exists(w.hears)) w.ring())
+          }
         }
       } catch { case NonFatal(_) => () }
       up.set(false)
@@ -179,14 +176,6 @@ object SqlWatch {
     case h: WatchFor.Holding =>
       _ == SqlNotices.Heard(SqlNotices.Documents, SqlNotices.versioned(h.plugin, h.key))
     case _: WatchFor.Committed => _.channel == SqlNotices.Sessions
-  }
-
-  private def properties(config: DbConfig): Properties = {
-    val p = new Properties()
-    p.setProperty("user", config.user)
-    p.setProperty("password", config.password)
-    p.setProperty("ApplicationName", ApplicationName)
-    p
   }
 
   /** The JVM's monotonic nanoseconds, for a watch's deadline: a watch takes no Clock, as its

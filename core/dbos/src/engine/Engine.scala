@@ -1,6 +1,5 @@
 package grit.dbos.engine
 
-import java.sql.DriverManager
 import java.time.Instant
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
@@ -505,9 +504,7 @@ object Engine {
     * does.
     */
   private def compartmentsSetup(config: DbConfig, visibility: Visibility): Option[Compartment] =
-    Using.resource(
-      DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
-    ) { conn =>
+    Using.resource(config.connect("grit-setup")) { conn =>
       conn.setAutoCommit(false)
       new Opener(visibility)
         .maintained(conn)
@@ -564,9 +561,7 @@ object Engine {
           "schema.sql not found on classpath — is core/dbos/resources/ on the resource path?"
         )
     }
-    Using.resource(
-      DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
-    ) { conn =>
+    Using.resource(config.connect("grit-setup")) { conn =>
       Using.resource(conn.createStatement())(_.execute(sql))
     }
   }

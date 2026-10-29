@@ -189,12 +189,11 @@ object EngineLockTests extends TestSuite {
         Vector.fill(5 * Pool.Size)(held.db.read(Subject.Public)(SqlStatements.now).isRight) ==>
           Vector.fill(5 * Pool.Size)(true)
         assert(held.sweep(java.time.Instant.now()).isRight)
-        val holding = read(
+        read(
           config,
           """SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
             | WHERE l.locktype = 'advisory' AND l.granted""".stripMargin
-        )
-        assert(holding.isDefined, holding != Some(Pool.ApplicationName))
+        ) ==> Some("grit-lock")
         EngineLock.take(config).left.map {
           case NotTaken.Held(holder) => holder.map(_.pid)
           case other => other

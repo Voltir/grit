@@ -1,6 +1,6 @@
 package grit.dbos.engine
 
-import java.sql.{Connection, DriverManager}
+import java.sql.Connection
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant, ZoneId}
 import javax.sql.DataSource
@@ -113,7 +113,7 @@ object EngineLock {
   /** [[take]], beating every `beat`: tests use a shorter one. */
   private[engine] def take(config: DbConfig, beat: FiniteDuration): Either[NotTaken, EngineLock^] =
     try {
-      val conn = DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      val conn = config.connect("grit-lock")
       try {
         val got = Using.resource(conn.prepareStatement("SELECT pg_try_advisory_lock(?)")) { ps =>
           ps.setLong(1, Key)

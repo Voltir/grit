@@ -10,6 +10,17 @@ final case class DbConfig(jdbcUrl: String, user: String, password: String) {
     * credentials.
     */
   def endpoint: DbConfig.Endpoint = DbConfig.Endpoint.of(jdbcUrl)
+
+  /** A connection of its own, outside the pool, named `name` in `pg_stat_activity`; throws when
+    * the database cannot be reached.
+    */
+  private[dbos] def connect(name: String): java.sql.Connection = {
+    val p = new java.util.Properties()
+    p.setProperty("user", user)
+    p.setProperty("password", password)
+    p.setProperty("ApplicationName", name)
+    java.sql.DriverManager.getConnection(jdbcUrl, p)
+  }
 }
 
 object DbConfig {

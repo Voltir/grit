@@ -1,6 +1,6 @@
 package grit.dbos.engine
 
-import java.sql.{Connection, DriverManager}
+import java.sql.Connection
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -261,7 +261,7 @@ object SqlDesk {
       opener: Opener
   ): Either[DeskError, SqlDesk^] =
     try {
-      val conn = DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      val conn = config.connect("grit-desk")
       try {
         val key = (PrincipalId
           .value(principal) +: identity.machine +: places.toVector.map(_.written).sorted)
