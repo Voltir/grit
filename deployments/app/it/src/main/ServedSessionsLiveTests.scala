@@ -21,7 +21,7 @@ import grit.core.spend.Budget
 import grit.core.store.StoreError
 import grit.core.visibility.Subject
 import grit.dbos.engine.LiveEngine
-import grit.dbos.sql.{DbConfig, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
 import grit.kit.run.Kit
@@ -128,8 +128,21 @@ object ServedSessionsLiveTests extends TestSuite {
         Kit.opened(engine, d, secrets, env, Clock.system(), _ => (), log) match {
           case Left(failure) => sys.error(failure.toString)
           case Right(opened) =>
-            try answers.asScala.toVector ==> Vector(Right(1), Right(0))
-            finally opened.close()
+            try {
+              val read = for {
+                harness <- Harness.of("claude-code")
+                id <- SessionId.of(harness, "s-served")
+              } yield LiveDb.session(config, id)
+              (
+                answers.asScala.toVector,
+                read.map(_.map(_.map(s => (s.by.accounts.map(_.account), s.lastEvent))))
+              ) ==> (
+                (
+                  Vector(Right(1), Right(0)),
+                  Right(Right(Some((Set(Ann), Instant.parse("2026-10-28T10:00:00Z")))))
+                )
+              )
+            } finally opened.close()
         }
       } finally engine.close()
     }

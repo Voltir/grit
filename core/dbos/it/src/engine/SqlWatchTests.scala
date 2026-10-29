@@ -121,17 +121,21 @@ object SqlWatchTests extends TestSuite {
     w.until(annAccount, Room, what, within)
   }
 
-  /** [[until]] on a thread of its own, returned once the watch has read, found nothing, and waits
+  /** [[until]] for `within` on a thread of its own, returned once the watch has read, found nothing, and waits
     * to be rung, its listener listening since before it began: only a notice can wake it then.
     */
-  private def watched(w: SqlWatch^, what: WatchFor): Future[Either[WatchError, Watched]] = {
+  private def watched(
+      w: SqlWatch^,
+      what: WatchFor,
+      within: FiniteDuration = Patience
+  ): Future[Either[WatchError, Watched]] = {
     if (!w.listening) {
       val _ = until(w, reaching("grit/none", "none"), Duration.Zero)
       eventually(w.listening)
     }
     val before = w.waiting
     val f = threads.submit(new Callable[Either[WatchError, Watched]] {
-      def call(): Either[WatchError, Watched] = until(w, what, Patience)
+      def call(): Either[WatchError, Watched] = until(w, what, within)
     })
     eventually(w.waiting > before)
     f
@@ -195,10 +199,15 @@ object SqlWatchTests extends TestSuite {
       assert(got == Some(Right(Watched.Held(version, Set(state("review")), t0))))
     }
 
-    test("a write the watcher does not read never meets its watch") {
+    test("a write the watcher does not read never meets its watch, read before or rung after") {
       write("grit/hidden", "review", TestLabels.Trial)
-      val got = watching(w => until(w, reaching("grit/hidden", "review"), Duration.Zero))
-      assert(got == Right(Watched.Lapsed))
+      val (before, after) = watching { w =>
+        val before = until(w, reaching("grit/hidden", "review"), Duration.Zero)
+        val f = watched(w, reaching("grit/hidden", "merged"), 2.seconds)
+        val _ = write("grit/hidden", "merged", TestLabels.Trial)
+        (before, outcome(f))
+      }
+      (before, after) ==> ((Right(Watched.Lapsed), Some(Right(Watched.Lapsed))))
     }
 
     test("a commit meets a watch on its worktree or its session's holder, from since on") {

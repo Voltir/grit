@@ -5,9 +5,10 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds, TurnRef}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds, SessionId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.Message
+import grit.core.session.Session
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.Integrity
 import grit.core.visibility.{Clearance, Label, TestLabels, Visibility}
@@ -197,4 +198,8 @@ object LiveDb {
     ds.setPassword(config.password)
     new SqlJot(ds, new Opener(visibility))
   }
+
+  /** The session `id` in `config`'s engine session record, for a suite outside `grit.dbos`. */
+  def session(config: DbConfig, id: SessionId): Either[StoreError, Option[Session]] =
+    transaction(config)(new SqlSessions().read(id))
 }

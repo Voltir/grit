@@ -194,7 +194,7 @@ abstract class ClaimsContract extends TestSuite {
       assert(renewed == Claimed.Made(one), live(c, hour) == Vector(one))
     }
 
-    test("a claim its subject's label left behind frees its holder once lapsed") {
+    test("a claim unreleased at its label frees its holder once lapsed") {
       val c = claims(plugin("claims-relabel"))
       claim(c, "p/a", "relabel-1")
       val missed = release(c, "p/a", TestLabels.Trial, High)

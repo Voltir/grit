@@ -189,11 +189,12 @@ object EngineLockTests extends TestSuite {
         Vector.fill(5 * Pool.Size)(held.db.read(Subject.Public)(SqlStatements.now).isRight) ==>
           Vector.fill(5 * Pool.Size)(true)
         assert(held.sweep(java.time.Instant.now()).isRight)
-        read(
+        val holding = read(
           config,
           """SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
             | WHERE l.locktype = 'advisory' AND l.granted""".stripMargin
-        ) ==> Some("PostgreSQL JDBC Driver")
+        )
+        assert(holding.isDefined, holding != Some(Pool.ApplicationName))
         EngineLock.take(config).left.map {
           case NotTaken.Held(holder) => holder.map(_.pid)
           case other => other
