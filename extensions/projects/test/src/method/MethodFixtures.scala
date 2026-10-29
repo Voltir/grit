@@ -67,6 +67,16 @@ object MethodFixtures {
 
   def artifact(h: ArtifactHead, body: String): Artifact = Artifact(h, right(Body.read(body)))
 
+  /** Project `p` of `artifacts`, pinned to `m` as it is. */
+  def pinnedTo(m: Method, artifacts: Artifact*): Project =
+    right(
+      Project.of(
+        right(ProjectKey.of("p")),
+        right(Pin.of(m.name, m.version, m.digest)),
+        artifacts.toVector
+      )
+    )
+
   /** Project `p` of `artifacts`, pinned to a digest no method has: the bench reads no pin. */
   def project(artifacts: Artifact*): Project =
     right(

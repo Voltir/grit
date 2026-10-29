@@ -3,8 +3,17 @@ package grit.projects.method
 import scala.annotation.tailrec
 
 import grit.core.id.Sha256
-import grit.projects.artifact.{Artifact, ArtifactHead, Body}
-import grit.projects.name.{ArtifactKey, CheckName, KindName, MethodName, RoleName, StateName}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
+import grit.projects.name.{
+  ArtifactKey,
+  CheckName,
+  KindName,
+  MethodName,
+  Pin,
+  ProjectKey,
+  RoleName,
+  StateName
+}
 
 /** A methodology version (ADR 0049): the kinds of artifact a project of it holds, the states
   * each passes through, the transitions between them, what each role is shown, and the compiled
@@ -70,6 +79,73 @@ final case class Method private (
       }
     } yield done
 
+  /** `project` pinned to this method, each artifact given its kind and state under `remap`, its
+    * title, body, links and `by` kept; or every reason not, joined by `; `: `project` pinned to
+    * another method, or to this version under another digest (its rules changed: declare a new
+    * version); an override in `remap.artifacts` for a key `project` lacks; artifacts that would
+    * be of a kind this method does not declare, or in a state their kind does not declare, named
+    * by kind or state; or what [[Project.of]] refuses. No transition's checks are asked: they guard moves, not the states
+    * artifacts are in.
+    */
+  def migrated(project: Project, remap: Remap): Either[String, Migrated] = {
+    val held = project.artifacts.map(_.head.key).toSet
+    val renamed = project.artifacts.map { a =>
+      val h = a.head
+      Artifact(
+        h.copy(
+          kind = remap.artifacts.getOrElse(h.key, remap.kinds.getOrElse(h.kind, h.kind)),
+          state = remap.states.getOrElse((h.kind, h.state), h.state)
+        ),
+        a.body
+      )
+    }
+    def keys(as: Vector[Artifact]): String = as.map(_.head.key.value).sorted.mkString(", ")
+    val ours = s"${MethodName.value(name)} version $version"
+    val pinned = project.pin
+    val reasons =
+      (if (pinned.method != name)
+         Vector(
+           s"project ${ProjectKey.value(project.key)} holds to method " +
+             s"${MethodName.value(pinned.method)}, not ${MethodName.value(name)}"
+         )
+       else if (pinned.version == version && pinned.digest != digest)
+         Vector(Method.changed(project.key, this))
+       else Vector()) ++
+        remap.artifacts.keys.filterNot(held).map(_.value).toVector.sorted.map { k =>
+          s"project ${ProjectKey.value(project.key)} has no artifact $k"
+        } ++
+        renamed
+          .filterNot(a => kinds.exists(_.name == a.head.kind))
+          .groupBy(_.head.kind)
+          .toVector
+          .sortBy((k, _) => KindName.value(k))
+          .map((k: KindName, as: Vector[Artifact]) =>
+            s"${keys(as)} would be of kind ${KindName.value(k)}, which $ours does not declare"
+          ) ++
+        renamed
+          .filter(a => kinds.exists(k => k.name == a.head.kind && !k.all.contains(a.head.state)))
+          .groupBy(a => (a.head.kind, a.head.state))
+          .toVector
+          .sortBy((ks, _) => (KindName.value(ks._1), StateName.value(ks._2)))
+          .map((ks: (KindName, StateName), as: Vector[Artifact]) =>
+            s"${keys(as)} would be in state ${StateName.value(ks._2)}, which kind " +
+              s"${KindName.value(ks._1)} of $ours does not declare"
+          )
+    for {
+      _ <- Either.cond(reasons.isEmpty, (), reasons.mkString("; "))
+      pin <- Pin.of(name, version, digest)
+      done <- Project.of(project.key, pin, renamed)
+    } yield Migrated(
+      done,
+      project.artifacts
+        .zip(renamed)
+        .collect {
+          case (was, now) if was.head != now.head => now.head.key
+        }
+        .sortBy(_.value)
+    )
+  }
+
   /** The digest of its data and of each check's name and version: equal for equal methods,
     * whatever order their kinds, transitions, role views, states and checks are declared in.
     */
@@ -106,6 +182,14 @@ final case class Method private (
 }
 
 object Method {
+
+  /** Why `project`, pinned to `method`'s name and version under another digest, may neither move
+    * nor migrate to that version.
+    */
+  private[projects] def changed(project: ProjectKey, method: Method): String =
+    s"project ${ProjectKey.value(project)} holds to method ${MethodName.value(method.name)} " +
+      s"version ${method.version}, whose rules have changed since the project started; " +
+      "declare a new version of the method rather than changing this one"
 
   /** These as a method, or every reason not ([[MethodRefusal]]): a version under 1; a kind,
     * state, role or check named twice; an end state, a transition (its action's kind among them)
@@ -188,6 +272,22 @@ object Method {
   * as changed, if any.
   */
 final case class Moved(artifact: Artifact, changed: Option[Artifact]) extends caps.Pure
+
+/** How a project's artifacts are renamed onto another method version, each looked up by what the
+  * artifact is before: `artifacts` gives one artifact its new kind, over what `kinds` gives every
+  * artifact of a kind; `states` gives a state its new name, keyed by the artifact's kind before,
+  * whatever kind it is given. A kind or state no entry names keeps its name.
+  */
+final case class Remap(
+    kinds: Map[KindName, KindName] = Map.empty,
+    states: Map[(KindName, StateName), StateName] = Map.empty,
+    artifacts: Map[ArtifactKey, KindName] = Map.empty
+) extends caps.Pure
+
+/** What [[Method.migrated]] leaves: the project pinned to the method, every artifact in it; and
+  * `renamed`, the keys of those whose kind or state changed, in key order.
+  */
+final case class Migrated(project: Project, renamed: Vector[ArtifactKey]) extends caps.Pure
 
 /** Why an artifact may not move. */
 enum MoveRefusal extends caps.Pure {

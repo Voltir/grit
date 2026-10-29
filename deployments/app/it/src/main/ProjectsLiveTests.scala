@@ -7,6 +7,7 @@ import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
+import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
 import utest.*
@@ -126,6 +127,73 @@ object ProjectsLiveTests extends TestSuite {
           ) ==> below("keep")
           ran(commands, bea, board, ToolName("project_move"), "key" -> "p/a", "to" -> "closed") ==>
             below("move")
+          kept(config, engine, Projects.Name) ==> Vector(
+            ("p", "internal", "member"),
+            ("p/a", "internal", "member")
+          )
+      }
+    }
+
+    test(
+      "a migration is refused from a room above its project's label, and from the project's own " +
+        "room renames in place"
+    ) {
+      import MethodFixtures.{change, note, transitions, views}
+      val memo = ArtifactKind(
+        MethodFixtures.kind("memo"),
+        MethodFixtures.state("open"),
+        Vector(),
+        Set(),
+        Vector()
+      )
+      val withMemo = Method
+        .of(
+          CommandFixtures.methodName,
+          1,
+          Vector(change, note, memo),
+          transitions,
+          views,
+          TransitionChecks.all
+        )
+        .fold(why => sys.error(why.toString), identity)
+      CommandRooms.commanding("projects_migrate", _ => Vector(CommandFixtures.plugin(withMemo))) {
+        (config, engine, commands) =>
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
+            Right(classOf[CommandOutcome.Done])
+          keep(commands, desk, "a", "In the desk.") ==> Right(classOf[CommandOutcome.Done])
+          def migrate(by: Account, room: Place) =
+            ran(
+              commands,
+              by,
+              room,
+              ToolName("project_migrate"),
+              "project" -> "p",
+              "version" -> 1,
+              "kinds" -> ujson.Arr(ujson.Obj("from" -> "note", "to" -> "memo"))
+            )
+          migrate(bea, board) ==> Right(
+            CommandOutcome.Refused(
+              Vector("project p", "p/a")
+                .map(subject =>
+                  s"$subject is kept labelled [level: internal], below what this room writes " +
+                    "([level: confidential]): migrate from a room at its label"
+                )
+                .mkString("; ")
+            )
+          )
+          kept(config, engine, Projects.Name) ==> Vector(
+            ("p", "internal", "member"),
+            ("p/a", "internal", "member")
+          )
+          migrate(ann, desk) ==> Right(
+            CommandOutcome.Done(
+              "Moved project p to method grit version 1, 1 artifact kept again; renamed: p/a."
+            )
+          )
+          ran(commands, ann, desk, ToolName("project_show"), "key" -> "p/a").map {
+            case CommandOutcome.Done(text) => text.linesIterator.find(_.startsWith("kind:"))
+            case refused => Some(refused.toString)
+          } ==> Right(Some("kind: memo"))
           kept(config, engine, Projects.Name) ==> Vector(
             ("p", "internal", "member"),
             ("p/a", "internal", "member")

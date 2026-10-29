@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.claim.{ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
+import grit.core.either.Traversal
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PrincipalId}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
@@ -13,7 +14,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
-import grit.projects.method.{ArtifactKind, Method, MoveRefusal, RoleView}
+import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView}
 import grit.projects.name.{
   ArtifactKey,
   BriefSlot,
@@ -51,6 +52,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       ProjectClaims,
       ProjectBrief,
       Withdraw,
+      Migrate,
       Stale
     )
 
@@ -254,11 +256,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         _ <- Either.cond(
           method.digest == project.pin.digest,
           (),
-          Stop.Refused(
-            s"project ${ProjectKey.value(args.key.project)} holds to method ${MethodName.value(method.name)} " +
-              s"version ${method.version}, whose rules have changed since the project started; " +
-              "declare a new version of the method rather than changing this one"
-          )
+          Stop.Refused(Method.changed(args.key.project, method))
         )
         found <- artifact(project, args.key)
         (document, _) = found
@@ -768,6 +766,155 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     }
   }
 
+  /** `project_migrate`. */
+  object Migrate extends KeepingCommand[Migrating] {
+
+    // Each item a value of its own: built inline inside the outer `Args.of`, its tuple gets a
+    // capture-set variable and `Args.Values` does not reduce.
+    private val renamedKind =
+      Args.of((from = Field.text("The kind's name now."), to = Field.text("Its new name.")))
+    private val renamedState = Args.of(
+      (
+        kind = Field.text("The kind's name now."),
+        from = Field.text("The state's name now."),
+        to = Field.text("Its new name.")
+      )
+    )
+    private val rekinded =
+      Args.of((key = Field.text("The artifact's key."), kind = Field.text("Its new kind.")))
+
+    val spec: ToolSpec[Migrating] = ToolSpec(
+      ToolName("project_migrate"),
+      said(
+        "Moves a project to another version of its method: each artifact is kept again (a new " +
+          "version, written by you; its history still reads), its kind and state renamed as " +
+          "given, and the project then holds to that version. A kind or state not renamed " +
+          "keeps its name. Refused, changing nothing, naming each cause: the version is not " +
+          "declared; an artifact would be of a kind the version lacks, or in a state its kind " +
+          "lacks; a renamed artifact is not in the project; it is the project's own version, " +
+          "whose rules have changed (declare a new version instead); an artifact is claimed; " +
+          "or an artifact or the project is kept at a label below what this room writes."
+      ),
+      Args
+        .of(
+          (
+            project = Field.text("The project's key."),
+            version =
+              Field.integer("The version of the project's method to move it to.", 1, Int.MaxValue),
+            kinds = Field
+              .each(
+                "Kinds renamed: each from its name in the project to its name in the version.",
+                renamedKind,
+                0
+              )
+              .optional,
+            states = Field
+              .each(
+                "States renamed: a state of the kind (by its name now) to its new name.",
+                renamedState,
+                0
+              )
+              .optional,
+            artifacts = Field
+              .each(
+                "Artifacts given a kind of their own, over the kinds renamed: each by key.",
+                rekinded,
+                0
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          for {
+            p <- parsed("project", a.project, ProjectKey.of)
+            kindPairs <- Traversal.traverse(a.kinds.getOrElse(Nil).toVector)(k =>
+              for {
+                from <- parsed("kinds", k.from, KindName.of)
+                to <- parsed("kinds", k.to, KindName.of)
+              } yield from -> to
+            )
+            statePairs <- Traversal.traverse(a.states.getOrElse(Nil).toVector)(s =>
+              for {
+                kind <- parsed("states", s.kind, KindName.of)
+                from <- parsed("states", s.from, StateName.of)
+                to <- parsed("states", s.to, StateName.of)
+              } yield (kind, from) -> to
+            )
+            artifactPairs <- Traversal.traverse(a.artifacts.getOrElse(Nil).toVector)(x =>
+              for {
+                key <- parsed("artifacts", x.key, ArtifactKey.read)
+                kind <- parsed("artifacts", x.kind, KindName.of)
+              } yield key -> kind
+            )
+            kinds <- once("kinds", kindPairs, KindName.value)
+            states <- once(
+              "states",
+              statePairs,
+              (ks: (KindName, StateName)) => s"${KindName.value(ks._1)} ${StateName.value(ks._2)}"
+            )
+            artifacts <- once("artifacts", artifactPairs, (k: ArtifactKey) => k.value)
+          } yield Migrating(p, a.version.toInt, Remap(kinds, states, artifacts))
+        )
+    )
+
+    def run(
+        args: Migrating,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      val p = ProjectKey.value(args.project)
+      for {
+        project <- loaded(own, args.project)
+        whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
+        target <- methods
+          .find(m => m.name == project.pin.method && m.version == args.version)
+          .toRight(
+            Stop.Refused(
+              s"the method ${MethodName.value(project.pin.method)} version ${args.version} is " +
+                "not declared here; its versions here: " +
+                methods.filter(_.name == project.pin.method).map(_.version).sorted.mkString(", ")
+            )
+          )
+        done <- refuse(target.migrated(whole, args.remap))
+        index <- indexed(own, args.project)
+        _ <- unclaimed(claims, project.documents, at)
+        _ <- atTheirLabels(
+          (index._1 -> s"project $p") +: project.documents.map((d, a) => d -> a.head.key.value),
+          "migrate"
+        )
+        writer = Some(author(by))
+        labels = project.documents.map((d, a) => a.head.key -> d.label).toMap
+        _ <- done.project.artifacts.foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
+          so.flatMap(_ =>
+            kept(own, Artifact(a.head.copy(by = writer), a.body), labels.get(a.head.key), at)
+          )
+        }
+        rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
+        (key, text, data, refs) = rewritten
+        _ <- written(
+          own.write(
+            key,
+            index._1.label,
+            Integrity.Authority,
+            Place.Everywhere,
+            text,
+            data,
+            None,
+            at,
+            refs
+          )
+        )
+      } yield {
+        val n = done.project.artifacts.size
+        s"Moved project $p to method ${MethodName.value(target.name)} version " +
+          s"${target.version}, $n artifact${if (n == 1) "" else "s"} kept again; renamed: " +
+          (if (done.renamed.isEmpty) "none." else s"${done.renamed.map(_.value).mkString(", ")}.")
+      }
+    }
+  }
+
   /** `project_claims`. A keeping command only for its plugin's claims, which a reading command is
     * not handed; it keeps nothing.
     */
@@ -940,6 +1087,20 @@ private[plugin] object ProjectCommands {
   /** `project_withdraw`'s arguments. */
   final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
 
+  /** `project_migrate`'s arguments: the version of its method to move `project` to. */
+  final case class Migrating(project: ProjectKey, version: Int, remap: Remap) extends caps.Pure
+
+  /** `pairs` as a map, or a refusal of `field` naming a key given twice. */
+  private def once[K, V](
+      field: String,
+      pairs: Vector[(K, V)],
+      named: K => String
+  ): Either[ArgsError, Map[K, V]] =
+    pairs.groupBy(_._1).collect { case (k, vs) if vs.size > 1 => named(k) }.toVector.sorted match {
+      case Vector() => Right(pairs.toMap)
+      case twice => Left(ArgsError.Refused(field, s"${twice.mkString(", ")} given twice"))
+    }
+
   /** `project_stale`'s arguments: artifacts untouched for more than `weeks` weeks. */
   final case class Staling private (project: ProjectKey, weeks: Int) extends caps.Pure
 
@@ -1030,7 +1191,13 @@ private[plugin] object ProjectCommands {
     Artifact.of(document).left.map(why => s"${DocKey.value(document.key)} cannot be read: $why")
 
   /** The pin `project`'s index holds as `own` holds it, or why not. */
-  private def pinned(own: DocumentShelf, project: ProjectKey)(using Tx^): Either[Stop, Pin] = {
+  private def pinned(own: DocumentShelf, project: ProjectKey)(using Tx^): Either[Stop, Pin] =
+    indexed(own, project).map(_._2)
+
+  /** `project`'s index document as `own` holds it, and the pin it holds, or why not. */
+  private def indexed(own: DocumentShelf, project: ProjectKey)(using
+      Tx^
+  ): Either[Stop, (Document, Pin)] = {
     val p = ProjectKey.value(project)
     for {
       indexing <- refuse(ArtifactJson.indexing(project))
@@ -1039,7 +1206,7 @@ private[plugin] object ProjectCommands {
         Stop.Refused(s"there is no project $p; start it with project_new")
       )
       pin <- refuse(ArtifactJson.pinOf(index).left.map(why => s"project $p cannot be read: $why"))
-    } yield pin
+    } yield (index, pin)
   }
 
   /** The artifact `key` of `project`, with its document, or why not. */

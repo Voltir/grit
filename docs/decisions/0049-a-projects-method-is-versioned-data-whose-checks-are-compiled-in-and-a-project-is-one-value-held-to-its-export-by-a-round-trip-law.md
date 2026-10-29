@@ -1,6 +1,6 @@
 # 0049. A project's method is versioned data whose checks are compiled in, and a project is one value held to its export by a round-trip law
 
-Status: accepted (2026-10-27); revised (2026-10-28)
+Status: accepted (2026-10-27); revised (2026-10-29)
 
 Context: the projects plugin keeps a project's artifacts (a change, a design, a task) and moves
 each from state to state as the project's methodology allows. Methodologies differ by team and
@@ -60,7 +60,8 @@ Decision:
 Consequences:
 
 - A team changes its method by declaring a new version, not by releasing grit; a project keeps
-  the version it pinned until moved to another.
+  the version it pinned until `project_migrate` moves it to another, every artifact kept again
+  with its kind and state renamed as asked, and the result a project of that version.
 - A check needing a parameter is a compiled check of its own until checks take arguments.
 - OpenSpec and the elephant-goldfish model, written as method data, show what it cannot say:
   who may move (that a person decides is the edge's and the room's to hold); a section by

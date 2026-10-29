@@ -8,7 +8,9 @@ import grit.projects.method.{
   Example,
   Method,
   MethodBench,
+  Migrated,
   MoveRefusal,
+  Remap,
   RoleView,
   Transition,
   TransitionAction,
@@ -130,6 +132,11 @@ object OpenSpecTests extends TestSuite {
     test("OpenSpec passes Method.of and its examples pass the bench") {
       assert(MethodBench.failures(openSpec, examples) == Vector.empty)
     }
+    test("a project of it migrates to its own version with nothing renamed") {
+      val held = pinnedTo(openSpec, theSpec, theChange("tasked"), theDesign, theTask)
+      openSpec.migrated(held, Remap()) ==> Right(Migrated(held, Vector()))
+    }
+
     test("archiving merges each delta into the spec cited, replacing its section or adding one") {
       val expected = right(
         Body.read(
