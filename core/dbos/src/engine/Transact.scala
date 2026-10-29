@@ -6,7 +6,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.store.{StoreError, Tx}
-import grit.dbos.sql.{Opener, SqlEntryStore}
+import grit.dbos.sql.{Opener, SqlDb, SqlEntryStore}
 
 /** Short transactions over a data source, and DBOS calls, as the sweep makes them: each
   * failure a `Left`.
@@ -38,14 +38,9 @@ private[engine] object Transact {
       dataSource: DataSource,
       opener: Opener
   )(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    try {
-      Using.resource(dataSource.getConnection()) { conn =>
-        conn.setAutoCommit(false)
-        conn.setReadOnly(true)
-        try opener.maintained(conn).flatMap(tx => body(using tx))
-        finally conn.rollback()
-      }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+    SqlDb.rolledBack(dataSource)(conn => opener.maintained(conn).flatMap(tx => body(using tx)))(
+      identity
+    )
 
   /** `body`, a DBOS call, with what it throws as a `Left`. */
   def attempted[A](body: => A): Either[StoreError, A] =

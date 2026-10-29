@@ -24,14 +24,23 @@ final class SqlDb(dataSource: DataSource, opener: Opener) extends Db {
   private[dbos] def transaction[A](open: (c: Connection^) => Either[StoreError, Tx^{c}])(
       body: (Tx^) ?=> Either[StoreError, A]
   ): Either[StoreError, A] =
+    SqlDb.rolledBack(dataSource)(conn => open(conn).flatMap(tx => body(using tx)))(identity)
+}
+
+private[dbos] object SqlDb {
+
+  /** `step` on a connection of `dataSource`, read-only and always rolled back; a throw, as
+    * `failed` makes it of the database error it is.
+    */
+  def rolledBack[E, A](dataSource: DataSource)(step: Connection => Either[E, A])(
+      failed: StoreError.DatabaseError => E
+  ): Either[E, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         conn.setReadOnly(true)
-        try open(conn).flatMap(tx => body(using tx))
+        try step(conn)
         finally conn.rollback()
       }
-    } catch {
-      case NonFatal(e) => Left(SqlEntryStore.databaseError(e))
-    }
+    } catch { case NonFatal(e) => Left(failed(SqlEntryStore.databaseError(e))) }
 }

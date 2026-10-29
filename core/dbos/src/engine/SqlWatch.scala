@@ -14,7 +14,7 @@ import scala.util.control.NonFatal
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.identity.Account
 import grit.core.place.Place
-import grit.dbos.sql.{DbConfig, Opener, SqlAsking, SqlEntryStore, SqlNotices, SqlWatched}
+import grit.dbos.sql.{DbConfig, Opener, SqlAsking, SqlDb, SqlNotices, SqlWatched}
 
 /** [[EdgeWatch]] over Postgres (ADR 0051): one listener, on a connection of its own to `config`'s
   * database and a thread of its own, both started by the first watch and kept until [[close]],
@@ -121,22 +121,14 @@ final class SqlWatch private[dbos] (
 
   /** What meets `what` as the person `by` is linked to reads it now, in `room`. */
   private def read(by: Account, room: Place, what: WatchFor): Either[WatchError, Option[Watched]] =
-    try {
-      Using.resource(dataSource.getConnection()) { conn =>
-        conn.setAutoCommit(false)
-        conn.setReadOnly(true)
-        try
-          SqlAsking.as(conn, opener, by, room)((_, tx) => SqlWatched.met(what)(using tx)) match {
-            case Left(SqlAsking.Unasked.NotVouched) => Left(WatchError.NotVouched(by))
-            case Left(SqlAsking.Unasked.Unavailable(cause)) => Left(WatchError.Unavailable(cause))
-            case Right(Left(e)) => Left(WatchError.Unavailable(e.toString))
-            case Right(Right(met)) => Right(met)
-          }
-        finally conn.rollback()
+    SqlDb.rolledBack(dataSource) { conn =>
+      SqlAsking.as(conn, opener, by, room)((_, tx) => SqlWatched.met(what)(using tx)) match {
+        case Left(SqlAsking.Unasked.NotVouched) => Left(WatchError.NotVouched(by))
+        case Left(SqlAsking.Unasked.Unavailable(cause)) => Left(WatchError.Unavailable(cause))
+        case Right(Left(e)) => Left(WatchError.Unavailable(e.toString))
+        case Right(Right(met)) => Right(met)
       }
-    } catch {
-      case NonFatal(e) => Left(WatchError.Unavailable(SqlEntryStore.databaseError(e).cause))
-    }
+    }(e => WatchError.Unavailable(e.cause))
 
   /** The listener's loop, until [[close]]: listen, ring every watch, then ring each watch a notice
     * may meet; on a dropped connection ring every watch, wait out the backoff, and listen again.
