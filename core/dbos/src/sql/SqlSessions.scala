@@ -5,6 +5,7 @@ import java.time.Instant
 
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.Principal
+import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.session.{Event, Log, Session, Sessions}
 import grit.core.store.{StoreError, Tx}
@@ -72,6 +73,7 @@ private[dbos] final class SqlSessions extends Sessions {
                |  FROM grit.session_events e
                | WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
                |   AND e.shape->>'${Event.Shape.Sha}' IS NOT NULL
+               |   AND NOT ${SqlSessions.ByAgent}
                | ORDER BY e.seq DESC LIMIT ?""".stripMargin
           ) { ps =>
             ps.setString(1, Harness.value(id.harness))
@@ -85,34 +87,50 @@ private[dbos] final class SqlSessions extends Sessions {
               Option(rs.getString("subject"))
             )
           )
+          byAgents <- SqlStatements.one(
+            s"""SELECT count(*) AS n FROM grit.session_events e
+               | WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
+               |   AND e.shape->>'${Event.Shape.Sha}' IS NOT NULL
+               |   AND ${SqlSessions.ByAgent}""".stripMargin
+          ) { ps =>
+            ps.setString(1, Harness.value(id.harness))
+            ps.setString(2, id.local)
+            ps.setString(3, Event.Kind.Commit.name)
+          }(_.getInt("n"))
           edited <- named(id, Event.Kind.Edited)
           read <- named(id, Event.Kind.Read(0))
-        } yield Some(Session.Lately(session, commits, edited, read))
+        } yield Some(Session.Lately(session, commits, byAgents.getOrElse(0), edited, read))
     }
 
-  /** The last [[Session.Lately.Most]] distinct paths, else names, among `id`'s last
-    * [[Session.Lately.Scanned]] events of `kind`, newest first.
+  /** The last [[Session.Lately.Most]] distinct paths, else names, each with its worktree, among
+    * `id`'s last [[Session.Lately.Scanned]] events of `kind`, newest first; a worktree that reads
+    * as no place is left off.
     */
   private def named(id: SessionId, kind: Event.Kind)(using
       Tx^
-  ): Either[StoreError, Vector[String]] =
+  ): Either[StoreError, Vector[Session.Lately.Touched]] =
     SqlStatements.many(
-      s"""SELECT w.p FROM (
+      s"""SELECT w.p, w.wt FROM (
          |  SELECT coalesce(e.shape->>'${Event.Shape.Path}', e.shape->>'${Event.Shape.Named}') AS p,
-         |         e.seq
+         |         e.shape->>'${Event.Shape.Worktree}' AS wt, e.seq
          |    FROM grit.session_events e
          |   WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
          |   ORDER BY e.seq DESC LIMIT ?
          |) w
          | WHERE w.p IS NOT NULL
-         | GROUP BY w.p ORDER BY max(w.seq) DESC LIMIT ?""".stripMargin
+         | GROUP BY w.p, w.wt ORDER BY max(w.seq) DESC LIMIT ?""".stripMargin
     ) { ps =>
       ps.setString(1, Harness.value(id.harness))
       ps.setString(2, id.local)
       ps.setString(3, kind.name)
       ps.setInt(4, Session.Lately.Scanned)
       ps.setInt(5, Session.Lately.Most)
-    }(_.getString("p"))
+    }(rs =>
+      Session.Lately.Touched(
+        rs.getString("p"),
+        Option(rs.getString("wt")).flatMap(Place.read(_).toOption)
+      )
+    )
 
   /** The row of `header`'s session inserted, started at `at`, unless it has one. */
   private def begin(header: Session.Header, at: java.time.Instant)(using
@@ -242,6 +260,9 @@ private[dbos] object SqlSessions {
 
   /** The row id of the session its two parameters name, its harness then its local id. */
   private val Keyed: String = "(SELECT id FROM grit.sessions WHERE harness = ? AND local = ?)"
+
+  /** Whether the event `e`'s shape marks it made by an agent the session started. */
+  private val ByAgent: String = s"coalesce(e.shape->>'${Event.Shape.Child}' = 'true', false)"
 
   /** When the session `s` counts as ended ([[Session.ends]]), its one parameter
     * [[Session.Unended]] in seconds.

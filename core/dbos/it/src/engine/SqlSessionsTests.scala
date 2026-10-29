@@ -209,15 +209,23 @@ object SqlSessionsTests extends TestSuite {
       )
     }
 
-    test("lately reads its newest commits with a sha, and what it last edited and read, distinct") {
+    test(
+      "lately reads its newest own commits with a sha, counts its agents', and what it last edited and read, distinct by worktree"
+    ) {
       def shaped(n: Long, kind: Event.Kind, fields: (String, ujson.Value)*): Event =
         ok(Event.of(n, t0.plusSeconds(n), kind, ok(Event.Shape.of(ujson.Obj.from(fields)))))
       val commits = (1L to 12L).map(n =>
         shaped(n, Event.Kind.Commit, "sha" -> s"c$n", "subject" -> s"commit $n", "worktree" -> "/w")
-      ) :+ shaped(13, Event.Kind.Commit, "subject" -> "no sha")
+      ) ++ Vector(
+        shaped(13, Event.Kind.Commit, "subject" -> "no sha"),
+        shaped(14, Event.Kind.Commit, "sha" -> "k1", Event.Shape.Child -> true),
+        shaped(15, Event.Kind.Commit, "sha" -> "k2", Event.Shape.Child -> true),
+        shaped(16, Event.Kind.Commit, Event.Shape.Child -> true)
+      )
+      val fixer = "fs:/w/.claude/worktrees/fixer"
       val edits = Vector("a", "b", "a", "c").zipWithIndex.map((p, i) =>
         shaped(20L + i, Event.Kind.Edited, "path" -> p, "ok" -> true)
-      )
+      ) :+ shaped(24, Event.Kind.Edited, "path" -> "a", Event.Shape.Worktree -> fixer)
       val reads = Vector(
         shaped(30, Event.Kind.Read(3), "path" -> "x.scala", "bytes" -> 3),
         shaped(31, Event.Kind.Read(9), "named" -> "Ledger.post", "tool" -> "show", "bytes" -> 9),
@@ -246,10 +254,22 @@ object SqlSessionsTests extends TestSuite {
             .map(n => Session.Lately.Commit(t0.plusSeconds(n), s"c$n", Some(s"commit $n")))
             .toVector
         ),
-        got.map(l => (l.edited, l.read)) ==
-          Some((Vector("c", "a", "b"), Vector("x.scala", "Ledger.post"))),
+        got.map(_.byAgents) == Some(2),
+        got.map(l => (l.edited, l.read)) == Some(
+          (
+            Vector(
+              Session.Lately.Touched("a", Place.read(fixer).toOption),
+              Session.Lately.Touched("c", None),
+              Session.Lately.Touched("a", None),
+              Session.Lately.Touched("b", None)
+            ),
+            Vector("x.scala", "Ledger.post").map(Session.Lately.Touched(_, None))
+          )
+        ),
         got.flatMap(_.session.summary) == Some(summary),
-        lately("s-scanned").map(_.edited) == Some(Vector("new.scala")),
+        lately("s-scanned").map(_.edited) == Some(
+          Vector(Session.Lately.Touched("new.scala", None))
+        ),
         lately("s-hidden") == None,
         lately("s-none") == None
       )

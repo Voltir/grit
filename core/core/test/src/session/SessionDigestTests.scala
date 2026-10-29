@@ -41,8 +41,9 @@ object SessionDigestTests extends TestSuite {
         Session.Lately.Commit(last, "1a2b3c4d5e", Some("core: a digest")),
         Session.Lately.Commit(started, "9f8e7d6c5b", None)
       ),
-      Vector("e1.scala", "e2.scala"),
-      Vector("Ledger.post", "r2.scala")
+      0,
+      Vector("e1.scala", "e2.scala").map(Session.Lately.Touched(_, None)),
+      Vector("Ledger.post", "r2.scala").map(Session.Lately.Touched(_, None))
     )
 
   private val Head: Vector[String] = Vector(
@@ -60,6 +61,30 @@ object SessionDigestTests extends TestSuite {
   val tests = Tests {
     test("a digest shows its times and counters, then commits, edited and read, newest first") {
       SessionDigest.of(lately(), Window.HoldsLastSaid, 2500) ==> lines(Head, Commits, Edited, Read)
+    }
+
+    test(
+      "commits its agents made are one line after the counters; a path under another worktree shows under its last segment"
+    ) {
+      val fixer = ok(Place.read("fs:/home/n/grit/.claude/worktrees/fixer"))
+      val more = lately().copy(
+        byAgents = 3,
+        edited = Vector(Session.Lately.Touched("core/src/A.scala", Some(fixer))),
+        read = Vector(Session.Lately.Touched("Ledger.post", None))
+      )
+      (
+        SessionDigest.of(more, Window.HoldsLastSaid, 2500),
+        SessionDigest.of(lately().copy(byAgents = 1), Window.HoldsLastSaid, 2500)
+      ) ==> (
+        lines(
+          Head,
+          Vector("Its agents made 3 commits."),
+          Commits,
+          Vector("Edited, newest first:", "- fixer: core/src/A.scala"),
+          Vector("Read, newest first:", "- Ledger.post")
+        ),
+        lines(Head, Vector("Its agents made 1 commit."), Commits, Edited, Read)
+      )
     }
 
     test("what it last said shows only when the window lacks it, at most Said characters") {

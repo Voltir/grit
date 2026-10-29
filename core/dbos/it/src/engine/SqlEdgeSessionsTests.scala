@@ -166,7 +166,7 @@ object SqlEdgeSessionsTests extends TestSuite {
       val elsewhere = Place.under(Namespace.Task, Vector("elsewhere"))
       assert(
         edge.lately(Workshop, id("s-5")).map(_.map(l => (l.session.id, l.edited))) ==
-          Right(Some((id("s-5"), Vector("A.scala")))),
+          Right(Some((id("s-5"), Vector(Session.Lately.Touched("A.scala", None))))),
         edge.lately(elsewhere, id("s-5")) == Right(None),
         edge.lately(Workshop, id("s-none")) == Right(None)
       )

@@ -67,7 +67,9 @@ object Event {
 
     /** `worktree`: the key a commit's shape names the worktree it was made in under, as the
       * place is written ([[Place.written]]); what a watch for a commit at a place matches
-      * ([[grit.core.edge.WatchFor.Committed]]).
+      * ([[grit.core.edge.WatchFor.Committed]]). An edit's or a read's shape names under it, the
+      * same way, the worktree its [[Path]] is relative to, when that is not the one the event
+      * ran in.
       */
     val Worktree: String = "worktree"
 
@@ -88,6 +90,11 @@ object Event {
 
     /** `subject`: the key a commit's shape names its subject line under, when it kept one. */
     val Subject: String = "subject"
+
+    /** `child`: the key a commit's shape holds `true` under when it was made by an agent the
+      * session started; [[Sessions.lately]] counts such a commit rather than listing it.
+      */
+    val Child: String = "child"
 
     /** A commit's shape: `o` with the worktree `at` it was made in under [[Worktree]], in place of
       * any value `o` held there; or why not, as [[of]].

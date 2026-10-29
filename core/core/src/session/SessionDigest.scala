@@ -20,8 +20,10 @@ object SessionDigest {
 
   /** `lately`'s digest for `window`, at most `chars` characters, as markdown lines: a heading;
     * when the session started, was last active and ended if it did, with its counters; that its
-    * log is full, when it is ([[Log.HardCap]]); what it last said, as [[Window]] says; then its
-    * commits (short sha and subject), what it edited, and what it read, each newest first.
+    * log is full, when it is ([[Log.HardCap]]); how many commits its agents made, when any; what
+    * it last said, as [[Window]] says; then its commits (short sha and subject), what it edited,
+    * and what it read, each newest first, a path in another worktree after that worktree's last
+    * segment (`fixer: core/src/A.scala`).
     *
     * Over `chars`, whole lines go: the oldest read first, then the oldest edited, then the
     * oldest commit (a list left empty loses its heading too); then what it last said is cut,
@@ -37,14 +39,17 @@ object SessionDigest {
         s.ended.fold("")(e => s", ended ${when(e)}") +
         s": ${c.toolCalls} tool calls, ${c.edits} edits, ${c.commits} commits, " +
         s"${c.bytesRead / 1024} KB read."
-    ) ++ Option.when(s.full)("Its log is full: nothing it did after it filled is shown.")
+    ) ++ Option.when(s.full)("Its log is full: nothing it did after it filled is shown.") ++
+      Option.when(lately.byAgents > 0)(
+        s"Its agents made ${lately.byAgents} commit${if (lately.byAgents == 1) "" else "s"}."
+      )
     val said = window match {
       case Window.HoldsLastSaid => None
       case Window.LacksLastSaid => s.summary.map(Session.Summary.value).map(cut(_, Said))
     }
     val commits = lately.commits.map(m => s"- ${m.sha.take(7)}${m.subject.fold("")(" " + _)}")
-    val edited = lately.edited.map("- " + _)
-    val read = lately.read.map("- " + _)
+    val edited = lately.edited.map(touched)
+    val read = lately.read.map(touched)
     def text(
         said: Option[String],
         commits: Vector[String],
@@ -75,6 +80,10 @@ object SessionDigest {
   }
 
   private val SaidLead = "Last said: "
+
+  /** `t`'s line: its name, after its worktree's last segment when it names one. */
+  private def touched(t: Session.Lately.Touched): String =
+    "- " + t.in.flatMap(_.segments.lastOption).fold("")(_ + ": ") + t.name
 
   /** `text` at most `n` characters: whole, or its first `n - 1` and `…`. */
   private def cut(text: String, n: Int): String =
