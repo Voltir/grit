@@ -31,12 +31,9 @@ object SessionId {
   /** 200: the most characters a session's `local` id holds. */
   val Longest: Int = 200
 
-  /** The session `local` of `harness`, or why not: `local` empty, over [[Longest]] characters,
-    * or holding a control character.
+  /** The session `local` of `harness`, or why not ([[Bounded.text]] of `local`, at most
+    * [[Longest]] characters).
     */
   def of(harness: Harness, local: String): Either[String, SessionId] =
-    if (local.isEmpty || local.length > Longest)
-      Left(s"a session's id is 1 to $Longest characters")
-    else if (local.exists(_.isControl)) Left("a session's id holds no control character")
-    else Right(new SessionId(harness, local))
+    Bounded.text("a session's id", local, Longest).map(new SessionId(harness, _))
 }

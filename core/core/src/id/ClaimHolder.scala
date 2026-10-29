@@ -11,14 +11,9 @@ object ClaimHolder {
   /** 160: the most characters a holder holds. */
   val Longest: Int = 160
 
-  /** `text` as a holder, or why not: empty, over [[Longest]] characters, or holding a control
-    * character.
-    */
+  /** `text` as a holder, or why not ([[Bounded.text]], at most [[Longest]] characters). */
   def of(text: String): Either[String, ClaimHolder] =
-    if (text.isEmpty || text.length > Longest)
-      Left(s"a claim's holder is 1 to $Longest characters")
-    else if (text.exists(_.isControl)) Left("a claim's holder holds no control character")
-    else Right(text)
+    Bounded.text("a claim's holder", text, Longest)
 
   def value(h: ClaimHolder): String = h
 }

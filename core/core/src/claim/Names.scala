@@ -10,13 +10,11 @@ object ClaimRole {
   /** 64: the most characters a role holds. */
   val Longest: Int = 64
 
-  /** `text` as a role, or why not: empty, over [[Longest]] characters, or holding a control
-    * character.
+  /** `text` as a role, or why not ([[grit.core.id.Bounded.text]], at most [[Longest]]
+    * characters).
     */
   def of(text: String): Either[String, ClaimRole] =
-    if (text.isEmpty || text.length > Longest) Left(s"a claim's role is 1 to $Longest characters")
-    else if (text.exists(_.isControl)) Left("a claim's role holds no control character")
-    else Right(text)
+    grit.core.id.Bounded.text("a claim's role", text, Longest)
 
   def value(r: ClaimRole): String = r
 }

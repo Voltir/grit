@@ -5,11 +5,8 @@ opaque type DocKey = String
 
 object DocKey {
 
-  /** `text` as a key, or why not: empty, over 200 characters, or holding a control character. */
-  def of(text: String): Either[String, DocKey] =
-    if (text.isEmpty || text.length > 200) Left("a document's key is 1 to 200 characters")
-    else if (text.exists(_.isControl)) Left("a document's key holds no control character")
-    else Right(text)
+  /** `text` as a key, or why not ([[Bounded.text]], at most 200 characters). */
+  def of(text: String): Either[String, DocKey] = Bounded.text("a document's key", text, 200)
 
   def value(k: DocKey): String = k
 
