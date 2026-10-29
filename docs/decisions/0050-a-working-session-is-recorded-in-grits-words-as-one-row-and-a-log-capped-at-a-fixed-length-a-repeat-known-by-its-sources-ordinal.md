@@ -30,6 +30,11 @@ Decision:
 - **A repeat is known by the source's own ordinal**, unique within the session: recording the
   same events again is a no-op. Each recording locks the session's row, so concurrent ones
   number their lines without gaps.
+- **Two kinds of writer.** A grit turn records through `Sessions`, in its own transaction. An
+  edge records a harness's sessions through `EdgeSessions`, as the account it attests: the
+  person linked to that account runs the session, the floor of a transaction opened in the
+  edge's room labels it, and that transaction has no room of its own. An edge never holds a
+  transaction or reads a session back.
 - **Both are deleted by the collector** (ADR 0014): the sweep writes a tombstone on a session's
   log a month after it ends and on its row half a year after, and the collector spares one
   recorded on since.
@@ -40,4 +45,5 @@ Consequences:
 - A session longer than the cap keeps its first events and loses the rest; if measured sessions
   mostly pass the cap, a ring of recent reads or a column of recent files is the next step.
 - Enforced by the types (`Event.Kind` holds no overflow; `Event.Shape` and `Event.of` refuse
-  what the tables would), and by `SqlSessionsTests` and `CollectorLiveTests`.
+  what the tables would), and by `SqlSessionsTests`, `SqlEdgeSessionsTests`, `ServedSessionsLiveTests` and
+  `CollectorLiveTests`.

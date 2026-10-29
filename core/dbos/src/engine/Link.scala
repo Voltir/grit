@@ -129,6 +129,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The rooms an edge's bot is a member of, as the edge reports its joins and leaves. */
   val joins: grit.core.edge.Joins
 
+  /** The working sessions an edge records for the people it serves. */
+  val sessions: grit.core.edge.EdgeSessions
+
   /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
     * edge's first ingest would.
     */
@@ -332,6 +335,8 @@ private[engine] final class Attached(
     new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins)
 
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
+
+  val sessions: grit.core.edge.EdgeSessions = new grit.dbos.sql.SqlEdgeSessions(jot)
 
   val inbox: Inbox =
     new SqlInbox(
