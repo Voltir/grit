@@ -235,6 +235,13 @@ private[engine] final class Collector(
       }
     }
 
+  /** `target`'s tombstone ended at `now` once its rows are `gone`, spared otherwise. */
+  private def ended(target: Target, now: Instant, gone: Boolean)(using
+      Tx^
+  ): Either[StoreError, Outcome] =
+    if (gone) tombstones.collected(target, now).map(_ => Outcome.Collected)
+    else tombstones.spare(target, now).map(_ => Outcome.Spared)
+
   /** `target`'s rows deleted and its tombstone ended, at `now`. */
   private def rows(target: Target, now: Instant)(using Tx^): Either[StoreError, Outcome] =
     target match {
@@ -309,17 +316,11 @@ private[engine] final class Collector(
       // A version its key's keepLast, raised since it was marked, keeps again is spared, and
       // marked again when it leaves that window.
       case Target.Document(version) =>
-        documents.forget(version).flatMap {
-          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
-          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
-        }
+        documents.forget(version).flatMap(ended(target, now, _))
       // A schedule declared again since it ended is pending: its tombstone is spared, and
       // armed again when it next ends.
       case Target.Schedule(id) =>
-        schedules.forget(id).flatMap {
-          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
-          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
-        }
+        schedules.forget(id).flatMap(ended(target, now, _))
       // Its blob goes on the file area's next sweep, once no row names it.
       case Target.File(handle) =>
         for {
@@ -334,15 +335,9 @@ private[engine] final class Collector(
       // A session recorded on since its tombstone was written is spared, and marked again once
       // it has ended for long enough.
       case Target.SessionEvents(id) =>
-        SqlSessions.forgetLog(id, now).flatMap {
-          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
-          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
-        }
+        SqlSessions.forgetLog(id, now).flatMap(ended(target, now, _))
       case Target.Session(id) =>
-        SqlSessions.forget(id, now).flatMap {
-          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
-          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
-        }
+        SqlSessions.forget(id, now).flatMap(ended(target, now, _))
     }
 }
 
