@@ -79,12 +79,10 @@ final class SqlToolRequests extends ToolRequests {
           refused.isEmpty
         }
       }
+      opened
+    }.flatMap { opened =>
       // A request written refused is answered already: no edge is woken for it.
-      if (opened.contains(true))
-        Using.resource(conn.createStatement())(
-          _.execute(s"SELECT pg_notify('${SqlToolRequests.Channel}', '')")
-        )
-      ()
+      if (opened.contains(true)) SqlNotices.send(SqlToolRequests.Channel, "") else Right(())
     }
   }
 

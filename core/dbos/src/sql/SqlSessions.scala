@@ -36,6 +36,9 @@ private[dbos] final class SqlSessions extends Sessions {
           logged = lines.collect { case Log.Line.Logged(_, e) => e }
           _ <- write(row.id, lines)
           _ <- update(row, fresh, logged, lines.size)
+          _ <-
+            if (logged.exists(_.kind == Event.Kind.Commit)) SqlNotices.send(SqlNotices.Sessions, "")
+            else Right(())
         } yield Sessions.Recorded(lines.size, row.next + lines.size > Log.HardCap)
     }
 

@@ -14,10 +14,9 @@ import grit.core.id.{CallSlot, EdgeId, PrincipalId, WorkflowId}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, FragmentId}
 import grit.core.tool.{Outcome, Retry, ToolSet, ToolSetId}
-import grit.dbos.sql.{DbConfig, Opener, SqlPromptStore, SqlToolRequests, SqlToolSets}
+import grit.dbos.sql.{DbConfig, Opener, SqlNotices, SqlPromptStore, SqlToolRequests, SqlToolSets}
 
 import dev.dbos.transact.DBOSClient
-import org.postgresql.PGConnection
 import org.slf4j.LoggerFactory
 
 /** [[Desk]] over Postgres (ADR 0017): the edge's registration in `grit.edges`, live for as
@@ -54,8 +53,7 @@ final class SqlDesk private (
         }
         beaten = SqlDesk.monotonic()
       }
-      val got = conn.unwrap(classOf[PGConnection]).getNotifications(within.toMillis.toInt.max(1))
-      Option(got).exists(_.length > 0)
+      SqlNotices.drain(conn, within).nonEmpty
     } catch {
       case NonFatal(_) =>
         // A closed or broken connection: wait out `within` anyway, so a caller's loop
@@ -301,7 +299,7 @@ object SqlDesk {
             ps.executeUpdate()
           }
         }
-        Using.resource(conn.createStatement())(_.execute(s"LISTEN ${SqlToolRequests.Channel}"))
+        SqlNotices.listen(conn, Vector(SqlToolRequests.Channel))
         Right(
           new SqlDesk(
             conn,
