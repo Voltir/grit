@@ -3,6 +3,8 @@ package grit.core.session
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
+import grit.core.place.Place
+
 /** One thing a working session did, in grit's words: `n` its source's own ordinal for it, unique
   * within the session (a hook's nanoseconds, a turn's entry seq), so an event recorded again is
   * known; `shape` what it was, never its content.
@@ -62,6 +64,18 @@ object Event {
       val bytes = text.getBytes(StandardCharsets.UTF_8).length
       Either.cond(bytes <= Longest, text, s"an event's shape is $bytes bytes, over $Longest")
     }
+
+    /** `worktree`: the key a commit's shape names the worktree it was made in under, as the
+      * place is written ([[Place.written]]); what a watch for a commit at a place matches
+      * ([[grit.core.edge.WatchFor.Committed]]).
+      */
+    val Worktree: String = "worktree"
+
+    /** A commit's shape: `o` with the worktree `at` it was made in under [[Worktree]], in place of
+      * any value `o` held there; or why not, as [[of]].
+      */
+    def committed(at: Place, o: ujson.Obj): Either[String, Shape] =
+      of(ujson.Obj.from(o.value.toSeq :+ (Worktree -> ujson.Str(at.written))))
 
     def value(s: Shape): String = s
   }

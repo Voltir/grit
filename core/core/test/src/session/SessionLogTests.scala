@@ -2,6 +2,7 @@ package grit.core.session
 
 import java.time.Instant
 
+import grit.core.place.{Namespace, Place}
 import grit.core.session.Log.Line
 
 import utest.*
@@ -60,6 +61,12 @@ object SessionLogTests extends TestSuite {
       val over = Event.Shape.of(ujson.Obj("p" -> ("é" * 146 + "x")))
       assert(at.map(s => Event.Shape.value(s).length) == Right(154))
       assert(over == Left("an event's shape is 301 bytes, over 300"))
+    }
+    test("a commit's shape names the worktree it was made in, as the place is written") {
+      // Pinned: a watch for a commit at a place matches this key and form in the stored shape.
+      val at = Place.under(Namespace.Fs, Vector("/work/grit"))
+      val held = Event.Shape.committed(at, ujson.Obj("sha" -> "abc", "worktree" -> "elsewhere"))
+      assert(held.map(Event.Shape.value) == Right("""{"sha":"abc","worktree":"fs:/work/grit"}"""))
     }
     test("an event's ordinal is above 0 and a read's bytes are not negative") {
       assert(
