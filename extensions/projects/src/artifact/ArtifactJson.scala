@@ -30,7 +30,7 @@ object ArtifactJson {
       "kind" -> KindName.value(h.kind),
       StateKind -> StateName.value(h.state)
     ) ++ h.parent.map("parent" -> _.value) ++
-      (h.cites ++ Body.cites(artifact.body)).distinct.map("cites" -> _.value)
+      artifact.cites.map("cites" -> _.value)
     if (headBytes > HeadMost)
       Left(s"its head is $headBytes bytes, over $HeadMost: shorten its title or cite fewer")
     else if (named.size > DocRef.Most)

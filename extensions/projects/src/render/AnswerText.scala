@@ -2,6 +2,8 @@ package grit.projects.render
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.ClaimHolder
 import grit.projects.artifact.ArtifactHead
@@ -63,6 +65,23 @@ object AnswerText {
       } else { out += s"+ ${b(j)}"; j += 1 }
     (Vector(s"--- $from", s"+++ $to") ++ out.result()).mkString("\n")
   }
+
+  /** What a withdrawal answers: a `Withdrawn: ` line naming `gone`, in the order given; a
+    * `Citations of them dropped from: ` line naming `uncited` when there are any; and that their
+    * history stays readable `readable` long, in whole days, through `project_show` and
+    * `project_history`.
+    */
+  def withdrawn(
+      gone: Vector[ArtifactKey],
+      uncited: Vector[ArtifactKey],
+      readable: FiniteDuration
+  ): String =
+    (Vector(s"Withdrawn: ${gone.map(_.value).mkString(", ")}") ++
+      Option.when(uncited.nonEmpty)(
+        s"Citations of them dropped from: ${uncited.map(_.value).mkString(", ")}"
+      ) :+
+      s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
+      "before now, and project_history.").mkString("\n")
 
   /** A freed claim as a JSON object a program reads: `released`, the artifact's key, and `for`,
     * the slot it was claimed for, which no longer works it.

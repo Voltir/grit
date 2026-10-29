@@ -49,7 +49,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       ProjectClaim,
       ProjectRelease,
       ProjectClaims,
-      ProjectBrief
+      ProjectBrief,
+      Withdraw
     )
 
   /** `project_new`. */
@@ -308,12 +309,18 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
-        found <- artifact(project, args.key)
-        version <- args.at.fold[Either[Stop, Artifact]](Right(found._2)) { when =>
-          stored(own.documents.asOf(found._1.key, found._1.label, when)).flatMap(
-            _.toRight(Stop.Refused(s"${args.key.value} had no version at $when"))
-              .flatMap(d => refuse(readable(d)))
-          )
+        version <- args.at match {
+          case None => artifact(project, args.key).map(_._2)
+          case Some(when) =>
+            for {
+              where <- recorded(own.documents, project, args.key)
+              (key, label) = where
+              found <- stored(own.documents.asOf(key, label, when))
+              document <- found.toRight(
+                Stop.Refused(s"${args.key.value} had no version at $when")
+              )
+              version <- refuse(readable(document))
+            } yield version
         }
       } yield ProjectMarkdown.file(version)._2
     }
@@ -366,8 +373,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.key.project)
-        found <- artifact(project, args.key)
-        kept <- stored(own.documents.versions(found._1.key, found._1.label, HistoryMost))
+        where <- recorded(own.documents, project, args.key)
+        kept <- stored(own.documents.versions(where._1, where._2, HistoryMost))
         text <- args.diff match {
           case None =>
             refuse(every(kept.map(listed))).map(AnswerText.versions(_, "No version is kept."))
@@ -614,6 +621,53 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     }
   }
 
+  /** `project_withdraw`. */
+  object Withdraw extends KeepingCommand[Withdrawing] {
+    val spec: ToolSpec[Withdrawing] = ToolSpec(
+      ToolName("project_withdraw"),
+      said(
+        "Withdraws an artifact: it leaves the project and its export, and project_show with an " +
+          s"`at` before now, and project_history, still read it for ${Projects.Terms.retention.toDays} " +
+          "days. Its children are not touched. Refused, withdrawing nothing, while it is " +
+          "claimed, or while another artifact has it as parent or cites it, naming them: " +
+          "withdraw those first."
+      ),
+      Args
+        .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
+        .refine(a => parsed("key", a.key, ArtifactKey.read).map(Withdrawing(_)))
+    )
+
+    def run(
+        args: Withdrawing,
+        by: Principal.Person,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      for {
+        project <- loaded(own, args.key.project)
+        found <- artifact(project, args.key)
+        (document, _) = found
+        rest = project.artifacts.filterNot(_.head.key == args.key)
+        _ <- Project.referrers(args.key, rest) match {
+          case Vector() => Right(())
+          case named =>
+            Left(
+              Stop.Refused(
+                s"${args.key.value} is named by ${named.map(_.value).mkString(", ")}: " +
+                  "withdraw them first"
+              )
+            )
+        }
+        // The export of what is left reads back (ADR 0049) only if it is a project.
+        _ <- refuse(Project.of(args.key.project, project.pin, rest))
+        _ <- unclaimed(claims, Vector(found), at)
+        gone <- stored(own.withdraw(document.key, document.label, at))
+        _ <- gone.toRight(Stop.Refused(s"${args.key.value} is already withdrawn"))
+      } yield AnswerText.withdrawn(Vector(args.key), Vector.empty, Projects.Terms.retention)
+    }
+  }
+
   /** `project_claims`. A keeping command only for its plugin's claims, which a reading command is
     * not handed; it keeps nothing.
     */
@@ -776,6 +830,9 @@ private[plugin] object ProjectCommands {
   /** `project_release`'s arguments. */
   final case class Releasing(key: ArtifactKey) extends caps.Pure
 
+  /** `project_withdraw`'s arguments. */
+  final case class Withdrawing(key: ArtifactKey) extends caps.Pure
+
   /** `project_claims`'s arguments. */
   final case class Surveying(project: Option[ProjectKey]) extends caps.Pure
 
@@ -863,6 +920,41 @@ private[plugin] object ProjectCommands {
       .toRight(
         Stop.Refused(s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}")
       )
+
+  /** Nothing, or a refusal naming each of `changed` that a claim live at `at` holds, at any
+    * label, and the slot it is claimed for.
+    */
+  private def unclaimed(claims: Claims, changed: Vector[(Document, Artifact)], at: Instant)(using
+      Tx^
+  ): Either[Stop, Unit] =
+    stored(claims.live(at)).flatMap { live =>
+      changed.flatMap((document, artifact) =>
+        live
+          .find(_.subject == document.key)
+          .map(c => s"${artifact.head.key.value} is claimed for ${ClaimHolder.value(c.holder)}")
+      ) match {
+        case Vector() => Right(())
+        case Vector(one) => Left(Stop.Refused(s"$one: release it first"))
+        case many => Left(Stop.Refused(s"${many.mkString("; ")}: release them first"))
+      }
+    }
+
+  /** The key and label `key`'s versions are kept under: its current document's, or for an
+    * artifact of `project` no longer current, the label its newest version `own` reads is at; or
+    * why not, as [[artifact]] refuses, when `own` reads no version of it.
+    */
+  private def recorded(own: DocumentShelf, project: Loaded, key: ArtifactKey)(using
+      Tx^
+  ): Either[Stop, (DocKey, Label)] =
+    artifact(project, key) match {
+      case Right((document, _)) => Right((document.key, document.label))
+      case Left(missing) =>
+        for {
+          docKey <- refuse(DocKey.of(key.value))
+          labels <- stored(own.labels(docKey))
+          label <- labels.headOption.toRight(missing)
+        } yield (docKey, label)
+    }
 
   /** Keeps `artifact` through `own` at `label`, or at public when new. */
   private def kept(own: DocumentKeeper, artifact: Artifact, label: Option[Label], at: Instant)(using

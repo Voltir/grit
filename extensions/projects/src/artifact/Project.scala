@@ -20,6 +20,13 @@ object Project {
       case some => Left(some.map(_._2).mkString("; "))
     }
 
+  /** The keys of those of `among` naming `key` as their parent or citing it, sorted. */
+  def referrers(key: ArtifactKey, among: Vector[Artifact]): Vector[ArtifactKey] =
+    among
+      .filter(a => a.head.parent.contains(key) || a.cites.contains(key))
+      .map(_.head.key)
+      .sortBy(_.value)
+
   /** Why `artifacts` are not project `key`'s, each with the artifact it is about. */
   private[projects] def refusals(
       key: ProjectKey,
@@ -34,7 +41,7 @@ object Project {
     }
     artifacts.flatMap { a =>
       val k = a.head.key
-      val links = (a.head.cites ++ Body.cites(a.body)).distinct
+      val links = a.cites
       Option.when(k.project != key)(
         k -> s"${k.value} is not of project ${ProjectKey.value(key)}"
       ) ++
