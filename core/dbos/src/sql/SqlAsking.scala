@@ -12,32 +12,25 @@ import grit.core.visibility.Subject
   */
 private[dbos] object SqlAsking {
 
-  /** Why no transaction was opened for an asker. */
-  enum Unasked {
-
-    /** No person is linked to the account. */
-    case NotVouched
-
-    /** The database could not open the transaction, `cause` saying why. */
-    case Unavailable(cause: String)
-  }
-
   /** `body`, given the person `by` is linked to now and a transaction opened on `conn` through
     * `opener` for them in `room` ([[Subject.Person]]), the person read first under
-    * [[Subject.Public]]. Whether `conn` is read-only, and whether it commits, is the caller's.
+    * [[Subject.Public]]; or `notVouched` when no person is linked to `by`, or `unavailable` of
+    * why the database could not open the transaction. Whether `conn` is read-only, and whether
+    * it commits, is the caller's.
     */
-  def as[A](conn: Connection, opener: Opener, by: Account, room: Place)(
-      body: (Principal.Person, Tx^) => A
-  ): Either[Unasked, A] =
+  def as[E, A](conn: Connection, opener: Opener, by: Account, room: Place)(
+      notVouched: Account => E,
+      unavailable: String => E
+  )(body: (Principal.Person, Tx^) => Either[E, A]): Either[E, A] =
     opener
       .open(Subject.Public, conn)
       .flatMap(tx => SqlIdentities.person(by)(using tx)) match {
-      case Left(e) => Left(Unasked.Unavailable(e.toString))
+      case Left(e) => Left(unavailable(e.toString))
       case Right(Some(person: Principal.Person)) =>
         opener.open(Subject.Person(person, room), conn) match {
-          case Left(e) => Left(Unasked.Unavailable(e.toString))
-          case Right(tx) => Right(body(person, tx))
+          case Left(e) => Left(unavailable(e.toString))
+          case Right(tx) => body(person, tx)
         }
-      case Right(_) => Left(Unasked.NotVouched)
+      case Right(_) => Left(notVouched(by))
     }
 }

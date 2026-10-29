@@ -122,11 +122,8 @@ final class SqlWatch private[dbos] (
   /** What meets `what` as the person `by` is linked to reads it now, in `room`. */
   private def read(by: Account, room: Place, what: WatchFor): Either[WatchError, Option[Watched]] =
     SqlDb.rolledBack(dataSource) { conn =>
-      SqlAsking.as(conn, opener, by, room)((_, tx) => SqlWatched.met(what)(using tx)) match {
-        case Left(SqlAsking.Unasked.NotVouched) => Left(WatchError.NotVouched(by))
-        case Left(SqlAsking.Unasked.Unavailable(cause)) => Left(WatchError.Unavailable(cause))
-        case Right(Left(e)) => Left(WatchError.Unavailable(e.toString))
-        case Right(Right(met)) => Right(met)
+      SqlAsking.as(conn, opener, by, room)(WatchError.NotVouched(_), WatchError.Unavailable(_)) {
+        (_, tx) => SqlWatched.met(what)(using tx).left.map(e => WatchError.Unavailable(e.toString))
       }
     }(e => WatchError.Unavailable(e.cause))
 

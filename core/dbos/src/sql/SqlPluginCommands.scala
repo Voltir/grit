@@ -124,15 +124,14 @@ private[dbos] final class SqlPluginCommands(
         conn.setAutoCommit(false)
         conn.setReadOnly(!keeps)
         val ran: Either[CommandError, CommandOutcome] =
-          SqlAsking.as(conn, opener, by, room) { (person, tx) =>
+          SqlAsking.as(conn, opener, by, room)(
+            CommandError.NotVouched(_),
+            CommandError.Unavailable(_)
+          ) { (person, tx) =>
             try body(person, tx).left.map(CommandError.Store(name, _))
             catch {
               case NonFatal(e) => Left(CommandError.Store(name, SqlEntryStore.databaseError(e)))
             }
-          } match {
-            case Left(SqlAsking.Unasked.NotVouched) => Left(CommandError.NotVouched(by))
-            case Left(SqlAsking.Unasked.Unavailable(cause)) => Left(CommandError.Unavailable(cause))
-            case Right(ran) => ran
           }
         ran match {
           case Right(CommandOutcome.Done(_)) if keeps => conn.commit()
