@@ -50,7 +50,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       ProjectRelease,
       ProjectClaims,
       ProjectBrief,
-      Withdraw
+      Withdraw,
+      Stale
     )
 
   /** `project_new`. */
@@ -648,6 +649,48 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     }
   }
 
+  /** `project_stale`. */
+  object Stale extends ReadingCommand[Staling] {
+    val spec: ToolSpec[Staling] = ToolSpec(
+      ToolName("project_stale"),
+      said(
+        "Lists a project's artifacts not ended (not in an end state of their kind) that were " +
+          "last kept or moved more than `weeks` weeks ago, and that no artifact not ended has " +
+          "as parent or cites, oldest first, one line each (key, kind, state and title): " +
+          "candidates to withdraw or end. One an ended artifact still cites is listed; " +
+          "project_withdraw with cascade drops that citation."
+      ),
+      Args
+        .of(
+          (
+            project = Field.text("The project's key."),
+            weeks = Field.integer("How many weeks untouched, at least 1.", 1, 10_000)
+          )
+        )
+        .refine(a =>
+          for {
+            p <- parsed("project", a.project, ProjectKey.of)
+            staling <- Staling.of(p, a.weeks.toInt).left.map(ArgsError.Refused("weeks", _))
+          } yield staling
+        )
+    )
+
+    def run(args: Staling, by: Principal.Person, own: PluginReads, at: Instant)(using
+        Tx^
+    ): Either[StoreError, CommandOutcome] = answered {
+      for {
+        project <- loaded(own.documents, args.project)
+        ended <- ending(project.pin)
+        open = project.documents.filterNot((_, a) => ended(a.head))
+        named = Project.named(open.map(_._2))
+        before = at.minus(java.time.Duration.ofDays(7L * args.weeks))
+        stale = open
+          .filter((d, a) => d.written.isBefore(before) && !named(a.head.key))
+          .sortBy((d, a) => (d.written.toEpochMilli, a.head.key.value))
+      } yield AnswerText.heads(stale.map(_._2.head), "Nothing is stale.")
+    }
+  }
+
   /** `project_withdraw`. */
   object Withdraw extends KeepingCommand[Withdrawing] {
     val spec: ToolSpec[Withdrawing] = ToolSpec(
@@ -899,6 +942,16 @@ private[plugin] object ProjectCommands {
 
   /** `project_withdraw`'s arguments. */
   final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
+
+  /** `project_stale`'s arguments: artifacts untouched for more than `weeks` weeks. */
+  final case class Staling private (project: ProjectKey, weeks: Int) extends caps.Pure
+
+  object Staling {
+
+    /** These arguments, or why not: `weeks` under 1. */
+    def of(project: ProjectKey, weeks: Int): Either[String, Staling] =
+      if (weeks < 1) Left(s"weeks is $weeks, under 1") else Right(new Staling(project, weeks))
+  }
 
   /** `project_claims`'s arguments. */
   final case class Surveying(project: Option[ProjectKey]) extends caps.Pure

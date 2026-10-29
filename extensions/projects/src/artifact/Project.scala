@@ -105,6 +105,10 @@ object Project {
       .map(Withdrawn(_, gone, uncited))
   }
 
+  /** The keys `among` name as their parents or cite. */
+  def named(among: Vector[Artifact]): Set[ArtifactKey] =
+    among.flatMap(a => a.head.parent ++ a.cites).toSet
+
   /** The keys of those of `among` naming `key` as their parent or citing it, sorted. */
   def referrers(key: ArtifactKey, among: Vector[Artifact]): Vector[ArtifactKey] =
     among
