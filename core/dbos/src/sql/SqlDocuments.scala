@@ -270,7 +270,7 @@ private[sql] object SqlDocuments {
   def placeOf(json: String): Either[String, Place] =
     ujson.read(json).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)) match {
       case ns +: rest =>
-        Namespace.of(ns).map(Place.under(_, rest)).toRight(s"a document's place: no namespace $ns")
+        Namespace.of(ns).map(Place.under(_, rest)).toRight(s"a stored place: no namespace $ns")
       case _ => Right(Place.Everywhere)
     }
 

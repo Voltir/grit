@@ -1108,7 +1108,9 @@ CREATE TABLE IF NOT EXISTS grit.claims (
 -- named by `harness` and the harness's own id for it, `local`; `parent` the session that started
 -- it, when one did (a subagent's), never a foreign key, since either may be deleted first. Kept
 -- at its label (`classification_id`, its writer's label joined with the transaction's floor) in
--- `room_id`, as grit.claims keeps one. `next_seq` is its log's next line, past
+-- `room_id`, the writing transaction's own room, NULL when it has none (an edge's), as
+-- grit.claims keeps one. `place` is where it worked (Session.Header.at), segments as
+-- grit.documents.place holds them: no grit.places row, and no label meaning. `next_seq` is its log's next line, past
 -- grit.core.session.Log.HardCap once the log is full; the counters count its logged events.
 -- Each recording locks its row. The counters and times are unindexed, and the sweep reads the
 -- table whole, so updates leave the page's free space to them.
@@ -1125,6 +1127,8 @@ CREATE TABLE IF NOT EXISTS grit.sessions (
     principal_id      TEXT NOT NULL REFERENCES grit.principals(id),
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
     room_id           UUID REFERENCES grit.places(id),
+    place             TEXT[] NOT NULL
+                      CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
     started_at        TIMESTAMPTZ NOT NULL,
     ended_at          TIMESTAMPTZ,
     last_event_at     TIMESTAMPTZ NOT NULL,
@@ -1137,6 +1141,9 @@ CREATE TABLE IF NOT EXISTS grit.sessions (
     UNIQUE (harness, local),
     CHECK ((parent_harness IS NULL) = (parent_local IS NULL))
 ) WITH (fillfactor = 90);
+
+-- The sessions that worked at a place, as who is there reads them.
+CREATE INDEX IF NOT EXISTS idx_sessions_place ON grit.sessions (place);
 
 -- Each working session's log (grit.core.session.Log): a line at each `seq` from 1, the source's
 -- own ordinal `n` for its event (unique in the session, so an event recorded again is known),

@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.id.{Harness, SessionId}
 import grit.core.identity.{Principal, TestAccounts}
+import grit.core.place.{Namespace, Place}
 import grit.core.session.{Event, Log, Session, Sessions}
 import grit.core.store.StoreError
 import grit.core.visibility.{Clearance, Label, TestLabels}
@@ -50,8 +51,10 @@ object SqlSessionsTests extends TestSuite {
   private def id(local: String): SessionId =
     ok(Harness.of("claude-code").flatMap(SessionId.of(_, local)))
 
+  private val Worktree: Place = Place.under(Namespace.Fs, Vector("/work/grit"))
+
   private def header(local: String, label: Label): Session.Header =
-    Session.Header(id(local), None, ann, label)
+    Session.Header(id(local), None, ann, label, Worktree)
 
   private def event(n: Long, kind: Event.Kind = Event.Kind.Edited): Event =
     ok(Event.of(n, t0.plusSeconds(n), kind, ok(Event.Shape.of(ujson.Obj("n" -> n.toInt)))))
@@ -106,6 +109,7 @@ object SqlSessionsTests extends TestSuite {
             None,
             ann,
             Label.Public,
+            at = Worktree,
             started = t0.plusSeconds(1),
             ended = Some(t0.plusSeconds(7)),
             lastEvent = t0.plusSeconds(7),

@@ -42,7 +42,9 @@ private[dbos] final class SqlSessions extends Sessions {
     SqlStatements
       .cleared(
         s"""WITH ${SqlClearance.With}
-           |SELECT s.*, ${SqlLabels.columns("l")}, p.kind,
+           |SELECT s.*, array_to_json(s.place)::text AS place_json, ${SqlLabels.columns(
+            "l"
+          )}, p.kind,
            |       ${SqlIdentities.heldOf("s.principal_id")} AS held
            |  FROM grit.sessions s
            |  JOIN grit.classifications l ON l.id = s.classification_id
@@ -65,8 +67,9 @@ private[dbos] final class SqlSessions extends Sessions {
         .update(
           s"""INSERT INTO grit.sessions
              |       (harness, local, parent_harness, parent_local, principal_id,
-             |        classification_id, room_id, started_at, last_event_at)
-             |VALUES (?, ?, ?, ?, ?, ?, ${SqlDocuments.RoomId}, ?, ?)
+             |        classification_id, room_id, place, started_at, last_event_at)
+             |VALUES (?, ?, ?, ?, ?, ?, ${SqlDocuments.RoomId},
+             |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?)
              |ON CONFLICT (harness, local) DO NOTHING""".stripMargin
         ) { ps =>
           ps.setString(1, Harness.value(header.id.harness))
@@ -76,8 +79,9 @@ private[dbos] final class SqlSessions extends Sessions {
           ps.setString(5, grit.core.id.PrincipalId.value(header.by.id))
           ps.setInt(6, label)
           ps.setString(7, SqlDocuments.room(clearance))
-          ps.setObject(8, SqlDocuments.utc(at))
+          ps.setString(8, SqlDocuments.path(header.at).render())
           ps.setObject(9, SqlDocuments.utc(at))
+          ps.setObject(10, SqlDocuments.utc(at))
         }
         .map(_ => ())
     }
@@ -285,6 +289,7 @@ private[dbos] object SqlSessions {
           case p: Principal.Person => Right(p)
           case Principal.Grit => Left("a session is run by a person, not grit")
         }
+      at <- SqlDocuments.placeOf(rs.getString("place_json"))
       summary <- Option(rs.getString("summary"))
         .fold[Either[String, Option[Session.Summary]]](Right(None))(
           Session.Summary.of(_).map(Some(_))
@@ -300,6 +305,7 @@ private[dbos] object SqlSessions {
       parent,
       by,
       SqlLabels.read(rs),
+      at,
       SqlDocuments.instant(rs, "started_at"),
       Option(rs.getObject("ended_at", classOf[java.time.OffsetDateTime])).map(_.toInstant),
       SqlDocuments.instant(rs, "last_event_at"),

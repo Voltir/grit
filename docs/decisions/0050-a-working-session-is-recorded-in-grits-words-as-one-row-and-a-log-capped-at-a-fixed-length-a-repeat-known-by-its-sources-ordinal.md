@@ -1,6 +1,6 @@
 # 0050. A working session is recorded in grit's words as one row and a log capped at a fixed length, a repeat known by its source's ordinal
 
-Status: accepted (2026-10-28)
+Status: accepted (2026-10-28); revised (2026-10-28)
 
 Context: grit keeps a record of each working session, a grit turn's or a harness's beside it,
 so that later work (compacting a session's context from the store, coordinating sessions) can
@@ -17,8 +17,10 @@ batched, and may be delivered twice. Turned down:
 
 Decision:
 
-- **A session is one row** (`grit.sessions`): who ran it, its label and room, when it started,
-  last did something and ended, its closing summary, and counters of its tool calls, edits,
+- **A session is one row** (`grit.sessions`): who ran it, its label, the writer's own room when
+  it has one, and where it worked (a harness session's worktree, a turn's conversation's place:
+  a place with no label meaning, so that who is working where is one equality read), when it
+  started, last did something and ended, its closing summary, and counters of its tool calls, edits,
   commits and bytes read. A session that never says it ended counts as ended a fixed time after
   its last event.
 - **Its log is lines in grit's words** (`grit.session_events`): `started`, `read`, `edited`,

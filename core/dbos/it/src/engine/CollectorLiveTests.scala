@@ -579,7 +579,16 @@ object CollectorLiveTests extends TestSuite {
       )
       LiveDb
         .transaction(config)(
-          store.record(Session.Header(id(local), None, ann, Label.Public), events)
+          store.record(
+            Session.Header(
+              id(local),
+              None,
+              ann,
+              Label.Public,
+              Place.under(Namespace.Fs, Vector("/work/grit"))
+            ),
+            events
+          )
         )
         .fold(e => sys.error(s"$e"), _ => ())
     }
