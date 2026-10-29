@@ -96,6 +96,15 @@ object Event {
       */
     val Child: String = "child"
 
+    /** `replaces`: the key a commit's shape lists the commits this one rewrote under, each by
+      * the first [[ReplacedChars]] characters of its sha; [[Sessions.lately]] leaves a commit so
+      * replaced out.
+      */
+    val Replaces: String = "replaces"
+
+    /** 12: how many leading characters of a rewritten commit's sha [[Replaces]] holds. */
+    val ReplacedChars: Int = 12
+
     /** A commit's shape: `o` with the worktree `at` it was made in under [[Worktree]], in place of
       * any value `o` held there; or why not, as [[of]].
       */

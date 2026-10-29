@@ -32,7 +32,8 @@ trait Sessions extends caps.Pure {
 
   /** The session `id` and what it did lately, when this transaction reads it: its last
     * [[Session.Lately.Most]] commits, leaving out any whose shape names no [[Event.Shape.Sha]]
-    * and counting apart those it marks [[Event.Shape.Child]]; and the last
+    * and any a later commit of the session records again or [[Event.Shape.Replaces]], and
+    * counting apart those it marks [[Event.Shape.Child]]; and the last
     * [[Session.Lately.Most]] distinct paths ([[Event.Shape.Path]], else [[Event.Shape.Named]]),
     * each with the worktree its shape names ([[Event.Shape.Worktree]], when it reads as a
     * place), among its last [[Session.Lately.Scanned]] edits, and likewise its reads. What it

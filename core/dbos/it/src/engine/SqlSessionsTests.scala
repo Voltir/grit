@@ -274,5 +274,51 @@ object SqlSessionsTests extends TestSuite {
         lately("s-none") == None
       )
     }
+
+    test(
+      "lately leaves out a commit a later one replaces or records again: an original, its fixup and an amend show as their last rewrite"
+    ) {
+      def commit(n: Long, sha: Char, subject: String, replaces: Char*): Event = {
+        val fields =
+          Vector[(String, ujson.Value)]("sha" -> sha.toString * 40, "subject" -> subject) ++
+            Option.when(replaces.nonEmpty)(
+              Event.Shape.Replaces -> ujson.Arr.from(
+                replaces.map(r => ujson.Str(r.toString * Event.Shape.ReplacedChars))
+              )
+            )
+        ok(
+          Event.of(
+            n,
+            t0.plusSeconds(n),
+            Event.Kind.Commit,
+            ok(Event.Shape.of(ujson.Obj.from(fields)))
+          )
+        )
+      }
+      ok(
+        record(
+          "s-rewritten",
+          Vector(
+            commit(1, 'a', "the first"),
+            commit(2, 'b', "the second"),
+            commit(3, 'f', "fixup! the first"),
+            commit(4, 'c', "the first", 'a', 'f'),
+            commit(5, 'd', "the second", 'b'),
+            commit(6, 'e', "the second, amended"),
+            commit(7, 'e', "the second, amended", 'd')
+          )
+        )
+      )
+      LiveDb
+        .transaction(config, Low)(ok(sessions.lately(id("s-rewritten"))))
+        .map(
+          _.commits.map(c => (c.at, c.sha.take(1), c.subject))
+        ) ==> Some(
+        Vector(
+          (t0.plusSeconds(7), "e", Some("the second, amended")),
+          (t0.plusSeconds(4), "c", Some("the first"))
+        )
+      )
+    }
   }
 }

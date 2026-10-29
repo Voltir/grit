@@ -74,6 +74,7 @@ private[dbos] final class SqlSessions extends Sessions {
                | WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
                |   AND e.shape->>'${Event.Shape.Sha}' IS NOT NULL
                |   AND NOT ${SqlSessions.ByAgent}
+               |   AND NOT ${SqlSessions.Superseded}
                | ORDER BY e.seq DESC LIMIT ?""".stripMargin
           ) { ps =>
             ps.setString(1, Harness.value(id.harness))
@@ -91,7 +92,8 @@ private[dbos] final class SqlSessions extends Sessions {
             s"""SELECT count(*) AS n FROM grit.session_events e
                | WHERE e.session = ${SqlSessions.Keyed} AND e.kind = ?
                |   AND e.shape->>'${Event.Shape.Sha}' IS NOT NULL
-               |   AND ${SqlSessions.ByAgent}""".stripMargin
+               |   AND ${SqlSessions.ByAgent}
+               |   AND NOT ${SqlSessions.Superseded}""".stripMargin
           ) { ps =>
             ps.setString(1, Harness.value(id.harness))
             ps.setString(2, id.local)
@@ -263,6 +265,20 @@ private[dbos] object SqlSessions {
 
   /** Whether the event `e`'s shape marks it made by an agent the session started. */
   private val ByAgent: String = s"coalesce(e.shape->>'${Event.Shape.Child}' = 'true', false)"
+
+  /** Whether the commit event `e` is superseded: a later commit of its session records the same
+    * sha again, or lists it among those it [[Event.Shape.Replaces]]. The index on (session,
+    * kind, seq) serves it, over the one session's commits.
+    */
+  private val Superseded: String =
+    s"""EXISTS (
+       |  SELECT 1 FROM grit.session_events r
+       |   WHERE r.session = e.session AND r.kind = e.kind AND r.seq > e.seq
+       |     AND (r.shape->>'${Event.Shape.Sha}' = e.shape->>'${Event.Shape.Sha}'
+       |          OR left(e.shape->>'${Event.Shape.Sha}', ${Event.Shape.ReplacedChars}) IN (
+       |            SELECT x FROM json_array_elements_text(
+       |              CASE WHEN json_typeof(r.shape->'${Event.Shape.Replaces}') = 'array'
+       |                   THEN r.shape->'${Event.Shape.Replaces}' ELSE '[]'::json END) x)))""".stripMargin
 
   /** When the session `s` counts as ended ([[Session.ends]]), its one parameter
     * [[Session.Unended]] in seconds.
