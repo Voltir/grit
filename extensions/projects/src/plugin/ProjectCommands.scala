@@ -562,7 +562,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             role = Field.text("The role working on it, one its project's method declares."),
             `for` = Field.text(
               "What it is claimed for: the session, or the agent type in it, whose brief is " +
-                s"written; parts joined by `/`, at most ${BriefSlot.Longest} characters."
+                s"written; parts joined by `/`, at most ${ClaimHolder.Longest} characters."
             )
           )
         )

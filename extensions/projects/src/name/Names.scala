@@ -67,12 +67,13 @@ opaque type RoleName <: ClaimRole = ClaimRole
 
 object RoleName {
 
-  /** 64: the most characters a role's name holds. */
-  val Longest: Int = 64
-
-  /** `s` as a role's name, or why not ([[Slug.check]], at most [[Longest]] characters). */
+  /** `s` as a role's name, or why not ([[Slug.check]], at most [[ClaimRole.Longest]]
+    * characters).
+    */
   def of(s: String): Either[String, RoleName] =
-    Slug.check("a role's name", s, Some(Longest), leadingDigit = true).flatMap(ClaimRole.of)
+    Slug
+      .check("a role's name", s, Some(ClaimRole.Longest), leadingDigit = true)
+      .flatMap(ClaimRole.of)
   def value(n: RoleName): String = ClaimRole.value(n)
 }
 
@@ -84,17 +85,15 @@ opaque type BriefSlot <: ClaimHolder = ClaimHolder
 
 object BriefSlot {
 
-  /** 160: the most characters a slot holds. */
-  val Longest: Int = 160
-
   /** 64: the most characters a part of a slot holds. */
   val PartLongest: Int = 64
 
-  /** `s` as a slot, or why not: over [[Longest]] characters, or not parts joined by `/`, each
-    * as [[Slug.check]] takes a name.
+  /** `s` as a slot, or why not: over [[ClaimHolder.Longest]] characters, or not parts joined
+    * by `/`, each as [[Slug.check]] takes a name.
     */
   def of(s: String): Either[String, BriefSlot] =
-    if (s.length > Longest) Left(s"a slot holds at most $Longest characters: $s")
+    if (s.length > ClaimHolder.Longest)
+      Left(s"a slot holds at most ${ClaimHolder.Longest} characters: $s")
     else
       s.split("/", -1)
         .toVector
