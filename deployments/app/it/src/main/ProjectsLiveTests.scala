@@ -100,5 +100,37 @@ object ProjectsLiveTests extends TestSuite {
           kept(config, engine, Projects.Name).map(_._1) ==> Vector("p", "p/c")
       }
     }
+
+    test(
+      "keep and move from a room above an artifact's label are refused, keeping no second copy"
+    ) {
+      CommandRooms.commanding("projects_keep_floor", _ => Vector(CommandFixtures.plugin())) {
+        (config, engine, commands) =>
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
+            Right(classOf[CommandOutcome.Done])
+          keep(commands, desk, "a", "In the desk.") ==> Right(classOf[CommandOutcome.Done])
+          def below(verb: String) = Right(
+            CommandOutcome.Refused(
+              "p/a is kept labelled [level: internal], below what this room writes " +
+                s"([level: confidential]): $verb from a room at its label"
+            )
+          )
+          ran(
+            commands,
+            bea,
+            board,
+            ToolName("project_keep"),
+            "key" -> "p/a",
+            "title" -> "Title a",
+            "body" -> "From the board."
+          ) ==> below("keep")
+          ran(commands, bea, board, ToolName("project_move"), "key" -> "p/a", "to" -> "closed") ==>
+            below("move")
+          kept(config, engine, Projects.Name) ==> Vector(
+            ("p", "internal", "member"),
+            ("p/a", "internal", "member")
+          )
+      }
+    }
   }
 }

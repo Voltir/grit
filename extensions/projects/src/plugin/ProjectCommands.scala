@@ -212,6 +212,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             project.artifacts.filterNot(_.head.key == args.key) :+ artifact
           )
         )
+        _ <- atTheirLabels(existing.toVector.map((d, a) => d -> a.head.key.value), "keep")
         _ <- kept(own, artifact, existing.map(_._1.label), at)
       } yield s"Kept ${shown(artifact.head)}."
     }
@@ -265,13 +266,16 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           .move(project.artifacts, args.key, args.to)
           .left
           .map(r => Stop.Refused(refusal(r)))
+        into <- done.changed.fold(Right(None))(c => artifact(project, c.head.key).map(Some(_)))
+        _ <- atTheirLabels(
+          (found +: into.toVector).map((d, a) => d -> a.head.key.value),
+          "move"
+        )
         writer = Some(author(by))
         moved = Artifact(done.artifact.head.copy(by = writer), done.artifact.body)
         _ <- kept(own, moved, Some(document.label), at)
-        _ <- done.changed.fold(Right(())) { c =>
-          artifact(project, c.head.key).flatMap { (into, _) =>
-            kept(own, Artifact(c.head.copy(by = writer), c.body), Some(into.label), at)
-          }
+        _ <- done.changed.zip(into).fold(Right(())) { (c, held) =>
+          kept(own, Artifact(c.head.copy(by = writer), c.body), Some(held._1.label), at)
         }
       } yield s"Moved ${shown(moved.head)}." +
         done.changed.fold("")(c => s" Merged its deltas into ${shown(c.head)}.")
@@ -728,7 +732,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
-    )(using tx: Tx^): Either[StoreError, CommandOutcome] = answered {
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own, args.key.project)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
@@ -741,17 +745,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         gone = done.gone.flatMap(held.get)
         uncited = done.uncited.flatMap(a => held.get(a.head.key).map((d, _) => d -> a))
         _ <- unclaimed(claims, gone ++ done.uncited.flatMap(a => held.get(a.head.key)), at)
-        _ <- uncited.find((d, _) => !d.label.dominates(Tx.floor(tx))) match {
-          case None => Right(())
-          case Some((d, a)) =>
-            Left(
-              Stop.Refused(
-                s"${a.head.key.value} cites what would be withdrawn, but is kept " +
-                  s"${Label.described(d.label)}, below what this room writes " +
-                  s"(${Label.clearance(Tx.floor(tx))}): withdraw from a room at its label"
-              )
-            )
-        }
+        _ <- atTheirLabels(
+          uncited.map((d, a) => d -> s"${a.head.key.value} cites what would be withdrawn, but"),
+          "withdraw"
+        )
         writer = Some(author(by))
         _ <- uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
           so.flatMap(_ => kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at))
@@ -1086,6 +1083,29 @@ private[plugin] object ProjectCommands {
           labels <- stored(own.labels(docKey))
           label <- labels.headOption.toRight(missing)
         } yield (docKey, label)
+    }
+
+  /** Nothing, or a refusal naming each of `writing` kept at a label below what this room writes,
+    * as `<subject> is kept <label>, below what this room writes (<clearance>): <verb> from a room
+    * at its label`, joined by `; `: written from here, it would gain a second current copy at the
+    * room's label.
+    */
+  private def atTheirLabels(writing: Vector[(Document, String)], verb: String)(using
+      tx: Tx^
+  ): Either[Stop, Unit] =
+    writing.filterNot((d, _) => d.label.dominates(Tx.floor(tx))) match {
+      case Vector() => Right(())
+      case below =>
+        Left(
+          Stop.Refused(
+            below
+              .map((d, subject) =>
+                s"$subject is kept ${Label.described(d.label)}, below what this room writes " +
+                  s"(${Label.clearance(Tx.floor(tx))}): $verb from a room at its label"
+              )
+              .mkString("; ")
+          )
+        )
     }
 
   /** Keeps `artifact` through `own` at `label`, or at public when new. */
