@@ -4,7 +4,6 @@ import java.sql.ResultSet
 import java.time.Instant
 
 import grit.core.id.{ClaimHolder, Harness, SessionId}
-import grit.core.identity.Principal
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.session.{Event, Log, Session, Sessions}
@@ -384,18 +383,7 @@ private[dbos] object SqlSessions {
       parent <- Option(rs.getString("parent_harness"))
         .zip(Option(rs.getString("parent_local")))
         .fold[Either[String, Option[SessionId]]](Right(None))((h, l) => id(h, l).map(Some(_)))
-      by <- SqlIdentities
-        .principal(
-          rs.getString("principal_id"),
-          rs.getString("kind"),
-          Option(rs.getString("held")).getOrElse("[]")
-        )
-        .left
-        .map(_.toString)
-        .flatMap {
-          case p: Principal.Person => Right(p)
-          case Principal.Grit => Left("a session is run by a person, not grit")
-        }
+      by <- SqlIdentities.person(rs, "a session is run")
       at <- SqlDocuments.placeOf(rs.getString("place_json"))
       summary <- Option(rs.getString("summary"))
         .fold[Either[String, Option[Session.Summary]]](Right(None))(

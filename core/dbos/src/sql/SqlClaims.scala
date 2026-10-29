@@ -220,18 +220,7 @@ private[dbos] object SqlClaims {
       subject <- DocKey.of(rs.getString("subject"))
       holder <- ClaimHolder.of(rs.getString("holder"))
       role <- ClaimRole.of(rs.getString("role"))
-      by <- SqlIdentities
-        .principal(
-          rs.getString("principal_id"),
-          rs.getString("kind"),
-          Option(rs.getString("held")).getOrElse("[]")
-        )
-        .left
-        .map(_.toString)
-        .flatMap {
-          case p: Principal.Person => Right(p)
-          case Principal.Grit => Left("a claim is made by a person, not grit")
-        }
+      by <- SqlIdentities.person(rs, "a claim is made")
     } yield Claim(
       subject,
       holder,

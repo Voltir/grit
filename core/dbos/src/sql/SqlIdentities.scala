@@ -114,6 +114,21 @@ private[dbos] object SqlIdentities {
     s"""(SELECT jsonb_agg(jsonb_build_array(n.account, n.vouched, n.member))
        |   FROM grit.links n WHERE n.principal_id = $id)::text""".stripMargin
 
+  /** The person of `rs`'s row, read from its `principal_id`, `kind` and `held` ([[heldOf]])
+    * columns; or why not: a stored value none of its kind's, or grit, `what` (`a claim is
+    * made`) only by a person.
+    */
+  def person(rs: java.sql.ResultSet, what: String): Either[String, Principal.Person] =
+    principal(
+      rs.getString("principal_id"),
+      rs.getString("kind"),
+      Option(rs.getString("held")).getOrElse("[]")
+    ) match {
+      case Left(e) => Left(e.toString)
+      case Right(p: Principal.Person) => Right(p)
+      case Right(Principal.Grit) => Left(s"$what by a person, not grit")
+    }
+
   /** The principal `id`, of `kind` (`grit.principals.kind`), holding `held`, a JSON array of
     * `[account, vouched, member]` triples as `grit.links` gives them; `Invalid` when a stored
     * value is none of its kind's.
