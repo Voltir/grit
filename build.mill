@@ -724,10 +724,18 @@ object grit extends Module {
     }
 
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
-     * classpath, which it halts mid-turn. */
+     * classpath, which it halts mid-turn. projects' tests, so its commands run in labelled rooms
+     * (ProjectsLiveTests): the app deploys no projects plugin, but this is where an edge's
+     * commands meet real rooms. */
     object it extends GritTests with LivePostgres {
       def moduleDeps =
-        super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.slack.test, grit.mcp.test, grit.eval)
+        super.moduleDeps ++ Seq[JavaModule](
+          grit.dbos.it,
+          grit.slack.test,
+          grit.mcp.test,
+          grit.eval,
+          grit.projects.test
+        )
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {
         super.forkEnv() ++ Map(

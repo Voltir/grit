@@ -23,7 +23,7 @@ import grit.core.id.{
   ToolCallId,
   WorkflowId
 }
-import grit.core.identity.{Account, Principal, TestAccounts}
+import grit.core.identity.{Account, Principal}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
@@ -287,83 +287,23 @@ object PluginLiveTests extends TestSuite {
     override val commands: Vector[PluginCommand[?]] = Vector(Twice)
   }
 
-  private def place(text: String): Place =
-    Place.read(text).fold(e => sys.error(e), identity)
+  import CommandRooms.{ann, bea, board, desk, nobody, team}
 
-  /** Labelled internal, and its speech capped at outside. */
-  private val team = place("slack:T1/C-team")
-
-  /** Labelled internal, capped nowhere. */
-  private val desk = place("slack:T1/C-desk")
-
-  /** Labelled confidential. */
-  private val board = place("slack:T1/C-board")
-  private val ann = TestAccounts.account("slack:T1/U-ann")
-  private val bea = TestAccounts.account("slack:T1/U-bea")
-  private val nobody = TestAccounts.account("slack:T1/U-nobody")
-
-  /** [[ann]] cleared internal, [[bea]] confidential; the rooms above labelled and capped. */
-  private val commanded: grit.core.visibility.Visibility = {
-    import grit.core.visibility.*
-    val internal = Label.at(Level.Internal)
-    val confidential = Label.at(Level.Confidential)
-    (for {
-      labels <- RoomLabels
-        .of(
-          Vector(team -> internal, desk -> internal, board -> confidential),
-          Labelled.Mapped(Label.Public)
-        )
-        .left
-        .map(_.written)
-      compartments <- Compartments.of(Vector()).left.map(_.toString)
-      staff <- GroupName.of("staff").left.map(_.toString)
-      bosses <- GroupName.of("bosses").left.map(_.toString)
-      v <- Visibility
-        .of(
-          compartments,
-          labels,
-          Vector(Group(staff, Set(ann)), Group(bosses, Set(bea))),
-          Vector(Grant(staff, internal), Grant(bosses, confidential)),
-          caps = Vector(Cap(team, Integrity.Outside))
-        )
-        .left
-        .map(_.toString)
-    } yield v).fold(e => sys.error(e), identity)
-  }
-
-  /** An engine under [[commanded]] with [[ann]] and [[bea]] seen, and its commands of `plugins`. */
+  /** [[CommandRooms.commanding]] over the notebook and the ledger. */
   private def commanding[A](suite: String)(
       body: (DbConfig, Engine^, grit.core.edge.PluginCommands^) => A
-  ): A = {
-    val config = TestPostgres.freshDatabase(suite)
-    val engine = LiveEngine.open(config, "test", visibility = commanded)
-    try {
-      engine.jot.write(Subject.Public)(
-        engine.principals.name(ann, "Ann").flatMap(_ => engine.principals.name(bea, "Bea"))
-      ) ==> Right(())
-      val plugins = Vector(new Notebook(engine.keeper(name("notebook"), notebookTerms)), Ledger)
-      body(config, engine, engine.commands(plugins))
-    } finally engine.close()
-  }
+  ): A =
+    CommandRooms.commanding(
+      suite,
+      engine => Vector(new Notebook(engine.keeper(name("notebook"), notebookTerms)), Ledger)
+    )(body)
 
-  /** Every current document of `plugin`, as (key, label, integrity), read at maintenance's clearance. */
   private def kept(
       config: DbConfig,
       engine: Engine^,
       plugin: String
   ): Vector[(String, String, String)] =
-    LiveDb
-      .transaction(config)(engine.reads(name(plugin)).documents.newest(10))
-      .fold(
-        e => sys.error(e.toString),
-        _.map(d =>
-          (
-            DocKey.value(d.key),
-            grit.core.visibility.Label.written(d.label),
-            Integrity.written(d.integrity)
-          )
-        ).sorted
-      )
+    CommandRooms.kept(config, engine, name(plugin))
 
   private def note(key: String, text: String): ujson.Value = ujson.Obj("key" -> key, "text" -> text)
 
