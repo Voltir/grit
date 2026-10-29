@@ -580,10 +580,7 @@ private[sql] object SqlDocuments {
                     _ <- gone.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, g) =>
                       acc.flatMap(_ => withdrawn(g._1, g._3, at).map(_ => ()))
                     }
-                    _ <- SqlNotices.send(
-                      SqlNotices.Documents,
-                      s"${PluginName.value(plugin)}/${DocKey.value(key)}"
-                    )
+                    _ <- SqlNotices.send(SqlNotices.Documents, SqlNotices.versioned(plugin, key))
                   } yield Written.Versioned(version, kept, gone.map(g => (g._1, g._2)))
               }
           }

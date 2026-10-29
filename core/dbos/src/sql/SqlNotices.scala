@@ -5,6 +5,7 @@ import java.sql.Connection
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Using
 
+import grit.core.id.{DocKey, PluginName}
 import grit.core.store.{StoreError, Tx}
 
 import org.postgresql.PGConnection
@@ -16,9 +17,12 @@ import org.postgresql.PGConnection
 private[dbos] object SqlNotices {
 
   /** The channel a write that versions a document notices on as it commits, the payload
-    * `plugin/key`: once per key a transaction versions.
+    * `plugin/key` ([[versioned]]): once per key a transaction versions.
     */
   val Documents = "grit_documents"
+
+  def versioned(plugin: PluginName, key: DocKey): String =
+    s"${PluginName.value(plugin)}/${DocKey.value(key)}"
 
   /** The channel a recording that logs a commit notices on as it commits, the payload empty: once
     * per transaction.

@@ -12,7 +12,6 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
-import grit.core.id.{DocKey, PluginName}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.dbos.sql.{DbConfig, Opener, SqlAsking, SqlEntryStore, SqlNotices, SqlWatched}
@@ -189,8 +188,7 @@ object SqlWatch {
   /** The notices that may meet `what`: its key's versions, or any commit. */
   private def hears(what: WatchFor): SqlNotices.Heard -> Boolean = what match {
     case h: WatchFor.Holding =>
-      val payload = s"${PluginName.value(h.plugin)}/${DocKey.value(h.key)}"
-      heard => heard.channel == SqlNotices.Documents && heard.payload == payload
+      _ == SqlNotices.Heard(SqlNotices.Documents, SqlNotices.versioned(h.plugin, h.key))
     case _: WatchFor.Committed => _.channel == SqlNotices.Sessions
   }
 
