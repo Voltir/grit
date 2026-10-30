@@ -33,9 +33,13 @@ object CharEstimateTests extends TestSuite {
       estimate(assistant(AssistantBlock.Text("abcd"), AssistantBlock.Text("efgh"))) ==> 6
     }
 
-    test("an earlier reply's reasoning costs nothing: the model drops it") {
-      estimate(assistant(AssistantBlock.Reasoning("x" * 400, None))) ==> 4
-      estimate(assistant(AssistantBlock.Reasoning("", Some(ujson.Obj("a" -> "b" * 400))))) ==> 4
+    test(
+      "a reasoning block the provider replays costs its text; one it cannot replay costs nothing"
+    ) {
+      (
+        estimate(assistant(AssistantBlock.Reasoning("x" * 400, Some(ujson.Obj("a" -> "b"))))),
+        estimate(assistant(AssistantBlock.Reasoning("x" * 400, None)))
+      ) ==> (4 + 100, 4)
     }
 
     test("a tool call costs its id, name and arguments; a tool result its id and content") {
