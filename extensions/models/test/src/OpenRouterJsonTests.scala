@@ -210,6 +210,134 @@ object OpenRouterJsonTests extends TestSuite {
       ujson.read(arguments) ==> ujson.Str("{oops")
     }
 
+    test(
+      "request: an Anthropic model's body marks its system prompt and message stable's last part, in parts; another's has no mark"
+    ) {
+      val calling = Message.Assistant(
+        Vector(
+          AssistantBlock.Text("Let me look."),
+          AssistantBlock.ToolCall(ToolCallId("call_1"), "read", ujson.Obj("path" -> "a.txt"))
+        ),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val read = ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
+      val request = ModelRequest(
+        "be brief",
+        Vector(
+          Message.User("hi"),
+          calling,
+          Message.ToolResult(ToolCallId("call_1"), "contents", isError = false),
+          Message.User("and then?")
+        ),
+        Vector(read),
+        stable = 3
+      )
+      val mark = ujson.Obj("type" -> "ephemeral")
+      def text(t: String) = ujson.Obj("type" -> "text", "text" -> t)
+      val call = ujson.Arr(
+        ujson.Obj(
+          "id" -> "call_1",
+          "type" -> "function",
+          "function" -> ujson.Obj("name" -> "read", "arguments" -> """{"path":"a.txt"}""")
+        )
+      )
+      val tools = ujson.Arr(
+        ujson.Obj(
+          "type" -> "function",
+          "function" -> ujson.Obj(
+            "name" -> "read",
+            "description" -> "Read a file.",
+            "parameters" -> ujson.Obj("type" -> "object")
+          )
+        )
+      )
+      OpenRouterJson.request("anthropic/claude-haiku-5.5", 512, None, request) ==> ujson.Obj(
+        "model" -> "anthropic/claude-haiku-5.5",
+        "max_tokens" -> 512,
+        "messages" -> ujson.Arr(
+          ujson.Obj(
+            "role" -> "system",
+            "content" -> ujson.Arr(
+              ujson.Obj("type" -> "text", "text" -> "be brief", "cache_control" -> mark)
+            )
+          ),
+          ujson.Obj("role" -> "user", "content" -> ujson.Arr(text("hi"))),
+          ujson.Obj(
+            "role" -> "assistant",
+            "content" -> ujson.Arr(text("Let me look.")),
+            "tool_calls" -> call
+          ),
+          ujson.Obj(
+            "role" -> "tool",
+            "tool_call_id" -> "call_1",
+            "content" -> ujson.Arr(
+              ujson.Obj("type" -> "text", "text" -> "contents", "cache_control" -> mark)
+            )
+          ),
+          ujson.Obj("role" -> "user", "content" -> ujson.Arr(text("and then?")))
+        ),
+        "tools" -> tools,
+        "tool_choice" -> "auto"
+      )
+      // Any other model's body is as it was before marks: plain strings, no cache_control.
+      OpenRouterJson.request("openai/gpt-oss-20b", 512, None, request) ==> ujson.Obj(
+        "model" -> "openai/gpt-oss-20b",
+        "max_tokens" -> 512,
+        "messages" -> ujson.Arr(
+          ujson.Obj("role" -> "system", "content" -> "be brief"),
+          ujson.Obj("role" -> "user", "content" -> "hi"),
+          ujson.Obj("role" -> "assistant", "content" -> "Let me look.", "tool_calls" -> call),
+          ujson.Obj("role" -> "tool", "tool_call_id" -> "call_1", "content" -> "contents"),
+          ujson.Obj("role" -> "user", "content" -> "and then?")
+        ),
+        "tools" -> tools,
+        "tool_choice" -> "auto"
+      )
+    }
+
+    test(
+      "request: an Anthropic model with no system prompt sends none and marks its last tool; a stable reply with no text marks the part before it"
+    ) {
+      val calling = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("call_1"), "read", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val body = OpenRouterJson.request(
+        "anthropic/claude-haiku-5.5",
+        512,
+        None,
+        ModelRequest(
+          "",
+          Vector(Message.User("hi"), calling),
+          Vector(
+            ToolSchema("list", "List files.", ujson.Obj("type" -> "object")),
+            ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
+          ),
+          stable = 2
+        )
+      )
+      val mark = ujson.Obj("type" -> "ephemeral")
+      body("messages").arr.map(_("role").str).toVector ==> Vector("user", "assistant")
+      body("messages")(0)("content") ==> ujson.Arr(
+        ujson.Obj("type" -> "text", "text" -> "hi", "cache_control" -> mark)
+      )
+      body("messages")(1)("content") ==> ujson.Null
+      body("tools").arr.map(_.obj.get("cache_control")).toVector ==> Vector(None, Some(mark))
+    }
+
+    test("response: cache writes OpenRouter reports are the usage's writes") {
+      val body = ujson.read(ujson.write(sampleResponse))
+      body("usage")("prompt_tokens_details") =
+        ujson.Obj("cached_tokens" -> 100, "cache_write_tokens" -> 15)
+      OpenRouterJson.response(body).map(_.usage) ==> Right(
+        Usage(Tokens(120), Tokens(30), Tokens(100), Some(BigDecimal("0.0000123")), Tokens(15))
+      )
+    }
+
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {
       OpenRouterJson.response(sampleResponse) ==> Right(
         Message.Assistant(

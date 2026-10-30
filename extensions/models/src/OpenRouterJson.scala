@@ -19,6 +19,13 @@ object OpenRouterJson {
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
     * as `replay` says, when it is in OpenRouter's form (`reasoning_details`), and never
     * otherwise.
+    *
+    * For a model under [[AnthropicProvider.Vendor]], every text that is not empty goes as
+    * text parts, an empty system prompt is left out, and a cache breakpoint
+    * (`{"type":"ephemeral"}`) follows the system prompt (or, with none, the last tool) and
+    * another the last part of message `stable` that a message holds as parts (a negative count
+    * as 0): at most two of the four OpenRouter passes to Anthropic. Any other model's body has
+    * no breakpoint, and its texts are strings.
     */
   def request(
       model: String,
@@ -28,14 +35,31 @@ object OpenRouterJson {
       effort: Option[Effort] = None,
       replay: ReasoningReplay = ReasoningReplay.Details
   ): ujson.Value = {
+    val cached = model.startsWith(AnthropicProvider.Vendor)
+    val system =
+      if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
+      else
+        Option.when(request.system.nonEmpty)(
+          ujson.Obj(
+            "role" -> "system",
+            "content" -> ujson.Arr(
+              ujson.Obj(
+                "type" -> "text",
+                "text" -> request.system,
+                "cache_control" -> CacheMarks.ephemeral
+              )
+            )
+          )
+        )
+    val messages = request.messages.map(message(_, replay, cached))
+    if (cached)
+      CacheMarks
+        .stableMark(messages.map(Some(_)), request.stable)
+        .foreach(_("cache_control") = CacheMarks.ephemeral)
     val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
-      "messages" -> ujson.Arr.from(
-        ujson.Obj("role" -> "system", "content" -> request.system) +: request.messages.map(
-          message(_, replay)
-        )
-      )
+      "messages" -> ujson.Arr.from(system.toVector ++ messages)
     )
     effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> effortWord(e)))
     upstream.foreach { u =>
@@ -43,7 +67,10 @@ object OpenRouterJson {
         ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)
     }
     if (request.tools.nonEmpty) {
-      body("tools") = ujson.Arr.from(request.tools.map(tool))
+      val tools = request.tools.map(tool)
+      if (cached && system.isEmpty)
+        tools.lastOption.foreach(_("cache_control") = CacheMarks.ephemeral)
+      body("tools") = ujson.Arr.from(tools)
       body("tool_choice") = request.use match {
         case ToolUse.Auto => "auto"
         case ToolUse.Off => "none"
@@ -74,39 +101,47 @@ object OpenRouterJson {
     case Effort.Max => "max"
   }
 
-  private def message(m: Message, replay: ReasoningReplay): ujson.Value = m match {
-    case Message.User(text) => ujson.Obj("role" -> "user", "content" -> text)
-    case Message.ToolResult(callId, content, _) =>
-      // The tool role has no error flag; an error is still a result the model reads.
-      ujson.Obj(
-        "role" -> "tool",
-        "tool_call_id" -> ToolCallId.value(callId),
-        "content" -> content
-      )
-    case Message.Assistant(blocks, _, _, _, _) =>
-      val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-      val calls = blocks.collect { case AssistantBlock.ToolCall(id, name, arguments) =>
+  /** `m` on the wire, each text as text parts when `parts` and it is not empty (an empty part
+    * is refused), as a string otherwise.
+    */
+  private def message(m: Message, replay: ReasoningReplay, parts: Boolean): ujson.Obj = {
+    def said(text: String): ujson.Value =
+      if (parts && text.nonEmpty) ujson.Arr(ujson.Obj("type" -> "text", "text" -> text))
+      else ujson.Str(text)
+    m match {
+      case Message.User(text) => ujson.Obj("role" -> "user", "content" -> said(text))
+      case Message.ToolResult(callId, content, _) =>
+        // The tool role has no error flag; an error is still a result the model reads.
         ujson.Obj(
-          "id" -> ToolCallId.value(id),
-          "type" -> "function",
-          "function" -> ujson.Obj("name" -> name, "arguments" -> ujson.write(arguments))
+          "role" -> "tool",
+          "tool_call_id" -> ToolCallId.value(callId),
+          "content" -> said(content)
         )
-      }
-      // Sent back verbatim, as OpenRouter asks, so the model's reasoning carries across
-      // the calls of one turn; or not at all, for a pair whose replay is dropped. Only
-      // OpenRouter's own form, an array: another provider's would be garbage here.
-      val details = replay match {
-        case ReasoningReplay.Details =>
-          blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r: ujson.Arr)) => r }
-        case ReasoningReplay.Dropped => None
-      }
-      ujson.Obj.from(
-        Vector[(String, ujson.Value)](
-          "role" -> "assistant",
-          "content" -> (if (text.isEmpty && calls.nonEmpty) ujson.Null else ujson.Str(text))
-        ) ++ Option.when(calls.nonEmpty)("tool_calls" -> ujson.Arr.from(calls)) ++
-          details.map("reasoning_details" -> _)
-      )
+      case Message.Assistant(blocks, _, _, _, _) =>
+        val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+        val calls = blocks.collect { case AssistantBlock.ToolCall(id, name, arguments) =>
+          ujson.Obj(
+            "id" -> ToolCallId.value(id),
+            "type" -> "function",
+            "function" -> ujson.Obj("name" -> name, "arguments" -> ujson.write(arguments))
+          )
+        }
+        // Sent back verbatim, as OpenRouter asks, so the model's reasoning carries across
+        // the calls of one turn; or not at all, for a pair whose replay is dropped. Only
+        // OpenRouter's own form, an array: another provider's would be garbage here.
+        val details = replay match {
+          case ReasoningReplay.Details =>
+            blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r: ujson.Arr)) => r }
+          case ReasoningReplay.Dropped => None
+        }
+        ujson.Obj.from(
+          Vector[(String, ujson.Value)](
+            "role" -> "assistant",
+            "content" -> (if (text.isEmpty && calls.nonEmpty) ujson.Null else said(text))
+          ) ++ Option.when(calls.nonEmpty)("tool_calls" -> ujson.Arr.from(calls)) ++
+            details.map("reasoning_details" -> _)
+        )
+    }
   }
 
   /** The assistant message in a 200 response, or why there is none: a top-level or a
@@ -224,15 +259,15 @@ object OpenRouterJson {
 
   private def usage(u: Option[collection.Map[String, ujson.Value]]): Usage = {
     def count(v: Option[ujson.Value]): Tokens = Tokens(v.flatMap(_.numOpt).fold(0L)(_.toLong))
+    val details = u.flatMap(_.get("prompt_tokens_details")).flatMap(_.objOpt)
     Usage(
       count(u.flatMap(_.get("prompt_tokens"))),
       count(u.flatMap(_.get("completion_tokens"))),
-      count(
-        u.flatMap(_.get("prompt_tokens_details")).flatMap(_.objOpt).flatMap(_.get("cached_tokens"))
-      ),
+      count(details.flatMap(_.get("cached_tokens"))),
       // ujson reads numbers as doubles; a double's shortest form is the decimal the
       // provider wrote for any cost it reports (at most ~15 significant digits).
-      u.flatMap(_.get("cost")).flatMap(_.numOpt).map(d => BigDecimal(d.toString))
+      u.flatMap(_.get("cost")).flatMap(_.numOpt).map(d => BigDecimal(d.toString)),
+      count(details.flatMap(_.get("cache_write_tokens")))
     )
   }
 

@@ -62,17 +62,17 @@ object AnthropicJson {
     }
     if (request.system.nonEmpty)
       body("system") = ujson.Arr(
-        ujson.Obj("type" -> "text", "text" -> request.system, "cache_control" -> breakpoint)
+        ujson.Obj(
+          "type" -> "text",
+          "text" -> request.system,
+          "cache_control" -> CacheMarks.ephemeral
+        )
       )
-    else tools.lastOption.foreach(_("cache_control") = breakpoint)
+    else tools.lastOption.foreach(_("cache_control") = CacheMarks.ephemeral)
     val messages = request.messages.map(message(_, replay))
-    val stable = request.stable.max(0).min(messages.size)
-    messages
-      .take(stable)
-      .flatten
-      .flatMap(_("content").arr)
-      .findLast(block => !Thinking.contains(block("type").str))
-      .foreach(_("cache_control") = breakpoint)
+    CacheMarks
+      .stableMark(messages, request.stable)
+      .foreach(_("cache_control") = CacheMarks.ephemeral)
     body("messages") = ujson.Arr.from(messages.flatten)
     body
   }
@@ -164,11 +164,6 @@ object AnthropicJson {
     }
   }
 
-  private def breakpoint: ujson.Obj = ujson.Obj("type" -> "ephemeral")
-
-  /** The block types that are the model's thinking. */
-  private val Thinking = Set("thinking", "redacted_thinking")
-
   private def tool(t: ToolSchema): ujson.Obj = {
     val wire =
       ujson.Obj("name" -> t.name, "description" -> t.description, "input_schema" -> t.parameters)
@@ -214,7 +209,7 @@ object AnthropicJson {
           )
         case AssistantBlock.Reasoning(_, Some(r: ujson.Obj))
             if replay == ReasoningReplay.Details &&
-              r.value.get("type").flatMap(_.strOpt).exists(Thinking.contains) =>
+              r.value.get("type").flatMap(_.strOpt).exists(CacheMarks.Thinking.contains) =>
           // A copy, so the breakpoint search can never mark the recorded block itself.
           Some(ujson.Obj.from(r.value))
         case AssistantBlock.Reasoning(_, _) => None
