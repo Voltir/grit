@@ -189,7 +189,8 @@ object EngineLockTests extends TestSuite {
         read(
           config,
           """SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
-            | WHERE l.locktype = 'advisory' AND l.granted""".stripMargin
+            | WHERE l.locktype = 'advisory' AND l.granted
+            |   AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())""".stripMargin
         ) ==> Some("grit-lock")
         EngineLock.take(config).left.map {
           case NotTaken.Held(holder) => holder.map(_.pid)
