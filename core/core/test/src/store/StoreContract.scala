@@ -93,7 +93,9 @@ abstract class StoreContract extends TestSuite {
     Catalog.of(Policy.one(a, a, a, a), Vector.empty).pin
   }
 
-  private val usage = Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.0000123")))
+  // Every field distinct and nonzero, so a store that drops one gives back another value.
+  private val usage =
+    Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.0000123")), Tokens(7))
 
   val tests = Tests {
 

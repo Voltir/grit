@@ -59,8 +59,8 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         conn.prepareStatement(
           """INSERT INTO grit.usage_ledger
             |  (entry_id, workflow_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |   estimated_input_tokens, conversation_id, turn_seq, upstream, grade)
-            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?, ?)""".stripMargin
+            |   estimated_input_tokens, conversation_id, turn_seq, upstream, grade, cache_write_tokens)
+            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?, ?, ?, ?)""".stripMargin
         )
       ) { ps =>
         ps.setString(1, EntryId.value(entry))
@@ -75,6 +75,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         ps.setLong(10, TurnSeq.value(turn.turnSeq))
         ps.setString(11, upstream.orNull)
         ps.setString(12, grade.map(_.word).orNull)
+        ps.setLong(13, Tokens.value(usage.cacheWrite))
         ps.executeUpdate()
       }
       conn.releaseSavepoint(savepoint)
@@ -91,7 +92,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
     SqlStatements
       .many(
         """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-          |       estimated_input_tokens, upstream, grade
+          |       estimated_input_tokens, upstream, grade, cache_write_tokens
           |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
       )(_.setString(1, WorkflowId.value(workflow))) { rs =>
         val word = Option(rs.getString(9))
@@ -100,7 +101,8 @@ final class SqlUsageLedger extends UsageLedger, Spending {
           Tokens(rs.getLong(3)),
           Tokens(rs.getLong(4)),
           Tokens(rs.getLong(5)),
-          Option(rs.getBigDecimal(6)).map(BigDecimal(_))
+          Option(rs.getBigDecimal(6)).map(BigDecimal(_)),
+          Tokens(rs.getLong(10))
         )
         val row = UsageLedger.Row(
           EntryId(rs.getString(1)),

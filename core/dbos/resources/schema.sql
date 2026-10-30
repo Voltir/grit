@@ -517,7 +517,10 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- Record order, which UsageLedger.of reads in. created_at cannot say it: now() is the
     -- transaction's start, the same for every row one transaction records.
-    ordinal             BIGINT GENERATED ALWAYS AS IDENTITY
+    ordinal             BIGINT GENERATED ALWAYS AS IDENTITY,
+    -- Of input_tokens, those written to the provider's prompt cache (Usage.cacheWrite); 0 where
+    -- the provider does not say. Last, where an existing table's ADD COLUMN puts it.
+    cache_write_tokens  BIGINT NOT NULL DEFAULT 0
 );
 
 -- A turn's costs, read by edges (UsageLedger.of).
