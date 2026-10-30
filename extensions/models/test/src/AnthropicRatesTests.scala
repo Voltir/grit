@@ -39,5 +39,12 @@ object AnthropicRatesTests extends TestSuite {
         Some(BigDecimal("0.01"))
       AnthropicRates.cost("claude-opus-9", usage(10, 0, 0, 0)) ==> None
     }
+
+    test("Opus 5.5 has one card at any prompt length, its reads at 0.05x its input") {
+      // 2,000 uncached at $4, 2,000 written at $5, 6,000 read at $0.20, 1,000 out at $20.
+      AnthropicRates.cost("claude-opus-5-5", usage(10000, 6000, 2000, 1000)) ==>
+        Some(BigDecimal("0.0392"))
+      AnthropicRates.cost("claude-opus-5-5", usage(300000, 0, 0, 0)) ==> Some(BigDecimal("1.2"))
+    }
   }
 }

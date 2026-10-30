@@ -35,6 +35,8 @@ object AnthropicRates {
     Card(BigDecimal("0.50"), BigDecimal("0.625"), BigDecimal("0.05"), BigDecimal("2.50"))
   private val Sonnet =
     Card(BigDecimal("2"), BigDecimal("2.50"), BigDecimal("0.10"), BigDecimal("10"))
+  private val Opus =
+    Card(BigDecimal("4"), BigDecimal("5"), BigDecimal("0.20"), BigDecimal("20"))
 
   /** Where Claude Haiku 5.5's long-context card begins: a prompt longer than this. */
   private val HaikuLongPast = 100000L
@@ -43,6 +45,7 @@ object AnthropicRates {
     def is(id: String) = model == id || model.startsWith(id + "-")
     if (is("claude-haiku-5-5")) Some(if (prompt > HaikuLongPast) HaikuLong else HaikuShort)
     else if (is("claude-sonnet-5-5")) Some(Sonnet)
+    else if (is("claude-opus-5-5")) Some(Opus)
     else None
   }
 }
