@@ -63,7 +63,9 @@ import grit.turn.{
   */
 private[grit] object Launch {
 
-  private val Log = org.slf4j.LoggerFactory.getLogger("grit.launch")
+  // Lazy: a chat reads `temp` for its log file's path before setting it, and a logger made
+  // here would load slf4j first, writing every log line onto the screen.
+  private lazy val Log = org.slf4j.LoggerFactory.getLogger("grit.launch")
 
   /** What a process wants beside its deployment: whether each model call is printed with
     * the model it goes to (`announced`: a run with arguments, where a replayed turn is then

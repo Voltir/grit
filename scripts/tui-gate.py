@@ -159,6 +159,9 @@ def main():
         h, l = raw.count("\x1b[?%sh" % mode), raw.count("\x1b[?%sl" % mode)
         check(h == 1 and l == 1, "?%s taken once and given back once" % mode, "%d/%d" % (h, l))
 
+    logged = re.findall(r"\] (?:TRACE|DEBUG|INFO|WARN|ERROR) [\w.$]+ - ", raw)
+    check(not logged, "no log line written to the screen", "%d" % len(logged))
+
     frames = re.findall(r"\x1b\[\?2026h(.*?)\x1b\[\?2026l", raw, re.S)
     # A reload with no input paints twice: the empty screen, then the loaded transcript.
     least = 2 if scenario == "reload" else 4

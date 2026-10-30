@@ -108,12 +108,13 @@ RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access
 # for a second agent whose engines must not recover this one's turns. And a config
 # directory of the run's own: `/theme` keeps its choice there (Prefs), so a gate never
 # changes the theme the developer's next launch starts in, and every run starts in the
-# default.
+# default. No GRIT_LOG: its default, a file in the JVM's temp directory (here $WORK), is
+# what a person runs with, and a log line that reaches the screen instead fails every scenario.
 AGENT_DB=${GRIT_GATE_DB:-grit_agent}
-APP_RUNNER="env -u OPENROUTER_API_KEY -u GRIT_THEME GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
+APP_RUNNER="env -u OPENROUTER_API_KEY -u GRIT_THEME -u GRIT_LOG GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP \
   XDG_CONFIG_HOME=$WORK/config-$STAMP \
   GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
-  $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  $J/bin/java -Dgate.stamp=--$STAMP -Djava.io.tmpdir=$WORK --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp $APP_CP grit.app.main.Main"
 
 E=$'\033'
