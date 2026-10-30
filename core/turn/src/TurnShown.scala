@@ -100,8 +100,8 @@ private[turn] object TurnShown {
     gates.exists((index, g) => index <= round.index && g.hidden.nonEmpty)
 
   /** How each call of the loop is built from the plain request: tagged for `asked`
-    * ([[TurnVerdict.tagged]]), offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
-    * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
+    * ([[TurnVerdict.tagged]]), offering `tools` as `use` says, guided as [[TurnLoop.guided]]
+    * says under `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
     * with each of `lines`, in order, each after a blank line ([[gatedOffer]]). It marks stable
     * ([[ModelRequest.stable]]) every message the call shares with the same request told with
     * tools on: all of them but the last call's note, or the last result that note ends.
@@ -265,8 +265,8 @@ private[turn] object TurnShown {
     }
   }
 
-  /** The line [[requestOf]] sends just before a turn's own messages, for a turn whose first entry was made
-    * `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
+  /** The line [[requestOf]] sends just before a turn's own messages, for a turn whose first
+    * entry was made `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
     * as before zones: "The message you are answering was said Wed 2026-10-21 15:03 UTC." With one, in
     * its zone, saying whose, then in UTC, then how to read times:
     * "The message you are answering was said Wed 2026-10-21 08:03 PDT, the person's time

@@ -20,8 +20,8 @@ import grit.core.tool.{
 /** The main model asked where a message went, when the classifier was unsure
   * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of the tool loop's tools
   * ([[tool]]), a one-line note on the user's message ([[tag]]) asks for it, the same on every
-  * call ([[tagged]]), and the verdict is the first call's reply's ([[of]]). The exchange stays in the journal
-  * and the verdict's record, never among the conversation's messages.
+  * call ([[tagged]]), and the verdict is the first call's reply's ([[of]]). The exchange stays
+  * in the journal and the verdict's record, never among the conversation's messages.
   */
 object TurnVerdict {
 
