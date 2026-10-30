@@ -93,8 +93,8 @@ object TurnRecord {
     * `steps` and `reads` through this build's code: the system prompt and tool set its
     * `offer` step recorded, the profile `pin-models` pinned, the window `assemble` drew, the
     * classification `classify` made, and, for each call, the turn's own entries kept before
-    * that call's reply. The texts this build adds (labels, gap lines, the topic tag, the
-    * last-call note, "asks first") are this build's, which may differ from those of the build
+    * that call's reply. The texts and tools this build adds (labels, gap lines, the topic
+    * tag and the `topic` tool, the last-call note, "asks first") are this build's, which may differ from those of the build
     * that ran the turn. `Calls(Vector.empty, None, _)` for a turn whose first call's reply is
     * not kept yet.
     *

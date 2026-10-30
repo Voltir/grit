@@ -303,6 +303,73 @@ object TurnRequestsTests extends TestSuite {
       calls.map(sent(_, off = false)) ==> Right(provider.requests)
     }
 
+    test("a turn its classifier was sure of is rebuilt with topic offered and no tag") {
+      val entries = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      Vector("hello", "knots? ~0.1").foreach(text =>
+        runTurn(
+          new InMemoryDurable,
+          entries,
+          new RecordingProvider,
+          say(entries, text),
+          classifier = classifier
+        )
+      )
+      val provider = new RecordingProvider
+      val turn = say(entries, "more ~0.9")
+      val recorded = answered(entries, turn, provider, classifier = classifier)
+      provider.requests.headOption.map(r => (r.tools.map(_.name), r.messages.lastOption)) ==>
+        Some((Vector("topic", "peek", "poke"), Some(Message.User("more ~0.9"))))
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false)) ==>
+        Right(provider.requests)
+    }
+
+    test(
+      "an asked turn's topic call naming an earlier topic reads and rebuilds as it did when earlier was an enum"
+    ) {
+      // A history recorded under the enum schema replays only because `topic`'s field names
+      // and `about`'s values are unchanged: its recorded arguments read as they did.
+      val entries = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      Vector("hello", "knots? ~0.1").foreach(text =>
+        runTurn(
+          new InMemoryDurable,
+          entries,
+          new RecordingProvider,
+          say(entries, text),
+          classifier = classifier
+        )
+      )
+      val provider = new Scripted((r, n) =>
+        if (n == 0)
+          Right(
+            calling("").copy(
+              blocks = Vector(
+                AssistantBlock.ToolCall(
+                  ToolCallId("v"),
+                  "topic",
+                  ujson.Obj("about" -> "earlier", "earlier" -> "new topic (2)")
+                )
+              ),
+              stop = StopReason.ToolUse
+            )
+          )
+        else new grit.models.StubProvider().complete(r)
+      )
+      val turn = say(entries, "back ~0.5")
+      val recorded = answered(entries, turn, provider, classifier = classifier)
+      (
+        agenda(entries).placed(turn.turnSeq),
+        TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false))
+      ) ==> (
+        Some(
+          grit.core.agenda.Agenda.ItemId
+            .openedBy(TurnRef(ConversationId("c1"), grit.core.id.TurnSeq(0)))
+        ),
+        Right(provider.requests)
+      )
+    }
+
     test("a heard turn's answer is its draft, rebuilt as its provider was sent it") {
       val w = speechWorld()
       val provider = new Scripted((_, _) => Right(said("It moved to Thursday.")))

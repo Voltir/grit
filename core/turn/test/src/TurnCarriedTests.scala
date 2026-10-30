@@ -110,6 +110,22 @@ object TurnCarriedTests extends TestSuite {
       basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.PrefixDiffers)))
     }
 
+    test("a turn sure of its topic after one asked about it carries that turn's window record") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val classifier = new CountingClassifier
+      def run(text: String) = {
+        val t = say(entries, text)
+        durable.run(t.workflowId)(
+          turnBody(entries, new RecordingProvider, classifier = classifier)
+        )
+        t
+      }
+      val _ = Vector("hello", "knots? ~0.1").map(run)
+      val asked = run("hm ~0.5")
+      basis(durable, run("more ~0.9")) ==> Right(Some(TurnBasis.Against(Turn.windowId(asked))))
+    }
+
     test("a turn after a period closed since the last turn's window draws afresh: a boundary") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable

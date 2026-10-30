@@ -18,8 +18,9 @@ import grit.core.tool.{
 }
 
 /** The main model asked where a message went, when the classifier was unsure
-  * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of the tool loop's tools
-  * ([[tool]]), a one-line note on the user's message ([[tag]]) asks for it, the same on every
+  * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of every turn's tools
+  * ([[tool]]), offered alike whether or not the turn asks, so turns of one conversation offer
+  * the same tools (ADR 0052); on a turn that asks, a one-line note on the user's message ([[tag]]) asks for it, the same on every
   * call ([[tagged]]), and the verdict is the first call's reply's ([[of]]). The exchange stays
   * in the journal and the verdict's record, never among the conversation's messages.
   */
@@ -28,65 +29,56 @@ object TurnVerdict {
   /** The tool's name. */
   val Name: ToolName = ToolName("topic")
 
-  /** The `topic` tool, as offered when the classification is `c`: `about` is `current`,
-    * `earlier` or `new`; `earlier` is one of `c`'s earlier items by key, required when
-    * `about` is `earlier`; `name` is a new item's name. With no earlier items there is no
-    * `earlier` field, and `about` is `current` or `new`. A name read is trimmed; a blank one
-    * is none.
+  /** The `topic` tool's spec, on every call of every turn: `about` is `current`, `earlier` or
+    * `new`; `earlier` an earlier topic's key, required when `about` is `earlier`; `name` a new
+    * topic's name, trimmed, a blank one none. A key is not checked here ([[checked]]).
     */
-  def spec(c: TurnAgenda.Classification): ToolSpec[Agenda.Verdict] = {
-    val name = Field.text("For new: a short name for the subject, at most four words.").optional
+  val Spec: ToolSpec[Agenda.Verdict] = {
+    val earlier = Field.text("For earlier: the earlier topic's key, as the note lists them.")
     def named(n: Option[String]): Option[String] = n.map(_.trim).filter(_.nonEmpty)
-    val args = c.earlier.map(_.key) match {
-      case first +: rest =>
-        val earlier = Field.oneOf("For earlier: the earlier topic it goes back to.", first, rest*)
-        Args
-          .of(
-            (
-              about = Field.oneOf(
-                "current: it carries on the current topic. earlier: it goes back to an " +
-                  "earlier topic. new: a subject not discussed before.",
-                "current",
-                "earlier",
-                "new"
-              ),
-              earlier = earlier.optional,
-              name = name
-            )
-          )
-          .refine(a =>
-            a.about match {
-              case "current" => Right(Agenda.Verdict.Current)
-              case "earlier" =>
-                a.earlier
-                  .map(Agenda.Verdict.Earlier(_))
-                  .toRight(ArgsError.Missing("earlier", earlier.accepts))
-              case _ => Right(Agenda.Verdict.New(named(a.name)))
-            }
-          )
-      case _ =>
-        Args
-          .of(
-            (
-              about = Field.oneOf(
-                "current: it carries on the current topic. new: a subject not discussed before.",
-                "current",
-                "new"
-              ),
-              name = name
-            )
-          )
-          .map(a =>
-            if (a.about == "current") Agenda.Verdict.Current else Agenda.Verdict.New(named(a.name))
-          )
-    }
     ToolSpec(
       Name,
       "Say which topic the user's latest message is about. Call it once, before answering, " +
         "when the message says the topic may have changed.",
-      args
+      Args
+        .of(
+          (
+            about = Field.oneOf(
+              "current: it carries on the current topic. earlier: it goes back to an " +
+                "earlier topic. new: a subject not discussed before.",
+              "current",
+              "earlier",
+              "new"
+            ),
+            earlier = earlier.optional,
+            name = Field.text("For new: a short name for the subject, at most four words.").optional
+          )
+        )
+        .refine(a =>
+          a.about match {
+            case "current" => Right(Agenda.Verdict.Current)
+            case "earlier" =>
+              a.earlier
+                .map(Agenda.Verdict.Earlier(_))
+                .toRight(ArgsError.Missing("earlier", earlier.accepts))
+            case _ => Right(Agenda.Verdict.New(named(a.name)))
+          }
+        )
     )
   }
+
+  /** `v`, unless it names an earlier topic none of `c`'s earlier items has: then
+    * `ArgsError.Refused` on `earlier`, naming them, or saying there are none.
+    */
+  def checked(c: TurnAgenda.Classification, v: Agenda.Verdict): Either[ArgsError, Agenda.Verdict] =
+    v match {
+      case Agenda.Verdict.Earlier(key) if !c.earlier.exists(_.key == key) =>
+        val there =
+          if (c.earlier.isEmpty) "There are no earlier topics."
+          else s"The earlier topics are: ${c.earlier.map(_.key).mkString("; ")}."
+        Left(ArgsError.Refused("earlier", s"No earlier topic is called $key. $there"))
+      case _ => Right(v)
+    }
 
   /** The id of the entry recording `turn`'s verdict. */
   def verdictId(turn: TurnRef): EntryId =
@@ -157,13 +149,16 @@ object TurnVerdict {
   /** What the `topic` tool answers when its call reads: the loop's model goes on. */
   val Noted = "Noted. Answer the message now."
 
-  /** The `topic` tool for `c`, as the tool loop offers it: a call that reads is answered
-    * [[Noted]], one that does not with the reason, and nothing else happens; its answers are
-    * grit's own words ([[grit.core.tool.Believed.Own]]). The verdict is read from the reply's
-    * call, not from running it ([[of]]).
+  /** The `topic` tool, [[Spec]] on every call: a call that reads, and is [[checked]] against
+    * `asked` when there is one, is answered [[Noted]]; one that does not, with the reason; and
+    * nothing else happens. Its answers are grit's own words
+    * ([[grit.core.tool.Believed.Own]]). The verdict is read from the first reply's call, not
+    * from running it, and only when `asked` ([[of]]).
     */
-  def tool(c: TurnAgenda.Classification): Tool[Agenda.Verdict] =
-    new Hosted(spec(c), Gate.Free, shown, Believed.Own).over(_ => Outcome.Done(Noted))
+  def tool(asked: Option[TurnAgenda.Classification]): Tool[Agenda.Verdict] = {
+    val spec = asked.fold(Spec)(c => Spec.copy(args = Spec.args.refine(checked(c, _))))
+    new Hosted(spec, Gate.Free, shown, Believed.Own).over(_ => Outcome.Done(Noted))
+  }
 
   /** `verdict` as a transcript shows a `topic` call that gave it. */
   private def shown(verdict: Agenda.Verdict): String = verdict match {
@@ -217,12 +212,12 @@ object TurnVerdict {
       identity
     )
 
-  /** `arguments`, read by [[spec]]`(c)`. */
+  /** `arguments`, read by [[Spec]], then [[checked]] against `c`. */
   def read(
       c: TurnAgenda.Classification,
       arguments: ujson.Value
   ): Either[ArgsError, Agenda.Verdict] =
-    spec(c).args.read(arguments)
+    Spec.args.read(arguments).flatMap(checked(c, _))
 
   /** Where `verdict` places `turn`'s message: the current item, the earlier one whose key
     * it names, or a new item, opened (also for an earlier key that is none of `c`'s); an

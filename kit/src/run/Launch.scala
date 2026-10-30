@@ -449,6 +449,12 @@ private[grit] object Launch {
         ),
         d.allJobs
       )
+    // A tool of grit's named as one every turn adds (topic, read_hidden, extract) is refused
+    // here, at start, rather than as a failed offer on every turn.
+    def reserved[C^](all: Toolbox[C]): Unit =
+      TurnTooling
+        .reserving(all)
+        .foreach(why => throw new IllegalStateException(s"grit's tools cannot be offered: $why"))
     def launch[C^](tooling: TurnTooling[C]^): Unit =
       runtime.launch(
         // Told after the body returns, outside any step: the turn's steps are unchanged.
@@ -523,7 +529,8 @@ private[grit] object Launch {
           case (Right(tools), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox.joined[caps.CapSet^{desks, files, administration, clock}](tools, admin).map {
-              _ =>
+              all =>
+                reserved(all)
                 launch(
                   TurnTooling[caps.CapSet^{desks, files, administration, clock}](
                     tools,
@@ -562,7 +569,8 @@ private[grit] object Launch {
                   admin
                 )
               )
-              .map { _ =>
+              .map { all =>
+                reserved(all)
                 launch(
                   TurnTooling[caps.CapSet^{tuned, models, desks, files, administration, clock}](
                     tools,

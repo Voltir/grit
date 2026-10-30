@@ -140,7 +140,7 @@ object TurnLoopTurnTests extends TestSuite {
         Vector(dated, Message.User("read them")) ++ shown
       )
       provider.requests.map(r => (r.tools.map(_.name), r.use)) ==>
-        Vector.fill(3)((Vector("peek", "poke"), ToolUse.Auto))
+        Vector.fill(3)((Vector("topic", "peek", "poke"), ToolUse.Auto))
       // The answer is the reply entry; no window or later turn sees the exchange.
       texts(entries).filter(_.startsWith("assistant:")) ==> Vector(
         "assistant: alpha, beta and gamma"
@@ -477,7 +477,7 @@ object TurnLoopTurnTests extends TestSuite {
       looped(new InMemoryDurable, entries, entries, turn, provider, ws)
       exchange(entries, turn).collect { case r: Message.ToolResult => (r.content, r.isError) } ==>
         Vector(
-          ("There is no tool named `grep`; the tools are `peek`, `poke`.", true),
+          ("There is no tool named `grep`; the tools are `topic`, `peek`, `poke`.", true),
           (
             "The call to `peek` was not run: There is no argument `file`; the arguments there " +
               "are `path`. You sent: {\"file\":\"a\"}",

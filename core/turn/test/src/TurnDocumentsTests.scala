@@ -441,7 +441,7 @@ object TurnDocumentsTests extends TestSuite {
       )
       val shown = "[doc] Cards, at slack:T1/C1, 2026-09-30:\n"
       provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
-        Vector("peek") -> Vector(
+        Vector("topic", "peek") -> Vector(
           Message.User(
             shown + "How to peek.\n" + """Read it with peek {"path":"README.md"}"""
           ),
@@ -492,7 +492,7 @@ object TurnDocumentsTests extends TestSuite {
         followingBody(entries, documents, Vector(held), provider, posting)
       )
       provider.requests.headOption.map(r => r.tools.map(_.name) -> r.messages) ==> Some(
-        Vector("read_hidden", "extract", "post") -> Vector(
+        Vector("read_hidden", "extract", "topic", "post") -> Vector(
           Message.User(
             "[doc] Cards, at slack:T1/C1, 2026-09-30:\n" +
               "Hidden here as h1: something from Cards, which people outside the team can " +

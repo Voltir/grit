@@ -381,7 +381,7 @@ object TurnHostedTests extends TestSuite {
       val provider = model(("t1", "github_search", "grit"))
       durable.run(turn.workflowId)(routedRestricted(entries, provider, edge)) ==> Done
       (provider.requests.headOption.map(_.tools.map(_.name)), edge.sent.size) ==>
-        (Some(Vector()), 0)
+        (Some(Vector("topic")), 0)
     }
 
     test(
@@ -616,7 +616,7 @@ object TurnHostedTests extends TestSuite {
         reachingBody(entries, provider, edge, there, Some(room))
       ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
-        Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
+        Vector(("There is no tool named `post_x`; the tools are `topic`, `fetch`, `prod`.", true))
       durable
         .recordedSteps(turn.workflowId)
         .filter(n => Turn.Step.family(n).exists(Set(Turn.Step.Send, Turn.Step.Dispatch))) ==>
@@ -643,7 +643,7 @@ object TurnHostedTests extends TestSuite {
         reachingBody(entries, provider, edge, there, Some(room))
       ) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
-        Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
+        Vector(("There is no tool named `post_x`; the tools are `topic`, `fetch`, `prod`.", true))
       durable
         .recordedSteps(turn.workflowId)
         .filter(n => Turn.Step.family(n).exists(Set(Turn.Step.Send, Turn.Step.Dispatch))) ==>
@@ -812,7 +812,7 @@ object TurnHostedTests extends TestSuite {
       val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never)
       val provider = model()
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
-      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector())
+      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("topic"))
     }
 
     test("a turn is sent the instruction files its directory's edge read, after grit's own words") {
@@ -837,7 +837,7 @@ object TurnHostedTests extends TestSuite {
           )
         )
       // Offered what the edge advertises, not every hosted tool the turn knows.
-      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("fetch"))
+      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("topic", "fetch"))
     }
 
     test(
@@ -854,7 +854,9 @@ object TurnHostedTests extends TestSuite {
       edge.advertise(Vector(hostedProd))
       val provider = model(("t1", "fetch", "a.txt"))
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge)) ==> Done
-      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("fetch", "prod"))
+      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(
+        Vector("topic", "fetch", "prod")
+      )
       results(provider).map(_.content) ==> Vector("read")
     }
 
@@ -916,7 +918,7 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(hostedBody(entries, rerun, edge, toolSets = kept)) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
       rerun.requests.headOption.map(_.tools.map(_.name)) ==>
-        Some(kept.sets.flatMap(_.tools.map(e => ToolName.value(e.name))))
+        Some("topic" +: kept.sets.flatMap(_.tools.map(e => ToolName.value(e.name))))
     }
 
     test("a turn whose recorded tool set is not kept fails, naming it") {

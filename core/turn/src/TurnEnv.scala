@@ -207,3 +207,13 @@ final case class TurnTooling[C^](
     administering: Toolbox[C] = Toolbox.Empty,
     renders: Map[EdgeName, String] = Map.empty
 )
+
+object TurnTooling {
+
+  /** Why `own` cannot be a turn's tools beside those every turn adds: it names `topic`,
+    * read_hidden or extract; `None` when it can. A deployment asks it where it builds its
+    * tools, so a clash fails at its start rather than on every turn.
+    */
+  def reserving[C^](own: Toolbox[C]): Option[String] =
+    TurnShown.offered(own, None).left.toOption.map(TurnFailure.reason)
+}

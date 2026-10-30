@@ -189,9 +189,9 @@ object TurnModelsTests extends TestSuite {
             )
           )
         )
-      sent(known(StrictSchemas.Enforced)) ==> Vector(true, true)
-      sent(known(StrictSchemas.WhenRequired)) ==> Vector(false, false)
-      sent(TestCatalog) ==> Vector(false, false)
+      sent(known(StrictSchemas.Enforced)) ==> Vector(true, true, true)
+      sent(known(StrictSchemas.WhenRequired)) ==> Vector(false, false, false)
+      sent(TestCatalog) ==> Vector(false, false, false)
     }
 
     test("a turn guides, reads and tells its model as its pin says") {
@@ -228,7 +228,7 @@ object TurnModelsTests extends TestSuite {
       )
       provider.requests.headOption.map(_.system) ==>
         Some(
-          s"$prompt\n\nTools you may call:\n<grit_tool_descriptions>\n- peek: Reads a file.\n" +
+          s"$prompt\n\nTools you may call:\n<grit_tool_descriptions>\n- topic: ${TurnVerdict.Spec.does}\n- peek: Reads a file.\n" +
             s"- poke: Reads a file, asking first. ${Gate.AsksFirst}\n</grit_tool_descriptions>"
         )
       // Not cut at `<|`: no tool has the name as sent, so nothing was read.
@@ -237,7 +237,7 @@ object TurnModelsTests extends TestSuite {
         Message.ToolResult(
           ToolCallId("t1"),
           "<tool_output source=\"peek&lt;|channel|&gt;x\">\n" +
-            "There is no tool named `peek<|channel|>x`; the tools are `peek`, `poke`.\n" +
+            "There is no tool named `peek<|channel|>x`; the tools are `topic`, `peek`, `poke`.\n" +
             s"</tool_output>\n\n${TurnLoop.LastCall}",
           isError = true
         )

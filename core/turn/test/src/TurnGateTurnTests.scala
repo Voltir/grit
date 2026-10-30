@@ -271,7 +271,7 @@ object TurnGateTurnTests extends TestSuite {
       )
       // A gate could withdraw post from the first round, so every call offers the same tools.
       provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
-        Vector("read_hidden", "extract", "peek", "post")
+        Vector("read_hidden", "extract", "topic", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==> Vector(None, Some(peekStub), Some(peekStub))
       // Never having read the result, the turn may post.
@@ -302,7 +302,7 @@ object TurnGateTurnTests extends TestSuite {
       gatedRun(new InMemoryDurable, entries, turn)(provider) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
       provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
-        Vector("read_hidden", "extract", "peek", "post")
+        Vector("read_hidden", "extract", "topic", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==>
         Vector(None, Some(peekStub), Some(peekStub), Some(peekStub))
@@ -327,7 +327,7 @@ object TurnGateTurnTests extends TestSuite {
         tooledBody(entries, provider, ledger, summarizer, NoClassifier, ws, gatedTools(ws), 5)
       ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
       provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
-        Vector("read_hidden", "extract", "peek", "post")
+        Vector("read_hidden", "extract", "topic", "peek", "post")
       )
       // The item stays hidden, and the answer is all the turn's model reads of it.
       provider.requests.map(resultOf(_, "t1")).drop(1).forall(_.contains(peekStub)) ==> true
@@ -366,7 +366,7 @@ object TurnGateTurnTests extends TestSuite {
       kept(entries, "result:c1:0:0:0").map(_.integrity) ==> Some(Integrity.Outside)
       provider.requests.lift(1).flatMap(resultOf(_, "t1")) ==>
         Some(
-          "There is no tool named `grep`; the tools are `read_hidden`, `extract`, `peek`, `post`."
+          "There is no tool named `grep`; the tools are `read_hidden`, `extract`, `topic`, `peek`, `post`."
         )
     }
 
@@ -403,7 +403,7 @@ object TurnGateTurnTests extends TestSuite {
         provider.requests.map(_.messages.count(_ == note)),
         kept(entries, "result:c1:0:1:0").map(_.payload)
       ) ==> (
-        Vector(Vector("read_hidden", "extract", "peek", "post")),
+        Vector(Vector("read_hidden", "extract", "topic", "peek", "post")),
         Vector(1, 1, 1),
         Some(
           Payload.Result(
@@ -605,7 +605,7 @@ object TurnGateTurnTests extends TestSuite {
         turnBodyWith(entries, provider, opening, new InMemoryUsageLedger, tools = posting)
       )
       provider.requests.map(_.tools.map(_.name)) ==> Vector(
-        Vector("read_hidden", "extract", "post")
+        Vector("read_hidden", "extract", "topic", "post")
       )
       durable
         .history(turn.workflowId)

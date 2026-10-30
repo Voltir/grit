@@ -79,11 +79,11 @@ object TurnVerdictTests extends TestSuite {
     placements(entries, turn).lastOption.map(_.by)
 
   val tests = Tests {
-    test("sure of the item: no tool, no note") {
+    test("sure of the item: the topic tool offered as on every turn, and no note") {
       val provider = new RecordingProvider
       val (_, _, _) = third("more ~0.9", provider)
-      provider.requests.lastOption.map(r => (r.tools, r.messages.lastOption)) ==>
-        Some((Vector.empty, Some(Message.User("more ~0.9"))))
+      provider.requests.lastOption.map(r => (r.tools.map(_.name), r.messages.lastOption)) ==>
+        Some((Vector("topic"), Some(Message.User("more ~0.9"))))
     }
 
     test("unsure: the tool offered and the note on the message, in the request only") {
@@ -117,7 +117,9 @@ object TurnVerdictTests extends TestSuite {
       t.items.size ==> 2
     }
 
-    test("reading a call: the earlier key an enum, and each refusal's message") {
+    test(
+      "reading a call: the earlier key checked against the classification, and each refusal's message"
+    ) {
       val none = TurnAgenda.Classification(Vector.empty, None, Vector.empty, None, None)
       val two = none.copy(
         earlier = Vector(
@@ -135,19 +137,20 @@ object TurnVerdictTests extends TestSuite {
       TurnVerdict.read(two, ujson.Obj("about" -> "current", "earlier" -> "Knots")) ==>
         Right(Agenda.Verdict.Current)
       TurnVerdict.read(two, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
-        Left("`earlier` is missing: it takes one of `Knots`, `Knots (2)`.")
+        Left("`earlier` is missing: it takes text.")
       TurnVerdict
         .read(two, ujson.Obj("about" -> "earlier", "earlier" -> "knots"))
         .left
         .map(_.message) ==>
-        Left("`earlier` takes one of `Knots`, `Knots (2)`, not \"knots\".")
-      // No earlier items: no `earlier` field to send, and no `earlier` to say.
-      TurnVerdict.spec(none).schema(strict = false).parameters("properties").obj.keys.toVector ==>
-        Vector("about", "name")
-      TurnVerdict.read(none, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
-        Left("`about` takes one of `current`, `new`, not \"earlier\".")
-      TurnVerdict.read(none, ujson.Obj("about" -> "new", "earlier" -> "x")).left.map(_.message) ==>
-        Left("There is no argument `earlier`; the arguments there are `about`, `name`.")
+        Left("No earlier topic is called knots. The earlier topics are: Knots; Knots (2).")
+      // No earlier items: the same fields, and an earlier key names none.
+      TurnVerdict
+        .read(none, ujson.Obj("about" -> "earlier", "earlier" -> "x"))
+        .left
+        .map(_.message) ==>
+        Left("No earlier topic is called x. There are no earlier topics.")
+      TurnVerdict.read(none, ujson.Obj("about" -> "new", "earlier" -> "x")) ==>
+        Right(Agenda.Verdict.New(None))
     }
 
     test("a loop's anomalies: none, one, then each said in order") {
@@ -203,13 +206,28 @@ object TurnVerdictTests extends TestSuite {
         (Some(Integrity.Outside), Some(Integrity.Outside))
     }
 
-    test("the earlier items are an enum in the tool's schema, offered per call") {
-      val provider = new RecordingProvider
-      val (_, _, _) = third("hm ~0.5", provider)
-      val shown = provider.requests.lift(provider.requests.size - 1).flatMap(_.tools.headOption)
-      shown.map(_.parameters("properties")("earlier")("enum")) ==>
-        Some(ujson.Arr("new topic (2)"))
-      shown.map(_.parameters("required")) ==> Some(ujson.Arr("about"))
+    test("the topic tool's schema is the same whatever the classification: earlier is a key") {
+      // Tools lead the cached prefix: a schema that followed the classification would stop
+      // the next turn carrying this one's window (ADR 0052).
+      def tools(text: String) = {
+        val provider = new RecordingProvider
+        val (_, _, _) = third(text, provider)
+        provider.requests.lastOption.map(_.tools)
+      }
+      val unsure = tools("hm ~0.5")
+      (
+        unsure == tools("more ~0.9"),
+        unsure.flatMap(_.headOption).map(_.parameters("properties")("earlier"))
+      ) ==>
+        (
+          true,
+          Some(
+            ujson.Obj(
+              "type" -> "string",
+              "description" -> "For earlier: the earlier topic's key, as the note lists them."
+            )
+          )
+        )
     }
 
     test("the verdict not recorded: the turn replies, and its log says so") {

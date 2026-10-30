@@ -48,7 +48,7 @@ Decision:
   and the limit would clear the window every other turn.
 - **What a turn sends only grows within the turn**, gates included (ADR 0036), so a gated turn
   keeps its cache within the turn. What a turn offers is its tool set's alone, whatever its
-  gates decide, so turns of one conversation send the same tools and system prompt. A gate's
+  gates decide, and `topic` on every turn, whatever its classifier decides, so turns of one conversation send the same tools and system prompt. A gate's
   notes and stubs are kept in no window record yet, so the turn after one whose gate hid an
   item or wrote a note draws a boundary.
 

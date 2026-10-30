@@ -41,23 +41,20 @@ private[turn] object TurnShown {
   def asked(c: TurnAgenda.Classification): Option[TurnAgenda.Classification] =
     Option.when(c.uncertain)(c)
 
-  /** The tools each call of the loop offers: `own`, after `topic` for the classification
-    * `asked` holds. `topic` stays on after the first call, and every call carries the same tag
-    * asking for it ([[loopShape]]): a request whose messages hold a call names the tool it
-    * called, and each call's request repeats the one before it, which a provider's prompt
-    * cache relies on.
-    * read_hidden and extract are not among them: a round binds and offers them apart
-    * ([[gatedOffer]]). `TurnFailure.Model` when `own` already names one `topic`, read_hidden or
-    * extract.
+  /** The tools every call of every turn offers: `own`, after `topic` ([[TurnVerdict.tool]]),
+    * whose schema is the same whatever `asked` holds: `asked` decides only what a call is
+    * checked against. So a turn's tools are its tool set's alone, and a later turn can carry
+    * its window (ADR 0052); a turn that asks also tags its message ([[loopShape]]). read_hidden
+    * and extract are not among them: a round binds and offers them apart ([[gatedOffer]]).
+    * `TurnFailure.Model` when `own` already names `topic`, read_hidden or extract, which a
+    * deployment's own tools are refused for at its start ([[TurnTooling.reserving]]); an edge's advert can
+    * still name one.
     */
   def offered[C^](
       own: Toolbox[C],
       asked: Option[TurnAgenda.Classification]
   ): Either[TurnFailure, Toolbox[C]] = {
-    val tools = asked match {
-      case None => Right(own)
-      case Some(c) => own.including(TurnVerdict.tool(c))
-    }
+    val tools = own.including(TurnVerdict.tool(asked))
     tools
       .flatMap(t => t.preceded(Vector(unread, unasked)).map(_ => t))
       .left
