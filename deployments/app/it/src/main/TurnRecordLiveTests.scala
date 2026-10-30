@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.context.CarriedWindow
 import grit.core.store.Payload
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine, TurnStatus}
@@ -26,7 +27,9 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        // An addressed turn that answers at its first model call, after its gate.
+        // An addressed turn that answers at its first model call, after its gate, the steps
+        // as recorded: the carried-window patch's marker among them (a person is shown it as
+        // recording, never by this name).
         steps.map(_.name) ==> Vector(
           "pin-models",
           "weigh",
@@ -35,6 +38,8 @@ object TurnRecordLiveTests extends TestSuite {
           "stitched",
           "classify",
           "record-topic",
+          "DBOS.patch-carried-window",
+          "carried",
           "ask:needs",
           "ask:query",
           "assemble",
@@ -49,16 +54,23 @@ object TurnRecordLiveTests extends TestSuite {
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
 
+        // The second turn carries the first's window: its record holds what it appended, none
+        // of it, after the first's; read whole, it is the first turn's messages.
         val window =
           engine.db.read(Subject.Public)(engine.entries.get(Turn.windowId(turn))).toOption.flatten
-        window.map(_.payload) ==>
-          Some(
-            Payload.Window(
-              Vector(seqOf(engine, sayId(engine, first)), seqOf(engine, first.replyId)),
-              Vector.empty,
-              carry = None
-            )
-          )
+        val all = engine.db
+          .read(Subject.Public)(engine.entries.list(turn.conversationId))
+          .toOption
+          .getOrElse(Vector.empty)
+        (
+          window.map(_.payload).collect { case w: Payload.Window =>
+            (w.entries, w.carry.flatMap(_.after))
+          },
+          CarriedWindow.whole(Turn.windowId(turn), all).map(_.entries)
+        ) ==> (
+          Some((Vector.empty, Some(Turn.windowId(first)))),
+          Some(Vector(seqOf(engine, sayId(engine, first)), seqOf(engine, first.replyId)))
+        )
         // Where each message went, written to Postgres and read back as agenda events. The
         // counts are a smoke check that they arrive; which events they are is grit.turn's to pin.
         val placed = Vector(first, turn).flatMap { t =>

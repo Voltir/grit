@@ -316,13 +316,16 @@ object RebuildTests extends TestSuite {
     )
   }
 
-  /** `text` said to grit in task `name`, and its turn run to its end. */
-  private def ask(engine: Engine^, name: String, text: String): TurnRef = {
+  /** `text` said to grit in task `name` as message `source` (the task's name unless given;
+    * a source already ingested is that message again, not a new one), and its turn run to its
+    * end.
+    */
+  private def ask(engine: Engine^, name: String, text: String, source: String = ""): TurnRef = {
     val turn = right(
       engine.inbox
         .ingest(
           Origin.Task("rebuild", name),
-          SourceId(name),
+          SourceId(if (source.isEmpty) name else source),
           Message.User(text),
           Account.Local,
           None
@@ -402,8 +405,8 @@ object RebuildTests extends TestSuite {
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
       launch(engine)
-      val first = ask(engine, "d", "the Falcon budget is 4200")
-      val second = ask(engine, "d", "and the Osprey budget?")
+      val first = ask(engine, "d", "the Falcon budget is 4200", "d1")
+      val second = ask(engine, "d", "and the Osprey budget?", "d2")
       (Reader.open(config), first, second)
     } finally engine.close()
   }

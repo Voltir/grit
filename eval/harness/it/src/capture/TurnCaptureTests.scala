@@ -156,8 +156,8 @@ object TurnCaptureTests extends TestSuite {
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */
   private val asks = grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
 
-  /** `under`'s windows, each holding `held` too, as a retrieval assembler's would; each a
-    * boundary, as `under` draws it.
+  /** `under`'s windows, each drawn at a boundary holding `held` too, as a retrieval
+    * assembler's would; one appended to a carried window as `under` draws it.
     */
   private final class Holding(under: LinearAssembler, held: Vector[DocumentVersionId])
       extends ContextAssembler {
@@ -174,7 +174,11 @@ object TurnCaptureTests extends TestSuite {
     ): Either[AssemblyError, Projection] =
       under
         .assemble(request, packing)
-        .map(p => Projection.Boundary(p.window.copy(documents = held), p.cost))
+        .map {
+          case Projection.Boundary(w, cost) => Projection.Boundary(w.copy(documents = held), cost)
+          // A carried window holds them from its boundary; its parts after add none again.
+          case appended: Projection.Appended => appended
+        }
   }
 
   /** The plugin every document here is kept by. */
