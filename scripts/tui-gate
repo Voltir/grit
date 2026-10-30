@@ -250,14 +250,30 @@ script_columns() {
 # (6s) answers it.
 MODAL_ROWS=24
 MODAL_COLS=120
+# The row of the screen painted so far that holds $1, read off the capture while the app runs
+# (run_one's $out, $rows, $cols), waiting up to 5 s for it; 1, the header, when it never
+# appears, so the click misses and the scenario's checks say so. A click aimed by text
+# survives a line added above its target.
+row_of() {
+  local i
+  for i in $(seq 50); do
+    python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" && return
+    sleep 0.1
+  done
+  echo 1
+}
+
 script_turn-modal() {
+  local r
   sleep $APP_STARTUP
   printf 'first'; sleep 0.3; printf '\r'; sleep 8
   printf 'second'; sleep 0.3; printf '\r'; sleep 1.5
-  printf "%s" "${E}[<0;8;7M"; sleep 0.1; printf "%s" "${E}[<0;8;7m"   # click the thinking line
+  r=$(row_of 'grit is thinking')
+  printf "%s" "${E}[<0;8;${r}M"; sleep 0.1; printf "%s" "${E}[<0;8;${r}m"   # click the thinking line
   sleep 0.8; printf 'x'; sleep 0.5                                      # the dialog takes it
   printf '\033'; sleep 0.8                                              # Escape closes
-  printf "%s" "${E}[<0;10;4M"; sleep 0.1; printf "%s" "${E}[<0;10;4m" # click first's reply
+  r=$(row_of 'stub reply to: first')
+  printf "%s" "${E}[<0;10;${r}M"; sleep 0.1; printf "%s" "${E}[<0;10;${r}m" # click first's reply
   sleep 1.2; printf '\033'; sleep 1.2                                   # Escape: the latest
   printf '\021'; sleep 2
 }
@@ -344,7 +360,7 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-palette}
     rows=$PALETTE_ROWS cols=$PALETTE_COLS
   fi
-  "script_$name" | setsid script -qc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
+  "script_$name" | setsid script -fqc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name" || return 1
   if [ "$name" = palette ]; then
     # The choice outlives the run: the next launch starts in it.

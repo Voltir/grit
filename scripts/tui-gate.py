@@ -7,6 +7,9 @@ asserts against the resulting *grid*: which cells carry reverse video, and wheth
 say the same thing the clipboard does.
 
 Usage: gate.py <capture> <rows> <cols> <scenario>
+       gate.py --row <capture> <rows> <cols> <text>
+The second form is for a scenario's script, while its app runs: the 1-based row of the
+screen painted so far that holds <text>, the lowest if several do; exit 1 when none does.
 """
 
 import base64
@@ -608,5 +611,20 @@ def report(checks):
     return 1 if failed else 0
 
 
+def row_of():
+    """The `--row` form: where `text` is on the screen the capture has painted so far."""
+    path, rows, cols, text = sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+    raw = open(path, "rb").read().decode("utf-8", "replace")
+    vt = Vt(rows, cols)
+    for f in re.findall(r"\x1b\[\?2026h(.*?)\x1b\[\?2026l", raw, re.S):
+        vt.feed(f)
+    found = [r + 1 for r in range(rows)
+             if text in "".join(vt.grid[r][c][0] for c in range(cols))]
+    if not found:
+        return 1
+    print(found[-1])
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(row_of() if sys.argv[1:2] == ["--row"] else main())
