@@ -222,8 +222,10 @@ object Main {
       Launch.temp.resolve("grit-tui.log").toString
     )
     // Before anything loads slf4j (DBOS does): a log line on stderr would paint over the
-    // screen.
-    if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
+    // screen, or interleave with the cache report's lines.
+    if (tui || reported.nonEmpty) {
+      val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log)
+    }
     // The Slack SDK logs request bodies at debug: never below info.
     if (slack) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
 
