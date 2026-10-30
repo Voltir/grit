@@ -88,7 +88,7 @@ object AnthropicProvider {
       pinned: Pinned,
       request: ModelRequest
   ): (Seq[(String, String)], ujson.Value) = {
-    val dropBlock = DropsMismatchedThinking(model)
+    val dropBlock = DropsMismatchedThinking.exists(AnthropicJson.isOrSnapshotOf(model, _))
     val body = AnthropicJson.request(
       model,
       pinned.assignment.maxTokens,
@@ -108,7 +108,8 @@ object AnthropicProvider {
   /** The models (Anthropic's ids) whose requests ask the API to drop a thinking block an
     * earlier edit invalidated, rather than refuse the request ([[AnthropicJson.request]]'s
     * `dropBlock`): those a live call (the test sources' `AnthropicLiveProbe`) showed accepting
-    * it. Anthropic documents it for adaptive thinking on Claude Haiku 5.5 alone.
+    * it. Anthropic documents it for adaptive thinking on Claude Haiku 5.5 alone. A dated
+    * snapshot of a model here asks it too.
     */
   val DropsMismatchedThinking: Set[String] = Set("claude-haiku-5-5")
 

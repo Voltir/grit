@@ -56,5 +56,15 @@ object AnthropicProviderTests extends TestSuite {
         Some((None, ujson.Null))
       )
     }
+
+    test("a dated snapshot asks a mismatched thinking block dropped as its alias does") {
+      val asked = ModelRequest("s", Vector(Message.User("hi")))
+      val snapshot = "claude-haiku-5-5-20261001"
+      pinned(s"anthropic/$snapshot").map { p =>
+        AnthropicProvider.wire("k", snapshot, p, asked)._1.collectFirst {
+          case ("anthropic-beta", beta) => beta
+        }
+      } ==> Some(Some("thinking-binding-controls-2026-08-01"))
+    }
   }
 }

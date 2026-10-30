@@ -42,7 +42,7 @@ object AnthropicRates {
   private val HaikuLongPast = 100000L
 
   private def card(model: String, prompt: Long): Option[Card] = {
-    def is(id: String) = model == id || model.startsWith(id + "-")
+    def is(id: String) = AnthropicJson.isOrSnapshotOf(model, id)
     if (is("claude-haiku-5-5")) Some(if (prompt > HaikuLongPast) HaikuLong else HaikuShort)
     else if (is("claude-sonnet-5-5")) Some(Sonnet)
     else if (is("claude-opus-5-5")) Some(Opus)

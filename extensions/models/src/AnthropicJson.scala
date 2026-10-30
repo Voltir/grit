@@ -17,6 +17,12 @@ object AnthropicJson {
   /** The `anthropic-beta` a request must be sent under when it asks [[request]]'s `dropBlock`. */
   val BindingBeta = "thinking-binding-controls-2026-08-01"
 
+  /** Whether `model` (Anthropic's own id) is `alias` or a dated snapshot of it
+    * (`claude-haiku-5-5-20261001` of `claude-haiku-5-5`).
+    */
+  def isOrSnapshotOf(model: String, alias: String): Boolean =
+    model == alias || model.startsWith(alias + "-")
+
   /** The request body for `request` on `model` (Anthropic's own id), its thinking adaptive and
     * summarised and its effort `effort` when set. Each [[Message]] is one wire message, in
     * order: a user's empty text, and an assistant message left with nothing to send, are
