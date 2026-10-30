@@ -5,7 +5,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
-import grit.core.store.Reads
+import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.visibility.Integrity
 
 /** A tool the loop can offer and run: what the model is told of it, whether a person
@@ -14,6 +14,7 @@ import grit.core.visibility.Integrity
   * capabilities it acts through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run`
   * never throws: every failure is an [[Outcome]]. A tool whose run is told which call it is
   * comes from [[Hosted.calling]]; one that reads grit's store, from [[Hosted.reading]]; one
+  * that keeps in it, from [[Hosted.keeping]]; one
   * that requires more than its shape does, or whose results are believed above nothing, from a
   * [[Hosted]] declaring so.
   */
@@ -60,14 +61,15 @@ final class Tool[A] private[tool] (
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
-      repairs: Set[ArgRepair]
+      repairs: Set[ArgRepair],
+      stamped: Integrity
   ): Either[CallError, Bound^{this}] = {
     val unwritable = for {
       a <- aim
       sent <- call.arguments.objOpt
       error <- a.writes.chosen(spec.name, sent).left.toOption
     } yield error
-    unwritable.fold(read(call.arguments, repairs))(Left(_))
+    unwritable.fold(read(call.arguments, repairs, stamped))(Left(_))
   }
 
   private[tool] def told(
@@ -77,7 +79,7 @@ final class Tool[A] private[tool] (
   ): Either[CallError, Bound^{this}] =
     aim match {
       case None =>
-        destination.fold(read(call.arguments, repairs))(at =>
+        destination.fold(read(call.arguments, repairs, Integrity.Untrusted))(at =>
           Left(CallError.Misdirected(spec.name, Some(at)))
         )
       case Some(a) =>
@@ -91,13 +93,14 @@ final class Tool[A] private[tool] (
                 Writes.without(sent).value.iterator ++ Iterator(Writes.Field -> ujson.Str(name))
               )
             )
-            read(aimed, repairs)
+            read(aimed, repairs, Integrity.Untrusted)
         }
     }
 
   private def read(
       arguments: ujson.Value,
-      repairs: Set[ArgRepair]
+      repairs: Set[ArgRepair],
+      stamped: Integrity
   ): Either[CallError, Bound^{this}] =
     spec.args.read(arguments, repairs) match {
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
@@ -116,6 +119,8 @@ final class Tool[A] private[tool] (
           case reading: Tool.Reading[A] =>
             val run = (at: CallSlot, reads: Reads^) => reading(args, at, reads)
             new Bound.Reading(spec.name, line, ask, output, run)
+          case keeping: Tool.Keeping[A] =>
+            new Bound.Keeping(spec.name, line, output, at => keeping(args, at, stamped))
         })
     }
 }
@@ -157,7 +162,9 @@ object Tool {
     )
   }
 
-  /** How a tool runs: told its call ([[Plain]]), or handed reads too ([[Reading]]). */
+  /** How a tool runs: told its call ([[Plain]]), handed reads too ([[Reading]]), or told its
+    * call's stamp and run in its turn's transaction ([[Keeping]]).
+    */
   private[tool] sealed trait Run[A]
 
   private[tool] final class Plain[A](run: (A, CallSlot) => Outcome) extends Run[A] {
@@ -166,6 +173,13 @@ object Tool {
 
   private[tool] final class Reading[A](run: (A, CallSlot, Reads^) => Outcome) extends Run[A] {
     def apply(args: A, at: CallSlot, reads: Reads^): Outcome = run(args, at, reads)
+  }
+
+  private[tool] final class Keeping[A](
+      run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
+  ) extends Run[A] {
+    def apply(args: A, at: CallSlot, stamped: Integrity)(using Tx^): Either[StoreError, Outcome] =
+      run(args, at, stamped)
   }
 
   /** A tool whatever its arguments' type, as a [[Toolbox]] holds it. */
@@ -185,10 +199,11 @@ object Tool {
       */
     def output: Believed
 
-    /** `call`, which names this tool, read against it with `repairs`. */
+    /** `call`, which names this tool, read against it with `repairs`, stamped at `stamped`. */
     private[tool] def bind(
         call: AssistantBlock.ToolCall,
-        repairs: Set[ArgRepair]
+        repairs: Set[ArgRepair],
+        stamped: Integrity
     ): Either[CallError, Bound^{this}]
 
     /** `call`, which names this tool, sent to an edge as a request to write to
@@ -265,7 +280,8 @@ final class Hosted[A] private[tool] (
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
-      repairs: Set[ArgRepair]
+      repairs: Set[ArgRepair],
+      stamped: Integrity
   ): Either[CallError, Bound^{this}] =
     Hosted.bound(spec, gate, shown, output, call.arguments, repairs, None)
 
@@ -274,7 +290,7 @@ final class Hosted[A] private[tool] (
       repairs: Set[ArgRepair],
       destination: Option[Place]
   ): Either[CallError, Bound^{this}] =
-    bind(call, repairs)
+    bind(call, repairs, Integrity.Untrusted)
 }
 
 object Hosted {
@@ -300,6 +316,19 @@ object Hosted {
 
   /** The most characters a call of an advertised tool shows of its arguments: 120. */
   val ShownMax: Int = 120
+
+  /** A tool that keeps in grit's store, described by `spec` and `shown`, its calls bound only
+    * when stamped at `requires` or above, its results believed at `output` when a call does not
+    * say, run by `run` ([[Bound.Keeping]]): told the call it runs and the integrity that call
+    * was stamped at, in the transaction its turn opens for the call, which is committed with
+    * the call's result only when `run` answers [[Outcome.Done]]. It never asks first. Nothing
+    * holds `run` to keeping no document believed above that stamp but `run` itself. An edge
+    * does not run it.
+    */
+  def keeping[A](spec: ToolSpec[A], shown: A -> String, requires: Integrity, output: Believed)(
+      run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
+  ): Tool[A]^{run} =
+    new Tool(spec, Gate.Free, shown, new Tool.Keeping(run), None, requires, output)
 
   /** A tool an edge runs that writes outside grit to one of `writes`' destinations, described
     * by `spec`, `gate` and `shown`, requiring what its shape does ([[ToolSet.Entry.byShape]]);
@@ -394,7 +423,8 @@ final class Writing[A, D <: caps.Pure] private[tool] (
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
-      repairs: Set[ArgRepair]
+      repairs: Set[ArgRepair],
+      stamped: Integrity
   ): Either[CallError, Bound^{this}] =
     call.arguments.objOpt match {
       case None => Hosted.bound(spec, gate, shown, output, call.arguments, repairs, None)
@@ -411,7 +441,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       repairs: Set[ArgRepair],
       destination: Option[Place]
   ): Either[CallError, Bound^{this}] =
-    bind(call, repairs)
+    bind(call, repairs, Integrity.Untrusted)
 
   /** This tool, run by `run`, told the destination its request was checked to write to
     * ([[grit.core.edge.ToolRequest.destination]]), whatever the call's arguments hold for

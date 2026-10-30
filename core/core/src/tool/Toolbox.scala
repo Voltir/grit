@@ -58,7 +58,7 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
         Trusted.check(call, requires) match {
           case Left(below) =>
             Left(CallError.Withheld(tool.name, tool.entry.plainly, requires, below.integrity))
-          case Right(checked) => tool.bind(checked.extract, repairs.args)
+          case Right(checked) => tool.bind(checked.extract, repairs.args, checked.integrity)
         }
     }
   }
@@ -116,7 +116,8 @@ object Toolbox {
 
 /** A call whose tool was found and whose arguments read, ready to run: [[Bound.Free]] as it
   * is, [[Bound.Gated]] only with a person's [[Approval]] in hand; [[Bound.Hosted]] by an
-  * edge; [[Bound.Reading]] by its turn, through the reads it hands it.
+  * edge; [[Bound.Reading]] by its turn, through the reads it hands it; [[Bound.Keeping]] by its
+  * turn, in a transaction it opens for it.
   */
 sealed trait Bound {
   def tool: ToolName
@@ -202,6 +203,23 @@ object Bound {
           at => Reading.read(run(at, reads), reads)
         )
     }
+  }
+
+  /** A call of a tool that keeps in grit's store ([[Hosted.keeping]]): run only by the turn it
+    * belongs to, never asking first; an edge answers that it is not run there.
+    */
+  final class Keeping private[tool] (
+      val tool: ToolName,
+      val shown: String,
+      val output: Believed,
+      run: CallSlot => (Tx^) ?=> Either[StoreError, Outcome]
+  ) extends Bound {
+
+    /** This call, run as the call at `at` in the transaction it is given, which its caller
+      * commits with the call's result only on [[Outcome.Done]]; a `Left` when a store call of
+      * it failed.
+      */
+    def apply(at: CallSlot)(using Tx^): Either[StoreError, Outcome] = run(at)
   }
 
   private object Reading {

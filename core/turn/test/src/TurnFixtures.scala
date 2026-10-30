@@ -1521,9 +1521,9 @@ object TurnFixtures {
     var pins = Vector.empty[Pinned]
   }
 
-  /** The turn's workflow body over `entries`, reading through `db`, under `catalog`, the
-    * summary's calls made by `summarizer` and every other by `provider`, windowed by
-    * `assembler`; offered `tools`.
+  /** The turn's workflow body over `entries`, reading through `db` and writing through `jot`,
+    * under `catalog`, the summary's calls made by `summarizer` and every other by `provider`,
+    * windowed by `assembler`; offered `tools`.
     */
   def routedBody(
       entries: EntryStore,
@@ -1536,7 +1536,8 @@ object TurnFixtures {
       tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools,
       ledger: UsageLedger = new InMemoryUsageLedger,
       routing: TurnRouting^ = noRouting(),
-      seen: Pinnings = new Pinnings
+      seen: Pinnings = new Pinnings,
+      jot: Jot^ = new FakeJot
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       turnEnv(
@@ -1565,7 +1566,7 @@ object TurnFixtures {
         tools,
         Toolbox.Empty,
         Vector.empty,
-        new FakeJot,
+        jot,
         budget(5)
       )
     )(id)

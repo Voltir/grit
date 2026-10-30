@@ -13,7 +13,7 @@ import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.model.{Grade, StrictSchemas}
 import grit.core.provider.{ModelRequest, ToolUse}
-import grit.core.store.{Entry, Jot, Payload, Reads, StoreError, Tx}
+import grit.core.store.{Entry, Jot, Keeps, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
@@ -124,6 +124,8 @@ private[turn] final class Rounding[C^](
         case Left(outcome) =>
           Some(settling.answer(slot, id, call.pending.call.name, outcome, Left(level), now()))
         case Right(free: Bound.Free) => Some(settling.run(slot, id, free, level, now()))
+        case Right(keeping: Bound.Keeping) =>
+          Some(b.keepFrom(slot, id, keeping, level))
         case _ => None
       }.flatten
     )
@@ -171,8 +173,11 @@ private[turn] final class Rounding[C^](
       at: TurnRound.Progress,
       tools: Toolbox[C],
       pins: Turn.Picked
-  ): Binding^{this} =
-    new Binding(at, tools, pins, at.looping.routed.reads(env.db).as(Subject.Turn(at.looping.turn)))
+  ): Binding^{this} = {
+    val turn = Subject.Turn(at.looping.turn)
+    val routed = at.looping.routed
+    new Binding(at, tools, pins, routed.reads(env.db).as(turn), routed.keeps(tooling.jot).as(turn))
+  }
 
   // A round's calls read against what round `at.round` offers: `tools`, after read_hidden and
   // extract over the items the round's gate hid when the round offers them (their names are
@@ -184,8 +189,18 @@ private[turn] final class Rounding[C^](
       at: TurnRound.Progress,
       tools: Toolbox[C],
       pins: Turn.Picked,
-      reads: Reads^
+      reads: Reads^,
+      keeps: Keeps^
   ) {
+
+    /** `keeping`, the call at `slot` named `id`, run and settled through this round's keeps. */
+    def keepFrom(
+        slot: TurnTools.Slot,
+        id: grit.core.id.ToolCallId,
+        keeping: Bound.Keeping^,
+        level: Integrity
+    ): Either[TurnFailure, TurnTools.Settled] =
+      settling.keepFrom(slot, id, keeping, keeps, level, now())
 
     // `pending`, the call at `slot`, bound again, taken as `as` takes it. Its kind was
     // recorded with its round, in this run or one before it; a binding `as` does not take
@@ -194,7 +209,7 @@ private[turn] final class Rounding[C^](
     def rebind[A, X^](slot: TurnTools.Slot, pending: Pending, answer: Extract.Answer^{X})(
         as: Either[
           Outcome,
-          (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}
+          (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}
         ] ->{Rounding.this} Option[A]
     ): Either[TurnFailure, A] =
       as(bound[X](pending, answer)).toRight(
@@ -208,7 +223,7 @@ private[turn] final class Rounding[C^](
     def bound[X^](
         pending: Pending,
         answer: Extract.Answer^{X}
-    ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}] = {
+    ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, env, tooling, reads, X}] = {
       val box: Toolbox[caps.CapSet^{C, env, X}] =
         if (!tools.set.mayGate) tools
         else {

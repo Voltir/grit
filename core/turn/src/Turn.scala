@@ -5,7 +5,7 @@ import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ToolUse
-import grit.core.store.{Db, Entry, ModelProfileStore, Payload, StoreError, Tx}
+import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
 import grit.core.visibility.{Classification, Label}
 
@@ -275,6 +275,12 @@ object Turn {
     def reads(db: Db^): Db^ = bound match {
       case Some(b) => Db.within(db, b)
       case None => db
+    }
+
+    /** `jot`, its writes bounded as this says ([[Jot.within]]). */
+    def keeps(jot: Jot^): Jot^ = bound match {
+      case Some(b) => Jot.within(jot, b)
+      case None => jot
     }
 
     /** Whether a transaction knows no more than this is bounded by ([[Tx.within]]). */

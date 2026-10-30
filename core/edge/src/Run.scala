@@ -14,7 +14,8 @@ object Run {
     * approved as its permit says, its tool told that it is the call at the request's slot.
     * [[Outcome.Failed]] when this edge is too old for its protocol, when no tool here has its
     * name or its arguments do not read, when its tool is one an edge does not run (an engine's,
-    * or one that reads grit's store, [[grit.core.tool.Hosted.reading]]), or when its permit does not match the tool's gate (a
+    * or one that reads or keeps in grit's store, [[grit.core.tool.Hosted.reading]],
+    * [[grit.core.tool.Hosted.keeping]]), or when its permit does not match the tool's gate (a
     * free permit for a tool that asks first, or the reverse). A writing tool
     * ([[grit.core.tool.Writing]]) is told the destination its request holds, whatever its
     * arguments held for [[grit.core.tool.Writes.Field]]; [[Outcome.Failed]], unrun, when the
@@ -43,7 +44,7 @@ object Run {
         case Right(gated: Bound.Gated) =>
           if (request.permit == Permit.Approved) gated(Approval.Approved, request.slot)
           else Outcome.Failed(s"${ToolName.value(request.tool)} asks first here; it did not run.")
-        case Right(_: Bound.Hosted) | Right(_: Bound.Reading) =>
+        case Right(_: Bound.Hosted) | Right(_: Bound.Reading) | Right(_: Bound.Keeping) =>
           Outcome.Failed(s"${ToolName.value(request.tool)} is not run here; it did not run.")
       }
     }

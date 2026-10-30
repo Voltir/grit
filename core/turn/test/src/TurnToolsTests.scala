@@ -7,7 +7,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Place, Service}
-import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
+import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{
   Args,
   Believed,
@@ -22,7 +22,15 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.visibility.{Accounted, Cap, Compartments, Integrity, Provenance, Visibility}
+import grit.core.visibility.{
+  Accounted,
+  Cap,
+  Compartments,
+  Integrity,
+  Provenance,
+  Subject,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -60,6 +68,67 @@ object TurnToolsTests extends TestSuite {
       case Right(gated: Bound.Gated) =>
         settling.decide(slot, id, gated, approval, Integrity.Member, Instant.EPOCH)
       case Right(_: Bound.Hosted) => Left(TurnFailure.Model("no hosted tools here"))
+      case Right(_: Bound.Keeping) => Left(TurnFailure.Model("no keeping tools here"))
+    }
+  }
+
+  /** A jot whose writes through [[stage]] stand only when the write they are made in commits:
+    * on a `Right`, as [[grit.core.store.Jot]] says; a write that throws or fails keeps none.
+    */
+  private final class Staged extends Jot {
+    // Each holds an immutable value, written and read on the test's one thread.
+    @caps.unsafe.untrackedCaptures
+    var kept: Vector[String] = Vector.empty
+    @caps.unsafe.untrackedCaptures
+    private var staged: Vector[String] = Vector.empty
+    def stage(name: String): Unit = staged = staged :+ name
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {
+      staged = Vector.empty
+      try {
+        val result = body(using TestTx.fake)
+        if (result.isRight) kept = kept ++ staged
+        result
+      } finally staged = Vector.empty
+    }
+  }
+
+  /** `start`, a keeping tool that keeps the name it is given through `jot`, refusing a name
+    * already kept, as `project_new` refuses a key a project has, after writing it again.
+    */
+  private def start(jot: Staged): Tool[String]^{jot} =
+    Hosted.keeping(
+      ToolSpec(ToolName("start"), "Starts.", Args.of((path = Field.text("What."))).map(_.path)),
+      (p: String) => p,
+      Integrity.Untrusted,
+      Believed.Own
+    ) { (p, _, _) =>
+      val exists = jot.kept.contains(p)
+      jot.stage(p)
+      Right(if (exists) Outcome.Failed(s"$p exists already") else Outcome.Done(s"started $p"))
+    }
+
+  /** A call of [[start]] with `p`, settled as the turn settles it through `jot`, at the first
+    * call of the first round.
+    */
+  private def keep(entries: EntryStore, jot: Staged, turn: TurnRef, p: String) = {
+    val slot = TurnTools.Slot(TestCallSlots.at(turn))
+    val sent =
+      Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "start", ujson.Obj("path" -> p)))
+    val box = Toolbox
+      .of[caps.CapSet^{jot}](start(jot))
+      .fold(d => throw new java.lang.AssertionError(d), identity)
+    TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
+      case Right(keeping: Bound.Keeping) =>
+        new TurnTools.Settling(jot, entries)
+          .keepFrom(
+            slot,
+            ToolCallId("c"),
+            keeping,
+            jot.as(Subject.Turn(turn)),
+            Integrity.Member,
+            Instant.EPOCH
+          )
+      case other => throw new java.lang.AssertionError(s"not keeping: $other")
     }
   }
 
@@ -193,20 +262,23 @@ object TurnToolsTests extends TestSuite {
       "a call's kind says which steps settle it, a hosted one's its tool and that tool's place"
     ) {
       val ws = new Files(files)
+      val jot = new Staged
       val box = Toolbox
-        .of[caps.CapSet^{ws}](peek(ws), poke(ws), hostedFetch, hostedProd)
+        .of[caps.CapSet^{ws, jot}](peek(ws), poke(ws), hostedFetch, hostedProd, start(jot))
         .fold(d => throw new java.lang.AssertionError(d), identity)
       def kind(name: String): TurnTools.Kind =
         TurnTools.Kind.of(
           TurnTools.read(box, call(name), Repairs.All, PublicReads, Integrity.Authority),
           tool => Option.when(ToolName.value(tool) == "fetch")(Place.Everywhere)
         )
-      Vector("nothing", "peek", "poke", "fetch", "prod").map(kind) ==> Vector(
+      // A keeping call is Free: its steps and their names are a free call's (ADR 0004).
+      Vector("nothing", "peek", "poke", "fetch", "prod", "start").map(kind) ==> Vector(
         TurnTools.Kind.Refused,
         TurnTools.Kind.Free,
         TurnTools.Kind.Gated,
         TurnTools.Kind.Hosted(ToolName("fetch"), asks = false, Some(Place.Everywhere)),
-        TurnTools.Kind.Hosted(ToolName("prod"), asks = true, None)
+        TurnTools.Kind.Hosted(ToolName("prod"), asks = true, None),
+        TurnTools.Kind.Free
       )
     }
 
@@ -233,6 +305,43 @@ object TurnToolsTests extends TestSuite {
       settle(entries, ws, turn, call("peek")) ==> first
       settle(entries, ws, turn, call("poke"), Approval.Approved) ==> first
       ws.reads ==> 1
+    }
+
+    test(
+      "a crash before a keeping call's result is kept keeps nothing, so its rerun keeps afresh"
+    ) {
+      val store = new InMemoryEntryStore
+      val jot = new Staged
+      val turn = say(store, "go")
+      val entries = new CrashOnInsert(store, isResult)
+      assertThrows[InMemoryDurable.Crash](keep(entries, jot, turn, "p"))
+      val rerun = keep(entries, jot, turn, "p")
+      (
+        rerun.map(_.failed),
+        jot.kept,
+        kept(store, TurnTools.Slot(TestCallSlots.at(turn)).resultId)
+      ) ==> (
+        Right(false),
+        Vector("p"),
+        Some(Payload.Result(Outcome.Done("started p").result(ToolCallId("c")), "start p"))
+      )
+    }
+
+    test("a keeping call that does not answer done keeps nothing it wrote, and its outcome") {
+      val store = new InMemoryEntryStore
+      val jot = new Staged
+      val turn = say(store, "go")
+      jot.kept = Vector("p")
+      val refused = keep(store, jot, turn, "p")
+      (
+        refused.map(_.failed),
+        jot.kept,
+        kept(store, TurnTools.Slot(TestCallSlots.at(turn)).resultId)
+      ) ==> (
+        Right(true),
+        Vector("p"),
+        Some(Payload.Result(Outcome.Failed("p exists already").result(ToolCallId("c")), "start p"))
+      )
     }
 
     test("a crash between a free call's run and its result runs it again") {

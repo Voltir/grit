@@ -7,7 +7,7 @@ import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
-import grit.core.store.{Entry, EntryStore, Jot, Payload, Reads, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, Jot, Keeps, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.{Accounted, Integrity, Subject}
 
@@ -72,7 +72,7 @@ object TurnTools {
     /** Answered unrun, with the outcome [[read]] gave. */
     case Refused
 
-    /** Run in its own step. */
+    /** Run in its own step: as it is, or in the transaction that keeps its result. */
     case Free
 
     /** Run in its own step once a person approves it. */
@@ -88,11 +88,11 @@ object TurnTools {
 
     /** The kind of `read`, what [[read]] gave, a hosted tool's place as `placeOf` says. */
     def of(
-        read: Either[Outcome, (Bound.Runs | Bound.Hosted)^],
+        read: Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^],
         placeOf: ToolName -> Option[Place]
     ): Kind = read match {
       case Left(_) => Refused
-      case Right(_: Bound.Free) => Free
+      case Right(_: Bound.Free) | Right(_: Bound.Keeping) => Free
       case Right(_: Bound.Gated) => Gated
       case Right(h: Bound.Hosted) => Hosted(h.tool, h.ask.nonEmpty, placeOf(h.tool))
     }
@@ -134,9 +134,11 @@ object TurnTools {
   }
 
   /** `pending`, stamped at `at`, read against `tools` with `repairs`, ready to run, a call of
-    * a tool that reads the store run through `reads` ([[Bound.Reading]]); or the outcome it is
-    * answered with, unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that
-    * does not bind, one stamped below its tool's requirement among them.
+    * a tool that reads the store run through `reads` ([[Bound.Reading]]), and one of a tool
+    * that keeps in it as it is ([[Bound.Keeping]], run by [[Settling.keepFrom]]); or the
+    * outcome it is answered with, unrun: a refused call's, or the
+    * [[grit.core.tool.CallError]] of one that does not bind, one stamped below its tool's
+    * requirement among them.
     */
   def read[C^](
       tools: Toolbox[C],
@@ -144,7 +146,7 @@ object TurnTools {
       repairs: Repairs,
       reads: Reads^,
       at: Integrity
-  ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, reads}] =
+  ): Either[Outcome, (Bound.Runs | Bound.Hosted | Bound.Keeping)^{C, reads}] =
     pending match {
       case Pending.Refused(_, refused) => Left(refused)
       case Pending.Run(call) =>
@@ -153,6 +155,7 @@ object TurnTools {
           case Right(reading: Bound.Reading) => Right(reading.through(reads))
           case Right(runs: Bound.Runs) => Right(runs)
           case Right(hosted: Bound.Hosted) => Right(hosted)
+          case Right(keeping: Bound.Keeping) => Right(keeping)
         }
     }
 
@@ -210,6 +213,51 @@ object TurnTools {
       settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at)(() =>
         Right(free(slot.call))
       )
+
+    /** `keeping` run through `keeps` in one transaction with its result, which is committed only
+      * when it answers [[Outcome.Done]]: a crash before then keeps nothing, so a rerun runs it
+      * afresh. Any other outcome is rolled back, keeping nothing it wrote, and then kept as its
+      * result alone; so is `Failed`, saying nothing was kept, when a store call in that
+      * transaction fails (with why, when its reads rose past their bound or its plugin is
+      * full).
+      */
+    def keepFrom(
+        slot: Slot,
+        call: ToolCallId,
+        keeping: Bound.Keeping^,
+        keeps: Keeps^,
+        level: Integrity,
+        at: Instant
+    ): Either[TurnFailure, Settled] = {
+      val believed = Belief.Ran(keeping.output.at(level))
+      def undone(outcome: Outcome) =
+        settle(slot, call, keeping.shown, believed, at)(() => Right(outcome))
+      jot
+        .write(Subject.Turn(slot.turn))(entries.get(slot.resultId))
+        .left
+        .map(TurnFailure.ofStore)
+        .flatMap {
+          case Some(kept) => settledBy(kept)
+          case None =>
+            keeps.write[Entry, Outcome] {
+              keeping(slot.call).flatMap {
+                case done: Outcome.Done =>
+                  val result = Payload.Result(done.result(call), keeping.shown)
+                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)
+                    .map(Keeps.Verdict.Commit(_))
+                case other => Right(Keeps.Verdict.Discard(other))
+              }
+            } match {
+              case Right(Keeps.Verdict.Commit(entry)) => settledBy(entry)
+              case Right(Keeps.Verdict.Discard(outcome)) => undone(outcome)
+              case Left(StoreError.DuplicateId(id)) if id == slot.resultId =>
+                readBack(slot.turn, id).flatMap(settledBy)
+              case Left(e @ (StoreError.Invalid(_) | StoreError.Full(_))) =>
+                undone(Outcome.Failed(s"Nothing was kept: ${e.described}."))
+              case Left(_) => undone(Outcome.Failed("Nothing was kept just now; try again."))
+            }
+        }
+    }
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -297,33 +345,44 @@ object TurnTools {
         believed: Either[Integrity, (Service, Accounted)],
         at: Instant,
         person: Option[(EntryId, Payload)]
-    ): Either[TurnFailure, Entry] = {
-      def write(using tx: Tx^): Either[StoreError, Entry] =
-        for {
-          next <- entries.lockNext(turn.conversationId)
-          output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
-          entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
-          _ <- entries.insert(entry)
-          _ <- person.fold[Either[StoreError, Unit]](Right(())) { (said, words) =>
-            for {
-              after <- entries.lockNext(turn.conversationId)
-              level <- entries.believed(turn)
-              _ <- entries.insert(
-                Entry(said, turn.conversationId, turn.turnSeq, None, after.seq, words, at, level)
-              )
-            } yield ()
-          }
-        } yield entry
-      jot.write(Subject.Turn(turn))(write) match {
-        case Left(StoreError.DuplicateId(_)) =>
-          jot
-            .write(Subject.Turn(turn))(entries.get(id))
-            .left
-            .map(TurnFailure.ofStore)
-            .flatMap(_.toRight(TurnFailure.Store(s"entry ${EntryId.value(id)} vanished")))
+    ): Either[TurnFailure, Entry] =
+      jot.write(Subject.Turn(turn))(inserted(turn, id, payload, believed, at, person)) match {
+        case Left(StoreError.DuplicateId(_)) => readBack(turn, id)
         case other => other.left.map(TurnFailure.ofStore)
       }
-    }
+
+    /** [[keep]]'s write, in the transaction it is given. */
+    private def inserted(
+        turn: TurnRef,
+        id: EntryId,
+        payload: Payload,
+        believed: Either[Integrity, (Service, Accounted)],
+        at: Instant,
+        person: Option[(EntryId, Payload)]
+    )(using tx: Tx^): Either[StoreError, Entry] =
+      for {
+        next <- entries.lockNext(turn.conversationId)
+        output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
+        entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at, output)
+        _ <- entries.insert(entry)
+        _ <- person.fold[Either[StoreError, Unit]](Right(())) { (said, words) =>
+          for {
+            after <- entries.lockNext(turn.conversationId)
+            level <- entries.believed(turn)
+            _ <- entries.insert(
+              Entry(said, turn.conversationId, turn.turnSeq, None, after.seq, words, at, level)
+            )
+          } yield ()
+        }
+      } yield entry
+
+    /** `turn`'s entry `id`, which a write was just refused as a duplicate of. */
+    private def readBack(turn: TurnRef, id: EntryId): Either[TurnFailure, Entry] =
+      jot
+        .write(Subject.Turn(turn))(entries.get(id))
+        .left
+        .map(TurnFailure.ofStore)
+        .flatMap(_.toRight(TurnFailure.Store(s"entry ${EntryId.value(id)} vanished")))
   }
 
   /** How a call's result is believed: as answered (`From`, what the service it went to declares

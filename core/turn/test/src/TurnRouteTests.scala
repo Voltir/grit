@@ -31,7 +31,7 @@ import grit.core.model.{
 }
 import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
 import grit.core.route.Uncleared
-import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
+import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.visibility.TestLabels.place
 import grit.core.visibility.{
@@ -142,6 +142,17 @@ object TurnRouteTests extends TestSuite {
     var risen = false
     def rise(): Unit = risen = true
     def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using TestTx.fake(Clearance.of(if (risen) restricted else internal), visibility))
+  }
+
+  /** Writes at internal, under `visibility`, until [[rise]]; at restricted after. */
+  private final class RisingJot(visibility: Visibility) extends Jot {
+    // Set once by `rise` and read by `write`, both called on the test's one thread, so each
+    // write sees the floor as the calls before it left it.
+    @caps.unsafe.untrackedCaptures
+    var risen = false
+    def rise(): Unit = risen = true
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake(Clearance.of(if (risen) restricted else internal), visibility))
   }
 
@@ -644,6 +655,60 @@ object TurnRouteTests extends TestSuite {
         (r.isError, r.content.contains("ask again"))
       } ==>
         Some((true, true))
+    }
+
+    test(
+      "a tool keeping in the store keeps bounded by what the turn was routed for: a keep after a rise keeps nothing, asking again"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "keep my floor")
+      val db = new Rising(flashCleared)
+      val jot = new RisingJot(flashCleared)
+      val keeps = Toolbox
+        .of[caps.CapSet^{NoCheckout}](
+          Hosted.keeping[Unit](
+            ToolSpec(ToolName("keep"), "Keeps the floor.", Args.of(NamedTuple.Empty).map(_ => ())),
+            _ => "",
+            Integrity.Untrusted,
+            Believed.Default
+          )((_, _, _) => (tx: Tx^) ?=> Right(Outcome.Done(Label.shown(Tx.floor(tx)))))
+        )
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      // The floor rises as the model calls the tool.
+      val provider = new Provider {
+        // Counted by `complete`, which the turn under test calls on the test's one thread.
+        @caps.unsafe.untrackedCaptures
+        var calls = 0
+        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+          calls += 1
+          if (calls == 1) {
+            db.rise()
+            jot.rise()
+            Right(said("", AssistantBlock.ToolCall(ToolCallId("t1"), "keep", ujson.Obj())))
+          } else Right(said("done"))
+        }
+      }
+      val _ = new InMemoryDurable().run(turn.workflowId)(
+        routedBody(
+          entries,
+          provider,
+          new RecordingProvider,
+          new Asking,
+          db,
+          catalog,
+          tools = keeps,
+          jot = jot
+        )
+      )
+      val result = entries
+        .get(TurnTools.Slot(TestCallSlots.at(turn)).resultId)(using TestTx.fake)
+        .toOption
+        .flatten
+        .map(_.payload)
+      result.collect { case Payload.Result(r, _) =>
+        (r.isError, r.content.startsWith("Nothing was kept: "), r.content.contains("ask again"))
+      } ==>
+        Some((true, true, true))
     }
 
     test(

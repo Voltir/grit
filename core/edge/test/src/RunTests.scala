@@ -19,6 +19,7 @@ import grit.core.tool.{
   Toolbox,
   Writes
 }
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -87,19 +88,34 @@ object RunTests extends TestSuite {
         Outcome.Failed("echo does not ask first here; it did not run.")
     }
 
-    test("a tool that reads grit's store is not run here, free or approved") {
+    test("a tool that reads or keeps in grit's store is not run here, free or approved") {
       val text = Args.of((text = Field.text("What."))).map(_.text)
       def reading(name: ToolName, gate: Gate[String]) =
         new Hosted(ToolSpec(name, "Reads.", text), gate, t => t, Believed.Default)
           .reading((_, _, reads) =>
             reads.read(Right("read")).fold(_ => Outcome.Failed("unread"), Outcome.Done(_))
           )
+      val keeping = Hosted.keeping(
+        ToolSpec(ToolName("keeps"), "Keeps.", text),
+        (t: String) => t,
+        Integrity.Untrusted,
+        Believed.Default
+      )((t, _, _) => Right(Outcome.Done(t)))
       val box = Toolbox
-        .of(reading(ToolName("reads"), Gate.Free), reading(ToolName("asks"), Gate.Ask(t => t)))
+        .of(
+          reading(ToolName("reads"), Gate.Free),
+          reading(ToolName("asks"), Gate.Ask(t => t)),
+          keeping
+        )
         .getOrElse(throw new java.lang.AssertionError())
-      (Run.request(request("reads"), box), Run.request(request("asks", Permit.Approved), box)) ==> (
+      (
+        Run.request(request("reads"), box),
+        Run.request(request("asks", Permit.Approved), box),
+        Run.request(request("keeps"), box)
+      ) ==> (
         Outcome.Failed("reads is not run here; it did not run."),
-        Outcome.Failed("asks is not run here; it did not run.")
+        Outcome.Failed("asks is not run here; it did not run."),
+        Outcome.Failed("keeps is not run here; it did not run.")
       )
     }
 

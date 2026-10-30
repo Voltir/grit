@@ -10,6 +10,7 @@ import grit.core.model.{ArgRepair, NameRepair}
 import grit.core.place.Place
 import grit.core.visibility.Integrity
 import grit.core.visibility.TestLabels.place
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -175,6 +176,26 @@ object ToolboxTests extends TestSuite {
       // A recorded tool this build lacks keeps what it required.
       val required = echo.entry.copy(requires = Integrity.Member)
       Tool.gone(required).entry ==> required
+    }
+
+    test(
+      "a keeping call is told the integrity it was stamped at, and runs in the transaction given"
+    ) {
+      val keeper = Hosted.keeping(echo.spec, (t: String) => t, Integrity.Outside, Believed.Own) {
+        (t, _, stamped) => Right(Outcome.Done(t, Some(stamped)))
+      }
+      val keeps =
+        Toolbox.of(keeper).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val sent: AssistantBlock.ToolCall =
+        AssistantBlock.ToolCall(ToolCallId("c1"), "echo", ujson.Obj("text" -> "hi"))
+      keeps.bind(TestTainted.at(sent, Integrity.Member), Repairs.All) match {
+        case Right(k: Bound.Keeping) =>
+          (k.shown, k(TestCallSlots.First)(using TestTx.fake)) ==> (
+            "echo hi",
+            Right(Outcome.Done("hi", Some(Integrity.Member)))
+          )
+        case other => throw new java.lang.AssertionError(s"not keeping: $other")
+      }
     }
 
     test("a free call binds with nothing to ask, and runs") {
