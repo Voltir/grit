@@ -25,7 +25,7 @@ import grit.core.job.{Declared, Ending}
 import grit.core.message.Cost
 import grit.core.place.Place
 import grit.core.spend.Budget
-import grit.core.store.{Linking, StoreError, Tx, UsageLedger}
+import grit.core.store.{Linking, Origin, StoreError, Tx, UsageLedger}
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, StoppedBy, Unopened}
 import grit.dbos.sql.DbConfig
@@ -35,8 +35,8 @@ import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
 import grit.turn.TurnCache
 
-/** Why [[Kit.serve]], [[Kit.catchUp]], [[Kit.runOnce]] or [[Kit.console]] could not run, or
-  * stopped.
+/** Why [[Kit.serve]], [[Kit.catchUp]], [[Kit.runOnce]], [[Kit.console]], [[Kit.cacheReport]] or
+  * [[Kit.find]] could not run, or stopped.
   */
 enum KitFailure {
 
@@ -663,8 +663,56 @@ object Kit {
       secrets: Secrets,
       conversation: ConversationId,
       clock: Clock^
-  ): Either[KitFailure, Vector[String]] = {
-    val attached =
+  ): Either[KitFailure, Vector[String]] =
+    attached(deployment, secrets, clock) { link =>
+      val subject = Subject.Conversation(conversation)
+      link.db
+        .read(subject) {
+          for {
+            entries <- link.entries.list(conversation)
+            turns = entries
+              .map(_.turnSeq)
+              .distinct
+              .sortBy(TurnSeq.value)
+              .map(TurnRef(conversation, _))
+            rows <- sequence(turns.map(t => link.ledger.of(t.workflowId)))
+          } yield turns.zip(rows)
+        }
+        .left
+        .map(e => KitFailure.Store(s"the conversation is unread: $e"))
+        .flatMap { (paid: Vector[(TurnRef, Vector[UsageLedger.Row])]) =>
+          sequence(
+            paid.map((turn: TurnRef, rows: Vector[UsageLedger.Row]) =>
+              TurnCache.of(turn, link.steps(turn).map(_.record), rows)
+            )
+          ).left.map(why => KitFailure.Store(s"a turn's steps are unread: $why"))
+        }
+        .map(CacheReport.lines(conversation, _))
+    }
+
+  /** The conversation `origin` names on the database `secrets` names, read as `deployment`'s
+    * screen reads it, whether or not an engine runs there; `None` when it was never created. It
+    * never starts an engine, and never creates the conversation. [[KitFailure.Engine]] when the
+    * database cannot be reached, or no engine has migrated it; [[KitFailure.Store]] when the read
+    * fails.
+    */
+  def find(
+      deployment: Deployment,
+      secrets: Secrets,
+      origin: Origin,
+      clock: Clock^
+  ): Either[KitFailure, Option[ConversationId]] =
+    attached(deployment, secrets, clock)(
+      _.find(origin).left.map(e => KitFailure.Store(s"the conversation is unread: $e"))
+    )
+
+  /** `read` over a link attached to `deployment`'s database as its screen attaches, closed when
+    * `read` returns; [[KitFailure.Engine]] when the link cannot be made.
+    */
+  private def attached[A](deployment: Deployment, secrets: Secrets, clock: Clock^)(
+      read: Link^ => Either[KitFailure, A]
+  ): Either[KitFailure, A] = {
+    val made =
       try
         Right(
           Link.attach(
@@ -677,32 +725,9 @@ object Kit {
           )
         )
       catch { case NonFatal(e) => Left(KitFailure.Engine(s"the database cannot be read: $e")) }
-    attached.flatMap { link =>
-      try {
-        val subject = Subject.Conversation(conversation)
-        link.db
-          .read(subject) {
-            for {
-              entries <- link.entries.list(conversation)
-              turns = entries
-                .map(_.turnSeq)
-                .distinct
-                .sortBy(TurnSeq.value)
-                .map(TurnRef(conversation, _))
-              rows <- sequence(turns.map(t => link.ledger.of(t.workflowId)))
-            } yield turns.zip(rows)
-          }
-          .left
-          .map(e => KitFailure.Store(s"the conversation is unread: $e"))
-          .flatMap { (paid: Vector[(TurnRef, Vector[UsageLedger.Row])]) =>
-            sequence(
-              paid.map((turn: TurnRef, rows: Vector[UsageLedger.Row]) =>
-                TurnCache.of(turn, link.steps(turn).map(_.record), rows)
-              )
-            ).left.map(why => KitFailure.Store(s"a turn's steps are unread: $why"))
-          }
-          .map(CacheReport.lines(conversation, _))
-      } finally link.close()
+    made.flatMap { link =>
+      try read(link)
+      finally link.close()
     }
   }
 

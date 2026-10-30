@@ -397,12 +397,10 @@ final class Engine private (
     }
 
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource, opener)(
-      grit.dbos.sql.SqlRooms
-        .label(origin)
-        .flatMap(conversations.findOrCreate(origin, by, _))
-        .map(_.id)
-    )
+    Link.conversation(dataSource, opener, conversations)(origin, by)
+
+  def find(origin: Origin): Either[StoreError, Option[ConversationId]] =
+    Link.find(dataSource, opener, conversations)(origin)
 
   def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
 

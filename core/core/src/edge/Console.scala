@@ -73,6 +73,9 @@ trait Console extends caps.SharedCapability, AutoCloseable {
     */
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId]
 
+  /** The conversation `origin` names, if one was ever created; never creates one. */
+  def find(origin: Origin): Either[StoreError, Option[ConversationId]]
+
   /** Where `turn`'s workflow is, without waiting for it. */
   def status(turn: TurnRef): TurnStatus
 

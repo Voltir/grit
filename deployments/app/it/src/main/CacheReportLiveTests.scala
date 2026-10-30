@@ -67,5 +67,36 @@ object CacheReportLiveTests extends TestSuite {
         Vector("turn 1", "carried")
       )
     }
+
+    test(
+      "with no engine running, a conversation is found by its origin, and an origin never used finds none and creates none"
+    ) {
+      val config = TestPostgres.freshDatabase("app_cache_find")
+      val deployment = right(
+        Main.deployment(
+          Map.empty,
+          Offered.Read,
+          Vector.empty,
+          Vector.empty,
+          java.time.ZoneOffset.UTC
+        )
+      )
+      val env = Map(
+        DbConfig.UrlVar -> config.jdbcUrl,
+        DbConfig.UserVar -> config.user,
+        DbConfig.PasswordVar -> config.password
+      )
+      val secrets = Secrets.of(env, deployment).fold(r => sys.error(r.message), identity)
+      val chatted = Origin.Task("cache", "chatted")
+      val unused = Origin.Task("cache", "unused")
+      val engine = LiveEngine.open(config, deployment.runsUnder, visibility = deployment.visibility)
+      val conversation =
+        try right(engine.conversation(chatted, Account.Local))
+        finally engine.close()
+      val found = right(Kit.find(deployment, secrets, chatted, Clock.system()))
+      val first = right(Kit.find(deployment, secrets, unused, Clock.system()))
+      val second = right(Kit.find(deployment, secrets, unused, Clock.system()))
+      (found, first, second) ==> (Some(conversation), None, None)
+    }
   }
 }

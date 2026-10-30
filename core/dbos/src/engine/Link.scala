@@ -188,6 +188,31 @@ object Link {
   private[engine] def awaitTurn(client: DBOSClient, turn: TurnRef): String =
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
+  /** [[Console.conversation]] over `conversations`, in a transaction of its own on `dataSource`
+    * at `opener`'s maintenance.
+    */
+  private[engine] def conversation(
+      dataSource: DataSource,
+      opener: Opener,
+      conversations: ConversationStore
+  )(origin: Origin, by: Account): Either[StoreError, ConversationId] =
+    transaction(dataSource, opener)(
+      grit.dbos.sql.SqlRooms
+        .label(origin)
+        .flatMap(conversations.findOrCreate(origin, by, _))
+        .map(_.id)
+    )
+
+  /** [[Console.find]] over `conversations`, in a transaction of its own on `dataSource` at
+    * `opener`'s maintenance.
+    */
+  private[engine] def find(
+      dataSource: DataSource,
+      opener: Opener,
+      conversations: ConversationStore
+  )(origin: Origin): Either[StoreError, Option[ConversationId]] =
+    transaction(dataSource, opener)(conversations.find(origin).map(_.map(_.id)))
+
   /** Runs `body` in a transaction of its own on `dataSource`, at `opener`'s maintenance:
     * committed on `Right`, rolled back otherwise; the opener's error, and no body run, when the
     * transaction cannot open.
@@ -297,12 +322,10 @@ private[engine] final class Attached(
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 
   def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource, opener)(
-      grit.dbos.sql.SqlRooms
-        .label(origin)
-        .flatMap(conversations.findOrCreate(origin, by, _))
-        .map(_.id)
-    )
+    Link.conversation(dataSource, opener, conversations)(origin, by)
+
+  def find(origin: Origin): Either[StoreError, Option[ConversationId]] =
+    Link.find(dataSource, opener, conversations)(origin)
 
   def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
 
