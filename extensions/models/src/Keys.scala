@@ -55,7 +55,7 @@ object Keys {
 
   /** `ref` is called through a gateway whose key, read from `variable`, is not set. */
   final case class Unkeyed(variable: String, ref: ModelRef) {
-    def message: String = s"$variable is not set, and $ref is called with it"
+    def message: String = s"$variable is not set, but the model catalog calls $ref, which needs it"
   }
 
   /** `env`'s keys, each variable optional but not blank when set; `None` when neither is set:

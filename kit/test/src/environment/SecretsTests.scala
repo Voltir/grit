@@ -63,9 +63,11 @@ object SecretsTests extends TestSuite {
         None,
         None,
         Some(
-          "ANTHROPIC_API_KEY is not set, and anthropic/claude-haiku-5-5 @ api.anthropic.com is called with it"
+          "ANTHROPIC_API_KEY is not set, but the model catalog calls anthropic/claude-haiku-5-5 @ api.anthropic.com, which needs it"
         ),
-        Some("OPENROUTER_API_KEY is not set, and openai/gpt-oss-120b is called with it")
+        Some(
+          "OPENROUTER_API_KEY is not set, but the model catalog calls openai/gpt-oss-120b, which needs it"
+        )
       )
     }
 

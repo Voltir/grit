@@ -99,8 +99,8 @@ object CatalogModelsTests extends TestSuite {
       ) ==> (
         "Anthropic",
         "OpenRouter",
-        "Refused(OPENROUTER_API_KEY is not set, and anthropic/claude-haiku-5.5 @ anthropic is called with it)",
-        "Refused(ANTHROPIC_API_KEY is not set, and anthropic/claude-haiku-5-5 @ api.anthropic.com is called with it)"
+        "Refused(OPENROUTER_API_KEY is not set, but the model catalog calls anthropic/claude-haiku-5.5 @ anthropic, which needs it)",
+        "Refused(ANTHROPIC_API_KEY is not set, but the model catalog calls anthropic/claude-haiku-5-5 @ api.anthropic.com, which needs it)"
       )
     }
 
