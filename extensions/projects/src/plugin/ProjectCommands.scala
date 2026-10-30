@@ -421,8 +421,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
-      "Lists a project's artifacts by key, one line each (key, kind, state and title): only " +
-        "those of a kind, or in a state, when given.",
+      "Lists a project's artifacts, one line each: key, kind, state, title, the artifact it " +
+        "sits under, and the opening words of its text. Only those of a kind, or in a state, " +
+        "when given.",
       Args
         .of(
           (
@@ -443,11 +444,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       loaded(own.documents, args.project).map { project =>
-        val heads = project.artifacts
-          .map(_.head)
-          .filter(h => args.kind.forall(_ == h.kind) && args.state.forall(_ == h.state))
-          .sortBy(_.key.value)
-        AnswerText.heads(heads, "No artifact matches.")
+        val listed = project.artifacts
+          .filter(a => args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state))
+          .sortBy(_.head.key.value)
+        AnswerText.listed(listed, "No artifact matches.")
       }
     }
   }

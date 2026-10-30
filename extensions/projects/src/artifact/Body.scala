@@ -3,6 +3,7 @@ package grit.projects.artifact
 import java.nio.charset.StandardCharsets
 
 import grit.core.document.Document
+import grit.core.message.Cut
 import grit.projects.name.ArtifactKey
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.index.IndexText
@@ -69,6 +70,17 @@ object Body {
 
   /** The artifacts its text refers to, in reading order, each once. */
   def cites(b: Body): Vector[ArtifactKey] = b.notes.distinct
+
+  /** 120: the most characters of a body's [[lead]]. */
+  val LeadChars: Int = 120
+
+  /** Its first paragraph as plain text, its references' text kept, cut at a word to `chars`
+    * characters with `…` ([[grit.core.message.Cut.head]]); empty when it has no paragraph.
+    */
+  def lead(b: Body, chars: Int = LeadChars): String =
+    b.blocks
+      .collectFirst { case Block.Paragraph(text) => text.plain.trim }
+      .fold("")(Cut.head(_, chars))
 
   /** The titles of its `##` headings, in order. */
   def sections(b: Body): Vector[String] = b.blocks.collect {

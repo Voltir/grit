@@ -417,19 +417,37 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
-    test("project_list lists the heads of a kind and a state, by key") {
+    test(
+      "project_list lists the heads of a kind and a state, by key, each with its parent and opening words"
+    ) {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      kept(projects, store, "b", "note", "Text.")
+      kept(projects, store, "b", "note", "# Bee\n\nThe second one.\n\nMore after.")
       kept(projects, store, "a", "note", "Text.")
-      kept(projects, store, "c", "change", "Text.")
+      kept(projects, store, "c", "change", "## Goal\n\n" + ("word " * 40).trim)
+      done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/c",
+          "title" -> "Title c",
+          "parent" -> "p/a",
+          "body" -> ("## Goal\n\n" + ("word " * 40).trim)
+        )
+      )
       done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
       val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
-      assert(open == "p/a (note, open): Title a")
       val all = done(ask(projects, store, "project_list", "project" -> "p"))
-      assert(
-        all == "p/a (note, open): Title a\np/b (note, closed): Title b\np/c (change, proposed): Title c"
+      // The lead is cut at a word to 120 characters, its heading skipped.
+      (open, all.split("\n").toVector) ==> (
+        "p/a (note, open): Title a · Text.",
+        Vector(
+          "p/a (note, open): Title a · Text.",
+          "p/b (note, closed): Title b · The second one.",
+          "p/c (change, proposed): Title c · under p/a · " + ("word " * 23).trim + " word…"
+        )
       )
     }
 

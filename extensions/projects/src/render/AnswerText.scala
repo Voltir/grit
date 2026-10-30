@@ -6,7 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.ClaimHolder
-import grit.projects.artifact.ArtifactHead
+import grit.projects.artifact.{Artifact, ArtifactHead, Body}
 import grit.projects.name.{ArtifactKey, KindName, StateName}
 
 /** What the projects plugin's commands answer, the same for every edge that asks. */
@@ -16,13 +16,24 @@ object AnswerText {
     * there is no head.
     */
   def heads(heads: Vector[ArtifactHead], none: String): String =
-    if (heads.isEmpty) none
+    if (heads.isEmpty) none else heads.map(head).mkString("\n")
+
+  /** One line per artifact, in the order given: its [[heads]] line, then ` · under <parent>`
+    * when it has a parent, then ` · ` and its body's [[Body.lead]] when that is not empty;
+    * `none` when there is none.
+    */
+  def listed(artifacts: Vector[Artifact], none: String): String =
+    if (artifacts.isEmpty) none
     else
-      heads
-        .map(h =>
-          s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)}): ${h.title}"
+      artifacts
+        .map(a =>
+          (head(a.head) +: (a.head.parent.map(p => s"under ${p.value}").toVector ++
+            Vector(Body.lead(a.body)).filter(_.nonEmpty))).mkString(" · ")
         )
         .mkString("\n")
+
+  private def head(h: ArtifactHead): String =
+    s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)}): ${h.title}"
 
   /** One line per version, in the order given: `<version> <written> by <by> (<state>): <title>`,
     * leaving out `by <by> ` when the head records no writer, and `<version> <written> withdrawn`
