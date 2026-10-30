@@ -72,7 +72,7 @@ import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.place.{Place, Weight}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.stitch.{InMemoryStitchStore, StitchJson, StitchStore, Tuning}
+import grit.core.stitch.{InMemoryStitchStore, Link, Placed, Said, StitchJson, StitchStore, Tuning}
 import grit.core.store.{
   ClosingEntry,
   Conversation,
@@ -427,7 +427,10 @@ object RetrievalAssemblerTests extends TestSuite {
       Left(ProviderError.Unavailable(why))
   }
 
-  /** Turn 6's window. With a 25-token tail, the recent turns are 4 and 5. */
+  /** Turn 6's window, drawn within `width` (by default `budget` and [[Hits]], as a boundary
+    * at the deployed width draws within half). With a 25-token tail, the recent turns are 4
+    * and 5.
+    */
   private def assemble(
       world: World,
       writer: Provider^,
@@ -440,7 +443,7 @@ object RetrievalAssemblerTests extends TestSuite {
       tuning: Tuning = Tuning.Default,
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
-      width: Width = Width.Deployed,
+      width: Option[Width] = None,
       documents: DocumentSearch = new InMemoryDocuments,
       query: Option[Pinned] = Some(QueryPin),
       admit: Results -> Results = r => Results(r.ranked, r.beyond),
@@ -478,7 +481,7 @@ object RetrievalAssemblerTests extends TestSuite {
       tuning: Tuning = Tuning.Default,
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
-      width: Width = Width.Deployed,
+      width: Option[Width] = None,
       documents: DocumentSearch = new InMemoryDocuments,
       query: Option[Pinned] = Some(QueryPin),
       admit: Results -> Results = r => Results(r.ranked, r.beyond),
@@ -501,7 +504,11 @@ object RetrievalAssemblerTests extends TestSuite {
           documents,
           pieces = pieces
         ),
-        AssemblyRequest(TurnRef(c1, TurnSeq(at)), width, carried)
+        AssemblyRequest(
+          TurnRef(c1, TurnSeq(at)),
+          width.getOrElse(Width.Within(Tokens(budget), Hits)),
+          carried
+        )
       )(
         asked =>
           query.fold(Left(Prepared.NoPin))(models.provider(_).complete(asked).left.map(_.cause)),
@@ -658,6 +665,48 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
     c
+  }
+
+  /** `under`, counting the reads made through it. */
+  private final class Counted(under: StitchStore) extends StitchStore {
+    // Counted on the test's own thread and read by it alone between draws.
+    @caps.unsafe.untrackedCaptures
+    var reads = 0
+    def record(root: EntryId, placed: Placed, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Boolean] = under.record(root, placed, at)
+    def placed(root: EntryId)(using Tx^): Either[StoreError, Option[Placed]] = {
+      reads += 1
+      under.placed(root)
+    }
+    def spokenIn(room: Place, from: Instant, until: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[Said]] = {
+      reads += 1
+      under.spokenIn(room, from, until)
+    }
+    def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[Said]] = {
+      reads += 1
+      under.said(conversations, from, until)
+    }
+    def openings(conversations: Vector[ConversationId])(using
+        Tx^
+    ): Either[StoreError, Vector[Said]] = {
+      reads += 1
+      under.openings(conversations)
+    }
+    def links(
+        conversations: Vector[ConversationId]
+    )(using Tx^): Either[StoreError, Vector[Link]] = {
+      reads += 1
+      under.links(conversations)
+    }
+    def touched(from: Instant, until: Instant)(using Tx^): Either[StoreError, Vector[Link]] = {
+      reads += 1
+      under.touched(from, until)
+    }
   }
 
   /** c1's first message placed as following `root`'s exchange. */
@@ -1230,6 +1279,109 @@ object RetrievalAssemblerTests extends TestSuite {
       projected(world, new Writer(Some("q000")), 1000, new Scripted("t0:1")).cost ==> Tokens(66)
     }
 
+    test("an appended window recalls no own turn the carried window holds") {
+      // Turn 6's window recalled turn 0; at turn 7 the query finds turns 0 and 1 again.
+      val world = store(((0 to 5).map(filler).toVector :+ ask :+ ask)*)
+      val within = Some(Width.Within(Tokens(57), Hits))
+      val writer = new Writer(Some("q000"))
+      val at6 = projected(world, writer, 1000, new Scripted("t0:1"), width = within)
+      turnsOf(world, at6.window) ==> Vector("t0", "t4", "t5")
+      val carried = CarriedWindow.Empty.after(at6, TurnSeq(6))
+      val at7 = projected(
+        world,
+        writer,
+        1000,
+        new Scripted("t0:1", "t1:3"),
+        at = 7,
+        width = Some(Width.Within(Tokens(200), Hits)),
+        carried = carried
+      )
+      (at7.isInstanceOf[Projection.Appended], turnsOf(world, at7.window)) ==> (true, Vector("t1"))
+    }
+
+    test("a carried window the turns since overflow is cleared and re-projected") {
+      // Turn 6's window (57) and turn 6 as sent no longer fit a budget of 60 at turn 7.
+      val world = store(((0 to 5).map(filler).toVector :+ ask :+ ask)*)
+      val within = Some(Width.Within(Tokens(57), Hits))
+      val writer = new Writer(Some("q000"))
+      val at6 = projected(world, writer, 1000, new Scripted("t0:1"), width = within)
+      def at7(carried: CarriedWindow) =
+        projected(
+          world,
+          writer,
+          60,
+          new Scripted("t0:1"),
+          at = 7,
+          width = within,
+          carried = carried
+        )
+      at7(CarriedWindow.Empty.after(at6, TurnSeq(6))) ==> at7(CarriedWindow.Empty)
+    }
+
+    test("a turn narrower than the carried window appends to it: the limit is the built budget") {
+      val world = store(((0 to 5).map(filler).toVector :+ ask :+ ask)*)
+      val writer = new Writer(Some("q000"))
+      val at6 = projected(
+        world,
+        writer,
+        1000,
+        new Scripted("t0:1"),
+        width = Some(Width.Within(Tokens(57), Hits))
+      )
+      val at7 = projected(
+        world,
+        writer,
+        1000,
+        new Scripted("t0:1"),
+        at = 7,
+        width = Some(Width.Within(Tokens(10), Hits)),
+        carried = CarriedWindow.Empty.after(at6, TurnSeq(6))
+      )
+      // Nothing since, and no room within 10 to recall: an append of nothing, not a boundary.
+      (at7.isInstanceOf[Projection.Appended], at7.window.entries, at7.cost) ==>
+        (true, Vector.empty, Tokens.Zero)
+    }
+
+    test("an appended window shows no document the carried window shows") {
+      val docs = shelf("notes" -> 1.0)
+      val alpha = write(docs, "notes", "a", placeOf("api"), "the probe budget, alpha")
+      docs.scores = Map("a" -> 3.0)
+      val world = store(ask, ask)
+      val writer = new Writer(Some("probe budget"))
+      val at0 = projected(world, writer, 1000, at = 0, documents = docs)
+      at0.window.documents ==> Vector(alpha)
+      val at1 = projected(
+        world,
+        writer,
+        1000,
+        at = 1,
+        documents = docs,
+        carried = CarriedWindow.Empty.after(at0, TurnSeq(0))
+      )
+      (at1.isInstanceOf[Projection.Appended], at1.window.documents) ==> (true, Vector.empty)
+    }
+
+    test("an appended window reads and shows no strand: that is its boundary's") {
+      val world = closed(Vector(Vector(ask, ask)), Vector.empty, threads)
+      val a = said(world, "1.0", "where did we land on the Engine contract term?" -> 120)
+      val stitches = new Counted(follow(world, a))
+      def at(turn: Long, carried: CarriedWindow) = projected(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = turn,
+        origin = thread("2.0"),
+        stitches = Some(stitches),
+        carried = carried
+      )
+      val at0 = at(0, CarriedWindow.Empty)
+      at0.window.nearby.size ==> 1
+      val read = stitches.reads
+      val at1 = at(1, CarriedWindow.Empty.after(at0, TurnSeq(0)))
+      (at1.isInstanceOf[Projection.Appended], at1.window.nearby, stitches.reads - read) ==>
+        (true, Vector.empty, 0)
+    }
+
     test("each recalled turn is charged a gap line, and the tail one for the turns it leaves out") {
       // The tail (turns 4 and 5) costs 22, and a gap line 12 (Shown.Gap): 34 before turn 0,
       // which costs 11, and 12 more for the gap line it brings. So 57 recalls it; 56 does not.
@@ -1250,14 +1402,14 @@ object RetrievalAssemblerTests extends TestSuite {
       def at(built: Long, width: Width): (Vector[String], Vector[Int]) = {
         val world = store(turns*)
         val search = new Scripted("t0:1")
-        val w = assemble(world, new Writer(Some("q000")), built, search, width = width)
+        val w = assemble(world, new Writer(Some("q000")), built, search, width = Some(width))
         (turnsOf(world, w), search.asked.map(_.limit))
       }
       at(57, Width.Within(Tokens(56), 3)) ==> (Vector("t4", "t5"), Vector(3))
       at(56, Width.Within(Tokens(57), 3)) ==> (Vector("t0", "t4", "t5"), Vector(3))
-      // Deployed is the window of the budget and hits it was built with.
-      at(57, Width.Deployed) ==> at(57, Width.Within(Tokens(57), Hits))
-      at(56, Width.Deployed) ==> at(56, Width.Within(Tokens(56), Hits))
+      // Deployed, a boundary is drawn within half the budget, with the hits it was built with.
+      at(114, Width.Deployed) ==> (Vector("t0", "t4", "t5"), Vector(Hits))
+      at(112, Width.Deployed) ==> (Vector("t4", "t5"), Vector(Hits))
     }
 
     test("a turn elsewhere is costed as its section shows it, its speaker named") {
@@ -1441,7 +1593,7 @@ object RetrievalAssemblerTests extends TestSuite {
         new Writer(Some("probe budget")),
         4000,
         at = 0,
-        width = Width.Within(Tokens(4000), 30),
+        width = Some(Width.Within(Tokens(4000), 30)),
         documents = docs,
         pieces = pieces
       )

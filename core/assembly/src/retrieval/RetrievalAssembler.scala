@@ -5,6 +5,7 @@ import grit.core.context.{
   AssemblyError,
   AssemblyNote,
   AssemblyRequest,
+  CarriedWindow,
   ContextAssembler,
   JudgeText,
   Packing,
@@ -23,6 +24,7 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   DocumentVersionId,
+  EntrySeq,
   PieceId,
   PluginName,
   TurnRef,
@@ -54,7 +56,7 @@ import grit.core.store.{
 import grit.core.visibility.Subject
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
-  * written query finds: the period's earlier turns; the open periods' turns and kept closings
+  * written query finds, at a boundary: the period's earlier turns; the open periods' turns and kept closings
   * of other conversations its turn may read, wherever they are; and, with the enabled plugins'
   * terms ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's time
   * (its earliest entry's; none for a turn with no entries) that its turn may read, and the
@@ -93,8 +95,15 @@ import grit.core.visibility.Subject
   * conversation is ever also a candidate.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
-  * period and nothing elsewhere and no document or piece is to be drawn. It never appends: its
-  * limit is every window, each a boundary, whatever is carried.
+  * period and nothing elsewhere and no document or piece is to be drawn.
+  *
+  * A boundary at the deployed width is drawn within half of `budget`
+  * ([[LinearAssembler.share]]), recall filling to that share, not to `budget`. Given a carried
+  * window it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
+  * what a query finds that the carried window does not hold, filling to the same share of
+  * `budget` with the carried window counted; it draws no closing, asked or strand section and
+  * reads none: those are its boundary's. Its limit is [[LinearAssembler]]'s, against `budget`.
+  * A request's width bounds what the part drawn now adds, never the limit.
   * `AssemblyError.Store` when a store fails or the conversation is gone.
   */
 final class RetrievalAssembler(
@@ -113,9 +122,9 @@ final class RetrievalAssembler(
     tuning: Tuning,
     hits: Int = RetrievalAssembler.DefaultHits
 ) extends ContextAssembler {
-  import RetrievalAssembler.{Candidate, Found, Pieced, Shelves}
+  import RetrievalAssembler.{Candidate, Found, Held, Pieced, Shelves}
 
-  /** Within `budget` and `hits`, or those `request.width` names. */
+  /** Within half of `budget` and `hits`, or those `request.width` names. */
   def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
     based(request).map { base =>
       if (!base.searchable) Prepared.Drawn(Querying.Drawn(Vector.empty))
@@ -125,7 +134,7 @@ final class RetrievalAssembler(
       }
     }
 
-  /** Within `budget` and `hits`, or those `request.width` names. */
+  /** Within half of `budget` and `hits`, or those `request.width` names. */
   def search(request: AssemblyRequest, written: Querying.Written)(using
       Db^
   ): Either[AssemblyError, Results] =
@@ -147,16 +156,16 @@ final class RetrievalAssembler(
       )
     }
 
-  /** Within `budget` and `hits`, or those `request.width` names. */
+  /** Within half of `budget` and `hits`, or those `request.width` names. */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
   ): Either[AssemblyError, Projection] =
     based(request).flatMap { base =>
       packing match {
         case Packing.Drawn(d) =>
-          Right(Projection.Boundary(drawn(base, base.linear, d.notes), base.linearCost))
+          Right(base.projected(drawn(base, base.linear, d.notes), base.linearCost))
         case Packing.Searched(Querying.Written(_, queried), _) if !base.searchable =>
-          Right(Projection.Boundary(drawn(base, base.linear, Vector(queried)), base.linearCost))
+          Right(base.projected(drawn(base, base.linear, Vector(queried)), base.linearCost))
         case Packing.Searched(Querying.Written(_, queried), admitted) =>
           looked(request, base, admitted.ranked.map(_._1)).map {
             (found: Vector[Candidate], speakers: Speakers) =>
@@ -166,7 +175,7 @@ final class RetrievalAssembler(
               val notes =
                 if (base.ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
                 else Vector(queried)
-              Projection.Boundary(
+              base.projected(
                 drawn(
                   base,
                   base.recent ++ recalled,
@@ -175,7 +184,7 @@ final class RetrievalAssembler(
                   packed.collect { case Candidate.Doc(d, _) => d },
                   packed.collect { case c: Candidate.Piece => Retrieved.Piece(c.kept.id, c.more) }
                 ),
-                cost
+                Tokens(Tokens.value(cost) - Tokens.value(base.carried))
               )
           }
       }
@@ -278,7 +287,7 @@ final class RetrievalAssembler(
         }
         elsewhere <-
           if (spoken.isEmpty) Right(Speakers.none) else principals.speakers(spoken.distinct)
-      } yield (found, read.speakers ++ elsewhere)
+      } yield (found.filterNot(base.held.holds), read.speakers ++ elsewhere)
     }.left
       .map(AssemblyError.Store(_))
   }
@@ -301,18 +310,20 @@ final class RetrievalAssembler(
           base.read.weight,
           base.read.shelves.fold(Map.empty)(_.terms),
           base.read.pieced.fold(Map.empty)(_.terms)
-        )
+        ).filterNot((c, _) => base.held.holds(c))
       }
 
   /** What every stage starts from: one read of the store, and what the window holds before
-    * any search.
+    * any search. An append reads no strand and no asking turn: those are its boundary's. At
+    * the limit it is the boundary's, as with nothing carried.
     */
   private def based(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Base] = {
     val turn = request.turn
     val (budget, hits) = request.width match {
-      case Width.Deployed => (this.budget, this.hits)
+      case Width.Deployed => (LinearAssembler.share(this.budget), this.hits)
       case Width.Within(b, h) => (b, h)
     }
+    val appending = request.carried.parts.nonEmpty
     db.read(Subject.Turn(turn)) {
       for {
         settings <- lifecycle.current()
@@ -331,12 +342,9 @@ final class RetrievalAssembler(
           .orElse(all.map(_.createdAt).maxOption.map(_.plusSeconds(1)))
           .getOrElse(java.time.Instant.EPOCH)
         began = all.minByOption(_.seq).fold(until)(_.createdAt)
-        strand <- Along.read(
-          stitches,
-          conversation,
-          began.minusNanos(tuning.horizon.toNanos),
-          until
-        )
+        strand <-
+          if (appending) Right(Strand.Read.empty)
+          else Along.read(stitches, conversation, began.minusNanos(tuning.horizon.toNanos), until)
         // Documents are drawn as of the turn's root: a turn with no entry yet has none.
         root = all.filter(_.turnSeq == turn.turnSeq).map(_.createdAt).minOption
         stocked <- root.fold(Right(Vector.empty))(documents.shelvesAt)
@@ -346,8 +354,10 @@ final class RetrievalAssembler(
             pieces.holding(declared.map(_._1), at).map(_.flatMap(p => terms.get(p).map(p -> _)))
           }
         )
-        posted <- conversations.postedBy(turn.conversationId)
-        asked <- askedOf(conversation, posted, opening.closing.isEmpty)
+        posted <-
+          if (appending) Right(None) else conversations.postedBy(turn.conversationId)
+        asked <-
+          if (appending) Right(None) else askedOf(conversation, posted, opening.closing.isEmpty)
         speakers <- principals.speakers(
           (all ++ strand.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
         )
@@ -374,58 +384,115 @@ final class RetrievalAssembler(
     }.left
       .map(AssemblyError.Store(_))
       .flatMap { read =>
-        val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
-        val allowance = Tokens(
-          math.min(Tokens.value(tuning.windowTokens), Tokens.value(afterClosing))
-        )
-        val (askedShown, askedCost) = askedSection(read, allowance)
-        val along = db
-          .read(Subject.Turn(turn))(
-            strandSections(read, Tokens(Tokens.value(allowance) - Tokens.value(askedCost)))
-          )
-          .left
-          .map(AssemblyError.Store(_))
-        along.map { (strandShown, strandCost) =>
-          val left = Tokens(
-            Tokens.value(afterClosing) - Tokens.value(askedCost) - Tokens.value(strandCost)
-          )
-          val turns = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
-          val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
-          val ownToFind = linear.size != turns.size
-          val recent =
-            if (!ownToFind) linear
-            else
-              LinearAssembler.recent(
-                turns,
-                read.speakers,
-                estimator,
-                Tokens(Tokens.value(tail) min Tokens.value(left))
-              )
-          // The tail leaves turns out, so the window holds a gap line before it.
-          val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
-            recent,
-            read.speakers
-          ) +
-            (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
+        if (appending) appended(request, read, budget, hits)
+        else boundary(turn, read, budget, hits)
+      }
+  }
+
+  /** What an append to `request.carried` starts from, the window carried and the turns since
+    * paid from `budget`; at the limit, the boundary's, as with nothing carried.
+    */
+  private def appended(request: AssemblyRequest, read: Read, budget: Tokens, hits: Int)(using
+      Db^
+  ): Either[AssemblyError, Base] = {
+    val turn = request.turn
+    val period = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
+    LinearAssembler.carrying(
+      request.carried,
+      read.first,
+      read.all,
+      period,
+      read.speakers,
+      estimator,
+      this.budget
+    ) match {
+      case None => based(request.copy(carried = CarriedWindow.Empty))
+      case Some(LinearAssembler.Carrying(since, spentWith)) =>
+        val held = Held.of(request.carried, read.all)
+        val turns = period.filterNot(_.headOption.exists(e => held.own(e.turnSeq)))
+        val sinceCost = spent(since, read.speakers)
+        Right(
           Base(
             read,
             budget,
             hits,
-            closings,
-            askedShown,
-            strandShown,
+            Vector.empty,
+            Vector.empty,
+            Vector.empty,
             turns,
-            linear,
-            ownToFind,
-            recent,
-            recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
-            used,
-            Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(linear, read.speakers) +
-              (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero),
-            read.all.filter(_.turnSeq == turn.turnSeq)
+            since,
+            turns.size != since.size,
+            since,
+            since.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
+            spentWith,
+            sinceCost,
+            read.all.filter(_.turnSeq == turn.turnSeq),
+            held,
+            Tokens(Tokens.value(spentWith) - Tokens.value(sinceCost))
           )
-        }
-      }
+        )
+    }
+  }
+
+  /** What a boundary starts from: the closings, the asked and strand sections, and the recent
+    * turns, paid from `budget`.
+    */
+  private def boundary(turn: TurnRef, read: Read, budget: Tokens, hits: Int)(using
+      db: Db^
+  ): Either[AssemblyError, Base] = {
+    val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
+    val allowance = Tokens(
+      math.min(Tokens.value(tuning.windowTokens), Tokens.value(afterClosing))
+    )
+    val (askedShown, askedCost) = askedSection(read, allowance)
+    val along = db
+      .read(Subject.Turn(turn))(
+        strandSections(read, Tokens(Tokens.value(allowance) - Tokens.value(askedCost)))
+      )
+      .left
+      .map(AssemblyError.Store(_))
+    along.map { (strandShown, strandCost) =>
+      val left = Tokens(
+        Tokens.value(afterClosing) - Tokens.value(askedCost) - Tokens.value(strandCost)
+      )
+      val turns = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
+      val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
+      val ownToFind = linear.size != turns.size
+      val recent =
+        if (!ownToFind) linear
+        else
+          LinearAssembler.recent(
+            turns,
+            read.speakers,
+            estimator,
+            Tokens(Tokens.value(tail) min Tokens.value(left))
+          )
+      // The tail leaves turns out, so the window holds a gap line before it.
+      val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
+        recent,
+        read.speakers
+      ) +
+        (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
+      Base(
+        read,
+        budget,
+        hits,
+        closings,
+        askedShown,
+        strandShown,
+        turns,
+        linear,
+        ownToFind,
+        recent,
+        recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
+        used,
+        Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(linear, read.speakers) +
+          (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero),
+        read.all.filter(_.turnSeq == turn.turnSeq),
+        Held.none,
+        Tokens.Zero
+      )
+    }
   }
 
   /** What a stage starts from: `read`, the window's `budget` and each search's `hits`; the
@@ -433,7 +500,8 @@ final class RetrievalAssembler(
     * `turns`, the `linear` tail of them that fits, whether that tail leaves any out
     * (`ownToFind`), the `recent` ones a search keeps, the turn it searches before (`from`),
     * what all that `used` of the budget, what the window with no search costs (`linearCost`),
-    * and the turn's `own` entries.
+    * the turn's `own` entries, what the carried window holds (`held`) and what of `used` it
+    * spends (`carried`; none at a boundary).
     */
   private final case class Base(
       read: Read,
@@ -449,8 +517,14 @@ final class RetrievalAssembler(
       from: TurnSeq,
       used: Tokens,
       linearCost: Tokens,
-      own: Vector[Entry]
+      own: Vector[Entry],
+      held: Held,
+      carried: Tokens
   ) {
+
+    /** `window`, costing `cost`: appended when anything is carried, else a boundary. */
+    def projected(window: Window, cost: Tokens): Projection =
+      if (held.carrying) Projection.Appended(window, cost) else Projection.Boundary(window, cost)
 
     /** Whether a search could find anything the linear window leaves out. */
     def searchable: Boolean =
@@ -845,6 +919,56 @@ object RetrievalAssembler {
     /** `holding`'s plugins as of `at`, or `None` when there are none. */
     def of(at: java.time.Instant, holding: Vector[(PluginName, DocumentTerms)]): Option[Pieced] =
       Option.when(holding.nonEmpty)(Pieced(at, holding.map(_._1), holding.toMap))
+  }
+
+  /** What a carried window holds of what a search finds: its `own` turns, the conversations it
+    * shows along or asking (never candidates), the turns elsewhere (`near`) and closings
+    * elsewhere it shows, and its documents and pieces. `carrying` whether anything is carried.
+    */
+  private final case class Held(
+      carrying: Boolean,
+      own: Set[TurnSeq],
+      shown: Set[ConversationId],
+      near: Set[(ConversationId, EntrySeq)],
+      closed: Set[ConversationId],
+      documents: Set[DocumentVersionId],
+      pieces: Set[PieceId]
+  ) {
+
+    /** Whether `c` is already in the carried window. */
+    def holds(c: Candidate): Boolean = c match {
+      case Candidate.Own(seq, _) => own(seq)
+      case Candidate.Near(conversation, _, _, turn) =>
+        shown(conversation) || turn.exists(e => near((conversation, e.seq)))
+      case Candidate.Record(conversation, _, _) => shown(conversation) || closed(conversation)
+      case Candidate.Doc(document, _) => documents(document.version)
+      case Candidate.Piece(kept, _, _) => pieces(kept.id)
+    }
+  }
+
+  private object Held {
+    val none: Held = Held(false, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty)
+
+    /** What `carried` holds, its own turns read from `all`: each part's entries' turns and its
+      * own turn.
+      */
+    def of(carried: CarriedWindow, all: Vector[Entry]): Held = {
+      val windows = carried.parts.map(_.window)
+      val entries = windows.flatMap(_.entries).toSet
+      val nearby = windows.flatMap(_.nearby)
+      Held(
+        carried.parts.nonEmpty,
+        all.filter(e => entries(e.seq)).map(_.turnSeq).toSet ++ carried.parts.map(_.turn),
+        nearby.collect {
+          case Nearby.Along(c, _, _) => c
+          case Nearby.Asked(c, _, _) => c
+        }.toSet,
+        nearby.collect { case Nearby.Open(c, _, es) => es.map(c -> _) }.flatten.toSet,
+        nearby.collect { case Nearby.Closed(c, _, _) => c }.toSet,
+        windows.flatMap(_.documents).toSet,
+        windows.flatMap(_.pieces.map(_.id)).toSet
+      )
+    }
   }
 
   /** What the pool ranks: a turn of the conversation's own, one from elsewhere, a closing
