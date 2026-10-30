@@ -73,10 +73,7 @@ final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
     ProviderHttp.post(
       AnthropicProvider.Endpoint,
       timeout,
-      Seq("x-api-key" -> key, "anthropic-version" -> AnthropicJson.Version) ++
-        Option.when(AnthropicProvider.DropsMismatchedThinking(model))(
-          "anthropic-beta" -> AnthropicJson.BindingBeta
-        ),
+      AnthropicProvider.headers(key, AnthropicProvider.DropsMismatchedThinking(model)),
       body
     )
 }
@@ -88,6 +85,13 @@ object AnthropicProvider {
   /** The variable Anthropic's key is read from ([[Keys.of]]). */
   val KeyVar = "ANTHROPIC_API_KEY"
 
+  /** The headers a request is sent with under `key`, besides its content type: under
+    * [[AnthropicJson.BindingBeta]] too when it asks [[AnthropicJson.request]]'s `dropBlock`.
+    */
+  private[models] def headers(key: String, dropBlock: Boolean): Seq[(String, String)] =
+    Seq("x-api-key" -> key, "anthropic-version" -> AnthropicJson.Version) ++
+      Option.when(dropBlock)("anthropic-beta" -> AnthropicJson.BindingBeta)
+
   /** How a pair served by Anthropic directly names its model: `anthropic/` and Anthropic's own
     * id.
     */
@@ -95,8 +99,8 @@ object AnthropicProvider {
 
   /** The models (Anthropic's ids) whose requests ask the API to drop a thinking block an
     * earlier edit invalidated, rather than refuse the request ([[AnthropicJson.request]]'s
-    * `dropBlock`). Empty until a live call shows which models accept it: Anthropic documents
-    * it for adaptive thinking on Claude Haiku 5.5 alone.
+    * `dropBlock`). Empty until a live call (the test sources' `AnthropicLiveProbe`) shows which
+    * models accept it: Anthropic documents it for adaptive thinking on Claude Haiku 5.5 alone.
     */
   val DropsMismatchedThinking: Set[String] = Set.empty
 
