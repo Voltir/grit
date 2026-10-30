@@ -1,7 +1,7 @@
 package grit.app.main
 
-import grit.app.config.Prefs
-import grit.app.look.Theme
+import grit.chat.look.Theme
+import grit.chat.settings.Prefs
 
 import utest.*
 

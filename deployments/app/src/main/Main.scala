@@ -2,13 +2,15 @@ package grit.app.main
 
 import scala.concurrent.duration.{DurationInt, DurationLong, FiniteDuration}
 
-import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.Listed.csv
-import grit.app.config.{Budgets, Claimed, Durations, LifecycleEnv, Prefs}
-import grit.app.look.Theme
+import grit.app.config.{Budgets, Claimed, LifecycleEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.chat.host.{ChatHost, Replies}
+import grit.chat.look.Theme
+import grit.chat.screen.ChatScreen
+import grit.chat.settings.{Durations, Prefs}
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks, ServedEdge, Variable}

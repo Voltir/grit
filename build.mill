@@ -663,6 +663,19 @@ object grit extends Module {
     }
   }
 
+  /* The chat: a person's terminal onto a database's engine, run by a deployment over the
+   * console Kit.console opens. Over core, prose, edge, the turn read back, and the terminal UI;
+   * never the kit or DBOS. extensions/chat/README.md. */
+  object chat extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "chat"
+    def moduleDeps = Seq(core, prose, tui, edge, turn)
+
+    /* assembly, for the CharEstimate its views are measured with. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly)
+    }
+  }
+
   /* The kit a deployment is built against (ADR 0021): the Deployment value, what the
    * environment supplies, and the runner that serves a deployment's edges beside its engine.
    * Names no edge extension and no terminal UI: an edge arrives as a ServedEdge value.
@@ -705,6 +718,7 @@ object grit extends Module {
         grit.knowledge,
         grit.prose,
         grit.tui,
+        grit.chat,
         grit.host,
         grit.edge,
         grit.slack,
@@ -721,7 +735,8 @@ object grit extends Module {
      * grit.mcp's own `Answer.of`, which knowledge may not name; and mcp's, for Drive's recorded
      * answers (`Recorded`, `FakeDriveServer`), pinned to the facts knowledge's goldens hold. */
     object test extends GritTests {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.knowledge.test, grit.mcp.test)
+      def moduleDeps =
+        super.moduleDeps ++ Seq[JavaModule](grit.knowledge.test, grit.mcp.test, grit.chat.test)
     }
 
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this

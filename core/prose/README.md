@@ -42,5 +42,5 @@ In dependency order:
   line, each under its heading path, a table row as `column: value` pairs. ← `form`
 
 `markdown`, `json` and `index` name nothing of each other. No source file sits at the module's root,
-and the test tree mirrors it. The terminal's renderer is `grit.app.look.ProseLook`, beside the
+and the test tree mirrors it. The terminal's renderer is `grit.chat.look.ProseLook`, beside the
 theme it draws in; Slack's is `grit.slack.text.RichText`.

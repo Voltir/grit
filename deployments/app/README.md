@@ -9,32 +9,18 @@ reaches Postgres only through `grit.dbos.engine.Engine`. Run it with `scripts/gr
 `GRIT_DATABASE_URL` set (in `.env`, as `.env.example` shows): without it, every command refuses
 to start, and every start logs the database it opened (`grit.launch`). Its types
 are the code's (`scripts/scout area app`); this file holds the package order and what a
-person sets and sees.
+person sets and sees. The chat it runs is `grit.chat`'s
+([`extensions/chat/README.md`](../../extensions/chat/README.md)): `GRIT_THEME` picks the theme
+a run starts in, over the one `/theme` last kept.
 
 In dependency order:
 
 - **`config`**: settings as a person writes them. The lifecycle's (`GRIT_IDLE`, `GRIT_SETTLE`,
   `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`, `GRIT_LEDGER`, `GRIT_BALANCE`,
   `GRIT_WEIGHT`) are written over the database's on every start, logged as they stand, and
-  changed one at a time by `/set` until the next start. `GRIT_DAILY_USD` caps a day's model
-  spend (`grit serve`'s default $1.00); `GRIT_CLAIMED_DOMAINS` (comma-separated) are the email
-  domains the deployment claims (ADR 0032). The theme last chosen is kept in
-  `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
-- **`look`**: themes and the chat screen's styles (`GRIT_THEME` picks the one a run starts in).
-  Who speaks is a rune as well as a colour. Every theme is held to the same APCA contrast
-  targets (`ThemeContrastTests`). Imports nothing in app.
-- **`chat`**: the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
-  projection of the store: a submission leaves as an effect to the host and is shown when the
-  store has it, so replies to any turn appear, recovered ones included (ADR 0002). It paints at
-  once, while the engine opens. `ChatHost` is its engine side: it opens the engine off the
-  screen's thread, then polls the conversation's entries and each open turn's status. The
-  panel's tabs (ctrl-t, or a click on a pill) show the turn, the session so far, and its agenda.
-  `Commands` is the one table of slash commands: what the palette (`/` in an empty prompt, or
-  ctrl-p) lists, what `/help` describes, and what a submitted `/` draft runs. Such a draft never
-  reaches the model; one starting `//` does, one slash taken off. A `/set` of a lifecycle
-  setting holds until grit next starts (the voice is kept), and `/set` says so. `/theme`
-  repaints live and is kept for the next run unless `GRIT_THEME` says otherwise. `/summaries`
-  is off by default: a summary lands after its reply, so the rows below would move. ← `look`
+  changed one at a time by the chat's `/set` until the next start. `GRIT_DAILY_USD` caps a
+  day's model spend (`grit serve`'s default $1.00); `GRIT_CLAIMED_DOMAINS` (comma-separated)
+  are the email domains the deployment claims (ADR 0032). Imports nothing in app.
 - **`main`**: `Main` reads the settings into the reference `Deployment` and runs one of:
   - `grit serve`: the Slack edge in every channel its bot is invited to, hearing what was said
     before each join within `GRIT_BACKFILL_DAYS`, `GRIT_BACKFILL_MESSAGES` and
@@ -74,7 +60,7 @@ In dependency order:
     as a message.
 
   `PromoteModelSettings` prints the seed catalog with every approved setting laid over it, for a
-  reviewed commit. ← `config`, `look`, `chat`
+  reviewed commit. ← `config`
 
 **Who may label what (setup tiers).** A room's label is set by slash command, under one rule
 in core (`grit.core.admin.Authority`): in a private channel any full member may raise it; in a

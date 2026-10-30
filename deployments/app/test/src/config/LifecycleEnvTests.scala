@@ -2,6 +2,7 @@ package grit.app.config
 
 import scala.concurrent.duration.DurationInt
 
+import grit.chat.settings.TestLifecycle
 import grit.core.period.LifecycleSettings
 import grit.core.place.Weight
 

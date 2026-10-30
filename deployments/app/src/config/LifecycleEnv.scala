@@ -2,6 +2,7 @@ package grit.app.config
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.chat.settings.{Durations, Lifecycle}
 import grit.core.period.{LifecycleSettings, Windows}
 
 /** The lifecycle's settings as the environment declares them, read on every start; `/set`

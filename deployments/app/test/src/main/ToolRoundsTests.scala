@@ -1,6 +1,6 @@
 package grit.app.main
 
-import grit.app.look.Look
+import grit.chat.look.Look
 import grit.kit.deployment.Offered
 
 import utest.*
