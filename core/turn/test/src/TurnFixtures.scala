@@ -1932,7 +1932,7 @@ object TurnFixtures {
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** As [[turnBody]], the model offered `tools`, which read `ws`, for at most `calls` model
-    * calls.
+    * calls, its growth bounded by `grows` when given ([[TurnLoop.Rounds.within]]).
     */
   def tooledBody(
       entries: EntryStore,
@@ -1946,9 +1946,21 @@ object TurnFixtures {
       clock: Clock^ = new NoWait,
       hosted: Vector[Tool.Offered] = Vector.empty,
       speech: TurnSpeech = quiet(),
-      stitching: TurnStitching^ = unstitched()
+      stitching: TurnStitching^ = unstitched(),
+      grows: Option[Tokens] = None
   )(id: WorkflowId)(using Durable^): String =
-    toolsBody(entries, provider, ledger, summarizer, classifier, tools, calls, clock, hosted)(
+    toolsBody(
+      entries,
+      provider,
+      ledger,
+      summarizer,
+      classifier,
+      tools,
+      calls,
+      clock,
+      hosted,
+      grows
+    )(
       speech,
       stitching,
       new FakeJot
@@ -1964,7 +1976,8 @@ object TurnFixtures {
       tools: Toolbox[C],
       calls: Int,
       clock: Clock^,
-      hosted: Vector[Tool.Offered]
+      hosted: Vector[Tool.Offered],
+      grows: Option[Tokens] = None
   )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
       Durable^
   ): String =
@@ -1997,7 +2010,15 @@ object TurnFixtures {
         noTriage(),
         noRouting()
       ),
-      TurnTooling[C](tools, Toolbox.Empty, hosted, jot, budget(calls))
+      TurnTooling[C](
+        tools,
+        Toolbox.Empty,
+        hosted,
+        jot,
+        grows.fold(budget(calls))(g =>
+          budget(calls).within(g).fold(why => throw new java.lang.AssertionError(why), identity)
+        )
+      )
     )(id)
 
   /** A profile store already holding [[TestCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it

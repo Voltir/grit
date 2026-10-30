@@ -135,11 +135,14 @@ private[turn] object TurnRound {
     def level: Integrity =
       gates.values.map(_.level).reduceOption(_.meet(_)).getOrElse(Integrity.Authority)
 
+    /** The loop's budget after the replies so far ([[TurnLoop.Rounds.after]]). */
+    def budget: TurnLoop.Rounds = looping.budget.after(replies)
+
     private[TurnRound] def gatedBy(gate: Gated): Progress =
       copy(gates = gates.updated(round.index, gate))
   }
 
-  /** What a turn's loop is allowed: `budget`, its model calls, and `answerWithin`, the longest
+  /** What a turn's loop is allowed: `budget`, its model calls and growth, and `answerWithin`, the longest
     * a call that asks a person first waits for them. Recorded with the turn's window, so a
     * rerun keeps the limits its turn started under.
     */
@@ -371,7 +374,7 @@ private[turn] object TurnRound {
     val calling = Step[Env, Progress, Either[TurnFailure, Message.Assistant]](
       Names.ask,
       at => Some(AskRecorded(at.round.index))
-    )(r => at => r.call(at, TurnLoop.use(at.looping.budget, at.round)))
+    )(r => at => r.call(at, TurnLoop.use(at.budget, at.round)))
     gating
       .andThen(Flow.decide(calling)(replied))
       .andThen(
@@ -391,7 +394,7 @@ private[turn] object TurnRound {
       case Left(failure) => Left(Stalled(failure, at))
       case Right(reply) =>
         val now = at.copy(replies = at.replies :+ reply)
-        TurnLoop.next(at.looping.budget, at.round, reply) match {
+        TurnLoop.next(now.budget, at.round, reply) match {
           case Next.Answer(answer) => Right(Right(Looped(answer, now)))
           case Next.Silent(_) =>
             val said =

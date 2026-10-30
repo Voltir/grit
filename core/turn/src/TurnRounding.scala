@@ -263,7 +263,7 @@ private[turn] object Rounding {
     tools(tooling, offer, at.looping.asked).map(tools =>
       (
         stubsAt(at.gates, at.round, tools.set),
-        shapeAs(at, tools, TurnLoop.use(at.looping.budget, at.round), pins)
+        shapeAs(at, tools, TurnLoop.use(at.budget, at.round), pins)
       )
     )
 
@@ -298,7 +298,7 @@ private[turn] object Rounding {
       settings.afterResult,
       settings.guidance,
       lines,
-      gateNotes(at.gates, at.round, tools.set)
+      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, at.round)
     )
   }
 

@@ -89,6 +89,52 @@ object TurnLoopTests extends TestSuite {
       }
     }
 
+    test(
+      "a reply whose request grew by the growth bound makes the next call the last with tools, and the one after it the last"
+    ) {
+      def input(n: Long) =
+        reply("", Vector("t")).copy(usage = Usage(Tokens(n), Tokens(2), Tokens.Zero, None))
+      val bounded = budget(12).within(Tokens(100)).getOrElse(throw new java.lang.AssertionError())
+      // Reply 1's request is 100 past the first's, its round's results not yet counted.
+      val cut = bounded.after(Vector(input(1000), input(1100)))
+      (
+        cut.calls,
+        Vector(1, 2, 3).map(n => TurnLoop.use(cut, round(n))),
+        Vector(1, 2, 3).map(n => TurnLoop.notes(cut, round(n))),
+        bounded.after(Vector(input(1000), input(1099))).calls,
+        budget(12).after(Vector(input(1000), input(9000))).calls,
+        budget(12).within(Tokens(0)).isLeft
+      ) ==> (
+        4,
+        Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off),
+        Vector(
+          Vector.empty,
+          Vector(round(2) -> TurnLoop.LastTools),
+          Vector(round(2) -> TurnLoop.LastTools)
+        ),
+        12,
+        12,
+        true
+      )
+    }
+
+    test(
+      "the last call with tools is told so, and the calls after it keep the note; a first call never is"
+    ) {
+      (
+        Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), round(n))),
+        TurnLoop.notes(Rounds.Fewest, round(0))
+      ) ==> (
+        Vector(
+          Vector.empty,
+          Vector.empty,
+          Vector(round(2) -> TurnLoop.LastTools),
+          Vector(round(2) -> TurnLoop.LastTools)
+        ),
+        Vector.empty
+      )
+    }
+
     test("a call's tools are on before the budget's last call, and off from it") {
       Vector(0, 1, 2, 3).map(n => TurnLoop.use(budget(3), round(n))) ==>
         Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off, ToolUse.Off)

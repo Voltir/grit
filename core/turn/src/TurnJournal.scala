@@ -403,16 +403,30 @@ private[turn] object TurnJournal {
     case other => Left(s"kind: unknown ${other.render()}")
   }
 
-  /** A `record-window` step's output: `{"budget": calls, "answer-within": milliseconds}`. */
+  /** A `record-window` step's output: `{"budget": calls, "answer-within": milliseconds}`, and
+    * `"grows": tokens` when the budget bounds a turn's growth; absent, as every output recorded
+    * before growth bounds is, it bounds none.
+    */
   given limits: Journaled[Either[TurnFailure, TurnRound.Limits]] =
     outcome(
-      l =>
-        ujson.Obj("budget" -> l.budget.calls, "answer-within" -> l.answerWithin.toMillis.toDouble),
+      l => {
+        val o =
+          ujson.Obj("budget" -> l.budget.calls, "answer-within" -> l.answerWithin.toMillis.toDouble)
+        l.budget.growth.foreach(g => o("grows") = Tokens.value(g).toDouble)
+        o
+      },
       v =>
         for {
           o <- v.objOpt.toRight("limits: expected an object")
           calls <- o.get("budget").flatMap(_.numOpt).toRight("limits: no budget")
-          budget <- TurnLoop.Rounds.of(calls.toInt).left.map(e => s"limits: $e")
+          rounds <- TurnLoop.Rounds.of(calls.toInt).left.map(e => s"limits: $e")
+          budget <- o.get("grows") match {
+            case None => Right(rounds)
+            case Some(g) =>
+              g.numOpt
+                .toRight("limits: grows is not a number")
+                .flatMap(n => rounds.within(Tokens(n.toLong)).left.map(e => s"limits: $e"))
+          }
           within <- o.get("answer-within").flatMap(_.numOpt).toRight("limits: no answer-within")
         } yield TurnRound.Limits(
           budget,

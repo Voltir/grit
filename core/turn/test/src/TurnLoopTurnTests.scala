@@ -523,6 +523,48 @@ object TurnLoopTurnTests extends TestSuite {
       texts(entries).filter(_.startsWith("assistant:")) ==> Vector("assistant: more")
     }
 
+    test(
+      "a turn whose request grew by its bound is told on its next call that it is the last with tools, and ends in text on the one after"
+    ) {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val ws = new Files(files)
+      // Every reply calls peek; its request's input grows 600 a round, past a 1,000 bound at
+      // round 2: round 3 is told, round 4 is made with tools off, of a budget of 12.
+      val provider = new Scripted((_, n) =>
+        Right(
+          calling(s"r$n", (s"t$n", "peek", "a.txt"))
+            .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
+        )
+      )
+      val turn = say(entries, "read them")
+      durable.run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          tools(ws),
+          12,
+          grows = Some(Tokens(1000))
+        )
+      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      def told(r: ModelRequest) = r.messages.exists {
+        case Message.User(t) => t == TurnLoop.LastTools
+        case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LastTools)
+        case _ => false
+      }
+      provider.requests.map(r => (r.use, told(r))) ==> Vector(
+        (ToolUse.Auto, false),
+        (ToolUse.Auto, false),
+        (ToolUse.Auto, false),
+        (ToolUse.Auto, true),
+        (ToolUse.Off, true)
+      )
+    }
+
     test("a failed call after a tool round ends the turn with no reply") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)

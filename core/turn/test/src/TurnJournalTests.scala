@@ -178,6 +178,28 @@ object TurnJournalTests extends TestSuite {
         Right(Right((Headroom.Ample, Route.Task.Skipped, Allotment.Untouched, None)))
     }
 
+    test("a loop's limits write a growth bound only when there is one, and read back") {
+      // A pin of the recorded form: a rerun keeps the limits its turn started under, and an
+      // output recorded before growth bounds must write back byte for byte.
+      def of(b: Either[String, TurnLoop.Rounds]): Either[TurnFailure, TurnRound.Limits] =
+        b.left
+          .map(TurnFailure.Model(_))
+          .map(TurnRound.Limits(_, scala.concurrent.duration.FiniteDuration(5000, "ms")))
+      val plain = of(TurnLoop.Rounds.of(4))
+      val bounded = of(TurnLoop.Rounds.of(12).flatMap(_.within(Tokens(40_000))))
+      (
+        limits.encode(plain),
+        limits.encode(bounded),
+        roundTrip(plain),
+        roundTrip(bounded)
+      ) ==> (
+        """{"ok":{"budget":4,"answer-within":5000}}""",
+        """{"ok":{"budget":12,"answer-within":5000,"grows":40000}}""",
+        Right(plain),
+        Right(bounded)
+      )
+    }
+
     test("a query's note keeps who served it, and one recorded before reads with none") {
       val note = TurnFixtures.queried.copy(upstream = Some("Fireworks"))
       val noted: Either[TurnFailure, Window] = Right(Window(Vector(EntrySeq(0)), Vector(note)))

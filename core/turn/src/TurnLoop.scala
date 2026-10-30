@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.Allotment
-import grit.core.message.{AssistantBlock, Cut, Message, StopReason}
+import grit.core.message.{AssistantBlock, Cut, Message, StopReason, Tokens}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -14,29 +14,76 @@ import grit.core.tool.Outcome
   */
 object TurnLoop {
 
-  /** How many model calls one turn may make. The last is made with tools off, so a turn
-    * that keeps calling tools still ends in text.
+  /** How far one turn's loop may go: `calls` model calls, the last made with tools off, so a
+    * turn that keeps calling tools still ends in text; and, with `growth`, about that much input
+    * added within the turn: once a reply's request has `growth` more input tokens than the
+    * turn's first request, as its provider counted them, the call after it is the last with
+    * tools and the one after that the last ([[after]]). A request's input is counted before its
+    * own results, so a turn can exceed `growth` by one round's results; a provider that reports
+    * no input never meets it.
     */
-  final case class Rounds private (calls: Int)
+  final case class Rounds private (calls: Int, growth: Option[Tokens]) {
+
+    /** This budget, its turns' growth bounded by `growth`; `Left` when it is not above 0. A
+      * provider that reports no input is never bounded by it.
+      */
+    def within(growth: Tokens): Either[String, Rounds] =
+      if (Tokens.value(growth) > 0) Right(copy(growth = Some(growth)))
+      else Left(s"a turn's growth bound is above 0 tokens, not ${Tokens.value(growth)}")
+
+    /** This budget once a turn's replies so far are `replies`, the first first: its calls cut
+      * to three past the first reply whose request grew by `growth` over the first's, when that
+      * is fewer (that reply's round, then the last call with tools, then the last); else
+      * unchanged.
+      */
+    def after(replies: Vector[Message.Assistant]): Rounds =
+      (growth, replies.headOption) match {
+        case (Some(bound), Some(first)) =>
+          val from = Tokens.value(first.usage.input)
+          replies.indexWhere(r => Tokens.value(r.usage.input) - from >= Tokens.value(bound)) match {
+            case -1 => this
+            case grown => copy(calls = math.min(calls, grown + 3))
+          }
+        case _ => this
+      }
+  }
 
   object Rounds {
 
-    /** `calls` as a budget; `Left` when it is under 2, which leaves no call with tools on. */
+    /** `calls` as a budget, its growth unbounded; `Left` when it is under 2, which leaves no
+      * call with tools on.
+      */
     def of(calls: Int): Either[String, Rounds] =
-      if (calls >= 2) Right(Rounds(calls))
+      if (calls >= 2) Right(Rounds(calls, None))
       else Left(s"a turn's budget is at least 2 model calls, not $calls")
 
     /** Two calls: the fewest a turn makes, the first with tools on. */
-    val Fewest: Rounds = Rounds(2)
+    val Fewest: Rounds = Rounds(2, None)
 
-    /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls. */
+    /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls; its growth bound
+      * kept.
+      */
     def allotted(default: Rounds, calls: Allotment.Calls): Rounds = calls match {
       case Allotment.Calls.Default => default
       // Scaled is at least once by construction, so this is at least `default`, at least 2.
-      case Allotment.Calls.Scaled(times) => Rounds(default.calls * times)
-      case Allotment.Calls.Fewest => Fewest
+      case Allotment.Calls.Scaled(times) => default.copy(calls = default.calls * times)
+      case Allotment.Calls.Fewest => Fewest.copy(growth = default.growth)
     }
   }
+
+  /** The notes the loop's calls up to `round` add, as a gate's are ([[TurnShown.loopShape]]):
+    * [[LastTools]] at `budget`'s last call with tools, once `round` has reached it, unless that
+    * is the turn's first call; else none.
+    */
+  def notes(budget: Rounds, round: Round): Vector[(Round, String)] = {
+    val lastTools = budget.calls - 2
+    Vector(lastTools -> LastTools).filter(_ => lastTools > 0 && round >= lastTools)
+  }
+
+  /** What the model is told on the last call with tools. */
+  val LastTools: String =
+    "[grit: this is your last call with tools in this turn; the next has none. Stop reading: " +
+      "make the changes the work needs now, or answer, and say plainly what you did not get to.]"
 
   /** Which model call of a turn this is, counting from 0. */
   opaque type Round = Int

@@ -177,7 +177,7 @@ final case class TurnHosting(
   * `operator`, too, but are offered only in a conversation with the person running grit
   * ([[grit.core.store.Audience.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
   * `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]); `budget`
-  * bounds its model calls, the last made with tools off; a call a person approves first
+  * bounds its model calls, the last made with tools off, and its growth when it says so; a call a person approves first
   * waits its tool's own time for their answer ([[grit.core.tool.Gate.Ask]]), at most
   * `answerWithin`. `worksIn` gives a conversation with no directory
   * its workspace ([[WorksIn.of]]); `reaches` gives an addressed turn the services it reaches

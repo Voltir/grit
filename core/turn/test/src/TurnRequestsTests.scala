@@ -89,14 +89,16 @@ object TurnRequestsTests extends TestSuite {
     )
 
   /** `turn`, answered by `provider` with `peek` and `poke` offered, in at most `calls` calls,
-    * its message's placement asked of `classifier`; its steps.
+    * its growth bounded by `grows` when given, its message's placement asked of `classifier`;
+    * its steps.
     */
   private def answered(
       entries: InMemoryEntryStore,
       turn: TurnRef,
       provider: grit.core.provider.Provider^,
       calls: Int = 5,
-      classifier: grit.core.classify.Classifier^ = NoClassifier
+      classifier: grit.core.classify.Classifier^ = NoClassifier,
+      grows: Option[Tokens] = None
   ): Vector[StepRecord] = {
     val durable = new InMemoryDurable
     val ws = new Files(files)
@@ -109,7 +111,8 @@ object TurnRequestsTests extends TestSuite {
         classifier,
         ws,
         tools(ws),
-        calls
+        calls,
+        grows = grows
       )
     )
     steps(durable, turn.workflowId)
@@ -266,6 +269,23 @@ object TurnRequestsTests extends TestSuite {
       val calls = TurnRecord.requests(turn, recorded, reads(entries))
       calls.map(sent(_, off = true)) ==> Right(provider.requests)
       calls.map(_.answered.map(_.on) == provider.requests.lastOption) ==> Right(false)
+    }
+
+    test("a turn that met its growth bound is rebuilt with its last-tools note in place") {
+      val entries = new InMemoryEntryStore
+      val provider = new Scripted((_, n) =>
+        Right(
+          calling("more", ("t", "peek", "a.txt"))
+            .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
+        )
+      )
+      val turn = say(entries, "go")
+      val recorded = answered(entries, turn, provider, calls = 12, grows = Some(Tokens(1000)))
+      // The setting: five calls, the fourth told it was the last with tools.
+      provider.requests.map(_.messages.contains(Message.User(TurnLoop.LastTools))) ==>
+        Vector(false, false, false, true, true)
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = true)) ==>
+        Right(provider.requests)
     }
 
     test("a turn asked about its item is rebuilt with every call tagged and topic offered") {

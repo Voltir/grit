@@ -219,7 +219,9 @@ object TurnPrefixTests extends TestSuite {
             NoClassifier,
             ws,
             tools(ws),
-            3
+            // Calls the turns never reach the second-to-last of: its note (TurnLoop.LastTools)
+            // is kept in no window record, so a turn told it is followed by a boundary.
+            5
           )
         )
         provider.requests
@@ -510,7 +512,7 @@ object TurnPrefixTests extends TestSuite {
           NoClassifier,
           ws,
           gatedTools(ws),
-          3
+          4
         )
       )
       val requests = provider.requests

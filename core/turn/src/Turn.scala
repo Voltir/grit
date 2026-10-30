@@ -385,6 +385,15 @@ object Turn {
           )
       }
       answer <- recorded[TurnSteps.Appended](Step.Append).map(_.map(_.reply))
+      // The loop's limits and each round's reply, which decide its notes as they did live.
+      limits <- recorded[TurnRound.Limits](Step.RecordWindow)
+      replies <- rounds.foldLeft[Either[String, Vector[grit.core.message.Message.Assistant]]](
+        Right(Vector.empty)
+      ) { (acc, n) =>
+        acc.flatMap(done =>
+          recorded[grit.core.message.Message.Assistant](Loop.Ask(n).name).map(done ++ _)
+        )
+      }
       gates <- gated.foldLeft[Either[String, Map[Int, Gated]]](Right(Map.empty)) {
         case (acc, (round, name)) =>
           acc.flatMap(done => recorded[Gated](name).map(g => done ++ g.map(round -> _)))
@@ -428,7 +437,9 @@ object Turn {
                     settings.afterResult,
                     settings.guidance,
                     lines,
-                    gateNotes(gates, round, tools.set)
+                    gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
+                      TurnLoop.notes(l.budget.after(replies.take(round.index)), round)
+                    )
                   )
                 )
               )

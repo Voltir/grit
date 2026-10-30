@@ -1363,7 +1363,9 @@ object TurnTests extends TestSuite {
             NoClassifier,
             NoCheckout,
             box,
-            3
+            // Calls the turns never reach the second-to-last of: its note (TurnLoop.LastTools)
+            // is kept in no window record, so a turn told it is followed by a boundary.
+            5
           )
         )
         t
