@@ -11,7 +11,8 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse
   * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's and
   * holds [[StubProvider.CallMarker]], it calls the first, as a model can, with a line of
   * text beside the call: the arguments are the JSON after the marker, to the end of its
-  * line. Its id is [[StubProvider.CallId]]. Without the marker it answers. Required to call
+  * line; or, given `#call(<name>):` ([[StubProvider.named]]), the tool of that name, and none
+  * when it is not offered. Its id is [[StubProvider.CallId]]. Without a marker it answers. Required to call
   * one ([[ToolUse.Required]]), it always calls the first, with the arguments after the marker
   * in the last user message, or `{}` without one.
   */
@@ -45,6 +46,10 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
   private def reply(request: ModelRequest): Message.Assistant = {
     val asked = request.messages.reverseIterator.collectFirst { case Message.User(text) => text }
     val call = (request.use, request.tools.headOption, request.messages.lastOption) match {
+      case (ToolUse.Auto, Some(_), Some(Message.User(text))) if StubProvider.named(text).nonEmpty =>
+        StubProvider
+          .named(text)
+          .filter((name, _) => request.tools.exists(_.name == name))
       case (ToolUse.Auto, Some(tool), Some(Message.User(text)))
           if text.contains(StubProvider.CallMarker) =>
         Some(tool.name -> StubProvider.arguments(text))
@@ -100,4 +105,15 @@ object StubProvider {
       scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
     }
   }
+
+  /** The tool `#call(<name>):` names in `text`, and the JSON after it to the end of its line,
+    * read as [[arguments]] reads it; `None` without that form.
+    */
+  def named(text: String): Option[(String, ujson.Value)] =
+    NamedCall.findFirstMatchIn(text).map { m =>
+      val raw = text.drop(m.end).takeWhile(_ != '\n').trim
+      m.group(1) -> scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
+    }
+
+  private val NamedCall = """#call\(([A-Za-z0-9_-]+)\):""".r
 }

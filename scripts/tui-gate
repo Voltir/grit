@@ -314,7 +314,7 @@ script_topics() {
   sleep $APP_STARTUP
   printf 'knots one'; sleep 0.3; printf '\r'; sleep 3
   printf 'sailing ~0.1'; sleep 0.3; printf '\r'; sleep 3
-  printf '%s' 'back to it ~0.5 #call:{"about":"earlier","name":"new topic (2)"}'
+  printf '%s' 'back to it ~0.5 #call(topic):{"about":"earlier","earlier":"new topic (2)"}'
   sleep 0.3; printf '\r'; sleep 4
   printf '\024'; sleep 0.6; printf '\024'; sleep 1.5                    # ctrl-t twice: topics
   printf '\021'; sleep 2

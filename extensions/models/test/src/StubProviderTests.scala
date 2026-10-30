@@ -58,6 +58,28 @@ object StubProviderTests extends TestSuite {
       StubProvider.arguments("no marker") ==> ujson.Obj()
     }
 
+    test(
+      "the stub calls the tool #call(name): names, wherever it is offered, and none not offered"
+    ) {
+      val read = ToolSchema("read_hidden", "d", ujson.Obj())
+      val said = """back #call(topic):{"about":"earlier","name":"Knots"}"""
+      new StubProvider()
+        .complete(ModelRequest("s", Vector(Message.User(said)), Vector(read, topic)))
+        .map(_.blocks) ==> Right(
+        Vector(
+          AssistantBlock.Text("stub calls topic"),
+          AssistantBlock.ToolCall(
+            StubProvider.CallId,
+            "topic",
+            ujson.Obj("about" -> "earlier", "name" -> "Knots")
+          )
+        )
+      )
+      new StubProvider()
+        .complete(ModelRequest("s", Vector(Message.User(said)), Vector(read)))
+        .map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
+    }
+
     test("required to call, the stub calls its first tool with the #call: arguments, or {}") {
       def required(messages: Message*) =
         new StubProvider()
