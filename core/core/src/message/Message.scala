@@ -43,8 +43,8 @@ enum AssistantBlock {
   case Text(text: String)
 
   /** The model's reasoning. `text` is readable, possibly empty or a summary;
-    * `replay` is the provider's own form, which must be sent back verbatim on
-    * later calls within the same turn and is otherwise opaque.
+    * `replay` is the provider's own form, opaque, sent back verbatim on later calls of
+    * the same turn by a provider that reads that form, and skipped by any other.
     */
   case Reasoning(text: String, replay: Option[ujson.Value])
 

@@ -19,7 +19,9 @@ enum StrictSchemas {
 /** How the model's reasoning from an earlier call of a turn is sent back with the next. */
 enum ReasoningReplay {
 
-  /** OpenRouter's `reasoning_details`, verbatim. */
+  /** The provider's own form ([[grit.core.message.AssistantBlock.Reasoning]]'s `replay`),
+    * verbatim: OpenRouter's `reasoning_details`, Anthropic's thinking blocks.
+    */
   case Details
 
   /** Not sent. */

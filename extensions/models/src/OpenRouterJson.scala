@@ -17,7 +17,8 @@ object OpenRouterJson {
     * tool-calling guide: every request of a tool exchange sends the tools again); one
     * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
-    * as `replay` says.
+    * as `replay` says, when it is in OpenRouter's form (`reasoning_details`), and never
+    * otherwise.
     */
   def request(
       model: String,
@@ -92,10 +93,11 @@ object OpenRouterJson {
         )
       }
       // Sent back verbatim, as OpenRouter asks, so the model's reasoning carries across
-      // the calls of one turn; or not at all, for a pair whose replay is dropped.
+      // the calls of one turn; or not at all, for a pair whose replay is dropped. Only
+      // OpenRouter's own form, an array: another provider's would be garbage here.
       val details = replay match {
         case ReasoningReplay.Details =>
-          blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r)) => r }
+          blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r: ujson.Arr)) => r }
         case ReasoningReplay.Dropped => None
       }
       ujson.Obj.from(

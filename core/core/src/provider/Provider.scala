@@ -87,8 +87,10 @@ enum ToolUse {
     */
   case Off
 
-  /** It must call one of them: OpenRouter's `tool_choice: "required"`
-    * ([[grit.core.model.StrictSchemas.WhenRequired]] is measured under it).
+  /** It is asked to call one of them: forced where the provider can (OpenRouter's
+    * `tool_choice: "required"`, which [[grit.core.model.StrictSchemas.WhenRequired]] is
+    * measured under). Anthropic's current models refuse a forced choice, so there it is
+    * `auto`, and a reply may make no call.
     */
   case Required
 }
@@ -103,8 +105,8 @@ enum ProviderError {
   case Unavailable(cause: String)
 
   /** Sending the same request again would fail the same way: the provider refused it (any
-    * other HTTP status), its response could not be read, or the model reported an error
-    * that is not one of [[Unavailable]]'s.
+    * other HTTP status), its response could not be read, the model declined to answer, or
+    * the model reported an error that is not one of [[Unavailable]]'s.
     */
   case Refused(cause: String)
 

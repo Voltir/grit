@@ -4,7 +4,8 @@ Implements `Provider` and `Classifier` (what a deployment can supply:
 [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
 Models behind `grit.core`'s traits: `Provider`s (`StubProvider`, which calls nothing, and,
-required to call a tool, calls its first; and `OpenRouterProvider`) and `Classifier`s
+required to call a tool, calls its first; `OpenRouterProvider`; and `AnthropicProvider`, over Anthropic's Messages API
+directly, both over `ProviderHttp`) and `Classifier`s
 (`JevClassifier`, over typesafe.ai's Jev, which answers choices, yes/no questions and scores,
 each choice and score with the confidence Jev reported; and `StubClassifier`, which answers
 from markers in the message for tests and the gate, as `StubClassifier.answers` says: a

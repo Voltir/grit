@@ -183,6 +183,21 @@ object OpenRouterJsonTests extends TestSuite {
       sent(ReasoningReplay.Dropped).map(_.get("tool_calls").isDefined) ==> Right(true)
     }
 
+    test("request: another provider's form of reasoning is never sent as details") {
+      val anthropic =
+        ujson.Obj("type" -> "thinking", "thinking" -> "hm", "signature" -> "EqQBsig")
+      val reply = Message.Assistant(
+        Vector(AssistantBlock.Reasoning("hm", Some(anthropic)), AssistantBlock.Text("ok")),
+        StopReason.EndTurn,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      OpenRouterJson
+        .request("m", 1, None, ModelRequest("s", Vector(reply)))("messages")(1)
+        .obj
+        .get("reasoning_details") ==> None
+    }
+
     test("request: arguments that were not JSON go back as a JSON string of what was sent") {
       val reply = Message.Assistant(
         Vector(AssistantBlock.ToolCall(ToolCallId("c"), "f", ujson.Str("{oops"))),
