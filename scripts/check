@@ -27,7 +27,9 @@
 #   probes  the capture probes (a `probes` module beside `test`: suites compiling probe sources
 #         against their module with its own flags) that a change reaches (`reach`, below: a
 #         change touching capture syntax), or with --probes every one, __.probes.testCached.
-#   --milestone is --it and --probes together: the run a milestone closes with.
+#   tui   scripts/tui-gate, every scenario of the chat in a real pty, when a change reaches
+#         the chat (`reach`, below), and always with --milestone.
+#   --milestone is --it and --probes together, and tui: the run a milestone closes with.
 #   co-change  with --milestone --since REV, last: each commit in REV..HEAD touching both core's
 #         main sources (core/<module>/src) and an edge's (enola-intent.yaml's edge-extensions),
 #         a change that a new edge would have to make to core too. A report: it never fails.
@@ -259,7 +261,7 @@ run_tier() { # tier outdir reports-file -- command...
 
 # What a change reaches, from the files it touches since the merge base with main (committed,
 # uncommitted and untracked; with no main, everything) and build.mill's module graph
-# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints two lines, each a tier's name and its Mill arguments, `+`-joined,
+# (`grit.moduleGraph`); CHECK_BASE=<commit> names another base. Prints three lines, each a tier's name and its Mill arguments, `+`-joined,
 # or the name alone when the change reaches nothing there:
 #   lint    each module holding a changed .scala file, and every module depending on one;
 #           every module (__.compile) when build.mill, .mill-version, .mill-jvm-opts or
@@ -269,12 +271,17 @@ run_tier() { # tier outdir reports-file -- command...
 #           (`private[grit]`, which the kit's probes pin), and of every probed module depending on
 #           one; a probes module whose own sources changed; every probe (__.probes) when
 #           build.mill or .mill-version changed, since the probes pin what this compiler rejects.
+#   tui     scripts/tui-gate when a change's main sources lie in a module the chat runs on
+#           directly (turn, tui, chat, app, kit, models: the stub the scenarios answer from),
+#           or it changed tui-gate or a build file. Not every module the chat depends on: that
+#           is every module, and the scenarios take minutes.
 reach() {
   local base graph
   base=${CHECK_BASE-$(git merge-base HEAD main 2>/dev/null || true)}
   if ! graph=$("${mill[@]}" show grit.moduleGraph 2>"$logs/graph.log"); then
     echo "lint __.compile"
     echo "probes __.probes.testCached"
+    echo "tui scripts/tui-gate"
     return
   fi
   python3 - "$base" "$graph" <<'PY'
@@ -284,6 +291,7 @@ base, graph = sys.argv[1], [line.split() for line in json.loads(sys.argv[2])]
 if not base:
     print("lint __.compile")
     print("probes __.probes.testCached")
+    print("tui scripts/tui-gate")
     sys.exit()
 
 def git(*args):
@@ -344,6 +352,11 @@ else:
             touched.add(m)
     probed = {m + ".probes" for m in closure(touched) if m + ".probes" in folder} | own
     print("probes " + joined(f"{m}.testCached" for m in probed))
+
+chat = {"grit.turn", "grit.tui", "grit.chat", "grit.app", "grit.kit", "grit.models"}
+mains = {m for m, p in ((owner(p), p) for p in scala) if m and p.startswith(folder[m] + "/src/")}
+gate = {"build.mill", ".mill-version", "scripts/tui-gate", "scripts/tui-gate.py"}
+print("tui" + (" scripts/tui-gate" if changed & gate or mains & chat else ""))
 PY
 }
 
@@ -378,6 +391,14 @@ if [ ${#targets[@]} -eq 0 ]; then
     if $it; then
       modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
       run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" __.it.testForked
+    fi
+
+    tui_args=$(sed -n 's/^tui //p' <<<"$reached")
+    $milestone && tui_args=scripts/tui-gate
+    if [ -n "$tui_args" ]; then
+      run_tier tui out "" -- "$tui_args"
+    else
+      echo "== tui: no change reaches the chat"
     fi
 
     if $lint; then
