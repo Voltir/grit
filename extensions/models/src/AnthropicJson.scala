@@ -71,6 +71,35 @@ object AnthropicJson {
     body
   }
 
+  /** What Anthropic's cache keys the last breakpoint of `body` (a [[request]]) on, as text:
+    * each tool, each block of the system prompt, and each message's role and blocks through
+    * the one that breakpoint marks, in that order, one to a line, each written as `body`
+    * holds it but without `cache_control`. A later request can read what this one wrote to
+    * the cache only when its own prefix begins with this one. Empty when `body` marks no
+    * breakpoint.
+    */
+  def prefix(body: ujson.Value): String = {
+    def items(key: String): Vector[ujson.Value] =
+      body.obj.get(key).flatMap(_.arrOpt).fold(Vector.empty)(_.toVector)
+    val pieces = items("tools") ++ items("system") ++ items("messages").flatMap { m =>
+      ujson.Obj("role" -> m.obj.get("role").getOrElse(ujson.Null)) +:
+        m.obj.get("content").flatMap(_.arrOpt).fold(Vector.empty)(_.toVector)
+    }
+    val marked = pieces.lastIndexWhere(_.objOpt.exists(_.contains("cache_control")))
+    pieces
+      .take(marked + 1)
+      .map { piece =>
+        // Copied key by key: a filtered ujson.Obj loses its key order.
+        val unmarked = piece.objOpt.fold(piece) { o =>
+          val copy = ujson.Obj()
+          o.foreach { case (k, v) => if (k != "cache_control") copy(k) = v }
+          copy
+        }
+        ujson.write(unmarked) + "\n"
+      }
+      .mkString
+  }
+
   /** The assistant message in a 200 response, or why there is none: a `refusal` stop reason is
     * [[ProviderError.Refused]] naming its category. Its blocks keep the response's order, each
     * thinking block kept whole as its `replay`; `input` counts uncached, read and written

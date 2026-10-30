@@ -160,6 +160,35 @@ object AnthropicJsonTests extends TestSuite {
     }
 
     test(
+      "prefix: tools, system, then each message's role and blocks through the last breakpoint, a line each, unmarked"
+    ) {
+      def text(t: String, marked: Boolean = false) = {
+        val block = ujson.Obj("type" -> "text", "text" -> t)
+        if (marked) block("cache_control") = breakpoint
+        block
+      }
+      val body = ujson.Obj(
+        "model" -> "claude-haiku-5-5",
+        "tools" -> ujson.Arr(ujson.Obj("name" -> "read", "strict" -> true)),
+        "system" -> ujson.Arr(text("sys", marked = true)),
+        "messages" -> ujson.Arr(
+          ujson.Obj("role" -> "user", "content" -> ujson.Arr(text("hi"), text("there", true))),
+          ujson.Obj("role" -> "assistant", "content" -> ujson.Arr(text("tail")))
+        )
+      )
+      AnthropicJson.prefix(body) ==>
+        """{"name":"read","strict":true}
+          |{"type":"text","text":"sys"}
+          |{"role":"user"}
+          |{"type":"text","text":"hi"}
+          |{"type":"text","text":"there"}
+          |""".stripMargin
+      body("system")(0).obj.remove("cache_control")
+      body("messages")(0)("content")(1).obj.remove("cache_control")
+      AnthropicJson.prefix(body) ==> ""
+    }
+
+    test(
       "request: the message breakpoint never sits on a thinking block; with no system, the last tool takes it"
     ) {
       val thoughtOnly = ModelRequest(
