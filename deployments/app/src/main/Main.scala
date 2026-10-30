@@ -85,7 +85,9 @@ import grit.turn.TurnLoop
 
 // doc-length: the program's manual, naming every variable and mode it reads
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
-  * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
+  * called when `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` is set, through OpenRouter, or
+  * through Anthropic's own API for a pair at `api.anthropic.com` ([[grit.models.Keys]]; a pair whose
+  * gateway's key is unset refuses the start): each role's model, budget and upstream as
   * the seed catalog's policy ([[Seed]]) says, overridden for the run by the role's variables
   * ([[ModelRole]], [[OpenRouterConfig.policy]]), and its tool schemas strict when the turn's
   * pair is known to enforce them. The stub otherwise, answering turns after `GRIT_STUB_DELAY_MS`
@@ -291,7 +293,7 @@ object Main {
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
-    val modelName = secrets.openRouter.fold(StubProvider.Model)(_ =>
+    val modelName = secrets.keys.fold(StubProvider.Model)(_ =>
       ModelId.value(deployment.policy.turn.first.assignment.ref.model)
     )
     // A run with arguments prints each model call, so a replayed turn is visibly one that

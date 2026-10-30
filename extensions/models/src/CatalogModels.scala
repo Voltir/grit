@@ -4,20 +4,19 @@ import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Db, ModelSettingStore}
 
-/** [[Models]] over OpenRouter: the catalog in force is `seed` with every setting kept in `settings`
-  * laid over it, read through `db` each time it is asked for ([[KeptCatalog.read]]). Each pin's calls are made with
-  * `key` as [[OpenRouterConfig.of]] says; the providers for `seed`'s own pins are made once,
-  * here, and any other pin gets a new provider on each call.
+/** [[Models]] over the catalog: the catalog in force is `seed` with every setting kept in
+  * `settings` laid over it, read through `db` each time it is asked for
+  * ([[KeptCatalog.read]]). Each pin's calls go through the gateway that serves its pair, with
+  * that gateway's key, as [[Keys.provider]] says; the providers for `seed`'s own pins are
+  * made once, here, and any other pin gets a new provider on each call.
   */
-final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: ModelSettingStore)
+final class CatalogModels(keys: Keys, seed: Catalog, db: Db^, settings: ModelSettingStore)
     extends Models {
 
   private val pins = seed.pin
-  private val turn: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.turn.first))
-  private val summary: Provider = new OpenRouterProvider(
-    OpenRouterConfig.of(key, pins.summary.first)
-  )
-  private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query.first))
+  private val turn: Provider = keys.provider(pins.turn.first)
+  private val summary: Provider = keys.provider(pins.summary.first)
+  private val query: Provider = keys.provider(pins.query.first)
 
   def catalog(): Either[String, Catalog] = KeptCatalog.read(seed, db, settings)
 
@@ -25,7 +24,7 @@ final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: Mode
     if (pinned == pins.turn.first) turn
     else if (pinned == pins.summary.first) summary
     else if (pinned == pins.query.first) query
-    else new OpenRouterProvider(OpenRouterConfig.of(key, pinned))
+    else keys.provider(pinned)
 }
 
 /** [[Models]] that call nothing: every role's calls are the stub's, under [[StubModels.Catalog]];

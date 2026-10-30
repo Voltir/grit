@@ -1,5 +1,6 @@
 package grit.kit.environment
 
+import grit.core.model.{Assignment, ModelId, ModelRef, Policy, Upstream}
 import grit.kit.deployment.{Deployments, Placer}
 import grit.models.OpenRouterConfig
 
@@ -25,16 +26,46 @@ object SecretsTests extends TestSuite {
       )
     }
 
-    test("without OpenRouter's key the model is the stub; a blank key is refused, naming it") {
+    test("without a model key the model is the stub; a blank key is refused, naming it") {
       val d = Deployments.accepted()
       (
-        Secrets.of(db, d).map(_.openRouter),
-        Secrets.of(db + ("OPENROUTER_API_KEY" -> "sk-or-1"), d).map(_.openRouter),
-        Secrets.of(db + ("OPENROUTER_API_KEY" -> " "), d).map(_ => ())
+        Secrets.of(db, d).map(_.keys.map(_.toString)),
+        Secrets.of(db + ("OPENROUTER_API_KEY" -> "sk-or-1"), d).map(_.keys.map(_.toString)),
+        Secrets.of(db + ("OPENROUTER_API_KEY" -> " "), d).map(_ => ()),
+        Secrets.of(db + ("ANTHROPIC_API_KEY" -> ""), d).map(_ => ())
       ) ==> (
         Right(None),
-        Right(Some("sk-or-1")),
-        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY")))
+        Right(Some("Keys(openRouter: set, anthropic: unset)")),
+        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))),
+        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("ANTHROPIC_API_KEY")))
+      )
+    }
+
+    test(
+      "either model key alone serves a policy whose every pair it reaches; a pair whose key is unset is refused, naming the variable and the pair"
+    ) {
+      val direct = (for {
+        id <- ModelId.of("anthropic/claude-haiku-5-5")
+        turn = Assignment(ModelRef(id, Some(Upstream.AnthropicApi)), 100, None)
+        d <- Deployments.of(policy = Policy.one(turn, turn, turn, turn)).toOption
+      } yield d).getOrElse(sys.error("the direct deployment"))
+      val viaOpenRouter = Deployments.accepted()
+      val anthropic = db + ("ANTHROPIC_API_KEY" -> "sk-ant-1")
+      val openRouter = db + ("OPENROUTER_API_KEY" -> "sk-or-1")
+      def refusal(s: Either[SecretsRefusal, Secrets]): Option[String] =
+        s.left.toOption.map(_.message)
+      (
+        refusal(Secrets.of(anthropic, direct)),
+        refusal(Secrets.of(openRouter, viaOpenRouter)),
+        refusal(Secrets.of(openRouter, direct)),
+        refusal(Secrets.of(anthropic, viaOpenRouter))
+      ) ==> (
+        None,
+        None,
+        Some(
+          "ANTHROPIC_API_KEY is not set, and anthropic/claude-haiku-5-5 @ api.anthropic.com is called with it"
+        ),
+        Some("OPENROUTER_API_KEY is not set, and openai/gpt-oss-120b is called with it")
       )
     }
 

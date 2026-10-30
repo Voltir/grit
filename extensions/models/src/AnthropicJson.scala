@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Effort, ReasoningReplay}
+import grit.core.model.{Effort, ReasoningReplay, Upstream}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** Anthropic's Messages API wire format, both ways. Pure. Checked against platform.claude.com
@@ -16,11 +16,6 @@ object AnthropicJson {
 
   /** The `anthropic-beta` a request must be sent under when it asks [[request]]'s `dropBlock`. */
   val BindingBeta = "thinking-binding-controls-2026-08-01"
-
-  /** The upstream every response records as having served it: Anthropic's API, reached
-    * directly.
-    */
-  val Upstream = "api.anthropic.com"
 
   /** The request body for `request` on `model` (Anthropic's own id), its thinking adaptive and
     * summarised and its effort `effort` when set. Each [[Message]] is one wire message, in
@@ -79,7 +74,7 @@ object AnthropicJson {
   /** The assistant message in a 200 response, or why there is none: a `refusal` stop reason is
     * [[ProviderError.Refused]] naming its category. Its blocks keep the response's order, each
     * thinking block kept whole as its `replay`; `input` counts uncached, read and written
-    * tokens; its cost is [[AnthropicRates.cost]]'s; its upstream is [[Upstream]].
+    * tokens; its cost is [[AnthropicRates.cost]]'s; its upstream is [[Upstream.AnthropicApi]].
     */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
@@ -99,7 +94,7 @@ object AnthropicJson {
         stop(root.get("stop_reason").flatMap(_.strOpt)),
         counted.copy(costUsd = AnthropicRates.cost(model, counted)),
         model,
-        Some(Upstream)
+        Some(Upstream.value(Upstream.AnthropicApi))
       )
     }
 

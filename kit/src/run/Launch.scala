@@ -43,7 +43,7 @@ import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
-import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
+import grit.models.{CatalogModels, JevClassifier, JevConfig, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Administering, Cleared, Coding, FileReading, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
@@ -133,11 +133,11 @@ private[grit] object Launch {
       finished: String => Unit,
       files: FileArea^
   ): Unit = {
-    val reached: Models = s.openRouter match {
+    val reached: Models = s.keys match {
       case None => new StubModels(run.stubDelay)
-      case Some(key) =>
+      case Some(keys) =>
         val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
-        new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
+        new CatalogModels(keys, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
     }
     asking(
       engine,

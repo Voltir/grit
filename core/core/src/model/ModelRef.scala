@@ -3,8 +3,10 @@ package grit.core.model
 /** A model as OpenRouter names it in a request: an alias (`deepseek/deepseek-v4.1-flash`) or a
   * dated snapshot (`deepseek/deepseek-v4.1-flash-20260910`). An alias moves to newer snapshots
   * without notice and a response names the alias, never the snapshot that served it, so the
-  * policy names a snapshot where one exists. `vendor/name`, lower-case letters, digits, `.`,
-  * `_`, `-` and `:`.
+  * policy names a snapshot where one exists. At [[Upstream.AnthropicApi]], `anthropic/` and
+  * the id Anthropic's own API names it by (`anthropic/claude-haiku-5-5`, where OpenRouter
+  * writes `anthropic/claude-haiku-5.5`). `vendor/name`, lower-case letters, digits, `.`, `_`,
+  * `-` and `:`.
   */
 opaque type ModelId = String
 
@@ -19,7 +21,8 @@ object ModelId {
 }
 
 /** An OpenRouter upstream's slug, with an optional variant: `open-inference/fp8`,
-  * `fireworks`. Lower-case letters, digits, `.`, `_` and `-`, at most one `/`.
+  * `fireworks`; or [[Upstream.AnthropicApi]], Anthropic's API reached directly. Lower-case
+  * letters, digits, `.`, `_` and `-`, at most one `/`.
   */
 opaque type Upstream = String
 
@@ -31,6 +34,12 @@ object Upstream {
   def of(slug: String): Option[Upstream] = Option.when(Slug.matches(slug))(slug)
 
   def value(upstream: Upstream): String = upstream
+
+  /** `api.anthropic.com`: Anthropic's Messages API, reached directly rather than through
+    * OpenRouter. A pair it serves names its model `anthropic/` and Anthropic's own id
+    * (`anthropic/claude-haiku-5-5`); OpenRouter's own slug for Anthropic is `anthropic`.
+    */
+  val AnthropicApi: Upstream = "api.anthropic.com"
 }
 
 /** `model` served by `upstream` alone, or by whichever upstream OpenRouter picks when `None`:

@@ -27,7 +27,8 @@ Decision:
   one.
 - **Parties.** A party (`Party`) is a Bell–LaPadula subject outside grit: an outside service
   (`Party.Service`, which also covers a classifier, cleared as the service it calls) or a
-  model at one named upstream (`Party.Model`). The deployment declares each party's clearance
+  model at one named upstream (`Party.Model`); the upstream `api.anthropic.com` is Anthropic's
+  own API, reached directly rather than through the router. The deployment declares each party's clearance
   (`Cleared`); one it does not name, and a pair whose upstream the router picks, is cleared for
   public alone. Content may go to a party when its clearance dominates the content's
   classification (`Clearances.clears`, `Tx.clears`). What a transaction knows is classified at

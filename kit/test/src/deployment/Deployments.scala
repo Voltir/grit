@@ -73,13 +73,14 @@ object Deployments {
       schedules: Vector[grit.core.job.Declared[?]] = Vector.empty,
       visibility: Visibility = Visibility.Shipped,
       identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped,
-      version: DeploymentVersion = DeploymentVersion.First
+      version: DeploymentVersion = DeploymentVersion.First,
+      policy: Policy = Policy.one(assigned, assigned, assigned, assigned)
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
       worksIn = worksIn,
       plugins = plugins,
-      policy = Policy.one(assigned, assigned, assigned, assigned),
+      policy = policy,
       offer = Offer(tools, TurnLoop.Rounds.of(4).getOrElse(sys.error("rounds"))),
       assembly = Assembly.Linear(Tokens(1000)),
       placer = placer,

@@ -12,8 +12,9 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
   * streamed or not, no retries, under `pinned`'s model (its id after `anthropic/`), budget and
   * effort, thinking adaptive and summarised, earlier thinking sent back as its settings'
   * replay says. Caches `tools` and `system`, and a request's first `stable` messages, with a
-  * breakpoint after each ([[AnthropicJson.request]]). Each reply records `api.anthropic.com`
-  * as the upstream that served it, and its cost from [[AnthropicRates]].
+  * breakpoint after each ([[AnthropicJson.request]]). Each reply records
+  * [[grit.core.model.Upstream.AnthropicApi]] as the upstream that served it, and its cost from
+  * [[AnthropicRates]].
   *
   * A failure to connect, a timeout or a connection lost is [[ProviderError.Unavailable]]; an
   * HTTP error is classed as [[AnthropicJson.error]] says, an error event in a stream as
@@ -83,6 +84,9 @@ final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
 object AnthropicProvider {
 
   val Endpoint: URI = URI.create("https://api.anthropic.com/v1/messages")
+
+  /** The variable Anthropic's key is read from ([[Keys.of]]). */
+  val KeyVar = "ANTHROPIC_API_KEY"
 
   /** How a pair served by Anthropic directly names its model: `anthropic/` and Anthropic's own
     * id.
