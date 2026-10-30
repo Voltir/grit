@@ -7,7 +7,7 @@ import grit.core.context.{CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
 import grit.core.either.Traversal.traverse
 import grit.core.files.{KeptPiece, PieceSearch}
-import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
@@ -18,6 +18,7 @@ import grit.core.store.{
   EntryStore,
   Nearby,
   Payload,
+  PayloadJson,
   Principals,
   Speakers,
   StoreError,
@@ -180,6 +181,27 @@ private[turn] object TurnShown {
       .fold(Map.empty)(
         _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered)).toMap
       )
+
+  /** What a later call that repeats `request`'s system prompt, tools and first `messages`
+    * messages, byte for byte, is kept as ([[Payload.Prefix]]); `None` when `request` has fewer
+    * messages. Equal digests mean those parts are equal as a gateway is given them.
+    */
+  def prefixOf(request: ModelRequest, messages: Int): Option[Payload.Prefix] =
+    Option.when(messages >= 0 && messages <= request.messages.size) {
+      val written = ujson.Obj(
+        "system" -> request.system,
+        "tools" -> ujson.Arr.from(request.tools.map { t =>
+          ujson.Obj(
+            "name" -> t.name,
+            "description" -> t.description,
+            "parameters" -> t.parameters,
+            "strict" -> t.strict
+          )
+        }),
+        "messages" -> ujson.Arr.from(request.messages.take(messages).map(PayloadJson.writeMessage))
+      )
+      Payload.Prefix(messages, Sha256.text(written.render()))
+    }
 
   /** `turn`'s own entries, from `all` of its conversation's. */
   def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =

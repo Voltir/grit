@@ -31,7 +31,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
-import grit.core.message.{AssistantBlock, Message, StopReason}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.place.Place
 import grit.core.provider.Provider
 import grit.core.store.{
@@ -255,7 +255,15 @@ object TurnDocumentsTests extends TestSuite {
       )
       assert(output.startsWith("replied:"))
       windows(entries).lastOption.map(_._2) ==>
-        Some(Payload.Window(Vector(EntrySeq(0)), Vector.empty, nearby, held, carry = None))
+        Some(
+          Payload.Window(
+            Vector(EntrySeq(0)),
+            Vector.empty,
+            nearby,
+            held,
+            carry = Some(Payload.Carry(None, Tokens.Zero, Some(dated.text), None))
+          )
+        )
     }
 
     test(

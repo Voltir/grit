@@ -53,6 +53,7 @@ object Turn {
     val Stitched: String = TurnSteps.Names.stitched.family
     val Classify: String = TurnSteps.Names.classify.family
     val RecordAgenda: String = TurnSteps.Names.recordAgenda.family
+    val Carried: String = TurnSteps.Names.carried.family
     val Search: String = TurnSteps.Names.search.family
     val Assemble: String = TurnSteps.Names.assemble.family
     val RecordWindow: String = TurnSteps.Names.recordWindow.family
@@ -234,6 +235,9 @@ object Turn {
     val base = s"query:${WorkflowId.value(turn.workflowId)}"
     EntryId(if (i == 0) base else s"$base:$i")
   }
+
+  /** The id of the record of the prefix of `turn`'s last call ([[grit.core.store.Payload.Prefix]]). */
+  def prefixId(turn: TurnRef): EntryId = EntryId(s"prefix:${WorkflowId.value(turn.workflowId)}")
 
   /** The id of the record of `turn`'s window. */
   def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")

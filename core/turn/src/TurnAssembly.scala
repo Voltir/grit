@@ -9,20 +9,22 @@ import grit.core.context.{
   CarriedWindow,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Results,
   Retrieved,
   Window
 }
 import grit.core.durable.{Flow, Step}
+import grit.core.id.EntryId
 import grit.core.model.Pins
 import grit.core.period.Probability
 import grit.core.route.Routed
-import grit.core.store.Tx
+import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
 
 import TurnJournal.given
-import TurnSteps.{Env, Placed}
+import TurnSteps.{Env, Placed, Windowed}
 import TurnRelevance.Verdict
 
 /** The turn's window drawn in recorded steps, from its placed message: `ask:needs`, whether its
@@ -34,11 +36,39 @@ import TurnRelevance.Verdict
   */
 private[turn] object TurnAssembly {
 
-  /** From the placed message to its window; `Right(Left(root))` when the needs gate rejected a
-    * heard message, or no candidate of a heard turn's search grounds a draft
+  /** From the placed message to its window: `carried`, the window record it is drawn against
+    * ([[TurnSteps.Env.carried]]), then the steps that draw it, `assemble` recording its
+    * projection; under a history from before [[Carrying]], those steps alone, `assemble`
+    * recording the whole window. `Right(Left(root))` when the needs gate rejected a heard
+    * message, or no candidate of a heard turn's search grounds a draft
     * ([[TurnRelevance.grounds]]), so none is drawn; `Left` why there is none.
     */
-  def flow: Flow[Env, Placed, Nothing, Drawn[Window]] =
+  def flow: Flow[Env, Placed, Nothing, Drawn[Windowed]] =
+    Flow.patch(Carrying)(
+      drawing(whole).map(_.map(_.map(Windowed.Whole(_)))),
+      Flow
+        .step(carried)
+        .keeping
+        .andThen(
+          Flow.branch((read: (Placed, Either[TurnFailure, Option[EntryId]])) =>
+            read._2.map(head => read._1.copy(carried = head)).left.map(f => Left(f))
+          )(
+            Flow.pass[Drawn[Windowed]],
+            drawing(projected).keeping
+              .map((p, drawn) => drawn.map(_.map(Windowed.Carried(p.carried, _))))
+          )
+        )
+    )
+
+  /** The patch under which a turn reads the window it carries before its first ask (ADR 0004,
+    * ADR 0052); a history from before it draws every window whole.
+    */
+  val Carrying: String = "carried-window"
+
+  /** From the placed message to what `assemble` records of its window, as [[flow]] says. */
+  private def drawing[A](
+      assemble: Step[Env, (Placed, Packing), Either[TurnFailure, A]]
+  ): Flow[Env, Placed, Nothing, Drawn[A]] =
     needs.andThen(
       Flow.branch((judged: (Placed, Verdict)) =>
         TurnNeeds.after(judged._2, judged._1.at.offer.root) match {
@@ -46,7 +76,7 @@ private[turn] object TurnAssembly {
           case TurnNeeds.After.Searches => Right((judged._1, true))
           case TurnNeeds.After.Unsearched => Right((judged._1, false))
         }
-      )(Flow.pass[Drawn[Window]], drawn)
+      )(Flow.pass[Drawn[A]], drawn(assemble))
     )
 
   /** A window, or what it is packed from (`A`); a heard turn's root when it ends unasked; or why
@@ -67,7 +97,9 @@ private[turn] object TurnAssembly {
   /** From the placed message, searching when `true`, to its window, its root when it ends
     * unasked, or why there is none.
     */
-  private def drawn: Flow[Env, (Placed, Boolean), Nothing, Drawn[Window]] =
+  private def drawn[A](
+      assemble: Step[Env, (Placed, Packing), Either[TurnFailure, A]]
+  ): Flow[Env, (Placed, Boolean), Nothing, Drawn[A]] =
     query
       .andThen(
         Flow.branch((queried: (Placed, Either[TurnFailure, Querying])) =>
@@ -84,8 +116,8 @@ private[turn] object TurnAssembly {
             case Right(Right(packing)) => Right(packing)
             case Right(Left(root)) => Left(Right(Left(root)))
             case Left(f) => Left(Left(f))
-          }: Either[Drawn[Window], (Placed, Packing)]
-        )(Flow.pass[Drawn[Window]], Flow.step(assemble).map(_.map(Right(_))))
+          }: Either[Drawn[A], (Placed, Packing)]
+        )(Flow.pass[Drawn[A]], Flow.step(assemble).map(_.map(Right(_))))
       )
 
   /** What a candidate the search found, judged as a batch of the turn's, came to so far. */
@@ -182,9 +214,19 @@ private[turn] object TurnAssembly {
   private def charged(p: Placed): Judging.Charged =
     Judging.Charged(p.turn, p.turn.workflowId, Subject.Turn(p.turn))
 
-  /** What `p`'s window is asked for: drawn afresh, nothing carried. */
-  private def request(p: Placed): AssemblyRequest =
-    AssemblyRequest(p.turn, p.at.offer.width, CarriedWindow.Empty)
+  /** What `p`'s window is asked for, read through `db`: drawn against the window its `carried`
+    * step read ([[CarriedWindow.chain]]), or afresh when it read none.
+    */
+  private def request(env: TurnEnv^, db: Db^, p: Placed): Either[AssemblyError, AssemblyRequest] =
+    p.carried
+      .fold[Either[StoreError, CarriedWindow]](Right(CarriedWindow.Empty))(head =>
+        db.read(Subject.Turn(p.turn))(
+          CarriedWindow.chain(head)(env.records.entries.get).map(CarriedWindow.of)
+        )
+      )
+      .map(AssemblyRequest(p.turn, p.at.offer.width, _))
+      .left
+      .map(AssemblyError.Store(_))
 
   private def failed(error: AssemblyError): TurnFailure = error match {
     case AssemblyError.Store(e) => TurnFailure.Assembly(e.described)
@@ -203,7 +245,7 @@ private[turn] object TurnAssembly {
         val db = pins.reads(env.db)
         // `ask:query` reads `prepare` again: a read, never a call, and `Prepared.Asking` holds a
         // function, so it cannot be recorded here and passed on.
-        env.assembler.prepare(request(p))(using db) match {
+        request(env, db, p).flatMap(env.assembler.prepare(_)(using db)) match {
           case Left(e) => unjudged(TurnFailure.reason(failed(e)))
           case Right(Prepared.Drawn(_)) => unjudged(TurnNeeds.NothingToSearch)
           case Right(Prepared.Asking(_, _)) if pins.query.isEmpty =>
@@ -262,7 +304,7 @@ private[turn] object TurnAssembly {
       case Left(f) => Pose.Made(Left(f))
       case Right(pins) =>
         val db = pins.reads(env.db)
-        env.assembler.prepare(request(p))(using db) match {
+        request(env, db, p).flatMap(env.assembler.prepare(_)(using db)) match {
           case Left(e) => Pose.Made(Left(failed(e)))
           case Right(Prepared.Drawn(drawn)) => Pose.Made(Right(drawn))
           case Right(Prepared.Asking(_, written)) if !searching =>
@@ -295,12 +337,13 @@ private[turn] object TurnAssembly {
         val env = r.env
         p.at.routed
           .picked(env)
-          .flatMap(pins =>
-            env.assembler
-              .search(request(p), written)(using pins.reads(env.db))
+          .flatMap { pins =>
+            val db = pins.reads(env.db)
+            request(env, db, p)
+              .flatMap(env.assembler.search(_, written)(using db))
               .left
               .map(failed)
-          )
+          }
           .map(found =>
             Results(
               found.ranked.take(TurnRelevance.Recorded),
@@ -326,8 +369,8 @@ private[turn] object TurnAssembly {
           val db = pins.reads(env.db)
           Routed
             .reading(db, Subject.Turn(s.at.turn)) { (routed, _) =>
-              env.assembler.judgeText(request(s.at), batch, TurnRelevance.Chars)(using
-                routed.bound(db)
+              request(env, db, s.at).flatMap(
+                env.assembler.judgeText(_, batch, TurnRelevance.Chars)(using routed.bound(db))
               ) match {
                 case Left(e) => unjudged(TurnFailure.reason(failed(e)))
                 case Right(judgeText) =>
@@ -348,20 +391,39 @@ private[turn] object TurnAssembly {
       }
   }
 
-  /** `assemble`: the turn's window, packed as its steps decided, read as its route bounds it. */
-  private val assemble: Step[Env, (Placed, Packing), Either[TurnFailure, Window]] =
+  /** `assemble`: the turn's projection, packed as its steps decided against the window its
+    * `carried` step read, read as its route bounds it.
+    */
+  private val projected: Step[Env, (Placed, Packing), Either[TurnFailure, Projection]] =
+    Step[Env, (Placed, Packing), Either[TurnFailure, Projection]](TurnSteps.Names.assemble)(r =>
+      (p, packing) => projecting(r.env, p, packing)
+    )
+
+  /** `assemble` as a turn recorded it before windows were carried: the window alone. */
+  private val whole: Step[Env, (Placed, Packing), Either[TurnFailure, Window]] =
     Step[Env, (Placed, Packing), Either[TurnFailure, Window]](TurnSteps.Names.assemble)(r =>
-      (p, packing) => {
-        val env = r.env
-        p.at.routed
-          .picked(env)
-          .flatMap(pins =>
-            env.assembler
-              .assemble(request(p), packing)(using pins.reads(env.db))
-              .map(_.window)
-              .left
-              .map(failed)
-          )
+      (p, packing) => projecting(r.env, p, packing).map(_.window)
+    )
+
+  /** The `assemble` body: `p`'s projection, packed as `packing` says. */
+  private def projecting(
+      env: TurnEnv^,
+      p: Placed,
+      packing: Packing
+  ): Either[TurnFailure, Projection] =
+    p.at.routed
+      .picked(env)
+      .flatMap { pins =>
+        val db = pins.reads(env.db)
+        request(env, db, p)
+          .flatMap(env.assembler.assemble(_, packing)(using db))
+          .left
+          .map(failed)
       }
+
+  /** `carried` ([[TurnSteps.Env.carried]]). */
+  private val carried: Step[Env, Placed, Either[TurnFailure, Option[EntryId]]] =
+    Step[Env, Placed, Either[TurnFailure, Option[EntryId]]](TurnSteps.Names.carried)(r =>
+      p => r.carried(p)
     )
 }

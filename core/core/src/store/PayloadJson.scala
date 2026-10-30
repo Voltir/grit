@@ -9,6 +9,7 @@ import grit.core.id.{
   EntrySeq,
   PeriodSeq,
   PieceId,
+  Sha256,
   ToolCallId,
   TurnSeq
 }
@@ -58,6 +59,8 @@ object PayloadJson {
     case Payload.Agenda(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(AgendaJson.write)))
     case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
+    case Payload.Prefix(messages, digest) =>
+      ujson.Obj("kind" -> "prefix", "messages" -> messages, "digest" -> digest.hex)
     case Payload.Draft(reply) => ujson.Obj("kind" -> "draft", "message" -> message(reply))
     case Payload.Result(result, shown) =>
       ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
@@ -145,6 +148,11 @@ object PayloadJson {
             pieces <- o.value.get("pieces").fold(Right(Vector.empty))(readPieces)
             carry <- o.value.get("carry").fold(Right(None))(readCarry(_).map(Some(_)))
           } yield Payload.Window(entries, recalled, nearby, documents, pieces, carry)
+        case "prefix" =>
+          for {
+            messages <- long(o, "messages")
+            digest <- str(o, "digest").flatMap(d => Sha256.read(d).toRight(s"$d is not a digest"))
+          } yield Payload.Prefix(messages.toInt, digest)
         case "topic" =>
           arr(o, "events").flatMap(traverse(_)(AgendaJson.read)).map(Payload.Agenda(_))
         case "exchange" =>
@@ -193,6 +201,9 @@ object PayloadJson {
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p
+
+  /** `m` as an entry stores it, every block and its replay included. */
+  def writeMessage(m: Message): ujson.Value = message(m)
 
   private def message(m: Message): ujson.Value = m match {
     case Message.User(text) => ujson.Obj("role" -> "user", "text" -> text)

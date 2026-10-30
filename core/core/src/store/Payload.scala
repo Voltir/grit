@@ -2,7 +2,16 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, PeriodSeq, PieceId, ToolCallId, TurnSeq}
+import grit.core.id.{
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  PieceId,
+  Sha256,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{Message, Tokens}
 import grit.core.period.{CloseReason, Closing}
 
@@ -100,6 +109,14 @@ enum Payload {
     * model as [[grit.core.context.Shown.of]] shows it when a window includes it.
     */
   case Closed(period: PeriodSeq, reason: CloseReason, closing: Closing)
+
+  /** The prefix of the last call the turn the entry belongs to made, as a later turn of its
+    * window must send it again to carry that turn (ADR 0052): the digest of the call's system
+    * prompt, its tools and its first `messages` messages, those a later call repeats
+    * ([[grit.core.provider.ModelRequest.stable]]). One per answered turn, about 100 bytes; a
+    * record: never shown to the model, never searched.
+    */
+  case Prefix(messages: Int, digest: Sha256)
 
   /** An unprompted turn's answer before it was judged ([[grit.core.speech.Outcome]]): a
     * record, never shown to the model, never searched, and not a period's activity. A posted

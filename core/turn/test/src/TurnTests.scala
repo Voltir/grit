@@ -70,6 +70,8 @@ object TurnTests extends TestSuite {
       "stitched",
       "classify",
       "record-topic",
+      "DBOS.patch-carried-window",
+      "carried",
       "ask:needs",
       "ask:query",
       "assemble",
@@ -93,7 +95,8 @@ object TurnTests extends TestSuite {
       .collectFirst { case InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(o)) =>
         o
       }
-      .flatMap(o => TurnJournal.window.decode(o).toOption.flatMap(_.toOption))
+      .flatMap(o => TurnJournal.projection.decode(o).toOption.flatMap(_.toOption))
+      .map(_.window)
       .map(_.notes.flatMap {
         case AssemblyNote.Recalled(turns) => turns
         case _ => Vector.empty
@@ -117,7 +120,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 9
+  private val Placing = 11
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -258,10 +261,12 @@ object TurnTests extends TestSuite {
         "stitched",
         "classify",
         "record-topic",
+        "DBOS.patch-carried-window",
         "ask",
         "search",
         "DBOS.patch-heard-quiet-exit",
         "assemble",
+        "carried",
         "record-window",
         "gate",
         "call",
@@ -754,6 +759,7 @@ object TurnTests extends TestSuite {
       sifter.asked.map((batch: Vector[String]) => batch.size) ==> Vector(10, 10, 5)
       recalledIn(durable, turn) ==> Some((0 until 25 by 2).toVector.map(n => TurnSeq(n.toLong)))
       assemblySteps(durable, turn) ==> Vector(
+        "carried",
         "ask:needs",
         "ask:needs:record",
         "ask:query",
@@ -857,7 +863,7 @@ object TurnTests extends TestSuite {
       val sifter = new Sifter
       val turn = say(entries, "hello")
       runTurn(durable, entries, new RecordingProvider, turn, classifier = sifter) ==> Done
-      assemblySteps(durable, turn) ==> Vector("ask:needs", "ask:query", "assemble")
+      assemblySteps(durable, turn) ==> Vector("carried", "ask:needs", "ask:query", "assemble")
       sifter.gated ==> Vector.empty
       durable
         .history(turn.workflowId)
@@ -879,12 +885,12 @@ object TurnTests extends TestSuite {
         turnBodyWith(entries, provider, new Searching(entries, 5), ledger, sifter)
       ) ==> Done
       assemblySteps(durable, turn) ==>
-        Vector("ask:needs", "ask:needs:record", "ask:query", "assemble")
+        Vector("carried", "ask:needs", "ask:needs:record", "ask:query", "assemble")
       sifter.gated.map(_.obj.get("message").flatMap(_.strOpt)) ==> Vector(Some("Someone: thanks!"))
       durable
         .history(turn.workflowId)
         .collectFirst { case InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(o)) =>
-          TurnJournal.window.decode(o).map(_.map(_.notes))
+          TurnJournal.projection.decode(o).map(_.map(_.window.notes))
         } ==> Some(Right(Right(Vector(AssemblyNote.FellBack(s"no query: ${TurnNeeds.Unneeded}")))))
       ledger.rows.map(r => EntryId.value(r._1)).filter(_.startsWith("move:")) ==>
         Vector(s"move:${WorkflowId.value(turn.workflowId)}:needs")
@@ -905,8 +911,8 @@ object TurnTests extends TestSuite {
           sifter
         )
       ) ==> Done
-      assemblySteps(durable, turn).take(4) ==>
-        Vector("ask:needs", "ask:needs:record", "ask:query", "ask:query:record")
+      assemblySteps(durable, turn).take(5) ==>
+        Vector("carried", "ask:needs", "ask:needs:record", "ask:query", "ask:query:record")
       sifter.asked.size ==> 1
     }
 
@@ -937,6 +943,8 @@ object TurnTests extends TestSuite {
       ) ==> (
         Some(grit.core.speech.Outcome.NothingRecalled),
         Vector(
+          "DBOS.patch-carried-window",
+          "carried",
           "ask:needs",
           "ask:needs:record",
           "ask:query",
@@ -982,8 +990,11 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       runTurn(durable, entries, provider, say(entries, "one"))
       runTurn(durable, entries, provider, say(entries, "two"))
-      provider.requests.map(_.messages.size) ==> Vector(2, 4)
-      provider.requests.lastOption.flatMap(_.messages.headOption) ==> Some(Message.User("one"))
+      // The second carries the first as it was sent: its dated line, its message, its reply.
+      provider.requests.map(_.messages.size) ==> Vector(2, 5)
+      provider.requests.lastOption.map(_.messages.take(2)) ==> Some(
+        Vector(dated, Message.User("one"))
+      )
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
     }
 
@@ -1103,7 +1114,12 @@ object TurnTests extends TestSuite {
         )
       )
       windows(entries).lastOption.map(_._2) ==> Some(
-        Payload.Window(Vector(EntrySeq(1)), Vector.empty, nearby, carry = None)
+        Payload.Window(
+          Vector(EntrySeq(1)),
+          Vector.empty,
+          nearby,
+          carry = Some(Payload.Carry(None, Tokens.Zero, Some(dated.text), None))
+        )
       )
     }
 
@@ -1208,7 +1224,9 @@ object TurnTests extends TestSuite {
         voicedBody(entries, turn, new RecordingProvider, new InMemoryVoiceStore, principals)
       )
       turn.requests.headOption.map(_.messages.collect { case Message.User(t) => t }) ==>
-        Some(Vector("Ana Lima wrote:\nhello", "hmm", dated.text, "Ana Lima wrote:\nthanks"))
+        Some(
+          Vector("Ana Lima wrote:\nhello", dated.text, "hmm", dated.text, "Ana Lima wrote:\nthanks")
+        )
     }
 
     test("with no voice set, the turn adds no person fragment") {
@@ -1286,6 +1304,34 @@ object TurnTests extends TestSuite {
       )
     }
 
+    test(
+      "a later turn's window record follows the last one's: only what it appended, its cost, and its own lines"
+    ) {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val one = say(entries, "one")
+      runTurn(durable, entries, provider, one)
+      // A message whose turn never ran: the window appends it after the carried one.
+      val _ = say(entries, "aside")
+      val three = say(entries, "three")
+      runTurn(durable, entries, provider, three)
+      windows(entries).collectFirst { case (id, w) if id == Turn.windowId(three) => w } ==> Some(
+        Payload.Window(
+          Vector(seqOf(entries, EntryId("in:aside"))),
+          Vector.empty,
+          carry = Some(
+            Payload.Carry(
+              Some(Turn.windowId(one)),
+              CharEstimate.message(Message.User("aside")),
+              Some(dated.text),
+              None
+            )
+          )
+        )
+      )
+    }
+
     test("each turn's window is recorded as its own entry, with the turns search recalled") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -1298,17 +1344,23 @@ object TurnTests extends TestSuite {
         turnBodyWith(entries, provider, recalling, new InMemoryUsageLedger)
       )
       windows(entries) ==> Vector(
-        Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty, carry = None),
+        Turn.windowId(one) -> Payload.Window(
+          Vector.empty,
+          Vector.empty,
+          carry = Some(Payload.Carry(None, Tokens.Zero, Some(dated.text), None))
+        ),
         Turn.windowId(two) ->
           Payload.Window(
             Vector(seqOf(entries, EntryId("in:one")), seqOf(entries, one.replyId)),
             Vector(one.turnSeq),
-            carry = None
+            carry = Some(Payload.Carry(None, Tokens.Zero, Some(dated.text), None))
           )
       )
     }
 
-    test("the turn journals its window as the seqs of its own entries") {
+    test(
+      "the turn journals its window as its projection: a boundary or an append, the seqs of its own entries, and its cost"
+    ) {
       // The `assemble` step's stored form: a seq read in the window's own conversation,
       // where an id spelt that conversation out again in every entry it named.
       val entries = new InMemoryEntryStore
@@ -1318,9 +1370,18 @@ object TurnTests extends TestSuite {
       runTurn(durable, entries, provider, one)
       val two = say(entries, "two")
       runTurn(durable, entries, provider, two)
-      // Turn one's message, at seq 0, and its reply, at 3.
-      durable.history(two.workflowId).find(_.name == "assemble") ==>
-        Some(InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output("""{"ok":[0,3]}""")))
+      // Turn two carries turn one, so appends nothing: no turn between them.
+      Vector(one, two).flatMap(t => durable.history(t.workflowId).find(_.name == "assemble")) ==>
+        Vector(
+          InMemoryDurable.Step(
+            "assemble",
+            InMemoryDurable.Outcome.Output("""{"ok":{"boundary":[],"cost":0}}""")
+          ),
+          InMemoryDurable.Step(
+            "assemble",
+            InMemoryDurable.Outcome.Output("""{"ok":{"appended":[],"cost":0}}""")
+          )
+        )
     }
 
     test("a failed model call ends the turn with no reply") {

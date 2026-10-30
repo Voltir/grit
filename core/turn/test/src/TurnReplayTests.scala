@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.durable.{History, InMemoryDurable, RecordedSizes}
+import grit.core.durable.{History, InMemoryDurable, RecordedSizes, StepRecord}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 
 import utest.*
@@ -43,7 +43,9 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.Relevance -> 840, // a batch's verdicts, by reference, and its call's cost
     Turn.Step.RelevanceRecord -> 64, // whether the cost was kept
     "DBOS.patch-heard-quiet-exit" -> 0, // a taken patch's marker, which records no output
-    Turn.Step.Assemble -> 640, // the window's entry seqs and notes
+    "DBOS.patch-carried-window" -> 0, // a taken patch's marker, which records no output
+    Turn.Step.Carried -> 128, // the carried window record's id, or none
+    Turn.Step.Assemble -> 640, // the window's entry seqs and notes, and its cost
     Turn.Step.RecordWindow -> 128, // the loop's limits
     Turn.Step.Gate -> 800, // a round's level and the items it hid or lowered
     Turn.Step.Ask -> 1024, // a model reply: these fixtures' are a few lines
@@ -72,8 +74,12 @@ object TurnReplayTests extends TestSuite {
     */
   private val Gating: Set[String] = Set(Turn.Step.Needs, Turn.Step.NeedsRecord)
 
-  /** The families a turn's window is drawn in before `assemble`. */
+  /** The families a turn's window is drawn in before `assemble`, and the carried window's
+    * patch marker.
+    */
   private val Drawing: Set[String] = Gating ++ Set(
+    StepRecord.marker(TurnAssembly.Carrying),
+    Turn.Step.Carried,
     Turn.Step.Query,
     Turn.Step.QueryRecord,
     Turn.Step.Search,
@@ -83,7 +89,9 @@ object TurnReplayTests extends TestSuite {
 
   /** The assembly stage `names` recorded: its drawing steps and `assemble`, in order. */
   private def stage(names: Vector[String]): Vector[String] =
-    names.filter(n => n == Turn.Step.Assemble || Turn.Step.family(n).exists(Drawing.contains))
+    names.filter(n =>
+      n == Turn.Step.Assemble || Drawing.contains(n) || Turn.Step.family(n).exists(Drawing.contains)
+    )
 
   /** Each history's assembly stage, by its file's name, where it is not `ask:needs`,
     * `ask:query` then `assemble` (no gate answered, nothing searched): a gate that answered, a
@@ -95,6 +103,14 @@ object TurnReplayTests extends TestSuite {
     val unjudged = (0 to 2).toVector.map(n => s"ask:relevance-$n")
     val searched = Vector("ask:query", "ask:query:record", "search")
     val written = Vector("ask:needs", "ask:query", "ask:query:record", "assemble")
+    val carrying =
+      Vector(
+        StepRecord.marker(TurnAssembly.Carrying),
+        "carried",
+        "ask:needs",
+        "ask:query",
+        "assemble"
+      )
     Map(
       // Gated and searched for 25, judged in three batches by a classifier that answered each.
       "queried.json" -> (Vector("ask:needs", "ask:needs:record") ++ searched ++ judged :+
@@ -108,9 +124,22 @@ object TurnReplayTests extends TestSuite {
       "routed-floored.json" -> written,
       "routed-no-summary.json" -> written,
       "routed-second-rung.json" -> written,
-      "routed-tasked.json" -> written
+      "routed-tasked.json" -> written,
+      // Under the carried window's patch: its marker and `carried` lead the stage.
+      "carried-appended.json" -> carrying,
+      "carried-boundary.json" -> carrying
     )
   }
+
+  /** Each `assemble` output of this epoch's histories, by its file's name: those under the
+    * carried window's patch when `carrying`, else the others.
+    */
+  private def assembled(carrying: Boolean): Vector[(String, InMemoryDurable.Outcome)] =
+    histories.flatMap { case (path, parsed) =>
+      parsed.toOption.toVector
+        .filter(_.steps.exists(_.name == StepRecord.marker(TurnAssembly.Carrying)) == carrying)
+        .flatMap(_.steps.collect { case s if s.name == Turn.Step.Assemble => (path, s.outcome) })
+    }
 
   /** Each history of `epoch`, by its file's name, as the names of its steps. */
   private def namesOf(epoch: String): Map[String, Vector[String]] =
@@ -123,9 +152,15 @@ object TurnReplayTests extends TestSuite {
       val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
       def ungated(names: Vector[String]): Vector[String] =
         names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
-      // The shapes the gate's rejection and the quiet exit made, which no history before them
-      // could have.
-      val rejected = Set("unneeded.json", "heard-unneeded.json", "heard-quiet.json")
+      // The shapes the gate's rejection, the quiet exit and the carried window made, which no
+      // history before them could have.
+      val rejected = Set(
+        "unneeded.json",
+        "heard-unneeded.json",
+        "heard-quiet.json",
+        "carried-appended.json",
+        "carried-boundary.json"
+      )
       (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
       before ==> after.collect {
         case (file, names) if !rejected.contains(file) => file -> ungated(names)
@@ -276,12 +311,23 @@ object TurnReplayTests extends TestSuite {
       // A window is recorded data: one recorded before notes, sections or documents existed
       // reads back, and today's codec writes the same text back, documents among them.
       val j = TurnJournal.window
-      val outputs = histories.flatMap { case (path, parsed) =>
-        parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == Turn.Step.Assemble => (path, s.outcome)
-        })
-      }
+      val outputs = assembled(carrying = false)
       assert(outputs.exists(_._1 == "documented.json"))
+      val failures = outputs.collect {
+        case (file, InMemoryDurable.Outcome.Output(text))
+            if j.decode(text).map(j.encode) != Right(text) =>
+          file
+        case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
+      }
+      failures ==> Vector.empty
+    }
+
+    test("every recorded projection is written back byte for byte") {
+      // A carried turn's `assemble` records its projection: a boundary or an append, the
+      // window as a window is written, and its cost. Today's codec writes the same text back.
+      val j = TurnJournal.projection
+      val outputs = assembled(carrying = true)
+      outputs.map(_._1).toSet ==> Set("carried-appended.json", "carried-boundary.json")
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))
             if j.decode(text).map(j.encode) != Right(text) =>

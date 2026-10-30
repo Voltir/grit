@@ -6,9 +6,10 @@ import grit.act.phase.Gated as CallGate
 import grit.act.phase.{Asking, Calling, Shaped, Shaping}
 import grit.core.act.{Extraction, Gates, Posed}
 import grit.core.approval.Approval
+import grit.core.context.{CarriedWindow, Window}
 import grit.core.durable.StreamWriter
 import grit.core.flow.{Extracted, Shape, Trusted}
-import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef}
+import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.model.{Grade, StrictSchemas}
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -308,16 +309,7 @@ private[turn] object Rounding {
       .left
       .map(TurnFailure.ofStore)
       .map { showing =>
-        val start = prior.getOrElse {
-          val rooted =
-            showing.mine
-              .minByOption(e => EntrySeq.value(e.seq))
-              .fold(Integrity.Untrusted)(_.integrity)
-          root match {
-            case TurnOffer.Root.Heard | TurnOffer.Root.Named => rooted.meet(Integrity.Outside)
-            case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => rooted
-          }
-        }
+        val start = prior.getOrElse(startOf(showing.mine, root))
         TurnGate.decide(
           start,
           offered,
@@ -326,6 +318,105 @@ private[turn] object Rounding {
           named
         )
       }
+
+  /** Where a turn's first gate starts, its own entries `mine`: its root's integrity, met with
+    * [[Integrity.Outside]] when `root` is a heard message grit was not addressed in.
+    */
+  private def startOf(mine: Vector[Entry], root: TurnOffer.Root): Integrity = {
+    val rooted =
+      mine.minByOption(e => EntrySeq.value(e.seq)).fold(Integrity.Untrusted)(_.integrity)
+    root match {
+      case TurnOffer.Root.Heard | TurnOffer.Root.Named => rooted.meet(Integrity.Outside)
+      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => rooted
+    }
+  }
+
+  /** [[TurnSteps.Env.carried]], for `turn` offered as `recorded` from `tooling`'s tools, its
+    * model asked about `asked`, read as `routed` bounds it: the conversation's newest window
+    * record of an earlier turn whose chain is read whole, when the request `turn` would send of
+    * that window alone, offered as its first call offers it with its first gate decided over
+    * what it carries ([[TurnGate.decide]], from [[startOf]]), repeats that turn's
+    * [[Payload.Prefix]] byte for byte ([[TurnShown.prefixOf]]), and that gate hides none of it.
+    */
+  def carried[C^](
+      env: TurnEnv^,
+      tooling: TurnTooling[C]^,
+      turn: TurnRef,
+      recorded: TurnOffer.Recorded,
+      routed: Turn.Routed,
+      asked: Option[TurnAgenda.Classification]
+  ): Either[TurnFailure, Option[EntryId]] =
+    for {
+      pins <- routed.picked(env)
+      offer <- env.db
+        .read(Subject.Public)(TurnOffer.load(env.hosting.toolSets, env.hosting.prompts, recorded))
+        .left
+        .map(TurnFailure.ofStore)
+      tools <- Rounding.tools(tooling, offer, asked)
+      found <- pins
+        .reads(env.db)
+        .read(Subject.Turn(turn)) {
+          for {
+            all <- env.records.entries.list(turn.conversationId)
+            earlier = all.filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(turn.turnSeq))
+            head = earlier
+              .filter(_.payload match {
+                case _: Payload.Window => true
+                case _ => false
+              })
+              .maxByOption(e => EntrySeq.value(e.seq))
+            chain <- head.fold[Either[StoreError, Vector[CarriedWindow.Record]]](
+              Right(Vector.empty)
+            )(h => CarriedWindow.chain(h.id)(env.records.entries.get))
+            read <- (head, chain.lastOption) match {
+              case (Some(h), Some(last)) =>
+                val prefix = earlier.collectFirst {
+                  case Entry(_, _, t, _, _, p: Payload.Prefix, _, _) if t == last.turn => p
+                }
+                for {
+                  showing <- shown(
+                    env.records,
+                    turn,
+                    TurnShown.Seen(Some(h.id), Window(Vector.empty))
+                  )
+                  direct <- TurnShown.direct(env.hosting.conversations, turn)
+                } yield prefix.map((h.id, showing, direct, _))
+              case _ => Right(None)
+            }
+          } yield read
+        }
+        .left
+        .map(TurnFailure.ofStore)
+    } yield found.flatMap { (head, showing, direct, prefix) =>
+      val carrying = showing.copy(mine = Vector.empty)
+      val first = TurnGate.decide(
+        startOf(showing.mine, recorded.root),
+        tools.set,
+        TurnShown.itemsOf(showing),
+        Map.empty,
+        Map.empty
+      )
+      val held = TurnShown.itemsOf(carrying).map(_.ref).toSet
+      val settings = pins.turn.settings
+      val strict = settings.strict == StrictSchemas.Enforced
+      val (schemas, lines) = gatedOffer(Some(first), tools.set, tools.schemas(strict), strict)
+      val shape =
+        loopShape(
+          None,
+          ToolUse.Auto,
+          schemas,
+          settings.afterResult,
+          settings.guidance,
+          lines,
+          Vector.empty
+        )
+      val repeats = TurnShown
+        .requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct)
+        .toOption
+        .flatMap(r => TurnShown.prefixOf(r.shaped(shape), prefix.messages))
+        .contains(prefix)
+      Option.when(repeats && !first.hidden.exists((item, _) => held.contains(item.ref)))(head)
+    }
 
   /** What a request over `window` would show of `turn`'s `item` in full
     * ([[TurnShown.textOf]]), read through `env`'s `db` as `pins` bound it; why not: the store

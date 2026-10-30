@@ -284,7 +284,13 @@ object TurnSpeechTests extends TestSuite {
         reply(w)
       ) ==> (
         Some(Outcome.NothingRecalled),
-        Vector("ask:needs", "ask:needs:record", "record-speech"),
+        Vector(
+          "DBOS.patch-carried-window",
+          "carried",
+          "ask:needs",
+          "ask:needs:record",
+          "record-speech"
+        ),
         1,
         Vector.empty,
         None

@@ -1159,7 +1159,7 @@ object TurnFixtures {
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
-        case (_: Payload.Window) | Payload.Agenda(_) => None
+        case (_: Payload.Window) | Payload.Prefix(_, _) | Payload.Agenda(_) => None
       }
     }
 
@@ -1191,7 +1191,9 @@ object TurnFixtures {
     protected final def boundary(w: Window): Projection = Projection.Boundary(w, Tokens.Zero)
   }
 
-  /** The linear window [[LinearAssembler]] draws over `entries` for `request`. */
+  /** The linear window [[LinearAssembler]] draws over `entries` for `request`, nothing carried:
+    * a [[Drawing]]'s every window is a boundary.
+    */
   private def linearOver(entries: EntryStore, request: AssemblyRequest)(using
       Db^
   ): Either[AssemblyError, Window] =
@@ -1204,7 +1206,7 @@ object TurnFixtures {
           CharEstimate,
           LinearAssembler.DefaultBudget
         ),
-        request
+        request.copy(carried = grit.core.context.CarriedWindow.Empty)
       )(_ => Left("never asked"), found => Results(found.ranked, found.beyond))
       .map(_.window)
 

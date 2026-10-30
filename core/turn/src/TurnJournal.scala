@@ -6,7 +6,7 @@ import scala.util.Try
 
 import grit.core.agenda.{Agenda, AgendaJson}
 import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
-import grit.core.context.{AssemblyNote, Querying, Results, Retrieved, Width, Window}
+import grit.core.context.{AssemblyNote, Projection, Querying, Results, Retrieved, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.either.Traversal.sequence
@@ -46,63 +46,104 @@ private[turn] object TurnJournal {
     * `"documents": [...]` when it has documents ([[PayloadJson.writeVersions]]), and
     * `"pieces": [{"piece": id, "more": n}, ...]` when it has pieces ([[writeFound]]).
     */
-  given window: Journaled[Either[TurnFailure, Window]] =
+  given window: Journaled[Either[TurnFailure, Window]] = outcome(writeWindow, readWindow)
+
+  /** A carried turn's `assemble` output: `{"boundary": window}` or `{"appended": window}`, the
+    * window as [[window]] writes it, with `"cost"`, its estimated tokens.
+    */
+  given projection: Journaled[Either[TurnFailure, Projection]] =
     outcome(
-      w => {
-        val ids = PayloadJson.writeSeqs(w.entries)
-        if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty) ids
-        else {
-          val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
-          if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
-          if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
-          if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
-          o
-        }
-      },
+      p =>
+        ujson.Obj(
+          (p match {
+            case Projection.Boundary(_, _) => "boundary"
+            case Projection.Appended(_, _) => "appended"
+          }) -> writeWindow(p.window),
+          "cost" -> ujson.Num(Tokens.value(p.cost).toDouble)
+        ),
       v =>
-        v match {
-          case ujson.Arr(_) => PayloadJson.readSeqs(v).map(Window(_))
-          case o: ujson.Obj =>
-            for {
-              ids <- o.value
-                .get("entries")
-                .toRight("window: missing entries")
-                .flatMap(PayloadJson.readSeqs)
-              raw <- o.value.get("notes").flatMap(_.arrOpt).toRight("window: missing notes")
-              notes <- raw.toVector
-                .foldLeft[Either[String, Vector[AssemblyNote]]](Right(Vector.empty)) { (acc, n) =>
-                  acc.flatMap(ns => readNote(n).map(ns :+ _))
-                }
-              nearby <- o.value.get("nearby") match {
-                case None => Right(Vector.empty)
-                case Some(ujson.Arr(items)) =>
-                  items.toVector.foldLeft[Either[String, Vector[Nearby]]](Right(Vector.empty)) {
-                    (acc, n) => acc.flatMap(ns => PayloadJson.readNearby(n).map(ns :+ _))
-                  }
-                case Some(_) => Left("window: nearby is not an array")
-              }
-              documents <- o.value
-                .get("documents")
-                .fold(Right(Vector.empty))(PayloadJson.readVersions)
-              pieces <- o.value.get("pieces") match {
-                case None => Right(Vector.empty)
-                case Some(ujson.Arr(items)) =>
-                  items.toVector.foldLeft[Either[String, Vector[Retrieved.Piece]]](
-                    Right(Vector.empty)
-                  ) { (acc, p) =>
-                    acc.flatMap(ps =>
-                      readFound(p).flatMap {
-                        case found: Retrieved.Piece => Right(ps :+ found)
-                        case _ => Left("window: a piece is not a piece")
-                      }
-                    )
-                  }
-                case Some(_) => Left("window: pieces is not an array")
-              }
-            } yield Window(ids, notes, nearby, documents, pieces)
-          case _ => Left("window: expected an array or an object")
-        }
+        for {
+          o <- v.objOpt.toRight("projection: expected an object")
+          cost <- o.value
+            .get("cost")
+            .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
+            .toRight("projection: cost is not a non-negative whole number")
+          projection <- (o.value.get("boundary"), o.value.get("appended")) match {
+            case (Some(w), None) => readWindow(w).map(Projection.Boundary(_, cost))
+            case (None, Some(w)) => readWindow(w).map(Projection.Appended(_, cost))
+            case _ => Left("projection: expected one of boundary and appended")
+          }
+        } yield projection
     )
+
+  /** A `carried` step's output: the window record's id, or `null` when it carries none. */
+  given carried: Journaled[Either[TurnFailure, Option[EntryId]]] =
+    outcome(
+      _.fold[ujson.Value](ujson.Null)(id => ujson.Str(EntryId.value(id))),
+      {
+        case ujson.Null => Right(None)
+        case ujson.Str(id) => Right(Some(EntryId(id)))
+        case _ => Left("carried: expected a string or null")
+      }
+    )
+
+  /** A window as [[window]] writes it. */
+  private def writeWindow(w: Window): ujson.Value = {
+    val ids = PayloadJson.writeSeqs(w.entries)
+    if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty) ids
+    else {
+      val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
+      if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
+      if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
+      if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
+      o
+    }
+  }
+
+  /** A window as [[window]] reads it. */
+  private def readWindow(v: ujson.Value): Either[String, Window] =
+    v match {
+      case ujson.Arr(_) => PayloadJson.readSeqs(v).map(Window(_))
+      case o: ujson.Obj =>
+        for {
+          ids <- o.value
+            .get("entries")
+            .toRight("window: missing entries")
+            .flatMap(PayloadJson.readSeqs)
+          raw <- o.value.get("notes").flatMap(_.arrOpt).toRight("window: missing notes")
+          notes <- raw.toVector
+            .foldLeft[Either[String, Vector[AssemblyNote]]](Right(Vector.empty)) { (acc, n) =>
+              acc.flatMap(ns => readNote(n).map(ns :+ _))
+            }
+          nearby <- o.value.get("nearby") match {
+            case None => Right(Vector.empty)
+            case Some(ujson.Arr(items)) =>
+              items.toVector.foldLeft[Either[String, Vector[Nearby]]](Right(Vector.empty)) {
+                (acc, n) => acc.flatMap(ns => PayloadJson.readNearby(n).map(ns :+ _))
+              }
+            case Some(_) => Left("window: nearby is not an array")
+          }
+          documents <- o.value
+            .get("documents")
+            .fold(Right(Vector.empty))(PayloadJson.readVersions)
+          pieces <- o.value.get("pieces") match {
+            case None => Right(Vector.empty)
+            case Some(ujson.Arr(items)) =>
+              items.toVector.foldLeft[Either[String, Vector[Retrieved.Piece]]](
+                Right(Vector.empty)
+              ) { (acc, p) =>
+                acc.flatMap(ps =>
+                  readFound(p).flatMap {
+                    case found: Retrieved.Piece => Right(ps :+ found)
+                    case _ => Left("window: a piece is not a piece")
+                  }
+                )
+              }
+            case Some(_) => Left("window: pieces is not an array")
+          }
+        } yield Window(ids, notes, nearby, documents, pieces)
+      case _ => Left("window: expected an array or an object")
+    }
 
   private def writeNote(n: AssemblyNote): ujson.Value = n match {
     case AssemblyNote.Queried(query, model, usage, estimate, upstream) =>

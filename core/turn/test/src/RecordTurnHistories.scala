@@ -153,6 +153,26 @@ object RecordTurnHistories {
       durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
       recorded(durable, turn)
     }
+    // A second turn carrying the first's window: `carried` names its record.
+    val carriedAppended = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      durable.run(say(entries, "one").workflowId)(turnBody(entries, new RecordingProvider))
+      val turn = say(entries, "two")
+      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      recorded(durable, turn)
+    }
+    // A second turn after one whose call failed, which kept no prefix: a boundary.
+    val carriedBoundary = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      durable.run(say(entries, "one").workflowId)(
+        turnBody(entries, new RecordingProvider(fail = true))
+      )
+      val turn = say(entries, "two")
+      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      recorded(durable, turn)
+    }
     val modelFailed = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -727,6 +747,8 @@ object RecordTurnHistories {
         recorded(t.durable, t.turn)
       },
       "later-turn" -> laterTurn,
+      "carried-appended" -> carriedAppended,
+      "carried-boundary" -> carriedBoundary,
       "model-failed" -> modelFailed,
       "crashed-before-append" -> crashedBeforeAppend,
       "hosted-read" -> hosting(

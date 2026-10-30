@@ -191,6 +191,26 @@ object TurnRequestsTests extends TestSuite {
     }
 
     test(
+      "a carried turn's requests are rebuilt as sent, the turn it carries shown as that turn sent it"
+    ) {
+      val entries = new InMemoryEntryStore
+      val first = new Scripted((_, n) =>
+        Right(n match {
+          case 0 => calling("looking", ("t1", "peek", "a.txt"))
+          case _ => calling("alpha")
+        })
+      )
+      answered(entries, say(entries, "read it"), first)
+      val second = new Scripted((_, _) => Right(calling("and beta")))
+      val turn = say(entries, "and b?")
+      val recorded = answered(entries, turn, second)
+      // The second request carries the first turn: its exchange, its result and its answer.
+      second.requests.headOption.map(_.messages.size) ==> Some(7)
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false)) ==>
+        Right(second.requests)
+    }
+
+    test(
       "a gated turn's requests are rebuilt as sent: its tools, and each round's note in its place"
     ) {
       val entries = new InMemoryEntryStore

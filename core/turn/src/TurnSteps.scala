@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.act.phase.{Asking, Hearing, Placing}
 import grit.core.allot.Router
-import grit.core.context.{AssemblyNote, Window}
+import grit.core.context.{AssemblyNote, Projection, Window}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
@@ -77,6 +77,18 @@ private[turn] object TurnSteps {
         offer: TurnOffer,
         pins: Turn.Picked
     ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)]
+
+    /** The `carried` step's body: the newest window record of an earlier turn of `p`'s
+      * conversation, read as its route bounds it, when `p`'s requests would show the window it
+      * carries as that turn's last call sent it ([[Rounding.carried]]). `None`, so the window
+      * is drawn afresh, when there is no such record, it kept no carry, its chain is not read
+      * whole ([[grit.core.context.CarriedWindow.chain]]), its turn kept no [[Payload.Prefix]]
+      * (a turn that failed or stalled before `append`), what `p` would send differs from that
+      * prefix in any byte, or `p`'s first gate would hide an item it carries. `Some` means the
+      * window carried renders now as its turns last sent it. Fails when the store, the offer
+      * or the route's pins cannot be read.
+      */
+    def carried(p: Placed): Either[TurnFailure, Option[EntryId]]
   }
 
   /** The [[Env]] of a turn with `env`, offered `tooling`'s tools, its model told through
@@ -143,6 +155,16 @@ private[turn] object TurnSteps {
         pins: Turn.Picked
     ): Either[TurnFailure, (Map[ItemRef, String], ModelRequest -> ModelRequest)] =
       Rounding.sent(tooling, at, offer, pins)
+
+    def carried(p: Placed): Either[TurnFailure, Option[EntryId]] =
+      Rounding.carried(
+        turnEnv,
+        tooling,
+        p.turn,
+        p.at.offer,
+        p.at.routed,
+        TurnShown.asked(p.placing)
+      )
   }
 
   /** The names of the turn's steps besides its loop's: the one home of each. */
@@ -155,6 +177,7 @@ private[turn] object TurnSteps {
     val stitched: StepName[Any] = StepName("stitched")
     val classify: StepName[Any] = StepName("classify")
     val recordAgenda: StepName[Any] = StepName("record-topic")
+    val carried: StepName[Any] = StepName("carried")
     val search: StepName[Any] = StepName("search")
     val assemble: StepName[Any] = StepName("assemble")
     val recordWindow: StepName[Any] = StepName("record-window")
@@ -200,15 +223,40 @@ private[turn] object TurnSteps {
       notes: String
   ) extends OfTurn
 
-  /** `at`, its message placed as `placing` says. */
-  final case class Placed(at: Offered, placing: TurnAgenda.Classification) extends OfTurn {
+  /** `at`, its message placed as `placing` says, its window drawn against the window record
+    * `carried` ([[Env.carried]]), or afresh with none.
+    */
+  final case class Placed(
+      at: Offered,
+      placing: TurnAgenda.Classification,
+      carried: Option[EntryId]
+  ) extends OfTurn {
     def turn: TurnRef = at.turn
   }
 
-  /** `at`, over the window `seen`. */
-  final case class Assembled(at: Offered, placing: TurnAgenda.Classification, seen: Window)
+  /** `at`, over the window `drawn`. */
+  final case class Assembled(at: Offered, placing: TurnAgenda.Classification, drawn: Windowed)
       extends OfTurn {
     def turn: TurnRef = at.turn
+  }
+
+  /** A turn's window as its `assemble` step recorded it. */
+  enum Windowed {
+
+    /** Drawn whole, by a turn from before windows were carried: its record keeps no carry. */
+    case Whole(window: Window)
+
+    /** Drawn against the window record `after` ([[Env.carried]]), or afresh with none, as
+      * `projection`.
+      */
+    case Carried(after: Option[EntryId], projection: Projection)
+
+    /** What the turn's requests show before its own entries. */
+    def seen: TurnShown.Seen = this match {
+      case Whole(window) => TurnShown.Seen(None, window)
+      case Carried(_, Projection.Boundary(window, _)) => TurnShown.Seen(None, window)
+      case Carried(after, Projection.Appended(window, _)) => TurnShown.Seen(after, window)
+    }
   }
 
   /** `turn`'s model asked about `asked`, its verdict read from `first` against `replies`. */
@@ -452,9 +500,7 @@ private[turn] object TurnSteps {
       in =>
         (tx: Tx^) ?=>
           r.limits(in.at.offer, in.at.routed, TurnShown.asked(in.placing))
-            .flatMap(limits =>
-              windowRecorded(r.env.records, in.turn, in.seen, r.env.clock.now()).map(_ => limits)
-            )
+            .flatMap(limits => windowRecorded(r.env, in, r.env.clock.now()).map(_ => limits))
     )
 
   /** `record-verdict`: the model's verdict on the turn's item, when the classifier was unsure
@@ -508,7 +554,7 @@ private[turn] object TurnSteps {
                 env.records,
                 env.speech.store,
                 in.turn,
-                TurnShown.Seen(None, in.at.seen),
+                in.at.drawn.seen,
                 stubs,
                 in.looped.answer,
                 pins.turn.grade,
@@ -1072,9 +1118,10 @@ private[turn] object TurnSteps {
     * produced it: rebuilt from the same window and the same entries (the turn's own were all
     * recorded before its call, and the reply is not yet among them), its message dated as
     * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
-    * stub, shaped by `shape`. Each of the window's documents whose pointer one of the turn's
-    * calls followed, and that succeeded, is counted as followed at `at`
-    * ([[Pointer.followedIn]]).
+    * stub, shaped by `shape`; that request's prefix kept as [[Turn.prefixId]]
+    * ([[TurnShown.prefixOf]] through its stable mark). Each of the window's documents whose
+    * pointer one of the turn's calls followed, and that succeeded, is counted as followed at
+    * `at` ([[Pointer.followedIn]]).
     */
   private def appended(
       offer: TurnOffer,
@@ -1111,6 +1158,25 @@ private[turn] object TurnSteps {
             None,
             next.seq,
             payload,
+            at,
+            level
+          )
+        )
+        .left
+        .map(TurnFailure.ofStore)
+      // What a later turn must send again to carry this one (ADR 0052).
+      prefix <- TurnShown
+        .prefixOf(sent, sent.stable)
+        .toRight(TurnFailure.Assembly("the last call's stable mark is past its messages"))
+      _ <- entries
+        .insert(
+          Entry(
+            Turn.prefixId(turn),
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq.next,
+            prefix,
             at,
             level
           )
@@ -1159,32 +1225,53 @@ private[turn] object TurnSteps {
     }
   }
 
-  /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
-    * dated `at`, and each document and each piece's file the window holds counted as placed at
-    * `at`.
+  /** The `record-window` step: `a`'s window and the queries that chose it, recorded dated
+    * `at`, with how a later turn carries it when it was drawn as a projection
+    * ([[Payload.Carry]]: the record it was appended after, its cost, and the dated line and
+    * topic note the turn's requests send, as [[TurnShown.requestOf]] and
+    * [[TurnShown.loopShape]] make them); and each document and each piece's file the window
+    * holds counted as placed at `at`.
     */
-  private def windowRecorded(
-      records: TurnRecords,
-      turn: TurnRef,
-      window: Window,
-      at: Instant
-  )(using Tx^): Either[TurnFailure, EntryId] =
+  private def windowRecorded(env: TurnEnv^, a: Assembled, at: Instant)(using
+      Tx^
+  ): Either[TurnFailure, EntryId] = {
+    val (records, turn) = (env.records, a.turn)
     for {
       next <- records.entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- records.entries.believed(turn).left.map(TurnFailure.ofStore)
-      _ <- writeWindow(records.entries, turn, window, next.seq, level, at)
+      (window, carry) <- a.drawn match {
+        case Windowed.Whole(window) => Right((window, None))
+        case Windowed.Carried(after, projection) =>
+          (for {
+            mine <- records.entries.ofTurn(turn)
+            direct <- TurnShown.direct(env.hosting.conversations, turn)
+          } yield {
+            val dated = mine
+              .minByOption(e => EntrySeq.value(e.seq))
+              .map(root => TurnShown.answering(root.createdAt, a.at.offer.zoned, direct))
+            val follows = projection match {
+              case Projection.Appended(_, _) => after
+              case Projection.Boundary(_, _) => None
+            }
+            val tag = TurnShown.asked(a.placing).map(TurnVerdict.tag)
+            (projection.window, Some(Payload.Carry(follows, projection.cost, dated, tag)))
+          }).left.map(TurnFailure.ofStore)
+      }
+      _ <- writeWindow(records.entries, turn, window, carry, next.seq, level, at)
       _ <- records.documents.placed(window.documents, at).left.map(TurnFailure.ofStore)
       _ <- records.pieces.placed(window.pieces.map(_.id), at).left.map(TurnFailure.ofStore)
     } yield Turn.windowId(turn)
+  }
 
   /** Writes each query `window`'s notes say assembly wrote, as [[Turn.queryId]], then the
-    * window itself, as [[Turn.windowId]], from position `from`, dated `at`, believed at
-    * `level`; the position after the last one written.
+    * window itself, as [[Turn.windowId]], carried as `carry`, from position `from`, dated `at`,
+    * believed at `level`; the position after the last one written.
     */
   private def writeWindow(
       entries: EntryStore,
       turn: TurnRef,
       window: Window,
+      carry: Option[Payload.Carry],
       from: EntrySeq,
       level: Integrity,
       at: Instant
@@ -1230,7 +1317,7 @@ private[turn] object TurnSteps {
               window.nearby,
               window.documents,
               window.pieces.map(p => (p.id, p.more)),
-              None
+              carry
             ),
             at,
             level

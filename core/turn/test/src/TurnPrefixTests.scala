@@ -4,7 +4,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.ReasoningReplay
-import grit.core.provider.ModelRequest
+import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 import grit.models.{AnthropicJson, OpenRouterJson, StubProvider}
 
@@ -37,6 +37,23 @@ object TurnPrefixTests extends TestSuite {
   /** The first line of `earlier` that `later` does not repeat in its place, with that place's
     * line in `later`; `None` when `later` begins with all of `earlier`.
     */
+  /** A reply that thought, in Anthropic's own form, then said "posted". */
+  private def posted: Message.Assistant = {
+    val thought = "Posting now."
+    Message.Assistant(
+      Vector(
+        AssistantBlock.Reasoning(
+          thought,
+          Some(ujson.Obj("type" -> "thinking", "thinking" -> thought, "signature" -> "sig-r"))
+        ),
+        AssistantBlock.Text("posted")
+      ),
+      StopReason.EndTurn,
+      Usage(Tokens(10), Tokens(5), Tokens.Zero, None),
+      "claude-haiku-5-5"
+    )
+  }
+
   /** `body`'s messages, each written as sent but without `cache_control`, which is no edit. */
   private def unmarked(body: ujson.Value): Vector[String] = {
     def strip(v: ujson.Value): ujson.Value = v match {
@@ -172,6 +189,149 @@ object TurnPrefixTests extends TestSuite {
       // The answer to read_hidden carries what the stub hid, believed as the item.
       requests.lift(2).flatMap(result(_, "r")).exists(_.contains("alpha")) ==> true
       requests.lift(3).flatMap(result(_, "t1")).exists(_.contains("Hidden here as h1")) ==> true
+    }
+
+    test(
+      "a turn after another in its window begins with the last one's last call, byte for byte, on either gateway"
+    ) {
+      // Three turns of one window: the first reads a file after thinking, in Anthropic's
+      // signed form, then answers; the next two answer at once. Each later turn's first call
+      // must repeat the call before it whole (every message of an ungated turn's last call is
+      // stable), its system prompt and tools unchanged, the thinking block among them.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def turn(
+          text: String,
+          script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant]
+      ) = {
+        val provider = new Scripted(script)
+        val t = say(entries, text)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            3
+          )
+        )
+        provider.requests
+      }
+      val answers: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant] =
+        (r, _) => new StubProvider().complete(r)
+      val calls = Vector(
+        turn(
+          "read a.txt",
+          (r, n) => if (n == 0) Right(peeking("t1")) else new StubProvider().complete(r)
+        ),
+        turn("and again?", answers),
+        turn("thanks", answers)
+      )
+      calls.map(_.size) ==> Vector(2, 1, 1)
+      val pairs = calls.sliding(2).toVector.flatMap {
+        case Vector(before, after) => before.lastOption.zip(after.headOption)
+        case _ => None
+      }
+      pairs.map((last, _) => last.stable == last.messages.size) ==> Vector(true, true)
+      def anthropicOf(r: ModelRequest): ujson.Value =
+        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+      def openRouterOf(r: ModelRequest): ujson.Value =
+        OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, r)
+      val anthropic = pairs.map((a, b) => (anthropicOf(a), anthropicOf(b)))
+      val openRouter = pairs.map((a, b) => (openRouterOf(a), openRouterOf(b)))
+      for (bodies <- Vector(anthropic, openRouter))
+        bodies.map((a, b) =>
+          (
+            a.obj.get("system") == b.obj.get("system"),
+            a.obj.get("tools") == b.obj.get("tools"),
+            unmarked(b).startsWith(unmarked(a))
+          )
+        ) ==> Vector((true, true, true), (true, true, true))
+      // The first turn's thinking is sent again, signed, with the turns after it.
+      anthropic.map((_, b) => ujson.write(b).contains("sig-t1")) ==> Vector(true, true)
+    }
+
+    test(
+      "a turn offered other tools than the last one draws its window afresh; one offered the same carries it"
+    ) {
+      // The last call's prefix is kept by digest: a tool more changes it, so the carried turn
+      // would be sent under another prefix than it was, and is not carried.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def run(text: String, gated: Boolean) = {
+        val t = say(entries, text)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            new StubProvider(),
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            if (gated) gatedTools(ws) else tools(ws),
+            3
+          )
+        )
+        t
+      }
+      val turns =
+        Vector(run("one", gated = false), run("two", gated = true), run("three", gated = true))
+      turns.map(t =>
+        windows(entries).collectFirst {
+          case (id, w) if id == Turn.windowId(t) => w.carry.map(_.after)
+        }
+      ) ==> Vector(Some(Some(None)), Some(Some(None)), Some(Some(Some(Turn.windowId(turns(1))))))
+    }
+
+    test(
+      "a turn after a gated one draws its window afresh, with nothing of an earlier turn's thinking to replay"
+    ) {
+      // The gated turn's notes and stubs are in no record, so a later turn cannot send its
+      // calls again as they were: it is a boundary, and a boundary replays no thinking block,
+      // which a provider refuses under another prefix.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def run(text: String, provider: Scripted) = {
+        val t = say(entries, text)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            gatedTools(ws),
+            3
+          )
+        )
+        t
+      }
+      run(
+        "read a.txt twice, then post it",
+        new Scripted((_, n) => if (n < 2) Right(peeking(s"t${n + 1}")) else Right(posted))
+      )
+      val later = new Scripted((r, _) => new StubProvider().complete(r))
+      val second = run("and now?", later)
+      val replayed = later.requests
+        .flatMap(_.messages)
+        .collect { case a: Message.Assistant =>
+          a.blocks.collect { case b @ AssistantBlock.Reasoning(_, Some(_)) => b }
+        }
+        .flatten
+      (
+        windows(entries).collectFirst {
+          case (id, w) if id == Turn.windowId(second) => w.carry.map(_.after)
+        },
+        replayed,
+        later.requests.headOption.exists(_.messages.exists {
+          case a: Message.Assistant => a.blocks.contains(AssistantBlock.Text("posted"))
+          case _ => false
+        })
+      ) ==> (Some(Some(None)), Vector.empty, true)
     }
 
     test(
