@@ -286,6 +286,7 @@ object TurnSpeechTests extends TestSuite {
         Some(Outcome.NothingRecalled),
         Vector(
           "DBOS.patch-carried-window",
+          "DBOS.patch-carry-reasons",
           "carried",
           "ask:needs",
           "ask:needs:record",
