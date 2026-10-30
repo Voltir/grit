@@ -18,8 +18,7 @@ import grit.core.context.{
   Querying,
   Results,
   Retrieved,
-  Width,
-  Window
+  Width
 }
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Pointer, Written}
 import grit.core.durable.Durable
