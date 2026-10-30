@@ -203,6 +203,24 @@ object ShownTests extends TestSuite {
     }
 
     test(
+      "a stored reply is shown with nothing of its reasoning to replay, and a turn's own reply as it was sent"
+    ) {
+      // Thinking is bound to the request that produced it: a window drawn from the store is
+      // never that request, and a provider refuses a replayed block under another prefix.
+      def reply(replay: Option[ujson.Value]) = Message.Assistant(
+        Vector(AssistantBlock.Reasoning("hm", replay), AssistantBlock.Text("Pin TZ=UTC.")),
+        StopReason.EndTurn,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val signed = reply(Some(ujson.Obj("signature" -> "s")))
+      (
+        Shown.of(entry(Payload.Message(signed)), Speakers.none),
+        Shown.turn(Vector(entry(Payload.Message(signed))), Speakers.none)
+      ) ==> (Some(reply(None)), Vector(signed))
+    }
+
+    test(
       "a nearby section is one user message: its afar label, that grit showed it, from where, then each message's text as a line, its reasoning and summaries left out"
     ) {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)

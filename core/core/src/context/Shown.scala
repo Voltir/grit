@@ -17,7 +17,8 @@ import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
   */
 object Shown {
 
-  /** A message as it is, but a person's, when `speakers` names its author, under a line of
+  /** A message as it is, but a reply with nothing of its reasoning to replay
+    * ([[AssistantBlock.Reasoning]]'s `replay` dropped), and a person's, when `speakers` names its author, under a line of
     * its own, "{name} wrote:", and with a pasted grit block, that line included, shown as one
     * ([[pasted]]); a heard message as a person's under "{name} said, not to you:"
     * ("Someone" when `speakers` does not name its author); grit's post the conversation
@@ -31,6 +32,13 @@ object Shown {
     */
   def of(entry: Entry, speakers: Speakers): Option[Message] = entry.payload match {
     case Payload.Message(Message.User(text)) => Some(said(entry, text, speakers))
+    case Payload.Message(m: Message.Assistant) =>
+      // Thinking is bound to the request that produced it, which a window drawn from the
+      // store never is: a provider refuses a block replayed under another prefix.
+      Some(m.copy(blocks = m.blocks.map {
+        case AssistantBlock.Reasoning(text, Some(_)) => AssistantBlock.Reasoning(text, None)
+        case b => b
+      }))
     case Payload.Message(m) => Some(m)
     case Payload.Heard(text) =>
       val name = speakers.of(entry.id).getOrElse("Someone")
