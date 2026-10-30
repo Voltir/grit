@@ -7,15 +7,15 @@ import grit.app.config.{Budgets, Claimed, LifecycleEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.chat.host.{ChatHost, Replies}
+import grit.chat.host.{ChatHost, DirectoryEdge, Replies}
 import grit.chat.look.Theme
-import grit.chat.screen.ChatScreen
+import grit.chat.run.Chat
 import grit.chat.settings.{Durations, Prefs}
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
-import grit.core.edge.{Console, Desks, ServedEdge, Variable}
+import grit.core.edge.{Console, ServedEdge, Variable}
 import grit.core.files.{FileArea, Files, Formats}
-import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
+import grit.core.id.{CorpusName, PluginName, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
 import grit.core.job.SlotRule
 import grit.core.message.{Message, Tokens}
@@ -23,11 +23,9 @@ import grit.core.model.{Ladder, ModelId, Policy}
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
-import grit.core.prompt.Fragment
 import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
-import grit.core.tool.ToolSet
 import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cap,
@@ -45,7 +43,6 @@ import grit.core.visibility.{
 }
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.digest.Digest
-import grit.edge.{PlaceFragments, Server}
 import grit.formats.choice.Defaults
 import grit.host.checkout.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
 import grit.host.machine.LocalMachine
@@ -81,8 +78,6 @@ import grit.remind.Reminders
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
 import grit.tools.Coding
-import grit.tui.runtime.app.{Host, Mailbox}
-import grit.tui.runtime.loop.Runtime
 import grit.turn.TurnLoop
 
 // doc-length: the program's manual, naming every variable and mode it reads
@@ -290,7 +285,6 @@ object Main {
             .map(_.set)
       }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
     )
-    val instructions = PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
@@ -345,39 +339,38 @@ object Main {
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
+        val edgeLog = org.slf4j.LoggerFactory.getLogger("grit.edge")
         val here: Console.Edge^ =
-          desks => serveHere(desks, Place.of(directory), hosted, instructions, offered)
+          desks =>
+            DirectoryEdge.serve(
+              desks,
+              Place.of(directory),
+              hosted,
+              new LocalInstructions(),
+              CharEstimate,
+              new LocalTools(offered),
+              warn = edgeLog.warn(_),
+              info = edgeLog.info(_)
+            )
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found
           case Left(refused) =>
             System.err.println(s"[main] ${refused.message}")
             sys.exit(1)
         }
-        val mode = opener.runner match {
-          case Console.Runner.Here => "engine"
-          case Console.Runner.Elsewhere(holder) =>
-            holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}")
-        }
-        val host = new ChatHost(
-          origin,
+        Chat.run(
           opener,
+          origin,
+          model = modelName,
+          session = s"$session · ${written(root)}",
+          startTheme,
+          budget,
           CharEstimate,
+          prefs = prefsFile,
+          log = Some(java.nio.file.Path.of(log)),
           clock,
-          fresh,
-          Some(java.nio.file.Path.of(log))
+          fresh
         )
-        // Closing the host stops following and closes the engine, however far it got.
-        try
-          Runtime.run(
-            new ChatScreen.App(
-              modelName,
-              startTheme,
-              budget,
-              s"$session · ${written(root)} · $mode"
-            ),
-            keeping(host, prefsFile)
-          )
-        finally host.close()
         None
       } else
         Kit.open(config, deployment, clock) match {
@@ -424,54 +417,6 @@ object Main {
       run: Launch.Run
   ): Engine^{engine} =
     Kit.launch(engine, deployment, secrets, run)
-
-  /** This process's edge (ADR 0017), registered through `desks` for `place`: it offers
-    * `hosted` and the directory's `instructions` there, and runs the requests addressed to it
-    * with the tools `offered` picks, each on a virtual thread, until the link closes. A
-    * registration that fails is logged, and the turns are then served by no edge here.
-    */
-  private def serveHere(
-      desks: Desks^,
-      place: Place,
-      hosted: ToolSet,
-      instructions: Vector[Fragment],
-      offered: Offered
-  ): Unit = {
-    val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
-    desks.register(PrincipalId.Local, Set(place)) match {
-      case Left(e) => log.warn(s"this edge could not register: ${e.why}")
-      case Right(desk) =>
-        desk
-          .advertise(place, hosted, instructions)
-          .left
-          .foreach(e => log.warn(s"not advertised: ${e.why}"))
-        // The instruction files are read again every AdvertEvery, and advertised when they
-        // changed, so an edit reaches the next turn without a restart.
-        place.directory.foreach { dir =>
-          val _ = Thread.ofVirtual().name("grit-advert").start { () =>
-            var sent = instructions
-            while (true) {
-              Thread.sleep(AdvertEvery.toMillis)
-              val now = PlaceFragments.of(new LocalInstructions().around(dir), CharEstimate)
-              if (now != sent)
-                desk.advertise(place, hosted, now) match {
-                  case Right(()) => sent = now
-                  case Left(e) => log.warn(s"not advertised: ${e.why}")
-                }
-            }
-          }
-        }
-        new Server(
-          desk,
-          new LocalTools(offered),
-          run => { val _ = Thread.ofVirtual().name("grit-tool").start(() => run()) },
-          said => log.info(said)
-        ).serve()
-    }
-  }
-
-  /** How often this process's edge reads its directory's instruction files again: 5 s. */
-  private val AdvertEvery: FiniteDuration = 5.seconds
 
   /** Each message answered by one turn, printed. */
   private def say(engine: Link^, messages: List[String]): Option[String] = {
@@ -1393,28 +1338,6 @@ object Main {
       case None => Right(kept.theme.flatMap(Theme.named).getOrElse(Theme.Default))
       case Some(name) =>
         Theme.named(name).toRight(s"$ThemeVar is none of ${Theme.all.map(_.key).mkString(", ")}")
-    }
-
-  /** `host`, and the screen's [[ChatScreen.Msg.KeepTheme]] written to the preferences at
-    * `file` (nowhere without one), off the screen's thread; a write that fails says so in
-    * the status line.
-    */
-  private def keeping(
-      host: Host[ChatScreen.Msg]^,
-      file: Option[java.nio.file.Path]
-  ): Host[ChatScreen.Msg]^{host} =
-    new Host[ChatScreen.Msg] {
-      def receive(msg: ChatScreen.Msg, mailbox: Mailbox[ChatScreen.Msg]): Unit = msg match {
-        case ChatScreen.Msg.KeepTheme(key) =>
-          file.foreach { f =>
-            val _ = Thread.ofVirtual().name("grit-prefs").start { () =>
-              Prefs.save(f, Prefs.load(f).copy(theme = Some(key))).left.foreach { why =>
-                mailbox.offer(ChatScreen.Msg.Noted(s"theme $key, not kept: $why"))
-              }
-            }
-          }
-        case other => host.receive(other, mailbox)
-      }
     }
 
   private val ToolRoundsVar = "GRIT_TOOL_ROUNDS"

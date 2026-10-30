@@ -30,7 +30,13 @@ In dependency order:
   `/theme` repaints live and is kept for the next run. `/summaries` is off by default: a summary
   lands after its reply, so the rows below would move. ← `settings`, `look`, `view`
 - **`host`**: `ChatHost` is the screen's engine side: it opens the console off the screen's
-  thread, then polls the conversation's entries and each open turn's status. ← `screen`,
-  `view`, `settings`
+  thread, then polls the conversation's entries and each open turn's status. `DirectoryEdge`
+  is the process's own edge for the directory it runs in (ADR 0017), which a deployment serves
+  as the `Console.Edge` it hands `Kit.console`: it offers the coding tools there with the
+  instruction files around it, read again so an edit reaches the next turn without a restart. ←
+  `screen`, `view`, `settings`
+- **`run`**: `Chat.run`, the screen on this process's terminal over a host, until the person
+  quits. Its status line names who runs the engine: `engine`, or `attached`, with the holder's
+  machine and pid once it has written its row. ← `host`, `screen`, `look`, `settings`
 
 No source file sits at the module's root, and the test tree mirrors it.
