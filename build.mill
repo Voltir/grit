@@ -94,9 +94,9 @@ trait GritModule extends ScalaModule {
 
 /* A module a deployment outside grit compiles against (ADR 0021): `./mill __.publishLocal`
  * writes each to the local ivy repository (~/.ivy2/local/dev.grit/grit-<module>_3). Every
- * module the kit reaches, grit.slack for a deployment that serves Slack, and grit.mcp and the
- * grit.edge it depends on for one that serves an MCP server's tools; never grit.tui or
- * grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
+ * module the kit reaches, grit.slack for a deployment that serves Slack, grit.mcp and the
+ * grit.edge it depends on for one that serves an MCP server's tools, and grit.tui for a
+ * terminal of its own; never grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
 trait GritPublished extends GritModule with PublishModule {
   def publishVersion = "0.1.0-SNAPSHOT"
   def pomSettings = PomSettings(
@@ -629,8 +629,9 @@ object grit extends Module {
 
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
    * the terminal seam is hand-rolled over FFM (extensions/tui/src/wire/term), not JLine. It may
-   * render core's types, but only from `components` and `runtime`; see extensions/tui/CLAUDE.md. */
-  object tui extends GritModule with Placed {
+   * render core's types, but only from `components` and `runtime`; see extensions/tui/CLAUDE.md.
+   * Published, for a deployment's own terminal; its examples are not. */
+  object tui extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "tui"
     def moduleDeps = Seq(core)
 
