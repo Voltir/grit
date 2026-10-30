@@ -1,6 +1,6 @@
 package grit.turn
 
-import java.time.{Instant, ZoneId}
+import java.time.{Instant, ZoneId, ZoneOffset}
 
 import scala.concurrent.duration.*
 
@@ -413,25 +413,24 @@ object TurnTests extends TestSuite {
         "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\n" +
           "<transcript>\nUser: hello\n\nAssistant: stub reply to: hello\n</transcript>"
       )
-      provider.requests.map(_.system) ==> Vector(system)
+      provider.requests.map(_.system) ==> Vector(prompt)
     }
 
     test(
-      "a turn's system prompt says, after grit's own words, when the message it answers was said"
+      "a turn's system prompt is its fragments alone; the line saying when its message was said is the user message just before its own"
     ) {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
       val durable = new InMemoryDurable
       runTurn(durable, entries, new RecordingProvider, say(entries, "hello")) ==> Done
-      // Said after the conversation's first message, at a time of its own.
-      val later = say(entries, "and now?", at = Instant.parse("2026-03-04T15:30:00Z"))
+      // Said after the conversation's first message, at a time of its own: nothing per-turn may
+      // sit in the system prompt, which a provider caches ahead of every message.
+      val at = Instant.parse("2026-03-04T15:30:00Z")
+      val later = say(entries, "and now?", at = at)
       val _ = runTurn(durable, entries, provider, later)
-      provider.requests.map(
-        _.system.split("\n\n").toVector.lastOption.map(_.takeWhile(_ != ';'))
-      ) ==> Vector(
-        Some(
-          "The message you are answering was said Wed 2026-03-04 15:30 UTC, this deployment's time (UTC)"
-        )
+      val line = TurnShown.answering(at, Some(TurnOffer.Zoned(None, ZoneOffset.UTC)), false)
+      provider.requests.map(r => (r.system, r.messages.takeRight(2))) ==> Vector(
+        (prompt, Vector(Message.User(line), Message.User("and now?")))
       )
     }
 
@@ -442,7 +441,7 @@ object TurnTests extends TestSuite {
       val principals = new InMemoryPrincipals
       val (ana, gia) = (TestAccounts.account("slack:T1/U1"), TestAccounts.account("slack:T1/U2"))
       principals.zoned(ana, ZoneId.of("America/Los_Angeles"))(using TestTx.fake)
-      // The first clause of the line its one call's system prompt ends with.
+      // The first clause of the line its one call is sent just before its message.
       def told(
           text: String,
           by: grit.core.identity.Account,
@@ -462,7 +461,9 @@ object TurnTests extends TestSuite {
             eastern
           )
         )
-        turn.requests.map(_.system.split("\n\n").toVector.lastOption.map(_.takeWhile(_ != ';')))
+        turn.requests.map(_.messages.dropRight(1).lastOption.collect { case Message.User(t) =>
+          t.takeWhile(_ != ';')
+        })
       }
       // Each message said at a time of its own, the second in summer time.
       (
@@ -725,7 +726,10 @@ object TurnTests extends TestSuite {
       ledger.rows.map(r => (EntryId.value(r._1), r._5)).headOption ==>
         Some((s"move:${WorkflowId.value(turn.workflowId)}:query", CharEstimate.request(asked)))
       ledger.rows.map(_._1).contains(Turn.queryId(turn, 0)) ==> false
-      provider.requests.map(_.messages) ==> Vector(Vector.empty, Vector(Message.User("hello")))
+      provider.requests.map(_.messages) ==> Vector(
+        Vector.empty,
+        Vector(dated, Message.User("hello"))
+      )
     }
 
     test(
@@ -876,7 +880,7 @@ object TurnTests extends TestSuite {
         } ==> Some(Right(Right(Vector(AssemblyNote.FellBack(s"no query: ${TurnNeeds.Unneeded}")))))
       ledger.rows.map(r => EntryId.value(r._1)).filter(_.startsWith("move:")) ==>
         Vector(s"move:${WorkflowId.value(turn.workflowId)}:needs")
-      provider.requests.map(_.messages) ==> Vector(Vector(Message.User("thanks!")))
+      provider.requests.map(_.messages) ==> Vector(Vector(dated, Message.User("thanks!")))
     }
 
     test("a turn whose message the gate passes searches as it would with no gate") {
@@ -970,7 +974,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       runTurn(durable, entries, provider, say(entries, "one"))
       runTurn(durable, entries, provider, say(entries, "two"))
-      provider.requests.map(_.messages.size) ==> Vector(1, 3)
+      provider.requests.map(_.messages.size) ==> Vector(2, 4)
       provider.requests.lastOption.flatMap(_.messages.headOption) ==> Some(Message.User("one"))
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
     }
@@ -1086,6 +1090,7 @@ object TurnTests extends TestSuite {
             "[record] this conversation so far, written by grit (closed 1970-01-01): " +
               "We talked about one.\nOutcome: one"
           ),
+          dated,
           Message.User("two")
         )
       )
@@ -1130,8 +1135,7 @@ object TurnTests extends TestSuite {
             edge,
             person,
             TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
-            reach,
-            dated
+            reach
           )
             .mkString("\n\n")
         )
@@ -1196,7 +1200,7 @@ object TurnTests extends TestSuite {
         voicedBody(entries, turn, new RecordingProvider, new InMemoryVoiceStore, principals)
       )
       turn.requests.headOption.map(_.messages.collect { case Message.User(t) => t }) ==>
-        Some(Vector("Ana Lima wrote:\nhello", "hmm", "Ana Lima wrote:\nthanks"))
+        Some(Vector("Ana Lima wrote:\nhello", "hmm", dated.text, "Ana Lima wrote:\nthanks"))
     }
 
     test("with no voice set, the turn adds no person fragment") {
@@ -1216,8 +1220,7 @@ object TurnTests extends TestSuite {
           TurnPrompt.TagRule.text,
           TurnPrompt.edge(origin).text,
           TurnPrompt.room(origin, grit.core.visibility.Label.Public).text,
-          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text,
-          dated
+          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text
         ).mkString("\n\n")
       )
     }
@@ -1269,6 +1272,7 @@ object TurnTests extends TestSuite {
           Message.User("one"),
           Message.User("[gap] earlier turns not shown"),
           Message.User("three"),
+          dated,
           Message.User("four")
         )
       )

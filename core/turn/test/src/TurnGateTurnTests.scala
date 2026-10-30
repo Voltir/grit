@@ -364,6 +364,7 @@ object TurnGateTurnTests extends TestSuite {
             "[record] this conversation so far, written by grit (closed 1970-01-01): " +
               stub("h1", "something from a closing record, written from outside the team")
           ),
+          dated,
           Message.User("two")
         )
       )

@@ -354,7 +354,9 @@ object TurnFixtures {
 
   val ToolSets: InMemoryToolSets = new InMemoryToolSets
 
-  /** grit's own words in [[system]], before the line saying when its message was said. */
+  /** The system prompt a fixture turn is sent when no edge serves its directory, in the
+    * default voice: grit's own words alone.
+    */
   val prompt: String =
     SystemPrompt
       .of(
@@ -372,17 +374,13 @@ object TurnFixtures {
       )
       .render
 
-  /** The system prompt a fixture turn is sent when no edge serves its directory, in the
-    * default voice, its message said at the epoch, when every fixture entry is made.
+  /** The user message a fixture turn is sent just before its own: its message said at the epoch,
+    * when every fixture entry is made, dated in the fixture deployment's zone, UTC, its account
+    * placed by no source, outside a direct message.
     */
-  lazy val system: String = s"$prompt\n\n$dated"
-
-  /** The line a fixture turn's system prompt ends with: its message said at the epoch, dated
-    * in the fixture deployment's zone, UTC, its account placed by no source, outside a direct
-    * message.
-    */
-  lazy val dated: String =
+  lazy val dated: Message.User = Message.User(
     TurnShown.answering(Instant.EPOCH, Some(TurnOffer.Zoned(None, ZoneOffset.UTC)), direct = false)
+  )
 
   /** The stub provider, keeping every request it was sent. */
   final class RecordingProvider(fail: Boolean = false) extends Provider {

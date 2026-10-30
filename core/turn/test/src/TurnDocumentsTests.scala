@@ -249,6 +249,7 @@ object TurnDocumentsTests extends TestSuite {
               "Deploys frozen until Friday."
           ),
           Message.User("one"),
+          dated,
           Message.User("two")
         )
       )
@@ -304,6 +305,7 @@ object TurnDocumentsTests extends TestSuite {
               "\"near\":\"0.0000|⟪Accounts are reviewed.⟫\"}"
           ),
           Message.User("one"),
+          dated,
           Message.User("two")
         )
       )
@@ -383,6 +385,7 @@ object TurnDocumentsTests extends TestSuite {
           ),
           Message.User(shown + "How to fetch."),
           Message.User(shown + "How to peek there."),
+          dated,
           Message.User("one")
         )
       )
@@ -437,6 +440,7 @@ object TurnDocumentsTests extends TestSuite {
               "options you list or a short code, call extract with name h1: that never stops " +
               "you doing anything."
           ),
+          dated,
           Message.User("one")
         )
       )

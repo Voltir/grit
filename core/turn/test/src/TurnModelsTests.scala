@@ -228,7 +228,7 @@ object TurnModelsTests extends TestSuite {
       )
       provider.requests.headOption.map(_.system) ==>
         Some(
-          s"$system\n\nTools you may call:\n<grit_tool_descriptions>\n- peek: Reads a file.\n" +
+          s"$prompt\n\nTools you may call:\n<grit_tool_descriptions>\n- peek: Reads a file.\n" +
             s"- poke: Reads a file, asking first. ${Gate.AsksFirst}\n</grit_tool_descriptions>"
         )
       // Not cut at `<|`: no tool has the name as sent, so nothing was read.

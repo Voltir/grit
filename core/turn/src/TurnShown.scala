@@ -216,11 +216,12 @@ private[turn] object TurnShown {
     * none of its entries left dropped), then each document as one ([[Shown.document]]), then
     * each piece as one ([[Shown.piece]]), then
     * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
-    * entry as one user message, and a gap line wherever turns are left out), then the turn's
-    * own, its tool loop's exchange among them in order. A summary is not shown to the model
-    * yet. `system` ends with [[answering]] of the turn's first own entry, when it has one, in
-    * `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct message when `direct`
-    * ([[direct]]). A window seq with no entry is an `Assembly` failure naming every such seq.
+    * entry as one user message, and a gap line wherever turns are left out), then, when the turn
+    * has an own entry, [[answering]] of its first, in `zoned` (its offer's,
+    * [[TurnOffer.Recorded]]), in a direct message when `direct` ([[direct]]), as one user
+    * message, then the turn's own, its tool loop's exchange among them in order. A summary is not
+    * shown to the model yet. `system` is sent as it is given. A window seq with no entry is an
+    * `Assembly` failure naming every such seq.
     */
   def requestOf(
       system: String,
@@ -243,15 +244,22 @@ private[turn] object TurnShown {
         )
       case _ =>
         val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
+        // The dated line is a message, not part of `system`: a provider caches its prompt from
+        // the front, and nothing that changes per turn may sit before the messages. It is made
+        // here, from the turn's first own entry, and no entry keeps it: a later turn shown this
+        // one (Shown.own) sees no such line, so a window carried from turn to turn would differ
+        // from this request at it.
         val dated = mine
           .minByOption(e => EntrySeq.value(e.seq))
-          .fold(system)(root => s"$system\n\n${answering(root.createdAt, zoned, direct)}")
+          .map(root => Message.User(answering(root.createdAt, zoned, direct)))
         val parts = pieces.map((k, label, more) => Shown.piece(k, label, more))
-        Right(Unshaped(dated, sections, documents, parts ++ shown ++ Shown.turn(mine, named)))
+        Right(
+          Unshaped(system, sections, documents, parts ++ shown ++ dated ++ Shown.turn(mine, named))
+        )
     }
   }
 
-  /** The line [[requestOf]] ends a turn's system prompt with, for a turn whose first entry was made
+  /** The line [[requestOf]] sends just before a turn's own messages, for a turn whose first entry was made
     * `at`, in a direct message when `direct`. With no `zoned`, in UTC alone,
     * as before zones: "The message you are answering was said Wed 2026-10-21 15:03 UTC." With one, in
     * its zone, saying whose, then in UTC, then how to read times:

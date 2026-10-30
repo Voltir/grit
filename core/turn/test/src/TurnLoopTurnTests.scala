@@ -135,9 +135,9 @@ object TurnLoopTurnTests extends TestSuite {
         )
       )
       provider.requests.map(_.messages) ==> Vector(
-        Vector(Message.User("read them")),
-        Message.User("read them") +: shown.take(2),
-        Message.User("read them") +: shown
+        Vector(dated, Message.User("read them")),
+        Vector(dated, Message.User("read them")) ++ shown.take(2),
+        Vector(dated, Message.User("read them")) ++ shown
       )
       provider.requests.map(r => (r.tools.map(_.name), r.use)) ==>
         Vector.fill(3)((Vector("peek", "poke"), ToolUse.Auto))
@@ -160,13 +160,14 @@ object TurnLoopTurnTests extends TestSuite {
           )
         )
       )
-      // A later turn's window holds the reply, not the exchange.
+      // A later turn's window holds the reply, not the exchange, nor the line dating it.
       val next = new RecordingProvider
       runTurn(new InMemoryDurable, entries, next, say(entries, "and?"))
       next.requests.headOption.map(_.messages) ==> Some(
         Vector(
           Message.User("read them"),
           calling("alpha, beta and gamma"),
+          dated,
           Message.User("and?")
         )
       )
@@ -232,9 +233,9 @@ object TurnLoopTurnTests extends TestSuite {
       entries.windows ==> 1
       val kept = shownExchange(store, turn)
       provider.requests.map(_.messages) ==> Vector(
-        Vector(Message.User("read them")),
-        Message.User("read them") +: kept.take(2),
-        Message.User("read them") +: kept
+        Vector(dated, Message.User("read them")),
+        Vector(dated, Message.User("read them")) ++ kept.take(2),
+        Vector(dated, Message.User("read them")) ++ kept
       )
     }
 

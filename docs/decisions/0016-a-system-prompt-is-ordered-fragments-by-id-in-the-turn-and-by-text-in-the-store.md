@@ -1,6 +1,6 @@
 # 0016. A system prompt is ordered fragments: by id in the turn, by text in the store
 
-Status: accepted (2026-09-27); revised (2026-09-27, 2026-10-21, 2026-10-23)
+Status: accepted (2026-09-27); revised (2026-09-27, 2026-10-21, 2026-10-23, 2026-10-29)
 
 Context: the system prompt was one string, and the one model input not in the store: nothing
 showed what a turn was sent. It comes from several places (grit's own words, the edge, the
@@ -49,8 +49,11 @@ Decision:
   source and text. A turn records the ids it was sent; the texts are kept once in
   `grit.prompt_fragments`, unchanged, and a replay reads them back by id. An id with no text
   fails the turn loudly. `grit.turn_prompts` says which fragments each turn used.
-- **A turn's request says when its message was said**, after every fragment
-  (`TurnShown.answering`), so "today" and "Friday" can be read against it: in the person's zone
+- **A turn's request says when its message was said**, as a user message of its own just
+  before the turn's own messages (`TurnShown.answering`), never in the system prompt: a
+  provider caches from the front, and a per-turn line there would change the bytes before
+  every message on every turn. It is a plain user message rather than a mid-conversation
+  system message, which only Anthropic's API has. It is said so "today" and "Friday" can be read against it: in the person's zone
   when known (`grit.identities.zone`), else the deployment's, then in UTC, with how to read
   times; the zones recorded by
   the turn's `offer` step. It is made from the turn's first entry, which is kept, and those
@@ -65,6 +68,6 @@ was sent can be shown exactly. Fragments are never collected, so their table gro
 distinct text; a collection kind for unreferenced ones waits until nothing that can still
 replay names them. Enforced by `SystemPromptTests` (order, the pinned id) and
 `TurnPromptTests` (the base teaches every tag grit writes), `TurnTests` and `TurnHostedTests`
-(the line saying when the message was said, and that no fragment holds it),
+(the line saying when the message was said, where it sits, and that no fragment holds it),
 `TurnShownTests` (its forms), `RichTextTests` (Slack's words cover every block and mark it
 draws) and `PersonaTests` (a persona's voice in its words).

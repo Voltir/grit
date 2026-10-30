@@ -828,13 +828,12 @@ object TurnHostedTests extends TestSuite {
       edge.advertise(Vector(hostedFetch), Vector(file))
       val provider = model()
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
-      provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(3)) ==>
+      provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(2)) ==>
         Some(
           Vector(
             "<place_instructions source=\"/checkout/AGENTS.md\">\n" +
               "Instructions from /checkout/AGENTS.md:",
-            "Be brief.\n</place_instructions>",
-            dated
+            "Be brief.\n</place_instructions>"
           )
         )
       // Offered what the edge advertises, not every hosted tool the turn knows.
@@ -897,10 +896,9 @@ object TurnHostedTests extends TestSuite {
       val ids = offered.toVector
         .flatMap(_("prompt").arr.toVector)
         .flatMap(v => grit.core.prompt.FragmentId.of(v.str).toOption)
-      // The line saying when the message was said is the request's, never a kept fragment.
       Prompts
         .prompt(ids)(using grit.dbos.sql.TestTx.fake)
-        .map(p => s"${p.render}\n\n${dated}") ==>
+        .map(_.render) ==>
         Right(provider.requests.headOption.fold("")(_.system))
     }
 
