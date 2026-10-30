@@ -44,6 +44,17 @@ object TurnRecord {
     read[Either[TurnFailure, Route.Recorded]](steps, Turn.Step.Route)
       .map(_.flatMap(_.toOption).map(_.classification))
 
+  /** What `steps`' `carried` step found; `None` when it recorded none under
+    * [[TurnAssembly.CarryReasons]] (the turn ended before drawing a window, or ran before the
+    * step said why), or it failed ([[failure]] says why). `Left` naming the step when its
+    * output does not read.
+    */
+  def carried(steps: Vector[StepRecord]): Either[String, Option[TurnSteps.Basis]] =
+    if (!steps.exists(_.name == StepRecord.marker(TurnAssembly.CarryReasons))) Right(None)
+    else
+      read[Either[TurnFailure, TurnSteps.Basis]](steps, Turn.Step.Carried)
+        .map(_.flatMap(_.toOption))
+
   /** What the `weigh` step `steps` recorded. `Left` naming the step when its output does not
     * read.
     */

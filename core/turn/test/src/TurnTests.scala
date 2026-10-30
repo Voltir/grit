@@ -71,6 +71,7 @@ object TurnTests extends TestSuite {
       "classify",
       "record-topic",
       "DBOS.patch-carried-window",
+      "DBOS.patch-carry-reasons",
       "carried",
       "ask:needs",
       "ask:query",
@@ -120,7 +121,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 11
+  private val Placing = 12
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -266,6 +267,7 @@ object TurnTests extends TestSuite {
         "search",
         "DBOS.patch-heard-quiet-exit",
         "assemble",
+        "DBOS.patch-carry-reasons",
         "carried",
         "record-window",
         "gate",
@@ -944,6 +946,7 @@ object TurnTests extends TestSuite {
         Some(grit.core.speech.Outcome.NothingRecalled),
         Vector(
           "DBOS.patch-carried-window",
+          "DBOS.patch-carry-reasons",
           "carried",
           "ask:needs",
           "ask:needs:record",

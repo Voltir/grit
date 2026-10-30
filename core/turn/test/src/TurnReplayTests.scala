@@ -44,7 +44,8 @@ object TurnReplayTests extends TestSuite {
     Turn.Step.RelevanceRecord -> 64, // whether the cost was kept
     "DBOS.patch-heard-quiet-exit" -> 0, // a taken patch's marker, which records no output
     "DBOS.patch-carried-window" -> 0, // a taken patch's marker, which records no output
-    Turn.Step.Carried -> 128, // the carried window record's id, or none
+    "DBOS.patch-carry-reasons" -> 0, // a taken patch's marker, which records no output
+    Turn.Step.Carried -> 128, // the carried window record's id, or why none
     Turn.Step.Assemble -> 640, // the window's entry seqs and notes, and its cost
     Turn.Step.RecordWindow -> 128, // the loop's limits
     Turn.Step.Gate -> 800, // a round's level and the items it hid or lowered
@@ -75,10 +76,11 @@ object TurnReplayTests extends TestSuite {
   private val Gating: Set[String] = Set(Turn.Step.Needs, Turn.Step.NeedsRecord)
 
   /** The families a turn's window is drawn in before `assemble`, and the carried window's
-    * patch marker.
+    * and carry reasons' patch markers.
     */
   private val Drawing: Set[String] = Gating ++ Set(
     StepRecord.marker(TurnAssembly.Carrying),
+    StepRecord.marker(TurnAssembly.CarryReasons),
     Turn.Step.Carried,
     Turn.Step.Query,
     Turn.Step.QueryRecord,
@@ -111,6 +113,7 @@ object TurnReplayTests extends TestSuite {
         "ask:query",
         "assemble"
       )
+    val reasoned = carrying.patch(1, Vector(StepRecord.marker(TurnAssembly.CarryReasons)), 0)
     Map(
       // Gated and searched for 25, judged in three batches by a classifier that answered each.
       "queried.json" -> (Vector("ask:needs", "ask:needs:record") ++ searched ++ judged :+
@@ -127,7 +130,10 @@ object TurnReplayTests extends TestSuite {
       "routed-tasked.json" -> written,
       // Under the carried window's patch: its marker and `carried` lead the stage.
       "carried-appended.json" -> carrying,
-      "carried-boundary.json" -> carrying
+      "carried-boundary.json" -> carrying,
+      // Under the carry-reasons patch too: its marker follows the carried window's.
+      "carried-reasoned-appended.json" -> reasoned,
+      "carried-reasoned-boundary.json" -> reasoned
     )
   }
 
@@ -159,7 +165,9 @@ object TurnReplayTests extends TestSuite {
         "heard-unneeded.json",
         "heard-quiet.json",
         "carried-appended.json",
-        "carried-boundary.json"
+        "carried-boundary.json",
+        "carried-reasoned-appended.json",
+        "carried-reasoned-boundary.json"
       )
       (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
       before ==> after.collect {
@@ -327,7 +335,12 @@ object TurnReplayTests extends TestSuite {
       // window as a window is written, and its cost. Today's codec writes the same text back.
       val j = TurnJournal.projection
       val outputs = assembled(carrying = true)
-      outputs.map(_._1).toSet ==> Set("carried-appended.json", "carried-boundary.json")
+      outputs.map(_._1).toSet ==> Set(
+        "carried-appended.json",
+        "carried-boundary.json",
+        "carried-reasoned-appended.json",
+        "carried-reasoned-boundary.json"
+      )
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))
             if j.decode(text).map(j.encode) != Right(text) =>

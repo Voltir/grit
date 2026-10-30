@@ -749,6 +749,10 @@ object RecordTurnHistories {
       "later-turn" -> laterTurn,
       "carried-appended" -> carriedAppended,
       "carried-boundary" -> carriedBoundary,
+      // The same two under the carry-reasons patch: `carried` records the record it carries,
+      // or why it drew afresh (no prefix).
+      "carried-reasoned-appended" -> carriedAppended,
+      "carried-reasoned-boundary" -> carriedBoundary,
       "model-failed" -> modelFailed,
       "crashed-before-append" -> crashedBeforeAppend,
       "hosted-read" -> hosting(

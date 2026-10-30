@@ -87,6 +87,27 @@ private[turn] object TurnJournal {
       }
     )
 
+  /** A `carried` step's output under [[TurnAssembly.CarryReasons]]: `{"against": id}`, the
+    * window record drawn against, or `{"afresh": word}`, why not ([[TurnSteps.Basis.Why]]).
+    */
+  given carriedWhy: Journaled[Either[TurnFailure, TurnSteps.Basis]] =
+    outcome(
+      {
+        case TurnSteps.Basis.Against(head) => ujson.Obj("against" -> EntryId.value(head))
+        case TurnSteps.Basis.Afresh(why) => ujson.Obj("afresh" -> why.word)
+      },
+      v =>
+        (v.objOpt.flatMap(_.get("against")), v.objOpt.flatMap(_.get("afresh"))) match {
+          case (Some(ujson.Str(id)), None) => Right(TurnSteps.Basis.Against(EntryId(id)))
+          case (None, Some(ujson.Str(word))) =>
+            TurnSteps.Basis.Why.values
+              .find(_.word == word)
+              .map(TurnSteps.Basis.Afresh(_))
+              .toRight(s"carried: no reason '$word'")
+          case _ => Left("carried: expected {against} or {afresh}")
+        }
+    )
+
   /** A window as [[window]] writes it. */
   private def writeWindow(w: Window): ujson.Value = {
     val ids = PayloadJson.writeSeqs(w.entries)

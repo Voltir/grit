@@ -40,6 +40,7 @@ object TurnRecordLiveTests extends TestSuite {
           "classify",
           "record-topic",
           "DBOS.patch-carried-window",
+          "DBOS.patch-carry-reasons",
           "carried",
           "ask:needs",
           "ask:query",

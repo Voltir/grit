@@ -18,6 +18,8 @@ import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
+import TurnSteps.Basis
+import TurnSteps.Basis.Why
 import TurnShown.{gateNotes, gatedOffer, loopShape, shown, stubsAt}
 
 /** What a turn's rounds act through ([[TurnRound.Env]]), over `env` and `tooling`: its model
@@ -351,7 +353,9 @@ private[turn] object Rounding {
     * record of an earlier turn whose chain is read whole, when the request `turn` would send of
     * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), repeats that
     * turn's [[Payload.Prefix]] byte for byte ([[TurnShown.prefixOf]]), and its first gate,
-    * decided over what it carries ([[TurnGate.decide]], from [[startOf]]), hides none of it.
+    * decided over what it carries ([[TurnGate.decide]], from [[startOf]]), hides none of it;
+    * else why not, the first of those that fails, a hidden item named before a prefix that
+    * differs.
     */
   def carried[C^](
       env: TurnEnv^,
@@ -360,7 +364,7 @@ private[turn] object Rounding {
       recorded: TurnOffer.Recorded,
       routed: Turn.Routed,
       asked: Option[TurnAgenda.Classification]
-  ): Either[TurnFailure, Option[EntryId]] =
+  ): Either[TurnFailure, TurnSteps.Basis] =
     for {
       pins <- routed.picked(env)
       offer <- env.db
@@ -384,55 +388,73 @@ private[turn] object Rounding {
               Right(Vector.empty)
             )(h => CarriedWindow.chain(h.id)(env.records.entries.get))
             read <- (head, chain.lastOption) match {
+              case (None, _) => Right(Left(Why.NoWindow))
+              case (Some(h), None) =>
+                Right(Left(h.payload match {
+                  case w: Payload.Window if w.carry.isEmpty => Why.NoCarry
+                  case _ => Why.Unchained
+                }))
               case (Some(h), Some(last)) =>
-                val prefix = earlier.collectFirst {
+                earlier.collectFirst {
                   case Entry(_, _, t, _, _, p: Payload.Prefix, _, _) if t == last.turn => p
+                } match {
+                  case None => Right(Left(Why.NoPrefix))
+                  case Some(prefix) =>
+                    for {
+                      showing <- shown(
+                        env.records,
+                        turn,
+                        TurnShown.Seen(Some(h.id), Window(Vector.empty))
+                      )
+                      direct <- TurnShown.direct(env.hosting.conversations, turn)
+                    } yield Right((h.id, showing, direct, prefix))
                 }
-                for {
-                  showing <- shown(
-                    env.records,
-                    turn,
-                    TurnShown.Seen(Some(h.id), Window(Vector.empty))
-                  )
-                  direct <- TurnShown.direct(env.hosting.conversations, turn)
-                } yield prefix.map((h.id, showing, direct, _))
-              case _ => Right(None)
             }
           } yield read
         }
         .left
         .map(TurnFailure.ofStore)
-    } yield found.flatMap { (head, showing, direct, prefix) =>
-      val carrying = showing.copy(mine = Vector.empty)
-      val first = TurnGate.decide(
-        startOf(showing.mine, recorded.root),
-        tools.set,
-        TurnShown.itemsOf(showing),
-        Map.empty,
-        Map.empty
-      )
-      val held = TurnShown.itemsOf(carrying).map(_.ref).toSet
-      val settings = pins.turn.settings
-      val strict = settings.strict == StrictSchemas.Enforced
-      val (schemas, lines) = gatedOffer(tools.set, tools.schemas(strict), strict)
-      val shape =
-        loopShape(
-          None,
-          ToolUse.Auto,
-          schemas,
-          settings.afterResult,
-          settings.guidance,
-          lines,
-          Vector.empty
+    } yield found.fold(
+      Basis.Afresh(_),
+      { (head, showing, direct, prefix) =>
+        val carrying = showing.copy(mine = Vector.empty)
+        val first = TurnGate.decide(
+          startOf(showing.mine, recorded.root),
+          tools.set,
+          TurnShown.itemsOf(showing),
+          Map.empty,
+          Map.empty
         )
-      val repeats = TurnShown
-        .requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct)
-        .toOption
-        .map(_.shaped(shape))
-        .map(r => TurnShown.prefixOf(r.copy(messages = r.messages.take(prefix.messages))))
-        .contains(prefix)
-      Option.when(repeats && !first.hidden.exists((item, _) => held.contains(item.ref)))(head)
-    }
+        val held = TurnShown.itemsOf(carrying).map(_.ref).toSet
+        val settings = pins.turn.settings
+        val strict = settings.strict == StrictSchemas.Enforced
+        val (schemas, lines) = gatedOffer(tools.set, tools.schemas(strict), strict)
+        val shape =
+          loopShape(
+            None,
+            ToolUse.Auto,
+            schemas,
+            settings.afterResult,
+            settings.guidance,
+            lines,
+            Vector.empty
+          )
+        TurnShown.requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct) match {
+          case Left(_) => Basis.Afresh(Why.Unrendered)
+          case Right(unshaped) =>
+            val r = unshaped.shaped(shape)
+            // A carried item the first gate would hide rules the window out whatever its bytes,
+            // so it is named before them.
+            if (first.hidden.exists((item, _) => held.contains(item.ref)))
+              Basis.Afresh(Why.Hidden)
+            else if (
+              TurnShown.prefixOf(r.copy(messages = r.messages.take(prefix.messages))) != prefix
+            )
+              Basis.Afresh(Why.PrefixDiffers)
+            else Basis.Against(head)
+        }
+      }
+    )
 
   /** What a request over `window` would show of `turn`'s `item` in full
     * ([[TurnShown.textOf]]), read through `env`'s `db` as `pins` bound it; why not: the store

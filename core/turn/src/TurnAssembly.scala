@@ -46,19 +46,35 @@ private[turn] object TurnAssembly {
   def flow: Flow[Env, Placed, Nothing, Drawn[Windowed]] =
     Flow.patch(Carrying)(
       drawing(whole).map(_.map(_.map(Windowed.Whole(_)))),
-      Flow
-        .step(carried)
-        .keeping
-        .andThen(
-          Flow.branch((read: (Placed, Either[TurnFailure, Option[EntryId]])) =>
-            read._2.map(head => read._1.copy(carried = head)).left.map(f => Left(f))
-          )(
-            Flow.pass[Drawn[Windowed]],
-            drawing(projected).keeping
-              .map((p, drawn) => drawn.map(_.map(Windowed.Carried(p.carried, _))))
-          )
-        )
+      Flow.patch(CarryReasons)(
+        drawnAgainst(unreasoned)(identity),
+        drawnAgainst(carried)(_.head)
+      )
     )
+
+  /** The window drawn against the record `read` names (`head` of its output), or afresh when
+    * it names none: `Left` why there is none when `read` fails.
+    */
+  private def drawnAgainst[A](read: Step[Env, Placed, Either[TurnFailure, A]])(
+      head: A -> Option[EntryId]
+  ): Flow[Env, Placed, Nothing, Drawn[Windowed]] =
+    Flow
+      .step(read)
+      .keeping
+      .andThen(
+        Flow.branch((r: (Placed, Either[TurnFailure, A])) =>
+          r._2.map(a => r._1.copy(carried = head(a))).left.map(f => Left(f))
+        )(
+          Flow.pass[Drawn[Windowed]],
+          drawing(projected).keeping
+            .map((p, drawn) => drawn.map(_.map(Windowed.Carried(p.carried, _))))
+        )
+      )
+
+  /** The patch under which `carried` records why a window was drawn afresh (ADR 0004); a
+    * history from before it records only the record drawn against, or none.
+    */
+  val CarryReasons: String = "carry-reasons"
 
   /** The patch under which a turn reads the window it carries before its first ask (ADR 0004,
     * ADR 0052); a history from before it draws every window whole.
@@ -422,8 +438,14 @@ private[turn] object TurnAssembly {
       }
 
   /** `carried` ([[TurnSteps.Env.carried]]). */
-  private val carried: Step[Env, Placed, Either[TurnFailure, Option[EntryId]]] =
-    Step[Env, Placed, Either[TurnFailure, Option[EntryId]]](TurnSteps.Names.carried)(r =>
+  private val carried: Step[Env, Placed, Either[TurnFailure, TurnSteps.Basis]] =
+    Step[Env, Placed, Either[TurnFailure, TurnSteps.Basis]](TurnSteps.Names.carried)(r =>
       p => r.carried(p)
+    )
+
+  /** `carried` as recorded before [[CarryReasons]]: the record drawn against, or none. */
+  private val unreasoned: Step[Env, Placed, Either[TurnFailure, Option[EntryId]]] =
+    Step[Env, Placed, Either[TurnFailure, Option[EntryId]]](TurnSteps.Names.carried)(r =>
+      p => r.carried(p).map(_.head)
     )
 }
