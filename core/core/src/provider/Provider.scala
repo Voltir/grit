@@ -50,12 +50,18 @@ enum Delta {
 /** A model call's input: the system prompt, then `messages` in order, and the `tools` the
   * model may call as `use` allows. With no tools the model can only answer in text. What goes
   * in `system` and what in `messages`, and how to word and fence it: the `grit-model-text` skill.
+  *
+  * `stable` is how many of `messages`, from the first, the caller's later requests in the same
+  * exchange repeat unchanged: with `tools` and `system` they are the prefix a provider may
+  * cache. 0 keeps only `tools` and `system`, as does a negative count; a count past the end
+  * covers every message. A mark that overclaims costs a cache write, never a different reply.
   */
 final case class ModelRequest(
     system: String,
     messages: Vector[Message],
     tools: Vector[ToolSchema] = Vector.empty,
-    use: ToolUse = ToolUse.Auto
+    use: ToolUse = ToolUse.Auto,
+    stable: Int = 0
 )
 
 /** A tool the model may call, as a request shows it: its `name`, what it is for, and a JSON

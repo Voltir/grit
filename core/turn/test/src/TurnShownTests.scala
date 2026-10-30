@@ -106,5 +106,36 @@ object TurnShownTests extends TestSuite {
         first ++ exchange ++ second :+ Message.User(TurnLoop.LastCall)
       )
     }
+
+    test("the loop's request marks stable every message but the last call's note") {
+      val asked = Vector(Message.User("earlier"), Message.User("read it"))
+      val call = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      val result = Message.ToolResult(ToolCallId("t1"), "alpha", isError = false)
+      def marked(use: ToolUse, after: AfterToolResult): (Int, Int) = {
+        val r = TurnShown.loopShape(
+          None,
+          use,
+          Vector.empty,
+          after,
+          ToolGuidance.SchemaOnly,
+          Vector.empty
+        )(ModelRequest("sys", asked ++ Vector(call, result)))
+        (r.stable, r.messages.size)
+      }
+      // A later call repeats every message a call with tools is sent; the last call's note is
+      // its own, after the messages or, where a pair refuses a user there, ending the last
+      // result, which no later call repeats either.
+      Vector(
+        marked(ToolUse.Auto, AfterToolResult.UserMessage),
+        marked(ToolUse.Off, AfterToolResult.UserMessage),
+        marked(ToolUse.Auto, AfterToolResult.InLastResult),
+        marked(ToolUse.Off, AfterToolResult.InLastResult)
+      ) ==> Vector((4, 4), (4, 5), (4, 4), (3, 4))
+    }
   }
 }

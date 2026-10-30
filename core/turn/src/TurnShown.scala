@@ -102,7 +102,9 @@ private[turn] object TurnShown {
   /** How each call of the loop is built from the plain request: tagged for `asked`
     * ([[TurnVerdict.tagged]]), offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
     * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
-    * with each of `lines`, in order, each after a blank line ([[gatedOffer]]).
+    * with each of `lines`, in order, each after a blank line ([[gatedOffer]]). It marks stable
+    * ([[ModelRequest.stable]]) every message the call shares with the same request told with
+    * tools on: all of them but the last call's note, or the last result that note ends.
     */
   def loopShape(
       asked: Option[TurnAgenda.Classification],
@@ -114,9 +116,12 @@ private[turn] object TurnShown {
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.fold(base)(TurnVerdict.tagged(base, _))
-      val shaped =
-        TurnLoop.told(use, TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance), after)
-      shaped.copy(system = (shaped.system +: lines).mkString("\n\n"))
+      val guided = TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance)
+      val shaped = TurnLoop.told(use, guided, after)
+      // A later call is sent this one's messages as a call with tools is told them, then more.
+      val repeated = TurnLoop.told(ToolUse.Auto, guided, after).messages
+      val stable = shaped.messages.zip(repeated).takeWhile(_ == _).size
+      shaped.copy(system = (shaped.system +: lines).mkString("\n\n"), stable = stable)
     }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
