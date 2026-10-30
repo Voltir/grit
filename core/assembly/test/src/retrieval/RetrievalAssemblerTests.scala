@@ -613,7 +613,11 @@ object RetrievalAssemblerTests extends TestSuite {
       Tokens(budget)
     )
       .assemble(
-        AssemblyRequest(TurnRef(c1, TurnSeq(6)), Width.Deployed, CarriedWindow.Empty),
+        AssemblyRequest(
+          TurnRef(c1, TurnSeq(6)),
+          Width.Within(Tokens(budget), 0),
+          CarriedWindow.Empty
+        ),
         Packing.Drawn(Querying.Drawn(Vector.empty))
       )(using
         new FakeDb

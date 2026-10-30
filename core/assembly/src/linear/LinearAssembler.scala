@@ -3,6 +3,7 @@ package grit.assembly.linear
 import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
+  CarriedWindow,
   ContextAssembler,
   JudgeText,
   Packing,
@@ -21,11 +22,17 @@ import grit.core.provider.TokenEstimator
 import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore, Principals, Speakers}
 import grit.core.visibility.Subject
 
-/** The window with no choosing: the closing entry of the conversation's newest closed
-  * period, then the messages of the most recent whole turns of the turn's own period, before
-  * the turn, that fit in what `budget` tokens by `estimator` leave; never their summaries.
-  * The baseline every smarter assembler is measured against. It never draws on other
-  * conversations.
+/** The window with no choosing: at a boundary, the closing entry of the conversation's newest
+  * closed period, then the messages of the most recent whole turns of the turn's own period,
+  * before the turn, that fit in what half of `budget` ([[LinearAssembler.share]]) leaves by
+  * `estimator`; never their summaries. The baseline every smarter assembler is measured
+  * against. It never draws on other conversations.
+  *
+  * Given a carried window it appends the turns since its last part's turn, every one of them,
+  * with no closing and no gap line. Its limit, at which it draws afresh as with nothing
+  * carried: the turn's period began after a carried part's turn (a close since), or the
+  * carried parts' costs, their turns as sent ([[LinearAssembler.sent]]) and the turns since
+  * spend more than `budget`. A request's width bounds only a boundary, never the limit.
   *
   * The closing entry is paid for first; a budget too small for it leaves it out. Turns are
   * kept or dropped whole, so a window never opens on a reply without its question, or a tool
@@ -33,8 +40,7 @@ import grit.core.visibility.Subject
   * older turns would: the model never sees a history with holes. A newest turn larger than
   * what is left on its own leaves no turns. A window that leaves turns out is charged one
   * gap line ([[Shown.Gap]]). A person's message is costed with its author's name line
-  * ([[Shown.of]]), as it is sent. It never appends: its limit is every window, each a
-  * boundary, whatever is carried.
+  * ([[Shown.of]]), as it is sent.
   */
 final class LinearAssembler(
     entries: EntryStore,
@@ -68,14 +74,14 @@ final class LinearAssembler(
     }.left
       .map(AssemblyError.Store(_))
 
-  /** Within `budget`, or the budget `request.width` names; the drawn notes, or the query's, on
-    * it.
+  /** A boundary within [[LinearAssembler.share]] of `budget`, or the budget `request.width`
+    * names; the drawn notes, or the query's, on it.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       db: Db^
   ): Either[AssemblyError, Projection] = {
     val budget = request.width match {
-      case Width.Deployed => this.budget
+      case Width.Deployed => LinearAssembler.share(this.budget)
       case Width.Within(b, _) => b
     }
     val notes = packing match {
@@ -88,16 +94,33 @@ final class LinearAssembler(
         all <- entries.list(request.turn.conversationId)
         speakers <- principals.speakers(all.map(_.id))
       } yield {
-        val (closings, left) =
-          LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
-        val kept = LinearAssembler.tail(turns, speakers, estimator, left)
-        val gapped = if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
-        Projection.Boundary(
-          Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes),
-          Tokens(Tokens.value(budget) - Tokens.value(left)) +
-            LinearAssembler.cost(kept.flatten, speakers, estimator) + gapped
-        )
+        LinearAssembler.carrying(
+          request.carried,
+          opening.first,
+          all,
+          turns,
+          speakers,
+          estimator,
+          this.budget
+        ) match {
+          case Some(LinearAssembler.Carrying(since, _)) =>
+            Projection.Appended(
+              Window(since.flatten.sortBy(_.seq).map(_.seq), notes),
+              LinearAssembler.cost(since.flatten, speakers, estimator)
+            )
+          case None =>
+            val (closings, left) =
+              LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
+            val kept = LinearAssembler.tail(turns, speakers, estimator, left)
+            val gapped =
+              if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
+            Projection.Boundary(
+              Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes),
+              Tokens(Tokens.value(budget) - Tokens.value(left)) +
+                LinearAssembler.cost(kept.flatten, speakers, estimator) + gapped
+            )
+        }
       }
     }.left
       .map(AssemblyError.Store(_))
@@ -110,6 +133,11 @@ object LinearAssembler {
     * stays cheap.
     */
   val DefaultBudget: Tokens = Tokens(24_000)
+
+  /** What a boundary drawn at the deployed width fills: half of `limit`, so the turns after it
+    * grow the window to the limit before the next boundary (ADR 0052).
+    */
+  def share(limit: Tokens): Tokens = Tokens(Tokens.value(limit) / 2)
 
   /** The message entries of the turns in `all` from `from` and before `turn`, one vector per
     * turn, oldest turn first. Summaries and any other entries that are not messages are left
@@ -181,6 +209,40 @@ object LinearAssembler {
       )
   }
 
+  /** The own turns of `turns` (the period's, before the turn, oldest first) that a window
+    * carrying `carried` appends, every one after its last part's turn, and what the carried
+    * window spends with them: its parts' costs, their turns' own entries of `all` as sent, and
+    * those turns as shown, each with `speakers`' names, by `estimator`. `None` at the limit:
+    * nothing is carried, the turn's period began at `first`, after a carried part's turn (a
+    * close since), or they spend more than `limit`.
+    */
+  def carrying(
+      carried: CarriedWindow,
+      first: TurnSeq,
+      all: Vector[Entry],
+      turns: Vector[Vector[Entry]],
+      speakers: Speakers,
+      estimator: TokenEstimator,
+      limit: Tokens
+  ): Option[Carrying] =
+    carried.parts.lastOption
+      .filterNot(_ => carried.parts.exists(p => TurnSeq.value(p.turn) < TurnSeq.value(first)))
+      .flatMap { last =>
+        val since =
+          turns.filter(
+            _.headOption.exists(e => TurnSeq.value(e.turnSeq) > TurnSeq.value(last.turn))
+          )
+        val spent = carried.parts
+          .map(p => p.cost + sent(all.filter(_.turnSeq == p.turn), speakers, estimator))
+          .foldLeft(Tokens.Zero)(_ + _) + cost(since.flatten, speakers, estimator)
+        Option.when(Tokens.value(spent) <= Tokens.value(limit))(Carrying(since, spent))
+      }
+
+  /** What a window carrying a non-empty window appends: the own turns `since` its last part's
+    * turn, oldest first, and what the carried window `spent` with them.
+    */
+  final case class Carrying(since: Vector[Vector[Entry]], spent: Tokens)
+
   /** What one gap line ([[Shown.Gap]]) costs by `estimator`. */
   def gap(estimator: TokenEstimator): Tokens = estimator.message(Shown.Gap)
 
@@ -189,6 +251,12 @@ object LinearAssembler {
     */
   def cost(entries: Vector[Entry], speakers: Speakers, estimator: TokenEstimator): Tokens =
     entries.map(shownCost(_, speakers, estimator)).foldLeft(Tokens.Zero)(_ + _)
+
+  /** What the model is sent of a turn's own `entries` ([[Shown.turn]]), with `speakers`'
+    * names, costs by `estimator`: its tool calls and results as well as its messages.
+    */
+  def sent(entries: Vector[Entry], speakers: Speakers, estimator: TokenEstimator): Tokens =
+    Shown.turn(entries, speakers).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
 
   private def shownCost(e: Entry, speakers: Speakers, estimator: TokenEstimator): Tokens =
     Shown.of(e, speakers).fold(Tokens.Zero)(estimator.message)

@@ -9,9 +9,10 @@ import grit.core.context.{
   ContextAssembler,
   Projection,
   Shown,
-  Width
+  Width,
+  Window
 }
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -44,9 +45,10 @@ object LinearAssemblerTests extends TestSuite {
       world: World,
       turn: Long,
       budget: Long,
-      width: Width = Width.Deployed
+      width: Option[Width] = None
   ): Vector[String] = {
-    val seqs = projection(world, turn, budget, width, CarriedWindow.Empty).window.entries
+    val drawn = width.getOrElse(Width.Within(Tokens(budget), 0))
+    val seqs = projection(world, turn, budget, drawn, CarriedWindow.Empty).window.entries
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
       .getOrElse(sys.error("in-memory store"))
@@ -54,6 +56,20 @@ object LinearAssemblerTests extends TestSuite {
       .toMap
     seqs.map(s => bySeq.getOrElse(s, s"<no entry at ${EntrySeq.value(s)}>"))
   }
+
+  /** The seqs of the entries `ids` names, in their order. */
+  private def seqsOf(world: World, ids: String*): Vector[EntrySeq] = {
+    val byId = world.entries
+      .list(c1)(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+      .map(e => EntryId.value(e.id) -> e.seq)
+      .toMap
+    ids.toVector.map(id => byId.getOrElse(id, sys.error(s"no entry $id")))
+  }
+
+  /** `carried` carried on past `turn`, its window drawn by [[projection]] with `budget`. */
+  private def carriedOn(world: World, carried: CarriedWindow, turn: Long, budget: Long) =
+    carried.after(projection(world, turn, budget, Width.Deployed, carried), TurnSeq(turn))
 
   /** The projection for `turn`, given `carried`, of a linear assembler built with `budget`. */
   private def projection(
@@ -128,16 +144,16 @@ object LinearAssemblerTests extends TestSuite {
       val entries = store(small(0), small(1), small(2), small(3), small(4))
       val two = 2 * SmallTurn + Gap
       // Built for two turns: one within less, every one within more; hits are not read.
-      window(entries, 4, two, Width.Within(Tokens(two - 1), 0)) ==> Vector("t3:6", "t3:7")
-      window(entries, 4, two, Width.Within(Tokens(4 * SmallTurn), 0)) ==>
+      window(entries, 4, two, Some(Width.Within(Tokens(two - 1), 0))) ==> Vector("t3:6", "t3:7")
+      window(entries, 4, two, Some(Width.Within(Tokens(4 * SmallTurn), 0))) ==>
         Vector("t0:0", "t0:1", "t1:2", "t1:3", "t2:4", "t2:5", "t3:6", "t3:7")
-      // Deployed is the built budget's window.
-      window(entries, 4, two, Width.Deployed) ==> window(
-        entries,
-        4,
-        two,
-        Width.Within(Tokens(two), 0)
-      )
+    }
+
+    test("a boundary at the deployed width draws within half the built budget") {
+      val entries = store(small(0), small(1), small(2), small(3), small(4))
+      // Built for 68: the boundary fills 34, two turns and their gap line.
+      window(entries, 4, 2 * (2 * SmallTurn + Gap), Some(Width.Deployed)) ==>
+        Vector("t2:4", "t2:5", "t3:6", "t3:7")
     }
 
     test("a window that leaves turns out is charged its gap line") {
@@ -225,11 +241,89 @@ object LinearAssemblerTests extends TestSuite {
     test("a boundary costs its closing, its turns and its gap line") {
       val w = threePeriods
       val newest = closingCost(w, 2)
-      projection(w, 4, 1000, Width.Deployed, CarriedWindow.Empty).cost ==>
+      projection(w, 4, 1000, Width.Within(Tokens(1000), 0), CarriedWindow.Empty).cost ==>
         Tokens(newest + SmallTurn)
       val entries = store(small(0), small(1), small(2), small(3))
-      projection(entries, 3, 3 * SmallTurn - 1, Width.Deployed, CarriedWindow.Empty).cost ==>
-        Tokens(SmallTurn + Gap)
+      val narrow = Width.Within(Tokens(3 * SmallTurn - 1), 0)
+      projection(entries, 3, 1000, narrow, CarriedWindow.Empty).cost ==> Tokens(SmallTurn + Gap)
+    }
+
+    test(
+      "a carried window with room is appended to with only the turns since its last part's turn"
+    ) {
+      // Turn 2's window is carried; turn 3, which drew none, is all that is new at turn 4.
+      val w = store(small(0), small(1), small(2), small(3), Vector(user("now!")))
+      val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
+      projection(w, 4, 1000, Width.Deployed, carried) ==>
+        Projection.Appended(Window(seqsOf(w, "t3:6", "t3:7")), Tokens(SmallTurn))
+    }
+
+    test("a carried window the turns since overflow is cleared and re-projected") {
+      // Carried: turn 2's window (turns 0 and 1, 22) and turn 2 as sent (11); then turn 3 (11).
+      val w = store(small(0), small(1), small(2), small(3), Vector(user("now!")))
+      val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
+      val within = Width.Within(Tokens(43), 0)
+      projection(w, 4, 44, within, carried) ==>
+        Projection.Appended(Window(seqsOf(w, "t3:6", "t3:7")), Tokens(SmallTurn))
+      projection(w, 4, 43, within, carried) ==>
+        projection(w, 4, 43, within, CarriedWindow.Empty)
+    }
+
+    test("a window carried from before the turn's period began is cleared at its closing") {
+      // Turn 2's window was drawn in the second period; turn 4 is in the third.
+      val w = threePeriods
+      val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
+      val within = Width.Within(Tokens(1000), 0)
+      projection(w, 4, 1000, within, carried) ==>
+        projection(w, 4, 1000, within, CarriedWindow.Empty)
+    }
+
+    test("a carried turn is costed as it was sent, its tool call and result with its messages") {
+      // Turn 2 read a 400-character file: its messages cost 11, but it was sent far more.
+      val call = ToolCallId("c1")
+      val read = Vector(
+        Payload.Message(user("q002")),
+        Payload.Exchange(
+          Message.Assistant(
+            Vector(AssistantBlock.ToolCall(call, "read", ujson.Obj("path" -> "f"))),
+            StopReason.ToolUse,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "test"
+          )
+        ),
+        Payload.Result(Message.ToolResult(call, "x" * 400, false), "read f"),
+        Payload.Message(reply("answer02"))
+      )
+      val w = AssemblyFixtures.store(
+        Vector(small(0), small(1)).map(_.map(Payload.Message(_))) ++ Vector(read) ++
+          Vector(small(3), Vector(user("now!"))).map(_.map(Payload.Message(_)))*
+      )
+      val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
+      val within = Width.Within(Tokens(60), 0)
+      // As messages alone, 22 + 11 + 11 = 44 would fit 60.
+      projection(w, 4, 60, within, carried) ==>
+        projection(w, 4, 60, within, CarriedWindow.Empty)
+    }
+
+    test("a boundary in a period longer than the limit leaves the next turns room to append") {
+      // Ten turns of 11 and a limit of 55: a boundary drawn to the limit would leave turn 9
+      // nothing, clearing the window every other turn.
+      val w = store(((0 to 9).map(small) :+ Vector(user("now!")))*)
+      val at8 = carriedOn(w, CarriedWindow.Empty, 8, 55)
+      val p9 = projection(w, 9, 55, Width.Deployed, at8)
+      val p10 = projection(w, 10, 55, Width.Deployed, at8.after(p9, TurnSeq(9)))
+      (p9, p10) ==> (
+        Projection.Appended(Window(Vector.empty), Tokens.Zero),
+        Projection.Appended(Window(Vector.empty), Tokens.Zero)
+      )
+    }
+
+    test("a turn narrower than the carried window appends to it: the limit is the built budget") {
+      // A heard turn drawn narrower than the addressed one before it, as a recipe may.
+      val w = store(small(0), small(1), small(2), small(3), Vector(user("now!")))
+      val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
+      projection(w, 4, 1000, Width.Within(Tokens(SmallTurn), 0), carried) ==>
+        Projection.Appended(Window(seqsOf(w, "t3:6", "t3:7")), Tokens(SmallTurn))
     }
 
     test("a store failure is an assembly failure") {
