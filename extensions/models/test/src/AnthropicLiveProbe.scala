@@ -18,16 +18,18 @@ import grit.core.provider.{ModelRequest, ProviderError, ToolSchema}
   *     cache reads must cover all the first call cached (the breakpoint's lookback reaching
   *     back to it), not the system prompt alone.
   *   - **`drop_block`, per model.** For Claude Haiku 5.5 and Claude Sonnet 5.5: a reply's
-  *     thinking sent back after the system prompt was edited, without `drop_block` and with it.
-  *     A model belongs in [[AnthropicProvider.DropsMismatchedThinking]] when the call with it
-  *     is answered.
-  *   - **The stream reader against the real stream.** One Claude Haiku 5.5 tool call, streamed
-  *     and plain; both saved in the directory given, and the stream folded by
-  *     [[AnthropicStream.fold]] must agree with the plain response on its input tokens and stop
-  *     reason, and keep its thinking's signature.
+  *     signed thinking, asked for at effort high on a question of a few steps, sent back after
+  *     the system prompt was edited, without `drop_block` and with it. A model belongs in
+  *     [[AnthropicProvider.DropsMismatchedThinking]] when the call with it is answered.
+  *   - **The stream reader against the real stream.** One Claude Haiku 5.5 tool call that must
+  *     be reasoned out first, at effort high, streamed and plain; both saved in the directory
+  *     given, and the stream folded by [[AnthropicStream.fold]] must agree with the plain
+  *     response on its input tokens and stop reason, and keep every thinking block's
+  *     signature.
   *
-  * Small `max_tokens`, effort low; it stops before any call once its calls have cost
-  * [[Cap]], and prints each call's usage and cost.
+  * A check whose reply carried no thinking is reported inconclusive, never passed. Small
+  * `max_tokens`, effort low but where thinking is wanted; it stops before any call once its
+  * calls have cost [[Cap]], and prints each call's usage and cost.
   *
   * {{{set -a; . ./.env; set +a; ./mill grit.models.test.runMain grit.models.AnthropicLiveProbe "$PWD/extensions/models/test/resources"}}}
   *
@@ -41,6 +43,9 @@ object AnthropicLiveProbe {
 
   /** No call is made once the calls made have cost this much, in USD: 0.9¢. */
   private val Cap = BigDecimal("0.009")
+
+  /** The output budget of a `drop_block` check's edited calls, which need only be answered. */
+  private val Edited = 64
 
   private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build()
 
@@ -61,8 +66,8 @@ object AnthropicLiveProbe {
         sys.exit(2)
       case (Some(key), Some(dir)) =>
         cached(key)
-        dropping(key, Haiku, 256)
-        dropping(key, Sonnet, 200)
+        dropping(key, Haiku, 1024)
+        dropping(key, Sonnet, 450)
         recorded(key, Path.of(dir))
         println(s"[probe] spent ${cents(spent)} in all")
         failures.foreach(f => println(s"[probe] FAILED: $f"))
@@ -111,8 +116,15 @@ object AnthropicLiveProbe {
     }
   }
 
+  /** `model`'s thinking asked for within `maxTokens`; the edited calls after it, which need only
+    * be answered or refused, are given [[Edited]] tokens at effort low (effort is no edit).
+    */
   private def dropping(key: String, model: String, maxTokens: Int): Unit = {
-    val question = Message.User("What is 17 times 23? Work it out, then give the number alone.")
+    val question = Message.User(
+      "A shop sells pens at 3 for $4 and notebooks at $7 each. Ana buys 9 pens and 2 " +
+        "notebooks and pays with a $50 note. How much change does she get? Work it out step " +
+        "by step, then give the number alone."
+    )
     for {
       reply <- answered(
         key,
@@ -120,25 +132,27 @@ object AnthropicLiveProbe {
         maxTokens,
         ModelRequest("You are terse.", Vector(question), stable = 1),
         dropBlock = false,
-        s"drop_block, $model, its thinking"
+        s"drop_block, $model, its thinking",
+        Effort.High
       )
     } {
-      val thought = reply.blocks.exists {
-        case AssistantBlock.Reasoning(_, Some(_)) => true
-        case _ => false
-      }
-      if (!thought)
-        println(s"[probe] drop_block, $model: inconclusive, the reply carried no thinking")
+      if (signed(reply).isEmpty)
+        println(
+          s"[probe] drop_block, $model: inconclusive, the reply carried no thinking " +
+            s"(${kinds(reply)}; stop ${reply.stop})"
+        )
+      else if (!signed(reply).forall(identity))
+        println(s"[probe] drop_block, $model: inconclusive, its thinking came unsigned")
       else {
         val edited = ModelRequest(
           "You are terse. Answer in digits.",
-          Vector(question, reply, Message.User("And 19 times 21?")),
+          Vector(question, reply, Message.User("And if she buys one pen fewer?")),
           stable = 2
         )
         val without = sent(
           key,
           model,
-          maxTokens,
+          Edited,
           edited,
           dropBlock = false,
           s"drop_block, $model, edited without it"
@@ -147,7 +161,7 @@ object AnthropicLiveProbe {
           sent(
             key,
             model,
-            maxTokens,
+            Edited,
             edited,
             dropBlock = true,
             s"drop_block, $model, edited with it"
@@ -175,14 +189,19 @@ object AnthropicLiveProbe {
     )
     val request = ModelRequest(
       "You can read the checkout's files with read_file.",
-      Vector(Message.User("Read notes.txt with the tool, then tell me its first line.")),
+      Vector(
+        Message.User(
+          "The file to read is named after the sum of the first six prime numbers, with .txt " +
+            "after it. Work out its name step by step, then read it with the tool."
+        )
+      ),
       Vector(read),
       stable = 1
     )
     val body = AnthropicJson.request(
       Haiku,
-      256,
-      Some(Effort.Low),
+      1024,
+      Some(Effort.High),
       ReasoningReplay.Details,
       dropBlock = false,
       request
@@ -207,7 +226,7 @@ object AnthropicLiveProbe {
         val streamed = AnthropicStream.fold(lines.iterator, _ => ()).flatMap(AnthropicJson.response)
         streamed.foreach(spend("stream, streamed", _))
         val plain =
-          sent(key, Haiku, 256, request, dropBlock = false, "stream, plain", raw = Some(body))
+          sent(key, Haiku, 1024, request, dropBlock = false, "stream, plain", raw = Some(body))
         plain.foreach { case (status, text) =>
           if (status == 200) save(dir.resolve("anthropic-live-haiku.json"), text + "\n")
         }
@@ -224,14 +243,9 @@ object AnthropicLiveProbe {
               s"stream: input ${s.usage.input} streamed, ${p.usage.input} plain"
             )
             check(s.stop == p.stop, s"stream: stopped ${s.stop} streamed, ${p.stop} plain")
-            check(
-              s.blocks.exists {
-                case AssistantBlock.Reasoning(_, Some(r)) =>
-                  r.objOpt.flatMap(_.get("signature")).flatMap(_.strOpt).exists(_.nonEmpty)
-                case _ => false
-              },
-              "stream: no thinking block kept its signature"
-            )
+            if (signed(s).isEmpty)
+              println("[probe] stream: inconclusive for thinking, the streamed reply had none")
+            else check(signed(s).forall(identity), "stream: a thinking block lost its signature")
           case (s, p) => check(false, s"stream: streamed $s; plain $p")
         }
       }
@@ -245,9 +259,10 @@ object AnthropicLiveProbe {
       maxTokens: Int,
       request: ModelRequest,
       dropBlock: Boolean,
-      label: String
+      label: String,
+      effort: Effort = Effort.Low
   ): Option[Message.Assistant] =
-    sent(key, model, maxTokens, request, dropBlock, label) match {
+    sent(key, model, maxTokens, request, dropBlock, label, effort) match {
       case None => None
       case Some((200, text)) =>
         AnthropicJson.response(ujson.read(text)) match {
@@ -272,6 +287,7 @@ object AnthropicLiveProbe {
       request: ModelRequest,
       dropBlock: Boolean,
       label: String,
+      effort: Effort = Effort.Low,
       raw: Option[ujson.Value] = None
   ): Option[(Int, String)] =
     Option.when(affordable(label)) {
@@ -279,7 +295,7 @@ object AnthropicLiveProbe {
         AnthropicJson.request(
           model,
           maxTokens,
-          Some(Effort.Low),
+          Some(effort),
           ReasoningReplay.Details,
           dropBlock,
           request
@@ -320,6 +336,16 @@ object AnthropicLiveProbe {
     case Some((200, text)) =>
       AnthropicJson.response(ujson.read(text)).fold(_.toString, r => s"answered, ${kinds(r)}")
     case Some((status, text)) => AnthropicJson.error(status, text).toString
+  }
+
+  /** For each of `m`'s thinking blocks, whether it came signed (a redacted one, with its data). */
+  private def signed(m: Message.Assistant): Vector[Boolean] = m.blocks.collect {
+    case AssistantBlock.Reasoning(_, replay) =>
+      replay
+        .flatMap(_.objOpt)
+        .flatMap(r => r.get("signature").orElse(r.get("data")))
+        .flatMap(_.strOpt)
+        .exists(_.nonEmpty)
   }
 
   private def said(text: String): Message.Assistant = Message.Assistant(
