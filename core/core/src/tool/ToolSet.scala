@@ -16,6 +16,11 @@ final case class ToolSet private (tools: Vector[ToolSet.Entry]) {
   /** A content hash of the set's stored form ([[ToolSet.write]]). */
   def id: ToolSetId = ToolSetId(ShortHash.of(ujson.write(ToolSet.write(this))))
 
+  /** Whether a turn's gate could ever hide an item or withhold a tool of this set: some tool
+    * requires above the least integrity ([[Integrity.Untrusted]]).
+    */
+  def mayGate: Boolean = tools.exists(t => !Integrity.Untrusted.dominates(t.requires))
+
   /** The entry for the tool named `name`; `None` when the set has no such tool. */
   def named(name: ToolName): Option[ToolSet.Entry] = tools.find(_.name == name)
 

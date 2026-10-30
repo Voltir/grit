@@ -5,7 +5,8 @@ import java.time.{Instant, ZoneId, ZoneOffset}
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{AfterToolResult, ToolGuidance}
-import grit.core.provider.{ModelRequest, ToolUse}
+import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.tool.ToolSet
 
 import utest.*
 
@@ -179,6 +180,25 @@ object TurnShownTests extends TestSuite {
         marked(ToolUse.Auto, AfterToolResult.InLastResult),
         marked(ToolUse.Off, AfterToolResult.InLastResult)
       ) ==> Vector((4, 4), (4, 5), (4, 4), (3, 4))
+    }
+
+    test(
+      "the offer is the tool set's: read_hidden, extract and the note line whenever a tool requires above the least, whatever the gates decide; a withheld tool stays offered"
+    ) {
+      // post requires member, so a gate may withhold it; peek and poke require nothing.
+      val gating = TurnFixtures.gatedTools(TurnFixtures.NoCheckout)
+      val plain = TurnFixtures.tools(TurnFixtures.NoCheckout)
+      def offer(set: ToolSet, schemas: Vector[ToolSchema]) = {
+        val (shown, lines) = TurnShown.gatedOffer(set, schemas, false)
+        (shown.map(_.name), lines)
+      }
+      Vector(
+        offer(gating.set, gating.schemas(false)),
+        offer(plain.set, plain.schemas(false))
+      ) ==> Vector(
+        (Vector("read_hidden", "extract", "peek", "post"), Vector(TurnGate.Noted)),
+        (Vector("peek", "poke"), Vector.empty)
+      )
     }
   }
 }

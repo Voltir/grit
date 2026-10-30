@@ -404,7 +404,7 @@ object Turn {
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
             val (shown, lines) =
-              gatedOffer(gates.get(Round.First.index), tools.set, schemas, strict)
+              gatedOffer(tools.set, schemas, strict)
             requestOf(
               prompt.render,
               showing.copy(mine = before),

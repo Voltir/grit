@@ -18,7 +18,7 @@ import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
-import TurnShown.{gateNotes, gatedOffer, loopShape, mayGate, shown, stubsAt}
+import TurnShown.{gateNotes, gatedOffer, loopShape, shown, stubsAt}
 
 /** What a turn's rounds act through ([[TurnRound.Env]]), over `env` and `tooling`: its model
   * told through `heard`, offered the tools its offer chose of `tooling`'s, their results kept
@@ -210,7 +210,7 @@ private[turn] final class Rounding[C^](
         answer: Extract.Answer^{X}
     ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}] = {
       val box: Toolbox[caps.CapSet^{C, env, X}] =
-        if (!mayGate(at.gates.get(Round.First.index), tools.set)) tools
+        if (!tools.set.mayGate) tools
         else {
           val g = at.gates.get(at.round.index)
           val text = Rounding.itemText(env, at.looping.turn, at.looping.seen)(using pins)
@@ -274,7 +274,7 @@ private[turn] object Rounding {
     val settings = pins.turn.settings
     val strict = settings.strict == StrictSchemas.Enforced
     val (shown, lines) =
-      gatedOffer(at.gates.get(Round.First.index), tools.set, tools.schemas(strict), strict)
+      gatedOffer(tools.set, tools.schemas(strict), strict)
     loopShape(
       at.looping.asked,
       use,
@@ -334,9 +334,9 @@ private[turn] object Rounding {
   /** [[TurnSteps.Env.carried]], for `turn` offered as `recorded` from `tooling`'s tools, its
     * model asked about `asked`, read as `routed` bounds it: the conversation's newest window
     * record of an earlier turn whose chain is read whole, when the request `turn` would send of
-    * that window alone, offered as its first call offers it with its first gate decided over
-    * what it carries ([[TurnGate.decide]], from [[startOf]]), repeats that turn's
-    * [[Payload.Prefix]] byte for byte ([[TurnShown.prefixOf]]), and that gate hides none of it.
+    * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), repeats that
+    * turn's [[Payload.Prefix]] byte for byte ([[TurnShown.prefixOf]]), and its first gate,
+    * decided over what it carries ([[TurnGate.decide]], from [[startOf]]), hides none of it.
     */
   def carried[C^](
       env: TurnEnv^,
@@ -399,7 +399,7 @@ private[turn] object Rounding {
       val held = TurnShown.itemsOf(carrying).map(_.ref).toSet
       val settings = pins.turn.settings
       val strict = settings.strict == StrictSchemas.Enforced
-      val (schemas, lines) = gatedOffer(Some(first), tools.set, tools.schemas(strict), strict)
+      val (schemas, lines) = gatedOffer(tools.set, tools.schemas(strict), strict)
       val shape =
         loopShape(
           None,

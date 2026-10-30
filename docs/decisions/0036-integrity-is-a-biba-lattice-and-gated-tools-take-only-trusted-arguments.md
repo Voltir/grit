@@ -36,11 +36,12 @@ Decision:
 - **A turn's low-water mark.** A turn starts at its trigger's level and falls each round to
   the meet of all its model read; its output takes that level. The level is a
   pure fold over its recorded gates (ADR 0038), so it survives a resume.
-- **Gates.** Each hosted tool declares the integrity it requires, and is offered to no turn
-  that starts below it: by default member for a tool writing out of grit, nothing for a
-  read-only one. A turn that falls below it keeps it offered and has its calls refused, told so
-  in a note among its messages: what a turn sends only grows within the turn, so a provider's
-  prompt cache and a model's recorded thinking stay valid.
+- **Gates.** Each hosted tool declares the integrity it requires: by default member for a tool
+  writing out of grit, nothing for a read-only one. A turn below it, from its start or after
+  a fall, keeps it offered and has its calls refused, told so in a note among its messages:
+  what a turn offers is its tool set's alone, and what it sends only grows within the turn, so
+  a provider's prompt cache and a model's recorded thinking stay valid, within a turn and
+  across the turns that carry it (ADR 0052).
 - **What a turn reads.** Before each model call, a recorded step's one pure rule decides what
   the model reads. An item the turn's level dominates is shown. One below is shown, and lowers
   the level, when lowering withholds no tool offered now; otherwise it is a stub naming its

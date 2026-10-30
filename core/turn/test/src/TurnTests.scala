@@ -1332,6 +1332,69 @@ object TurnTests extends TestSuite {
       )
     }
 
+    test(
+      "a turn whose result lowered the level without withdrawing a tool is carried by the next; one whose gate wrote a note is followed by a boundary"
+    ) {
+      // fetch's results are believed at outside, which post requires: reading one lowers the
+      // turn and withdraws nothing, so no note is written. A turn asked from below outside
+      // starts with post withheld, which round 1's note says.
+      val entries = new InMemoryEntryStore
+      val box = Toolbox
+        .of[caps.CapSet^{NoCheckout}](
+          fetchBelieved(Believed.At(Integrity.Outside)).over(_ => Outcome.Done("alpha")),
+          hostedPost.requiring(Integrity.Outside).over(_ => Outcome.Done("posted"))
+        )
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      def run(
+          text: String,
+          by: Integrity,
+          script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant]
+      ) = {
+        val t = say(entries, text, by)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            new Scripted(script),
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            NoCheckout,
+            box,
+            3
+          )
+        )
+        t
+      }
+      val answers: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant] =
+        (r, _) => new StubProvider().complete(r)
+      val turns = Vector(
+        run(
+          "fetch a.txt",
+          Integrity.Member,
+          (r, n) =>
+            if (n == 0)
+              Right(
+                said(
+                  "",
+                  AssistantBlock.ToolCall(ToolCallId("t1"), "fetch", ujson.Obj("path" -> "a.txt"))
+                )
+              )
+            else new StubProvider().complete(r)
+        ),
+        run("post it", Integrity.Untrusted, answers),
+        run("thanks", Integrity.Member, answers)
+      )
+      turns.map(t =>
+        windows(entries).collectFirst {
+          case (id, w) if id == Turn.windowId(t) => w.carry.map(_.after)
+        }
+      ) ==> Vector(
+        Some(Some(None)),
+        Some(Some(Some(Turn.windowId(turns(0))))),
+        Some(Some(None))
+      )
+    }
+
     test("each turn's window is recorded as its own entry, with the turns search recalled") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable

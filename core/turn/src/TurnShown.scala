@@ -25,7 +25,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, Toolbox}
-import grit.core.visibility.{Integrity, Subject}
+import grit.core.visibility.Subject
 
 import TurnLoop.Round
 
@@ -66,52 +66,41 @@ private[turn] object TurnShown {
       }
   }
 
-  /** What every request of a turn offers of `schemas`, the schemas of `offered`, and the lines
-    * its system prompt ends with, as the turn's first gate, `first`, decided (`None`: no gate):
-    * when [[mayGate]], read_hidden and extract first ([[ReadHidden]], [[Extract]], `strict` as
-    * `schemas` are), and [[TurnGate.Noted]]; then `schemas` less those `first` withholds. A tool
-    * a later round's gate withholds stays offered, and a call of it is refused
+  /** What every request of every turn offered `offered` offers of `schemas`, its schemas, and
+    * the lines its system prompt ends with, whatever its gates decide: when
+    * [[ToolSet.mayGate]], read_hidden and extract first ([[ReadHidden]], [[Extract]], `strict`
+    * as `schemas` are), and [[TurnGate.Noted]]; then `schemas`. A tool a round's gate withholds,
+    * the first's included, stays offered, and a call of it is refused
     * ([[grit.core.tool.CallError.Withheld]]), as that round's note says ([[gateNotes]]).
     */
   def gatedOffer(
-      first: Option[Gated],
       offered: ToolSet,
       schemas: Vector[ToolSchema],
       strict: Boolean
   ): (Vector[ToolSchema], Vector[String]) = {
-    val gating = mayGate(first, offered)
-    val withheld = first.fold(Vector.empty[Withheld])(_.withheld)
+    val gating = offered.mayGate
     (
-      Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => gating) ++
-        schemas.filterNot(s => withheld.exists(w => ToolName.value(w.tool) == s.name)),
+      Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => gating) ++ schemas,
       Vector(TurnGate.Noted).filter(_ => gating)
     )
   }
 
-  /** Whether a gate of a turn whose first gate was `first`, offering `offered`, could hide an
-    * item or withhold a tool on any round: `first` hid one, or a tool of `offered` requires
-    * what is not the least ([[grit.core.visibility.Integrity.Untrusted]]) and `first`'s level
-    * dominates, so a result read later could withdraw it. False with no gate.
-    */
-  def mayGate(first: Option[Gated], offered: ToolSet): Boolean =
-    first.exists(g =>
-      g.hidden.nonEmpty || offered.tools.exists(t =>
-        !Integrity.Untrusted.dominates(t.requires) && g.level.dominates(t.requires)
-      )
-    )
-
   /** The note each round up to `round` adds, oldest first, as `gates`, each round's gate by
     * its index, made them: [[TurnGate.Guidance]] on the first round whose gate hid an item,
     * then the withdrawal the round's gate makes against the round before's
-    * ([[TurnGate.withdrawn]]), its tools as `offered` says them; each note as
-    * [[TurnGate.noted]] fences it. A round adding neither has none.
+    * ([[TurnGate.withdrawn]]; the first round's against one withholding nothing), its tools as
+    * `offered` says them; each note as [[TurnGate.noted]] fences it. A round adding neither has
+    * none.
     */
   def gateNotes(gates: Map[Int, Gated], round: Round, offered: ToolSet): Vector[(Round, String)] = {
     val firstHid = gates.collect { case (index, g) if g.hidden.nonEmpty => index }.minOption
     (Round.First.index to round.index).toVector.flatMap { index =>
       gates.get(index).flatMap { now =>
+        val before =
+          if (index == Round.First.index) Some(now.copy(withheld = Vector.empty))
+          else gates.get(index - 1)
         val lines = Vector(TurnGate.Guidance).filter(_ => firstHid.contains(index)) ++
-          gates.get(index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
+          before.flatMap(TurnGate.withdrawn(_, now, offered))
         Option.when(lines.nonEmpty)(Round.at(index) -> TurnGate.noted(lines))
       }
     }

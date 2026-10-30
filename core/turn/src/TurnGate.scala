@@ -100,7 +100,7 @@ object TurnGate {
       "want it; never assume from a name. Use everyday words: don't say \"integrity\", " +
       "\"stub\", \"hidden item\", \"turn\" or the names of your tools."
 
-  /** The line a turn's system prompt ends with when its gates may add a note
+  /** The line a turn's system prompt ends with when its tool set may gate
     * ([[TurnShown.gatedOffer]]): what [[Tag.GritNote]] holds is grit's, to follow, wherever it
     * appears.
     */

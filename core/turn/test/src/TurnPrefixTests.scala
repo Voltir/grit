@@ -6,6 +6,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.ReasoningReplay
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
+import grit.core.visibility.Integrity
 import grit.models.{AnthropicJson, OpenRouterJson, StubProvider}
 
 import utest.*
@@ -332,6 +333,48 @@ object TurnPrefixTests extends TestSuite {
           case _ => false
         })
       ) ==> (Some(Some(None)), Vector.empty, true)
+    }
+
+    test(
+      "a gated turn, an ungated one and one whose first gate withholds a tool send the same tools and system prompt, byte for byte, on either gateway"
+    ) {
+      // The offer is the tool set's: what a turn's gates decide never changes its prefix.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def run(text: String, by: Integrity, provider: Scripted) = {
+        val t = say(entries, text, by)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            gatedTools(ws),
+            3
+          )
+        )
+        provider.requests
+      }
+      val answers = new Scripted((r, _) => new StubProvider().complete(r))
+      val requests = Vector(
+        run(
+          "read a.txt twice, then post it",
+          Integrity.Member,
+          new Scripted((_, n) => if (n < 2) Right(peeking(s"t${n + 1}")) else Right(posted))
+        ),
+        run("and now?", Integrity.Member, new Scripted((r, _) => new StubProvider().complete(r))),
+        run("post it for me", Integrity.Outside, answers)
+      ).flatten
+      val bodies = Vector(
+        requests.map(
+          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+        ),
+        requests.map(OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, _))
+      )
+      bodies.map(_.map(b => (b.obj.get("system"), b.obj.get("tools"))).distinct.size) ==>
+        Vector(1, 1)
     }
 
     test(

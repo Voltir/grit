@@ -218,7 +218,9 @@ object TurnGateTurnTests extends TestSuite {
       gatedRun(new InMemoryDurable, entries, turn)(provider)
       kept(entries, "result:c1:0:0:0").map(_.integrity) ==> Some(Integrity.Outside)
       provider.requests.lift(1).flatMap(resultOf(_, "t1")) ==>
-        Some("There is no tool named `grep`; the tools are `peek`, `post`.")
+        Some(
+          "There is no tool named `grep`; the tools are `read_hidden`, `extract`, `peek`, `post`."
+        )
     }
 
     test("a call of a withheld tool is answered that it is withheld, and nothing runs") {
@@ -234,6 +236,38 @@ object TurnGateTurnTests extends TestSuite {
             isError = true
           ),
           "post"
+        )
+      )
+    }
+
+    test(
+      "a tool the first gate withholds is offered, its call refused, and round 1's note names it"
+    ) {
+      // Asked from outside the team, the turn starts below what post requires.
+      val entries = new InMemoryEntryStore
+      val provider = gatedScript
+      gatedRun(new InMemoryDurable, entries, say(entries, "read and post", Integrity.Outside))(
+        provider
+      )
+      val note =
+        Message.User(TurnGate.noted(Vector("From now until you answer, you can't use post.")))
+      (
+        provider.requests.map(_.tools.map(_.name)).distinct,
+        provider.requests.map(_.messages.count(_ == note)),
+        kept(entries, "result:c1:0:1:0").map(_.payload)
+      ) ==> (
+        Vector(Vector("read_hidden", "extract", "peek", "post")),
+        Vector(1, 1, 1),
+        Some(
+          Payload.Result(
+            Message.ToolResult(
+              ToolCallId("t2"),
+              "You can't use post right now, because of something you read; nothing was done, " +
+                "so answer without it.",
+              isError = true
+            ),
+            "post"
+          )
         )
       )
     }
