@@ -101,6 +101,44 @@ object AnthropicStreamTests extends TestSuite {
       )
     }
 
+    test(
+      "a live stream folds to what the plain call of the same request read: input, stop, calls, signed thinking, and the last message_delta's output"
+    ) {
+      // Saved by AnthropicLiveProbe from Anthropic's API: one Claude Haiku 5.5 request, sent
+      // streamed and plain. The two calls' text and ids differ; what is compared does not.
+      val lines = resource("/anthropic-live-haiku.sse")
+      val streamed = AnthropicStream.fold(lines.iterator, _ => ()).flatMap(AnthropicJson.response)
+      val plain =
+        AnthropicJson.response(ujson.read(resource("/anthropic-live-haiku.json").mkString("\n")))
+      // Anthropic's message_delta counts are cumulative: the last one's output is the stream's.
+      val lastOutput = lines
+        .filter(_.contains("\"message_delta\""))
+        .lastOption
+        .flatMap(l => ujson.read(l.drop(5).trim).obj.get("usage"))
+        .flatMap(_.obj.get("output_tokens"))
+        .map(_.num.toLong)
+      def calls(m: Message.Assistant) = m.blocks.collect { case AssistantBlock.ToolCall(_, n, a) =>
+        (n, a.objOpt.isDefined)
+      }
+      def signed(m: Message.Assistant) = m.blocks.collect {
+        case AssistantBlock.Reasoning(_, replay) =>
+          replay.flatMap(_.objOpt).flatMap(_.get("signature")).flatMap(_.strOpt).exists(_.nonEmpty)
+      }
+      streamed.map(s =>
+        (s.usage.input, s.stop, Some(Tokens.value(s.usage.output)), calls(s), signed(s))
+      ) ==> plain.map(p =>
+        (
+          p.usage.input,
+          p.stop,
+          lastOutput,
+          calls(p),
+          streamed.fold(_ => Vector(), signed).map(_ => true)
+        )
+      )
+      // The request offers one tool and asks for it to be called.
+      plain.map(calls) ==> Right(Vector(("read_file", true)))
+    }
+
     test("a refusal partway through is Refused naming its category") {
       val refused = event(
         """{"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"type":"refusal","category":"bio"}},"usage":{"output_tokens":3}}"""
