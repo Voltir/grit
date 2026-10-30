@@ -332,6 +332,44 @@ object EngineLockTests extends TestSuite {
       (during, free(config)) ==> (false, true)
     }
 
+    test(
+      "an engine whose lock connection is terminated says it stopped by losing its lock, and a close after returns only once its running bodies have"
+    ) {
+      val config = fresh("lock_lost_then_closed")
+      val interrupted = new AtomicBoolean(false)
+      val returned = new AtomicBoolean(false)
+      val losing = engine(config)
+      val running = new AtomicBoolean(false)
+      losing.launch(
+        _ =>
+          d ?=> {
+            d.step("stubborn") { () =>
+              running.set(true)
+              // Holds on for two seconds past its interrupt, as a step that ignores it would.
+              try Thread.sleep(60000)
+              catch { case _: InterruptedException => interrupted.set(true) }
+              val until = System.nanoTime() + 2.seconds.toNanos
+              while (System.nanoTime() < until) {}
+              returned.set(true)
+              "done"
+            }
+          },
+        noop,
+        noop,
+        noop,
+        noop,
+        LiveEngine.Unplaced,
+        Vector.empty
+      )
+      val _ = started(losing.inbox, "stubborn")
+      assert(eventually(20.seconds)(running.get()))
+      terminateHolder(config)
+      // The heartbeat is closing the engine, and has interrupted the body, still running.
+      assert(eventually(20.seconds)(interrupted.get()))
+      losing.close()
+      (losing.stoppedBy, returned.get()) ==> (Some(StoppedBy.LockLost), true)
+    }
+
     test("an engine whose row is deleted stops, and frees the lock") {
       val config = fresh("lock_row_deleted")
       val held = engine(config)

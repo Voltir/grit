@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.concurrent.duration.*
@@ -307,7 +308,14 @@ final class Engine private (
   /** The workflow bodies running in this process: [[close]] waits for them. */
   private val running = new Running
 
-  private val closed = new AtomicBoolean(false)
+  /** Set once, by the first [[stop]]. */
+  private val stopping = new AtomicReference[Option[StoppedBy]](None)
+
+  /** Counted down when the first [[stop]] has released the lock. */
+  private val stopped = new CountDownLatch(1)
+
+  /** Why this engine stopped, from the moment it begins to stop; `None` while it runs. */
+  def stoppedBy: Option[StoppedBy] = stopping.get()
 
   /** Writes the lock's heartbeat every beat, on a daemon thread, until the engine closes; a
     * heartbeat the lock refuses closes the engine. Once, from [[Engine.start]].
@@ -316,13 +324,13 @@ final class Engine private (
     val log = LoggerFactory.getLogger("grit.engine")
     val thread = new Thread(() => {
       var alive = true
-      while (alive && !closed.get()) {
+      while (alive && stoppedBy.isEmpty) {
         try Thread.sleep(lock.beat.toMillis)
         catch { case _: InterruptedException => () }
-        if (!closed.get() && !lock.beatOnce()) {
+        if (stoppedBy.isEmpty && !lock.beatOnce()) {
           alive = false
           log.warn("lost the engine lock: stopping, so no workflow runs beside its new holder")
-          close()
+          stop(StoppedBy.LockLost)
         }
       }
     })
@@ -339,10 +347,10 @@ final class Engine private (
     * attached [[Link]] does not.
     */
   def every(name: String, period: FiniteDuration)(pass: () => Unit): Unit =
-    if (!closed.get()) {
+    if (stoppedBy.isEmpty) {
       val log = LoggerFactory.getLogger(name)
       val thread = new Thread(() => {
-        while (!closed.get()) {
+        while (stoppedBy.isEmpty) {
           try pass()
           catch {
             // The engine closing interrupts a pass under way; the loop then ends.
@@ -410,10 +418,14 @@ final class Engine private (
   /** Stops every pass ([[every]]) and the sweep, lapses every watch ([[watch]]), stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
     * still running (interrupted by the stop) to return, closes its pool, then releases the lock: no body this
     * engine ran outlives its lock, unless one ignores its interrupt past the wait, which is
-    * logged. Also what losing the lock does. Once; later calls return at once.
+    * logged. Also what losing the lock does. Once; a later or concurrent call returns only when
+    * the first has released the lock.
     */
-  def close(): Unit =
-    if (closed.compareAndSet(false, true)) {
+  def close(): Unit = stop(StoppedBy.Close)
+
+  /** [[close]], saying why. */
+  private def stop(by: StoppedBy): Unit =
+    if (stopping.compareAndSet(None, Some(by))) {
       try {
         passes.forEach(_.interrupt())
         passes.forEach(_.join(Engine.BodiesWithin.toMillis))
@@ -427,8 +439,10 @@ final class Engine private (
             .warn(s"workflow bodies still running after ${Engine.BodiesWithin}: releasing the lock")
       } finally
         try dataSource.close()
-        finally lock.close()
-    }
+        finally
+          try lock.close()
+          finally stopped.countDown()
+    } else stopped.await()
 }
 
 object Engine {
@@ -457,7 +471,7 @@ object Engine {
     * recovering and dequeuing only workflows of
     * application version `version` (ADR 0004: a compatibility epoch, and the deployment's own
     * version after a `+`). Losing the lock (its connection dropped, or its
-    * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
+    * row gone or taken) stops the engine as [[Engine.close]] does ([[StoppedBy.LockLost]]), and an edge's calls on it
     * then fail. Its inbox takes new messages as `budget` allows, dating each, and reading the
     * day its cap counts, by `clock`. `visibility`'s compartments
     * are recorded as the ones the database runs under before anything else is written
@@ -584,6 +598,18 @@ enum Unopened {
     case Dropped(c) =>
       s"this database ran under the compartment ${Compartment.name(c)}, which the deployment no longer declares: dropping or renaming a compartment is refused"
   }
+}
+
+/** Why an engine stopped. */
+enum StoppedBy {
+
+  /** [[Engine.close]] was called. */
+  case Close
+
+  /** Its heartbeat found its lock gone: the lock's connection dropped, or its row deleted or
+    * taken.
+    */
+  case LockLost
 }
 
 /** Where a turn's workflow is, as an edge sees it. */
