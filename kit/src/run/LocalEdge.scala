@@ -8,7 +8,7 @@ import grit.core.host.Instructions
 import grit.core.id.PrincipalId
 import grit.core.place.{Directory, Place}
 import grit.core.prompt.Fragment
-import grit.core.tool.{DuplicateName, ToolSet}
+import grit.core.tool.{SetRefusal, ToolSet}
 import grit.edge.{PlaceFragments, Server, Tools}
 
 /** The edge a process serves for its own checkout (ADR 0017). */
@@ -24,15 +24,15 @@ object LocalEdge {
     * files are read again every [[AdvertEvery]] until the process ends, and advertised when
     * they changed, so an edit reaches the next turn without a restart. A registration or an
     * advert that fails is logged to `log` as a warning, and turns are then served by no edge
-    * here; what the server says of a run, as information. `Left` names a tool `tools` offers
-    * twice.
+    * here; what the server says of a run, as information. `Left` names a tool `tools` cannot offer
+    * with the others.
     */
   def over(
       directory: Directory,
       tools: LocalTools,
       instructions: Instructions^,
       log: org.slf4j.Logger
-  ): Either[DuplicateName, Console.Edge^] =
+  ): Either[SetRefusal, Console.Edge^] =
     tools.hosted match {
       case Left(twice) => Left(twice)
       case Right(hosted) =>

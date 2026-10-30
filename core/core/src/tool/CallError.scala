@@ -74,5 +74,23 @@ object CallError {
   }
 }
 
+/** Why tools cannot be offered as one set ([[ToolSet.of]], [[Toolbox.of]]): the tool `name`
+  * clashes, as `message` says for a person.
+  */
+sealed trait SetRefusal {
+  def name: ToolName
+  def message: String
+}
+
 /** Two tools offered together share the name `name`. */
-final case class DuplicateName(name: ToolName)
+final case class DuplicateName(name: ToolName) extends SetRefusal {
+  def message: String = s"the tool ${ToolName.value(name)} is offered twice"
+}
+
+/** The tool `name`'s parameters declare [[Writes.Field]], which only a writing tool's
+  * destinations name: a set holding it could not be read back from its stored form.
+  */
+final case class DeclaresField(name: ToolName) extends SetRefusal {
+  def message: String =
+    s"the tool ${ToolName.value(name)}'s parameters declare ${Writes.Field}, which only its writes may name"
+}

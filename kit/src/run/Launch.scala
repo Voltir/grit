@@ -28,7 +28,7 @@ import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
-import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
+import grit.core.tool.{DeclaresField, DuplicateName, SetRefusal, Tool, ToolName, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Runtime, Stores}
 import grit.dbos.sql.DbConfig
@@ -500,7 +500,7 @@ private[grit] object Launch {
       clock
     )
     // Offered everywhere: grit's own, every plugin's tools, then the commands it offers turns.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks, files, clock}]] =
+    val everyone: Either[SetRefusal, Toolbox[caps.CapSet^{desks, files, clock}]] =
       Toolbox.of[caps.CapSet^{desks, files, clock}](
         (Vector[Tool.Offered^{desks, files, clock}](
           own(
@@ -514,7 +514,7 @@ private[grit] object Launch {
       )
     // Offered whatever d.offer is, where TurnOffer.decide offers them.
     val administration = runtime.administration
-    val administers: Either[DuplicateName, Toolbox[caps.CapSet^{administration, clock}]] =
+    val administers: Either[SetRefusal, Toolbox[caps.CapSet^{administration, clock}]] =
       Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
     val shows = renders(d)
     val launching = d.offer.tools match {
@@ -587,8 +587,11 @@ private[grit] object Launch {
     }
     // Its caller closes the engine and reports the throw: in the chat, as the engine that
     // could not open.
-    launching.left.foreach { case DuplicateName(name) =>
-      throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
+    launching.left.foreach {
+      case DuplicateName(name) =>
+        throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
+      case declares: DeclaresField =>
+        throw new IllegalStateException(s"grit's tools cannot be offered: ${declares.message}")
     }
   }
 

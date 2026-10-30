@@ -220,7 +220,7 @@ object PluginCaptureTests extends TestSuite {
 
   private val allowed =
     """object Store {
-      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[SetRefusal, Toolbox[{store, desk}]] =
       |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
       |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
       |  val commands: Vector[PluginCommand[?]] = Vector(Says, Notes)

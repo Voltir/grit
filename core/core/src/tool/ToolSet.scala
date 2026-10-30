@@ -92,12 +92,18 @@ object ToolSet {
   /* What a tool declaring no action is said as. */
   private def used(name: ToolName): String = s"use ${ToolName.value(name)}"
 
-  /** `entries` as a set, in this order; `Left` naming the first name repeated. */
-  def of(entries: Vector[Entry]): Either[DuplicateName, ToolSet] = {
+  /** `entries` as a set, in this order; `Left` naming the first name repeated, else the first
+    * entry whose parameters declare [[Writes.Field]], so every set built reads back ([[read]]).
+    */
+  def of(entries: Vector[Entry]): Either[SetRefusal, ToolSet] = {
     val names = entries.map(_.name)
     names.diff(names.distinct).headOption match {
       case Some(repeated) => Left(DuplicateName(repeated))
-      case None => Right(ToolSet(entries))
+      case None =>
+        entries.find(e => Writes.declared(e.parameters)) match {
+          case Some(declaring) => Left(DeclaresField(declaring.name))
+          case None => Right(ToolSet(entries))
+        }
     }
   }
 
@@ -151,11 +157,7 @@ object ToolSet {
         retryKey <- field(o, "retry").flatMap(_.strOpt.toRight("a tool's retry is not a string"))
         retry <- Retry.of(retryKey).toRight(s"no retry $retryKey")
         named <- ToolName.of(name)
-        _ <- Either.cond(
-          !Writes.declared(parameters),
-          (),
-          s"the tool $name's parameters declare ${Writes.Field}, which only its writes may name"
-        )
+        _ <- Either.cond(!Writes.declared(parameters), (), DeclaresField(named).message)
         writes <- o.get("writes").fold(Right(None))(w => stored(w).map(Some(_)))
         requires <- o
           .get("requires")
@@ -198,7 +200,10 @@ object ToolSet {
       entries <- tools.toVector.foldLeft[Either[String, Vector[Entry]]](Right(Vector.empty)) {
         (acc, t) => acc.flatMap(done => entry(t).map(done :+ _))
       }
-      set <- of(entries).left.map(d => s"a tool set names ${ToolName.value(d.name)} twice")
+      set <- of(entries).left.map {
+        case DuplicateName(n) => s"a tool set names ${ToolName.value(n)} twice"
+        case declares: DeclaresField => declares.message
+      }
     } yield set
   }
 }

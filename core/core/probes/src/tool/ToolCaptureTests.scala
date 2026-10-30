@@ -30,13 +30,13 @@ object ToolCaptureTests extends TestSuite {
 
   /** A read-only toolbox that is handed a tool that edits. */
   private val smuggled =
-    """def readOnly(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws}]] =
+    """def readOnly(ws: Workspace^, e: Edits^): Either[SetRefusal, Toolbox[{ws}]] =
       |  Toolbox.of(reads(ws), writes(e))
       |""".stripMargin
 
   /** A toolbox of the store handed a tool, told its call, whose run also edits. */
   private val toldEdits =
-    """def told(store: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{store}]] =
+    """def told(store: Workspace^, e: Edits^): Either[SetRefusal, Toolbox[{store}]] =
       |  Toolbox.of(new Hosted(spec, Gate.Free, p => p, Believed.Default).calling((p, at) => { val _ = RelPath.of(p).map(e.write(_, at.key)); reads(store); Outcome.Done(at.key) }))
       |""".stripMargin
 
@@ -44,10 +44,10 @@ object ToolCaptureTests extends TestSuite {
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
   private val readOnlyAndAll =
-    """def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] = Toolbox.of(reads(ws))
-      |def all(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws, e}]] =
+    """def readOnly(ws: Workspace^): Either[SetRefusal, Toolbox[{ws}]] = Toolbox.of(reads(ws))
+      |def all(ws: Workspace^, e: Edits^): Either[SetRefusal, Toolbox[{ws, e}]] =
       |  Toolbox.of(reads(ws), writes(e))
-      |def told(store: Workspace^): Either[DuplicateName, Toolbox[{store}]] =
+      |def told(store: Workspace^): Either[SetRefusal, Toolbox[{store}]] =
       |  Toolbox.of(new Hosted(spec, Gate.Free, p => p, Believed.Default).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
       |""".stripMargin
 

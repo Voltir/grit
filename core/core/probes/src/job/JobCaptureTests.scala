@@ -107,7 +107,7 @@ object JobCaptureTests extends TestSuite {
 
   /** 6. The toolbox of a store and a desk handed a plugin tool whose run also edits. */
   private val toolboxEdits =
-    """def box(store: Db^, desk: ScheduleDesk^, e: Edits^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+    """def box(store: Db^, desk: ScheduleDesk^, e: Edits^, r: PluginRun[Int]): Either[SetRefusal, Toolbox[{store, desk}]] =
       |  Toolbox.of(Remember.described.calling((n, at) => { val _ = RelPath.of("x").map(e.write(_, "x")); r.run(n, at, store.as(Subject.Turn(at.turn)), desk) }))
       |""".stripMargin
 
@@ -119,7 +119,7 @@ object JobCaptureTests extends TestSuite {
 
   private val allowed =
     """object Kit {
-      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+      |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[SetRefusal, Toolbox[{store, desk}]] =
       |    Toolbox.of(Remember.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
       |}
       |""".stripMargin

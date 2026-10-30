@@ -33,6 +33,11 @@ object ToolSetTests extends TestSuite {
       Retry.Rerun
     )
 
+  /** [[peek]], its parameters declaring the destination's argument, which only writes may name. */
+  private val declaring = peek.copy(parameters =
+    ujson.Obj("type" -> "object", "properties" -> ujson.Obj(Writes.Field -> ujson.Obj()))
+  )
+
   /** A tool that posts to a channel named `general` or `#general`, or one named `random`. */
   private val post =
     ToolSet.Entry(
@@ -147,11 +152,34 @@ object ToolSetTests extends TestSuite {
     }
 
     test("a stored entry whose parameters declare the destination's argument is refused") {
-      val declaring = peek.copy(parameters =
-        ujson.Obj("type" -> "object", "properties" -> ujson.Obj(Writes.Field -> ujson.Obj()))
-      )
-      ToolSet.read(ToolSet.write(set(declaring))) ==>
+      val stored = ToolSet.write(set(peek))
+      stored("tools")(0)("parameters") = declaring.parameters
+      ToolSet.read(stored) ==>
         Left("the tool peek's parameters declare to, which only its writes may name")
+    }
+
+    test(
+      "an entry whose parameters declare the destination's argument is refused where its set is built, in the words its stored form is refused with"
+    ) {
+      ToolSet.of(Vector(post, declaring)).left.map {
+        case d: DeclaresField => (d, d.message)
+        case other => other
+      } ==> Left(
+        (
+          DeclaresField(ToolName("peek")),
+          "the tool peek's parameters declare to, which only its writes may name"
+        )
+      )
+    }
+
+    test("every set that can be built reads back from its stored form as itself") {
+      val sets = Vector(
+        Vector(peek),
+        Vector(post),
+        Vector(peek.copy(name = ToolName("other")), post),
+        Vector(declaring)
+      ).flatMap(entries => ToolSet.of(entries).toOption)
+      sets.map(s => ToolSet.read(ToolSet.write(s))) ==> sets.map(Right(_))
     }
 
     test("a set naming a tool twice is refused, from entries and from its stored form") {

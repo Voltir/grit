@@ -25,7 +25,6 @@ import grit.core.place.{Directory, Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.store.Origin
-import grit.core.tool.ToolName
 import grit.core.triage.Corpus
 import grit.core.visibility.{
   Cap,
@@ -336,7 +335,7 @@ object Main {
               org.slf4j.LoggerFactory.getLogger("grit.edge")
             )
             .left
-            .map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
+            .map(refused => s"the coding tools cannot be offered: ${refused.message}")
         )
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found

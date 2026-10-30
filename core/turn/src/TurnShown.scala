@@ -24,7 +24,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, Toolbox}
+import grit.core.tool.{DeclaresField, DuplicateName, Tool, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.Subject
 
 import TurnLoop.Round
@@ -61,8 +61,10 @@ private[turn] object TurnShown {
     tools
       .flatMap(t => t.preceded(Vector(unread, unasked)).map(_ => t))
       .left
-      .map { case DuplicateName(name) =>
-        TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
+      .map {
+        case DuplicateName(name) =>
+          TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
+        case declares: DeclaresField => TurnFailure.Model(declares.message)
       }
   }
 

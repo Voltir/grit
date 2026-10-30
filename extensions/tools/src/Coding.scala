@@ -7,12 +7,12 @@ import grit.core.tool.{
   Args,
   ArgsError,
   Believed,
-  DuplicateName,
   Field,
   Gate,
   Hosted,
   Outcome,
   Retry,
+  SetRefusal,
   Tool,
   ToolName,
   ToolSpec,
@@ -58,18 +58,18 @@ object Coding {
   /** The first three of [[hosted]]: those that only read. */
   lazy val readOnlyHosted: Vector[Tool.Offered] = Vector(readHosted, listHosted, searchHosted)
 
-  /** `read`, `list` and `search`; `Left` names a tool offered twice. */
-  def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[caps.CapSet^{ws}]] =
+  /** `read`, `list` and `search`; `Left` names a tool that cannot be offered with the others. */
+  def readOnly(ws: Workspace^): Either[SetRefusal, Toolbox[caps.CapSet^{ws}]] =
     Toolbox.of(read(ws), list(ws), search(ws))
 
   /** Every tool: `read`, `list`, `search`, `write`, `edit` and `run`; `Left` names a tool
-    * offered twice.
+    * that cannot be offered with the others.
     */
   def all(
       ws: Workspace^,
       edits: Edits^,
       shell: Shell^
-  ): Either[DuplicateName, Toolbox[caps.CapSet^{ws, edits, shell}]] =
+  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, shell}]] =
     Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
 
   /** `read` as the engine offers it: an edge runs it ([[read]]). */

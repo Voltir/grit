@@ -4,7 +4,7 @@ import java.nio.file.Path
 
 import grit.core.edge.{Route, ToolRequest}
 import grit.core.place.Directory
-import grit.core.tool.{DuplicateName, Outcome, ToolName, ToolSet}
+import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.kit.deployment.Offered
@@ -17,8 +17,10 @@ import grit.tools.Coding
   */
 final class LocalTools(offered: Offered) extends Tools {
 
-  /** The tools [[run]] runs, as the engine offers them; `Left` names a tool Coding offers twice. */
-  def hosted: Either[DuplicateName, ToolSet] =
+  /** The tools [[run]] runs, as the engine offers them; `Left` names a tool Coding cannot offer
+    * with the others.
+    */
+  def hosted: Either[SetRefusal, ToolSet] =
     ToolSet.of((offered match {
       case Offered.Read => Coding.readOnlyHosted
       case Offered.All => Coding.hosted
@@ -35,15 +37,15 @@ final class LocalTools(offered: Offered) extends Tools {
 
   private def over(root: Path, request: ToolRequest): Outcome = {
     val ws = new LocalWorkspace(root)
-    def refused(name: ToolName): Outcome =
-      Outcome.Failed(s"The coding tools offer ${ToolName.value(name)} twice; nothing ran.")
+    def refused(why: SetRefusal): Outcome =
+      Outcome.Failed(s"The coding tools cannot be offered: ${why.message}; nothing ran.")
     offered match {
       case Offered.Read =>
-        Coding.readOnly(ws).fold(d => refused(d.name), tools => Run.request(request, tools))
+        Coding.readOnly(ws).fold(refused, tools => Run.request(request, tools))
       case Offered.All =>
         Coding
           .all(ws, new LocalEdits(root), new LocalShell(root, sys.env))
-          .fold(d => refused(d.name), tools => Run.request(request, tools))
+          .fold(refused, tools => Run.request(request, tools))
     }
   }
 }

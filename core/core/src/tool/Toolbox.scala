@@ -24,18 +24,21 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
   def names: Vector[ToolName] = tools.map(_.name)
 
   /** The tools as a turn's tool set records them, in order. */
-  def set: ToolSet = ToolSet.of(tools.map(_.entry)).getOrElse(ToolSet.Empty)
+  def set: ToolSet =
+    // Never empty for want of a set: Toolbox.of built one from these entries.
+    ToolSet.of(tools.map(_.entry)).getOrElse(ToolSet.Empty)
 
   /** This toolbox with `tool`, which acts through no capability, offered first; `Left` when
-    * one here has its name.
+    * one here has its name, or it declares [[Writes.Field]].
     */
-  def including(tool: Tool.Offered): Either[DuplicateName, Toolbox[C]] =
+  def including(tool: Tool.Offered): Either[SetRefusal, Toolbox[C]] =
     Toolbox.of[C]((tool +: tools)*)
 
   /** This toolbox with `first`, which act through no capability, offered before these, in
-    * order; `Left` naming the first name repeated.
+    * order; `Left` naming the first name repeated, else the first of them declaring
+    * [[Writes.Field]].
     */
-  def preceded(first: Vector[Tool.Offered]): Either[DuplicateName, Toolbox[C]] =
+  def preceded(first: Vector[Tool.Offered]): Either[SetRefusal, Toolbox[C]] =
     Toolbox.of[C]((first ++ tools)*)
 
   /** The tool named `name`; `None` when none here has it. */
@@ -100,17 +103,15 @@ object Toolbox {
   val Empty: Toolbox[{}] = new Toolbox[{}](Vector.empty)
 
   /** `first`'s tools, then `second`'s; `Left` naming the first name both hold. */
-  def joined[C^](first: Toolbox[C], second: Toolbox[C]): Either[DuplicateName, Toolbox[C]] =
+  def joined[C^](first: Toolbox[C], second: Toolbox[C]): Either[SetRefusal, Toolbox[C]] =
     of[C]((first.tools ++ second.tools)*)
 
-  /** A toolbox of `tools`, offered in this order; `Left` names the first name repeated. */
-  def of[C^](tools: Tool.Offered^{C}*): Either[DuplicateName, Toolbox[C]] = {
+  /** A toolbox of `tools`, offered in this order; `Left` as [[ToolSet.of]] refuses their
+    * entries: the first name repeated, else the first tool declaring [[Writes.Field]].
+    */
+  def of[C^](tools: Tool.Offered^{C}*): Either[SetRefusal, Toolbox[C]] = {
     val all = tools.toVector
-    val names = all.map(_.name)
-    names.diff(names.distinct).headOption match {
-      case Some(repeated) => Left(DuplicateName(repeated))
-      case None => Right(new Toolbox(all))
-    }
+    ToolSet.of(all.map(_.entry)).map(_ => new Toolbox(all))
   }
 }
 
