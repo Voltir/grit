@@ -128,6 +128,32 @@ object SessionViewTests extends TestSuite {
       v.recalled ==> Vector(TurnSeq(0), TurnSeq(1))
     }
 
+    test("a carried window was shown what the window it carries recalled") {
+      // Turn 2's window recalls turn 0; turns 3 and 4 carry it, recalling nothing new of
+      // their own: each was shown turn 0, so three windows recalled it.
+      def window(seq: Long, turn: Long, after: Option[Long], recalled: Long*) =
+        entry(
+          seq,
+          turn,
+          Payload.Window(
+            Vector.empty,
+            recalled.toVector.map(TurnSeq(_)),
+            carry = Some(Payload.Carry(after.map(s => EntryId(s"e$s")), Tokens(1), None, None))
+          )
+        )
+      val carrying = Vector(
+        user(0, 0),
+        user(1, 2),
+        window(2, 2, None, 0),
+        user(3, 3),
+        window(4, 3, Some(2)),
+        user(5, 4),
+        window(6, 4, Some(4))
+      )
+      val v = SessionView.of(carrying, Vector.empty, Spend.Zero, None)
+      (v.recalls, v.recalled) ==> (3, Vector(TurnSeq(0)))
+    }
+
     test("a turn's ledger is read until it has been read with its summary, then not again") {
       val asked = entries.take(2)
       // Turn 0 asked, not yet summarised: read, and not settled.

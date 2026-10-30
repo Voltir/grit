@@ -3,6 +3,7 @@ package grit.eval.harness.sent
 import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.context.CarriedWindow
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens}
 import grit.core.place.Place
@@ -23,7 +24,8 @@ import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
   * (`toolSet`, `tools`) its offer recorded; its model `calls`, rebuilt through this build's
   * code ([[TurnRecord.requests]]), the answer's request `picked` by its ledger row; every
   * ledger row of the workflow (`spent`), its reply or draft (`answer`) and `summary`, the
-  * search `queries` assembly wrote and the `window` it recorded; the stitch placement of its
+  * search `queries` assembly wrote and the `window` it was shown, a carried window's parts
+  * included ([[CarriedWindow.whole]]); the stitch placement of its
   * conversation's first message (`stitch`), triage's `tags` on its root, what became of a
   * heard root's draft (`speech`, `judged`), and the tool calls given up on (`givenUp`).
   */
@@ -142,11 +144,8 @@ object TurnSent {
         .map(e => s"requests of $id unread: ${e.kind}")
         .flatten
       rows <- read("ledger")(reader.ledger.of(workflow))
-      opening <- read("conversation's first entry")(
-        reader.entries
-          .list(turn.conversationId)
-          .map(_.minByOption(e => grit.core.id.EntrySeq.value(e.seq)))
-      )
+      all <- read("conversation's entries")(reader.entries.list(turn.conversationId))
+      opening = all.minByOption(e => grit.core.id.EntrySeq.value(e.seq))
       stitch <- opening.fold[Either[String, Option[Placed]]](Right(None))(o =>
         read("stitch")(reader.stitches.placed(o.id))
       )
@@ -186,9 +185,7 @@ object TurnSent {
           case Entry(_, _, _, _, _, Payload.Summary(text), _, _) => text
         },
         mine.collect { case Entry(_, _, _, _, _, Payload.Query(text), _, _) => text },
-        kept(Turn.windowId(turn)).collect { case Entry(_, _, _, _, _, w: Payload.Window, _, _) =>
-          w
-        },
+        CarriedWindow.whole(Turn.windowId(turn), all),
         stitch,
         tags,
         speech,

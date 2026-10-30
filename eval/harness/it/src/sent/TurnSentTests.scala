@@ -17,7 +17,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolUs
 import grit.core.speech.{Limits, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning
-import grit.core.store.Origin
+import grit.core.store.{Origin, Payload}
 import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Weighing
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -217,6 +217,40 @@ object TurnSentTests extends TestSuite {
           Vector.fill(3)(Some(true))
         sent.picked ==> Some(Picked.On)
         sent.epoch ==> Turn.Epoch
+      } finally engine.close()
+    }
+
+    test("a carried turn read back holds the window it was shown, the turns it carries included") {
+      val config = TestPostgres.freshDatabase("harness_sent_carried")
+      val engine = LiveEngine.open(config, Turn.Epoch)
+      try {
+        launch(engine, new Looping)
+        val origin = Origin.Tui(right(Directory.of("/tmp/harness-sent")), "s")
+        def asked(source: String, text: String): TurnRef = {
+          val turn = right(
+            engine.inbox.ingest(origin, SourceId(source), Message.User(text), Account.Local, None)
+          )
+          right(engine.inbox.startTurn(turn))
+          val _ = engine.awaitTurn(turn)
+          turn
+        }
+        val _ = asked("t0", "echo twice")
+        val second = asked("t1", "and again")
+        val reader = Reader.open(config)
+        val (sent, record) =
+          try
+            (
+              right(TurnSent.read(reader, second.workflowId)),
+              right(reader.all.read(reader.entries.get(Turn.windowId(second)))).map(_.payload)
+            )
+          finally reader.close()
+        // The second turn's record is a delta after the first's; what it was shown is whole.
+        val delta = record.collect { case w: Payload.Window => w }
+        (
+          delta.map(_.carry.flatMap(_.after).nonEmpty),
+          sent.window.map(_.carry),
+          sent.window.zip(delta).map((w, d) => w.entries.size > d.entries.size)
+        ) ==> (Some(true), Some(None), Some(true))
       } finally engine.close()
     }
   }

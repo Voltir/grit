@@ -1,6 +1,7 @@
 package grit.app.chat
 
 import grit.core.agenda.{Agenda, Placement}
+import grit.core.context.CarriedWindow
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.spend.{DailyCap, Spend}
@@ -16,7 +17,8 @@ import grit.core.store.{Entry, Payload, UsageLedger}
   * @param output the output tokens every model call was billed for
   * @param spent what this conversation's recorded calls cost, its closes' included, once one
   *   was made
-  * @param recalls how many turns' windows recalled an earlier turn
+  * @param recalls how many turns' windows showed an earlier turn recalled, a carried window's
+  *   included
   * @param recalled every earlier turn some window recalled, in conversation order
   * @param roles each role that called a model, in the order a turn calls them
   * @param today what every conversation in this database spent today, and the day's cap
@@ -87,7 +89,10 @@ object SessionView {
         case _ => None
       }).map(e.id -> _)
     }.toMap
-    val windows = entries.collect { case Entry(_, _, _, _, _, w: Payload.Window, _, _) => w }
+    // Each turn's window as it was shown, a carried one with the windows it carries.
+    val windows = entries
+      .collect { case Entry(id, _, _, _, _, _: Payload.Window, _, _) => id }
+      .flatMap(CarriedWindow.whole(_, entries))
     val roles = Vector(Turn, Query, Summary, Classify, Verdict).flatMap { name =>
       val rows = costs.filter(r => roleOf.get(r.entry).contains(name))
       Option.when(rows.nonEmpty)(Role(name, rows.map(_.model).distinct, rows.size, spent(rows)))
