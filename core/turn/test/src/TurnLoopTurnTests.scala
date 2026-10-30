@@ -543,7 +543,7 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "unsure of the item: topic offered first, asked for on the first call, its verdict recorded"
+      "unsure of the item: topic offered first, asked for on every call at the same message, its verdict recorded"
     ) {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
@@ -587,8 +587,11 @@ object TurnLoopTurnTests extends TestSuite {
         Vector.fill(2)(Vector("topic", "peek", "poke"))
       def lastUser(r: ModelRequest): String =
         r.messages.collect { case Message.User(t) => t }.lastOption.getOrElse("")
-      assert(lastUser(provider.requests(0)).contains("[grit: the topic may have changed."))
-      lastUser(provider.requests(1)) ==> "hm ~0.5"
+      val tagged = provider.requests.map(lastUser)
+      assert(
+        tagged.headOption.exists(_.startsWith("hm ~0.5\n\n[grit: the topic may have changed."))
+      )
+      tagged.drop(1) ==> tagged.take(1)
       exchange(entries, turn).collect { case r: Message.ToolResult => r.content } ==>
         Vector(TurnVerdict.Noted, "alpha")
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "ask:1") ==>

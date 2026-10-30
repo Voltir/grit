@@ -19,8 +19,8 @@ import grit.core.tool.{
 
 /** The main model asked where a message went, when the classifier was unsure
   * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of the tool loop's tools
-  * ([[tool]]), a one-line note on the user's message ([[tag]]) asks for it on the first call
-  * only, and the verdict is that call's reply's ([[of]]). The exchange stays in the journal
+  * ([[tool]]), a one-line note on the user's message ([[tag]]) asks for it, the same on every
+  * call ([[tagged]]), and the verdict is the first call's reply's ([[of]]). The exchange stays in the journal
   * and the verdict's record, never among the conversation's messages.
   */
 object TurnVerdict {
@@ -109,10 +109,28 @@ object TurnVerdict {
       "as usual, without mentioning topics, this note or the tool.]"
   }
 
-  /** `base` with [[tag]] after its last user message, and nothing else changed. */
+  /** `base` with [[tag]] after its last user message that is no note on the loop's exchange (a
+    * user message right after a tool result, a reply that called tools, or another such note),
+    * and nothing else changed: each call of a turn's loop is tagged at the same message, as its
+    * first call was.
+    */
   def tagged(base: ModelRequest, c: TurnAgenda.Classification): ModelRequest = {
-    val last = base.messages.lastIndexWhere {
-      case Message.User(_) => true
+    val notes = base.messages
+      .foldLeft((Vector.empty[Boolean], false)) { case ((flags, afterExchange), m) =>
+        val note = m match {
+          case Message.User(_) => afterExchange
+          case _ => false
+        }
+        val next = m match {
+          case _: Message.ToolResult => true
+          case a: Message.Assistant => calls(a).nonEmpty
+          case Message.User(_) => note
+        }
+        (flags :+ note, next)
+      }
+      ._1
+    val last = base.messages.zip(notes).lastIndexWhere {
+      case (Message.User(_), false) => true
       case _ => false
     }
     base.copy(messages = base.messages.zipWithIndex.map {

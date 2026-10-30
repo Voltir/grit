@@ -246,7 +246,7 @@ object TurnRequestsTests extends TestSuite {
       calls.map(_.answered.map(_.on) == provider.requests.lastOption) ==> Right(false)
     }
 
-    test("a turn asked about its item is rebuilt with its first call tagged and topic offered") {
+    test("a turn asked about its item is rebuilt with every call tagged and topic offered") {
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
       Vector("hello", "knots? ~0.1").foreach(text =>
@@ -273,7 +273,7 @@ object TurnRequestsTests extends TestSuite {
       )
       val turn = say(entries, "hm ~0.5")
       val recorded = answered(entries, turn, provider, classifier = classifier)
-      // The setting: the first call was tagged and offered topic.
+      // The setting: every call was tagged and offered topic.
       provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(
         Vector("topic", "peek", "poke")
       )

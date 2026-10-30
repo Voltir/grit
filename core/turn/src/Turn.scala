@@ -403,7 +403,6 @@ object Turn {
                 _.shaped(
                   loopShape(
                     asking,
-                    round,
                     use,
                     shown,
                     settings.afterResult,

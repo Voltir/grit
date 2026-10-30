@@ -275,7 +275,6 @@ private[turn] object Rounding {
     val (shown, lines) = gatedOffer(at.gates, at.round, tools.set, tools.schemas(strict), strict)
     loopShape(
       at.looping.asked,
-      at.round,
       use,
       shown,
       settings.afterResult,

@@ -40,8 +40,10 @@ private[turn] object TurnShown {
     Option.when(c.uncertain)(c)
 
   /** The tools each call of the loop offers: `own`, after `topic` for the classification
-    * `asked` holds. `topic` stays on after the first call, which alone asks for it
-    * ([[loopShape]]): a request whose messages hold a call names the tool it called.
+    * `asked` holds. `topic` stays on after the first call, and every call carries the same tag
+    * asking for it ([[loopShape]]): a request whose messages hold a call names the tool it
+    * called, and each call's request repeats the one before it, which a provider's prompt
+    * cache relies on.
     * read_hidden and extract are not among them: a round binds and offers them apart
     * ([[gatedOffer]]). `TurnFailure.Model` when `own` already names one `topic`, read_hidden or
     * extract.
@@ -97,14 +99,13 @@ private[turn] object TurnShown {
   def hidSince(gates: Map[Int, Gated], round: Round): Boolean =
     gates.exists((index, g) => index <= round.index && g.hidden.nonEmpty)
 
-  /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
-    * first call, offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
+  /** How each call of the loop is built from the plain request: tagged for `asked`
+    * ([[TurnVerdict.tagged]]), offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
     * `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
     * with each of `lines`, in order, each after a blank line ([[gatedOffer]]).
     */
   def loopShape(
       asked: Option[TurnAgenda.Classification],
-      round: Round,
       use: ToolUse,
       tools: Vector[ToolSchema],
       after: AfterToolResult,
@@ -112,7 +113,7 @@ private[turn] object TurnShown {
       lines: Vector[String]
   ): ModelRequest -> ModelRequest =
     base => {
-      val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
+      val tagged = asked.fold(base)(TurnVerdict.tagged(base, _))
       val shaped =
         TurnLoop.told(use, TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance), after)
       shaped.copy(system = (shaped.system +: lines).mkString("\n\n"))
