@@ -27,7 +27,7 @@ object CacheReport {
         to <- t.own.headOption.flatMap(_.started)
       } yield s"${duration(java.time.Duration.between(from, to))} after turn ${TurnSeq
           .value(b.turn.turnSeq)}'s last call"
-      val share = t.share.fold("no own calls")(s =>
+      val share = t.share.fold(if (t.own.isEmpty) "no own calls" else "no input counted")(s =>
         s"cache reads ${percent(s)} of ${t.own.map(o => Tokens.value(o.usage.input)).sum} input"
       )
       val head =

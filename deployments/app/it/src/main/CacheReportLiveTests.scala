@@ -63,8 +63,8 @@ object CacheReportLiveTests extends TestSuite {
         } finally engine.close()
       val lines = right(Kit.cacheReport(deployment, secrets, conversation, Clock.system()))
       lines.filter(_.startsWith("turn ")).map(_.split(" · ").toVector.take(2)) ==> Vector(
-        Vector("turn 1", "afresh: no-window"),
-        Vector("turn 2", "carried")
+        Vector("turn 0", "afresh: no-window"),
+        Vector("turn 1", "carried")
       )
     }
   }
