@@ -4,6 +4,7 @@ import java.time.{Instant, LocalDate}
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import scala.concurrent.duration.FiniteDuration
+import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores, PluginCommands}
@@ -75,6 +76,14 @@ object Kit {
   val ClosedWithin: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(45).seconds
 
+  /** How long [[serve]] first waits before taking a lost lock again: 1 s, doubling after each
+    * refusal up to [[ReopenAtMost]].
+    */
+  val ReopenFrom: FiniteDuration = scala.concurrent.duration.DurationInt(1).second
+
+  /** The longest [[serve]] waits between tries to take a lost lock again: 30 s. */
+  val ReopenAtMost: FiniteDuration = scala.concurrent.duration.DurationInt(30).seconds
+
   /** Serves `deployment`: its engine over the database `env` names, and each of its edges,
     * blocking the calling thread until the process is stopped. It installs a shutdown hook
     * that stops serving, closes each edge, then the engine (which waits up to 30 s for running
@@ -87,6 +96,12 @@ object Kit {
     * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
     * Each edge that is an attester the deployment trusts is asked for a look once its edges
     * open and every [[Attesting.Every]] after; what it reports is logged as [[reported]] says.
+    * When the engine stops by losing its lock ([[grit.dbos.engine.StoppedBy.LockLost]]) and
+    * not by a stop, its edges are closed, then the engine, and the lock is tried again after
+    * [[ReopenFrom]], doubling to [[ReopenAtMost]], until it is free; the engine and its edges
+    * then open as at the start, each step logged under `grit.serve`. A lock another process
+    * holds is waited out, never run beside. A refusal waiting cannot cure (an edge refusing, a
+    * compartment dropped) ends serving with it.
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] =
     preflight(deployment, env, deployment.edges.toList.map(e => (e.name, e.needs))) match {
@@ -118,12 +133,57 @@ object Kit {
   ): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
     val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
-    life(deployment, secrets, env, clock, stopped, log, turns).map(_ => ())
+    def lives(again: Boolean): Either[Unopened | KitFailure, Option[StoppedBy]] =
+      life(deployment, secrets, env, clock, stopped, again, log, turns)
+    // Whether a life that ended with `by` is served again: its engine lost its lock, and this
+    // process is not stopping.
+    def lost(by: Option[StoppedBy]): Boolean = {
+      val again = by.contains(StoppedBy.LockLost) && stopped.getCount > 0
+      if (again) log.warn("engine lock lost: edges and engine closed; taking the lock again")
+      again
+    }
+    // Tries to serve again after `wait`, doubling it after each refusal waiting may cure.
+    @scala.annotation.tailrec
+    def reopening(wait: FiniteDuration): Either[KitFailure, Unit] =
+      if (stopped.await(wait.toMillis, TimeUnit.MILLISECONDS)) Right(())
+      else {
+        val next = (wait * 2).min(ReopenAtMost)
+        val tried: Either[(String, Option[Throwable]), Either[KitFailure, Option[StoppedBy]]] =
+          try
+            lives(again = true) match {
+              case Left(Unopened.Lock(why)) => Left((why.message(clock.now()), None))
+              case Left(KitFailure.Store(why)) => Left((why, None))
+              case Left(why) => Right(Left(failed(why, clock)))
+              case Right(by) => Right(Right(by))
+            }
+          catch { case NonFatal(e) => Left((e.toString, Some(e))) }
+        tried match {
+          case Left((why, cause)) =>
+            val said = s"engine not reopened, trying again in $next: $why"
+            cause.fold(log.warn(said))(e => log.warn(said, e))
+            reopening(next)
+          case Right(Left(failure)) => Left(failure)
+          case Right(Right(by)) => if (lost(by)) reopening(ReopenFrom) else Right(())
+        }
+      }
+    lives(again = false) match {
+      case Left(why) => Left(failed(why, clock))
+      case Right(by) => if (lost(by)) reopening(ReopenFrom) else Right(())
+    }
+  }
+
+  /** `why` as the failure a person reads, a refused engine saying by `clock` when it was last
+    * seen held.
+    */
+  private def failed(why: Unopened | KitFailure, clock: Clock^): KitFailure = why match {
+    case u: Unopened => KitFailure.Engine(u.message(clock.now()))
+    case f: KitFailure => f
   }
 
   /** One engine's serving: `deployment`'s engine opened, then its edges, delivering until
     * `stopped` is counted down or the engine stops; then the edges closed, then the engine.
-    * What stopped the engine before this closed it; `None` when `stopped` ended it.
+    * What stopped the engine before this closed it; `None` when `stopped` ended it. When
+    * `again`, its opening is logged as a reopening.
     */
   private def life(
       deployment: Deployment,
@@ -131,23 +191,25 @@ object Kit {
       env: Map[String, String],
       clock: Clock^,
       stopped: CountDownLatch,
+      again: Boolean,
       log: org.slf4j.Logger,
       turns: org.slf4j.Logger
-  ): Either[KitFailure, Option[StoppedBy]] =
+  ): Either[Unopened | KitFailure, Option[StoppedBy]] =
     trusted(deployment, secrets, clock) match {
-      case Left(failure) => Left(failure)
+      case Left(why) => Left(why)
       case Right(engine) =>
         try {
           opened(engine, deployment, secrets, env, clock, said => turns.info(said), log) match {
             case Left(failure) => Left(failure)
             case Right(opened) =>
+              if (again) log.info("engine reopened after losing its lock: serving again")
               // Looks and pick rounds, each run between deliveries when due.
               val looking = cadence(Attesting.Every, clock)
               val picking = cadence(PickEvery, clock)
               try
                 Serving.deliver(
                   opened,
-                  () => stopped.getCount == 0,
+                  () => stopped.getCount == 0 || engine.stoppedBy.nonEmpty,
                   () => looking().nonEmpty,
                   () => {
                     deployment.review.foreach { review =>
@@ -262,7 +324,7 @@ object Kit {
         // The process's own time, read here at the catch-up's root and passed down.
         val clock: Clock^ = Clock.system() // clock-check: the composition root of a catch-up
         trusted(deployment, secrets, clock) match {
-          case Left(failure) => Left(failure)
+          case Left(why) => Left(failed(why, clock))
           case Right(engine) =>
             val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
             try {
@@ -358,7 +420,7 @@ object Kit {
             // The process's own time, read here at the run's root and passed down.
             val clock: Clock^ = Clock.system() // clock-check: the composition root of once runs
             trusted(deployment, secrets, clock) match {
-              case Left(failure) => Left(failure)
+              case Left(why) => Left(failed(why, clock))
               case Right(engine) =>
                 try {
                   OnceRuns.served(engine, deployment, plugin) match {
@@ -536,15 +598,15 @@ object Kit {
     )
 
   /** [[open]] over `secrets`' database, with what `deployment`'s identities no longer trust
-    * ended; a refusal says when, by `clock`, the database's engine was last seen held.
+    * ended; refused as [[open]] is, or as [[trusting]] fails.
     */
   private def trusted(
       deployment: Deployment,
       secrets: Secrets,
       clock: Clock^
-  ): Either[KitFailure, Engine^] =
+  ): Either[Unopened | KitFailure, Engine^] =
     open(secrets.database, deployment, clock) match {
-      case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
+      case Left(refused) => Left(refused)
       case Right(engine) =>
         trusting(engine, deployment) match {
           case Left(failure) =>

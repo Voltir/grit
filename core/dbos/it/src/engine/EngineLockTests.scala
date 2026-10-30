@@ -94,10 +94,7 @@ object EngineLockTests extends TestSuite {
     done
   }
 
-  /** Terminates the server session holding `config`'s engine row: its lock goes with it. */
-  private def terminateHolder(config: DbConfig): Unit = {
-    val _ = read(config, "SELECT pg_terminate_backend(backend_pid)::text FROM grit.engines")
-  }
+  import LiveEngine.terminateHolder
 
   private def noop(id: WorkflowId)(using @unused d: Durable^): String = WorkflowId.value(id)
 

@@ -3,29 +3,21 @@ package grit.app.main
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
-import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeSessions, EdgeStores, ServedEdge, Variable}
-import grit.core.files.PagedText
 import grit.core.id.{EdgeName, Harness, SessionId}
 import grit.core.identity.{Account, TestAccounts}
-import grit.core.message.Tokens
-import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
-import grit.core.period.LifecycleSettings
 import grit.core.place.{Namespace, Place}
 import grit.core.session.Event
-import grit.core.speech.Speaking
-import grit.core.spend.Budget
 import grit.core.store.StoreError
 import grit.core.visibility.Subject
 import grit.dbos.engine.LiveEngine
-import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
-import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
+import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.kit.environment.Secrets
 import grit.kit.run.Kit
-import grit.turn.{Turn, TurnLoop}
+import grit.turn.Turn
 
 import utest.*
 
@@ -33,13 +25,6 @@ import utest.*
   * the edge hands them in the engine's session record.
   */
 object ServedSessionsLiveTests extends TestSuite {
-
-  private val assigned =
-    Assignment(
-      ModelRef(ModelId.of("openai/gpt-oss-120b").getOrElse(sys.error("id")), None),
-      100,
-      None
-    )
 
   private val Ann: Account = TestAccounts.account("workshop:local/ann")
 
@@ -91,25 +76,6 @@ object ServedSessionsLiveTests extends TestSuite {
     }
   }
 
-  private def deployment(edge: ServedEdge): Deployment =
-    Deployment
-      .of(
-        edges = Vector(edge),
-        worksIn = Vector.empty,
-        plugins = Vector.empty,
-        policy = Policy.one(assigned, assigned, assigned, assigned),
-        offer = Offer(Offered.Read, TurnLoop.Rounds.of(2).getOrElse(sys.error("rounds"))),
-        assembly = Assembly.Linear(Tokens(4000)),
-        placer = Placer.Off("no classifier here"),
-        lifecycle = LifecycleSettings.Default,
-        budget = Budget(java.time.ZoneOffset.UTC, None),
-        speaking = Speaking.Off,
-        sweep = 30.seconds,
-        persona = grit.core.persona.Persona.Grit,
-        formats = PagedText.formats
-      )
-      .fold(r => sys.error(r.message), identity)
-
   val tests = Tests {
 
     test("an edge's stores record its sessions in the engine's session record, a repeat once") {
@@ -117,12 +83,8 @@ object ServedSessionsLiveTests extends TestSuite {
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         val answers = new ConcurrentLinkedQueue[Either[StoreError, Int]]()
-        val d = deployment(new Recording(answers))
-        val env = Map(
-          DbConfig.UrlVar -> config.jdbcUrl,
-          DbConfig.UserVar -> config.user,
-          DbConfig.PasswordVar -> config.password
-        )
+        val d = ServedDeployment.of(new Recording(answers))
+        val env = ServedDeployment.env(config)
         val secrets = Secrets.of(env, d).fold(r => sys.error(r.message), identity)
         val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
         Kit.opened(engine, d, secrets, env, Clock.system(), _ => (), log) match {

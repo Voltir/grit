@@ -1,5 +1,8 @@
 package grit.dbos.engine
 
+import scala.util.Using
+import scala.util.control.NonFatal
+
 import grit.core.clock.Clock
 import grit.core.durable.{Durable, StepRecord}
 import grit.core.host.ProcessIdentity
@@ -7,8 +10,8 @@ import grit.core.id.WorkflowId
 import grit.core.spend.Budget
 import grit.core.store.StoreError
 import grit.core.visibility.Visibility
-import grit.dbos.internal.Reader
-import grit.dbos.sql.DbConfig
+import grit.dbos.internal.{EngineStarts, Reader}
+import grit.dbos.sql.{DbConfig, LiveDb}
 
 /** An engine on a live test database, for suites that need one. */
 object LiveEngine {
@@ -71,5 +74,39 @@ object LiveEngine {
     val reader = Reader.open(config)
     try reader.steps(id)
     finally reader.close()
+  }
+
+  /** How many engine starts `config`'s database has recorded; throws when it cannot be read. */
+  def starts(config: DbConfig): Int =
+    LiveDb.transaction(config)(EngineStarts.all()).fold(e => sys.error(s"starts: $e"), _.size)
+
+  /** Ends the server session holding `config`'s engine row, as a database restart would: its
+    * lock goes with it.
+    */
+  def terminateHolder(config: DbConfig): Unit =
+    LiveDb.connected(config) { c =>
+      Using.resource(c.createStatement()) { s =>
+        Using.resource(
+          s.executeQuery("SELECT pg_terminate_backend(backend_pid) FROM grit.engines")
+        )(_ => ())
+      }
+    }
+
+  /** `config`'s engine lock, taken on a session of the test's own as soon as it is free,
+    * waiting for it: no engine can take it until the handle is closed.
+    */
+  def seize(config: DbConfig): AutoCloseable = {
+    val conn = config.connect("test-seize")
+    try {
+      Using.resource(conn.prepareStatement("SELECT pg_advisory_lock(?)")) { ps =>
+        ps.setLong(1, EngineLock.Key)
+        Using.resource(ps.executeQuery())(_ => ())
+      }
+      conn
+    } catch {
+      case NonFatal(e) =>
+        conn.close()
+        throw e
+    }
   }
 }
