@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.util.control.NonFatal
 
-import grit.core.context.Width
+import grit.core.context.{CarriedWindow, Width}
 import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.either.Traversal
 import grit.core.id.{ConversationId, PluginName, TurnRef}
@@ -182,7 +182,8 @@ object Synthetic {
         assembled,
         new Rebuild.Replayed(Some(asked.query)),
         width,
-        Some(seed.pin.query.first)
+        Some(seed.pin.query.first),
+        CarriedWindow.Empty
       )(using reader.db)
       parts <- TurnCapture.costed(reader, asked.turn, drawn)
     } yield parts

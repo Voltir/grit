@@ -68,8 +68,9 @@ final case class RebuiltWindow(
 object Rebuild {
 
   /** `turn`'s window, `width` wide, drawn by the shipped [[RetrievalAssembler]] built as
-    * `assembled` says over `view`, its search query written by `writer` under `query` when it
-    * writes one; `None` writes none. `Left` naming what failed, never a message's text.
+    * `assembled` says over `view` after `carried` (ADR 0052: what follows it, or a boundary),
+    * its search query written by `writer` under `query` when it writes one; `None` writes none.
+    * `Left` naming what failed, never a message's text.
     */
   def window(
       view: AsOf,
@@ -77,10 +78,11 @@ object Rebuild {
       assembled: Assembled,
       writer: Provider^,
       width: Width,
-      query: Option[Pinned]
+      query: Option[Pinned],
+      carried: CarriedWindow
   )(using Db^): Either[String, Window] =
     ContextAssembler
-      .draw(shipped(view, assembled), AssemblyRequest(turn, width, CarriedWindow.Empty))(
+      .draw(shipped(view, assembled), AssemblyRequest(turn, width, carried))(
         asked => query.fold(Left(Prepared.NoPin))(_ => writer.complete(asked).left.map(_.cause)),
         found => found
       )
@@ -122,7 +124,8 @@ object Rebuild {
       .map(e => s"the routing of ${WorkflowId.value(turn.workflowId)} was not read: ${e.kind}")
 
   /** The window of the turn `workflow` recorded, rebuilt by the shipped assembler over
-    * `reader`'s database as it stood when the turn's `assemble` step started. A turn that
+    * `reader`'s database as it stood when the turn's `assemble` step started; an appended one
+    * rebuilt after the window it was carried into (ADR 0052), so both are what it appended. A turn that
     * recorded its search ([[TurnRecord.retrieval]]) packs what `admission` admits of the
     * results it recorded by the verdicts it recorded, under the query it recorded: no search
     * is run, no query written, no classifier asked. One that recorded none is drawn again
@@ -144,6 +147,8 @@ object Rebuild {
     for {
       begun <- this.begun(reader, workflow)
       Begun(turn, steps, at, query) = begun
+      // An appended window is rebuilt after the window it was carried into.
+      carried <- carriedInto(reader, turn)
       recorded <- read("window")(reader.entries.get(Turn.windowId(turn))).map(
         _.flatMap(e =>
           e.payload match {
@@ -171,13 +176,13 @@ object Rebuild {
         case Some(r) =>
           shipped(AsOf(reader, at), assembled)
             .assemble(
-              AssemblyRequest(turn, width, CarriedWindow.Empty),
+              AssemblyRequest(turn, width, carried),
               Packing.Searched(r.written, admission.admitted(r))
             )(using reader.db)
             .map(_.window)
             .left
             .map(unbuilt(turn))
-        case None => replayed(AsOf(reader, at), begun, assembled, width)(using reader.db)
+        case None => replayed(AsOf(reader, at), begun, assembled, width, carried)(using reader.db)
       }
     } yield RebuiltWindow(at, recorded, rebuilt, lost)
   }
@@ -196,9 +201,24 @@ object Rebuild {
       width: Width,
       documents: Instant
   ): Either[String, Window] =
-    begun(reader, workflow).flatMap(b =>
-      replayed(AsOf(reader, b.at).documentsAsOf(documents), b, assembled, width)(using reader.db)
-    )
+    for {
+      b <- begun(reader, workflow)
+      carried <- carriedInto(reader, b.turn)
+      drawn <- replayed(AsOf(reader, b.at).documentsAsOf(documents), b, assembled, width, carried)(
+        using reader.db
+      )
+    } yield drawn
+
+  /** The window `turn`'s window record was appended after (ADR 0052): the records it follows,
+    * read back from `reader`'s database; nothing for a boundary or a record kept with no
+    * carry. `Left` naming what could not be read.
+    */
+  private def carriedInto(reader: Reader^, turn: TurnRef): Either[String, CarriedWindow] =
+    reader.all
+      .read(CarriedWindow.chain(Turn.windowId(turn))(reader.entries.get))
+      .map(chain => CarriedWindow.of(chain.dropRight(1)))
+      .left
+      .map(e => s"window chain of ${WorkflowId.value(turn.workflowId)} unread: ${e.kind}")
 
   /** What a turn recorded of its start: its `steps`, when its `assemble` step started (`at`),
     * and the query it recorded.
@@ -237,9 +257,13 @@ object Rebuild {
   /** `begun`'s window drawn over `view`, the writer replaying the query the turn recorded, so
     * nothing is sent.
     */
-  private def replayed(view: AsOf, begun: Begun, assembled: Assembled, width: Width)(using
-      Db^
-  ): Either[String, Window] =
+  private def replayed(
+      view: AsOf,
+      begun: Begun,
+      assembled: Assembled,
+      width: Width,
+      carried: CarriedWindow
+  )(using Db^): Either[String, Window] =
     Seed.catalog.flatMap(seed =>
       window(
         view,
@@ -247,7 +271,8 @@ object Rebuild {
         assembled,
         new Replayed(begun.query),
         width,
-        Some(seed.pin.query.first)
+        Some(seed.pin.query.first),
+        carried
       )
     )
 

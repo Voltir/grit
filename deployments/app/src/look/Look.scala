@@ -1,5 +1,6 @@
 package grit.app.look
 
+import grit.core.durable.StepRecord
 import grit.tui.components.editor.Editor
 import grit.tui.components.layout.Border
 import grit.tui.components.overlay.{Modal, Popup}
@@ -252,14 +253,17 @@ object Look {
 
     /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
       * the inheritance, while it asks whether to search memory, and while memory is searched,
-      * sifted and assembled; Algiz, the ward, while what a round shows
+      * sifted and assembled, and while the window it carries is read; Algiz, the ward, while what a round shows
       * is weighed against the tools it offers; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
       * summarised; Tiwaz while a tool runs, or asks you first; Mannaz, you, while it waits for
-      * your answer. A tool loop's step is known by its family (`ask:2` answers). A name grit
-      * does not know shows as itself.
+      * your answer; Jera too for a patch's marker, which records which code a step ran. A tool
+      * loop's step is known by its family (`ask:2` answers). A name grit does not know shows
+      * as itself.
       */
     def step(name: String): String = Step.family(name).getOrElse(name) match {
+      case marker if marker.startsWith(StepRecord.marker("")) => "ᛃ recording"
+      case Step.Carried => "ᛟ assembling"
       case Step.Classify => "ᛈ placing"
       case Step.Needs => "ᛟ asking whether to search"
       case Step.Query | Step.Search => "ᛟ searching"

@@ -30,7 +30,7 @@ import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
-import grit.core.store.{Nearby, Origin}
+import grit.core.store.{Nearby, Origin, Payload}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
 import grit.core.visibility.Integrity
@@ -394,6 +394,20 @@ object RebuildTests extends TestSuite {
     } finally engine.close()
   }
 
+  /** Two turns of one task conversation, the second carrying the first's window (ADR 0052),
+    * and the database they ran on.
+    */
+  private lazy val carrying: (Reader, TurnRef, TurnRef) = {
+    val config = TestPostgres.freshDatabase("harness_rebuild_carried")
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      launch(engine)
+      val first = ask(engine, "d", "the Falcon budget is 4200")
+      val second = ask(engine, "d", "and the Osprey budget?")
+      (Reader.open(config), first, second)
+    } finally engine.close()
+  }
+
   /** A document kept at task "rebuild", the Falcon budget, before a turn there asks about it;
     * that turn's window rebuilt while the document is kept, then once it is forgotten (as its
     * retention would collect it); and the document's version.
@@ -605,6 +619,25 @@ object RebuildTests extends TestSuite {
       (kept.recorded.map(_.documents), kept.rebuilt.documents, kept.drift) ==>
         (Some(Vector(version)), Vector(version), Some(Drift.Same))
       (gone.rebuilt.documents, gone.drift) ==> (Vector(), Some(Drift.Gone))
+    }
+
+    test("an appended window is rebuilt against the window it was carried into") {
+      val (reader, first, second) = carrying
+      val carry = right(reader.all.read(reader.entries.get(Turn.windowId(second)))).map(_.payload)
+      val r = right(
+        Rebuild.recorded(
+          reader,
+          second.workflowId,
+          Assembled.Shipped,
+          Admission.Shipped,
+          Width.Deployed
+        )
+      )
+      // Drawn against nothing carried, the rebuild would hold the first turn again.
+      (
+        carry.collect { case w: Payload.Window => w.carry.flatMap(_.after) },
+        r.drift
+      ) ==> (Some(Some(Turn.windowId(first))), Some(Drift.Same))
     }
 
     test("a turn rebuilt as of its assembly is the window it recorded, its query replayed") {

@@ -6,6 +6,7 @@ import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
 import grit.core.clock.{Clock, Fresh}
+import grit.core.context.CarriedWindow
 import grit.core.id.{ConversationId, EntrySeq, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -372,14 +373,14 @@ final class ChatHost(
     }
     val costs = engine.db.read(session)(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
     val profile = engine.db.read(session)(engine.profiles.of(turn.workflowId)).toOption.flatten
-    // The entries of other conversations the turn's recorded window showed, as it showed
-    // them; one purged since is simply not counted.
+    // The entries of other conversations the turn's recorded window showed, with every record
+    // it carried, as it showed them; one purged since is simply not counted.
     val windows = entries
-      .filter(_.turnSeq == turn.turnSeq)
-      .flatMap(_.payload match {
-        case w: Payload.Window => Vector(w)
-        case _ => Vector.empty
-      })
+      .collectFirst {
+        case Entry(id, _, t, _, _, _: Payload.Window, _, _) if t == turn.turnSeq => id
+      }
+      .flatMap(CarriedWindow.whole(_, entries))
+      .toVector
     val nearby =
       engine.db
         .read(session)(Nearby.read(windows.flatMap(_.nearby), engine.entries))

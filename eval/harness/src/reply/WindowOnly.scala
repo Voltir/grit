@@ -2,7 +2,7 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
-import grit.core.context.{Width, Window}
+import grit.core.context.{CarriedWindow, Width, Window}
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.period.Probability
@@ -78,7 +78,15 @@ object WindowOnly {
         case None => Right(Query.Withheld)
         case Some(pins) =>
           Rebuild
-            .window(AsOf(reader, w.at), w.turn, assembled, listener, width, Some(pins.first))(using
+            .window(
+              AsOf(reader, w.at),
+              w.turn,
+              assembled,
+              listener,
+              width,
+              Some(pins.first),
+              CarriedWindow.Empty
+            )(using
               routed.bound(reader.db)
             )
             .map(_ => Query.Asked(listener.request))
@@ -107,7 +115,9 @@ object WindowOnly {
         assembled,
         new From(answers),
         width,
-        routed.cleared(seed.pin.query).map(_.first)
+        routed.cleared(seed.pin.query).map(_.first),
+        // A window drawn at a width is a boundary: nothing carried bounds it.
+        CarriedWindow.Empty
       )(using routed.bound(reader.db))
     } yield window
 

@@ -30,5 +30,10 @@ object RunesTests extends TestSuite {
         "ᛟ assembling"
       )
     }
+
+    test("the carried step and a patch marker show as assembling and recording") {
+      Vector("carried", "DBOS.patch-carried-window").map(Look.Runes.step) ==>
+        Vector("ᛟ assembling", "ᛃ recording")
+    }
   }
 }

@@ -2,7 +2,7 @@ package grit.app.chat
 
 import java.time.Duration
 
-import grit.core.context.Shown
+import grit.core.context.{CarriedWindow, Shown}
 import grit.core.document.{DocLabel, Document}
 import grit.core.files.KeptPiece
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
@@ -174,38 +174,43 @@ object TurnView {
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
+    // The window as the model was shown it: a carried one with every record it follows.
     val window =
-      own.collectFirst { case Entry(_, _, _, _, _, w: Payload.Window, _, _) => w }.map { w =>
-        val seen = w.entries.flatMap(bySeq.get)
-        val (closings, turns) = seen.partition(isClosed)
-        val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
-        val theirs = nearby.map(e => (e.conversationId, e.seq) -> e).toMap
-        val sections = w.nearby.map(n => n -> n.names.flatMap(s => theirs.get((n.conversation, s))))
-        Window(
-          prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
-          tokens(closings, speakers, estimator),
-          tokens(recent, speakers, estimator) + gaps(seen, turn, estimator),
-          tokens(recalled, speakers, estimator),
-          tokens(own.filter(isUser), speakers, estimator),
-          w.recalled,
-          w.nearby
-            .flatMap(Shown.section(_, nearby, speakers))
-            .map(estimator.message)
-            .foldLeft(Tokens.Zero)(_ + _),
-          sections.collect {
-            case (Nearby.Open(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
-            case (Nearby.Along(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
-            case (Nearby.Asked(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
-            case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
-          },
-          documents
-            .map((document, label) => estimator.message(Shown.document(document, label)))
-            .foldLeft(Tokens.Zero)(_ + _),
-          pieces
-            .map((piece, label, more) => estimator.message(Shown.piece(piece, label, more)))
-            .foldLeft(Tokens.Zero)(_ + _)
-        )
-      }
+      own
+        .collectFirst { case Entry(id, _, _, _, _, _: Payload.Window, _, _) => id }
+        .flatMap(CarriedWindow.whole(_, entries))
+        .map { w =>
+          val seen = w.entries.flatMap(bySeq.get)
+          val (closings, turns) = seen.partition(isClosed)
+          val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
+          val theirs = nearby.map(e => (e.conversationId, e.seq) -> e).toMap
+          val sections =
+            w.nearby.map(n => n -> n.names.flatMap(s => theirs.get((n.conversation, s))))
+          Window(
+            prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
+            tokens(closings, speakers, estimator),
+            tokens(recent, speakers, estimator) + gaps(seen, turn, estimator),
+            tokens(recalled, speakers, estimator),
+            tokens(own.filter(isUser), speakers, estimator),
+            w.recalled,
+            w.nearby
+              .flatMap(Shown.section(_, nearby, speakers))
+              .map(estimator.message)
+              .foldLeft(Tokens.Zero)(_ + _),
+            sections.collect {
+              case (Nearby.Open(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+              case (Nearby.Along(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+              case (Nearby.Asked(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+              case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
+            },
+            documents
+              .map((document, label) => estimator.message(Shown.document(document, label)))
+              .foldLeft(Tokens.Zero)(_ + _),
+            pieces
+              .map((piece, label, more) => estimator.message(Shown.piece(piece, label, more)))
+              .foldLeft(Tokens.Zero)(_ + _)
+          )
+        }
     val reply = own.collectFirst {
       case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _, _) => m
     }

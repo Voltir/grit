@@ -100,5 +100,40 @@ object CarriedWindowTests extends TestSuite {
         Left(StoreError.Invalid("down"))
       )
     }
+
+    test(
+      "the window a record showed reads whole: each part's entries, a carried turn's own messages after its part, every part's recalled turns; a record kept with no carry is itself, a broken chain none"
+    ) {
+      val boundary = record("w1", 1, 1, carried(None, 10, "one"))
+      val asked = boundary.copy(
+        id = EntryId("in:1"),
+        seq = EntrySeq(2),
+        payload = Payload.Message(Message.User("one?"))
+      )
+      val appended = record("w2", 2, 3, carried(Some("w1"), 4, "two")) match {
+        case e @ Entry(_, _, _, _, _, w: Payload.Window, _, _) =>
+          e.copy(payload = w.copy(recalled = Vector(TurnSeq(0))))
+        case other => other
+      }
+      val older = record("w0", 2, 5, None)
+      val all = Vector(boundary, asked, appended)
+      (
+        CarriedWindow.whole(EntryId("w2"), all),
+        CarriedWindow.whole(EntryId("w0"), all :+ older).map(_.entries),
+        CarriedWindow.whole(EntryId("w2"), Vector(asked, appended)),
+        CarriedWindow.whole(EntryId("in:1"), all)
+      ) ==> (
+        Some(
+          Payload.Window(
+            Vector(EntrySeq(1), EntrySeq(2), EntrySeq(3)),
+            Vector(TurnSeq(0)),
+            carry = None
+          )
+        ),
+        Some(Vector(EntrySeq(5))),
+        None,
+        None
+      )
+    }
   }
 }

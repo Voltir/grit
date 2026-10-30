@@ -1,8 +1,8 @@
 package grit.core.context
 
-import grit.core.id.{EntryId, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, TurnSeq}
 import grit.core.message.Tokens
-import grit.core.store.{Entry, Payload, StoreError}
+import grit.core.store.{Entry, Payload, Speakers, StoreError}
 
 /** The window a conversation carries into its next turn: each part drawn since its last
   * boundary, oldest first. As the model is shown it, each part is followed by its turn's own
@@ -53,15 +53,22 @@ object CarriedWindow {
     */
   def chain(last: EntryId)(
       get: EntryId => Either[StoreError, Option[Entry]]
-  ): Either[StoreError, Vector[Record]] = {
+  ): Either[StoreError, Vector[Record]] =
+    walked(last)(get).map(_.map((turn, w, c) => Record(turn, Window.of(w), c)))
+
+  /** [[chain]]'s records as kept, each with its turn and carry. */
+  private def walked(last: EntryId)(
+      get: EntryId => Either[StoreError, Option[Entry]]
+  ): Either[StoreError, Vector[(TurnSeq, Payload.Window, Payload.Carry)]] = {
+    type Kept = (TurnSeq, Payload.Window, Payload.Carry)
     // Each record follows one of an earlier turn, so the walk ends.
     @annotation.tailrec
-    def walk(id: EntryId, later: List[Record]): Either[StoreError, Vector[Record]] =
+    def walk(id: EntryId, later: List[Kept]): Either[StoreError, Vector[Kept]] =
       get(id) match {
         case Left(e) => Left(e)
         case Right(Some(Entry(_, _, turn, _, _, w @ Payload.Window(_, _, _, _, _, Some(c)), _, _)))
-            if later.headOption.forall(next => TurnSeq.value(turn) < TurnSeq.value(next.turn)) =>
-          val done = Record(turn, Window.of(w), c) :: later
+            if later.headOption.forall(next => TurnSeq.value(turn) < TurnSeq.value(next._1)) =>
+          val done = (turn, w, c) :: later
           c.after match {
             case Some(before) => walk(before, done)
             case None => Right(done.toVector)
@@ -70,6 +77,46 @@ object CarriedWindow {
       }
     walk(last, Nil)
   }
+
+  /** The window the window record with id `last` showed, read from `all`, its conversation's
+    * entries, as one record kept whole, as a record was before windows were carried: the
+    * entries of each record [[chain]] reads, a carried record's followed by those of its turn's
+    * own entries [[Shown.turn]] shows (`all` may hold other conversations' too), and every record's recalled turns, sections, documents
+    * and pieces, oldest first, with no carry. A record kept with no carry is itself. `None`
+    * when `last` is not among `all` or is not a window record, or its chain is broken.
+    */
+  def whole(last: EntryId, all: Vector[Entry]): Option[Payload.Window] =
+    all
+      .find(_.id == last)
+      .flatMap(kept =>
+        kept.payload match {
+          case w @ Payload.Window(_, _, _, _, _, None) => Some(w)
+          case _: Payload.Window =>
+            val records = walked(last)(id => Right(all.find(_.id == id))).getOrElse(Vector.empty)
+            Option.when(records.nonEmpty) {
+              val shownOwn = (t: TurnSeq) =>
+                all
+                  .filter(e =>
+                    e.conversationId == kept.conversationId && e.turnSeq == t &&
+                      Shown.turn(Vector(e), Speakers.none).nonEmpty
+                  )
+                  .sortBy(e => EntrySeq.value(e.seq))
+                  .map(_.seq)
+              val entries = records.zipWithIndex.flatMap { case ((t, w, _), i) =>
+                w.entries ++ (if (i < records.size - 1) shownOwn(t) else Vector.empty)
+              }
+              Payload.Window(
+                entries,
+                records.flatMap(_._2.recalled),
+                records.flatMap(_._2.nearby),
+                records.flatMap(_._2.documents),
+                records.flatMap(_._2.pieces),
+                None
+              )
+            }
+          case _ => None
+        }
+      )
 
   /** The window `records`, oldest first, carry into the turn after the last of them. */
   def of(records: Vector[Record]): CarriedWindow =

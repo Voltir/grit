@@ -3,7 +3,7 @@ package grit.eval.harness.capture
 import scala.collection.immutable.VectorMap
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.context.{AssemblyNote, Shown, Window}
+import grit.core.context.{AssemblyNote, CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, Document, Pointer}
 import grit.core.durable.StepRecord
 import grit.core.either.Traversal
@@ -162,7 +162,8 @@ object TurnCapture {
             .weighed(steps)
             .left
             .map(why => s"weighing of ${WorkflowId.value(turn.workflowId)} unread: $why")
-          window <- mine.find(_.id == Turn.windowId(turn)).map(_.payload) match {
+          // The window as the turn was shown it: a carried one with every record it follows.
+          window <- CarriedWindow.whole(Turn.windowId(turn), all) match {
             case Some(Payload.Window(seqs, recalled, nearby, versions, _, _)) =>
               read("window")(
                 for {

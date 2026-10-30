@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.util.hashing.MurmurHash3
 
 import grit.core.clock.Fresh
-import grit.core.context.Shown
+import grit.core.context.{CarriedWindow, Shown}
 import grit.core.either.Traversal
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
@@ -217,10 +217,7 @@ object ReplyReview {
           assistant(ref.draftId).map(m => Reply.Draft(said(m), t.speech.map(_.outcome)))
       }).toRight(s"$w: no reply recorded")
     } yield {
-      val nearby = mine.find(_.id == Turn.windowId(ref)).map(_.payload) match {
-        case Some(w: Payload.Window) => w.nearby
-        case _ => Vector.empty
-      }
+      val nearby = CarriedWindow.whole(Turn.windowId(ref), entries).fold(Vector.empty)(_.nearby)
       val shown =
         if (!records) Vector.empty
         else
@@ -255,10 +252,9 @@ object ReplyReview {
     val ref = TurnRef(t.conversation, t.turn)
     for {
       all <- reader.all.read(reader.entries.list(t.conversation)).left.map(unread("entries"))
-      nearby = all.find(_.id == Turn.windowId(ref)).map(_.payload) match {
-        case Some(w: Payload.Window) if records => w.nearby
-        case _ => Vector.empty
-      }
+      nearby =
+        if (!records) Vector.empty
+        else CarriedWindow.whole(Turn.windowId(ref), all).fold(Vector.empty)(_.nearby)
       near <- reader.all
         .read(Nearby.read(nearby, reader.entries))
         .left

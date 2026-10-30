@@ -232,6 +232,35 @@ object TurnViewTests extends TestSuite {
       w.recent ==> third + CharEstimate.message(Shown.Gap)
     }
 
+    test("an appended window counts the window it carries, the carried turn with the recent ones") {
+      // Turn 1's window appended nothing after turn 0's, which drew nothing: turn 1 was shown
+      // turn 0's own messages as that turn sent them.
+      def carry(after: Option[String]) =
+        Some(Payload.Carry(after.map(EntryId(_)), Tokens.Zero, Some("dated"), None))
+      val carried = Vector(
+        user(0, 0, "first question"),
+        entry(1, 0, Payload.Window(Vector.empty, Vector.empty, carry = carry(None))),
+        reply(2, 0, "first answer", 10),
+        user(3, 1, "second"),
+        entry(4, 1, Payload.Window(Vector.empty, Vector.empty, carry = carry(Some("e1")))),
+        reply(5, 1, "second answer", 20)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(1)),
+          carried,
+          Speakers.none,
+          Vector.empty,
+          false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      w.recent ==> msg("first question") + msg("first answer")
+    }
+
     test("a window opened by a closing entry counts it as the model was shown it") {
       val closing = Closing(
         Flows.of("We chose exiftool.", Some("exiftool"), Vector()).getOrElse(sys.error("flows")),
