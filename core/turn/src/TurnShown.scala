@@ -290,7 +290,7 @@ private[turn] object TurnShown {
           )
         )
       case _ =>
-        val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
+        val shown = Shown.own(window.entries.flatMap(bySeq.get), None, turn.turnSeq, named)
         // The dated line is a message, not part of `system`: a provider caches its prompt from
         // the front, and nothing that changes per turn may sit before the messages. It is made
         // here, from the turn's first own entry, and no entry keeps it: a later turn shown this

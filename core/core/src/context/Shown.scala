@@ -177,32 +177,37 @@ object Shown {
 
   /** A window's own `entries` (oldest first: a closing entry, which stands at its period's
     * last turn, then whole turns) as the model is shown them before `turn`'s own messages:
-    * each as [[of]] shows it with `speakers`, with [[Gap]] wherever turns are left out. That is, before an
-    * entry whose turn is more than one after the entry before it, before the first when it
-    * is a turn after [[TurnSeq.First]] with no closing before it, and at the end when the
-    * last entry's turn is not the one just before `turn` (or when there are no entries and
-    * `turn` is not the first).
+    * each as [[of]] shows it with `speakers`, with [[Gap]] wherever turns are left out: before
+    * an entry whose turn is neither the turn before it nor the one after that, where the turn
+    * before the first entry is `after`, the carried turn these entries follow (with none, a
+    * gap unless the first is a closing or of [[TurnSeq.First]]); and at the end when the last
+    * turn shown (the last entry's, else `after`) is not the one just before `turn`, or, with
+    * neither, when `turn` is not the first. Recall alone after carried turns 4 and 5, for turn
+    * 7: gap, turn 2, gap.
     */
   def own(
       entries: Vector[Entry],
+      after: Option[TurnSeq],
       turn: TurnSeq,
       speakers: Speakers
   ): Vector[Message] = {
-    val previous: Vector[Option[Entry]] = None +: entries.map(Some(_))
-    val shown = entries.zip(previous).flatMap { (entry: Entry, prior: Option[Entry]) =>
+    val previous: Vector[Option[TurnSeq]] = after +: entries.map(e => Some(e.turnSeq))
+    val shown = entries.zip(previous).flatMap { (entry: Entry, prior: Option[TurnSeq]) =>
       val skipped = prior match {
         // A closing stands at its period's last turn, so it covers every turn up to its own.
-        case Some(p) => TurnSeq.value(entry.turnSeq) > TurnSeq.value(p.turnSeq) + 1
+        case Some(p) =>
+          val t = TurnSeq.value(entry.turnSeq)
+          t != TurnSeq.value(p) && t != TurnSeq.value(p) + 1
         case None =>
           !isClosing(entry) && TurnSeq.value(entry.turnSeq) > TurnSeq.value(TurnSeq.First)
       }
       Option.when(skipped)(Gap).toVector ++ of(entry, speakers).toVector
     }
-    val after = entries.lastOption match {
-      case Some(last) => TurnSeq.value(turn) > TurnSeq.value(last.turnSeq) + 1
+    val ending = entries.lastOption.map(_.turnSeq).orElse(after) match {
+      case Some(last) => TurnSeq.value(turn) != TurnSeq.value(last) + 1
       case None => TurnSeq.value(turn) > TurnSeq.value(TurnSeq.First)
     }
-    shown ++ Option.when(after)(Gap).toVector
+    shown ++ Option.when(ending)(Gap).toVector
   }
 
   /** What introduces a pasted grit block in text grit did not write, by the `tag` that

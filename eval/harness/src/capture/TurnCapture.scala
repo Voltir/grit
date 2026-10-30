@@ -355,7 +355,10 @@ object TurnCapture {
     Parts(
       sections ++ own,
       shelf,
-      minus(cost(Shown.own(at, turn.turnSeq, named)), own.foldLeft(Tokens.Zero)(_ + _.tokens)),
+      minus(
+        cost(Shown.own(at, None, turn.turnSeq, named)),
+        own.foldLeft(Tokens.Zero)(_ + _.tokens)
+      ),
       cost(Shown.turn(before, named))
     )
   }

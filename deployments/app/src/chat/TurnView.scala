@@ -261,7 +261,7 @@ object TurnView {
     */
   private def gaps(seen: Vector[Entry], turn: TurnRef, estimator: TokenEstimator): Tokens = {
     val lines =
-      Shown.own(seen, turn.turnSeq, Speakers.none).size -
+      Shown.own(seen, None, turn.turnSeq, Speakers.none).size -
         seen.flatMap(e => Shown.of(e, Speakers.none)).size
     Tokens(lines * Tokens.value(estimator.message(Shown.Gap)))
   }

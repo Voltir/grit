@@ -852,10 +852,13 @@ object ShownTests extends TestSuite {
     test("a window with no turns left out is shown with no gap line") {
       val record =
         Shown.of(closed(4), Speakers.none).getOrElse(throw new java.lang.AssertionError("record"))
-      Shown.own(Vector(closed(4), said(5), said(6)), TurnSeq(7), Speakers.none) ==>
+      Shown.own(Vector(closed(4), said(5), said(6)), None, TurnSeq(7), Speakers.none) ==>
         Vector(record, told(5), told(6))
-      Shown.own(Vector(said(0), said(1)), TurnSeq(2), Speakers.none) ==> Vector(told(0), told(1))
-      Shown.own(Vector.empty, TurnSeq.First, Speakers.none) ==> Vector.empty
+      Shown.own(Vector(said(0), said(1)), None, TurnSeq(2), Speakers.none) ==> Vector(
+        told(0),
+        told(1)
+      )
+      Shown.own(Vector.empty, None, TurnSeq.First, Speakers.none) ==> Vector.empty
     }
 
     test(
@@ -865,19 +868,33 @@ object ShownTests extends TestSuite {
         Shown.of(closed(4), Speakers.none).getOrElse(throw new java.lang.AssertionError("record"))
       val gap = Shown.Gap
       // After the record: turn 5 is left out.
-      Shown.own(Vector(closed(4), said(6), said(7)), TurnSeq(8), Speakers.none) ==>
+      Shown.own(Vector(closed(4), said(6), said(7)), None, TurnSeq(8), Speakers.none) ==>
         Vector(record, gap, told(6), told(7))
       // Between turns: a recalled turn 2 apart from the tail 5..6.
-      Shown.own(Vector(said(2), said(5), said(6)), TurnSeq(7), Speakers.none) ==>
+      Shown.own(Vector(said(2), said(5), said(6)), None, TurnSeq(7), Speakers.none) ==>
         Vector(gap, told(2), gap, told(5), told(6))
       // Before the turn: the newest turns did not fit.
-      Shown.own(Vector(closed(4), said(5)), TurnSeq(8), Speakers.none) ==> Vector(
+      Shown.own(Vector(closed(4), said(5)), None, TurnSeq(8), Speakers.none) ==> Vector(
         record,
         told(5),
         gap
       )
       // Nothing kept, and earlier turns exist.
-      Shown.own(Vector.empty, TurnSeq(3), Speakers.none) ==> Vector(gap)
+      Shown.own(Vector.empty, None, TurnSeq(3), Speakers.none) ==> Vector(gap)
+    }
+
+    test(
+      "entries following a carried turn: none before those that continue it, one before a recalled earlier turn and one after it"
+    ) {
+      val gap = Shown.Gap
+      // The turns since the carried turn 5 continue it: no gap either side.
+      Shown.own(Vector(said(6)), Some(TurnSeq(5)), TurnSeq(7), Speakers.none) ==> Vector(told(6))
+      // Recall alone after carried turns: turn 3 is set off from turn 5 before it and turn 7
+      // after it.
+      Shown.own(Vector(said(3)), Some(TurnSeq(5)), TurnSeq(7), Speakers.none) ==>
+        Vector(gap, told(3), gap)
+      // Nothing appended right after the carried turn before this one.
+      Shown.own(Vector.empty, Some(TurnSeq(6)), TurnSeq(7), Speakers.none) ==> Vector.empty
     }
 
     test("a turn's several entries are one turn: no gap between them") {
@@ -893,7 +910,7 @@ object ShownTests extends TestSuite {
       )
       val record =
         Shown.of(closed(4), Speakers.none).getOrElse(throw new java.lang.AssertionError("record"))
-      Shown.own(Vector(closed(4), said(5), reply), TurnSeq(6), Speakers.none) ==>
+      Shown.own(Vector(closed(4), said(5), reply), None, TurnSeq(6), Speakers.none) ==>
         Vector(record, told(5), Message.User("again"))
     }
   }
