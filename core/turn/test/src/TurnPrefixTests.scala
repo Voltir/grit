@@ -198,15 +198,18 @@ object TurnPrefixTests extends TestSuite {
       // Three turns of one window: the first reads a file after thinking, in Anthropic's
       // signed form, then answers; the next two answer at once. Each later turn's first call
       // must repeat the call before it whole (every message of an ungated turn's last call is
-      // stable), its system prompt and tools unchanged, the thinking block among them.
+      // stable), its system prompt and tools unchanged, the thinking block among them. Each
+      // is said hours after the one before, the last on another day: a carried turn's dated
+      // line is the one its own request sent, and the system prompt dates nothing.
       val entries = new InMemoryEntryStore
       val ws = new Files(Map("a.txt" -> "alpha"))
       def turn(
           text: String,
+          hours: Int,
           script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant]
       ) = {
         val provider = new Scripted(script)
-        val t = say(entries, text)
+        val t = say(entries, text, at = java.time.Instant.EPOCH.plusSeconds(hours * 3600L))
         new InMemoryDurable().run(t.workflowId)(
           tooledBody(
             entries,
@@ -226,10 +229,11 @@ object TurnPrefixTests extends TestSuite {
       val calls = Vector(
         turn(
           "read a.txt",
+          0,
           (r, n) => if (n == 0) Right(peeking("t1")) else new StubProvider().complete(r)
         ),
-        turn("and again?", answers),
-        turn("thanks", answers)
+        turn("and again?", 5, answers),
+        turn("thanks", 30, answers)
       )
       calls.map(_.size) ==> Vector(2, 1, 1)
       val pairs = calls.sliding(2).toVector.flatMap {
@@ -253,6 +257,63 @@ object TurnPrefixTests extends TestSuite {
         ) ==> Vector((true, true, true), (true, true, true))
       // The first turn's thinking is sent again, signed, with the turns after it.
       anthropic.map((_, b) => ujson.write(b).contains("sig-t1")) ==> Vector(true, true)
+    }
+
+    test(
+      "a turn past the limit repeats the last one's tools and system prompt, and draws its messages afresh"
+    ) {
+      // The first turn's message alone spends more than the window's limit, so the next turn
+      // is a boundary: its messages begin anew, with no thinking of the first replayed, while
+      // what comes before them is the same bytes, said hours later as it is.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def turn(
+          text: String,
+          hours: Int,
+          script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant]
+      ) = {
+        val provider = new Scripted(script)
+        val t = say(entries, text, at = java.time.Instant.EPOCH.plusSeconds(hours * 3600L))
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            3
+          )
+        )
+        (t, provider.requests)
+      }
+      val (_, first) = turn(
+        "read a.txt " + "x" * 100_000,
+        0,
+        (r, n) => if (n == 0) Right(peeking("t1")) else new StubProvider().complete(r)
+      )
+      val (second, next) = turn("and again?", 5, (r, _) => new StubProvider().complete(r))
+      def anthropicOf(r: ModelRequest): ujson.Value =
+        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+      def openRouterOf(r: ModelRequest): ujson.Value =
+        OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, r)
+      val sent = first.lastOption.zip(next.headOption).toVector.flatMap { (a, b) =>
+        Vector((anthropicOf(a), anthropicOf(b)), (openRouterOf(a), openRouterOf(b)))
+      }
+      (
+        windows(entries).collectFirst {
+          case (id, w) if id == Turn.windowId(second) => w.carry.map(_.after)
+        },
+        sent.map((a, b) =>
+          (
+            a.obj.get("system") == b.obj.get("system"),
+            a.obj.get("tools") == b.obj.get("tools"),
+            unmarked(b).startsWith(unmarked(a)),
+            ujson.write(b).contains("sig-t1")
+          )
+        )
+      ) ==> (Some(Some(None)), Vector((true, true, false, false), (true, true, false, false)))
     }
 
     test(

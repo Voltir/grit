@@ -5,7 +5,15 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Retrieved, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyRequest,
+  CarriedWindow,
+  ContextAssembler,
+  Projection,
+  Retrieved,
+  Window
+}
 import grit.core.document.{
   DocLabel,
   DocText,
@@ -264,6 +272,52 @@ object TurnDocumentsTests extends TestSuite {
             carry = Some(Payload.Carry(None, Tokens.Zero, Some(dated.text), None))
           )
         )
+    }
+
+    test(
+      "a carried document gone before the next turn makes it a boundary: nothing carried is shown edited"
+    ) {
+      // The window holds the document at a boundary and appends nothing after: the second turn
+      // carries the first; the document is then forgotten, and the third cannot show the
+      // carried window as it was sent, so it draws afresh, and the document is not shown.
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val documents = new InMemoryDocuments
+      documents.declare(Vector(digest -> terms("Weekly digest")))(using TestTx.fake)
+      val week = write(documents, digest, "Weekly digest", "week", "Deploys frozen until Friday.")
+      val carrying = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector.empty, Vector.empty, Vector.empty, Vector(week)))
+        override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
+            Db^
+        ): Either[AssemblyError, Projection] =
+          if (request.carried == CarriedWindow.Empty) window(request).map(boundary)
+          else Right(Projection.Appended(Window(Vector.empty), Tokens.Zero))
+      }
+      def run(text: String) = {
+        val turn = say(entries, text)
+        new InMemoryDurable().run(turn.workflowId)(
+          turnBodyWith(entries, provider, carrying, new InMemoryUsageLedger, documents = documents)
+        )
+        turn
+      }
+      val one = run("one")
+      val two = run("two")
+      ok(documents.forget(week)(using TestTx.fake))
+      val three = run("three")
+      (
+        Vector(one, two, three).map(t =>
+          windows(entries).collectFirst {
+            case (id, w) if id == Turn.windowId(t) => w.carry.map(_.after)
+          }
+        ),
+        provider.requests.lastOption.map(_.messages.collect {
+          case Message.User(text) if text.startsWith("[doc]") => text
+        })
+      ) ==> (
+        Vector(Some(Some(None)), Some(Some(Some(Turn.windowId(one)))), Some(Some(None))),
+        Some(Vector.empty)
+      )
     }
 
     test(

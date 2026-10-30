@@ -8,6 +8,7 @@ import grit.core.id.{
   EntrySeq,
   PeriodSeq,
   PieceId,
+  Sha256,
   ToolCallId,
   TurnSeq
 }
@@ -208,6 +209,16 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"window","entries":[0],"recalled":[],"carry":{"cost":7}}""",
         Right(boundary),
         Right(Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None))
+      )
+    }
+
+    test("a turn's last prefix is stored as its count of messages and its digest, and read back") {
+      // A later turn compares its own digest with these bytes to carry the turn (ADR 0052).
+      val prefix = Payload.Prefix(4, Sha256.text("abc"))
+      val stored = PayloadJson.write(prefix).render()
+      (stored, PayloadJson.read(ujson.read(stored))) ==> (
+        """{"kind":"prefix","messages":4,"digest":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}""",
+        Right(prefix)
       )
     }
 
