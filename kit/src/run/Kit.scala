@@ -16,7 +16,7 @@ import grit.core.place.Place
 import grit.core.spend.Budget
 import grit.core.store.{Linking, StoreError, Tx}
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.engine.{Engine, Link, Unopened}
+import grit.dbos.engine.{Engine, Link, StoppedBy, Unopened}
 import grit.dbos.sql.DbConfig
 import grit.host.machine.LocalMachine
 import grit.job.clock.ClockEdge
@@ -88,67 +88,92 @@ object Kit {
     * Each edge that is an attester the deployment trusts is asked for a look once its edges
     * open and every [[Attesting.Every]] after; what it reports is logged as [[reported]] says.
     */
-  def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
-    // The process's own time, read here at the serving loop's root and passed down.
-    val clock: Clock^ = Clock.system() // clock-check: the composition root of a serving process
-    val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
-    val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
+  def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] =
     preflight(deployment, env, deployment.edges.toList.map(e => (e.name, e.needs))) match {
       case Left(failure) => Left(failure)
       case Right(secrets) =>
-        trusted(deployment, secrets, clock) match {
-          case Left(failure) => Left(failure)
-          case Right(engine) =>
-            val stopped = new CountDownLatch(1)
-            val closed = new CountDownLatch(1)
-            try {
-              opened(engine, deployment, secrets, env, clock, said => turns.info(said), log) match {
-                case Left(failure) => Left(failure)
-                case Right(opened) =>
-                  // On ctrl-c or SIGTERM: stop the loop, then hold the JVM open until the edges
-                  // and the engine are closed.
-                  Runtime.getRuntime.addShutdownHook(Thread.ofPlatform().unstarted { () =>
-                    stopped.countDown()
-                    val _ = closed.await(ClosedWithin.toMillis, TimeUnit.MILLISECONDS)
-                  })
-                  // Looks and pick rounds, each run between deliveries when due.
-                  val looking = cadence(Attesting.Every, clock)
-                  val picking = cadence(PickEvery, clock)
-                  try
-                    Serving.deliver(
-                      opened,
-                      () => stopped.getCount == 0,
-                      () => looking().nonEmpty,
-                      () => {
-                        deployment.review.foreach { review =>
-                          picking().foreach { now =>
-                            Picking.round(
-                              review,
-                              engine.reviews,
-                              engine.jot,
-                              deployment.budget,
-                              now
-                            ) match {
-                              case Left(e) => log.warn(s"review: nothing picked: $e")
-                              case Right(0) => ()
-                              case Right(n) => log.info(s"review: $n picked")
-                            }
-                          }
-                        }
-                        val _ = stopped.await(DeliverEvery.toMillis, TimeUnit.MILLISECONDS)
-                      },
-                      said => log.warn(said)
-                    )
-                  finally opened.close()
-                  Right(())
-              }
-            } finally {
-              engine.close()
-              closed.countDown()
-            }
-        }
+        val stopped = new CountDownLatch(1)
+        val closed = new CountDownLatch(1)
+        // On ctrl-c or SIGTERM: stop serving, then hold the JVM open until the edges and the
+        // engine are closed.
+        Runtime.getRuntime.addShutdownHook(Thread.ofPlatform().unstarted { () =>
+          stopped.countDown()
+          val _ = closed.await(ClosedWithin.toMillis, TimeUnit.MILLISECONDS)
+        })
+        // The process's own time, read here at the serving loop's root and passed down.
+        val clock: Clock^ = Clock.system() // clock-check: the composition root of a serving process
+        try serving(deployment, secrets, env, clock, stopped)
+        finally closed.countDown()
     }
+
+  /** [[serve]] after its preflight and without its shutdown hook, over `secrets`, until
+    * `stopped` is counted down: `Right` once stopped; refused as [[serve]] is.
+    */
+  private[grit] def serving(
+      deployment: Deployment,
+      secrets: Secrets,
+      env: Map[String, String],
+      clock: Clock^,
+      stopped: CountDownLatch
+  ): Either[KitFailure, Unit] = {
+    val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
+    val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
+    life(deployment, secrets, env, clock, stopped, log, turns).map(_ => ())
   }
+
+  /** One engine's serving: `deployment`'s engine opened, then its edges, delivering until
+    * `stopped` is counted down or the engine stops; then the edges closed, then the engine.
+    * What stopped the engine before this closed it; `None` when `stopped` ended it.
+    */
+  private def life(
+      deployment: Deployment,
+      secrets: Secrets,
+      env: Map[String, String],
+      clock: Clock^,
+      stopped: CountDownLatch,
+      log: org.slf4j.Logger,
+      turns: org.slf4j.Logger
+  ): Either[KitFailure, Option[StoppedBy]] =
+    trusted(deployment, secrets, clock) match {
+      case Left(failure) => Left(failure)
+      case Right(engine) =>
+        try {
+          opened(engine, deployment, secrets, env, clock, said => turns.info(said), log) match {
+            case Left(failure) => Left(failure)
+            case Right(opened) =>
+              // Looks and pick rounds, each run between deliveries when due.
+              val looking = cadence(Attesting.Every, clock)
+              val picking = cadence(PickEvery, clock)
+              try
+                Serving.deliver(
+                  opened,
+                  () => stopped.getCount == 0,
+                  () => looking().nonEmpty,
+                  () => {
+                    deployment.review.foreach { review =>
+                      picking().foreach { now =>
+                        Picking.round(
+                          review,
+                          engine.reviews,
+                          engine.jot,
+                          deployment.budget,
+                          now
+                        ) match {
+                          case Left(e) => log.warn(s"review: nothing picked: $e")
+                          case Right(0) => ()
+                          case Right(n) => log.info(s"review: $n picked")
+                        }
+                      }
+                    }
+                    val _ = stopped.await(DeliverEvery.toMillis, TimeUnit.MILLISECONDS)
+                  },
+                  said => log.warn(said)
+                )
+              finally opened.close()
+              Right(engine.stoppedBy)
+          }
+        } finally engine.close()
+    }
 
   /** `deployment`'s edges opened on `engine` in order ([[Serving.open]]), each over its stores and
     * `engine`'s file area, and only then its workflows launched, sweeping, each finished turn's
