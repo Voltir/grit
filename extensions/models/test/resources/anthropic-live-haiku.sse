@@ -1,30 +1,105 @@
 event: message_start
-data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgXiXFk5sh6D5XAw8Aysd","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":401,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}              }
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgXj4eJGabUK8oE4coP6H","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":425,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}          }
 
 event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01DnKC4g6LEYtkKie8YrqVMy","name":"read_file","input":{},"caller":{"type":"direct"}}  }
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}           }
 
 event: ping
 data: {"type": "ping"}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}      }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Adding the"}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\""}         }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" first six primes (2, "}      }
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":": \"note"}          }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"3, 5, 7,"}       }
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"s.txt\"}"}       }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 11, 13) gives"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 41, so the"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" file should be named 41.tx"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"t."}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\n"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSkQUKEAgTGAI4AUIIdGhpbmtpbmcSDJsoEeMAyDw9ilPVQBoMq6/J+IHPWUM93+nzIjBmZ4KHs+mkSWi5WyG0M9B/z/tiM+iTWUFR/4Ro2JvYHqqahFD/F71cQRkvESiRMlgqrgQWncWQ81HLpV+LycxJ2C6WbUkusn6Q6MsHQ0P4WYeLsLDVmQkW7cQk9sj7uT1V2rckm7K0IEE7F9f7VR+d+ODYsjghvfLapI6JumjuXZsdAvVFSQU5XWuPhZ+oWZupb44BJ+qpfGva9dQ+UOlxk3f7uJsaEoRw+It3y54uzcu+MJIDnvoTPdsRl0+EM9w2BWQahXv4wQakYfn+pxKbcM0tsnFjkNonQd9T8CiAE7sA86txxApIhhwua/1AS84fPoKiAkAN6EGB8zCYy6osUHqg3Prmpu+hP+eJoArVaCIm/+wdq1dkik7097va3h+MGwu8R8vRijJusSV+8PGMsxyWl0lvOetTf1jNI/PH3CDq9GvEJ71ugjvsmFxsAVH22NCOZsMVVbh5wLY0vULnNfhzqrpJY5UWT9e0DxGRAID6VckjZgB7bl2iv8AqgqdFFXLjeA/0lgBODOTH23BXLoi1j9+rYhNVXciEc/laN0qhbsoNY9bY/xRuKebBQlmWp2G4hDAU77NVJ55Jro1Cd0T5JXtmblRJp0AI8Fhpo7xvpxTCf8kg9Khmm8LgnANvnfky/E3tkoiuaa8LALjY303HZL/LMao8eIuwr10dDiN4oJm+4o1HYOdOaySZC1d9vX6/Fw68OrcraL4SVkf7zJdVqhXN2ix7YwxYq/yAexllDpMb/bRfFHBjrdPfNm43t8KroWO65tBmVW1JB2ycWQFtGf2vXieyKJVp0ZcLO18YAQ=="}   }
 
 event: content_block_stop
-data: {"type":"content_block_stop","index":0              }
+data: {"type":"content_block_stop","index":0    }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" first six prim"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"es are 2, 3,"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 5, 7, 11"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":", and 13. Their s"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"um is 2"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" + 3 + 5"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" + 7 + 11"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" + 13 = 41"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"."}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" So the file is "}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"41.txt."}          }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1     }
+
+event: content_block_start
+data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_01NApsXAnb96JfQ7F1vHGBKF","name":"read_file","input":{},"caller":{"type":"direct"}}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"path\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":": \"41.t"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"xt\"}"}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":2}
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":401,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":51,"output_tokens_details":{"thinking_tokens":0}}          }
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":425,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":158,"output_tokens_details":{"thinking_tokens":40}}               }
 
 event: message_stop
-data: {"type":"message_stop"               }
+data: {"type":"message_stop"           }
 
