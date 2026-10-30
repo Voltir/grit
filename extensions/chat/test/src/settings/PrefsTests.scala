@@ -32,13 +32,6 @@ object PrefsTests extends TestSuite {
       Prefs.parse("") ==> Prefs.empty
     }
 
-    test("it lives under XDG_CONFIG_HOME, or else under HOME's .config") {
-      Prefs.path(Map("XDG_CONFIG_HOME" -> "/x", "HOME" -> "/h")) ==> Some(Path.of("/x/grit/prefs"))
-      Prefs.path(Map("XDG_CONFIG_HOME" -> "", "HOME" -> "/h")) ==>
-        Some(Path.of("/h/.config/grit/prefs"))
-      Prefs.path(Map.empty) ==> None
-    }
-
     test("saved, its directories made, and loaded again; a missing file is nothing") {
       inTemp { dir =>
         val file = dir.resolve("config").resolve("grit").resolve("prefs")

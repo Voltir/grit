@@ -14,7 +14,7 @@ In dependency order:
 
 - **`settings`**: settings as a person writes them in the chat. A `/set` of a lifecycle setting
   (`Lifecycle`) holds until grit next starts, and `/set` says so. The theme last chosen is kept
-  in `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs` (`Prefs`). Imports nothing in chat.
+  in the preferences file the deployment names (`Prefs`). Imports nothing in chat.
 - **`look`**: themes and the chat screen's styles. Who speaks is a rune as well as a colour.
   Every theme is held to the same APCA contrast targets (`ThemeContrastTests`). Imports nothing
   in chat.

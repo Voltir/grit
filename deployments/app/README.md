@@ -20,7 +20,9 @@ In dependency order:
   `GRIT_WEIGHT`) are written over the database's on every start, logged as they stand, and
   changed one at a time by the chat's `/set` until the next start. `GRIT_DAILY_USD` caps a
   day's model spend (`grit serve`'s default $1.00); `GRIT_CLAIMED_DOMAINS` (comma-separated)
-  are the email domains the deployment claims (ADR 0032). Imports nothing in app.
+  are the email domains the deployment claims (ADR 0032). The chat's preferences, the theme
+  last chosen, are kept in `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports
+  nothing in app.
 - **`main`**: `Main` reads the settings into the reference `Deployment` and runs one of:
   - `grit serve`: the Slack edge in every channel its bot is invited to, hearing what was said
     before each join within `GRIT_BACKFILL_DAYS`, `GRIT_BACKFILL_MESSAGES` and

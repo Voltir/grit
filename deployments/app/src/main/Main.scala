@@ -3,7 +3,7 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, DurationLong, FiniteDuration}
 
 import grit.app.config.Listed.csv
-import grit.app.config.{Budgets, Claimed, LifecycleEnv}
+import grit.app.config.{Budgets, Claimed, LifecycleEnv, PrefsEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -285,7 +285,7 @@ object Main {
             .map(_.set)
       }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
     )
-    val prefsFile = Prefs.path(env)
+    val prefsFile = PrefsEnv.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))

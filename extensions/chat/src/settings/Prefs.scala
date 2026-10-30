@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.util.control.NonFatal
 
 /** What grit remembers between runs on this machine: the `theme` last chosen, by key.
-  * Kept in a small file grit writes itself ([[Prefs.path]]), as `name=value` lines. A line
+  * Kept in a small file grit writes itself, where its deployment says, as `name=value` lines. A line
   * it does not know is ignored, and so is a file it cannot read: a stale or broken file
   * never stops a launch, it is only forgotten.
   */
@@ -33,17 +33,6 @@ object Prefs {
   def render(prefs: Prefs): String =
     s"# written by grit: what it remembers between runs\n" +
       prefs.theme.fold("")(t => s"$ThemeKey=$t\n")
-
-  /** Where the preferences live for `env`: `grit/prefs` under `XDG_CONFIG_HOME`, or under
-    * `.config` in `HOME` when that is unset or empty. `None` when neither is set.
-    */
-  def path(env: Map[String, String]): Option[Path] =
-    env
-      .get("XDG_CONFIG_HOME")
-      .filter(_.nonEmpty)
-      .map(Path.of(_))
-      .orElse(env.get("HOME").filter(_.nonEmpty).map(Path.of(_, ".config")))
-      .map(_.resolve("grit").resolve("prefs"))
 
   /** The preferences in the file at `file`; [[empty]] when it is missing or unreadable. */
   def load(file: Path): Prefs =
