@@ -208,7 +208,7 @@ object SentMarkdown {
         case (None, _) => s"no ledger row (rebuilt estimate ${Tokens.value(rebuilt)})"
       }
       val usage = row.fold("")(s =>
-        s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cachedInput)} cached), " +
+        s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cacheRead)} cached), " +
           s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Cost.cents)}; "
       )
       val tools = request.use match {
@@ -475,7 +475,7 @@ object SentMarkdown {
       case other => other.toString.toLowerCase
     }
     s"| `${EntryId.value(entry)}` | $role | `${s.model}` | ${Tokens.value(s.usage.input)} | " +
-      s"${Tokens.value(s.usage.cachedInput)} | ${Tokens.value(s.usage.output)} | " +
+      s"${Tokens.value(s.usage.cacheRead)} | ${Tokens.value(s.usage.output)} | " +
       s"${s.usage.costUsd.fold("unpriced")(Cost.cents)} | ${Tokens.value(s.estimated)} |"
   }
 }

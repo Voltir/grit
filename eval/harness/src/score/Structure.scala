@@ -416,7 +416,7 @@ object Structure {
     val calls = ts.flatMap(t => t.spend.map(t.conversation -> _))
     def rate(cs: Vector[(grit.core.id.ConversationId, grit.eval.harness.capture.Spent)]) =
       Proportion.counted(
-        cs.map((c, s) => (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input)))
+        cs.map((c, s) => (c, Tokens.value(s.usage.cacheRead), Tokens.value(s.usage.input)))
       )
     val main = ts.map(t => t.conversation -> t.spend.filter(s => isMain(s.role)))
     Caching(

@@ -69,6 +69,21 @@ object PayloadJsonTests extends TestSuite {
         """"model":"openai/gpt-5-mini","upstream":"Fireworks","stop":"other","stopRaw":"weird"}}"""
     }
 
+    test(
+      "an assistant's cache writes are written only when there are some, and read as none when absent"
+    ) {
+      // Rows and step outputs written before cache writes were kept must read back, and
+      // re-encode byte for byte: the key is absent at 0, and cache reads keep their old key.
+      val wrote = assistant.copy(usage = assistant.usage.copy(cacheWrite = Tokens(7)))
+      val written = PayloadJson.write(Payload.Message(wrote)).render()
+      assert(
+        written.contains(""""usage":{"input":10,"output":5,"cachedInput":2,"cacheWrite":7,""")
+      )
+      PayloadJson.read(ujson.read(written)) ==> Right(Payload.Message(wrote))
+      PayloadJson.read(PayloadJson.write(Payload.Message(assistant))) ==>
+        Right(Payload.Message(assistant))
+    }
+
     test("tool result") {
       PayloadJson.write(Payload.Message(samples(3))).render() ==>
         """{"kind":"message","message":{"role":"tool_result","callId":"c1",""" +

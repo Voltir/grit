@@ -1,14 +1,17 @@
 package grit.core.message
 
-/** What one model call consumed. `cachedInput` is the part of `input` served
-  * from the provider's prompt cache. `costUsd` is the provider's own figure,
-  * when it reports one.
+/** What one model call consumed. `input` is every input token, `cacheRead` of them read from
+  * the provider's prompt cache and `cacheWrite` written to it (0 where the provider does not
+  * say). `costUsd` is the provider's own figure, or grit's from its published rates, when
+  * either is known. `cacheWrite` is last, after `costUsd`, only so that the many places that
+  * build a `Usage` by position need not name it.
   */
 final case class Usage(
     input: Tokens,
     output: Tokens,
-    cachedInput: Tokens,
-    costUsd: Option[BigDecimal]
+    cacheRead: Tokens,
+    costUsd: Option[BigDecimal],
+    cacheWrite: Tokens = Tokens.Zero
 ) {
 
   /** What both consumed together. The cost is unknown when either's is. */
@@ -16,8 +19,9 @@ final case class Usage(
     Usage(
       input + other.input,
       output + other.output,
-      cachedInput + other.cachedInput,
-      costUsd.zip(other.costUsd).map(_ + _)
+      cacheRead + other.cacheRead,
+      costUsd.zip(other.costUsd).map(_ + _),
+      cacheWrite + other.cacheWrite
     )
 }
 

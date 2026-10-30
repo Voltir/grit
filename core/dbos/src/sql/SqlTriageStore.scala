@@ -116,7 +116,7 @@ final class SqlTriageStore extends TriageStore {
       ps.setString(3, model)
       ps.setLong(4, Tokens.value(usage.input))
       ps.setLong(5, Tokens.value(usage.output))
-      ps.setLong(6, Tokens.value(usage.cachedInput))
+      ps.setLong(6, Tokens.value(usage.cacheRead))
       usage.costUsd match {
         case Some(c) => ps.setBigDecimal(7, c.bigDecimal)
         case None => ps.setNull(7, java.sql.Types.NUMERIC)

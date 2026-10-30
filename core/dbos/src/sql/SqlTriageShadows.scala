@@ -43,7 +43,7 @@ final class SqlTriageShadows extends TriageShadows {
             ps.setString(8, answered)
             ps.setLong(9, Tokens.value(usage.input))
             ps.setLong(10, Tokens.value(usage.output))
-            ps.setLong(11, Tokens.value(usage.cachedInput))
+            ps.setLong(11, Tokens.value(usage.cacheRead))
             usage.costUsd match {
               case Some(c) => ps.setBigDecimal(12, c.bigDecimal)
               case None => ps.setNull(12, java.sql.Types.NUMERIC)

@@ -68,7 +68,7 @@ final class SqlUsageLedger extends UsageLedger, Spending {
         ps.setString(3, model)
         ps.setLong(4, Tokens.value(usage.input))
         ps.setLong(5, Tokens.value(usage.output))
-        ps.setLong(6, Tokens.value(usage.cachedInput))
+        ps.setLong(6, Tokens.value(usage.cacheRead))
         ps.setBigDecimal(7, usage.costUsd.map(_.bigDecimal).orNull)
         ps.setLong(8, Tokens.value(estimatedInput))
         ps.setString(9, ConversationId.value(turn.conversationId))

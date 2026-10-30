@@ -192,7 +192,7 @@ object Recipe {
     // priced.
     val each = calls.map { (_, s, saved, _) =>
       val input = Tokens.value(s.usage.input)
-      val hit = if (input > 0) Tokens.value(s.usage.cachedInput).toDouble / input else 0.0
+      val hit = if (input > 0) Tokens.value(s.usage.cacheRead).toDouble / input else 0.0
       if (saved == 0) Some((0.0, 0.0, Some(0.0)))
       else
         prices.rates.get(s.model).flatMap(_.toOption).flatMap { r =>
@@ -213,9 +213,7 @@ object Recipe {
       priced.map(_._2).sum,
       priced.foldLeft(Option(0.0))((sum, c) => sum.flatMap(x => c._3.map(x + _))),
       Proportion.counted(
-        calls.map((c, s, _, _) =>
-          (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input))
-        )
+        calls.map((c, s, _, _) => (c, Tokens.value(s.usage.cacheRead), Tokens.value(s.usage.input)))
       ),
       calls.size,
       each.count(_.isEmpty)

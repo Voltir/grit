@@ -76,10 +76,10 @@ object Rates {
   private def of(rows: Vector[Spent]): Either[String, Rate] = {
     val priced = rows.flatMap(s => s.usage.costUsd.map(c => s.usage -> c.toDouble))
     def n(t: Tokens) = Tokens.value(t).toDouble
-    val cachedRows = priced.count((u, _) => Tokens.value(u.cachedInput) > 0)
+    val cachedRows = priced.count((u, _) => Tokens.value(u.cacheRead) > 0)
     // With no row cached, the cached price has nothing to be read from and is left out.
     def x(u: Usage): Vector[Double] =
-      if (cachedRows > 0) Vector(n(u.input) - n(u.cachedInput), n(u.cachedInput), n(u.output))
+      if (cachedRows > 0) Vector(n(u.input) - n(u.cacheRead), n(u.cacheRead), n(u.output))
       else Vector(n(u.input), n(u.output))
     val k = if (cachedRows > 0) 3 else 2
     for {

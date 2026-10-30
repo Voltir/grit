@@ -483,7 +483,7 @@ object TurnJson {
     "model" -> s.model,
     "input" -> tokens(s.usage.input),
     "output" -> tokens(s.usage.output),
-    "cached" -> tokens(s.usage.cachedInput),
+    "cached" -> tokens(s.usage.cacheRead),
     "cost_usd" -> s.usage.costUsd.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString)),
     "estimated" -> tokens(s.estimated)
   )

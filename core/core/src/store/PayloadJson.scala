@@ -227,14 +227,16 @@ object PayloadJson {
   }
 
   /** A [[Usage]] in the stored form; the cost is a string so the provider's decimal
-    * survives exactly.
+    * survives exactly. Cache reads are stored as `cachedInput`, and cache writes only when
+    * there are some, so a usage stored before writes were kept re-encodes as it was.
     */
   def writeUsage(u: Usage): ujson.Value = {
     val o = ujson.Obj(
       "input" -> Tokens.value(u.input).toDouble,
       "output" -> Tokens.value(u.output).toDouble,
-      "cachedInput" -> Tokens.value(u.cachedInput).toDouble
+      "cachedInput" -> Tokens.value(u.cacheRead).toDouble
     )
+    if (Tokens.value(u.cacheWrite) != 0) o("cacheWrite") = Tokens.value(u.cacheWrite).toDouble
     u.costUsd.foreach(c => o("costUsd") = c.toString)
     o
   }
@@ -294,20 +296,23 @@ object PayloadJson {
       case other => Left(s"unknown stop reason: $other")
     }
 
-  /** The [[Usage]] `v` encodes in [[writeUsage]]'s form, or why it encodes none. */
+  /** The [[Usage]] `v` encodes in [[writeUsage]]'s form, or why it encodes none; no cache
+    * writes when it names none.
+    */
   def readUsage(v: ujson.Value): Either[String, Usage] =
     for {
       o <- obj(v)
       input <- long(o, "input")
       output <- long(o, "output")
       cached <- long(o, "cachedInput")
+      written <- if (o.value.contains("cacheWrite")) long(o, "cacheWrite") else Right(0L)
       cost <- o.value.get("costUsd") match {
         case None => Right(None)
         case Some(ujson.Str(s)) =>
           scala.util.Try(BigDecimal(s)).toOption.map(Some(_)).toRight(s"bad costUsd: $s")
         case Some(_) => Left("costUsd is not a string")
       }
-    } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost)
+    } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost, Tokens(written))
 
   /** A nearby section's stored form: its conversation, its place as written, and an open
     * one's `entries`, a strand's `entries` marked `"strand": true`, an asked one's `entries`

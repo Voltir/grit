@@ -338,7 +338,7 @@ object LogJson {
   def writeUsage(u: Usage): ujson.Value = ujson.Obj(
     "input" -> Tokens.value(u.input).toDouble,
     "output" -> Tokens.value(u.output).toDouble,
-    "cached_input" -> Tokens.value(u.cachedInput).toDouble,
+    "cached_input" -> Tokens.value(u.cacheRead).toDouble,
     "cost_usd" -> u.costUsd.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString))
   )
 

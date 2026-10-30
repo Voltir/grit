@@ -12,6 +12,12 @@ object UsageTests extends TestSuite {
       usage(1, Some("0.001")) + usage(10, Some("0.02")) ==> usage(11, Some("0.021"))
     }
 
+    test("a sum adds cache reads and writes") {
+      Usage(Tokens(10), Tokens(1), Tokens(4), None, Tokens(3)) +
+        Usage(Tokens(20), Tokens(2), Tokens(5), None, Tokens(6)) ==>
+        Usage(Tokens(30), Tokens(3), Tokens(9), None, Tokens(9))
+    }
+
     test("a call with no cost makes the sum's cost unknown, not the known part") {
       usage(1, Some("0.001")) + usage(10, None) ==> usage(11, None)
       usage(1, None) + usage(10, Some("0.02")) ==> usage(11, None)
