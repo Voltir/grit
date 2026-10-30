@@ -23,7 +23,8 @@ Decision:
   request a query writer is asked), `search` (what a written query finds, ranked), `judgeText`
   (each found candidate cut for a judge) and `assemble` (the window packed from what the turn
   admitted, appended after the window the turn carries or drawn afresh at a boundary, ADR 0052).
-  Every model and classifier call between them is the turn's.
+  Every model and classifier call between them is the turn's, and so is reading the window it
+  carries, in its own `carried` step before them.
 - **First, whether to search at all.** `ask:needs` asks the classifier one yes/no, whether
   answering the message needs facts, decisions or documents not already in its thread, over the
   message and the thread the judge is shown. It is not asked when the window could find nothing

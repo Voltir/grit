@@ -23,8 +23,18 @@ Decision:
   boundary that replaces it. ADR 0040's steps still run each turn; what they admit is appended
   after the carried window, never placed before it, and nothing carried is redrawn or ranked
   again.
-- **A carried turn is shown as it was shown**, dated by its own first entry and the zones its
-  `offer` recorded (ADR 0016), so its bytes are the same on every later turn of the window.
+- **A carried turn is shown as it was shown.** Its window record is a delta: what its turn
+  appended, the record it follows (none at a boundary), its part's cost, and the dated line
+  and topic note its request sent, as sent (ADR 0016). A later turn repeats those lines before
+  the carried turn's own messages, so its bytes are the same on every later turn of the window.
+- **A turn carries a window only when it can send it unchanged.** Each answered turn keeps the
+  digest of its last call's system prompt, tools and messages through its stable mark. A turn's
+  `carried` step, before its first ask, takes the conversation's newest earlier window record
+  only when the request this turn would send of that window has the same digest and this
+  turn's first gate, decided over what it carries, hides none of it; otherwise it draws a
+  boundary. So a carried document gone, content this turn's route does not clear, or a changed
+  tool set or prompt makes a boundary, never an edited prefix. A window drawn from the store
+  replays no reasoning: thinking is bound to the request that produced it.
 - **The limit is the deployment's `Assembly` budget**, read from the assembler, never from a
   turn's width (a width bounds only what the part drawn now may add). At the limit, when the
   carried window and the turns since it no longer fit, the window is cleared and re-projected,
@@ -34,13 +44,22 @@ Decision:
   before the next boundary. A boundary drawn to the limit would leave no room for the next turn,
   and the limit would clear the window every other turn.
 - **What a turn sends only grows within the turn**, gates included (ADR 0036), so a gated turn
-  keeps its cache.
+  keeps its cache within the turn. What a turn offers is its tool set's alone, whatever its
+  gates decide, so turns of one conversation send the same tools and system prompt. A gate's
+  notes and stubs are kept in no window record yet, so the turn after one whose gate hid an
+  item or wrote a note draws a boundary.
 
-Consequences: on every turn after a window's first, the request begins with the last one's
-prefix, so most of its input is read from the cache. Near the limit an append recalls less, and
+Consequences: on every turn after a window's first that carries it, the request begins with
+the last one's prefix, so most of its input is read from the cache. Until a gate's notes and
+stubs are carried, boundaries are more frequent than the limit alone makes them: every gated
+turn costs one, as does a redeployed tool set or prompt. A window runs from half the limit,
+just after a boundary, to the limit, where a window redrawn every turn ran at about the limit:
+right after a boundary the model sees about half the history it did, the peak is unchanged,
+and most input is a cache read; a deployment sizes its budget with that in mind. Near the limit an append recalls less, and
 recall never forces a boundary. A strand's and an asking thread's sections are as of the
 boundary. A period's close clears the window, so the lifecycle's settle time is a chat's cache
 lifetime: a placer that judges nobody waiting during a person's pause clears it. Until a
 deployment setting names the share, a boundary draws half of what a fresh window drew before.
-Enforced by the assembly suites, and by a test that a turn's request begins with the bytes of
-the last one's prefix.
+Enforced by the assembly suites, by a test that a turn's request begins with the last one's
+through its stable mark on either gateway, and by tests that a gated turn, a changed offer and
+a carried document gone are each followed by a boundary.

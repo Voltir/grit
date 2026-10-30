@@ -57,8 +57,9 @@ Decision:
   when known (`grit.identities.zone`), else the deployment's, then in UTC, with how to read
   times; the zones recorded by
   the turn's `offer` step. It is made from the turn's first entry, which is kept, and those
-  zones, so a rebuilt request carries the same line. It is never a fragment: fragments are kept
-  forever, and one per turn would grow their table with every turn.
+  zones, so a rebuilt request carries the same line; a later turn that carries the turn repeats
+  the line as the turn's window record keeps it (ADR 0052). It is never a fragment: fragments
+  are kept forever, and one per turn would grow their table with every turn.
 - **The system prompt does not draw on the assembly budget.** Its size is bounded by its
   layers' caps.
 
