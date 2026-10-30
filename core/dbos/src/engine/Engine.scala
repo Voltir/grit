@@ -10,8 +10,8 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.durable.{Durable, StepRecord}
-import grit.core.edge.{Desk, DeskError}
+import grit.core.durable.Durable
+import grit.core.edge.{Desk, DeskError, Holder, RecordedStep, TurnStatus}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.{Account, Domain, Identities, Realm}
@@ -610,25 +610,4 @@ enum StoppedBy {
     * taken.
     */
   case LockLost
-}
-
-/** Where a turn's workflow is, as an edge sees it. */
-enum TurnStatus {
-
-  /** Queued or running, having recorded these `steps` so far. */
-  case Running(steps: Vector[RecordedStep])
-
-  /** Done: the workflow's output, or why it has none. */
-  case Finished(output: String)
-
-  /** Not (yet) known to DBOS: ingested but not enqueued. */
-  case Unknown
-}
-
-/** A step a turn's workflow recorded: what a reader of its history sees of it (`record`), and
-  * when it completed, as far as DBOS kept it.
-  */
-final case class RecordedStep(record: StepRecord, completed: Option[Instant]) {
-  def name: String = record.name
-  def started: Option[Instant] = record.started
 }

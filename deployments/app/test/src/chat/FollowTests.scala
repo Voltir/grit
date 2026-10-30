@@ -3,12 +3,12 @@ package grit.app.chat
 import java.time.Instant
 
 import grit.core.durable.StepRecord
+import grit.core.edge.{RecordedStep, TurnStatus}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Integrity
-import grit.dbos.engine.{RecordedStep, TurnStatus}
 
 import utest.*
 

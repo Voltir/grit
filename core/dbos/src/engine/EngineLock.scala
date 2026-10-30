@@ -9,6 +9,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.edge.Holder
 import grit.core.host.ProcessIdentity
 import grit.dbos.sql.DbConfig
 
@@ -211,14 +212,3 @@ object NotTaken {
     s"pid ${h.pid} on ${h.machine}, started $started, last heartbeat ${ago}s ago"
   }
 }
-
-/** The engine holding a database's lock: its `machine` and process `pid`, its compatibility
-  * `epoch`, when it `started`, and its last `heartbeat`.
-  */
-final case class Holder(
-    machine: String,
-    pid: Long,
-    epoch: String,
-    started: Instant,
-    heartbeat: Instant
-)

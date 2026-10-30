@@ -6,6 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.durable.StepRecord
+import grit.core.edge.RecordedStep
 import grit.core.files.{FormatName, KeptPiece, Locus, Piece, TestPieces}
 import grit.core.id.{
   ConversationId,
@@ -37,7 +38,6 @@ import grit.core.place.Place
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, UsageLedger}
 import grit.core.visibility.Integrity
-import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
 import utest.*

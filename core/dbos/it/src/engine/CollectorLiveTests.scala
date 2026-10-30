@@ -11,6 +11,7 @@ import grit.core.claim.{ClaimRole, Claimed}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
+import grit.core.edge.TurnStatus
 import grit.core.files.{
   FileArea,
   FileItem,

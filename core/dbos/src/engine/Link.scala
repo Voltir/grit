@@ -9,7 +9,7 @@ import scala.util.control.NonFatal
 import grit.core.clock.Clock
 import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
-import grit.core.edge.{Desk, DeskError, Desks}
+import grit.core.edge.{Console, Desk, DeskError, Desks, Holder, RecordedStep, TurnStatus}
 import grit.core.files.PieceSearch
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
@@ -61,38 +61,7 @@ import com.zaxxer.hikari.HikariDataSource
   * attached to one another process runs ([[Link.attach]]). Everything crosses Postgres
   * (ADR 0002), so it works while no engine runs; turns then wait.
   */
-trait Link extends caps.SharedCapability, AutoCloseable, Desks {
-
-  val entries: EntryStore
-
-  val ledger: UsageLedger
-
-  /** What the ledger's calls cost, read back. */
-  val spending: Spending
-
-  /** How this link's inbox meters new messages: the cap, and where days begin. */
-  val budget: Budget
-
-  /** Which profile each turn's model calls were made under. */
-  val profiles: ModelProfileStore
-
-  /** The system prompt each turn was sent. */
-  val prompts: PromptStore
-
-  /** The lifecycle's settings in force. */
-  val lifecycle: LifecycleStore
-
-  /** The voice grit talks to the person in. */
-  val voices: VoiceStore
-
-  /** The accounts an edge named, and whose names a window shows. */
-  val principals: Principals
-
-  /** The plugins' documents, as windows hold them. */
-  val documents: DocumentSearch
-
-  /** The plugins' pieces of files, as windows hold them. */
-  val pieces: PieceSearch
+trait Link extends Console, Desks {
 
   /** The replies an edge has yet to post outside grit, and the parts it has. */
   val deliveries: grit.core.edge.Deliveries
@@ -112,14 +81,6 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
     grit.core.review.ReviewWord
   ]
 
-  /** Short read transactions. */
-  val db: Db
-
-  /** Short write transactions. */
-  val jot: Jot
-
-  val inbox: Inbox
-
   /** The changes to who may see what that people make by command, and what they read of them. */
   val administration: grit.core.admin.Administration
 
@@ -135,37 +96,10 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** What an edge waits on in the store for the people it serves; closed with the link. */
   val watch: grit.core.edge.EdgeWatch
 
-  /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
-    * edge's first ingest would.
-    */
-  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId]
-
-  /** Where `turn`'s workflow is, without waiting for it. */
-  def status(turn: TurnRef): TurnStatus
-
-  /** The steps `turn`'s workflow has recorded so far, in the order it ran them; none when
-    * they cannot be read, which only dims what a watcher is shown. A step is recorded when
-    * it completes, so a running step is not among them.
-    */
-  def steps(turn: TurnRef): Vector[RecordedStep]
-
-  /** The pieces `turn`'s steps wrote to its stream `key`, in order, as they are written:
-    * each `next` waits for one, woken by DBOS's notification with polling behind it, and
-    * the pieces end when the turn's workflow does. None when DBOS has no workflow for
-    * `turn`: not yet enqueued, or collected. An edge's read (ADR 0006); what the pieces mean
-    * is the writer's.
-    */
-  def stream(turn: TurnRef, key: String): Iterator[String]
-
   /** Waits for `turn` to finish and returns its workflow's output. A turn that threw
     * rethrows here.
     */
   def awaitTurn(turn: TurnRef): String
-
-  /** The engine holding the database's lock; `None` when none holds it: turns wait until one
-    * does.
-    */
-  def holder(): Option[Holder]
 }
 
 object Link {

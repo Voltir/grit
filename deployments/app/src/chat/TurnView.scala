@@ -4,6 +4,7 @@ import java.time.Duration
 
 import grit.core.context.{CarriedWindow, Shown}
 import grit.core.document.{DocLabel, Document}
+import grit.core.edge.RecordedStep
 import grit.core.files.KeptPiece
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
@@ -12,7 +13,6 @@ import grit.core.place.Place
 import grit.core.prompt.{Layer, SystemPrompt}
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Nearby, Payload, Speakers, UsageLedger}
-import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
 /** One turn as the turn panel shows it: where it is, what each step took, what it searched

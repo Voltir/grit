@@ -2,6 +2,8 @@ package grit.dbos.engine
 
 import java.time.Instant
 
+import grit.core.edge.Holder
+
 import utest.*
 
 /** What a process refused the engine lock tells a person. */

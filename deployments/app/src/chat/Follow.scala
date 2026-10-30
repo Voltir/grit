@@ -1,9 +1,9 @@
 package grit.app.chat
 
+import grit.core.edge.TurnStatus
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}
-import grit.dbos.engine.TurnStatus
 import grit.turn.Turn
 
 /** What following a conversation has seen so far: the last entry shown, the step of the

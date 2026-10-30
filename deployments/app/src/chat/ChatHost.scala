@@ -7,6 +7,7 @@ import scala.util.control.NonFatal
 import grit.app.config.Lifecycle
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.CarriedWindow
+import grit.core.edge.TurnStatus
 import grit.core.id.{ConversationId, EntrySeq, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -16,7 +17,7 @@ import grit.core.provider.TokenEstimator
 import grit.core.spend.{Budget, Spend, TurnSpend}
 import grit.core.store.{Entry, Nearby, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Link, TurnStatus}
+import grit.dbos.engine.Link
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
 

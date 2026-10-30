@@ -1,9 +1,10 @@
 package grit.app.main
 
 import grit.core.context.CarriedWindow
+import grit.core.edge.TurnStatus
 import grit.core.store.Payload
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Engine, LiveEngine, TurnStatus}
+import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubProvider
 import grit.turn.{Turn, TurnStream}
