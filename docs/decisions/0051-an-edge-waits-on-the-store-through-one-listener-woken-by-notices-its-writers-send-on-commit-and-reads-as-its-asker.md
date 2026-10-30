@@ -26,7 +26,7 @@ in a worktree.
   rings every watch each time it begins listening, so no commit after a watch begins goes
   unread. While it is down, watches read again on a fixed interval.
 - **Each read is the asker's:** a read-only transaction for the person the account is linked
-  to, in the room (`Subject.Person`), as a command runs (ADR 0048). A write that person does
+  to, in the room (`Subject.Person`), as a command an edge runs does (ADR 0053). A write that person does
   not read never meets their watch, and the notice says nothing a watch reports.
 - **Bounded:** a fixed number of watches at once, the next refused, and a longest wait. A watch
   blocks its caller's thread for its whole wait.

@@ -10,7 +10,7 @@ import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 
-/** The enabled plugins' commands, as an edge runs them for the people it serves (ADR 0048). */
+/** The enabled plugins' commands, as an edge runs them for the people it serves (ADR 0053). */
 trait PluginCommands extends caps.SharedCapability {
 
   /** Every enabled plugin's commands, as a tool list shows them. */

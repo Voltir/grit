@@ -123,7 +123,7 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The changes to who may see what that people make by command, and what they read of them. */
   val administration: grit.core.admin.Administration
 
-  /** `plugins`' commands, as an edge runs them for the people it serves (ADR 0048). */
+  /** `plugins`' commands, as an edge runs them for the people it serves (ADR 0053). */
   def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^
 
   /** The rooms an edge's bot is a member of, as the edge reports its joins and leaves. */

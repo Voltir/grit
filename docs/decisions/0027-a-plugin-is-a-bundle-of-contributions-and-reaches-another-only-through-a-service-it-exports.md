@@ -15,7 +15,7 @@ Decision:
   owns: posting from closed periods (cache documents); ledger documents (ADR 0028); tools the
   turn runs itself over grit's store, as `about` is, never hosted by an edge; prompt
   fragments for the windows of the places it scopes; jobs (ADR 0029); and commands a person
-  gives it through an edge, run with no model and no turn (ADR 0048). A plugin whose tool
+  gives it through an edge or a turn answering them calls (ADR 0053). A plugin whose tool
   must touch a workspace or a service contributes a `Hosted` description, and an edge runs it
   (ADR 0017). The kit wires every plugin's contributions the same way and names no plugin.
 - **What a plugin derives is built only from closings** (ADR 0011), because a consumer of the
@@ -35,7 +35,7 @@ Decision:
   dependency's own version. It reaches the dependency at runtime only through a service value
   the dependency exports, a trait over its own documents, handed over when the deployment is
   built: to its tools, and to its dreaming jobs' scans, in the scan's transaction (a command
-  reaches no service: ADR 0048). No plugin reads or writes another's documents directly. Core alone shows a model another plugin's
+  reaches no service: ADR 0053). No plugin reads or writes another's documents directly. Core alone shows a model another plugin's
   documents for a dreaming job's summary (ADR 0042), and only those of the plugins the job's
   plugin needs, read under the transaction's labels and believed at the meet of what was read.
 - **`Deployment.of` refuses a plugin whose dependency is not among the deployment's

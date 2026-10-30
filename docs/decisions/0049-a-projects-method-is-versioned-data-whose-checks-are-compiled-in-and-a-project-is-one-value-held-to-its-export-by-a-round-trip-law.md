@@ -48,7 +48,7 @@ Decision:
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
   artifact, under its key, its head and stored body as data and refs naming its project, kind,
   state, parent and cites; and an index under the project's key holding its pin. Only the
-  plugin's commands write them (ADR 0048), each in one transaction and recording its writer. A
+  plugin's commands write them (ADR 0053), each in one transaction and recording its writer. A
   keep never changes a state; a move is refused once the pinned method's digest has changed.
   Past the bound a write is refused, never a document withdrawn.
   A claim is one of the plugin's claims (`grit.core.claim.Claims`, the table `grit.claims`),

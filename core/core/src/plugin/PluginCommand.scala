@@ -12,9 +12,9 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolSpec
 import grit.core.visibility.Integrity
 
-/** A command a person gives a plugin through an edge (ADR 0048), run with no model and no turn
-  * in one transaction and answered at once. `spec` names it and reads its arguments as a tool's
-  * does.
+/** A command a person gives a plugin through an edge, or a turn answering them calls as a tool
+  * ([[CommandTools]]): the same command either way (ADR 0053), run in one transaction and
+  * answered at once. `spec` names it and reads its arguments as a tool's does.
   */
 sealed trait PluginCommand[A <: caps.Pure] extends caps.Pure {
   def spec: ToolSpec[A]

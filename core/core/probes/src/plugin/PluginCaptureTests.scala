@@ -8,7 +8,7 @@ import utest.*
 /** What capture checking rejects about a plugin (ADR 0027): a plugin, its tools' runs, its
   * commands and the services it exports hold no capability, so a deployment can be built outside
   * any, a service handed between plugins carries none, and a command reads only through the
-  * transaction its edge opens for its asker (ADR 0048). Pinned by compiling probe sources against
+  * transaction it is handed (ADR 0053). Pinned by compiling probe sources against
   * core with core's own flags, as `grit.core.tool.ToolCaptureTests` does; `assertCompileError`
   * cannot see capture errors (docs/capture-checking.md).
   */
