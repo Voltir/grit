@@ -1,9 +1,12 @@
 # grit
 
 A from-scratch LLM agent harness. Thesis: **no manual context-window management**. Every
-turn is a durable DBOS workflow, and every turn's context window is assembled fresh from
-long-term memory in Postgres: messages, end-of-turn summaries, and code context from the
-LSP. Nothing is carried forward as a transcript. The same engine runs in three modes: a
+turn is a durable DBOS workflow, and its context window is a projection of long-term memory
+in Postgres (messages, end-of-turn summaries, and code context from the LSP), drawn at a
+boundary and carried, append-only, until the next
+([ADR 0052](docs/decisions/0052-a-window-is-drawn-from-the-store-at-a-boundary-and-carried-append-only-until-the-next.md)).
+Nothing is carried forward as an unbounded transcript: at the limit the window is cleared and
+re-projected, never slid. The same engine runs in three modes: a
 local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges reach it
 only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
