@@ -55,12 +55,13 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
 | `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0023) and the Slack SDK's quarantine |
+| `grit.chat` | `settings`, `look`, `view`, `screen`, `host`, `run` | core, prose, tui, edge, turn | the chat TUI, run by a deployment over `Kit.console` |
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `drive`, `edge` | core, edge | MCP servers and Drive's REST API: a declared service's read-only tools at its service place (ADR 0017) |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
 | `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, eval | the eval harness, run only through `scripts/eval` |
 | `grit.kit` | `deployment`, `environment`, `run` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host | what a deployment is built against (ADR 0021) |
-| `grit.app` | `config`, `look`, `chat`, `main` | kit, digest, remind, knowledge, slack, mcp, formats, tui, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
+| `grit.app` | `config`, `main` | kit, digest, remind, knowledge, chat, slack, mcp, formats, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
 
 Mill `moduleDeps` are transitive, so `grit.kit` and `grit.app` see `dev.dbos.*` through
 `grit.dbos` — enola's rule, not the compiler, guards it. Working in `extensions/tui/`? Read
