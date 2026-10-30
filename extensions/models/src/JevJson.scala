@@ -176,7 +176,7 @@ object JevJson {
     }
 
   /** The error in a non-200 response with status `status`, as `HTTP <status>: <detail>`:
-    * `Unavailable` for a status another try may get past ([[OpenRouterJson.transient]]: 408,
+    * `Unavailable` for a status another try may get past ([[ProviderHttp.transient]]: 408,
     * 429, every 5xx), `Refused` for any other.
     */
   def error(status: Int, body: String): ClassifierError = {
@@ -188,7 +188,7 @@ object JevJson {
       .map(v => v.strOpt.getOrElse(ujson.write(v)).take(300))
       .getOrElse(body.take(300))
     val cause = s"HTTP $status: $detail"
-    if (OpenRouterJson.transient(status)) ClassifierError.Unavailable(cause)
+    if (ProviderHttp.transient(status)) ClassifierError.Unavailable(cause)
     else ClassifierError.Refused(cause)
   }
 

@@ -1,40 +1,21 @@
 package grit.models
 
-import java.net.http.{HttpClient, HttpRequest, HttpResponse}
-
-import scala.jdk.CollectionConverters.*
-import scala.util.control.NonFatal
+import java.net.http.{HttpClient, HttpRequest}
 
 import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 
 /** [[Provider]] over OpenRouter's chat completions, one request per call, streamed or
   * not, no retries. A failure to connect, a timeout or a connection lost is
-  * [[ProviderError.Unavailable]]; how an HTTP error or a model error is classed is
-  * [[OpenRouterJson.error]]'s and [[OpenRouterJson.modelError]]'s.
+  * [[ProviderError.Unavailable]] ([[ProviderHttp]]); how an HTTP error or a model error is
+  * classed is [[OpenRouterJson.error]]'s and [[OpenRouterJson.modelError]]'s.
   */
 final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
 
   private val http = HttpClient.newBuilder().connectTimeout(config.timeout).build()
 
   def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
-    guarded {
-      val response = http.send(
-        post(
-          OpenRouterJson.request(
-            config.model,
-            config.maxTokens,
-            config.upstream,
-            request,
-            config.effort,
-            config.replay
-          )
-        ),
-        HttpResponse.BodyHandlers.ofString()
-      )
-      if (response.statusCode == 200) OpenRouterJson.response(ujson.read(response.body))
-      else Left(OpenRouterJson.error(response.statusCode, response.body))
-    }
+    ProviderHttp.complete(http, post(body(request)), OpenRouterJson.response, OpenRouterJson.error)
 
   /** The response streamed ([[OpenRouterStream]]), read line by line as it arrives. The
     * timeout bounds the wait for the response to begin, not the whole of it.
@@ -42,46 +23,33 @@ final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
   override def stream(
       request: ModelRequest,
       onDelta: Delta => Unit
-  ): Either[ProviderError, Message.Assistant] =
-    guarded {
-      val body = OpenRouterJson.request(
-        config.model,
-        config.maxTokens,
-        config.upstream,
-        request,
-        config.effort,
-        config.replay
-      )
-      body("stream") = true
-      val response = http.send(post(body), HttpResponse.BodyHandlers.ofLines())
-      val lines = response.body
-      try {
-        if (response.statusCode == 200)
-          OpenRouterStream.fold(lines.iterator().asScala, onDelta).flatMap(OpenRouterJson.response)
-        else
-          Left(OpenRouterJson.error(response.statusCode, lines.iterator().asScala.mkString("\n")))
-      } finally lines.close()
-    }
+  ): Either[ProviderError, Message.Assistant] = {
+    val streamed = body(request)
+    streamed("stream") = true
+    ProviderHttp.stream(
+      http,
+      post(streamed),
+      OpenRouterStream.fold(_, onDelta),
+      OpenRouterJson.response,
+      OpenRouterJson.error
+    )
+  }
+
+  private def body(request: ModelRequest): ujson.Value =
+    OpenRouterJson.request(
+      config.model,
+      config.maxTokens,
+      config.upstream,
+      request,
+      config.effort,
+      config.replay
+    )
 
   private def post(body: ujson.Value): HttpRequest =
-    HttpRequest
-      .newBuilder(config.endpoint)
-      .timeout(config.timeout)
-      .header("Authorization", s"Bearer ${config.apiKey}")
-      .header("Content-Type", "application/json")
-      .header("X-OpenRouter-Title", "grit")
-      .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))
-      .build()
-
-  private def guarded(
-      call: => Either[ProviderError, Message.Assistant]
-  ): Either[ProviderError, Message.Assistant] =
-    try call
-    catch {
-      // The message never includes the request, so never the key.
-      case e: java.io.IOException =>
-        Left(ProviderError.Unavailable(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
-      case NonFatal(e) =>
-        Left(ProviderError.Refused(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
-    }
+    ProviderHttp.post(
+      config.endpoint,
+      config.timeout,
+      Seq("Authorization" -> s"Bearer ${config.apiKey}", "X-OpenRouter-Title" -> "grit"),
+      body
+    )
 }

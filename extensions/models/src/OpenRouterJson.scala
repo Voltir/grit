@@ -133,8 +133,8 @@ object OpenRouterJson {
     )
 
   /** The error in a non-200 response with status `status`: [[ProviderError.Unavailable]]
-    * for a status another try may get past ([[transient]]), [[ProviderError.Refused]] for any
-    * other.
+    * for a status another try may get past ([[ProviderHttp.transient]]),
+    * [[ProviderError.Refused]] for any other.
     */
   def error(status: Int, body: String): ProviderError = {
     val detail = scala.util
@@ -146,22 +146,18 @@ object OpenRouterJson {
       .map(describe)
       .getOrElse(body.trim.take(200))
     val cause = s"HTTP $status: $detail"
-    if (transient(status)) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
+    if (ProviderHttp.transient(status)) ProviderError.Unavailable(cause)
+    else ProviderError.Refused(cause)
   }
 
-  /** Whether a request answered with HTTP `status` may succeed if sent again: 408, 429 and
-    * every 5xx.
-    */
-  def transient(status: Int): Boolean = status == 408 || status == 429 || status / 100 == 5
-
   /** The model error `error`, an OpenRouter error object sent after the 200, as `model
-    * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[transient]] status,
-    * [[ProviderError.Refused]] otherwise.
+    * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[ProviderHttp.transient]]
+    * status, [[ProviderError.Refused]] otherwise.
     */
   def modelError(error: collection.Map[String, ujson.Value]): ProviderError = {
     val cause = s"model error: ${describe(error)}"
     error.get("code").flatMap(_.numOpt).filter(_.isWhole).map(_.toInt) match {
-      case Some(code) if transient(code) => ProviderError.Unavailable(cause)
+      case Some(code) if ProviderHttp.transient(code) => ProviderError.Unavailable(cause)
       case _ => ProviderError.Refused(cause)
     }
   }
@@ -202,24 +198,17 @@ object OpenRouterJson {
             .flatMap(_.objOpt)
             .toRight(unreadable("tool call without a function"))
           name <- f.get("name").flatMap(_.strOpt).toRight(unreadable("tool call without a name"))
-        } yield AssistantBlock.ToolCall(ToolCallId(id), name, arguments(f.get("arguments")))
+        } yield AssistantBlock.ToolCall(
+          ToolCallId(id),
+          name,
+          ToolArguments.read(f.get("arguments"))
+        )
       }
     calls
       .foldLeft[Either[ProviderError, Vector[AssistantBlock]]](Right(Vector.empty)) { (acc, c) =>
         acc.flatMap(done => c.map(done :+ _))
       }
       .map(toolCalls => reasoning.toVector ++ text.toVector ++ toolCalls)
-  }
-
-  /** A call's `arguments` as `AssistantBlock.ToolCall` holds them. The wire sends a JSON
-    * string; an upstream that sends the object itself is taken at its word.
-    */
-  private def arguments(sent: Option[ujson.Value]): ujson.Value = sent match {
-    case Some(ujson.Str(raw)) if raw.trim.nonEmpty =>
-      // Not JSON: kept whole, for the loop's reader to refuse and echo.
-      scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
-    case Some(o: ujson.Obj) => o
-    case _ => ujson.Obj()
   }
 
   private def stop(reason: Option[String]): StopReason = reason match {
