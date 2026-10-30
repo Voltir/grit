@@ -26,11 +26,11 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "No reason given.")
-      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      done(ask(projects, store, "project_move", "key" -> "p/a", "state" -> "building"))
       def versions =
         done(ask(projects, store, "project_history", "key" -> "p/a")).linesIterator.size
       val before = versions
-      val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
+      val answer = ask(projects, store, "project_move", "key" -> "p/a", "state" -> "done")
       assert(
         answer == CommandOutcome.Refused(
           "p/a cannot move to done: sections-present: its body lacks ## Why"
@@ -46,8 +46,8 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nBecause.")
-      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
-      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "to" -> "done"))
+      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "state" -> "building"))
+      done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "state" -> "done"))
       val text = shown(projects, store, "p/a")
       assert(text.contains("state: done"), text.contains(s"by: \"$otherBy\""))
     }
@@ -94,7 +94,7 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "Text.")
-      val answer = ask(projects, store, "project_move", "key" -> "p/a", "to" -> "done")
+      val answer = ask(projects, store, "project_move", "key" -> "p/a", "state" -> "done")
       assert(
         answer == CommandOutcome.Refused(
           "p/a (change, proposed) cannot move to done; it may move to building"
@@ -109,7 +109,7 @@ object ProjectCommandsTests extends TestSuite {
       val changed = plugin(
         method(transitions :+ MethodFixtures.move(note, "open", "closed", "sections-present"))
       )
-      val answer = ask(changed, store, "project_move", "key" -> "p/a", "to" -> "building")
+      val answer = ask(changed, store, "project_move", "key" -> "p/a", "state" -> "building")
       assert(
         answer == CommandOutcome.Refused(
           "project p holds to method grit version 1, whose rules have changed since the project started; " +
@@ -124,7 +124,7 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "change", "Text.")
-      done(ask(projects, store, "project_move", "key" -> "p/a", "to" -> "building"))
+      done(ask(projects, store, "project_move", "key" -> "p/a", "state" -> "building"))
       kept(projects, store, "a", "change", "Other text.")
       val text = shown(projects, store, "p/a")
       assert(text.contains("state: building"), text.contains("Other text."))
@@ -326,7 +326,7 @@ object ProjectCommandsTests extends TestSuite {
           store,
           "project_move",
           "key" -> "p/a",
-          "to" -> "building"
+          "state" -> "building"
         )
       )
       val lines =
@@ -365,8 +365,8 @@ object ProjectCommandsTests extends TestSuite {
           store,
           "project_history",
           "key" -> "p/a",
-          "from" -> older.toLong,
-          "to" -> newer.toLong
+          "from_version" -> older.toLong,
+          "to_version" -> newer.toLong
         )
       ).linesIterator.toVector
       (diff.take(2), diff.filter(l => l.startsWith("-") || l.startsWith("+")).drop(2)) ==> (
@@ -374,12 +374,12 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
-    test("history refuses a lone to by naming from") {
+    test("history refuses a lone to_version by naming from_version") {
       val projects = plugin()
       val history = projects.commands.find(c => ToolName.value(c.spec.name) == "project_history")
-      val read = history.map(_.spec.args.read(ujson.Obj("key" -> "p/a", "to" -> 2)))
+      val read = history.map(_.spec.args.read(ujson.Obj("key" -> "p/a", "to_version" -> 2)))
       assert(read.exists(_.left.exists {
-        case ArgsError.Refused("from", _) => true
+        case ArgsError.Refused("from_version", _) => true
         case _ => false
       }))
     }
@@ -424,7 +424,7 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "b", "note", "Text.")
       kept(projects, store, "a", "note", "Text.")
       kept(projects, store, "c", "change", "Text.")
-      done(ask(projects, store, "project_move", "key" -> "p/b", "to" -> "closed"))
+      done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
       val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
       assert(open == "p/a (note, open): Title a")
       val all = done(ask(projects, store, "project_list", "project" -> "p"))
@@ -451,7 +451,7 @@ object ProjectCommandsTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "a", "note", "The cache is cold.")
       kept(projects, store, "b", "note", "The cache was dropped.")
-      done(ask(projects, store, "project_move", "key" -> "p/b", "to" -> "closed"))
+      done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
       def found(more: (String, ujson.Value)*) =
         done(
           askAt(at.plusSeconds(1))(

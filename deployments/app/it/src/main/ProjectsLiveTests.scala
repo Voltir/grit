@@ -86,7 +86,7 @@ object ProjectsLiveTests extends TestSuite {
           keep(commands, desk, "c", "See [a](artifact:p/a).") ==> Right(
             classOf[CommandOutcome.Done]
           )
-          ran(commands, ann, desk, ToolName("project_move"), "key" -> "p/c", "to" -> "closed")
+          ran(commands, ann, desk, ToolName("project_move"), "key" -> "p/c", "state" -> "closed")
             .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
           def cascade(by: Account, room: Place) =
             ran(commands, by, room, ToolName("project_withdraw"), "key" -> "p/a", "cascade" -> true)
@@ -125,7 +125,14 @@ object ProjectsLiveTests extends TestSuite {
             "title" -> "Title a",
             "body" -> "From the board."
           ) ==> below("keep")
-          ran(commands, bea, board, ToolName("project_move"), "key" -> "p/a", "to" -> "closed") ==>
+          ran(
+            commands,
+            bea,
+            board,
+            ToolName("project_move"),
+            "key" -> "p/a",
+            "state" -> "closed"
+          ) ==>
             below("move")
           kept(config, engine, Projects.Name) ==> Vector(
             ("p", "internal", "member"),

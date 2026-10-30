@@ -208,7 +208,7 @@ object OpenSpecTests extends TestSuite {
       keep("auth", "spec", specBody)
       keep("2fa", "change", deltas, "p/auth")
       Vector("specified", "designed", "tasked", "archived").foreach { s =>
-        answered(askAs(other)(projects, store, "project_move", "key" -> "p/2fa", "to" -> s))
+        answered(askAs(other)(projects, store, "project_move", "key" -> "p/2fa", "state" -> s))
       }
       val spec = shown(projects, store, "p/auth")
       assert(

@@ -42,7 +42,7 @@ object StaleTests extends TestSuite {
         store,
         "project_move",
         "key" -> s"p/$local",
-        "to" -> to
+        "state" -> to
       )
     )
 

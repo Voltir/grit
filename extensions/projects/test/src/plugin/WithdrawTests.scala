@@ -73,7 +73,7 @@ object WithdrawTests extends TestSuite {
     )
     keptAt(projects, store, 1, "e", "Alone.")
     Vector("b", "c", "d").foreach(k =>
-      done(ask(projects, store, "project_move", "key" -> s"p/$k", "to" -> "closed"))
+      done(ask(projects, store, "project_move", "key" -> s"p/$k", "state" -> "closed"))
     )
   }
 
@@ -219,8 +219,8 @@ object WithdrawTests extends TestSuite {
           "body" -> "## Why\n\nSee [b](artifact:p/b)."
         )
       )
-      done(ask(projects, store, "project_move", "key" -> "p/h", "to" -> "building"))
-      done(ask(projects, store, "project_move", "key" -> "p/h", "to" -> "done"))
+      done(ask(projects, store, "project_move", "key" -> "p/h", "state" -> "building"))
+      done(ask(projects, store, "project_move", "key" -> "p/h", "state" -> "done"))
       done(
         ask(projects, store, "project_claim", "key" -> "p/h", "role" -> "builder", "for" -> "slot")
       )

@@ -236,13 +236,13 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         .of(
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
-            to = Field.text("The state to move it to.")
+            state = Field.text("The state to move it to.")
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
-            to <- parsed("to", a.to, StateName.of)
+            to <- parsed("state", a.state, StateName.of)
           } yield Moving(key, to)
         )
     )
@@ -342,34 +342,35 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       ToolName("project_history"),
       s"Lists an artifact's kept versions, newest first, at most $HistoryMost, one line each " +
         "(its version number, when it was written, by whom, its state and title); given " +
-        "`from` and `to`, two of those version numbers, answers instead a line diff of their " +
-        "export files, `- ` for a line only `from` holds and `+ ` for one only `to` holds.",
+        "`from_version` and `to_version`, two of those version numbers, answers instead a line " +
+        "diff of their export files, `- ` for a line only `from_version` holds and `+ ` for one " +
+        "only `to_version` holds.",
       Args
         .of(
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
-            from = Field.integer("The version to diff from.", 1, Long.MaxValue).optional,
-            to = Field.integer("The version to diff to.", 1, Long.MaxValue).optional
+            from_version = Field.integer("The version to diff from.", 1, Long.MaxValue).optional,
+            to_version = Field.integer("The version to diff to.", 1, Long.MaxValue).optional
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
-            pair <- (a.from, a.to) match {
+            pair <- (a.from_version, a.to_version) match {
               case (Some(f), Some(t)) => Right(Some((f, t)))
               case (None, None) => Right(None)
               case (Some(_), None) =>
                 Left(
                   ArgsError.Refused(
-                    "to",
-                    "`to` is given with `from`: name both versions to diff, or neither"
+                    "to_version",
+                    "`to_version` is given with `from_version`: name both versions to diff, or neither"
                   )
                 )
               case (None, Some(_)) =>
                 Left(
                   ArgsError.Refused(
-                    "from",
-                    "`from` is given with `to`: name both versions to diff, or neither"
+                    "from_version",
+                    "`from_version` is given with `to_version`: name both versions to diff, or neither"
                   )
                 )
             }
