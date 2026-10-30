@@ -255,6 +255,17 @@ object TurnGateTurnTests extends TestSuite {
         Some(Message.User(guestStub)),
         Some(Message.User(guestStub))
       )
+      // The withdrawal names what was read, the guest's message, not read_hidden's answer.
+      provider.requests.lift(2).flatMap(_.messages.lastOption) ==> Some(
+        Message.User(
+          TurnGate.noted(
+            Vector(
+              "From now until you answer, you can't use post, because you read something from " +
+                "someone, written from outside the team."
+            )
+          )
+        )
+      )
       Vector("call:c1:1:0", "call:c1:1:1", "call:c1:1:2", "reply:c1:1", "summary:c1:1")
         .map(kept(entries, _).map(_.integrity)) ==>
         Vector(

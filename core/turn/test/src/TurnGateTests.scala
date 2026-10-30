@@ -41,13 +41,13 @@ object TurnGateTests extends TestSuite {
 
   /** The gate from `prior` over `items`, none read and none named before. */
   private def unread(prior: Integrity, tools: ToolSet, items: Vector[Item]): Gated =
-    TurnGate.decide(prior, tools, items, Set.empty, Map.empty)
+    TurnGate.decide(prior, tools, items, Map.empty, Map.empty)
 
-  /** The gate from `prior` over `items`, each of `read` an answer read_hidden gave, none
-    * hidden before.
+  /** The gate from `prior` over `items`, each of `read` an answer read_hidden gave of a name
+    * nothing hides, none hidden before.
     */
   private def reading(prior: Integrity, tools: ToolSet, items: Vector[Item], read: Item*): Gated =
-    TurnGate.decide(prior, tools, items, read.map(_.ref).toSet, Map.empty)
+    TurnGate.decide(prior, tools, items, read.map(_.ref -> named("h9")).toMap, Map.empty)
 
   val tests = Tests {
     test(
@@ -129,10 +129,10 @@ object TurnGateTests extends TestSuite {
       // The level has fallen to Outside, which the guest dominates; its costs are as recorded.
       val earlier: Map[ItemRef, Fate.Hidden] =
         Map(guest.ref -> Fate.Hidden(named("h2"), Vector(post, note)))
-      TurnGate.decide(Integrity.Outside, offered, Vector(guest), Set.empty, earlier).decided ==>
+      TurnGate.decide(Integrity.Outside, offered, Vector(guest), Map.empty, earlier).decided ==>
         Vector(Decided(guest, Fate.Hidden(named("h2"), Vector(post, note))))
       TurnGate
-        .decide(Integrity.Member, offered, Vector(issue, guest), Set.empty, earlier)
+        .decide(Integrity.Member, offered, Vector(issue, guest), Map.empty, earlier)
         .hidden ==>
         Vector(
           issue -> Fate.Hidden(named("h3"), Vector(post, note)),
@@ -147,7 +147,7 @@ object TurnGateTests extends TestSuite {
         Integrity.Member,
         offered,
         Vector(issue, guest),
-        Set(guest.ref),
+        Map(guest.ref -> named("h9")),
         Map.empty
       )
       TurnGate.withdrawn(before, now, offered) ==> Some(

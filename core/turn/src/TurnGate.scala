@@ -122,7 +122,8 @@ object TurnGate {
     * every later request. Any other whose integrity dominates `prior` is shown and not listed.
     * Every other is listed: shown, lowering the level to the meet of the two
     * ([[Fate.Lowered]]), when that withdraws none of `offered` the level so far offers, or when
-    * it is in `read` (an answer read_hidden gave, [[ReadHidden.answers]]); hidden otherwise
+    * it is a key of `read` (an answer read_hidden gave, by the name it read,
+    * [[ReadHidden.answers]]), listed then as the item that name hides; hidden otherwise
     * ([[Fate.Hidden]]), under the next name after every name `named` holds, and naming the
     * tools it would withdraw, in `offered`'s order. Then every tool of `offered` whose
     * `requires` the level reached does not dominate is withheld, in `offered`'s order. Pure.
@@ -131,7 +132,7 @@ object TurnGate {
       prior: Integrity,
       offered: ToolSet,
       items: Vector[Item],
-      read: Set[ItemRef],
+      read: Map[ItemRef, HiddenName],
       named: Map[ItemRef, Fate.Hidden]
   ): Gated = {
     def withheldAt(level: Integrity) = offered.tools.filterNot(t => level.dominates(t.requires))
@@ -144,8 +145,12 @@ object TurnGate {
             case None =>
               val lowered = at.meet(item.integrity)
               val costs = withheldAt(lowered).filter(t => at.dominates(t.requires)).map(_.name)
-              if (costs.isEmpty || read.contains(item.ref))
-                (lowered, done :+ Decided(item, Fate.Lowered), next)
+              // An answer stands for what it read: a withdrawal names that, never read_hidden.
+              val cause = read
+                .get(item.ref)
+                .map(n => items.find(i => named.get(i.ref).exists(_.name == n)).getOrElse(item))
+              if (costs.isEmpty || cause.isDefined)
+                (lowered, done :+ Decided(cause.getOrElse(item), Fate.Lowered), next)
               else
                 (
                   at,

@@ -72,18 +72,20 @@ object ReadHidden {
     }
   }
 
-  /** Each item that answers a call of `read_hidden` among `entries`' replies, by the call: what
-    * [[TurnGate.decide]] shows whatever reading it withdraws.
+  /** Each item that answers a call of `read_hidden` among `entries`' replies, by the call, with
+    * the name it read: what [[TurnGate.decide]] shows whatever reading it withdraws. A call whose
+    * arguments do not read as a name is none.
     */
-  def answers(entries: Vector[Entry]): Set[ItemRef] =
+  def answers(entries: Vector[Entry]): Map[ItemRef, HiddenName] =
     entries
       .flatMap(_.payload match {
         case Payload.Exchange(reply) =>
           reply.blocks.collect {
-            case AssistantBlock.ToolCall(id, name, _) if name == ToolName.value(Name) =>
-              ItemRef.Result(id)
+            case AssistantBlock.ToolCall(id, name, args) if name == ToolName.value(Name) =>
+              id -> args
           }
         case _ => Vector.empty
       })
-      .toSet
+      .flatMap((id, args) => spec.args.read(args).toOption.map(ItemRef.Result(id) -> _))
+      .toMap
 }

@@ -96,9 +96,9 @@ object PlainWordsTests extends TestSuite {
     test("a stub and a withdrawal say nothing a person would not follow") {
       val costs = Vector(ToolName("slack_post"), ToolName("remind_me"), ToolName("file_note"))
       val stubs = Vector(issue, cards, guest).map(TurnGate.stub(_, Fate.Hidden(h1, costs), offered))
-      val before = TurnGate.decide(Integrity.Member, offered, Vector.empty, Set.empty, Map.empty)
+      val before = TurnGate.decide(Integrity.Member, offered, Vector.empty, Map.empty, Map.empty)
       val now =
-        TurnGate.decide(Integrity.Member, offered, Vector(issue), Set(issue.ref), Map.empty)
+        TurnGate.decide(Integrity.Member, offered, Vector(issue), Map(issue.ref -> h1), Map.empty)
       val line = TurnGate.withdrawn(before, now, offered)
       assert(line.isDefined)
       // The fallback is reached: a tool with no action is said by its name.

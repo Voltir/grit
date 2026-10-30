@@ -92,7 +92,9 @@ object ReadHiddenTests extends TestSuite {
         "what it says."
     }
 
-    test("the answers read are the results of every read_hidden call, whatever it named") {
+    test(
+      "the answers read are the results of read_hidden calls, by the name each read; unreadable arguments skipped"
+    ) {
       ReadHidden.answers(
         Vector(
           exchange(1, "read_hidden" -> ujson.Obj("name" -> "h2"), "peek" -> ujson.Obj()),
@@ -103,7 +105,9 @@ object ReadHiddenTests extends TestSuite {
           ),
           exchange(3, "read_hidden" -> ujson.Obj("name" -> "h1"))
         )
-      ) ==> Set("t10", "t20", "t30").map(id => ItemRef.Result(ToolCallId(id)))
+      ) ==> Map("t10" -> "h2", "t30" -> "h1").map((id, n) =>
+        ItemRef.Result(ToolCallId(id)) -> named(n)
+      )
     }
   }
 }
