@@ -14,6 +14,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.CatalogJson
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
 
@@ -59,8 +60,11 @@ object PayloadJson {
     case Payload.Agenda(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(AgendaJson.write)))
     case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
-    case Payload.Prefix(messages, digest) =>
-      ujson.Obj("kind" -> "prefix", "messages" -> messages, "digest" -> digest.hex)
+    case Payload.Prefix(messages, digest, pair) =>
+      val o = ujson.Obj("kind" -> "prefix", "messages" -> messages, "digest" -> digest.hex)
+      // Absent for a prefix kept before pairs were, as it was then.
+      pair.foreach(p => o("pair") = CatalogJson.writeRef(p))
+      o
     case Payload.Draft(reply) => ujson.Obj("kind" -> "draft", "message" -> message(reply))
     case Payload.Result(result, shown) =>
       ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
@@ -152,7 +156,10 @@ object PayloadJson {
           for {
             messages <- long(o, "messages")
             digest <- str(o, "digest").flatMap(d => Sha256.read(d).toRight(s"$d is not a digest"))
-          } yield Payload.Prefix(messages.toInt, digest)
+            pair <- o.value
+              .get("pair")
+              .fold(Right(None))(CatalogJson.readRef(_, "pair").map(Some(_)))
+          } yield Payload.Prefix(messages.toInt, digest, pair)
         case "topic" =>
           arr(o, "events").flatMap(traverse(_)(AgendaJson.read)).map(Payload.Agenda(_))
         case "exchange" =>

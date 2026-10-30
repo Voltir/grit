@@ -222,6 +222,21 @@ object PayloadJsonTests extends TestSuite {
       )
     }
 
+    test("a prefix's pair is stored as a catalog writes a pair, and read back") {
+      // A later turn carries only to the pair the prefix went to (ADR 0052).
+      val pair = grit.core.model.ModelRef(
+        grit.core.model.ModelId.of("anthropic/claude-sonnet").getOrElse(sys.error("id")),
+        grit.core.model.Upstream.of("anthropic")
+      )
+      val prefix = Payload.Prefix(4, Sha256.text("abc"), Some(pair))
+      val stored = PayloadJson.write(prefix).render()
+      (stored, PayloadJson.read(ujson.read(stored))) ==> (
+        """{"kind":"prefix","messages":4,"digest":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",""" +
+          """"pair":{"model":"anthropic/claude-sonnet","upstream":"anthropic"}}""",
+        Right(prefix)
+      )
+    }
+
     test(
       "a window's pieces are stored by id with their counts of further matches after its documents, and read back; one stored without them holds none"
     ) {

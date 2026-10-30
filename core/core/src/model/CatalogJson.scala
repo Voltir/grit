@@ -199,6 +199,13 @@ object CatalogJson {
   // Writing. A rung or pin at [[Grade.Standard]] has no grade key, and a role of one rung is
   // written as that rung, not a list: the forms stored before ladders, unchanged.
 
+  /** `r` as a catalog writes a pair: `{"model"}`, with `"upstream"` when it names one. */
+  def writeRef(r: ModelRef): ujson.Obj = ref(r, ujson.Obj())
+
+  /** What [[writeRef]] wrote, as the pair; why not, naming `at`, when it does not read. */
+  def readRef(v: ujson.Value, at: String): Either[String, ModelRef] =
+    v.objOpt.toRight(s"$at is not an object").flatMap(readRef(_, at))
+
   private def ref(r: ModelRef, into: ujson.Obj): ujson.Obj = {
     into("model") = ModelId.value(r.model)
     r.upstream.foreach(u => into("upstream") = Upstream.value(u))

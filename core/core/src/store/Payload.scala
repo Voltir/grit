@@ -113,10 +113,11 @@ enum Payload {
   /** The prefix of the last call the turn the entry belongs to made, as a later turn of its
     * window must send it again to carry that turn (ADR 0052): the digest of the call's system
     * prompt, its tools and its `messages` messages, all of them, since its reply's reasoning is
-    * bound to each. One per answered turn, about 100 bytes; a
+    * bound to each; and the model pair the call went to, `None` for a prefix kept before pairs
+    * were, which no later turn carries. One per answered turn, about 150 bytes; a
     * record: never shown to the model, never searched.
     */
-  case Prefix(messages: Int, digest: Sha256)
+  case Prefix(messages: Int, digest: Sha256, pair: Option[grit.core.model.ModelRef] = None)
 
   /** An unprompted turn's answer before it was judged ([[grit.core.speech.Outcome]]): a
     * record, never shown to the model, never searched, and not a period's activity. A posted

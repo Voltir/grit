@@ -29,7 +29,7 @@ object Replies {
     case Payload.Message(Message.ToolResult(_, _, _)) => None
     // Heard messages and posts begin and fill Slack threads, never a terminal's session.
     case Payload.Heard(_) | Payload.Posted(_) | Payload.Summary(_) | Payload.Query(_) |
-        (_: Payload.Window) | Payload.Prefix(_, _) | Payload.Agenda(_) | Payload.Exchange(_) |
+        (_: Payload.Window) | (_: Payload.Prefix) | Payload.Agenda(_) | Payload.Exchange(_) |
         Payload.Result(_, _) | Payload.Declined(_, _) | Payload.Attempt(_) | Payload.Ask(_, _, _) |
         Payload.Closed(_, _, _) | Payload.Draft(_) =>
       None

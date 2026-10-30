@@ -3,8 +3,10 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.durable.{FlowFixtures, InMemoryDurable}
+import grit.core.edge.InMemoryEdges
 import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.model.{Assignment, Catalog, Grade, Ladder, Rung}
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, Payload, Tx}
 import grit.core.tool.{Believed, Outcome, Toolbox}
@@ -105,6 +107,30 @@ object TurnCarriedTests extends TestSuite {
       run("one", gated = false)
       val second = run("two", gated = true)
       basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.PrefixDiffers)))
+    }
+
+    test("a turn routed to another pair than the last draws afresh: the pair differs") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val edge = new Served(new InMemoryEdges, durable, _ => Serve.Now(Outcome.Done("")))
+      // TestCatalog with its turn role at another model: the same bytes go to another pair.
+      val regraded = Catalog.of(
+        TestCatalog.policy.copy(turn =
+          Ladder
+            .of(Vector(Rung(Grade.Standard, Assignment(pair("test/other", None), 4096, None))))
+            .getOrElse(throw new java.lang.AssertionError())
+        ),
+        Vector.empty
+      )
+      def run(text: String, catalog: Catalog) = {
+        val t = say(entries, text)
+        durable.run(t.workflowId)(
+          hostedBody(entries, new RecordingProvider, edge, hosted = Vector.empty, catalog = catalog)
+        )
+        t
+      }
+      val _ = run("one", TestCatalog)
+      basis(durable, run("two", regraded)) ==> Right(Some(TurnBasis.Afresh(Why.PairDiffers)))
     }
 
     test("a turn whose first gate would hide a result the window carries draws afresh") {

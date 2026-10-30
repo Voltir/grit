@@ -9,7 +9,7 @@ import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
 import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{Grade, Pinned, TurnProfile, TurnProfileId}
+import grit.core.model.{Grade, ModelRef, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.speech.{Outcome, Speech, SpeechStore}
@@ -553,6 +553,7 @@ private[turn] object TurnSteps {
                 stubs,
                 in.looped.answer,
                 pins.turn.grade,
+                pins.turn.assignment.ref,
                 shape,
                 Some(rounds.level),
                 env.clock.now()
@@ -1114,7 +1115,7 @@ private[turn] object TurnSteps {
     * recorded before its call, and the reply is not yet among them), its message dated as
     * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
     * stub, shaped by `shape`; that request's prefix kept as [[Turn.prefixId]]
-    * ([[TurnShown.prefixOf]]). Each of the window's documents whose
+    * ([[TurnShown.prefixOf]]), naming `pair`, the pair the turn's calls went to. Each of the window's documents whose
     * pointer one of the turn's calls followed, and that succeeded, is counted as followed at
     * `at` ([[Pointer.followedIn]]).
     */
@@ -1128,6 +1129,7 @@ private[turn] object TurnSteps {
       stubs: Map[ItemRef, String],
       message: Message.Assistant,
       grade: Grade,
+      pair: ModelRef,
       shape: ModelRequest -> ModelRequest,
       believed: Option[Integrity],
       at: Instant
@@ -1163,7 +1165,7 @@ private[turn] object TurnSteps {
       // since its reply's thinking is bound to every message before it. A forced last call's
       // note ([[TurnLoop.LastCall]]) is in no record, so a later turn renders this one without
       // it, its digest differs, and it draws a boundary rather than send the reply unanswered.
-      prefix = TurnShown.prefixOf(sent)
+      prefix = TurnShown.prefixOf(sent).copy(pair = Some(pair))
       _ <- entries
         .insert(
           Entry(

@@ -350,11 +350,12 @@ private[turn] object Rounding {
   /** [[TurnSteps.Env.carried]], for `turn` offered as `recorded` from `tooling`'s tools, its
     * model asked about `asked`, read as `routed` bounds it: the conversation's newest window
     * record of an earlier turn whose chain is read whole, when the request `turn` would send of
-    * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), repeats that
-    * turn's [[Payload.Prefix]] byte for byte ([[TurnShown.prefixOf]]), and its first gate,
-    * decided over what it carries ([[TurnGate.decide]], from [[startOf]]), hides none of it;
-    * else why not, the first of those that fails, a hidden item named before a prefix that
-    * differs.
+    * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), goes to the pair
+    * that turn's [[Payload.Prefix]] names and repeats it byte for byte
+    * ([[TurnShown.prefixOf]]), and its first gate, decided over what it carries
+    * ([[TurnGate.decide]], from [[startOf]]), hides none of it; else why not, the first of
+    * those that fails, a hidden item named before a pair that differs, and that before a
+    * prefix that differs.
     */
   def carried[C^](
       env: TurnEnv^,
@@ -446,8 +447,12 @@ private[turn] object Rounding {
             // so it is named before them.
             if (first.hidden.exists((item, _) => held.contains(item.ref)))
               TurnBasis.Afresh(Why.Hidden)
+            else if (!prefix.pair.contains(pins.turn.assignment.ref))
+              TurnBasis.Afresh(Why.PairDiffers)
             else if (
-              TurnShown.prefixOf(r.copy(messages = r.messages.take(prefix.messages))) != prefix
+              TurnShown
+                .prefixOf(r.copy(messages = r.messages.take(prefix.messages)))
+                .copy(pair = prefix.pair) != prefix
             )
               TurnBasis.Afresh(Why.PrefixDiffers)
             else TurnBasis.Against(head)

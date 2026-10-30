@@ -42,10 +42,17 @@ object TurnBasis {
     /** The window does not render as a request now: a part names an entry since gone. */
     case Unrendered extends Why("unrendered")
 
-    /** The request would differ from that prefix in some byte of its system prompt, tools or
-      * messages; the prefix keeps one digest of the three, so which is not known.
+    /** The request, to the same pair ([[PairDiffers]] otherwise), would differ from that prefix
+      * in some byte of its system prompt, tools or messages; the prefix keeps one digest of
+      * the three, so which is not known.
       */
     case PrefixDiffers extends Why("prefix-differs")
+
+    /** The turn's calls go to another model pair than the one that prefix was sent to
+      * ([[Payload.Prefix]]), or the prefix names none (kept before pairs were): a pair caches
+      * only what was sent to it, and a carried reply's reasoning is bound to its pair.
+      */
+    case PairDiffers extends Why("pair-differs")
 
     /** The turn's first gate would hide an item the window carries. */
     case Hidden extends Why("hidden")

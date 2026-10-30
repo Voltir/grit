@@ -168,7 +168,7 @@ object TurnSummary {
       case Payload.Message(r: Message.ToolResult) =>
         line(Payload.Result(r, ToolCallId.value(r.callId)), payloads)
       // A post is the first entry of a turn that never runs, so never a summarised turn's.
-      case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | Payload.Prefix(_, _) |
+      case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
           Payload.Agenda(_) | Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) |
           Payload.Draft(_) | Payload.Posted(_) =>
         None
