@@ -70,11 +70,16 @@ object CommandTools {
           person(askers, at).flatMap {
             case None => Right(Outcome.Failed(NoPerson))
             case Some(by) =>
-              // A scoped local of this one call (rule 7): the integrity of each thing the command
-              // read, noted by the reads it is handed, which it uses only while it runs.
-              val read = scala.collection.mutable.ArrayBuffer.empty[Integrity]
-              val noted = Noted.reads(own, i => read += i)
-              command.run(args, by, noted, clock.now()).map(answer(_, read.reduceOption(_.meet(_))))
+              // The least integrity of what the command read: a scoped local of this one call.
+              var least: Option[Integrity] = None
+              val note: Integrity -> Unit =
+                // Proof: `note` writes `least` alone, a local of this call. It is handed only to
+                // `noted`, which only `command.run` below holds, and a command is pure, so it
+                // keeps nothing past its run; `least` is read once, after the run returns, on
+                // this thread.
+                caps.unsafe.unsafeAssumePure(i => least = Some(least.fold(i)(_.meet(i))))
+              val noted = Noted.reads(own, note)
+              command.run(args, by, noted, clock.now()).map(answer(_, least))
           }
         )
         .fold(failed("read"), identity)

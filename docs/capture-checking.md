@@ -227,7 +227,10 @@ Return `Reads^` (`Db.as`). Likewise a helper typed `: Reads^{env}` cannot be pas
 parameter is `Reads^`; give the helper `Reads^` too (`Close.reads`).
 
 **Mutable collections are pure types.** A typed `ArrayBuffer` field passes, even under
-separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7).
+separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7), and
+never lean on the gap to hide an effect: a local `var` written through a function handed on is
+tracked, so make it pure with `caps.unsafe.unsafeAssumePure` and its proof
+(`CommandTools.reading`'s `note`).
 
 **A tuple match type inside an `inline` def.**
 
