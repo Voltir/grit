@@ -3,10 +3,11 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.clock.Utc
-import grit.core.context.{Shown, Window}
+import grit.core.context.{CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
+import grit.core.either.Traversal.traverse
 import grit.core.files.{KeptPiece, PieceSearch}
-import grit.core.id.{EntrySeq, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
@@ -192,31 +193,42 @@ private[turn] object TurnShown {
       env: TurnEnv^,
       system: String,
       turn: TurnRef,
-      window: Window,
+      seen: Seen,
       stubs: Map[ItemRef, String],
       zoned: Option[TurnOffer.Zoned]
   )(using pins: Turn.Bounded): Either[TurnFailure, Unshaped] =
     pins
       .reads(env.db)
       .read(Subject.Turn(turn))(
-        shown(env.records, turn, window).flatMap(s =>
+        shown(env.records, turn, seen).flatMap(s =>
           direct(env.hosting.conversations, turn).map(s -> _)
         )
       )
       .left
       .map(TurnFailure.ofStore)
-      .flatMap((showing, direct) => requestOf(system, showing, turn, window, stubs, zoned, direct))
+      .flatMap((showing, direct) => requestOf(system, showing, turn, stubs, zoned, direct))
 
-  /** What a request for `turn` over `window` can show, read from `records`: the entries of
-    * its conversation at the window's seqs, the turn's own entries, the nearby sections'
-    * entries that still exist, who said each, and the window's documents and pieces as it
-    * shows them ([[grit.core.document.DocumentSearch.labelled]]); nothing else of the
-    * conversation.
+  /** The window a turn's request shows before its own entries: `window`, drawn for the turn,
+    * appended after the window record `after` and the records it follows
+    * ([[CarriedWindow.chain]]); or, with no `after`, the whole window.
     */
-  def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
+  final case class Seen(after: Option[EntryId], window: Window)
+
+  object Seen {
+
+    /** What the window `record` shows before its turn's own entries. */
+    def of(record: Payload.Window): Seen = Seen(record.carry.flatMap(_.after), Window.of(record))
+  }
+
+  /** What a request for `turn` over `seen` can show, read from `records`: each part of its
+    * window, oldest first ([[Part]]), the turn's own entries, and who said each; nothing else
+    * of the conversation. `Invalid` when `seen.after` is not read back as a chain of window
+    * records.
+    */
+  def shown(records: TurnRecords, turn: TurnRef, seen: Seen)(using
       Tx^
   ): Either[StoreError, Showing] =
-    shown(records.entries, records.principals, records.documents, records.pieces, turn, window)
+    shown(records.entries, records.principals, records.documents, records.pieces, turn, seen)
 
   /** [[shown]], read from the four stores it reads. */
   def shown(
@@ -225,84 +237,150 @@ private[turn] object TurnShown {
       documents: DocumentSearch,
       pieces: PieceSearch,
       turn: TurnRef,
-      window: Window
-  )(using Tx^): Either[StoreError, Showing] =
+      seen: Seen
+  )(using Tx^): Either[StoreError, Showing] = {
+    def part(window: Window, record: Option[CarriedWindow.Record]): Either[StoreError, Part] =
+      for {
+        at <- entries.at(turn.conversationId, window.entries)
+        near <- Nearby.read(window.nearby, entries)
+        labelled <- documents.labelled(window.documents)
+        kept <-
+          if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
+        shown <- documents.labelOf(kept)(_.plugin)
+        own <- record.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(r =>
+          entries.ofTurn(TurnRef(turn.conversationId, r.turn))
+        )
+      } yield {
+        val more = window.pieces.map(p => p.id -> p.more).toMap
+        val parts = shown.map((k, l) => (k, l, more.getOrElse(k.id, 0)))
+        Part(window, at, near, labelled, parts, record.map(r => Carried(r.turn, own, r.carry)))
+      }
     for {
-      at <- entries.at(turn.conversationId, window.entries)
+      chain <- seen.after.fold[Either[StoreError, Vector[CarriedWindow.Record]]](
+        Right(Vector.empty)
+      )(after =>
+        CarriedWindow
+          .chain(after)(entries.get)
+          .filterOrElse(
+            _.nonEmpty,
+            StoreError.Invalid(s"the carried window record ${EntryId.value(after)} is not read")
+          )
+      )
+      carried <- traverse(chain)(r => part(r.window, Some(r)))
+      own <- part(seen.window, None)
       mine <- entries.ofTurn(turn)
-      near <- Nearby.read(window.nearby, entries)
-      named <- principals.speakers((at ++ mine ++ near).map(_.id).distinct)
-      labelled <- documents.labelled(window.documents)
-      kept <-
-        if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
-      shown <- documents.labelOf(kept)(_.plugin)
-    } yield {
-      val more = window.pieces.map(p => p.id -> p.more).toMap
-      val parts = shown.map((k, l) => (k, l, more.getOrElse(k.id, 0)))
-      Showing(at, mine, near, named, labelled, parts)
-    }
+      parts = carried :+ own
+      named <- principals.speakers(
+        (parts.flatMap(p => p.entries ++ p.near ++ p.carried.fold(Vector.empty)(_.own)) ++ mine)
+          .map(_.id)
+          .distinct
+      )
+    } yield Showing(parts, mine, named)
+  }
 
-  /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
-    * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;
-    * `documents`, the window's documents still kept whose plugin is enabled, in its order,
-    * each with its plugin's label; `pieces`, its pieces likewise, each with its plugin's label
-    * and how many more of its file matched.
+  /** A carried turn as [[shown]] read it: `turn`, its own entries `own`, and the lines its
+    * window record keeps (`carry`).
     */
-  final case class Showing(
-      window: Vector[Entry],
-      mine: Vector[Entry],
+  final case class Carried(turn: TurnSeq, own: Vector[Entry], carry: Payload.Carry)
+
+  /** One part of a window as [[shown]] read it: `window`, what was drawn; `entries`, the
+    * entries at its seqs that exist; `near`, its nearby entries that still exist; `documents`,
+    * its documents still kept whose plugin is enabled, in its order, each with its plugin's
+    * label; `pieces`, its pieces likewise, each with its plugin's label and how many more of
+    * its file matched; and, for a part carried from an earlier turn, that turn (`carried`).
+    */
+  final case class Part(
+      window: Window,
+      entries: Vector[Entry],
       near: Vector[Entry],
-      named: Speakers,
       documents: Vector[(Document, DocLabel)],
-      pieces: Vector[(KeptPiece, DocLabel, Int)]
+      pieces: Vector[(KeptPiece, DocLabel, Int)],
+      carried: Option[Carried]
   )
 
+  /** What [[shown]] read: `parts`, the window's, oldest first, the turn's own last; `mine`,
+    * the turn's own entries; `named`, the speakers of all of them.
+    */
+  final case class Showing(parts: Vector[Part], mine: Vector[Entry], named: Speakers) {
+
+    /** Every part's entries, each carried part's followed by its turn's own. */
+    def window: Vector[Entry] = parts.flatMap(p => p.entries ++ p.carried.fold(Vector.empty)(_.own))
+
+    /** Every part's nearby sections, in order. */
+    def nearby: Vector[Nearby] = parts.flatMap(_.window.nearby)
+
+    /** Every part's nearby entries. */
+    def near: Vector[Entry] = parts.flatMap(_.near)
+
+    /** Every part's documents, in order. */
+    def documents: Vector[(Document, DocLabel)] = parts.flatMap(_.documents)
+
+    /** Every part's pieces, in order. */
+    def pieces: Vector[(KeptPiece, DocLabel, Int)] = parts.flatMap(_.pieces)
+  }
+
   /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
-    * there ([[hiding]]), to be shaped
-    * ([[Unshaped]]): each nearby section as one user message ([[Shown.section]], a section with
+    * there ([[hiding]]), to be shaped ([[Unshaped]]): each part in order, then the turn's own.
+    * A part shows each nearby section as one user message ([[Shown.section]], a section with
     * none of its entries left dropped), then each document as one ([[Shown.document]]), then
-    * each piece as one ([[Shown.piece]]), then
-    * what the model is shown of the window's entries ([[Shown.own]]: its messages, a closing
-    * entry as one user message, and a gap line wherever turns are left out), then, when the turn
-    * has an own entry, [[answering]] of its first, in `zoned` (its offer's,
-    * [[TurnOffer.Recorded]]), in a direct message when `direct` ([[direct]]), as one user
-    * message, then the turn's own, its tool loop's exchange among them in order. A summary is not
-    * shown to the model yet. `system` is sent as it is given. A window seq with no entry is an
-    * `Assembly` failure naming every such seq.
+    * each piece as one ([[Shown.piece]]), then what the model is shown of its entries
+    * ([[Shown.own]]: its messages, a closing entry as one user message, and a gap line wherever
+    * turns are left out, the turn before them the part before's); then, for a carried part,
+    * its record's dated line as one user message and its turn's own entries as
+    * [[Shown.turn]] shows them, its record's note added to its asking message
+    * ([[TurnVerdict.taggedWith]]). The turn's own follow: when it has an own entry,
+    * [[answering]] of its first, in `zoned` (its offer's, [[TurnOffer.Recorded]]), in a direct
+    * message when `direct` ([[direct]]), as one user message, then its own, its tool loop's
+    * exchange among them in order. A summary is not shown to the model yet. `system` is sent as
+    * it is given. A part's seq with no entry is an `Assembly` failure naming every such seq.
     */
   def requestOf(
       system: String,
       showing: Showing,
       turn: TurnRef,
-      window: Window,
       stubs: Map[ItemRef, String],
       zoned: Option[TurnOffer.Zoned],
       direct: Boolean
   ): Either[TurnFailure, Unshaped] = {
-    val Showing(at, mine, near, named, documents, pieces) = hiding(showing, stubs)
-    val bySeq = at.map(e => e.seq -> e).toMap
-    val sections = window.nearby.flatMap(Shown.section(_, near, named))
-    window.entries.filterNot(bySeq.contains) match {
-      case missing if missing.nonEmpty =>
-        Left(
-          TurnFailure.Assembly(
-            s"window names unknown entries at seqs: ${missing.map(EntrySeq.value).mkString(", ")}"
+    val Showing(parts, mine, named) = hiding(showing, stubs)
+    val befores = None +: parts.map(_.carried.map(_.turn))
+    traverse(parts.zip(befores)) { (part, before) =>
+      val bySeq = part.entries.map(e => e.seq -> e).toMap
+      part.window.entries.filterNot(bySeq.contains) match {
+        case missing if missing.nonEmpty =>
+          Left(
+            TurnFailure.Assembly(
+              s"window names unknown entries at seqs: ${missing.map(EntrySeq.value).mkString(", ")}"
+            )
           )
-        )
-      case _ =>
-        val shown = Shown.own(window.entries.flatMap(bySeq.get), None, turn.turnSeq, named)
-        // The dated line is a message, not part of `system`: a provider caches its prompt from
-        // the front, and nothing that changes per turn may sit before the messages. It is made
-        // here, from the turn's first own entry, and no entry keeps it: a later turn shown this
-        // one (Shown.own) sees no such line, so a window carried from turn to turn would differ
-        // from this request at it.
-        val dated = mine
-          .minByOption(e => EntrySeq.value(e.seq))
-          .map(root => Message.User(answering(root.createdAt, zoned, direct)))
-        val parts = pieces.map((k, label, more) => Shown.piece(k, label, more))
-        Right(
-          Unshaped(system, sections, documents, parts ++ shown ++ dated ++ Shown.turn(mine, named))
-        )
+        case _ =>
+          val sections = part.window.nearby.flatMap(Shown.section(_, part.near, named))
+          val pieces = part.pieces.map((k, label, more) => Shown.piece(k, label, more))
+          val of = part.carried.fold(turn.turnSeq)(_.turn)
+          val shown = Shown.own(part.window.entries.flatMap(bySeq.get), before, of, named)
+          // A carried turn repeats the lines its record keeps, as its own request sent them.
+          val carried = part.carried.fold(Vector.empty[Message])(c =>
+            TurnVerdict.taggedWith(
+              c.carry.dated.map(Message.User(_)).toVector ++ Shown.turn(c.own, named),
+              c.carry.tag
+            )
+          )
+          Right(Unshaped.Part(sections, part.documents, pieces ++ shown ++ carried))
+      }
+    }.map { shownParts =>
+      // The dated line is a message, not part of `system`: a provider caches its prompt from
+      // the front, and nothing that changes per turn may sit before the messages. It is made
+      // here, from the turn's first own entry, and kept in the turn's window record for a
+      // later turn of its window to repeat.
+      val dated = mine
+        .minByOption(e => EntrySeq.value(e.seq))
+        .map(root => Message.User(answering(root.createdAt, zoned, direct)))
+      val last =
+        shownParts.lastOption.getOrElse(Unshaped.Part(Vector.empty, Vector.empty, Vector.empty))
+      Unshaped(
+        system,
+        shownParts.dropRight(1) :+ last.copy(after = last.after ++ dated ++ Shown.turn(mine, named))
+      )
     }
   }
 
@@ -354,15 +432,8 @@ private[turn] object TurnShown {
       )
       .map(_.origin.place.direct)
 
-  /** A request of `system`: `before`, then each of `documents` as one user message, then
-    * `after`.
-    */
-  final case class Unshaped(
-      system: String,
-      before: Vector[Message],
-      documents: Vector[(Document, DocLabel)],
-      after: Vector[Message]
-  ) {
+  /** A request of `system`: each of `parts` in order. */
+  final case class Unshaped(system: String, parts: Vector[Unshaped.Part]) {
 
     /** This request shaped by `shape`, each document's pointer line shown only when the shaped
       * request offers the tool it names: a model offered no tool of that name could not follow
@@ -372,31 +443,46 @@ private[turn] object TurnShown {
       def built(offered: Set[String]): ModelRequest =
         ModelRequest(
           system,
-          before ++ documents.map((document, label) =>
-            Shown.document(
-              document.copy(pointer =
-                document.pointer.filter(p => offered.contains(ToolName.value(p.tool)))
-              ),
-              label
-            )
-          ) ++ after
+          parts.flatMap(part =>
+            part.before ++ part.documents.map((document, label) =>
+              Shown.document(
+                document.copy(pointer =
+                  document.pointer.filter(p => offered.contains(ToolName.value(p.tool)))
+                ),
+                label
+              )
+            ) ++ part.after
+          )
         )
       shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
     }
   }
 
-  /** Each item a request over `window` shows the model of `showing`, in the order it shows
-    * them: the entries `window`'s nearby sections show, section by section ([[Shown.section]]),
-    * the documents, the window's entries [[Shown.own]] shows, then the turn's own entries
-    * [[Shown.turn]] shows; an entry kept as a tool's result by the call it answers, named by
-    * its tool, and any other by its position, a person's named as [[Showing.named]] names them
-    * ("someone" when it does not), grit's as "an earlier reply" and a closing as "a closing
-    * record". An entry the request does not show (an earlier turn's tool exchange or result, a
-    * window, a query, a summary, an item, an ask, a message with no text nearby) is none.
+  object Unshaped {
+
+    /** Part of a request: `before`, then each of `documents` as one user message, then
+      * `after`.
+      */
+    final case class Part(
+        before: Vector[Message],
+        documents: Vector[(Document, DocLabel)],
+        after: Vector[Message]
+    )
+  }
+
+  /** Each item a request shows the model of `showing`, in the order it shows them: part by
+    * part, the entries its nearby sections show, section by section ([[Shown.section]]), its
+    * documents, its pieces, its entries [[Shown.own]] shows, and a carried part's turn's own
+    * entries [[Shown.turn]] shows; then the turn's own entries [[Shown.turn]] shows; an entry
+    * kept as a tool's result by the call it answers, named by its tool, and any other by its
+    * position, a person's named as [[Showing.named]] names them ("someone" when it does not),
+    * grit's as "an earlier reply" and a closing as "a closing record". An entry the request
+    * does not show (an earlier turn's tool exchange or result outside a carried turn, a window,
+    * a query, a summary, an item, an ask, a message with no text nearby) is none.
     */
-  def itemsOf(showing: Showing, window: Window): Vector[Item] = {
-    val Showing(shownWindow, mine, near, named, documents, pieces) = showing
-    val tools: Map[ToolCallId, String] = (shownWindow ++ mine)
+  def itemsOf(showing: Showing): Vector[Item] = {
+    val Showing(parts, mine, named) = showing
+    val tools: Map[ToolCallId, String] = (showing.window ++ mine)
       .flatMap(_.payload match {
         case Payload.Exchange(reply) =>
           reply.blocks.collect { case AssistantBlock.ToolCall(id, name, _) => id -> name }
@@ -419,34 +505,40 @@ private[turn] object TurnShown {
       }
       source.map(Item(at, e.integrity, _))
     }
-    // Each entry as its section shows it alone: shown there exactly when it is shown alone.
-    val nearby = window.nearby.flatMap { section =>
-      section.names.flatMap { seq =>
-        near
-          .find(e => e.conversationId == section.conversation && e.seq == seq)
-          .filter(e => Shown.section(only(section, seq), Vector(e), named).isDefined)
-          .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
-      }
-    }
-    nearby ++
-      documents.map((d, label) =>
-        Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
-      ) ++
-      pieces.map((k, label, _) => Item(ItemRef.Piece(k.id), k.integrity, DocLabel.value(label))) ++
-      shownWindow
-        .filter(e => Shown.of(e, named).isDefined)
-        .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
-      mine
+    def turned(own: Vector[Entry]): Vector[Item] =
+      own
         .filter(e => Shown.turn(Vector(e), named).nonEmpty)
         .flatMap(e => entry(e, ItemRef.Own(e.seq)))
+    parts.flatMap { part =>
+      // Each entry as its section shows it alone: shown there exactly when it is shown alone.
+      val nearby = part.window.nearby.flatMap { section =>
+        section.names.flatMap { seq =>
+          part.near
+            .find(e => e.conversationId == section.conversation && e.seq == seq)
+            .filter(e => Shown.section(only(section, seq), Vector(e), named).isDefined)
+            .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
+        }
+      }
+      nearby ++
+        part.documents.map((d, label) =>
+          Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
+        ) ++
+        part.pieces.map((k, label, _) =>
+          Item(ItemRef.Piece(k.id), k.integrity, DocLabel.value(label))
+        ) ++
+        part.entries
+          .filter(e => Shown.of(e, named).isDefined)
+          .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
+        part.carried.fold(Vector.empty)(c => turned(c.own))
+    } ++ turned(mine)
   }
 
-  /** What a request over `window` would show of the item at `ref` among `showing` in full, as
-    * its one message's text: a tool's result as [[Shown.result]] shows it, an entry as
-    * [[Shown.of]] does, a nearby one as its section alone shows it ([[Shown.section]]), a
-    * document as [[Shown.document]] does; `None` when `showing` no longer holds it.
+  /** What a request would show of the item at `ref` among `showing` in full, as its one
+    * message's text: a tool's result as [[Shown.result]] shows it, an entry as [[Shown.of]]
+    * does, a nearby one as its section alone shows it ([[Shown.section]]), a document as
+    * [[Shown.document]] does; `None` when `showing` no longer holds it.
     */
-  def textOf(showing: Showing, window: Window, ref: ItemRef): Option[String] = {
+  def textOf(showing: Showing, ref: ItemRef): Option[String] = {
     def text(m: Message): String = m match {
       case Message.User(t) => t
       case Message.Assistant(blocks, _, _, _, _) =>
@@ -463,7 +555,7 @@ private[turn] object TurnShown {
         own.find(_.seq == seq).flatMap(Shown.of(_, showing.named)).map(text)
       case ItemRef.Nearby(conversation, seq) =>
         for {
-          section <- window.nearby.find(s =>
+          section <- showing.nearby.find(s =>
             s.conversation == conversation && s.names.contains(seq)
           )
           e <- showing.near.find(e => e.conversationId == conversation && e.seq == seq)
@@ -507,21 +599,27 @@ private[turn] object TurnShown {
       }
       val own = entry(e => ItemRef.Own(e.seq))
       showing.copy(
-        window = showing.window.map(own),
-        mine = showing.mine.map(own),
-        near = showing.near.map(entry(e => ItemRef.Nearby(e.conversationId, e.seq))),
-        documents = showing.documents.flatMap((document, label) =>
-          stubs.get(ItemRef.Document(document.version)) match {
-            case None => Some((document, label))
-            case Some(stub) => DocText.of(stub).toOption.map(t => (document.copy(text = t), label))
-          }
+        parts = showing.parts.map(part =>
+          part.copy(
+            entries = part.entries.map(own),
+            near = part.near.map(entry(e => ItemRef.Nearby(e.conversationId, e.seq))),
+            documents = part.documents.flatMap((document, label) =>
+              stubs.get(ItemRef.Document(document.version)) match {
+                case None => Some((document, label))
+                case Some(stub) =>
+                  DocText.of(stub).toOption.map(t => (document.copy(text = t), label))
+              }
+            ),
+            pieces = part.pieces.map((k, label, more) =>
+              stubs.get(ItemRef.Piece(k.id)) match {
+                case None => (k, label, more)
+                case Some(stub) => (k.copy(piece = k.piece.holding(stub)), label, more)
+              }
+            ),
+            carried = part.carried.map(c => c.copy(own = c.own.map(own)))
+          )
         ),
-        pieces = showing.pieces.map((k, label, more) =>
-          stubs.get(ItemRef.Piece(k.id)) match {
-            case None => (k, label, more)
-            case Some(stub) => (k.copy(piece = k.piece.holding(stub)), label, more)
-          }
-        )
+        mine = showing.mine.map(own)
       )
     }
 

@@ -1,12 +1,11 @@
 package grit.turn
 
 import grit.core.allot.Allotment
-import grit.core.context.Window
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ToolUse
-import grit.core.store.{Db, ModelProfileStore, StoreError, Tx}
+import grit.core.store.{Db, Entry, ModelProfileStore, Payload, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
 import grit.core.visibility.{Classification, Label}
 
@@ -347,15 +346,26 @@ object Turn {
       gated = rounds.map(n => n -> Loop.Gate(n).name)
       byRef <- needed[TurnOffer.Recorded](Step.Offer)
       profileId <- needed[TurnProfileId](Step.PinModels)
-      window <- needed[Window](Step.Assemble)
       classified <- output[TurnAgenda.Classification](Step.Classify)
       profile <- kept("profile", reads.profiles.get(profileId))
         .flatMap(_.toRight(s"no profile kept under ${TurnProfileId.value(profileId)}"))
       offer <- kept("offer", TurnOffer.load(reads.toolSets, reads.prompts, byRef))
       (set, prompt) = (offer.tools, offer.prompt)
+      // What the turn's requests showed before its own entries, as its window record keeps it.
+      record <- kept("window", reads.entries.get(windowId(turn))).flatMap {
+        case Some(Entry(_, _, _, _, _, w: Payload.Window, _, _)) => Right(w)
+        case _ => Left(s"$workflow kept no window record")
+      }
       showing <- kept(
         "window",
-        shown(reads.entries, reads.principals, reads.documents, reads.pieces, turn, window)
+        shown(
+          reads.entries,
+          reads.principals,
+          reads.documents,
+          reads.pieces,
+          turn,
+          TurnShown.Seen.of(record)
+        )
       )
       direct <- kept("conversation", TurnShown.direct(reads.conversations, turn))
       calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {
@@ -395,7 +405,6 @@ object Turn {
               prompt.render,
               showing.copy(mine = before),
               turn,
-              window,
               stubsAt(gates, round, tools.set),
               offer.zoned,
               direct

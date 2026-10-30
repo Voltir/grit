@@ -82,14 +82,19 @@ object TurnJudgeTests extends TestSuite {
     TurnJudge.state(
       all,
       TurnShown.Showing(
-        all.filter(e => window.entries.contains(e.seq)),
+        Vector(
+          TurnShown.Part(
+            window,
+            all.filter(e => window.entries.contains(e.seq)),
+            near,
+            documents,
+            pieces,
+            None
+          )
+        ),
         mine,
-        near,
-        speakers,
-        documents,
-        pieces
+        speakers
       ),
-      window,
       strand,
       strandChars,
       speakers,

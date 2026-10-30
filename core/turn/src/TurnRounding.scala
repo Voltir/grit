@@ -6,7 +6,6 @@ import grit.act.phase.Gated as CallGate
 import grit.act.phase.{Asking, Calling, Shaped, Shaping}
 import grit.core.act.{Extraction, Gates, Posed}
 import grit.core.approval.Approval
-import grit.core.context.Window
 import grit.core.durable.StreamWriter
 import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef}
@@ -297,7 +296,7 @@ private[turn] object Rounding {
   private def gateOf(
       env: TurnEnv^,
       turn: TurnRef,
-      window: Window,
+      seen: TurnShown.Seen,
       root: TurnOffer.Root,
       offered: ToolSet,
       prior: Option[Integrity],
@@ -305,7 +304,7 @@ private[turn] object Rounding {
   )(using pins: Turn.Bounded): Either[TurnFailure, Gated] =
     pins
       .reads(env.db)
-      .read(Subject.Turn(turn))(shown(env.records, turn, window))
+      .read(Subject.Turn(turn))(shown(env.records, turn, seen))
       .left
       .map(TurnFailure.ofStore)
       .map { showing =>
@@ -322,7 +321,7 @@ private[turn] object Rounding {
         TurnGate.decide(
           start,
           offered,
-          TurnShown.itemsOf(showing, window),
+          TurnShown.itemsOf(showing),
           ReadHidden.answers(showing.mine),
           named
         )
@@ -332,16 +331,16 @@ private[turn] object Rounding {
     * ([[TurnShown.textOf]]), read through `env`'s `db` as `pins` bound it; why not: the store
     * unreadable, or the item no longer kept.
     */
-  private def itemText(env: TurnEnv^, turn: TurnRef, window: Window)(using
+  private def itemText(env: TurnEnv^, turn: TurnRef, seen: TurnShown.Seen)(using
       pins: Turn.Picked
   ): Item ->{env} Either[String, String] =
     item =>
       pins
         .reads(env.db)
-        .read(Subject.Turn(turn))(shown(env.records, turn, window))
+        .read(Subject.Turn(turn))(shown(env.records, turn, seen))
         .left
         .map(_.described)
-        .flatMap(TurnShown.textOf(_, window, item.ref).toRight("the item is no longer kept"))
+        .flatMap(TurnShown.textOf(_, item.ref).toRight("the item is no longer kept"))
 
   /** How extract puts a question of an item a request over `window` shows of `turn`
     * ([[Extract.Answer]]): to the summary's pin as `pins` cleared it, a quarantined JSON ask
@@ -357,7 +356,7 @@ private[turn] object Rounding {
       env: TurnEnv^,
       jot: Jot^,
       turn: TurnRef,
-      window: Window,
+      seen: TurnShown.Seen,
       raise: Extraction.Raising^,
       level: Integrity
   )(using
@@ -368,7 +367,7 @@ private[turn] object Rounding {
     (item, question, shape, slot) =>
       for {
         pin <- pins.summary.left.map(_ => "no summary model is cleared for this turn")
-        text <- itemText(env, turn, window)(item)
+        text <- itemText(env, turn, seen)(item)
         request <- Extract.request(text, question, shape, pin.settings.strict)
         typed <- Extraction.reply(shape)
         shaped = Shaping.shaped(
@@ -425,7 +424,7 @@ private[turn] object Rounding {
       direct: Boolean,
       records: TurnRecords,
       turn: TurnRef,
-      window: Window,
+      seen: TurnShown.Seen,
       stubs: Map[ItemRef, String],
       round: Round,
       reply: Message.Assistant,
@@ -439,9 +438,9 @@ private[turn] object Rounding {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
       level <- TurnRound.believedAt(entries, turn, believed)
-      showing <- shown(records, turn, window).left.map(TurnFailure.ofStore)
+      showing <- shown(records, turn, seen).left.map(TurnFailure.ofStore)
       sent <- TurnShown
-        .requestOf(offer.system, showing, turn, window, stubs, offer.zoned, direct)
+        .requestOf(offer.system, showing, turn, stubs, offer.zoned, direct)
         .map(_.shaped(shape))
       _ <- entries
         .insert(
@@ -474,7 +473,7 @@ private[turn] object Rounding {
   private def callShaped(
       heard: StreamWriter^,
       turn: TurnRef,
-      window: Window,
+      seen: TurnShown.Seen,
       stubs: Map[ItemRef, String],
       shape: ModelRequest -> ModelRequest
   )(using
@@ -482,7 +481,7 @@ private[turn] object Rounding {
       pins: Turn.Picked,
       offer: TurnOffer
   ): Either[TurnFailure, Message.Assistant] =
-    TurnShown.request(env, offer.system, turn, window, stubs, offer.zoned).flatMap { req =>
+    TurnShown.request(env, offer.system, turn, seen, stubs, offer.zoned).flatMap { req =>
       val hearing = TurnStream.hearing(heard, env.fresh, env.clock)
       Asking
         .reply(env.models.provider(pins.turn), req.shaped(shape), hearing, env.clock)

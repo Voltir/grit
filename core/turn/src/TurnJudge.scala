@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.classify.{Ask, Classifier, StateJson}
-import grit.core.context.{Shown, Window}
+import grit.core.context.Shown
 import grit.core.document.{DocLabel, Document}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
@@ -112,7 +112,7 @@ object TurnJudge {
       }
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
-    * `showing` what the turn's request over `window` was shown ([[TurnShown.shown]]), `strand`
+    * `showing` what the turn's request was shown ([[TurnShown.shown]]), `strand`
     * what its strand said, and `speakers` who wrote `all` and the strand: the message and the
     * thread are [[told]]'s, so the heard message is read once, under the message, and the
     * thread holds what came before it and every reply after it. Recalled is what the model was
@@ -127,7 +127,6 @@ object TurnJudge {
   private[turn] def state(
       all: Vector[Entry],
       showing: TurnShown.Showing,
-      window: Window,
       strand: Strand.Read,
       strandChars: Int,
       speakers: Speakers,
@@ -141,7 +140,7 @@ object TurnJudge {
       thread.cut.nonEmpty || thread.shown != others || !said.headOption.exists(seq =>
         EntrySeq.value(seq) < EntrySeq.value(record.seq)
       )
-    val sections = window.nearby
+    val sections = showing.nearby
       .filter {
         case Nearby.Along(_, _, _) => false
         case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) | Nearby.Asked(_, _, _) => true

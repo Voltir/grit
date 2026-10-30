@@ -137,7 +137,7 @@ object TurnRoundTests extends TestSuite {
       turn,
       offer,
       routed,
-      Window(Vector.empty),
+      TurnShown.Seen(None, Window(Vector.empty)),
       None,
       budget(n),
       grit.core.tool.Gate.AnswerWithin

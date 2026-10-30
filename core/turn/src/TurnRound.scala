@@ -8,7 +8,6 @@ import scala.jdk.DurationConverters.ScalaDurationOps
 import grit.act.phase.Calling
 import grit.core.act.Extraction
 import grit.core.approval.Approval
-import grit.core.context.Window
 import grit.core.durable.{Flow, Observed, Step, StepName}
 import grit.core.edge.Permit
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
@@ -104,7 +103,7 @@ private[turn] object TurnRound {
   }
 
   /** What a turn's loop runs under: `turn`, offering what `offer` names, its calls made as
-    * `routed` says over `seen`, its window, as `budget` allows, `asked` the classification its
+    * `routed` says over `seen`, what its requests show before its own entries, as `budget` allows, `asked` the classification its
     * model is asked about when the classifier was unsure; a call that asks a person first
     * waits at most `answerWithin`.
     */
@@ -112,7 +111,7 @@ private[turn] object TurnRound {
       turn: TurnRef,
       offer: TurnOffer.Recorded,
       routed: Turn.Routed,
-      seen: Window,
+      seen: TurnShown.Seen,
       asked: Option[TurnAgenda.Classification],
       budget: TurnLoop.Rounds,
       answerWithin: FiniteDuration

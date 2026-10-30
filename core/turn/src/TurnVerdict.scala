@@ -114,13 +114,20 @@ object TurnVerdict {
     * and nothing else changed: each call of a turn's loop is tagged at the same message, as its
     * first call was.
     */
-  def tagged(base: ModelRequest, c: TurnAgenda.Classification): ModelRequest = {
-    val last = asker(base.messages)
-    base.copy(messages = base.messages.zipWithIndex.map {
-      case (Message.User(text), i) if last.contains(i) => Message.User(s"$text\n\n${tag(c)}")
-      case (m, _) => m
-    })
-  }
+  def tagged(base: ModelRequest, c: TurnAgenda.Classification): ModelRequest =
+    base.copy(messages = taggedWith(base.messages, Some(tag(c))))
+
+  /** `messages` with `note` after their [[asker]], after a blank line, as [[tagged]] adds a
+    * tag; as they are with no `note` or no asker.
+    */
+  def taggedWith(messages: Vector[Message], note: Option[String]): Vector[Message] =
+    note.fold(messages) { n =>
+      val last = asker(messages)
+      messages.zipWithIndex.map {
+        case (Message.User(text), i) if last.contains(i) => Message.User(s"$text\n\n$n")
+        case (m, _) => m
+      }
+    }
 
   /** The index of `messages`' last user message that is no note on the loop's exchange (a
     * user message right after a tool result, a reply that called tools, or another such note):

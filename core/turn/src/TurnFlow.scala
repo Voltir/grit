@@ -118,7 +118,7 @@ private[turn] object TurnFlow {
       a.turn,
       a.at.offer,
       a.at.routed,
-      a.seen,
+      TurnShown.Seen(None, a.seen),
       TurnShown.asked(a.placing),
       limits.budget,
       limits.answerWithin
