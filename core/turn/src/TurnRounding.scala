@@ -413,7 +413,8 @@ private[turn] object Rounding {
       val repeats = TurnShown
         .requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct)
         .toOption
-        .flatMap(r => TurnShown.prefixOf(r.shaped(shape), prefix.messages))
+        .map(_.shaped(shape))
+        .map(r => TurnShown.prefixOf(r.copy(messages = r.messages.take(prefix.messages))))
         .contains(prefix)
       Option.when(repeats && !first.hidden.exists((item, _) => held.contains(item.ref)))(head)
     }

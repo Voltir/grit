@@ -171,26 +171,25 @@ private[turn] object TurnShown {
         _.hidden.map((item, h) => item.ref -> TurnGate.stub(item, h, offered)).toMap
       )
 
-  /** What a later call that repeats `request`'s system prompt, tools and first `messages`
-    * messages, byte for byte, is kept as ([[Payload.Prefix]]); `None` when `request` has fewer
-    * messages. Equal digests mean those parts are equal as a gateway is given them.
+  /** What a later call that repeats `request`'s system prompt, tools and messages, byte for
+    * byte, is kept as ([[Payload.Prefix]]). Equal prefixes mean those parts are equal as a
+    * gateway is given them.
     */
-  def prefixOf(request: ModelRequest, messages: Int): Option[Payload.Prefix] =
-    Option.when(messages >= 0 && messages <= request.messages.size) {
-      val written = ujson.Obj(
-        "system" -> request.system,
-        "tools" -> ujson.Arr.from(request.tools.map { t =>
-          ujson.Obj(
-            "name" -> t.name,
-            "description" -> t.description,
-            "parameters" -> t.parameters,
-            "strict" -> t.strict
-          )
-        }),
-        "messages" -> ujson.Arr.from(request.messages.take(messages).map(PayloadJson.writeMessage))
-      )
-      Payload.Prefix(messages, Sha256.text(written.render()))
-    }
+  def prefixOf(request: ModelRequest): Payload.Prefix = {
+    val written = ujson.Obj(
+      "system" -> request.system,
+      "tools" -> ujson.Arr.from(request.tools.map { t =>
+        ujson.Obj(
+          "name" -> t.name,
+          "description" -> t.description,
+          "parameters" -> t.parameters,
+          "strict" -> t.strict
+        )
+      }),
+      "messages" -> ujson.Arr.from(request.messages.map(PayloadJson.writeMessage))
+    )
+    Payload.Prefix(request.messages.size, Sha256.text(written.render()))
+  }
 
   /** `turn`'s own entries, from `all` of its conversation's. */
   def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =

@@ -1119,7 +1119,7 @@ private[turn] object TurnSteps {
     * recorded before its call, and the reply is not yet among them), its message dated as
     * `offer` and `direct` say ([[TurnShown.requestOf]]), each item `stubs` names shown as its
     * stub, shaped by `shape`; that request's prefix kept as [[Turn.prefixId]]
-    * ([[TurnShown.prefixOf]] through its stable mark). Each of the window's documents whose
+    * ([[TurnShown.prefixOf]]). Each of the window's documents whose
     * pointer one of the turn's calls followed, and that succeeded, is counted as followed at
     * `at` ([[Pointer.followedIn]]).
     */
@@ -1164,10 +1164,11 @@ private[turn] object TurnSteps {
         )
         .left
         .map(TurnFailure.ofStore)
-      // What a later turn must send again to carry this one (ADR 0052).
-      prefix <- TurnShown
-        .prefixOf(sent, sent.stable)
-        .toRight(TurnFailure.Assembly("the last call's stable mark is past its messages"))
+      // What a later turn must send again to carry this one (ADR 0052): the last call whole,
+      // since its reply's thinking is bound to every message before it. A forced last call's
+      // note ([[TurnLoop.LastCall]]) is in no record, so a later turn renders this one without
+      // it, its digest differs, and it draws a boundary rather than send the reply unanswered.
+      prefix = TurnShown.prefixOf(sent)
       _ <- entries
         .insert(
           Entry(

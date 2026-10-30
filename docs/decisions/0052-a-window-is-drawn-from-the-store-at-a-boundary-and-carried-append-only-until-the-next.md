@@ -28,12 +28,13 @@ Decision:
   and topic note its request sent, as sent (ADR 0016). A later turn repeats those lines before
   the carried turn's own messages, so its bytes are the same on every later turn of the window.
 - **A turn carries a window only when it can send it unchanged.** Each answered turn keeps the
-  digest of its last call's system prompt, tools and messages through its stable mark. A turn's
+  digest of its last call's system prompt, tools and messages, all of them. A turn's
   `carried` step, before its first ask, takes the conversation's newest earlier window record
   only when the request this turn would send of that window has the same digest and this
   turn's first gate, decided over what it carries, hides none of it; otherwise it draws a
-  boundary. So a carried document gone, content this turn's route does not clear, or a changed
-  tool set or prompt makes a boundary, never an edited prefix. A window drawn from the store
+  boundary. So a carried document gone, content this turn's route does not clear, a changed
+  tool set or prompt, or a turn whose last call was forced (its last-call message is in no
+  record) makes a boundary, never an edited prefix. A window drawn from the store
   replays no reasoning: thinking is bound to the request that produced it.
 - **The limit is the deployment's `Assembly` budget**, read from the assembler, never from a
   turn's width (a width bounds only what the part drawn now may add). At the limit, when the
@@ -61,5 +62,5 @@ boundary. A period's close clears the window, so the lifecycle's settle time is 
 lifetime: a placer that judges nobody waiting during a person's pause clears it. Until a
 deployment setting names the share, a boundary draws half of what a fresh window drew before.
 Enforced by the assembly suites, by a test that a turn's request begins with the last one's
-through its stable mark on either gateway, and by tests that a gated turn, a changed offer and
-a carried document gone are each followed by a boundary.
+whole on either gateway, and by tests that a gated turn, a changed offer, a forced last call
+and a carried document gone are each followed by a boundary.

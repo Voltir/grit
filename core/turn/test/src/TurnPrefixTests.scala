@@ -349,6 +349,58 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
+      "a turn after one whose last call was forced draws its window afresh, never sending that turn's final reply without the message it answered"
+    ) {
+      // The first turn thinks and reads twice, so its third and last call is made with tools
+      // off, the last-call message at its end. A later turn that carried it would send its
+      // final reply without that message, an edit before the reply's thinking that a provider
+      // refuses: it must either repeat that call whole or replay none of its thinking.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      def run(text: String, provider: Scripted) = {
+        val t = say(entries, text)
+        new InMemoryDurable().run(t.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            3
+          )
+        )
+        t
+      }
+      // The forced call's reply thinks, then answers.
+      val thought = peeking("t3")
+      val answered: Message.Assistant = Message.Assistant(
+        thought.blocks.take(1) :+ AssistantBlock.Text("done"),
+        StopReason.EndTurn,
+        thought.usage,
+        thought.model
+      )
+      val first = new Scripted((_, n) => Right(if (n < 2) peeking(s"t${n + 1}") else answered))
+      run("read a.txt twice", first)
+      val later = new Scripted((r, _) => new StubProvider().complete(r))
+      val second = run("and now?", later)
+      def anthropicOf(r: ModelRequest): ujson.Value =
+        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+      val repeated = first.requests.lastOption
+        .zip(later.requests.headOption)
+        .exists((a, b) => unmarked(anthropicOf(b)).startsWith(unmarked(anthropicOf(a))))
+      val replays = later.requests.exists(r => ujson.write(anthropicOf(r)).contains("sig-t"))
+      (
+        first.requests.lastOption.map(_.use),
+        repeated || !replays,
+        windows(entries).collectFirst {
+          case (id, w) if id == Turn.windowId(second) => w.carry.map(_.after)
+        }
+      ) ==> (Some(grit.core.provider.ToolUse.Off), true, Some(Some(None)))
+    }
+
+    test(
       "a turn after a gated one draws its window afresh, with nothing of an earlier turn's thinking to replay"
     ) {
       // The gated turn's notes and stubs are in no record, so a later turn cannot send its
