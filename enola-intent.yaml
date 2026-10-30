@@ -9,8 +9,9 @@
 #   3. grit.prose names no other grit module (core/prose/README.md); that only its json
 #      package names ujson is enola-law.sh's grep, which sees fully qualified names too
 #   4. core names no extension, each extension names core alone (a plugin extension, such as
-#      grit.digest, grit.remind or grit.projects, names core and plugin extensions), and the kit names no
-#      plugin, edge extension, terminal UI or deployment (ADRs 0021, 0027; docs/extending.md)
+#      grit.digest, grit.remind or grit.projects, names core and plugin extensions; grit.chat names
+#      core, grit.turn and grit.tui), and the kit names no plugin, edge extension, terminal UI or
+#      deployment (ADRs 0021, 0027; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #   6. grit.act names core alone: the turn, a job's moves and the lifecycle's asks share its
 #      phases (ADR 0034)
@@ -40,41 +41,41 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.dbos and the eval harness: what may not name grit.dbos.internal
   # (rule 1h). As outside-dbos, with eval's own sources in place of all of eval/.
   - name: outside-dbos-and-harness
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.turn, grit.act and grit.kit, the three that make integrity-carrying
   # values from raw ones (rule 1j).
   - name: outside-minters
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/mcp/**", "extensions/formats/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**"]
 
   # Every module except grit.formats, for PDFBox's quarantine (STYLE rule 8). Within formats,
   # only its pdf package may name PDFBox: a grep in scripts/enola-law.sh.
   - name: outside-pdfbox
     kind: dependency
-    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/chat/**"]
 
   # grit.formats' sources, for its rule: a reader names core alone.
   - {name: formats-code,   kind: module, match: ["extensions/formats/src", "extensions/formats/src/**"]}
@@ -82,6 +83,14 @@ components:
   # grit.slack's sources, for its rule below: an edge names core, prose and grit.edge, never
   # the turn.
   - {name: slack-code,     kind: module, match: ["extensions/slack/src", "extensions/slack/src/**"]}
+
+  # grit.chat's sources, for its rule below: the chat names core, prose, grit.edge, the turn
+  # read back and the terminal UI, never the kit or DBOS.
+  - {name: chat-code,      kind: module, match: ["extensions/chat/src", "extensions/chat/src/**"]}
+
+  # grit.turn's sources alone, for the chat's rule: core-modules also holds grit.dbos, which
+  # the chat must never name.
+  - {name: turn-code,      kind: module, match: ["core/turn/src", "core/turn/src/**"]}
 
   # grit.edge's sources alone, for slack's rule: core-modules also holds grit.turn, which an
   # edge must never name.
@@ -168,14 +177,17 @@ components:
             "extensions/knowledge/src/github", "extensions/knowledge/src/github/**",
             "extensions/knowledge/src/drive", "extensions/knowledge/src/drive/**",
             "extensions/knowledge/src/sync", "extensions/knowledge/src/sync/**",
-            "extensions/projects/src", "extensions/projects/src/**"]
+            "extensions/projects/src", "extensions/projects/src/**",
+            "extensions/chat/src/run", "extensions/chat/src/run/**", "extensions/chat/src/host", "extensions/chat/src/host/**",
+            "extensions/chat/src/look", "extensions/chat/src/look/**", "extensions/chat/src/settings", "extensions/chat/src/settings/**"]
   # Every edge extension's main sources: an edge a deployment serves (ADR 0023, ADR 0017). The
   # kit names none of them (kit-names-no-edge-or-deployment's `only` leaves them out), and
   # scripts/check --milestone --since reports each commit touching one and core together.
   # A new edge extension joins this list.
   - name: edge-extensions
     kind: module
-    match: ["extensions/slack/src", "extensions/slack/src/**", "extensions/mcp/src", "extensions/mcp/src/**"]
+    match: ["extensions/slack/src", "extensions/slack/src/**", "extensions/mcp/src", "extensions/mcp/src/**",
+            "extensions/chat/src", "extensions/chat/src/**"]
   - name: mcp-generic
     kind: module
     match: ["extensions/mcp/src/wire", "extensions/mcp/src/wire/**", "extensions/mcp/src/scope", "extensions/mcp/src/scope/**",
@@ -922,6 +934,17 @@ rules:
     via: imports
     mode: strict
     because: "extensions/knowledge/README.md: each source is a package beside the others over card and sync; Drive's names no other source's, nor the plugin that gathers them"
+
+  # grit.chat names core, prose, grit.edge, grit.turn and grit.tui alone: a screen reaches the
+  # engine through the Console a deployment opens with Kit.console, across Postgres (ADR 0002),
+  # reads a turn back through grit.turn, and draws with grit.tui. Mill puts grit.act on its
+  # classpath through grit.turn; this rule keeps it, the kit and grit.dbos out of its imports.
+  - id: chat-names-core-tui-edge-and-turn
+    allow: chat-code
+    only: [core-code, prose-code, edge-code, turn-code, tui-code, chat-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: the chat is an extension a deployment runs over core's Console; it names no kit, no DBOS and no engine internals"
 
   - id: tui-names-core-alone
     allow: tui-code

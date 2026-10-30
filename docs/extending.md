@@ -266,8 +266,9 @@ is served nothing it may not read.
 An extension names core alone; core includes `grit.prose` and `grit.edge`, which is how
 `grit.slack` and `grit.mcp` name them. A plugin extension may also name plugin extensions,
 since a plugin that reads another takes it in its constructor; it never names the kit, an
-edge extension or a deployment. A Java library lives only in the extension whose job needs
-it ([STYLE.md](../STYLE.md), rule 8). Only the kit, a deployment and a plugin extension
+edge extension or a deployment. The chat (`grit.chat`) also names `grit.turn`, for a turn
+read back from the steps it recorded, and the terminal UI it draws with, `grit.tui`. A Java library lives only in the extension whose job needs
+it ([STYLE.md](../STYLE.md), rule 8). Only the kit, a deployment, a plugin extension and the chat
 name an extension, and the kit names no plugin, no edge extension, no terminal UI and no
 deployment: a plugin reaches it as a `Plugin` value and an edge as a `ServedEdge` value. Mill's `moduleDeps` hold each of these on the
 classpath, and the law ([`enola-intent.yaml`](../enola-intent.yaml), its rules 1 and 4)
