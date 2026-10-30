@@ -43,9 +43,11 @@ Decision:
   prompt cache and a model's recorded thinking stay valid.
 - **What a turn reads.** Before each model call, a recorded step's one pure rule decides what
   the model reads. An item the turn's level dominates is shown. One below is shown, and lowers
-  the level, when lowering withholds no tool offered now or the model asked to read it
-  (`read_hidden`); otherwise it is a stub naming its source, its level and the tools
-  reading it would withdraw. The step records each item's fate, so a replay reads no row.
+  the level, when lowering withholds no tool offered now; otherwise it is a stub naming its
+  source, its level and the tools reading it would withdraw. A stub, once shown, is the same in
+  every later request of the turn: the model reads it through `read_hidden`, whose answer is
+  what it hides and lowers the level whatever it withdraws. The step records each item's fate,
+  so a replay reads no row.
 - **A job carries taint per value.** A move's inputs and results are `Tainted` at their own
   integrity: `call` checks its arguments against the tool's requirement, `ask` answers at the
   integrity of what it posed, a run's inputs arrive at its schedule's integrity, and `keep`

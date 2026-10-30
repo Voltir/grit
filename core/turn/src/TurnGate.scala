@@ -59,8 +59,9 @@ final case class Decided(item: Item, fate: Fate)
 final case class Withheld(tool: ToolName, requires: Integrity)
 
 /** What one round shows the model and offers it, as its `gate:n` step decided (ADR
-  * 0036): the turn's `level` after the round's reads; every item below the level before it,
-  * `decided`, in request order (an item at or above that level is shown and is not listed);
+  * 0036): the turn's `level` after the round's reads; every item below the level before it, and
+  * every item an earlier round hid, `decided`, in request order (any other is shown and is not
+  * listed);
   * and the offered tools the level withholds. Recorded: what the round's request offers is
   * read from it on a replay or a rebuild, never decided from rows again.
   */
@@ -116,41 +117,42 @@ object TurnGate {
     ).rendered
 
   /** The round's gate from `prior`, the turn's level before it, over `items` in the order the
-    * request shows them: one whose integrity dominates `prior` is shown and not listed. Every
-    * other is listed: shown, lowering the level to the meet of the two ([[Fate.Lowered]]), when
-    * that withdraws none of `offered` the level so far offers, or when `read` holds the name
-    * `named` gave it in an earlier round; hidden otherwise ([[Fate.Hidden]]), under the name
-    * `named` gave it, else the next after every name `named` holds, and naming the tools it
-    * would withdraw, in `offered`'s order. Then every tool of `offered` whose `requires` the
-    * level reached does not dominate is withheld, in `offered`'s order. Pure.
+    * request shows them. An item an earlier round hid, a key of `named`, stays hidden as that
+    * round recorded it, name and costs, whatever the level: a stub, once shown, is the same in
+    * every later request. Any other whose integrity dominates `prior` is shown and not listed.
+    * Every other is listed: shown, lowering the level to the meet of the two
+    * ([[Fate.Lowered]]), when that withdraws none of `offered` the level so far offers, or when
+    * it is in `read` (an answer read_hidden gave, [[ReadHidden.answers]]); hidden otherwise
+    * ([[Fate.Hidden]]), under the next name after every name `named` holds, and naming the
+    * tools it would withdraw, in `offered`'s order. Then every tool of `offered` whose
+    * `requires` the level reached does not dominate is withheld, in `offered`'s order. Pure.
     */
   def decide(
       prior: Integrity,
       offered: ToolSet,
       items: Vector[Item],
-      read: Set[HiddenName],
-      named: Map[ItemRef, HiddenName]
+      read: Set[ItemRef],
+      named: Map[ItemRef, Fate.Hidden]
   ): Gated = {
     def withheldAt(level: Integrity) = offered.tools.filterNot(t => level.dominates(t.requires))
-    val below = items.filterNot(_.integrity.dominates(prior))
+    val listed = items.filter(i => named.contains(i.ref) || !i.integrity.dominates(prior))
     val (level, decided, _) =
-      below.foldLeft((prior, Vector.empty[Decided], HiddenName.after(named.values))) {
+      listed.foldLeft((prior, Vector.empty[Decided], HiddenName.after(named.values.map(_.name)))) {
         case ((at, done, next), item) =>
-          val lowered = at.meet(item.integrity)
-          val costs = withheldAt(lowered).filter(t => at.dominates(t.requires)).map(_.name)
-          val name = named.get(item.ref)
-          if (costs.isEmpty || name.exists(read.contains))
-            (lowered, done :+ Decided(item, Fate.Lowered), next)
-          else
-            name match {
-              case Some(kept) => (at, done :+ Decided(item, Fate.Hidden(kept, costs)), next)
-              case None =>
+          named.get(item.ref) match {
+            case Some(kept) => (at, done :+ Decided(item, kept), next)
+            case None =>
+              val lowered = at.meet(item.integrity)
+              val costs = withheldAt(lowered).filter(t => at.dominates(t.requires)).map(_.name)
+              if (costs.isEmpty || read.contains(item.ref))
+                (lowered, done :+ Decided(item, Fate.Lowered), next)
+              else
                 (
                   at,
                   done :+ Decided(item, Fate.Hidden(next, costs)),
                   HiddenName.after(Vector(next))
                 )
-            }
+          }
       }
     Gated(level, decided, withheldAt(level).map(t => Withheld(t.name, t.requires)))
   }

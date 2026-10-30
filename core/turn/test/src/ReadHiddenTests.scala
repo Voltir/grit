@@ -9,8 +9,8 @@ import grit.core.visibility.Integrity
 
 import utest.*
 
-/** [[ReadHidden]]: what a call of `read_hidden` is answered, and the names a turn's replies
-  * read through it.
+/** [[ReadHidden]]: what a call of `read_hidden` is answered, and which of a turn's results are
+  * its answers.
   */
 object ReadHiddenTests extends TestSuite {
 
@@ -26,10 +26,14 @@ object ReadHiddenTests extends TestSuite {
     Vector.empty
   )
 
-  /** What a call of the tool `gated` offers, with `args`, is answered. */
-  private def asked(gated: Option[Gated], args: ujson.Value): Outcome =
+  /** What a call of the tool `gated` offers, reading through `text`, with `args`, is answered. */
+  private def asked(
+      gated: Option[Gated],
+      args: ujson.Value,
+      text: ReadHidden.Text = item => Right(s"what ${item.source} said")
+  ): Outcome =
     Toolbox
-      .of(ReadHidden.tool(gated))
+      .of(ReadHidden.tool(gated, text))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(
         TestTainted.at(
@@ -63,30 +67,33 @@ object ReadHiddenTests extends TestSuite {
     )
 
   val tests = Tests {
-    test("a call naming a hidden item is answered that it is shown next, believed at the item") {
-      asked(Some(gated), ujson.Obj("name" -> "h1")) ==> Outcome.Done(
-        "h1 is shown in full in its place from your next request on.",
-        Some(Integrity.Untrusted)
-      )
+    test("a call naming a hidden item is answered with what it says, believed at the item") {
+      asked(Some(gated), ujson.Obj("name" -> "h1")) ==>
+        Outcome.Done("what github_get_issue said", Some(Integrity.Untrusted))
+    }
+
+    test("a call naming a hidden item that does not read fails, quoting nothing of why") {
+      asked(Some(gated), ujson.Obj("name" -> "h1"), _ => Left("store unreadable: timeout")) ==>
+        Outcome.Failed("h1 could not be read.")
     }
 
     test("a call naming nothing hidden is answered so, as grit's own words") {
       val none = Outcome.Done("Nothing in the request you answered is hidden as h2.")
       asked(Some(gated), ujson.Obj("name" -> "h2")) ==> none
       asked(None, ujson.Obj("name" -> "h2")) ==> none
-      ReadHidden.tool(None).output ==> Believed.Own
+      ReadHidden.tool(None, ReadHidden.Unread).output ==> Believed.Own
     }
 
     test("its description says what reading costs and when to read, in plain words") {
-      ReadHidden.tool(None).spec.does ==>
+      ReadHidden.tool(None, ReadHidden.Unread).spec.does ==>
         "Shows in full something your request shows only as a note (\"Hidden here as h1: " +
-        "…\"), in its place, from your next request on. After you read it, you can't do what " +
-        "that note says you'd lose until you've answered. Read it when your answer needs what " +
-        "it says."
+        "…\"): what it says comes back as this call's answer. After you read it, you can't do " +
+        "what that note says you'd lose until you've answered. Read it when your answer needs " +
+        "what it says."
     }
 
-    test("the names read are those read_hidden was called with, unreadable arguments skipped") {
-      ReadHidden.read(
+    test("the answers read are the results of every read_hidden call, whatever it named") {
+      ReadHidden.answers(
         Vector(
           exchange(1, "read_hidden" -> ujson.Obj("name" -> "h2"), "peek" -> ujson.Obj()),
           exchange(
@@ -96,7 +103,7 @@ object ReadHiddenTests extends TestSuite {
           ),
           exchange(3, "read_hidden" -> ujson.Obj("name" -> "h1"))
         )
-      ) ==> Set(named("h1"), named("h2"))
+      ) ==> Set("t10", "t20", "t30").map(id => ItemRef.Result(ToolCallId(id)))
     }
   }
 }

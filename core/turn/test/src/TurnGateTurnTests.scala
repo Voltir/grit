@@ -147,7 +147,7 @@ object TurnGateTurnTests extends TestSuite {
     }
 
     test(
-      "a stub read through read_hidden is shown in full next round, which withdraws what it named"
+      "a stub read through read_hidden is answered with what it says and stays in its place, and the next round withdraws what it named"
     ) {
       val entries = new InMemoryEntryStore
       val provider = hidingScript
@@ -158,9 +158,8 @@ object TurnGateTurnTests extends TestSuite {
         Vector("read_hidden", "extract", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==>
-        Vector(None, Some(peekStub), Some("alpha"), Some("alpha"))
-      provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==>
-        Some("h1 is shown in full in its place from your next request on.")
+        Vector(None, Some(peekStub), Some(peekStub), Some(peekStub))
+      provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==> Some("alpha")
       val withdrawn = "From now until you answer, you can't use post, because you read a " +
         "result from a place people outside the team can write in."
       val note = Message.User(TurnGate.noted(Vector(withdrawn)))
@@ -245,25 +244,25 @@ object TurnGateTurnTests extends TestSuite {
       val entries = new InMemoryEntryStore
       guest(entries, "hello from outside")
       val turn = say(entries, "read and post")
-      // The guest's message is hidden as h1 and read in the second round; peek's result, hidden
-      // as h2, costs nothing once post is withheld, and is shown in the third.
+      // The guest's message is hidden as h1 and read in the second round, its stub kept in its
+      // place; peek's result, hidden as h2, stays hidden though post is withheld by then.
       val provider = hidingScript
       gatedRun(new InMemoryDurable, entries, turn)(provider)
       val guestStub = stub("h1", "something from someone, written from outside the team")
       provider.requests.map(_.messages.headOption) ==> Vector(
         Some(Message.User(guestStub)),
         Some(Message.User(guestStub)),
-        Some(Message.User("hello from outside")),
-        Some(Message.User("hello from outside"))
+        Some(Message.User(guestStub)),
+        Some(Message.User(guestStub))
       )
       Vector("call:c1:1:0", "call:c1:1:1", "call:c1:1:2", "reply:c1:1", "summary:c1:1")
         .map(kept(entries, _).map(_.integrity)) ==>
         Vector(
           Some(Integrity.Member),
           Some(Integrity.Member),
-          Some(Integrity.Untrusted),
-          Some(Integrity.Untrusted),
-          Some(Integrity.Untrusted)
+          Some(Integrity.Outside),
+          Some(Integrity.Outside),
+          Some(Integrity.Outside)
         )
     }
 

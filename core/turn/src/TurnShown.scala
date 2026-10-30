@@ -57,7 +57,7 @@ private[turn] object TurnShown {
       case Some(c) => own.including(TurnVerdict.tool(c))
     }
     tools
-      .flatMap(t => t.preceded(Vector(ReadHidden.tool(None), unasked)).map(_ => t))
+      .flatMap(t => t.preceded(Vector(unread, unasked)).map(_ => t))
       .left
       .map { case DuplicateName(name) =>
         TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
@@ -80,7 +80,7 @@ private[turn] object TurnShown {
     val gating = mayGate(first, offered)
     val withheld = first.fold(Vector.empty[Withheld])(_.withheld)
     (
-      Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict)).filter(_ => gating) ++
+      Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => gating) ++
         schemas.filterNot(s => withheld.exists(w => ToolName.value(w.tool) == s.name)),
       Vector(TurnGate.Noted).filter(_ => gating)
     )
@@ -117,6 +117,9 @@ private[turn] object TurnShown {
 
   /** extract as a request offers it, asking nothing: for its name and schema alone. */
   private val unasked: Tool.Offered = Extract.tool(None, Extract.Unasked)
+
+  /** read_hidden as a request offers it, reading nothing: for its name and schema alone. */
+  private val unread: Tool.Offered = ReadHidden.tool(None, ReadHidden.Unread)
 
   /** How each call of the loop is built from the plain request: tagged for `asked`
     * ([[TurnVerdict.tagged]]); then each of `notes` as a user message, as written: a round's

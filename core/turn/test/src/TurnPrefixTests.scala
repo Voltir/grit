@@ -112,6 +112,69 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
+      "a turn that reads a hidden result repeats every call whole: the stub stays, and the answer is its text"
+    ) {
+      // peek's result is hidden from the second call as h1; the second reply reads it, the
+      // third peeks again, which the fall that read caused never shows in an earlier place.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val reading =
+        AssistantBlock.ToolCall(ToolCallId("r"), "read_hidden", ujson.Obj("name" -> "h1"))
+      val provider = new Scripted((r, n) =>
+        n match {
+          case 0 => Right(peeking("t1"))
+          case 1 =>
+            Right(
+              Message.Assistant(
+                Vector(
+                  AssistantBlock.Reasoning(
+                    "Read h1.",
+                    Some(
+                      ujson.Obj("type" -> "thinking", "thinking" -> "Read h1.", "signature" -> "s")
+                    )
+                  ),
+                  reading
+                ),
+                StopReason.ToolUse,
+                Usage(Tokens(10), Tokens(5), Tokens.Zero, None),
+                "claude-haiku-5-5"
+              )
+            )
+          case 2 => Right(peeking("t2"))
+          case _ => new StubProvider().complete(r)
+        }
+      )
+      val turn = say(entries, "read a.txt, then post it")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          gatedTools(ws),
+          4
+        )
+      )
+      val requests = provider.requests
+      requests.size ==> 4
+      val sent = requests
+        .map(
+          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+        )
+        .map(unmarked)
+      sent.sliding(2).map(p => p.drop(1).flatten.startsWith(p.take(1).flatten)).toVector ==>
+        Vector(true, true, true)
+      def result(r: ModelRequest, id: String): Option[String] = r.messages.collectFirst {
+        case Message.ToolResult(call, content, _) if ToolCallId.value(call) == id => content
+      }
+      // The answer to read_hidden carries what the stub hid, believed as the item.
+      requests.lift(2).flatMap(result(_, "r")).exists(_.contains("alpha")) ==> true
+      requests.lift(3).flatMap(result(_, "t1")).exists(_.contains("Hidden here as h1")) ==> true
+    }
+
+    test(
       "a gated turn's every call repeats the one before it whole, its system prompt and tools unchanged, on either gateway"
     ) {
       // peek's results are believed at nothing, and post requires member: from the second call

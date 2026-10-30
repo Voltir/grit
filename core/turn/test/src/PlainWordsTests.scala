@@ -98,7 +98,7 @@ object PlainWordsTests extends TestSuite {
       val stubs = Vector(issue, cards, guest).map(TurnGate.stub(_, Fate.Hidden(h1, costs), offered))
       val before = TurnGate.decide(Integrity.Member, offered, Vector.empty, Set.empty, Map.empty)
       val now =
-        TurnGate.decide(Integrity.Member, offered, Vector(issue), Set(h1), Map(issue.ref -> h1))
+        TurnGate.decide(Integrity.Member, offered, Vector(issue), Set(issue.ref), Map.empty)
       val line = TurnGate.withdrawn(before, now, offered)
       assert(line.isDefined)
       // The fallback is reached: a tool with no action is said by its name.
@@ -133,7 +133,7 @@ object PlainWordsTests extends TestSuite {
 
     test("read_hidden's and extract's descriptions say nothing a person would not follow") {
       val schemas = Vector(
-        ReadHidden.tool(None).schema(strict = false),
+        ReadHidden.tool(None, ReadHidden.Unread).schema(strict = false),
         Extract.tool(None, Extract.Unasked).schema(strict = false)
       )
       val described = schemas.map(s => (s.description +: meanings(s.parameters)).mkString(" "))

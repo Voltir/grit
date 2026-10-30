@@ -34,8 +34,8 @@ private[turn] final class Rounding[C^](
   def gate(at: TurnRound.Progress): Either[TurnFailure, Gated] =
     tools(at).flatMap { tools =>
       val l = at.looping
-      // The name each item hidden so far was given, kept for as long as it stays hidden.
-      val named = at.gates.values.flatMap(_.hidden.map((item, h) => item.ref -> h.name)).toMap
+      // Each item hidden so far, as its round hid it: it stays so for the whole turn.
+      val named = at.gates.values.flatMap(_.hidden.map((item, h) => item.ref -> h)).toMap
       val prior = Option.when(at.round.index != Round.First.index)(at.level)
       Rounding.gateOf(env, l.turn, l.seen, l.offer.root, tools.set, prior, named)(using l.routed)
     }
@@ -209,13 +209,14 @@ private[turn] final class Rounding[C^](
         pending: Pending,
         answer: Extract.Answer^{X}
     ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}] = {
-      val box: Toolbox[caps.CapSet^{C, X}] =
+      val box: Toolbox[caps.CapSet^{C, env, X}] =
         if (!mayGate(at.gates.get(Round.First.index), tools.set)) tools
         else {
           val g = at.gates.get(at.round.index)
+          val text = Rounding.itemText(env, at.looping.turn, at.looping.seen)(using pins)
           Toolbox
-            .of[caps.CapSet^{X}](ReadHidden.tool(g), Extract.tool(g, answer))
-            .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, X}](hidden, tools))
+            .of[caps.CapSet^{env, X}](ReadHidden.tool(g, text), Extract.tool(g, answer))
+            .flatMap(hidden => Toolbox.joined[caps.CapSet^{C, env, X}](hidden, tools))
             .getOrElse(tools)
         }
       val settings = pins.turn.settings
@@ -288,8 +289,8 @@ private[turn] object Rounding {
   /** The `gate:n` step: what a request for `turn` over `window` shows, read through `env`'s
     * `db` as `pins` bound it ([[TurnShown.shown]]), each item as its row is believed
     * ([[TurnShown.itemsOf]]), decided by [[TurnGate.decide]] over `offered` from `prior`, else
-    * from the turn's start, each hidden item keeping the name `named` gave it, and read as the
-    * turn's replies called read_hidden ([[ReadHidden.read]]). The start is its root's
+    * from the turn's start, each item hidden so far kept as `named` recorded it, and each
+    * answer of read_hidden read ([[ReadHidden.answers]]). The start is its root's
     * integrity, met with [[Integrity.Outside]] when `root` is a heard message grit was not
     * addressed in ([[TurnOffer.Root.Heard]], [[TurnOffer.Root.Named]]).
     */
@@ -300,7 +301,7 @@ private[turn] object Rounding {
       root: TurnOffer.Root,
       offered: ToolSet,
       prior: Option[Integrity],
-      named: Map[ItemRef, HiddenName]
+      named: Map[ItemRef, Fate.Hidden]
   )(using pins: Turn.Bounded): Either[TurnFailure, Gated] =
     pins
       .reads(env.db)
@@ -322,10 +323,25 @@ private[turn] object Rounding {
           start,
           offered,
           TurnShown.itemsOf(showing, window),
-          ReadHidden.read(showing.mine),
+          ReadHidden.answers(showing.mine),
           named
         )
       }
+
+  /** What a request over `window` would show of `turn`'s `item` in full
+    * ([[TurnShown.textOf]]), read through `env`'s `db` as `pins` bound it; why not: the store
+    * unreadable, or the item no longer kept.
+    */
+  private def itemText(env: TurnEnv^, turn: TurnRef, window: Window)(using
+      pins: Turn.Picked
+  ): Item ->{env} Either[String, String] =
+    item =>
+      pins
+        .reads(env.db)
+        .read(Subject.Turn(turn))(shown(env.records, turn, window))
+        .left
+        .map(_.described)
+        .flatMap(TurnShown.textOf(_, window, item.ref).toRight("the item is no longer kept"))
 
   /** How extract puts a question of an item a request over `window` shows of `turn`
     * ([[Extract.Answer]]): to the summary's pin as `pins` cleared it, a quarantined JSON ask
@@ -352,12 +368,7 @@ private[turn] object Rounding {
     (item, question, shape, slot) =>
       for {
         pin <- pins.summary.left.map(_ => "no summary model is cleared for this turn")
-        showing <- pins
-          .reads(env.db)
-          .read(Subject.Turn(turn))(shown(env.records, turn, window))
-          .left
-          .map(_.described)
-        text <- TurnShown.textOf(showing, window, item.ref).toRight("the item is no longer kept")
+        text <- itemText(env, turn, window)(item)
         request <- Extract.request(text, question, shape, pin.settings.strict)
         typed <- Extraction.reply(shape)
         shaped = Shaping.shaped(

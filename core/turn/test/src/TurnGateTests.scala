@@ -43,13 +43,11 @@ object TurnGateTests extends TestSuite {
   private def unread(prior: Integrity, tools: ToolSet, items: Vector[Item]): Gated =
     TurnGate.decide(prior, tools, items, Set.empty, Map.empty)
 
-  /** The gate from `prior` over `items`, each of `read` read through `read_hidden` under the
-    * name an earlier round gave it, `h1` onward in order.
+  /** The gate from `prior` over `items`, each of `read` an answer read_hidden gave, none
+    * hidden before.
     */
-  private def reading(prior: Integrity, tools: ToolSet, items: Vector[Item], read: Item*): Gated = {
-    val names = read.zipWithIndex.map((item, i) => item.ref -> named(s"h${i + 1}")).toMap
-    TurnGate.decide(prior, tools, items, names.values.toSet, names)
-  }
+  private def reading(prior: Integrity, tools: ToolSet, items: Vector[Item], read: Item*): Gated =
+    TurnGate.decide(prior, tools, items, read.map(_.ref).toSet, Map.empty)
 
   val tests = Tests {
     test(
@@ -121,18 +119,24 @@ object TurnGateTests extends TestSuite {
       reading(Integrity.Member, offered, Vector(guest, issue), guest).decided ==>
         Vector(
           Decided(guest, Fate.Lowered),
-          Decided(issue, Fate.Hidden(named("h2"), Vector(note)))
+          Decided(issue, Fate.Hidden(named("h1"), Vector(note)))
         )
     }
 
-    test("a hidden item keeps the name an earlier round gave it; a newly hidden one, the next") {
-      val earlier = Map(guest.ref -> named("h2"))
+    test(
+      "a hidden item stays as an earlier round recorded it, though the level fell to it; a newly hidden one takes the next name"
+    ) {
+      // The level has fallen to Outside, which the guest dominates; its costs are as recorded.
+      val earlier: Map[ItemRef, Fate.Hidden] =
+        Map(guest.ref -> Fate.Hidden(named("h2"), Vector(post, note)))
+      TurnGate.decide(Integrity.Outside, offered, Vector(guest), Set.empty, earlier).decided ==>
+        Vector(Decided(guest, Fate.Hidden(named("h2"), Vector(post, note))))
       TurnGate
         .decide(Integrity.Member, offered, Vector(issue, guest), Set.empty, earlier)
         .hidden ==>
         Vector(
           issue -> Fate.Hidden(named("h3"), Vector(post, note)),
-          guest -> Fate.Hidden(named("h2"), Vector(post))
+          guest -> Fate.Hidden(named("h2"), Vector(post, note))
         )
     }
 
@@ -143,8 +147,8 @@ object TurnGateTests extends TestSuite {
         Integrity.Member,
         offered,
         Vector(issue, guest),
-        Set(named("h1")),
-        Map(guest.ref -> named("h1"))
+        Set(guest.ref),
+        Map.empty
       )
       TurnGate.withdrawn(before, now, offered) ==> Some(
         "From now until you answer, you can't post to channels, because you read something " +
