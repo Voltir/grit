@@ -49,10 +49,10 @@ object TurnRecord {
     * step said why), or it failed ([[failure]] says why). `Left` naming the step when its
     * output does not read.
     */
-  def carried(steps: Vector[StepRecord]): Either[String, Option[TurnSteps.Basis]] =
+  def carried(steps: Vector[StepRecord]): Either[String, Option[TurnBasis]] =
     if (!steps.exists(_.name == StepRecord.marker(TurnAssembly.CarryReasons))) Right(None)
     else
-      read[Either[TurnFailure, TurnSteps.Basis]](steps, Turn.Step.Carried)
+      read[Either[TurnFailure, TurnBasis]](steps, Turn.Step.Carried)
         .map(_.flatMap(_.toOption))
 
   /** What the `weigh` step `steps` recorded. `Left` naming the step when its output does not

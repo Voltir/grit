@@ -438,8 +438,8 @@ private[turn] object TurnAssembly {
       }
 
   /** `carried` ([[TurnSteps.Env.carried]]). */
-  private val carried: Step[Env, Placed, Either[TurnFailure, TurnSteps.Basis]] =
-    Step[Env, Placed, Either[TurnFailure, TurnSteps.Basis]](TurnSteps.Names.carried)(r =>
+  private val carried: Step[Env, Placed, Either[TurnFailure, TurnBasis]] =
+    Step[Env, Placed, Either[TurnFailure, TurnBasis]](TurnSteps.Names.carried)(r =>
       p => r.carried(p)
     )
 

@@ -14,8 +14,7 @@ import grit.models.StubProvider
 
 import utest.*
 import TurnFixtures.*
-import TurnSteps.Basis
-import TurnSteps.Basis.Why
+import TurnBasis.Why
 
 /** Why a turn drew its window afresh, or the record it carried, as its `carried` step records
   * it and [[TurnRecord.carried]] reads it back: one test per reason.
@@ -23,7 +22,7 @@ import TurnSteps.Basis.Why
 object TurnCarriedTests extends TestSuite {
 
   /** What `turn`'s `carried` step recorded, read back from its history. */
-  private def basis(durable: InMemoryDurable, turn: TurnRef): Either[String, Option[Basis]] =
+  private def basis(durable: InMemoryDurable, turn: TurnRef): Either[String, Option[TurnBasis]] =
     TurnRecord.carried(durable.history(turn.workflowId).map(FlowFixtures.recorded))
 
   /** `text` said and answered by the stub, on `durable`. */
@@ -64,7 +63,7 @@ object TurnCarriedTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val first = answered(entries, durable, "one")
-      basis(durable, first) ==> Right(Some(Basis.Afresh(Why.NoWindow)))
+      basis(durable, first) ==> Right(Some(TurnBasis.Afresh(Why.NoWindow)))
     }
 
     test("a turn after one answered under the same tools carries that turn's window record") {
@@ -72,7 +71,7 @@ object TurnCarriedTests extends TestSuite {
       val durable = new InMemoryDurable
       val first = answered(entries, durable, "one")
       val second = answered(entries, durable, "two")
-      basis(durable, second) ==> Right(Some(Basis.Against(Turn.windowId(first))))
+      basis(durable, second) ==> Right(Some(TurnBasis.Against(Turn.windowId(first))))
     }
 
     test("a turn after one whose call failed draws afresh: that turn kept no prefix") {
@@ -80,7 +79,7 @@ object TurnCarriedTests extends TestSuite {
       val durable = new InMemoryDurable
       answered(entries, durable, "one", fail = true)
       val second = answered(entries, durable, "two")
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.NoPrefix)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.NoPrefix)))
     }
 
     test("a turn offered other tools than the last draws afresh: its prefix differs") {
@@ -105,7 +104,7 @@ object TurnCarriedTests extends TestSuite {
       }
       run("one", gated = false)
       val second = run("two", gated = true)
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.PrefixDiffers)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.PrefixDiffers)))
     }
 
     test("a turn whose first gate would hide a result the window carries draws afresh") {
@@ -151,7 +150,7 @@ object TurnCarriedTests extends TestSuite {
           else new StubProvider().complete(r)
       )
       val second = run("post it", (r, _) => new StubProvider().complete(r))
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.Hidden)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.Hidden)))
     }
 
     test("a turn after a window record that kept no carry draws afresh: no carry") {
@@ -165,7 +164,7 @@ object TurnCarriedTests extends TestSuite {
         Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None)
       )
       val second = answered(entries, durable, "two")
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.NoCarry)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.NoCarry)))
     }
 
     test("a turn after a window record appended after one not read draws afresh: unchained") {
@@ -183,7 +182,7 @@ object TurnCarriedTests extends TestSuite {
         )
       )
       val second = answered(entries, durable, "two")
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.Unchained)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.Unchained)))
     }
 
     test("a turn after a window record naming an entry since gone draws afresh: unrendered") {
@@ -192,7 +191,7 @@ object TurnCarriedTests extends TestSuite {
       val first = answered(entries, durable, "one")
       keep(entries, first, "gappy-window", boundary(Vector(EntrySeq(0), EntrySeq(999))))
       val second = answered(entries, durable, "two")
-      basis(durable, second) ==> Right(Some(Basis.Afresh(Why.Unrendered)))
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.Unrendered)))
     }
   }
 }

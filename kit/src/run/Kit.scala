@@ -8,14 +8,24 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, Console, EdgeRefusal, EdgeStores, PluginCommands}
+import grit.core.either.Traversal.sequence
 import grit.core.files.Intake
-import grit.core.id.{AttesterName, Declarer, EdgeName, PluginName, ScheduleKey}
+import grit.core.id.{
+  AttesterName,
+  ConversationId,
+  Declarer,
+  EdgeName,
+  PluginName,
+  ScheduleKey,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.job.{Declared, Ending}
 import grit.core.message.Cost
 import grit.core.place.Place
 import grit.core.spend.Budget
-import grit.core.store.{Linking, StoreError, Tx}
+import grit.core.store.{Linking, StoreError, Tx, UsageLedger}
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, StoppedBy, Unopened}
 import grit.dbos.sql.DbConfig
@@ -23,6 +33,7 @@ import grit.host.machine.LocalMachine
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
+import grit.turn.TurnCache
 
 /** Why [[Kit.serve]], [[Kit.catchUp]], [[Kit.runOnce]] or [[Kit.console]] could not run, or
   * stopped.
@@ -638,6 +649,60 @@ object Kit {
           }
         })
       case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
+    }
+  }
+
+  /** The cache report ([[CacheReport.lines]]) of `conversation` on the database `secrets`
+    * names, read as `deployment`'s screen reads it, whether or not an engine runs there; it
+    * never starts one. A turn whose steps cannot be read shows no carry and no times.
+    * [[KitFailure.Engine]] when the database cannot be reached, or no engine has migrated it;
+    * [[KitFailure.Store]] when a read fails, or a turn's steps do not read as this build's.
+    */
+  def cacheReport(
+      deployment: Deployment,
+      secrets: Secrets,
+      conversation: ConversationId,
+      clock: Clock^
+  ): Either[KitFailure, Vector[String]] = {
+    val attached =
+      try
+        Right(
+          Link.attach(
+            secrets.database,
+            deployment.runsUnder,
+            LocalMachine.identity(),
+            deployment.budget,
+            deployment.visibility,
+            clock
+          )
+        )
+      catch { case NonFatal(e) => Left(KitFailure.Engine(s"the database cannot be read: $e")) }
+    attached.flatMap { link =>
+      try {
+        val subject = Subject.Conversation(conversation)
+        link.db
+          .read(subject) {
+            for {
+              entries <- link.entries.list(conversation)
+              turns = entries
+                .map(_.turnSeq)
+                .distinct
+                .sortBy(TurnSeq.value)
+                .map(TurnRef(conversation, _))
+              rows <- sequence(turns.map(t => link.ledger.of(t.workflowId)))
+            } yield turns.zip(rows)
+          }
+          .left
+          .map(e => KitFailure.Store(s"the conversation is unread: $e"))
+          .flatMap { (paid: Vector[(TurnRef, Vector[UsageLedger.Row])]) =>
+            sequence(
+              paid.map((turn: TurnRef, rows: Vector[UsageLedger.Row]) =>
+                TurnCache.of(turn, link.steps(turn).map(_.record), rows)
+              )
+            ).left.map(why => KitFailure.Store(s"a turn's steps are unread: $why"))
+          }
+          .map(CacheReport.lines(conversation, _))
+      } finally link.close()
     }
   }
 

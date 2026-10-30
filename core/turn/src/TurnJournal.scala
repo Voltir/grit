@@ -88,21 +88,21 @@ private[turn] object TurnJournal {
     )
 
   /** A `carried` step's output under [[TurnAssembly.CarryReasons]]: `{"against": id}`, the
-    * window record drawn against, or `{"afresh": word}`, why not ([[TurnSteps.Basis.Why]]).
+    * window record drawn against, or `{"afresh": word}`, why not ([[TurnBasis.Why]]).
     */
-  given carriedWhy: Journaled[Either[TurnFailure, TurnSteps.Basis]] =
+  given carriedWhy: Journaled[Either[TurnFailure, TurnBasis]] =
     outcome(
       {
-        case TurnSteps.Basis.Against(head) => ujson.Obj("against" -> EntryId.value(head))
-        case TurnSteps.Basis.Afresh(why) => ujson.Obj("afresh" -> why.word)
+        case TurnBasis.Against(head) => ujson.Obj("against" -> EntryId.value(head))
+        case TurnBasis.Afresh(why) => ujson.Obj("afresh" -> why.word)
       },
       v =>
         (v.objOpt.flatMap(_.get("against")), v.objOpt.flatMap(_.get("afresh"))) match {
-          case (Some(ujson.Str(id)), None) => Right(TurnSteps.Basis.Against(EntryId(id)))
+          case (Some(ujson.Str(id)), None) => Right(TurnBasis.Against(EntryId(id)))
           case (None, Some(ujson.Str(word))) =>
-            TurnSteps.Basis.Why.values
+            TurnBasis.Why.values
               .find(_.word == word)
-              .map(TurnSteps.Basis.Afresh(_))
+              .map(TurnBasis.Afresh(_))
               .toRight(s"carried: no reason '$word'")
           case _ => Left("carried: expected {against} or {afresh}")
         }

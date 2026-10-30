@@ -18,8 +18,7 @@ import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
-import TurnSteps.Basis
-import TurnSteps.Basis.Why
+import TurnBasis.Why
 import TurnShown.{gateNotes, gatedOffer, loopShape, shown, stubsAt}
 
 /** What a turn's rounds act through ([[TurnRound.Env]]), over `env` and `tooling`: its model
@@ -364,7 +363,7 @@ private[turn] object Rounding {
       recorded: TurnOffer.Recorded,
       routed: Turn.Routed,
       asked: Option[TurnAgenda.Classification]
-  ): Either[TurnFailure, TurnSteps.Basis] =
+  ): Either[TurnFailure, TurnBasis] =
     for {
       pins <- routed.picked(env)
       offer <- env.db
@@ -415,7 +414,7 @@ private[turn] object Rounding {
         .left
         .map(TurnFailure.ofStore)
     } yield found.fold(
-      Basis.Afresh(_),
+      TurnBasis.Afresh(_),
       { (head, showing, direct, prefix) =>
         val carrying = showing.copy(mine = Vector.empty)
         val first = TurnGate.decide(
@@ -440,18 +439,18 @@ private[turn] object Rounding {
             Vector.empty
           )
         TurnShown.requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct) match {
-          case Left(_) => Basis.Afresh(Why.Unrendered)
+          case Left(_) => TurnBasis.Afresh(Why.Unrendered)
           case Right(unshaped) =>
             val r = unshaped.shaped(shape)
             // A carried item the first gate would hide rules the window out whatever its bytes,
             // so it is named before them.
             if (first.hidden.exists((item, _) => held.contains(item.ref)))
-              Basis.Afresh(Why.Hidden)
+              TurnBasis.Afresh(Why.Hidden)
             else if (
               TurnShown.prefixOf(r.copy(messages = r.messages.take(prefix.messages))) != prefix
             )
-              Basis.Afresh(Why.PrefixDiffers)
-            else Basis.Against(head)
+              TurnBasis.Afresh(Why.PrefixDiffers)
+            else TurnBasis.Against(head)
         }
       }
     )
