@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.context.{AssemblyError, AssemblyRequest, Results, Retrieved, Width}
+import grit.core.context.{AssemblyError, AssemblyRequest, CarriedWindow, Results, Retrieved, Width}
 import grit.core.document.Document
 import grit.core.id.{DocKey, DocumentVersionId, PluginName, TurnRef, WorkflowId}
 import grit.core.place.Place
@@ -176,7 +176,9 @@ object Refound {
             // turn's root, where the shipped assembler draws them: the index as it is now.
             results <- Rebuild
               .shipped(AsOf(reader, at).documentsAtEnd, assembled)
-              .search(AssemblyRequest(turn, Width.Deployed), r.written)(using every(reader))
+              .search(AssemblyRequest(turn, Width.Deployed, CarriedWindow.Empty), r.written)(using
+                every(reader)
+              )
               .left
               .map { case AssemblyError.Store(e) =>
                 s"the search of $name was not run again: ${e.kind}"

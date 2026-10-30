@@ -1,6 +1,6 @@
 # 0040. A turn draws its window in recorded steps, and only candidates judged relevant are packed
 
-Status: accepted (2026-10-16); revised (2026-10-20)
+Status: accepted (2026-10-16); revised (2026-10-29)
 
 Context: a turn's window was drawn in one `assemble` step, with its search query written by a
 model call inside that step and nothing recorded between. A crash mid-assembly paid the query
@@ -20,9 +20,10 @@ Decision:
 
 - **The assembler reads; the turn calls.** A `ContextAssembler` is pure (`caps.Pure`) and
   offers four reads under the turn's `Db`: `prepare` (a window drawn with no search, or the
-  request a query writer is asked), `search` (what a written query finds, ranked), `briefs`
+  request a query writer is asked), `search` (what a written query finds, ranked), `judgeText`
   (each found candidate cut for a judge) and `assemble` (the window packed from what the turn
-  admitted). Every model and classifier call between them is the turn's.
+  admitted, appended after the window the turn carries or drawn afresh at a boundary, ADR 0052).
+  Every model and classifier call between them is the turn's.
 - **First, whether to search at all.** `ask:needs` asks the classifier one yes/no, whether
   answering the message needs facts, decisions or documents not already in its thread, over the
   message and the thread the judge is shown. It is not asked when the window could find nothing

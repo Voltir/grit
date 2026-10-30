@@ -5,8 +5,10 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Db, Nearby, StoreError}
 
-/** Chooses what the model sees on a turn: a fresh window over the store, computed each turn,
-  * never carried from the last one, in four reads a turn records apart ([[prepare]],
+/** Chooses what the model sees on a turn: a projection of the store drawn at a boundary and
+  * carried, append-only, until the next (ADR 0052). Given the window carried into a turn
+  * ([[AssemblyRequest.carried]]), it either appends to it or, at a boundary, draws afresh;
+  * nothing carried is redrawn. It works in four reads a turn records apart ([[prepare]],
   * [[search]], [[judgeText]], [[assemble]]), so a turn resumed after a crash repeats none of the
   * calls it makes between them. It holds no write capability and no model; each read is made
   * for its turn ([[grit.core.visibility.Subject.Turn]]) over entries recorded before it.
@@ -20,7 +22,8 @@ trait ContextAssembler extends caps.Pure {
   def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared]
 
   /** What `written`'s query finds for `request.turn`, best first, at most the request's
-    * width's hits of each kind; empty for an assembler that never asks for a query.
+    * width's hits of each kind, none that `request.carried` holds; empty for an assembler that
+    * never asks for a query.
     */
   def search(request: AssemblyRequest, written: Querying.Written)(using
       Db^
@@ -37,25 +40,29 @@ trait ContextAssembler extends caps.Pure {
   )(using Db^): Either[AssemblyError, JudgeText]
 
   /** `request.turn`'s window. Drawn: the window with no search. Searched: that window's recent
-    * part, then each admitted result still there and still a candidate, in its order, each one
-    * that fits what is left; one not admitted is never shown. Its notes are the query's, then which
-    * earlier turns of its own it recalled.
+    * part, then each admitted result still there, still a candidate and not carried, in its
+    * order, each one that fits what is left; one not admitted is never shown. Appended: the
+    * turns since the carried window's last part's turn, then each admitted result not carried.
+    * Its notes are the query's, then which earlier turns of its own it recalled.
+    * [[Projection.Boundary]] when `request.carried` is empty or at the assembler's limit, which
+    * each assembler states; else [[Projection.Appended]], holding nothing `request.carried`
+    * holds.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
-  ): Either[AssemblyError, Window]
+  ): Either[AssemblyError, Projection]
 }
 
 object ContextAssembler {
 
-  /** `assembler`'s window for `request`, its reads run in order and recorded nowhere, as a
+  /** `assembler`'s projection for `request`, its reads run in order and recorded nowhere, as a
     * turn runs them: its query written by `write` (`Left`, why none was), then the results
     * `admit` keeps.
     */
   def draw(assembler: ContextAssembler, request: AssemblyRequest)(
       write: ModelRequest => Either[String, Message.Assistant],
       admit: Results -> Results
-  )(using Db^): Either[AssemblyError, Window] =
+  )(using Db^): Either[AssemblyError, Projection] =
     assembler.prepare(request).flatMap {
       case Prepared.Drawn(drawn) => assembler.assemble(request, Packing.Drawn(drawn))
       case Prepared.Asking(asked, written) =>
@@ -69,8 +76,10 @@ object ContextAssembler {
     }
 }
 
-/** What an assembler is asked to build a window for, and how wide. */
-final case class AssemblyRequest(turn: TurnRef, width: Width = Width.Deployed)
+/** What an assembler is asked to build a window for, how wide the part it draws now may be,
+  * and the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear).
+  */
+final case class AssemblyRequest(turn: TurnRef, width: Width, carried: CarriedWindow)
 
 /** Where a window starts: drawn with no search, or a query to write first. */
 enum Prepared {

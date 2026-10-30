@@ -7,6 +7,7 @@ import grit.core.context.{
   JudgeText,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Results,
   Retrieved,
@@ -32,7 +33,8 @@ import grit.core.visibility.Subject
   * older turns would: the model never sees a history with holes. A newest turn larger than
   * what is left on its own leaves no turns. A window that leaves turns out is charged one
   * gap line ([[Shown.Gap]]). A person's message is costed with its author's name line
-  * ([[Shown.of]]), as it is sent.
+  * ([[Shown.of]]), as it is sent. It never appends: its limit is every window, each a
+  * boundary, whatever is carried.
   */
 final class LinearAssembler(
     entries: EntryStore,
@@ -71,7 +73,7 @@ final class LinearAssembler(
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       db: Db^
-  ): Either[AssemblyError, Window] = {
+  ): Either[AssemblyError, Projection] = {
     val budget = request.width match {
       case Width.Deployed => this.budget
       case Width.Within(b, _) => b
@@ -90,7 +92,12 @@ final class LinearAssembler(
           LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
         val kept = LinearAssembler.tail(turns, speakers, estimator, left)
-        Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes)
+        val gapped = if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
+        Projection.Boundary(
+          Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes),
+          Tokens(Tokens.value(budget) - Tokens.value(left)) +
+            LinearAssembler.cost(kept.flatten, speakers, estimator) + gapped
+        )
       }
     }.left
       .map(AssemblyError.Store(_))

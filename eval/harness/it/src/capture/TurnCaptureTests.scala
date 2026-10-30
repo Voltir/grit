@@ -14,6 +14,7 @@ import grit.core.context.{
   JudgeText,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Results,
   Retrieved,
@@ -156,7 +157,9 @@ object TurnCaptureTests extends TestSuite {
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */
   private val asks = grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
 
-  /** `under`'s windows, each holding `held` too, as a retrieval assembler's would. */
+  /** `under`'s windows, each holding `held` too, as a retrieval assembler's would; each a
+    * boundary, as `under` draws it.
+    */
   private final class Holding(under: LinearAssembler, held: Vector[DocumentVersionId])
       extends ContextAssembler {
     def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
@@ -169,8 +172,10 @@ object TurnCaptureTests extends TestSuite {
     ): Either[AssemblyError, JudgeText] = under.judgeText(request, retrieved, chars)
     def assemble(request: AssemblyRequest, packing: Packing)(using
         Db^
-    ): Either[AssemblyError, Window] =
-      under.assemble(request, packing).map(_.copy(documents = held))
+    ): Either[AssemblyError, Projection] =
+      under
+        .assemble(request, packing)
+        .map(p => Projection.Boundary(p.window.copy(documents = held), p.cost))
   }
 
   /** The plugin every document here is kept by. */

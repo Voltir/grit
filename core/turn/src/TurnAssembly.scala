@@ -6,6 +6,7 @@ import grit.core.act.MoveName
 import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
+  CarriedWindow,
   Packing,
   Prepared,
   Querying,
@@ -181,8 +182,9 @@ private[turn] object TurnAssembly {
   private def charged(p: Placed): Judging.Charged =
     Judging.Charged(p.turn, p.turn.workflowId, Subject.Turn(p.turn))
 
-  /** What `p`'s window is asked for. */
-  private def request(p: Placed): AssemblyRequest = AssemblyRequest(p.turn, p.at.offer.width)
+  /** What `p`'s window is asked for: drawn afresh, nothing carried. */
+  private def request(p: Placed): AssemblyRequest =
+    AssemblyRequest(p.turn, p.at.offer.width, CarriedWindow.Empty)
 
   private def failed(error: AssemblyError): TurnFailure = error match {
     case AssemblyError.Store(e) => TurnFailure.Assembly(e.described)
@@ -356,6 +358,7 @@ private[turn] object TurnAssembly {
           .flatMap(pins =>
             env.assembler
               .assemble(request(p), packing)(using pins.reads(env.db))
+              .map(_.window)
               .left
               .map(failed)
           )

@@ -1,6 +1,7 @@
 # grit.assembly
 
-The `ContextAssembler`s: what builds each turn's window.
+The `ContextAssembler`s: what draws a window at a boundary and appends to it on each later turn
+(ADR 0052).
 
 In dependency order:
 

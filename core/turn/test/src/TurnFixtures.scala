@@ -16,6 +16,7 @@ import grit.core.context.{
   ContextAssembler,
   JudgeText,
   Prepared,
+  Projection,
   Results,
   Retrieved,
   Window
@@ -1169,7 +1170,9 @@ object TurnFixtures {
   private def all(entries: EntryStore): Vector[Entry] =
     entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
 
-  /** An assembler that never searches: each turn's window is [[window]]'s. */
+  /** An assembler that never searches: each turn's window is [[window]]'s. Its limit is every
+    * window: each is a boundary, costing nothing.
+    */
   abstract class Drawing extends ContextAssembler {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
     def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
@@ -1182,23 +1185,28 @@ object TurnFixtures {
     ): Either[AssemblyError, JudgeText] = Right(JudgeText("", Vector.empty))
     def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
-    ): Either[AssemblyError, Window] = window(request)
+    ): Either[AssemblyError, Projection] = window(request).map(boundary)
+
+    /** `w` as a boundary costing nothing. */
+    protected final def boundary(w: Window): Projection = Projection.Boundary(w, Tokens.Zero)
   }
 
   /** The linear window [[LinearAssembler]] draws over `entries` for `request`. */
   private def linearOver(entries: EntryStore, request: AssemblyRequest)(using
       Db^
   ): Either[AssemblyError, Window] =
-    ContextAssembler.draw(
-      new LinearAssembler(
-        entries,
-        NoPeriods,
-        new InMemoryPrincipals,
-        CharEstimate,
-        LinearAssembler.DefaultBudget
-      ),
-      request
-    )(_ => Left("never asked"), found => Results(found.ranked, found.beyond))
+    ContextAssembler
+      .draw(
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
+        request
+      )(_ => Left("never asked"), found => Results(found.ranked, found.beyond))
+      .map(_.window)
 
   /** An earlier turn of the conversation's own, `n`, as a search finds it. */
   def ownTurn(n: Int): Retrieved = Retrieved.Own(TurnSeq(n.toLong))
@@ -1237,13 +1245,13 @@ object TurnFixtures {
       )
     override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
-    ): Either[AssemblyError, Window] =
-      packing match {
+    ): Either[AssemblyError, Projection] =
+      (packing match {
         case grit.core.context.Packing.Drawn(d) => window(request).map(_.copy(notes = d.notes))
         case grit.core.context.Packing.Searched(w, admitted) =>
           val own = admitted.ranked.collect { case (Retrieved.Own(t), _) => t }
           window(request).map(_.copy(notes = Vector(w.queried, AssemblyNote.Recalled(own))))
-      }
+      }).map(boundary)
   }
 
   object Searching {
@@ -1467,12 +1475,12 @@ object TurnFixtures {
       )
     override def assemble(request: AssemblyRequest, packing: grit.core.context.Packing)(using
         Db^
-    ): Either[AssemblyError, Window] =
-      packing match {
+    ): Either[AssemblyError, Projection] =
+      (packing match {
         case grit.core.context.Packing.Drawn(d) => window(request).map(_.copy(notes = d.notes))
         case grit.core.context.Packing.Searched(w, _) =>
           window(request).map(_.copy(notes = Vector(w.queried)))
-      }
+      }).map(boundary)
   }
 
   /** Models for a test: `inForce` is the catalog, and the calls under a pin of its summary's

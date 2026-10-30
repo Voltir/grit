@@ -18,10 +18,12 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.context.{
   AssemblyNote,
   AssemblyRequest,
+  CarriedWindow,
   ContextAssembler,
   JudgeText,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Results,
   Retrieved,
@@ -443,7 +445,46 @@ object RetrievalAssemblerTests extends TestSuite {
       query: Option[Pinned] = Some(QueryPin),
       admit: Results -> Results = r => Results(r.ranked, r.beyond),
       pieces: PieceSearch = new InMemoryPieces
-  ): Window = {
+  ): Window =
+    projected(
+      world,
+      writer,
+      budget,
+      search,
+      at,
+      weight,
+      origin,
+      stitches,
+      tuning,
+      others,
+      posted,
+      width,
+      documents,
+      query,
+      admit,
+      pieces
+    ).window
+
+  /** Turn 6's projection, as [[assemble]] draws its window, given `carried`. */
+  private def projected(
+      world: World,
+      writer: Provider^,
+      budget: Long,
+      search: EntrySearch = new Scripted(),
+      at: Long = 6,
+      weight: Weight = Weight.Default,
+      origin: Origin = Origin.Task("conversation", "c1"),
+      stitches: Option[StitchStore] = None,
+      tuning: Tuning = Tuning.Default,
+      others: Vector[Conversation] = Vector.empty,
+      posted: Option[CallSlot] = None,
+      width: Width = Width.Deployed,
+      documents: DocumentSearch = new InMemoryDocuments,
+      query: Option[Pinned] = Some(QueryPin),
+      admit: Results -> Results = r => Results(r.ranked, r.beyond),
+      pieces: PieceSearch = new InMemoryPieces,
+      carried: CarriedWindow = CarriedWindow.Empty
+  ): Projection = {
     val models = new Writing(writer, QueryPin)
     ContextAssembler
       .draw(
@@ -460,7 +501,7 @@ object RetrievalAssemblerTests extends TestSuite {
           documents,
           pieces = pieces
         ),
-        AssemblyRequest(TurnRef(c1, TurnSeq(at)), width)
+        AssemblyRequest(TurnRef(c1, TurnSeq(at)), width, carried)
       )(
         asked =>
           query.fold(Left(Prepared.NoPin))(models.provider(_).complete(asked).left.map(_.cause)),
@@ -572,12 +613,13 @@ object RetrievalAssemblerTests extends TestSuite {
       Tokens(budget)
     )
       .assemble(
-        AssemblyRequest(TurnRef(c1, TurnSeq(6))),
+        AssemblyRequest(TurnRef(c1, TurnSeq(6)), Width.Deployed, CarriedWindow.Empty),
         Packing.Drawn(Querying.Drawn(Vector.empty))
       )(using
         new FakeDb
       )
       .getOrElse(sys.error("in-memory store"))
+      .window
 
   private def placeOf(name: String): Place = Origin.Task("conversation", name).place
 
@@ -1085,7 +1127,7 @@ object RetrievalAssemblerTests extends TestSuite {
       search.scores = Vector(1.5, 3.0)
       val w = Weight.value(Weight.Default)
       retrieval(entries, 80, search).search(
-        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        AssemblyRequest(TurnRef(c1, TurnSeq(10)), Width.Deployed, CarriedWindow.Empty),
         WrittenQuery
       )(using
         new FakeDb
@@ -1099,7 +1141,7 @@ object RetrievalAssemblerTests extends TestSuite {
     ) {
       val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
       retrieval(entries, 80, new Scripted("t2:5", "t0:1")).judgeText(
-        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        AssemblyRequest(TurnRef(c1, TurnSeq(10)), Width.Deployed, CarriedWindow.Empty),
         Vector(Retrieved.Own(TurnSeq(0)), Retrieved.Own(TurnSeq(42))),
         chars = 24
       )(using new FakeDb) ==> Right(
@@ -1137,7 +1179,11 @@ object RetrievalAssemblerTests extends TestSuite {
         new Scripted(),
         documents = docs,
         entries = Some(listing)
-      ).judgeText(AssemblyRequest(TurnRef(c1, TurnSeq(0))), found, chars = 40)(using new FakeDb)
+      ).judgeText(
+        AssemblyRequest(TurnRef(c1, TurnSeq(0)), Width.Deployed, CarriedWindow.Empty),
+        found,
+        chars = 40
+      )(using new FakeDb)
       (
         texts.map(_.found.map(_._1)),
         docs.reads,
@@ -1167,6 +1213,17 @@ object RetrievalAssemblerTests extends TestSuite {
       val world = store(turns*)
       val w = assemble(world, new Writer(Some("grit_agent")), budget = 60, new Scripted("t0:2"))
       ids(world, w) ==> Vector("t0:0", "t0:1", "t4:9", "t4:10", "t5:11", "t5:12")
+    }
+
+    test("a boundary costs what it packs: its tail, each recalled turn and their gap lines") {
+      // As below: the tail (turns 4 and 5) costs 22 with its gap line 12, and turn 0 recalled
+      // 11 with its own gap line 12.
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      val world = store(turns*)
+      val p = projected(world, new Writer(Some("q000")), 57, new Scripted("t0:1"))
+      (turnsOf(world, p.window), p.cost) ==> (Vector("t0", "t4", "t5"), Tokens(57))
+      // Every turn fits: no query, and the window costs its six turns.
+      projected(world, new Writer(Some("q000")), 1000, new Scripted("t0:1")).cost ==> Tokens(66)
     }
 
     test("each recalled turn is charged a gap line, and the tail one for the turns it leaves out") {
@@ -1359,7 +1416,7 @@ object RetrievalAssemblerTests extends TestSuite {
       // The own turn scores 3 × the default weight, 2; the piece 2 words × 4; the document 3 × 1.
       search.scores = Vector(3.0)
       val found = retrieval(entries, 80, search, documents = docs, pieces = pieces).search(
-        AssemblyRequest(TurnRef(c1, TurnSeq(10))),
+        AssemblyRequest(TurnRef(c1, TurnSeq(10)), Width.Deployed, CarriedWindow.Empty),
         WrittenQuery
       )(using new FakeDb)
       found.map(_.ranked.map(_._1)) ==> Right(

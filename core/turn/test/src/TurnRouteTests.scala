@@ -8,6 +8,7 @@ import grit.core.context.{
   AssemblyRequest,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Unfenced,
   Window
@@ -117,12 +118,12 @@ object TurnRouteTests extends TestSuite {
       )
     override def assemble(request: AssemblyRequest, packing: Packing)(using
         Db^
-    ): Either[AssemblyError, Window] = {
+    ): Either[AssemblyError, Projection] = {
       queried = queried :+ (packing match {
         case Packing.Drawn(d) => d
         case Packing.Searched(w, _) => w
       })
-      window(request)
+      window(request).map(boundary)
     }
     def window(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
       asked = asked :+ request

@@ -9,6 +9,7 @@ import grit.core.context.{
   JudgeText,
   Packing,
   Prepared,
+  Projection,
   Querying,
   Results,
   Retrieved,
@@ -92,7 +93,8 @@ import grit.core.visibility.Subject
   * conversation is ever also a candidate.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
-  * period and nothing elsewhere and no document or piece is to be drawn.
+  * period and nothing elsewhere and no document or piece is to be drawn. It never appends: its
+  * limit is every window, each a boundary, whatever is carried.
   * `AssemblyError.Store` when a store fails or the conversation is gone.
   */
 final class RetrievalAssembler(
@@ -148,28 +150,32 @@ final class RetrievalAssembler(
   /** Within `budget` and `hits`, or those `request.width` names. */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
-  ): Either[AssemblyError, Window] =
+  ): Either[AssemblyError, Projection] =
     based(request).flatMap { base =>
       packing match {
-        case Packing.Drawn(d) => Right(drawn(base, base.linear, d.notes))
+        case Packing.Drawn(d) =>
+          Right(Projection.Boundary(drawn(base, base.linear, d.notes), base.linearCost))
         case Packing.Searched(Querying.Written(_, queried), _) if !base.searchable =>
-          Right(drawn(base, base.linear, Vector(queried)))
+          Right(Projection.Boundary(drawn(base, base.linear, Vector(queried)), base.linearCost))
         case Packing.Searched(Querying.Written(_, queried), admitted) =>
           looked(request, base, admitted.ranked.map(_._1)).map {
             (found: Vector[Candidate], speakers: Speakers) =>
-              val packed = pack(found, base.used, base.budget, speakers)
+              val (packed, cost) = pack(found, base.used, base.budget, speakers)
               val recalled = packed.collect { case Candidate.Own(_, t) => t }
               val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
               val notes =
                 if (base.ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
                 else Vector(queried)
-              drawn(
-                base,
-                base.recent ++ recalled,
-                notes,
-                sections(packed),
-                packed.collect { case Candidate.Doc(d, _) => d },
-                packed.collect { case c: Candidate.Piece => Retrieved.Piece(c.kept.id, c.more) }
+              Projection.Boundary(
+                drawn(
+                  base,
+                  base.recent ++ recalled,
+                  notes,
+                  sections(packed),
+                  packed.collect { case Candidate.Doc(d, _) => d },
+                  packed.collect { case c: Candidate.Piece => Retrieved.Piece(c.kept.id, c.more) }
+                ),
+                cost
               )
           }
       }
@@ -414,6 +420,8 @@ final class RetrievalAssembler(
             recent,
             recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
             used,
+            Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(linear, read.speakers) +
+              (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero),
             read.all.filter(_.turnSeq == turn.turnSeq)
           )
         }
@@ -424,7 +432,8 @@ final class RetrievalAssembler(
     * `closings` and the `asked` and `strand` sections it opens with; the period's earlier
     * `turns`, the `linear` tail of them that fits, whether that tail leaves any out
     * (`ownToFind`), the `recent` ones a search keeps, the turn it searches before (`from`),
-    * what all that `used` of the budget, and the turn's `own` entries.
+    * what all that `used` of the budget, what the window with no search costs (`linearCost`),
+    * and the turn's `own` entries.
     */
   private final case class Base(
       read: Read,
@@ -439,6 +448,7 @@ final class RetrievalAssembler(
       recent: Vector[Vector[Entry]],
       from: TurnSeq,
       used: Tokens,
+      linearCost: Tokens,
       own: Vector[Entry]
   ) {
 
@@ -688,16 +698,16 @@ final class RetrievalAssembler(
       .distinctBy(_._1.key)
   }
 
-  /** The candidates that fit in what `budget` has left after `used`, best first; one that
-    * does not fit is passed over for the next. A turn from elsewhere costs what it adds to
-    * its section, its label included with its first turn.
+  /** The candidates that fit in what `budget` has left after `used`, best first, and `used`
+    * with what they cost; one that does not fit is passed over for the next. A turn from
+    * elsewhere costs what it adds to its section, its label included with its first turn.
     */
   private def pack(
       ranked: Vector[Candidate],
       used: Tokens,
       budget: Tokens,
       speakers: Speakers
-  ): Vector[Candidate] =
+  ): (Vector[Candidate], Tokens) =
     ranked
       .foldLeft((used, Vector.empty[Candidate])) { case ((spentSoFar, kept), c) =>
         val cost = c match {
@@ -721,7 +731,7 @@ final class RetrievalAssembler(
         if (Tokens.value(after) <= Tokens.value(budget)) (after, kept :+ c)
         else (spentSoFar, kept)
       }
-      ._2
+      .swap
 
   private def shown(place: Place, section: Vector[Entry], speakers: Speakers): Tokens =
     Shown.nearby(place, section.sortBy(_.seq), speakers).fold(Tokens.Zero)(estimator.message)

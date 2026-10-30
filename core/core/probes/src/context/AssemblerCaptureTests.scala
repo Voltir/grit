@@ -31,8 +31,8 @@ object AssemblerCaptureTests extends TestSuite {
        |        Right(Results.empty)
        |      def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using Db^): Either[AssemblyError, JudgeText] =
        |        Right(JudgeText("", Vector.empty))
-       |      def assemble(request: AssemblyRequest, packing: Packing)(using Db^): Either[AssemblyError, Window] =
-       |        Right(Window(Vector.empty))
+       |      def assemble(request: AssemblyRequest, packing: Packing)(using Db^): Either[AssemblyError, Projection] =
+       |        Right(Projection.Boundary(Window(Vector.empty), grit.core.message.Tokens.Zero))
        |    }
        |    val _ = made
        |  }""".stripMargin
@@ -45,7 +45,18 @@ object AssemblerCaptureTests extends TestSuite {
       |    val asked = Prepared.Asking(ModelRequest("q", Vector.empty), reply => Querying.Drawn(Vector(AssemblyNote.FellBack(p.call()))))
       |    val _ = asked
       |  }""".stripMargin
+  /* A window drawn with no word on what is carried would be a boundary on every turn: the
+   * request has no default for it. */
+  private def requesting(args: String): String =
+    s"""def request(t: grit.core.id.TurnRef): Unit = {
+       |    val r = AssemblyRequest($args)
+       |    val _ = r
+       |  }""".stripMargin
+  private val carrying = requesting("t, Width.Deployed, CarriedWindow.Empty")
+  private val forgetting = requesting("t, Width.Deployed")
   private lazy val compiled = Probes.batch(prelude, List(storing, calling, asking))
+  // Its own batch: a typer error stops a run before the capture checker reaches the others.
+  private lazy val requested = Probes.batch(prelude, List(carrying, forgetting))
 
   val tests = Tests {
     test("one compile answers every probe") {
@@ -54,6 +65,15 @@ object AssemblerCaptureTests extends TestSuite {
 
     test("control: an assembler holding only stores compiles") {
       compiled.errors(storing) ==> Nil
+    }
+
+    test("control: a request naming its carried window compiles") {
+      requested.errors(carrying) ==> Nil
+    }
+
+    test("a request that names no carried window is rejected") {
+      val errs = requested.errors(forgetting)
+      assert(errs.exists(_.contains("missing argument for parameter carried")))
     }
 
     test("an assembler that calls a capability it holds is rejected") {

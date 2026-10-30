@@ -6,7 +6,15 @@ import scala.concurrent.duration.*
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.act.Extraction
-import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, SectionTag, Shown, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyNote,
+  AssemblyRequest,
+  CarriedWindow,
+  SectionTag,
+  Shown,
+  Window
+}
 import grit.core.durable.{FlowFixtures, Flows, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq, WorkflowId}
 import grit.core.identity.TestAccounts
@@ -138,7 +146,7 @@ object TurnTests extends TestSuite {
           recipe = recipe
         )
       )
-      asking.asked ==> Vector(AssemblyRequest(turn, narrow))
+      asking.asked ==> Vector(AssemblyRequest(turn, narrow, CarriedWindow.Empty))
     }
 
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {

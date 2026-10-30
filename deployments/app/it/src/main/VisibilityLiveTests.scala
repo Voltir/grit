@@ -9,7 +9,7 @@ import scala.util.Using
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.clock.{Clock, SetClock}
-import grit.core.context.{AssemblyRequest, ContextAssembler, Results, Window}
+import grit.core.context.{AssemblyRequest, CarriedWindow, ContextAssembler, Results, Width, Window}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.flow.TestTainted
@@ -396,10 +396,12 @@ object VisibilityLiveTests extends TestSuite {
         val turn = ask(label, origin, "zephyr?", by)
         val window =
           ok("assembling")(
-            ContextAssembler.draw(assembler, AssemblyRequest(turn))(
-              Query.complete(_).left.map(_.cause),
-              found => Results(found.ranked, found.beyond)
-            )(using store)
+            ContextAssembler
+              .draw(assembler, AssemblyRequest(turn, Width.Deployed, CarriedWindow.Empty))(
+                Query.complete(_).left.map(_.cause),
+                found => Results(found.ranked, found.beyond)
+              )(using store)
+              .map(_.window)
           )
         val slot = CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError("slot"))
         val outcome = tools.bind(

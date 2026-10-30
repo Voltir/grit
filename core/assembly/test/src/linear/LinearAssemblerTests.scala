@@ -2,7 +2,15 @@ package grit.assembly.linear
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Width}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyRequest,
+  CarriedWindow,
+  ContextAssembler,
+  Projection,
+  Shown,
+  Width
+}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
@@ -38,7 +46,24 @@ object LinearAssemblerTests extends TestSuite {
       budget: Long,
       width: Width = Width.Deployed
   ): Vector[String] = {
-    val seqs = ContextAssembler
+    val seqs = projection(world, turn, budget, width, CarriedWindow.Empty).window.entries
+    val bySeq = world.entries
+      .list(c1)(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+      .map(e => e.seq -> EntryId.value(e.id))
+      .toMap
+    seqs.map(s => bySeq.getOrElse(s, s"<no entry at ${EntrySeq.value(s)}>"))
+  }
+
+  /** The projection for `turn`, given `carried`, of a linear assembler built with `budget`. */
+  private def projection(
+      world: World,
+      turn: Long,
+      budget: Long,
+      width: Width,
+      carried: CarriedWindow
+  ): Projection =
+    ContextAssembler
       .draw(
         new LinearAssembler(
           world.entries,
@@ -47,16 +72,9 @@ object LinearAssemblerTests extends TestSuite {
           CharEstimate,
           Tokens(budget)
         ),
-        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width)
+        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width, carried)
       )(_ => Left("no writer"), r => r)(using new FakeDb)
-      .fold(e => sys.error(s"assembly failed: $e"), _.entries)
-    val bySeq = world.entries
-      .list(c1)(using TestTx.fake)
-      .getOrElse(sys.error("in-memory store"))
-      .map(e => e.seq -> EntryId.value(e.id))
-      .toMap
-    seqs.map(s => bySeq.getOrElse(s, s"<no entry at ${EntrySeq.value(s)}>"))
-  }
+      .fold(e => sys.error(s"assembly failed: $e"), p => p)
 
   /** What one gap line costs ([[Shown.Gap]]): 29 characters, 8 + 4 = 12 tokens. */
   private val Gap = Tokens.value(CharEstimate.message(Shown.Gap))
@@ -204,6 +222,16 @@ object LinearAssemblerTests extends TestSuite {
       window(w, 4, newest - 1) ==> Vector("t3:8", "t3:9")
     }
 
+    test("a boundary costs its closing, its turns and its gap line") {
+      val w = threePeriods
+      val newest = closingCost(w, 2)
+      projection(w, 4, 1000, Width.Deployed, CarriedWindow.Empty).cost ==>
+        Tokens(newest + SmallTurn)
+      val entries = store(small(0), small(1), small(2), small(3))
+      projection(entries, 3, 3 * SmallTurn - 1, Width.Deployed, CarriedWindow.Empty).cost ==>
+        Tokens(SmallTurn + Gap)
+    }
+
     test("a store failure is an assembly failure") {
       object Down extends EntryStore {
         private val down = StoreError.DatabaseError("down")
@@ -220,7 +248,7 @@ object LinearAssemblerTests extends TestSuite {
       val w = store()
       ContextAssembler.draw(
         new LinearAssembler(Down, w.periods, w.principals, CharEstimate, Tokens(1000)),
-        AssemblyRequest(TurnRef(c1, TurnSeq(1)))
+        AssemblyRequest(TurnRef(c1, TurnSeq(1)), Width.Deployed, CarriedWindow.Empty)
       )(_ => Left("no writer"), r => r)(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }

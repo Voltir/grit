@@ -6,10 +6,12 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{
   AssemblyNote,
   AssemblyRequest,
+  CarriedWindow,
   ContextAssembler,
   Prepared,
   Results,
   Shown,
+  Width,
   Window
 }
 import grit.core.document.DocWeight
@@ -236,11 +238,12 @@ object Eval {
     ): Either[String, Score] =
       routed.flatMap { r =>
         ContextAssembler
-          .draw(assembler, AssemblyRequest(loaded.turn))(
+          .draw(assembler, AssemblyRequest(loaded.turn, Width.Deployed, CarriedWindow.Empty))(
             asked =>
               r.cleared(Writing.Catalog.pin.query).fold(Left(Prepared.NoPin))(_ => write(asked)),
             found => Results(found.ranked, found.beyond)
           )(using r.bound(engine.db))
+          .map(_.window)
           .left
           .map(e => s"${strategy.label}: $e")
           .flatMap(w => held(engine, loaded, w).map(score(loaded, _, w.notes, w.documents)))

@@ -8,6 +8,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{
   AssemblyError,
   AssemblyRequest,
+  CarriedWindow,
   ContextAssembler,
   Packing,
   Prepared,
@@ -80,10 +81,11 @@ object Rebuild {
       query: Option[Pinned]
   )(using Db^): Either[String, Window] =
     ContextAssembler
-      .draw(shipped(view, assembled), AssemblyRequest(turn, width))(
+      .draw(shipped(view, assembled), AssemblyRequest(turn, width, CarriedWindow.Empty))(
         asked => query.fold(Left(Prepared.NoPin))(_ => writer.complete(asked).left.map(_.cause)),
         found => found
       )
+      .map(_.window)
       .left
       .map(unbuilt(turn))
 
@@ -179,9 +181,10 @@ object Rebuild {
         case Some(r) =>
           shipped(AsOf(reader, at), assembled)
             .assemble(
-              AssemblyRequest(turn, width),
+              AssemblyRequest(turn, width, CarriedWindow.Empty),
               Packing.Searched(r.written, admission.admitted(r))
             )(using reader.db)
+            .map(_.window)
             .left
             .map(unbuilt(turn))
         case None => replayed(AsOf(reader, at), begun, assembled, width)(using reader.db)
