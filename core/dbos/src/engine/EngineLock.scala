@@ -184,14 +184,31 @@ enum NotTaken {
   /** One line for a person, saying who holds the lock and what to do, at `now`. */
   def message(now: Instant): String = this match {
     case Held(Some(h)) =>
-      val started =
-        DateTimeFormatter.ofPattern("HH:mm:ss").format(h.started.atZone(ZoneId.systemDefault()))
-      val ago = Duration.between(h.heartbeat, now).getSeconds.max(0)
-      s"grit is already running on this database: pid ${h.pid} on ${h.machine}, started $started, " +
-        s"last heartbeat ${ago}s ago. Quit it, or set GRIT_DATABASE_URL to another database."
+      s"grit is already running on this database: ${NotTaken.holder(h, now)}. " +
+        "Quit it, or set GRIT_DATABASE_URL to another database."
     case Held(None) =>
       "grit is already running on this database (it has not said where yet)."
     case Unreachable(why) => s"the database cannot be reached: $why"
+  }
+
+  /** One line for a log kept while a serving process waits to take the lock again, at `now`:
+    * who holds it, or why the database cannot be reached, with no advice to a person.
+    */
+  def logged(now: Instant): String = this match {
+    case Held(Some(h)) => s"held by ${NotTaken.holder(h, now)}"
+    case Held(None) => "held by a process that has not said where yet"
+    case Unreachable(_) => message(now)
+  }
+}
+
+object NotTaken {
+
+  /** The holder `h` as [[NotTaken.message]] and [[NotTaken.logged]] name it, at `now`. */
+  private def holder(h: Holder, now: Instant): String = {
+    val started =
+      DateTimeFormatter.ofPattern("HH:mm:ss").format(h.started.atZone(ZoneId.systemDefault()))
+    val ago = Duration.between(h.heartbeat, now).getSeconds.max(0)
+    s"pid ${h.pid} on ${h.machine}, started $started, last heartbeat ${ago}s ago"
   }
 }
 

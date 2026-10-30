@@ -31,5 +31,21 @@ object NotTakenTests extends TestSuite {
       NotTaken.Held(None).message(Instant.EPOCH) ==>
         "grit is already running on this database (it has not said where yet)."
     }
+
+    test("a refusal logged while waiting for the lock names its holder and gives no advice") {
+      val holder = Holder(
+        "cave",
+        41233,
+        "2026-09-27",
+        Instant.parse("2026-09-27T14:02:11Z"),
+        Instant.parse("2026-09-27T14:05:00Z")
+      )
+      val logged = NotTaken.Held(Some(holder)).logged(Instant.parse("2026-09-27T14:05:04Z"))
+      assert(logged.startsWith("held by pid 41233 on cave, started "))
+      assert(logged.endsWith(", last heartbeat 4s ago"))
+      NotTaken.Held(None).logged(Instant.EPOCH) ==> "held by a process that has not said where yet"
+      NotTaken.Unreachable("refused").logged(Instant.EPOCH) ==>
+        "the database cannot be reached: refused"
+    }
   }
 }

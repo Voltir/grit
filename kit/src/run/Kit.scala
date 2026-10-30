@@ -151,7 +151,7 @@ object Kit {
         val tried: Either[(String, Option[Throwable]), Either[KitFailure, Option[StoppedBy]]] =
           try
             lives(again = true) match {
-              case Left(Unopened.Lock(why)) => Left((why.message(clock.now()), None))
+              case Left(Unopened.Lock(why)) => Left((why.logged(clock.now()), None))
               case Left(KitFailure.Store(why)) => Left((why, None))
               case Left(why) => Right(Left(failed(why, clock)))
               case Right(by) => Right(Right(by))
