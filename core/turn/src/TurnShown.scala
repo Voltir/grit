@@ -23,7 +23,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.Round
 
@@ -64,45 +64,69 @@ private[turn] object TurnShown {
       }
   }
 
-  /** What `round`'s request offers of `schemas`, and the lines it adds, as `gates`, each
-    * round's gate by its index, say: those its gate withholds left out, after read_hidden and
-    * extract from the first round whose gate hid an item on ([[ReadHidden]], [[Extract]],
-    * `strict` as `schemas` are); then [[TurnGate.Guidance]] from that round on, and the
-    * withdrawal its gate makes against the round before's, its tools as `offered` says them
-    * ([[TurnGate.withdrawn]]); all of `schemas` and no line for a round with no gate.
+  /** What every request of a turn offers of `schemas`, the schemas of `offered`, and the lines
+    * its system prompt ends with, as the turn's first gate, `first`, decided (`None`: no gate):
+    * when [[mayGate]], read_hidden and extract first ([[ReadHidden]], [[Extract]], `strict` as
+    * `schemas` are), and [[TurnGate.Noted]]; then `schemas` less those `first` withholds. A tool
+    * a later round's gate withholds stays offered, and a call of it is refused
+    * ([[grit.core.tool.CallError.Withheld]]), as that round's note says ([[gateNotes]]).
     */
   def gatedOffer(
-      gates: Map[Int, Gated],
-      round: Round,
+      first: Option[Gated],
       offered: ToolSet,
       schemas: Vector[ToolSchema],
       strict: Boolean
-  ): (Vector[ToolSchema], Vector[String]) =
-    gates.get(round.index) match {
-      case None => (schemas, Vector.empty)
-      case Some(now) =>
-        (
-          Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict))
-            .filter(_ => hidSince(gates, round)) ++
-            schemas.filterNot(s => now.withheld.exists(w => ToolName.value(w.tool) == s.name)),
-          Vector(TurnGate.Guidance).filter(_ => hidSince(gates, round)) ++
-            gates.get(round.index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
-        )
+  ): (Vector[ToolSchema], Vector[String]) = {
+    val gating = mayGate(first, offered)
+    val withheld = first.fold(Vector.empty[Withheld])(_.withheld)
+    (
+      Vector(ReadHidden.tool(None).schema(strict), unasked.schema(strict)).filter(_ => gating) ++
+        schemas.filterNot(s => withheld.exists(w => ToolName.value(w.tool) == s.name)),
+      Vector(TurnGate.Noted).filter(_ => gating)
+    )
+  }
+
+  /** Whether a gate of a turn whose first gate was `first`, offering `offered`, could hide an
+    * item or withhold a tool on any round: `first` hid one, or a tool of `offered` requires
+    * what is not the least ([[grit.core.visibility.Integrity.Untrusted]]) and `first`'s level
+    * dominates, so a result read later could withdraw it. False with no gate.
+    */
+  def mayGate(first: Option[Gated], offered: ToolSet): Boolean =
+    first.exists(g =>
+      g.hidden.nonEmpty || offered.tools.exists(t =>
+        !Integrity.Untrusted.dominates(t.requires) && g.level.dominates(t.requires)
+      )
+    )
+
+  /** The note each round up to `round` adds, oldest first, as `gates`, each round's gate by
+    * its index, made them: [[TurnGate.Guidance]] on the first round whose gate hid an item,
+    * then the withdrawal the round's gate makes against the round before's
+    * ([[TurnGate.withdrawn]]), its tools as `offered` says them; each note as
+    * [[TurnGate.noted]] fences it. A round adding neither has none.
+    */
+  def gateNotes(gates: Map[Int, Gated], round: Round, offered: ToolSet): Vector[(Round, String)] = {
+    val firstHid = gates.collect { case (index, g) if g.hidden.nonEmpty => index }.minOption
+    (Round.First.index to round.index).toVector.flatMap { index =>
+      gates.get(index).flatMap { now =>
+        val lines = Vector(TurnGate.Guidance).filter(_ => firstHid.contains(index)) ++
+          gates.get(index - 1).flatMap(TurnGate.withdrawn(_, now, offered))
+        Option.when(lines.nonEmpty)(Round.at(index) -> TurnGate.noted(lines))
+      }
     }
+  }
 
   /** extract as a request offers it, asking nothing: for its name and schema alone. */
   private val unasked: Tool.Offered = Extract.tool(None, Extract.Unasked)
 
-  /** Whether a gate of `gates`, each round's by its index, hid an item by `round`'s: from then
-    * on, each round offers read_hidden and extract.
-    */
-  def hidSince(gates: Map[Int, Gated], round: Round): Boolean =
-    gates.exists((index, g) => index <= round.index && g.hidden.nonEmpty)
-
   /** How each call of the loop is built from the plain request: tagged for `asked`
-    * ([[TurnVerdict.tagged]]), offering `tools` as `use` says, guided as [[TurnLoop.guided]]
-    * says under `guidance`, told as [[TurnLoop.told]] says under `after`, and its system prompt ending
-    * with each of `lines`, in order, each after a blank line ([[gatedOffer]]). It marks stable
+    * ([[TurnVerdict.tagged]]); then each of `notes` as a user message, as written: a round's
+    * right before the turn's reply of that round (the round's index counting the replies after
+    * the asker's message, [[TurnVerdict.asker]], or from the first message when there is
+    * none), one whose reply is not there at the end; offering `tools` as `use` says, guided as
+    * [[TurnLoop.guided]] says under `guidance`, told as [[TurnLoop.told]] says under `after`,
+    * and its system prompt ending with each of `lines`, in order, each after a blank line. Fed
+    * by [[gatedOffer]] and [[gateNotes]], each call's request repeats every message of the call
+    * before it, with the same system prompt and tools. It marks stable
     * ([[ModelRequest.stable]]) every message the call shares with the same request told with
     * tools on: all of them but the last call's note, or the last result that note ends.
     */
@@ -112,11 +136,25 @@ private[turn] object TurnShown {
       tools: Vector[ToolSchema],
       after: AfterToolResult,
       guidance: ToolGuidance,
-      lines: Vector[String]
+      lines: Vector[String],
+      notes: Vector[(Round, String)]
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.fold(base)(TurnVerdict.tagged(base, _))
-      val guided = TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance)
+      val from = TurnVerdict.asker(base.messages).getOrElse(-1)
+      val replies = tagged.messages.zipWithIndex.collect {
+        case (_: Message.Assistant, i) if i > from => i
+      }
+      val before = notes
+        .flatMap((round, note) => replies.lift(round.index).map(_ -> note))
+        .groupMap(_._1)(_._2)
+      val late = notes.collect { case (round, note) if replies.lift(round.index).isEmpty => note }
+      val noted = tagged.copy(messages =
+        tagged.messages.zipWithIndex.flatMap((m, i) =>
+          before.getOrElse(i, Vector.empty).map(Message.User(_)) :+ m
+        ) ++ late.map(Message.User(_))
+      )
+      val guided = TurnLoop.guided(noted.copy(tools = tools, use = use), guidance)
       val shaped = TurnLoop.told(use, guided, after)
       // A later call is sent this one's messages as a call with tools is told them, then more.
       val repeated = TurnLoop.told(ToolUse.Auto, guided, after).messages

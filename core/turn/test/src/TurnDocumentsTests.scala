@@ -441,7 +441,8 @@ object TurnDocumentsTests extends TestSuite {
               "you doing anything."
           ),
           dated,
-          Message.User("one")
+          Message.User("one"),
+          Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
         )
       )
     }

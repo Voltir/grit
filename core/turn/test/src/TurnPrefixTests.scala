@@ -6,7 +6,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.ReasoningReplay
 import grit.core.provider.ModelRequest
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
-import grit.models.{AnthropicJson, StubProvider}
+import grit.models.{AnthropicJson, OpenRouterJson, StubProvider}
 
 import utest.*
 import TurnFixtures.*
@@ -37,6 +37,19 @@ object TurnPrefixTests extends TestSuite {
   /** The first line of `earlier` that `later` does not repeat in its place, with that place's
     * line in `later`; `None` when `later` begins with all of `earlier`.
     */
+  /** `body`'s messages, each written as sent but without `cache_control`, which is no edit. */
+  private def unmarked(body: ujson.Value): Vector[String] = {
+    def strip(v: ujson.Value): ujson.Value = v match {
+      case o: ujson.Obj =>
+        val copy = ujson.Obj()
+        o.value.foreach((k, x) => if (k != "cache_control") copy(k) = strip(x))
+        copy
+      case a: ujson.Arr => ujson.Arr.from(a.value.map(strip))
+      case other => other
+    }
+    body("messages").arr.toVector.map(m => ujson.write(strip(m)))
+  }
+
   private def diverged(earlier: String, later: String): Option[(Int, String, String)] = {
     val (a, b) = (earlier.linesIterator.toVector, later.linesIterator.toVector)
     a.indices.find(i => b.lift(i) != Some(a(i))).map(i => (i, a(i), b.lift(i).getOrElse("")))
@@ -96,6 +109,56 @@ object TurnPrefixTests extends TestSuite {
       prefixes.zip(prefixes.drop(1)).map(diverged.tupled) ==> Vector(None, None)
       // Each call's breakpoint is past the one before, so each caches more than the last.
       prefixes.map(_.linesIterator.size).sliding(2).forall(p => p(0) < p(1)) ==> true
+    }
+
+    test(
+      "a gated turn's every call repeats the one before it whole, its system prompt and tools unchanged, on either gateway"
+    ) {
+      // peek's results are believed at nothing, and post requires member: from the second call
+      // each result is hidden, so a gate speaks from round 1, as a note.
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val provider = new Scripted((r, n) =>
+        if (n < 2) Right(peeking(s"t${n + 1}")) else new StubProvider().complete(r)
+      )
+      val turn = say(entries, "read a.txt twice, then post it")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          gatedTools(ws),
+          3
+        )
+      )
+      val requests = provider.requests
+      requests.size ==> 3
+      requests.map(_.system).distinct.size ==> 1
+      requests.map(_.tools).distinct.size ==> 1
+      val anthropic =
+        requests.map(
+          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+        )
+      val openRouter =
+        requests.map(OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, _))
+      // A message of the call before missing from its place in the next edits what that call's
+      // reply was made from: on Anthropic, a thinking block in it is then refused.
+      for (bodies <- Vector(anthropic, openRouter)) {
+        val sent = bodies.map(unmarked)
+        sent.sliding(2).map(p => p.drop(1).flatten.startsWith(p.take(1).flatten)).toVector ==>
+          Vector(true, true)
+      }
+      val prefixes = anthropic.map(AnthropicJson.prefix)
+      prefixes.zip(prefixes.drop(1)).map(diverged.tupled) ==> Vector(None, None)
+      // The second call's gate hid the first result: its note, the guidance, is the last message.
+      requests.lift(1).flatMap(_.messages.lastOption) match {
+        case Some(Message.User(note)) =>
+          (note.startsWith("<grit_note>"), note.contains(TurnGate.Guidance)) ==> (true, true)
+        case other => throw new java.lang.AssertionError(s"no note last: $other")
+      }
     }
   }
 }

@@ -26,8 +26,8 @@ import grit.models.StubProvider
 import utest.*
 
 /** The turn's integrity inside the durable turn ([[TurnGate]]): a `gate:n` step before each
-  * model call, the tools its level withholds out of the request and refused when called, and
-  * the rows the turn writes after believed at its level.
+  * model call, what it says as a round's note, the tools its level withholds refused when
+  * called, and the rows the turn writes after believed at its level.
   */
 object TurnGateTurnTests extends TestSuite {
   import TurnFixtures.*
@@ -122,9 +122,8 @@ object TurnGateTurnTests extends TestSuite {
         "summarise",
         "append-summary"
       )
-      provider.requests.map(_.tools.map(_.name)) ==> Vector(
-        Vector("peek", "post"),
-        Vector("read_hidden", "extract", "peek", "post"),
+      // A gate could withdraw post from the first round, so every call offers the same tools.
+      provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
         Vector("read_hidden", "extract", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==> Vector(None, Some(peekStub), Some(peekStub))
@@ -134,12 +133,17 @@ object TurnGateTurnTests extends TestSuite {
       )
     }
 
-    test("from the first round whose gate hid an item, the system prompt ends with the guidance") {
+    test(
+      "the first round whose gate hid an item adds the guidance as its note, kept in place; the system prompt never changes"
+    ) {
       val provider = gatedScript
       val entries = new InMemoryEntryStore
       gatedRun(new InMemoryDurable, entries, say(entries, "read and post"))(provider)
-      provider.requests.map(_.system.endsWith(s"\n\n${TurnGate.Guidance}")) ==>
-        Vector(false, true, true)
+      val note = Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
+      provider.requests.map(_.messages.count(_ == note)) ==> Vector(0, 1, 1)
+      provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(note)
+      provider.requests.map(_.system).distinct.map(_.endsWith(s"\n\n${TurnGate.Noted}")) ==>
+        Vector(true)
     }
 
     test(
@@ -150,11 +154,8 @@ object TurnGateTurnTests extends TestSuite {
       val turn = say(entries, "read and post")
       gatedRun(new InMemoryDurable, entries, turn)(provider) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
-      provider.requests.map(_.tools.map(_.name)) ==> Vector(
-        Vector("peek", "post"),
-        Vector("read_hidden", "extract", "peek", "post"),
-        Vector("read_hidden", "extract", "peek"),
-        Vector("read_hidden", "extract", "peek")
+      provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
+        Vector("read_hidden", "extract", "peek", "post")
       )
       provider.requests.map(resultOf(_, "t1")) ==>
         Vector(None, Some(peekStub), Some("alpha"), Some("alpha"))
@@ -162,8 +163,9 @@ object TurnGateTurnTests extends TestSuite {
         Some("h1 is shown in full in its place from your next request on.")
       val withdrawn = "From now until you answer, you can't use post, because you read a " +
         "result from a place people outside the team can write in."
-      provider.requests.map(_.system.endsWith(s"\n\n${TurnGate.Guidance}\n\n$withdrawn")) ==>
-        Vector(false, false, true, false)
+      val note = Message.User(TurnGate.noted(Vector(withdrawn)))
+      provider.requests.map(_.messages.count(_ == note)) ==> Vector(0, 0, 1, 1)
+      provider.requests.lift(2).flatMap(_.messages.lastOption) ==> Some(note)
     }
 
     test(
@@ -178,10 +180,7 @@ object TurnGateTurnTests extends TestSuite {
       new InMemoryDurable().run(turn.workflowId)(
         tooledBody(entries, provider, ledger, summarizer, NoClassifier, ws, gatedTools(ws), 5)
       ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
-      provider.requests.map(_.tools.map(_.name)) ==> Vector(
-        Vector("peek", "post"),
-        Vector("read_hidden", "extract", "peek", "post"),
-        Vector("read_hidden", "extract", "peek", "post"),
+      provider.requests.map(_.tools.map(_.name)).distinct ==> Vector(
         Vector("read_hidden", "extract", "peek", "post")
       )
       // The item stays hidden, and the answer is all the turn's model reads of it.
@@ -365,7 +364,8 @@ object TurnGateTurnTests extends TestSuite {
               stub("h1", "something from a closing record, written from outside the team")
           ),
           dated,
-          Message.User("two")
+          Message.User("two"),
+          Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
         )
       )
     }
@@ -413,7 +413,9 @@ object TurnGateTurnTests extends TestSuite {
       durable.run(turn.workflowId)(
         turnBodyWith(entries, provider, opening, new InMemoryUsageLedger, tools = posting)
       )
-      provider.requests.map(_.tools.map(_.name)) ==> Vector(Vector("post"))
+      provider.requests.map(_.tools.map(_.name)) ==> Vector(
+        Vector("read_hidden", "extract", "post")
+      )
       durable
         .history(turn.workflowId)
         .find(_.name == "gate:0")

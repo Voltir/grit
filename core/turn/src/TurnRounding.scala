@@ -18,7 +18,7 @@ import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
 
 import TurnLoop.{Pending, Round}
-import TurnShown.{gatedOffer, hidSince, loopShape, shown, stubsAt}
+import TurnShown.{gateNotes, gatedOffer, loopShape, mayGate, shown, stubsAt}
 
 /** What a turn's rounds act through ([[TurnRound.Env]]), over `env` and `tooling`: its model
   * told through `heard`, offered the tools its offer chose of `tooling`'s, their results kept
@@ -210,7 +210,7 @@ private[turn] final class Rounding[C^](
         answer: Extract.Answer^{X}
     ): Either[Outcome, (Bound.Runs | Bound.Hosted)^{C, env, tooling, reads, X}] = {
       val box: Toolbox[caps.CapSet^{C, X}] =
-        if (!hidSince(at.gates, at.round)) tools
+        if (!mayGate(at.gates.get(Round.First.index), tools.set)) tools
         else {
           val g = at.gates.get(at.round.index)
           Toolbox
@@ -272,14 +272,16 @@ private[turn] object Rounding {
   ): ModelRequest -> ModelRequest = {
     val settings = pins.turn.settings
     val strict = settings.strict == StrictSchemas.Enforced
-    val (shown, lines) = gatedOffer(at.gates, at.round, tools.set, tools.schemas(strict), strict)
+    val (shown, lines) =
+      gatedOffer(at.gates.get(Round.First.index), tools.set, tools.schemas(strict), strict)
     loopShape(
       at.looping.asked,
       use,
       shown,
       settings.afterResult,
       settings.guidance,
-      lines
+      lines,
+      gateNotes(at.gates, at.round, tools.set)
     )
   }
 

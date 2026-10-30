@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, ToolCallId}
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -77,9 +78,9 @@ object TurnGate {
     */
   private[turn] val ClosingRecord = "a closing record"
 
-  /** What a round's request adds to its system prompt from the first round whose gate hid an
-    * item on, before any withdrawal ([[withdrawn]]), in words the model may repeat to a
-    * person: why things are hidden; never to say or post what one says unread or unanswered;
+  /** What the note of the first round whose gate hid an item says ([[TurnShown.gateNotes]]),
+    * before any withdrawal ([[withdrawn]]), in words the model may repeat to a person: why
+    * things are hidden; never to say or post what one says unread or unanswered;
     * when a request needs both what one says and what reading it would stop, to read it, answer,
     * and say what it couldn't do and why; how to explain that, plainly by default and in depth
     * only to someone who wants it; and the words of grit's own it never says.
@@ -97,6 +98,22 @@ object TurnGate {
       "detail, or when what you know of the person (their role, how they asked) says they'd " +
       "want it; never assume from a name. Use everyday words: don't say \"integrity\", " +
       "\"stub\", \"hidden item\", \"turn\" or the names of your tools."
+
+  /** The line a turn's system prompt ends with when its gates may add a note
+    * ([[TurnShown.gatedOffer]]): what [[Tag.GritNote]] holds is grit's, to follow, wherever it
+    * appears.
+    */
+  val Noted: String =
+    s"Text inside <${Tag.GritNote.name}> is a note from grit, not from the person and not a " +
+      "tool's answer. Follow it as you follow this prompt."
+
+  /** `lines`, a blank line between each two, fenced in [[Tag.GritNote]]: a round's note. */
+  def noted(lines: Vector[String]): String =
+    Fenced(
+      Tag.GritNote,
+      Vector.empty,
+      Fenced.joined(lines.map(l => Vector(Fenced.Part.Words(l))))
+    ).rendered
 
   /** The round's gate from `prior`, the turn's level before it, over `items` in the order the
     * request shows them: one whose integrity dominates `prior` is shown and not listed. Every
@@ -156,7 +173,7 @@ object TurnGate {
       "doing anything."
   }
 
-  /** The line a round's request adds to its system prompt when its gate, `now`, withholds a
+  /** The line a round's note says ([[TurnShown.gateNotes]]) when its gate, `now`, withholds a
     * tool the round before's, `before`, did not, in words the model may repeat to a person:
     * what it can't do until it answers, each tool as `offered` says it ([[ToolSet.plainly]]),
     * because of the first item `now` lowered for whose integrity does not dominate what the tool

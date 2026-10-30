@@ -14,6 +14,11 @@ enum Tag(val name: String, val kind: Tag.Kind) extends caps.Pure {
   /** What each offered tool's maker says it does. */
   case ToolDescriptions extends Tag("grit_tool_descriptions", Tag.Kind.Guidance)
 
+  /** A note grit adds between a conversation's messages: its own words, for the model to
+    * follow as its system prompt.
+    */
+  case GritNote extends Tag("grit_note", Tag.Kind.Guidance)
+
   /** One document: its text, or its [[Source]] and [[DocumentContent]]; the fence a document
     * is held in inside an ask's request. A document in a turn's window is marked instead by
     * the tag its line begins with, [[grit.core.context.SectionTag.Document]].

@@ -190,7 +190,9 @@ object TurnRequestsTests extends TestSuite {
       calls.map(_.schemas) ==> Right(TurnRecord.Schemas.Sent)
     }
 
-    test("a gated turn's requests are rebuilt as sent: tools withheld left out, withdrawals said") {
+    test(
+      "a gated turn's requests are rebuilt as sent: its tools, and each round's note in its place"
+    ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val provider = gatedScript

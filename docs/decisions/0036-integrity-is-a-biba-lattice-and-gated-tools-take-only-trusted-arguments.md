@@ -1,6 +1,6 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13); revised (2026-10-16)
+Status: accepted (2026-10-13); revised (2026-10-16, 2026-10-29)
 
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labelled what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a write out of
@@ -37,7 +37,10 @@ Decision:
   the meet of all its model read; its output takes that level. The level is a
   pure fold over its recorded gates (ADR 0038), so it survives a resume.
 - **Gates.** Each hosted tool declares the integrity it requires, and is offered to no turn
-  below it: by default member for a tool writing out of grit, nothing for a read-only one.
+  that starts below it: by default member for a tool writing out of grit, nothing for a
+  read-only one. A turn that falls below it keeps it offered and has its calls refused, told so
+  in a note among its messages: what a turn sends only grows within the turn, so a provider's
+  prompt cache and a model's recorded thinking stay valid.
 - **What a turn reads.** Before each model call, a recorded step's one pure rule decides what
   the model reads. An item the turn's level dominates is shown. One below is shown, and lowers
   the level, when lowering withholds no tool offered now or the model asked to read it

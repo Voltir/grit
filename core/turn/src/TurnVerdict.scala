@@ -115,7 +115,19 @@ object TurnVerdict {
     * first call was.
     */
   def tagged(base: ModelRequest, c: TurnAgenda.Classification): ModelRequest = {
-    val notes = base.messages
+    val last = asker(base.messages)
+    base.copy(messages = base.messages.zipWithIndex.map {
+      case (Message.User(text), i) if last.contains(i) => Message.User(s"$text\n\n${tag(c)}")
+      case (m, _) => m
+    })
+  }
+
+  /** The index of `messages`' last user message that is no note on the loop's exchange (a
+    * user message right after a tool result, a reply that called tools, or another such note):
+    * the one [[tagged]] tags. `None` when there is none.
+    */
+  def asker(messages: Vector[Message]): Option[Int] = {
+    val notes = messages
       .foldLeft((Vector.empty[Boolean], false)) { case ((flags, afterExchange), m) =>
         val note = m match {
           case Message.User(_) => afterExchange
@@ -129,14 +141,10 @@ object TurnVerdict {
         (flags :+ note, next)
       }
       ._1
-    val last = base.messages.zip(notes).lastIndexWhere {
+    Some(messages.zip(notes).lastIndexWhere {
       case (Message.User(_), false) => true
       case _ => false
-    }
-    base.copy(messages = base.messages.zipWithIndex.map {
-      case (Message.User(text), i) if i == last => Message.User(s"$text\n\n${tag(c)}")
-      case (m, _) => m
-    })
+    }).filter(_ >= 0)
   }
 
   /** What the `topic` tool answers when its call reads: the loop's model goes on. */

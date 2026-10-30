@@ -12,7 +12,7 @@ import grit.core.visibility.{Classification, Label}
 
 import TurnFailure.reason
 import TurnLoop.Round
-import TurnShown.{asked, gatedOffer, loopShape, offered, requestOf, shown, stubsAt}
+import TurnShown.{asked, gateNotes, gatedOffer, loopShape, offered, requestOf, shown, stubsAt}
 
 /** The durable turn: one workflow per turn, run as [[TurnFlow]] describes it. Each step's
   * output is recorded, so a turn resumed after a crash never calls a model twice. A step that
@@ -389,7 +389,8 @@ object Turn {
           case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
-            val (shown, lines) = gatedOffer(gates, round, tools.set, schemas, strict)
+            val (shown, lines) =
+              gatedOffer(gates.get(Round.First.index), tools.set, schemas, strict)
             requestOf(
               prompt.render,
               showing.copy(mine = before),
@@ -407,7 +408,8 @@ object Turn {
                     shown,
                     settings.afterResult,
                     settings.guidance,
-                    lines
+                    lines,
+                    gateNotes(gates, round, tools.set)
                   )
                 )
               )

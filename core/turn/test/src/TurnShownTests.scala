@@ -93,6 +93,7 @@ object TurnShownTests extends TestSuite {
             Vector.empty,
             AfterToolResult.UserMessage,
             ToolGuidance.SchemaOnly,
+            Vector.empty,
             Vector.empty
           )(ModelRequest("sys", messages))
           .messages
@@ -104,6 +105,47 @@ object TurnShownTests extends TestSuite {
       ) ==> (
         first ++ exchange,
         first ++ exchange ++ second :+ Message.User(TurnLoop.LastCall)
+      )
+    }
+
+    test(
+      "a round's note sits before that round's reply on every later call, round 1's after the asker's message, which keeps the tag"
+    ) {
+      val c = TurnAgenda.Classification(Vector.empty, None, Vector.empty, None, None)
+      def reply(id: String) = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId(id), "peek", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      val notes = Vector(TurnLoop.Round.First -> "first", TurnLoop.Round.First.next.next -> "third")
+      val messages = Vector(
+        Message.User("earlier"),
+        Message.User("read it"),
+        reply("t1"),
+        Message.ToolResult(ToolCallId("t1"), "alpha", isError = false),
+        reply("t2"),
+        Message.ToolResult(ToolCallId("t2"), "beta", isError = false)
+      )
+      TurnShown
+        .loopShape(
+          Some(c),
+          ToolUse.Auto,
+          Vector.empty,
+          AfterToolResult.UserMessage,
+          ToolGuidance.SchemaOnly,
+          Vector.empty,
+          notes
+        )(ModelRequest("sys", messages))
+        .messages ==> Vector(
+        Message.User("earlier"),
+        Message.User(s"read it\n\n${TurnVerdict.tag(c)}"),
+        Message.User("first"),
+        reply("t1"),
+        Message.ToolResult(ToolCallId("t1"), "alpha", isError = false),
+        reply("t2"),
+        Message.ToolResult(ToolCallId("t2"), "beta", isError = false),
+        Message.User("third")
       )
     }
 
@@ -123,6 +165,7 @@ object TurnShownTests extends TestSuite {
           Vector.empty,
           after,
           ToolGuidance.SchemaOnly,
+          Vector.empty,
           Vector.empty
         )(ModelRequest("sys", asked ++ Vector(call, result)))
         (r.stable, r.messages.size)
