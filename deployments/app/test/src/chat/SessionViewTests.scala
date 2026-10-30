@@ -58,16 +58,16 @@ object SessionViewTests extends TestSuite {
     */
   private val entries: Vector[Entry] = Vector(
     user(0, 0),
-    entry(1, 0, Payload.Window(Vector.empty, Vector.empty)),
+    entry(1, 0, Payload.Window(Vector.empty, Vector.empty, carry = None)),
     reply(2, 0),
     entry(3, 0, Payload.Summary("asked about runes")),
     user(4, 1),
-    entry(5, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty)),
+    entry(5, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None)),
     reply(6, 1),
     entry(7, 1, Payload.Summary("asked again")),
     user(8, 2),
     entry(9, 2, Payload.Query("runes")),
-    entry(10, 2, Payload.Window(Vector(EntrySeq(0), EntrySeq(2)), Vector(TurnSeq(0))))
+    entry(10, 2, Payload.Window(Vector(EntrySeq(0), EntrySeq(2)), Vector(TurnSeq(0)), carry = None))
   )
 
   private val costs: Vector[UsageLedger.Row] = Vector(
@@ -105,7 +105,11 @@ object SessionViewTests extends TestSuite {
 
     test("what search recalled: which earlier turns, and in how many windows") {
       def window(seq: Long, turn: Long, recalled: Long*) =
-        entry(seq, turn, Payload.Window(Vector.empty, recalled.toVector.map(TurnSeq(_))))
+        entry(
+          seq,
+          turn,
+          Payload.Window(Vector.empty, recalled.toVector.map(TurnSeq(_)), carry = None)
+        )
       // Four windows, one recalling nothing; turn 1 recalled first, turn 0 twice. Three
       // windows recalled something, two turns were recalled, four recalls in all.
       val recalling = Vector(

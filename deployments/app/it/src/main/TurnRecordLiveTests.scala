@@ -55,7 +55,8 @@ object TurnRecordLiveTests extends TestSuite {
           Some(
             Payload.Window(
               Vector(seqOf(engine, sayId(engine, first)), seqOf(engine, first.replyId)),
-              Vector.empty
+              Vector.empty,
+              carry = None
             )
           )
         // Where each message went, written to Postgres and read back as agenda events. The

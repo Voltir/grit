@@ -254,7 +254,7 @@ object StitchLiveTests extends TestSuite {
         assert(eventually(window.nonEmpty))
         links(engine, mention.conversationId) ==> Vector(Link(mention.conversationId, engineRoot))
         val along = window.toVector.flatMap {
-          case Payload.Window(_, _, nearby, _, _) => nearby.collect { case a: Nearby.Along => a }
+          case w: Payload.Window => w.nearby.collect { case a: Nearby.Along => a }
           case _ => Vector.empty
         }
         assert(along.exists(a => a.conversation == engineRoot && a.entries.contains(asked.seq)))

@@ -3,7 +3,7 @@ package grit.core.context
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
-import grit.core.store.{Db, Nearby, StoreError}
+import grit.core.store.{Db, Nearby, Payload, StoreError}
 
 /** Chooses what the model sees on a turn: a projection of the store drawn at a boundary and
   * carried, append-only, until the next (ADR 0052). Given the window carried into a turn
@@ -195,6 +195,22 @@ final case class Window(
     documents: Vector[DocumentVersionId] = Vector.empty,
     pieces: Vector[Retrieved.Piece] = Vector.empty
 )
+
+object Window {
+
+  /** The window `record` keeps: its entries, sections, documents and pieces, and the turns it
+    * recalled as one [[AssemblyNote.Recalled]] note when there are any. Its queries are entries
+    * of their own and are not among its notes.
+    */
+  def of(record: Payload.Window): Window =
+    Window(
+      record.entries,
+      Vector(AssemblyNote.Recalled(record.recalled)).filter(_ => record.recalled.nonEmpty),
+      record.nearby,
+      record.documents,
+      record.pieces.map((id, more) => Retrieved.Piece(id, more))
+    )
+}
 
 /** Something an assembler did while choosing a window, kept for the record and never shown
   * to the model.

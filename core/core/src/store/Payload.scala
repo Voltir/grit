@@ -2,8 +2,8 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersionId, EntrySeq, PeriodSeq, PieceId, ToolCallId, TurnSeq}
-import grit.core.message.Message
+import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, PeriodSeq, PieceId, ToolCallId, TurnSeq}
+import grit.core.message.{Message, Tokens}
 import grit.core.period.{CloseReason, Closing}
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
@@ -44,14 +44,19 @@ enum Payload {
     * `recalled` rather than recency, the `nearby` sections from other conversations, the
     * documents it held, by version, and the pieces of files it held, by id with how many more
     * of its file's pieces its search matched (the count the model was shown). A record of what
-    * the model saw: never shown to the model, never searched.
+    * the model saw: never shown to the model, never searched. `carry`, how a later turn of its
+    * window carries it ([[Payload.Carry]]): `None` for a record kept before windows were
+    * carried, which no later turn carries. With one, what it names is what its turn's window
+    * drew (ADR 0052): the whole window at a boundary, else only what was appended after
+    * `carry.after`'s.
     */
   case Window(
       entries: Vector[EntrySeq],
       recalled: Vector[TurnSeq],
       nearby: Vector[Nearby] = Vector.empty,
       documents: Vector[DocumentVersionId] = Vector.empty,
-      pieces: Vector[(PieceId, Int)] = Vector.empty
+      pieces: Vector[(PieceId, Int)] = Vector.empty,
+      carry: Option[Payload.Carry]
   )
 
   /** What happened to the conversation's agenda during the turn the entry belongs to
@@ -111,6 +116,21 @@ enum Payload {
 }
 
 object Payload {
+
+  /** What a later turn of its window needs of a window record to show it again (ADR 0052):
+    * `after`, the window record it was appended after, `None` when it was drawn at a boundary;
+    * `cost`, what this record's part drew, as shown, in the estimated tokens of the assembler
+    * that drew it: this part alone, not the window it follows; `dated` and `tag`, the line its
+    * turn's request sent just before the turn's own messages (`None` for a turn with no own
+    * entry) and the note it added to the turn's asking message (`None` when it added none),
+    * each as sent, so a later turn repeats their bytes.
+    */
+  final case class Carry(
+      after: Option[EntryId],
+      cost: Tokens,
+      dated: Option[String],
+      tag: Option[String]
+  )
 
   /** The asks among `payloads`, a turn's in order, still waiting for an answer at `now`: each
     * whose call has no [[Result]] among them, and whose `until` has not passed (one recorded

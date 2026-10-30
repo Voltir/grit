@@ -4,6 +4,7 @@ import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.id.{
   ConversationId,
   DocumentVersionId,
+  EntryId,
   EntrySeq,
   PeriodSeq,
   PieceId,
@@ -136,7 +137,8 @@ object PayloadJsonTests extends TestSuite {
       // Stored data: a window without sections or documents is written byte for byte as it
       // was before either existed, and every window written then reads back.
       val written = """{"kind":"window","entries":[0,1],"recalled":[3]}"""
-      val window = Payload.Window(Vector(EntrySeq(0), EntrySeq(1)), Vector(TurnSeq(3)))
+      val window =
+        Payload.Window(Vector(EntrySeq(0), EntrySeq(1)), Vector(TurnSeq(3)), carry = None)
       PayloadJson.write(window).render() ==> written
       PayloadJson.read(ujson.read(written)) ==> Right(window)
     }
@@ -147,7 +149,8 @@ object PayloadJsonTests extends TestSuite {
       val window = Payload.Window(
         Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5), EntrySeq(6))))
+        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5), EntrySeq(6)))),
+        carry = None
       )
       PayloadJson.write(window).render() ==>
         """{"kind":"window","entries":[0],"recalled":[],""" +
@@ -162,14 +165,16 @@ object PayloadJsonTests extends TestSuite {
         Vector(EntrySeq(0)),
         Vector.empty,
         Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5)))),
-        versions
+        versions,
+        carry = None
       )
       PayloadJson.write(window).render() ==>
         """{"kind":"window","entries":[0],"recalled":[],""" +
         """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5]}],""" +
         """"documents":[7,3]}"""
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
-      val bare = Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions)
+      val bare =
+        Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, carry = None)
       PayloadJson.write(bare).render() ==>
         """{"kind":"window","entries":[0],"recalled":[],"documents":[7,3]}"""
       PayloadJson
@@ -178,11 +183,47 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test(
+      "a window record keeps how it is carried, the record it follows, its cost and its turn's lines, and one kept without reads as never carried"
+    ) {
+      // Pins the stored form: a later turn reads these bytes back to show this one again.
+      val carry = Payload.Carry(Some(EntryId("window:w1")), Tokens(42), Some("said"), Some("tag"))
+      val appended = Payload.Window(Vector(EntrySeq(3)), Vector.empty, carry = Some(carry))
+      val boundary =
+        Payload.Window(
+          Vector(EntrySeq(0)),
+          Vector.empty,
+          carry = Some(Payload.Carry(None, Tokens(7), None, None))
+        )
+      val stored = PayloadJson.write(appended).render()
+      val older = """{"kind":"window","entries":[0],"recalled":[]}"""
+      (
+        stored,
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.write(boundary).render(),
+        PayloadJson.read(PayloadJson.write(boundary)),
+        PayloadJson.read(ujson.read(older))
+      ) ==> (
+        """{"kind":"window","entries":[3],"recalled":[],"carry":{"after":"window:w1","cost":42,"dated":"said","tag":"tag"}}""",
+        Right(appended),
+        """{"kind":"window","entries":[0],"recalled":[],"carry":{"cost":7}}""",
+        Right(boundary),
+        Right(Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None))
+      )
+    }
+
+    test(
       "a window's pieces are stored by id with their counts of further matches after its documents, and read back; one stored without them holds none"
     ) {
       val versions = Vector(7L).flatMap(DocumentVersionId.of)
       val pieces = Vector(12L, 4L).flatMap(PieceId.of).zip(Vector(2, 0))
-      val window = Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, pieces)
+      val window = Payload.Window(
+        Vector(EntrySeq(0)),
+        Vector.empty,
+        Vector.empty,
+        versions,
+        pieces,
+        carry = None
+      )
       val stored = PayloadJson.write(window).render()
       val older = """{"kind":"window","entries":[0],"recalled":[],"documents":[7]}"""
       (
@@ -195,7 +236,9 @@ object PayloadJsonTests extends TestSuite {
       ) ==> (
         """{"kind":"window","entries":[0],"recalled":[],"documents":[7],"pieces":[{"id":12,"more":2},{"id":4,"more":0}]}""",
         Right(window),
-        Right(Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions)),
+        Right(
+          Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions, carry = None)
+        ),
         true
       )
     }
@@ -206,7 +249,8 @@ object PayloadJsonTests extends TestSuite {
       val window = Payload.Window(
         Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Closed(ConversationId("c9"), thread, EntrySeq(8)))
+        Vector(Nearby.Closed(ConversationId("c9"), thread, EntrySeq(8))),
+        carry = None
       )
       PayloadJson.write(window).render() ==>
         """{"kind":"window","entries":[0],"recalled":[],""" +
@@ -219,7 +263,8 @@ object PayloadJsonTests extends TestSuite {
       val along: Payload.Window = Payload.Window(
         Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Along(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6))))
+        Vector(Nearby.Along(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6)))),
+        carry = None
       )
       val json = PayloadJson.write(along)
       // The stored mark: windows recorded with a strand must keep reading as one.
@@ -238,7 +283,8 @@ object PayloadJsonTests extends TestSuite {
       val asked: Payload.Window = Payload.Window(
         Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Asked(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6))))
+        Vector(Nearby.Asked(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6)))),
+        carry = None
       )
       val json = PayloadJson.write(asked)
       json("nearby")(0)("asked") ==> ujson.True
@@ -354,7 +400,7 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("every sample round-trips, through text too") {
-      val window = Payload.Window(Vector(EntrySeq(0)), Vector(TurnSeq(0), TurnSeq(7)))
+      val window = Payload.Window(Vector(EntrySeq(0)), Vector(TurnSeq(0), TurnSeq(7)), carry = None)
       val (t1, t2) = (Agenda.ItemId("topic:c:0"), Agenda.ItemId("topic:c:3"))
       val agenda = Payload.Agenda(
         Vector(

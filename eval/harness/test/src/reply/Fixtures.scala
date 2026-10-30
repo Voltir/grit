@@ -92,7 +92,8 @@ object Fixtures {
           Vector(
             Nearby.Open(c2, place, Vector(EntrySeq(1), EntrySeq(2))),
             Nearby.Open(c3, place, Vector(EntrySeq(4)))
-          )
+          ),
+          carry = None
         ),
         EntryId.value(Turn.windowId(ref))
       ),

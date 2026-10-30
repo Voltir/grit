@@ -218,7 +218,7 @@ object ReplyReview {
       }).toRight(s"$w: no reply recorded")
     } yield {
       val nearby = mine.find(_.id == Turn.windowId(ref)).map(_.payload) match {
-        case Some(Payload.Window(_, _, n, _, _)) => n
+        case Some(w: Payload.Window) => w.nearby
         case _ => Vector.empty
       }
       val shown =
@@ -256,7 +256,7 @@ object ReplyReview {
     for {
       all <- reader.all.read(reader.entries.list(t.conversation)).left.map(unread("entries"))
       nearby = all.find(_.id == Turn.windowId(ref)).map(_.payload) match {
-        case Some(Payload.Window(_, _, n, _, _)) if records => n
+        case Some(w: Payload.Window) if records => w.nearby
         case _ => Vector.empty
       }
       near <- reader.all

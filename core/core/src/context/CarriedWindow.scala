@@ -1,12 +1,13 @@
 package grit.core.context
 
-import grit.core.id.TurnSeq
+import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.Tokens
+import grit.core.store.{Entry, Payload, StoreError}
 
 /** The window a conversation carries into its next turn: each part drawn since its last
   * boundary, oldest first. As the model is shown it, each part is followed by its turn's own
-  * messages, as that turn was shown them, dated by that turn's first entry and the zones its
-  * `offer` recorded (ADR 0016).
+  * messages, as that turn was shown them, led by the lines its window record keeps
+  * ([[Payload.Carry]]).
   */
 final case class CarriedWindow private (parts: Vector[CarriedWindow.Part]) {
 
@@ -33,6 +34,46 @@ object CarriedWindow {
 
   /** Nothing carried: the next window is a boundary. */
   val Empty: CarriedWindow = CarriedWindow(Vector.empty)
+
+  /** A window record of `turn`, read back as its turn's part of a carried window. */
+  final case class Record(turn: TurnSeq, window: Window, carry: Payload.Carry) {
+
+    /** Appended after the record it follows, or drawn at a boundary. */
+    def projection: Projection =
+      carry.after.fold(Projection.Boundary(window, carry.cost))(_ =>
+        Projection.Appended(window, carry.cost)
+      )
+  }
+
+  /** The window records that the one with id `last` follows back to its boundary, then it,
+    * oldest first, each read by `get`. Empty when `last` or a record it follows is not read
+    * (gone, or kept above what `get`'s reader is cleared for), is not a window record, kept no
+    * [[Payload.Carry]] (recorded before windows were carried), or follows a record of the same
+    * or a later turn. A failure of `get` is returned.
+    */
+  def chain(last: EntryId)(
+      get: EntryId => Either[StoreError, Option[Entry]]
+  ): Either[StoreError, Vector[Record]] = {
+    // Each record follows one of an earlier turn, so the walk ends.
+    @annotation.tailrec
+    def walk(id: EntryId, later: List[Record]): Either[StoreError, Vector[Record]] =
+      get(id) match {
+        case Left(e) => Left(e)
+        case Right(Some(Entry(_, _, turn, _, _, w @ Payload.Window(_, _, _, _, _, Some(c)), _, _)))
+            if later.headOption.forall(next => TurnSeq.value(turn) < TurnSeq.value(next.turn)) =>
+          val done = Record(turn, Window.of(w), c) :: later
+          c.after match {
+            case Some(before) => walk(before, done)
+            case None => Right(done.toVector)
+          }
+        case Right(_) => Right(Vector.empty)
+      }
+    walk(last, Nil)
+  }
+
+  /** The window `records`, oldest first, carry into the turn after the last of them. */
+  def of(records: Vector[Record]): CarriedWindow =
+    records.foldLeft(Empty)((carried, r) => carried.after(r.projection, r.turn))
 }
 
 /** A turn's window, as it stands to the window carried into it. */

@@ -5,6 +5,7 @@ import grit.core.either.Traversal.traverse
 import grit.core.id.{
   ConversationId,
   DocumentVersionId,
+  EntryId,
   EntrySeq,
   PeriodSeq,
   PieceId,
@@ -28,7 +29,7 @@ object PayloadJson {
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
-    case Payload.Window(entries, recalled, nearby, documents, pieces) =>
+    case Payload.Window(entries, recalled, nearby, documents, pieces, carry) =>
       val o = ujson.Obj(
         "kind" -> "window",
         "entries" -> writeSeqs(entries),
@@ -44,6 +45,14 @@ object PayloadJson {
             "more" -> ujson.Num(more.toDouble)
           )
         })
+      carry.foreach { c =>
+        val kept = ujson.Obj()
+        c.after.foreach(a => kept("after") = EntryId.value(a))
+        kept("cost") = ujson.Num(Tokens.value(c.cost).toDouble)
+        c.dated.foreach(d => kept("dated") = d)
+        c.tag.foreach(t => kept("tag") = t)
+        o("carry") = kept
+      }
       o
     // "topic" is the agenda's kind from before its rename.
     case Payload.Agenda(events) =>
@@ -134,7 +143,8 @@ object PayloadJson {
               else Right(Vector.empty)
             documents <- o.value.get("documents").fold(Right(Vector.empty))(readVersions)
             pieces <- o.value.get("pieces").fold(Right(Vector.empty))(readPieces)
-          } yield Payload.Window(entries, recalled, nearby, documents, pieces)
+            carry <- o.value.get("carry").fold(Right(None))(readCarry(_).map(Some(_)))
+          } yield Payload.Window(entries, recalled, nearby, documents, pieces, carry)
         case "topic" =>
           arr(o, "events").flatMap(traverse(_)(AgendaJson.read)).map(Payload.Agenda(_))
         case "exchange" =>
@@ -423,6 +433,19 @@ object PayloadJson {
   private def seq(v: ujson.Value): Either[String, EntrySeq] = v match {
     case ujson.Num(n) if n.isWhole && n >= 0 => Right(EntrySeq(n.toLong))
     case _ => Left("an entry seq is not a non-negative whole number")
+  }
+
+  /** A window record's [[Payload.Carry]]: `after`, `dated` and `tag` only when there are any. */
+  private def readCarry(v: ujson.Value): Either[String, Payload.Carry] = {
+    def text(o: ujson.Obj, key: String): Either[String, Option[String]] =
+      if (o.value.contains(key)) str(o, key).map(Some(_)) else Right(None)
+    for {
+      o <- obj(v)
+      after <- text(o, "after")
+      cost <- long(o, "cost")
+      dated <- text(o, "dated")
+      tag <- text(o, "tag")
+    } yield Payload.Carry(after.map(EntryId(_)), Tokens(cost), dated, tag)
   }
 
   private def obj(v: ujson.Value): Either[String, ujson.Obj] = v match {

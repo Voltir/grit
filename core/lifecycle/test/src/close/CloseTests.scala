@@ -184,7 +184,8 @@ object CloseTests extends TestSuite {
           Vector(
             grit.core.store.Nearby.Open(api, place, seqs.toVector.map(EntrySeq(_))),
             grit.core.store.Nearby.Closed(ops, thread, EntrySeq(4))
-          )
+          ),
+          carry = None
         )
       val t0 = w.turn(
         "which fix for the flaky test?",

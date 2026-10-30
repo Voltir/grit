@@ -1103,7 +1103,7 @@ object TurnTests extends TestSuite {
         )
       )
       windows(entries).lastOption.map(_._2) ==> Some(
-        Payload.Window(Vector(EntrySeq(1)), Vector.empty, nearby)
+        Payload.Window(Vector(EntrySeq(1)), Vector.empty, nearby, carry = None)
       )
     }
 
@@ -1298,11 +1298,12 @@ object TurnTests extends TestSuite {
         turnBodyWith(entries, provider, recalling, new InMemoryUsageLedger)
       )
       windows(entries) ==> Vector(
-        Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty),
+        Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty, carry = None),
         Turn.windowId(two) ->
           Payload.Window(
             Vector(seqOf(entries, EntryId("in:one")), seqOf(entries, one.replyId)),
-            Vector(one.turnSeq)
+            Vector(one.turnSeq),
+            carry = None
           )
       )
     }

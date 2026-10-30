@@ -255,7 +255,7 @@ object TurnDocumentsTests extends TestSuite {
       )
       assert(output.startsWith("replied:"))
       windows(entries).lastOption.map(_._2) ==>
-        Some(Payload.Window(Vector(EntrySeq(0)), Vector.empty, nearby, held))
+        Some(Payload.Window(Vector(EntrySeq(0)), Vector.empty, nearby, held, carry = None))
     }
 
     test(

@@ -100,7 +100,8 @@ object TurnViewTests extends TestSuite {
       2,
       Payload.Window(
         Vector(EntrySeq(0), EntrySeq(1), EntrySeq(2), EntrySeq(3)),
-        Vector(TurnSeq(0))
+        Vector(TurnSeq(0)),
+        carry = None
       )
     ),
     reply(7, 2, "the answer", 99)
@@ -204,7 +205,8 @@ object TurnViewTests extends TestSuite {
           3,
           Payload.Window(
             Vector(EntrySeq(0), EntrySeq(1), EntrySeq(4), EntrySeq(5)),
-            Vector(TurnSeq(0))
+            Vector(TurnSeq(0)),
+            carry = None
           )
         )
       )
@@ -243,7 +245,7 @@ object TurnViewTests extends TestSuite {
       val asked = Vector(
         closed,
         user(1, 1, "what did we decide?"),
-        entry(2, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty)),
+        entry(2, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None)),
         reply(3, 1, "exiftool", 50)
       )
       val w = TurnView
@@ -301,7 +303,8 @@ object TurnViewTests extends TestSuite {
             Vector(
               Nearby.Open(web, webAt, Vector(EntrySeq(0), EntrySeq(9))),
               Nearby.Open(api, apiAt, Vector(EntrySeq(0), EntrySeq(1)))
-            )
+            ),
+            carry = None
           )
         ),
         reply(2, 0, "TZ=UTC", 50)
@@ -364,7 +367,12 @@ object TurnViewTests extends TestSuite {
           1,
           0,
           Payload
-            .Window(Vector.empty, Vector.empty, Vector(Nearby.Closed(ops, opsAt, EntrySeq(5))))
+            .Window(
+              Vector.empty,
+              Vector.empty,
+              Vector(Nearby.Closed(ops, opsAt, EntrySeq(5))),
+              carry = None
+            )
         ),
         reply(2, 0, "Friday", 50)
       )
@@ -419,7 +427,8 @@ object TurnViewTests extends TestSuite {
             Vector.empty,
             Vector.empty,
             Vector.empty,
-            held.flatMap(h => Vector(h(0).version))
+            held.flatMap(h => Vector(h(0).version)),
+            carry = None
           )
         ),
         reply(2, 0, "Friday", 50)
@@ -488,7 +497,8 @@ object TurnViewTests extends TestSuite {
             Vector.empty,
             Vector.empty,
             Vector.empty,
-            held.map((k, _, more) => (k.id, more))
+            held.map((k, _, more) => (k.id, more)),
+            carry = None
           )
         ),
         reply(2, 0, "Finance", 50)
