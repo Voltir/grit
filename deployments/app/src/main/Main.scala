@@ -4,7 +4,7 @@ import scala.concurrent.duration.{DurationInt, DurationLong, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.Listed.csv
-import grit.app.config.{Budgets, Claimed, Durations, Lifecycle, Prefs}
+import grit.app.config.{Budgets, Claimed, Durations, LifecycleEnv, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
@@ -124,7 +124,7 @@ import grit.turn.TurnLoop
   * and closes, what its balance holds, and how a window weights its own conversation against
   * what it draws on elsewhere, are data in the database: on every start the engine writes them
   * from `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
-  * `GRIT_LEDGER`, `GRIT_BALANCE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
+  * `GRIT_LEDGER`, `GRIT_BALANCE` and `GRIT_WEIGHT` ([[LifecycleEnv.of]]), and logs them; `/set`
   * (or SQL) changes them from the next sweep and turn on, until the next start. The email
   * domains `GRIT_CLAIMED_DOMAINS` lists ([[Claimed]]) are the deployment's own; serving
   * Slack, it trusts Slack to say who the people of the workspace its bot token is installed in
@@ -881,7 +881,7 @@ object Main {
       models <- policy(env)
       sweep <- sweepEvery(env)
       expiry <- filesExpiry(env)
-      lifecycle <- Lifecycle.fromEnv(env)
+      lifecycle <- LifecycleEnv.of(env)
       spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
       domains <- Claimed.fromEnv(env)
       trusted <- slackIn.fold[Either[String, Vector[Vouching]]](Right(Vector.empty))(team =>

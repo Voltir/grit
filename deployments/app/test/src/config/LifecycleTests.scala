@@ -1,64 +1,14 @@
 package grit.app.config
 
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
-
-import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.Weight
+import scala.concurrent.duration.DurationInt
 
 import utest.*
 
 object LifecycleTests extends TestSuite {
   import Lifecycle.Change
-
-  private def p(x: Double): Probability =
-    Probability.of(x).getOrElse(throw new java.lang.AssertionError(x))
-
-  private def settings(
-      idle: FiniteDuration,
-      retention: FiniteDuration,
-      balance: Int,
-      settle: FiniteDuration,
-      resolveAt: Double,
-      asks: Int,
-      weighted: Weight = Weight.Default
-  ): LifecycleSettings =
-    Windows
-      .of(idle, retention, 180.days)
-      .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks, weighted))
-      .getOrElse(throw new java.lang.AssertionError("settings"))
-
-  private def weight(w: Double): Weight = Weight.of(w).fold(e => sys.error(e), identity)
+  import TestLifecycle.{p, settings, weight}
 
   val tests = Tests {
-    test("the environment seeds each setting it names; the rest are the defaults") {
-      Lifecycle.fromEnv(Map.empty) ==> Right(LifecycleSettings.Default)
-      Lifecycle.fromEnv(
-        Map(
-          "GRIT_IDLE" -> "3m",
-          "GRIT_RETENTION" -> "10m",
-          "GRIT_BALANCE" -> "300",
-          "GRIT_SETTLE" -> "1m",
-          "GRIT_RESOLVE_AT" -> "0.9",
-          "GRIT_ASKS" -> "2"
-        )
-      ) ==> Right(settings(3.minutes, 10.minutes, 300, 1.minute, 0.9, 2))
-    }
-
-    test("a setting the environment writes badly, or settings that break the rules, say why") {
-      Lifecycle.fromEnv(Map("GRIT_IDLE" -> "3")) ==>
-        Left("GRIT_IDLE: not a duration: write a whole number and s, m, h or d, as 30s or 3m")
-      Lifecycle.fromEnv(Map("GRIT_BALANCE" -> "4k")) ==> Left(
-        "GRIT_BALANCE is not a whole number"
-      )
-      Lifecycle.fromEnv(Map("GRIT_BALANCE" -> "0")) ==> Left(
-        "GRIT_BALANCE, GRIT_SETTLE, GRIT_RESOLVE_AT, GRIT_ASKS: balance must be at least 1"
-      )
-      Lifecycle.fromEnv(Map("GRIT_RESOLVE_AT" -> "80%")) ==>
-        Left("GRIT_RESOLVE_AT: not a probability: write a number from 0 to 1, as 0.8")
-      Lifecycle.fromEnv(Map("GRIT_IDLE" -> "30m")) ==> Left(
-        "GRIT_BALANCE, GRIT_SETTLE, GRIT_RESOLVE_AT, GRIT_ASKS: settle must be shorter than idle"
-      )
-    }
 
     test("/set's changes are a name and a value") {
       Vector(
@@ -102,35 +52,12 @@ object LifecycleTests extends TestSuite {
       Change.Asks(0).applied(now) ==> Left("asks must be at least 1")
     }
 
-    test("the ledger window is declared by GRIT_LEDGER, set by /set, and never below retention") {
-      Lifecycle
-        .fromEnv(Map("GRIT_LEDGER" -> "6m", "GRIT_RETENTION" -> "3m"))
-        .map(
-          _.windows.ledger
-        ) ==> Right(6.minutes)
-      Lifecycle.fromEnv(Map("GRIT_LEDGER" -> "2m", "GRIT_RETENTION" -> "3m")) ==>
-        Left("GRIT_IDLE, GRIT_RETENTION, GRIT_LEDGER: ledger must be at least retention")
+    test("the ledger window is set by /set, and never below retention") {
       Change.parse("ledger 6m") ==> Right(Change.Ledger(6.minutes))
       val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3)
       Change.Ledger(12.hours).applied(now).map(_.windows.ledger) ==> Right(12.hours)
       Change.Ledger(2.hours).applied(now) ==> Left("ledger must be at least retention")
       Change.Retention(200.days).applied(now) ==> Left("ledger must be at least retention")
-    }
-
-    test("GRIT_SCOPE set is refused, saying why, whatever it holds") {
-      Vector("none", "room", "everywhere").map(s => Lifecycle.fromEnv(Map("GRIT_SCOPE" -> s))) ==>
-        Vector.fill(3)(
-          Left(
-            "GRIT_SCOPE is no longer read: a window draws on every place its turn may read; unset it"
-          )
-        )
-    }
-
-    test("the environment seeds the weight") {
-      Lifecycle.fromEnv(Map("GRIT_WEIGHT" -> "3")).map(_.weight) ==> Right(weight(3))
-      Lifecycle.fromEnv(Map.empty).map(_.weight) ==> Right(Weight.Default)
-      Lifecycle.fromEnv(Map("GRIT_WEIGHT" -> "0.5")) ==>
-        Left("GRIT_WEIGHT: a weight is a number of at least 1, not 0.5")
     }
 
     test("/set weight changes the weight, every other change keeps it, and scope is no setting") {
