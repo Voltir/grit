@@ -480,11 +480,6 @@ object ProjectCommandsTests extends TestSuite {
       assert(unknown == CommandOutcome.Refused("no method is named other; the methods here: grit"))
     }
 
-    test("every command's does line tells a project artifact from a claude.ai Artifact") {
-      val lines = plugin().commands.map(_.spec.does)
-      assert(lines.nonEmpty, lines.forall(_.endsWith(Projects.NotClaudeAi)))
-    }
-
     test(
       "project_brief gives a role's brief, refusing a role not declared, no budget and one too small"
     ) {

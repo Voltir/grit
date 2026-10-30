@@ -63,10 +63,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Starting] = ToolSpec(
       ToolName("project_new"),
-      said(
-        "Starts a project, holding to the latest version of the method named, or of this " +
-          "deployment's own when none is. Refused for a key a project has already."
-      ),
+      "Starts a project, holding to the latest version of the method named, or of this " +
+        "deployment's own when none is. Refused for a key a project has already.",
       Args
         .of(
           (
@@ -127,14 +125,12 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Keeping] = ToolSpec(
       ToolName("project_keep"),
-      said(
-        "Keeps an artifact of a project: a new one, of the kind given, in its kind's first " +
-          "state; or a new version of one kept already, its kind and state unchanged (only " +
-          "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
-          "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
-          "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused " +
-          "for a parent or a cite the project lacks."
-      ),
+      "Keeps an artifact of a project: a new one, of the kind given, in its kind's first " +
+        "state; or a new version of one kept already, its kind and state unchanged (only " +
+        "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
+        "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
+        "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused " +
+        "for a parent or a cite the project lacks.",
       Args
         .of(
           (
@@ -233,11 +229,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Moving] = ToolSpec(
       ToolName("project_move"),
-      said(
-        "Moves an artifact to another state, as its project's method allows, when every check " +
-          "that move names holds. Refused naming each check that failed, or the states it may " +
-          "move to."
-      ),
+      "Moves an artifact to another state, as its project's method allows, when every check " +
+        "that move names holds. Refused naming each check that failed, or the states it may " +
+        "move to.",
       Args
         .of(
           (
@@ -296,10 +290,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Showing] = ToolSpec(
       ToolName("project_show"),
-      said(
-        "Shows one artifact: its key, kind, state, title, parent, cites and author, then its " +
-          "body as markdown."
-      ),
+      "Shows one artifact: its key, kind, state, title, parent, cites and author, then its " +
+        "body as markdown.",
       Args
         .of(
           (
@@ -348,12 +340,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Recalling] = ToolSpec(
       ToolName("project_history"),
-      said(
-        s"Lists an artifact's kept versions, newest first, at most $HistoryMost, one line each " +
-          "(its version number, when it was written, by whom, its state and title); given " +
-          "`from` and `to`, two of those version numbers, answers instead a line diff of their " +
-          "export files, `- ` for a line only `from` holds and `+ ` for one only `to` holds."
-      ),
+      s"Lists an artifact's kept versions, newest first, at most $HistoryMost, one line each " +
+        "(its version number, when it was written, by whom, its state and title); given " +
+        "`from` and `to`, two of those version numbers, answers instead a line diff of their " +
+        "export files, `- ` for a line only `from` holds and `+ ` for one only `to` holds.",
       Args
         .of(
           (
@@ -430,10 +420,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
-      said(
-        "Lists a project's artifacts by key, one line each (key, kind, state and title): only " +
-          "those of a kind, or in a state, when given."
-      ),
+      "Lists a project's artifacts by key, one line each (key, kind, state and title): only " +
+        "those of a kind, or in a state, when given.",
       Args
         .of(
           (
@@ -470,14 +458,12 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Finding] = ToolSpec(
       ToolName("project_find"),
-      said(
-        s"Finds the artifacts whose titles and bodies best match some words, best first, at " +
-          s"most $Found, one line each: only one project's, when given. Leaves out ended " +
-          "artifacts (in an end state of their kind, such as done, dropped or closed) unless " +
-          "`ended` is true. Pass `ended: true` when asking what was tried before, what was " +
-          "decided against, or why something was decided: dropped notes and ended milestones " +
-          "hold the alternatives that were rejected."
-      ),
+      s"Finds the artifacts whose titles and bodies best match some words, best first, at " +
+        s"most $Found, one line each: only one project's, when given. Leaves out ended " +
+        "artifacts (in an end state of their kind, such as done, dropped or closed) unless " +
+        "`ended` is true. Pass `ended: true` when asking what was tried before, what was " +
+        "decided against, or why something was decided: dropped notes and ended milestones " +
+        "hold the alternatives that were rejected.",
       Args
         .of(
           (
@@ -536,11 +522,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Exporting] = ToolSpec(
       ToolName("project_export"),
-      said(
-        s"Exports a project as files, at most $ExportPage a page: a JSON object whose `files` " +
-          "each hold a `path` and its `text`, and whose `next`, unless null, is the `after` " +
-          "asking for the page after."
-      ),
+      s"Exports a project as files, at most $ExportPage a page: a JSON object whose `files` " +
+        "each hold a `path` and its `text`, and whose `next`, unless null, is the `after` " +
+        "asking for the page after.",
       Args
         .of(
           (
@@ -569,16 +553,14 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   object ProjectClaim extends KeepingCommand[Claiming] {
     val spec: ToolSpec[Claiming] = ToolSpec(
       ToolName("project_claim"),
-      said(
-        "Claims an artifact for a session or agent to work in a role, until project_release " +
-          "frees it; the artifact itself is not changed. Refused, naming who holds it, when it " +
-          "is claimed already; refused, naming the artifact, when what it is claimed for works " +
-          "another; and refused for a role the project's method lacks. Claims made at the same " +
-          "moment are not refused: of two for one artifact, the later fails with a store error " +
-          "(asked again, it is refused naming the first), and two for one session or agent on " +
-          "different artifacts may both be kept. A claim kept where the asker cannot read it " +
-          "(at another label) is not seen, so it refuses nothing."
-      ),
+      "Claims an artifact for a session or agent to work in a role, until project_release " +
+        "frees it; the artifact itself is not changed. Refused, naming who holds it, when it " +
+        "is claimed already; refused, naming the artifact, when what it is claimed for works " +
+        "another; and refused for a role the project's method lacks. Claims made at the same " +
+        "moment are not refused: of two for one artifact, the later fails with a store error " +
+        "(asked again, it is refused naming the first), and two for one session or agent on " +
+        "different artifacts may both be kept. A claim kept where the asker cannot read it " +
+        "(at another label) is not seen, so it refuses nothing.",
       Args
         .of(
           (
@@ -649,11 +631,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   object ProjectRelease extends KeepingCommand[Releasing] {
     val spec: ToolSpec[Releasing] = ToolSpec(
       ToolName("project_release"),
-      said(
-        "Frees an artifact's claim, so it may be claimed again, answering a JSON object: " +
-          "`released`, the artifact's key, and `for`, the slot it was claimed for. Refused when " +
-          "it is not claimed."
-      ),
+      "Frees an artifact's claim, so it may be claimed again, answering a JSON object: " +
+        "`released`, the artifact's key, and `for`, the slot it was claimed for. Refused when " +
+        "it is not claimed.",
       Args
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
         .refine(a => parsed("key", a.key, ArtifactKey.read).map(Releasing(_)))
@@ -682,13 +662,11 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Staling] = ToolSpec(
       ToolName("project_stale"),
-      said(
-        "Lists a project's artifacts not ended (not in an end state of their kind) that were " +
-          "last kept or moved more than `weeks` weeks ago, and that no artifact not ended has " +
-          "as parent or cites, oldest first, one line each (key, kind, state and title): " +
-          "candidates to withdraw or end. One an ended artifact still cites is listed; " +
-          "project_withdraw with cascade drops that citation."
-      ),
+      "Lists a project's artifacts not ended (not in an end state of their kind) that were " +
+        "last kept or moved more than `weeks` weeks ago, and that no artifact not ended has " +
+        "as parent or cites, oldest first, one line each (key, kind, state and title): " +
+        "candidates to end. One an ended artifact still cites is listed until that " +
+        "citation is dropped.",
       Args
         .of(
           (
@@ -724,16 +702,14 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   object Withdraw extends KeepingCommand[Withdrawing] {
     val spec: ToolSpec[Withdrawing] = ToolSpec(
       ToolName("project_withdraw"),
-      said(
-        "Withdraws an artifact: it leaves the project and its export, and project_show with an " +
-          s"`at` before now, and project_history, still read it for ${Projects.Terms.retention.toDays} " +
-          "days. Refused, withdrawing nothing, while another artifact has it as parent or cites " +
-          "it, naming them. With cascade, also withdraws every artifact under it by parent, and " +
-          "removes their citations from ended artifacts that cite them (a new version of each, " +
-          "written by you); refused, naming them, while an artifact under it has not ended or " +
-          "an artifact not ended cites one of them. Refused while any artifact it would change " +
-          "is claimed. Answers every artifact withdrawn and every one rewritten."
-      ),
+      "Withdraws an artifact: it leaves the project and its export, and project_show with an " +
+        s"`at` before now, and project_history, still read it for ${Projects.Terms.retention.toDays} " +
+        "days. Refused, withdrawing nothing, while another artifact has it as parent or cites " +
+        "it, naming them. With cascade, also withdraws every artifact under it by parent, and " +
+        "removes their citations from ended artifacts that cite them (a new version of each, " +
+        "written by you); refused, naming them, while an artifact under it has not ended or " +
+        "an artifact not ended cites one of them. Refused while any artifact it would change " +
+        "is claimed. Answers every artifact withdrawn and every one rewritten.",
       Args
         .of(
           (
@@ -812,16 +788,14 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Migrating] = ToolSpec(
       ToolName("project_migrate"),
-      said(
-        "Moves a project to another version of its method: each artifact is kept again (a new " +
-          "version, written by you; its history still reads), its kind and state renamed as " +
-          "given, and the project then holds to that version. A kind or state not renamed " +
-          "keeps its name. Refused, changing nothing, naming each cause: the version is not " +
-          "declared; an artifact would be of a kind the version lacks, or in a state its kind " +
-          "lacks; a renamed artifact is not in the project; it is the project's own version, " +
-          "whose rules have changed (declare a new version instead); an artifact is claimed; " +
-          "or an artifact or the project is kept at a label below what this room writes."
-      ),
+      "Moves a project to another version of its method: each artifact is kept again (a new " +
+        "version, written by you; its history still reads), its kind and state renamed as " +
+        "given, and the project then holds to that version. A kind or state not renamed " +
+        "keeps its name. Refused, changing nothing, naming each cause: the version is not " +
+        "declared; an artifact would be of a kind the version lacks, or in a state its kind " +
+        "lacks; a renamed artifact is not in the project; it is the project's own version, " +
+        "whose rules have changed (declare a new version instead); an artifact is claimed; " +
+        "or an artifact or the project is kept at a label below what this room writes.",
       Args
         .of(
           (
@@ -948,12 +922,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   object ProjectClaims extends KeepingCommand[Surveying] {
     val spec: ToolSpec[Surveying] = ToolSpec(
       ToolName("project_claims"),
-      said(
-        "Lists the artifacts claimed now, only one project's when given, answering a JSON " +
-          "object: `claims`, each its artifact's `key`, its `role`, `for`, the slot it is " +
-          "claimed for, `by`, who claimed it, `since`, when, and `lapses`, when it stops " +
-          "holding unless whoever works it keeps working. Ordered by key."
-      ),
+      "Lists the artifacts claimed now, only one project's when given, answering a JSON " +
+        "object: `claims`, each its artifact's `key`, its `role`, `for`, the slot it is " +
+        "claimed for, `by`, who claimed it, `since`, when, and `lapses`, when it stops " +
+        "holding unless whoever works it keeps working. Ordered by key.",
       Args
         .of((project = Field.text("Only claims on this project's artifacts.").optional))
         .refine(a =>
@@ -991,12 +963,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Briefing] = ToolSpec(
       ToolName("project_brief"),
-      said(
-        "Gives the brief for working on an artifact in a role: a header line, its body whole, " +
-          "then what the role is shown of what it cites, nearest first, as pointer lines once " +
-          "past `chars` characters. Refused for a role the project's method lacks, or an " +
-          "artifact that alone does not fit."
-      ),
+      "Gives the brief for working on an artifact in a role: a header line, its body whole, " +
+        "then what the role is shown of what it cites, nearest first, as pointer lines once " +
+        "past `chars` characters. Refused for a role the project's method lacks, or an " +
+        "artifact that alone does not fit.",
       Args
         .of(
           (
@@ -1183,8 +1153,6 @@ private[plugin] object ProjectCommands {
   }
 
   /** `does`, then what an artifact here is. */
-  private def said(does: String): String = s"$does ${Projects.NotClaudeAi}"
-
   /** 20: the most files one page of `project_export` holds. */
   private val ExportPage: Int = 20
 

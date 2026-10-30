@@ -56,11 +56,6 @@ object Projects {
       )
       .fold(e => sys.error(e), identity)
 
-  /** What ends every command's `does` line, telling its artifacts from claude.ai's. */
-  val NotClaudeAi: String =
-    "An artifact here is a project artifact, a versioned record of a grit project, not a " +
-      "claude.ai Artifact."
-
   /** What a write refused past `bound` current documents answers. */
   def full(bound: Int): String =
     s"this deployment keeps at most $bound project documents and holds that many already, " +
