@@ -13,8 +13,8 @@ import grit.dbos.sql.DbConfig
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.turn.TurnLoop
 
-/** A deployment that serves one edge and nothing else, for a suite that opens or serves it: no
-  * plugins, no classifier, and a model nothing here calls.
+/** A deployment that serves the edges it is given and nothing else, for a suite that opens or
+  * serves it: no plugins, no classifier, and a model nothing here calls.
   */
 object ServedDeployment {
 
@@ -25,11 +25,11 @@ object ServedDeployment {
       None
     )
 
-  /** The deployment serving `edge`. */
-  def of(edge: ServedEdge): Deployment =
+  /** The deployment serving `edges`. */
+  def of(edges: ServedEdge*): Deployment =
     Deployment
       .of(
-        edges = Vector(edge),
+        edges = edges.toVector,
         worksIn = Vector.empty,
         plugins = Vector.empty,
         policy = Policy.one(assigned, assigned, assigned, assigned),

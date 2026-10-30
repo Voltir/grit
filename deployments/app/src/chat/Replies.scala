@@ -1,17 +1,17 @@
 package grit.app.chat
 
+import grit.core.edge.Console
 import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Subject
-import grit.dbos.engine.Link
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */
 object Replies {
 
   /** The text of `turn`'s recorded reply; `None` if it has none (the turn failed). */
-  def of(engine: Link^, turn: TurnRef): Either[String, Option[String]] =
+  def of(engine: Console^, turn: TurnRef): Either[String, Option[String]] =
     engine.db
       .read(Subject.Turn(turn))(engine.entries.get(turn.replyId))
       .left

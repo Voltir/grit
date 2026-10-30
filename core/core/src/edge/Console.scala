@@ -95,3 +95,39 @@ trait Console extends caps.SharedCapability, AutoCloseable {
     */
   def holder(): Option[Holder]
 }
+
+object Console {
+
+  /** Opens a [[Console]] onto a database's engine, run where [[runner]] says. */
+  trait Opener extends caps.SharedCapability {
+
+    /** Who ran the database's engine when this opener was made. */
+    def runner: Runner
+
+    /** The console, opened; called once, off a screen's thread. `Left`, for a person, when the
+      * deployment drops a compartment the database ran under. Throws, having closed what it
+      * opened, when the database cannot be reached, when attaching finds no engine has yet
+      * migrated DBOS's schema there, or when the deployment's workflows fail to launch.
+      */
+    def open(): Either[String, Console^]
+  }
+
+  /** The edge a process opening a console serves itself (ADR 0017), registered through the
+    * desks of the engine it opens.
+    */
+  trait Edge extends caps.SharedCapability {
+
+    /** Registers this edge through `desks` and starts serving it, returning once it serves. */
+    def serve(desks: Desks^): Unit
+  }
+
+  /** Who runs a database's engine, as an [[Opener]] found it. */
+  enum Runner {
+
+    /** This process: the opener starts the engine. */
+    case Here
+
+    /** Another process, `holder` once it has written its row: the opener attaches. */
+    case Elsewhere(holder: Option[Holder])
+  }
+}

@@ -36,9 +36,11 @@ In dependency order:
   credentials are its own `needs`. ← `deployment`
 - **`run`**: running a deployment. `Kit.serve` runs the engine and every edge until the process
   is stopped; `Kit.catchUp` hears an edge's catch-up once, estimated, each source's label shown
-  and agreed to first, then sweeps until nothing is left to close. Those two alone end what the
-  deployment's identities no longer trust as they start: a process running its own chat may be
-  declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
+  and agreed to first, then sweeps until nothing is left to close; `Kit.console` is a screen's
+  way to the engine, running it when the database's lock is free and attaching to the process
+  that holds it otherwise, the screen's own edge served before any recovered turn runs. Only
+  `serve` and `catchUp` end what the deployment's identities no longer trust as they start: a
+  process running its own chat may be declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
   workflows, telling the time by the engine's clock, with declared schedules reconciled at
   start and grit's own tools (`about`, and `clearance` over the engine's askers, which the kit
   alone holds) offered beside every plugin's. ← `deployment`, `environment`

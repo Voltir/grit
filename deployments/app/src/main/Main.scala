@@ -1,6 +1,6 @@
 package grit.app.main
 
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.duration.{DurationInt, DurationLong, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.Listed.csv
@@ -11,7 +11,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
-import grit.core.edge.{ServedEdge, Variable}
+import grit.core.edge.{Console, Desks, ServedEdge, Variable}
 import grit.core.files.{FileArea, Files, Formats}
 import grit.core.id.{CorpusName, PluginName, PrincipalId, ScheduleKey, SourceId, TurnRef}
 import grit.core.identity.{Account, Domain, Email, Identities, Vouching}
@@ -41,7 +41,7 @@ import grit.core.visibility.{
   RoomLabels,
   Visibility
 }
-import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
+import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.formats.choice.Defaults
@@ -343,61 +343,18 @@ object Main {
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
-        val (mode, opener) = EngineLock.take(config) match {
-          case Right(lock) =>
-            val engine = new ChatHost.Opener {
-              // The screen paints first; the engine opens behind it, on the host's thread.
-              def open(): Link^ = {
-                val started =
-                  Engine.start(
-                    config,
-                    lock,
-                    deployment.runsUnder,
-                    identity,
-                    deployment.budget,
-                    deployment.visibility,
-                    clock
-                  ) match {
-                    case Right(e) => e
-                    case Left(refused) => sys.error(refused.message(clock.now()))
-                  }
-                try {
-                  // Its edge first: DBOS runs what it recovers as soon as it launches, and a
-                  // turn's call to a directory no live edge serves is answered as not served.
-                  serveHere(started, Place.of(directory), hosted, instructions, offered)
-                  ownEngine(started, deployment, secrets, run)
-                } catch {
-                  case e: Throwable =>
-                    // DBOS's threads are non-daemon: an engine that is not handed on is closed.
-                    started.close()
-                    throw e
-                }
-              }
-            }
-            ("engine", engine)
-          case Left(NotTaken.Held(holder)) =>
-            val attached = new ChatHost.Opener {
-              def open(): Link^ = {
-                val link =
-                  Link.attach(
-                    config,
-                    deployment.runsUnder,
-                    identity,
-                    deployment.budget,
-                    deployment.visibility,
-                    clock
-                  )
-                serveHere(link, Place.of(directory), hosted, instructions, offered)
-                link
-              }
-            }
-            (
-              holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}"),
-              attached
-            )
+        val here: Console.Edge^ =
+          desks => serveHere(desks, Place.of(directory), hosted, instructions, offered)
+        val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
+          case Right(found) => found
           case Left(refused) =>
-            System.err.println(s"[main] ${refused.message(clock.now())}")
+            System.err.println(s"[main] ${refused.message}")
             sys.exit(1)
+        }
+        val mode = opener.runner match {
+          case Console.Runner.Here => "engine"
+          case Console.Runner.Elsewhere(holder) =>
+            holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}")
         }
         val host = new ChatHost(
           origin,
@@ -466,20 +423,20 @@ object Main {
   ): Engine^{engine} =
     Kit.launch(engine, deployment, secrets, run)
 
-  /** This process's edge (ADR 0017), registered through `engine` for `place`: it offers
+  /** This process's edge (ADR 0017), registered through `desks` for `place`: it offers
     * `hosted` and the directory's `instructions` there, and runs the requests addressed to it
     * with the tools `offered` picks, each on a virtual thread, until the link closes. A
     * registration that fails is logged, and the turns are then served by no edge here.
     */
   private def serveHere(
-      engine: Link^,
+      desks: Desks^,
       place: Place,
       hosted: ToolSet,
       instructions: Vector[Fragment],
       offered: Offered
   ): Unit = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
-    engine.register(PrincipalId.Local, Set(place)) match {
+    desks.register(PrincipalId.Local, Set(place)) match {
       case Left(e) => log.warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
         desk

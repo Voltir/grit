@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.edge.{Attesting, CatchUp, EdgeRefusal, EdgeStores, PluginCommands}
+import grit.core.edge.{Attesting, CatchUp, Console, EdgeRefusal, EdgeStores, PluginCommands}
 import grit.core.files.Intake
 import grit.core.id.{AttesterName, Declarer, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm}
@@ -17,14 +17,16 @@ import grit.core.place.Place
 import grit.core.spend.Budget
 import grit.core.store.{Linking, StoreError, Tx}
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.engine.{Engine, Link, StoppedBy, Unopened}
+import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, StoppedBy, Unopened}
 import grit.dbos.sql.DbConfig
 import grit.host.machine.LocalMachine
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
 
-/** Why [[Kit.serve]], [[Kit.catchUp]] or [[Kit.runOnce]] could not run, or stopped. */
+/** Why [[Kit.serve]], [[Kit.catchUp]], [[Kit.runOnce]] or [[Kit.console]] could not run, or
+  * stopped.
+  */
 enum KitFailure {
 
   /** The environment names no usable database, or a key the deployment needs. */
@@ -33,9 +35,9 @@ enum KitFailure {
   /** Edge `edge` would not open, or stopped partway. */
   case Edge(edge: EdgeName, refusal: EdgeRefusal)
 
-  /** The engine would not open: another grit holds the database's engine (never attached
-    * to: two processes would each post the same replies), or the database failed; `why`
-    * says which, for a person.
+  /** The engine would not open: the database failed, or, for all but [[Kit.console]], which
+    * attaches, another grit holds the database's engine (never attached to by a served edge:
+    * two processes would each post the same replies); `why` says which, for a person.
     */
   case Engine(why: String)
 
@@ -555,6 +557,88 @@ object Kit {
   ): Engine^{engine} = {
     val _ = Launch(engine, deployment, secrets, run, sweeping = true, _ => ())
     engine
+  }
+
+  /** The way to `deployment`'s engine over the database `secrets` names, for a process that
+    * runs its own edge and screen. The engine's lock is taken now. Taken here, the opener
+    * starts the engine, has `serving` serve through it, then launches the deployment's
+    * workflows as [[launch]] does, the stub model waiting `stubDelay` before it answers; held by
+    * another process, the opener attaches to that engine and has `serving` serve through it.
+    * `serving` serves before any recovered turn runs, so a call to a place it registers is
+    * served. A lock taken
+    * here is held until the console opened closes, or until the process ends if `open` is never
+    * called. It ends no attestation. [[KitFailure.Engine]] when the database cannot be reached.
+    */
+  def console(
+      deployment: Deployment,
+      secrets: Secrets,
+      stubDelay: FiniteDuration,
+      clock: Clock^,
+      serving: Console.Edge^
+  ): Either[KitFailure, Console.Opener^] = {
+    val database = secrets.database
+    val identity = LocalMachine.identity()
+    EngineLock.take(database) match {
+      case Right(lock) =>
+        Right(new Console.Opener {
+          def runner: Console.Runner = Console.Runner.Here
+          def open(): Either[String, Console^] =
+            Engine.start(
+              database,
+              lock,
+              deployment.runsUnder,
+              identity,
+              deployment.budget,
+              deployment.visibility,
+              clock
+            ) match {
+              case Left(refused) => Left(refused.message(clock.now()))
+              case Right(started) =>
+                try {
+                  // Its edge first: DBOS runs what it recovers as soon as it launches, and a
+                  // turn's call to a place no live edge serves is answered as not served.
+                  serving.serve(started)
+                  Right(
+                    launch(
+                      started,
+                      deployment,
+                      secrets,
+                      Launch.Run(announced = false, stubDelay.toMillis)
+                    )
+                  )
+                } catch {
+                  case e: Throwable =>
+                    // DBOS's threads are non-daemon: an engine that is not handed on is closed.
+                    started.close()
+                    throw e
+                }
+            }
+        })
+      case Left(NotTaken.Held(holder)) =>
+        Right(new Console.Opener {
+          def runner: Console.Runner = Console.Runner.Elsewhere(holder)
+          def open(): Either[String, Console^] = {
+            val link =
+              Link.attach(
+                database,
+                deployment.runsUnder,
+                identity,
+                deployment.budget,
+                deployment.visibility,
+                clock
+              )
+            try {
+              serving.serve(link)
+              Right(link)
+            } catch {
+              case e: Throwable =>
+                link.close()
+                throw e
+            }
+          }
+        })
+      case Left(refused) => Left(KitFailure.Engine(refused.message(clock.now())))
+    }
   }
 
   /** `deployment`'s secrets in `env`, once every variable each of `needs` names is set. */

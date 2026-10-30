@@ -14,6 +14,7 @@ object BoundaryTests extends TestSuite {
   private val outside =
     """package slim.probe
       |import grit.core.clock.Clock
+      |import grit.core.edge.Console
       |import grit.core.spend.Budget
       |import grit.core.visibility.Visibility
       |import grit.core.host.ProcessIdentity
@@ -55,6 +56,15 @@ object BoundaryTests extends TestSuite {
       |val shadows: Vector[ShadowVariant] = Vector.empty
       |val seeded = Seed.catalog
       |val jev = Placer.JevService
+      |def console(
+      |    d: Deployment,
+      |    s: grit.kit.environment.Secrets,
+      |    k: Clock^,
+      |    e: Console.Edge^
+      |): Either[grit.kit.run.KitFailure, Console.Opener^] =
+      |  Kit.console(d, s, scala.concurrent.duration.FiniteDuration(0, "ms"), k, e)
+      |def here(o: Console.Opener^): Boolean = o.runner == Console.Runner.Here
+      |def opened(o: Console.Opener^): Either[String, Console^] = o.open()
       |""".stripMargin
 
   private val internals = List(engineOpen, engineStart, linkAttach, lockTake, workflow)
