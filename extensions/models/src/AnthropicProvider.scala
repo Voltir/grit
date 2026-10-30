@@ -34,7 +34,7 @@ final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
     model.flatMap { m =>
       ProviderHttp.complete(
         http,
-        post(m, body(m, request)),
+        post(m, request, streamed = false),
         AnthropicJson.response,
         AnthropicJson.error
       )
@@ -48,34 +48,20 @@ final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
       onDelta: Delta => Unit
   ): Either[ProviderError, Message.Assistant] =
     model.flatMap { m =>
-      val streamed = body(m, request)
-      streamed("stream") = true
       ProviderHttp.stream(
         http,
-        post(m, streamed),
+        post(m, request, streamed = true),
         AnthropicStream.fold(_, onDelta),
         AnthropicJson.response,
         AnthropicJson.error
       )
     }
 
-  private def body(model: String, request: ModelRequest): ujson.Value =
-    AnthropicJson.request(
-      model,
-      pinned.assignment.maxTokens,
-      pinned.assignment.effort,
-      pinned.settings.replay,
-      AnthropicProvider.DropsMismatchedThinking(model),
-      request
-    )
-
-  private def post(model: String, body: ujson.Value): HttpRequest =
-    ProviderHttp.post(
-      AnthropicProvider.Endpoint,
-      timeout,
-      AnthropicProvider.headers(key, AnthropicProvider.DropsMismatchedThinking(model)),
-      body
-    )
+  private def post(model: String, request: ModelRequest, streamed: Boolean): HttpRequest = {
+    val (headers, body) = AnthropicProvider.wire(key, model, pinned, request)
+    if (streamed) body("stream") = true
+    ProviderHttp.post(AnthropicProvider.Endpoint, timeout, headers, body)
+  }
 }
 
 object AnthropicProvider {
@@ -92,6 +78,28 @@ object AnthropicProvider {
     Seq("x-api-key" -> key, "anthropic-version" -> AnthropicJson.Version) ++
       Option.when(dropBlock)("anthropic-beta" -> AnthropicJson.BindingBeta)
 
+  /** The headers and the body a plain call of `request` is sent with under `key`, on `model`
+    * (Anthropic's own id) and `pinned`'s budget, effort and replay; asking `dropBlock` for a
+    * model in [[DropsMismatchedThinking]].
+    */
+  private[models] def wire(
+      key: String,
+      model: String,
+      pinned: Pinned,
+      request: ModelRequest
+  ): (Seq[(String, String)], ujson.Value) = {
+    val dropBlock = DropsMismatchedThinking(model)
+    val body = AnthropicJson.request(
+      model,
+      pinned.assignment.maxTokens,
+      pinned.assignment.effort,
+      pinned.settings.replay,
+      dropBlock,
+      request
+    )
+    (headers(key, dropBlock), body)
+  }
+
   /** How a pair served by Anthropic directly names its model: `anthropic/` and Anthropic's own
     * id.
     */
@@ -99,10 +107,10 @@ object AnthropicProvider {
 
   /** The models (Anthropic's ids) whose requests ask the API to drop a thinking block an
     * earlier edit invalidated, rather than refuse the request ([[AnthropicJson.request]]'s
-    * `dropBlock`). Empty until a live call (the test sources' `AnthropicLiveProbe`) shows which
-    * models accept it: Anthropic documents it for adaptive thinking on Claude Haiku 5.5 alone.
+    * `dropBlock`): those a live call (the test sources' `AnthropicLiveProbe`) showed accepting
+    * it. Anthropic documents it for adaptive thinking on Claude Haiku 5.5 alone.
     */
-  val DropsMismatchedThinking: Set[String] = Set.empty
+  val DropsMismatchedThinking: Set[String] = Set("claude-haiku-5-5")
 
   /** Anthropic's own id for `pinned`'s model, the part after [[Vendor]]; `Refused` when it is
     * not under [[Vendor]].
