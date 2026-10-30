@@ -1,21 +1,28 @@
-package grit.app.main
+package grit.kit.run
 
 import java.nio.file.Path
 
 import grit.core.edge.{Route, ToolRequest}
 import grit.core.place.Directory
-import grit.core.tool.{Outcome, ToolName}
+import grit.core.tool.{DuplicateName, Outcome, ToolName, ToolSet}
 import grit.edge.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.kit.deployment.Offered
 import grit.tools.Coding
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
-  * to (a request routed to a service is `Failed`, and nothing runs): `read`, `list` and `search` when `offered` is [[Offered.Read]], every coding
-  * tool when it is [[Offered.All]]. A command sees the process's own environment,
-  * not `.env`'s.
+  * to (a request routed to a service is `Failed`, and nothing runs): `read`, `list` and
+  * `search` when `offered` is [[Offered.Read]], every coding tool when it is [[Offered.All]].
+  * A command sees the process's own environment, not `.env`'s.
   */
-private[main] final class LocalTools(offered: Offered) extends Tools {
+final class LocalTools(offered: Offered) extends Tools {
+
+  /** The tools [[run]] runs, as the engine offers them; `Left` names a tool Coding offers twice. */
+  def hosted: Either[DuplicateName, ToolSet] =
+    ToolSet.of((offered match {
+      case Offered.Read => Coding.readOnlyHosted
+      case Offered.All => Coding.hosted
+    }).map(_.entry))
 
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = route match {
     case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)

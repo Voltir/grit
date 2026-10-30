@@ -693,7 +693,8 @@ object grit extends Module {
         grit.assembly,
         grit.models,
         grit.tools,
-        grit.host
+        grit.host,
+        grit.edge
       )
 
     object test extends GritTests {

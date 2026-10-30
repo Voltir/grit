@@ -20,6 +20,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.edge.Server
 import grit.kit.deployment.Offered
+import grit.kit.run.LocalTools
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}

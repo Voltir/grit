@@ -38,7 +38,10 @@ In dependency order:
   is stopped; `Kit.catchUp` hears an edge's catch-up once, estimated, each source's label shown
   and agreed to first, then sweeps until nothing is left to close; `Kit.console` is a screen's
   way to the engine, running it when the database's lock is free and attaching to the process
-  that holds it otherwise, the screen's own edge served before any recovered turn runs. Only
+  that holds it otherwise, the screen's own edge served before any recovered turn runs.
+  `LocalEdge` is that edge for the checkout the process runs in (ADR 0017): it offers the
+  coding tools `LocalTools` runs there, with the instruction files around it, read again so an
+  edit reaches the next turn without a restart. Only
   `serve` and `catchUp` end what the deployment's identities no longer trust as they start: a
   process running its own chat may be declared with fewer edges, and so trust fewer realms. Every way grit runs launches the same
   workflows, telling the time by the engine's clock, with declared schedules reconciled at

@@ -7,7 +7,7 @@ import grit.app.config.{Budgets, Claimed, LifecycleEnv, PrefsEnv}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.chat.host.{ChatHost, DirectoryEdge, Replies}
+import grit.chat.host.{ChatHost, Replies}
 import grit.chat.look.Theme
 import grit.chat.run.Chat
 import grit.chat.settings.{Durations, Prefs}
@@ -44,11 +44,11 @@ import grit.core.visibility.{
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.formats.choice.Defaults
-import grit.host.checkout.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
+import grit.host.checkout.LocalInstructions
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.{DotEnv, Secrets}
-import grit.kit.run.{Kit, Launch}
+import grit.kit.run.{Kit, Launch, LocalEdge, LocalTools}
 import grit.knowledge.drive.DriveCards
 import grit.knowledge.github.GitHubCards
 import grit.knowledge.plugin.{
@@ -77,7 +77,6 @@ import grit.models.{
 import grit.remind.Reminders
 import grit.slack.edge.{Backfill, ReplyNote, SlackAccounts, SlackCommand, SlackEdge}
 import grit.slack.event.{TeamId, UserId}
-import grit.tools.Coding
 import grit.turn.TurnLoop
 
 // doc-length: the program's manual, naming every variable and mode it reads
@@ -274,17 +273,6 @@ object Main {
     val directory = exitOnLeft(Directory.of(root.toString))
     val session = env.getOrElse("GRIT_SESSION", "default")
     val origin = if (tui) Origin.Tui(directory, session) else RunOrigin
-    // The file tools the turn is offered, as its prompt's reach describes them: built over
-    // the checkout here only to be described; the engine builds its own.
-    val hosted = exitOnLeft(
-      (offered match {
-        case Offered.Read => Coding.readOnly(new LocalWorkspace(root)).map(_.set)
-        case Offered.All =>
-          Coding
-            .all(new LocalWorkspace(root), new LocalEdits(root), new LocalShell(root, Map.empty))
-            .map(_.set)
-      }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
-    )
     val prefsFile = PrefsEnv.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
@@ -339,19 +327,17 @@ object Main {
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
-        val edgeLog = org.slf4j.LoggerFactory.getLogger("grit.edge")
-        val here: Console.Edge^ =
-          desks =>
-            DirectoryEdge.serve(
-              desks,
-              Place.of(directory),
-              hosted,
-              new LocalInstructions(),
-              CharEstimate,
+        val here: Console.Edge^ = exitOnLeft(
+          LocalEdge
+            .over(
+              directory,
               new LocalTools(offered),
-              warn = edgeLog.warn(_),
-              info = edgeLog.info(_)
+              new LocalInstructions(),
+              org.slf4j.LoggerFactory.getLogger("grit.edge")
             )
+            .left
+            .map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
+        )
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found
           case Left(refused) =>
