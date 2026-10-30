@@ -123,6 +123,11 @@ object IntegrityTurn {
           }
         case _ => false
       }
+      // read_hidden answers with the item itself; a note of grit's may follow its result.
+      val answered = request.messages
+        .collect { case Message.ToolResult(id, _, _) => ToolCallId.value(id) }
+        .lastOption
+        .contains("r1")
       val issueRead = request.tools.map(_.name).find(_.endsWith("issue_read"))
       def call(id: String, name: String, args: ujson.Obj) =
         Right(IntegrityTurn.call(id, name, args))
@@ -151,8 +156,7 @@ object IntegrityTurn {
                 ujson.Obj("name" -> name, "question" -> "Is it closed?", "shape" -> "yes_no")
               )
           }
-        case Some(last)
-            if !posted && (last.contains("is shown in full") || last.contains(" answers: ")) =>
+        case Some(last) if !posted && (answered || last.contains(" answers: ")) =>
           call(
             "p2",
             "slack_post",

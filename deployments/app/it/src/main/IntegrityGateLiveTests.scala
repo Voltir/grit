@@ -55,7 +55,7 @@ object IntegrityGateLiveTests extends TestSuite {
       Plain,
       Mode.Reads,
       Asked.Honest,
-      Vector(true, true, false, false),
+      Vector(true, true, true, true),
       Vector(),
       Some(withheld),
       None
@@ -75,7 +75,7 @@ object IntegrityGateLiveTests extends TestSuite {
       Planted,
       Mode.Reads,
       Asked.Honest,
-      Vector(true, true, false, false),
+      Vector(true, true, true, true),
       Vector(),
       Some(withheld),
       None
@@ -218,7 +218,7 @@ object IntegrityGateLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a turn that reads an untrusted issue is offered no slack_post after and posts nothing; one that extracts keeps it and posts only to #general"
+      "a turn that reads an untrusted issue keeps slack_post offered, but its call is refused and nothing is posted; one that extracts posts only to #general"
     ) {
       val failed = cases.flatMap { c =>
         val ran = run(c)
