@@ -73,6 +73,22 @@ object ProjectCommandsTests extends TestSuite {
       assert(text.contains(writer))
     }
 
+    test("a turn is offered the reads, new, keep and move; not withdraw, migrate or claims") {
+      plugin().commands.filter(_.offeredToTurns).map(c => ToolName.value(c.spec.name)).sorted ==>
+        Vector(
+          "project_brief",
+          "project_export",
+          "project_find",
+          "project_history",
+          "project_keep",
+          "project_list",
+          "project_move",
+          "project_new",
+          "project_show",
+          "project_stale"
+        )
+    }
+
     test("a move no transition allows is refused, naming the states it may go to") {
       val projects = plugin()
       val store = Store()

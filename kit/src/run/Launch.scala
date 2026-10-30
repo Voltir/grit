@@ -488,10 +488,19 @@ private[grit] object Launch {
     // The engine's own tools touch no file of the machine's: they read grit's store and its file
     // area, keep a model setting, probe a model. The coding tools are hosted: offered here, run
     // by the edge serving the conversation's directory (ADR 0017).
-    // Offered everywhere: grit's own, and every plugin's tools.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks, files}]] =
-      Toolbox.of[caps.CapSet^{desks, files}](
-        (Vector[Tool.Offered^{desks, files}](
+    // Each plugin's commands a turn is offered: the commands a person gives through an edge.
+    val commands = PluginBinding.commands(
+      d.plugins,
+      runtime.reads,
+      runtime.keeper,
+      runtime.claims,
+      runtime.askers,
+      clock
+    )
+    // Offered everywhere: grit's own, every plugin's tools, then the commands it offers turns.
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{desks, files, clock}]] =
+      Toolbox.of[caps.CapSet^{desks, files, clock}](
+        (Vector[Tool.Offered^{desks, files, clock}](
           own(
             d.persona,
             runtime.askers,
@@ -499,7 +508,7 @@ private[grit] object Launch {
             files
           )*
         ) ++
-          plugged.map(_.over(desks)))*
+          plugged.map(_.over(desks)) ++ commands)*
       )
     // Offered whatever d.offer is, where TurnOffer.decide offers them.
     val administration = runtime.administration
@@ -544,7 +553,7 @@ private[grit] object Launch {
           case (Right(tools), Right(operator), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox
-              .joined[caps.CapSet^{tuned, models, desks, files}](tools, operator)
+              .joined[caps.CapSet^{tuned, models, desks, files, clock}](tools, operator)
               .flatMap(
                 Toolbox.joined[caps.CapSet^{tuned, models, desks, files, administration, clock}](
                   _,

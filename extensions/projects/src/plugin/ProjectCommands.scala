@@ -58,6 +58,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_new`. */
   object New extends KeepingCommand[Starting] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Starting): String = ProjectKey.value(args.project)
+
     val spec: ToolSpec[Starting] = ToolSpec(
       ToolName("project_new"),
       said(
@@ -119,6 +122,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_keep`. */
   object Keep extends KeepingCommand[Keeping] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Keeping): String = args.key.value
+
     val spec: ToolSpec[Keeping] = ToolSpec(
       ToolName("project_keep"),
       said(
@@ -176,7 +182,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           case (Some((_, a)), Some(k)) if k != a.head.kind =>
             Left(
               Stop.Refused(
-                s"${shown(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
+                s"${headed(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
               )
             )
           case (Some((_, a)), _) => Right((a.head.kind, a.head.state))
@@ -216,12 +222,15 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         )
         _ <- atTheirLabels(existing.toVector.map((d, a) => d -> a.head.key.value), "keep")
         _ <- kept(own, artifact, existing.map(_._1.label), at)
-      } yield s"Kept ${shown(artifact.head)}."
+      } yield s"Kept ${headed(artifact.head)}."
     }
   }
 
   /** `project_move`. */
   object Move extends KeepingCommand[Moving] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Moving): String = s"${args.key.value} to ${StateName.value(args.to)}"
+
     val spec: ToolSpec[Moving] = ToolSpec(
       ToolName("project_move"),
       said(
@@ -275,13 +284,16 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         _ <- done.changed.zip(into).fold(Right(())) { (c, held) =>
           kept(own, Artifact(c.head.copy(by = writer), c.body), Some(held._1.label), at)
         }
-      } yield s"Moved ${shown(moved.head)}." +
-        done.changed.fold("")(c => s" Merged its deltas into ${shown(c.head)}.")
+      } yield s"Moved ${headed(moved.head)}." +
+        done.changed.fold("")(c => s" Merged its deltas into ${headed(c.head)}.")
     }
   }
 
   /** `project_show`. */
   object Show extends ReadingCommand[Showing] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Showing): String = args.key.value
+
     val spec: ToolSpec[Showing] = ToolSpec(
       ToolName("project_show"),
       said(
@@ -331,6 +343,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_history`. */
   object History extends ReadingCommand[Recalling] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Recalling): String = args.key.value
+
     val spec: ToolSpec[Recalling] = ToolSpec(
       ToolName("project_history"),
       said(
@@ -410,6 +425,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_list`. */
   object List extends ReadingCommand[Listing] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Listing): String = ProjectKey.value(args.project)
+
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
       said(
@@ -447,6 +465,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_find`. */
   object Find extends ReadingCommand[Finding] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Finding): String = args.query
+
     val spec: ToolSpec[Finding] = ToolSpec(
       ToolName("project_find"),
       said(
@@ -510,6 +531,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_export`. */
   object Export extends ReadingCommand[Exporting] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Exporting): String = ProjectKey.value(args.project)
+
     val spec: ToolSpec[Exporting] = ToolSpec(
       ToolName("project_export"),
       said(
@@ -617,7 +641,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
               )
             )
         }
-      } yield s"Claimed ${shown(a.head)} as ${RoleName.value(args.role)} for $slot."
+      } yield s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $slot."
     }
   }
 
@@ -653,6 +677,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_stale`. */
   object Stale extends ReadingCommand[Staling] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Staling): String = ProjectKey.value(args.project)
+
     val spec: ToolSpec[Staling] = ToolSpec(
       ToolName("project_stale"),
       said(
@@ -958,6 +985,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
   /** `project_brief`. */
   object ProjectBrief extends ReadingCommand[Briefing] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Briefing): String =
+      s"${args.key.value} as ${RoleName.value(args.role)}"
+
     val spec: ToolSpec[Briefing] = ToolSpec(
       ToolName("project_brief"),
       said(
@@ -1322,7 +1353,7 @@ private[plugin] object ProjectCommands {
     if (held.isEmpty) PrincipalId.value(person.id) else held.mkString(", ")
   }
 
-  private def shown(h: ArtifactHead): String =
+  private def headed(h: ArtifactHead): String =
     s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
 
   /** Why a move was refused, in words its mover can act on. */
@@ -1330,7 +1361,7 @@ private[plugin] object ProjectCommands {
     case MoveRefusal.Missing(key) =>
       s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}"
     case MoveRefusal.NoTransition(head, to, may) =>
-      s"${shown(head)} cannot move to ${StateName.value(to)}; " +
+      s"${headed(head)} cannot move to ${StateName.value(to)}; " +
         (if (may.isEmpty) "nothing moves it on"
          else s"it may move to ${may.map(StateName.value).mkString(", ")}")
     case MoveRefusal.Unheld(head, to, failed) =>

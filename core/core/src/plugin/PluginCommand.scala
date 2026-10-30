@@ -18,6 +18,14 @@ import grit.core.visibility.Integrity
   */
 sealed trait PluginCommand[A <: caps.Pure] extends caps.Pure {
   def spec: ToolSpec[A]
+
+  /** Whether a turn is offered it as a tool ([[CommandTools]]); a person gives it through an
+    * edge either way.
+    */
+  def offeredToTurns: Boolean = false
+
+  /** What a call of it shows of `args` after its name, as a transcript line. */
+  def shown(args: A): String = ""
 }
 
 /** A command that only reads its plugin's documents, in a read-only transaction: a write through

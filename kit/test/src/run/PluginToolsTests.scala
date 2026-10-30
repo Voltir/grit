@@ -2,6 +2,7 @@ package grit.kit.run
 
 import java.time.Instant
 
+import grit.core.claim.InMemoryClaims
 import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
 import grit.core.flow.TestTainted
@@ -110,6 +111,41 @@ object PluginToolsTests extends TestSuite {
         ToolName("keys") -> Right(Outcome.Done("theirs-1")),
         ToolName("theirs") -> Right(Outcome.Done("theirs-1"))
       )
+    }
+
+    test(
+      "a turn is offered each plugin's commands that say so, in the plugins' order, and no other"
+    ) {
+      def called(n: String): ToolName =
+        ToolName.of(n).fold(e => throw new java.lang.AssertionError(e), identity)
+      def plugin(p: String, offered: Boolean) = new TestPlugins.Commanding(
+        name(p),
+        Vector(
+          new TestPlugins.Says(called(s"${p}_says"), offered),
+          new TestPlugins.Notes(called(s"${p}_notes"), offered),
+          new TestPlugins.Says(called(s"${p}_hush"))
+        ),
+        documents = Some(TestPlugins.Tallies)
+      )
+      val docs = new InMemoryDocuments
+      val clock = new SetClock(Instant.EPOCH)
+      val offered: Vector[grit.core.tool.Tool.Offered^{clock}] = PluginBinding
+        .commands(
+          Vector(
+            plugin("b", offered = true),
+            plugin("c", offered = false),
+            plugin("a", offered = true)
+          ),
+          p =>
+            PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, TestPlugins.Tallies.terms)),
+          docs.keeper,
+          p => new InMemoryClaims().of(p, _ => None),
+          new Askers {
+            def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] = Right(None)
+          },
+          clock
+        )
+      offered.map(_.name) ==> Vector("b_says", "b_notes", "a_says", "a_notes").map(called)
     }
 
     test("each plugin's tool writes through its own plugin's desk, of that plugin's jobs alone") {

@@ -1,9 +1,13 @@
 package grit.kit.deployment
 
+import grit.core.claim.Claims
+import grit.core.clock.Clock
+import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.id.{JobName, PluginName}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.need.{Needs, PluginReads, Unneeded}
-import grit.core.plugin.{Plugin, PluginRun, PluginTool}
+import grit.core.plugin.{CommandTools, Commanded, Plugin, PluginRun, PluginTool}
+import grit.core.store.Askers
 import grit.core.tool.{Hosted, Tool}
 
 /** A plugin's tool bound to its run: what it is, what a call does, and its plugin, whose jobs
@@ -51,6 +55,24 @@ private[kit] object PluginBinding {
           done.flatMap(ts => one(t, p, own, needs, jobs).map(ts :+ _))
         )
     }
+
+  /** Every command of `plugins` that a turn is offered
+    * ([[grit.core.plugin.PluginCommand.offeredToTurns]]), in their order, as a turn's tool
+    * ([[CommandTools.of]]) over each plugin's `reads`, `keeper` and `claims`, for whoever
+    * `askers` says its turn answers, dated by `clock`.
+    */
+  def commands(
+      plugins: Vector[Plugin],
+      reads: PluginName -> PluginReads,
+      keeper: (PluginName, DocumentTerms) -> DocumentKeeper,
+      claims: PluginName -> Claims,
+      askers: Askers,
+      clock: Clock^
+  ): Vector[Tool.Offered^{clock}] =
+    Commanded
+      .of(plugins)
+      .filter(_.command.offeredToTurns)
+      .map(CommandTools.of(_, reads, keeper, claims, askers, clock))
 
   private def one[A](
       t: PluginTool[A],

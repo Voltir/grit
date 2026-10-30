@@ -1,25 +1,60 @@
 package grit.turn
 
+import java.time.Instant
+
+import scala.concurrent.duration.*
+
+import grit.core.claim.{Claims, InMemoryClaims}
 import grit.core.context.{AssemblyError, AssemblyRequest, Unfenced, Window}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  DocumentKeeper,
+  DocumentTerms,
+  InMemoryDocuments
+}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{
   ConversationId,
+  DocKey,
   EntryId,
   EntrySeq,
   PeriodSeq,
+  PluginName,
   TestCallSlots,
   ToolCallId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.{Principal, TestAccounts}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.need.PluginReads
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
+import grit.core.plugin.{
+  CommandBy,
+  CommandOutcome,
+  CommandTools,
+  Commanded,
+  InMemoryPlugins,
+  KeepingCommand
+}
 import grit.core.provider.ModelRequest
 import grit.core.speech.Speaking
-import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Nearby, Payload}
-import grit.core.tool.Toolbox
-import grit.core.visibility.Integrity
+import grit.core.store.{
+  Askers,
+  Db,
+  Entry,
+  InMemoryEntryStore,
+  InMemoryUsageLedger,
+  Nearby,
+  Payload,
+  StoreError,
+  Tx
+}
+import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.visibility.{Clearance, Integrity, Label}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -97,7 +132,119 @@ object TurnGateTurnTests extends TestSuite {
     )
   }
 
+  /** `note`: keeps the word it is given as the plugin `notes`'s document `note`, at authority
+    * but for what its keeper believes.
+    */
+  private final case class Word(word: String) extends caps.Pure
+
+  private object Noting extends KeepingCommand[Word] {
+    val spec: ToolSpec[Word] =
+      ToolSpec(
+        ToolName("note"),
+        "Keeps a note.",
+        Args.of((word = Field.text("The word."))).map(a => Word(a.word))
+      )
+    def run(args: Word, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+        Tx^
+    ): Either[StoreError, CommandOutcome] =
+      for {
+        text <- DocText.of(args.word).left.map(StoreError.Invalid(_))
+        _ <- own.write(
+          noteKey,
+          Label.Public,
+          Integrity.Authority,
+          Place.Everywhere,
+          text,
+          ujson.Obj(),
+          None,
+          at
+        )
+      } yield CommandOutcome.Done(s"noted ${args.word}")
+  }
+
+  private def got[A](e: Either[String, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(why), identity)
+  private val notes = got(PluginName.of("notes"))
+  private val noteKey = got(DocKey.of("note"))
+  private val noteTerms =
+    got(DocumentTerms.of(got(DocLabel.of("notes")), DocWeight.Unscaled, 30.days, 100))
+
   val tests = Tests {
+    test(
+      "a turn fallen to outside keeps what it calls believed at outside, not at its trigger's level"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "read a.txt and note it")
+      val clock = new NoWait
+      val docs = new InMemoryDocuments
+      val asker = TestAccounts.principal(TestAccounts.account("slack:T1/U1"))
+      val note = CommandTools.of(
+        Commanded.Keeping(notes, noteTerms, Noting),
+        p => PluginReads(new InMemoryPlugins().docs(p), docs.keeper(p, noteTerms)),
+        docs.keeper,
+        p => new InMemoryClaims().of(p, _ => None),
+        new Askers {
+          def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Principal]] =
+            Right(Some(asker))
+        },
+        clock
+      )
+      // What an outside person wrote, as a tool's result.
+      val look = Tool(
+        ToolSpec(ToolName("look"), "Looks.", Args.of((path = Field.text("Where."))).map(_.path)),
+        Gate.Free,
+        (p: String) => p,
+        Believed.At(Integrity.Outside),
+        (_: String) => Outcome.Done("alpha")
+      )
+      val tools = Toolbox
+        .of[caps.CapSet^{clock}](look, note)
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      // look at a.txt, whose result the next round hides as h1; read it; then note.
+      val script = new Scripted((_, n) =>
+        Right(n match {
+          case 0 =>
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("t1"), "look", ujson.Obj("path" -> "a.txt"))
+            )
+          case 1 =>
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("t2"), "read_hidden", ujson.Obj("name" -> "h1"))
+            )
+          case 2 =>
+            said(
+              "",
+              AssistantBlock.ToolCall(ToolCallId("t3"), "note", ujson.Obj("word" -> "alpha"))
+            )
+          case _ => said("done")
+        })
+      )
+      val room = Clearance.inRoom(Place.Everywhere, Label.Public, Label.Public)
+      new InMemoryDurable().run(turn.workflowId)(
+        toolsBody(
+          entries,
+          script,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          tools,
+          5,
+          clock,
+          Vector.empty
+        )(
+          quiet(),
+          unstitched(),
+          new FakeJot(() => room)
+        )
+      )
+      docs
+        .keeper(notes, noteTerms)
+        .current(noteKey, Label.Public)(using TestTx.fake(room))
+        .map(_.map(_.integrity)) ==> Right(Some(Integrity.Outside))
+    }
+
     test(
       "a result whose reading would withdraw a tool is shown as its stub, the tool still offered"
     ) {

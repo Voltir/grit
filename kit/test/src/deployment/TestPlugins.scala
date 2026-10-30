@@ -190,17 +190,23 @@ object TestPlugins {
       Args.of((word = Field.text("The word."))).map(a => Word(a.word))
     )
 
-  /** A reading command named `called`, answering the word it is given. */
-  final class Says(called: ToolName) extends ReadingCommand[Word] {
+  /** A reading command named `called`, answering the word it is given, offered to turns when
+    * `offered`.
+    */
+  final class Says(called: ToolName, offered: Boolean = false) extends ReadingCommand[Word] {
     val spec: ToolSpec[Word] = saying(called)
+    override def offeredToTurns: Boolean = offered
     def run(args: Word, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
 
-  /** A keeping command named `called`, answering the word it is given and keeping nothing. */
-  final class Notes(called: ToolName) extends KeepingCommand[Word] {
+  /** A keeping command named `called`, answering the word it is given and keeping nothing,
+    * offered to turns when `offered`.
+    */
+  final class Notes(called: ToolName, offered: Boolean = false) extends KeepingCommand[Word] {
     val spec: ToolSpec[Word] = saying(called)
+    override def offeredToTurns: Boolean = offered
     def run(args: Word, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))

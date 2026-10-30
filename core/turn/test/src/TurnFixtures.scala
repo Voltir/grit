@@ -1948,6 +1948,26 @@ object TurnFixtures {
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched()
   )(id: WorkflowId)(using Durable^): String =
+    toolsBody(entries, provider, ledger, summarizer, classifier, tools, calls, clock, hosted)(
+      speech,
+      stitching,
+      new FakeJot
+    )(id)
+
+  /** As [[tooledBody]], over tools acting through any capabilities `C`, writing through `jot`. */
+  def toolsBody[C^](
+      entries: EntryStore,
+      provider: Provider^,
+      ledger: UsageLedger,
+      summarizer: Provider^,
+      classifier: Classifier^,
+      tools: Toolbox[C],
+      calls: Int,
+      clock: Clock^,
+      hosted: Vector[Tool.Offered]
+  )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
+      Durable^
+  ): String =
     Turn.body(
       turnEnv(
         TurnRecords(
@@ -1977,7 +1997,7 @@ object TurnFixtures {
         noTriage(),
         noRouting()
       ),
-      TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
+      TurnTooling[C](tools, Toolbox.Empty, hosted, jot, budget(calls))
     )(id)
 
   /** A profile store already holding [[TestCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it
