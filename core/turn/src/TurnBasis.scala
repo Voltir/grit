@@ -54,6 +54,11 @@ object TurnBasis {
       */
     case PairDiffers extends Why("pair-differs")
 
+    /** A period of the conversation closed after that window was kept: a close is a boundary
+      * (ADR 0052), and the window is drawn again from the closing.
+      */
+    case Boundary extends Why("boundary")
+
     /** The turn's first gate would hide an item the window carries. */
     case Hidden extends Why("hidden")
   }

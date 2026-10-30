@@ -4,9 +4,10 @@ import java.time.Instant
 
 import grit.core.durable.{FlowFixtures, InMemoryDurable}
 import grit.core.edge.InMemoryEdges
-import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef}
+import grit.core.id.{EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.model.{Assignment, Catalog, Grade, Ladder, Rung}
+import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, Payload, Tx}
 import grit.core.tool.{Believed, Outcome, Toolbox}
@@ -39,8 +40,8 @@ object TurnCarriedTests extends TestSuite {
     turn
   }
 
-  /** A window record kept as `of`'s, newer than every entry so far. */
-  private def keep(entries: EntryStore, of: TurnRef, id: String, window: Payload.Window): Unit = {
+  /** `payload` kept as `of`'s, newer than every entry so far. */
+  private def keep(entries: EntryStore, of: TurnRef, id: String, payload: Payload): Unit = {
     given Tx = TestTx.fake
     val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
     val _ = entries.insert(
@@ -50,7 +51,7 @@ object TurnCarriedTests extends TestSuite {
         of.turnSeq,
         None,
         next.seq,
-        window,
+        payload,
         Instant.EPOCH,
         Integrity.Member
       )
@@ -107,6 +108,20 @@ object TurnCarriedTests extends TestSuite {
       run("one", gated = false)
       val second = run("two", gated = true)
       basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.PrefixDiffers)))
+    }
+
+    test("a turn after a period closed since the last turn's window draws afresh: a boundary") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val first = answered(entries, durable, "one")
+      keep(
+        entries,
+        first,
+        "closed",
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Said one."))
+      )
+      val second = answered(entries, durable, "two")
+      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.Boundary)))
     }
 
     test("a turn routed to another pair than the last draws afresh: the pair differs") {

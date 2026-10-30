@@ -349,7 +349,8 @@ private[turn] object Rounding {
 
   /** [[TurnSteps.Env.carried]], for `turn` offered as `recorded` from `tooling`'s tools, its
     * model asked about `asked`, read as `routed` bounds it: the conversation's newest window
-    * record of an earlier turn whose chain is read whole, when the request `turn` would send of
+    * record of an earlier turn whose chain is read whole and after which no period of the
+    * conversation closed ([[Payload.Closed]]), when the request `turn` would send of
     * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), goes to the pair
     * that turn's [[Payload.Prefix]] names and repeats it byte for byte
     * ([[TurnShown.prefixOf]]), and its first gate, decided over what it carries
@@ -394,6 +395,14 @@ private[turn] object Rounding {
                   case w: Payload.Window if w.carry.isEmpty => Why.NoCarry
                   case _ => Why.Unchained
                 }))
+              case (Some(h), Some(_))
+                  if earlier.exists(e =>
+                    EntrySeq.value(e.seq) > EntrySeq.value(h.seq) && (e.payload match {
+                      case _: Payload.Closed => true
+                      case _ => false
+                    })
+                  ) =>
+                Right(Left(Why.Boundary))
               case (Some(h), Some(last)) =>
                 earlier.collectFirst {
                   case Entry(_, _, t, _, _, p: Payload.Prefix, _, _) if t == last.turn => p
