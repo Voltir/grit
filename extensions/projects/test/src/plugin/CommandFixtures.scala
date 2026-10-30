@@ -6,7 +6,7 @@ import grit.core.claim.{Claims, InMemoryClaims}
 import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
-import grit.core.plugin.{CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
+import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
 import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.dbos.sql.TestTx
@@ -80,8 +80,16 @@ object CommandFixtures {
       args: (String, ujson.Value)*
   ): CommandOutcome = askAs(person, when)(projects, store, name, args*)
 
-  /** As [[ask]], asked by `who` at `when`. */
+  /** As [[ask]], asked by `who` through an edge at `when`. */
   def askAs(who: Principal.Person, when: Instant = at)(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
+  ): CommandOutcome = askBy(CommandBy.Direct(who), when)(projects, store, name, args*)
+
+  /** As [[ask]], asked for `who` at `when`. */
+  def askBy(who: CommandBy, when: Instant = at)(
       projects: Projects,
       store: Store,
       name: String,

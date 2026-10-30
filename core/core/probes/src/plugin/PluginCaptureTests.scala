@@ -66,12 +66,12 @@ object PluginCaptureTests extends TestSuite {
       |}
       |object Says extends ReadingCommand[Said] {
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
+      |  def run(args: Said, by: CommandBy, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
       |    own.cache.newest("", 1).map(n => CommandOutcome.Done(args.word + n.size))
       |}
       |object Notes extends KeepingCommand[Said] {
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
+      |  def run(args: Said, by: CommandBy, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
       |    Right(CommandOutcome.Done(args.word))
       |}
       |final class Reader(val name: PluginName, kept: Kept) extends Plugin {
@@ -150,7 +150,7 @@ object PluginCaptureTests extends TestSuite {
   private val commandHoldsDb =
     """final class ReadsAsAnyone(db: Db^) extends ReadingCommand[Said] {
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
+      |  def run(args: Said, by: CommandBy, own: PluginReads, at: java.time.Instant)(using Tx^): Either[StoreError, CommandOutcome] =
       |    db.read(Subject.Public)(Right(CommandOutcome.Done(args.word)))
       |}
       |""".stripMargin
@@ -160,7 +160,7 @@ object PluginCaptureTests extends TestSuite {
     """final class KeepsCommandTx extends KeepingCommand[Said] {
       |  var kept: Option[Tx^] = None
       |  val spec: ToolSpec[Said] = Saying.spec
-      |  def run(args: Said, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using t: Tx^): Either[StoreError, CommandOutcome] = { kept = Some(t); Right(CommandOutcome.Done(args.word)) }
+      |  def run(args: Said, by: CommandBy, own: DocumentKeeper, claims: Claims, at: java.time.Instant)(using t: Tx^): Either[StoreError, CommandOutcome] = { kept = Some(t); Right(CommandOutcome.Done(args.word)) }
       |}
       |""".stripMargin
 

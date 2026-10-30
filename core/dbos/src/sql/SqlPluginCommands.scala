@@ -6,12 +6,20 @@ import javax.sql.DataSource
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.document.{DocumentKeeper, DocumentTerms}
+import grit.core.document.DocumentTerms
 import grit.core.edge.{CommandError, PluginCommands}
+import grit.core.id.PluginName
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
-import grit.core.plugin.{CommandOutcome, KeepingCommand, Plugin, ReadingCommand}
+import grit.core.plugin.{
+  CommandBy,
+  CommandOutcome,
+  Commanded,
+  KeepingCommand,
+  Plugin,
+  ReadingCommand
+}
 import grit.core.provider.ToolSchema
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
@@ -31,29 +39,11 @@ private[dbos] final class SqlPluginCommands(
     plugins: Vector[Plugin]
 ) extends PluginCommands {
 
-  /** A command as this runs it: a reading one over its plugin's reads, or a keeping one under its
-    * plugin's terms.
-    */
-  private enum Runnable {
-    case Reading(plugin: Plugin, command: ReadingCommand[?])
-    case Keeping(plugin: Plugin, terms: DocumentTerms, command: KeepingCommand[?])
-  }
-
   private val documents = new SqlDocuments(new SqlTombstones)
 
-  private val runnable: Vector[(ToolName, Runnable)] =
-    plugins.flatMap(p =>
-      p.commands.flatMap {
-        case r: ReadingCommand[?] => Vector(r.spec.name -> Runnable.Reading(p, r))
-        case k: KeepingCommand[?] =>
-          p.documents.toVector.map(d => k.spec.name -> Runnable.Keeping(p, d.terms, k))
-      }
-    )
+  private val commanded: Vector[Commanded] = Commanded.of(plugins)
 
-  def offered: Vector[ToolSchema] = runnable.map {
-    case (_, Runnable.Reading(_, c)) => c.spec.schema(strict = false)
-    case (_, Runnable.Keeping(_, _, c)) => c.spec.schema(strict = false)
-  }
+  def offered: Vector[ToolSchema] = commanded.map(_.command.spec.schema(strict = false))
 
   def run(
       by: Account,
@@ -63,17 +53,17 @@ private[dbos] final class SqlPluginCommands(
       args: ujson.Value,
       at: Instant
   ): Either[CommandError, CommandOutcome] =
-    runnable.find(_._1 == name).map(_._2) match {
+    commanded.find(_.command.spec.name == name) match {
       case None => Left(CommandError.Unknown(name))
-      case Some(Runnable.Reading(plugin, command)) =>
+      case Some(Commanded.Reading(plugin, command)) =>
         reading(command, plugin, by, room, name, args, at)
-      case Some(Runnable.Keeping(plugin, terms, command)) =>
+      case Some(Commanded.Keeping(plugin, terms, command)) =>
         keeping(command, plugin, terms, by, room, believed, name, args, at)
     }
 
   private def reading[A <: caps.Pure](
       command: ReadingCommand[A],
-      plugin: Plugin,
+      plugin: PluginName,
       by: Account,
       room: Place,
       name: ToolName,
@@ -83,15 +73,15 @@ private[dbos] final class SqlPluginCommands(
     command.spec.args.read(args) match {
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
-        val own = PluginReads(new SqlPluginDocs(plugin.name), documents.shelf(plugin.name))
+        val own = PluginReads(new SqlPluginDocs(plugin), documents.shelf(plugin))
         transaction(by, room, name, keeps = false)((person, tx) =>
-          command.run(a, person, own, at)(using tx)
+          command.run(a, CommandBy.Direct(person), own, at)(using tx)
         )
     }
 
   private def keeping[A <: caps.Pure](
       command: KeepingCommand[A],
-      plugin: Plugin,
+      plugin: PluginName,
       terms: DocumentTerms,
       by: Account,
       room: Place,
@@ -104,10 +94,10 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = true) { (person, tx) =>
-          // As an inbound entry is believed (SqlEntryStore): no more than the room's cap.
-          val most = Tx.visibility(tx).capOf(room).fold(believed)(believed.meet)
-          val own = DocumentKeeper.believedAtMost(documents.keeper(plugin.name, terms), most)
-          command.run(a, person, own, new SqlClaims(plugin.name), at)(using tx)
+          val keeper = documents.keeper(plugin, terms)
+          val asker = CommandBy.Direct(person)
+          val claims = new SqlClaims(plugin)
+          KeepingCommand.run(command, a, asker, keeper, claims, room, believed, at)(using tx)
         }
     }
 

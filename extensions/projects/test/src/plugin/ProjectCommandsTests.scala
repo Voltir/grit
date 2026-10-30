@@ -3,8 +3,9 @@ package grit.projects.plugin
 import scala.concurrent.duration.*
 
 import grit.core.document.DocumentTerms
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.identity.Principal
-import grit.core.plugin.CommandOutcome
+import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.tool.{ArgsError, ToolName}
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.method.{Example, MethodFixtures}
@@ -49,6 +50,27 @@ object ProjectCommandsTests extends TestSuite {
       done(askAs(other)(projects, store, "project_move", "key" -> "p/a", "to" -> "done"))
       val text = shown(projects, store, "p/a")
       assert(text.contains("state: done"), text.contains(s"by: \"$otherBy\""))
+    }
+
+    test("a keep through a turn names the person and the turn as its writer") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      val turn = TurnRef(ConversationId("c7"), TurnSeq(5))
+      done(
+        askBy(CommandBy.Turn(person, turn))(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/a",
+          "kind" -> "change",
+          "title" -> "Title a",
+          "body" -> "## Why\n\nBecause."
+        )
+      )
+      val text = shown(projects, store, "p/a")
+      val writer = s"by: \"$by, through grit (turn 5 of conversation c7)\""
+      assert(text.contains(writer))
     }
 
     test("a move no transition allows is refused, naming the states it may go to") {

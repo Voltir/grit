@@ -5,11 +5,11 @@ import java.time.Instant
 import grit.core.claim.{ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
 import grit.core.either.Traversal
-import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PrincipalId}
+import grit.core.id.{ClaimHolder, ConversationId, DocKey, DocumentVersionId, PrincipalId, TurnSeq}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
 import grit.core.place.Place
-import grit.core.plugin.{CommandOutcome, KeepingCommand, PluginCommand, ReadingCommand}
+import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginCommand, ReadingCommand}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
@@ -80,7 +80,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(
         args: Starting,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -163,7 +163,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(
         args: Keeping,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -245,7 +245,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(
         args: Moving,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -307,7 +307,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Showing(key, when)
         )
     )
-    def run(args: Showing, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Showing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -371,7 +371,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Recalling(key, pair)
         )
     )
-    def run(args: Recalling, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Recalling, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -432,7 +432,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Listing(p, kind, state)
         )
     )
-    def run(args: Listing, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Listing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       loaded(own.documents, args.project).map { project =>
@@ -476,7 +476,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             .map(Finding(a.query, _, a.ended.getOrElse(false)))
         )
     )
-    def run(args: Finding, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Finding, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -526,7 +526,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         )
         .refine(a => parsed("project", a.project, ProjectKey.of).map(Exporting(_, a.after)))
     )
-    def run(args: Exporting, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Exporting, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -576,7 +576,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(
         args: Claiming,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -590,7 +590,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         found <- artifact(project, args.key)
         (document, a) = found
         claimed <- stored(
-          claims.claim(document.key, args.slot, args.role, by, document.label, at)
+          claims.claim(document.key, args.slot, args.role, by.person, document.label, at)
         )
         _ <- claimed match {
           case Claimed.Made(_) => Right(())
@@ -599,7 +599,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
               Stop.Refused(
                 first.fold(s"$key is claimed already; project_release frees it")(c =>
                   s"$key is claimed already, as ${ClaimRole.value(c.role)} for " +
-                    s"${ClaimHolder.value(c.holder)} by ${author(c.by)} since ${c.made}; " +
+                    s"${ClaimHolder.value(c.holder)} by ${accounts(c.by)} since ${c.made}; " +
                     s"it lapses at ${c.lapses} unless they keep working; project_release frees it"
                 )
               )
@@ -636,7 +636,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     )
     def run(
         args: Releasing,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -677,7 +677,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         )
     )
 
-    def run(args: Staling, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Staling, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -726,7 +726,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     def run(
         args: Withdrawing,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -859,7 +859,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     def run(
         args: Migrating,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -938,7 +938,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     def run(
         args: Surveying,
-        by: Principal.Person,
+        by: CommandBy,
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
@@ -949,7 +949,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             .read(DocKey.value(c.subject))
             .toOption
             .filter(k => args.project.forall(_ == k.project))
-            .map(k => (k, c, author(c.by)))
+            .map(k => (k, c, accounts(c.by)))
         )
         AnswerText.claims(held)
       }
@@ -981,7 +981,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           } yield Briefing(key, role, a.chars)
         )
     )
-    def run(args: Briefing, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Briefing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
       for {
@@ -1306,10 +1306,20 @@ private[plugin] object ProjectCommands {
       )
     } yield ()
 
-  /** Who `person` is, as an artifact records its writer: each of their accounts, sorted. */
-  private def author(person: Principal.Person): String = {
-    val accounts = person.accounts.toVector.map(h => Account.written(h.account)).sorted
-    if (accounts.isEmpty) PrincipalId.value(person.id) else accounts.mkString(", ")
+  /** Who `by` is, as an artifact records its writer: the person's [[accounts]], and the turn
+    * that wrote for them when one did.
+    */
+  private def author(by: CommandBy): String = by match {
+    case CommandBy.Direct(person) => accounts(person)
+    case CommandBy.Turn(person, turn) =>
+      s"${accounts(person)}, through grit (turn ${TurnSeq.value(turn.turnSeq)} of conversation " +
+        s"${ConversationId.value(turn.conversationId)})"
+  }
+
+  /** Who `person` is, as a claim or a writer names them: each of their accounts, sorted. */
+  private def accounts(person: Principal.Person): String = {
+    val held = person.accounts.toVector.map(h => Account.written(h.account)).sorted
+    if (held.isEmpty) PrincipalId.value(person.id) else held.mkString(", ")
   }
 
   private def shown(h: ArtifactHead): String =

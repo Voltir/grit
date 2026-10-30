@@ -1,5 +1,6 @@
 package grit.dbos.engine
 
+import grit.core.claim.Claims
 import grit.core.document.{DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.edge.{EdgeDirectory, ToolRequests}
 import grit.core.id.{PluginName, TurnRef}
@@ -34,6 +35,7 @@ import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   Opener,
   SqlCacheDocs,
+  SqlClaims,
   SqlConversationStore,
   SqlDocuments,
   SqlEdgeDirectory,
@@ -196,6 +198,9 @@ class Stores private[engine] (visibility: Visibility) {
   /** Given a plugin and its terms, its documents as its posting writes them. */
   val keeper: (PluginName, DocumentTerms) -> DocumentKeeper =
     (plugin, terms) => sqlDocuments.keeper(plugin, terms)
+
+  /** Given a plugin, its claims, as its commands claim through them. */
+  val claims: PluginName -> Claims = plugin => new SqlClaims(plugin)
 
   /** What undoes part of one of its transactions. */
   val savepoints: Savepoints = SqlSavepoints

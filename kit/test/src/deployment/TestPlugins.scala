@@ -9,7 +9,6 @@ import grit.core.claim.Claims
 import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, JobName, PluginName}
-import grit.core.identity.Principal
 import grit.core.job.{
   Declared,
   DreamingJob,
@@ -23,6 +22,7 @@ import grit.core.job.{
 }
 import grit.core.need.{Needs, PluginReads, Unneeded}
 import grit.core.plugin.{
+  CommandBy,
   CommandOutcome,
   DocumentPosting,
   Documents,
@@ -193,7 +193,7 @@ object TestPlugins {
   /** A reading command named `called`, answering the word it is given. */
   final class Says(called: ToolName) extends ReadingCommand[Word] {
     val spec: ToolSpec[Word] = saying(called)
-    def run(args: Word, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Word, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
@@ -201,8 +201,8 @@ object TestPlugins {
   /** A keeping command named `called`, answering the word it is given and keeping nothing. */
   final class Notes(called: ToolName) extends KeepingCommand[Word] {
     val spec: ToolSpec[Word] = saying(called)
-    def run(args: Word, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
-        using Tx^
+    def run(args: Word, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+        Tx^
     ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.word))
   }
 

@@ -23,7 +23,7 @@ import grit.core.id.{
   ToolCallId,
   WorkflowId
 }
-import grit.core.identity.{Account, Principal}
+import grit.core.identity.Account
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.need.{Needs, PluginReads}
@@ -32,6 +32,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{
   CacheDocs,
   CachePosting,
+  CommandBy,
   CommandOutcome,
   DocumentPosting,
   Documents,
@@ -217,8 +218,8 @@ object PluginLiveTests extends TestSuite {
   /** `note`: keeps the note, answering Done; a text of `refuse` is kept first, then refused. */
   private object Keeps extends KeepingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("note"))
-    def run(args: Note, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
-        using Tx^
+    def run(args: Note, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+        Tx^
     ): Either[StoreError, CommandOutcome] =
       write(own, args.key, args.text, at).map(_ =>
         if (args.text == "refuse") CommandOutcome.Refused("refused")
@@ -229,8 +230,8 @@ object PluginLiveTests extends TestSuite {
   /** `twice`: keeps the note under its key and under its key with `-2`. */
   private object Twice extends KeepingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("twice"))
-    def run(args: Note, by: Principal.Person, own: DocumentKeeper, claims: Claims, at: Instant)(
-        using Tx^
+    def run(args: Note, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+        Tx^
     ): Either[StoreError, CommandOutcome] =
       for {
         _ <- write(own, args.key, args.text, at)
@@ -241,7 +242,7 @@ object PluginLiveTests extends TestSuite {
   /** `list`: the texts of the notes its transaction reads, sorted, joined by commas. */
   private object Lists extends ReadingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("list"))
-    def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Note, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] =
       own.documents
@@ -252,7 +253,7 @@ object PluginLiveTests extends TestSuite {
   /** `sneak`: a reading command writing through a keeper it was built with. */
   private final class Sneaks(keeper: DocumentKeeper) extends ReadingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("sneak"))
-    def run(args: Note, by: Principal.Person, own: PluginReads, at: Instant)(using
+    def run(args: Note, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] =
       write(keeper, args.key, args.text, at).map(_ => CommandOutcome.Done("wrote"))
