@@ -236,23 +236,30 @@ object TurnSentTests extends TestSuite {
           val _ = engine.awaitTurn(turn)
           turn
         }
-        val _ = asked("t0", "echo twice")
+        val first = asked("t0", "echo twice")
         val second = asked("t1", "and again")
         val reader = Reader.open(config)
-        val (sent, record) =
-          try
-            (
-              right(TurnSent.read(reader, second.workflowId)),
-              right(reader.all.read(reader.entries.get(Turn.windowId(second)))).map(_.payload)
-            )
+        def window(turn: TurnRef) =
+          right(reader.all.read(reader.entries.get(Turn.windowId(turn)))).map(_.payload).collect {
+            case w: Payload.Window => w
+          }
+        val (sent, drawn, delta) =
+          try (right(TurnSent.read(reader, second.workflowId)), window(first), window(second))
           finally reader.close()
-        // The second turn's record is a delta after the first's; what it was shown is whole.
-        val delta = record.collect { case w: Payload.Window => w }
+        // The second turn's record is a delta after the first's; what it was shown is whole:
+        // the first's window, then the first turn it carries (its ask at 0, then its two
+        // rounds' calls and results and its reply at 3 to 7, what a model is shown of it), then
+        // what the delta appended.
+        val carried = Vector(0L, 3L, 4L, 5L, 6L, 7L).map(grit.core.id.EntrySeq(_))
         (
-          delta.map(_.carry.flatMap(_.after).nonEmpty),
+          delta.map(_.carry.flatMap(_.after)),
           sent.window.map(_.carry),
-          sent.window.zip(delta).map((w, d) => w.entries.size > d.entries.size)
-        ) ==> (Some(true), Some(None), Some(true))
+          sent.window.map(_.entries)
+        ) ==> (
+          Some(Some(Turn.windowId(first))),
+          Some(None),
+          drawn.zip(delta).map((f, d) => f.entries ++ carried ++ d.entries)
+        )
       } finally engine.close()
     }
   }
