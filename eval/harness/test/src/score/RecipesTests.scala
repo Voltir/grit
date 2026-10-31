@@ -173,7 +173,7 @@ object RecipesTests extends TestSuite {
       // 300 definitions' tokens saved a call. w1 (thread A, model m/a: input $0.30/M, cached
       // $0.03/M): its query is no main call; round 0 has 1000 input, none cached; the reply
       // 1000, 500 cached. w2 (thread B) is by m/z, which has no rate: 100 input, none cached.
-      val rate = Rate(3e-7, Some(3e-8), 2.5e-6, 3, 1, 0.0)
+      val rate = Rate(3e-7, Some(3e-8), None, 2.5e-6, 3, 1, 0, 0.0)
       val w1 = turn("w1", "A").copy(spend =
         Vector(
           spent(TurnRecord.Role.Query, "m/a", 50, 0),
@@ -240,10 +240,44 @@ object RecipesTests extends TestSuite {
         "m/d" -> Left("its rows do not tell the prices apart")
       )
     }
+    test("a cache write is priced apart from uncached input") {
+      // Five priced rows at input $3/M, cache read $0.30/M, cache write $3.75/M, output $15/M,
+      // exactly; `in` counts every input token, the cache's reads and writes among them.
+      def row(in: Long, read: Long, write: Long, out: Long, usd: String) =
+        Spent(
+          None,
+          "m/w",
+          Usage(Tokens(in), Tokens(out), Tokens(read), Some(BigDecimal(usd)), Tokens(write)),
+          Tokens(in)
+        )
+      val rates = Fitted.fit(
+        Vector(
+          row(1000, 0, 0, 100, "0.0045"),
+          row(2000, 1000, 0, 0, "0.0033"),
+          row(3000, 0, 2000, 10, "0.01065"),
+          row(5000, 1000, 1000, 50, "0.0138"),
+          row(4000, 0, 0, 0, "0.012")
+        )
+      )
+      rates
+        .get("m/w")
+        .map(_.map { r =>
+          (
+            r12(r.input),
+            r.cached.map(r12),
+            r.written.map(r12),
+            r12(r.output),
+            r.rows,
+            r.cachedRows,
+            r.writtenRows,
+            math.round(r.worst * 1e9)
+          )
+        }) ==> Some(Right((3e-6, Some(3e-7), Some(3.75e-6), 1.5e-5, 5, 2, 2, 0L)))
+    }
     test("tokens saved are scaled to the provider's count before they are priced") {
       // 1000 tokens estimated saved on one uncached reply by m/a, which counts 0.8 a token
       // estimated: 800 tokens, at $0.30/M input 2.4e-4.
-      val rate = Rate(3e-7, Some(3e-8), 2.5e-6, 3, 1, 0.0)
+      val rate = Rate(3e-7, Some(3e-8), None, 2.5e-6, 3, 1, 0, 0.0)
       val w1 = turn("w1", "A").copy(spend = Vector(spent(TurnRecord.Role.Reply, "m/a", 5000, 0)))
       val p = Recipe
         .of(

@@ -128,26 +128,38 @@ private[report] object RecipeLines {
       "### Rates",
       "",
       "grit records no price, so each model's is read from the capture's ledger rows: least " +
-        "squares over its priced rows of cost = input × (input − cached tokens) + cached × " +
-        "cached tokens + output × output tokens, the cached rate left out where no row has a " +
-        "cached token. Off by: the most the rates misprice one of those rows. In $/M tokens " +
-        "(dollars per million).",
+        "squares over its priced rows of cost = input × (input − cached − written tokens) + " +
+        "cached × cached tokens + written × written tokens + output × output tokens, the " +
+        "cached (written) rate left out where no row has a cached (written) token. Off by: the " +
+        "most the rates misprice one of those rows. In $/M tokens (dollars per million).",
       ""
     ) ++ (if (prices.rates.isEmpty) Vector("No ledger row.")
           else
-            table("model", "input", "cached", "output", "rows", "cached rows", "off by")(
+            table(
+              "model",
+              "input",
+              "cached",
+              "written",
+              "output",
+              "rows",
+              "cached rows",
+              "written rows",
+              "off by"
+            )(
               prices.rates.toVector.map {
                 case (m, Right(r)) =>
                   Vector(
                     m,
                     perMillion(r.input),
                     r.cached.fold("—")(perMillion),
+                    r.written.fold("—")(perMillion),
                     perMillion(r.output),
                     s"${r.rows}",
                     s"${r.cachedRows}",
+                    s"${r.writtenRows}",
                     f"${r.worst * 100}%.1f%%"
                   )
-                case (m, Left(why)) => Vector(m, s"none: $why", "—", "—", "—", "—", "—")
+                case (m, Left(why)) => Vector(m, s"none: $why", "—", "—", "—", "—", "—", "—", "—")
               }
             )) ++ Vector("")
 

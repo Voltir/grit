@@ -77,7 +77,7 @@ object RecipeReportTests extends TestSuite {
           Vector.empty,
           Prices(
             VectorMap(
-              "m/a" -> Right(Rate(3e-7, Some(3e-8), 2.5e-6, 52, 1, 0.0004)),
+              "m/a" -> Right(Rate(3e-7, Some(3e-8), Some(3.75e-7), 2.5e-6, 52, 1, 3, 0.0004)),
               "jev" -> Left("1 priced row, fewer than the 2 prices read from them")
             ),
             VectorMap(
@@ -97,8 +97,8 @@ object RecipeReportTests extends TestSuite {
           "0.23¢ | 0.025¢ to 0.25¢ | 10% | 90% | 0 |"
       )
       price.filter(l => l.startsWith("| m/a | 0.3000") || l.startsWith("| jev | none:")) ==> Vector(
-        "| m/a | 0.3000 | 0.03000 | 2.500 | 52 | 1 | 0.0% |",
-        "| jev | none: 1 priced row, fewer than the 2 prices read from them | — | — | — | — | — |"
+        "| m/a | 0.3000 | 0.03000 | 0.3750 | 2.500 | 52 | 1 | 3 | 0.0% |",
+        "| jev | none: 1 priced row, fewer than the 2 prices read from them | — | — | — | — | — | — | — |"
       )
       price.filter(l => l.startsWith("| m/a | 0.806") || l.startsWith("| jev | none, raw")) ==>
         Vector(

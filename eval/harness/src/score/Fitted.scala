@@ -6,16 +6,19 @@ import grit.core.message.{Tokens, Usage}
 import grit.eval.harness.capture.Spent
 
 /** A model's prices in USD a token, read from its ledger rows: its uncached `input`, its
-  * `cached` input, and its `output`; over `rows` priced rows, `cachedRows` of them with cached
-  * tokens. `cached` is `None` where no row had a cached token to read it from. `worst`: the
+  * `cached` input read, its input `written` to the cache, and its `output`; over `rows` priced
+  * rows, `cachedRows` of them with cached tokens and `writtenRows` with written ones. `cached`
+  * (`written`) is `None` where no row had a cached (written) token to read it from. `worst`: the
   * largest share by which the rate misprices a row it was read from.
   */
 final case class Rate(
     input: Double,
     cached: Option[Double],
+    written: Option[Double],
     output: Double,
     rows: Int,
     cachedRows: Int,
+    writtenRows: Int,
     worst: Double
 )
 
@@ -66,8 +69,8 @@ object Fitted {
     })
 
   /** Each model of `spend`'s, in the order first met, read by least squares from its priced
-    * rows as cost = input·(input tokens − cached) + cached·(cached tokens) + output·(output
-    * tokens). `Left` with why for a model whose rows cannot give one: fewer priced rows than
+    * rows as cost = input·(input tokens − cached − written) + cached·(cached tokens) +
+    * written·(written tokens) + output·(output tokens). `Left` with why for a model whose rows cannot give one: fewer priced rows than
     * prices to read, rows that do not tell the prices apart, or a price read below 0.
     */
   def fit(spend: Vector[Spent]): VectorMap[String, Either[String, Rate]] =
@@ -77,11 +80,14 @@ object Fitted {
     val priced = rows.flatMap(s => s.usage.costUsd.map(c => s.usage -> c.toDouble))
     def n(t: Tokens) = Tokens.value(t).toDouble
     val cachedRows = priced.count((u, _) => Tokens.value(u.cacheRead) > 0)
-    // With no row cached, the cached price has nothing to be read from and is left out.
+    val writtenRows = priced.count((u, _) => Tokens.value(u.cacheWrite) > 0)
+    // With no row cached (written), that price has nothing to be read from and is left out.
     def x(u: Usage): Vector[Double] =
-      if (cachedRows > 0) Vector(n(u.input) - n(u.cacheRead), n(u.cacheRead), n(u.output))
-      else Vector(n(u.input), n(u.output))
-    val k = if (cachedRows > 0) 3 else 2
+      Vector(n(u.input) - n(u.cacheRead) - n(u.cacheWrite)) ++
+        Option.when(cachedRows > 0)(n(u.cacheRead)) ++
+        Option.when(writtenRows > 0)(n(u.cacheWrite)) ++
+        Vector(n(u.output))
+    val k = 2 + (if (cachedRows > 0) 1 else 0) + (if (writtenRows > 0) 1 else 0)
     for {
       _ <- Either.cond(
         priced.size >= k,
@@ -97,8 +103,9 @@ object Fitted {
         .collect { case (u, c) if c > 0 => math.abs(x(u).zip(b).map(_ * _).sum - c) / c }
         .maxOption
         .getOrElse(0.0)
-      if (cachedRows > 0) Rate(b(0), Some(b(1)), b(2), priced.size, cachedRows, worst)
-      else Rate(b(0), None, b(1), priced.size, 0, worst)
+      val cached = Option.when(cachedRows > 0)(b(1))
+      val written = Option.when(writtenRows > 0)(b(k - 2))
+      Rate(b(0), cached, written, b(k - 1), priced.size, cachedRows, writtenRows, worst)
     }
   }
 
