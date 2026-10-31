@@ -191,8 +191,7 @@ object Recipe {
     // Each call's price saved: (effective, uncached, every one cached); `None` when it is not
     // priced.
     val each = calls.map { (_, s, saved, _) =>
-      val input = Tokens.value(s.usage.input)
-      val hit = if (input > 0) Tokens.value(s.usage.cacheRead).toDouble / input else 0.0
+      val hit = s.usage.cacheShare.getOrElse(0.0)
       if (saved == 0) Some((0.0, 0.0, Some(0.0)))
       else
         prices.rates.get(s.model).flatMap(_.toOption).flatMap { r =>

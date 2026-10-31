@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.durable.StepRecord
 import grit.core.id.TurnRef
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.Usage
 import grit.core.store.UsageLedger
 
 /** A turn's model calls as a provider's prompt cache sees them, read back from what it recorded. */
@@ -16,11 +16,7 @@ final case class TurnCache(
 ) extends caps.Pure {
 
   /** Of `own`'s input tokens, the share read from the cache; `None` when they had none. */
-  def share: Option[Double] = {
-    val input = own.map(o => Tokens.value(o.usage.input)).sum
-    val read = own.map(o => Tokens.value(o.usage.cacheRead)).sum
-    Option.when(input > 0)(read.toDouble / input)
-  }
+  def share: Option[Double] = Usage.total(own.map(_.usage)).cacheShare
 }
 
 object TurnCache {

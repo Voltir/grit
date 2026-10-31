@@ -14,6 +14,10 @@ final case class Usage(
     cacheWrite: Tokens = Tokens.Zero
 ) {
 
+  /** Of `input`, the share read from the cache; `None` when there was no input. */
+  def cacheShare: Option[Double] =
+    Option.when(Tokens.value(input) > 0)(Tokens.value(cacheRead).toDouble / Tokens.value(input))
+
   /** What both consumed together. The cost is unknown when either's is. */
   def +(other: Usage): Usage =
     Usage(
