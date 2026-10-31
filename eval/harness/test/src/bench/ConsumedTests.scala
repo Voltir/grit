@@ -83,6 +83,12 @@ object ConsumedTests extends TestSuite {
       )
     }
 
+    test("the init line gives the source of the key claude used") {
+      Consumed.of(Streams.at(checkout), checkout).map(_.apiKeySource) ==> Right(
+        Some("apiKeyHelper")
+      )
+    }
+
     test("a run killed before its result has no ending") {
       Consumed.of(Streams.at(checkout).dropRight(1), checkout).map(_.ended) ==> Right(None)
     }

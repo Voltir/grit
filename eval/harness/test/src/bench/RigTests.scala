@@ -47,8 +47,14 @@ object RigTests extends TestSuite {
     Caps.of("claude-haiku-5-5", "0.05", "4").getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")
 
-  /** The fake's run, its edit of `a.scala` writing `edited`, its stream's lines `lines`. */
-  private final case class Fake(edited: String, lines: Vector[String] = Streams.run)
+  /** The fake's run, its edit of `a.scala` writing `edited`, its stream's lines `lines`, and its
+    * errors `stderr`, written once it has run and before it exits 1.
+    */
+  private final case class Fake(
+      edited: String,
+      lines: Vector[String] = Streams.run,
+      stderr: String = ""
+  )
 
   private final case class Fixture(work: Processes, root: Path, origin: String, task: Task) {
     def arm(fake: Fake): Arm = {
@@ -59,7 +65,7 @@ object RigTests extends TestSuite {
         s"""#!/bin/sh
            |printf '%s\\n' "$$@" > $root/argv
            |printf '%s' "$${ANTHROPIC_API_KEY-unset}" > $root/key
-           |printf '%s' "$${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB-unset}" > $root/scrub
+           |printf '%s' "$${CLAUDE_CODE_DISABLE_AUTO_MEMORY-unset}" > $root/memory
            |settings=""; prev=""
            |for a in "$$@"; do [ "$$prev" = "--settings" ] && settings="$$a"; prev="$$a"; done
            |helper=$$(printf '%s' "$$settings" | sed -n 's/.*"apiKeyHelper":"\\([^"]*\\)".*/\\1/p')
@@ -71,6 +77,7 @@ object RigTests extends TestSuite {
            |printf '%s\\n' '${fake.edited}' > a.scala
            |mkdir -p out && touch out/daemon
            |sed "s|${Streams.Checkout}|$$(pwd -P)|g" $root/stream.jsonl
+           |printf '%s\\n' '${fake.stderr}' >&2
            |exit 1
            |""".stripMargin
       )
@@ -174,10 +181,10 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("claude's environment holds no key, and has it scrub credentials from what it starts") {
+    test("claude's environment holds no key, and writes no auto memory") {
       withTask { f =>
         val _ = trial(f, Fake("object A { val x = 1 }"))
-        (f.recorded("key"), f.recorded("scrub")) ==> ("unset", "1")
+        (f.recorded("key"), f.recorded("memory")) ==> ("unset", "1")
       }
     }
 
@@ -231,7 +238,7 @@ object RigTests extends TestSuite {
           argv.exists(_.contains("bypassPermissions"))
         ) ==> (
           true,
-          true,
+          false,
           Some("none"),
           Some("stream-json"),
           Some("Bash,Read,Edit,Write,Glob,Grep"),
@@ -241,6 +248,27 @@ object RigTests extends TestSuite {
           Some("4"),
           false
         )
+      }
+    }
+
+    test(
+      "a trial whose init line names no apiKeyHelper as the key's source is refused, saying which"
+    ) {
+      withTask { f =>
+        val none = Streams.run.map(
+          _.replace("\"apiKeySource\":\"apiKeyHelper\"", "\"apiKeySource\":\"none\"")
+        )
+        trial(f, Fake("object A { val x = 1 }", none)).fold(identity, _ => "passed") ==>
+          "claude used none, not its apiKeyHelper"
+      }
+    }
+
+    test("a run that never started says its exit and its errors' last line, and never the key") {
+      withTask { f =>
+        val bubblewrap = "error: bubblewrap is required, key sk-ant-test-0123"
+        trial(f, Fake("object A { val x = 1 }", Vector.empty, bubblewrap))
+          .fold(identity, _ => "passed") ==>
+          "claude wrote no session (exit 1): error: bubblewrap is required, key [key]"
       }
     }
 

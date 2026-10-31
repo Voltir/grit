@@ -29,14 +29,16 @@ final case class Ended(
 /** What a Claude Code run consumed, read from its `stream-json` output: its session, its model
   * calls in the order they began, and before its first edit of a file under its checkout the calls
   * made and the UTF-8 bytes its tools returned (both `None`: it made no such edit); and how it
-  * ended (`None`: it wrote no result, as when it was killed).
+  * ended (`None`: it wrote no result, as when it was killed); and the source of the key its init
+  * line names (`None`: the line names none).
   */
 final case class Consumed(
     session: Option[String],
     calls: Vector[Call],
     callsBeforeEdit: Option[Int],
     readBeforeEdit: Option[Long],
-    ended: Option[Ended]
+    ended: Option[Ended],
+    apiKeySource: Option[String]
 ) extends caps.Pure {
 
   /** Every call's usage together; its cost unknown when any call's is. */
@@ -107,7 +109,8 @@ object Consumed {
       order.flatMap(calls.get),
       edit.map(_._1),
       edit.map(_._2),
-      ended
+      ended,
+      events.iterator.flatMap(text(_, "apiKeySource")).nextOption()
     )
   }
 

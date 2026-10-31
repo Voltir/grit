@@ -187,23 +187,30 @@ object Rig {
                   arguments(arm, cap, task, helper)*
               )
               started = clock.millis()
-              lines <- work
+              streamed <- work
                 .started(argv, dir, added) { s =>
                   s.input.close()
                   val reader =
                     new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
                   val lines = reader.lines().iterator().asScala.toVector
-                  val _ = s.await(Longest + 2.minutes)
+                  val ended = s.await(Longest + 2.minutes).left.map(_.message)
                   s.kill()
-                  lines
+                  Streamed(lines, ended, (clock.millis() - started).max(0L).millis)
                 }
                 .left
                 .map(e => s"claude did not run: ${e.message}")
-            } yield Streamed(lines, (clock.millis() - started).max(0L).millis)
+            } yield streamed
           }
-          Streamed(lines, wall) = streamed
+          Streamed(lines, ended, wall) = streamed
           consumed <- Consumed.of(lines, checkout)
-          local <- consumed.session.toRight("claude wrote no session: it did not start its run")
+          local <- consumed.session.toRight(neverStarted(ended, key))
+          _ <- Either.cond(
+            consumed.apiKeySource.contains("apiKeyHelper"),
+            (),
+            consumed.apiKeySource.fold("claude's init line names no apiKeySource") { source =>
+              s"claude used $source, not its apiKeyHelper"
+            }
+          )
           changed <- Clone.changed(work)(dir, task.base)
           checked <- Checks.run(work)(dir, task.checks).left.map(_.message)
           harness <- Harness.of("claude-code")
@@ -237,14 +244,18 @@ object Rig {
     )
 
   /** What `claude` wrote to its output, a line each, and how long it ran. */
-  private final case class Streamed(lines: Vector[String], wall: FiniteDuration)
+  private final case class Streamed(
+      lines: Vector[String],
+      ended: Either[String, Ran],
+      wall: FiniteDuration
+  )
 
   /** `use` of how `key` reaches `claude`, and only `claude`: `helper`, the command its
     * `apiKeyHelper` setting runs to print the key, which reads a file only this user can read, in
     * a directory of its own under the system temp directory, both removed once `use` returns or
-    * throws; and `added`, the variables to add to its environment, which hold no key and make
-    * `claude` strip credentials from the environments of the commands, hooks and MCP servers it
-    * starts. `Left` when the file cannot be written. The run's stderr is never read back.
+    * throws; and `added`, the variables to add to its environment, which hold no key:
+    * `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no memory under its user's home. `Left`
+    * when the file cannot be written.
     */
   private def handedOver[A](key: ApiKey)(
       use: (String, Map[String, String]) => Either[String, A]
@@ -262,7 +273,7 @@ object Rig {
               Files.writeString(file, key.value, StandardCharsets.UTF_8)
             }.toEither.left.map(e => s"the key was not written: ${e.getClass.getName}")
             _ <- Either.cond(!file.toString.contains("'"), (), s"$file cannot be quoted")
-            used <- use(s"cat '$file'", Map("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" -> "1"))
+            used <- use(s"cat '$file'", Map("CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1"))
           } yield used
         } finally {
           val _ = Try(Files.deleteIfExists(dir.resolve("key")))
@@ -294,7 +305,6 @@ object Rig {
     Vector(
       "-p",
       Preamble + task.brief,
-      "--bare",
       "--restricted",
       "--permission-prompts",
       "none",
@@ -343,6 +353,24 @@ object Rig {
       }
     }
   }
+
+  /** Why a run wrote no session: how its wait ended, and for an exit, its code and the last line
+    * of its errors. `key` is replaced by `[key]` throughout.
+    */
+  private def neverStarted(ended: Either[String, Ran], key: ApiKey): String =
+    ended
+      .fold(
+        e => s"claude wrote no session: $e",
+        ran =>
+          ran.output.text.linesIterator
+            .filter(_.trim.nonEmpty)
+            .toVector
+            .lastOption
+            .fold(s"claude wrote no session (exit ${ran.exit})") { line =>
+              s"claude wrote no session (exit ${ran.exit}): $line"
+            }
+      )
+      .replace(key.value, "[key]")
 
   /** `program` with `args` run in `dir`; `Left` when it cannot start, times out or exits other
     * than 0.

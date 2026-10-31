@@ -25,7 +25,7 @@ object Streams {
     * from the cache and 2,150 written to it, and 90 output.
     */
   val run: Vector[String] = Vector(
-    s"""{"type":"system","subtype":"init","cwd":"$Checkout","session_id":"5e55-a1","tools":["Bash","Read","Edit","Write","Glob","Grep","mcp__scout__show"],"mcp_servers":[{"name":"scout","status":"connected"}],"model":"claude-haiku-5-5-20261001","permissionMode":"default","apiKeySource":"ANTHROPIC_API_KEY"}""",
+    s"""{"type":"system","subtype":"init","cwd":"$Checkout","session_id":"5e55-a1","tools":["Bash","Read","Edit","Write","Glob","Grep","mcp__scout__show"],"mcp_servers":[{"name":"scout","status":"connected"}],"model":"claude-haiku-5-5-20261001","permissionMode":"default","apiKeySource":"apiKeyHelper"}""",
     assistant(
       "msg_01a",
       """{"type":"text","text":"Reading the file first."}""",
