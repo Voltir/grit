@@ -59,7 +59,7 @@ object StructureTests extends TestSuite {
 
     test("the turns that did not reply, by step and kind or by status, in the order met") {
       all.unreplied.toVector ==> Vector(
-        Unreplied.Failed("assemble", Ended.Why.Assembly) -> 1,
+        Unreplied.Failed("assemble", Ended.Kind.Assembly) -> 1,
         Unreplied.Unfinished("PENDING") -> 1
       )
     }

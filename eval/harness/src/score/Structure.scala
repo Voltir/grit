@@ -80,7 +80,7 @@ object Quantiles {
   * DBOS's `status` for it.
   */
 enum Unreplied {
-  case Failed(step: String, why: Ended.Why)
+  case Failed(step: String, kind: Ended.Kind)
   case Unfinished(status: String)
 }
 

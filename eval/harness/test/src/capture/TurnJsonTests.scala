@@ -188,7 +188,7 @@ object TurnJsonTests extends TestSuite {
     ),
     window = None,
     rounds = Vector.empty,
-    ended = Ended.Failed("assemble", Ended.Why.Assembly),
+    ended = Ended.Failed("assemble", Ended.Kind.Assembly),
     spend = Vector(Spent(None, "m/x", Usage(Tokens(1), Tokens(1), Tokens(0), None), Tokens(1))),
     speech = None
   )

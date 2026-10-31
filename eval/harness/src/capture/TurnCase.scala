@@ -281,7 +281,7 @@ enum Ended {
   case Replied(length: Int, passed: Boolean)
 
   /** It failed before a reply, at the step of family `step`, of this kind. */
-  case Failed(step: String, why: Ended.Why)
+  case Failed(step: String, kind: Ended.Kind)
 
   /** Neither: DBOS's `status` for it, not finished when the database was dumped, or ended
     * otherwise.
@@ -292,7 +292,7 @@ enum Ended {
 object Ended {
 
   /** A [[grit.turn.TurnFailure]]'s kind, never its reason. */
-  enum Why {
+  enum Kind {
     case Assembly, Model, Store, Uncleared, ToolsChanged
   }
 }

@@ -517,7 +517,7 @@ object TurnCaptureTests extends TestSuite {
             "tui",
             TurnOffer.Root.Addressed,
             Focus.Focused,
-            Ended.Failed(Turn.Step.Ask, Ended.Why.Model)
+            Ended.Failed(Turn.Step.Ask, Ended.Kind.Model)
           ),
           (
             "slack C1/2000.1",

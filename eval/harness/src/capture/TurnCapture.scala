@@ -432,11 +432,11 @@ object TurnCapture {
             Ended.Failed(
               step,
               f match {
-                case TurnFailure.Assembly(_) => Ended.Why.Assembly
-                case TurnFailure.Model(_) => Ended.Why.Model
-                case TurnFailure.Store(_) => Ended.Why.Store
-                case TurnFailure.Uncleared(_) => Ended.Why.Uncleared
-                case TurnFailure.ToolsChanged(_) => Ended.Why.ToolsChanged
+                case TurnFailure.Assembly(_) => Ended.Kind.Assembly
+                case TurnFailure.Model(_) => Ended.Kind.Model
+                case TurnFailure.Store(_) => Ended.Kind.Store
+                case TurnFailure.Uncleared(_) => Ended.Kind.Uncleared
+                case TurnFailure.ToolsChanged(_) => Ended.Kind.ToolsChanged
               }
             )
           case None => Ended.Unfinished(status)

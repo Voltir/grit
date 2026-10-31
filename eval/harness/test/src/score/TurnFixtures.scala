@@ -181,7 +181,7 @@ object TurnFixtures {
     "B",
     TurnOffer.Root.Addressed,
     Said.Tui(EntryId("e3")),
-    Ended.Failed("assemble", Ended.Why.Assembly)
+    Ended.Failed("assemble", Ended.Kind.Assembly)
   ).copy(weighed = TurnRecord.Weigh.Recorded(None))
 
   // t4: thread C, a Slack thread asked directly, replied; no tool loop.

@@ -469,7 +469,7 @@ object TurnJson {
             why <- rf
               .str("why")
               .flatMap(w =>
-                Ended.Why.values.find(_.toString.toLowerCase == w).toRight(s"ended: why $w")
+                Ended.Kind.values.find(_.toString.toLowerCase == w).toRight(s"ended: why $w")
               )
           } yield Ended.Failed(step, why)
         }
