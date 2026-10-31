@@ -13,8 +13,9 @@ One short file per decision about grit's design that future code has to follow, 
 - **After that it is settled, not frozen.** It is amended in place for as long as the decision
   its title states stays true. A change that makes the title false is a new record: the old
   one is deleted in the same commit, and every reference to it retargeted. No stubs.
-- **One record, one screen**: about 5 KB at most. Evidence too long for that goes in the
-  commit message. No paths into gitignored working notes, and no lists of suites: "Enforced
+- **One record, one screen**: about 5 KB at most, or 8 KB for a record of the security model
+  (who a principal is, labels, clearance, integrity), where a rule stated exactly is worth
+  more than a short one. Evidence too long for that goes in the commit message. No paths into gitignored working notes, and no lists of suites: "Enforced
   by" names the kind of gate (the compiler, a probe, a law rule by its id, the replay gate)
   and at most two suites.
 - **Reviewed at each milestone close**: every record over the cap, and every symbol or suite
