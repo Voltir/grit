@@ -19,7 +19,7 @@ object Argv {
 }
 
 /** Starting programs under a root, as this machine's user, with an environment from which every
-  * variable named like a secret is gone.
+  * variable named like a secret is gone, unless its caller passes it ([[started]]).
   */
 trait Processes extends caps.SharedCapability {
 
@@ -31,11 +31,15 @@ trait Processes extends caps.SharedCapability {
     */
   def run(argv: Argv, dir: RelPath, timeout: FiniteDuration): Either[HostError, Ran]
 
-  /** `body` of `argv` started in `dir`. A program blocks once its output is full and unread. When
-    * `body` returns or throws, a program still running is killed as [[run]] kills one. `Left`,
-    * `body` not run: `dir` as for [[run]], or `Failed` when it cannot start.
+  /** `body` of `argv` started in `dir`, with `added` set in its environment as given: the one way
+    * a variable named like a secret, such as an API key, reaches a program, and only the one its
+    * caller names. A program blocks once its output is full and unread. When `body` returns or
+    * throws, a program still running is killed as [[run]] kills one. `Left`, `body` not run:
+    * `dir` as for [[run]], or `Failed` when it cannot start.
     */
-  def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A]
+  def started[A](argv: Argv, dir: RelPath, added: Map[String, String])(
+      body: Started^ => A
+  ): Either[HostError, A]
 }
 
 /** A program started by [[Processes.started]], for as long as its scope lasts. */

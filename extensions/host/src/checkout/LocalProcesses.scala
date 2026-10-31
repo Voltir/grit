@@ -34,8 +34,8 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
     place(dir).flatMap { at =>
       attempt(Files.createTempFile("grit-run-", ".out")).flatMap { out =>
         try {
-          start(argv, at)(_.redirectErrorStream(true).redirectOutput(out.toFile)).flatMap {
-            process =>
+          start(argv, at, Map.empty)(_.redirectErrorStream(true).redirectOutput(out.toFile))
+            .flatMap { process =>
               process.getOutputStream.close()
               val finished = LocalProcesses.awaited(process, timeout)
               attempt(LocalProcesses.tail(out)).flatMap { text =>
@@ -43,18 +43,20 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
                 if (finished) Right(Ran(process.exitValue(), output))
                 else Left(HostError.TimedOut(timeout, output))
               }
-          }
+            }
         } finally {
           val _ = attempt(Files.deleteIfExists(out))
         }
       }
     }
 
-  def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A] =
+  def started[A](argv: Argv, dir: RelPath, added: Map[String, String])(
+      body: Started^ => A
+  ): Either[HostError, A] =
     place(dir).flatMap { at =>
       attempt(Files.createTempFile("grit-errors-", ".out")).flatMap { errors =>
         try {
-          start(argv, at)(_.redirectError(errors.toFile)).map { process =>
+          start(argv, at, added)(_.redirectError(errors.toFile)).map { process =>
             val handle = new LocalProcesses.Handle(process, errors)
             try body(handle)
             finally handle.kill()
@@ -73,10 +75,10 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
       else Right(at)
     }
 
-  /** `argv` started in `at` with only the passed variables, its streams as `redirect` sets them;
-    * `Failed` when it cannot start.
+  /** `argv` started in `at` with only the passed variables and `added`, its streams as `redirect`
+    * sets them; `Failed` when it cannot start.
     */
-  private def start(argv: Argv, at: Path)(
+  private def start(argv: Argv, at: Path, added: Map[String, String])(
       redirect: ProcessBuilder => ProcessBuilder
   ): Either[HostError, Process] =
     attempt {
@@ -86,7 +88,7 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
       val builder = redirect(new ProcessBuilder(command).directory(at.toFile))
       val env = builder.environment()
       env.clear()
-      passed.foreach((k, v) => { val _ = env.put(k, v) })
+      (passed ++ added).foreach((k, v) => { val _ = env.put(k, v) })
       builder.start()
     }
 }
@@ -140,7 +142,9 @@ private[checkout] object LocalProcesses {
     } finally channel.close()
   }
 
-  /** Kills `process` and its descendants, and waits for it to end. */
+  /** Kills `process` and its descendants, and waits for it to end, and for each descendant up to
+    * [[DescendantWait]].
+    */
   def kill(process: Process): Unit = {
     // The parent first, then what it started (listed before, while the parent still holds
     // them): a shell outliving its child reports the kill ("Killed") into the output.
@@ -148,5 +152,13 @@ private[checkout] object LocalProcesses {
     val _ = process.destroyForcibly()
     descendants.forEach(p => { val _ = p.destroyForcibly() })
     val _ = process.waitFor()
+    // A killed descendant is gone only once reaped; until then it still reads as alive.
+    descendants.forEach { p =>
+      try { val _ = p.onExit().get(DescendantWait.toMillis, TimeUnit.MILLISECONDS) }
+      catch { case _: java.util.concurrent.TimeoutException => () }
+    }
   }
+
+  /** 1 second: how long a kill waits for each killed descendant to be gone. */
+  val DescendantWait: FiniteDuration = FiniteDuration(1, TimeUnit.SECONDS)
 }

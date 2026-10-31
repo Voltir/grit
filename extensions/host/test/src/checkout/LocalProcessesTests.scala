@@ -28,17 +28,18 @@ object LocalProcessesTests extends TestSuite {
   val tests = Tests {
     test("a started program answers each line of its input on its output") {
       inRoot { dir =>
-        val answered = new LocalProcesses(dir, sys.env).started(argv("cat"), RelPath.Root) { s =>
-          val in = s.input
-          val out = new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
-          in.write("one\n".getBytes(StandardCharsets.UTF_8))
-          in.flush()
-          val first = out.readLine()
-          in.write("two\n".getBytes(StandardCharsets.UTF_8))
-          in.close()
-          val second = out.readLine()
-          (first, second, s.await(5.seconds).map(_.exit))
-        }
+        val answered =
+          new LocalProcesses(dir, sys.env).started(argv("cat"), RelPath.Root, Map.empty) { s =>
+            val in = s.input
+            val out = new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
+            in.write("one\n".getBytes(StandardCharsets.UTF_8))
+            in.flush()
+            val first = out.readLine()
+            in.write("two\n".getBytes(StandardCharsets.UTF_8))
+            in.close()
+            val second = out.readLine()
+            (first, second, s.await(5.seconds).map(_.exit))
+          }
         answered ==> Right(("one", "two", Right(0)))
       }
     }
@@ -47,7 +48,8 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val pids = new LocalProcesses(dir, sys.env).started(
           argv("sh", "-c", "sleep 60 & echo $$ $!; wait"),
-          RelPath.Root
+          RelPath.Root,
+          Map.empty
         ) { s =>
           new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8)).readLine()
         }
@@ -62,7 +64,8 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val waited = new LocalProcesses(dir, sys.env).started(
           argv("sh", "-c", "echo late >&2; exec sleep 30"),
-          RelPath.Root
+          RelPath.Root,
+          Map.empty
         )(s => s.await(300.millis))
         waited.map(_.left.map {
           case HostError.TimedOut(after, errors) => (after, errors.show)
@@ -95,6 +98,22 @@ object LocalProcessesTests extends TestSuite {
       }
     }
 
+    test("a variable named like a secret reaches a started program only when it is passed") {
+      inRoot { dir =>
+        val processes = new LocalProcesses(dir, sys.env ++ Map("ANTHROPIC_API_KEY" -> "inherited"))
+        def seen(added: Map[String, String]): Either[HostError, String] =
+          processes.started(
+            argv("sh", "-c", "echo \"${ANTHROPIC_API_KEY:-none}\""),
+            RelPath.Root,
+            added
+          ) { s =>
+            new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8)).readLine()
+          }
+        (seen(Map.empty), seen(Map("ANTHROPIC_API_KEY" -> "passed"))) ==>
+          (Right("none"), Right("passed"))
+      }
+    }
+
     test("a program that is not there is refused as failing to start, where one that is runs") {
       inRoot { dir =>
         val processes = new LocalProcesses(dir, sys.env)
@@ -105,9 +124,9 @@ object LocalProcessesTests extends TestSuite {
         }
         (
           failed(processes.run(missing, RelPath.Root, 10.seconds)),
-          failed(processes.started(missing, RelPath.Root)(_ => "ran")),
+          failed(processes.started(missing, RelPath.Root, Map.empty)(_ => "ran")),
           processes.run(argv("true"), RelPath.Root, 10.seconds).map(_.exit),
-          processes.started(argv("true"), RelPath.Root)(_ => "ran")
+          processes.started(argv("true"), RelPath.Root, Map.empty)(_ => "ran")
         ) ==> (true, true, Right(0), Right("ran"))
       }
     }
