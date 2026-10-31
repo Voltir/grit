@@ -286,16 +286,30 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   /** `project_show`. */
   object Show extends ReadingCommand[Showing] {
     override def offeredToTurns: Boolean = true
-    override def shown(args: Showing): String = args.key.value
+    override def shown(args: Showing): String = args.keys match {
+      case ShowKeys.One(key) => key.value
+      case ShowKeys.Several(keys) => keys.map(_.value).mkString(", ")
+    }
 
     val spec: ToolSpec[Showing] = ToolSpec(
       ToolName("project_show"),
-      "Shows one artifact: its key, kind, state, title, parent, cites and author, then its " +
-        "body as markdown.",
+      "Shows artifacts by key: each one's key, kind, state, title, parent, cites and author, " +
+        "then its text as markdown. With head, only those lines, its opening paragraph and " +
+        "the names of its sections: enough to tell what it is without reading it all.",
       Args
         .of(
           (
-            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            key = Field.text("One artifact's key, `<project>/<artifact>`.").optional,
+            keys = Field
+              .texts(
+                s"Several artifacts' keys, up to $ShowMost, shown in this order. Give key or keys.",
+                1,
+                ShowMost
+              )
+              .optional,
+            head = Field
+              .flag("Show each one's head and opening paragraph only, not its whole text.")
+              .optional,
             at = Field
               .text(
                 "An instant, ISO-8601 in UTC (`2026-10-27T12:00:00Z`): shows the version " +
@@ -306,30 +320,59 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         )
         .refine(a =>
           for {
-            key <- parsed("key", a.key, ArtifactKey.read)
+            keys <- (a.key, a.keys) match {
+              case (Some(k), None) => parsed("key", k, ArtifactKey.read).map(ShowKeys.One(_))
+              case (None, Some(ks)) =>
+                each("keys", ks.toVector, ArtifactKey.read).map(ShowKeys.Several(_))
+              case (Some(_), Some(_)) =>
+                Left(ArgsError.Refused("keys", "Give key or keys, not both."))
+              case (None, None) => Left(ArgsError.Missing("key", "an artifact's key, or give keys"))
+            }
             when <- a.at.fold(Right(None))(t => parsed("at", t, instant).map(Some(_)))
-          } yield Showing(key, when)
+          } yield Showing(keys, when, a.head.getOrElse(false))
         )
     )
     def run(args: Showing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
-      for {
-        project <- loaded(own.documents, args.key.project)
-        version <- args.at match {
-          case None => artifact(project, args.key).map(_._2)
+      def version(project: Loaded, key: ArtifactKey): Either[Stop, Artifact] =
+        args.at match {
+          case None => artifact(project, key).map(_._2)
           case Some(when) =>
             for {
-              where <- recorded(own.documents, project, args.key)
-              (key, label) = where
-              found <- stored(own.documents.asOf(key, label, when))
-              document <- found.toRight(
-                Stop.Refused(s"${args.key.value} had no version at $when")
-              )
+              where <- recorded(own.documents, project, key)
+              (doc, label) = where
+              found <- stored(own.documents.asOf(doc, label, when))
+              document <- found.toRight(Stop.Refused(s"${key.value} had no version at $when"))
               version <- refuse(readable(document))
             } yield version
         }
-      } yield ProjectMarkdown.file(version)._2
+      def rendered(a: Artifact): String =
+        if (args.head) ProjectMarkdown.head(a) else ProjectMarkdown.file(a)._2
+      args.keys match {
+        case ShowKeys.One(key) =>
+          loaded(own.documents, key.project).flatMap(version(_, key)).map(rendered)
+        case ShowKeys.Several(keys) =>
+          // Each project read once, however many of its keys are asked for.
+          val projects = keys.map(_.project).distinct.map(p => p -> loaded(own.documents, p)).toMap
+          keys
+            .foldLeft[Either[Stop, Vector[String]]](Right(Vector.empty)) { (acc, key) =>
+              acc.flatMap { done =>
+                projects
+                  .getOrElse(
+                    key.project,
+                    Left(Stop.Refused(s"no project ${ProjectKey.value(key.project)}"))
+                  )
+                  .flatMap(version(_, key))
+                  .map(rendered) match {
+                  case Right(text) => Right(done :+ text)
+                  case Left(Stop.Refused(why)) => Right(done :+ s"$why\n")
+                  case Left(failed) => Left(failed)
+                }
+              }
+            }
+            .map(_.mkString)
+      }
     }
   }
 
@@ -1043,8 +1086,19 @@ private[plugin] object ProjectCommands {
   /** `project_move`'s arguments. */
   final case class Moving(key: ArtifactKey, to: StateName) extends caps.Pure
 
-  /** `project_show`'s arguments: the version current `at`, or the current one. */
-  final case class Showing(key: ArtifactKey, at: Option[Instant]) extends caps.Pure
+  /** `project_show`'s arguments: one key, refused when not kept, or several, each not kept said
+    * in its place; whole, or heads when `head`; as of `at`, or current.
+    */
+  final case class Showing(keys: ShowKeys, at: Option[Instant], head: Boolean) extends caps.Pure
+
+  /** Which artifacts `project_show` shows. */
+  enum ShowKeys extends caps.Pure {
+    case One(key: ArtifactKey)
+    case Several(keys: Vector[ArtifactKey])
+  }
+
+  /** 20: the most keys one `project_show` names. */
+  val ShowMost: Int = 20
 
   /** `project_history`'s arguments: the two version numbers to diff, from and to, if any. */
   final case class Recalling(key: ArtifactKey, diff: Option[(Long, Long)]) extends caps.Pure

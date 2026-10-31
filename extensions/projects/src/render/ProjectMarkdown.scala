@@ -29,9 +29,28 @@ object ProjectMarkdown {
     )) +: project.artifacts.map(file)
 
   /** `artifact`'s file as [[render]] writes it: its path, and its text. */
-  def file(artifact: Artifact): (String, String) = {
-    val h = artifact.head
-    s"${h.key.value}.md" -> (front(
+  def file(artifact: Artifact): (String, String) =
+    s"${artifact.head.key.value}.md" -> (fronted(artifact.head) + "\n" +
+      Body.markdown(artifact.body) + "\n")
+
+  /** `artifact` without its whole body: its file's front matter, then its body's first
+    * paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
+    * between them (`none` when it has none), with the size of its body as markdown in KB, to
+    * one decimal: `Sections: Goal; Reads (2.4 KB in all)`.
+    */
+  def head(artifact: Artifact): String = {
+    val markdown = Body.markdown(artifact.body)
+    val kb = markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8).length / 1024.0
+    val sections = Body.sections(artifact.body)
+    val lead = Body.lead(artifact.body, Int.MaxValue)
+    fronted(artifact.head) + "\n" + Vector(lead).filter(_.nonEmpty).map(_ + "\n\n").mkString +
+      f"Sections: ${
+          if (sections.isEmpty) "none" else sections.mkString("; ")
+        } ($kb%.1f KB in all)\n"
+  }
+
+  private def fronted(h: ArtifactHead): String =
+    front(
       Vector(
         "key" -> h.key.value,
         "kind" -> KindName.value(h.kind),
@@ -41,8 +60,7 @@ object ProjectMarkdown {
         "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
         "by" -> h.by.fold("null")(quoted)
       )
-    ) + "\n" + Body.markdown(artifact.body) + "\n")
-  }
+    )
 
   /** Files as [[render]] writes them, as a project, or every file that is not one, with why: a
     * missing or unreadable [[Index]], a file whose front matter is not [[render]]'s, a file not

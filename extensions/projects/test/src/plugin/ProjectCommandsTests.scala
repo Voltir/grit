@@ -374,6 +374,54 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    test("project_show with keys shows each in order, an unkept one said in its place") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Alpha.")
+      kept(projects, store, "b", "note", "Beta.")
+      val several = done(
+        ask(projects, store, "project_show", "keys" -> ujson.Arr("p/b", "p/z", "p/a"))
+      )
+      several ==> Vector(
+        shown(projects, store, "p/b"),
+        "project p has no artifact p/z\n",
+        shown(projects, store, "p/a")
+      ).mkString
+    }
+
+    test("project_show with head shows the head, its opening paragraph and its sections, no body") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(
+        projects,
+        store,
+        "a",
+        "note",
+        "Opening words, all of them.\n\n## Goal\n\nThe goal's text.\n\n## Reads\n\nWhat to read."
+      )
+      val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
+      headed ==>
+        "---\nkey: p/a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
+        s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n---\n\n" +
+        "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
+    }
+
+    test("project_show refuses key and keys together, and neither, naming both") {
+      val projects = plugin()
+      val show = projects.commands.find(c => ToolName.value(c.spec.name) == "project_show")
+      def message(args: ujson.Obj) =
+        show.map(_.spec.args.read(args).left.map(_.message).swap.getOrElse(""))
+      (
+        message(ujson.Obj("key" -> "p/a", "keys" -> ujson.Arr("p/b"))),
+        message(ujson.Obj())
+      ) ==> (
+        Some("Give key or keys, not both."),
+        Some("`key` is missing: it takes an artifact's key, or give keys.")
+      )
+    }
+
     test("history refuses a lone to_version by naming from_version") {
       val projects = plugin()
       val history = projects.commands.find(c => ToolName.value(c.spec.name) == "project_history")
