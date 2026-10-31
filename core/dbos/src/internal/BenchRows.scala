@@ -1,10 +1,11 @@
 package grit.dbos.internal
 
 import java.sql.ResultSet
+import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{Blobs, Pending}
+import grit.core.host.{BlobError, Blobs, Pending}
 import grit.core.id.{Harness, SessionId, Sha256}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
@@ -25,7 +26,10 @@ final class BenchRows(blobs: Blobs^) {
     * until the transaction ends.
     */
   def record(trial: BenchRows.Trial)(using Tx^): Either[StoreError, BenchRows.Recorded] =
-    BenchRows.begun(trial).map(_.fold(BenchRows.Recorded.Repeat)(_ => BenchRows.Recorded.Fresh(0)))
+    BenchRows.begun(trial).flatMap {
+      case None => Right(BenchRows.Recorded.Repeat)
+      case Some(_) => BenchRows.evict().map(BenchRows.Recorded.Fresh(_))
+    }
 
   /** As `record(trial)`, with `transcript` kept as its trajectory, `clipped` when the transcript
     * ran past what was received, kept at `label` joined with this transaction's floor (ADR 0030:
@@ -49,9 +53,27 @@ final class BenchRows(blobs: Blobs^) {
           for {
             _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
             _ <- BenchRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)
-          } yield BenchRows.Recorded.Fresh(0)
+            removed <- BenchRows.evict()
+          } yield BenchRows.Recorded.Fresh(removed)
       }
     }
+
+  /** Every blob no trajectory names removed, and every pending blob last written before
+    * `before` cleared. Waits on any record, and holds records off, until the transaction ends.
+    * `Right(Left)` when `blobs` fails: what was removed before it failed stays removed.
+    */
+  def prune(before: Instant)(using Tx^): Either[StoreError, Either[BlobError, BenchRows.Pruned]] =
+    for {
+      _ <- BenchRows.lock()
+      named <- SqlStatements.many("SELECT DISTINCT sha256 FROM grit.bench_trajectories")(_ => ())(
+        rs => Sha256.read(rs.getString("sha256")).toRight(s"no digest: ${rs.getString("sha256")}")
+      )
+      shas <- SqlStatements.valid(named)
+    } yield
+      for {
+        removed <- blobs.removeAllBut(shas.toSet)
+        cleared <- blobs.clearPending(before)
+      } yield BenchRows.Pruned(removed, cleared)
 
   /** Every trial kept, oldest recorded first. */
   def trials()(using Tx^): Either[StoreError, Vector[BenchRows.Trial]] =
@@ -187,6 +209,9 @@ object BenchRows {
     case Repeat
   }
 
+  /** What a prune removed: blobs no trajectory named, and pending blobs abandoned. */
+  final case class Pruned(removed: Int, cleared: Int)
+
   /** The advisory lock every record and prune takes until its transaction ends. */
   private val Lock = 0x67726974_62656e63L
 
@@ -196,6 +221,13 @@ object BenchRows {
   /** Under the bench's lock, `trial`'s row inserted, its id; `None` when its session has one. */
   private def begun(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =
     lock().flatMap(_ => trialRow(trial))
+
+  /** Every trial but the newest [[Kept]] recorded deleted, with its trajectory's row; how many. */
+  private def evict()(using Tx^): Either[StoreError, Int] =
+    SqlStatements.update(
+      """DELETE FROM grit.bench_trials
+        | WHERE id NOT IN (SELECT id FROM grit.bench_trials ORDER BY id DESC LIMIT ?)""".stripMargin
+    )(_.setInt(1, Kept))
 
   /** `trial`'s row inserted, its id; `None` when its session has one. */
   private def trialRow(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =

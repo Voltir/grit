@@ -143,5 +143,53 @@ object BenchRowsTests extends TestSuite {
         )
       }
     }
+
+    test(
+      "recording past the cap removes the oldest recorded with its trajectory's row, never its blob"
+    ) {
+      // A database of its own: the cap counts every trial in it.
+      val db = TestPostgres.freshDatabase("bench_cap")
+      LiveEngine.open(db, "test").close()
+      TempBlobs.around { blobs =>
+        val rows = BenchRows(blobs)
+        val all = Vector.tabulate(BenchRows.Kept + 1)(i => trial(s"t-$i"))
+        ok(blobs.receive(bytes("the oldest"), BenchRows.Longest) { p =>
+          LiveDb.transaction(db, Low)(rows.record(all(0), p, clipped = false, Label.Public))
+        })
+        val middle =
+          all.slice(1, BenchRows.Kept).map(t => LiveDb.transaction(db, Low)(rows.record(t)))
+        val last = LiveDb.transaction(db, Low)(rows.record(all(BenchRows.Kept)))
+        assert(
+          middle.forall(_ == Right(BenchRows.Recorded.Fresh(0))),
+          last == Right(BenchRows.Recorded.Fresh(1)),
+          LiveDb.transaction(db, Low)(ok(rows.trials())) == all.drop(1),
+          LiveDb.transaction(db, Low)(ok(rows.trajectory(all(0).session))) == None,
+          blobs.kept() == Right(Vector(Sha256.text("the oldest")))
+        )
+      }
+    }
+
+    test(
+      "a prune removes each blob no trajectory names and keeps those named, one two trials share included"
+    ) {
+      val db = TestPostgres.freshDatabase("bench_prune")
+      LiveEngine.open(db, "test").close()
+      TempBlobs.around { blobs =>
+        val rows = BenchRows(blobs)
+        def kept(t: BenchRows.Trial, text: String) =
+          ok(blobs.receive(bytes(text), BenchRows.Longest) { p =>
+            LiveDb.transaction(db, Low)(rows.record(t, p, clipped = false, Label.Public))
+          })
+        kept(trial("p-a"), "shared")
+        kept(trial("p-b"), "shared")
+        kept(trial("p-c"), "its own")
+        ok(blobs.receive(bytes("stray"), 10)(_.keep()))
+        val pruned = LiveDb.transaction(db, Low)(rows.prune(java.time.Instant.EPOCH))
+        assert(
+          pruned == Right(Right(BenchRows.Pruned(1, 0))),
+          blobs.kept().map(_.toSet) == Right(Set(Sha256.text("shared"), Sha256.text("its own")))
+        )
+      }
+    }
   }
 }
