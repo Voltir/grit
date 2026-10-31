@@ -63,7 +63,8 @@ import grit.dbos.sql.{
 
 /** The stores over grit's schema, each stateless: every read and write runs in the `Tx` it is
   * given, and a transaction opened under `visibility` resolves its clearance as [[opener]]
-  * does. Built once here, so an [[Engine]] and a [[Rehearsing]] hold the same stores.
+  * does. Built once here, so an [[Engine]], a [[Rehearsing]] and an attached [[Link]] hold the
+  * same stores.
   */
 class Stores private[engine] (visibility: Visibility) {
 

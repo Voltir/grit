@@ -101,7 +101,7 @@ final class Engine private (
     new grit.dbos.sql.SqlAdministration(jot, opener)
 
   def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
-    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins)
+    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins, reads, keeper, claims)
 
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 

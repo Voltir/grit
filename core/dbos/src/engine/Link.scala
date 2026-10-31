@@ -7,49 +7,17 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.{Console, Desk, DeskError, Desks, Holder, RecordedStep, TurnStatus}
-import grit.core.files.PieceSearch
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.place.Place
-import grit.core.spend.{Budget, Spending}
-import grit.core.store.{
-  ConversationStore,
-  Db,
-  EntryStore,
-  Jot,
-  LifecycleStore,
-  ModelProfileStore,
-  Origin,
-  Principals,
-  PromptStore,
-  StoreError,
-  Tx,
-  UsageLedger,
-  VoiceStore
-}
+import grit.core.spend.Budget
+import grit.core.store.{ConversationStore, Db, Jot, Origin, StoreError, Tx}
 import grit.core.visibility.Visibility
-import grit.dbos.sql.{
-  DbConfig,
-  Opener,
-  Pool,
-  SqlConversationStore,
-  SqlDb,
-  SqlDocumentSearch,
-  SqlEntryStore,
-  SqlJot,
-  SqlLifecycleStore,
-  SqlModelProfileStore,
-  SqlPeriodStore,
-  SqlPrincipals,
-  SqlPromptStore,
-  SqlUsageLedger,
-  SqlVoiceStore
-}
+import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlEntryStore, SqlJot}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -242,49 +210,8 @@ private[engine] final class Attached(
     val budget: Budget,
     visibility: Visibility,
     clock: Clock^
-) extends Link {
-
-  private val conversations: ConversationStore = new SqlConversationStore()
-
-  val entries: EntryStore = new SqlEntryStore()
-
-  private val sqlLedger = new SqlUsageLedger()
-
-  val ledger: UsageLedger = sqlLedger
-
-  val spending: Spending = sqlLedger
-
-  val profiles: ModelProfileStore = new SqlModelProfileStore()
-
-  val prompts: PromptStore = new SqlPromptStore()
-
-  val lifecycle: LifecycleStore = new SqlLifecycleStore()
-
-  val voices: VoiceStore = new SqlVoiceStore()
-
-  val principals: Principals = new SqlPrincipals()
-
-  val documents: DocumentSearch = new SqlDocumentSearch
-
-  val pieces: PieceSearch = new grit.dbos.sql.SqlPieces(new grit.dbos.sql.SqlTombstones)
-
-  val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
-
-  val acknowledgements: grit.core.edge.Acknowledgements = new grit.dbos.sql.SqlAcknowledgements()
-
-  val reviews: grit.core.review.Reviews[grit.core.review.Prompt, grit.core.review.Verdict] =
-    new grit.dbos.sql.SqlReviews
-
-  val origins: grit.core.edge.Origins = new grit.dbos.sql.SqlOrigins
-
-  private val documentReviews = new grit.dbos.sql.SqlDocumentReviews
-
-  val documentReviewsOf: grit.core.id.PluginName -> grit.core.review.Reviews[
-    grit.core.review.DocumentReview,
-    grit.core.review.ReviewWord
-  ] = documentReviews.of
-
-  private val opener = new Opener(visibility)
+) extends Stores(visibility),
+      Link {
 
   val db: Db = new SqlDb(dataSource, opener)
 
@@ -294,7 +221,7 @@ private[engine] final class Attached(
     new grit.dbos.sql.SqlAdministration(jot, opener)
 
   def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
-    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins)
+    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins, reads, keeper, claims)
 
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
@@ -310,11 +237,11 @@ private[engine] final class Attached(
       client,
       conversations,
       entries,
-      new SqlPeriodStore(entries),
-      new grit.dbos.sql.SqlSpeechStore,
+      periods,
+      speech,
       spending,
       budget,
-      new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
+      sqlSchedules,
       visibility,
       clock
     )

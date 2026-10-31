@@ -6,7 +6,8 @@ import javax.sql.DataSource
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.document.DocumentTerms
+import grit.core.claim.Claims
+import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.edge.{CommandError, PluginCommands}
 import grit.core.id.PluginName
 import grit.core.identity.{Account, Principal}
@@ -25,21 +26,23 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 
-/** [[PluginCommands]] over `dataSource`, of `plugins`' commands: each run is one transaction on
+/** [[PluginCommands]] over `dataSource`, of `plugins`' commands, each plugin's documents read
+  * through `reads`: each run is one transaction on
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
   * and then the command run under [[Subject.Person]], both opened through `opener`. A reading
   * command's connection is read-only and always rolled back; a keeping command, handed its
-  * plugin's keeper and claims ([[SqlClaims]]), is committed only when it answers
+  * plugin's `keeper` and `claims`, is committed only when it answers
   * [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
   * which a deployment refuses, is not offered.
   */
 private[dbos] final class SqlPluginCommands(
     dataSource: DataSource,
     opener: Opener,
-    plugins: Vector[Plugin]
+    plugins: Vector[Plugin],
+    reads: PluginName -> PluginReads,
+    keeper: (PluginName, DocumentTerms) -> DocumentKeeper,
+    claims: PluginName -> Claims
 ) extends PluginCommands {
-
-  private val documents = new SqlDocuments(new SqlTombstones)
 
   private val commanded: Vector[Commanded] = Commanded.of(plugins)
 
@@ -73,9 +76,8 @@ private[dbos] final class SqlPluginCommands(
     command.spec.args.read(args) match {
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
-        val own = PluginReads(new SqlPluginDocs(plugin), documents.shelf(plugin))
         transaction(by, room, name, keeps = false)((person, tx) =>
-          command.run(a, CommandBy.Direct(person), own, at)(using tx)
+          command.run(a, CommandBy.Direct(person), reads(plugin), at)(using tx)
         )
     }
 
@@ -94,10 +96,19 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = true) { (person, tx) =>
-          val keeper = documents.keeper(plugin, terms)
           val asker = CommandBy.Direct(person)
-          val claims = new SqlClaims(plugin)
-          KeepingCommand.run(command, a, asker, keeper, claims, room, believed, at)(using tx)
+          KeepingCommand.run(
+            command,
+            a,
+            asker,
+            keeper(plugin, terms),
+            claims(plugin),
+            room,
+            believed,
+            at
+          )(using
+            tx
+          )
         }
     }
 
