@@ -38,7 +38,10 @@ Packages, each importing only those above it:
   `Cost.cents` writes it (`0.29¢`).
 - **`bench`**: the coder bench's keeping: each trial of a harness at a frozen task and its
   transcript, kept through `grit.dbos.internal`'s `BenchRows` over a blob store that is the
-  bench's alone, one per bench database. It reports and gates nothing yet.
+  bench's alone, one per bench database; a frozen task (`eval/bench/tasks/<name>/`: its base,
+  its commits, its checks and its brief), and its checkout, a repository holding only the base's
+  history, through core's `Processes`. Only `main` names `grit.host`, the harness's composition
+  root (the law's `harness-names-host-from-main-alone`). It reports and gates nothing yet.
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt

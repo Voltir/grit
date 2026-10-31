@@ -148,6 +148,10 @@ components:
   - {name: knowledge-github, kind: module, match: ["extensions/knowledge/src/github", "extensions/knowledge/src/github/**"]}
   - {name: knowledge-drive, kind: module, match: ["extensions/knowledge/src/drive", "extensions/knowledge/src/drive/**"]}
   - {name: harness-code,   kind: module, match: ["eval/harness/src", "eval/harness/src/**"]}
+  # The harness less its main package, for the rule that keeps grit.host in main, the harness's
+  # composition root: every other package takes core's capabilities. A new harness package is
+  # added here.
+  - {name: harness-beside-main, kind: module, match: ["eval/harness/src/bench", "eval/harness/src/bench/**", "eval/harness/src/capture", "eval/harness/src/capture/**", "eval/harness/src/jev", "eval/harness/src/jev/**", "eval/harness/src/lab", "eval/harness/src/lab/**", "eval/harness/src/label", "eval/harness/src/label/**", "eval/harness/src/log", "eval/harness/src/log/**", "eval/harness/src/loss", "eval/harness/src/loss/**", "eval/harness/src/pull", "eval/harness/src/pull/**", "eval/harness/src/reply", "eval/harness/src/reply/**", "eval/harness/src/report", "eval/harness/src/report/**", "eval/harness/src/run", "eval/harness/src/run/**", "eval/harness/src/score", "eval/harness/src/score/**", "eval/harness/src/sent", "eval/harness/src/sent/**", "eval/harness/src/stats", "eval/harness/src/stats/**"]}
   # grit.eval's main sources alone (its cases and their layout), for its rule and the
   # harness's; its integration sources, the assembly eval, are unruled.
   - {name: eval-code,      kind: module, match: ["eval/src", "eval/src/**"]}
@@ -976,10 +980,17 @@ rules:
 
   - id: harness-names-core-and-models
     allow: harness-code
+    only: [core-modules, models-code, kit-environment, knowledge-code, eval-code, harness-code, host-code]
+    via: imports
+    mode: strict
+    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does; the local host is how the bench starts its coder and checks, from main alone (the next rule); the eval's cases are its synthetic reference; the knowledge plugin's key forms are read through its own reader of them (Leaves), so the duplication measure keeps no second copy of them"
+
+  - id: harness-names-host-from-main-alone
+    allow: harness-beside-main
     only: [core-modules, models-code, kit-environment, knowledge-code, eval-code, harness-code]
     via: imports
     mode: strict
-    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does; the eval's cases are its synthetic reference; the knowledge plugin's key forms are read through its own reader of them (Leaves), so the duplication measure keeps no second copy of them"
+    because: "the harness's main package is its composition root and builds the local host there; every other package, the bench included, is handed core's capabilities (Processes, Blobs), so a fake stands in for them in its tests"
 
   # -------------------------------------------------------------------------------------
   # The outline tool reads any Scala 3 project's TASTy, so its main sources name no grit
