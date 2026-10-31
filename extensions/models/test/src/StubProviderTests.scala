@@ -62,7 +62,7 @@ object StubProviderTests extends TestSuite {
       "the stub calls the tool #call(name): names, wherever it is offered, and none not offered"
     ) {
       val read = ToolSchema("read_hidden", "d", ujson.Obj())
-      val said = """back #call(topic):{"about":"earlier","name":"Knots"}"""
+      val said = s"""back ${StubProvider.calling("topic")}{"about":"earlier","name":"Knots"}"""
       new StubProvider()
         .complete(ModelRequest("s", Vector(Message.User(said)), Vector(read, topic)))
         .map(_.blocks) ==> Right(

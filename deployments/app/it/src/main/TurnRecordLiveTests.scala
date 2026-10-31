@@ -95,9 +95,9 @@ object TurnRecordLiveTests extends TestSuite {
       try {
         val _ = java.nio.file.Files.writeString(root.resolve("notes.txt"), "the answer is 42\n")
         launchIn(engine, engine.entries, new CountingProvider, root)
-        // The stub calls the first tool offered, `read`, with the arguments after #call:. It
+        // The stub calls `read`, which the marker names, with the arguments after it. It
         // is hosted: sent to this process's edge for the checkout, which reads the file.
-        val turn = say(engine, """look #call:{"path":"notes.txt"}""")
+        val turn = say(engine, """look #call(read):{"path":"notes.txt"}""")
         val _ = engine.awaitTurn(turn)
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
           Vector(
@@ -129,7 +129,9 @@ object TurnRecordLiveTests extends TestSuite {
                 ) =>
               (content, isError, shown)
           } ==> Vector(("     1\tthe answer is 42", false, "read notes.txt"))
-        reply(engine, turn) ==> Some("stub reply to: message look #call:{\"path\":\"notes.txt\"}")
+        reply(engine, turn) ==> Some(
+          "stub reply to: message look #call(read):{\"path\":\"notes.txt\"}"
+        )
       } finally {
         engine.close()
         java.nio.file.Files

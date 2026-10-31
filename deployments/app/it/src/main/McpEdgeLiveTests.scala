@@ -122,14 +122,14 @@ object McpEdgeLiveTests extends TestSuite {
           case Left(refused) => sys.error(refused.message)
           case Right(open) =>
             try {
-              // The stub calls the first tool offered, with the JSON after the marker.
+              // The stub calls the tool the marker names, with the JSON after it.
               val read = ujson.Obj("owner" -> "o", "repo" -> "r", "path" -> "README.md")
               val turn = (for {
                 turn <- engine.inbox.ingest(
                   Origin.Task("mcp", "live"),
                   SourceId("mcp-1"),
                   Message.User(
-                    s"what is in the README? ${StubProvider.CallMarker}${read.render()}"
+                    s"what is in the README? ${StubProvider.calling("github_get_file_contents")}${read.render()}"
                   ),
                   Account.Local,
                   None

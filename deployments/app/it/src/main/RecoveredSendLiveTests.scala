@@ -116,7 +116,9 @@ object RecoveredSendLiveTests extends TestSuite {
           turn <- engine.inbox.ingest(
             Origin.Task("mcp", "recovered"),
             SourceId("recovered-1"),
-            Message.User(s"what is in the README? ${StubProvider.CallMarker}${read.render()}"),
+            Message.User(
+              s"what is in the README? ${StubProvider.calling("github_get_file_contents")}${read.render()}"
+            ),
             Account.Local,
             None
           )

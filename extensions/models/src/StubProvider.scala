@@ -90,6 +90,11 @@ object StubProvider {
   /** The marker before a tool call's arguments in a user message. */
   val CallMarker = "#call:"
 
+  /** The marker before a tool call's arguments that names its tool: the stub calls `tool`
+    * alone, and only when it is offered ([[named]]).
+    */
+  def calling(tool: String): String = s"#call($tool):"
+
   /** `text` cut before each space, so the pieces join back to it exactly. */
   def words(text: String): Vector[String] =
     text.split("(?= )").toVector.filter(_.nonEmpty)

@@ -123,12 +123,12 @@ object ReachLiveTests extends TestSuite {
       )
       server.serve()
       try {
-        // The stub calls the first tool offered: with no workspace, the reached one.
+        // The stub calls the reached tool, which the marker names.
         val turn = (for {
           turn <- engine.inbox.ingest(
             Origin.Task("reach", name),
             SourceId(s"$name-1"),
-            Message.User(s"note it ${StubProvider.CallMarker}{}"),
+            Message.User(s"note it ${StubProvider.calling("note_here")}{}"),
             Account.Local,
             None
           )

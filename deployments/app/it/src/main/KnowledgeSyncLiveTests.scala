@@ -342,7 +342,9 @@ object KnowledgeSyncLiveTests extends TestSuite {
 
   /** The turn's question about the runbook, calling its card's pointer. */
   private val runbook =
-    "How do I roll back a widget deployment with the runbook? " + StubProvider.CallMarker +
+    "How do I roll back a widget deployment with the runbook? " + StubProvider.calling(
+      "github_get_file_contents"
+    ) +
       ujson.write(ujson.Obj("owner" -> "octocat", "path" -> "docs/a.md", "repo" -> "Hello-World"))
 
   /** `body` over a fresh database `name` whose engine runs `cards`' deployment under `visible`,
