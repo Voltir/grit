@@ -1,6 +1,6 @@
 package grit.app.config
 
-import grit.chat.settings.{Durations, Lifecycle}
+import grit.chat.settings.Lifecycle
 import grit.core.either.Traversal.traverse
 import grit.core.period.LifecycleSettings
 
@@ -31,7 +31,7 @@ object LifecycleEnv {
     s"$ScopeVar is no longer read: a window draws on every place its turn may read; unset it"
 
   /** The settings the environment declares: `GRIT_IDLE`, `GRIT_RETENTION`, `GRIT_LEDGER` and
-    * `GRIT_SETTLE` ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
+    * `GRIT_SETTLE` ([[grit.chat.settings.Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
     * (a probability, as 0.8) and `GRIT_WEIGHT` (a number of at least 1), each unset one as
     * [[LifecycleSettings.Default]] has it, each read as `/set` reads its value
     * ([[Lifecycle.Change.of]]); or why they are none, naming the variable, or every one declared
