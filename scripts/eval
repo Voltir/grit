@@ -336,6 +336,21 @@
 #       from, or a Standing document of one of that strand's conversations; with their
 #       workflow ids. Text-free.
 #
+#   scripts/eval bench --task <name> --known
+#   scripts/eval bench --task <name> --model <id> --max-budget-usd <usd> --max-turns <n>
+#       The coder bench (eval/bench/README.md): the frozen task eval/bench/tasks/<name>, in a
+#       checkout of its own under .local/bench/work/ holding only its base's history. With
+#       --known, the task's own commits through its checks, which must pass; nothing is kept.
+#       Otherwise a Claude Code coder (claude on PATH, or $CLAUDE) runs the task headless under
+#       the caps, all three required: <id> the Anthropic API's model id (claude-haiku-5-5);
+#       --max-budget-usd Claude Code's own spend cap, which a run can pass; --max-turns its
+#       turns. The trial and its stream-json transcript are kept in grit_bench (created when
+#       missing) and .local/bench/blobs/grit_bench/, and printed: tokens per call with cache
+#       reads and writes, grit's cost beside Claude Code's, how the run ended, its denials and
+#       its checks. The key is ANTHROPIC_API_KEY, from the environment over GRIT_ENV_FILE (the
+#       main checkout's .env when unset); a run refuses to start without it. A checkout is
+#       kept only when the rig fails, less its out/.
+#
 #   scripts/eval summaries <yyyymmdd> --models <id>,<id> --spend <usd> [--first <n>]
 #                          [--dry-run]
 #       The first --first turns (30) grit_eval_<date> recorded that kept a summary, each one's
@@ -795,7 +810,31 @@ reply_labels() {
   harness reply-labels --file "$file" --labels "$main/.local/eval/reply-labels.json"
 }
 
+bench() {
+  local known= rest=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --known) known=1; shift ;;
+      --task | --model | --max-budget-usd | --max-turns) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  local common=(--tasks "$here/eval/bench/tasks" --repository "$main" --work "$main/.local/bench/work")
+  if [ -n "$known" ]; then
+    harness bench "${common[@]}" --known true "${rest[@]}"
+    return
+  fi
+  local db=grit_bench
+  exists "$db" || compose createdb -U grit "$db"
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness bench "${common[@]}" "${rest[@]}" \
+    --claude "${CLAUDE:-$(command -v claude)}" --scout "$main/scripts/scout" \
+    --agent "$here/eval/bench/coder.md" \
+    --url "jdbc:postgresql://localhost:5432/$db" --blobs "$main/.local/bench/blobs/$db"
+}
+
 case $1 in
+  bench) shift; bench "$@" ;;
   capture) shift; capture "$@" ;;
   backfill) shift; backfill "$@" ;;
   duplication) shift; duplication "$@" ;;

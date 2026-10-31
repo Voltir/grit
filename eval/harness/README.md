@@ -40,8 +40,11 @@ Packages, each importing only those above it:
   transcript, kept through `grit.dbos.internal`'s `BenchRows` over a blob store that is the
   bench's alone, one per bench database; a frozen task (`eval/bench/tasks/<name>/`: its base,
   its commits, its checks and its brief), and its checkout, a repository holding only the base's
-  history, through core's `Processes`. Only `main` names `grit.host`, the harness's composition
-  root (the law's `harness-names-host-from-main-alone`). It reports and gates nothing yet.
+  history, through core's `Processes`; the rig, which runs a coder on a task there and measures
+  its trial (a Claude Code coder, whose `stream-json` output is the trajectory it reads and
+  keeps), priced by `grit.models`' `AnthropicRates`, the one function that prices both arms. Only
+  `main` names `grit.host`, the harness's composition root (the law's
+  `harness-names-host-from-main-alone`). It reports and gates nothing yet.
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt

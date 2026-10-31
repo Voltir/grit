@@ -14,3 +14,16 @@ Each directory under `tasks/` is one past change, frozen for the coder bench
   coder knew. The proving-ground deployment is named only as that.
 
 A task is kept only when its commits apply, in order, to its base and give the known commit's tree.
+
+## The Claude Code arm
+
+`scripts/eval bench` runs `claude -p` in the task's checkout, its prompt a fixed preamble and the
+task's brief, as the agent `bench-coder` (`coder.md` here, passed with `--agents` and `--agent`),
+under `--restricted` and `--permission-prompts none`: file tools stay inside the checkout, only the
+settings the rig passes load, and a call no rule allows is refused and recorded with the trial
+(`Rig.Allowed`: reads and edits, scout, `./mill`, `scripts/check`, and git's `add`, `commit`,
+`status`, `diff` and `log`). The model, Claude Code's budget and its turns are required on every
+run. The baseline is therefore Claude Code under grit's rule, not Claude Code as a person runs it
+with its own settings, and commands that only read (`ls`, `cat`, `grep`) still run without a rule.
+The run is billed to the Anthropic API key the rig passes, priced by grit's own rates beside
+Claude Code's estimate. A run a cap stopped is a trial not passed.

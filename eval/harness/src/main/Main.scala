@@ -1,5 +1,6 @@
 package grit.eval.harness.main
 
+import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.format.DateTimeFormatter
@@ -15,7 +16,7 @@ import grit.core.classify.{Answer, Classifier}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
 import grit.core.either.Traversal
-import grit.core.host.ProcessIdentity
+import grit.core.host.{ProcessIdentity, RelPath}
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.{Cost, Tokens}
 import grit.core.period.Probability
@@ -27,11 +28,12 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.tool.ToolSet
 import grit.core.triage.{Corpora, Gate}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.{Build, Engine}
-import grit.dbos.internal.Reader
+import grit.dbos.internal.{BenchRows, Reader}
 import grit.dbos.sql.DbConfig
 import grit.eval.Room
+import grit.eval.harness.bench.{ApiKey, Arm, Bench, Caps, Rig, Task}
 import grit.eval.harness.capture.{
   Capture,
   CaptureJson,
@@ -126,6 +128,8 @@ import grit.eval.harness.score.{
   TurnPair
 }
 import grit.eval.harness.sent.{Cut, HeardSent, SentMarkdown, TurnSent}
+import grit.host.blobs.LocalBlobs
+import grit.host.checkout.LocalProcesses
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.{TriageQuestions, TriageRecipe}
 import grit.models.JevClassifier
@@ -180,6 +184,7 @@ object Main {
       case "lab-stitch" :: rest => exit(flags(rest).flatMap(labStitch(_, clock)))
       case "synthetic" :: rest => exit(flags(rest).flatMap(synthetic(_, clock)))
       case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
+      case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
@@ -193,7 +198,7 @@ object Main {
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
               "replies|reply-labels|turns|churn|recall|rebuild|recipes|synthetic|lab-stitch|" +
-              "integrity-loss (scripts/eval and scripts/integrity-loss say what each takes)"
+              "integrity-loss|bench (scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )
     }
@@ -955,16 +960,17 @@ object Main {
       widths = judging.map(Synthetic.width).distinct
       drawn <- Synthetic.apart(config, "grit_eval_synthetic", Synthetic.laid(all)) { (db, one) =>
         for {
-          _ <- withEngine(db, clock)(engine =>
-            Synthetic.build(
-              Vector(one),
-              engine.jot,
-              engine.conversations,
-              engine.entries,
-              engine.periods,
-              engine.documents,
-              engine.keeper
-            )
+          _ <- withEngine(db, clock, "eval-synthetic", "the synthetic database was not written")(
+            engine =>
+              Synthetic.build(
+                Vector(one),
+                engine.jot,
+                engine.conversations,
+                engine.entries,
+                engine.periods,
+                engine.documents,
+                engine.keeper
+              )
           )
           found <- opened(db) { reader =>
             Synthetic.found(reader, Vector(one)).map { found =>
@@ -1025,22 +1031,89 @@ object Main {
         )
       }
 
-  /** `f` of an engine opened on `config`'s database to write the synthetic reference, closed
-    * after it; `Left` when it cannot open (another engine holds the database's lock, named as of
-    * `clock`'s now) or what it writes throws.
+  /** `bench --tasks <dir> --task <name> --repository <path> --work <dir>`, then either `--known
+    * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --claude <program> --scout
+    * <program> --agent <file> --url <jdbc> --blobs <dir>`: the task `<name>` of `<dir>`
+    * ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and
+    * `clock`'s now, of the repository at `<path>`. With `--known`, its own commits through its
+    * checks ([[Rig.known]]); otherwise a coder run under the caps ([[Rig.trial]]: the agent's
+    * prompt the file `<file>`, the key `ANTHROPIC_API_KEY` from the environment over
+    * `GRIT_ENV_FILE`), kept with its transcript in the database at `<jdbc>` and the blobs at
+    * `<blobs>` ([[Bench.keep]]). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
-  private def withEngine[A](config: DbConfig, clock: Clock^)(
+  private def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      name <- need(f, "task")
+      taskName <- BenchRows.TaskName.of(name)
+      at <- need(f, "tasks").map(Path.of(_).resolve(name))
+      task <- read(at.resolve("task.json")).flatMap(json =>
+        read(at.resolve("brief.md")).flatMap(Task.of(taskName, json, _))
+      )
+      repository <- need(f, "repository")
+      root <- need(f, "work").map(Path.of(_))
+      _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
+      work = new LocalProcesses(root, sys.env)
+      dir <- RelPath.of(s"$name-${clock.now().getEpochSecond}").left.map(_.toString)
+      _ <-
+        if (f.get("known").contains("true"))
+          Rig.known(work)(repository, task, dir).map { c =>
+            c.runs.foreach((run, ok) => println(s"check: $run ${if (ok) "passed" else "failed"}"))
+            println(s"known: ${if (c.passed) "passed" else "failed"}")
+          }
+        else
+          for {
+            model <- need(f, "model")
+            budget <- need(f, "max-budget-usd")
+            turns <- need(f, "max-turns")
+            cap <- Caps.of(model, budget, turns)
+            env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+            key <- ApiKey.of(env.getOrElse("ANTHROPIC_API_KEY", ""))
+            arm <-
+              for {
+                claude <- need(f, "claude")
+                scout <- need(f, "scout")
+                agent <- need(f, "agent").flatMap(a => read(Path.of(a)))
+              } yield Arm(claude, scout, agent)
+            url <- need(f, "url")
+            config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+            blobsAt <- need(f, "blobs").map(Path.of(_))
+            _ <- LocalBlobs.open(blobsAt) match {
+              case Left(e) => Left(s"the bench's blobs did not open: $e")
+              case Right(blobs) =>
+                withEngine(config, clock, "eval-bench", "the trial was not kept") { engine =>
+                  for {
+                    tried <- Rig.trial(work, clock)(repository, task, arm, cap, key, dir)
+                    _ = tried.lines.foreach(println)
+                    kept <- Bench.keep(engine.jot, blobs, clock)(
+                      Subject.Public,
+                      tried.trial,
+                      new ByteArrayInputStream(
+                        tried.transcript.mkString("", "\n", "\n").getBytes(StandardCharsets.UTF_8)
+                      ),
+                      Label.Public
+                    )
+                  } yield println(s"kept: ${kept._1}; pruned: ${kept._2}")
+                }
+            }
+          } yield ()
+    } yield ()
+
+  /** `f` of an engine opened on `config`'s database under `version`, closed after it; `Left` when
+    * it cannot open (another engine holds the database's lock, named as of `clock`'s now), or
+    * when `f` throws, saying what was not `done`.
+    */
+  private def withEngine[A](config: DbConfig, clock: Clock^, version: String, done: String)(
       f: Engine^ => Either[String, A]
   ): Either[String, A] =
     try {
-      Engine.open(config, "eval-synthetic", Builder, Uncapped, Visibility.Shipped, clock) match {
+      Engine.open(config, version, Builder, Uncapped, Visibility.Shipped, clock) match {
         case Left(refused) => Left(s"the engine could not open: ${refused.message(clock.now())}")
         case Right(engine) =>
           try f(engine)
           finally engine.close()
       }
     } catch {
-      case NonFatal(e) => Left(s"the synthetic database was not written: ${e.getClass.getName}")
+      case NonFatal(e) => Left(s"$done: ${e.getClass.getName}")
     }
 
   /** `lab-stitch --room <file> --url <jdbc> --cache <dir> --spend <usd> --out <dir>
@@ -1101,44 +1174,45 @@ object Main {
       jev <- JevConfig.fromEnv(env).left.map(_.message)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       budget <- Budget.of(cap, BigDecimal(0)).left.map(refused)
-      runs <- withEngine(config, clock) { engine =>
-        val classifier = JevClassifier(jev)
-        val cache = Cache.at[Vector[Weights]](cacheDir)
-        val each: Vector[(Against, Int)] =
-          Vector(Against.Placings, Against.Truth).flatMap(a => (0 until repeats).map(a -> _))
-        each.foldLeft[Either[String, (Vector[LabRun], Budget)]](
-          Right((Vector.empty, budget))
-        ) { (acc: Either[String, (Vector[LabRun], Budget)], ar: (Against, Int)) =>
-          val (against, r) = ar
-          acc.flatMap { (done: Vector[LabRun], left: Budget) =>
-            StitchLab
-              .run(
-                room,
-                engine,
-                classifier,
-                jev.model,
-                cache,
-                left,
-                tuning,
-                clock,
-                r,
-                s"${room.channel}-${against.ordinal}r$r",
-                against
-              )
-              .map { lab =>
-                val run = LabRun(
-                  against,
-                  s"${against.label}, repeat $r",
-                  lab.placings,
-                  RoomScore.of(room, lab.placings, lab.strands, against),
-                  lab.rows.size,
-                  lab.rows.count(_.cached),
-                  lab.budget.spent - left.spent
+      runs <- withEngine(config, clock, "eval-synthetic", "the stitch lab's room was not run") {
+        engine =>
+          val classifier = JevClassifier(jev)
+          val cache = Cache.at[Vector[Weights]](cacheDir)
+          val each: Vector[(Against, Int)] =
+            Vector(Against.Placings, Against.Truth).flatMap(a => (0 until repeats).map(a -> _))
+          each.foldLeft[Either[String, (Vector[LabRun], Budget)]](
+            Right((Vector.empty, budget))
+          ) { (acc: Either[String, (Vector[LabRun], Budget)], ar: (Against, Int)) =>
+            val (against, r) = ar
+            acc.flatMap { (done: Vector[LabRun], left: Budget) =>
+              StitchLab
+                .run(
+                  room,
+                  engine,
+                  classifier,
+                  jev.model,
+                  cache,
+                  left,
+                  tuning,
+                  clock,
+                  r,
+                  s"${room.channel}-${against.ordinal}r$r",
+                  against
                 )
-                (done :+ run, lab.budget)
-              }
+                .map { lab =>
+                  val run = LabRun(
+                    against,
+                    s"${against.label}, repeat $r",
+                    lab.placings,
+                    RoomScore.of(room, lab.placings, lab.strands, against),
+                    lab.rows.size,
+                    lab.rows.count(_.cached),
+                    lab.budget.spent - left.spent
+                  )
+                  (done :+ run, lab.budget)
+                }
+            }
           }
-        }
       }
       report = Report.lab(room, jev.model, tuning, runs._1)
       _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
@@ -1160,8 +1234,8 @@ object Main {
   private def count(what: String)(v: String): Either[String, Int] =
     v.toIntOption.filter(_ >= 0).toRight(s"--$what $v: not a whole number")
 
-  /** The process an engine opened only to write a synthetic case's database says it is: no
-    * edge attaches to that engine, so nothing need find this process by it.
+  /** The process an engine the harness opens for itself says it is: no edge attaches to that
+    * engine, so nothing need find this process by it.
     */
   private val Builder: ProcessIdentity = ProcessIdentity("eval-synthetic", 0)
 

@@ -9,6 +9,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Processes, Ran, RelPath}
 import grit.core.id.{Harness, SessionId}
+import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
 import grit.dbos.internal.BenchRows
 
@@ -67,7 +68,44 @@ final case class Tried(
     transcript: Vector[String],
     consumed: Consumed,
     checked: Checked
-) extends caps.Pure
+) extends caps.Pure {
+
+  /** What a person reads of it, a line each: its measures, each call's tokens, both costs in
+    * cents (grit's, from [[Consumed]], and Claude Code's), how the run ended, each denial, and each
+    * check; never the transcript's text.
+    */
+  def lines: Vector[String] = {
+    def cents(usd: Option[BigDecimal]) = usd.fold("unknown")(Cost.cents)
+    def tokens(u: Usage) = {
+      import Tokens.value
+      s"input ${value(u.input)} (cache read ${value(u.cacheRead)}, written ${value(u.cacheWrite)})" +
+        s", output ${value(u.output)}"
+    }
+    val t = trial
+    Vector(
+      s"trial: ${t.session.local} of ${BenchRows.TaskName.value(t.task)} by " +
+        s"${ModelId.value(t.model)}, ${t.wall.toSeconds} s",
+      s"calls: ${t.calls}; before the first edit: " +
+        t.callsBeforeEdit
+          .zip(t.readBeforeEdit)
+          .fold("no edit")((c, b) => s"$c calls, $b bytes read"),
+      s"tokens: ${tokens(t.usage)}"
+    ) ++ consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${tokens(c.usage)}") ++
+      Vector(
+        s"cost: ${cents(t.usage.costUsd)} by grit's rates, " +
+          s"${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
+        consumed.ended.fold("ended: with no result")(e =>
+          s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
+        )
+      ) ++ consumed.ended.toVector
+        .flatMap(_.denials)
+        .map(d => s"denied: ${d.tool} ${d.input.take(200)}") ++
+      checked.runs.map((run, ok) => s"check: $run ${if (ok) "passed" else "failed"}") ++
+      Vector(
+        s"passed: ${t.passed}; distance: ${t.distance.fold("no diff")(d => s"$d lines")}"
+      )
+  }
+}
 
 /** A coder run on a task in a checkout of its own, and its trial. */
 object Rig {

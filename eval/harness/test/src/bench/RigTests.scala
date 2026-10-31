@@ -209,6 +209,36 @@ object RigTests extends TestSuite {
       }
     }
 
+    test("a trial prints its calls, both costs, its ending, denials and checks, never its text") {
+      withTask { f =>
+        trial(f, Fake("object A { val x = 1 }")).map { t =>
+          val printed = t.lines
+          (
+            printed.filter(l =>
+              l.startsWith("call ") || l.startsWith("cost") || l.startsWith("ended") ||
+                l.startsWith("denied") || l.startsWith("check")
+            ),
+            printed.exists(_.contains("Reading the file"))
+          )
+        } ==> Right(
+          (
+            Vector(
+              "call 1 msg_01a: input 2003 (cache read 0, written 2000), output 40",
+              "call 2 msg_01b: input 2105 (cache read 2000, written 100), output 20",
+              "call 3 msg_01c: input 2154 (cache read 2100, written 50), output 30",
+              "cost: 0.036¢ by grit's rates, 0.31¢ by Claude Code's",
+              "ended: error_max_turns, in error",
+              "denied: Bash {\"command\":\"curl example.com\"}",
+              "check: scripts/check m passed",
+              "check: bash scripts/fetch-enola.sh passed",
+              "check: bash scripts/enola-law.sh passed"
+            ),
+            false
+          )
+        )
+      }
+    }
+
     test("a known run passes when its commits apply and its checks pass, and leaves nothing") {
       withTask { f =>
         (Rig.known(f.work)(f.origin, f.task, checkout).map(_.passed), f.exists("trial")) ==>
