@@ -1,6 +1,6 @@
 # grit.host
 
-Implements `Workspace`, `Edits`, `Shell`, `Instructions` and `Blobs` (`grit.core.host`; what a
+Implements `Workspace`, `Edits`, `Shell`, `Processes`, `Instructions` and `Blobs` (`grit.core.host`; what a
 deployment can supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
 The local host: `grit.core.host`'s capabilities over this machine's files and processes. The
@@ -12,7 +12,9 @@ Its packages, none importing another:
 - **`checkout`**: a checkout on this machine.
   - `LocalWorkspace` — reading a checkout: read, list and search.
   - `LocalEdits` — changing files in a checkout.
-  - `LocalShell` — running a command in a checkout; it sees only an allowlisted environment.
+  - `LocalProcesses` — starting a program with arguments under a root, run to its end or held
+    by its caller's scope; it sees only an allowlisted environment.
+  - `LocalShell` — running a command in a checkout with `sh -c`, through `LocalProcesses`.
   - `LocalInstructions` — the instruction files around a directory.
   - `Checkout` (private) — a checkout's root, and how a relative path is found under it.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.

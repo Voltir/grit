@@ -1,91 +1,25 @@
 package grit.host.checkout
 
-import java.lang.ProcessBuilder
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path}
-import java.util.concurrent.TimeUnit
+import java.nio.file.Path
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.host.{Clipped, HostError, Kept, Ran, Shell, Workspace}
+import grit.core.host.{Argv, Clipped, HostError, Kept, Ran, RelPath, Shell}
 
-/** Running commands in the checkout whose root is `root`, as this JVM's user, with only the
-  * variables of `environment` that [[LocalShell.passed]] keeps: a command never sees an API
-  * key, a database password or anything else named like a secret. Output goes to a
-  * temporary file, not a pipe, so a command that writes more than a pipe holds never
-  * blocks on it. A timeout kills the command and every process it started that is still
-  * its descendant; one that detached itself survives.
+/** Running commands in the checkout whose root is `root`, with `sh -c`, as
+  * [[LocalProcesses]] runs a program there: a command never sees an API key, a database
+  * password or anything else named like a secret, and a timeout kills it and every process it
+  * started that is still its descendant; one that detached itself survives.
   */
 final class LocalShell(root: Path, environment: Map[String, String]) extends Shell {
-  import Checkout.attempt
 
-  private val checkout = new Checkout(root)
-
-  private val passed = LocalShell.passed(environment)
+  private val processes = new LocalProcesses(root, environment)
 
   def run(command: String, timeout: FiniteDuration): Either[HostError, Ran] =
-    checkout.real.flatMap { top =>
-      attempt(Files.createTempFile("grit-run-", ".out")).flatMap { out =>
-        try {
-          val argv = new java.util.ArrayList[String]()
-          argv.add("sh")
-          argv.add("-c")
-          argv.add(command)
-          attempt {
-            val builder = new ProcessBuilder(argv)
-              .directory(top.toFile)
-              .redirectErrorStream(true)
-              .redirectOutput(out.toFile)
-            val env = builder.environment()
-            env.clear()
-            passed.foreach((k, v) => { val _ = env.put(k, v) })
-            builder.start()
-          }.flatMap { process =>
-            process.getOutputStream.close()
-            val finished =
-              try process.waitFor(timeout.toMillis, TimeUnit.MILLISECONDS)
-              catch {
-                case e: InterruptedException =>
-                  kill(process)
-                  throw e
-              }
-            if (!finished) kill(process)
-            attempt(tail(out)).map { text =>
-              val output = Clipped.tail(text, hint)
-              if (finished) Right(Ran(process.exitValue(), output))
-              else Left(HostError.TimedOut(timeout, output))
-            }.flatten
-          }
-        } finally {
-          val _ = attempt(Files.deleteIfExists(out))
-        }
-      }
+    Argv.of("sh", "-c", command) match {
+      case Left(why) => Left(HostError.Failed(why))
+      case Right(argv) => processes.ran(argv, RelPath.Root, timeout, hint)
     }
-
-  /** The text of the file `out`, or of its last [[Workspace.MaxFileBytes]] when it is
-    * longer; bytes that are not UTF-8 read as U+FFFD.
-    */
-  private def tail(out: Path): String = {
-    val channel = Files.newByteChannel(out)
-    try {
-      val size = channel.size()
-      val start = (size - Workspace.MaxFileBytes).max(0L)
-      val buffer = java.nio.ByteBuffer.allocate((size - start).toInt)
-      channel.position(start)
-      while (buffer.hasRemaining && channel.read(buffer) >= 0) {}
-      StandardCharsets.UTF_8.decode(buffer.flip()).toString
-    } finally channel.close()
-  }
-
-  /** Kills `process` and its descendants, and waits for it to end. */
-  private def kill(process: Process): Unit = {
-    // The shell first, then what it started (listed before, while the shell still holds
-    // them): a shell outliving its child reports the kill ("Killed") into the output.
-    val descendants = process.descendants().toList
-    val _ = process.destroyForcibly()
-    descendants.forEach(p => { val _ = p.destroyForcibly() })
-    val _ = process.waitFor()
-  }
 
   private val hint: Option[Kept] -> Option[String] = {
     case Some(Kept(_, total, true)) =>
