@@ -1,0 +1,9 @@
+{
+  "base": "52539325e1e97ba47ae267c4ebf4ce89c640eae5",
+  "commits": [
+    "0567a601157cf57a0ea5712bcb60891e0f153015"
+  ],
+  "checks": [
+    {"runner": "check", "args": ["grit.core"]}
+  ]
+}

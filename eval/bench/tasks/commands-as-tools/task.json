@@ -1,0 +1,19 @@
+{
+  "base": "2fb0fdc8d47e82e2edc60f15fb0230b411b255c2",
+  "commits": [
+    "6d0b828153ff39d2e3940d0709c4710dc510abb5",
+    "0dae5d4c6c105a64e5e1e22550846345a1b8c6d6",
+    "84a6c9139bf208c6dddd51e4449c8063fd8dc4ac",
+    "d1f1bb7a568a030c91e396a9046ed4f6aa1a0e72",
+    "387f2972e2ec1f68b98f275ed93ca7ff7cd584bd",
+    "83bbfac2f4043eeb5940227047c47f193ad81415"
+  ],
+  "checks": [
+    {"runner": "check", "args": ["grit.core"]},
+    {"runner": "check", "args": ["grit.core.probes"]},
+    {"runner": "check", "args": ["grit.edge"]},
+    {"runner": "check", "args": ["grit.turn"]},
+    {"runner": "check", "args": ["grit.projects"]},
+    {"runner": "check", "args": ["grit.kit"]}
+  ]
+}

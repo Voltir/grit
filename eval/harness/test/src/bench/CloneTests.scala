@@ -106,6 +106,30 @@ object CloneTests extends TestSuite {
       }
     }
 
+    test(
+      "a checkout's changes from its base are its source lines, new files never added among them"
+    ) {
+      withOrigin("base") { (work, o) =>
+        val checkout = rel("coded")
+        Clone.fresh(work)(o.path, o.commits("base"), checkout) ==> Right(())
+        val dir = Path.of(o.path).resolveSibling("coded")
+        Files.writeString(dir.resolve("A.scala"), "object A\n")
+        val _ = git(work, checkout, "add", "A.scala")
+        val _ = git(work, checkout, "commit", "-q", "-m", "A")
+        Files.writeString(dir.resolve("A.scala"), "object A {\n  val x = 1\n}\n")
+        Files.writeString(dir.resolve("B.scala"), "object B\n")
+        Files.writeString(dir.resolve("a.txt"), "not source\n")
+        Clone.changed(work)(checkout, o.commits("base")).map(_.lines) ==> Right(
+          Map(
+            ("A.scala", '+', "object A {") -> 1,
+            ("A.scala", '+', "  val x = 1") -> 1,
+            ("A.scala", '+', "}") -> 1,
+            ("B.scala", '+', "object B") -> 1
+          )
+        )
+      }
+    }
+
     test("a checkout picked is refused when a task's commit does not apply to its base") {
       withOrigin("base", "between", "known") { (work, o) =>
         Clone.picked(work)(o.path, task(o, "base", "known"), rel("picked")).left.map(_.take(25)) ==>

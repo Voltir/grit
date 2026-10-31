@@ -1,5 +1,7 @@
 package grit.eval.harness.bench
 
+import java.nio.charset.StandardCharsets
+
 import scala.concurrent.duration.*
 
 import grit.core.host.{Argv, Processes, RelPath}
@@ -36,6 +38,28 @@ object Clone {
       _ <- git(work, dir, (Seq("fetch", "-q", "--no-tags", repository) ++ commits)*)
       _ <- git(work, dir, (Seq("cherry-pick") ++ commits)*)
     } yield ()
+  }
+
+  /** The source lines `dir`'s files change from `base`, files never added included (they are
+    * marked to be added, as `git add -N` does). `Left`, with git's last words, as for [[fresh]].
+    */
+  def changed(work: Processes)(dir: RelPath, base: Commit): Either[String, Changed] = {
+    val diff = Seq("diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", Commit.value(base))
+    for {
+      _ <- git(work, dir, "add", "-N", ".")
+      argv <- Argv.of("git", diff*)
+      // Read whole from its output, not from run's tail, which keeps only the last lines.
+      read <- work
+        .started(argv, dir, Map.empty) { s =>
+          val text = new String(s.output.readAllBytes(), StandardCharsets.UTF_8)
+          s.await(Longest).map(r => (r.exit, text, r.output.text))
+        }
+        .left
+        .map(e => s"`git diff` ${e.message}")
+      text <- read.left.map(e => s"`git diff` ${e.message}").flatMap { (exit, text, errors) =>
+        if (exit == 0) Right(text) else Left(s"`git diff` failed: ${errors.trim}")
+      }
+    } yield Changed.of(text)
   }
 
   /** `git` with `args` in `dir`, as a picking committer who signs nothing: its output, or why
