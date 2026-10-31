@@ -163,7 +163,7 @@ object RigTests extends TestSuite {
         (
           f.recorded("key"),
           f.recorded("argv").contains("sk-ant"),
-          kept.map(t => (t.toString + t.transcript.mkString).contains("sk-ant"))
+          kept.map(t => (t.toString + t.transcript.mkString + t.lines.mkString).contains("sk-ant"))
         ) ==> ("sk-ant-test-0123", false, Right(false))
       }
     }

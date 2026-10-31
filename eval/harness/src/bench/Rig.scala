@@ -183,7 +183,7 @@ object Rig {
           )
           started = clock.millis()
           lines <- work
-            .started(argv, dir, Map("ANTHROPIC_API_KEY" -> key.value)) { s =>
+            .started(argv, dir, handedOver(key)) { s =>
               s.input.close()
               val reader =
                 new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
@@ -228,6 +228,11 @@ object Rig {
         .picked(work)(repository, task, dir)
         .flatMap(_ => Checks.run(work)(dir, task.checks).left.map(_.message))
     )
+
+  /** How `key` reaches `claude`, and only `claude`: the variables added to its environment, which
+    * the commands it runs inherit. The run's stderr, which could name it, is never read back.
+    */
+  private def handedOver(key: ApiKey): Map[String, String] = Map("ANTHROPIC_API_KEY" -> key.value)
 
   /** `claude`'s arguments for `task` under `cap`, its program left off. */
   private def arguments(arm: Arm, cap: Caps, task: Task): Vector[String] = {
