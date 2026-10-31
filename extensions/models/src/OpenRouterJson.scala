@@ -61,7 +61,7 @@ object OpenRouterJson {
       "max_tokens" -> maxTokens,
       "messages" -> ujson.Arr.from(system.toVector ++ messages)
     )
-    effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> effortWord(e)))
+    effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> e.word))
     upstream.foreach { u =>
       body("provider") =
         ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)
@@ -89,16 +89,6 @@ object OpenRouterJson {
     )
     if (t.strict) function("strict") = true
     ujson.Obj("type" -> "function", "function" -> function)
-  }
-
-  /** OpenRouter's word for `e`. */
-  private def effortWord(e: Effort): String = e match {
-    case Effort.Minimal => "minimal"
-    case Effort.Low => "low"
-    case Effort.Medium => "medium"
-    case Effort.High => "high"
-    case Effort.XHigh => "xhigh"
-    case Effort.Max => "max"
   }
 
   /** `m` on the wire, each text as text parts when `parts` and it is not empty (an empty part

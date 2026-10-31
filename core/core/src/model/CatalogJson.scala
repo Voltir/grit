@@ -184,17 +184,7 @@ object CatalogJson {
     }
   )
   private val GradeWords: Words[Grade] = Words(Grade.values.toVector, _.word)
-  private val EffortWords: Words[Effort] = Words(
-    Effort.values.toVector,
-    {
-      case Effort.Minimal => "minimal"
-      case Effort.Low => "low"
-      case Effort.Medium => "medium"
-      case Effort.High => "high"
-      case Effort.XHigh => "xhigh"
-      case Effort.Max => "max"
-    }
-  )
+  private val EffortWords: Words[Effort] = Words(Effort.values.toVector, _.word)
 
   // Writing. A rung or pin at [[Grade.Standard]] has no grade key, and a role of one rung is
   // written as that rung, not a list: the forms stored before ladders, unchanged.

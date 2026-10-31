@@ -1,8 +1,15 @@
 package grit.core.model
 
-/** How hard a reasoning model is asked to think, from least to most. */
-enum Effort {
-  case Minimal, Low, Medium, High, XHigh, Max
+/** How hard a reasoning model is asked to think, from least to most; `word` is how grit writes
+  * it (the catalog) and OpenRouter reads it.
+  */
+enum Effort(val word: String) {
+  case Minimal extends Effort("minimal")
+  case Low extends Effort("low")
+  case Medium extends Effort("medium")
+  case High extends Effort("high")
+  case XHigh extends Effort("xhigh")
+  case Max extends Effort("max")
 }
 
 /** Which pair does one job, with its output budget (`maxTokens`, at least 1) and the effort

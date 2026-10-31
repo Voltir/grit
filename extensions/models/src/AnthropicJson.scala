@@ -171,13 +171,12 @@ object AnthropicJson {
     wire
   }
 
-  /** Anthropic's word for `e`; it has none below `low`. */
+  /** Anthropic's word for `e`: [[Effort.word]], but `low` for [[Effort.Minimal]], since it has
+    * none below `low`.
+    */
   private def effortWord(e: Effort): String = e match {
-    case Effort.Minimal | Effort.Low => "low"
-    case Effort.Medium => "medium"
-    case Effort.High => "high"
-    case Effort.XHigh => "xhigh"
-    case Effort.Max => "max"
+    case Effort.Minimal => Effort.Low.word
+    case other => other.word
   }
 
   private def message(m: Message, replay: ReasoningReplay): Option[ujson.Obj] = m match {
