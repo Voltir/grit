@@ -2,19 +2,22 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.prompt.Tag
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse}
 
-/** A [[Provider]] that calls no model: it answers every request by quoting the last user
-  * message, at no cost, after `delayMs` (a slow model, for watching a turn run). For
-  * running a turn end to end without spending anything.
+/** A [[Provider]] that calls no model: it answers every request by quoting what was last
+  * said, at no cost, after `delayMs` (a slow model, for watching a turn run). For running a
+  * turn end to end without spending anything. What was said is the last user message that is
+  * not a note grit adds ([[StubProvider.note]]); notes after it are passed over throughout.
   *
-  * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's and
+  * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the person's and
   * holds [[StubProvider.CallMarker]], it calls the first, as a model can, with a line of
   * text beside the call: the arguments are the JSON after the marker, to the end of its
   * line; or, given `#call(<name>):` ([[StubProvider.named]]), the tool of that name, and none
-  * when it is not offered. Its id is [[StubProvider.CallId]]. Without a marker it answers. Required to call
-  * one ([[ToolUse.Required]]), it always calls the first, with the arguments after the marker
-  * in the last user message, or `{}` without one.
+  * when it is not offered. Its id is [[StubProvider.CallId]]. Without a marker it answers.
+  * Required to call one ([[ToolUse.Required]]), it always calls: the tool `#call(<name>):`
+  * names in what was last said when it is offered, else the first, with the arguments after
+  * the marker, or `{}` without one.
   */
 final class StubProvider(delayMs: Long = 0) extends Provider {
 
@@ -44,23 +47,35 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
   }
 
   private def reply(request: ModelRequest): Message.Assistant = {
-    val asked = request.messages.reverseIterator.collectFirst { case Message.User(text) => text }
-    val call = (request.use, request.tools.headOption, request.messages.lastOption) match {
-      case (ToolUse.Auto, Some(_), Some(Message.User(text))) if StubProvider.named(text).nonEmpty =>
-        StubProvider
-          .named(text)
-          .filter((name, _) => request.tools.exists(_.name == name))
-      case (ToolUse.Auto, Some(tool), Some(Message.User(text)))
-          if text.contains(StubProvider.CallMarker) =>
+    val person = (m: Message) =>
+      m match {
+        case Message.User(text) => Option.when(!StubProvider.note(text))(text)
+        case _ => None
+      }
+    val asked = request.messages.reverseIterator.flatMap(person).nextOption()
+    // The last message once grit's notes after it are passed over: the person's, or a result.
+    val last = request.messages.reverseIterator.find {
+      case Message.User(text) => !StubProvider.note(text)
+      case _ => true
+    }
+    val offered = (named: (String, ujson.Value)) => request.tools.exists(_.name == named._1)
+    val call = (request.use, request.tools.headOption, last.flatMap(person)) match {
+      case (ToolUse.Auto, Some(_), Some(text)) if StubProvider.named(text).nonEmpty =>
+        StubProvider.named(text).filter(offered)
+      case (ToolUse.Auto, Some(tool), Some(text)) if text.contains(StubProvider.CallMarker) =>
         Some(tool.name -> StubProvider.arguments(text))
       case (ToolUse.Required, Some(tool), _) =>
-        Some(tool.name -> StubProvider.arguments(asked.getOrElse("")))
+        val text = asked.getOrElse("")
+        StubProvider
+          .named(text)
+          .filter(offered)
+          .orElse(Some(tool.name -> StubProvider.arguments(text)))
       case _ => None
     }
     val said = call match {
       case Some((name, _)) => s"stub calls $name"
       case None =>
-        request.messages.lastOption match {
+        last match {
           case Some(Message.User(text)) => s"stub reply to: $text"
           case Some(Message.ToolResult(_, content, _)) =>
             s"stub reply to: ${asked.getOrElse(content)}"
@@ -121,4 +136,10 @@ object StubProvider {
     }
 
   private val NamedCall = """#call\(([A-Za-z0-9_-]+)\):""".r
+
+  /** Whether `text`, a user message, is a note grit adds rather than what a person said: one
+    * fenced as [[Tag.GritNote]], or one in grit's brackets (`[grit: ...]`).
+    */
+  def note(text: String): Boolean =
+    text.startsWith(s"<${Tag.GritNote.name}>") || text.startsWith("[grit:")
 }

@@ -101,6 +101,50 @@ object StubProviderTests extends TestSuite {
       ) ==> calls(ujson.Obj("about" -> "new"))
     }
 
+    test("required to call, the stub calls the tool #call(name): names when it is offered") {
+      val read = ToolSchema("read_hidden", "d", ujson.Obj())
+      new StubProvider()
+        .complete(
+          ModelRequest(
+            "s",
+            Vector(Message.User(s"""hi ${StubProvider.calling("read_hidden")}{"name":"h1"}""")),
+            Vector(topic, read),
+            ToolUse.Required
+          )
+        )
+        .map(_.blocks) ==> Right(
+        Vector(
+          AssistantBlock.Text("stub calls read_hidden"),
+          AssistantBlock.ToolCall(StubProvider.CallId, "read_hidden", ujson.Obj("name" -> "h1"))
+        )
+      )
+    }
+
+    test(
+      "a person's marker is read past grit's notes after it, and a note is never what was said"
+    ) {
+      val said = s"""back ${StubProvider.calling("topic")}{"about":"earlier"}"""
+      def reply(messages: Message*) =
+        new StubProvider()
+          .complete(ModelRequest("s", messages.toVector, Vector(topic)))
+          .map(_.blocks)
+      // Both forms of note grit adds after a person's message: a fenced one and a bracketed one.
+      val fenced = Message.User("<grit_note>\nthe topic may have changed\n</grit_note>")
+      val bracketed = Message.User("[grit: this is your last call with tools in this turn.]")
+      (
+        reply(Message.User(said), fenced, bracketed),
+        reply(Message.User("hello"), bracketed)
+      ) ==> (
+        Right(
+          Vector(
+            AssistantBlock.Text("stub calls topic"),
+            AssistantBlock.ToolCall(StubProvider.CallId, "topic", ujson.Obj("about" -> "earlier"))
+          )
+        ),
+        Right(Vector(AssistantBlock.Text("stub reply to: hello")))
+      )
+    }
+
     test("the stub tells its call after its text, as a provider that cannot stream does") {
       val asked = ModelRequest("s", Vector(Message.User("hi #call:{}")), Vector(topic))
       def told(provider: Provider) = {
