@@ -35,8 +35,9 @@ Decision:
   same digest, and this
   turn's first gate, decided over what it carries, hides none of it; otherwise it draws a
   boundary. So a carried document gone, content this turn's route does not clear, a changed
-  tool set or prompt, or a turn whose last call was forced (its last-call message is in no
-  record) makes a boundary, never an edited prefix. A window drawn from the store
+  tool set or prompt, a turn whose last call was forced (its last-call message is in no
+  record), or one that met its growth bound (its last-tools note is in no record) makes a
+  boundary, never an edited prefix. A window drawn from the store
   replays no reasoning: thinking is bound to the request that produced it.
 - **The limit is the deployment's `Assembly` budget**, read from the assembler, never from a
   turn's width (a width bounds only what the part drawn now may add). At the limit, when the
@@ -55,7 +56,7 @@ Decision:
 Consequences: on every turn after a window's first that carries it, the request begins with
 the last one's prefix, so most of its input is read from the cache. Until a gate's notes and
 stubs are carried, boundaries are more frequent than the limit alone makes them: every gated
-turn costs one, as does a redeployed tool set or prompt. A window runs from half the limit,
+turn costs one, as does a turn that met its growth bound and a redeployed tool set or prompt. A window runs from half the limit,
 just after a boundary, to the limit, where a window redrawn every turn ran at about the limit:
 right after a boundary the model sees about half the history it did, the peak is unchanged,
 and most input is a cache read; a deployment sizes its budget with that in mind. Near the limit an append recalls less, and

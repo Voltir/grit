@@ -68,7 +68,7 @@ turns in one place; an edit to a place's `AGENTS.md` changes only the Place laye
 was sent can be shown exactly. Fragments are never collected, so their table grows with every
 distinct text; a collection kind for unreferenced ones waits until nothing that can still
 replay names them. Enforced by `SystemPromptTests` (order, the pinned id) and
-`TurnPromptTests` (the base teaches every tag grit writes), `TurnTests` and `TurnHostedTests`
+`TurnPromptTests` (the base teaches every tag grit writes), `TurnTests`
 (the line saying when the message was said, where it sits, and that no fragment holds it),
 `TurnShownTests` (its forms), `RichTextTests` (Slack's words cover every block and mark it
 draws) and `PersonaTests` (a persona's voice in its words).
