@@ -180,11 +180,13 @@ import grit.turn.TurnLoop
   *     writes only what changed. Refused while serve runs, and on a database serve never ran
   *     this deployment on. A nightly run that comes due meanwhile runs too; a topic both write
   *     is left to the next run.
-  *   - **`cache-report <conversation-id>`: `grit cache-report`**, how the conversation's turns
+  *   - **`cache-report [conversation-id]`: `grit cache-report`**, how the conversation's turns
   *     used the provider's prompt cache ([[Kit.cacheReport]]), printed: each turn's carry or
   *     why it drew afresh, its share of input read from the cache and the gap since the turn
-  *     before, and each call's tokens and cost. It only reads, beside a running grit or none,
-  *     and never starts the engine.
+  *     before, and each call's tokens and cost. With no id, the conversation the chat holds in
+  *     the working directory under `GRIT_SESSION` ([[Kit.find]]); refused when no chat was held
+  *     there. It only reads, beside a running grit or none, never starts the engine, and never
+  *     creates the conversation.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -208,11 +210,7 @@ object Main {
       if (args.take(2).sameElements(Array("backfill", "topics")))
         Some(exitOnLeft(backfillTopics(args.drop(2).toVector)))
       else None
-    // `grit cache-report <conversation-id>`: the conversation's cache report.
-    val reported: Option[ConversationId] = args.toVector match {
-      case Vector("cache-report", id) => Some(ConversationId(id))
-      case _ => None
-    }
+    val reported = cacheReported(args.toVector)
     // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
     // environment: a variable set in both takes the environment's value.
     val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
@@ -319,15 +317,29 @@ object Main {
           ).swap.toOption
         )
       else if (reported.nonEmpty)
-        reported.flatMap(id =>
-          Kit
-            .cacheReport(deployment, secrets, id, clock)
-            .map(_.foreach(println))
+        reported.flatMap { named =>
+          // With no id, the conversation the chat holds here, never created by asking.
+          named
+            .fold(Kit.find(deployment, secrets, Origin.Tui(directory, session), clock))(id =>
+              Right(Some(id))
+            )
             .left
             .map(_.message)
+            .flatMap(
+              _.toRight(
+                s"no chat has been held in ${Directory.value(directory)} yet (session $session)"
+              )
+            )
+            .flatMap(id =>
+              Kit
+                .cacheReport(deployment, secrets, id, clock)
+                .map(_.foreach(println))
+                .left
+                .map(_.message)
+            )
             .swap
             .toOption
-        )
+        }
       else if (backfilling)
         Backfill
           .days(env)
@@ -486,6 +498,17 @@ object Main {
     }
 
   private val SweepVar = "GRIT_SWEEP"
+
+  /** What `grit cache-report` reports, read from `args`: `Some(Some(id))` for the conversation
+    * named, `Some(None)` with no id for the one the chat holds here; `None` for any other
+    * arguments.
+    */
+  private[main] def cacheReported(args: Vector[String]): Option[Option[ConversationId]] =
+    args match {
+      case Vector("cache-report", id) => Some(Some(ConversationId(id)))
+      case Vector("cache-report") => Some(None)
+      case _ => None
+    }
 
   /** How often the engine sweeps: closing due periods. */
   private[main] val DefaultSweep: FiniteDuration = 30.seconds
