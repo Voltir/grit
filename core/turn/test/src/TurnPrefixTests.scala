@@ -35,9 +35,6 @@ object TurnPrefixTests extends TestSuite {
     )
   }
 
-  /** The first line of `earlier` that `later` does not repeat in its place, with that place's
-    * line in `later`; `None` when `later` begins with all of `earlier`.
-    */
   /** A reply that thought, in Anthropic's own form, then said "posted". */
   private def posted: Message.Assistant = {
     val thought = "Posting now."
@@ -68,6 +65,9 @@ object TurnPrefixTests extends TestSuite {
     body("messages").arr.toVector.map(m => ujson.write(strip(m)))
   }
 
+  /** The first line of `earlier` that `later` does not repeat in its place, with that place's
+    * line in `later`; `None` when `later` begins with all of `earlier`.
+    */
   private def diverged(earlier: String, later: String): Option[(Int, String, String)] = {
     val (a, b) = (earlier.linesIterator.toVector, later.linesIterator.toVector)
     a.indices.find(i => b.lift(i) != Some(a(i))).map(i => (i, a(i), b.lift(i).getOrElse("")))
@@ -188,8 +188,17 @@ object TurnPrefixTests extends TestSuite {
         case Message.ToolResult(call, content, _) if ToolCallId.value(call) == id => content
       }
       // The answer to read_hidden carries what the stub hid, believed as the item.
-      requests.lift(2).flatMap(result(_, "r")).exists(_.contains("alpha")) ==> true
-      requests.lift(3).flatMap(result(_, "t1")).exists(_.contains("Hidden here as h1")) ==> true
+      (requests.lift(2).flatMap(result(_, "r")), requests.lift(3).flatMap(result(_, "t1"))) ==> (
+        Some("<tool_output source=\"read_hidden h1\">\nalpha\n</tool_output>"),
+        Some(
+          "<tool_output source=\"peek a.txt\">\nHidden here as h1: a result from a place people " +
+            "outside the team can write in. If your answer needs what it says, read it: call " +
+            "read_hidden with name h1. After that you can't use post until you've answered. To " +
+            "ask it a short question instead, answered yes or no, with a whole number, a date, " +
+            "one of options you list or a short code, call extract with name h1: that never " +
+            "stops you doing anything.\n</tool_output>"
+        )
+      )
     }
 
     test(
@@ -319,38 +328,6 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
-      "a turn offered other tools than the last one draws its window afresh; one offered the same carries it"
-    ) {
-      // The last call's prefix is kept by digest: a tool more changes it, so the carried turn
-      // would be sent under another prefix than it was, and is not carried.
-      val entries = new InMemoryEntryStore
-      val ws = new Files(Map("a.txt" -> "alpha"))
-      def run(text: String, gated: Boolean) = {
-        val t = say(entries, text)
-        new InMemoryDurable().run(t.workflowId)(
-          tooledBody(
-            entries,
-            new StubProvider(),
-            new InMemoryUsageLedger,
-            new StubProvider(),
-            NoClassifier,
-            ws,
-            if (gated) gatedTools(ws) else tools(ws),
-            3
-          )
-        )
-        t
-      }
-      val turns =
-        Vector(run("one", gated = false), run("two", gated = true), run("three", gated = true))
-      turns.map(t =>
-        windows(entries).collectFirst {
-          case (id, w) if id == Turn.windowId(t) => w.carry.map(_.after)
-        }
-      ) ==> Vector(Some(Some(None)), Some(Some(None)), Some(Some(Some(Turn.windowId(turns(1))))))
-    }
-
-    test(
       "a turn after one whose last call was forced draws its window afresh, never sending that turn's final reply without the message it answered"
     ) {
       // The first turn thinks and reads twice, so its third and last call is made with tools
@@ -389,17 +366,14 @@ object TurnPrefixTests extends TestSuite {
       val second = run("and now?", later)
       def anthropicOf(r: ModelRequest): ujson.Value =
         AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
-      val repeated = first.requests.lastOption
-        .zip(later.requests.headOption)
-        .exists((a, b) => unmarked(anthropicOf(b)).startsWith(unmarked(anthropicOf(a))))
       val replays = later.requests.exists(r => ujson.write(anthropicOf(r)).contains("sig-t"))
       (
         first.requests.lastOption.map(_.use),
-        repeated || !replays,
+        replays,
         windows(entries).collectFirst {
           case (id, w) if id == Turn.windowId(second) => w.carry.map(_.after)
         }
-      ) ==> (Some(grit.core.provider.ToolUse.Off), true, Some(Some(None)))
+      ) ==> (Some(grit.core.provider.ToolUse.Off), false, Some(Some(None)))
     }
 
     test(
@@ -517,8 +491,6 @@ object TurnPrefixTests extends TestSuite {
       )
       val requests = provider.requests
       requests.size ==> 3
-      requests.map(_.system).distinct.size ==> 1
-      requests.map(_.tools).distinct.size ==> 1
       val anthropic =
         requests.map(
           AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)

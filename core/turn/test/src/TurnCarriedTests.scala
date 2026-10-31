@@ -85,7 +85,9 @@ object TurnCarriedTests extends TestSuite {
       basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.NoPrefix)))
     }
 
-    test("a turn offered other tools than the last draws afresh: its prefix differs") {
+    test(
+      "a turn offered other tools than the last draws afresh: its prefix differs; one offered the same carries it"
+    ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val ws = new Files(Map("a.txt" -> "alpha"))
@@ -107,7 +109,11 @@ object TurnCarriedTests extends TestSuite {
       }
       run("one", gated = false)
       val second = run("two", gated = true)
-      basis(durable, second) ==> Right(Some(TurnBasis.Afresh(Why.PrefixDiffers)))
+      val third = run("three", gated = true)
+      (basis(durable, second), basis(durable, third)) ==> (
+        Right(Some(TurnBasis.Afresh(Why.PrefixDiffers))),
+        Right(Some(TurnBasis.Against(Turn.windowId(second))))
+      )
     }
 
     test("a turn sure of its topic after one asked about it carries that turn's window record") {
