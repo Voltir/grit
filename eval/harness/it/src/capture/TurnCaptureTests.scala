@@ -216,7 +216,9 @@ object TurnCaptureTests extends TestSuite {
       Toolbox.Empty,
       Vector.empty,
       engine.jot,
-      right(TurnLoop.Rounds.of(4))
+      // Room past the loop's two rounds and its reply: a turn told its last call with tools
+      // sees that note as its last user message, which the scripted model reads as said.
+      right(TurnLoop.Rounds.of(5))
     )
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =

@@ -177,7 +177,9 @@ object TurnSentTests extends TestSuite {
           Toolbox.Empty,
           Vector.empty,
           engine.jot,
-          right(TurnLoop.Rounds.of(4))
+          // Room past the loop's two rounds and its reply: a turn told its last call with tools
+          // is followed by a boundary, and the second turn here is to carry.
+          right(TurnLoop.Rounds.of(5))
         )
       ),
       nothing,
