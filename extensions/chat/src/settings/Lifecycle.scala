@@ -34,29 +34,8 @@ object Lifecycle {
     case Weight(to: PlaceWeight)
 
     /** `settings` with this change, or why the result breaks their rules. */
-    def applied(settings: LifecycleSettings): Either[String, LifecycleSettings] = {
-      val s = settings
-      val w = s.windows
-      this match {
-        case Idle(to) =>
-          Windows
-            .of(to, w.retention, w.ledger)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks, s.weight))
-        case Retention(to) =>
-          Windows
-            .of(w.idle, to, w.ledger)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks, s.weight))
-        case Ledger(to) =>
-          Windows
-            .of(w.idle, w.retention, to)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks, s.weight))
-        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.resolveAt, s.asks, s.weight)
-        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.resolveAt, s.asks, s.weight)
-        case ResolveAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks, s.weight)
-        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.resolveAt, to, s.weight)
-        case Weight(to) => LifecycleSettings.of(w, s.balance, s.settle, s.resolveAt, s.asks, to)
-      }
-    }
+    def applied(settings: LifecycleSettings): Either[String, LifecycleSettings] =
+      Change.applying(Vector(this), settings)
   }
 
   object Change {
@@ -79,11 +58,18 @@ object Lifecycle {
       */
     def parse(text: String): Either[String, Change] = {
       val (name, value) = text.trim.span(_ != ' ')
+      of(name, value, name)
+    }
+
+    /** The change setting `name` (one of [[Names]]) to `value`; or why it is none, naming the
+      * setting as `called`, as `GRIT_IDLE` names `idle` in the environment.
+      */
+    def of(name: String, value: String, called: String): Either[String, Change] = {
       def duration(make: FiniteDuration -> Change): Either[String, Change] =
-        if (value.isBlank) Left(s"$name takes a duration, as 30s or 3m")
-        else Durations.read(value).map(make).left.map(why => s"$name: $why")
+        if (value.isBlank) Left(s"$called takes a duration, as 30s or 3m")
+        else Durations.read(value).map(make).left.map(why => s"$called: $why")
       def whole(make: Int -> Change): Either[String, Change] =
-        value.trim.toIntOption.filter(_ >= 0).map(make).toRight(s"$name takes a whole number")
+        value.trim.toIntOption.filter(_ >= 0).map(make).toRight(s"$called takes a whole number")
       name match {
         case "idle" => duration(Idle(_))
         case "retention" => duration(Retention(_))
@@ -91,11 +77,51 @@ object Lifecycle {
         case "settle" => duration(Settle(_))
         case "balance" => whole(Balance(_))
         case "asks" => whole(Asks(_))
-        case "resolve" => probability(value).map(ResolveAt(_)).left.map(why => s"$name: $why")
-        case "weight" => weightOf(value).map(Weight(_)).left.map(why => s"$name: $why")
+        case "resolve" => probability(value).map(ResolveAt(_)).left.map(why => s"$called: $why")
+        case "weight" => weightOf(value).map(Weight(_)).left.map(why => s"$called: $why")
         case other => Left(s"no setting $other: ${Names.init.mkString(", ")} or ${Names.last}")
       }
     }
+
+    /** `settings` with every change in `changes`, a later one of a setting winning; or why the
+      * result breaks their rules, checked once on the whole, so changes that hold only together
+      * (retention and the ledger both raised) apply.
+      */
+    def applying(
+        changes: Seq[Change],
+        settings: LifecycleSettings
+    ): Either[String, LifecycleSettings] = {
+      val s = settings
+      val w = s.windows
+      val start =
+        Unchecked(w.idle, w.retention, w.ledger, s.balance, s.settle, s.resolveAt, s.asks, s.weight)
+      val u = changes.foldLeft(start) { (u, change) =>
+        change match {
+          case Idle(to) => u.copy(idle = to)
+          case Retention(to) => u.copy(retention = to)
+          case Ledger(to) => u.copy(ledger = to)
+          case Balance(to) => u.copy(balance = to)
+          case Settle(to) => u.copy(settle = to)
+          case ResolveAt(to) => u.copy(resolveAt = to)
+          case Asks(to) => u.copy(asks = to)
+          case Weight(to) => u.copy(weight = to)
+        }
+      }
+      Windows
+        .of(u.idle, u.retention, u.ledger)
+        .flatMap(LifecycleSettings.of(_, u.balance, u.settle, u.resolveAt, u.asks, u.weight))
+    }
+
+    private final case class Unchecked(
+        idle: FiniteDuration,
+        retention: FiniteDuration,
+        ledger: FiniteDuration,
+        balance: Int,
+        settle: FiniteDuration,
+        resolveAt: Probability,
+        asks: Int,
+        weight: PlaceWeight
+    )
   }
 
   /** `settings` in one line, as `/set` reports them. */

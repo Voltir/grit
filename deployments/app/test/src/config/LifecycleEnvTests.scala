@@ -30,16 +30,26 @@ object LifecycleEnvTests extends TestSuite {
       LifecycleEnv.of(Map("GRIT_IDLE" -> "3")) ==>
         Left("GRIT_IDLE: not a duration: write a whole number and s, m, h or d, as 30s or 3m")
       LifecycleEnv.of(Map("GRIT_BALANCE" -> "4k")) ==> Left(
-        "GRIT_BALANCE is not a whole number"
+        "GRIT_BALANCE takes a whole number"
       )
       LifecycleEnv.of(Map("GRIT_BALANCE" -> "0")) ==> Left(
-        "GRIT_BALANCE, GRIT_SETTLE, GRIT_RESOLVE_AT, GRIT_ASKS: balance must be at least 1"
+        "GRIT_BALANCE: balance must be at least 1"
       )
       LifecycleEnv.of(Map("GRIT_RESOLVE_AT" -> "80%")) ==>
         Left("GRIT_RESOLVE_AT: not a probability: write a number from 0 to 1, as 0.8")
       LifecycleEnv.of(Map("GRIT_IDLE" -> "30m")) ==> Left(
-        "GRIT_BALANCE, GRIT_SETTLE, GRIT_RESOLVE_AT, GRIT_ASKS: settle must be shorter than idle"
+        "GRIT_IDLE: settle must be shorter than idle"
       )
+    }
+
+    test("a whole number setting is refused negative, as /set refuses it") {
+      LifecycleEnv.of(Map("GRIT_ASKS" -> "-1")) ==> Left("GRIT_ASKS takes a whole number")
+    }
+
+    test("settings the environment writes together are checked together, not one at a time") {
+      LifecycleEnv
+        .of(Map("GRIT_RETENTION" -> "400d", "GRIT_LEDGER" -> "500d"))
+        .map(s => (s.windows.retention, s.windows.ledger)) ==> Right((400.days, 500.days))
     }
 
     test("the ledger window is declared by GRIT_LEDGER, and never below retention") {
@@ -49,7 +59,7 @@ object LifecycleEnvTests extends TestSuite {
           _.windows.ledger
         ) ==> Right(6.minutes)
       LifecycleEnv.of(Map("GRIT_LEDGER" -> "2m", "GRIT_RETENTION" -> "3m")) ==>
-        Left("GRIT_IDLE, GRIT_RETENTION, GRIT_LEDGER: ledger must be at least retention")
+        Left("GRIT_RETENTION, GRIT_LEDGER: ledger must be at least retention")
     }
 
     test("GRIT_SCOPE set is refused, saying why, whatever it holds") {
