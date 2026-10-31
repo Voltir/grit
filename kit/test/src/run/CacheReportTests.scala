@@ -49,5 +49,40 @@ object CacheReportTests extends TestSuite {
         "carried turns: 1 · at 80% or more: 1"
       )
     }
+
+    test(
+      "a carried turn at exactly the target counts as reaching it; a turn with no own calls, or none counting input, says which"
+    ) {
+      def turn(seq: Int, basis: TurnBasis, own: Vector[Usage]): TurnCache = TurnCache(
+        TurnRef(conversation, TurnSeq(seq)),
+        Some(basis),
+        own.map(TurnCache.Own(0, "m", _, None)),
+        Vector.empty
+      )
+      val carried = TurnBasis.Against(grit.core.id.EntryId("window:c1:1"))
+      val afresh = TurnBasis.Afresh(TurnBasis.Why.NoWindow)
+      CacheReport.lines(
+        conversation,
+        Vector(
+          turn(1, carried, Vector(usage(100, 94, 0, None))),
+          turn(2, carried, Vector(usage(100, 80, 0, None))),
+          turn(3, carried, Vector(usage(100, 50, 0, None))),
+          turn(4, afresh, Vector.empty),
+          turn(5, afresh, Vector(usage(0, 0, 0, None)))
+        )
+      ) ==> Vector(
+        "conversation c1",
+        "turn 1 · carried · cache reads 94% of 100 input",
+        "  round 0 · first · m · in 100 · read 94 · write 0 · cost unknown",
+        "turn 2 · carried · cache reads 80% of 100 input",
+        "  round 0 · first · m · in 100 · read 80 · write 0 · cost unknown",
+        "turn 3 · carried · cache reads 50% of 100 input",
+        "  round 0 · first · m · in 100 · read 50 · write 0 · cost unknown",
+        "turn 4 · afresh: no-window · no own calls",
+        "turn 5 · afresh: no-window · no input counted",
+        "  round 0 · first · m · in 0 · read 0 · write 0 · cost unknown",
+        "carried turns: 3 · at 80% or more: 2"
+      )
+    }
   }
 }
