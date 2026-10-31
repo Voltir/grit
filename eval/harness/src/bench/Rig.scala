@@ -2,9 +2,12 @@ package grit.eval.harness.bench
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Processes, Ran, RelPath}
@@ -13,7 +16,7 @@ import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
 import grit.dbos.internal.BenchRows
 
-/** An Anthropic API key. It reaches the coder's environment alone, and never prints. */
+/** An Anthropic API key. It reaches `claude` alone, and never prints. */
 final class ApiKey private (private[bench] val value: String) extends caps.Pure {
   override def toString: String = "ApiKey(…)"
 }
@@ -152,10 +155,10 @@ object Rig {
 
   /** A coder, as `arm` runs it under `cap`, on `task` in a new checkout at `dir` of the repository
     * at `repository` (an absolute path); then the task's checks run there, and its diff measured
-    * against the known diff. `key` reaches the coder's environment, and nothing else. A run a cap
-    * stopped, or that ended in error, is a trial not passed; one that wrote no session is a `Left`.
-    * The checkout's `out/` is removed whatever happens, and the checkout itself unless the result
-    * is a `Left`.
+    * against the known diff. `key` reaches `claude` alone, through a file removed once it exits,
+    * and never the environment of anything it runs. A run a cap stopped, or that ended in error,
+    * is a trial not passed; one that wrote no session is a `Left`. The checkout's `out/` is
+    * removed whatever happens, and the checkout itself unless the result is a `Left`.
     */
   def trial(work: Processes, clock: Clock^)(
       repository: String,
@@ -176,25 +179,29 @@ object Rig {
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           checkout <- run(work, dir, Clone.Longest)("pwd", "-P").map(_.output.text.trim)
-          argv <- Argv.of(
-            "timeout",
-            Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
-              arguments(arm, cap, task)*
-          )
-          started = clock.millis()
-          lines <- work
-            .started(argv, dir, handedOver(key)) { s =>
-              s.input.close()
-              val reader =
-                new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
-              val lines = reader.lines().iterator().asScala.toVector
-              val _ = s.await(Longest + 2.minutes)
-              s.kill()
-              lines
-            }
-            .left
-            .map(e => s"claude did not run: ${e.message}")
-          wall = (clock.millis() - started).max(0L).millis
+          streamed <- handedOver(key) { (helper, added) =>
+            for {
+              argv <- Argv.of(
+                "timeout",
+                Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
+                  arguments(arm, cap, task, helper)*
+              )
+              started = clock.millis()
+              lines <- work
+                .started(argv, dir, added) { s =>
+                  s.input.close()
+                  val reader =
+                    new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
+                  val lines = reader.lines().iterator().asScala.toVector
+                  val _ = s.await(Longest + 2.minutes)
+                  s.kill()
+                  lines
+                }
+                .left
+                .map(e => s"claude did not run: ${e.message}")
+            } yield Streamed(lines, (clock.millis() - started).max(0L).millis)
+          }
+          Streamed(lines, wall) = streamed
           consumed <- Consumed.of(lines, checkout)
           local <- consumed.session.toRight("claude wrote no session: it did not start its run")
           changed <- Clone.changed(work)(dir, task.base)
@@ -229,14 +236,47 @@ object Rig {
         .flatMap(_ => Checks.run(work)(dir, task.checks).left.map(_.message))
     )
 
-  /** How `key` reaches `claude`, and only `claude`: the variables added to its environment, which
-    * the commands it runs inherit. The run's stderr, which could name it, is never read back.
-    */
-  private def handedOver(key: ApiKey): Map[String, String] = Map("ANTHROPIC_API_KEY" -> key.value)
+  /** What `claude` wrote to its output, a line each, and how long it ran. */
+  private final case class Streamed(lines: Vector[String], wall: FiniteDuration)
 
-  /** `claude`'s arguments for `task` under `cap`, its program left off. */
-  private def arguments(arm: Arm, cap: Caps, task: Task): Vector[String] = {
+  /** `use` of how `key` reaches `claude`, and only `claude`: `helper`, the command its
+    * `apiKeyHelper` setting runs to print the key, which reads a file only this user can read, in
+    * a directory of its own under the system temp directory, both removed once `use` returns or
+    * throws; and `added`, the variables to add to its environment, which hold no key and make
+    * `claude` strip credentials from the environments of the commands, hooks and MCP servers it
+    * starts. `Left` when the file cannot be written. The run's stderr is never read back.
+    */
+  private def handedOver[A](key: ApiKey)(
+      use: (String, Map[String, String]) => Either[String, A]
+  ): Either[String, A] = {
+    val owner = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
+    val readable =
+      PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
+    Try(Files.createTempDirectory("grit-bench-key", owner)).toEither.left
+      .map(e => s"no directory for the key: ${e.getClass.getName}")
+      .flatMap { dir =>
+        try {
+          for {
+            file <- Try {
+              val file = Files.createFile(dir.resolve("key"), readable)
+              Files.writeString(file, key.value, StandardCharsets.UTF_8)
+            }.toEither.left.map(e => s"the key was not written: ${e.getClass.getName}")
+            _ <- Either.cond(!file.toString.contains("'"), (), s"$file cannot be quoted")
+            used <- use(s"cat '$file'", Map("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" -> "1"))
+          } yield used
+        } finally {
+          val _ = Try(Files.deleteIfExists(dir.resolve("key")))
+          val _ = Try(Files.deleteIfExists(dir))
+        }
+      }
+  }
+
+  /** `claude`'s arguments for `task` under `cap`, its program left off; `helper` its
+    * `apiKeyHelper`.
+    */
+  private def arguments(arm: Arm, cap: Caps, task: Task, helper: String): Vector[String] = {
     val settings = ujson.Obj(
+      "apiKeyHelper" -> helper,
       "disableAllHooks" -> true,
       "permissions" -> ujson.Obj("allow" -> ujson.Arr.from(Allowed))
     )
@@ -254,6 +294,7 @@ object Rig {
     Vector(
       "-p",
       Preamble + task.brief,
+      "--bare",
       "--restricted",
       "--permission-prompts",
       "none",

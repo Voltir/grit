@@ -59,6 +59,15 @@ object RigTests extends TestSuite {
         s"""#!/bin/sh
            |printf '%s\\n' "$$@" > $root/argv
            |printf '%s' "$${ANTHROPIC_API_KEY-unset}" > $root/key
+           |printf '%s' "$${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB-unset}" > $root/scrub
+           |settings=""; prev=""
+           |for a in "$$@"; do [ "$$prev" = "--settings" ] && settings="$$a"; prev="$$a"; done
+           |helper=$$(printf '%s' "$$settings" | sed -n 's/.*"apiKeyHelper":"\\([^"]*\\)".*/\\1/p')
+           |sh -c "$$helper" > $root/helped 2>/dev/null
+           |file=$$(printf '%s' "$$helper" | sed -n "s/^cat '\\(.*\\)'$$/\\1/p")
+           |stat -c %a "$$file" > $root/filemode 2>/dev/null
+           |stat -c %a "$$(dirname "$$file")" > $root/dirmode 2>/dev/null
+           |dirname "$$file" > $root/helperdir
            |printf '%s\\n' '${fake.edited}' > a.scala
            |mkdir -p out && touch out/daemon
            |sed "s|${Streams.Checkout}|$$(pwd -P)|g" $root/stream.jsonl
@@ -157,14 +166,47 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("the key reaches claude through its environment alone, never its arguments") {
+    test("claude reads the key through its apiKeyHelper, from a file only its user can read") {
+      withTask { f =>
+        val _ = trial(f, Fake("object A { val x = 1 }"))
+        (f.recorded("helped"), f.recorded("filemode").trim, f.recorded("dirmode").trim) ==>
+          ("sk-ant-test-0123", "600", "700")
+      }
+    }
+
+    test("claude's environment holds no key, and has it scrub credentials from what it starts") {
+      withTask { f =>
+        val _ = trial(f, Fake("object A { val x = 1 }"))
+        (f.recorded("key"), f.recorded("scrub")) ==> ("unset", "1")
+      }
+    }
+
+    test("the key reaches none of claude's arguments, nor anything the trial keeps") {
       withTask { f =>
         val kept = trial(f, Fake("object A { val x = 1 }"))
         (
-          f.recorded("key"),
           f.recorded("argv").contains("sk-ant"),
           kept.map(t => (t.toString + t.transcript.mkString + t.lines.mkString).contains("sk-ant"))
-        ) ==> ("sk-ant-test-0123", false, Right(false))
+        ) ==> (false, Right(false))
+      }
+    }
+
+    test("the key's directory is a temporary one outside the checkout, removed after any trial") {
+      withTask { f =>
+        def helperDir() = Path.of(f.recorded("helperdir").trim)
+        val passed = trial(f, Fake("object A { val x = 1 }"))
+        val afterPass = helperDir()
+        val failed = trial(f, Fake("object A { val x = 1 }", Vector.empty))
+        val afterFail = helperDir()
+        val temp = Path.of(System.getProperty("java.io.tmpdir"))
+        (
+          passed.isRight,
+          failed.isLeft,
+          afterPass != afterFail,
+          afterPass.getParent == temp && afterFail.getParent == temp,
+          Files.exists(afterPass),
+          Files.exists(afterFail)
+        ) ==> (true, true, true, true, false, false)
       }
     }
 
@@ -178,6 +220,7 @@ object RigTests extends TestSuite {
         }
         (
           argv.contains("--restricted"),
+          argv.contains("--bare"),
           after("--permission-prompts"),
           after("--output-format"),
           after("--tools"),
@@ -187,6 +230,7 @@ object RigTests extends TestSuite {
           after("--max-turns"),
           argv.exists(_.contains("bypassPermissions"))
         ) ==> (
+          true,
           true,
           Some("none"),
           Some("stream-json"),
