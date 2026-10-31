@@ -110,15 +110,21 @@ object TurnCaptureTests extends TestSuite {
       _ => Outcome.Done(Echoed)
     )
 
-  /** A model scripted by the turn's own message: `~fail` refuses; `~loop` calls `echo` until
+  /** A model scripted by the turn's own message, grit's notes passed over as the stub passes
+    * them ([[StubProvider.note]]): `~fail` refuses; `~loop` calls `echo` until
     * two of its results are in, each with its count of results so far, then replies with the
     * results' words; `~pass` passes; "what was it" answers from the
     * record; anything else replies.
     */
   private final class Scripted extends Provider {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-      val said = request.messages.collect { case Message.User(t) => t }.lastOption.getOrElse("")
-      val results = request.messages.count(_.isInstanceOf[Message.ToolResult])
+      // What the person last said, past grit's notes, and the results of this turn's calls.
+      val person = request.messages.lastIndexWhere {
+        case Message.User(t) => !StubProvider.note(t)
+        case _ => false
+      }
+      val said = request.messages.lift(person).collect { case Message.User(t) => t }.getOrElse("")
+      val results = request.messages.drop(person + 1).count(_.isInstanceOf[Message.ToolResult])
       def reply(blocks: AssistantBlock*): Either[ProviderError, Message.Assistant] = Right(
         Message.Assistant(
           blocks.toVector,
@@ -216,9 +222,7 @@ object TurnCaptureTests extends TestSuite {
       Toolbox.Empty,
       Vector.empty,
       engine.jot,
-      // Room past the loop's two rounds and its reply: a turn told its last call with tools
-      // sees that note as its last user message, which the scripted model reads as said.
-      right(TurnLoop.Rounds.of(5))
+      right(TurnLoop.Rounds.of(4))
     )
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =

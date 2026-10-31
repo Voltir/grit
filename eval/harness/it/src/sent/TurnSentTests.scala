@@ -62,13 +62,20 @@ object TurnSentTests extends TestSuite {
       t => Outcome.Done(s"echoed $t")
     )
 
-  /** Calls `echo` until two of its results are in, then replies; keeps every request. */
+  /** Calls `echo` until two of its turn's own results are in, then replies; keeps every
+    * request.
+    */
   private final class Looping extends Provider {
     val sent = new ConcurrentLinkedQueue[ModelRequest]()
 
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       sent.add(request)
-      val results = request.messages.count(_.isInstanceOf[Message.ToolResult])
+      // This turn's results: those after what the person last said, past grit's notes.
+      val person = request.messages.lastIndexWhere {
+        case Message.User(t) => !StubProvider.note(t)
+        case _ => false
+      }
+      val results = request.messages.drop(person + 1).count(_.isInstanceOf[Message.ToolResult])
       val blocks =
         if (results < 2 && request.use == ToolUse.Auto)
           Vector(
@@ -251,14 +258,17 @@ object TurnSentTests extends TestSuite {
         // rounds' calls and results and its reply at 3 to 7, what a model is shown of it), then
         // what the delta appended.
         val carried = Vector(0L, 3L, 4L, 5L, 6L, 7L).map(grit.core.id.EntrySeq(_))
+        // The second turn loops as the first did, its carried results not counted as its own.
         (
           delta.map(_.carry.flatMap(_.after)),
           sent.window.map(_.carry),
-          sent.window.map(_.entries)
+          sent.window.map(_.entries),
+          sent.calls.looped.size
         ) ==> (
           Some(Some(Turn.windowId(first))),
           Some(None),
-          drawn.zip(delta).map((f, d) => f.entries ++ carried ++ d.entries)
+          drawn.zip(delta).map((f, d) => f.entries ++ carried ++ d.entries),
+          2
         )
       } finally engine.close()
     }
