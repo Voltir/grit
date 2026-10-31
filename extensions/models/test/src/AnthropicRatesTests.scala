@@ -46,5 +46,14 @@ object AnthropicRatesTests extends TestSuite {
         Some(BigDecimal("0.0392"))
       AnthropicRates.cost("claude-opus-5-5", usage(300000, 0, 0, 0)) ==> Some(BigDecimal("1.2"))
     }
+
+    test(
+      "one card holds for Haiku 5.5 up to 100,000 prompt tokens in total, for any Opus, and for no unknown model"
+    ) {
+      AnthropicRates.oneCard("claude-haiku-5-5", 100000) ==> true
+      AnthropicRates.oneCard("claude-haiku-5-5", 100001) ==> false
+      AnthropicRates.oneCard("claude-opus-5-5", 5000000) ==> true
+      AnthropicRates.oneCard("claude-unknown-9", 1) ==> false
+    }
   }
 }

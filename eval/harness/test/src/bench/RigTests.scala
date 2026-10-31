@@ -142,7 +142,7 @@ object RigTests extends TestSuite {
           (
             "5e55-a1",
             cap.model,
-            Usage(Tokens(6262), Tokens(90), Tokens(4100), None, Tokens(2150)),
+            Usage(Tokens(6262), Tokens(500), Tokens(4100), None, Tokens(2150)),
             3,
             Some(2),
             Some(48L),
@@ -295,10 +295,10 @@ object RigTests extends TestSuite {
         } ==> Right(
           (
             Vector(
-              "call 1 msg_01a: input 2003 (cache read 0, written 2000), output 40",
-              "call 2 msg_01b: input 2105 (cache read 2000, written 100), output 20",
-              "call 3 msg_01c: input 2154 (cache read 2100, written 50), output 30",
-              "cost: 0.036¢ by grit's rates, 0.31¢ by Claude Code's",
+              "call 1 msg_01a: input 2003 (cache read 0, written 2000)",
+              "call 2 msg_01b: input 2105 (cache read 2000, written 100)",
+              "call 3 msg_01c: input 2154 (cache read 2100, written 50)",
+              "cost: 0.056¢ by grit's rates, 0.31¢ by Claude Code's",
               "ended: error_max_turns, in error",
               "denied: Bash {\"command\":\"curl example.com\"}",
               "check: scripts/check m passed",

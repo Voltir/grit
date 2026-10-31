@@ -22,7 +22,8 @@ object Streams {
   /** Three calls: a read (its id on two lines, the second's usage the last), a command the rules
     * refuse, and an edit of `a.scala`; then a result stopped at its turn cap. 48 bytes of tool
     * results come before the edit, and the calls total 6,262 input tokens, of them 4,100 read
-    * from the cache and 2,150 written to it, and 90 output.
+    * from the cache and 2,150 written to it, and 90 output in their events; the result's
+    * `modelUsage` gives 500 output, the figure the run's usage is read from.
     */
   val run: Vector[String] = Vector(
     s"""{"type":"system","subtype":"init","cwd":"$Checkout","session_id":"5e55-a1","tools":["Bash","Read","Edit","Write","Glob","Grep","mcp__scout__show"],"mcp_servers":[{"name":"scout","status":"connected"}],"model":"claude-haiku-5-5-20261001","permissionMode":"default","apiKeySource":"apiKeyHelper"}""",
@@ -53,6 +54,6 @@ object Streams {
       """"input_tokens":4,"cache_creation_input_tokens":50,"cache_read_input_tokens":2100,"output_tokens":30"""
     ),
     result("toolu_03", s""""content":"The file $Checkout/a.scala has been updated.""""),
-    """{"type":"result","subtype":"error_max_turns","is_error":true,"duration_ms":12000,"duration_api_ms":9000,"num_turns":3,"session_id":"5e55-a1","total_cost_usd":0.0031,"usage":{"input_tokens":12,"cache_creation_input_tokens":2150,"cache_read_input_tokens":4100,"output_tokens":90},"permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_02","tool_input":{"command":"curl example.com"}}]}"""
+    """{"type":"result","subtype":"error_max_turns","is_error":true,"duration_ms":12000,"duration_api_ms":9000,"num_turns":3,"session_id":"5e55-a1","total_cost_usd":0.0031,"usage":{"input_tokens":12,"cache_creation_input_tokens":2150,"cache_read_input_tokens":4100,"output_tokens":90},"modelUsage":{"claude-haiku-5-5":{"inputTokens":12,"outputTokens":500,"cacheReadInputTokens":4100,"cacheCreationInputTokens":2150,"costUSD":0.0031}},"permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_02","tool_input":{"command":"curl example.com"}}]}"""
   )
 }

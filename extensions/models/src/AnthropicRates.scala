@@ -41,6 +41,13 @@ object AnthropicRates {
   /** Where Claude Haiku 5.5's long-context card begins: a prompt longer than this. */
   private val HaikuLongPast = 100000L
 
+  /** Whether every set of prompts on `model` whose lengths sum to at most `totalPrompt` takes one
+    * card: true for a model with a single card, and for Claude Haiku 5.5 when `totalPrompt` is at
+    * most 100,000; false for a model it has no rates for.
+    */
+  def oneCard(model: String, totalPrompt: Long): Boolean =
+    card(model, 0L).exists(c => card(model, totalPrompt).contains(c))
+
   private def card(model: String, prompt: Long): Option[Card] = {
     def is(id: String) = AnthropicJson.isOrSnapshotOf(model, id)
     if (is("claude-haiku-5-5")) Some(if (prompt > HaikuLongPast) HaikuLong else HaikuShort)

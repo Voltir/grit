@@ -5,10 +5,12 @@ import java.nio.charset.StandardCharsets
 import scala.util.Try
 
 import grit.core.message.{Tokens, Usage}
-import grit.models.AnthropicRates
+import grit.models.{AnthropicJson, AnthropicRates}
 
 /** One model call of a run: its message id, the model that answered it, and what it consumed,
-  * priced by [[AnthropicRates]] (`costUsd` `None` for a model it has no rates for).
+  * priced by [[AnthropicRates]] (`costUsd` `None` for a model it has no rates for). Its usage is
+  * the one its message began with: input and cache final, output not, since a message's
+  * `output_tokens` grows as it streams.
   */
 final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
 
@@ -17,13 +19,16 @@ final case class Denial(tool: String, input: String) extends caps.Pure
 
 /** How a run ended, from its result message: Claude Code's reason (`success`, or a cap's or an
   * error's, such as `error_max_turns`), whether it ended in error, the cost Claude Code estimated
-  * for it, and each tool call it was refused.
+  * for it, each tool call it was refused, and the run's usage as its result gives it (`None`
+  * when the result gives none).
   */
 final case class Ended(
     reason: String,
     error: Boolean,
     claimedUsd: Option[BigDecimal],
-    denials: Vector[Denial]
+    denials: Vector[Denial],
+    usage: Option[Usage],
+    byModel: Vector[(String, Usage)]
 ) extends caps.Pure
 
 /** What a Claude Code run consumed, read from its `stream-json` output: its session, its model
@@ -41,8 +46,68 @@ final case class Consumed(
     apiKeySource: Option[String]
 ) extends caps.Pure {
 
-  /** Every call's usage together; its cost unknown when any call's is. */
-  def usage: Usage = Usage.total(calls.map(_.usage))
+  /** The run's usage: its result's, else every call's together (its output a lower bound, since a
+    * run with no result, or whose result gives no usage, has only its calls' events); its cost
+    * unknown when any call's is.
+    */
+  def usage: Usage = ended.flatMap(_.usage).getOrElse(Usage.total(calls.map(_.usage)))
+
+  /** The run's cost by grit's published rates, the cross-check beside Claude Code's, summed over
+    * the models of the result. A model with calls in the events costs those calls, plus the output
+    * its result counts beyond their events at their output rate. A model with none (side calls)
+    * costs its totals, when one card holds for them. `Left` in place of a figure, naming the model,
+    * where a call's model has no usage or no rates, or where a model's calls or side calls may
+    * straddle a card. `Left` alone when the run has no result.
+    */
+  def gritCost: Either[String, BigDecimal] = {
+    def outputRate(c: Call): Option[BigDecimal] = {
+      def at(n: Long) =
+        AnthropicRates.cost(c.model, c.usage.copy(output = Tokens(n), costUsd = None))
+      for {
+        hi <- at(1000000L)
+        lo <- at(0L)
+      } yield (hi - lo) / BigDecimal(1000000)
+    }
+    // One model's cost: its calls' costs and its output beyond their events, at their rate when
+    // they share one; or, with no call of its in the events, its side calls' totals when one card
+    // holds for them.
+    def priced(model: String, total: Usage): Either[String, BigDecimal] = {
+      val own = calls.filter(c => AnthropicJson.isOrSnapshotOf(c.model, model))
+      if (own.isEmpty)
+        if (AnthropicRates.oneCard(model, Tokens.value(total.input)))
+          AnthropicRates.cost(model, total).toRight("a model it has no rates for")
+        else Left(s"$model's side calls may straddle a card")
+      else {
+        val costs = own.flatMap(_.usage.costUsd)
+        val remaining = Tokens.value(total.output) - own.map(c => Tokens.value(c.usage.output)).sum
+        val rates = own.map(outputRate)
+        if (costs.size != own.size) Left("a model it has no rates for")
+        else if (remaining == 0L) Right(costs.sum)
+        else
+          rates.flatten.distinct match {
+            case Vector(rate) if rates.forall(_.isDefined) =>
+              Right(costs.sum + BigDecimal(remaining) * rate)
+            case _ => Left(s"$model's calls straddle a card")
+          }
+      }
+    }
+    ended match {
+      case None => Left("the run's result gives no usage")
+      case Some(e) =>
+        calls
+          .map(_.model)
+          .distinct
+          .find(m => !e.byModel.exists(k => AnthropicJson.isOrSnapshotOf(m, k._1))) match {
+          case Some(m) => Left(s"$m's calls have no usage in the result")
+          case None =>
+            val parts = e.byModel.map { case (model, total) => priced(model, total) }
+            parts.collectFirst { case Left(reason) => reason } match {
+              case Some(reason) => Left(reason)
+              case None => Right(parts.collect { case Right(cost) => cost }.sum)
+            }
+        }
+    }
+  }
 }
 
 object Consumed {
@@ -87,18 +152,22 @@ object Consumed {
         case Some("user") if edit.isEmpty =>
           read += obj(e, "message").toVector.flatMap(blocks).map(returned).sum
         case Some("result") =>
+          val claimed = e.value.get("total_cost_usd").flatMap(_.numOpt).map(BigDecimal(_))
+          val models = byModel(e)
           ended = Some(
             Ended(
               text(e, "subtype").getOrElse(""),
               e.value.get("is_error").flatMap(_.boolOpt).getOrElse(false),
-              e.value.get("total_cost_usd").flatMap(_.numOpt).map(BigDecimal(_)),
+              claimed,
               e.value.get("permission_denials").flatMap(_.arrOpt).toVector.flatten.collect {
                 case d: ujson.Obj =>
                   Denial(
                     text(d, "tool_name").getOrElse(""),
                     d.value.get("tool_input").fold("{}")(ujson.write(_))
                   )
-              }
+              },
+              resultUsage(e, claimed, models),
+              models
             )
           )
         case _ => ()
@@ -111,6 +180,58 @@ object Consumed {
       edit.map(_._2),
       ended,
       events.iterator.flatMap(text(_, "apiKeySource")).nextOption()
+    )
+  }
+
+  /** The run's usage from its result message: `modelUsage` summed over its models when it has
+    * one, else its `usage`; its cost the result's `total_cost_usd`. `None` when it gives neither.
+    */
+  private def resultUsage(
+      e: ujson.Obj,
+      claimed: Option[BigDecimal],
+      models: Vector[(String, Usage)]
+  ): Option[Usage] =
+    if (models.nonEmpty) Some(Usage.total(models.map(_._2)).copy(costUsd = claimed))
+    else
+      obj(e, "usage").map(
+        tokens(
+          _,
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens"
+        ).copy(costUsd = claimed)
+      )
+
+  /** What the result's `modelUsage` gives each model, unpriced; empty when it gives none. */
+  private def byModel(e: ujson.Obj): Vector[(String, Usage)] =
+    obj(e, "modelUsage").fold(Vector.empty[(String, Usage)])(
+      _.value.toVector.collect { case (model, o: ujson.Obj) =>
+        model -> tokens(
+          o,
+          "inputTokens",
+          "outputTokens",
+          "cacheReadInputTokens",
+          "cacheCreationInputTokens"
+        )
+      }
+    )
+
+  /** A result's tokens, read by the names of their fields; unpriced. */
+  private def tokens(
+      o: ujson.Obj,
+      input: String,
+      output: String,
+      read: String,
+      write: String
+  ): Usage = {
+    def count(k: String) = o.value.get(k).flatMap(_.numOpt).fold(0L)(_.toLong)
+    Usage(
+      Tokens(count(input) + count(read) + count(write)),
+      Tokens(count(output)),
+      Tokens(count(read)),
+      None,
+      Tokens(count(write))
     )
   }
 

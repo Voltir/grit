@@ -24,7 +24,7 @@ object ConsumedTests extends TestSuite {
       } ==> Right(
         (
           Vector("msg_01a" -> 40L, "msg_01b" -> 20L, "msg_01c" -> 30L),
-          Usage(Tokens(6262), Tokens(90), Tokens(4100), None, Tokens(2150))
+          Usage(Tokens(6262), Tokens(500), Tokens(4100), None, Tokens(2150))
         )
       )
     }
@@ -76,7 +76,25 @@ object ConsumedTests extends TestSuite {
               "error_max_turns",
               error = true,
               Some(BigDecimal("0.0031")),
-              Vector(Denial("Bash", """{"command":"curl example.com"}"""))
+              Vector(Denial("Bash", """{"command":"curl example.com"}""")),
+              Some(
+                Usage(
+                  Tokens(6262),
+                  Tokens(500),
+                  Tokens(4100),
+                  Some(BigDecimal("0.0031")),
+                  Tokens(2150)
+                )
+              ),
+              Vector(
+                "claude-haiku-5-5" -> Usage(
+                  Tokens(6262),
+                  Tokens(500),
+                  Tokens(4100),
+                  None,
+                  Tokens(2150)
+                )
+              )
             )
           )
         )
@@ -91,6 +109,71 @@ object ConsumedTests extends TestSuite {
 
     test("a run killed before its result has no ending") {
       Consumed.of(Streams.at(checkout).dropRight(1), checkout).map(_.ended) ==> Right(None)
+    }
+
+    test("a run's usage is its result's modelUsage, its cost Claude Code's total") {
+      Consumed.of(Streams.at(checkout), checkout).map(_.usage) ==> Right(
+        Usage(Tokens(6262), Tokens(500), Tokens(4100), Some(BigDecimal("0.0031")), Tokens(2150))
+      )
+    }
+
+    test("a result's modelUsage is summed over its models") {
+      val result =
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.5,"modelUsage":{"claude-haiku-5-5":{"inputTokens":10,"outputTokens":3,"cacheReadInputTokens":20,"cacheCreationInputTokens":30},"claude-sonnet-5-5":{"inputTokens":1,"outputTokens":4,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}"""
+      Consumed
+        .of(Vector(call("m1", """"input_tokens":1,"output_tokens":1"""), result), checkout)
+        .map(_.usage) ==> Right(
+        Usage(Tokens(61), Tokens(7), Tokens(20), Some(BigDecimal("0.5")), Tokens(30))
+      )
+    }
+
+    test("a result with no modelUsage gives its usage") {
+      val result =
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.25,"usage":{"input_tokens":5,"cache_creation_input_tokens":6,"cache_read_input_tokens":7,"output_tokens":77}}"""
+      Consumed
+        .of(Vector(call("m1", """"input_tokens":1,"output_tokens":1"""), result), checkout)
+        .map(_.usage) ==> Right(
+        Usage(Tokens(18), Tokens(77), Tokens(7), Some(BigDecimal("0.25")), Tokens(6))
+      )
+    }
+
+    test("a model's remaining output is priced at its calls' card when they share one") {
+      val rows = Vector(
+        call("m1", """"input_tokens":60000,"output_tokens":10"""),
+        call("m2", """"input_tokens":60000,"output_tokens":10"""),
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.01,"modelUsage":{"claude-haiku-5-5":{"inputTokens":120000,"outputTokens":100,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}"""
+      )
+      Consumed.of(rows, checkout).map(_.gritCost) ==> Right(Right(BigDecimal("0.01205")))
+    }
+
+    test("a model whose calls straddle the long-context card says so, in place of a figure") {
+      val rows = Vector(
+        call("m1", """"input_tokens":60000,"output_tokens":10"""),
+        call("m2", """"input_tokens":120000,"output_tokens":10"""),
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.1,"modelUsage":{"claude-haiku-5-5":{"inputTokens":180000,"outputTokens":100,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}"""
+      )
+      Consumed.of(rows, checkout).map(_.gritCost) ==> Right(
+        Left("claude-haiku-5-5's calls straddle a card")
+      )
+    }
+
+    test("a side model with no calls in the events is priced and summed in, to the digit") {
+      // Haiku's one call: 1,000 input at $0.10, 10 output at $0.50; its remaining 100 output at
+      // $0.50. Sonnet's side calls: 500 input at $2, 50 output at $10. $0.001655 in all.
+      val rows = Vector(
+        call("m1", """"input_tokens":1000,"output_tokens":10"""),
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.002,"modelUsage":{"claude-haiku-5-5":{"inputTokens":1000,"outputTokens":110,"cacheReadInputTokens":0,"cacheCreationInputTokens":0},"claude-sonnet-5-5":{"inputTokens":500,"outputTokens":50,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}"""
+      )
+      Consumed.of(rows, checkout).map(_.gritCost) ==> Right(Right(BigDecimal("0.001655")))
+    }
+
+    test("a side model past 100,000 prompt tokens on Haiku is refused, by name") {
+      val rows = Vector(
+        """{"type":"result","subtype":"success","is_error":false,"session_id":"s","total_cost_usd":0.1,"modelUsage":{"claude-haiku-5-5":{"inputTokens":150000,"outputTokens":10,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}"""
+      )
+      Consumed.of(rows, checkout).map(_.gritCost) ==> Right(
+        Left("claude-haiku-5-5's side calls may straddle a card")
+      )
     }
 
     test("a line that is not a JSON object is refused, by its number") {

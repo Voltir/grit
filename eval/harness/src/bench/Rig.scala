@@ -79,11 +79,15 @@ final case class Tried(
     */
   def lines: Vector[String] = {
     def cents(usd: Option[BigDecimal]) = usd.fold("unknown")(Cost.cents)
-    def tokens(u: Usage) = {
+    def input(u: Usage) = {
       import Tokens.value
-      s"input ${value(u.input)} (cache read ${value(u.cacheRead)}, written ${value(u.cacheWrite)})" +
-        s", output ${value(u.output)}"
+      s"input ${value(u.input)} (cache read ${value(u.cacheRead)}, written ${value(u.cacheWrite)})"
     }
+    def tokens(u: Usage) = s"${input(u)}, output ${Tokens.value(u.output)}"
+    val grit = consumed.gritCost.fold(
+      reason => s"grit's rates: $reason",
+      c => s"${Cost.cents(c)} by grit's rates"
+    )
     val t = trial
     Vector(
       s"trial: ${t.session.local} of ${BenchRows.TaskName.value(t.task)} by " +
@@ -93,9 +97,9 @@ final case class Tried(
           .zip(t.readBeforeEdit)
           .fold("no edit")((c, b) => s"$c calls, $b bytes read"),
       s"tokens: ${tokens(t.usage)}"
-    ) ++ consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${tokens(c.usage)}") ++
+    ) ++ consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") ++
       Vector(
-        s"cost: ${cents(t.usage.costUsd)} by grit's rates, " +
+        s"cost: $grit, " +
           s"${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
         consumed.ended.fold("ended: with no result")(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
