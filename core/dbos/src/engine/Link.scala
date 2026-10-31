@@ -15,7 +15,7 @@ import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.spend.Budget
-import grit.core.store.{ConversationStore, Db, Jot, Origin, StoreError, Tx}
+import grit.core.store.{Db, Jot, Origin, StoreError, Tx}
 import grit.core.visibility.Visibility
 import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlEntryStore, SqlJot}
 
