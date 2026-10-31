@@ -117,6 +117,12 @@ object AnthropicStreamTests extends TestSuite {
         .flatMap(l => ujson.read(l.drop(5).trim).obj.get("usage"))
         .flatMap(_.obj.get("output_tokens"))
         .map(_.num.toLong)
+      // Each thinking block the recording opened, every one of which should fold signed.
+      val thinking = lines.count(l =>
+        l.contains("\"content_block_start\"") && l.contains(
+          "\"content_block\":{\"type\":\"thinking\""
+        )
+      )
       def calls(m: Message.Assistant) = m.blocks.collect { case AssistantBlock.ToolCall(_, n, a) =>
         (n, a.objOpt.isDefined)
       }
@@ -132,7 +138,7 @@ object AnthropicStreamTests extends TestSuite {
           p.stop,
           lastOutput,
           calls(p),
-          streamed.fold(_ => Vector(), signed).map(_ => true)
+          Vector.fill(thinking)(true)
         )
       )
       // The request offers one tool and asks for it to be called.
