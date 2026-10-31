@@ -104,11 +104,8 @@ final class LinearAssembler(
           estimator,
           this.budget
         ) match {
-          case Some(LinearAssembler.Carrying(since, _)) =>
-            Projection.Appended(
-              Window(since.flatten.sortBy(_.seq).map(_.seq), notes),
-              LinearAssembler.cost(since.flatten, speakers, estimator)
-            )
+          case Some(LinearAssembler.Carrying(since, added, _)) =>
+            Projection.Appended(Window(since.flatten.sortBy(_.seq).map(_.seq), notes), added)
           case None =>
             val (closings, left) =
               LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
@@ -212,7 +209,7 @@ object LinearAssembler {
   /** The own turns of `turns` (the period's, before the turn, oldest first) that a window
     * carrying `carried` appends, every one after its last part's turn, and what the carried
     * window spends with them: its parts' costs, their turns' own entries of `all` as sent, and
-    * those turns as shown, each with `speakers`' names, by `estimator`. `None` at the limit:
+    * those turns as shown (what they add), each with `speakers`' names, by `estimator`. `None` at the limit:
     * nothing is carried, the turn's period began at `first`, after a carried part's turn (a
     * close since), or they spend more than `limit`.
     */
@@ -232,16 +229,18 @@ object LinearAssembler {
           turns.filter(
             _.headOption.exists(e => TurnSeq.value(e.turnSeq) > TurnSeq.value(last.turn))
           )
+        val added = cost(since.flatten, speakers, estimator)
         val spent = carried.parts
           .map(p => p.cost + sent(all.filter(_.turnSeq == p.turn), speakers, estimator))
-          .foldLeft(Tokens.Zero)(_ + _) + cost(since.flatten, speakers, estimator)
-        Option.when(Tokens.value(spent) <= Tokens.value(limit))(Carrying(since, spent))
+          .foldLeft(Tokens.Zero)(_ + _) + added
+        Option.when(Tokens.value(spent) <= Tokens.value(limit))(Carrying(since, added, spent))
       }
 
   /** What a window carrying a non-empty window appends: the own turns `since` its last part's
-    * turn, oldest first, and what the carried window `spent` with them.
+    * turn, oldest first, what they cost as shown (`added`), and what the carried window
+    * `spent` with them.
     */
-  final case class Carrying(since: Vector[Vector[Entry]], spent: Tokens)
+  final case class Carrying(since: Vector[Vector[Entry]], added: Tokens, spent: Tokens)
 
   /** What one gap line ([[Shown.Gap]]) costs by `estimator`. */
   def gap(estimator: TokenEstimator): Tokens = estimator.message(Shown.Gap)

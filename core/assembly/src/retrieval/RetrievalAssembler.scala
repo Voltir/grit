@@ -407,10 +407,9 @@ final class RetrievalAssembler(
       this.budget
     ) match {
       case None => based(request.copy(carried = CarriedWindow.Empty))
-      case Some(LinearAssembler.Carrying(since, spentWith)) =>
+      case Some(LinearAssembler.Carrying(since, sinceCost, spentWith)) =>
         val held = Held.of(request.carried, read.all)
         val turns = period.filterNot(_.headOption.exists(e => held.own(e.turnSeq)))
-        val sinceCost = spent(since, read.speakers)
         Right(
           Base(
             read,
@@ -468,10 +467,8 @@ final class RetrievalAssembler(
             Tokens(Tokens.value(tail) min Tokens.value(left))
           )
       // The tail leaves turns out, so the window holds a gap line before it.
-      val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
-        recent,
-        read.speakers
-      ) +
+      val used = Tokens(Tokens.value(budget) - Tokens.value(left)) +
+        LinearAssembler.cost(recent.flatten, read.speakers, estimator) +
         (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
       Base(
         read,
@@ -486,7 +483,8 @@ final class RetrievalAssembler(
         recent,
         recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
         used,
-        Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(linear, read.speakers) +
+        Tokens(Tokens.value(budget) - Tokens.value(left)) +
+          LinearAssembler.cost(linear.flatten, read.speakers, estimator) +
           (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero),
         read.all.filter(_.turnSeq == turn.turnSeq),
         Held.none,
@@ -837,9 +835,6 @@ final class RetrievalAssembler(
         }
       }
   }
-
-  private def spent(turns: Vector[Vector[Entry]], speakers: Speakers): Tokens =
-    turns.map(LinearAssembler.cost(_, speakers, estimator)).foldLeft(Tokens.Zero)(_ + _)
 
   private def before(a: TurnSeq, b: TurnSeq): Boolean = TurnSeq.value(a) < TurnSeq.value(b)
 
