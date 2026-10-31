@@ -426,10 +426,14 @@ object ProjectCommandsTests extends TestSuite {
       val projects = plugin()
       val history = projects.commands.find(c => ToolName.value(c.spec.name) == "project_history")
       val read = history.map(_.spec.args.read(ujson.Obj("key" -> "p/a", "to_version" -> 2)))
-      assert(read.exists(_.left.exists {
-        case ArgsError.Refused("from_version", _) => true
-        case _ => false
-      }))
+      read.map(_.left.toOption) ==> Some(
+        Some(
+          ArgsError.Refused(
+            "from_version",
+            "`from_version` is given with `to_version`: name both versions to diff, or neither"
+          )
+        )
+      )
     }
 
     test("show at an instant shows that version's body") {

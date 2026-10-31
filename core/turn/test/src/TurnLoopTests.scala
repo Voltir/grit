@@ -103,7 +103,7 @@ object TurnLoopTests extends TestSuite {
         Vector(1, 2, 3).map(n => TurnLoop.notes(cut, round(n))),
         bounded.after(Vector(input(1000), input(1099))).calls,
         budget(12).after(Vector(input(1000), input(9000))).calls,
-        budget(12).within(Tokens(0)).isLeft
+        budget(12).within(Tokens(0))
       ) ==> (
         4,
         Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off),
@@ -114,7 +114,7 @@ object TurnLoopTests extends TestSuite {
         ),
         12,
         12,
-        true
+        Left("a turn's growth bound is above 0 tokens, not 0")
       )
     }
 

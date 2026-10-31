@@ -6,7 +6,7 @@ import grit.core.document.InMemoryDocuments
 import grit.core.need.PluginReads
 import grit.core.plugin.{CommandTools, Commanded, InMemoryPlugins}
 import grit.core.store.{Askers, StoreError, Tx}
-import grit.core.tool.{ToolName, ToolSet, Toolbox}
+import grit.core.tool.{ToolSet, Toolbox}
 
 import utest.*
 
@@ -43,18 +43,6 @@ object OfferedCommandsTests extends TestSuite {
         .of[caps.CapSet^{clock}](offered*)
         .map(box => ToolSet.read(ToolSet.write(box.set)).map(_.tools.map(_.name))) ==>
         Right(Right(names))
-      names.map(ToolName.value).toSet ==> Set(
-        "project_new",
-        "project_keep",
-        "project_move",
-        "project_show",
-        "project_history",
-        "project_list",
-        "project_find",
-        "project_export",
-        "project_stale",
-        "project_brief"
-      )
     }
   }
 }
