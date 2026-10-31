@@ -169,6 +169,24 @@ object CommandToolsTests extends TestSuite {
         Right(Outcome.Done("kept hi")),
         Some(Integrity.Outside)
       )
+      val trusted = got(
+        Visibility
+          .of(
+            Compartments.Shipped,
+            Visibility.Shipped.rooms,
+            Vector.empty,
+            Vector.empty,
+            caps = Vector(Cap(room, Integrity.Member))
+          )
+          .left
+          .map(_.toString)
+      )
+      val inTrusted = TestTx.fake(Clearance.inRoom(room, Label.Public, Label.Public), trusted)
+      val above = new InMemoryDocuments
+      (call(above, keeping, Some(person), Integrity.Outside, inTrusted), kept(above)) ==> (
+        Right(Outcome.Done("kept hi")),
+        Some(Integrity.Outside)
+      )
     }
 
     test("a keeping command's tool requires outside, and a reading one's nothing") {
