@@ -16,7 +16,7 @@ import utest.*
 /** Following a conversation, with no database: what the screen is told as entries appear
   * and turns run, finish or fail.
   */
-object FollowTests extends TestSuite {
+object TurnWatchTests extends TestSuite {
 
   private val c = ConversationId("c")
 
@@ -46,7 +46,7 @@ object FollowTests extends TestSuite {
   )
 
   /** A turn running, having recorded `recorded`, each with no output. The step the screen is
-    * told is grit.turn's (`Turn.running`), not Follow's: these tests pin that Follow passes it
+    * told is grit.turn's (`Turn.running`), not TurnWatch's: these tests pin that TurnWatch passes it
     * on. Records with no outputs do not read as a turn of this build, which `Turn.running`
     * shows in its last record; with none recorded, in `pin-models`.
     */
@@ -76,7 +76,7 @@ object FollowTests extends TestSuite {
         Integrity.Member
       )
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"), closed)
-      Follow.step(Follow.start, entries, all(TurnStatus.Unknown))._2 ==> Vector(
+      TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))._2 ==> Vector(
         ChatScreen.Msg.Arrived(
           Vector(
             ChatScreen.Said(ChatScreen.Voice.User, "hi"),
@@ -91,7 +91,7 @@ object FollowTests extends TestSuite {
 
     test("the conversation so far arrives once, in order") {
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
-      val (next, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
+      val (next, msgs) = TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))
       msgs ==> Vector(
         ChatScreen.Msg
           .Arrived(
@@ -102,7 +102,7 @@ object FollowTests extends TestSuite {
             None
           )
       )
-      Follow.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
+      TurnWatch.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
     }
 
     test("a turn's tool loop arrives as one line per call, with what it came to, in order") {
@@ -148,7 +148,7 @@ object FollowTests extends TestSuite {
         result(5, "u", "There is no tool named `sing`.", true, "sing"),
         reply(7, 0, "done")
       )
-      val (_, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
+      val (_, msgs) = TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))
       msgs ==> Vector(
         ChatScreen.Msg.Arrived(
           Vector(
@@ -179,36 +179,37 @@ object FollowTests extends TestSuite {
         )
       val asking = Vector(user(0, 0, "edit it"), at(1, Payload.Ask(call, "Edit a.txt")))
       val turn = TurnRef(c, TurnSeq(0))
-      val (waiting, first) = Follow.step(Follow.start, asking, all(running("call:0:0:approve")))
+      val (waiting, first) =
+        TurnWatch.step(TurnWatch.start, asking, all(running("call:0:0:approve")))
       first.lastOption ==>
         Some(ChatScreen.Msg.Asking(Some(ChatScreen.Asked(turn.workflowId, call, "Edit a.txt"))))
-      Follow.step(waiting, asking, all(running("call:0:0:approve")))._2 ==> Vector.empty
+      TurnWatch.step(waiting, asking, all(running("call:0:0:approve")))._2 ==> Vector.empty
       val begun = asking :+ at(2, Payload.Attempt(call))
-      Follow.step(waiting, begun, all(running("call:0:0:approve")))._2.lastOption ==>
+      TurnWatch.step(waiting, begun, all(running("call:0:0:approve")))._2.lastOption ==>
         Some(ChatScreen.Msg.Asking(None))
       val done = asking :+ at(
         2,
         Payload.Result(Message.ToolResult(call, "denied", true), "edit a.txt")
       )
-      Follow.step(waiting, done, all(running("call:0:0")))._2.lastOption ==>
+      TurnWatch.step(waiting, done, all(running("call:0:0")))._2.lastOption ==>
         Some(ChatScreen.Msg.Asking(None))
     }
 
     test("the first look says what it saw, even an empty conversation, and only the first") {
-      val (looked, msgs) = Follow.step(Follow.start, Vector.empty, all(TurnStatus.Unknown))
+      val (looked, msgs) = TurnWatch.step(TurnWatch.start, Vector.empty, all(TurnStatus.Unknown))
       msgs ==> Vector(ChatScreen.Msg.Arrived(Vector(), None))
-      Follow.step(looked, Vector.empty, all(TurnStatus.Unknown))._2 ==> Vector.empty
+      TurnWatch.step(looked, Vector.empty, all(TurnStatus.Unknown))._2 ==> Vector.empty
     }
 
     test("a message without a reply, whose turn runs, is thinking until the reply lands") {
       val asked = Vector(user(0, 0, "hi"))
-      val (thinking, first) = Follow.step(Follow.start, asked, all(running()))
+      val (thinking, first) = TurnWatch.step(TurnWatch.start, asked, all(running()))
       first ==> Vector(
         ChatScreen.Msg
           .Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), Some("pin-models"))
       )
-      Follow.step(thinking, asked, all(running()))._2 ==> Vector.empty
-      Follow
+      TurnWatch.step(thinking, asked, all(running()))._2 ==> Vector.empty
+      TurnWatch
         .step(thinking, asked :+ reply(1, 0, "hello"), all(TurnStatus.Finished("replied")))
         ._2 ==>
         Vector(
@@ -218,26 +219,28 @@ object FollowTests extends TestSuite {
 
     test("the screen is told each step the turn moves to, once") {
       val asked = Vector(user(0, 0, "hi"))
-      val (assembling, _) = Follow.step(Follow.start, asked, all(running()))
-      val (answering, moved) = Follow.step(assembling, asked, all(running("assemble")))
+      val (assembling, _) = TurnWatch.step(TurnWatch.start, asked, all(running()))
+      val (answering, moved) = TurnWatch.step(assembling, asked, all(running("assemble")))
       moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("assemble")))
-      Follow.step(answering, asked, all(running("assemble")))._2 ==> Vector.empty
+      TurnWatch.step(answering, asked, all(running("assemble")))._2 ==> Vector.empty
     }
 
     test("a turn that finished with no reply is reported once, as failed") {
       val asked = Vector(user(0, 0, "hi"))
       val (after, msgs) =
-        Follow.step(Follow.start, asked, all(TurnStatus.Finished("failed: Model(down)")))
+        TurnWatch.step(TurnWatch.start, asked, all(TurnStatus.Finished("failed: Model(down)")))
       msgs ==> Vector(
         ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), None),
         ChatScreen.Msg.Failed("failed: Model(down)")
       )
-      Follow.step(after, asked, all(TurnStatus.Finished("failed: Model(down)")))._2 ==> Vector.empty
+      TurnWatch
+        .step(after, asked, all(TurnStatus.Finished("failed: Model(down)")))
+        ._2 ==> Vector.empty
     }
 
     test("a turn's summary is told once, when it is written") {
       val answered = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
-      val (seen, _) = Follow.step(Follow.start, answered, all(TurnStatus.Finished("replied")))
+      val (seen, _) = TurnWatch.step(TurnWatch.start, answered, all(TurnStatus.Finished("replied")))
       val summary = Entry(
         EntryId("e2"),
         c,
@@ -249,11 +252,11 @@ object FollowTests extends TestSuite {
         Integrity.Member
       )
       val (after, msgs) =
-        Follow.step(seen, answered :+ summary, all(TurnStatus.Finished("replied")))
+        TurnWatch.step(seen, answered :+ summary, all(TurnStatus.Finished("replied")))
       msgs ==> Vector(
         ChatScreen.Msg.Arrived(Vector(), None, Vector(ChatScreen.Summarised(TurnSeq(0), "greeted")))
       )
-      Follow.step(after, answered :+ summary, all(TurnStatus.Finished("replied")))._2 ==>
+      TurnWatch.step(after, answered :+ summary, all(TurnStatus.Finished("replied")))._2 ==>
         Vector.empty
     }
 
@@ -261,7 +264,7 @@ object FollowTests extends TestSuite {
       val entries = Vector(user(0, 0, "old"), reply(1, 0, "answered"), user(2, 1, "new"))
       val asked: TurnRef => TurnStatus =
         t => if (t.turnSeq == TurnSeq(1)) running() else TurnStatus.Finished("x")
-      Follow.step(Follow.start, entries, asked)._1.thinking ==> true
+      TurnWatch.step(TurnWatch.start, entries, asked)._1.thinking ==> true
     }
   }
 }

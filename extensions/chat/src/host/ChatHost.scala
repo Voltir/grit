@@ -27,7 +27,7 @@ import grit.turn.TurnStream
   *
   *   - `Load` opens the engine with `opener`, says `Opened`, then follows the
   *     conversation: its entries are polled and every new one is shown, whichever turn
-  *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]);
+  *     wrote it, so replies to turns recovered after a restart appear too ([[TurnWatch]]);
   *     and its latest turn (or the one `Show` pinned) is described for the turn panel
   *     whenever that changes ([[TurnView]], its window and the system prompt it recorded
   *     estimated with `estimator`); and the conversation as a whole is described for the
@@ -240,7 +240,7 @@ final class ChatHost(
     engine.conversation(origin, Account.Local) match {
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
-        var state = Follow.start
+        var state = TurnWatch.start
         var shown: Option[TurnView] = None
         var agenda: Option[AgendaView] = None
         var listened = Set.empty[TurnSeq]
@@ -266,7 +266,7 @@ final class ChatHost(
             engine.entries.list(conversation)
           ) match {
             case Right(entries) =>
-              val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
+              val (next, msgs) = TurnWatch.step(state, entries, turn => engine.status(turn))
               state = next
               msgs.foreach(mailbox.offer)
               // The ledger is written with the entries it prices, so it changes only when

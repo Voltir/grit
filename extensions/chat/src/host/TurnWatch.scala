@@ -11,7 +11,7 @@ import grit.turn.Turn
   * turn in progress (`None` when none was), the turns whose failure has been reported,
   * whether it has `looked` at all, and the call the turn in progress was `asking` about.
   */
-final case class Follow(
+final case class TurnWatch(
     lastSeq: Option[EntrySeq],
     step: Option[String],
     reported: Set[TurnSeq],
@@ -21,9 +21,9 @@ final case class Follow(
   def thinking: Boolean = step.nonEmpty
 }
 
-object Follow {
+object TurnWatch {
 
-  val start: Follow = Follow(None, None, Set.empty)
+  val start: TurnWatch = TurnWatch(None, None, Set.empty)
 
   /** One look at the conversation: what the screen should be told, given every entry in
     * it now and where a turn's workflow is. The first look always says what it saw, even
@@ -39,10 +39,10 @@ object Follow {
     * a closed period as its divider ([[Replies.closed]]).
     */
   def step(
-      state: Follow,
+      state: TurnWatch,
       entries: Vector[Entry],
       status: TurnRef => TurnStatus
-  ): (Follow, Vector[ChatScreen.Msg]) = {
+  ): (TurnWatch, Vector[ChatScreen.Msg]) = {
     val fresh = entries.filter(e => state.lastSeq.forall(_ < e.seq))
     val said = fresh.flatMap(said1)
     val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _, _) =>
@@ -62,7 +62,7 @@ object Follow {
       case _ => (None, None)
     }
     val asking = open.filter(_ => step.nonEmpty).flatMap(asked(entries, _))
-    val next = Follow(
+    val next = TurnWatch(
       fresh.lastOption.map(_.seq).orElse(state.lastSeq),
       step,
       state.reported ++ failure.map(_._1),

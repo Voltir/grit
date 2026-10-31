@@ -161,7 +161,7 @@ object ChatScreenTests extends TestSuite {
         Vector.empty,
         None,
         Some(
-          TurnView.Window(Tokens(683), Tokens(0), Tokens(0), Tokens(0), Tokens(5), Vector.empty)
+          TurnView.WindowCost(Tokens(683), Tokens(0), Tokens(0), Tokens(0), Tokens(5), Vector.empty)
         ),
         None,
         None,
@@ -207,7 +207,7 @@ object ChatScreenTests extends TestSuite {
         grit.turn.Turn.Step.all.map(TurnView.Step(_, Some(400))),
         Some("ward engine"),
         Some(
-          TurnView.Window(
+          TurnView.WindowCost(
             Tokens(12),
             Tokens(300),
             Tokens(3200),
@@ -270,7 +270,7 @@ object ChatScreenTests extends TestSuite {
         Vector.empty,
         None,
         Some(
-          TurnView.Window(
+          TurnView.WindowCost(
             Tokens(12),
             Tokens.Zero,
             Tokens.Zero,

@@ -35,7 +35,7 @@ final case class TurnView(
     running: Option[String],
     steps: Vector[TurnView.Step],
     query: Option[String],
-    window: Option[TurnView.Window],
+    window: Option[TurnView.WindowCost],
     spent: Option[Cost],
     billed: Option[Tokens],
     models: Option[TurnView.Models] = None,
@@ -101,7 +101,7 @@ object TurnView {
     * `nearbyTurns`), and the plugins' documents and pieces of files it held (`documents`,
     * `pieces`).
     */
-  final case class Window(
+  final case class WindowCost(
       system: Tokens,
       closing: Tokens,
       recent: Tokens,
@@ -186,7 +186,7 @@ object TurnView {
           val theirs = nearby.map(e => (e.conversationId, e.seq) -> e).toMap
           val sections =
             w.nearby.map(n => n -> n.names.flatMap(s => theirs.get((n.conversation, s))))
-          Window(
+          WindowCost(
             prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
             tokens(closings, speakers, estimator),
             tokens(recent, speakers, estimator) + gaps(seen, turn, estimator),
