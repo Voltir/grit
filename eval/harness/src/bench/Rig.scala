@@ -287,8 +287,10 @@ object Rig {
       outcome = Some(r)
       r
     } finally {
-      // A checkout with no Mill, or none running, has nothing to shut down.
-      val _ = run(work, dir, Clone.Longest)("./mill", "shutdown")
+      // A checkout that built nothing has no daemon; shutting one down there would start Mill.
+      if (run(work, dir, Clone.Longest)("test", "-d", "out/mill-daemon").isRight) {
+        val _ = run(work, dir, Clone.Longest)("./mill", "shutdown")
+      }
       val _ = run(work, dir, Clone.Longest)("rm", "-rf", "out")
       if (!(keep && outcome.forall(_.isLeft))) {
         val _ = run(work, RelPath.Root, Clone.Longest)("rm", "-rf", RelPath.value(dir))
