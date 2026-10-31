@@ -59,12 +59,17 @@ object AnthropicProviderTests extends TestSuite {
 
     test("a dated snapshot asks a mismatched thinking block dropped as its alias does") {
       val asked = ModelRequest("s", Vector(Message.User("hi")))
-      val snapshot = "claude-haiku-5-5-20261001"
-      pinned(s"anthropic/$snapshot").map { p =>
-        AnthropicProvider.wire("k", snapshot, p, asked)._1.collectFirst {
-          case ("anthropic-beta", beta) => beta
-        }
-      } ==> Some(Some("thinking-binding-controls-2026-08-01"))
+      val alias = "claude-haiku-5-5"
+      val snapshot = s"$alias-20261001"
+      def sent(model: String) =
+        pinned(s"anthropic/$model").map(p => AnthropicProvider.wire("k", model, p, asked))
+      // The alias's headers and body, sent under the snapshot's id.
+      val asAlias = sent(alias).map { (headers, body) =>
+        val renamed = ujson.copy(body)
+        renamed("model") = snapshot
+        (headers.toVector, renamed)
+      }
+      sent(snapshot).map((headers, body) => (headers.toVector, body)) ==> asAlias
     }
   }
 }
