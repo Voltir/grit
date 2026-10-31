@@ -21,11 +21,8 @@ object OpenRouterJson {
     * otherwise.
     *
     * For a model under [[AnthropicProvider.Vendor]], every text that is not empty goes as
-    * text parts, an empty system prompt is left out, and a cache breakpoint
-    * (`{"type":"ephemeral"}`) follows the system prompt (or, with none, the last tool) and
-    * another the last part of message `stable` that a message holds as parts (a negative count
-    * as 0): at most two of the four OpenRouter passes to Anthropic. Any other model's body has
-    * no breakpoint, and its texts are strings.
+    * text parts, an empty system prompt is left out, and its breakpoints are those
+    * [[CacheMarks.marked]] places. Any other model's body has none, and its texts are strings.
     */
   def request(
       model: String,
@@ -36,26 +33,14 @@ object OpenRouterJson {
       replay: ReasoningReplay = ReasoningReplay.Details
   ): ujson.Value = {
     val cached = model.startsWith(AnthropicProvider.Vendor)
+    val tools = request.tools.map(tool)
+    val messages = request.messages.map(message(_, replay, cached))
     val system =
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else
-        Option.when(request.system.nonEmpty)(
-          ujson.Obj(
-            "role" -> "system",
-            "content" -> ujson.Arr(
-              ujson.Obj(
-                "type" -> "text",
-                "text" -> request.system,
-                "cache_control" -> CacheMarks.ephemeral
-              )
-            )
-          )
-        )
-    val messages = request.messages.map(message(_, replay, cached))
-    if (cached)
-      CacheMarks
-        .stableMark(messages.map(Some(_)), request.stable)
-        .foreach(_("cache_control") = CacheMarks.ephemeral)
+        CacheMarks
+          .marked(request.system, tools, messages.map(Some(_)), request.stable)
+          .map(block => ujson.Obj("role" -> "system", "content" -> ujson.Arr(block)))
     val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
@@ -66,10 +51,7 @@ object OpenRouterJson {
       body("provider") =
         ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)
     }
-    if (request.tools.nonEmpty) {
-      val tools = request.tools.map(tool)
-      if (cached && system.isEmpty)
-        tools.lastOption.foreach(_("cache_control") = CacheMarks.ephemeral)
+    if (tools.nonEmpty) {
       body("tools") = ujson.Arr.from(tools)
       body("tool_choice") = request.use match {
         case ToolUse.Auto => "auto"
@@ -81,7 +63,7 @@ object OpenRouterJson {
   }
 
   /** A tool; `strict` is sent only when set, so a provider that does not know it never sees it. */
-  private def tool(t: ToolSchema): ujson.Value = {
+  private def tool(t: ToolSchema): ujson.Obj = {
     val function = ujson.Obj(
       "name" -> t.name,
       "description" -> t.description,

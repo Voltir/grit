@@ -33,9 +33,7 @@ object AnthropicJson {
     * for [[ToolUse.Auto]] and [[ToolUse.Required]] (Anthropic's current models refuse a forced
     * choice) and `none` for [[ToolUse.Off]]; a request without tools has neither key.
     *
-    * A cache breakpoint follows `system` (or, with no system prompt, the last tool), and
-    * another the last block of message `stable` that is not thinking, which the API cannot
-    * cache: at most two of the four Anthropic allows. `dropBlock` asks the API to drop a
+    * Its cache breakpoints are those [[CacheMarks.marked]] places. `dropBlock` asks the API to drop a
     * thinking block an earlier edit to the request has invalidated, and every one after it,
     * rather than refuse the request; it needs [[BindingBeta]].
     */
@@ -60,19 +58,10 @@ object AnthropicJson {
         case ToolUse.Off => "none"
       }))
     }
-    if (request.system.nonEmpty)
-      body("system") = ujson.Arr(
-        ujson.Obj(
-          "type" -> "text",
-          "text" -> request.system,
-          "cache_control" -> CacheMarks.ephemeral
-        )
-      )
-    else tools.lastOption.foreach(_("cache_control") = CacheMarks.ephemeral)
     val messages = request.messages.map(message(_, replay))
     CacheMarks
-      .stableMark(messages, request.stable)
-      .foreach(_("cache_control") = CacheMarks.ephemeral)
+      .marked(request.system, tools, messages, request.stable)
+      .foreach(block => body("system") = ujson.Arr(block))
     body("messages") = ujson.Arr.from(messages.flatten)
     body
   }
