@@ -19,17 +19,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.tool.{
-  DeclaresField,
-  DuplicateName,
-  Hosted,
-  Tool,
-  ToolName,
-  ToolSet,
-  ToolSetId,
-  ToolSets,
-  Toolbox
-}
+import grit.core.tool.{Hosted, Tool, ToolName, ToolSet, ToolSetId, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Classification
 
@@ -350,10 +340,7 @@ object TurnOffer {
           .map(all => (h, all.set))
       )
       .left
-      .map {
-        case DuplicateName(n) => StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
-        case declares: DeclaresField => StoreError.Invalid(declares.message)
-      }
+      .map(refused => StoreError.Invalid(refused.message))
 
   /** The offer `recorded` names, its tool set read from `toolSets` and its prompt from
     * `prompts` by id. Both are kept by content hash, written once and never changed, so every

@@ -28,7 +28,7 @@ import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
-import grit.core.tool.{DeclaresField, DuplicateName, SetRefusal, Tool, ToolName, Toolbox}
+import grit.core.tool.{SetRefusal, Tool, Toolbox}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Runtime, Stores}
 import grit.dbos.sql.DbConfig
@@ -595,12 +595,9 @@ private[grit] object Launch {
     }
     // Its caller closes the engine and reports the throw: in the chat, as the engine that
     // could not open.
-    launching.left.foreach {
-      case DuplicateName(name) =>
-        throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
-      case declares: DeclaresField =>
-        throw new IllegalStateException(s"grit's tools cannot be offered: ${declares.message}")
-    }
+    launching.left.foreach(refused =>
+      throw new IllegalStateException(refused.refusing("grit's tools"))
+    )
   }
 
   /** What moves over `stores` are made with: a job's, the lifecycle's and the turn's asks, their

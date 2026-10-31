@@ -190,7 +190,7 @@ object ToolSetTests extends TestSuite {
           ToolSet.write(set(peek))("tools")(0)
         )
       )
-      ToolSet.read(twice) ==> Left("a tool set names peek twice")
+      ToolSet.read(twice) ==> Left("the tool peek is offered twice")
     }
 
     test(

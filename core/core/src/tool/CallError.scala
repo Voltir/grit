@@ -80,6 +80,11 @@ object CallError {
 sealed trait SetRefusal {
   def name: ToolName
   def message: String
+
+  /** The refusal to offer `tools`, as a person names them (`the coding tools`):
+    * `<tools> cannot be offered: <message>`.
+    */
+  final def refusing(tools: String): String = s"$tools cannot be offered: $message"
 }
 
 /** Two tools offered together share the name `name`. */

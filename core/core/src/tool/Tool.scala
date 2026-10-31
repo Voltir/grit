@@ -340,11 +340,7 @@ object Hosted {
       shown: A -> String,
       writes: Writes[D]
   ): Either[String, Writing[A, D]] =
-    if (Writes.declared(spec.args.schema(false)))
-      Left(
-        s"the tool ${ToolName.value(spec.name)}'s arguments declare ${Writes.Field}, which only " +
-          "its writes may name"
-      )
+    if (Writes.declared(spec.args.schema(false))) Left(DeclaresField(spec.name).message)
     else Right(new Writing(spec, gate, shown, writes, ToolSet.Entry.byShape(Some(writes.placed))))
 
   /** A call of the tool `spec`, `gate`, `shown` and `output` describe, its `arguments` read

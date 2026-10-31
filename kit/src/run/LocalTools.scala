@@ -38,7 +38,7 @@ final class LocalTools(offered: Offered) extends Tools {
   private def over(root: Path, request: ToolRequest): Outcome = {
     val ws = new LocalWorkspace(root)
     def refused(why: SetRefusal): Outcome =
-      Outcome.Failed(s"The coding tools cannot be offered: ${why.message}; nothing ran.")
+      Outcome.Failed(s"${why.refusing("The coding tools")}; nothing ran.")
     offered match {
       case Offered.Read =>
         Coding.readOnly(ws).fold(refused, tools => Run.request(request, tools))

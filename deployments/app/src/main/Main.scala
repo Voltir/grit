@@ -369,7 +369,7 @@ object Main {
               org.slf4j.LoggerFactory.getLogger("grit.edge")
             )
             .left
-            .map(refused => s"the coding tools cannot be offered: ${refused.message}")
+            .map(_.refusing("the coding tools"))
         )
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found

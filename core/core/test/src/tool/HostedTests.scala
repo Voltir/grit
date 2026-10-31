@@ -109,7 +109,7 @@ object HostedTests extends TestSuite {
         Args.of((to = Field.text("Where."), text = Field.text("What.")))
       )
       Hosted.writing(own, Gate.Free, _.text, writes).map(_.name) ==>
-        Left("the tool post's arguments declare to, which only its writes may name")
+        Left("the tool post's parameters declare to, which only its writes may name")
     }
   }
 }

@@ -200,10 +200,7 @@ object ToolSet {
       entries <- tools.toVector.foldLeft[Either[String, Vector[Entry]]](Right(Vector.empty)) {
         (acc, t) => acc.flatMap(done => entry(t).map(done :+ _))
       }
-      set <- of(entries).left.map {
-        case DuplicateName(n) => s"a tool set names ${ToolName.value(n)} twice"
-        case declares: DeclaresField => declares.message
-      }
+      set <- of(entries).left.map(_.message)
     } yield set
   }
 }
