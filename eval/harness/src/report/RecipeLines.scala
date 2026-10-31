@@ -4,7 +4,7 @@ import grit.core.id.{ConversationId, WorkflowId}
 import grit.core.message.Cost
 import grit.eval.harness.capture.Part
 import grit.eval.harness.reply.Judged
-import grit.eval.harness.score.{Priced, Prices, Rates, Recipe, Shift}
+import grit.eval.harness.score.{Fitted, Priced, Prices, Recipe, Shift}
 import grit.eval.harness.stats.Proportion
 
 /** One variant of a recipes run: its name, its [[Recipe]] against shipped, and each reference
@@ -115,7 +115,7 @@ private[report] object RecipeLines {
       "grit estimates a call's tokens from its characters, and its estimate is not the " +
         "provider's count, so each model's ratio of the two is fitted from the capture's ledger " +
         "rows: least squares through 0 of input tokens counted against grit's estimate, over " +
-        s"the calls with both, none from fewer than ${Rates.MinCalls}. A fit, not a count: a " +
+        s"the calls with both, none from fewer than ${Fitted.MinCalls}. A fit, not a count: a " +
         "model's definitions may tokenize unlike its window.",
       ""
     ) ++ (if (prices.scales.isEmpty) Vector("No ledger row.")

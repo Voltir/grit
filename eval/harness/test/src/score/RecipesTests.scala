@@ -210,7 +210,7 @@ object RecipesTests extends TestSuite {
           Usage(Tokens(in), Tokens(out), Tokens(cached), usd.map(BigDecimal(_))),
           Tokens(in)
         )
-      val rates = Rates.fit(
+      val rates = Fitted.fit(
         Vector(
           row("m/a", 1000, 0, 10, Some("0.000325")),
           row("m/a", 2000, 0, 100, Some("0.00085")),
@@ -260,7 +260,7 @@ object RecipesTests extends TestSuite {
       // m/b: four calls, under the five a scale is read from.
       def row(model: String, estimated: Long, input: Long) =
         Spent(None, model, Usage(Tokens(input), Tokens(1), Tokens.Zero, None), Tokens(estimated))
-      val scales = Rates.scales(
+      val scales = Fitted.scales(
         Vector(100L, 200L, 500L, 1000L, 4000L).map(e => row("m/a", e, e * 4 / 5)) ++
           Vector(row("m/a", 0, 300)) ++ Vector.fill(4)(row("m/b", 100, 50))
       )

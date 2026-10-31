@@ -34,14 +34,14 @@ final case class Prices(
 
 object Prices {
 
-  /** The rates ([[Rates.fit]]) and scales ([[Rates.scales]]) of `spend`'s models. */
-  def of(spend: Vector[Spent]): Prices = Prices(Rates.fit(spend), Rates.scales(spend))
+  /** The rates ([[Fitted.fit]]) and scales ([[Fitted.scales]]) of `spend`'s models. */
+  def of(spend: Vector[Spent]): Prices = Prices(Fitted.fit(spend), Fitted.scales(spend))
 }
 
 /** Each model's [[Rate]] and [[Scale]], derived from the ledger, since grit records no price
   * and estimates its tokens.
   */
-object Rates {
+object Fitted {
 
   /** The fewest calls a model's [[Scale]] is read from. */
   val MinCalls: Int = 5
