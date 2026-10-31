@@ -406,14 +406,14 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
                 Left(
                   ArgsError.Refused(
                     "to_version",
-                    "`to_version` is given with `from_version`: name both versions to diff, or neither"
+                    "`to_version` is missing: give both versions to compare them, or neither for the whole history"
                   )
                 )
               case (None, Some(_)) =>
                 Left(
                   ArgsError.Refused(
                     "from_version",
-                    "`from_version` is given with `to_version`: name both versions to diff, or neither"
+                    "`from_version` is missing: give both versions to compare them, or neither for the whole history"
                   )
                 )
             }

@@ -430,7 +430,7 @@ object ProjectCommandsTests extends TestSuite {
         Some(
           ArgsError.Refused(
             "from_version",
-            "`from_version` is given with `to_version`: name both versions to diff, or neither"
+            "`from_version` is missing: give both versions to compare them, or neither for the whole history"
           )
         )
       )
