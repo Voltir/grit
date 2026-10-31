@@ -11,15 +11,15 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.edge.{Desk, DeskError, Holder, RecordedStep, TurnStatus}
+import grit.core.edge.{Desk, DeskError, Holder}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, Domain, Identities, Realm}
+import grit.core.id.{PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.identity.{Domain, Identities, Realm}
 import grit.core.inbox.{Inbox, InboxError}
 import grit.core.place.Place
 import grit.core.plugin.Plugin
 import grit.core.spend.Budget
-import grit.core.store.{Db, Jot, Linking, Origin, StoreError, Voucher}
+import grit.core.store.{Db, Jot, Linking, StoreError, Voucher}
 import grit.core.triage.Shadowing
 import grit.core.visibility.{Compartment, Visibility}
 import grit.dbos.sql.{DbConfig, Opener, Pool, SqlDb, SqlJot, SqlLabels, SqlVoucher}
@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory
   */
 final class Engine private (
     dbos: DBOS,
-    dataSource: HikariDataSource,
+    private[engine] val dataSource: HikariDataSource,
     lock: EngineLock^,
     config: DbConfig,
     epoch: String,
@@ -100,9 +100,6 @@ final class Engine private (
   val administration: grit.core.admin.Administration =
     new grit.dbos.sql.SqlAdministration(jot, opener)
 
-  def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
-    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins, reads, keeper, claims)
-
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
   val sessions: grit.core.edge.EdgeSessions = new grit.dbos.sql.SqlEdgeSessions(jot)
@@ -114,7 +111,7 @@ final class Engine private (
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
-  private val client = new DBOSClient(dataSource)
+  private[engine] val client = new DBOSClient(dataSource)
 
   val inbox: Inbox =
     new SqlInbox(
@@ -395,20 +392,6 @@ final class Engine private (
         }
       }
     }
-
-  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
-    Link.conversation(dataSource, opener, conversations)(origin, by)
-
-  def find(origin: Origin): Either[StoreError, Option[ConversationId]] =
-    Link.find(dataSource, opener, conversations)(origin)
-
-  def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
-
-  def steps(turn: TurnRef): Vector[RecordedStep] = Link.steps(client, turn)
-
-  def stream(turn: TurnRef, key: String): Iterator[String] = Link.stream(client, turn, key)
-
-  def awaitTurn(turn: TurnRef): String = Link.awaitTurn(client, turn)
 
   /** The engine holding this database's lock: this one, while it holds it. */
   def holder(): Option[Holder] = EngineLock.holder(dataSource)

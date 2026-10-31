@@ -29,7 +29,13 @@ import com.zaxxer.hikari.HikariDataSource
   * attached to one another process runs ([[Link.attach]]). Everything crosses Postgres
   * (ADR 0002), so it works while no engine runs; turns then wait.
   */
-trait Link extends Console, Desks {
+trait Link extends Console, Desks { self: Stores^ =>
+
+  /** The pool its transactions run on. */
+  private[engine] def dataSource: DataSource
+
+  /** DBOS's client, through which it reads and waits on workflows. */
+  private[engine] def client: DBOSClient
 
   /** The replies an edge has yet to post outside grit, and the parts it has. */
   val deliveries: grit.core.edge.Deliveries
@@ -53,7 +59,8 @@ trait Link extends Console, Desks {
   val administration: grit.core.admin.Administration
 
   /** `plugins`' commands, as an edge runs them for the people it serves (ADR 0053). */
-  def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^
+  final def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
+    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins, reads, keeper, claims)
 
   /** The rooms an edge's bot is a member of, as the edge reports its joins and leaves. */
   val joins: grit.core.edge.Joins
@@ -67,7 +74,46 @@ trait Link extends Console, Desks {
   /** Waits for `turn` to finish and returns its workflow's output. A turn that threw
     * rethrows here.
     */
-  def awaitTurn(turn: TurnRef): String
+  final def awaitTurn(turn: TurnRef): String =
+    client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
+
+  final def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
+    Link.transaction(dataSource, opener)(
+      grit.dbos.sql.SqlRooms
+        .label(origin)
+        .flatMap(conversations.findOrCreate(origin, by, _))
+        .map(_.id)
+    )
+
+  final def find(origin: Origin): Either[StoreError, Option[ConversationId]] =
+    Link.transaction(dataSource, opener)(conversations.find(origin).map(_.map(_.id)))
+
+  final def status(turn: TurnRef): TurnStatus =
+    try {
+      val id = WorkflowId.value(turn.workflowId)
+      val handle = client.retrieveWorkflow[String, Exception](id)
+      Option(handle.getStatus()).map(_.status()) match {
+        case None => TurnStatus.Unknown
+        case Some(state) if state.isActive() => TurnStatus.Running(steps(turn))
+        case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
+        case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
+      }
+    } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
+
+  final def steps(turn: TurnRef): Vector[RecordedStep] =
+    try Link.recorded(client, turn.workflowId)
+    catch { case NonFatal(_) => Vector.empty }
+
+  final def stream(turn: TurnRef, key: String): Iterator[String] = {
+    val pieces = client.readStream(WorkflowId.value(turn.workflowId), key).asScala
+    // DBOS 1.1 throws here for a workflow it does not have, where 1.0 ended the stream.
+    def more: Boolean =
+      try pieces.hasNext
+      catch { case _: DBOSNonExistentWorkflowException => false }
+    Iterator
+      .unfold(())(_ => Option.when(more)((pieces.next(), ())))
+      .collect { case piece: String => piece }
+  }
 }
 
 object Link {
@@ -99,19 +145,6 @@ object Link {
     }
   }
 
-  /** `turn`'s status through `client` ([[Link.status]]). */
-  private[engine] def status(client: DBOSClient, turn: TurnRef): TurnStatus =
-    try {
-      val id = WorkflowId.value(turn.workflowId)
-      val handle = client.retrieveWorkflow[String, Exception](id)
-      Option(handle.getStatus()).map(_.status()) match {
-        case None => TurnStatus.Unknown
-        case Some(state) if state.isActive() => TurnStatus.Running(steps(client, turn))
-        case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
-        case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
-      }
-    } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
-
   /** The steps the workflow `id` recorded, in order, through `client`, as a reader of its
     * history sees them ([[RecordedStep]]); a step DBOS keeps no name for is left out. Throws
     * what `client` throws.
@@ -135,52 +168,6 @@ object Link {
         }
       }
 
-  /** `turn`'s recorded steps through `client` ([[Link.steps]]). */
-  private[engine] def steps(client: DBOSClient, turn: TurnRef): Vector[RecordedStep] =
-    try recorded(client, turn.workflowId)
-    catch { case NonFatal(_) => Vector.empty }
-
-  /** `turn`'s stream `key` through `client` ([[Link.stream]]). */
-  private[engine] def stream(client: DBOSClient, turn: TurnRef, key: String): Iterator[String] = {
-    val pieces = client.readStream(WorkflowId.value(turn.workflowId), key).asScala
-    // DBOS 1.1 throws here for a workflow it does not have, where 1.0 ended the stream.
-    def more: Boolean =
-      try pieces.hasNext
-      catch { case _: DBOSNonExistentWorkflowException => false }
-    Iterator
-      .unfold(())(_ => Option.when(more)((pieces.next(), ())))
-      .collect { case piece: String => piece }
-  }
-
-  /** `turn`'s output through `client` ([[Link.awaitTurn]]). */
-  private[engine] def awaitTurn(client: DBOSClient, turn: TurnRef): String =
-    client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
-
-  /** [[Console.conversation]] over `conversations`, in a transaction of its own on `dataSource`
-    * at `opener`'s maintenance.
-    */
-  private[engine] def conversation(
-      dataSource: DataSource,
-      opener: Opener,
-      conversations: ConversationStore
-  )(origin: Origin, by: Account): Either[StoreError, ConversationId] =
-    transaction(dataSource, opener)(
-      grit.dbos.sql.SqlRooms
-        .label(origin)
-        .flatMap(conversations.findOrCreate(origin, by, _))
-        .map(_.id)
-    )
-
-  /** [[Console.find]] over `conversations`, in a transaction of its own on `dataSource` at
-    * `opener`'s maintenance.
-    */
-  private[engine] def find(
-      dataSource: DataSource,
-      opener: Opener,
-      conversations: ConversationStore
-  )(origin: Origin): Either[StoreError, Option[ConversationId]] =
-    transaction(dataSource, opener)(conversations.find(origin).map(_.map(_.id)))
-
   /** Runs `body` in a transaction of its own on `dataSource`, at `opener`'s maintenance:
     * committed on `Right`, rolled back otherwise; the opener's error, and no body run, when the
     * transaction cannot open.
@@ -203,8 +190,8 @@ object Link {
 /** A [[Link]] to an engine another process runs. */
 private[engine] final class Attached(
     config: DbConfig,
-    dataSource: HikariDataSource,
-    client: DBOSClient,
+    private[engine] val dataSource: HikariDataSource,
+    private[engine] val client: DBOSClient,
     epoch: String,
     identity: ProcessIdentity,
     val budget: Budget,
@@ -219,9 +206,6 @@ private[engine] final class Attached(
 
   val administration: grit.core.admin.Administration =
     new grit.dbos.sql.SqlAdministration(jot, opener)
-
-  def commands(plugins: Vector[grit.core.plugin.Plugin]): grit.core.edge.PluginCommands^ =
-    new grit.dbos.sql.SqlPluginCommands(dataSource, opener, plugins, reads, keeper, claims)
 
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
@@ -247,20 +231,6 @@ private[engine] final class Attached(
     )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
-
-  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
-    Link.conversation(dataSource, opener, conversations)(origin, by)
-
-  def find(origin: Origin): Either[StoreError, Option[ConversationId]] =
-    Link.find(dataSource, opener, conversations)(origin)
-
-  def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
-
-  def steps(turn: TurnRef): Vector[RecordedStep] = Link.steps(client, turn)
-
-  def stream(turn: TurnRef, key: String): Iterator[String] = Link.stream(client, turn, key)
-
-  def awaitTurn(turn: TurnRef): String = Link.awaitTurn(client, turn)
 
   def holder(): Option[Holder] = EngineLock.holder(dataSource)
 
