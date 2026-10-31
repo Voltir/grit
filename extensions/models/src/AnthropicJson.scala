@@ -102,9 +102,12 @@ object AnthropicJson {
     */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
-      root <- body.objOpt.toRight(unreadable("not an object"))
+      root <- body.objOpt.toRight(ProviderHttp.unreadable("not an object"))
       _ <- refusal(root)
-      content <- root.get("content").flatMap(_.arrOpt).toRight(unreadable("no content"))
+      content <- root
+        .get("content")
+        .flatMap(_.arrOpt)
+        .toRight(ProviderHttp.unreadable("no content"))
       blocks <- content.toVector
         .map(blockOf)
         .foldLeft[Either[ProviderError, Vector[AssistantBlock]]](Right(Vector.empty)) { (acc, b) =>
@@ -122,24 +125,9 @@ object AnthropicJson {
       )
     }
 
-  /** The error in a non-200 response with status `status`, as `HTTP <status>: <message>
-    * (<type>)`, or the body's text when it is not Anthropic's error shape:
-    * [[ProviderError.Unavailable]] for a status another try may get past
-    * ([[ProviderHttp.transient]]), [[ProviderError.Refused]] for any other.
-    */
-  def error(status: Int, body: String): ProviderError = {
-    val detail = scala.util
-      .Try(ujson.read(body))
-      .toOption
-      .flatMap(_.objOpt)
-      .flatMap(_.get("error"))
-      .flatMap(_.objOpt)
-      .map(describe)
-      .getOrElse(body.trim.take(200))
-    val cause = s"HTTP $status: $detail"
-    if (ProviderHttp.transient(status)) ProviderError.Unavailable(cause)
-    else ProviderError.Refused(cause)
-  }
+  /** [[ProviderHttp.httpError]], its detail `<message> (<type>)`. */
+  def error(status: Int, body: String): ProviderError =
+    ProviderHttp.httpError(status, body, describe)
 
   /** An `error` event sent after the 200, as `model error: <message> (<type>)`:
     * [[ProviderError.Unavailable]] when its type is `overloaded_error` or `api_error`,
@@ -237,8 +225,8 @@ object AnthropicJson {
       case Some("redacted_thinking") => Right(Vector(AssistantBlock.Reasoning("", Some(block))))
       case Some("tool_use") =>
         for {
-          id <- str("id").toRight(unreadable("tool call without an id"))
-          name <- str("name").toRight(unreadable("tool call without a name"))
+          id <- str("id").toRight(ProviderHttp.unreadable("tool call without an id"))
+          name <- str("name").toRight(ProviderHttp.unreadable("tool call without a name"))
         } yield Vector(
           AssistantBlock.ToolCall(ToolCallId(id), name, ToolArguments.read(b.get("input")))
         )
@@ -268,6 +256,4 @@ object AnthropicJson {
     error.get("type").flatMap(_.strOpt).fold(message)(t => s"$message ($t)")
   }
 
-  private def unreadable(why: String): ProviderError =
-    ProviderError.Refused(s"unreadable response: $why")
 }

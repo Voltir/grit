@@ -22,6 +22,29 @@ private[models] object ProviderHttp {
     */
   def transient(status: Int): Boolean = status == 408 || status == 429 || status / 100 == 5
 
+  /** A non-200 response's error, `HTTP <status>: ` then its body's `error` object as `describe`
+    * writes it, else the body trimmed to 200 characters; `Unavailable` when [[transient]].
+    */
+  def httpError(
+      status: Int,
+      body: String,
+      describe: collection.Map[String, ujson.Value] => String
+  ): ProviderError = {
+    val detail = scala.util
+      .Try(ujson.read(body))
+      .toOption
+      .flatMap(_.objOpt)
+      .flatMap(_.get("error"))
+      .flatMap(_.objOpt)
+      .map(describe)
+      .getOrElse(body.trim.take(200))
+    val cause = s"HTTP $status: $detail"
+    if (transient(status)) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
+  }
+
+  /** `unreadable response: <why>`. */
+  def unreadable(why: String): ProviderError = ProviderError.Refused(s"unreadable response: $why")
+
   /** `body` POSTed to `endpoint` as JSON with `headers` besides its content type; the response
     * must begin within `timeout`.
     */

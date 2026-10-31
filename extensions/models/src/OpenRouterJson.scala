@@ -122,16 +122,19 @@ object OpenRouterJson {
     */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
-      root <- body.objOpt.toRight(unreadable("not an object"))
+      root <- body.objOpt.toRight(ProviderHttp.unreadable("not an object"))
       _ <- errorIn(root)
       choice <- root
         .get("choices")
         .flatMap(_.arrOpt)
         .flatMap(_.headOption)
         .flatMap(_.objOpt)
-        .toRight(unreadable("no choices"))
+        .toRight(ProviderHttp.unreadable("no choices"))
       _ <- errorIn(choice)
-      message <- choice.get("message").flatMap(_.objOpt).toRight(unreadable("no message"))
+      message <- choice
+        .get("message")
+        .flatMap(_.objOpt)
+        .toRight(ProviderHttp.unreadable("no message"))
       blocks <- blockList(message)
     } yield Message.Assistant(
       blocks,
@@ -141,23 +144,9 @@ object OpenRouterJson {
       root.get("provider").flatMap(_.strOpt)
     )
 
-  /** The error in a non-200 response with status `status`: [[ProviderError.Unavailable]]
-    * for a status another try may get past ([[ProviderHttp.transient]]),
-    * [[ProviderError.Refused]] for any other.
-    */
-  def error(status: Int, body: String): ProviderError = {
-    val detail = scala.util
-      .Try(ujson.read(body))
-      .toOption
-      .flatMap(_.objOpt)
-      .flatMap(_.get("error"))
-      .flatMap(_.objOpt)
-      .map(describe)
-      .getOrElse(body.trim.take(200))
-    val cause = s"HTTP $status: $detail"
-    if (ProviderHttp.transient(status)) ProviderError.Unavailable(cause)
-    else ProviderError.Refused(cause)
-  }
+  /** [[ProviderHttp.httpError]], its detail `<message> (<error_type>)`. */
+  def error(status: Int, body: String): ProviderError =
+    ProviderHttp.httpError(status, body, describe)
 
   /** The model error `error`, an OpenRouter error object sent after the 200, as `model
     * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[ProviderHttp.transient]]
@@ -200,13 +189,19 @@ object OpenRouterJson {
     val calls =
       message.get("tool_calls").flatMap(_.arrOpt).getOrElse(Seq.empty).toVector.map { call =>
         for {
-          c <- call.objOpt.toRight(unreadable("tool call is not an object"))
-          id <- c.get("id").flatMap(_.strOpt).toRight(unreadable("tool call without an id"))
+          c <- call.objOpt.toRight(ProviderHttp.unreadable("tool call is not an object"))
+          id <- c
+            .get("id")
+            .flatMap(_.strOpt)
+            .toRight(ProviderHttp.unreadable("tool call without an id"))
           f <- c
             .get("function")
             .flatMap(_.objOpt)
-            .toRight(unreadable("tool call without a function"))
-          name <- f.get("name").flatMap(_.strOpt).toRight(unreadable("tool call without a name"))
+            .toRight(ProviderHttp.unreadable("tool call without a function"))
+          name <- f
+            .get("name")
+            .flatMap(_.strOpt)
+            .toRight(ProviderHttp.unreadable("tool call without a name"))
         } yield AssistantBlock.ToolCall(
           ToolCallId(id),
           name,
@@ -243,6 +238,4 @@ object OpenRouterJson {
     )
   }
 
-  private def unreadable(why: String): ProviderError =
-    ProviderError.Refused(s"unreadable response: $why")
 }
