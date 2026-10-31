@@ -121,6 +121,25 @@ object LogJsonTests extends TestSuite {
         Right(Log(header, Vector(answered, failed, skipped), Some(footer)))
     }
 
+    test("a row's usage is read back with its cache reads and writes") {
+      val cachedRow: Row[Vector[Weights]] = Row(
+        Suite.Triage,
+        id("C1/1727000000.000200"),
+        1,
+        Digest.text("request"),
+        key,
+        "jev-1.13.0",
+        None,
+        Outcome.Answered(Vector(Weights.YesNo(0.5))),
+        Usage(Tokens(1021), Tokens(3), Tokens(800), Some(BigDecimal("0.00002")), Tokens(150)),
+        412.millis,
+        false,
+        None
+      )
+      LogJson.read[Vector[Weights]](Vector(LogJson.header(header), LogJson.row(cachedRow))) ==>
+        Right(Log(header, Vector(cachedRow), None))
+    }
+
     test("a header with nothing optional, and a log without a footer, read back") {
       LogJson.read[Vector[Weights]](Vector(LogJson.header(bareHeader), LogJson.row(answered))) ==>
         Right(Log(bareHeader, Vector(answered), None))
@@ -208,7 +227,7 @@ object LogJsonTests extends TestSuite {
       LogJson.row(answered) ==>
         s"""{"row":{"suite":"triage","case":"C1/1727000000.000200","repeat":2,"request":"${Digest
             .text("request")
-            .hex}","key":"${"ab" * 32}","requested":"jev-1.13.0","reported":"jev-1.13.0","outcome":{"answered":[{"chosen":1,"probabilities":[0.1,0.7,0.05,0.05,0.1],"confidence":0.625},{"yes":0.25},{"yes":0.9},{"yes":0}]},"usage":{"input":1021,"output":3,"cached_input":0,"cost_usd":"0.000042882"},"latency_ms":412,"cached":true,"focus":"open"}}"""
+            .hex}","key":"${"ab" * 32}","requested":"jev-1.13.0","reported":"jev-1.13.0","outcome":{"answered":[{"chosen":1,"probabilities":[0.1,0.7,0.05,0.05,0.1],"confidence":0.625},{"yes":0.25},{"yes":0.9},{"yes":0}]},"usage":{"input":1021,"output":3,"cachedInput":0,"costUsd":"0.000042882"},"latency_ms":412,"cached":true,"focus":"open"}}"""
     }
   }
 }

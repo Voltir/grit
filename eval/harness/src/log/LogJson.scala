@@ -8,8 +8,7 @@ import grit.core.either.Traversal.traverse
 import grit.core.id.QuestionName
 import grit.core.json.Fields
 import grit.core.json.Fields.opt
-import grit.core.message.{Tokens, Usage}
-import grit.core.store.Focus
+import grit.core.store.{Focus, PayloadJson}
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
 import grit.eval.harness.capture.{CaptureJson, CaseId, Digest, Failure}
 
@@ -174,7 +173,7 @@ object LogJson {
           case Outcome.Failed(failure) => ujson.Obj("failed" -> Failure.written(failure))
           case Outcome.Skipped => ujson.Str("skipped")
         }),
-        "usage" -> writeUsage(r.usage),
+        "usage" -> PayloadJson.writeUsage(r.usage),
         "latency_ms" -> r.latency.toMillis.toDouble,
         "cached" -> r.cached,
         "focus" -> r.focus.fold[ujson.Value](ujson.Null)(f => ujson.Str(writeFocus(f)))
@@ -301,7 +300,7 @@ object LogJson {
             .map(Outcome.Failed(_))
         case _ => Left("row: outcome is neither answered, failed nor skipped")
       }
-      usage <- f.obj("usage").flatMap(readUsage)
+      usage <- f.obj("usage").flatMap(PayloadJson.readUsage)
       latency <- f.millis("latency_ms")
       cached <- f.bool("cached")
       focus <- f
@@ -332,25 +331,6 @@ object LogJson {
       failed <- f.int("failed")
       skipped <- f.int("skipped")
     } yield Footer(spent, answered, cached, failed, skipped)
-  }
-
-  /** Tokens as whole numbers; the cost as a decimal string, so it keeps every digit. */
-  def writeUsage(u: Usage): ujson.Value = ujson.Obj(
-    "input" -> Tokens.value(u.input).toDouble,
-    "output" -> Tokens.value(u.output).toDouble,
-    "cached_input" -> Tokens.value(u.cacheRead).toDouble,
-    "cost_usd" -> u.costUsd.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString))
-  )
-
-  /** A usage as [[writeUsage]] writes it. */
-  def readUsage(v: ujson.Value): Either[String, Usage] = {
-    val f = Fields("usage", v)
-    for {
-      input <- f.long("input")
-      output <- f.long("output")
-      cachedInput <- f.long("cached_input")
-      cost <- f.optional("cost_usd").flatMap(opt(_)(_ => f.decimal("cost_usd")))
-    } yield Usage(Tokens(input), Tokens(output), Tokens(cachedInput), cost)
   }
 
   /** `f`'s written name: `focused` or `open`. */

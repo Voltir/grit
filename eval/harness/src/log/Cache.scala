@@ -9,6 +9,7 @@ import scala.util.control.NonFatal
 
 import grit.core.json.Fields
 import grit.core.message.Usage
+import grit.core.store.PayloadJson
 
 /** An answer as the cache keeps it: what came back, what the call consumed, the model that
   * `reported` answering, and how long the original call took.
@@ -31,7 +32,7 @@ final class Cache[A] private (dir: Option[Path], codec: Codec[A]) extends caps.S
           val f = Fields("cached", v)
           for {
             answer <- f.field("answer").flatMap(codec.read)
-            usage <- f.obj("usage").flatMap(LogJson.readUsage)
+            usage <- f.obj("usage").flatMap(PayloadJson.readUsage)
             reported <- f.str("reported")
             latency <- f.millis("latency_ms")
           } yield Some(Cached(answer, usage, reported, latency))
@@ -47,7 +48,7 @@ final class Cache[A] private (dir: Option[Path], codec: Codec[A]) extends caps.S
     val text = ujson
       .Obj(
         "answer" -> codec.write(c.answer),
-        "usage" -> LogJson.writeUsage(c.usage),
+        "usage" -> PayloadJson.writeUsage(c.usage),
         "reported" -> c.reported,
         "latency_ms" -> c.latency.toMillis.toDouble
       )
