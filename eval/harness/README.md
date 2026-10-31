@@ -36,6 +36,9 @@ Packages, each importing only those above it:
 - **`stats`**: estimates and proportions with their intervals, clustered, over Student's t and
   Wilson's interval. Pure, naming nothing of grit's. A report shows a price as core's
   `Cost.cents` writes it (`0.29¢`).
+- **`bench`**: the coder bench's keeping: each trial of a harness at a frozen task and its
+  transcript, kept through `grit.dbos.internal`'s `BenchRows` over a blob store that is the
+  bench's alone, one per bench database. It reports and gates nothing yet.
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt

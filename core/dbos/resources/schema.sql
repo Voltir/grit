@@ -1511,3 +1511,46 @@ CREATE TABLE IF NOT EXISTS grit.pieces (
 -- to_bm25query(q, 'grit.idx_pieces_bm25').
 CREATE INDEX IF NOT EXISTS idx_pieces_bm25 ON grit.pieces
     USING bm25 (search_text) WITH (text_config = 'english');
+
+-- The bench's trials (grit.dbos.internal.BenchRows): one harness's go at a frozen task, holding
+-- only what its session lacks. The session is named by `harness` and `local`, never by a key:
+-- whichever edge saw it records it, perhaps in another database, under its own retention.
+-- `id` is the order recorded, which the cap reads. `calls_before_edit` and `read_before_edit`
+-- are NULL together: the trial made no edit.
+-- Retention: capped: every trial but the newest BenchRows.Kept (60) is deleted by the record
+-- that passes it. Steady state: 60 rows of about 200 bytes.
+CREATE TABLE IF NOT EXISTS grit.bench_trials (
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    harness            TEXT NOT NULL CHECK (harness ~ '^[a-z][a-z0-9-]{0,63}$'),
+    local              TEXT NOT NULL CHECK (length(local) BETWEEN 1 AND 200),
+    task               TEXT NOT NULL CHECK (task ~ '^[a-z0-9][a-z0-9-]{0,79}$'),
+    model              TEXT NOT NULL CHECK (length(model) BETWEEN 1 AND 200),
+    input_tokens       BIGINT NOT NULL CHECK (input_tokens >= 0),
+    cache_read_tokens  BIGINT NOT NULL CHECK (cache_read_tokens >= 0),
+    cache_write_tokens BIGINT NOT NULL CHECK (cache_write_tokens >= 0),
+    output_tokens      BIGINT NOT NULL CHECK (output_tokens >= 0),
+    cost_usd           NUMERIC CHECK (cost_usd >= 0),
+    calls              INT NOT NULL CHECK (calls >= 0),
+    wall_ms            BIGINT NOT NULL CHECK (wall_ms >= 0),
+    read_before_edit   BIGINT CHECK (read_before_edit >= 0),
+    calls_before_edit  INT CHECK (calls_before_edit BETWEEN 0 AND calls),
+    passed             BOOLEAN NOT NULL,
+    distance           BIGINT CHECK (distance >= 0),
+    UNIQUE (harness, local),
+    CHECK (cache_read_tokens + cache_write_tokens <= input_tokens),
+    CHECK ((read_before_edit IS NULL) = (calls_before_edit IS NULL))
+);
+
+-- A trial's trajectory: its harness's transcript, kept as a blob of the bench's own store under
+-- `sha256`, at most BenchRows.Longest (32 MiB) bytes, `clipped` when the transcript ran past
+-- them. `room_id` is never set: it is there so SqlClearance.kept reads the row by its label.
+-- Retention: capped: with its trial, by cascade; its blob is removed by the next prune once no
+-- row names it. Steady state: 60 rows of about 100 bytes; blobs at most 60 × 32 MiB.
+CREATE TABLE IF NOT EXISTS grit.bench_trajectories (
+    trial_id          BIGINT PRIMARY KEY REFERENCES grit.bench_trials(id) ON DELETE CASCADE,
+    sha256            TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    bytes             BIGINT NOT NULL CHECK (bytes BETWEEN 0 AND 33554432),
+    clipped           BOOLEAN NOT NULL,
+    classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
+    room_id           UUID
+);
