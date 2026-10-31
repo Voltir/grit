@@ -46,7 +46,11 @@ object Bench {
       transcript: InputStream^,
       label: Label
   ): Either[String, (BenchRows.Recorded, BenchRows.Pruned)] = {
-    // Apart from the stream: the body reads it while `receive` holds the stream.
+    // Untracked mutable state, held apart from the stream so `receive`'s body may read it while
+    // `receive` holds the stream. No one else can see it change: it is made in this call,
+    // reaches only this call's Clip and body, and never leaves `keep`; Clip sets it only while
+    // `receive` reads the stream to its end, and the body reads it only after that, on the same
+    // thread, so the body reads the final value.
     val clipped = new AtomicBoolean(false)
     val rows = BenchRows(blobs)
     blobs
@@ -71,8 +75,8 @@ object Bench {
       .flatMap(_.left.map(e => s"the prune's blobs: $e"))
   }
 
-  /** At most `max` bytes of `in`, read one at a time; `clipped` set once a byte past them was
-    * read.
+  /** At most `max` bytes of `in`, a bulk read taking as many of them as it asks for; `clipped`
+    * set once a byte past them was read.
     */
   private[bench] final class Clip(in: InputStream^, max: Long, clipped: AtomicBoolean)
       extends InputStream {
@@ -91,5 +95,17 @@ object Bench {
         clipped.set(in.read() >= 0)
         -1
       }
+
+    override def read(b: Array[Byte], off: Int, len: Int): Int =
+      if (len == 0) 0
+      else if (clipped.get) -1
+      else if (taken < max) {
+        // Cast: `b` is the buffer this read's caller handed it, passed on to `in.read`, which
+        // fills it before returning, as InputStream's contract has it; this stream keeps no
+        // reference to it, so no write to it can come from here after the call.
+        val n = in.read(b.asInstanceOf[Array[Byte]], off, math.min(len.toLong, max - taken).toInt)
+        if (n > 0) taken += n
+        n
+      } else read()
   }
 }
