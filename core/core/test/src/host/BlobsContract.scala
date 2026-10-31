@@ -67,6 +67,33 @@ abstract class BlobsContract extends TestSuite {
           (Right(Vector(sha("gone"))), Right(()), Right(()), None)
       }
     }
+    test("removeAllBut removes every blob not named and keeps the named, counting them") {
+      fresh { blobs =>
+        for (s <- Vector("one", "two", "three"))
+          blobs.receive(bytes(s), 10)(_.keep()) ==> Right(Right(()))
+        (blobs.removeAllBut(Set(sha("two"), sha("never kept"))), blobs.kept()) ==>
+          (Right(2), Right(Vector(sha("two"))))
+      }
+    }
+    test("a removal failing partway leaves the blobs removed before it removed and the rest kept") {
+      fresh { blobs =>
+        for (s <- Vector("one", "two", "three"))
+          blobs.receive(bytes(s), 10)(_.keep()) ==> Right(Right(()))
+        val removes = new java.util.concurrent.atomic.AtomicInteger(0)
+        // `blobs`, but its second removal fails.
+        val failing = new Blobs {
+          def receive[A](in: InputStream^, max: Long)(body: Pending^ => A) =
+            blobs.receive(in, max)(body)
+          def at(s: Sha256) = blobs.at(s)
+          def kept() = blobs.kept()
+          def remove(s: Sha256) =
+            if (removes.incrementAndGet() == 2) Left(BlobError.Failed("disk")) else blobs.remove(s)
+          def clearPending(before: Instant) = blobs.clearPending(before)
+        }
+        (failing.removeAllBut(Set.empty), blobs.kept().map(_.size)) ==>
+          (Left(BlobError.Failed("disk")), Right(2))
+      }
+    }
     test("clearing removes the pending blobs written before the time given, counting them") {
       fresh { blobs =>
         val later = Instant.now().plusSeconds(3600)

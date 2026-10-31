@@ -80,14 +80,7 @@ final class FileArea(
               )
             }
           // Under the lock, so no put is keeping a blob its row does not name yet.
-          named = files.map(_.sha256).toSet
-          removed = blobs.kept().flatMap { kept =>
-            kept
-              .filterNot(named)
-              .foldLeft[Either[BlobError, Int]](Right(0))((n, sha) =>
-                n.flatMap(k => blobs.remove(sha).map(_ => k + 1))
-              )
-          }
+          removed = blobs.removeAllBut(files.map(_.sha256).toSet)
         } yield (marked, removed)
       }
       .left

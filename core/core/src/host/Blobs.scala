@@ -26,6 +26,17 @@ trait Blobs extends caps.SharedCapability {
   /** `sha256`'s blob removed; nothing when it is not kept. */
   def remove(sha256: Sha256): Either[BlobError, Unit]
 
+  /** Every blob kept but those in `named` removed, how many. `Left` when the machine fails
+    * partway: the blobs removed before it stay removed, the rest stay kept.
+    */
+  final def removeAllBut(named: Set[Sha256]): Either[BlobError, Int] =
+    kept().flatMap(
+      _.filterNot(named)
+        .foldLeft[Either[BlobError, Int]](Right(0))((n, sha) =>
+          n.flatMap(k => remove(sha).map(_ => k + 1))
+        )
+    )
+
   /** Every pending blob last written before `before` removed, how many: what a receive cut short
     * by a crash left. One still being written is newer.
     */
