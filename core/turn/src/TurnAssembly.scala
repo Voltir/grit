@@ -13,13 +13,18 @@ import grit.core.context.{
   Querying,
   Results,
   Retrieved,
+  Shown,
   Window
 }
+import grit.core.document.Document
 import grit.core.durable.{Flow, Step}
-import grit.core.id.EntryId
+import grit.core.id.{ConversationId, EntryId, EntrySeq, Harness, SessionId, TurnRef, TurnSeq}
+import grit.core.message.Tokens
 import grit.core.model.Pins
 import grit.core.period.Probability
+import grit.core.provider.TokenEstimator
 import grit.core.route.Routed
+import grit.core.session.{Session, SessionDigest}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
 
@@ -421,7 +426,10 @@ private[turn] object TurnAssembly {
       (p, packing) => projecting(r.env, p, packing).map(_.window)
     )
 
-  /** The `assemble` body: `p`'s projection, packed as `packing` says. */
+  /** The `assemble` body: `p`'s projection, packed as `packing` says; at a boundary, with the
+    * brief of the holder its conversation works as and its session's digest first ([[standing]]),
+    * what they cost reserved from what the assembler draws.
+    */
   private def projecting(
       env: TurnEnv^,
       p: Placed,
@@ -431,11 +439,89 @@ private[turn] object TurnAssembly {
       .picked(env)
       .flatMap { pins =>
         val db = pins.reads(env.db)
-        request(env, db, p)
-          .flatMap(env.assembler.assemble(_, packing)(using db))
-          .left
-          .map(failed)
+        (for {
+          stands <- standing(env, db, p.turn)
+          asked <- request(env, db, p)
+          projected <- env.assembler.assemble(asked.copy(reserved = stands.reserved), packing)(using
+            db
+          )
+        } yield projected match {
+          case appended: Projection.Appended => appended
+          case Projection.Boundary(window, cost) => stands.packed(window, cost)
+        }).left.map(failed)
       }
+
+  /** 2,500: the most characters a session's digest at a boundary shows. */
+  val DigestChars: Int = 2500
+
+  /** What a boundary of `turn`'s window shows before what its assembler draws, read through
+    * `db`: the brief of the holder its conversation's origin works as
+    * ([[TurnSessions.holder]], [[grit.core.document.DocumentSearch.briefOf]] at its first entry's
+    * time), and what its conversation's session did lately (none when the turn does not read
+    * it).
+    */
+  private def standing(env: TurnEnv^, db: Db^, turn: TurnRef): Either[AssemblyError, Standing] =
+    db.read(Subject.Turn(turn)) {
+      for {
+        found <- env.hosting.conversations.get(turn.conversationId)
+        own <- env.records.entries.ofTurn(turn)
+        rootAt = own.map(_.createdAt).minOption
+        brief <- (found.flatMap(c => env.records.sessions.holder(c.origin)), rootAt) match {
+          case (Some(holder), Some(at)) => env.records.documents.briefOf(holder, at)
+          case _ => Right(None)
+        }
+        lately <- SessionId
+          .of(Harness.Grit, ConversationId.value(turn.conversationId))
+          .fold(
+            _ => Right(None),
+            id =>
+              env.records.sessions.store.lately(id) match {
+                case Left(StoreError.Invalid(_)) => Right(None)
+                case other => other
+              }
+          )
+        previous <-
+          if (turn.turnSeq > TurnSeq.First)
+            env.records.entries.ofTurn(
+              TurnRef(turn.conversationId, TurnSeq(TurnSeq.value(turn.turnSeq) - 1))
+            )
+          else Right(Vector.empty)
+      } yield Standing(brief, lately, previous.map(_.seq).toSet, env.records.estimator)
+    }.left
+      .map(AssemblyError.Store(_))
+
+  /** What a boundary shows first: `brief`, and `lately`'s digest, for a window that holds what
+    * the session last said when it holds an entry of the turn before (`previous`), costed by
+    * `estimator`.
+    */
+  private final case class Standing(
+      brief: Option[Document],
+      lately: Option[Session.Lately],
+      previous: Set[EntrySeq],
+      estimator: TokenEstimator
+  ) {
+
+    /** What the brief and the longer of the digests cost as shown. */
+    def reserved: Tokens =
+      brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d))) +
+        digest(SessionDigest.Window.LacksLastSaid).fold(Tokens.Zero)(d =>
+          estimator.message(Shown.sessionLog(d))
+        )
+
+    /** `window`, costing `cost`, with the brief and the digest that fits it, and their cost. */
+    def packed(window: Window, cost: Tokens): Projection = {
+      val said =
+        if (window.entries.exists(previous.contains)) SessionDigest.Window.HoldsLastSaid
+        else SessionDigest.Window.LacksLastSaid
+      val shown = digest(said)
+      val added = brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d))) +
+        shown.fold(Tokens.Zero)(d => estimator.message(Shown.sessionLog(d)))
+      Projection.Boundary(window.copy(brief = brief.map(_.version), digest = shown), cost + added)
+    }
+
+    private def digest(said: SessionDigest.Window): Option[String] =
+      lately.map(SessionDigest.of(_, said, DigestChars)).filter(_.nonEmpty)
+  }
 
   /** `carried` ([[TurnSteps.Env.carried]]). */
   private val carried: Step[Env, Placed, Either[TurnFailure, TurnBasis]] =

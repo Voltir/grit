@@ -48,6 +48,14 @@ enum Tag(val name: String, val kind: Tag.Kind) extends caps.Pure {
 
   /** An extraction's one text. */
   case Item extends Tag("item", Tag.Kind.Material)
+
+  /** The brief of the work a conversation claimed, as it stood when claimed: the task its turns
+    * work from.
+    */
+  case Brief extends Tag("brief", Tag.Kind.Guidance)
+
+  /** What a conversation has done with its tools, as grit logged it. */
+  case SessionLog extends Tag("session_log", Tag.Kind.Material)
 }
 
 object Tag {

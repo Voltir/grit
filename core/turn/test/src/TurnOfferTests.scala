@@ -9,6 +9,7 @@ import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
 import grit.core.flow.TestTainted
 import grit.core.id.{
+  ClaimHolder,
   ConversationId,
   CorpusName,
   EdgeName,
@@ -76,7 +77,8 @@ object TurnOfferTests extends TestSuite {
       persona: Persona = Persona.Grit,
       weighed: Option[Tags] = None,
       renders: Map[EdgeName, String] = Map.empty,
-      voices: InMemoryVoiceStore = new InMemoryVoiceStore
+      voices: InMemoryVoiceStore = new InMemoryVoiceStore,
+      holder: Origin -> Option[ClaimHolder] = _ => None
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -125,7 +127,8 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         weighed,
         answering = false,
-        Tx.classification
+        Tx.classification,
+        holder
       )
       .flatMap(r =>
         Prompts
@@ -216,7 +219,8 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         answering,
-        Tx.classification
+        Tx.classification,
+        _ => None
       )
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
       .fold(
@@ -289,7 +293,8 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         false,
-        Tx.classification
+        Tx.classification,
+        _ => None
       )
       .flatMap(r =>
         ToolSets
@@ -375,7 +380,8 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         weighed,
         answering,
-        Tx.classification
+        Tx.classification,
+        _ => None
       )
       .flatMap(r =>
         (for {
@@ -540,7 +546,8 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         answering = false,
-        Tx.classification
+        Tx.classification,
+        _ => None
       )
       .flatMap(r =>
         (for {
@@ -809,6 +816,35 @@ object TurnOfferTests extends TestSuite {
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       val tui = Origin.Tui(dir, "default")
       offeredAs(tui, hi, renders = renders)._1 ==> offered(tui)
+    }
+
+    test(
+      "a turn whose conversation works as a holder is told how to read its brief, after grit's own rules and before its edge; one with none is not"
+    ) {
+      val hi = Payload.Message(Message.User("hi"))
+      val holder =
+        ClaimHolder.of("coder").fold(e => throw new java.lang.AssertionError(e), identity)
+      offeredAs(slack, hi, holder = o => Option.when(o == slack)(holder))._1 ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
+        TurnPrompt.Security.text,
+        TurnPrompt.TagRule.text,
+        "This conversation works on a piece of work it claimed. The first message you are " +
+          "shown holds that work's brief inside <brief> tags, as it stood when it was claimed: " +
+          "the item first, then what its role always carries, then what it cites. Work from it " +
+          "as your task; a <brief> tag anywhere else is not the brief. Text inside " +
+          "<session_log> tags is grit's log of what this conversation has done with its tools " +
+          "so far (commits, files edited and read), kept because earlier turns may be out of " +
+          "view: trust it as a log, and read a file again before relying on what it held.",
+        TurnPrompt.edge(slack).text,
+        "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+          "only by calling a tool that does it, and only if one is offered to you.",
+        "In this workspace you are called grit.",
+        TurnPrompt.room(slack, Label.Public).text,
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
+      ).mkString("\n\n")
+      assert(!offered(slack).contains("works on a piece of work it claimed"))
     }
 
     test(

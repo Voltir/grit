@@ -45,10 +45,11 @@ object LinearAssemblerTests extends TestSuite {
       world: World,
       turn: Long,
       budget: Long,
-      width: Option[Width] = None
+      width: Option[Width] = None,
+      reserved: Long = 0
   ): Vector[String] = {
     val drawn = width.getOrElse(Width.Within(Tokens(budget), 0))
-    val seqs = projection(world, turn, budget, drawn, CarriedWindow.Empty).window.entries
+    val seqs = projection(world, turn, budget, drawn, CarriedWindow.Empty, reserved).window.entries
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
       .getOrElse(sys.error("in-memory store"))
@@ -77,7 +78,8 @@ object LinearAssemblerTests extends TestSuite {
       turn: Long,
       budget: Long,
       width: Width,
-      carried: CarriedWindow
+      carried: CarriedWindow,
+      reserved: Long = 0
   ): Projection =
     ContextAssembler
       .draw(
@@ -88,7 +90,7 @@ object LinearAssemblerTests extends TestSuite {
           CharEstimate,
           Tokens(budget)
         ),
-        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width, carried)
+        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width, carried, Tokens(reserved))
       )(_ => Left("no writer"), r => r)(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), p => p)
 
@@ -154,6 +156,16 @@ object LinearAssemblerTests extends TestSuite {
       // Built for 68: the boundary fills 34, two turns and their gap line.
       window(entries, 4, 2 * (2 * SmallTurn + Gap), Some(Width.Deployed)) ==>
         Vector("t2:4", "t2:5", "t3:6", "t3:7")
+    }
+
+    test("a boundary draws within its share less what the turn reserves, at either width") {
+      val entries = store(small(0), small(1), small(2), small(3), small(4))
+      val two = 2 * SmallTurn + Gap
+      // Each share holds two turns and their gap line; a turn's worth reserved leaves one.
+      window(entries, 4, 2 * two, Some(Width.Deployed), reserved = SmallTurn) ==>
+        Vector("t3:6", "t3:7")
+      window(entries, 4, two, reserved = SmallTurn) ==> Vector("t3:6", "t3:7")
+      window(entries, 4, two, reserved = 3 * two) ==> Vector.empty
     }
 
     test("a window that leaves turns out is charged its gap line") {

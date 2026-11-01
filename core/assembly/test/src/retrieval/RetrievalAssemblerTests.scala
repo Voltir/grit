@@ -489,7 +489,8 @@ object RetrievalAssemblerTests extends TestSuite {
       query: Option[Pinned] = Some(QueryPin),
       admit: Results -> Results = r => Results(r.ranked, r.beyond),
       pieces: PieceSearch = new InMemoryPieces,
-      carried: CarriedWindow = CarriedWindow.Empty
+      carried: CarriedWindow = CarriedWindow.Empty,
+      reserved: Long = 0
   ): Projection = {
     val models = new Writing(writer, QueryPin)
     ContextAssembler
@@ -510,7 +511,8 @@ object RetrievalAssemblerTests extends TestSuite {
         AssemblyRequest(
           TurnRef(c1, TurnSeq(at)),
           width.getOrElse(Width.Within(Tokens(budget), Hits)),
-          carried
+          carried,
+          Tokens(reserved)
         )
       )(
         asked =>
@@ -1413,6 +1415,27 @@ object RetrievalAssemblerTests extends TestSuite {
       // Deployed, a boundary is drawn within half the budget, with the hits it was built with.
       at(114, Width.Deployed) ==> (Vector("t0", "t4", "t5"), Vector(Hits))
       at(112, Width.Deployed) ==> (Vector("t4", "t5"), Vector(Hits))
+    }
+
+    test("a boundary draws within its share less what the turn reserves, at either width") {
+      // As above: turn 0 is recalled within 57 and not within 56.
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      def at(width: Width, reserved: Long): Vector[String] = {
+        val world = store(turns*)
+        val w = projected(
+          world,
+          new Writer(Some("q000")),
+          114,
+          new Scripted("t0:1"),
+          width = Some(width),
+          reserved = reserved
+        ).window
+        turnsOf(world, w)
+      }
+      at(Width.Within(Tokens(57), 3), 0) ==> Vector("t0", "t4", "t5")
+      at(Width.Within(Tokens(57), 3), 1) ==> Vector("t4", "t5")
+      at(Width.Deployed, 0) ==> Vector("t0", "t4", "t5")
+      at(Width.Deployed, 1) ==> Vector("t4", "t5")
     }
 
     test("a turn elsewhere is costed as its section shows it, its speaker named") {

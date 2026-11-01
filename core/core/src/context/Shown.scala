@@ -9,7 +9,7 @@ import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
-import grit.core.prompt.Fenced
+import grit.core.prompt.{Fenced, Tag}
 import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 
 /** What the model is shown of an entry a window names: the one definition, which an
@@ -142,6 +142,26 @@ object Shown {
         bySeq.get(seq).flatMap(ClosingEntry.of).map(recorded(place, _))
     }
   }
+
+  /** A brief, the document [[grit.core.document.DocumentSearch.briefOf]] found, as one user
+    * message: its text fenced in [[Tag.Brief]], with `briefed`, the UTC date it was written.
+    */
+  def brief(document: Document): Message =
+    Message.User(
+      Fenced
+        .in(
+          Tag.Brief,
+          DocText.value(document.text),
+          "briefed" -> document.written.atOffset(ZoneOffset.UTC).toLocalDate.toString
+        )
+        .rendered
+    )
+
+  /** A session's digest ([[grit.core.session.SessionDigest]]) as one user message, fenced in
+    * [[Tag.SessionLog]].
+    */
+  def sessionLog(digest: String): Message =
+    Message.User(Fenced.in(Tag.SessionLog, digest).rendered)
 
   /** A document as one user message: "[doc] {label}, at {place.written}, {the UTC date it was
     * written}:", then its text as [[pasted]] shows it, then its pointer's line

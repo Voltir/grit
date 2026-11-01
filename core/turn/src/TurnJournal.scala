@@ -40,11 +40,13 @@ import grit.core.visibility.{Integrity, Label}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes, nearby sections, documents or pieces is the bare array of its
-    * entries' seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries": [...], "notes":
-    * [...]}`, with `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]),
-    * `"documents": [...]` when it has documents ([[PayloadJson.writeVersions]]), and
-    * `"pieces": [{"piece": id, "more": n}, ...]` when it has pieces ([[writeFound]]).
+  /** A window with no notes, nearby sections, documents, pieces, brief or digest is the bare
+    * array of its entries' seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries":
+    * [...], "notes": [...]}`, with `"nearby": [...]` too when it has sections
+    * ([[PayloadJson.writeNearby]]), `"documents": [...]` when it has documents
+    * ([[PayloadJson.writeVersions]]), `"pieces": [{"piece": id, "more": n}, ...]` when it has
+    * pieces ([[writeFound]]), `"brief": version` when it has a brief and `"digest": text` when
+    * it has a digest.
     */
   given window: Journaled[Either[TurnFailure, Window]] = outcome(writeWindow, readWindow)
 
@@ -111,12 +113,17 @@ private[turn] object TurnJournal {
   /** A window as [[window]] writes it. */
   private def writeWindow(w: Window): ujson.Value = {
     val ids = PayloadJson.writeSeqs(w.entries)
-    if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty) ids
+    if (
+      w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty &&
+      w.brief.isEmpty && w.digest.isEmpty
+    ) ids
     else {
       val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
       if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
       if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
       if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
+      w.brief.foreach(b => o("brief") = ujson.Num(DocumentVersionId.value(b).toDouble))
+      w.digest.foreach(d => o("digest") = d)
       o
     }
   }
@@ -162,7 +169,15 @@ private[turn] object TurnJournal {
               }
             case Some(_) => Left("window: pieces is not an array")
           }
-        } yield Window(ids, notes, nearby, documents, pieces)
+          brief <- o.value
+            .get("brief")
+            .fold(Right(Vector.empty))(v => PayloadJson.readVersions(ujson.Arr(v)))
+          digest <- o.value.get("digest") match {
+            case None => Right(None)
+            case Some(ujson.Str(d)) => Right(Some(d))
+            case Some(_) => Left("window: digest is not a string")
+          }
+        } yield Window(ids, notes, nearby, documents, pieces, brief.headOption, digest)
       case _ => Left("window: expected an array or an object")
     }
 

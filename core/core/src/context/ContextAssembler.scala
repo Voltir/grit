@@ -77,9 +77,24 @@ object ContextAssembler {
 }
 
 /** What an assembler is asked to build a window for, how wide the part it draws now may be,
-  * and the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear).
+  * the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear), and
+  * `reserved`, what the turn packs before a boundary's window ([[Window.brief]] and
+  * [[Window.digest]]), taken off what a boundary draws within under either width
+  * ([[boundary]]); an append ignores it.
   */
-final case class AssemblyRequest(turn: TurnRef, width: Width, carried: CarriedWindow)
+final case class AssemblyRequest(
+    turn: TurnRef,
+    width: Width,
+    carried: CarriedWindow,
+    reserved: Tokens = Tokens.Zero
+) {
+
+  /** What a boundary drawn within `share` may draw: `share` less [[reserved]], never below
+    * nothing.
+    */
+  def boundary(share: Tokens): Tokens =
+    Tokens(math.max(0L, Tokens.value(share) - Tokens.value(reserved)))
+}
 
 /** Where a window starts: drawn with no search, or a query to write first. */
 enum Prepared {
@@ -181,19 +196,24 @@ enum Width {
   case Within(budget: Tokens, hits: Int)
 }
 
-/** What the model sees before the turn's own messages: each of `nearby`'s sections, then each
-  * of `documents` under its plugin's label, then each of `pieces` under its plugin's label
-  * ([[Shown.piece]]), then the entries of its own conversation at `entries`, in that order; and
-  * notes on how they were chosen. A nearby entry, a document or a piece gone by the time the
-  * model is called is left out, as is a document or a piece whose plugin is no longer enabled,
-  * and a section left with no message is dropped; an own entry gone fails the turn.
+/** What the model sees before the turn's own messages: `brief` ([[Shown.brief]]), then each of
+  * `nearby`'s sections, then each of `documents` under its plugin's label, then each of `pieces`
+  * under its plugin's label ([[Shown.piece]]), then `digest` ([[Shown.sessionLog]]), then the
+  * entries of its own conversation at `entries`, in that order; and notes on how they were
+  * chosen. A nearby entry, a document (the brief too) or a piece gone by the time the model is
+  * called is left out, as is a document or a piece whose plugin is no longer enabled, and a
+  * section left with no message is dropped; an own entry gone fails the turn. Only a part drawn
+  * at a boundary holds a `brief`, the brief of the work its conversation's holder claimed, or a
+  * `digest`, what its session had done, as [[grit.core.session.SessionDigest.of]] drew it then.
   */
 final case class Window(
     entries: Vector[EntrySeq],
     notes: Vector[AssemblyNote] = Vector.empty,
     nearby: Vector[Nearby] = Vector.empty,
     documents: Vector[DocumentVersionId] = Vector.empty,
-    pieces: Vector[Retrieved.Piece] = Vector.empty
+    pieces: Vector[Retrieved.Piece] = Vector.empty,
+    brief: Option[DocumentVersionId] = None,
+    digest: Option[String] = None
 )
 
 object Window {
@@ -208,7 +228,9 @@ object Window {
       Vector(AssemblyNote.Recalled(record.recalled)).filter(_ => record.recalled.nonEmpty),
       record.nearby,
       record.documents,
-      record.pieces.map((id, more) => Retrieved.Piece(id, more))
+      record.pieces.map((id, more) => Retrieved.Piece(id, more)),
+      record.brief,
+      record.digest
     )
 }
 

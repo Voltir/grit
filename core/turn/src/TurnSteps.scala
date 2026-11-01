@@ -118,7 +118,8 @@ private[turn] object TurnSteps {
             turn,
             weighed.flatMap(_.answers),
             answering,
-            routed.at
+            routed.at,
+            turnEnv.records.sessions.holder
           )
         )
         .flatMap(offered =>
@@ -1335,7 +1336,9 @@ private[turn] object TurnSteps {
               window.nearby,
               window.documents,
               window.pieces.map(p => (p.id, p.more)),
-              carry
+              carry,
+              window.brief,
+              window.digest
             ),
             at,
             level

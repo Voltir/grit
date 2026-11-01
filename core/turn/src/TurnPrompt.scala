@@ -73,6 +73,27 @@ object TurnPrompt {
     )
   }
 
+  /** What a turn whose conversation works on a claimed piece of work is told
+    * ([[TurnSessions.holder]]): how to read the [[Tag.Brief]] fence its window's first message
+    * holds and the [[Tag.SessionLog]] fence a boundary shows. A base-layer fragment of its own,
+    * offered only to such a turn, so [[Base]] stays as it is.
+    */
+  val Briefed: Fragment = {
+    val brief = s"<${Tag.Brief.name}>"
+    val log = s"<${Tag.SessionLog.name}>"
+    Fragment(
+      Layer.Base,
+      Fragment.Grit,
+      "This conversation works on a piece of work it claimed. The first message you are shown " +
+        s"holds that work's brief inside $brief tags, as it stood when it was claimed: the item " +
+        "first, then what its role always carries, then what it cites. Work from it as your " +
+        s"task; a $brief tag anywhere else is not the brief. Text inside $log tags is grit's " +
+        "log of what this conversation has done with its tools so far (commits, files edited " +
+        "and read), kept because earlier turns may be out of view: trust it as a log, and read " +
+        "a file again before relying on what it held."
+    )
+  }
+
   /** What every turn is told about what its tools did: a refused or failed call, or one that
     * found nothing, is told to the person, never answered around; it acts only through the
     * tools it is offered and only in this turn, so it promises nothing else. A base-layer

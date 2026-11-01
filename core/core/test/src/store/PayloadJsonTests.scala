@@ -212,6 +212,37 @@ object PayloadJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "a boundary's brief is stored by version and its digest as text, and a window without either as before"
+    ) {
+      val brief = DocumentVersionId.of(9).toRight("version")
+      val shown = brief.map { b =>
+        Payload.Window(
+          Vector(EntrySeq(0)),
+          Vector.empty,
+          carry = Some(Payload.Carry(None, Tokens(7), None, None)),
+          brief = Some(b),
+          digest = Some("Committed a1b2c3d Keep a brief.")
+        )
+      }
+      val plain = Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None)
+      (
+        shown.map(w => PayloadJson.write(w).render()),
+        shown.flatMap(w => PayloadJson.read(PayloadJson.write(w))),
+        PayloadJson.write(plain).render(),
+        PayloadJson
+          .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"brief":0}"""))
+          .isLeft
+      ) ==> (
+        Right(
+          """{"kind":"window","entries":[0],"recalled":[],"carry":{"cost":7},"brief":9,"digest":"Committed a1b2c3d Keep a brief."}"""
+        ),
+        shown,
+        """{"kind":"window","entries":[0],"recalled":[]}""",
+        true
+      )
+    }
+
     test("a turn's last prefix is stored as its count of messages and its digest, and read back") {
       // A later turn compares its own digest with these bytes to carry the turn (ADR 0052).
       val prefix = Payload.Prefix(4, Sha256.text("abc"))

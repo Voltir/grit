@@ -616,8 +616,8 @@ object MovesJournalTests extends TestSuite {
         TestPieces.pointer("f"),
         1
       )
-      // v1's form (no revision) of the same source and application, under today's framing
-      // (Declassifying.Template, which every rewrite form hashes).
+      // v1's form (no revision) of the same source and application, under the framing kept
+      // from before Tag.SessionLog (MovesJournal's Framings), as recorded histories hold it.
       val v1Rewrite = "v1:0a8fe49f35ecce8bd7d1c8fa3defb7b1b1bcc8bb6b7626374cf46d58db300b6a"
       val (r1, r2) =
         (MovesJournal.rewrite(source, "r1", applied), MovesJournal.rewrite(source, "r2", applied))
@@ -806,8 +806,8 @@ object MovesJournalTests extends TestSuite {
         MovesJournal.baseline(source, "r1", applied),
         MovesJournal.example(DeclassificationPolicy(team, 3), 1)
       ) ==> Vector(
-        "v3:93709e5202e09f489cd3ae1599fc237062621f151a100e72ced9d6f18c73d9d6",
-        "v3:db71504c0ed160fadab9ac24f8b13449b7a867ccd3b273ff0201b1758b438ddd",
+        "v3:578fd7f4a48a141384949c7b5e49bc4eafa1099896c65fdfbe3e16ec2ae4111c",
+        "v3:4e19d66de3839866dc81ed678c6ace0c2dbcc535604501746f1cb10f465d9c3b",
         "v3:eb1ed11d51bffa793e23e7b79313a7e754b725ad8760e51760b3677e602d2a4f"
       )
     }

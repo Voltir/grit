@@ -98,7 +98,8 @@ import grit.core.visibility.Subject
   * period and nothing elsewhere and no document or piece is to be drawn.
   *
   * A boundary at the deployed width is drawn within half of `budget`
-  * ([[LinearAssembler.share]]), recall filling to that share, not to `budget`. Given a carried
+  * ([[LinearAssembler.share]]), recall filling to that share, not to `budget`; at either width,
+  * less what the request reserves ([[AssemblyRequest.boundary]]). Given a carried
   * window it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
   * what a query finds that the carried window does not hold, filling to the same share of
   * `budget` with the carried window counted; it draws no closing, asked or strand section and
@@ -385,7 +386,7 @@ final class RetrievalAssembler(
       .map(AssemblyError.Store(_))
       .flatMap { read =>
         if (appending) appended(request, read, budget, hits)
-        else boundary(turn, read, budget, hits)
+        else boundary(turn, read, request.boundary(budget), hits)
       }
   }
 

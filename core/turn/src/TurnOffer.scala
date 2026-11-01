@@ -4,7 +4,7 @@ import java.time.ZoneId
 
 import grit.core.context.Width
 import grit.core.edge.Advert
-import grit.core.id.TurnRef
+import grit.core.id.{ClaimHolder, TurnRef}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
@@ -125,8 +125,9 @@ object TurnOffer {
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
     * and not at all when none is; what it sends and writes out is checked at `at`; one the engine describes, only when it writes to all of its
     * places. Its prompt: the base,
-    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]], its edge's
-    * fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
+    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]],
+    * [[TurnPrompt.Briefed]] when `holder` names one its conversation's origin works as, its
+    * edge's fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
     * where its reply goes ([[TurnPrompt.destination]]), what it is called
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
     * heard, how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
@@ -161,7 +162,8 @@ object TurnOffer {
       turn: TurnRef,
       weighed: Option[Tags],
       answering: Boolean,
-      at: Classification
+      at: Classification,
+      holder: Origin -> Option[ClaimHolder]
   )(using
       tx: Tx^
   ): Either[TurnFailure, Recorded] =
@@ -244,7 +246,8 @@ object TurnOffer {
           TurnPrompt.Security,
           TurnPrompt.TagRule,
           TurnPrompt.edge(conversation.origin)
-        ) ++ TurnPrompt.rendered(conversation.origin, tooling.renders) ++
+        ) ++ holder(conversation.origin).map(_ => TurnPrompt.Briefed) ++
+          TurnPrompt.rendered(conversation.origin, tooling.renders) ++
           TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
           unasked ++

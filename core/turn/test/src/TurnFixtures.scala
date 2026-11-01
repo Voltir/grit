@@ -533,12 +533,14 @@ object TurnFixtures {
   }
 
   /** A spy, not a store: every recording made of it kept in order for a test to read, each
-    * answered `answer`; `read` answers `held` (when its id is asked), and refuses when given
-    * none; its other reads refuse, so it stands in for no store's semantics.
+    * answered `answer`; `read` answers `held` (when its id is asked), and `lately` answers
+    * `latest` (when its session's id is asked), each refusing when given none; so it stands in
+    * for no store's semantics.
     */
   final class RecordedSessions(
       answer: Either[StoreError, Sessions.Recorded] = Right(Sessions.Recorded(1, full = false)),
-      held: Option[Session] = None
+      held: Option[Session] = None,
+      latest: Option[Session.Lately] = None
   ) extends Sessions {
     // Appended by `record`, which the turn calls on the test's one thread; read by the test's
     // assertions after.
@@ -554,7 +556,7 @@ object TurnFixtures {
     def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] =
       held.fold(Left(NoRead))(s => Right(Some(s).filter(_.id == id)))
     def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] =
-      Left(NoRead)
+      latest.fold(Left(NoRead))(l => Right(Some(l).filter(_.session.id == id)))
     private val NoRead = StoreError.Invalid("a spy keeps no sessions to read")
   }
 

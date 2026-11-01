@@ -229,7 +229,8 @@ object DurableMoves {
         screened(
           checking,
           Declassifying.Of.Rewrite(reading(source, revision, applied), rewrite, attempt),
-          MovesJournal.check(source, revision, applied, rewrite, attempt)
+          MovesJournal.check(source, revision, applied, rewrite, attempt),
+          MovesJournal.sameCheck(_, source, revision, applied, rewrite, attempt)
         )(Screen.read)
       }
 
@@ -243,7 +244,8 @@ object DurableMoves {
         screened(
           sourcing,
           Declassifying.Of.Source(reading(source, revision, applied)),
-          MovesJournal.baseline(source, revision, applied)
+          MovesJournal.baseline(source, revision, applied),
+          MovesJournal.sameBaseline(_, source, revision, applied)
         ) { (shape, answers) =>
           if (shape.musts.nonEmpty)
             Left(ClassifierError.Unreadable("its record asked signals of a source"))
@@ -251,20 +253,26 @@ object DurableMoves {
         }
       }
 
-    /** The screening `name` of `of`, under `digest`: its answers as recorded, read by `read` in
-      * the shape they were asked in; why not, when it read nothing and asked nothing.
+    /** The screening `name` of `of`, under `digest`, a recorded one standing when `same` holds of
+      * it: its answers as recorded, read by `read` in the shape they were asked in; why not, when
+      * it read nothing and asked nothing.
       */
-    private def screened[S](name: MoveName, of: Declassifying.Of, digest: String)(
+    private def screened[S](
+        name: MoveName,
+        of: Declassifying.Of,
+        digest: String,
+        same: String -> Boolean
+    )(
         read: (Screen.Shape, Vector[Answer]) -> Either[ClassifierError, S]
     ): Either[MoveError, Either[Declassifying.Unread, S]] =
       refused(name, MoveKind.Judge).toLeft(()).flatMap { _ =>
         val (asked, beside) =
           made(Act.askBeside(Act.screening), Act.Screening(name, acting, of, digest))
-        val same = MovesJournal.sameScreening(asked.made.digest, digest)
+        val stands = same(asked.made.digest)
         unread(asked.made) match {
-          case Some(why) if same => Right(Left(why))
+          case Some(why) if stands => Right(Left(why))
           case _ =>
-            settled(name, asked, same) {
+            settled(name, asked, stands) {
               case AskMade.Judged(_, written, at, _) =>
                 beside
                   .collect { case Act.Beside.Shaped(shape) => shape }

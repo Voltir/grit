@@ -268,6 +268,22 @@ object TurnJournalTests extends TestSuite {
       assert(j.decode("""{"ok":{"entries":[0],"notes":[],"documents":[0]}}""").isLeft)
     }
 
+    test("a boundary's brief is recorded by version and its digest as text, and read back") {
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      val shown: Either[TurnFailure, Window] =
+        Right(
+          Window(
+            Vector(EntrySeq(0)),
+            brief = DocumentVersionId.of(9),
+            digest = Some("Committed a1b2c3d Keep a brief.")
+          )
+        )
+      j.encode(shown) ==>
+        """{"ok":{"entries":[0],"notes":[],"brief":9,"digest":"Committed a1b2c3d Keep a brief."}}"""
+      roundTrip(shown) ==> Right(shown)
+      assert(j.decode("""{"ok":{"entries":[0],"notes":[],"brief":0}}""").isLeft)
+    }
+
     test(
       "a window's pieces are recorded by id and how many more, after its documents, and read back"
     ) {

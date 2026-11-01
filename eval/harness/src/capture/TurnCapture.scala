@@ -164,7 +164,7 @@ object TurnCapture {
             .map(why => s"weighing of ${WorkflowId.value(turn.workflowId)} unread: $why")
           // The window as the turn was shown it: a carried one with every record it follows.
           window <- CarriedWindow.whole(Turn.windowId(turn), all) match {
-            case Some(Payload.Window(seqs, recalled, nearby, versions, _, _)) =>
+            case Some(Payload.Window(seqs, recalled, nearby, versions, _, _, _, _)) =>
               read("window")(
                 for {
                   at <- reader.entries.at(turn.conversationId, seqs)

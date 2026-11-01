@@ -75,7 +75,8 @@ final class LinearAssembler(
       .map(AssemblyError.Store(_))
 
   /** A boundary within [[LinearAssembler.share]] of `budget`, or the budget `request.width`
-    * names; the drawn notes, or the query's, on it.
+    * names, less what the request reserves ([[AssemblyRequest.boundary]]); the drawn notes, or
+    * the query's, on it.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       db: Db^
@@ -107,14 +108,15 @@ final class LinearAssembler(
           case Some(LinearAssembler.Carrying(since, added, _)) =>
             Projection.Appended(Window(since.flatten.sortBy(_.seq).map(_.seq), notes), added)
           case None =>
+            val drawn = request.boundary(budget)
             val (closings, left) =
-              LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
+              LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, drawn)
             val kept = LinearAssembler.tail(turns, speakers, estimator, left)
             val gapped =
               if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
             Projection.Boundary(
               Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes),
-              Tokens(Tokens.value(budget) - Tokens.value(left)) +
+              Tokens(Tokens.value(drawn) - Tokens.value(left)) +
                 LinearAssembler.cost(kept.flatten, speakers, estimator) + gapped
             )
         }

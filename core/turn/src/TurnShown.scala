@@ -249,6 +249,7 @@ private[turn] object TurnShown {
         at <- entries.at(turn.conversationId, window.entries)
         near <- Nearby.read(window.nearby, entries)
         labelled <- documents.labelled(window.documents)
+        brief <- documents.labelled(window.brief.toVector)
         kept <-
           if (window.pieces.isEmpty) Right(Vector.empty) else pieces.read(window.pieces.map(_.id))
         shown <- documents.labelOf(kept)(_.plugin)
@@ -258,7 +259,15 @@ private[turn] object TurnShown {
       } yield {
         val more = window.pieces.map(p => p.id -> p.more).toMap
         val parts = shown.map((k, l) => (k, l, more.getOrElse(k.id, 0)))
-        Part(window, at, near, labelled, parts, record.map(r => Carried(r.turn, own, r.carry)))
+        Part(
+          window,
+          at,
+          near,
+          labelled,
+          parts,
+          record.map(r => Carried(r.turn, own, r.carry)),
+          brief.headOption
+        )
       }
     for {
       chain <- seen.after.fold[Either[StoreError, Vector[CarriedWindow.Record]]](
@@ -292,7 +301,8 @@ private[turn] object TurnShown {
     * entries at its seqs that exist; `near`, its nearby entries that still exist; `documents`,
     * its documents still kept whose plugin is enabled, in its order, each with its plugin's
     * label; `pieces`, its pieces likewise, each with its plugin's label and how many more of
-    * its file matched; and, for a part carried from an earlier turn, that turn (`carried`).
+    * its file matched; for a part carried from an earlier turn, that turn (`carried`); and its
+    * brief, when still kept and its plugin enabled, with its plugin's label (`brief`).
     */
   final case class Part(
       window: Window,
@@ -300,7 +310,8 @@ private[turn] object TurnShown {
       near: Vector[Entry],
       documents: Vector[(Document, DocLabel)],
       pieces: Vector[(KeptPiece, DocLabel, Int)],
-      carried: Option[Carried]
+      carried: Option[Carried],
+      brief: Option[(Document, DocLabel)] = None
   )
 
   /** What [[shown]] read: `parts`, the window's, oldest first, the turn's own last; `mine`,
@@ -326,9 +337,10 @@ private[turn] object TurnShown {
 
   /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
     * there ([[hiding]]), to be shaped ([[Unshaped]]): each part in order, then the turn's own.
-    * A part shows each nearby section as one user message ([[Shown.section]], a section with
-    * none of its entries left dropped), then each document as one ([[Shown.document]]), then
-    * each piece as one ([[Shown.piece]]), then what the model is shown of its entries
+    * A part shows its brief as one user message ([[Shown.brief]]), each nearby section as one
+    * ([[Shown.section]], a section with none of its entries left dropped), then each document
+    * as one ([[Shown.document]]), then each piece as one ([[Shown.piece]]), then its digest as
+    * one ([[Shown.sessionLog]]), then what the model is shown of its entries
     * ([[Shown.own]]: its messages, a closing entry as one user message, and a gap line wherever
     * turns are left out, the turn before them the part before's); then, for a carried part,
     * its record's dated line as one user message and its turn's own entries as
@@ -370,7 +382,11 @@ private[turn] object TurnShown {
               c.carry.tag
             )
           )
-          Right(Unshaped.Part(sections, part.documents, pieces ++ shown ++ carried))
+          val brief = part.brief.map((d, _) => Shown.brief(d)).toVector
+          val digest = part.window.digest.map(Shown.sessionLog).toVector
+          Right(
+            Unshaped.Part(brief ++ sections, part.documents, pieces ++ digest ++ shown ++ carried)
+          )
       }
     }.map { shownParts =>
       // The dated line is a message, not part of `system`: a provider caches its prompt from
@@ -524,7 +540,10 @@ private[turn] object TurnShown {
             .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
         }
       }
-      nearby ++
+      part.brief.toVector.map((d, label) =>
+        Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
+      ) ++
+        nearby ++
         part.documents.map((d, label) =>
           Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
         ) ++
@@ -567,9 +586,12 @@ private[turn] object TurnShown {
           m <- Shown.section(only(section, seq), Vector(e), showing.named)
         } yield text(m)
       case ItemRef.Document(version) =>
-        showing.documents.collectFirst {
-          case (d, label) if d.version == version => text(Shown.document(d, label))
-        }
+        showing.parts
+          .flatMap(_.brief)
+          .collectFirst { case (d, _) if d.version == version => text(Shown.brief(d)) }
+          .orElse(showing.documents.collectFirst {
+            case (d, label) if d.version == version => text(Shown.document(d, label))
+          })
       case ItemRef.Piece(id) =>
         showing.pieces.collectFirst {
           case (k, label, more) if k.id == id => text(Shown.piece(k, label, more))
@@ -603,18 +625,18 @@ private[turn] object TurnShown {
         stubs.get(at).fold(e)(stub => e.copy(payload = stubbed(e.payload, stub)))
       }
       val own = entry(e => ItemRef.Own(e.seq))
+      def document(d: Document, label: DocLabel): Option[(Document, DocLabel)] =
+        stubs.get(ItemRef.Document(d.version)) match {
+          case None => Some((d, label))
+          case Some(stub) => DocText.of(stub).toOption.map(t => (d.copy(text = t), label))
+        }
       showing.copy(
         parts = showing.parts.map(part =>
           part.copy(
             entries = part.entries.map(own),
             near = part.near.map(entry(e => ItemRef.Nearby(e.conversationId, e.seq))),
-            documents = part.documents.flatMap((document, label) =>
-              stubs.get(ItemRef.Document(document.version)) match {
-                case None => Some((document, label))
-                case Some(stub) =>
-                  DocText.of(stub).toOption.map(t => (document.copy(text = t), label))
-              }
-            ),
+            documents = part.documents.flatMap(document(_, _)),
+            brief = part.brief.flatMap(document(_, _)),
             pieces = part.pieces.map((k, label, more) =>
               stubs.get(ItemRef.Piece(k.id)) match {
                 case None => (k, label, more)
