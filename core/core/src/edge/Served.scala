@@ -48,15 +48,10 @@ final case class EdgeStores(
     watch: EdgeWatch = EdgeWatch.Refusing
 )
 
-/** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its
-  * value.
-  */
-opaque type Variable = String
-
-object Variable {
-  def apply(name: String): Variable = name
-  def value(v: Variable): String = v
-}
+// Kept here by alias, not `export`: through an exported opaque type, a lambda's result is
+// inferred as its underlying String (docs/capture-checking.md, "Traps").
+type Variable = grit.core.secret.Variable
+val Variable: grit.core.secret.Variable.type = grit.core.secret.Variable
 
 /** Why an edge would not open, or stopped partway. None quotes a variable's value: each may be a secret. */
 enum EdgeRefusal {

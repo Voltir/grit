@@ -357,6 +357,17 @@ give the helper an explicit result type that does not name the parameter.
 - *Fix:* write the loop as a `@tailrec` method over immutable arguments, which compiles
   (`Brief.refill`).
 
+**An opaque type re-exported with `export`.** Not a capture-checking trap, but a compile trap
+of the same build.
+
+- *Symptom:* `Found: Vector[String] Required: Vector[<package>.Variable]` at a use of
+  `xs.map(v => Variable(v))`, where `Variable` comes through the `export`.
+- *Cause:* through the exported alias, a lambda's result type is inferred as the opaque type's
+  underlying type; the same call through a direct import, or through a hand-written alias,
+  infers the opaque type.
+- *Fix:* re-export by hand: `type Variable = grit.core.secret.Variable` and `val Variable:
+  grit.core.secret.Variable.type = grit.core.secret.Variable` (core's `edge` package).
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or

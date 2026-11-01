@@ -16,6 +16,9 @@ In dependency order, each with the core packages it imports:
   nothing in core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
+- **`secret`**: a value no label admits: a `Secret`, read from the environment for a
+  variable named like one (`Named`, the one rule for names), its value leaving only through
+  `Reveal`, which the law confines to the quarantines. Imports nothing in core.
 - **`id`**: the opaque ids, a web link as grit keeps it (`Href`), the one short content hash
   every content-addressed id uses, and the full digest bytes are kept by (`Sha256`). A
   `PrincipalId` is made from text only by `grit.dbos`, through `PrincipalIds`
@@ -151,7 +154,7 @@ In dependency order, each with the core packages it imports:
   attesting, joins, deliveries and tool requests. Named for the same idea as the `grit.edge`
   module: this package is the types every side agrees on, that module the loop an edge runs
   over them. ← `clock`, `id`, `place`, `identity`, `visibility`, `prompt`, `store`, `model`,
-  `message`, `approval`, `tool`, `admin`
+  `message`, `approval`, `tool`, `admin`, `secret` (it re-exports `Variable`)
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.
