@@ -13,10 +13,9 @@ overlap the method prefix's.
 
 Decision: `Durable` extends `caps.ExclusiveCapability`, and its step methods take their body
 as `() => A` (or `(Tx^) ?=> A`). `-language:experimental.separationChecking` is on in every
-module through `GritModule.separationChecking`, except `grit.tui`, its examples and
-`dev/outline`. The terminal's FFM layer hands byte arrays to Java, which separation checking
-treats as `Mutable` against pure Java signatures; under ADR 0002 an edge never holds a
-`Durable`, and the outline tool is no part of grit's runtime.
+module through `GritModule.separationChecking`, except `grit.tui` and its examples. The
+terminal's FFM layer hands byte arrays to Java, which separation checking treats as `Mutable`
+against pure Java signatures; under ADR 0002 an edge never holds a `Durable`.
 
 Consequences:
 - A nested step, a step inside `transact`, or `recv` inside a step is a compile error where

@@ -17,7 +17,7 @@
 #   scripts/check grit.dbos.engine.CloseLiveTests  # one `it` suite: its full name, as above, never
 #                                                  # `grit.dbos.it.testOnly <Suite>`
 #   scripts/check --no-unused                      # the gate without the -Wunused:all compile
-#   scripts/check --only-unused grit.outline       # one module's -Wunused:all compile, alone
+#   scripts/check --only-unused grit.core          # one module's -Wunused:all compile, alone
 #
 # Tiers, with no target:
 #   unit  ./mill __.test.testCached: reruns a module's suites only when their inputs changed;
