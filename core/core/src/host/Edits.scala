@@ -9,7 +9,8 @@ trait Edits extends caps.SharedCapability {
 
   /** Makes `text` the whole of the file `path`, creating it, and any missing parent
     * directory, when it does not exist. Fails when `path` is a directory, or a parent is a
-    * file.
+    * file; and with [[HostError.Redacted]] when the file holds a secret its host redacts and
+    * `text` holds the redaction mark.
     */
   def write(path: RelPath, text: String): Either[HostError, Unit]
 

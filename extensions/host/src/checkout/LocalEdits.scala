@@ -7,9 +7,10 @@ import grit.core.host.{EditError, Edited, Edits, HostError, RelPath, Replace}
 
 /** Changing files in the checkout whose root is `root`. A change is written to a temporary
   * file beside the target, which is then renamed over it; an existing file keeps its
-  * permissions, and a link keeps pointing at the file it names.
+  * permissions, and a link keeps pointing at the file it names. A file is redacted by
+  * `redaction`, the deployment's one, when [[write]] asks whether it holds a secret.
   */
-final class LocalEdits(root: Path) extends Edits {
+final class LocalEdits(root: Path, redaction: Redaction) extends Edits {
   import Checkout.attempt
 
   private val checkout = new Checkout(root)
@@ -17,8 +18,15 @@ final class LocalEdits(root: Path) extends Edits {
   def write(path: RelPath, text: String): Either[HostError, Unit] =
     checkout.find(path).flatMap { at =>
       if (Files.isDirectory(at)) Left(HostError.NotAFile(path))
+      else if (Redaction.marked(text) && holdsSecret(path, at)) Left(HostError.Redacted(path))
       else replace(at, text)
     }
+
+  /** Whether the file at `at` exists and holds text `redaction` changes; one missing, or not
+    * readable as text, was never shown to a tool, so holds no secret one saw.
+    */
+  private def holdsSecret(path: RelPath, at: Path): Boolean =
+    checkout.text(path, at).exists(current => redaction(current) != current)
 
   def edit(path: RelPath, edits: Seq[Replace]): Either[EditError, Edited] =
     (for {

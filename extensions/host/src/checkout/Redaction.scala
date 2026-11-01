@@ -100,5 +100,10 @@ object Redaction {
     */
   val Shortest: Int = 8
 
-  private def mark(v: Variable): String = s"[redacted secret: ${Variable.value(v)}]"
+  /** Whether `text` holds a mark [[Redaction.apply]] leaves in a value's place. */
+  def marked(text: String): Boolean = text.contains(Mark)
+
+  private val Mark = "[redacted secret: "
+
+  private def mark(v: Variable): String = s"$Mark${Variable.value(v)}]"
 }

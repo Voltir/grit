@@ -168,7 +168,7 @@ object LocalHostTests extends TestSuite {
 
     test("write") {
       inCheckout("a.txt" -> "old", "d/x" -> "") { dir =>
-        val edits = new LocalEdits(dir)
+        val edits = new LocalEdits(dir, noSecrets)
         edits.write(path("a.txt"), "new") ==> Right(())
         Files.readString(dir.resolve("a.txt")) ==> "new"
         edits.write(path("n/e/w.txt"), "made") ==> Right(())
@@ -179,18 +179,52 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test(
+      "a write is refused, and writes nothing, when the file holds a secret and the text its mark"
+    ) {
+      inCheckout("notes.txt" -> "token: sk-planted-value-123456\n") { dir =>
+        new LocalEdits(dir, planted)
+          .write(path("notes.txt"), "token: [redacted secret: GRIT_TEST_TOKEN]\nmore\n") ==>
+          Left(HostError.Redacted(path("notes.txt")))
+        Files.readString(dir.resolve("notes.txt")) ==> "token: sk-planted-value-123456\n"
+      }
+    }
+
+    test("a new file is written though its text holds the mark") {
+      inCheckout() { dir =>
+        new LocalEdits(dir, planted)
+          .write(path("new.md"), "shown: [redacted secret: GRIT_TEST_TOKEN]") ==> Right(())
+        Files.readString(dir.resolve("new.md")) ==> "shown: [redacted secret: GRIT_TEST_TOKEN]"
+      }
+    }
+
+    test("a file holding no secret is written though the text holds the mark") {
+      inCheckout("notes.txt" -> "nothing secret\n") { dir =>
+        new LocalEdits(dir, planted)
+          .write(path("notes.txt"), "[redacted secret: GRIT_TEST_TOKEN]") ==> Right(())
+        Files.readString(dir.resolve("notes.txt")) ==> "[redacted secret: GRIT_TEST_TOKEN]"
+      }
+    }
+
+    test("a file holding a secret is written when the text holds no mark") {
+      inCheckout("notes.txt" -> "token: sk-planted-value-123456\n") { dir =>
+        new LocalEdits(dir, planted).write(path("notes.txt"), "token: rotated\n") ==> Right(())
+        Files.readString(dir.resolve("notes.txt")) ==> "token: rotated\n"
+      }
+    }
+
     test("write keeps a file's permissions") {
       inCheckout("run.sh" -> "echo") { dir =>
         val f = dir.resolve("run.sh")
         Files.setPosixFilePermissions(f, PosixFilePermissions.fromString("rwxr-x---"))
-        new LocalEdits(dir).write(path("run.sh"), "echo hi") ==> Right(())
+        new LocalEdits(dir, noSecrets).write(path("run.sh"), "echo hi") ==> Right(())
         PosixFilePermissions.toString(Files.getPosixFilePermissions(f)) ==> "rwxr-x---"
       }
     }
 
     test("edit") {
       inCheckout("a.txt" -> "one\r\ntwo\r\nthree\r\n") { dir =>
-        val edits = new LocalEdits(dir)
+        val edits = new LocalEdits(dir, noSecrets)
         edits.edit(path("a.txt"), Vector(Replace("two", "2"), Replace("three", "3"))) ==>
           Right(Edited(Vector(2, 3)))
         Files.readString(dir.resolve("a.txt")) ==> "one\r\n2\r\n3\r\n"
@@ -205,7 +239,7 @@ object LocalHostTests extends TestSuite {
     test("an edit through a link changes the file it names, and keeps the link") {
       inCheckout("real.txt" -> "a") { dir =>
         Files.createSymbolicLink(dir.resolve("link"), dir.resolve("real.txt"))
-        new LocalEdits(dir).edit(path("link"), Vector(Replace("a", "b"))) ==>
+        new LocalEdits(dir, noSecrets).edit(path("link"), Vector(Replace("a", "b"))) ==>
           Right(Edited(Vector(1)))
         Files.readString(dir.resolve("real.txt")) ==> "b"
         Files.isSymbolicLink(dir.resolve("link")) ==> true

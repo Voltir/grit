@@ -39,6 +39,11 @@ enum HostError {
     */
   case Failed(why: String)
 
+  /** `path` holds a secret a tool shows redacted, and the text to write over it holds the
+    * redaction mark: written, the mark would take the secret's place.
+    */
+  case Redacted(path: RelPath)
+
   /** One or two sentences: what went wrong, and for a timeout the output so far. */
   def message: String = this match {
     case NotFound(p) => s"There is no file or directory `${RelPath.value(p)}`."
@@ -56,5 +61,10 @@ enum HostError {
       s"The command was killed after ${after.toSeconds} seconds. Its output until then:\n" +
         output.show
     case Failed(why) => why
+    case Redacted(p) =>
+      s"`${RelPath.value(p)}` holds a secret that tools show as `[redacted secret: …]`, and your " +
+        "text holds that mark, so writing it would put the mark where the secret was. Nothing " +
+        "was written. Use `edit` to change the lines around it, and leave the redacted ones as " +
+        "they are."
   }
 }

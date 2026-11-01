@@ -45,7 +45,7 @@ final class LocalTools(offered: Offered, redaction: Redaction) extends Tools {
         Coding.readOnly(ws).fold(refused, tools => Run.request(request, tools))
       case Offered.All =>
         Coding
-          .all(ws, new LocalEdits(root), new LocalShell(root, sys.env, redaction))
+          .all(ws, new LocalEdits(root, redaction), new LocalShell(root, sys.env, redaction))
           .fold(refused, tools => Run.request(request, tools))
     }
   }
