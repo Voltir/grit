@@ -2,7 +2,8 @@ package grit.core.context
 
 /** The tag each line grit writes into a window begins with, which a turn's base prompt
   * teaches the model to read; and `noun`, what a paste of it is called where grit shows one
-  * in text it did not write ([[Shown.lead]]).
+  * in text it did not write ([[Shown.lead]]). Frozen: new framing goes in
+  * [[grit.core.prompt.Fenced]].
   */
 enum SectionTag(val tag: String, val noun: String) {
 
