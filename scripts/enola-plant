@@ -31,6 +31,8 @@ Where the plants go is read from the tree, so a layout change needs no edit here
   process   the process grep: `new ProcessBuilder` with no import in every production source
             root but grit.host's (the outline tool's test fixture's included: a `src` root),
             each of which it must list.
+  areas     the area grep: the cycle plant's two packages, which no area of .outline.conf names,
+            each of which it must list.
   paths     the component path check: a folder that does not exist added to the last
             component's `match` in enola-intent.yaml, restored after the run.
 Each catch is read from its own part of the law's output: a rule from enola's `constraint
@@ -271,6 +273,7 @@ def main():
                      {path for heading, path in names.items() if path in block(out, heading)})
         ok &= report("unruled grep", classes, block(out, "no rule in enola-intent.yaml names"))
         ok &= report("process grep", files, block(out, "Only grit.host may start a process"))
+        ok &= report("area grep", {f"grit.{PLANT}.{pkg}" for pkg in CYCLE}, block(out, "these are in none"))
         ok &= report("paths check", {path}, block(out, "A component names a path that is no folder"))
     finally:
         clean()

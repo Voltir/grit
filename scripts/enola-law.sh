@@ -181,6 +181,32 @@ if [ -n "$connection" ]; then
   failed=1
 fi
 
+# Every production package outside dev/ is in an area of .outline.conf, so scout's `area` maps
+# all of grit: a package in none is invisible to an agent orienting by area, and scout's fallback
+# for a name no area declares hides the gap. An area covers the package of each symbol and
+# `family:` trait it names, read as scout reads it: the segments before the first capitalised one.
+# A package is its file's `package` clauses joined (`package object` declares none).
+uncovered=$(printf '%s\n' "${production[@]}" | grep -v '^dev/' | python3 -c '
+import re, sys
+covered = set()
+for line in open(".outline.conf"):
+    m = re.match(r"area\s+\S+(?:\s+\"[^\"]*\")?\s*:(.*)", line)
+    for item in (m.group(1).split() if m else []):
+        segments = item.removeprefix("family:").split(".")
+        covered.add(".".join(s for s in segments[: next((i for i, s in enumerate(segments) if s[:1].isupper()), len(segments))]))
+packages = set()
+for path in sys.stdin.read().split():
+    with open(path, errors="replace") as f:
+        packages.add(".".join(m.group(1) for l in f if (m := re.match(r"package (?!object\b)([A-Za-z0-9_.]+)", l))) or "<the root package>")
+for p in sorted(packages - covered):
+    print("  " + p)
+')
+if [ -n "$uncovered" ]; then
+  echo "Every production package is in an area of .outline.conf; these are in none:" >&2
+  printf '%s\n' "$uncovered" >&2
+  failed=1
+fi
+
 # TRAP: `check` grades cycles as NEW against the pinned baseline, so a cycle present when a
 # baseline was pinned (by this script when none exists, or by anyone) passes from then on.
 # There are none, so any cycle finding fails, at every confidence: `check` counts only those at
