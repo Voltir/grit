@@ -193,7 +193,7 @@ object TurnTools {
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     *
-    * A call that ran to [[Outcome.Done]] whose tool logs it ([[Bound.logged]]) is also logged
+    * A call that ran to [[Outcome.Done]] whose tool logs it ([[Bound.logs]]) is also logged
     * on its conversation's session, in the transaction that keeps its result: as the event at
     * the result's seq, run by the turn's asker (as `askers` reads it), at the conversation's
     * label and place, working as the holder `sessions.holder` names for its origin. Nothing is
@@ -210,7 +210,7 @@ object TurnTools {
   ) {
 
     /** The call answered with `outcome`, shown as `named`, the tool's name as the call sent
-      * it: unrun here, logged as `logged` says when an edge ran it.
+      * it: unrun here, logged as `logs` reads its `Done` text when an edge ran it.
       */
     def answer(
         slot: Slot,
@@ -219,9 +219,9 @@ object TurnTools {
         outcome: Outcome,
         from: Either[Integrity, Service],
         at: Instant,
-        logged: Option[Logged] = None
+        logs: String -> Option[Logged] = _ => None
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Belief.From(from), at, logged)(() => Right(outcome))
+      settle(slot, call, named, Belief.From(from), at, logs)(() => Right(outcome))
 
     /** The call answered, unrun, with what `read` finds in the store, in a transaction of its
       * own, shown as `named`; `read` runs only when no result is kept, and when it fails, so
@@ -233,11 +233,11 @@ object TurnTools {
         named: String,
         from: Either[Integrity, Service],
         at: Instant,
-        logged: Option[Logged] = None
+        logs: String -> Option[Logged] = _ => None
     )(
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Belief.From(from), at, logged)(() =>
+      settle(slot, call, named, Belief.From(from), at, logs)(() =>
         jot.write(Subject.Turn(slot.turn))(read).left.map(TurnFailure.ofStore)
       )
 
@@ -249,7 +249,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at, free.logged)(() =>
+      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at, free.logs)(() =>
         Right(free(slot.call))
       )
 
@@ -270,7 +270,7 @@ object TurnTools {
     ): Either[TurnFailure, Settled] = {
       val believed = Belief.Ran(keeping.output.at(level))
       def undone(outcome: Outcome) =
-        settle(slot, call, keeping.shown, believed, at, None)(() => Right(outcome))
+        settle(slot, call, keeping.shown, believed, at, _ => None)(() => Right(outcome))
       jot
         .write(Subject.Turn(slot.turn))(entries.get(slot.resultId))
         .left
@@ -283,7 +283,7 @@ object TurnTools {
                 case done: Outcome.Done =>
                   val result = Payload.Result(done.result(call), keeping.shown)
                   inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)(
-                    keeping.logged.map((_, done.text))
+                    keeping.logs(done.text).map((_, done.text))
                   )
                     .map(Keeps.Verdict.Commit(_))
                 case other => Right(Keeps.Verdict.Discard(other))
@@ -312,7 +312,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at, gated.logged)(() =>
+      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at, gated.logs)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -329,7 +329,7 @@ object TurnTools {
         shown: String,
         believed: Belief,
         at: Instant,
-        logged: Option[Logged]
+        logged: String -> Option[Logged]
     )(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
@@ -348,7 +348,7 @@ object TurnTools {
                 case _ => None
               }
               val logs = o match {
-                case done: Outcome.Done => logged.map((_, done.text))
+                case done: Outcome.Done => logged(done.text).map((_, done.text))
                 case _ => None
               }
               keep(slot.turn, slot.resultId, result, believed.of(o), at, reason, logs)

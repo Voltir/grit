@@ -23,7 +23,7 @@ final class Tool[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    logs: A -> Option[Logged],
+    logs: (A, String) -> Option[Logged],
     run: Tool.Run[A]^,
     aim: Option[Tool.Aim],
     requires: Integrity,
@@ -108,7 +108,7 @@ final class Tool[A] private[tool] (
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
-        val logged = logs(args)
+        val logged: String -> Option[Logged] = text => logs(args, text)
         val ask = gate match {
           case Gate.Free => None
           case Gate.Ask(describe, within) => Some((describe(args), within))
@@ -167,7 +167,7 @@ object Tool {
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
     entry.writes.fold[Offered](
-      new Hosted(spec, gate, _ => "", _ => None, entry.requires, Believed.Default)
+      new Hosted(spec, gate, _ => "", (_, _) => None, entry.requires, Believed.Default)
         .over(_ => goneOutcome)
     )(writes =>
       new Writing(spec, gate, _ => "", writes, entry.requires).over((_, _) => goneOutcome)
@@ -244,7 +244,7 @@ final class Hosted[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    logs: A -> Option[Logged],
+    logs: (A, String) -> Option[Logged],
     requires: Integrity,
     val output: Believed
 ) extends Tool.Offered {
@@ -253,7 +253,7 @@ final class Hosted[A] private[tool] (
     * call does not say.
     */
   def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String, output: Believed) =
-    this(spec, gate, shown, _ => None, Integrity.Untrusted, output)
+    this(spec, gate, shown, (_, _) => None, Integrity.Untrusted, output)
 
   def name: ToolName = spec.name
 
@@ -277,10 +277,11 @@ final class Hosted[A] private[tool] (
   def requiring(integrity: Integrity): Hosted[A] =
     new Hosted(spec, gate, shown, logs, integrity, output)
 
-  /** This hosted tool, each call of it that runs logged in its turn's session as `logs` reads
-    * its arguments ([[Bound.logged]]); a tool not so described logs nothing.
+  /** This hosted tool, each call of it that runs to `Done` logged in its turn's session as `logs`
+    * reads its arguments and the `Done` text as shown, after clipping ([[Bound.logs]]); a tool
+    * not so described logs nothing.
     */
-  def logging(logs: A -> Option[Logged]): Hosted[A] =
+  def logging(logs: (A, String) -> Option[Logged]): Hosted[A] =
     new Hosted(spec, gate, shown, logs, requires, output)
 
   /** This tool, run by `run`. */
@@ -329,7 +330,7 @@ object Hosted {
         ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry, entry.action)
       val shown: ujson.Value -> String = args => args.render().take(ShownMax)
       entry.writes.fold[Tool.Offered](
-        new Hosted(spec, Gate.Free, shown, _ => None, entry.requires, Believed.Default)
+        new Hosted(spec, Gate.Free, shown, (_, _) => None, entry.requires, Believed.Default)
       )(writes => new Writing(spec, Gate.Free, shown, writes, entry.requires))
     }
 
@@ -347,7 +348,7 @@ object Hosted {
   def keeping[A](spec: ToolSpec[A], shown: A -> String, requires: Integrity, output: Believed)(
       run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
   ): Tool[A]^{run} =
-    new Tool(spec, Gate.Free, shown, _ => None, new Tool.Keeping(run), None, requires, output)
+    new Tool(spec, Gate.Free, shown, (_, _) => None, new Tool.Keeping(run), None, requires, output)
 
   /** A tool an edge runs that writes outside grit to one of `writes`' destinations, described
     * by `spec`, `gate` and `shown`, requiring what its shape does ([[ToolSet.Entry.byShape]]);
@@ -369,7 +370,7 @@ object Hosted {
       spec: ToolSpec[A],
       gate: Gate[A],
       shown: A -> String,
-      logs: A -> Option[Logged],
+      logs: (A, String) -> Option[Logged],
       output: Believed,
       arguments: ujson.Value,
       repairs: Set[ArgRepair],
@@ -387,7 +388,7 @@ object Hosted {
           new Bound.Hosted(
             spec.name,
             line,
-            logs(args),
+            text => logs(args, text),
             ask,
             within,
             arguments,
@@ -444,13 +445,23 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       stamped: Integrity
   ): Either[CallError, Bound^{this}] =
     call.arguments.objOpt match {
-      case None => Hosted.bound(spec, gate, shown, _ => None, output, call.arguments, repairs, None)
+      case None =>
+        Hosted.bound(spec, gate, shown, (_, _) => None, output, call.arguments, repairs, None)
       case Some(sent) =>
         writes
           .chosen(spec.name, sent)
           .flatMap((to, rest) =>
             Hosted
-              .bound(spec, gate, shown, _ => None, output, rest, repairs, Some(writes.place(to)))
+              .bound(
+                spec,
+                gate,
+                shown,
+                (_, _) => None,
+                output,
+                rest,
+                repairs,
+                Some(writes.place(to))
+              )
           )
     }
 
@@ -475,7 +486,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry, spec.action),
       aimed,
       sent => shown(sent._1),
-      _ => None,
+      (_, _) => None,
       new Tool.Plain((sent, _) => run(sent._1, sent._2)),
       Some(Tool.Aim(spec.args.schema(false), writes.placed)),
       requires,

@@ -101,7 +101,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
       Believed.At(Integrity.Member)
-    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
+    ).logging((a, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
@@ -137,7 +137,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
-    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
+    ).logging((a, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
     listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
@@ -171,7 +171,7 @@ object Coding {
       Gate.Free,
       a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
       Believed.At(Integrity.Member)
-    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Named, a.pattern))))
+    ).logging((a, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Named, a.pattern))))
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
     searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
@@ -206,7 +206,9 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
-      .logging(a => Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
+      .logging((a, _) =>
+        Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
+      )
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
     writeHosted.over(a =>
@@ -258,7 +260,9 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
-      .logging(a => Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
+      .logging((a, _) =>
+        Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
+      )
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
     editHosted.over(a =>
@@ -304,15 +308,40 @@ object Coding {
       a => a.command,
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
-      // A command line is content, never a shape.
-      .logging(_ => Some(Logged.Ran(Event.Shape.Empty)))
+      // A command line is content, never a shape; a commit's sha and subject are its own.
+      .logging((a, shown) =>
+        Some(committed(a.command, shown).getOrElse(Logged.Ran(Event.Shape.Empty)))
+      )
+
+  /** `Exit code `: what a run's answer begins with, before its exit code. */
+  private val ExitLead: String = "Exit code "
+
+  /** `command` runs `git commit` (first, or after `;`, `&&` or `|`, with any `-C <dir>`). */
+  private val Commits = """(?:^|[;&|])\s*git\s+(?:-C\s+\S+\s+)?commit\b""".r
+
+  /** git's line for a commit it made: `[<branch>[ (root-commit)] <sha>] <subject>`. */
+  private val Made = """(?m)^\[\S+(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$""".r
+
+  /** The commit a run of `command` made, read from its answer `shown`: when the command runs
+    * `git commit`, it exited 0, and git's line for the commit is in its output.
+    */
+  private def committed(command: String, shown: String): Option[Logged] =
+    if (
+      Commits.findFirstIn(command).isEmpty || !Seq(".", ";")
+        .exists(e => shown.startsWith(s"${ExitLead}0$e"))
+    ) None
+    else
+      Made
+        .findFirstMatchIn(shown)
+        .flatMap(m => Event.Shape.commit(m.group(1), Some(m.group(2))).toOption)
+        .map(Logged.Commit(_))
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a =>
       outcome(shell.run(a.command, a.timeout)) { ran =>
         val out = ran.output.show
-        if (out.isEmpty) s"Exit code ${ran.exit}; no output."
-        else s"Exit code ${ran.exit}. Output:\n$out"
+        if (out.isEmpty) s"$ExitLead${ran.exit}; no output."
+        else s"$ExitLead${ran.exit}. Output:\n$out"
       }
     )
 

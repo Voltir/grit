@@ -129,10 +129,11 @@ sealed trait Bound {
     */
   def shown: String
 
-  /** What this call adds to its turn's session's log when it runs to [[Outcome.Done]]; `None`
-    * for a tool that logs nothing ([[Hosted.logging]]).
+  /** What this call adds to its turn's session's log when it runs to [[Outcome.Done]], read
+    * from the `Done` text as its model was shown it, after clipping; `None` for a tool that logs
+    * nothing ([[Hosted.logging]]).
     */
-  def logged: Option[Logged]
+  def logs: String -> Option[Logged]
 }
 
 object Bound {
@@ -150,7 +151,7 @@ object Bound {
   final class Free private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logged: Option[Logged],
+      val logs: String -> Option[Logged],
       val output: Believed,
       run: CallSlot => Outcome
   ) extends Runs {
@@ -166,7 +167,7 @@ object Bound {
   final class Gated private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logged: Option[Logged],
+      val logs: String -> Option[Logged],
       val ask: String,
       val within: FiniteDuration,
       val output: Believed,
@@ -194,7 +195,7 @@ object Bound {
   final class Reading private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logged: Option[Logged],
+      val logs: String -> Option[Logged],
       ask: Option[(String, FiniteDuration)],
       output: Believed,
       run: (CallSlot, Reads^) => Outcome
@@ -202,12 +203,12 @@ object Bound {
 
     /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
     def through(reads: Reads^): Runs^{this, reads} = ask match {
-      case None => new Free(tool, shown, logged, output, at => Reading.read(run(at, reads), reads))
+      case None => new Free(tool, shown, logs, output, at => Reading.read(run(at, reads), reads))
       case Some((shownFirst, within)) =>
         new Gated(
           tool,
           shown,
-          logged,
+          logs,
           shownFirst,
           within,
           output,
@@ -222,7 +223,7 @@ object Bound {
   final class Keeping private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logged: Option[Logged],
+      val logs: String -> Option[Logged],
       val output: Believed,
       run: CallSlot => (Tx^) ?=> Either[StoreError, Outcome]
   ) extends Bound {
@@ -272,7 +273,7 @@ object Bound {
   final class Hosted private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logged: Option[Logged],
+      val logs: String -> Option[Logged],
       val ask: Option[String],
       val within: FiniteDuration,
       val arguments: ujson.Value,

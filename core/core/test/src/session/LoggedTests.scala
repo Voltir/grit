@@ -17,6 +17,25 @@ object LoggedTests extends TestSuite {
         read.map(e => (e.n, e.at, e.kind, e.shape)) == Right((4L, t0, Event.Kind.Read(6), path))
       )
     }
+    test("a commit's shape keeps its sha and cuts its subject to fit, ending …") {
+      val sha = "1a2b3c4d5e6f"
+      val short = Event.Shape.commit(sha, Some("turn: a thing")).map(Event.Shape.value)
+      val long = Event.Shape.commit(sha, Some("é" * 400)).map(Event.Shape.value)
+      val cut = long.map(ujson.read(_).obj.get(Event.Shape.Subject).flatMap(_.strOpt))
+      (
+        short,
+        long.map(_.getBytes("UTF-8").length <= Event.Shape.Longest),
+        cut.map(_.exists(_.endsWith("é…"))),
+        cut.map(_.exists(_.length > 100)),
+        Logged.Commit(Event.Shape.Empty).event(7, t0, "x").map(_.kind)
+      ) ==> (
+        Right("""{"sha":"1a2b3c4d5e6f","subject":"turn: a thing"}"""),
+        Right(true),
+        Right(true),
+        Right(true),
+        Right(Event.Kind.Commit)
+      )
+    }
     test("an edit and a run count no bytes, whatever was shown") {
       assert(
         Logged.Edited(path).event(5, t0, "done").map(_.kind) == Right(Event.Kind.Edited),

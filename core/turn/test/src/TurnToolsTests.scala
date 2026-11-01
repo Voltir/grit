@@ -188,7 +188,7 @@ object TurnToolsTests extends TestSuite {
       Gate.Free,
       (p: String) => p,
       Believed.Default
-    ).logging(p => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p)))).over(_ => outcome)
+    ).logging((p, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p)))).over(_ => outcome)
 
   private val holder = ClaimHolder.of("coder/abc").fold(sys.error, identity)
 

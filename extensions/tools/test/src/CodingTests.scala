@@ -172,10 +172,10 @@ object CodingTests extends TestSuite {
       val engine =
         Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
       val ran = calls.map((name, args) =>
-        local.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logged)
+        local.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logs(""))
       )
       val offered = calls.map((name, args) =>
-        engine.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logged)
+        engine.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logs(""))
       )
       val path = (p: String) => Logged.shaped(Event.Shape.Path, p)
       val expected = Vector(
@@ -189,6 +189,36 @@ object CodingTests extends TestSuite {
       assert(ran == expected, offered == expected)
     }
 
+    test(
+      "a run that commits logs its sha and subject; a failed commit, or a command that commits nothing, logs a run"
+    ) {
+      val engine =
+        Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
+      def logs(command: String, shown: String) =
+        engine
+          .bind(TestTainted.authority(call("run", ujson.Obj("command" -> command))), Repairs.All)
+          .map(_.logs(shown))
+      val made = "Exit code 0. Output:\n[m20 1a2b3c4] turn: a thing\n 1 file changed"
+      def commit(sha: String, subject: String) =
+        Event.Shape.commit(sha, Some(subject)).map(s => Some(Logged.Commit(s)))
+      val ran = Right(Some(Logged.Ran(Event.Shape.Empty)))
+      (
+        logs("git add -A && git commit -m 'turn: a thing'", made),
+        logs(
+          "git -C sub commit -m init",
+          "Exit code 0. Output:\n[main (root-commit) abcdef0] init"
+        ),
+        logs("git commit -m x", "Exit code 1. Output:\nnothing to commit, working tree clean"),
+        logs("git status", made),
+        logs("git commit -m x", "Exit code 0; no output.")
+      ) ==> (
+        commit("1a2b3c4", "turn: a thing"),
+        commit("abcdef0", "init"),
+        ran,
+        ran,
+        ran
+      )
+    }
     test("under a strict schema every field is required, an optional one nullable") {
       val host = new Scripted()
       val read = readOnly(host).schemas(strict = true).find(_.name == "read")
