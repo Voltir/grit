@@ -188,6 +188,18 @@ object ClaimTests extends TestSuite {
       }
     }
 
+    test("a claim is made for any holder a session can name, as its edge spells it") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      val answer = claimed(projects, store, forSlot = "Coder Opus/3F2A")
+      val claim = inTx(store.claims.release(right(DocKey.of("p/a")), Label.Public))
+      assert(
+        answer == CommandOutcome.Done("Claimed p/a (note, open) as builder for Coder Opus/3F2A."),
+        claim.map(_.map(c => ClaimHolder.value(c.holder))) == Right(Some("Coder Opus/3F2A"))
+      )
+    }
+
     test("a claim leaves the artifact's version unchanged") {
       val projects = plugin()
       val store = Store()

@@ -17,7 +17,6 @@ import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Proje
 import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView}
 import grit.projects.name.{
   ArtifactKey,
-  BriefSlot,
   CheckName,
   KindName,
   MethodName,
@@ -620,8 +619,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
             role <- parsed("role", a.role, RoleName.of)
-            slot <- parsed("for", a.`for`, BriefSlot.of)
-          } yield Claiming(key, role, slot)
+            holder <- parsed("for", a.`for`, ClaimHolder.of)
+          } yield Claiming(key, role, holder)
         )
     )
     def run(
@@ -631,7 +630,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      val slot = BriefSlot.value(args.slot)
+      val slot = ClaimHolder.value(args.holder)
       val key = args.key.value
       for {
         project <- loaded(own, args.key.project)
@@ -640,7 +639,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         found <- artifact(project, args.key)
         (document, a) = found
         claimed <- stored(
-          claims.claim(document.key, args.slot, args.role, by.person, document.label, at)
+          claims.claim(document.key, args.holder, args.role, by.person, document.label, at)
         )
         _ <- claimed match {
           case Claimed.Made(_) => Right(())
@@ -1138,7 +1137,7 @@ private[plugin] object ProjectCommands {
   final case class Exporting(project: ProjectKey, after: Option[String]) extends caps.Pure
 
   /** `project_claim`'s arguments. */
-  final case class Claiming(key: ArtifactKey, role: RoleName, slot: BriefSlot) extends caps.Pure
+  final case class Claiming(key: ArtifactKey, role: RoleName, holder: ClaimHolder) extends caps.Pure
 
   /** `project_release`'s arguments. */
   final case class Releasing(key: ArtifactKey) extends caps.Pure

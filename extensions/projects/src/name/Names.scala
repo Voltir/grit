@@ -1,7 +1,7 @@
 package grit.projects.name
 
 import grit.core.claim.ClaimRole
-import grit.core.id.{ClaimHolder, Slug}
+import grit.core.id.Slug
 
 /** The name of a method, as a deployment declares it. */
 opaque type MethodName = String
@@ -75,35 +75,4 @@ object RoleName {
       .check("a role's name", s, Some(ClaimRole.Longest), leadingDigit = true)
       .flatMap(ClaimRole.of)
   def value(n: RoleName): String = ClaimRole.value(n)
-}
-
-/** What an artifact is claimed for: the one session, or one agent type in it, that a brief is
-  * written for. An edge's own name for it, which grit never reads apart, such as
-  * `coder-opus/<sha1 of a directory>`; one slot works one artifact at a time.
-  */
-opaque type BriefSlot <: ClaimHolder = ClaimHolder
-
-object BriefSlot {
-
-  /** 64: the most characters a part of a slot holds. */
-  val PartLongest: Int = 64
-
-  /** `s` as a slot, or why not: over [[ClaimHolder.Longest]] characters, or not parts joined
-    * by `/`, each as [[Slug.check]] takes a name.
-    */
-  def of(s: String): Either[String, BriefSlot] =
-    if (s.length > ClaimHolder.Longest)
-      Left(s"a slot holds at most ${ClaimHolder.Longest} characters: $s")
-    else
-      s.split("/", -1)
-        .toVector
-        .foldLeft[Either[String, Unit]](Right(()))((acc, part) =>
-          acc.flatMap(_ =>
-            Slug
-              .check("a part of a slot", part, Some(PartLongest), leadingDigit = true)
-              .map(_ => ())
-          )
-        )
-        .flatMap(_ => ClaimHolder.of(s))
-  def value(s: BriefSlot): String = ClaimHolder.value(s)
 }
