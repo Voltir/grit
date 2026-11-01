@@ -5,7 +5,9 @@ import java.util.regex.{Matcher, Pattern}
 import grit.core.secret.{Named, Variable}
 
 /** The secrets a deployment holds, as text a program or file shows a tool is cleared of them.
-  * Shows how many variables it redacts, never a value.
+  * Shows how many variables it redacts, never a value. Which variables it holds is decided by
+  * name for now; detection by value is designed in kalandra's `grit/note-secret-detection-design`,
+  * and ADR 0054 holds the model.
   */
 final class Redaction private (
     pieces: Map[String, Variable],

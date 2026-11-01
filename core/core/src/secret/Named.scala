@@ -4,7 +4,9 @@ package grit.core.secret
 object Named {
 
   /** Whether the environment variable `name` holds a secret: it contains KEY, TOKEN, SECRET or
-    * PASSWORD, in any case.
+    * PASSWORD, in any case. Name-matching is the current rule, not the intended one: detection
+    * by value is designed in kalandra's `grit/note-secret-detection-design`, and ADR 0054 holds
+    * the model.
     */
   def variable(name: String): Boolean = {
     val upper = name.toUpperCase
