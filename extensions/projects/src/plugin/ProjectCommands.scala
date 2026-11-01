@@ -616,9 +616,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
             role = Field.text("The role working on it, one its project's method declares."),
-            `for` = Field.text(
-              "What it is claimed for: the session, or the agent type in it, whose brief is " +
-                s"written; parts joined by `/`, at most ${ClaimHolder.Longest} characters."
+            holder = Field.text(
+              "Who works it: the session, or the agent type in it, whose brief is written, " +
+                s"as its edge names it; one line of at most ${ClaimHolder.Longest} characters."
             )
           )
         )
@@ -626,7 +626,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
             role <- parsed("role", a.role, RoleName.of)
-            holder <- parsed("for", a.`for`, ClaimHolder.of)
+            holder <- parsed("holder", a.holder, ClaimHolder.of)
           } yield Claiming(key, role, holder)
         )
     )
@@ -637,7 +637,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      val slot = ClaimHolder.value(args.holder)
+      val holder = ClaimHolder.value(args.holder)
       val key = args.key.value
       for {
         project <- loaded(own, args.key.project)
@@ -665,9 +665,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             Left(
               Stop.Refused(
                 other.fold(
-                  s"$slot works another artifact already; release it with project_release first"
+                  s"$holder works another artifact already; release it with project_release first"
                 )(c =>
-                  s"$slot works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
+                  s"$holder works ${DocKey.value(c.subject)} already, claimed since ${c.made}; " +
                     s"it lapses at ${c.lapses} unless they keep working; " +
                     "release it with project_release first"
                 )
@@ -675,7 +675,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             )
         }
         _ <- briefed(own, Brief.of(whole, args.key, view, Projects.BriefChars), args, document, at)
-      } yield s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $slot."
+      } yield s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder."
     }
   }
 
@@ -684,7 +684,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Releasing] = ToolSpec(
       ToolName("project_release"),
       "Frees an artifact's claim, so it may be claimed again, answering a JSON object: " +
-        "`released`, the artifact's key, and `for`, the slot it was claimed for. Refused when " +
+        "`released`, the artifact's key, and `holder`, who it was claimed for. Refused when " +
         "it is not claimed.",
       Args
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
@@ -980,7 +980,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Surveying] = ToolSpec(
       ToolName("project_claims"),
       "Lists the artifacts claimed now, only one project's when given, answering a JSON " +
-        "object: `claims`, each its artifact's `key`, its `role`, `for`, the slot it is " +
+        "object: `claims`, each its artifact's `key`, its `role`, `holder`, who it is " +
         "claimed for, `by`, who claimed it, `since`, when, and `lapses`, when it stops " +
         "holding unless whoever works it keeps working. Ordered by key.",
       Args
@@ -1288,7 +1288,7 @@ private[plugin] object ProjectCommands {
       )
 
   /** Nothing, or a refusal naming each of `changed` that a claim live at `at` holds, at any
-    * label, and the slot it is claimed for.
+    * label, and the holder it is claimed for.
     */
   private def unclaimed(claims: Claims, changed: Vector[(Document, Artifact)], at: Instant)(using
       Tx^

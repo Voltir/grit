@@ -94,15 +94,15 @@ object AnswerText {
       s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
       "before now, and project_history.").mkString("\n")
 
-  /** A freed claim as a JSON object a program reads: `released`, the artifact's key, and `for`,
-    * the slot it was claimed for, which no longer works it.
+  /** A freed claim as a JSON object a program reads: `released`, the artifact's key, and
+    * `holder`, who it was claimed for, which no longer works it.
     */
-  def released(key: ArtifactKey, slot: ClaimHolder): String =
-    ujson.write(ujson.Obj("released" -> key.value, "for" -> ClaimHolder.value(slot)))
+  def released(key: ArtifactKey, holder: ClaimHolder): String =
+    ujson.write(ujson.Obj("released" -> key.value, "holder" -> ClaimHolder.value(holder)))
 
   /** Live claims as a JSON object a program reads: `claims`, each its artifact's `key`, its
-    * `role`, `for`, the slot it is claimed for, `by`, who claimed it (written as given), `since`,
-    * when it was made, and `lapses`, when it lapses unless its slot keeps working; in the order
+    * `role`, `holder`, who it is claimed for, `by`, who claimed it (written as given), `since`,
+    * when it was made, and `lapses`, when it lapses unless its holder keeps working; in the order
     * given.
     */
   def claims(held: Vector[(ArtifactKey, Claim, String)]): String =
@@ -112,7 +112,7 @@ object AnswerText {
           ujson.Obj(
             "key" -> key.value,
             "role" -> ClaimRole.value(c.role),
-            "for" -> ClaimHolder.value(c.holder),
+            "holder" -> ClaimHolder.value(c.holder),
             "by" -> by,
             "since" -> c.made.toString,
             "lapses" -> c.lapses.toString

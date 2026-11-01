@@ -222,7 +222,14 @@ object WithdrawTests extends TestSuite {
       done(ask(projects, store, "project_move", "key" -> "p/h", "state" -> "building"))
       done(ask(projects, store, "project_move", "key" -> "p/h", "state" -> "done"))
       done(
-        ask(projects, store, "project_claim", "key" -> "p/h", "role" -> "builder", "for" -> "slot")
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/h",
+          "role" -> "builder",
+          "holder" -> "slot"
+        )
       )
       val before = seen(projects, store)
       (
@@ -246,7 +253,14 @@ object WithdrawTests extends TestSuite {
       started(projects, store)
       kept(projects, store, "a", "change", "## Why\n\nOne.")
       done(
-        ask(projects, store, "project_claim", "key" -> "p/a", "role" -> "builder", "for" -> "slot")
+        ask(
+          projects,
+          store,
+          "project_claim",
+          "key" -> "p/a",
+          "role" -> "builder",
+          "holder" -> "slot"
+        )
       )
       (
         withdrawnAt(2)(projects, store, "key" -> "p/a"),
