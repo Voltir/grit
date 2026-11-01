@@ -52,9 +52,8 @@ final class LocalProcesses(root: Path, environment: Map[String, String], redacti
       }
     }
 
-  def started[A](argv: Argv, dir: RelPath, added: Map[String, String])(
-      body: Started^ => A
-  ): Either[HostError, A] = startedWith(argv, dir, added)(body)
+  def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A] =
+    startedWith(argv, dir, Map.empty)(body)
 
   /** As [[started]], with `added` set in the program's environment: [[LocalHanding]]'s start. */
   private[checkout] def startedWith[A](argv: Argv, dir: RelPath, added: Map[String, String])(

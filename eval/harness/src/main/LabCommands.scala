@@ -9,22 +9,23 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.RelPath
+import grit.core.secret.{Secret, Variable}
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.BenchRows
 import grit.dbos.sql.DbConfig
 import grit.eval.Room
-import grit.eval.harness.bench.{ApiKey, Arm, Bench, Caps, Rig, Task}
+import grit.eval.harness.bench.{Arm, Bench, Caps, Rig, Task}
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.log.{Cache, Weights}
 import grit.eval.harness.report.{LabRun, Report}
 import grit.eval.harness.score.{Against, RoomScore}
 import grit.host.blobs.LocalBlobs
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
-import grit.models.JevClassifier
 import grit.models.JevConfig
+import grit.models.{AnthropicProvider, JevClassifier}
 
 import Cli.*
 import Engines.*
@@ -70,7 +71,7 @@ private[main] object LabCommands {
             budget <- need(f, "max-budget-usd")
             turns <- need(f, "max-turns")
             cap <- Caps.of(model, budget, turns)
-            key <- ApiKey.of(env.getOrElse("ANTHROPIC_API_KEY", ""))
+            key <- Secret.read(env, Variable(AnthropicProvider.KeyVar)).left.map(_.message)
             arm <-
               for {
                 claude <- need(f, "claude")
@@ -85,7 +86,15 @@ private[main] object LabCommands {
               case Right(blobs) =>
                 withEngine(config, clock, "eval-bench", "the trial was not kept") { engine =>
                   for {
-                    tried <- Rig.trial(work, clock)(repository, task, arm, cap, key, dir, Rig.Quiet)
+                    tried <- Rig.trial(work, new LocalHanding(root, sys.env, redaction), clock)(
+                      repository,
+                      task,
+                      arm,
+                      cap,
+                      key,
+                      dir,
+                      Rig.Quiet
+                    )
                     _ = tried.lines.foreach(println)
                     kept <- Bench.keep(engine.jot, blobs, clock)(
                       Subject.Public,

@@ -8,10 +8,11 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Processes, RelPath}
+import grit.core.host.{Argv, Handing, Processes, RelPath}
 import grit.core.message.{Tokens, Usage}
+import grit.core.secret.{Secret, Variable}
 import grit.dbos.internal.BenchRows
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
 
 import utest.*
 
@@ -42,7 +43,10 @@ object RigTests extends TestSuite {
     def sleep(duration: FiniteDuration): Unit = ()
   }
 
-  private val key = ApiKey.of("sk-ant-test-0123").getOrElse(throw new java.lang.AssertionError())
+  private val env = Map("ANTHROPIC_API_KEY" -> "sk-ant-test-0123")
+  private val key = Secret
+    .read(env, Variable("ANTHROPIC_API_KEY"))
+    .getOrElse(throw new java.lang.AssertionError())
   private val cap =
     Caps.of("claude-haiku-5-5", "0.05", "4").getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")
@@ -57,7 +61,13 @@ object RigTests extends TestSuite {
       hangs: Boolean = false
   )
 
-  private final case class Fixture(work: Processes, root: Path, origin: String, task: Task) {
+  private final case class Fixture(
+      work: Processes,
+      handing: Handing,
+      root: Path,
+      origin: String,
+      task: Task
+  ) {
     def arm(fake: Fake): Arm = {
       Files.write(root.resolve("stream.jsonl"), fake.lines.asJava)
       val claude = root.resolve("claude")
@@ -98,7 +108,7 @@ object RigTests extends TestSuite {
   private def withTask[A](body: Fixture^ => A): A = {
     val root = Files.createTempDirectory("grit-rig")
     try {
-      val work = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
+      val work = new LocalProcesses(root, sys.env, Redaction.of(env))
       val origin = Files.createDirectories(root.resolve("origin/scripts")).getParent
       Seq("check", "it", "fetch-enola.sh", "enola-law.sh").foreach { s =>
         val script = Files.writeString(origin.resolve(s"scripts/$s"), "#!/bin/sh\nexit 0\n")
@@ -119,7 +129,15 @@ object RigTests extends TestSuite {
         n <- BenchRows.TaskName.of("fixture")
       } yield Task(n, b, "Give A an x.", Vector(k), Vector(Check(Runner.Check, Vector("m")))))
         .fold(e => throw new java.lang.AssertionError(e), identity)
-      body(Fixture(work, root, origin.toString, task))
+      body(
+        Fixture(
+          work,
+          new LocalHanding(root, sys.env, Redaction.of(env)),
+          root,
+          origin.toString,
+          task
+        )
+      )
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
@@ -128,7 +146,15 @@ object RigTests extends TestSuite {
       fake: Fake,
       quiet: FiniteDuration = Rig.Quiet
   ): Either[String, Tried] =
-    Rig.trial(f.work, stepping())(f.origin, f.task, f.arm(fake), cap, key, checkout, quiet)
+    Rig.trial(f.work, f.handing, stepping())(
+      f.origin,
+      f.task,
+      f.arm(fake),
+      cap,
+      key,
+      checkout,
+      quiet
+    )
 
   val tests = Tests {
     test(
@@ -196,7 +222,9 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("claude's config directory is a private one beside its key file, not its user's home") {
+    test(
+      "claude's config directory is a private one apart from its key file, not its user's home"
+    ) {
       withTask { f =>
         val _ = trial(f, Fake("object A { val x = 1 }"))
         val config = Path.of(f.recorded("configdir").trim)
@@ -204,7 +232,20 @@ object RigTests extends TestSuite {
           config.getFileName.toString,
           config.getParent == Path.of(f.recorded("helperdir").trim),
           f.recorded("configmode").trim
-        ) ==> ("config", true, "700")
+        ) ==> ("config", false, "700")
+      }
+    }
+
+    test("a transcript line holding the key is kept redacted") {
+      withTask { f =>
+        val leaked = """{"type":"system","subtype":"note","text":"key sk-ant-test-0123"}"""
+        trial(f, Fake("object A { val x = 1 }", Streams.run :+ leaked)).map(
+          _.transcript.lastOption
+        ) ==> Right(
+          Some(
+            """{"type":"system","subtype":"note","text":"key [redacted secret: ANTHROPIC_API_KEY]"}"""
+          )
+        )
       }
     }
     test("the key reaches none of claude's arguments, nor anything the trial keeps") {
@@ -218,7 +259,7 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "the key's directory, with claude's config in it, is temporary outside the checkout, removed after any trial"
+      "the key's directory and claude's config directory are temporary outside the checkout, removed after any trial"
     ) {
       withTask { f =>
         def helperDir() = Path.of(f.recorded("helperdir").trim)
@@ -237,8 +278,8 @@ object RigTests extends TestSuite {
           afterPass.getParent == temp && afterFail.getParent == temp,
           Files.exists(afterPass),
           Files.exists(afterFail),
-          configPass.startsWith(afterPass),
-          configFail.startsWith(afterFail),
+          configPass.getParent.getParent == temp,
+          configFail.getParent.getParent == temp,
           Files.exists(configPass),
           Files.exists(configFail)
         ) ==> (true, true, true, true, false, false, true, true, false, false)
@@ -296,7 +337,8 @@ object RigTests extends TestSuite {
         val bubblewrap = "error: bubblewrap is required, key sk-ant-test-0123"
         trial(f, Fake("object A { val x = 1 }", Vector.empty, bubblewrap))
           .fold(identity, _ => "passed") ==>
-          "claude wrote no session (exit 1): error: bubblewrap is required, key [key]"
+          "claude wrote no session (exit 1): error: bubblewrap is required, key " +
+          "[redacted secret: ANTHROPIC_API_KEY]"
       }
     }
 

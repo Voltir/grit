@@ -19,7 +19,7 @@ object ProcessesCaptureTests extends TestSuite {
   private val params = "(processes: Processes^, argv: Argv)"
 
   private def start(body: String): String =
-    s"processes.started(argv, RelPath.Root, Map.empty)($body)"
+    s"processes.started(argv, RelPath.Root)($body)"
 
   private val awaited = s"def f$params: Any = ${start("s => s.await(1.second)")}\n"
 

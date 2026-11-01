@@ -31,7 +31,7 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val answered =
           new LocalProcesses(dir, sys.env, noSecrets)
-            .started(argv("cat"), RelPath.Root, Map.empty) { s =>
+            .started(argv("cat"), RelPath.Root) { s =>
               val in = s.input
               val out = s.lines
               in.write("one\n".getBytes(StandardCharsets.UTF_8))
@@ -50,8 +50,7 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val pids = new LocalProcesses(dir, sys.env, noSecrets).started(
           argv("sh", "-c", "sleep 60 & echo $$ $!; wait"),
-          RelPath.Root,
-          Map.empty
+          RelPath.Root
         ) { s =>
           s.lines.next()
         }
@@ -66,8 +65,7 @@ object LocalProcessesTests extends TestSuite {
       inRoot { dir =>
         val waited = new LocalProcesses(dir, sys.env, noSecrets).started(
           argv("sh", "-c", "echo late >&2; exec sleep 30"),
-          RelPath.Root,
-          Map.empty
+          RelPath.Root
         )(s => s.await(300.millis))
         waited.map(_.left.map {
           case HostError.TimedOut(after, errors) => (after, errors.show)
@@ -100,23 +98,6 @@ object LocalProcessesTests extends TestSuite {
       }
     }
 
-    test("a variable named like a secret reaches a started program only when it is passed") {
-      inRoot { dir =>
-        val processes =
-          new LocalProcesses(dir, sys.env ++ Map("ANTHROPIC_API_KEY" -> "inherited"), noSecrets)
-        def seen(added: Map[String, String]): Either[HostError, String] =
-          processes.started(
-            argv("sh", "-c", "echo \"${ANTHROPIC_API_KEY:-none}\""),
-            RelPath.Root,
-            added
-          ) { s =>
-            s.lines.next()
-          }
-        (seen(Map.empty), seen(Map("ANTHROPIC_API_KEY" -> "passed"))) ==>
-          (Right("none"), Right("passed"))
-      }
-    }
-
     test("a program that is not there is refused as failing to start, where one that is runs") {
       inRoot { dir =>
         val processes = new LocalProcesses(dir, sys.env, noSecrets)
@@ -127,9 +108,9 @@ object LocalProcessesTests extends TestSuite {
         }
         (
           failed(processes.run(missing, RelPath.Root, 10.seconds)),
-          failed(processes.started(missing, RelPath.Root, Map.empty)(_ => "ran")),
+          failed(processes.started(missing, RelPath.Root)(_ => "ran")),
           processes.run(argv("true"), RelPath.Root, 10.seconds).map(_.exit),
-          processes.started(argv("true"), RelPath.Root, Map.empty)(_ => "ran")
+          processes.started(argv("true"), RelPath.Root)(_ => "ran")
         ) ==> (true, true, Right(0), Right("ran"))
       }
     }
@@ -152,8 +133,7 @@ object LocalProcessesTests extends TestSuite {
             "-c",
             "echo out sk-planted-value-123456; echo err sk-planted-value-123456 >&2"
           ),
-          RelPath.Root,
-          Map.empty
+          RelPath.Root
         ) { s =>
           (s.lines.toVector, s.await(5.seconds).map(_.output.text))
         }

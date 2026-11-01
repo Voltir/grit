@@ -1,6 +1,5 @@
 package grit.eval.harness.bench
 
-import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
@@ -11,23 +10,12 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Processes, Ran, RelPath, Started}
+import grit.core.host.{Argv, Handing, Processes, Ran, RelPath, Started, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
+import grit.core.secret.Secret
 import grit.dbos.internal.BenchRows
-
-/** An Anthropic API key. It reaches `claude` alone, and never prints. */
-final class ApiKey private (private[bench] val value: String) extends caps.Pure {
-  override def toString: String = "ApiKey(…)"
-}
-
-object ApiKey {
-
-  /** `key`, trimmed, or why not: it is empty. */
-  def of(key: String): Either[String, ApiKey] =
-    Either.cond(key.trim.nonEmpty, new ApiKey(key.trim), "no Anthropic API key was given")
-}
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
   * most it may spend, in USD by Claude Code's own estimate, which a run can pass; and its most
@@ -166,18 +154,18 @@ object Rig {
 
   /** A coder, as `arm` runs it under `cap`, on `task` in a new checkout at `dir` of the repository
     * at `repository` (an absolute path); then the task's checks run there, and its diff measured
-    * against the known diff. `key` reaches `claude` alone, through a file removed once it exits,
-    * and never the environment of anything it runs. A run a cap stopped, or that ended in error,
+    * against the known diff, `claude` handed `key` for its `apiKeyHelper` to read. A run a cap
+    * stopped, or that ended in error,
     * is a trial not passed; a run that writes nothing for `quiet` is stopped and its trial kept
     * the same way; one that wrote no session is a `Left`. The checkout's `out/` is removed
     * whatever happens, and the checkout itself unless the result is a `Left`.
     */
-  def trial(work: Processes, clock: Clock^)(
+  def trial(work: Processes, handing: Handing, clock: Clock^)(
       repository: String,
       task: Task,
       arm: Arm,
       cap: Caps,
-      key: ApiKey,
+      key: Secret,
       dir: RelPath,
       quiet: FiniteDuration
   ): Either[String, Tried] =
@@ -192,30 +180,32 @@ object Rig {
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           checkout <- run(work, dir, Clone.Longest)("pwd", "-P").map(_.output.text.trim)
-          streamed <- handedOver(key) { (helper, added) =>
-            for {
-              argv <- Argv.of(
-                "timeout",
-                Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
-                  arguments(arm, cap, task, helper)*
-              )
-              started = clock.millis()
-              streamed <- work
-                .started(argv, dir, added) { s =>
-                  s.input.close()
-                  val (lines, stopped) = streamOf(s, quiet)
-                  if (stopped.isDefined) s.kill()
-                  val ended = s.await(Longest + 2.minutes).left.map(_.message)
-                  s.kill()
-                  Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
-                }
-                .left
-                .map(e => s"claude did not run: ${e.message}")
-            } yield streamed
+          streamed <- configured { variables =>
+            val started = clock.millis()
+            handing
+              .started(dir, key, variables) { file =>
+                for {
+                  _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
+                  argv <- Argv.of(
+                    "timeout",
+                    Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
+                      arguments(arm, cap, task, s"cat '$file'")*
+                  )
+                } yield argv
+              } { s =>
+                s.input.close()
+                val (lines, stopped) = streamOf(s, quiet)
+                if (stopped.isDefined) s.kill()
+                val ended = s.await(Longest + 2.minutes).left.map(_.message)
+                s.kill()
+                Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
+              }
+              .left
+              .map(e => s"claude did not run: ${e.message}")
           }
           Streamed(lines, ended, wall, stopped) = streamed
           consumed <- Consumed.of(lines, checkout)
-          local <- consumed.session.toRight(neverStarted(ended, key))
+          local <- consumed.session.toRight(neverStarted(ended))
           _ <- Either.cond(
             consumed.apiKeySource.contains("apiKeyHelper"),
             (),
@@ -263,39 +253,29 @@ object Rig {
       stopped: Option[String]
   )
 
-  /** `use` of how `key` reaches `claude`, and only `claude`: `helper`, the command its
-    * `apiKeyHelper` setting runs to print the key, which reads a file only this user can read, in
-    * a directory of its own under the system temp directory; and `added`, the variables to add to
-    * its environment, which hold no key: `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no
-    * memory under its user's home, and `CLAUDE_CONFIG_DIR`, an empty directory of its own beside
-    * the key file, so a run writes no transcript under its user's home. The directory, and all in
-    * it, is removed once `use` returns or throws. `Left` when the file cannot be written.
+  /** `use` of the variables `claude` runs with, none of them a key:
+    * `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no memory under its user's home, and
+    * `CLAUDE_CONFIG_DIR`, an empty directory only this user can read, in a directory of its own
+    * under the system temp directory, so a run writes no transcript under its user's home. That
+    * directory, and all in it, is removed once `use` returns or throws. `Left` when it cannot be
+    * made.
     */
-  private def handedOver[A](key: ApiKey)(
-      use: (String, Map[String, String]) => Either[String, A]
-  ): Either[String, A] = {
+  private def configured[A](use: Variables => Either[String, A]): Either[String, A] = {
     val owner = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
-    val readable =
-      PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
-    Try(Files.createTempDirectory("grit-bench-key", owner)).toEither.left
-      .map(e => s"no directory for the key: ${e.getClass.getName}")
+    Try(Files.createTempDirectory("grit-bench-config", owner)).toEither.left
+      .map(e => s"no directory for claude's config: ${e.getClass.getName}")
       .flatMap { dir =>
         try {
           for {
-            file <- Try {
-              val file = Files.createFile(dir.resolve("key"), readable)
-              Files.writeString(file, key.value, StandardCharsets.UTF_8)
-            }.toEither.left.map(e => s"the key was not written: ${e.getClass.getName}")
             config <- Try(Files.createDirectory(dir.resolve("config"), owner)).toEither.left
               .map(e => s"no config directory: ${e.getClass.getName}")
-            _ <- Either.cond(!file.toString.contains("'"), (), s"$file cannot be quoted")
-            used <- use(
-              s"cat '$file'",
+            variables <- Variables.of(
               Map(
                 "CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1",
                 "CLAUDE_CONFIG_DIR" -> config.toAbsolutePath.toString
               )
             )
+            used <- use(variables)
           } yield used
         } finally removeTree(dir)
       }
@@ -427,9 +407,9 @@ object Rig {
   }
 
   /** Why a run wrote no session: how its wait ended, and for an exit, its code and the last line
-    * of its errors. `key` is replaced by `[key]` throughout.
+    * of its errors.
     */
-  private def neverStarted(ended: Either[String, Ran], key: ApiKey): String =
+  private def neverStarted(ended: Either[String, Ran]): String =
     ended
       .fold(
         e => s"claude wrote no session: $e",
@@ -442,7 +422,6 @@ object Rig {
               s"claude wrote no session (exit ${ran.exit}): $line"
             }
       )
-      .replace(key.value, "[key]")
 
   /** `program` with `args` run in `dir`; `Left` when it cannot start, times out or exits other
     * than 0.

@@ -48,7 +48,7 @@ object Clone {
       argv <- Argv.of("git", diff*)
       // Read whole from its output, not from run's tail, which keeps only the last lines.
       read <- work
-        .started(argv, dir, Map.empty) { s =>
+        .started(argv, dir) { s =>
           val text = s.lines.map(_ + "\n").mkString
           s.await(Longest).map(r => (r.exit, text, r.output.text))
         }
