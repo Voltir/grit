@@ -12,6 +12,10 @@ import utest.*
 /** [[LocalWorkspace]], [[LocalEdits]] and [[LocalShell]] against a temporary checkout. */
 object LocalHostTests extends TestSuite {
 
+  private val noSecrets = Redaction.of(Map.empty)
+
+  private val planted = Redaction.of(Map("GRIT_TEST_TOKEN" -> "sk-planted-value-123456"))
+
   private def path(s: String): RelPath = RelPath.of(s) match {
     case Right(p) => p
     case Left(e) => throw new java.lang.AssertionError(e.message)
@@ -38,7 +42,7 @@ object LocalHostTests extends TestSuite {
     test("read") {
       test("a whole file, and a window of it") {
         inCheckout("a.txt" -> "one\ntwo\nthree\n") { dir =>
-          val ws = new LocalWorkspace(dir)
+          val ws = new LocalWorkspace(dir, noSecrets)
           shown(ws.read(path("a.txt"), Lines.All)) ==> Right(
             "     1\tone\n     2\ttwo\n     3\tthree"
           )
@@ -50,7 +54,7 @@ object LocalHostTests extends TestSuite {
       test("a long file is clipped, with the offset to continue from") {
         val text = (1 to 2500).map(i => s"line $i").mkString("\n")
         inCheckout("big.txt" -> text) { dir =>
-          val clip = new LocalWorkspace(dir).read(path("big.txt"), Lines.All)
+          val clip = new LocalWorkspace(dir, noSecrets).read(path("big.txt"), Lines.All)
           clip.map(_.hint) ==>
             Right(Some("Showing lines 1-2000 of 2500. Use offset=2001 to continue."))
           clip.map(_.text.linesIterator.toVector.lastOption) ==> Right(Some("  2000\tline 2000"))
@@ -58,7 +62,7 @@ object LocalHostTests extends TestSuite {
       }
       test("a line's number is the one search gives it") {
         inCheckout("s.txt" -> "a\nb\nneedle\nc\n") { dir =>
-          val ws = new LocalWorkspace(dir)
+          val ws = new LocalWorkspace(dir, noSecrets)
           shown(ws.search("needle", path("s.txt"))) ==> Right("s.txt:3: needle")
           shown(ws.read(path("s.txt"), Lines.of(3, Some(1)))) ==>
             Right("     3\tneedle\n\n[1 more lines in the file. Use offset=4 to continue.]")
@@ -66,7 +70,7 @@ object LocalHostTests extends TestSuite {
       }
       test("failures") {
         inCheckout("a.txt" -> "one\n", "d/b.txt" -> "x") { dir =>
-          val ws = new LocalWorkspace(dir)
+          val ws = new LocalWorkspace(dir, noSecrets)
           ws.read(path("nope"), Lines.All) ==> Left(HostError.NotFound(path("nope")))
           ws.read(path("d"), Lines.All) ==> Left(HostError.NotAFile(path("d")))
           ws.read(path("a.txt"), Lines.of(5, None)) ==>
@@ -82,7 +86,7 @@ object LocalHostTests extends TestSuite {
       }
       test("an empty file reads as empty at offset 1") {
         inCheckout("e" -> "") { dir =>
-          shown(new LocalWorkspace(dir).read(path("e"), Lines.All)) ==> Right("")
+          shown(new LocalWorkspace(dir, noSecrets).read(path("e"), Lines.All)) ==> Right("")
         }
       }
       test("a link leading outside the checkout, or to a secrets file, is refused") {
@@ -91,7 +95,7 @@ object LocalHostTests extends TestSuite {
             Files.createSymbolicLink(dir.resolve("out"), other.resolve("outside.txt"))
             Files.createSymbolicLink(dir.resolve("config"), dir.resolve(".env"))
             Files.createSymbolicLink(dir.resolve("ok"), dir.resolve("a.txt"))
-            val ws = new LocalWorkspace(dir)
+            val ws = new LocalWorkspace(dir, noSecrets)
             ws.read(path("out"), Lines.All) ==> Left(HostError.Outside(path("out")))
             ws.read(path("config"), Lines.All) ==> Left(HostError.Outside(path("config")))
             shown(ws.read(path("ok"), Lines.All)) ==> Right("     1\tx")
@@ -108,7 +112,7 @@ object LocalHostTests extends TestSuite {
         ".git/HEAD" -> "",
         "out/x" -> ""
       ) { dir =>
-        val ws = new LocalWorkspace(dir)
+        val ws = new LocalWorkspace(dir, noSecrets)
         shown(ws.list(RelPath.Root, 1)) ==> Right(".git/\nREADME.md\nout/\nsrc/")
         shown(ws.list(RelPath.Root, 3)) ==> Right(
           ".git/\nREADME.md\nout/\nsrc/\nsrc/a.scala\nsrc/deep/\nsrc/deep/b.scala"
@@ -129,7 +133,7 @@ object LocalHostTests extends TestSuite {
         ".git/config" -> "x\n",
         "out/gen.scala" -> "val x\n"
       ) { dir =>
-        val ws = new LocalWorkspace(dir)
+        val ws = new LocalWorkspace(dir, noSecrets)
         shown(ws.search("x", RelPath.Root)) ==>
           Right("src/a.scala:1: val x = 1\nsrc/b.scala:1: def x = 3")
         shown(ws.search("^val", path("src/a.scala"))) ==>
@@ -140,9 +144,22 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test(
+      "read and search show a secret's value redacted, line numbers kept; a pattern never matches it"
+    ) {
+      inCheckout("notes.txt" -> "one\ntoken: sk-planted-value-123456\nthree\n") { dir =>
+        val ws = new LocalWorkspace(dir, planted)
+        shown(ws.read(path("notes.txt"), Lines.All)) ==>
+          Right("     1\tone\n     2\ttoken: [redacted secret: GRIT_TEST_TOKEN]\n     3\tthree")
+        shown(ws.search("token", RelPath.Root)) ==>
+          Right("notes.txt:2: token: [redacted secret: GRIT_TEST_TOKEN]")
+        shown(ws.search("planted", RelPath.Root)) ==> Right("No matches.")
+      }
+    }
+
     test("a long matching line is cut") {
       inCheckout("a" -> ("x" * 600)) { dir =>
-        val line = new LocalWorkspace(dir).search("x", RelPath.Root).map(_.text)
+        val line = new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root).map(_.text)
         line.map(_.length) ==> Right(
           "a:1: ".length + Workspace.MaxLineChars + "… [line cut]".length
         )
@@ -197,7 +214,7 @@ object LocalHostTests extends TestSuite {
 
     test("run") {
       inCheckout("a.txt" -> "x") { dir =>
-        val shell = new LocalShell(dir, sys.env)
+        val shell = new LocalShell(dir, sys.env, noSecrets)
         shell.run("echo hi; ls", 10.seconds).map(r => (r.exit, r.output.show)) ==>
           Right((0, "hi\na.txt\n"))
         shell
@@ -218,7 +235,8 @@ object LocalHostTests extends TestSuite {
           "AWS_SECRET_ACCESS_KEY" -> "planted-secret",
           "LANG" -> "C.UTF-8"
         )
-        val shown = new LocalShell(dir, environment).run("env", 10.seconds).map(_.output.show)
+        val shown =
+          new LocalShell(dir, environment, noSecrets).run("env", 10.seconds).map(_.output.show)
         val names = shown.map(_.linesIterator.map(_.takeWhile(_ != '=')).toSet)
         // sh sets its own PWD, SHLVL and _.
         val own = Set("PWD", "SHLVL", "_", "OLDPWD")
@@ -234,7 +252,7 @@ object LocalHostTests extends TestSuite {
 
     test("run clips from the tail") {
       inCheckout() { dir =>
-        val ran = new LocalShell(dir, sys.env).run("seq 1 3000", 10.seconds)
+        val ran = new LocalShell(dir, sys.env, noSecrets).run("seq 1 3000", 10.seconds)
         ran.map(_.output.text.split("\n").headOption) ==> Right(Some("1001"))
         ran.map(_.output.hint) ==> Right(
           Some(
@@ -245,11 +263,23 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test("a command's output, and a timeout's, show a secret's value redacted") {
+      inCheckout() { dir =>
+        val shell = new LocalShell(dir, sys.env, planted)
+        shell.run("echo sk-planted-value-123456", 10.seconds).map(_.output.show) ==>
+          Right("[redacted secret: GRIT_TEST_TOKEN]\n")
+        shell.run("echo sk-planted-value-123456; sleep 30", 500.millis).left.map {
+          case HostError.TimedOut(_, output) => output.show
+          case other => other.message
+        } ==> Left("[redacted secret: GRIT_TEST_TOKEN]\n")
+      }
+    }
+
     test("a timeout kills the command and what it started, and keeps the output so far") {
       inCheckout() { dir =>
         val marker = dir.resolve("late")
         val started = System.nanoTime()
-        val ran = new LocalShell(dir, sys.env).run(
+        val ran = new LocalShell(dir, sys.env, noSecrets).run(
           "echo before; (sleep 2; touch late) & sleep 30",
           500.millis
         )

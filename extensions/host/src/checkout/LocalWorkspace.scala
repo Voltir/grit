@@ -8,16 +8,17 @@ import grit.core.secret.Named
 
 /** Reading the checkout whose root is `root`, on this machine's file system. Search walks
   * the files itself, with `java.util.regex`; it does not shell out to `rg`, so it needs
-  * nothing installed and behaves the same on every machine.
+  * nothing installed and behaves the same on every machine. A file's text is cleared by
+  * `redaction` before it is read or searched, so a pattern never matches a secret's value.
   */
-final class LocalWorkspace(root: Path) extends Workspace {
+final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
   import Checkout.attempt
 
   private val checkout = new Checkout(root)
 
   def read(path: RelPath, lines: Lines): Either[HostError, Clipped] =
     checkout.find(path).flatMap(checkout.text(path, _)).flatMap { text =>
-      val all = Clipped.lines(text)
+      val all = Clipped.lines(redaction(text))
       val total = all.size
       val first = lines.offset
       if (first > total.max(1)) Left(HostError.PastEnd(path, first, total))
@@ -134,7 +135,7 @@ final class LocalWorkspace(root: Path) extends Workspace {
     RelPath.of(rel).toOption.flatMap(p => checkout.text(p, file).toOption) match {
       case None => Vector.empty
       case Some(text) =>
-        Clipped.lines(text).zipWithIndex.collect {
+        Clipped.lines(redaction(text)).zipWithIndex.collect {
           case (line, i) if regex.matcher(line).find() =>
             val shown =
               if (line.length <= Workspace.MaxLineChars) line

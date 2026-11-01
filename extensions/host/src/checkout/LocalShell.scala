@@ -10,11 +10,13 @@ import grit.core.secret.Named
 /** Running commands in the checkout whose root is `root`, with `sh -c`, as
   * [[LocalProcesses]] runs a program there: a command never sees an API key, a database
   * password or anything else named like a secret, and a timeout kills it and every process it
-  * started that is still its descendant; one that detached itself survives.
+  * started that is still its descendant; one that detached itself survives. What it shows is
+  * cleared by `redaction`.
   */
-final class LocalShell(root: Path, environment: Map[String, String]) extends Shell {
+final class LocalShell(root: Path, environment: Map[String, String], redaction: Redaction)
+    extends Shell {
 
-  private val processes = new LocalProcesses(root, environment)
+  private val processes = new LocalProcesses(root, environment, redaction)
 
   def run(command: String, timeout: FiniteDuration): Either[HostError, Ran] =
     Argv.of("sh", "-c", command) match {

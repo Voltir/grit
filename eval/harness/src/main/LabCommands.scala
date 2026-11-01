@@ -21,7 +21,7 @@ import grit.eval.harness.log.{Cache, Weights}
 import grit.eval.harness.report.{LabRun, Report}
 import grit.eval.harness.score.{Against, RoomScore}
 import grit.host.blobs.LocalBlobs
-import grit.host.checkout.LocalProcesses
+import grit.host.checkout.{LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
 import grit.models.JevClassifier
 import grit.models.JevConfig
@@ -53,7 +53,10 @@ private[main] object LabCommands {
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))
       _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
-      work = new LocalProcesses(root, sys.env)
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      redaction = Redaction.of(env)
+      _ = System.err.println(s"[bench] ${redaction.described}")
+      work = new LocalProcesses(root, sys.env, redaction)
       dir <- RelPath.of(s"$name-${clock.now().getEpochSecond}").left.map(_.toString)
       _ <-
         if (f.get("known").contains("true"))
@@ -67,7 +70,6 @@ private[main] object LabCommands {
             budget <- need(f, "max-budget-usd")
             turns <- need(f, "max-turns")
             cap <- Caps.of(model, budget, turns)
-            env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
             key <- ApiKey.of(env.getOrElse("ANTHROPIC_API_KEY", ""))
             arm <-
               for {

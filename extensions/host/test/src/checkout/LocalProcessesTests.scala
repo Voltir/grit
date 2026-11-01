@@ -1,6 +1,5 @@
 package grit.host.checkout
 
-import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
@@ -12,6 +11,8 @@ import utest.*
 
 /** [[LocalProcesses]] against a temporary root. */
 object LocalProcessesTests extends TestSuite {
+
+  private val noSecrets = Redaction.of(Map.empty)
 
   private def argv(program: String, args: String*): Argv = Argv.of(program, args*) match {
     case Right(a) => a
@@ -29,29 +30,30 @@ object LocalProcessesTests extends TestSuite {
     test("a started program answers each line of its input on its output") {
       inRoot { dir =>
         val answered =
-          new LocalProcesses(dir, sys.env).started(argv("cat"), RelPath.Root, Map.empty) { s =>
-            val in = s.input
-            val out = new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
-            in.write("one\n".getBytes(StandardCharsets.UTF_8))
-            in.flush()
-            val first = out.readLine()
-            in.write("two\n".getBytes(StandardCharsets.UTF_8))
-            in.close()
-            val second = out.readLine()
-            (first, second, s.await(5.seconds).map(_.exit))
-          }
+          new LocalProcesses(dir, sys.env, noSecrets)
+            .started(argv("cat"), RelPath.Root, Map.empty) { s =>
+              val in = s.input
+              val out = s.lines
+              in.write("one\n".getBytes(StandardCharsets.UTF_8))
+              in.flush()
+              val first = out.next()
+              in.write("two\n".getBytes(StandardCharsets.UTF_8))
+              in.close()
+              val second = out.next()
+              (first, second, s.await(5.seconds).map(_.exit))
+            }
         answered ==> Right(("one", "two", Right(0)))
       }
     }
 
     test("leaving its scope kills a program still running, and what it started") {
       inRoot { dir =>
-        val pids = new LocalProcesses(dir, sys.env).started(
+        val pids = new LocalProcesses(dir, sys.env, noSecrets).started(
           argv("sh", "-c", "sleep 60 & echo $$ $!; wait"),
           RelPath.Root,
           Map.empty
         ) { s =>
-          new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8)).readLine()
+          s.lines.next()
         }
         val alive = pids.map(_.split(' ').toList.map { pid =>
           ProcessHandle.of(pid.toLong).map(_.isAlive).orElse(false)
@@ -62,7 +64,7 @@ object LocalProcessesTests extends TestSuite {
 
     test("a started program past its wait is killed and reported timed out with its errors") {
       inRoot { dir =>
-        val waited = new LocalProcesses(dir, sys.env).started(
+        val waited = new LocalProcesses(dir, sys.env, noSecrets).started(
           argv("sh", "-c", "echo late >&2; exec sleep 30"),
           RelPath.Root,
           Map.empty
@@ -77,7 +79,7 @@ object LocalProcessesTests extends TestSuite {
     test("a program runs with its arguments as given, in its directory, to its end") {
       inRoot { dir =>
         Files.createDirectory(dir.resolve("sub"))
-        val ran = new LocalProcesses(dir, sys.env).run(
+        val ran = new LocalProcesses(dir, sys.env, noSecrets).run(
           argv("sh", "-c", "pwd; echo \"$1\"; echo err >&2; exit 3", "sh", "a; b"),
           RelPath.of("sub").getOrElse(RelPath.Root),
           10.seconds
@@ -90,7 +92,7 @@ object LocalProcessesTests extends TestSuite {
     test("a program sees no variable named like a secret") {
       inRoot { dir =>
         val environment = sys.env ++ Map("ANTHROPIC_API_KEY" -> "planted", "LANG" -> "C.UTF-8")
-        val names = new LocalProcesses(dir, environment)
+        val names = new LocalProcesses(dir, environment, noSecrets)
           .run(argv("env"), RelPath.Root, 10.seconds)
           .map(_.output.show.linesIterator.map(_.takeWhile(_ != '=')).toSet)
         names.map(n => (n.contains("ANTHROPIC_API_KEY"), n.contains("LANG"))) ==>
@@ -100,14 +102,15 @@ object LocalProcessesTests extends TestSuite {
 
     test("a variable named like a secret reaches a started program only when it is passed") {
       inRoot { dir =>
-        val processes = new LocalProcesses(dir, sys.env ++ Map("ANTHROPIC_API_KEY" -> "inherited"))
+        val processes =
+          new LocalProcesses(dir, sys.env ++ Map("ANTHROPIC_API_KEY" -> "inherited"), noSecrets)
         def seen(added: Map[String, String]): Either[HostError, String] =
           processes.started(
             argv("sh", "-c", "echo \"${ANTHROPIC_API_KEY:-none}\""),
             RelPath.Root,
             added
           ) { s =>
-            new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8)).readLine()
+            s.lines.next()
           }
         (seen(Map.empty), seen(Map("ANTHROPIC_API_KEY" -> "passed"))) ==>
           (Right("none"), Right("passed"))
@@ -116,7 +119,7 @@ object LocalProcessesTests extends TestSuite {
 
     test("a program that is not there is refused as failing to start, where one that is runs") {
       inRoot { dir =>
-        val processes = new LocalProcesses(dir, sys.env)
+        val processes = new LocalProcesses(dir, sys.env, noSecrets)
         val missing = argv("grit-no-such-program")
         def failed[A](r: Either[HostError, A]): Boolean = r match {
           case Left(HostError.Failed(_)) => true
@@ -133,10 +136,33 @@ object LocalProcessesTests extends TestSuite {
 
     test("a directory that is not there is refused before anything starts") {
       inRoot { dir =>
-        val processes = new LocalProcesses(dir, sys.env)
+        val processes = new LocalProcesses(dir, sys.env, noSecrets)
         val gone = RelPath.of("gone").getOrElse(RelPath.Root)
         processes.run(argv("true"), gone, 10.seconds).left.map(_.message) ==>
           Left(HostError.NotFound(gone).message)
+      }
+    }
+
+    test("a started program's lines and errors show a secret's value redacted") {
+      inRoot { dir =>
+        val redaction = Redaction.of(Map("GRIT_TEST_TOKEN" -> "sk-planted-value-123456"))
+        val shown = new LocalProcesses(dir, sys.env, redaction).started(
+          argv(
+            "sh",
+            "-c",
+            "echo out sk-planted-value-123456; echo err sk-planted-value-123456 >&2"
+          ),
+          RelPath.Root,
+          Map.empty
+        ) { s =>
+          (s.lines.toVector, s.await(5.seconds).map(_.output.text))
+        }
+        shown ==> Right(
+          (
+            Vector("out [redacted secret: GRIT_TEST_TOKEN]"),
+            Right("err [redacted secret: GRIT_TEST_TOKEN]\n")
+          )
+        )
       }
     }
   }

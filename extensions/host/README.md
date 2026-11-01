@@ -17,6 +17,9 @@ Its packages, none importing another:
   - `LocalShell` — running a command in a checkout with `sh -c`, through `LocalProcesses`.
   - `LocalHanding` — starting a program handed a secret, as a file only this user reads,
     through `LocalProcesses`' start.
+  - `Redaction` — the deployment's secrets, replaced by `[redacted secret: VARIABLE]` in what
+    a program shows (`run`'s output, a started program's lines, its errors) and in a file's
+    text before it is read or searched. Each class above takes the deployment's one.
   - `LocalInstructions` — the instruction files around a directory.
   - `Checkout` (private) — a checkout's root, and how a relative path is found under it.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.

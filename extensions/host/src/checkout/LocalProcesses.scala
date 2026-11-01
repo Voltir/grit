@@ -1,6 +1,6 @@
 package grit.host.checkout
 
-import java.io.{InputStream, OutputStream}
+import java.io.{BufferedReader, InputStreamReader, OutputStream}
 import java.lang.ProcessBuilder
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -12,10 +12,12 @@ import grit.core.host.{Argv, Clipped, HostError, Kept, Processes, Ran, RelPath, 
 import grit.host.checkout.Checkout.attempt
 
 /** [[Processes]] under `root`, passing only the variables of `environment` that
-  * [[LocalShell.passed]] keeps. [[run]]'s output goes to a temporary file, not a pipe, so a
-  * program that writes more than a pipe holds never blocks on it.
+  * [[LocalShell.passed]] keeps; what a program shows, its output and its errors, is cleared by
+  * `redaction`. [[run]]'s output goes to a temporary file, not a pipe, so a program that writes
+  * more than a pipe holds never blocks on it.
   */
-final class LocalProcesses(root: Path, environment: Map[String, String]) extends Processes {
+final class LocalProcesses(root: Path, environment: Map[String, String], redaction: Redaction)
+    extends Processes {
 
   private val checkout = new Checkout(root)
 
@@ -39,7 +41,7 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
               process.getOutputStream.close()
               val finished = LocalProcesses.awaited(process, timeout)
               attempt(LocalProcesses.tail(out)).flatMap { text =>
-                val output = Clipped.tail(text, hint)
+                val output = Clipped.tail(redaction(text), hint)
                 if (finished) Right(Ran(process.exitValue(), output))
                 else Left(HostError.TimedOut(timeout, output))
               }
@@ -62,7 +64,7 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
       attempt(Files.createTempFile("grit-errors-", ".out")).flatMap { errors =>
         try {
           start(argv, at, added)(_.redirectError(errors.toFile)).map { process =>
-            val handle = new LocalProcesses.Handle(process, errors)
+            val handle = new LocalProcesses.Handle(process, errors, redaction)
             try body(handle)
             finally handle.kill()
           }
@@ -100,17 +102,23 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
 
 private[checkout] object LocalProcesses {
 
-  /** A program [[LocalProcesses.started]] started, its errors going to the file `errors`. */
-  final class Handle(process: Process, errors: Path) extends Started {
+  /** A program [[LocalProcesses.started]] started, its errors going to the file `errors`, what
+    * it shows cleared by `redaction`.
+    */
+  final class Handle(process: Process, errors: Path, redaction: Redaction) extends Started {
 
     def input: OutputStream^{this} = process.getOutputStream
 
-    def output: InputStream^{this} = process.getInputStream
+    def lines: Iterator[String]^{this} = {
+      val reader =
+        new BufferedReader(new InputStreamReader(process.getInputStream, StandardCharsets.UTF_8))
+      Iterator.continually(reader.readLine()).takeWhile(_ != null).map(redaction(_))
+    }
 
     def await(timeout: FiniteDuration): Either[HostError, Ran] = {
       val finished = awaited(process, timeout)
       attempt(tail(errors)).flatMap { text =>
-        val shown = Clipped.tail(text, _ => None)
+        val shown = Clipped.tail(redaction(text), _ => None)
         if (finished) Right(Ran(process.exitValue(), shown))
         else Left(HostError.TimedOut(timeout, shown))
       }

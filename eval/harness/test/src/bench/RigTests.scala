@@ -11,7 +11,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Processes, RelPath}
 import grit.core.message.{Tokens, Usage}
 import grit.dbos.internal.BenchRows
-import grit.host.checkout.LocalProcesses
+import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
 
@@ -98,7 +98,7 @@ object RigTests extends TestSuite {
   private def withTask[A](body: Fixture^ => A): A = {
     val root = Files.createTempDirectory("grit-rig")
     try {
-      val work = new LocalProcesses(root, sys.env)
+      val work = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
       val origin = Files.createDirectories(root.resolve("origin/scripts")).getParent
       Seq("check", "it", "fetch-enola.sh", "enola-law.sh").foreach { s =>
         val script = Files.writeString(origin.resolve(s"scripts/$s"), "#!/bin/sh\nexit 0\n")

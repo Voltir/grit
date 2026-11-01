@@ -1,6 +1,5 @@
 package grit.eval.harness.bench
 
-import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}
@@ -400,9 +399,9 @@ object Rig {
     val arrived = new LinkedBlockingQueue[Option[String]]()
     // Read by the thread below alone, and only until its output ends: no other reader is made.
     @caps.unsafe.untrackedCaptures
-    val reader = new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
+    val lines = s.lines
     val pump = new Thread(() =>
-      try reader.lines().forEach(line => arrived.put(Some(line)))
+      try lines.foreach(line => arrived.put(Some(line)))
       finally arrived.put(None)
     )
     pump.setDaemon(true)

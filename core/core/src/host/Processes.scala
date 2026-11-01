@@ -1,6 +1,6 @@
 package grit.core.host
 
-import java.io.{InputStream, OutputStream}
+import java.io.OutputStream
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -48,8 +48,11 @@ trait Started extends caps.SharedCapability {
   /** What the program reads; closing it ends its input. */
   def input: OutputStream^{this}
 
-  /** What the program writes to its output; its errors are kept apart, for [[await]]. */
-  def output: InputStream^{this}
+  /** The program's output line by line, split at each `\n`, `\r\n` or `\r`, each
+    * line redacted as its host redacts what programs show, a value spanning lines line by line;
+    * `hasNext` waits for the next line or the end. Its errors are kept apart, for [[await]].
+    */
+  def lines: Iterator[String]^{this}
 
   /** Waits for the program to end: its exit code and the tail of its errors. `TimedOut` past
     * `timeout`, after killing it as [[kill]] does.

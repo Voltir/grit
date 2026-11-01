@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.host.{Argv, Processes, RelPath}
 import grit.dbos.internal.BenchRows
-import grit.host.checkout.LocalProcesses
+import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
 
@@ -47,7 +47,7 @@ object CloneTests extends TestSuite {
   private def withOrigin[A](texts: String*)(body: (Processes, Origin) => A): A = {
     val root = Files.createTempDirectory("grit-clone")
     try {
-      val work = new LocalProcesses(root, sys.env)
+      val work = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
       Files.createDirectory(root.resolve("origin"))
       val origin = rel("origin")
       val _ = git(work, origin, "init", "-q", "-b", "main")

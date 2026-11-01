@@ -17,7 +17,7 @@ import grit.core.model.ModelId
 import grit.core.place.Directory
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.LocalInstructions
+import grit.host.checkout.{LocalInstructions, Redaction}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Secrets}
@@ -179,6 +179,9 @@ object Main {
     }
     // The Slack SDK logs request bodies at debug: never below info.
     if (slack) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
+    // The deployment's one redaction, over every secret `.env` and the environment hold.
+    val redaction = Redaction.of(env)
+    org.slf4j.LoggerFactory.getLogger("grit.main").info(redaction.described)
 
     val offered = exitOnLeft(toolChoice(env, chat = tui))
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
@@ -317,7 +320,7 @@ object Main {
           LocalEdge
             .over(
               directory,
-              new LocalTools(offered),
+              new LocalTools(offered, redaction),
               new LocalInstructions(),
               org.slf4j.LoggerFactory.getLogger("grit.edge")
             )

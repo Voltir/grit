@@ -38,7 +38,7 @@ object ProcessesCaptureTests extends TestSuite {
 
   private val outputReturned =
     s"""def f$params: Unit = {
-       |  val t = ${start("s => s.output")}
+       |  val t = ${start("s => s.lines")}
        |}
        |""".stripMargin
 

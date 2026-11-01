@@ -10,11 +10,13 @@ import grit.host.checkout.Checkout.attempt
 
 /** [[Handing]] under `root`, starting a program as [[LocalProcesses]] does over `environment`.
   * The secret's file is `secret` in a directory of its own under the system temp directory,
-  * the directory readable by this user alone (0700) and the file too (0600).
+  * the directory readable by this user alone (0700) and the file too (0600). What the program
+  * shows is cleared by `redaction`.
   */
-final class LocalHanding(root: Path, environment: Map[String, String]) extends Handing {
+final class LocalHanding(root: Path, environment: Map[String, String], redaction: Redaction)
+    extends Handing {
 
-  private val processes = new LocalProcesses(root, environment)
+  private val processes = new LocalProcesses(root, environment, redaction)
 
   def started[A](dir: RelPath, secret: Secret, variables: Variables)(
       argv: String -> Either[String, Argv]

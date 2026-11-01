@@ -19,6 +19,7 @@ import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.edge.Server
+import grit.host.checkout.Redaction
 import grit.kit.deployment.Offered
 import grit.kit.run.LocalTools
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
@@ -350,7 +351,7 @@ object LiveTurn {
           .foreach(e => sys.error(s"not advertised: ${e.why}"))
         new Server(
           desk,
-          new LocalTools(if (all) Offered.All else Offered.Read),
+          new LocalTools(if (all) Offered.All else Offered.Read, Redaction.of(sys.env)),
           run => { val _ = Thread.ofVirtual().start(() => run()) },
           _ => ()
         ).serve()

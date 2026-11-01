@@ -6,16 +6,17 @@ import grit.core.edge.{Route, ToolRequest}
 import grit.core.place.Directory
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.{Run, Tools}
-import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace, Redaction}
 import grit.kit.deployment.Offered
 import grit.tools.Coding
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
   * to (a request routed to a service is `Failed`, and nothing runs): `read`, `list` and
   * `search` when `offered` is [[Offered.Read]], every coding tool when it is [[Offered.All]].
-  * A command sees the process's own environment, not `.env`'s.
+  * A command sees the process's own environment, not `.env`'s; what a tool shows is cleared by
+  * `redaction`, the deployment's one.
   */
-final class LocalTools(offered: Offered) extends Tools {
+final class LocalTools(offered: Offered, redaction: Redaction) extends Tools {
 
   /** The tools [[run]] runs, as the engine offers them; `Left` names a tool Coding cannot offer
     * with the others.
@@ -36,7 +37,7 @@ final class LocalTools(offered: Offered) extends Tools {
   }
 
   private def over(root: Path, request: ToolRequest): Outcome = {
-    val ws = new LocalWorkspace(root)
+    val ws = new LocalWorkspace(root, redaction)
     def refused(why: SetRefusal): Outcome =
       Outcome.Failed(s"${why.refusing("The coding tools")}; nothing ran.")
     offered match {
@@ -44,7 +45,7 @@ final class LocalTools(offered: Offered) extends Tools {
         Coding.readOnly(ws).fold(refused, tools => Run.request(request, tools))
       case Offered.All =>
         Coding
-          .all(ws, new LocalEdits(root), new LocalShell(root, sys.env))
+          .all(ws, new LocalEdits(root), new LocalShell(root, sys.env, redaction))
           .fold(refused, tools => Run.request(request, tools))
     }
   }

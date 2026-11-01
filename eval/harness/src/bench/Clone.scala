@@ -1,7 +1,5 @@
 package grit.eval.harness.bench
 
-import java.nio.charset.StandardCharsets
-
 import scala.concurrent.duration.*
 
 import grit.core.host.{Argv, Processes, RelPath}
@@ -51,7 +49,7 @@ object Clone {
       // Read whole from its output, not from run's tail, which keeps only the last lines.
       read <- work
         .started(argv, dir, Map.empty) { s =>
-          val text = new String(s.output.readAllBytes(), StandardCharsets.UTF_8)
+          val text = s.lines.map(_ + "\n").mkString
           s.await(Longest).map(r => (r.exit, text, r.output.text))
         }
         .left

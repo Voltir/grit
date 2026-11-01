@@ -4,7 +4,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}
 
 import grit.core.host.RelPath
-import grit.host.checkout.LocalProcesses
+import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
 
@@ -28,7 +28,7 @@ object ChecksTests extends TestSuite {
       }
       Files.writeString(scripts.resolve("fetch-enola.sh"), "exit 0\n")
       Files.writeString(scripts.resolve("enola-law.sh"), "[ -e law-red ] && exit 1; exit 0\n")
-      body(new LocalProcesses(root, sys.env), root.resolve("checkout"))
+      body(new LocalProcesses(root, sys.env, Redaction.of(Map.empty)), root.resolve("checkout"))
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
