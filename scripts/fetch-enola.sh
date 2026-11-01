@@ -11,22 +11,28 @@
 # scripts/enola-law.sh fails, printing how to re-pin.
 #
 # TRAP: the pinned version is NOT a free upgrade decision. grit uses capture-checking syntax
-# project-wide, and up to 0.4.24 enola's Scala extractor silently degraded on it: on a
-# controlled fixture (five files of capture syntax beside the same five without it), 0.4.8,
-# 0.4.15 and 0.4.22 extracted 40 symbols against the plain files' 46, dropping 7 and
-# mis-owning 11, while the receipt said `parse_errors: 0`. 0.4.29 extracts all 46 with their
-# right owners, and its receipt says `parse_errors: 0` too: the receipt cannot report this
-# damage, so a bump re-runs that comparison. It also diffs grit's import-edge and module facts
-# against the previous version's (they gate) and reruns scripts/enola-plant.
+# project-wide, and up to 0.4.24 enola's Scala extractor silently degraded on it, dropping and
+# mis-owning symbols while the receipt said `parse_errors: 0`. The receipt cannot report this
+# damage, so a bump is measured first, against the version it replaces:
+# - a controlled fixture: files of capture syntax beside the same files without it, and a pair
+#   with separation-checking syntax (`consume`, `^` on parameters, `caps.Mutable` and its
+#   `update` methods) beside its plain twin. Each version must extract the same symbols with
+#   the same owners from both sides of a pair, and the new version no fewer than the old;
+# - grit's import-edge and module facts (they gate): every difference explained;
+# - scripts/enola-plant: every plant caught.
+# The current pin passed all three; the commit that set it records the numbers.
 set -euo pipefail
 
-ENOLA_VERSION=0.4.29
+ENOLA_VERSION=0.4.38
+# The release's published digests, pinned here as well, so a re-uploaded asset fails the check.
+ENOLA_SHA256_AMD64=2e66b79afc8b6840129bddf98092724e359499d074cd79f18833a181b87422cc
+ENOLA_SHA256_ARM64=d63ef65f60440b5c80ed91a5043b8e1eeb545c413143d262e6f2a2a33b3dfffa
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dest="$repo_root/tools"
 
 case "$(uname -m)" in
-  x86_64) arch=amd64 ;;
-  aarch64 | arm64) arch=arm64 ;;
+  x86_64) arch=amd64 sha256=$ENOLA_SHA256_AMD64 ;;
+  aarch64 | arm64) arch=arm64 sha256=$ENOLA_SHA256_ARM64 ;;
   *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
 esac
 
@@ -38,9 +44,11 @@ trap 'rm -rf "$work"' EXIT
 curl -fsSL -o "$work/enola.tar.gz" "${base}/${name}.tar.gz"
 curl -fsSL -o "$work/enola.sha256" "${base}/${name}.sha256"
 
-# Published checksums, so they are checked. The file names the release asset while the
-# download is a temporary path, so only the digest is reused.
-echo "$(cut -d' ' -f1 "$work/enola.sha256")  $work/enola.tar.gz" | sha256sum -c - >/dev/null
+# The published checksum must be the pinned one, and the download must match it. The file
+# names the release asset while the download is a temporary path, so only the digest is reused.
+published="$(cut -d' ' -f1 "$work/enola.sha256")"
+[ "$published" = "$sha256" ] || { echo "published sha256 $published is not the pinned $sha256" >&2; exit 1; }
+echo "$sha256  $work/enola.tar.gz" | sha256sum -c - >/dev/null
 
 tar -xzf "$work/enola.tar.gz" -C "$work" "$name"
 mkdir -p "$dest"

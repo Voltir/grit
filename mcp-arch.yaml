@@ -13,12 +13,12 @@
 # Import-edge and module facts may gate; symbol facts (symbol counts, exported-surface,
 # complexity outliers, `enola impact`'s graph) never do. grit compiles with capture checking
 # project-wide, and up to enola 0.4.24 the Scala extractor dropped and mis-nested symbols under
-# capture syntax while reporting `parse_errors: 0` (on a controlled fixture: 40 symbols from
-# capture-annotated sources against 46 from structurally identical plain ones). 0.4.29
-# extracts all 46 with their right owners, but its receipt would be as silent about a new
-# regression, and the fixture covers no separation-checking syntax. So symbol facts may guide
-# exploration, and a symbol-level claim is confirmed against the compiler's view (scout)
-# before it is stated.
+# capture syntax while reporting `parse_errors: 0`, on a controlled fixture of capture-annotated
+# sources beside structurally identical plain ones. The pinned version extracts the same symbols
+# with the same owners from both, and from a separation-checking pair (`consume`, `^` on
+# parameters, `caps.Mutable`) too, but its receipt would be as silent about a new regression
+# (scripts/fetch-enola.sh says how a bump is measured). So symbol facts may guide exploration,
+# and a symbol-level claim is confirmed against the compiler's view (scout) before it is stated.
 repo: "."
 
 ignore:
@@ -53,8 +53,8 @@ ignore:
   # Capture probes (a module's probes/src): test sources, which no rule governs, declaring
   # main packages. enola resolves an import to the first directory declaring its package,
   # and `probes` sorts before `src`, so indexed, a main source's imports would land in them.
-  # Still needed on 0.4.29: indexed, a renamed import (`Label as VisibilityLabel`) resolves
-  # into core's probes and the law reports two false breaches.
+  # Still needed on 0.4.38: indexed, a renamed import (`Label as VisibilityLabel`) or a package
+  # import (`grit.core.route`) resolves into a module's probes and the law reports false breaches.
   - "**/probes/**"
 
   # Working documents this checkout keeps out of git. They yield no intent (every intent fact

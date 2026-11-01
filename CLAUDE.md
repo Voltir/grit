@@ -151,9 +151,10 @@ server — prefer `impact_analysis`, `explore`, `traverse` and `find_path` over 
 structure by grepping.
 
 **The trust boundary is not negotiable.** enola's Scala extractor dropped and mis-nested
-symbols under capture syntax while reporting `parse_errors: 0`, up to 0.4.24. 0.4.29 reads the
-controlled fixture correctly, but its receipt would be as silent about a new regression.
-Re-measured before every version bump (`scripts/fetch-enola.sh`).
+symbols under capture syntax while reporting `parse_errors: 0`, up to 0.4.24. The pinned version
+reads the controlled fixture correctly, its capture-checking and separation-checking pairs alike,
+but its receipt would be as silent about a new regression. Re-measured before every version bump
+(`scripts/fetch-enola.sh`).
 
 - **Import-edge and module facts are sound** and may gate. Every rule in the law is of this kind.
 - **Symbol facts never gate** (`exported-surface`, `complexity-outliers`, any symbol count).
