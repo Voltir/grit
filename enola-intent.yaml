@@ -107,9 +107,6 @@ components:
   # counted against it.
   - {name: prose-code,     kind: module, match: ["core/prose/src", "core/prose/src/**"]}
 
-  # The outline tool's main sources, kept free of grit's modules so the tool can leave the repository.
-  - {name: outline-code,   kind: module, match: ["dev/outline/src", "dev/outline/src/**"]}
-
   # Core, extension, kit and deployment (ADR 0021; the table is docs/extending.md's), for
   # rule 4 below. Source trees alone, so a test's imports are not counted. Which core module
   # may name which is Mill's moduleDeps' job, not these rules'.
@@ -991,14 +988,3 @@ rules:
     via: imports
     mode: strict
     because: "the harness's main package is its composition root and builds the local host there; every other package, the bench included, is handed core's capabilities (Processes, Blobs), so a fake stands in for them in its tests"
-
-  # -------------------------------------------------------------------------------------
-  # The outline tool reads any Scala 3 project's TASTy, so its main sources name no grit
-  # module: the tool can leave this repository without taking grit's shape with it.
-  # -------------------------------------------------------------------------------------
-  - id: outline-names-no-grit-module
-    allow: outline-code
-    only: [outline-code]
-    via: imports
-    mode: strict
-    because: "the outline tool reads any Scala 3 project's TASTy; naming a grit module would tie it to this repository"

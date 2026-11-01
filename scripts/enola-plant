@@ -29,8 +29,7 @@ Where the plants go is read from the tree, so a layout change needs no edit here
   unruled   the quarantine grep: one unruled class imported in each of grit.dbos, grit.models,
             grit.mcp, grit.host, grit.slack and grit.formats' sources, each of which it must list.
   process   the process grep: `new ProcessBuilder` with no import in every production source
-            root but grit.host's (the outline tool's test fixture's included: a `src` root),
-            each of which it must list.
+            root but grit.host's, each of which it must list.
   areas     the area grep: the cycle plant's two packages, which no area of .outline.conf names,
             each of which it must list.
   paths     the component path check: a folder that does not exist added to the last

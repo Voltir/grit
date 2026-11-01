@@ -181,12 +181,12 @@ if [ -n "$connection" ]; then
   failed=1
 fi
 
-# Every production package outside dev/ is in an area of .outline.conf, so scout's `area` maps
+# Every production package is in an area of .outline.conf, so scout's `area` maps
 # all of grit: a package in none is invisible to an agent orienting by area, and scout's fallback
 # for a name no area declares hides the gap. An area covers the package of each symbol and
 # `family:` trait it names, read as scout reads it: the segments before the first capitalised one.
 # A package is its file's `package` clauses joined (`package object` declares none).
-uncovered=$(printf '%s\n' "${production[@]}" | grep -v '^dev/' | python3 -c '
+uncovered=$(printf '%s\n' "${production[@]}" | python3 -c '
 import re, sys
 covered = set()
 for line in open(".outline.conf"):
