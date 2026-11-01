@@ -248,6 +248,8 @@ final class InMemoryDocuments extends DocumentStore {
             Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs"))
           case _ if Document.oversized(data).nonEmpty =>
             Left(StoreError.Invalid(Document.oversized(data).mkString))
+          case _ if DocRef.overlong(refs, text).nonEmpty =>
+            Left(StoreError.Invalid(DocRef.overlong(refs, text).mkString))
           case Some((v, r))
               if r.text.contains(text) && r.place == place && r.data == data &&
                 r.pointer == pointer && r.integrity == integrity && r.refs == refs =>

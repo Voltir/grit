@@ -679,7 +679,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         }
         unkept <- briefed(
           own,
-          Brief.of(whole, args.key, view, Projects.BriefChars),
+          Brief.of(whole, args.key, view, DocRef.BriefChars),
           args,
           document,
           at
@@ -1363,7 +1363,7 @@ private[plugin] object ProjectCommands {
 
   /** Keeps `rendered`, the claimed artifact's brief, through `own` beside `claimed` (at its label
     * and place), as the brief of `args.holder` ([[DocRef.brief]]), its data naming the holder:
-    * `None` when one was kept, else why none was: it is over [[Projects.BriefChars]], or the
+    * `None` when one was kept, else why none was: it is over [[DocRef.BriefChars]], or the
     * plugin is full; then any brief kept before for the artifact is withdrawn.
     */
   private def briefed(
@@ -1374,7 +1374,7 @@ private[plugin] object ProjectCommands {
       at: Instant
   )(using Tx^): Either[Stop, Option[String]] = {
     val over =
-      f"it is over ${Projects.BriefChars}%,d characters; shorten the artifact or what its role carries"
+      f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val written = for {
       brief <- rendered.left.map(_ => over)
       key <- briefKey(args.key)

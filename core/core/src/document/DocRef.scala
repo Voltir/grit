@@ -31,6 +31,21 @@ object DocRef {
   /** `brief-for`: the kind of a [[brief]], the one kind whose meaning is core's. */
   val Brief: String = "brief-for"
 
+  /** 9,500: the most characters a version holding a [[brief]] holds, as Claude Code's hook
+    * takes, so a session of either harness opens on the same text.
+    */
+  val BriefChars: Int = 9500
+
+  /** Why `text` may not be kept holding `refs`: they hold a [[brief]] and it is over
+    * [[BriefChars]] characters. None when it may.
+    */
+  def overlong(refs: Set[DocRef], text: DocText): Option[String] = {
+    val chars = DocText.value(text).length
+    Option.when(refs.exists(_.kind == Brief) && chars > BriefChars)(
+      s"a brief holds at most $BriefChars characters, not $chars"
+    )
+  }
+
   /** 256: the most references one version holds. */
   val Most: Int = 256
 

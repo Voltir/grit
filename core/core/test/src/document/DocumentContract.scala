@@ -1406,6 +1406,33 @@ abstract class DocumentContract extends TestSuite {
       ) ==> (None, Vector("j"), Vector())
     }
 
+    test("a brief over DocRef.BriefChars is refused, writing nothing; one at it is kept") {
+      val p = name("doc-brief-chars")
+      val k = keeper(p, terms())
+      val brief = Set(DocRef.brief(got(ClaimHolder.of("coder/a"))))
+      def written(key0: String, chars: Int) = transaction(
+        k.write(
+          key(key0),
+          Label.Public,
+          Integrity.Member,
+          place("here"),
+          text("b" * chars),
+          Empty,
+          None,
+          at(1),
+          brief
+        )
+      )
+      val over = written("over", DocRef.BriefChars + 1)
+      val atCap = written("at", DocRef.BriefChars)
+      assertMatch(over) { case Left(StoreError.Invalid(_)) => }
+      (
+        transaction(ok(shelf(p).current(key("over"), Label.Public))).map(_.key),
+        transaction(ok(shelf(p).current(key("at"), Label.Public))).map(_.key),
+        atCap.isRight
+      ) ==> (None, Some(key("at")), true)
+    }
+
     test("a ledger that refuses past its bound writes nothing and withdraws none") {
       val p = name("doc-refuse")
       val k = keeper(p, terms(bound = 2, full = DocumentTerms.Full.Refuse))

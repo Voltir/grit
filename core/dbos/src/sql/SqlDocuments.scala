@@ -508,6 +508,8 @@ private[sql] object SqlDocuments {
         Left(StoreError.Invalid(s"a document holds at most ${DocRef.Most} refs, not ${refs.size}"))
       else if (Document.oversized(data).nonEmpty)
         Left(StoreError.Invalid(Document.oversized(data).mkString))
+      else if (DocRef.overlong(refs, text).nonEmpty)
+        Left(StoreError.Invalid(DocRef.overlong(refs, text).mkString))
       else
         SqlLabels.intern(kept).flatMap { id =>
           rows(
