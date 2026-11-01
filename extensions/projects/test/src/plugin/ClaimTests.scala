@@ -1,7 +1,7 @@
 package grit.projects.plugin
 
 import grit.core.claim.{Claim, ClaimRole, Claims}
-import grit.core.document.Document
+import grit.core.document.{DocText, Document}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.plugin.CommandOutcome
 import grit.core.visibility.Label
@@ -39,6 +39,14 @@ object ClaimTests extends TestSuite {
       forSlot: String = slot
   ): CommandOutcome =
     ask(projects, store, "project_claim", "key" -> key, "role" -> role, "for" -> forSlot)
+
+  /** The brief kept for `holder`, as a window would find it just after the claims here. */
+  private def briefOf(store: Store, holder: String): Option[Document] = {
+    inTx(store.documents.declare(Vector(Projects.Name -> Projects.Terms)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    inTx(store.documents.briefOf(right(ClaimHolder.of(holder)), at.plusSeconds(1)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
 
   /** A project `p` holding two notes, `p/a` and `p/b`. */
   private def holding(projects: Projects, store: Store): Unit = {
@@ -143,15 +151,49 @@ object ClaimTests extends TestSuite {
       ujson.read(released) ==> ujson.Obj("released" -> "p/a", "for" -> slot)
     }
 
-    test("claim, release and claim again keep no document version and mark none") {
+    test("a claim keeps its artifact's brief for its holder, as project_brief renders it") {
       val projects = plugin()
       val store = Store()
       holding(projects, store)
-      val before = (store.count, store.documents.tombstones.pending)
+      done(claimed(projects, store))
+      val rendered = done(
+        ask(projects, store, "project_brief", "key" -> "p/a", "role" -> "builder", "chars" -> 9500)
+      )
+      briefOf(store, slot).map(_.text).map(DocText.value) ==> Some(rendered)
+    }
+    test("a release withdraws the brief, claimed still or not") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
       done(claimed(projects, store))
       done(ask(projects, store, "project_release", "key" -> "p/a"))
+      val released = briefOf(store, slot)
       done(claimed(projects, store))
-      assert((store.count, store.documents.tombstones.pending) == before)
+      // A claim gone without a release, as the session sweep deletes a lapsed one.
+      inTx(store.claims.release(right(DocKey.of("p/a")), Label.Public))
+      val freed = done(ask(projects, store, "project_release", "key" -> "p/a"))
+      (
+        released,
+        ujson.read(freed),
+        briefOf(store, slot),
+        ask(projects, store, "project_release", "key" -> "p/a")
+      ) ==> (
+        None,
+        ujson.Obj("released" -> "p/a", "for" -> slot),
+        None,
+        CommandOutcome.Refused("p/a is not claimed")
+      )
+    }
+    test("a brief over its cap is kept as none, and the claim stands") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Text. " * 2000)
+      val answer = claimed(projects, store)
+      (answer, briefOf(store, slot)) ==> (
+        CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $slot."),
+        None
+      )
     }
 
     test(

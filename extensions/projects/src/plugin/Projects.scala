@@ -15,7 +15,9 @@ import grit.projects.name.{ArtifactKey, MethodName, StateName}
   * commands: `project_new`, `project_keep` (never a state), `project_move` (only as the
   * project's pinned method allows, refused once that method's digest has changed),
   * `project_claim` and `project_release` (a claim on an artifact, one of the plugin's claims and
-  * never a document, so the artifact keeps its version), `project_withdraw` (an artifact no
+  * never a document, so the artifact keeps its version; a claim keeps the artifact's brief for its
+  * holder as a document of its own ([[grit.core.document.DocRef.brief]], at most [[BriefChars]],
+  * none when over), which a release withdraws, claimed still or not), `project_withdraw` (an artifact no
   * other names, or with what is under it, ended citers rewritten; its history kept as of an
   * instant), `project_migrate` (a project moved to another version of its method, every artifact
   * kept again, renamed as asked), and the reading `project_show`, `project_history`, `project_list`, `project_find`
@@ -55,6 +57,11 @@ object Projects {
         )
       )
       .fold(e => sys.error(e), identity)
+
+  /** 9,500: the most characters a brief kept at a claim holds, as Claude Code's hook takes, so a
+    * session of either harness opens on the same text.
+    */
+  val BriefChars: Int = 9500
 
   /** What a write refused past `bound` current documents answers. */
   def full(bound: Int): String =

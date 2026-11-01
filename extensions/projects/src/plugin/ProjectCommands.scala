@@ -3,7 +3,14 @@ package grit.projects.plugin
 import java.time.Instant
 
 import grit.core.claim.{ClaimRole, Claimed, Claims}
-import grit.core.document.{DocRef, Document, DocumentKeeper, DocumentShelf, DocumentVersion}
+import grit.core.document.{
+  DocRef,
+  DocText,
+  Document,
+  DocumentKeeper,
+  DocumentShelf,
+  DocumentVersion
+}
 import grit.core.either.Traversal
 import grit.core.id.{ClaimHolder, ConversationId, DocKey, DocumentVersionId, PrincipalId, TurnSeq}
 import grit.core.identity.{Account, Principal}
@@ -635,9 +642,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
-        _ <- viewOf(method, args.role)
+        view <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
+        whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         claimed <- stored(
           claims.claim(document.key, args.holder, args.role, by.person, document.label, at)
         )
@@ -666,6 +674,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
               )
             )
         }
+        _ <- briefed(own, Brief.of(whole, args.key, view, Projects.BriefChars), args, document, at)
       } yield s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $slot."
     }
   }
@@ -693,8 +702,13 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         found <- artifact(project, args.key)
         (document, _) = found
         freed <- stored(claims.release(document.key, document.label))
-        claim <- freed.toRight(Stop.Refused(s"${args.key.value} is not claimed"))
-      } yield AnswerText.released(args.key, claim.holder)
+        // The brief goes even when its claim is gone, as a swept lapsed claim is.
+        briefFor <- unbriefed(own, args.key, at)
+        holder <- freed
+          .map(_.holder)
+          .orElse(briefFor)
+          .toRight(Stop.Refused(s"${args.key.value} is not claimed"))
+      } yield AnswerText.released(args.key, holder)
     }
   }
 
@@ -1330,6 +1344,70 @@ private[plugin] object ProjectCommands {
           )
         )
     }
+
+  /** The key `artifact`'s brief is kept under: its own key and `#brief`. */
+  private def briefKey(artifact: ArtifactKey): Either[String, DocKey] =
+    DocKey.of(s"${artifact.value}#brief")
+
+  /** Keeps `rendered`, the claimed artifact's brief, through `own` beside `claimed` (at its label
+    * and place), as the brief of `args.holder` ([[DocRef.brief]]), its data naming the holder:
+    * whether one was kept. None is when it is over [[Projects.BriefChars]] or the plugin is
+    * full; then any brief kept before for the artifact is withdrawn.
+    */
+  private def briefed(
+      own: DocumentKeeper,
+      rendered: Either[BriefRefusal, Brief],
+      args: Claiming,
+      claimed: Document,
+      at: Instant
+  )(using Tx^): Either[Stop, Boolean] = {
+    val written = for {
+      brief <- rendered.toOption
+      key <- briefKey(args.key).toOption
+      text <- DocText.of(brief.text).toOption
+    } yield own.write(
+      key,
+      claimed.label,
+      Integrity.Authority,
+      claimed.place,
+      text,
+      ujson.Obj(BriefHolder -> ClaimHolder.value(args.holder)),
+      None,
+      at,
+      Set(DocRef.brief(args.holder))
+    )
+    written match {
+      case Some(Right(_)) => Right(true)
+      case Some(Left(StoreError.Full(_))) | None => unbriefed(own, args.key, at).map(_ => false)
+      case Some(Left(other)) => Left(Stop.Store(other))
+    }
+  }
+
+  /** Withdraws `artifact`'s brief at every label it is current at that the transaction reads:
+    * the holder the newest of them was for, `None` when there was none.
+    */
+  private def unbriefed(own: DocumentKeeper, artifact: ArtifactKey, at: Instant)(using
+      Tx^
+  ): Either[Stop, Option[ClaimHolder]] =
+    briefKey(artifact).fold(
+      _ => Right(None),
+      key =>
+        for {
+          labels <- stored(own.labels(key))
+          current <- stored(Traversal.traverse(labels)(own.current(key, _)).map(_.flatten))
+          holder = current
+            .sortBy(_.written)
+            .lastOption
+            .flatMap(_.data.objOpt.flatMap(_.get(BriefHolder)).flatMap(_.strOpt))
+            .flatMap(ClaimHolder.of(_).toOption)
+          withdrawn: Vector[Option[DocumentVersionId]] <- stored(
+            Traversal.traverse(current)(d => own.withdraw(key, d.label, at))
+          )
+        } yield holder.filter(_ => withdrawn.nonEmpty)
+    )
+
+  /** `holder`: the key a brief's data names its holder under. */
+  private val BriefHolder: String = "holder"
 
   /** Keeps `artifact` through `own` at `label`, or at public when new. */
   private def kept(own: DocumentKeeper, artifact: Artifact, label: Option[Label], at: Instant)(using
