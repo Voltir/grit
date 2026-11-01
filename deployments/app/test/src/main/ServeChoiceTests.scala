@@ -43,7 +43,7 @@ object ServeChoiceTests extends TestSuite {
       "serving an edge caps a day at $1.00 when GRIT_DAILY_USD is unset; the chat does not"
     ) {
       def of(edges: Vector[ServedEdge]) =
-        Main
+        Deploying
           .deployment(Map.empty, Offered.Read, edges, Vector.empty, java.time.ZoneOffset.UTC)
           .map(_.budget.cap)
       (of(Vector(Quiet)), of(Vector.empty)) ==> (
@@ -63,7 +63,7 @@ object ServeChoiceTests extends TestSuite {
         "GRIT_GITHUB_REF" -> "main"
       )
       def declared(env: Map[String, String]) =
-        Main
+        Deploying
           .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
           .map(_.declared.map((_, d) => grit.core.id.ScheduleKey.value(d.key)))
       (declared(github), declared(github - "GRIT_GITHUB_OWNER")) ==> (
@@ -76,7 +76,7 @@ object ServeChoiceTests extends TestSuite {
 
     test("the domains GRIT_CLAIMED_DOMAINS lists are the deployment's own; unset, it claims none") {
       def claimed(env: Map[String, String]) =
-        Main
+        Deploying
           .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
           .map(_.identities.domains.map(Domain.value))
       (claimed(Map("GRIT_CLAIMED_DOMAINS" -> "example.com,other.org")), claimed(Map.empty)) ==>
@@ -87,7 +87,7 @@ object ServeChoiceTests extends TestSuite {
       "serving Slack installed in a team trusts the Slack attester for that team's accounts; with no team, nothing is trusted"
     ) {
       def trusted(slackIn: Option[TeamId]) =
-        Main
+        Deploying
           .deployment(
             Map.empty,
             Offered.Read,
@@ -106,7 +106,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val github = Service.of("github").fold(sys.error, identity)
       def outputs(env: Map[String, String], slackIn: Option[TeamId]) =
-        Main
+        Deploying
           .deployment(
             env,
             Offered.Read,
@@ -130,10 +130,10 @@ object ServeChoiceTests extends TestSuite {
       "GRIT_ADMINS names Slack users by id, comma-separated, none when unset; refused naming the variable at one that is not a user's id"
     ) {
       (
-        Main.admins(Map("GRIT_ADMINS" -> " U012AB34, W056CD78 ")),
-        Main.admins(Map.empty),
-        Main.admins(Map("GRIT_ADMINS" -> "U012AB34, @nick")),
-        Main.admins(Map("GRIT_ADMINS" -> "C012AB34"))
+        Clearances.admins(Map("GRIT_ADMINS" -> " U012AB34, W056CD78 ")),
+        Clearances.admins(Map.empty),
+        Clearances.admins(Map("GRIT_ADMINS" -> "U012AB34, @nick")),
+        Clearances.admins(Map("GRIT_ADMINS" -> "C012AB34"))
       ) ==> (
         Right(Vector(UserId("U012AB34"), UserId("W056CD78"))),
         Right(Vector.empty),
@@ -150,7 +150,7 @@ object ServeChoiceTests extends TestSuite {
       "serving Slack, GRIT_ADMINS declares the administrators group of the team's accounts; unset, or with no Slack, there are none"
     ) {
       def declared(env: Map[String, String], slackIn: Option[TeamId]) =
-        Main
+        Deploying
           .deployment(
             env,
             Offered.Read,
@@ -168,10 +168,10 @@ object ServeChoiceTests extends TestSuite {
       ) ==> (
         Right(
           (
-            Some(Main.Administrators),
+            Some(Clearances.Administrators),
             Vector(
               Group(
-                Main.Administrators,
+                Clearances.Administrators,
                 Set[Account](
                   SlackAccounts
                     .account(TeamId("T0FAKE"), UserId("U012AB34"))
@@ -189,7 +189,10 @@ object ServeChoiceTests extends TestSuite {
     test(
       "with no administrators named, serve says no one can lower a label, label a public channel or set a baseline"
     ) {
-      (Main.unadministered(Vector.empty), Main.unadministered(Vector(UserId("U012AB34")))) ==> (
+      (
+        Clearances.unadministered(Vector.empty),
+        Clearances.unadministered(Vector(UserId("U012AB34")))
+      ) ==> (
         Some(
           "GRIT_ADMINS is unset: no one can lower a room's label, label a public channel or set a room's baseline"
         ),
@@ -201,9 +204,9 @@ object ServeChoiceTests extends TestSuite {
       "the slash command answered is GRIT_SLACK_COMMAND, /grit when unset, refused naming the variable when Slack would not take it"
     ) {
       (
-        Main.slackCommand(Map.empty).map(_.name),
-        Main.slackCommand(Map("GRIT_SLACK_COMMAND" -> " /acme ")).map(_.name),
-        Main.slackCommand(Map("GRIT_SLACK_COMMAND" -> "acme"))
+        ServedEdges.slackCommand(Map.empty).map(_.name),
+        ServedEdges.slackCommand(Map("GRIT_SLACK_COMMAND" -> " /acme ")).map(_.name),
+        ServedEdges.slackCommand(Map("GRIT_SLACK_COMMAND" -> "acme"))
       ) ==> (
         Right("/grit"),
         Right("/acme"),
@@ -215,7 +218,9 @@ object ServeChoiceTests extends TestSuite {
       "the reply note is GRIT_SLACK_REPLY_NOTE, strength when unset, each word its note, any other refused naming the words"
     ) {
       Vector(None, Some("off"), Some(" strength-cost "), Some("cost"))
-        .map(v => Main.replyNote(v.fold(Map.empty)(w => Map("GRIT_SLACK_REPLY_NOTE" -> w)))) ==>
+        .map(v =>
+          ServedEdges.replyNote(v.fold(Map.empty)(w => Map("GRIT_SLACK_REPLY_NOTE" -> w)))
+        ) ==>
         Vector(
           Right(ReplyNote.Strength),
           Right(ReplyNote.Off),
@@ -228,11 +233,11 @@ object ServeChoiceTests extends TestSuite {
       "backfill topics reads --days, --per-run and --yes in any order, PerRun topics a run when --per-run is absent"
     ) {
       (
-        Main.backfillTopics(Vector("--yes", "--days", "3")),
-        Main.backfillTopics(Vector("--days", "45", "--per-run", "4"))
+        Backfills.backfillTopics(Vector("--yes", "--days", "3")),
+        Backfills.backfillTopics(Vector("--days", "45", "--per-run", "4"))
       ) ==> (
-        Right(Main.BackfillTopics(3, TopicDocuments.PerRun, yes = true)),
-        Right(Main.BackfillTopics(45, 4, yes = false))
+        Right(Backfills.BackfillTopics(3, TopicDocuments.PerRun, yes = true)),
+        Right(Backfills.BackfillTopics(45, 4, yes = false))
       )
     }
 
@@ -240,10 +245,10 @@ object ServeChoiceTests extends TestSuite {
       "backfill topics refuses days missing or outside 1 to 45, a per-run under 1, and anything else, by name"
     ) {
       (
-        Main.backfillTopics(Vector()),
-        Main.backfillTopics(Vector("--days", "46")),
-        Main.backfillTopics(Vector("--days", "2", "--per-run", "0")),
-        Main.backfillTopics(Vector("--days", "2", "--what"))
+        Backfills.backfillTopics(Vector()),
+        Backfills.backfillTopics(Vector("--days", "46")),
+        Backfills.backfillTopics(Vector("--days", "2", "--per-run", "0")),
+        Backfills.backfillTopics(Vector("--days", "2", "--what"))
       ) ==> (
         Left("--days is required: a whole number of days from 1 to 45"),
         Left("--days is a whole number of days from 1 to 45, not '46'"),
@@ -256,7 +261,7 @@ object ServeChoiceTests extends TestSuite {
       "github's caps hold the member repositories at member, and the rest of GitHub at untrusted; a repository not owner/name is refused naming the variable"
     ) {
       def capped(env: Map[String, String]) =
-        Main
+        Deploying
           .deployment(env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
           .map(d =>
             Vector(
@@ -287,7 +292,7 @@ object ServeChoiceTests extends TestSuite {
       val result =
         ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> ujson.write(issue))))
       val called = McpCalled("issue_read", ujson.Obj("method" -> "get"), result)
-      Main
+      ServedEdges
         .githubServer(Map("GITHUB_MCP_TOKEN" -> "never-read"))
         .map(_.accounts.items(called)) ==> Right(
         Itemised.Whole(
@@ -304,7 +309,7 @@ object ServeChoiceTests extends TestSuite {
     }
 
     test("with GITHUB_MCP_TOKEN unset, serve serves no GitHub edge") {
-      Main.github(Map("GRIT_GITHUB_TOOLS" -> "get_me")) ==> Right(None)
+      ServedEdges.github(Map("GRIT_GITHUB_TOOLS" -> "get_me")) ==> Right(None)
     }
 
     test(
@@ -312,8 +317,10 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
       (
-        Main.githubServer(env).map(s => (s.name, s.endpoint.toString, s.credential, s.allow)),
-        Main
+        ServedEdges
+          .githubServer(env)
+          .map(s => (s.name, s.endpoint.toString, s.credential, s.allow)),
+        ServedEdges
           .github(env)
           .map(
             _.map(g =>
@@ -354,7 +361,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
       def server(more: (String, String)*) =
-        Main.githubServer(env ++ more).map(s => (s.endpoint.toString, s.allow))
+        ServedEdges.githubServer(env ++ more).map(s => (s.endpoint.toString, s.allow))
       (
         server(
           "GRIT_GITHUB_MCP_URL" -> "http://127.0.0.1:8082/mcp",
@@ -376,7 +383,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val env = DriveEnv
       (
-        Main
+        ServedEdges
           .drive(env, KeyFiles.Local)
           .map(
             _.map(d =>
@@ -391,14 +398,16 @@ object ServeChoiceTests extends TestSuite {
               )
             )
           ),
-        Main.drive(env + ("GRIT_DRIVE_DOMAIN" -> "elsewhere.com"), KeyFiles.Local).map(_ => ()),
-        Main
+        ServedEdges
+          .drive(env + ("GRIT_DRIVE_DOMAIN" -> "elsewhere.com"), KeyFiles.Local)
+          .map(_ => ()),
+        ServedEdges
           .drive(
             env + ("GRIT_DRIVE_WRITERS" -> "bot@vendor.example, not-an-address"),
             KeyFiles.Local
           )
           .map(_ => ()),
-        Main.drive(env - "GRIT_DRIVE_SA_KEY", KeyFiles.Local)
+        ServedEdges.drive(env - "GRIT_DRIVE_SA_KEY", KeyFiles.Local)
       ) ==> (
         Right(
           Some(
@@ -424,10 +433,10 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val conversation = Place.under(Namespace.Slack, Vector("T0123", "C0456"))
       val served = for {
-        github <- Main.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
-        drive <- Main.drive(DriveEnv, KeyFiles.Local)
+        github <- ServedEdges.github(Map("GITHUB_MCP_TOKEN" -> "never-read"))
+        drive <- ServedEdges.drive(DriveEnv, KeyFiles.Local)
       } yield {
-        val (worksIn, reaches) = Main.links(github, drive)
+        val (worksIn, reaches) = ServedEdges.links(github, drive)
         (
           WorksIn.of(worksIn, conversation).map(_.place.written),
           Reaches.of(reaches, conversation).map(_.place.written)
@@ -442,7 +451,7 @@ object ServeChoiceTests extends TestSuite {
       val drive = Service.of("drive").fold(sys.error, identity)
       val folder = Place.read("service:drive/folder").fold(sys.error, identity)
       def declared(env: Map[String, String]) =
-        Main
+        Deploying
           .deployment(env, Offered.Read, Vector(Quiet), Vector.empty, java.time.ZoneOffset.UTC)
           .map { d =>
             val v = d.visibility

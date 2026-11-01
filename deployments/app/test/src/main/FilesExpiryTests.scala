@@ -14,10 +14,10 @@ object FilesExpiryTests extends TestSuite {
       "GRIT_FILES_EXPIRY: unset is the area's default; a duration of at least a minute, or an error"
     ) {
       (
-        Main.filesExpiry(Map.empty),
-        Main.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "10m")),
-        Main.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "30s")),
-        Main.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "10"))
+        RunChoices.filesExpiry(Map.empty),
+        RunChoices.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "10m")),
+        RunChoices.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "30s")),
+        RunChoices.filesExpiry(Map("GRIT_FILES_EXPIRY" -> "10"))
       ) ==> (
         Right(Files.Expiry),
         Right(10.minutes),

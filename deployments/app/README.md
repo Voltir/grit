@@ -29,7 +29,7 @@ In dependency order:
     `GRIT_BACKFILL_JOINS_PER_DAY` (a value that is not a whole number above zero is refused,
     naming the variable); the slash command `GRIT_SLACK_COMMAND` names (`/grit` when unset);
     with `GITHUB_MCP_TOKEN` set, GitHub's read-only MCP tools at `service:github`; and with
-    `GRIT_DRIVE_SA_KEY` set, Drive's files at `service:drive` (`Main.drive`). That variable
+    `GRIT_DRIVE_SA_KEY` set, Drive's files at `service:drive` (`ServedEdges.drive`). That variable
     names the absolute path of the service account's JSON key file, as
     `GOOGLE_APPLICATION_CREDENTIALS` does (`~` is not expanded): the deployment's runtime
     writes the file, a mounted secret or a deploy step, and passes its path. `GRIT_DRIVE_DOMAIN` names the domain
@@ -51,13 +51,13 @@ In dependency order:
     serve` serves, and over Drive's shared drives when `GRIT_DRIVE_SA_KEY` is set, carded at
     each label `GRIT_DRIVE_CARD_LABELS` lists (written forms, comma-separated, none below
     internal), synced through the Drive edge; refused at start with neither, or with a part
-    of either unset; `Main.knowledge`; `strands`, one document per strand of a room, dreamed
+    of either unset; `PluginChoices.knowledge`; `strands`, one document per strand of a room, dreamed
     daily at 04:30 at each label `GRIT_STRAND_LABELS` lists, refused at start without one;
-    `Main.strands`; `topics`, one document per subject found across strands and cards,
+    `PluginChoices.strands`; `topics`, one document per subject found across strands and cards,
     dreamed daily at 05:00 at each label `GRIT_TOPIC_LABELS` lists, reading the knowledge
     plugin's cards when `knowledge` is listed before it, each night through the day
     `GRIT_TOPICS_SEED_UNTIL` names offering the next batch of every card no run has placed;
-    `Main.topics`; `standing`, the person- and tool-established Standing lines of each close, but
+    `PluginChoices.topics`; `standing`, the person- and tool-established Standing lines of each close, but
     a reminder tool's, kept as one document); then the chat TUI, or with arguments each answered
     as a message.
 
@@ -72,7 +72,7 @@ steward or an administrator. What a deployment writes, least first:
 - **Tier 0, this deployment.** `GRIT_ADMINS`: Slack user ids (`U…` or `W…`, as a profile's
   "Copy member ID" gives them), comma-separated; one that is not is refused, naming the
   variable. They are the declared group `administrators` of `slack:{team}/{id}` accounts, the
-  visibility's administrators (`Main.visibility`); no other group, grant or compartment is
+  visibility's administrators (`Clearances.visibility`); no other group, grant or compartment is
   declared, so public channels are public and private ones unmapped until labelled. They alone
   set a room's baseline (`baseline <grade>`), the least grade its turns are routed to. Unset, no
   one can lower a room's label, label a public channel or set a baseline, and `grit serve` says

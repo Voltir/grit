@@ -11,13 +11,13 @@ object ClassifierChoiceTests extends TestSuite {
 
   val tests = Tests {
     test("a key is Jev, even beside the stub's switch") {
-      Main.placer(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) ==> Placer.Jev
+      Deploying.placer(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) ==> Placer.Jev
     }
 
     test("no key: the stub only with GRIT_STUB_TOPICS=1, otherwise none, saying why") {
-      Main.placer(Map("GRIT_STUB_TOPICS" -> "1")) ==> Placer.Stub
-      Main.placer(Map("GRIT_STUB_TOPICS" -> "yes")) ==> Placer.Off("JEV_API_KEY is not set")
-      Main.placer(Map.empty) ==> Placer.Off("JEV_API_KEY is not set")
+      Deploying.placer(Map("GRIT_STUB_TOPICS" -> "1")) ==> Placer.Stub
+      Deploying.placer(Map("GRIT_STUB_TOPICS" -> "yes")) ==> Placer.Off("JEV_API_KEY is not set")
+      Deploying.placer(Map.empty) ==> Placer.Off("JEV_API_KEY is not set")
     }
   }
 }

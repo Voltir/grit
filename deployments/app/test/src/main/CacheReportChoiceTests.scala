@@ -10,10 +10,10 @@ object CacheReportChoiceTests extends TestSuite {
   val tests = Tests {
     test("an id names its conversation, no id the chat's here, and other arguments no report") {
       (
-        Main.cacheReported(Vector("cache-report", "c1")),
-        Main.cacheReported(Vector("cache-report")),
-        Main.cacheReported(Vector("cache-report", "c1", "c2")),
-        Main.cacheReported(Vector("hello"))
+        RunChoices.cacheReported(Vector("cache-report", "c1")),
+        RunChoices.cacheReported(Vector("cache-report")),
+        RunChoices.cacheReported(Vector("cache-report", "c1", "c2")),
+        RunChoices.cacheReported(Vector("hello"))
       ) ==> (Some(Some(ConversationId("c1"))), Some(None), None, None)
     }
   }

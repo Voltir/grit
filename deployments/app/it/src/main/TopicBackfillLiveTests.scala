@@ -31,7 +31,7 @@ object TopicBackfillLiveTests extends TestSuite {
     )
 
   private val deployment: Deployment =
-    Main
+    Deploying
       .deployment(Env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC, None)
       .fold(sys.error, identity)
 

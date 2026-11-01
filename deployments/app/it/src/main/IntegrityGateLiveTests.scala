@@ -115,7 +115,7 @@ object IntegrityGateLiveTests extends TestSuite {
   )
 
   /** `c`'s turn, run to its end on a fresh database under the reference deployment's
-    * declarations ([[Main.visibility]]).
+    * declarations ([[Clearances.visibility]]).
     */
   private def run(c: Case): Ran = {
     val config = TestPostgres.freshDatabase(s"integrity_${c.name}")
@@ -126,9 +126,9 @@ object IntegrityGateLiveTests extends TestSuite {
   }
 
   private def reference =
-    Main
+    Clearances
       .caps(Map.empty)
-      .flatMap(Main.visibility(Vector.empty, None, Vector.empty, _, Vector.empty))
+      .flatMap(Clearances.visibility(Vector.empty, None, Vector.empty, _, Vector.empty))
       .fold(sys.error(_), identity)
 
   /** The turn `name` on `engine`, its model's calls made by an [[Obeying]] model for `issue`

@@ -34,7 +34,7 @@ object ClearanceChoiceTests extends TestSuite {
       val named = OpenRouterConfig
         .policy(Map("GRIT_PROVIDER" -> "acme"), seed)
         .fold(e => throw new java.lang.AssertionError(e.message), identity)
-      (Main.cleared(seed), Main.cleared(named)) ==> (
+      (Clearances.cleared(seed), Clearances.cleared(named)) ==> (
         always,
         Cleared(Party.Model(seed.turn.first.assignment.ref.model, acme), top) +: always
       )
@@ -45,7 +45,7 @@ object ClearanceChoiceTests extends TestSuite {
       val dreaming = OpenRouterConfig
         .policy(Map("GRIT_DREAM_MODEL" -> "d/m", "GRIT_DREAM_PROVIDER" -> "acme"), seed)
         .fold(e => throw new java.lang.AssertionError(e.message), identity)
-      Main.cleared(dreaming) ==> Cleared(
+      Clearances.cleared(dreaming) ==> Cleared(
         Party.Model(dreaming.dream.first.assignment.ref.model, acme),
         top
       ) +: always
@@ -61,7 +61,7 @@ object ClearanceChoiceTests extends TestSuite {
       )
       val parties = always.map(_.party) :+ acme
       def clearances(env: Map[String, String], slackIn: Option[TeamId]) =
-        Main
+        Deploying
           .deployment(
             env,
             Offered.Read,
@@ -82,7 +82,7 @@ object ClearanceChoiceTests extends TestSuite {
     test(
       "under the seed, serve names each role's variable that would name its first upstream, and the clearance that pair then gets"
     ) {
-      Main.uncleared(seed) ==> Vector(
+      Clearances.uncleared(seed) ==> Vector(
         "GRIT_PROVIDER is unset: the turn's first model, whose upstream OpenRouter picks, is " +
           "cleared for public rooms alone; naming its one upstream there clears that pair for every label",
         "GRIT_SUMMARY_PROVIDER is unset: the summary's first model, whose upstream OpenRouter picks, is " +

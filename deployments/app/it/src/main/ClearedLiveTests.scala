@@ -34,7 +34,7 @@ object ClearedLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("app_cleared_stub")
       // As the chat declares it: stub mode, no edge served.
       val deployment = right(
-        Main.deployment(
+        Deploying.deployment(
           Map.empty,
           Offered.Read,
           Vector.empty,

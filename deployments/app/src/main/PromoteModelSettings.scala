@@ -32,7 +32,7 @@ object PromoteModelSettings {
     // The reference deployment, serving nothing: its engine opens under the deployment's
     // version, which a database running it made its latest (ADR 0004); any other would leave
     // the deployment's workflows undequeued until its next start.
-    val deployment = Main
+    val deployment = Deploying
       .deployment(env, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
       .fold(fail, identity)
     // The engine's lock, like any engine: while grit runs on this database, this says so.

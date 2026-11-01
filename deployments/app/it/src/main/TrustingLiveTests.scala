@@ -111,7 +111,7 @@ object TrustingLiveTests extends TestSuite {
       val account = TestAccounts.account("slack:T1/U-dropped")
       attested(config, account, "dropped@example.com")
       val env = Map("GRIT_CLAIMED_DOMAINS" -> "example.com")
-      val deployment = Main
+      val deployment = Deploying
         .deployment(
           env,
           Offered.Read,
@@ -139,7 +139,7 @@ object TrustingLiveTests extends TestSuite {
       val account = TestAccounts.account("slack:T1/U-kept")
       attested(config, account, "kept@example.com")
       // As the chat declares it: no edge served, so no realm trusted, and no domain claimed.
-      val deployment = Main
+      val deployment = Deploying
         .deployment(Map.empty, Offered.Read, Vector.empty, Vector.empty, java.time.ZoneOffset.UTC)
         .fold(sys.error, identity)
       val secrets =

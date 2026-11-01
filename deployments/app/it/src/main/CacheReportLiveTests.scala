@@ -28,7 +28,7 @@ object CacheReportLiveTests extends TestSuite {
     ) {
       val config = TestPostgres.freshDatabase("app_cache_report")
       val deployment = right(
-        Main.deployment(
+        Deploying.deployment(
           Map.empty,
           Offered.Read,
           Vector.empty,
@@ -73,7 +73,7 @@ object CacheReportLiveTests extends TestSuite {
     ) {
       val config = TestPostgres.freshDatabase("app_cache_find")
       val deployment = right(
-        Main.deployment(
+        Deploying.deployment(
           Map.empty,
           Offered.Read,
           Vector.empty,
