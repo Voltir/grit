@@ -7,6 +7,7 @@ import grit.core.flow.TestTainted
 import grit.core.host.*
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
+import grit.core.session.{Event, Logged}
 import grit.core.tool.{Believed, Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 import grit.core.visibility.Integrity
 
@@ -153,6 +154,39 @@ object CodingTests extends TestSuite {
         Right("edit a.txt"),
         Right("run git status && ls")
       )
+    }
+
+    test("each call that runs is logged in its session as what it reads, edits or runs") {
+      val calls = Vector(
+        "read" -> ujson.Obj("path" -> "src/a.scala", "offset" -> 10),
+        "list" -> ujson.Obj(),
+        "search" -> ujson.Obj("pattern" -> "def \\w+", "path" -> "src"),
+        "write" -> ujson.Obj("path" -> "a.txt", "content" -> "x\ny"),
+        "edit" -> ujson.Obj(
+          "path" -> "a.txt",
+          "edits" -> ujson.Arr(ujson.Obj("oldText" -> "x", "newText" -> "y"))
+        ),
+        "run" -> ujson.Obj("command" -> "git status")
+      )
+      val local = all(new Scripted())
+      val engine =
+        Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
+      val ran = calls.map((name, args) =>
+        local.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logged)
+      )
+      val offered = calls.map((name, args) =>
+        engine.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logged)
+      )
+      val path = (p: String) => Logged.shaped(Event.Shape.Path, p)
+      val expected = Vector(
+        Right(Some(Logged.Read(path("src/a.scala")))),
+        Right(Some(Logged.Read(path(".")))),
+        Right(Some(Logged.Read(Logged.shaped(Event.Shape.Named, "def \\w+")))),
+        Right(Some(Logged.Edited(path("a.txt")))),
+        Right(Some(Logged.Edited(path("a.txt")))),
+        Right(Some(Logged.Ran(Event.Shape.Empty)))
+      )
+      assert(ran == expected, offered == expected)
     }
 
     test("under a strict schema every field is required, an optional one nullable") {

@@ -56,8 +56,23 @@ object ToolCaptureTests extends TestSuite {
       |  Tool(spec, Gate.Free, p => p, Believed.Default, p => { writes(e); reads(ws); Outcome.Done(p) })
       |""".stripMargin
 
+  /** A hosted tool whose logging function, meant to be pure, edits. */
+  private val loggingEdits =
+    """def logs(e: Edits^): Hosted[String] =
+      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging(p => { val _ = RelPath.of(p).map(e.write(_, "x")); None })
+      |""".stripMargin
+
+  /** A hosted tool logged as what its argument names, purely. */
+  private val loggingPure =
+    """def logs: Hosted[String] =
+      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging(p => Some(grit.core.session.Logged.Read(grit.core.session.Logged.shaped("path", p))))
+      |""".stripMargin
+
   private lazy val compiled =
-    Probes.batch(prelude, List(readOnlyAndAll, smuggled, sneaky, toldEdits))
+    Probes.batch(
+      prelude,
+      List(readOnlyAndAll, smuggled, sneaky, toldEdits, loggingEdits, loggingPure)
+    )
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -86,9 +101,17 @@ object ToolCaptureTests extends TestSuite {
       assert(flowsInto("{store}")(errors(toldEdits)))
     }
 
+    test("a hosted tool logged purely compiles") {
+      assert(errors(loggingPure).isEmpty)
+    }
+
+    test("a hosted tool whose logging function edits is rejected") {
+      assert(rejected(errors(loggingEdits)))
+    }
+
     test("capture checking is what rejects the smuggled tools") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = Probes.errors(erased(prelude + smuggled + toldEdits), flags)
+      val errs = Probes.errors(erased(prelude + smuggled + toldEdits + loggingEdits), flags)
       assert(errs.isEmpty)
     }
   }

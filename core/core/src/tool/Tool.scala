@@ -5,6 +5,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
+import grit.core.session.Logged
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.visibility.Integrity
 
@@ -22,6 +23,7 @@ final class Tool[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
+    logs: A -> Option[Logged],
     run: Tool.Run[A]^,
     aim: Option[Tool.Aim],
     requires: Integrity,
@@ -106,21 +108,30 @@ final class Tool[A] private[tool] (
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
+        val logged = logs(args)
         val ask = gate match {
           case Gate.Free => None
           case Gate.Ask(describe, within) => Some((describe(args), within))
         }
         Right(run match {
           case plain: Tool.Plain[A] =>
-            ask.fold(new Bound.Free(spec.name, line, output, at => plain(args, at))) {
+            ask.fold(new Bound.Free(spec.name, line, logged, output, at => plain(args, at))) {
               (shown, within) =>
-                new Bound.Gated(spec.name, line, shown, within, output, at => plain(args, at))
+                new Bound.Gated(
+                  spec.name,
+                  line,
+                  logged,
+                  shown,
+                  within,
+                  output,
+                  at => plain(args, at)
+                )
             }
           case reading: Tool.Reading[A] =>
             val run = (at: CallSlot, reads: Reads^) => reading(args, at, reads)
-            new Bound.Reading(spec.name, line, ask, output, run)
+            new Bound.Reading(spec.name, line, logged, ask, output, run)
           case keeping: Tool.Keeping[A] =>
-            new Bound.Keeping(spec.name, line, output, at => keeping(args, at, stamped))
+            new Bound.Keeping(spec.name, line, logged, output, at => keeping(args, at, stamped))
         })
     }
 }
@@ -156,7 +167,8 @@ object Tool {
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
     entry.writes.fold[Offered](
-      new Hosted(spec, gate, _ => "", entry.requires, Believed.Default).over(_ => goneOutcome)
+      new Hosted(spec, gate, _ => "", _ => None, entry.requires, Believed.Default)
+        .over(_ => goneOutcome)
     )(writes =>
       new Writing(spec, gate, _ => "", writes, entry.requires).over((_, _) => goneOutcome)
     )
@@ -232,6 +244,7 @@ final class Hosted[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
+    logs: A -> Option[Logged],
     requires: Integrity,
     val output: Believed
 ) extends Tool.Offered {
@@ -240,7 +253,7 @@ final class Hosted[A] private[tool] (
     * call does not say.
     */
   def this(spec: ToolSpec[A], gate: Gate[A], shown: A -> String, output: Believed) =
-    this(spec, gate, shown, Integrity.Untrusted, output)
+    this(spec, gate, shown, _ => None, Integrity.Untrusted, output)
 
   def name: ToolName = spec.name
 
@@ -262,7 +275,13 @@ final class Hosted[A] private[tool] (
 
   /** This hosted tool, its calls bound only when stamped at `integrity` or above. */
   def requiring(integrity: Integrity): Hosted[A] =
-    new Hosted(spec, gate, shown, integrity, output)
+    new Hosted(spec, gate, shown, logs, integrity, output)
+
+  /** This hosted tool, each call of it that runs logged in its turn's session as `logs` reads
+    * its arguments ([[Bound.logged]]); a tool not so described logs nothing.
+    */
+  def logging(logs: A -> Option[Logged]): Hosted[A] =
+    new Hosted(spec, gate, shown, logs, requires, output)
 
   /** This tool, run by `run`. */
   def over(run: A => Outcome): Tool[A]^{run} =
@@ -270,20 +289,20 @@ final class Hosted[A] private[tool] (
 
   /** This tool, run by `run`, which is told the call it runs. */
   def calling(run: (A, CallSlot) => Outcome): Tool[A]^{run} =
-    new Tool(spec, gate, shown, new Tool.Plain(run), None, requires, output)
+    new Tool(spec, gate, shown, logs, new Tool.Plain(run), None, requires, output)
 
   /** This tool, run by `run`, which is told the call it runs and handed, at each call, reads
     * for that call's turn as the turn hands them ([[Bound.Reading]]). An edge does not run it.
     */
   def reading(run: (A, CallSlot, Reads^) => Outcome): Tool[A]^{run} =
-    new Tool(spec, gate, shown, new Tool.Reading(run), None, requires, output)
+    new Tool(spec, gate, shown, logs, new Tool.Reading(run), None, requires, output)
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair],
       stamped: Integrity
   ): Either[CallError, Bound^{this}] =
-    Hosted.bound(spec, gate, shown, output, call.arguments, repairs, None)
+    Hosted.bound(spec, gate, shown, logs, output, call.arguments, repairs, None)
 
   private[tool] def told(
       call: AssistantBlock.ToolCall,
@@ -310,7 +329,7 @@ object Hosted {
         ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry, entry.action)
       val shown: ujson.Value -> String = args => args.render().take(ShownMax)
       entry.writes.fold[Tool.Offered](
-        new Hosted(spec, Gate.Free, shown, entry.requires, Believed.Default)
+        new Hosted(spec, Gate.Free, shown, _ => None, entry.requires, Believed.Default)
       )(writes => new Writing(spec, Gate.Free, shown, writes, entry.requires))
     }
 
@@ -328,7 +347,7 @@ object Hosted {
   def keeping[A](spec: ToolSpec[A], shown: A -> String, requires: Integrity, output: Believed)(
       run: (A, CallSlot, Integrity) => (Tx^) ?=> Either[StoreError, Outcome]
   ): Tool[A]^{run} =
-    new Tool(spec, Gate.Free, shown, new Tool.Keeping(run), None, requires, output)
+    new Tool(spec, Gate.Free, shown, _ => None, new Tool.Keeping(run), None, requires, output)
 
   /** A tool an edge runs that writes outside grit to one of `writes`' destinations, described
     * by `spec`, `gate` and `shown`, requiring what its shape does ([[ToolSet.Entry.byShape]]);
@@ -350,6 +369,7 @@ object Hosted {
       spec: ToolSpec[A],
       gate: Gate[A],
       shown: A -> String,
+      logs: A -> Option[Logged],
       output: Believed,
       arguments: ujson.Value,
       repairs: Set[ArgRepair],
@@ -367,6 +387,7 @@ object Hosted {
           new Bound.Hosted(
             spec.name,
             line,
+            logs(args),
             ask,
             within,
             arguments,
@@ -423,12 +444,13 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       stamped: Integrity
   ): Either[CallError, Bound^{this}] =
     call.arguments.objOpt match {
-      case None => Hosted.bound(spec, gate, shown, output, call.arguments, repairs, None)
+      case None => Hosted.bound(spec, gate, shown, _ => None, output, call.arguments, repairs, None)
       case Some(sent) =>
         writes
           .chosen(spec.name, sent)
           .flatMap((to, rest) =>
-            Hosted.bound(spec, gate, shown, output, rest, repairs, Some(writes.place(to)))
+            Hosted
+              .bound(spec, gate, shown, _ => None, output, rest, repairs, Some(writes.place(to)))
           )
     }
 
@@ -453,6 +475,7 @@ final class Writing[A, D <: caps.Pure] private[tool] (
       ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry, spec.action),
       aimed,
       sent => shown(sent._1),
+      _ => None,
       new Tool.Plain((sent, _) => run(sent._1, sent._2)),
       Some(Tool.Aim(spec.args.schema(false), writes.placed)),
       requires,

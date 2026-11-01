@@ -3,6 +3,7 @@ package grit.tools
 import scala.concurrent.duration.*
 
 import grit.core.host.{Clipped, Edits, HostError, Lines, RelPath, Replace, Shell, Workspace}
+import grit.core.session.{Event, Logged}
 import grit.core.tool.{
   Args,
   ArgsError,
@@ -100,7 +101,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
       Believed.At(Integrity.Member)
-    )
+    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
@@ -136,7 +137,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
-    )
+    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
     listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
@@ -170,7 +171,7 @@ object Coding {
       Gate.Free,
       a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
       Believed.At(Integrity.Member)
-    )
+    ).logging(a => Some(Logged.Read(Logged.shaped(Event.Shape.Named, a.pattern))))
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
     searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
@@ -205,6 +206,7 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
+      .logging(a => Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
     writeHosted.over(a =>
@@ -256,6 +258,7 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
+      .logging(a => Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path)))))
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
     editHosted.over(a =>
@@ -301,6 +304,8 @@ object Coding {
       a => a.command,
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
+      // A command line is content, never a shape.
+      .logging(_ => Some(Logged.Ran(Event.Shape.Empty)))
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a =>

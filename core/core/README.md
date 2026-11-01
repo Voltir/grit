@@ -92,10 +92,14 @@ In dependency order, each with the core packages it imports:
 - **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
   `place`, `secret`
+- **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
+  when and its counters, and a capped log of its events in grit's words, an event recorded again
+  known by its source's ordinal, and what a tool's call adds to it (`Logged`). ← `id`, `identity`,
+  `place`, `visibility`, `store`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
-  `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`
+  `message`, `model`, `schema`, `store`, `provider`, `approval`, `flow`, `host`, `session`
 - **`document`**: plugins' documents (ADR 0028): a version is current until the next under its
   key, or a withdrawal, supersedes it; and a document's declassified rewrite, under a
   compartment's policy applied to it, the one write kept below its transaction's floor.
@@ -103,9 +107,6 @@ In dependency order, each with the core packages it imports:
 - **`claim`**: which holder works a plugin's subject, as which role: one live claim per subject
   and per holder at each label, never versioned, leased on the sessions working as its holder,
   deleted by its release or once lapsed. ← `id`, `identity`, `visibility`, `store`
-- **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
-  when and its counters, and a capped log of its events in grit's words, an event recorded again
-  known by its source's ordinal. ← `id`, `identity`, `visibility`, `store`
 - **`files`**: files as the engine and edges see them: what a file's bytes are (`Kind`), the
   `Format`s a deployment reads each kind with (an extension point) into `grit.prose`'s form,
   every span noted with where it lies, never silently wrong (what a read covers and missed is
