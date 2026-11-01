@@ -41,9 +41,17 @@ final case class Task(
 
 object Task {
 
-  /** The task `name` of a `task.json`'s text and its brief, or why not: not an object of `base`,
-    * `commits` and `checks`; a commit not 40 lower-case hex digits; no commits; no checks; a
-    * runner not `check` or `it`; a check with no arguments; an empty brief.
+  /** The sentence every brief ends with: the rig runs the checks itself, so the coder runs only
+    * the suites it touched.
+    */
+  val closing: String =
+    "When you stop, the rig runs this task's checks itself, so run only the suites you touch, " +
+      "never a bare `scripts/check`."
+
+  /** The task `name` of a `task.json`'s text and its brief, its [[closing]] sentence after it, or
+    * why not: not an object of `base`, `commits` and `checks`; a commit not 40 lower-case hex
+    * digits; no commits; no checks; a runner not `check` or `it`; a check with no arguments; an
+    * empty brief.
     */
   def of(name: BenchRows.TaskName, json: String, brief: String): Either[String, Task] = {
     val named = BenchRows.TaskName.value(name)
@@ -59,7 +67,7 @@ object Task {
       checks <- each(written)(check(named, _))
       _ <- Either.cond(checks.nonEmpty, (), s"$what names no checks")
       _ <- Either.cond(brief.trim.nonEmpty, (), s"$named's brief is empty")
-    } yield Task(name, base, brief, commits, checks)
+    } yield Task(name, base, s"${brief.stripTrailing}\n\n$closing", commits, checks)
   }
 
   /** The check `v` of the task `named`, or why not. */

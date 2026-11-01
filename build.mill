@@ -557,9 +557,18 @@ object grit extends Module {
       /* So a capture records the build it ran (grit.dbos.buildInfo). */
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
-      /* The instrument's own code against fixed values: no database, no model. */
+      /* The instrument's own code against fixed values: no database, no model. The frozen
+       * bench tasks (eval/bench/tasks) are read by TaskTests; their content signature rides in
+       * the environment, as the histories' does, so that `testCached` reruns when one changes. */
       object test extends GritTests {
         def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+        def benchTasks = Task.Source(moduleDir / os.up / os.up / "bench" / "tasks")
+        def forkEnv = Task {
+          super.forkEnv() ++ Map(
+            "GRIT_BENCH_TASKS" -> benchTasks().path.toString,
+            "GRIT_BENCH_TASKS_SIG" -> benchTasks().sig.toString
+          )
+        }
       }
 
       /* Capture over a live engine's database, triaged by the stub classifier. */
