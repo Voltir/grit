@@ -36,7 +36,7 @@ import grit.core.id.{
   TurnRef,
   WorkflowId
 }
-import grit.core.id.{EntrySeq, PeriodSeq, TurnSeq}
+import grit.core.id.{EntrySeq, PeriodSeq, SessionId, TurnSeq}
 import grit.core.identity.{Account, Principal}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
@@ -45,6 +45,7 @@ import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Reaches, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
+import grit.core.session.{Event, Session, Sessions}
 import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{InMemoryStitchStore, Tuning}
@@ -531,6 +532,43 @@ object TurnFixtures {
       body(using TestTx.fake)
   }
 
+  /** A spy, not a store: every recording made of it kept in order for a test to read, each
+    * answered `answer`; its reads refuse, so it stands in for no store's semantics.
+    */
+  final class RecordedSessions(
+      answer: Either[StoreError, Sessions.Recorded] = Right(Sessions.Recorded(1, full = false))
+  ) extends Sessions {
+    // Appended by `record`, which the turn calls on the test's one thread; read by the test's
+    // assertions after.
+    @caps.unsafe.untrackedCaptures
+    var recorded: Vector[(Session.Header, Vector[Event])] = Vector.empty
+
+    def record(header: Session.Header, events: Vector[Event])(using
+        Tx^
+    ): Either[StoreError, Sessions.Recorded] = {
+      recorded = recorded :+ (header, events)
+      answer
+    }
+    def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] = Left(NoRead)
+    def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] =
+      Left(NoRead)
+    private val NoRead = StoreError.Invalid("a spy keeps no sessions to read")
+  }
+
+  /** A turn's sessions recorded into a fresh spy, working as no holder. */
+  def unheld(): TurnSessions = TurnSessions(new RecordedSessions, _ => None)
+
+  /** Where a fixture turn keeps its calls' results: in `entries` through `jot`, its session in
+    * `sessions`, the conversation and its asker as `hosted` reads them.
+    */
+  def settlingIn(
+      jot: Jot^,
+      entries: EntryStore,
+      sessions: TurnSessions = unheld(),
+      hosted: TurnHosting = hosting()
+  ): TurnTools.Settling^{jot} =
+    new TurnTools.Settling(jot, entries, sessions, hosted.conversations, hosted.askers)
+
   /** Writes straight through to the in-memory store, never rolled back, each write at what
     * `clearance` says then, under `visibility`.
     */
@@ -920,7 +958,8 @@ object TurnFixtures {
           profilesKept(),
           new InMemoryPrincipals,
           new InMemoryDocuments,
-          new InMemoryPieces
+          new InMemoryPieces,
+          unheld()
         ),
         TurnHosting(
           conversations,
@@ -1548,7 +1587,8 @@ object TurnFixtures {
           profilesKept(),
           new InMemoryPrincipals,
           new InMemoryDocuments,
-          new InMemoryPieces
+          new InMemoryPieces,
+          unheld()
         ),
         hosting(),
         assembler,
@@ -1604,7 +1644,8 @@ object TurnFixtures {
           profilesKept(),
           new InMemoryPrincipals,
           documents,
-          pieces
+          pieces,
+          unheld()
         ),
         hosted,
         assembler,
@@ -1657,7 +1698,8 @@ object TurnFixtures {
           profilesKept(),
           principals,
           new InMemoryDocuments,
-          new InMemoryPieces
+          new InMemoryPieces,
+          unheld()
         ),
         hosting(voices = voices, at = at),
         new LinearAssembler(
@@ -1990,7 +2032,8 @@ object TurnFixtures {
           profilesKept(),
           new InMemoryPrincipals,
           new InMemoryDocuments,
-          new InMemoryPieces
+          new InMemoryPieces,
+          unheld()
         ),
         hosting(),
         new LinearAssembler(
@@ -2053,7 +2096,8 @@ object TurnFixtures {
           profiles,
           new InMemoryPrincipals,
           new InMemoryDocuments,
-          new InMemoryPieces
+          new InMemoryPieces,
+          unheld()
         ),
         hosting(),
         new LinearAssembler(

@@ -27,19 +27,24 @@ private[dbos] final class SqlEdgeSessions(jot: Jot) extends EdgeSessions {
         case Some(person: Principal.Person) =>
           batches.foldLeft[Either[StoreError, Int]](Right(0)) { (sum, batch) =>
             sum.flatMap { logged =>
-              sessions
-                .record(
-                  Session.Header(
-                    batch.id,
-                    batch.parent,
-                    person,
-                    Tx.floor(tx),
-                    batch.at,
-                    batch.holder
-                  ),
-                  batch.events
+              EdgeSessions
+                .refused(batch.id)
+                .toLeft(())
+                .flatMap(_ =>
+                  sessions
+                    .record(
+                      Session.Header(
+                        batch.id,
+                        batch.parent,
+                        person,
+                        Tx.floor(tx),
+                        batch.at,
+                        batch.holder
+                      ),
+                      batch.events
+                    )
+                    .map(logged + _.logged)
                 )
-                .map(logged + _.logged)
             }
           }
         case _ => Left(StoreError.Invalid(s"no person is linked to ${Account.written(by)}"))

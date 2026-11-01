@@ -203,6 +203,11 @@ class Stores private[engine] (visibility: Visibility) {
   /** Given a plugin, its claims, as its commands claim through them. */
   val claims: PluginName -> Claims = plugin => new SqlClaims(plugin)
 
+  /** Every working session's record, as a grit turn records its own (ADR 0050); an edge records
+    * a harness's through `sessions`.
+    */
+  val sessionStore: grit.core.session.Sessions = new grit.dbos.sql.SqlSessions
+
   /** What undoes part of one of its transactions. */
   val savepoints: Savepoints = SqlSavepoints
 

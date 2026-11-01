@@ -51,6 +51,7 @@ import grit.turn.{
   TurnHosting,
   TurnRecords,
   TurnRouting,
+  TurnSessions,
   TurnSpeech,
   TurnStitching,
   TurnTally,
@@ -298,7 +299,9 @@ private[grit] object Launch {
           runtime.profiles,
           runtime.principals,
           runtime.documents,
-          runtime.pieces
+          runtime.pieces,
+          // No deployment names a holder yet: its turns' sessions work as none.
+          TurnSessions(runtime.sessionStore, _ => None)
         ),
         TurnHosting(
           runtime.conversations,

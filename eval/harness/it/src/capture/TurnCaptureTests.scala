@@ -61,6 +61,7 @@ import grit.turn.{
   TurnOffer,
   TurnRecord,
   TurnRecords,
+  TurnSessions,
   TurnSpeech,
   TurnStitching,
   TurnTooling,
@@ -255,7 +256,8 @@ object TurnCaptureTests extends TestSuite {
             engine.profiles,
             engine.principals,
             engine.documents,
-            engine.pieces
+            engine.pieces,
+            TurnSessions(engine.sessionStore, _ => None)
           ),
           TurnHosting(
             engine.conversations,

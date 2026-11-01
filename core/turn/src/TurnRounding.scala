@@ -139,7 +139,14 @@ private[turn] final class Rounding[C^](
       case _ => None
     }.flatten)
 
-  def settling: TurnTools.Settling^{this} = new TurnTools.Settling(tooling.jot, env.records.entries)
+  def settling: TurnTools.Settling^{this} =
+    new TurnTools.Settling(
+      tooling.jot,
+      env.records.entries,
+      env.records.sessions,
+      env.hosting.conversations,
+      env.hosting.askers
+    )
 
   def now(): Instant = env.clock.now()
 
@@ -575,7 +582,7 @@ private[turn] object Rounding {
       believed: Option[Integrity],
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator, _, _, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _, _, _) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)

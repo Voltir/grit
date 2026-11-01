@@ -30,6 +30,7 @@ import grit.turn.{
   TurnHosting,
   TurnLoop,
   TurnRecords,
+  TurnSessions,
   TurnSpeech,
   TurnStitching,
   TurnTooling,
@@ -138,7 +139,8 @@ object TurnSentTests extends TestSuite {
             engine.profiles,
             engine.principals,
             engine.documents,
-            engine.pieces
+            engine.pieces,
+            TurnSessions(engine.sessionStore, _ => None)
           ),
           TurnHosting(
             engine.conversations,

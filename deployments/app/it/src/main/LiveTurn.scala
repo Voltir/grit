@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
-import grit.core.id.{PrincipalId, SourceId, TurnRef}
+import grit.core.id.{ClaimHolder, PrincipalId, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
@@ -28,7 +28,7 @@ import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubClassifier, StubModels, StubProvider}
 import grit.tools.Coding
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnSessions, TurnTooling}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests: a
   * TUI session in the checkout the engine was launched over, whose coding tools an edge in
@@ -96,7 +96,7 @@ object LiveTurn {
     * them when `all`, each gated call waiting `answerWithin` for its answer; otherwise the
     * read-only ones. The session reaches the services of `reaches`, offered as `recipe`
     * shapes it by the sources of `knowledge`; a message said to grit that the recipe weighs
-    * is asked of the stub classifier.
+    * is asked of the stub classifier. Its turns' sessions work as the holder `holder` names.
     */
   def launchIn(
       engine: Engine^,
@@ -107,7 +107,8 @@ object LiveTurn {
       answerWithin: FiniteDuration = grit.core.tool.Gate.AnswerWithin,
       reaches: Vector[Reaches] = Vector.empty,
       knowledge: Corpora = Corpora.Empty,
-      recipe: TurnRecipe = TurnRecipe.Shipped
+      recipe: TurnRecipe = TurnRecipe.Shipped,
+      holder: Origin -> Option[ClaimHolder] = _ => None
   ): Unit =
     launchWith(
       engine,
@@ -118,7 +119,8 @@ object LiveTurn {
       answerWithin,
       reaches,
       knowledge,
-      recipe
+      recipe,
+      holder
     )
 
   /** As [[launchIn]], every model call made through `models`. */
@@ -131,7 +133,8 @@ object LiveTurn {
       answerWithin: FiniteDuration,
       reaches: Vector[Reaches],
       knowledge: Corpora,
-      recipe: TurnRecipe
+      recipe: TurnRecipe,
+      holder: Origin -> Option[ClaimHolder] = _ => None
   ): Unit = {
     // One Mentions weighs a said root before its offer and asks its task questions in route.
     val mentions =
@@ -173,7 +176,8 @@ object LiveTurn {
               engine.profiles,
               engine.principals,
               engine.documents,
-              engine.pieces
+              engine.pieces,
+              TurnSessions(engine.sessionStore, holder)
             ),
             TurnHosting(
               engine.conversations,

@@ -110,9 +110,24 @@ object TurnCaptureTests extends TestSuite {
       |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Toolbox.Empty, Vector(spec.hosted), j, b))
       |""".stripMargin
 
+  /** A turn's sessions whose holder, `holds`, is told each origin. */
+  private def holding(holds: String): String =
+    s"""def holding(j: Jot^, store: grit.core.session.Sessions): TurnSessions^{j} =
+       |  TurnSessions(store, $holds)
+       |""".stripMargin
+
+  /** A holder that reads each origin alone. */
+  private val holdsPurely = "o => grit.core.id.ClaimHolder.of(o.place.toString).toOption"
+
+  /** A holder that writes through a jot whenever it is asked. */
+  private val holdsWriting =
+    "o => { val _ = j.write(grit.core.visibility.Subject.Room(o.place))(Right(())); None }"
+
   private lazy val compiled = Probes.batch(
     prelude,
     List(
+      holding(holdsPurely),
+      holding(holdsWriting),
       reading,
       editing,
       smuggled("TurnTooling"),
@@ -175,6 +190,14 @@ object TurnCaptureTests extends TestSuite {
 
     test("one compile answers each prelude's probes, with capture checking on and with it off") {
       (compiled.runs, unchecked.runs, rounds.runs, roundsUnchecked.runs) ==> (1, 1, 1, 1)
+    }
+
+    test("a turn's sessions held as each origin alone says compile") {
+      assert(errors(holding(holdsPurely)).isEmpty)
+    }
+
+    test("a turn's sessions whose holder writes through a jot are rejected") {
+      assert(rejected(errors(holding(holdsWriting))))
     }
 
     test("a turn offered tools through what it names, and pure hosted tools, compiles") {

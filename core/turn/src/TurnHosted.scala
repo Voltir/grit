@@ -139,7 +139,7 @@ object TurnHosted {
                 pins.known.map(_ => unsent(askers, slot.turn, h.place))
               )
             case Waited.Phase(Awaited.Answered(o)) =>
-              settling.answer(slot, call, shown, o, from, at)
+              settling.answer(slot, call, shown, o, from, at, hosted.logged)
             case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
               settling.answer(slot, call, shown, o, from, at)
             case Waited.Phase(Awaited.Known(o)) => settling.answer(slot, call, shown, o, own, at)
@@ -150,7 +150,7 @@ object TurnHosted {
                 pins.known.map(_ => unreadable(failure))
               )
             case Waited.Phase(Awaited.Rung(cs)) =>
-              settling.answerFrom(slot, call, shown, from, at)(
+              settling.answerFrom(slot, call, shown, from, at, hosted.logged)(
                 pins.known
                   .map(_ =>
                     Calling

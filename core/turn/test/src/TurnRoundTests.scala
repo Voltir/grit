@@ -98,7 +98,7 @@ object TurnRoundTests extends TestSuite {
       Right(TurnTools.Settled(call.slot.resultId, call.kind == TurnTools.Kind.Refused))
     def decide(call: TurnRound.Call, approval: Approval): Either[TurnFailure, TurnTools.Settled] =
       Left(TurnFailure.Store("nothing is gated"))
-    def settling: TurnTools.Settling^{this} = new TurnTools.Settling(jot, entries)
+    def settling: TurnTools.Settling^{this} = settlingIn(jot, entries)
     def now(): Instant = Instant.EPOCH
     def hosting: TurnHosting = TurnFixtures.hosting()
   }

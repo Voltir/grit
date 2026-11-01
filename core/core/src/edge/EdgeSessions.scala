@@ -1,6 +1,6 @@
 package grit.core.edge
 
-import grit.core.id.{ClaimHolder, SessionId}
+import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.session.{Event, Session}
@@ -15,8 +15,9 @@ trait EdgeSessions extends caps.SharedCapability {
     * record begins with the person `by` is linked to then as its runner, the transaction's floor
     * as its label, its batch's `parent`, `at` and `holder`, and no room. How many lines were logged,
     * overflow lines included. [[StoreError.Invalid]] when no person is linked to `by`, or when a
-    * session is kept where the transaction does not read; [[StoreError.DatabaseError]] when the
-    * database could not open, write or commit it.
+    * session is kept where the transaction does not read, or when a batch's session is grit's
+    * own ([[EdgeSessions.refused]]); [[StoreError.DatabaseError]] when the database could not
+    * open, write or commit it.
     */
   def record(by: Account, room: Place, batches: Vector[EdgeSessions.Batch]): Either[StoreError, Int]
 
@@ -28,6 +29,16 @@ trait EdgeSessions extends caps.SharedCapability {
 }
 
 object EdgeSessions {
+
+  /** Why an edge may not record the session `id`: it is grit's own ([[Harness.Grit]]), which
+    * only its turns record; `None` for any other harness's.
+    */
+  def refused(id: SessionId): Option[StoreError] =
+    Option.when(id.harness == Harness.Grit)(
+      StoreError.Invalid(
+        s"session ${Harness.value(id.harness)}:${id.local} is grit's own: only its turns record it"
+      )
+    )
 
   /** `events` of the session `id`, a child of `parent` when it has one, worked at `at`, as the
     * claim holder `holder` when its harness names one.

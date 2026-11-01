@@ -4,10 +4,24 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
+import grit.core.id.{
+  ClaimHolder,
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  Harness,
+  PrincipalId,
+  SessionId,
+  TestCallSlots,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
+import grit.core.identity.Principal
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Place, Service}
-import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Jot, Payload, StoreError, Tx}
+import grit.core.session.{Event, Logged, Session}
+import grit.core.store.{Askers, Entry, EntryStore, InMemoryEntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{
   Args,
   Believed,
@@ -27,6 +41,7 @@ import grit.core.visibility.{
   Cap,
   Compartments,
   Integrity,
+  Label,
   Provenance,
   Subject,
   Visibility
@@ -59,7 +74,7 @@ object TurnToolsTests extends TestSuite {
   ): Either[TurnFailure, TurnTools.Settled] = {
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
-    val settling = new TurnTools.Settling(new FakeJot, entries)
+    val settling = settlingIn(new FakeJot, entries)
     TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, Integrity.Authority) match {
       case Left(outcome) =>
         val unrun = Left(Integrity.Untrusted)
@@ -119,7 +134,7 @@ object TurnToolsTests extends TestSuite {
       .fold(d => throw new java.lang.AssertionError(d), identity)
     TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
       case Right(keeping: Bound.Keeping) =>
-        new TurnTools.Settling(jot, entries)
+        settlingIn(jot, entries)
           .keepFrom(
             slot,
             ToolCallId("c"),
@@ -142,7 +157,7 @@ object TurnToolsTests extends TestSuite {
     val entries = new InMemoryEntryStore
     val turn = say(entries, "go")
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
-    val settling = new TurnTools.Settling(new FakeJot, entries)
+    val settling = settlingIn(new FakeJot, entries)
     val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
     val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
     TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
@@ -166,6 +181,46 @@ object TurnToolsTests extends TestSuite {
     ).over(_ => outcome)
 
   /** What a kept entry is believed at. */
+  /** `said`, answering `outcome`, logged as a read of the path it is given. */
+  private def logged(outcome: Outcome): Tool[String] =
+    new Hosted(
+      ToolSpec(ToolName("said"), "Says.", Args.of((p = Field.text("What."))).map(_.p)),
+      Gate.Free,
+      (p: String) => p,
+      Believed.Default
+    ).logging(p => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p)))).over(_ => outcome)
+
+  private val holder = ClaimHolder.of("coder/abc").fold(sys.error, identity)
+
+  /** `tool` called once with `x` and settled free as the turn settles it, twice when `again`,
+    * its session recorded into `spy` working as [[holder]], its asker as `askers` reads it:
+    * what each settling came to, and the entries kept. Unless `said`, the turn's call is the
+    * conversation's first entry, at seq 0, which no event's ordinal may be.
+    */
+  private def logging(
+      tool: Tool[String],
+      spy: RecordedSessions,
+      askers: Askers = LocalAsker,
+      again: Boolean = false,
+      said: Boolean = true
+  ): (Vector[Either[TurnFailure, TurnTools.Settled]], InMemoryEntryStore) = {
+    val entries = new InMemoryEntryStore
+    val turn = if (said) say(entries, "go") else TurnRef(conversation, TurnSeq.First)
+    val slot = TurnTools.Slot(TestCallSlots.at(turn))
+    val sessions = TurnSessions(spy, _ => Some(holder))
+    val settling = settlingIn(new FakeJot, entries, sessions, hosting().copy(askers = askers))
+    val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
+    val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
+    val runs = Vector.fill(if (again) 2 else 1)(
+      TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
+        case Right(free: Bound.Free) =>
+          settling.run(slot, ToolCallId("c"), free, Integrity.Member, Instant.EPOCH)
+        case other => throw new java.lang.AssertionError(s"not free: $other")
+      }
+    )
+    (runs, entries)
+  }
+
   private def believed(entries: InMemoryEntryStore, id: EntryId): Option[Integrity] =
     entries.get(id)(using TestTx.fake).toOption.flatten.map(_.integrity)
 
@@ -185,7 +240,7 @@ object TurnToolsTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       val entries = new InMemoryEntryStore
       val turn = say(entries, "go")
-      val settling = new TurnTools.Settling(new FakeJot(visibility = declaring), entries)
+      val settling = settlingIn(new FakeJot(visibility = declaring), entries)
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
       val hosted =
         settling.answer(
@@ -200,7 +255,7 @@ object TurnToolsTests extends TestSuite {
       val other = new InMemoryEntryStore
       val otherTurn = say(other, "go")
       val otherSlot = TurnTools.Slot(TestCallSlots.at(otherTurn))
-      new TurnTools.Settling(new FakeJot, other)
+      settlingIn(new FakeJot, other)
         .answer(
           otherSlot,
           ToolCallId("c"),
@@ -234,7 +289,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "go")
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
-      new TurnTools.Settling(new FakeJot(visibility = declaring), entries)
+      settlingIn(new FakeJot(visibility = declaring), entries)
         .answer(
           slot,
           ToolCallId("c"),
@@ -295,6 +350,71 @@ object TurnToolsTests extends TestSuite {
             "peek a.txt"
           )
         )
+    }
+
+    test(
+      "a logged call that ran is its session's event at its result's seq, as its asker, at its conversation's label and place, working as its holder"
+    ) {
+      val spy = new RecordedSessions
+      val (runs, entries) = logging(logged(Outcome.Done("héllo")), spy)
+      val result = entries.get(runs.head.map(_.result).getOrElse(EntryId("none")))(using
+        TestTx.fake
+      )
+      val seq = result.toOption.flatten.map(e => EntrySeq.value(e.seq))
+      val expected = for {
+        id <- SessionId.of(Harness.Grit, ConversationId.value(conversation))
+        n <- seq.toRight("no result")
+        event <- Logged.Read(Logged.shaped(Event.Shape.Path, "x")).event(n, Instant.EPOCH, "héllo")
+      } yield (
+        Session.Header(
+          id,
+          None,
+          Principal.Person(PrincipalId.Local, Set.empty),
+          Label.Public,
+          origin.place,
+          Some(holder)
+        ),
+        Vector(event)
+      )
+      assert(runs.forall(_.isRight), expected.map(Vector(_)) == Right(spy.recorded))
+    }
+
+    test("a call that did not run to done, or whose asker is no person, logs nothing") {
+      val failed = new RecordedSessions
+      val unasked = new RecordedSessions
+      val unlogged = new RecordedSessions
+      logging(logged(Outcome.Failed("no")), failed)
+      logging(logged(Outcome.Done("ok")), unasked, askedBy(None))
+      logging(said(Outcome.Done("ok")), unlogged)
+      assert(failed.recorded.isEmpty, unasked.recorded.isEmpty, unlogged.recorded.isEmpty)
+    }
+
+    test("a session kept where the turn does not read costs the call nothing") {
+      val hidden = new RecordedSessions(Left(StoreError.Invalid("kept where this does not read")))
+      val broken = new RecordedSessions(Left(StoreError.DatabaseError("down")))
+      val (settled, keptIn) = logging(logged(Outcome.Done("ok")), hidden)
+      val (failed, _) = logging(logged(Outcome.Done("ok")), broken)
+      assert(
+        settled.map(_.map(_.failed)) == Vector(Right(false)),
+        settled.head.toOption.flatMap(s => kept(keptIn, s.result)).isDefined,
+        failed.forall(_.isLeft)
+      )
+    }
+
+    test("a logged call whose event cannot be made keeps its result and records nothing") {
+      val spy = new RecordedSessions
+      val (runs, entries) = logging(logged(Outcome.Done("ok")), spy, said = false)
+      assert(
+        runs.map(_.map(_.failed)) == Vector(Right(false)),
+        runs.head.toOption.flatMap(s => kept(entries, s.result)).isDefined,
+        spy.recorded.isEmpty
+      )
+    }
+
+    test("a logged call settled again records nothing more") {
+      val spy = new RecordedSessions
+      val (runs, _) = logging(logged(Outcome.Done("ok")), spy, again = true)
+      assert(runs.distinct.size == 1, spy.recorded.size == 1)
     }
 
     test("a kept result is returned as it is, and nothing runs again") {

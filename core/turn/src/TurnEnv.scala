@@ -11,11 +11,12 @@ import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.files.PieceStore
-import grit.core.id.{EdgeName, EntryId, TurnRef, WorkflowId}
+import grit.core.id.{ClaimHolder, EdgeName, EntryId, TurnRef, WorkflowId}
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
+import grit.core.session.Sessions
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{StitchStore, Tuning}
@@ -27,6 +28,7 @@ import grit.core.store.{
   EntryStore,
   Jot,
   ModelProfileStore,
+  Origin,
   Principals,
   PromptStore,
   Tx,
@@ -136,8 +138,9 @@ final case class TurnStitching(
 final case class TurnSpeech(speaking: Speaking, store: SpeechStore, deliveries: Deliveries)
 
 /** Where a turn's entries, their costs and its model profile are written, how a request is
-  * priced, whose names its messages are shown under (`principals`), and the plugins'
-  * documents and pieces its window shows and counts as placed (`documents`, `pieces`).
+  * priced, whose names its messages are shown under (`principals`), the plugins'
+  * documents and pieces its window shows and counts as placed (`documents`, `pieces`), and
+  * where it records its session (`sessions`).
   */
 final case class TurnRecords(
     entries: EntryStore,
@@ -146,8 +149,15 @@ final case class TurnRecords(
     profiles: ModelProfileStore,
     principals: Principals,
     documents: DocumentStore,
-    pieces: PieceStore
+    pieces: PieceStore,
+    sessions: TurnSessions
 )
+
+/** Where a turn records its session, one per conversation ([[grit.core.id.SessionId]]'s rule),
+  * and the claim holder a conversation from each origin works as, whose claims its session
+  * keeps from lapsing ([[grit.core.claim.Claim.lapses]]).
+  */
+final case class TurnSessions(store: Sessions, holder: Origin -> Option[ClaimHolder])
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,
   * the system prompt and tool set each turn was offered (by content id), the requests its

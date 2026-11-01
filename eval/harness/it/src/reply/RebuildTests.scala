@@ -52,6 +52,7 @@ import grit.turn.{
   TurnRecord,
   TurnRecords,
   TurnRelevance,
+  TurnSessions,
   TurnSpeech,
   TurnStitching,
   TurnTooling
@@ -191,7 +192,8 @@ object RebuildTests extends TestSuite {
             engine.profiles,
             engine.principals,
             engine.documents,
-            engine.pieces
+            engine.pieces,
+            TurnSessions(engine.sessionStore, _ => None)
           ),
           TurnHosting(
             engine.conversations,

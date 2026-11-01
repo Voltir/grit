@@ -1,6 +1,6 @@
 # 0050. A working session is recorded in grit's words as one row and a log capped at a fixed length, a repeat known by its source's ordinal
 
-Status: accepted (2026-10-28); revised (2026-10-29)
+Status: accepted (2026-10-28); revised (2026-10-29, 2026-11-01)
 
 Context: grit keeps a record of each working session, a grit turn's or a harness's beside it,
 so that later work (compacting a session's context from the store, coordinating sessions) can
@@ -32,8 +32,9 @@ Decision:
   same events again is a no-op. Each recording locks the session's row, so concurrent ones
   number their lines without gaps.
 - **`Sessions` records in the transaction it is given,** so a grit turn can record its own in
-  its own. Today the one writer is an edge, which records a harness's sessions through
-  `EdgeSessions`, as the account it attests: the person linked to that account runs the
+  its own: as each call whose tool logs it (`Hosted.logging`) has its result kept, in that
+  transaction, the session of its conversation. An edge records a harness's sessions through
+  `EdgeSessions`, never grit's own (`EdgeSessions.refused`), as the account it attests: the person linked to that account runs the
   session, the floor of a transaction opened in the edge's room labels it, and that
   transaction has no room of its own. An edge never holds a transaction; it reads a session
   back only as `EdgeSessions.lately` does, in a transaction opened in its room.

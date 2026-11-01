@@ -151,6 +151,25 @@ object SqlEdgeSessionsTests extends TestSuite {
       )
     }
 
+    test("an edge recording grit's own session is refused, keeping none of its batches") {
+      val _ = nick
+      val grits = ok(SessionId.of(Harness.Grit, "s-6"))
+      val refused = edge.record(
+        Nick,
+        Place.under(Namespace.Task, Vector("elsewhere")),
+        Vector(
+          EdgeSessions.Batch(id("s-7"), None, fs("/work/grit"), None, Vector(event(1))),
+          EdgeSessions.Batch(grits, None, fs("/work/grit"), None, Vector(event(1)))
+        )
+      )
+      assert(
+        refused == Left(
+          StoreError.Invalid("session grit:s-6 is grit's own: only its turns record it")
+        ),
+        read("s-7") == None
+      )
+    }
+
     test("lately reads in the room: a session kept there is read in it, and none elsewhere") {
       val _ = nick
       val edit = ok(

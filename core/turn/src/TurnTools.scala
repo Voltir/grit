@@ -4,10 +4,33 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.flow.Mint
-import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  Harness,
+  SessionId,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
+import grit.core.identity.Principal
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
-import grit.core.store.{Entry, EntryStore, Jot, Keeps, Payload, Reads, StoreError, Tx}
+import grit.core.session.{Logged, Session}
+import grit.core.store.{
+  Askers,
+  ConversationStore,
+  Entry,
+  EntryStore,
+  Jot,
+  Keeps,
+  Payload,
+  Reads,
+  StoreError,
+  Tx
+}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 import grit.core.visibility.{Accounted, Integrity, Subject}
 
@@ -169,11 +192,25 @@ object TurnTools {
     * ([[grit.core.visibility.Visibility.believed]]), else the integrity given. A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
+    *
+    * A call that ran to [[Outcome.Done]] whose tool logs it ([[Bound.logged]]) is also logged
+    * on its conversation's session, in the transaction that keeps its result: as the event at
+    * the result's seq, run by the turn's asker (as `askers` reads it), at the conversation's
+    * label and place, working as the holder `sessions.holder` names for its origin. Nothing is
+    * logged when the asker is no person, when no event can be made of the call
+    * ([[grit.core.session.Event.of]]), nor when the session is kept where the turn does not
+    * read; none of these costs the call anything.
     */
-  final class Settling(jot: Jot^, val entries: EntryStore) {
+  final class Settling(
+      jot: Jot^,
+      val entries: EntryStore,
+      sessions: TurnSessions,
+      conversations: ConversationStore,
+      askers: Askers
+  ) {
 
-    /** The call answered with `outcome`, unrun, shown as `named`, the tool's name as the
-      * call sent it.
+    /** The call answered with `outcome`, shown as `named`, the tool's name as the call sent
+      * it: unrun here, logged as `logged` says when an edge ran it.
       */
     def answer(
         slot: Slot,
@@ -181,9 +218,10 @@ object TurnTools {
         named: String,
         outcome: Outcome,
         from: Either[Integrity, Service],
-        at: Instant
+        at: Instant,
+        logged: Option[Logged] = None
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Belief.From(from), at)(() => Right(outcome))
+      settle(slot, call, named, Belief.From(from), at, logged)(() => Right(outcome))
 
     /** The call answered, unrun, with what `read` finds in the store, in a transaction of its
       * own, shown as `named`; `read` runs only when no result is kept, and when it fails, so
@@ -194,11 +232,12 @@ object TurnTools {
         call: ToolCallId,
         named: String,
         from: Either[Integrity, Service],
-        at: Instant
+        at: Instant,
+        logged: Option[Logged] = None
     )(
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, Belief.From(from), at)(() =>
+      settle(slot, call, named, Belief.From(from), at, logged)(() =>
         jot.write(Subject.Turn(slot.turn))(read).left.map(TurnFailure.ofStore)
       )
 
@@ -210,7 +249,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at)(() =>
+      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at, free.logged)(() =>
         Right(free(slot.call))
       )
 
@@ -231,7 +270,7 @@ object TurnTools {
     ): Either[TurnFailure, Settled] = {
       val believed = Belief.Ran(keeping.output.at(level))
       def undone(outcome: Outcome) =
-        settle(slot, call, keeping.shown, believed, at)(() => Right(outcome))
+        settle(slot, call, keeping.shown, believed, at, None)(() => Right(outcome))
       jot
         .write(Subject.Turn(slot.turn))(entries.get(slot.resultId))
         .left
@@ -243,7 +282,9 @@ object TurnTools {
               keeping(slot.call).flatMap {
                 case done: Outcome.Done =>
                   val result = Payload.Result(done.result(call), keeping.shown)
-                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)
+                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)(
+                    keeping.logged.map((_, done.text))
+                  )
                     .map(Keeps.Verdict.Commit(_))
                 case other => Right(Keeps.Verdict.Discard(other))
               }
@@ -271,7 +312,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at)(() =>
+      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at, gated.logged)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -287,7 +328,8 @@ object TurnTools {
         call: ToolCallId,
         shown: String,
         believed: Belief,
-        at: Instant
+        at: Instant,
+        logged: Option[Logged]
     )(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
@@ -305,7 +347,11 @@ object TurnTools {
                   Some(slot.declinedId -> Payload.Declined(call, said))
                 case _ => None
               }
-              keep(slot.turn, slot.resultId, result, believed.of(o), at, reason)
+              val logs = o match {
+                case done: Outcome.Done => logged.map((_, done.text))
+                case _ => None
+              }
+              keep(slot.turn, slot.resultId, result, believed.of(o), at, reason, logs)
                 .flatMap(settledBy)
             }
         }
@@ -336,7 +382,8 @@ object TurnTools {
     /** `payload` kept as `turn`'s entry `id`, dated `at`, after everything in the
       * conversation, believed at `believed`'s integrity, and in the same write `person`'s
       * payload, a person's words, under its id right after it, believed at the turn's
-      * integrity; the entry already there when one has that id.
+      * integrity, and `logs`, a logged call and the text its model was shown, on its session
+      * ([[session]]); the entry already there when one has that id.
       */
     private def keep(
         turn: TurnRef,
@@ -344,9 +391,10 @@ object TurnTools {
         payload: Payload,
         believed: Either[Integrity, (Service, Accounted)],
         at: Instant,
-        person: Option[(EntryId, Payload)]
+        person: Option[(EntryId, Payload)],
+        logs: Option[(Logged, String)]
     ): Either[TurnFailure, Entry] =
-      jot.write(Subject.Turn(turn))(inserted(turn, id, payload, believed, at, person)) match {
+      jot.write(Subject.Turn(turn))(inserted(turn, id, payload, believed, at, person)(logs)) match {
         case Left(StoreError.DuplicateId(_)) => readBack(turn, id)
         case other => other.left.map(TurnFailure.ofStore)
       }
@@ -359,7 +407,7 @@ object TurnTools {
         believed: Either[Integrity, (Service, Accounted)],
         at: Instant,
         person: Option[(EntryId, Payload)]
-    )(using tx: Tx^): Either[StoreError, Entry] =
+    )(logs: Option[(Logged, String)])(using tx: Tx^): Either[StoreError, Entry] =
       for {
         next <- entries.lockNext(turn.conversationId)
         output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
@@ -374,7 +422,45 @@ object TurnTools {
             )
           } yield ()
         }
+        _ <- logs.fold[Either[StoreError, Unit]](Right(()))((logged, shown) =>
+          session(turn, entry, logged, shown)
+        )
       } yield entry
+
+    /** `logged`, the call whose result is `entry` and whose model was shown `shown`, logged on
+      * `turn`'s conversation's session as [[Settling]] says.
+      */
+    private def session(turn: TurnRef, entry: Entry, logged: Logged, shown: String)(using
+        Tx^
+    ): Either[StoreError, Unit] =
+      conversations.get(turn.conversationId).flatMap { found =>
+        askers.of(turn).flatMap { asker =>
+          (found, asker) match {
+            case (Some(c), Some(by: Principal.Person)) =>
+              val recorded = for {
+                id <- SessionId.of(Harness.Grit, ConversationId.value(c.id))
+                event <- logged.event(EntrySeq.value(entry.seq), entry.createdAt, shown)
+              } yield Session.Header(
+                id,
+                None,
+                by,
+                c.label,
+                c.origin.place,
+                sessions.holder(c.origin)
+              ) -> event
+              // An event that cannot be made is no event, as one the store refuses is.
+              recorded.fold(
+                _ => Right(()),
+                (header, event) =>
+                  sessions.store.record(header, Vector(event)) match {
+                    case Left(StoreError.Invalid(_)) => Right(())
+                    case other => other.map(_ => ())
+                  }
+              )
+            case _ => Right(())
+          }
+        }
+      }
 
     /** `turn`'s entry `id`, which a write was just refused as a duplicate of. */
     private def readBack(turn: TurnRef, id: EntryId): Either[TurnFailure, Entry] =
