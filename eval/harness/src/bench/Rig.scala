@@ -4,13 +4,15 @@ import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}
+import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 
+import scala.annotation.tailrec
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Processes, Ran, RelPath}
+import grit.core.host.{Argv, Processes, Ran, RelPath, Started}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
@@ -70,7 +72,8 @@ final case class Tried(
     trial: BenchRows.Trial,
     transcript: Vector[String],
     consumed: Consumed,
-    checked: Checked
+    checked: Checked,
+    stopped: Option[String]
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures, each call's tokens, both costs in
@@ -101,7 +104,7 @@ final case class Tried(
       Vector(
         s"cost: $grit, " +
           s"${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
-        consumed.ended.fold("ended: with no result")(e =>
+        consumed.ended.fold(stopped.fold("ended: with no result")(why => s"ended: $why"))(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
         )
       ) ++ consumed.ended.toVector
@@ -119,6 +122,11 @@ object Rig {
 
   /** 2 hours: the longest a coder runs before it is killed. */
   val Longest: FiniteDuration = 2.hours
+
+  /** 10 minutes: the longest a coder may write nothing before it is stopped, its trial kept.
+    * Claude Code writes an event at least every 30 seconds while a tool runs.
+    */
+  val Quiet: FiniteDuration = 10.minutes
 
   /** The name the bench's coder goes by in `--agents`. */
   val Coder: String = "bench-coder"
@@ -161,8 +169,9 @@ object Rig {
     * at `repository` (an absolute path); then the task's checks run there, and its diff measured
     * against the known diff. `key` reaches `claude` alone, through a file removed once it exits,
     * and never the environment of anything it runs. A run a cap stopped, or that ended in error,
-    * is a trial not passed; one that wrote no session is a `Left`. The checkout's `out/` is
-    * removed whatever happens, and the checkout itself unless the result is a `Left`.
+    * is a trial not passed; a run that writes nothing for `quiet` is stopped and its trial kept
+    * the same way; one that wrote no session is a `Left`. The checkout's `out/` is removed
+    * whatever happens, and the checkout itself unless the result is a `Left`.
     */
   def trial(work: Processes, clock: Clock^)(
       repository: String,
@@ -170,7 +179,8 @@ object Rig {
       arm: Arm,
       cap: Caps,
       key: ApiKey,
-      dir: RelPath
+      dir: RelPath,
+      quiet: FiniteDuration
   ): Either[String, Tried] =
     for {
       knownDir <- RelPath.of(s"${RelPath.value(dir)}-known").left.map(_.toString)
@@ -194,18 +204,17 @@ object Rig {
               streamed <- work
                 .started(argv, dir, added) { s =>
                   s.input.close()
-                  val reader =
-                    new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
-                  val lines = reader.lines().iterator().asScala.toVector
+                  val (lines, stopped) = streamOf(s, quiet)
+                  if (stopped.isDefined) s.kill()
                   val ended = s.await(Longest + 2.minutes).left.map(_.message)
                   s.kill()
-                  Streamed(lines, ended, (clock.millis() - started).max(0L).millis)
+                  Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
                 }
                 .left
                 .map(e => s"claude did not run: ${e.message}")
             } yield streamed
           }
-          Streamed(lines, ended, wall) = streamed
+          Streamed(lines, ended, wall, stopped) = streamed
           consumed <- Consumed.of(lines, checkout)
           local <- consumed.session.toRight(neverStarted(ended, key))
           _ <- Either.cond(
@@ -231,7 +240,7 @@ object Rig {
             passed = checked.passed && consumed.ended.exists(!_.error),
             distance = Option.when(changed.lines.nonEmpty)(Changed.distance(changed, known))
           )
-        } yield Tried(trial, lines, consumed, checked)
+        } yield Tried(trial, lines, consumed, checked, stopped)
       )
     } yield tried
 
@@ -251,7 +260,8 @@ object Rig {
   private final case class Streamed(
       lines: Vector[String],
       ended: Either[String, Ran],
-      wall: FiniteDuration
+      wall: FiniteDuration,
+      stopped: Option[String]
   )
 
   /** `use` of how `key` reaches `claude`, and only `claude`: `helper`, the command its
@@ -374,6 +384,47 @@ object Rig {
         val _ = run(work, RelPath.Root, Clone.Longest)("rm", "-rf", RelPath.value(dir))
       }
     }
+  }
+
+  /** How often a run's output is checked for quiet: a quiet run is stopped within `quiet` and this
+    * much longer.
+    */
+  private val Tick: FiniteDuration = 500.millis
+
+  /** The lines `s` writes, a line each, and why they stopped early (`Some`, as the report says it)
+    * when it wrote nothing for `quiet`; `None` when its output ended. The lines are read by a
+    * thread of their own, so that the wait can be timed; the caller kills `s` once they stop, and
+    * the kill ends the output, which ends that thread.
+    */
+  private def streamOf(s: Started^, quiet: FiniteDuration): (Vector[String], Option[String]) = {
+    val arrived = new LinkedBlockingQueue[Option[String]]()
+    // Read by the thread below alone, and only until its output ends: no other reader is made.
+    @caps.unsafe.untrackedCaptures
+    val reader = new BufferedReader(new InputStreamReader(s.output, StandardCharsets.UTF_8))
+    val pump = new Thread(() =>
+      try reader.lines().forEach(line => arrived.put(Some(line)))
+      finally arrived.put(None)
+    )
+    pump.setDaemon(true)
+    pump.start()
+    @tailrec def collect(
+        acc: Vector[String],
+        idle: FiniteDuration
+    ): (Vector[String], Option[String]) =
+      Option(arrived.poll(Tick.toMillis, TimeUnit.MILLISECONDS)) match {
+        case None if idle + Tick >= quiet =>
+          (
+            acc,
+            Some(s"quiet for ${
+                if (quiet.toSeconds % 60 == 0) s"${quiet.toMinutes} min"
+                else s"${quiet.toSeconds} s"
+              }")
+          )
+        case None => collect(acc, idle + Tick)
+        case Some(None) => (acc, None)
+        case Some(Some(line)) => collect(acc :+ line, 0.millis)
+      }
+    collect(Vector.empty, 0.millis)
   }
 
   /** Why a run wrote no session: how its wait ended, and for an exit, its code and the last line

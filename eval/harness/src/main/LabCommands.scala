@@ -83,7 +83,7 @@ private[main] object LabCommands {
               case Right(blobs) =>
                 withEngine(config, clock, "eval-bench", "the trial was not kept") { engine =>
                   for {
-                    tried <- Rig.trial(work, clock)(repository, task, arm, cap, key, dir)
+                    tried <- Rig.trial(work, clock)(repository, task, arm, cap, key, dir, Rig.Quiet)
                     _ = tried.lines.foreach(println)
                     kept <- Bench.keep(engine.jot, blobs, clock)(
                       Subject.Public,

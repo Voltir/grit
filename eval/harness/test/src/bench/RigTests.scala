@@ -53,7 +53,8 @@ object RigTests extends TestSuite {
   private final case class Fake(
       edited: String,
       lines: Vector[String] = Streams.run,
-      stderr: String = ""
+      stderr: String = "",
+      hangs: Boolean = false
   )
 
   private final case class Fixture(work: Processes, root: Path, origin: String, task: Task) {
@@ -81,7 +82,7 @@ object RigTests extends TestSuite {
            |mkdir -p out && touch out/daemon
            |sed "s|${Streams.Checkout}|$$(pwd -P)|g" $root/stream.jsonl
            |printf '%s\\n' '${fake.stderr}' >&2
-           |exit 1
+           |${if (fake.hangs) "sleep 30" else "exit 1"}
            |""".stripMargin
       )
       Files.setPosixFilePermissions(claude, PosixFilePermissions.fromString("rwxr-xr-x"))
@@ -122,8 +123,12 @@ object RigTests extends TestSuite {
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
-  private def trial(f: Fixture^, fake: Fake): Either[String, Tried] =
-    Rig.trial(f.work, stepping())(f.origin, f.task, f.arm(fake), cap, key, checkout)
+  private def trial(
+      f: Fixture^,
+      fake: Fake,
+      quiet: FiniteDuration = Rig.Quiet
+  ): Either[String, Tried] =
+    Rig.trial(f.work, stepping())(f.origin, f.task, f.arm(fake), cap, key, checkout, quiet)
 
   val tests = Tests {
     test(
@@ -292,6 +297,15 @@ object RigTests extends TestSuite {
         trial(f, Fake("object A { val x = 1 }", Vector.empty, bubblewrap))
           .fold(identity, _ => "passed") ==>
           "claude wrote no session (exit 1): error: bubblewrap is required, key [key]"
+      }
+    }
+
+    test("a run that writes nothing for the quiet time is stopped, and its trial kept not passed") {
+      withTask { f =>
+        val silent = Streams.run.filterNot(_.contains("\"type\":\"result\""))
+        trial(f, Fake("object A { val x = 1 }", silent, hangs = true), 1.second).map { t =>
+          (t.trial.passed, t.lines.find(_.startsWith("ended:")))
+        } ==> Right((false, Some("ended: quiet for 1 s")))
       }
     }
 
