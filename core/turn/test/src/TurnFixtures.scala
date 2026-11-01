@@ -533,14 +533,14 @@ object TurnFixtures {
   }
 
   /** A spy, not a store: every recording made of it kept in order for a test to read, each
-    * answered `answer`; `read` answers `held` (when its id is asked), and `lately` answers
-    * `latest` (when its session's id is asked), each refusing when given none, every id
-    * `lately` is asked for kept in order; so it stands in for no store's semantics.
+    * answered `answer`; `read` answers `held`, and `lately` answers `latest`, each `None` for
+    * another session's id, as a store holding no such session answers, every id `lately` is
+    * asked for kept in order. Given neither, it reads as a store that has recorded no session.
     */
   final class RecordedSessions(
       answer: Either[StoreError, Sessions.Recorded] = Right(Sessions.Recorded(1, full = false)),
-      held: Option[Session] = None,
-      latest: Option[Session.Lately] = None
+      held: Either[StoreError, Option[Session]] = Right(None),
+      latest: Either[StoreError, Option[Session.Lately]] = Right(None)
   ) extends Sessions {
     // Appended by `record`, which the turn calls on the test's one thread; read by the test's
     // assertions after.
@@ -554,16 +554,15 @@ object TurnFixtures {
       answer
     }
     def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] =
-      held.fold(Left(NoRead))(s => Right(Some(s).filter(_.id == id)))
+      held.map(_.filter(_.id == id))
     // Appended by `lately`, on the same thread; read by the test's assertions after.
     @caps.unsafe.untrackedCaptures
     var asked: Vector[SessionId] = Vector.empty
 
     def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] = {
       asked = asked :+ id
-      latest.fold(Left(NoRead))(l => Right(Some(l).filter(_.session.id == id)))
+      latest.map(_.filter(_.session.id == id))
     }
-    private val NoRead = StoreError.Invalid("a spy keeps no sessions to read")
   }
 
   /** A turn's sessions recorded into a fresh spy, working as no holder. */

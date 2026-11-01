@@ -6,7 +6,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, EntrySeq, Harness, PrincipalId, SessionId}
 import grit.core.identity.Principal
 import grit.core.session.{Event, Session}
-import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload, StoreError}
 import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
@@ -50,7 +50,7 @@ object TurnSessionsTests extends TestSuite {
   }
 
   val tests: Tests = Tests {
-    test("a turn's summary closes its session when one is recorded, at its seq, and opens none") {
+    test("a turn's summary closes its session when one is recorded, at its seq") {
       val entries = new InMemoryEntryStore
       val id = SessionId
         .of(Harness.Grit, ConversationId.value(conversation))
@@ -70,21 +70,28 @@ object TurnSessionsTests extends TestSuite {
         false,
         None
       )
-      val open = new RecordedSessions(held = Some(held))
+      val open = new RecordedSessions(held = Right(Some(held)))
       val summary = summarised(open, entries)
-      val none = new RecordedSessions(held = None)
-      summarised(none, new InMemoryEntryStore)
       (
         open.recorded.flatMap(_._2).map(e => (e.n, e.kind)),
-        open.recorded.map(_._1.by),
-        none.recorded
+        open.recorded.map(_._1.by)
       ) ==> (
         summary.toVector.flatMap((n, text) =>
           Session.Summary.cut(text).map(s => (n, Event.Kind.Closing(s)))
         ),
-        Vector(local),
-        Vector.empty
+        Vector(local)
       )
+    }
+    test("a turn's summary, with no session recorded yet, opens none") {
+      val none = new RecordedSessions()
+      val summary = summarised(none, new InMemoryEntryStore)
+      (summary.isDefined, none.recorded) ==> (true, Vector.empty)
+    }
+    test("a turn's summary on a session this transaction does not read closes nothing") {
+      val hidden =
+        new RecordedSessions(held = Left(StoreError.Invalid("kept where this does not read")))
+      val summary = summarised(hidden, new InMemoryEntryStore)
+      (summary.isDefined, hidden.recorded) ==> (true, Vector.empty)
     }
   }
 }

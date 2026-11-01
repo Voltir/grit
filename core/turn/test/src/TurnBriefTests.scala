@@ -150,7 +150,7 @@ object TurnBriefTests extends TestSuite {
     brief(documents)
     val entries = new InMemoryEntryStore
     val provider = new RecordingProvider
-    val sessions = new RecordedSessions(latest = Some(lately))
+    val sessions = new RecordedSessions(latest = Right(Some(lately)))
     val durable = new InMemoryDurable()
     Vector(("one", said), ("two", said.plusSeconds(60))).foreach { (text, at) =>
       val turn = say(entries, text, at = at)
@@ -192,7 +192,7 @@ object TurnBriefTests extends TestSuite {
         assembler,
         new InMemoryUsageLedger,
         documents = documents,
-        sessions = TurnSessions(new RecordedSessions(latest = latest), _ => holding)
+        sessions = TurnSessions(new RecordedSessions(latest = Right(latest)), _ => holding)
       )
     )
     (
