@@ -21,7 +21,7 @@ final class LocalHanding(root: Path, environment: Map[String, String], redaction
   def started[A](dir: RelPath, secret: Secret, variables: Variables)(
       argv: String -> Either[String, Argv]
   )(body: Started^ => A): Either[HostError, A] =
-    attempt(Files.createTempDirectory("grit-handed-", LocalHanding.Owner)).flatMap { at =>
+    attempt(Files.createTempDirectory("grit-handed-", LocalTree.OwnerOnly)).flatMap { at =>
       try {
         for {
           file <- attempt {
@@ -31,21 +31,11 @@ final class LocalHanding(root: Path, environment: Map[String, String], redaction
           command <- argv(file.toAbsolutePath.toString).left.map(HostError.Failed(_))
           ran <- processes.startedWith(command, dir, variables.values)(body)
         } yield ran
-      } finally LocalHanding.removed(at)
+      } finally { val _ = LocalTree.removed(at) }
     }
 }
 
 private object LocalHanding {
 
-  /** `dir` and all in it deleted, as far as it can be; a file left is one this user alone reads. */
-  def removed(dir: Path): Unit = {
-    val _ = attempt {
-      val walk = Files.walk(dir)
-      try walk.sorted(java.util.Comparator.reverseOrder()).forEach(p => Files.deleteIfExists(p))
-      finally walk.close()
-    }
-  }
-
-  val Owner = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
   val Readable = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
 }

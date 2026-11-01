@@ -16,6 +16,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.host.{BlobError, Blobs, Pending}
 import grit.core.id.Sha256
+import grit.host.checkout.LocalTree
 
 /** [[Blobs]] in `root`, a directory of this machine: each blob the file `blobs/<sha256>`,
   * received into `incoming/` and moved in whole.
@@ -150,23 +151,13 @@ object LocalBlobs {
           try Option(channel.tryLock())
           catch { case _: OverlappingFileLockException => None }
         taken.exists { _ =>
-          cleared(lock.resolveSibling(lock.getFileName.toString.stripSuffix(".lock")))
+          val _ = LocalTree.removed(
+            lock.resolveSibling(lock.getFileName.toString.stripSuffix(".lock"))
+          )
           Files.deleteIfExists(lock)
         }
       } finally channel.close()
     } catch { case _: IOException => false }
-
-  /** `dir` removed with what is in it, as far as this machine allows. */
-  private def cleared(dir: Path): Unit =
-    if (Files.isDirectory(dir)) {
-      val walk = Files.walk(dir)
-      try
-        walk.toList.asScala.reverse.foreach { p =>
-          try { val _ = Files.deleteIfExists(p) }
-          catch { case _: IOException => () }
-        }
-      finally walk.close()
-    }
 
   /** The entries of `dir`. */
   private def listed(dir: Path): Either[BlobError, Vector[Path]] =

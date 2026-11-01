@@ -7,7 +7,7 @@ The local host: `grit.core.host`'s capabilities over this machine's files and pr
 only module that starts a process or reads which process and machine this is (STYLE rule 8;
 the law's `only-host-imports-*` rules and `scripts/enola-law.sh`'s process grep hold it there).
 
-Its packages, none importing another:
+Its packages, none importing another but `blobs`, which removes a tree with `checkout`'s `LocalTree`:
 
 - **`checkout`**: a checkout on this machine.
   - `LocalWorkspace` — reading a checkout: read, list and search.
@@ -21,6 +21,8 @@ Its packages, none importing another:
     a program shows (`run`'s output, a started program's lines, its errors) and in a file's
     text before it is read or searched. Each class above takes the deployment's one.
   - `LocalInstructions` — the instruction files around a directory.
+  - `LocalTree` (private to `grit.host`) — a directory readable by this user alone, and a tree's
+    removal that carries on past what it cannot delete.
   - `Checkout` (private) — a checkout's root, and how a relative path is found under it.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.
 - **`blobs`**: `LocalBlobs` — bytes kept in a directory of this machine by their digest, and
