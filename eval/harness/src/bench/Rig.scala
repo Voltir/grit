@@ -2,8 +2,8 @@ package grit.eval.harness.bench
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
+import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -256,10 +256,11 @@ object Rig {
 
   /** `use` of how `key` reaches `claude`, and only `claude`: `helper`, the command its
     * `apiKeyHelper` setting runs to print the key, which reads a file only this user can read, in
-    * a directory of its own under the system temp directory, both removed once `use` returns or
-    * throws; and `added`, the variables to add to its environment, which hold no key:
-    * `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no memory under its user's home. `Left`
-    * when the file cannot be written.
+    * a directory of its own under the system temp directory; and `added`, the variables to add to
+    * its environment, which hold no key: `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no
+    * memory under its user's home, and `CLAUDE_CONFIG_DIR`, an empty directory of its own beside
+    * the key file, so a run writes no transcript under its user's home. The directory, and all in
+    * it, is removed once `use` returns or throws. `Left` when the file cannot be written.
     */
   private def handedOver[A](key: ApiKey)(
       use: (String, Map[String, String]) => Either[String, A]
@@ -276,15 +277,32 @@ object Rig {
               val file = Files.createFile(dir.resolve("key"), readable)
               Files.writeString(file, key.value, StandardCharsets.UTF_8)
             }.toEither.left.map(e => s"the key was not written: ${e.getClass.getName}")
+            config <- Try(Files.createDirectory(dir.resolve("config"), owner)).toEither.left
+              .map(e => s"no config directory: ${e.getClass.getName}")
             _ <- Either.cond(!file.toString.contains("'"), (), s"$file cannot be quoted")
-            used <- use(s"cat '$file'", Map("CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1"))
+            used <- use(
+              s"cat '$file'",
+              Map(
+                "CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1",
+                "CLAUDE_CONFIG_DIR" -> config.toAbsolutePath.toString
+              )
+            )
           } yield used
-        } finally {
-          val _ = Try(Files.deleteIfExists(dir.resolve("key")))
-          val _ = Try(Files.deleteIfExists(dir))
-        }
+        } finally removeTree(dir)
       }
   }
+
+  /** Removes `dir` and all in it, deepest first, each path in its own `Try` so that one that
+    * cannot go does not keep the rest. A symbolic link is removed as a link, never followed.
+    */
+  private def removeTree(dir: Path): Unit =
+    Try(Files.walk(dir)).foreach { walk =>
+      try
+        walk.toList.asScala.reverse.foreach { p =>
+          val _ = Try(Files.deleteIfExists(p))
+        }
+      finally walk.close()
+    }
 
   /** `claude`'s arguments for `task` under `cap`, its program left off; `helper` its
     * `apiKeyHelper`.

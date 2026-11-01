@@ -74,6 +74,9 @@ object RigTests extends TestSuite {
            |stat -c %a "$$file" > $root/filemode 2>/dev/null
            |stat -c %a "$$(dirname "$$file")" > $root/dirmode 2>/dev/null
            |dirname "$$file" > $root/helperdir
+           |printf '%s' "$${CLAUDE_CONFIG_DIR-unset}" > $root/configdir
+           |stat -c %a "$$CLAUDE_CONFIG_DIR" > $root/configmode 2>/dev/null
+           |[ -n "$${CLAUDE_CONFIG_DIR-}" ] && mkdir -p "$$CLAUDE_CONFIG_DIR/projects/x" && printf '{}' > "$$CLAUDE_CONFIG_DIR/projects/x/session.jsonl"
            |printf '%s\\n' '${fake.edited}' > a.scala
            |mkdir -p out && touch out/daemon
            |sed "s|${Streams.Checkout}|$$(pwd -P)|g" $root/stream.jsonl
@@ -188,6 +191,17 @@ object RigTests extends TestSuite {
       }
     }
 
+    test("claude's config directory is a private one beside its key file, not its user's home") {
+      withTask { f =>
+        val _ = trial(f, Fake("object A { val x = 1 }"))
+        val config = Path.of(f.recorded("configdir").trim)
+        (
+          config.getFileName.toString,
+          config.getParent == Path.of(f.recorded("helperdir").trim),
+          f.recorded("configmode").trim
+        ) ==> ("config", true, "700")
+      }
+    }
     test("the key reaches none of claude's arguments, nor anything the trial keeps") {
       withTask { f =>
         val kept = trial(f, Fake("object A { val x = 1 }"))
@@ -198,13 +212,18 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("the key's directory is a temporary one outside the checkout, removed after any trial") {
+    test(
+      "the key's directory, with claude's config in it, is temporary outside the checkout, removed after any trial"
+    ) {
       withTask { f =>
         def helperDir() = Path.of(f.recorded("helperdir").trim)
+        def configDir() = Path.of(f.recorded("configdir").trim)
         val passed = trial(f, Fake("object A { val x = 1 }"))
         val afterPass = helperDir()
+        val configPass = configDir()
         val failed = trial(f, Fake("object A { val x = 1 }", Vector.empty))
         val afterFail = helperDir()
+        val configFail = configDir()
         val temp = Path.of(System.getProperty("java.io.tmpdir"))
         (
           passed.isRight,
@@ -212,8 +231,12 @@ object RigTests extends TestSuite {
           afterPass != afterFail,
           afterPass.getParent == temp && afterFail.getParent == temp,
           Files.exists(afterPass),
-          Files.exists(afterFail)
-        ) ==> (true, true, true, true, false, false)
+          Files.exists(afterFail),
+          configPass.startsWith(afterPass),
+          configFail.startsWith(afterFail),
+          Files.exists(configPass),
+          Files.exists(configFail)
+        ) ==> (true, true, true, true, false, false, true, true, false, false)
       }
     }
 
