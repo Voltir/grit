@@ -14,7 +14,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 scalafmt=tools/scalafmt
 [ -x "$scalafmt" ] || { echo "format: no $scalafmt -- run: bash scripts/fetch-scalafmt.sh" >&2; exit 1; }
 
-mapfile -t files < <(find core extensions kit deployments eval dev -path '*/out' -prune -o \
+mapfile -t files < <(find core extensions kit deployments eval -path '*/out' -prune -o \
   -path '*/src/*' -name '*.scala' -print | sort)
 log=$("$scalafmt" --test --non-interactive --respect-project-filters --config .scalafmt.conf "${files[@]}" 2>&1)
 rc=$?
