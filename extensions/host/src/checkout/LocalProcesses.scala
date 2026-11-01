@@ -52,6 +52,11 @@ final class LocalProcesses(root: Path, environment: Map[String, String]) extends
 
   def started[A](argv: Argv, dir: RelPath, added: Map[String, String])(
       body: Started^ => A
+  ): Either[HostError, A] = startedWith(argv, dir, added)(body)
+
+  /** As [[started]], with `added` set in the program's environment: [[LocalHanding]]'s start. */
+  private[checkout] def startedWith[A](argv: Argv, dir: RelPath, added: Map[String, String])(
+      body: Started^ => A
   ): Either[HostError, A] =
     place(dir).flatMap { at =>
       attempt(Files.createTempFile("grit-errors-", ".out")).flatMap { errors =>

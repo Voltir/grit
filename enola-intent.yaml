@@ -817,6 +817,12 @@ rules:
     mode: strict
     because: "a tool's argument must never select a secret: the tool side reveals none"
 
+  - id: no-tool-names-secret-handing
+    forbid_name: tool-side
+    pattern: "* -> grit.core.host.Handing"
+    mode: strict
+    because: "a secret reaches a program only through Handing, which deployment code alone holds: the tool side, holding Processes at most, cannot hand one on"
+
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
   # slack_post through. Mill already keeps grit.turn off its classpath; this rule is the

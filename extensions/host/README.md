@@ -15,6 +15,8 @@ Its packages, none importing another:
   - `LocalProcesses` — starting a program with arguments under a root, run to its end or held
     by its caller's scope; it sees only an allowlisted environment.
   - `LocalShell` — running a command in a checkout with `sh -c`, through `LocalProcesses`.
+  - `LocalHanding` — starting a program handed a secret, as a file only this user reads,
+    through `LocalProcesses`' start.
   - `LocalInstructions` — the instruction files around a directory.
   - `Checkout` (private) — a checkout's root, and how a relative path is found under it.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.
