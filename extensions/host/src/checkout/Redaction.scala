@@ -27,8 +27,15 @@ final class Redaction private (
     */
   def apply(text: String): String =
     found.fold(text) { pattern =>
-      val start = edge(_.takeRight(_), text.startsWith)
-      val end = edge(_.take(_), text.endsWith)
+      val start =
+        edge(
+          piece => Redaction.overlaps(text.take(piece.length - 1), piece),
+          (_, n) => text.take(n)
+        )
+      val end = edge(
+        piece => Redaction.overlaps(piece.take(piece.length - 1), text.takeRight(piece.length - 1)),
+        _.take(_)
+      )
         .filter((n, _) => n + start.fold(0)(_._1) <= text.length)
       val middle = text.substring(start.fold(0)(_._1), text.length - end.fold(0)(_._1))
       val replaced = pattern
@@ -41,20 +48,24 @@ final class Redaction private (
       )
     }
 
-  /** The length of the longest `part` of a piece, shorter than it and at least
-    * [[Redaction.Shortest]] long, that a text has at the edge `at` tests, with its variable. A
-    * part that is itself a whole piece is left to the whole pieces' search, which names its own
-    * variable.
+  /** The length of the longest `part` of a piece, of the lengths `lengths` gives for it (shorter
+    * than it, longest first) at least [[Redaction.Shortest]] long, with its variable. A part that
+    * is itself a whole piece is left to the whole pieces' search, which names its own variable.
     */
-  private def edge(part: (String, Int) => String, at: String => Boolean): Option[(Int, Variable)] =
+  private def edge(
+      lengths: String => Vector[Int],
+      part: (String, Int) => String
+  ): Option[(Int, Variable)] =
     pieces.toVector
       .flatMap((piece, v) =>
-        (piece.length - 1 to Redaction.Shortest by -1)
-          .map(part(piece, _))
-          .find(p => at(p) && !pieces.contains(p))
-          .map(p => (p.length, v))
+        lengths(piece).iterator
+          .takeWhile(_ >= Redaction.Shortest)
+          .find(n => !(pieceLengths.contains(n) && pieces.contains(part(piece, n))))
+          .map(n => (n, v))
       )
       .maxByOption(_._1)
+
+  private val pieceLengths: Set[Int] = pieces.keySet.map(_.length)
 
   /** One line, for the log at start-up: the variables redacted, and those too short to be. */
   def described: String = {
@@ -104,6 +115,31 @@ object Redaction {
   def marked(text: String): Boolean = text.contains(Mark)
 
   private val Mark = "[redacted secret: "
+
+  /** The lengths of the prefixes of `a` that are suffixes of `b`, longest first, none empty: a
+    * Knuth–Morris–Pratt match of `a` over `b`, in time linear in both.
+    */
+  private def overlaps(a: String, b: String): Vector[Int] =
+    if (a.isEmpty) Vector.empty
+    else {
+      // border(i): the longest proper prefix of `a.take(i + 1)` that is also its suffix.
+      val border = new Array[Int](a.length)
+      var k = 0
+      var i = 1
+      while (i < a.length) {
+        while (k > 0 && a.charAt(i) != a.charAt(k)) k = border(k - 1)
+        if (a.charAt(i) == a.charAt(k)) k += 1
+        border(i) = k
+        i += 1
+      }
+      var q = 0
+      b.foreach { c =>
+        if (q == a.length) q = border(q - 1)
+        while (q > 0 && c != a.charAt(q)) q = border(q - 1)
+        if (c == a.charAt(q)) q += 1
+      }
+      Vector.unfold(q)(n => Option.when(n > 0)((n, border(n - 1))))
+    }
 
   private def mark(v: Variable): String = s"$Mark${Variable.value(v)}]"
 }

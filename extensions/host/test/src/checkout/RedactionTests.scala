@@ -58,5 +58,17 @@ object RedactionTests extends TestSuite {
         "too short to redact: GRIT_PASSWORD."
       Redaction.of(Map.empty).described ==> "Redacting no values from tool output."
     }
+
+    test("a long value's cut ends are redacted at both edges, in time linear in the value") {
+      val value = new scala.util.Random(42).alphanumeric.take(20000).mkString
+      val long = Redaction.of(Map("LONG_TOKEN" -> value))
+      val other = new scala.util.Random(7).alphanumeric.take(20000).mkString
+      long(value.takeRight(15000) + " middle " + value.take(12000)) ==>
+        "[redacted secret: LONG_TOKEN] middle [redacted secret: LONG_TOKEN]"
+      val started = System.nanoTime()
+      long(other) ==> other
+      val took = (System.nanoTime() - started) / 1000000
+      assert(took < 50)
+    }
   }
 }
