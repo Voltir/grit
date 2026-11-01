@@ -12,6 +12,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Grade, ModelRef, Pinned, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
+import grit.core.session.{Event, Session}
 import grit.core.speech.{Outcome, Speech, SpeechStore}
 import grit.core.stitch.{Along, Strand}
 import grit.core.store.{Entry, EntryStore, ModelProfileStore, Payload, StoreError, Tx, UsageLedger}
@@ -647,6 +648,7 @@ private[turn] object TurnSteps {
             .flatMap(pin =>
               appendSummaryOf(
                 r.env.records,
+                r.env.hosting,
                 s.turn,
                 s.answered,
                 in.message,
@@ -1050,10 +1052,13 @@ private[turn] object TurnSteps {
     * `answered`, after everything already in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger beside the
     * estimate of the request that produced it, rebuilt as [[appended]] rebuilds its own.
-    * What it says of the message's item is recorded after it ([[TurnAgenda.describedId]]).
+    * What it says of the message's item is recorded after it ([[TurnAgenda.describedId]]). The
+    * summary closes the conversation's session, at its seq, cut to [[Session.Summary.Longest]]
+    * characters ending `…`, when a session is recorded already ([[TurnSessions.record]]).
     */
   private def appendSummaryOf(
       records: TurnRecords,
+      hosting: TurnHosting,
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
@@ -1082,6 +1087,21 @@ private[turn] object TurnSteps {
             Payload.Summary(text),
             at,
             level
+          )
+        )
+        .left
+        .map(TurnFailure.ofStore)
+      _ <- Session.Summary
+        .cut(text)
+        .fold(Right(()))(said =>
+          records.sessions.record(
+            hosting.conversations,
+            hosting.askers,
+            turn,
+            EntrySeq.value(next.seq),
+            at,
+            Event.Kind.Closing(said),
+            Event.Shape.Empty
           )
         )
         .left

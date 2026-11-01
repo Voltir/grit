@@ -15,13 +15,21 @@ enum Logged extends caps.Pure {
   /** This as the event `n` at `at` of a call whose result the model was shown as `shown`, a
     * read counting its UTF-8 bytes; or why not, as [[Event.of]].
     */
-  def event(n: Long, at: Instant, shown: String): Either[String, Event] = this match {
-    case Read(shape) =>
-      Event.of(n, at, Event.Kind.Read(shown.getBytes(StandardCharsets.UTF_8).length.toLong), shape)
-    case Edited(shape) => Event.of(n, at, Event.Kind.Edited, shape)
-    case Ran(shape) => Event.of(n, at, Event.Kind.Ran, shape)
-    case Commit(shape) => Event.of(n, at, Event.Kind.Commit, shape)
+  def event(n: Long, at: Instant, shown: String): Either[String, Event] =
+    Event.of(n, at, kind(shown), shape)
+
+  /** What it was, of a call whose result the model was shown as `shown`: a read counting its
+    * UTF-8 bytes.
+    */
+  def kind(shown: String): Event.Kind = this match {
+    case Read(_) => Event.Kind.Read(shown.getBytes(StandardCharsets.UTF_8).length.toLong)
+    case Edited(_) => Event.Kind.Edited
+    case Ran(_) => Event.Kind.Ran
+    case Commit(_) => Event.Kind.Commit
   }
+
+  /** Its shape. */
+  def shape: Event.Shape
 }
 
 object Logged {

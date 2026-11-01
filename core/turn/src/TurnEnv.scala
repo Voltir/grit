@@ -1,5 +1,7 @@
 package grit.turn
 
+import java.time.Instant
+
 import scala.concurrent.duration.FiniteDuration
 
 import grit.act.moves.{MoveRecords, MovesEnv}
@@ -11,12 +13,22 @@ import grit.core.context.ContextAssembler
 import grit.core.document.DocumentStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.files.PieceStore
-import grit.core.id.{ClaimHolder, EdgeName, EntryId, TurnRef, WorkflowId}
+import grit.core.id.{
+  ClaimHolder,
+  ConversationId,
+  EdgeName,
+  EntryId,
+  Harness,
+  SessionId,
+  TurnRef,
+  WorkflowId
+}
+import grit.core.identity.Principal
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
-import grit.core.session.Sessions
+import grit.core.session.{Event, Session, Sessions}
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{StitchStore, Tuning}
@@ -31,6 +43,7 @@ import grit.core.store.{
   Origin,
   Principals,
   PromptStore,
+  StoreError,
   Tx,
   UsageLedger,
   VoiceStore
@@ -157,7 +170,66 @@ final case class TurnRecords(
   * and the claim holder a conversation from each origin works as, whose claims its session
   * keeps from lapsing ([[grit.core.claim.Claim.lapses]]).
   */
-final case class TurnSessions(store: Sessions, holder: Origin -> Option[ClaimHolder])
+final case class TurnSessions(store: Sessions, holder: Origin -> Option[ClaimHolder]) {
+
+  /** `kind` with `shape`, logged as the event `n` at `at` on the session of `turn`'s
+    * conversation (as `conversations` reads it): run by the turn's asker (as `askers` reads it),
+    * at the conversation's label and place, working as the holder [[holder]] names for its
+    * origin. A closing is logged only on a session already recorded, so a turn that logged no
+    * call opens none. `Right`, keeping nothing, when the asker is no person, the conversation is
+    * gone, no event can be made ([[Event.of]]), or the session is kept where the turn does not
+    * read; `Left` when the store fails otherwise.
+    */
+  def record(
+      conversations: ConversationStore,
+      askers: Askers,
+      turn: TurnRef,
+      n: Long,
+      at: Instant,
+      kind: Event.Kind,
+      shape: Event.Shape
+  )(using Tx^): Either[StoreError, Unit] =
+    conversations.get(turn.conversationId).flatMap {
+      case None => Right(())
+      case Some(c) =>
+        // An event that cannot be made is no event, as one the store refuses is.
+        val made = for {
+          id <- SessionId.of(Harness.Grit, ConversationId.value(c.id))
+          event <- Event.of(n, at, kind, shape)
+        } yield (id, event)
+        made.fold(
+          _ => Right(()),
+          (id, event) =>
+            opened(id, kind).flatMap {
+              case false => Right(())
+              case true =>
+                askers.of(turn).flatMap {
+                  case Some(by: Principal.Person) =>
+                    val header =
+                      Session.Header(id, None, by, c.label, c.origin.place, holder(c.origin))
+                    store.record(header, Vector(event)) match {
+                      case Left(StoreError.Invalid(_)) => Right(())
+                      case other => other.map(_ => ())
+                    }
+                  case _ => Right(())
+                }
+            }
+        )
+    }
+
+  /** Whether an event of `kind` may be logged on the session `id`: any but a closing, and a
+    * closing when this transaction reads the session.
+    */
+  private def opened(id: SessionId, kind: Event.Kind)(using Tx^): Either[StoreError, Boolean] =
+    kind match {
+      case Event.Kind.Closing(_) =>
+        store.read(id) match {
+          case Left(StoreError.Invalid(_)) => Right(false)
+          case other => other.map(_.isDefined)
+        }
+      case _ => Right(true)
+    }
+}
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,
   * the system prompt and tool set each turn was offered (by content id), the requests its

@@ -4,21 +4,10 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.flow.Mint
-import grit.core.id.{
-  CallSlot,
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  Harness,
-  SessionId,
-  ToolCallId,
-  TurnRef,
-  WorkflowId
-}
-import grit.core.identity.Principal
+import grit.core.id.{CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
-import grit.core.session.{Logged, Session}
+import grit.core.session.Logged
 import grit.core.store.{
   Askers,
   ConversationStore,
@@ -433,34 +422,15 @@ object TurnTools {
     private def session(turn: TurnRef, entry: Entry, logged: Logged, shown: String)(using
         Tx^
     ): Either[StoreError, Unit] =
-      conversations.get(turn.conversationId).flatMap { found =>
-        askers.of(turn).flatMap { asker =>
-          (found, asker) match {
-            case (Some(c), Some(by: Principal.Person)) =>
-              val recorded = for {
-                id <- SessionId.of(Harness.Grit, ConversationId.value(c.id))
-                event <- logged.event(EntrySeq.value(entry.seq), entry.createdAt, shown)
-              } yield Session.Header(
-                id,
-                None,
-                by,
-                c.label,
-                c.origin.place,
-                sessions.holder(c.origin)
-              ) -> event
-              // An event that cannot be made is no event, as one the store refuses is.
-              recorded.fold(
-                _ => Right(()),
-                (header, event) =>
-                  sessions.store.record(header, Vector(event)) match {
-                    case Left(StoreError.Invalid(_)) => Right(())
-                    case other => other.map(_ => ())
-                  }
-              )
-            case _ => Right(())
-          }
-        }
-      }
+      sessions.record(
+        conversations,
+        askers,
+        turn,
+        EntrySeq.value(entry.seq),
+        entry.createdAt,
+        logged.kind(shown),
+        logged.shape
+      )
 
     /** `turn`'s entry `id`, which a write was just refused as a duplicate of. */
     private def readBack(turn: TurnRef, id: EntryId): Either[TurnFailure, Entry] =

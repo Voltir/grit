@@ -85,6 +85,12 @@ object Session {
         Left(s"a session's summary is 1 to $Longest characters")
       else Right(text)
 
+    /** `text` as a summary, its first [[Longest]] - 1 characters and `…` when it is longer;
+      * `None` when it is empty.
+      */
+    def cut(text: String): Option[Summary] =
+      of(if (text.length > Longest) text.take(Longest - 1) + "…" else text).toOption
+
     def value(s: Summary): String = s
   }
 
