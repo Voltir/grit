@@ -4,8 +4,16 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.document.{DocLabel, DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.document.{
+  DocLabel,
+  DocRef,
+  DocWeight,
+  Document,
+  DocumentSearch,
+  DocumentTerms,
+  Shelved
+}
+import grit.core.id.{ClaimHolder, DocumentVersionId, PluginName}
 import grit.core.store.{StoreError, Tx}
 
 /** [[DocumentSearch]] over `grit.documents` and `grit.document_terms`: reads only, so it needs
@@ -70,6 +78,28 @@ final class SqlDocumentSearch extends DocumentSearch {
         ps.setInt(SqlClearance.Params + 5, limit)
       }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
     }
+
+  def briefOf(holder: ClaimHolder, at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Option[Document]] = {
+    val ref = DocRef.brief(holder)
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT $Columns FROM $Labelled d
+         | WHERE d.plugin IN (SELECT plugin FROM grit.document_terms WHERE enabled)
+         |   AND ${SqlKept.currentAt("d")} AND d.body IS NOT NULL AND ${SqlClearance.kept("d")}
+         |   AND EXISTS (SELECT 1 FROM grit.document_refs r
+         |                WHERE r.version = d.version AND r.kind = ?
+         |                  AND md5(r.ref) = md5(?) AND r.ref = ?)
+         | ORDER BY d.written_at DESC, d.version DESC LIMIT 1""".stripMargin
+    ) { ps =>
+      ps.setObject(SqlClearance.Params + 1, utc(at))
+      ps.setObject(SqlClearance.Params + 2, utc(at))
+      ps.setString(SqlClearance.Params + 3, ref.kind)
+      ps.setString(SqlClearance.Params + 4, ref.ref)
+      ps.setString(SqlClearance.Params + 5, ref.ref)
+    }(document).map(_.headOption)
+  }
 
   def read(versions: Vector[DocumentVersionId])(using
       tx: Tx^

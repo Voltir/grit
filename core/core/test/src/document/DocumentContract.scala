@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{DocKey, DocumentVersionId, PluginName, Sha256, ShortHash}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, Sha256, ShortHash}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
@@ -594,6 +594,28 @@ abstract class DocumentContract extends TestSuite {
         Vector(),
         Vector()
       )
+    }
+    test(
+      "a brief is found by its holder, the newest current of an enabled plugin, and never by search"
+    ) {
+      val (p, r) = (name("doc-brief"), name("doc-brief-off"))
+      transaction(ok(store.declare(Vector(p -> terms()))))
+      val (h, other) = (got(ClaimHolder.of("coder/abc")), got(ClaimHolder.of("coder/xyz")))
+      val kp = keeper(p, terms())
+      put(kp, "plain", "apple pear", 1)
+      put(kp, "old#brief", "apple brief old", 1, refs = Set(DocRef.brief(h)))
+      put(kp, "new#brief", "apple brief new", 2, refs = Set(DocRef.brief(h)))
+      put(kp, "late#brief", "apple brief late", 6, refs = Set(DocRef.brief(h)))
+      put(keeper(r, terms()), "off#brief", "apple brief off", 3, refs = Set(DocRef.brief(h)))
+      def briefOf(of: ClaimHolder, m: Int) =
+        transaction(ok(search.briefOf(of, at(m)))).map(d => DocKey.value(d.key))
+      (
+        briefOf(h, 5),
+        briefOf(h, 2),
+        briefOf(other, 5),
+        transaction(ok(search.nearby("apple", 10, at(5)))).map(_._1.document.key).map(DocKey.value),
+        transaction(ok(shelf(p).search("apple", 10, at(5)))).map(_.document.key).map(DocKey.value)
+      ) ==> (Some("new#brief"), Some("old#brief"), None, Vector("plain"), Vector("plain"))
     }
     test(
       "labelOf keeps those whose plugin is enabled, in their order, each with its plugin's label"

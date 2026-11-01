@@ -23,7 +23,7 @@ import grit.core.document.{
   Shelved,
   Written
 }
-import grit.core.id.{DocKey, DocumentVersionId, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.Target
@@ -59,6 +59,10 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
   def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]] = reads.search(shelves, query, limit, at)
+
+  def briefOf(holder: ClaimHolder, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[Document]] = reads.briefOf(holder, at)
 
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
     reads.read(versions)
@@ -228,8 +232,9 @@ private[sql] object SqlDocuments {
   // pg_textsearch scores are negative, more negative is better. The planner may filter to the
   // shelves first, scoring rows that do not match 0; the guard drops them outside the LIMIT,
   // as SqlEntrySearch's queries do.
-  /** The versions holding something that `which` selects of `d`, read by the transaction, ranked
-    * against the query: its parameters are the clearance's, the query, `which`'s, then the limit.
+  /** The versions holding something that `which` selects of `d`, read by the transaction and
+    * holding no [[grit.core.document.DocRef.brief]], ranked against the query: its parameters
+    * are the clearance's, the query, `which`'s, then the limit.
     */
   def ranked(which: String): String =
     s"""WITH ${SqlClearance.With}
@@ -237,6 +242,8 @@ private[sql] object SqlDocuments {
        |  SELECT d.*, d.body <@> to_bm25query(?, 'grit.idx_documents_bm25') AS s
        |    FROM $Labelled d
        |   WHERE ${SqlClearance.kept("d")} AND d.body IS NOT NULL AND $which
+       |     AND NOT EXISTS (SELECT 1 FROM grit.document_refs b
+       |                      WHERE b.version = d.version AND b.kind = '${DocRef.Brief}')
        |   ORDER BY s, d.written_at DESC, d.version DESC
        |   LIMIT ?
        |) ranked

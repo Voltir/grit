@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.id.{DocKey, DocumentVersionId, PluginName}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.retention.Target
@@ -594,7 +594,8 @@ final class InMemoryDocuments extends DocumentStore {
     Right(
       ranked(
         rows.toVector.filter((_, r) =>
-          shelves.contains(Shelved(r.plugin, r.place)) && currentAt(r, at) && reads(r)
+          shelves.contains(Shelved(r.plugin, r.place)) && currentAt(r, at) && reads(r) &&
+            !r.refs.exists(_.kind == DocRef.Brief)
         ),
         query,
         limit
@@ -629,6 +630,23 @@ final class InMemoryDocuments extends DocumentStore {
           )
         )
         .take(limit max 0)
+  }
+
+  def briefOf(holder: ClaimHolder, at: Instant)(using
+      Tx^
+  ): Either[StoreError, Option[Document]] = {
+    val enabled = terms.collect { case (p, (_, true)) => p }.toSet
+    Right(
+      rows.toVector
+        .filter((_, r) =>
+          enabled.contains(r.plugin) && currentAt(r, at) && reads(r) &&
+            r.refs.contains(DocRef.brief(holder))
+        )
+        .sortBy((v, r) => (r.written, v))
+        .reverse
+        .flatMap((v, r) => r.text.map(document(v, r, _)))
+        .headOption
+    )
   }
 
   def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =

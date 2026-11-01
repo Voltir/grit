@@ -2,7 +2,7 @@ package grit.core.document
 
 import java.time.Instant
 
-import grit.core.id.{DocumentVersionId, PluginName}
+import grit.core.id.{ClaimHolder, DocumentVersionId, PluginName}
 import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 
@@ -30,11 +30,16 @@ trait DocumentSearch {
     * `limit`, equally good matches latest written first, each with its score, positive and
     * higher better, on the document index's own scale, not [[grit.core.store.EntrySearch]]'s.
     * Empty when nothing matches, `query` is blank, `limit` is not positive or `shelves` is
-    * empty.
+    * empty. A document holding a [[DocRef.brief]] is never found.
     */
   def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]]
+
+  /** The newest document of an enabled plugin current at `at` holding [[DocRef.brief]] of
+    * `holder` that its transaction reads; `None` when there is none.
+    */
+  def briefOf(holder: ClaimHolder, at: Instant)(using Tx^): Either[StoreError, Option[Document]]
 
   /** The documents of every enabled plugin, current at `at`, that its transaction reads and that
     * match `text`, each with its plugin's label: best first, at most `limit`, as [[search]]

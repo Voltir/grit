@@ -1,8 +1,11 @@
 package grit.core.document
 
+import grit.core.id.ClaimHolder
+
 /** A reference a document holds to something outside it, in its plugin's own terms: `kind`,
   * lower-case words and digits joined by `-`, and `ref`, 1 to 8192 characters, none of them
-  * NUL. Core keeps and finds them ([[DocumentShelf.referring]]); what they mean is the plugin's.
+  * NUL. Core keeps and finds them ([[DocumentShelf.referring]]); what they mean is the plugin's,
+  * except a [[DocRef.brief]]'s.
   */
 final case class DocRef private (kind: String, ref: String) extends caps.Pure
 
@@ -18,6 +21,15 @@ object DocRef {
     else if (ref.contains('\u0000')) Left("a reference holds no NUL")
     else Right(new DocRef(kind, ref))
   }
+
+  /** The ref a document holds when it is `holder`'s brief: what a window working as `holder` is
+    * shown first at each boundary ([[DocumentSearch.briefOf]]). Search never finds a document
+    * holding one.
+    */
+  def brief(holder: ClaimHolder): DocRef = new DocRef(Brief, ClaimHolder.value(holder))
+
+  /** `brief-for`: the kind of a [[brief]], the one kind whose meaning is core's. */
+  val Brief: String = "brief-for"
 
   /** 256: the most references one version holds. */
   val Most: Int = 256

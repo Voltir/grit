@@ -156,6 +156,9 @@ object TopicDreamTests extends TestSuite {
           Tx^
       ): Either[StoreError, Vector[DocumentSearch.Hit]] =
         documents.search(shelves, query, limit, at)
+      def briefOf(holder: grit.core.id.ClaimHolder, at: Instant)(using
+          Tx^
+      ): Either[StoreError, Option[Document]] = documents.briefOf(holder, at)
       def read(versions: Vector[DocumentVersionId])(using
           Tx^
       ): Either[StoreError, Vector[Document]] =

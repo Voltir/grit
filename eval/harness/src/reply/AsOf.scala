@@ -7,6 +7,7 @@ import grit.core.either.Traversal.traverse
 import grit.core.files.PieceSearch
 import grit.core.id.{
   CallSlot,
+  ClaimHolder,
   CloseRef,
   ConversationId,
   DocumentVersionId,
@@ -338,6 +339,9 @@ object AsOf {
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] =
       under.search(shelves, query, limit, earlier(at, this.at))
+    def briefOf(holder: ClaimHolder, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[Document]] = under.briefOf(holder, earlier(at, this.at))
     def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions).map(_.filter(d => before(d.written, at)))
   }
@@ -352,6 +356,9 @@ object AsOf {
     def search(shelves: Vector[Shelved], query: String, limit: Int, asked: Instant)(using
         Tx^
     ): Either[StoreError, Vector[DocumentSearch.Hit]] = under.search(shelves, query, limit, at)
+    def briefOf(holder: ClaimHolder, asked: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[Document]] = under.briefOf(holder, at)
     def read(versions: Vector[DocumentVersionId])(using Tx^): Either[StoreError, Vector[Document]] =
       under.read(versions)
   }

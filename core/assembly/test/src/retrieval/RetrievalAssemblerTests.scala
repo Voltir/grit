@@ -258,6 +258,9 @@ object RetrievalAssemblerTests extends TestSuite {
             .sortBy(-_.score)
         )
     }
+    def briefOf(holder: grit.core.id.ClaimHolder, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[Document]] = under.briefOf(holder, at)
     def read(
         versions: Vector[DocumentVersionId]
     )(using Tx^): Either[StoreError, Vector[Document]] = {
