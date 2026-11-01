@@ -91,7 +91,7 @@ In dependency order, each with the core packages it imports:
   ← `id`, `message`, `place`, `period`, `store`, `classify`
 - **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
-  `place`
+  `place`, `secret`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,

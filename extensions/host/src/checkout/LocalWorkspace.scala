@@ -4,6 +4,7 @@ import java.nio.file.{Files, LinkOption, Path}
 import java.util.regex.{Pattern, PatternSyntaxException}
 
 import grit.core.host.{Clipped, HostError, Kept, LineNumbers, Lines, RelPath, Workspace}
+import grit.core.secret.Named
 
 /** Reading the checkout whose root is `root`, on this machine's file system. Search walks
   * the files itself, with `java.util.regex`; it does not shell out to `rg`, so it needs
@@ -142,7 +143,7 @@ final class LocalWorkspace(root: Path) extends Workspace {
         }
     }
 
-  private def secret(rel: String): Boolean = rel.split('/').exists(RelPath.secret)
+  private def secret(rel: String): Boolean = rel.split('/').exists(Named.file)
 
   private def compiled(pattern: String): Either[HostError, Pattern] =
     try Right(Pattern.compile(pattern))

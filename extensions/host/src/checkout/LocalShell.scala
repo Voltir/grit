@@ -5,6 +5,7 @@ import java.nio.file.Path
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.host.{Argv, Clipped, HostError, Kept, Ran, RelPath, Shell}
+import grit.core.secret.Named
 
 /** Running commands in the checkout whose root is `root`, with `sh -c`, as
   * [[LocalProcesses]] runs a program there: a command never sees an API key, a database
@@ -61,17 +62,9 @@ object LocalShell {
     "COURSIER_CACHE"
   )
 
-  /** Whether `name` looks like it holds a secret: it contains KEY, TOKEN, SECRET or
-    * PASSWORD, in any case.
-    */
-  def secret(name: String): Boolean = {
-    val upper = name.toUpperCase
-    Vector("KEY", "TOKEN", "SECRET", "PASSWORD").exists(upper.contains)
-  }
-
-  /** The variables of `environment` a command sees: those [[Allowed]] names that are not
-    * [[secret]].
+  /** The variables of `environment` a command sees: those [[Allowed]] names that are not named
+    * like a secret ([[Named.variable]]).
     */
   def passed(environment: Map[String, String]): Map[String, String] =
-    environment.filter((k, _) => Allowed.contains(k) && !secret(k))
+    environment.filter((k, _) => Allowed.contains(k) && !Named.variable(k))
 }

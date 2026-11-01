@@ -1,5 +1,7 @@
 package grit.core.host
 
+import grit.core.secret.Named
+
 /** A path inside the checkout, relative to its root, in normal form: segments joined by
   * `/`, with no `.`, no `..` and no empty segment; the root itself is `.`. It names no
   * secrets file: no segment is `.env` or starts with `.env.`.
@@ -30,13 +32,10 @@ object RelPath {
         }
       kept match {
         case None => Left(PathError.Escapes(path))
-        case Some(segments) if segments.exists(secret) => Left(PathError.Secret(path))
+        case Some(segments) if segments.exists(Named.file) => Left(PathError.Secret(path))
         case Some(segments) => Right(if (segments.isEmpty) Root else segments.mkString("/"))
       }
     }
-
-  /** Whether the file name `name` is a secrets file: `.env`, or `.env.` and anything. */
-  def secret(name: String): Boolean = name == ".env" || name.startsWith(".env.")
 
   def value(path: RelPath): String = path
 }

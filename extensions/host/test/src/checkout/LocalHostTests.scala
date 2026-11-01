@@ -228,7 +228,7 @@ object LocalHostTests extends TestSuite {
         assert(shown.exists(out => !out.contains("planted")))
         // The second guard: an allowed name that looks like a secret still stays out.
         LocalShell.passed(Map("PATH" -> "/bin", "TOKEN_PATH" -> "x")) ==> Map("PATH" -> "/bin")
-        LocalShell.Allowed.filter(LocalShell.secret) ==> Set.empty[String]
+        LocalShell.Allowed.filter(grit.core.secret.Named.variable) ==> Set.empty[String]
       }
     }
 
