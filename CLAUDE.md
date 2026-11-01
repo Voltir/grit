@@ -38,7 +38,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 |---|---|---|---|
 | `grit.core` | `grit.core.*` | prose | the domain and the traits; no DBOS, no JDBC driver on its classpath |
 | `grit.dbos` | `sql`, `workflow`, `engine`, `internal` | core | the DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `internal` is lent to the eval harness alone |
-| `grit.prose` | `form`, `markdown` | — | prose as edge-neutral blocks, read from markdown; each edge renders them |
+| `grit.prose` | `form`, `markdown`, `json`, `index` | — | prose as edge-neutral blocks, read from markdown; each edge renders them |
 | `grit.tui` | `model`, `components`, `wire`, `runtime` | core | the terminal UI library; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos |
 | `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn, jobs and the lifecycle share; names core alone |
@@ -47,10 +47,10 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.job` | `run`, `clock` | core, act | jobs (ADR 0029): a job's run, and the clock edge that starts it; names no `grit.turn` |
 | `grit.digest` | `grit.digest` | core | the hello-world plugin |
 | `grit.remind` | `grit.remind` | core | the reminders plugin |
-| `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
-| `grit.projects` | `name`, `artifact`, `method`, `render` | core, prose | the plugin that keeps a project's artifacts under its method (ADR 0049) |
+| `grit.knowledge` | `ref`, `card`, `sync`, `github`, `drive`, `strand`, `standing`, `topic`, `declassify`, `plugin` | core, prose | the plugin that keeps cards of a declared source (ADR 0028) |
+| `grit.projects` | `name`, `artifact`, `method`, `render`, `plugin` | core, prose | the plugin that keeps a project's artifacts under its method (ADR 0049) |
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
-| `grit.formats` | `limits`, `ooxml`, `pdf`, `choice` | core | the readers of PDF, Word and Excel files (ADR 0044), and PDFBox's quarantine |
+| `grit.formats` | `limits`, `tree`, `ooxml`, `google`, `pdf`, `choice` | core | the readers of PDF, Word, Excel and Google Slides files (ADR 0044), and PDFBox's quarantine |
 | `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
@@ -59,9 +59,9 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `drive`, `edge` | core, edge | MCP servers and Drive's REST API: a declared service's read-only tools at its service place (ADR 0017) |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
-| `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, eval | the eval harness, run only through `scripts/eval` |
-| `grit.kit` | `deployment`, `environment`, `run` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host | what a deployment is built against (ADR 0021) |
-| `grit.app` | `config`, `main` | kit, digest, remind, knowledge, chat, slack, mcp, formats, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
+| `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, kit, knowledge, eval | the eval harness, run only through `scripts/eval` |
+| `grit.kit` | `deployment`, `environment`, `run`, `rehearse` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host, edge | what a deployment is built against (ADR 0021) |
+| `grit.app` | `config`, `main` | kit, digest, remind, knowledge, prose, chat, slack, mcp, formats, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
 
 Mill `moduleDeps` are transitive, so `grit.kit` and `grit.app` see `dev.dbos.*` through
 `grit.dbos` — enola's rule, not the compiler, guards it. Working in `extensions/tui/`? Read
