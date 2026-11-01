@@ -345,9 +345,9 @@ object RigTests extends TestSuite {
     test("a run that writes nothing for the quiet time is stopped, and its trial kept not passed") {
       withTask { f =>
         val silent = Streams.run.filterNot(_.contains("\"type\":\"result\""))
-        trial(f, Fake("object A { val x = 1 }", silent, hangs = true), 1.second).map { t =>
+        trial(f, Fake("object A { val x = 1 }", silent, hangs = true), 3.seconds).map { t =>
           (t.trial.passed, t.lines.find(_.startsWith("ended:")))
-        } ==> Right((false, Some("ended: quiet for 1 s")))
+        } ==> Right((false, Some("ended: quiet for 3 s")))
       }
     }
 

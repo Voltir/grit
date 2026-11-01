@@ -66,11 +66,11 @@ object LocalProcessesTests extends TestSuite {
         val waited = new LocalProcesses(dir, sys.env, noSecrets).started(
           argv("sh", "-c", "echo late >&2; exec sleep 30"),
           RelPath.Root
-        )(s => s.await(300.millis))
+        )(s => s.await(2.seconds))
         waited.map(_.left.map {
           case HostError.TimedOut(after, errors) => (after, errors.show)
           case other => (0.seconds, other.message)
-        }) ==> Right(Left((300.millis, "late\n")))
+        }) ==> Right(Left((2.seconds, "late\n")))
       }
     }
 

@@ -302,7 +302,7 @@ object LocalHostTests extends TestSuite {
         val shell = new LocalShell(dir, sys.env, planted)
         shell.run("echo sk-planted-value-123456", 10.seconds).map(_.output.show) ==>
           Right("[redacted secret: GRIT_TEST_TOKEN]\n")
-        shell.run("echo sk-planted-value-123456; sleep 30", 500.millis).left.map {
+        shell.run("echo sk-planted-value-123456; sleep 30", 2.seconds).left.map {
           case HostError.TimedOut(_, output) => output.show
           case other => other.message
         } ==> Left("[redacted secret: GRIT_TEST_TOKEN]\n")
@@ -314,16 +314,17 @@ object LocalHostTests extends TestSuite {
         val marker = dir.resolve("late")
         val started = System.nanoTime()
         val ran = new LocalShell(dir, sys.env, noSecrets).run(
-          "echo before; (sleep 2; touch late) & sleep 30",
-          500.millis
+          "echo before; (sleep 3; touch late) & sleep 30",
+          2.seconds
         )
         val took = (System.nanoTime() - started).nanos
         ran.left.map {
           case HostError.TimedOut(after, output) => (after, output.show)
           case other => (0.seconds, other.message)
-        } ==> Left((500.millis, "before\n"))
+        } ==> Left((2.seconds, "before\n"))
         assert(took < 5.seconds)
-        Thread.sleep(2500)
+        // Past the moment the child it started would have touched the marker, had it lived.
+        Thread.sleep((3500.millis - took).max(0.seconds).toMillis)
         Files.exists(marker) ==> false
       }
     }

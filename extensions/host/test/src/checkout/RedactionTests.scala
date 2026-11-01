@@ -65,10 +65,15 @@ object RedactionTests extends TestSuite {
       val other = new scala.util.Random(7).alphanumeric.take(20000).mkString
       long(value.takeRight(15000) + " middle " + value.take(12000)) ==>
         "[redacted secret: LONG_TOKEN] middle [redacted secret: LONG_TOKEN]"
-      val started = System.nanoTime()
       long(other) ==> other
+      // Every cut end of this value but the shortest agrees with this text's edge in all but its
+      // last character, so a scan that compares each length's part in turn is quadratic here.
+      val worst = Redaction.of(Map("LONG_TOKEN" -> ("a" * 400000 + "b")))
+      val near = "a" * 399999 + "c"
+      val started = System.nanoTime()
+      worst(near) ==> near
       val took = (System.nanoTime() - started) / 1000000
-      assert(took < 50)
+      assert(took < 1000)
     }
   }
 }
