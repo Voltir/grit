@@ -1,63 +1,35 @@
 package grit.slack.edge
 
-import java.time.{Instant, ZoneId}
-import java.util.concurrent.ConcurrentHashMap
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.admin.Command
-import grit.core.approval.Approval
-import grit.core.clock.{Clock, Utc}
+import grit.core.clock.Clock
 import grit.core.edge.{
-  Acknowledgement,
   Asked,
   Attesting,
   CatchUp,
   EdgeRefusal,
   EdgeStores,
   Membership,
-  Part,
-  Pending,
   RealmSource,
   ServedEdge
 }
-import grit.core.id.{
-  CallSlot,
-  ConversationId,
-  EntryId,
-  Href,
-  SourceId,
-  ToolCallId,
-  TurnRef,
-  WorkflowId
-}
+import grit.core.id.{CallSlot, EntryId, Href, SourceId}
 import grit.core.identity.{Account, Realm, Standing}
-import grit.core.inbox.{InboundId, InboxError, Progress}
-import grit.core.message.{AssistantBlock, Message}
-import grit.core.place.{Place, Service}
+import grit.core.inbox.{InboundId, InboxError}
+import grit.core.message.Message
+import grit.core.place.Service
 import grit.core.review.{Prompt, Reviews, Verdict}
 import grit.core.speech.{Rate, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
-import grit.prose.markdown.Markdown
-import grit.slack.client.{
-  AppToken,
-  BotToken,
-  Card,
-  Member,
-  Respond,
-  Root,
-  Self,
-  Slack,
-  SlackError,
-  SocketSlack,
-  Tag
-}
-import grit.slack.event.{ChannelId, Clicked, Event, Events, MessageLink, TeamId, Ts, UserId}
-import grit.slack.text.{Incoming, Post, RichText}
+import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SocketSlack, Tag}
+import grit.slack.event.{ChannelId, Event, Events, MessageLink, TeamId, Ts, UserId}
+import grit.slack.text.{Incoming, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
   * the stores alone; grit being `self` in the workspace, answering `review` when one is
@@ -75,18 +47,7 @@ final class SlackEdge(
     said: String => Unit
 ) {
   import SlackEdge.*
-
-  // Caches and a flag, each written only through its own atomic operations. What they hold
-  // is looked up again from Slack or the store when missing, so a reader that races a writer
-  // sees either value, and both are right.
-  @caps.unsafe.untrackedCaptures
-  private val names = new ConcurrentHashMap[UserId, Named]()
-
-  @caps.unsafe.untrackedCaptures
-  private val channelNames = new ConcurrentHashMap[ChannelId, String]()
-
-  @caps.unsafe.untrackedCaptures
-  private val started = new AtomicBoolean(false)
+  import Names.Named
 
   // Set as a join is recorded pending, and taken by joinsWaiting, each atomically. A set racing
   // a take is either seen now or by the next take; the joins it stands for are read from the
@@ -97,28 +58,8 @@ final class SlackEdge(
   /** The channels grit's bot is a member of: what it hears. */
   private val members: Members^{stores} = new Members(stores.joins, self.team)
 
-  // Set once, atomically, when the review's place is first found unwritable, so that is said
-  // once; a racing pass either sets it or sees it set.
-  @caps.unsafe.untrackedCaptures
-  private val unwritableSaid = new AtomicBoolean(false)
-
-  // Each ask this edge has shown its card for, by its turn's workflow and its call: added once
-  // Slack has the card, and a turn's taken out as its reply is delivered, each atomically. A
-  // pass racing another may show a card twice, which the asker sees as two cards of one ask,
-  // either of whose clicks answers it; a card is never left unshown, as asks are read from the
-  // store each pass, never from it.
-  @caps.unsafe.untrackedCaptures
-  private val carded = ConcurrentHashMap.newKeySet[(WorkflowId, ToolCallId)]()
-
-  /** The reviews this edge prompts for, triage's first, each with the subject its transactions
-    * are opened for: triage's public, as its prompts hold no text, and each other for the
-    * review's place ([[Subject.Room]]).
-    */
-  private val promptings: Vector[(Subject, Prompting[?, ?])] =
-    review.fold(Vector.empty[(Subject, Prompting[?, ?])])(r =>
-      (Subject.Public -> SlackEdge.triage(stores.reviews, self.team)) +:
-        r.prompting.map(made => Subject.Room(r.place) -> made(stores.documentReviews))
-    )
+  /** The names of the users and channels it shows. */
+  private val names = new Names(slack, self.team, said)
 
   /** The name grit's bot user goes by in Slack, for the log; why not, when Slack could not be
     * asked or the bot has no name there.
@@ -138,12 +79,13 @@ final class SlackEdge(
   def reconcile(): Either[String, Unit] =
     slack.channels().left.map(e => s"Slack would not list grit's channels: $e").flatMap { listed =>
       val (reviewed, heard) = listed.partition((c, _) => review.exists(_.channel == c))
-      reviewed.foreach((c, _) => said(s"slack: the review's channel, ${shown(c)}, is never heard"))
+      reviewed
+        .foreach((c, _) => said(s"slack: the review's channel, ${names.shown(c)}, is never heard"))
       val access = heard.flatMap((c, k) => Members.access(k).map(c -> _))
       members.reconcile(access, clock.now()).left.map(_.toString).map { forgotten =>
         said(members.all match {
           case Vector() => "slack: a member of no channel"
-          case all => s"slack: a member of ${all.map(shown).mkString(", ")}"
+          case all => s"slack: a member of ${all.map(names.shown).mkString(", ")}"
         })
         if (forgotten > 0) said(s"slack: forgot $forgotten rooms left over a day ago")
       }
@@ -177,19 +119,13 @@ final class SlackEdge(
           .write(Subject.Public)(Right(all.filterNot(c => Tx.quiet(members.room(c)))))
           .left
           .map(e => s"which rooms are quiet is unread: $e")
-        _ <- offer(loud.flatMap(c => channelNameOf(c).map(_ -> c).toVector))
+        _ <- offer(loud.flatMap(c => names.channelNameOf(c).map(_ -> c).toVector))
       } yield ()
       offered.left.foreach { why =>
         requiet.set(true)
         said(s"slack: slack_post not offered again, tried at the next delivery: $why")
       }
     }
-
-  /** `channel` as a person reads it: `#{name} ({id})`, its id alone when Slack gives no name. */
-  private def shown(channel: ChannelId): String = {
-    val id = ChannelId.value(channel)
-    channelNameOf(channel).fold(id)(name => s"#$name ($id)")
-  }
 
   /** One Events API payload. A person's message in a channel grit's bot is a member of (never
     * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose
@@ -239,7 +175,7 @@ final class SlackEdge(
       case Right(Event.Ignored(_)) => true
       case Right(j: Event.Joined) => joined(j)
       case Right(l: Event.Left) => left(l)
-      case Right(r: Event.Reacted) => reacted(r)
+      case Right(r: Event.Reacted) => reviewing.reacted(r)
       case Right(c: Event.UserChanged) => changed(c)
       case Right(t: Event.Told) =>
         told(t) match {
@@ -290,69 +226,20 @@ final class SlackEdge(
     * not take, and a payload grit cannot read, are said.
     */
   def command(registered: SlackCommand)(payload: String): Unit =
-    Events.command(payload) match {
-      case Left(why) => said(s"slack: a slash command grit cannot read: $why")
-      case Right(c) if c.command != registered.name =>
-        said(s"slack: a slash command not grit's, ${c.command}, ignored")
-      case Right(c) =>
-        val answer = SlackAccounts.account(c.team, c.user) match {
-          case Left(why) =>
-            said(s"slack: ${c.command} not run: its asker cannot be named: $why")
-            NotAttested
-          case Right(asker) =>
-            stores.attesting.before(source, asker) match {
-              case Left(e) =>
-                said(s"slack: ${c.command} not run: ${Account.written(asker)} unchecked: $e")
-                NotAttested
-              case Right(_) =>
-                val room =
-                  if (c.direct) Origin.Direct(asker, "").room
-                  else Origin.channel(TeamId.value(c.team), ChannelId.value(c.channel))
-                // A mention as Slack escapes it, `<@U…|name>`, is read as the user alone, and a
-                // link, `<https://…|label>`, as the link alone.
-                val words = Linked.replaceAllIn(
-                  Mentioned.replaceAllIn(c.text, m => s"<@${m.group(1)}>"),
-                  m => scala.util.matching.Regex.quoteReplacement(m.group(1))
-                )
-                def person(word: String): Option[Account] = word match {
-                  case Mentioned(user) => SlackAccounts.account(c.team, UserId(user)).toOption
-                  case _ => None
-                }
-                Command.read(words, person, registered.places) match {
-                  case Left(why) => why
-                  case Right(command) =>
-                    stores.administration.run(asker, room, command, clock.now()) match {
-                      case Right(answered) =>
-                        command match {
-                          case Command.Quiet(_) => requiet.set(true)
-                          case _ => ()
-                        }
-                        answered.text
-                      case Left(e) =>
-                        said(s"slack: ${c.command} not run: $e")
-                        NotRun
-                    }
-                }
-            }
-        }
-        slack
-          .respond(c.answerAt, answer)
-          .left
-          .foreach(e => said(s"slack: the answer to ${c.command} not shown: $e"))
-    }
+    commanding.command(registered)(payload)
 
   /** What Slack says of the accounts of grit's own team, `slack:{self.team}/…`, and nothing of
     * any other's: each user as [[Slack.member]] reads them, an account of another team outside
     * without asking, and the team's listing as [[Slack.members]] reads it, any other realm's
     * empty. A failure to ask is [[Asked.Unreached]]. The name an answer gives is kept as the
-    * user's name and zone ([[namedOf]]), so a new author costs one `users.info`.
+    * user's name and zone ([[Names.namedOf]]), so a new author costs one `users.info`.
     */
-  private val source: RealmSource^{slack} = new RealmSource {
+  private val source: RealmSource^{slack, names} = new RealmSource {
     def ask(account: Account): Asked =
       SlackAccounts.user(account, self.team).fold(Asked.Said(Standing.Outside)) { user =>
         slack.member(self.team, user) match {
           case Right(m) =>
-            m.name.foreach(n => names.put(user, Named(n, m.zone)))
+            m.name.foreach(n => names.remember(user, Named(n, m.zone)))
             Asked.Said(m.standing)
           case Left(e) => Asked.Unreached(e.toString)
         }
@@ -371,6 +258,14 @@ final class SlackEdge(
             )
           )
   }
+
+  private val reviewing = new Reviewing(slack, self, stores, review, clock, said, names)
+
+  private val delivering =
+    new Delivering(slack, self, stores, note, clock, said, names, () => requiet.set(true))
+
+  private val commanding =
+    new Commanding(slack, stores, clock, said, source, () => requiet.set(true))
 
   /** Asks Slack again about the user `c` names, however recently it was asked
     * ([[Attesting.changed]]); whether the event may be acknowledged: not when the store failed.
@@ -395,53 +290,6 @@ final class SlackEdge(
     * ([[Attesting.round]]), listing the team once when any is; how many it recorded.
     */
   def attest(): Either[StoreError, Int] = stores.attesting.round(source)
-
-  /** Keeps `r` as a verdict on the review prompt it is on, added or withdrawn, when it is the
-    * review's rater's: by the first of [[promptings]] whose verdicts hold its emoji and whose
-    * reviews find a prompt at its message, each asked in a transaction for its own subject;
-    * nothing for anyone else's, another emoji, or a message no prompt was posted at. Whether it
-    * may be acknowledged.
-    */
-  private def reacted(r: Event.Reacted): Boolean = {
-    val emoji = Prompting.named(r.emoji)
-    val keeping = promptings.filter((_, p) => p.verdicts.contains(emoji))
-    review.filter(v => r.team == self.team && r.user == v.rater && keeping.nonEmpty) match {
-      case None => true
-      case Some(_) =>
-        val at = PromptAt(r.channel, r.ts).written
-        SlackAccounts.account(r.team, r.user).left.map(StoreError.Invalid(_)).flatMap { rater =>
-          keeping.foldLeft[Either[StoreError, Boolean]](Right(false)) { (done, kept) =>
-            done.flatMap(found =>
-              if (found) Right(true)
-              else stores.jot.write(kept._1)(verdictOn(kept._2, emoji, at, rater, r))
-            )
-          }
-        } match {
-          case Right(_) => true
-          case Left(e) =>
-            said(
-              s"slack: a reaction to ${Ts.value(r.ts)} not kept, left for Slack to send again: $e"
-            )
-            false
-        }
-    }
-  }
-
-  /** Keeps or withdraws, as `r` was added or removed, the verdict `emoji` gives under `p` on the
-    * prompt posted at `at`, by `rater`: whether `p` found one there to keep it on.
-    */
-  private def verdictOn[S <: caps.Pure, V <: caps.Pure](
-      p: Prompting[S, V],
-      emoji: String,
-      at: String,
-      rater: Account,
-      r: Event.Reacted
-  )(using Tx^): Either[StoreError, Boolean] =
-    p.verdicts.get(emoji) match {
-      case None => Right(false)
-      case Some(v) =>
-        if (r.added) p.reviews.reacted(at, rater, v, r.at) else p.reviews.unreacted(at, rater, v)
-    }
 
   /** What [[backfill]] would hear of `channel`: each message said there from `since` on,
     * read as [[receive]] reads a live one ([[Events.listed]]), that the inbox has not
@@ -517,7 +365,7 @@ final class SlackEdge(
       _.foldLeft[Either[String, Int]](Right(0)) { case (done, (channel, join)) =>
         done.flatMap(n =>
           caughtUp(channel, join, bounds, stopping).left
-            .map(why => s"${shown(channel)} not backfilled: $why")
+            .map(why => s"${names.shown(channel)} not backfilled: $why")
             .map(finished => if (finished) n + 1 else n)
         )
       }
@@ -533,7 +381,7 @@ final class SlackEdge(
     def skipped(why: String): Either[String, Boolean] =
       members.backfilled(channel, join).left.map(_.toString).map { _ =>
         said(
-          s"slack: what was said in ${shown(channel)} before grit's bot joined is not heard: $why"
+          s"slack: what was said in ${names.shown(channel)} before grit's bot joined is not heard: $why"
         )
         true
       }
@@ -561,7 +409,7 @@ final class SlackEdge(
                   else
                     members.backfilled(channel, join).left.map(_.toString).map { _ =>
                       said(
-                        s"slack: heard ${fresh.size} messages said in ${shown(channel)} before grit's bot joined"
+                        s"slack: heard ${fresh.size} messages said in ${names.shown(channel)} before grit's bot joined"
                       )
                     }
               } yield finished
@@ -662,12 +510,12 @@ final class SlackEdge(
         case Attesting.Unchecked.Store(e) => e.toString
       }
       mentioned = Mentioned.findAllMatchIn(text).map(x => UserId(x.group(1))).toVector
-      known = (user +: mentioned).distinct.flatMap(u => namedOf(u).map(u -> _)).toMap
+      known = (user +: mentioned).distinct.flatMap(u => names.namedOf(u).map(u -> _)).toMap
       linked = Incoming
         .channels(text)
         .collect { case (c, None) => c }
         .distinct
-        .flatMap(c => channelNameOf(c).map(c -> _))
+        .flatMap(c => names.channelNameOf(c).map(c -> _))
         .toMap
       theirs = known.get(user)
       _ <- stores.jot
@@ -795,25 +643,11 @@ final class SlackEdge(
     * thread, once: a refusal already there under its tag is not posted again.
     */
   private def refuse(at: Address, line: String): Either[String, Unit] =
-    once(
+    delivering.once(
       at,
       Tag.Refused(at.answered),
       RichText.render(Doc(Vector(Block.Paragraph(Text.plain(line)))))
     )
-
-  /** Posts `posts` in `at`'s thread under `tag`, unless a message there already carries it. */
-  private def once(at: Address, tag: Tag, posts: Vector[Post]): Either[String, Unit] =
-    slack
-      .tagged(at.channel, at.thread, tag)
-      .flatMap { there =>
-        if (there.nonEmpty) Right(())
-        else
-          posts.foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
-            done.flatMap(_ => slack.post(at.channel, at.thread, post, tag).map(_ => ()))
-          )
-      }
-      .left
-      .map(_.toString)
 
   /** Whether grit serves `channel`: addresses, hears and backfills what is said there. A
     * channel grit's bot is recorded a member of, yes, but never the review's; any other, only
@@ -831,7 +665,7 @@ final class SlackEdge(
             members.joined(channel, access, None, at).left.map(_.toString).map {
               case Membership.Member(_, backfill) =>
                 if (backfill.nonEmpty) waiting.set(true)
-                said(s"slack: grit's bot is in ${shown(channel)}, found by a message from it")
+                said(s"slack: grit's bot is in ${names.shown(channel)}, found by a message from it")
                 true
               case Membership.Gone => false
             }
@@ -843,7 +677,7 @@ final class SlackEdge(
     */
   private def joined(j: Event.Joined): Boolean =
     if (review.exists(_.channel == j.channel)) {
-      said(s"slack: grit's bot joined the review's channel, ${shown(j.channel)}: never heard")
+      said(s"slack: grit's bot joined the review's channel, ${names.shown(j.channel)}: never heard")
       true
     } else
       slack.kind(j.channel) match {
@@ -881,7 +715,7 @@ final class SlackEdge(
                   if (backfill.nonEmpty) waiting.set(true)
                   if (at == j.at)
                     said(
-                      s"slack: grit's bot joined ${shown(j.channel)}" + (backfill match {
+                      s"slack: grit's bot joined ${names.shown(j.channel)}" + (backfill match {
                         case None =>
                           s"; what was said before is not heard: ${inviter.fold("")(Account.written)} " +
                             "invited it, whom no trusted realm vouches a full member"
@@ -891,7 +725,7 @@ final class SlackEdge(
                   true
                 case Right(Membership.Gone) =>
                   said(
-                    s"slack: a join of ${shown(j.channel)} made before its recorded leave, ignored"
+                    s"slack: a join of ${names.shown(j.channel)} made before its recorded leave, ignored"
                   )
                   true
               }
@@ -909,49 +743,16 @@ final class SlackEdge(
         )
         false
       case Right(Membership.Gone) =>
-        said(s"slack: grit's bot left ${shown(l.channel)}: nothing there is heard")
+        said(s"slack: grit's bot left ${names.shown(l.channel)}: nothing there is heard")
         true
       case Right(Membership.Member(_, _)) =>
-        said(s"slack: a leave of ${shown(l.channel)} made before its recorded join, ignored")
+        said(s"slack: a leave of ${names.shown(l.channel)} made before its recorded join, ignored")
         true
-    }
-
-  /** `user`'s Slack name and zone, asked of Slack once per user; `None` when they have no name,
-    * or Slack could not say (the id stands in, and they are asked again next time).
-    */
-  private def namedOf(user: UserId): Option[Named] =
-    Option(names.get(user)).orElse {
-      slack.member(self.team, user) match {
-        case Right(Member(Some(n), _, zone)) =>
-          val named = Named(n, zone)
-          val _ = names.put(user, named)
-          Some(named)
-        case Right(Member(None, _, _)) => None
-        case Left(e) =>
-          said(s"slack: no name for ${UserId.value(user)}: $e")
-          None
-      }
-    }
-
-  /** `channel`'s Slack name, asked of Slack once per channel; `None` when it has none grit may
-    * see, or Slack could not say (the id stands in, and it is asked again next time).
-    */
-  private def channelNameOf(channel: ChannelId): Option[String] =
-    Option(channelNames.get(channel)).orElse {
-      slack.channelName(channel) match {
-        case Right(Some(n)) =>
-          val _ = channelNames.put(channel, n)
-          Some(n)
-        case Right(None) => None
-        case Left(e) =>
-          said(s"slack: no name for channel ${ChannelId.value(channel)}: $e")
-          None
-      }
     }
 
   /** One pass over the review's prompts not yet posted that its place may receive
     * ([[grit.core.review.Reviews.unposted]]), when this edge answers a review: for each of
-    * [[promptings]] in order, each prompt of a message heard in this workspace's Slack, or of
+    * [[Reviewing.promptings]] in order, each prompt of a message heard in this workspace's Slack, or of
     * none, is posted at the top of the review's place, linking its message by its permalink
     * and each conversation it names by its thread's ([[Prompting.doc]]): never a message's text
     * or a draft's, nor why it was picked or what either gate decided; then given its
@@ -967,140 +768,7 @@ final class SlackEdge(
     * said once. How many prompts it posted and kept; none without a review; why not, when the
     * store could not be read.
     */
-  def prompt(): Either[StoreError, Int] = review match {
-    case None => Right(0)
-    case Some(r) =>
-      if (!unwritableSaid.get())
-        stores.jot.write(Subject.Public)(Right(Tx.writable(r.place))) match {
-          case Right(None) if unwritableSaid.compareAndSet(false, true) =>
-            said(
-              s"slack: the review's place, ${r.place.written}, is not labelled for grit to write to, so no prompt is posted there"
-            )
-          case _ => ()
-        }
-      promptings.foldLeft[Either[StoreError, Int]](Right(0)) { (done, next) =>
-        done.flatMap(n => pass(r, next._1, next._2).map(n + _))
-      }
-  }
-
-  /** One pass of [[prompt]] over `p`'s prompts, in transactions for `subject`: how many it
-    * posted and kept.
-    */
-  private def pass[S <: caps.Pure, V <: caps.Pure](
-      r: SlackReview,
-      subject: Subject,
-      p: Prompting[S, V]
-  ): Either[StoreError, Int] =
-    stores.jot
-      .write(subject)(p.reviews.unposted(r.place))
-      .map(_.count { s =>
-        p.message(s) match {
-          case Prompting.Of.Elsewhere(why) =>
-            why.foreach(said)
-            false
-          case Prompting.Of.NoMessage => posting(r, subject, p, s, Right(None))
-          case Prompting.Of.Message(channel, ts) => prompted(r, subject, p, s, channel, ts)
-        }
-      })
-
-  /** Posts `s`, of message `ts` in `channel`, to `r`'s place, as [[prompt]] says; whether it
-    * was posted and kept.
-    */
-  private def prompted[S <: caps.Pure, V <: caps.Pure](
-      r: SlackReview,
-      subject: Subject,
-      p: Prompting[S, V],
-      s: S,
-      channel: ChannelId,
-      ts: Ts
-  ): Boolean = {
-    val shown = channelNameOf(channel).fold(ChannelId.value(channel))(n => s"#$n")
-    val of = s"slack: the review prompt of ${p.name(s)}"
-    slack.permalink(channel, ts) match {
-      case Left(SlackError.MessageGone) =>
-        stores.jot.write(subject)(p.reviews.dropped(s, clock.now())) match {
-          case Right(true) => said(s"$of: its message is gone from Slack, so it is dropped")
-          case Right(false) => ()
-          case Left(e) => said(s"$of: its message is gone from Slack, but its drop is not kept: $e")
-        }
-        false
-      case linked => posting(r, subject, p, s, linked.map(link => Some((shown, link))))
-    }
-  }
-
-  /** Posts `s` to `r`'s place, linking its message, shown and linked as `linked` says, as
-    * [[prompt]] says; whether it was posted and kept.
-    */
-  private def posting[S <: caps.Pure, V <: caps.Pure](
-      r: SlackReview,
-      subject: Subject,
-      p: Prompting[S, V],
-      s: S,
-      linked: Either[SlackError, Option[(String, String)]]
-  ): Boolean = {
-    val of = s"slack: the review prompt of ${p.name(s)}"
-    // Some(whether it was kept as posted), or None once the place no longer receives it.
-    val done: Either[String, Option[Boolean]] = for {
-      message <- linked.left.map(e => s"its message is not linked: $e")
-      post <- RichText.render(p.doc(s, message, threadLink(r.place))) match {
-        case Vector(one) => Right(one)
-        case more => Left(s"it renders as ${more.size} messages")
-      }
-      before <-
-        if (p.label(s).isEmpty) Right(true)
-        else stores.jot.write(subject)(Right(receives(r, p, s))).left.map(e => s"not posted: $e")
-      kept <-
-        if (!before) Right(None)
-        else
-          for {
-            at <- slack
-              .postTopLevel(r.channel, post, Tag.Prompt(p.name(s)))
-              .left
-              .map(e => s"not posted: $e")
-            _ = p.verdicts.keys.foreach(emoji =>
-              slack
-                .react(r.channel, at, emoji)
-                .left
-                .foreach(e => said(s"slack: a review prompt left without :$emoji:: $e"))
-            )
-            when <- Events
-              .time(Ts.value(at))
-              .toRight(s"posted at ${Ts.value(at)}, which names no time")
-            kept <- stores.jot
-              .write(subject)(
-                if (receives(r, p, s))
-                  p.reviews.posted(s, PromptAt(r.channel, at).written, when).map(Some(_))
-                else Right(None)
-              )
-              .left
-              .map(e => s"posted at ${Ts.value(at)} but not kept, so it is posted again: $e")
-          } yield kept
-    } yield kept
-    done match {
-      case Right(Some(true)) => true
-      case Right(Some(false)) =>
-        said(s"slack: a review prompt posted at a message another prompt is kept at")
-        false
-      case Right(None) =>
-        val why = "the review's place is no longer written at a label dominating it"
-        stores.jot.write(subject)(p.reviews.dropped(s, clock.now())) match {
-          case Right(_) => said(s"$of: $why, so it is dropped")
-          case Left(e) => said(s"$of: $why, but its drop is not kept: $e")
-        }
-        false
-      case Left(why) =>
-        said(s"$of: $why")
-        false
-    }
-  }
-
-  /** Whether `r`'s place is written at a label dominating `s`'s, when `p` labels it; `true` for
-    * a subject it does not.
-    */
-  private def receives[S <: caps.Pure, V <: caps.Pure](r: SlackReview, p: Prompting[S, V], s: S)(
-      using Tx^
-  ): Boolean =
-    p.label(s).forall(l => Tx.writable(r.place).exists(_.dominates(l)))
+  def prompt(): Either[StoreError, Int] = reviewing.prompt()
 
   /** The link to message `ts` in the thread rooted at `thread` of `channel`, built from the
     * workspace's address ([[MessageLink.to]]), never asked of Slack; `None` when Slack gave
@@ -1108,16 +776,6 @@ final class SlackEdge(
     */
   private def linkTo(channel: ChannelId, thread: Ts, ts: Ts): Option[Href] =
     self.workspace.flatMap(MessageLink.to(_, channel, thread, ts))
-
-  /** The permalink of the thread `conversation` is, read for `place` ([[Subject.Room]]), when it
-    * is a Slack thread of this workspace and Slack links it; `None` otherwise.
-    */
-  private def threadLink(place: Place)(conversation: ConversationId): Option[String] =
-    stores.jot.write(Subject.Room(place))(stores.origins.of(conversation)) match {
-      case Right(Some(Origin.Slack(team, channel, thread))) if team == TeamId.value(self.team) =>
-        slack.permalink(ChannelId(channel), Ts(thread)).toOption
-      case _ => None
-    }
 
   /** One pass over the acknowledgements standing: a heard message a turn will answer, put to
     * grit by name ([[grit.core.speech.Decision.Answering]]), wears [[Working]] while the turn
@@ -1129,82 +787,12 @@ final class SlackEdge(
     * yet shown is started again (a no-op for one started), since a start can be lost. How many
     * marks it put up, took down or cleared; why not, when the store could not be read.
     */
-  def acknowledge(): Either[StoreError, Int] =
-    stores.jot.write(Subject.Public)(stores.acknowledgements.standing()).flatMap { standing =>
-      val read = standing.map { a =>
-        if (!a.shown)
-          stores.inbox
-            .startTurn(a.turn)
-            .left
-            .foreach(e => said(s"slack: ${WorkflowId.value(a.turn.workflowId)} not started: $e"))
-        a -> stores.inbox.progress(a.turn)
-      }
-      // Read after each turn's progress: a turn seen ended has kept whether its reply is awaited.
-      val awaited: Either[StoreError, Set[TurnRef]] =
-        if (
-          read.exists(_._2 match {
-            case Right(Progress.Done(_, _)) => true
-            case _ => false
-          })
-        )
-          stores.jot.write(Subject.Public)(stores.deliveries.pending()).map(_.map(_.turn).toSet)
-        else Right(Set.empty)
-      awaited.map(posting => read.count((a, progress) => acknowledged(a, progress, posting)))
-    }
-
-  /** Puts `a`'s mark up, takes it down, or clears it, as [[acknowledge]] says, given its turn's
-    * `progress` and the turns whose replies are still `posting`; whether it changed.
-    */
-  private def acknowledged(
-      a: Acknowledgement,
-      progress: Either[InboxError, Progress],
-      posting: Set[TurnRef]
-  ): Boolean = {
-    val turn = WorkflowId.value(a.turn.workflowId)
-    def record(write: Instant => (Tx^) ?=> Either[StoreError, Unit]): Boolean = {
-      val at = clock.now()
-      stores.jot.write(Subject.Turn(a.turn))(write(at)) match {
-        case Right(()) => true
-        case Left(e) =>
-          said(s"slack: the mark of $turn not recorded: $e")
-          false
-      }
-    }
-    def clear: Boolean = record(at => stores.acknowledgements.cleared(a.turn, at))
-    (Address.read(a.to), progress) match {
-      case (None, _) =>
-        said(s"slack: $turn acknowledged at an address grit did not write, cleared: ${a.to}")
-        clear
-      case (_, Left(e)) =>
-        said(s"slack: $turn unreadable: $e")
-        false
-      case (Some(to), Right(Progress.Open)) =>
-        if (a.shown) false
-        else
-          slack.react(to.channel, to.answered, Working) match {
-            case Right(()) => record(at => stores.acknowledgements.shown(a.turn, at))
-            case Left(SlackError.MessageGone) => clear
-            case Left(e) =>
-              said(s"slack: $turn not marked: $e")
-              false
-          }
-      case (Some(to), Right(Progress.Done(_, _))) =>
-        if (posting.contains(a.turn)) false
-        else if (!a.shown) clear
-        else
-          slack.unreact(to.channel, to.answered, Working) match {
-            case Right(()) => clear
-            case Left(e) =>
-              said(s"slack: $turn not unmarked: $e")
-              false
-          }
-    }
-  }
+  def acknowledge(): Either[StoreError, Int] = delivering.acknowledge()
 
   /** One pass over the replies awaited. On the edge's first pass, each turn is started again
     * (a no-op for one already started), since a start can be lost between ingest and start; a
     * scheduled run's is not, its start being the clock's ([[InboxError.SlotRun]]). Each turn
-    * still running has its open asks shown to its asker as cards ([[ask]]). Each
+    * still running has its open asks shown to its asker as cards ([[Delivering.ask]]). Each
     * finished turn has its reply posted to its thread, in as many messages as [[RichText]]
     * makes of it (one line saying grit could not answer, and why, when it ended with none),
     * its note after the last ([[ReplyNote.of]]; none, and said, when its spend cannot be read),
@@ -1214,108 +802,7 @@ final class SlackEdge(
     * address grit did not write is given up, said once, and settled as delivered. How many turns
     * it delivered; why not, when the store could not be read.
     */
-  def deliver(): Either[StoreError, Int] =
-    stores.jot.write(Subject.Public)(stores.deliveries.pending()).map { pending =>
-      if (!started.getAndSet(true))
-        pending.foreach(p =>
-          stores.inbox.startTurn(p.turn) match {
-            case Right(()) | Left(InboxError.SlotRun(_)) => ()
-            case Left(e) => said(s"slack: not restarted: $e")
-          }
-        )
-      pending.count { p =>
-        stores.inbox.progress(p.turn) match {
-          case Right(Progress.Done(reply, outcome)) =>
-            // An ask approved may have quieted its room: label_room and quiet_room ask first.
-            if (carded.removeIf(_._1 == p.turn.workflowId)) requiet.set(true)
-            post(p, reply, outcome)
-          case Right(Progress.Open) =>
-            ask(p)
-            false
-          case Left(e) =>
-            said(s"slack: ${WorkflowId.value(p.turn.workflowId)} unreadable: $e")
-            false
-        }
-      }
-    }
-
-  /** `parts` with `p`'s note after them when its reply is noted ([[ReplyNote.of]]); as they are
-    * when it has no reply, or its turn's spend cannot be read, which is said.
-    */
-  private def noted(
-      p: Pending,
-      reply: Option[Message.Assistant],
-      parts: Vector[Post]
-  ): Vector[Post] =
-    if (reply.isEmpty || note == ReplyNote.Off) parts
-    else
-      stores.jot.write(Subject.Turn(p.turn))(stores.spending.turn(p.turn)) match {
-        case Right(spend) => note.of(spend).fold(parts)(RichText.noted(parts, _))
-        case Left(e) =>
-          said(s"slack: ${WorkflowId.value(p.turn.workflowId)} posted without its note: $e")
-          parts
-      }
-
-  /** Shows each of `p`'s turn's open asks this edge has not shown to its asker, as a card in the
-    * turn's thread ([[Slack.ask]]), read in a transaction opened for the turn
-    * ([[Subject.Turn]]): its words, and when it expires in the zone Slack places the asker in,
-    * else in UTC. Before the card, a reply everyone in the thread sees says, naming the asker,
-    * that the turn waits for them ([[Tag.Asking]]); it is posted once per ask, ever, though a
-    * restarted edge shows the card again, and it stays. An ask put to an account that is no
-    * user of this team is said once, and neither noted nor shown. A note Slack will not post is
-    * said and the card shown all the same; a card Slack will not show, and asks the store could
-    * not read, are said, and tried again next pass, the note with the card when still missing.
-    */
-  private def ask(p: Pending): Unit =
-    Address.read(p.to).foreach { to =>
-      val workflow = p.turn.workflowId
-      stores.jot.write(Subject.Turn(p.turn))(stores.deliveries.asks(p.turn)) match {
-        case Left(e) => said(s"slack: the asks of ${WorkflowId.value(workflow)} unread: $e")
-        case Right(open) =>
-          open.filterNot(a => carded.contains((workflow, a.call))).foreach { a =>
-            SlackAccounts.user(a.to, self.team) match {
-              case None =>
-                val _ = carded.add((workflow, a.call))
-                said(
-                  s"slack: ${ToolCallId.value(a.call)} of ${WorkflowId.value(workflow)} asks " +
-                    s"${Account.written(a.to)}, no user of ${TeamId.value(self.team)}; not shown"
-                )
-              case Some(user) =>
-                val until = namedOf(user).flatMap(_.zone) match {
-                  case Some(zone) => Utc.toDayMinute(a.until, zone)
-                  case None => Utc.toDayMinute(a.until)
-                }
-                val note = RichText.mentioning(
-                  "Waiting for ",
-                  user,
-                  " to approve or cancel this; the buttons are shown only to them, in this thread."
-                )
-                once(
-                  to,
-                  Tag.Asking(WorkflowId.value(workflow), ToolCallId.value(a.call)),
-                  Vector(note)
-                ).left
-                  .foreach(e =>
-                    said(
-                      s"slack: the note for ${ToolCallId.value(a.call)} of ${WorkflowId.value(workflow)} not posted: $e"
-                    )
-                  )
-                slack.ask(
-                  to.channel,
-                  to.thread,
-                  user,
-                  Card(workflow, a.call, a.shown, until)
-                ) match {
-                  case Right(()) => val _ = carded.add((workflow, a.call))
-                  case Left(e) =>
-                    said(
-                      s"slack: the card for ${ToolCallId.value(a.call)} of ${WorkflowId.value(workflow)} not shown: $e"
-                    )
-                }
-            }
-          }
-      }
-    }
+  def deliver(): Either[StoreError, Int] = delivering.deliver()
 
   /** One click on an ask's card ([[Events.clicked]]), sent to the inbox as its clicker's
     * answer ([[grit.core.inbox.Inbox.answer]]): Apply lets the call run, Cancel declines it.
@@ -1326,131 +813,10 @@ final class SlackEdge(
     * is left for the asker. A payload grit cannot read, an answer the inbox cannot take for any
     * other reason, and a rewrite Slack will not show are said, and the card left as it was.
     */
-  def click(payload: String): Unit =
-    Events.clicked(payload) match {
-      case Left(why) => said(s"slack: a click grit cannot read: $why")
-      case Right(c) =>
-        val call = s"${ToolCallId.value(c.call)} of ${WorkflowId.value(c.workflow)}"
-        SlackAccounts.account(c.team, c.user) match {
-          case Left(why) =>
-            said(s"slack: a click on $call not answered: its clicker cannot be named: $why")
-          case Right(by) =>
-            val approval = c.button match {
-              case Clicked.Button.Apply => Approval.Approved
-              case Clicked.Button.Cancel => Approval.Declined(None)
-            }
-            val shown: Option[(String, Respond)] =
-              stores.inbox.answer(c.workflow, c.call, approval, by) match {
-                case Right(()) =>
-                  Some(
-                    (if (approval == Approval.Approved) Applying else Cancelled, Respond.Replace)
-                  )
-                case Left(InboxError.Closed(_, _)) => Some((Expired, Respond.Replace))
-                case Left(InboxError.NotAsker(_)) => Some((onlyAsker(askerOf(c)), Respond.Reply))
-                case Left(e) =>
-                  said(s"slack: a click on $call not answered: $e")
-                  None
-              }
-            shown.foreach((text, mode) =>
-              slack
-                .respond(c.respondAt, text, mode)
-                .left
-                .foreach(e => said(s"slack: the card for $call not rewritten: $e"))
-            )
-        }
-    }
-
-  /** The Slack name of the person `c`'s card asks, when its ask is still open and they are a
-    * user of this team grit knows by name.
-    */
-  private def askerOf(c: Clicked): Option[String] =
-    TurnRef.fromWorkflowId(c.workflow).flatMap { turn =>
-      stores.jot
-        .write(Subject.Turn(turn))(stores.deliveries.asks(turn))
-        .toOption
-        .flatMap(_.find(_.call == c.call))
-        .flatMap(a => SlackAccounts.user(a.to, self.team))
-        .flatMap(namedOf)
-        .map(_.name)
-    }
-
-  /** Posts `p`'s reply, part by part; whether all of it is posted and the turn delivered. */
-  private def post(p: Pending, reply: Option[Message.Assistant], outcome: String): Boolean =
-    Address.read(p.to) match {
-      case None =>
-        said(
-          s"slack: ${WorkflowId.value(p.turn.workflowId)} awaited at an address grit did not write: ${p.to}"
-        )
-        val at = clock.now()
-        stores.jot.write(Subject.Turn(p.turn))(
-          stores.deliveries
-            .delivered(p.turn)
-            .flatMap(_ => stores.acknowledgements.cleared(p.turn, at))
-        ) match {
-          case Right(()) => true
-          case Left(e) =>
-            said(
-              s"slack: ${WorkflowId.value(p.turn.workflowId)} given up but not marked delivered: $e"
-            )
-            false
-        }
-      case Some(to) =>
-        val parts = noted(p, reply, posts(reply, outcome))
-        val all = parts.zipWithIndex.forall { (part, i) =>
-          val tag = Tag.Reply(WorkflowId.value(p.turn.workflowId), i)
-          val there: Either[SlackError, Boolean] = p.parts.get(i) match {
-            case Some(Part.Posted(_)) => Right(true)
-            case Some(Part.Posting) => slack.tagged(to.channel, to.thread, tag).map(_.nonEmpty)
-            case None => Right(false)
-          }
-          val done = there.flatMap { yes =>
-            if (yes) Right(())
-            else
-              for {
-                _ <- stores.jot
-                  .write(Subject.Turn(p.turn))(stores.deliveries.posting(p.turn, i))
-                  .left
-                  .map(e => SlackError.Unreachable(e.toString))
-                ts <- slack.post(to.channel, to.thread, part, tag)
-                _ <- stores.jot
-                  .write(Subject.Turn(p.turn))(stores.deliveries.posted(p.turn, i, Ts.value(ts)))
-                  .left
-                  .map(e => SlackError.Unreachable(e.toString))
-              } yield ()
-          }
-          done.left.foreach(e =>
-            said(s"slack: part $i of ${WorkflowId.value(p.turn.workflowId)} not posted: $e")
-          )
-          done.isRight
-        }
-        all && {
-          slack
-            .unreact(to.channel, to.answered, Working)
-            .left
-            .foreach(e => said(s"slack: not unmarked: $e"))
-          val at = clock.now()
-          stores.jot.write(Subject.Turn(p.turn))(
-            stores.deliveries
-              .delivered(p.turn)
-              .flatMap(_ => stores.acknowledgements.cleared(p.turn, at))
-          ) match {
-            case Right(()) => true
-            case Left(e) =>
-              said(
-                s"slack: ${WorkflowId.value(p.turn.workflowId)} posted but not marked delivered: $e"
-              )
-              false
-          }
-        }
-    }
+  def click(payload: String): Unit = delivering.click(payload)
 }
 
 object SlackEdge {
-
-  /** What the edge keeps of a Slack user it has asked about: the name they show, and the zone
-    * Slack places them in, if any.
-    */
-  private final case class Named(name: String, zone: Option[ZoneId])
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in a channel its bot is a member of heard (ADR 0020, 0033), one addressed to
@@ -1615,38 +981,19 @@ object SlackEdge {
     "Nothing was run: grit could not reach its database just now. Try again in a minute."
 
   /** `<@U…>` in a message's text. */
-  private val Mentioned = "<@([A-Z0-9]+)(?:\\|[^>]*)?>".r
+  private[edge] val Mentioned = "<@([A-Z0-9]+)(?:\\|[^>]*)?>".r
 
   /** A link as Slack escapes one in a message's text, `<https://…>` or `<https://…|label>`. */
-  private val Linked = "<(https?://[^|>]+)(?:\\|[^>]*)?>".r
-
-  /** The Slack messages of a reply: its text as [[RichText]] renders it, or, when it has no
-    * text, one line saying grit could not answer, and `outcome`.
-    */
-  private def posts(reply: Option[Message.Assistant], outcome: String): Vector[Post] = {
-    val text =
-      reply.map(_.blocks.collect { case AssistantBlock.Text(t) => t }.mkString).getOrElse("")
-    val rendered = RichText.render(Markdown.parse(text))
-    if (rendered.nonEmpty) rendered
-    else
-      RichText.render(Doc(Vector(Block.Paragraph(Text.plain(s"grit could not answer: $outcome")))))
-  }
+  private[edge] val Linked = "<(https?://[^|>]+)(?:\\|[^>]*)?>".r
 
   /** Where a reply goes: the channel, the thread to post in, and the message it answers (whose
     * `:eyes:` it removes). Written as `{channel}/{thread}/{answered}` in [[grit.core.edge.Deliveries]].
     */
-  private final case class Address(channel: ChannelId, thread: Ts, answered: Ts) {
+  private[edge] final case class Address(channel: ChannelId, thread: Ts, answered: Ts) {
     def written: String = s"${ChannelId.value(channel)}/${Ts.value(thread)}/${Ts.value(answered)}"
   }
 
-  /** Where a review's prompt was posted: its channel and its ts. Written as `{channel}/{ts}` in
-    * [[grit.core.review.Reviews]].
-    */
-  private final case class PromptAt(channel: ChannelId, ts: Ts) {
-    def written: String = s"${ChannelId.value(channel)}/${Ts.value(ts)}"
-  }
-
-  private object Address {
+  private[edge] object Address {
     def read(s: String): Option[Address] = s.split('/') match {
       case Array(c, t, a) => Some(Address(ChannelId(c), Ts(t), Ts(a)))
       case _ => None
