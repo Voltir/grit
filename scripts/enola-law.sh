@@ -157,6 +157,27 @@ if [ -n "$mint" ]; then
   failed=1
 fi
 
+# TRAP: rule 1l, as 1f above: a fully qualified use of Reveal makes no edge. Only the packages
+# a secret's value may be revealed in, and core's secret package (its sources, tests and probes), may
+# write `secret.Reveal` or `Reveal.text`.
+reveal=$(names -E 'secret\.Reveal|\bReveal\.text' |
+  grep -vE '^core/core/(src|test/src|probes/src)/secret/|^core/dbos/src/sql/|^extensions/models/src/|^extensions/mcp/src/client/|^extensions/slack/src/client/|^extensions/host/src/checkout/' || true)
+if [ -n "$reveal" ]; then
+  echo "Only grit.dbos's sql, grit.models, grit.mcp's and grit.slack's clients and grit.host's checkout may name Reveal; these sources do:" >&2
+  printf '  %s\n' $reveal >&2
+  failed=1
+fi
+
+# TRAP: rule 1l's tool side, as above: `import grit.core.secret.*` or a qualified use makes no
+# edge, so grep the tool side's sources for the package and the names it may not write.
+toolside=$( { grep -lE 'grit\.core\.secret|\b(Secret|Reveal|Handing)\b' -- "${sources[@]}" || true; } |
+  grep -E '^extensions/tools/src/|^core/turn/src/|^core/act/src/|^core/core/src/tool/' || true)
+if [ -n "$toolside" ]; then
+  echo "The tool side may name no secret (grit.core.secret, Secret, Reveal, Handing); these sources do:" >&2
+  printf '  %s\n' $toolside >&2
+  failed=1
+fi
+
 # TRAP: a method makes no import edge, so no rule can see a call of Downgrade.sanitiser, which
 # visibility opens to all of grit.core. Only the integrity tree may raise free text to Outside,
 # and only on its verdict (ADR 0036): grep every source for the name. Downgrade itself and

@@ -73,6 +73,23 @@ components:
 
   # Every module except grit.formats, for PDFBox's quarantine (STYLE rule 8). Within formats,
   # only its pdf package may name PDFBox: a grep in scripts/enola-law.sh.
+  # Every folder but the packages a secret's value may be revealed in (rule 1l): grit.dbos's
+  # sql, grit.models' sources, grit.mcp's and grit.slack's client, grit.host's checkout, and
+  # core's secret package, which defines Reveal and so imports nothing to name it. Core,
+  # grit.dbos, grit.host, grit.mcp and grit.slack are listed by subfolder; a package added to one
+  # of them is outside this list until it is added here (enola-law.sh's grep covers it meanwhile).
+  - name: outside-reveal
+    kind: dependency
+    match: ["core/act/**", "extensions/tui/**", "core/turn/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/formats/**", "extensions/chat/**", "core/core/src/act/**", "core/core/src/admin/**", "core/core/src/agenda/**", "core/core/src/allot/**", "core/core/src/approval/**", "core/core/src/claim/**", "core/core/src/classify/**", "core/core/src/clock/**", "core/core/src/context/**", "core/core/src/document/**", "core/core/src/durable/**", "core/core/src/edge/**", "core/core/src/either/**", "core/core/src/files/**", "core/core/src/flow/**", "core/core/src/host/**", "core/core/src/id/**", "core/core/src/identity/**", "core/core/src/inbox/**", "core/core/src/job/**", "core/core/src/json/**", "core/core/src/message/**", "core/core/src/model/**", "core/core/src/need/**", "core/core/src/period/**", "core/core/src/persona/**", "core/core/src/place/**", "core/core/src/plugin/**", "core/core/src/prompt/**", "core/core/src/provider/**", "core/core/src/recipe/**", "core/core/src/retention/**", "core/core/src/review/**", "core/core/src/route/**", "core/core/src/sanitise/**", "core/core/src/schema/**", "core/core/src/screen/**", "core/core/src/session/**", "core/core/src/speech/**", "core/core/src/spend/**", "core/core/src/stitch/**", "core/core/src/store/**", "core/core/src/tool/**", "core/core/src/triage/**", "core/core/src/visibility/**", "core/core/test/**", "core/core/probes/**", "core/dbos/src/engine/**", "core/dbos/src/internal/**", "core/dbos/src/workflow/**", "core/dbos/test/**", "core/dbos/it/**", "extensions/host/src/blobs/**", "extensions/host/src/machine/**", "extensions/host/test/**", "extensions/mcp/src/drive/**", "extensions/mcp/src/edge/**", "extensions/mcp/src/github/**", "extensions/mcp/src/scope/**", "extensions/mcp/src/wire/**", "extensions/mcp/test/**", "extensions/slack/src/edge/**", "extensions/slack/src/event/**", "extensions/slack/src/text/**", "extensions/slack/test/**", "extensions/models/test/**"]
+
+  # The tool side, for rule 1l: the coding tools, core's tool package, the turn and the moves.
+  # None may name a secret or the trait that hands one to a program.
+  # A dependency component, not a module one: as a module component overlapping tools-code,
+  # turn-code and the rest, a breach planted in it was not reported (seen with scripts/enola-plant).
+  - name: tool-side
+    kind: dependency
+    match: ["extensions/tools/src", "extensions/tools/src/**", "core/turn/src", "core/turn/src/**", "core/act/src", "core/act/src/**", "core/core/src/tool", "core/core/src/tool/**"]
+
   - name: outside-pdfbox
     kind: dependency
     match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/chat/**"]
@@ -769,6 +786,36 @@ rules:
     pattern: "* -> org.apache.pdfbox.text.TextPosition"
     mode: strict
     because: "STYLE rule 8: PDFBox is quarantined to grit.formats, whose pdf package translates a PDF into grit's prose"
+
+  # -------------------------------------------------------------------------------------
+  # 1l. A secret's value is revealed only into a quarantine's library call or a file handed to
+  # a program, and the tool side never names a secret: no label admits one, so a value
+  # revealed elsewhere could reach a row, a step or a model. Reveal is named only in grit.dbos's
+  # sql package, grit.models, grit.mcp's and grit.slack's client packages and grit.host's
+  # checkout; the coding tools, core's tool package, the turn and the moves name no Secret,
+  # Reveal or Handing, so no tool's argument can choose a secret or hand one on.
+  #
+  # Watch out: as 1f, a fully qualified use or a wildcard import makes no edge;
+  # scripts/enola-law.sh greps every source for `secret.Reveal` and `Reveal.text`, and the tool
+  # side for the names.
+  # -------------------------------------------------------------------------------------
+  - id: only-quarantines-reveal
+    forbid_name: outside-reveal
+    pattern: "* -> grit.core.secret.Reveal"
+    mode: strict
+    because: "a secret's value leaves its type only at a quarantine's edge: the library call or the handed file that needs it"
+
+  - id: no-tool-names-secret
+    forbid_name: tool-side
+    pattern: "* -> grit.core.secret.Secret"
+    mode: strict
+    because: "a tool's argument must never select a secret: the tool side holds none"
+
+  - id: no-tool-names-secret-reveal
+    forbid_name: tool-side
+    pattern: "* -> grit.core.secret.Reveal"
+    mode: strict
+    because: "a tool's argument must never select a secret: the tool side reveals none"
 
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves

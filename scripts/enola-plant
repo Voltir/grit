@@ -16,7 +16,8 @@ Where the plants go is read from the tree, so a layout change needs no edit here
   rules     enola-intent.yaml's components. Every `forbid_name` rule: one file in core's test
             sources (a member of every outside-* component, and outside the process grep's
             production roots, which its java.lang.ProcessBuilder import would trip) importing
-            every forbidden class. Every `allow` rule: one file in its component's first match,
+            every forbidden class; a `forbid_name` rule whose component cannot hold core's tests,
+            one such file in its component's first match, which must be a folder. Every `allow` rule: one file in its component's first match,
             importing grit.app.main.Main -- a deployment, which ADR 0021 lets no component name.
   cycle     two packages in core's main sources importing each other: enola reports cycles
             between production packages only.
@@ -25,7 +26,8 @@ Where the plants go is read from the tree, so a layout change needs no edit here
             for every name but Mint, which the kit may name, grit.edge's for Mint,
             grit.act's for sanitiser, the downgrade only the integrity tree may make, and
             grit.prose's, outside its json package, for ujson; grit.formats', outside its pdf
-            package, for PDFBox; grit.remind's, a plugin, for Tx.connection.
+            package, for PDFBox; grit.remind's, a plugin, for Tx.connection; the kit's for
+            Reveal, and grit.tools' for Secret, which the tool side may not name.
   unruled   the quarantine grep: one unruled class imported in each of grit.dbos, grit.models,
             grit.mcp, grit.host, grit.slack and grit.formats' sources, each of which it must list.
   process   the process grep: `new ProcessBuilder` with no import in every production source
@@ -124,13 +126,24 @@ def plant_rules(intent):
     rules = intent["rules"]
     core_test = root_of("grit.core", "test")
     forbidden = []
+    elsewhere = {}  # a component's first folder -> the classes planted there
     for rule in rules:
         if "forbid_name" in rule:
-            if not member(core_test + "/" + PLANT, components[rule["forbid_name"]]):
-                fail(f"{core_test} is not in {rule['forbid_name']}, so {rule['id']} cannot be planted there")
-            forbidden.append(rule["pattern"].split(" -> ", 1)[1])
+            target = rule["pattern"].split(" -> ", 1)[1]
+            component = components[rule["forbid_name"]]
+            if member(core_test + "/" + PLANT, component):
+                forbidden.append(target)
+                continue
+            folder = component["match"][0]
+            if "*" in folder or not os.path.isdir(folder):
+                fail(f"{core_test} is not in {rule['forbid_name']}, and its first match {folder} "
+                     f"is not a folder, so {rule['id']} cannot be planted")
+            elsewhere.setdefault(folder, []).append(target)
     planted.append(write(core_test, "Quarantine.scala",
                          "package grit.enolaplant\n\n" + "".join(f"import {c}\n" for c in forbidden)))
+    for folder, classes in elsewhere.items():
+        planted.append(write(folder, "Quarantine.scala",
+                             "package grit.enolaplant\n\n" + "".join(f"import {c}\n" for c in classes)))
     for rule in rules:
         if "allow" in rule:
             folder = components[rule["allow"]]["match"][0]
@@ -166,6 +179,8 @@ NAMES = {
     "may name ujson": ("ujson.Value", "grit.prose"),
     "may name PDFBox": ("org.apache.pdfbox.Loader", "grit.formats"),
     "may name Tx.connection": ("grit.core.store.Tx.connection", "grit.remind"),
+    "may name Reveal": ("grit.core.secret.Reveal.text", "grit.kit"),
+    "tool side may name": ("grit.core.secret.Secret", "grit.tools"),
 }
 
 
