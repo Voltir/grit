@@ -105,19 +105,18 @@ object Event {
     /** 12: how many leading characters of a rewritten commit's sha [[Replaces]] holds. */
     val ReplacedChars: Int = 12
 
-    /** A commit's shape: `o` with the worktree `at` it was made in under [[Worktree]], in place of
-      * any value `o` held there; or why not, as [[of]].
+    /** A commit's shape: the worktree `at` it was made in under [[Worktree]], `sha` under
+      * [[Sha]], and `subject` under [[Subject]], cut to fit [[Longest]], ending `…`, or left out
+      * when not even `…` fits; `Left` when the worktree and `sha` alone do not fit.
       */
-    def committed(at: Place, o: ujson.Obj): Either[String, Shape] =
-      of(ujson.Obj.from(o.value.toSeq :+ (Worktree -> ujson.Str(at.written))))
-
-    /** A commit's shape naming no worktree: `sha` under [[Sha]], and `subject` under [[Subject]],
-      * cut to fit [[Longest]], ending `…`, or left out when not even `…` fits; `Left` when `sha`
-      * alone does not fit.
-      */
-    def commit(sha: String, subject: Option[String]): Either[String, Shape] = {
+    def committed(at: Place, sha: String, subject: Option[String]): Either[String, Shape] = {
       def shaped(s: Option[String]) =
-        of(ujson.Obj.from(Seq(Sha -> ujson.Str(sha)) ++ s.map(Subject -> ujson.Str(_))))
+        of(
+          ujson.Obj.from(
+            Seq(Worktree -> ujson.Str(at.written), Sha -> ujson.Str(sha)) ++
+              s.map(Subject -> ujson.Str(_))
+          )
+        )
       subject.fold(shaped(None)) { whole =>
         val points = whole.codePoints.toArray
         (points.length to 0 by -1).iterator

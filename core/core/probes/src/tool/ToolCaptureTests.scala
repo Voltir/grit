@@ -59,13 +59,13 @@ object ToolCaptureTests extends TestSuite {
   /** A hosted tool whose logging function, meant to be pure, edits. */
   private val loggingEdits =
     """def logs(e: Edits^): Hosted[String] =
-      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _) => { val _ = RelPath.of(p).map(e.write(_, "x")); None })
+      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _, _) => { val _ = RelPath.of(p).map(e.write(_, "x")); None })
       |""".stripMargin
 
   /** A hosted tool logged as what its argument names, purely. */
   private val loggingPure =
     """def logs: Hosted[String] =
-      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _) => Some(grit.core.session.Logged.Read(grit.core.session.Logged.shaped("path", p))))
+      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _, _) => Some(grit.core.session.Logged.Read(grit.core.session.Logged.shaped("path", p))))
       |""".stripMargin
 
   private lazy val compiled =

@@ -181,24 +181,33 @@ object TurnToolsTests extends TestSuite {
     ).over(_ => outcome)
 
   /** What a kept entry is believed at. */
-  /** `said`, answering `outcome`, logged as a read of the path it is given. */
-  private def logged(outcome: Outcome): Tool[String] =
+  /** `said` as the engine offers it, logging nothing. */
+  private val unlogged: Hosted[String] =
     new Hosted(
       ToolSpec(ToolName("said"), "Says.", Args.of((p = Field.text("What."))).map(_.p)),
       Gate.Free,
       (p: String) => p,
       Believed.Default
-    ).logging((p, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p)))).over(_ => outcome)
+    )
+
+  /** `said` as the engine offers it, logged as a read of the path it is given. */
+  private val logged: Hosted[String] =
+    unlogged.logging((p, _, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p))))
+
+  /** The place every call [[logging]] answers was sent to. */
+  private val sentTo: Place = Place.under(grit.core.place.Namespace.Fs, Vector("/work/grit"))
 
   private val holder = ClaimHolder.of("coder/abc").fold(sys.error, identity)
 
-  /** `tool` called once with `x` and settled free as the turn settles it, twice when `again`,
-    * its session recorded into `spy` working as [[holder]], its asker as `askers` reads it:
-    * what each settling came to, and the entries kept. Unless `said`, the turn's call is the
-    * conversation's first entry, at seq 0, which no event's ordinal may be.
+  /** `tool` called once with `x`, sent to [[sentTo]] and answered `outcome` by its edge, settled
+    * as the turn settles it, twice when `again`, its session recorded into `spy` working as
+    * [[holder]], its asker as `askers` reads it: what each settling came to, and the entries
+    * kept. Unless `said`, the turn's call is the conversation's first entry, at seq 0, which no
+    * event's ordinal may be.
     */
   private def logging(
-      tool: Tool[String],
+      tool: Hosted[String],
+      outcome: Outcome,
       spy: RecordedSessions,
       askers: Askers = LocalAsker,
       again: Boolean = false,
@@ -213,9 +222,17 @@ object TurnToolsTests extends TestSuite {
     val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
     val runs = Vector.fill(if (again) 2 else 1)(
       TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
-        case Right(free: Bound.Free) =>
-          settling.run(slot, ToolCallId("c"), free, Integrity.Member, Instant.EPOCH)
-        case other => throw new java.lang.AssertionError(s"not free: $other")
+        case Right(hosted: Bound.Hosted) =>
+          settling.answer(
+            slot,
+            ToolCallId("c"),
+            hosted.shown,
+            outcome,
+            Left(Integrity.Member),
+            Instant.EPOCH,
+            text => hosted.logs(sentTo, text)
+          )
+        case other => throw new java.lang.AssertionError(s"not hosted: $other")
       }
     )
     (runs, entries)
@@ -356,7 +373,7 @@ object TurnToolsTests extends TestSuite {
       "a logged call that ran is its session's event at its result's seq, as its asker, at its conversation's label and place, working as its holder"
     ) {
       val spy = new RecordedSessions
-      val (runs, entries) = logging(logged(Outcome.Done("héllo")), spy)
+      val (runs, entries) = logging(logged, Outcome.Done("héllo"), spy)
       val result = entries.get(runs.head.map(_.result).getOrElse(EntryId("none")))(using
         TestTx.fake
       )
@@ -382,18 +399,18 @@ object TurnToolsTests extends TestSuite {
     test("a call that did not run to done, or whose asker is no person, logs nothing") {
       val failed = new RecordedSessions
       val unasked = new RecordedSessions
-      val unlogged = new RecordedSessions
-      logging(logged(Outcome.Failed("no")), failed)
-      logging(logged(Outcome.Done("ok")), unasked, askedBy(None))
-      logging(said(Outcome.Done("ok")), unlogged)
-      assert(failed.recorded.isEmpty, unasked.recorded.isEmpty, unlogged.recorded.isEmpty)
+      val silent = new RecordedSessions
+      logging(logged, Outcome.Failed("no"), failed)
+      logging(logged, Outcome.Done("ok"), unasked, askedBy(None))
+      logging(unlogged, Outcome.Done("ok"), silent)
+      assert(failed.recorded.isEmpty, unasked.recorded.isEmpty, silent.recorded.isEmpty)
     }
 
     test("a session kept where the turn does not read costs the call nothing") {
       val hidden = new RecordedSessions(Left(StoreError.Invalid("kept where this does not read")))
       val broken = new RecordedSessions(Left(StoreError.DatabaseError("down")))
-      val (settled, keptIn) = logging(logged(Outcome.Done("ok")), hidden)
-      val (failed, _) = logging(logged(Outcome.Done("ok")), broken)
+      val (settled, keptIn) = logging(logged, Outcome.Done("ok"), hidden)
+      val (failed, _) = logging(logged, Outcome.Done("ok"), broken)
       assert(
         settled.map(_.map(_.failed)) == Vector(Right(false)),
         settled.head.toOption.flatMap(s => kept(keptIn, s.result)).isDefined,
@@ -403,7 +420,7 @@ object TurnToolsTests extends TestSuite {
 
     test("a logged call whose event cannot be made keeps its result and records nothing") {
       val spy = new RecordedSessions
-      val (runs, entries) = logging(logged(Outcome.Done("ok")), spy, said = false)
+      val (runs, entries) = logging(logged, Outcome.Done("ok"), spy, said = false)
       assert(
         runs.map(_.map(_.failed)) == Vector(Right(false)),
         runs.head.toOption.flatMap(s => kept(entries, s.result)).isDefined,
@@ -413,7 +430,7 @@ object TurnToolsTests extends TestSuite {
 
     test("a logged call settled again records nothing more") {
       val spy = new RecordedSessions
-      val (runs, _) = logging(logged(Outcome.Done("ok")), spy, again = true)
+      val (runs, _) = logging(logged, Outcome.Done("ok"), spy, again = true)
       assert(runs.distinct.size == 1, spy.recorded.size == 1)
     }
 

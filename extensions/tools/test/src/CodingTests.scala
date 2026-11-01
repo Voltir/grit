@@ -7,6 +7,7 @@ import grit.core.flow.TestTainted
 import grit.core.host.*
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
+import grit.core.place.{Directory, Place}
 import grit.core.session.{Event, Logged}
 import grit.core.tool.{Believed, Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 import grit.core.visibility.Integrity
@@ -70,6 +71,20 @@ object CodingTests extends TestSuite {
 
   private def all(host: Scripted^): Toolbox[caps.CapSet^{host}] =
     Coding.all(host, host, host).fold(d => throw new java.lang.AssertionError(d), identity)
+
+  private val worktree: Place =
+    Directory
+      .of("/work/grit")
+      .map(Place.of)
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** What `bound` logs when an edge at `at` ran it to `Done` showing `shown`; `None` for a call
+    * no edge runs.
+    */
+  private def logsAt(bound: Bound^, at: Place, shown: String): Option[Logged] = bound match {
+    case hosted: Bound.Hosted => hosted.logs(at, shown)
+    case _ => None
+  }
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
@@ -168,14 +183,12 @@ object CodingTests extends TestSuite {
         ),
         "run" -> ujson.Obj("command" -> "git status")
       )
-      val local = all(new Scripted())
       val engine =
         Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
-      val ran = calls.map((name, args) =>
-        local.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logs(""))
-      )
       val offered = calls.map((name, args) =>
-        engine.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.logs(""))
+        engine
+          .bind(TestTainted.authority(call(name, args)), Repairs.All)
+          .map(logsAt(_, worktree, ""))
       )
       val path = (p: String) => Logged.shaped(Event.Shape.Path, p)
       val expected = Vector(
@@ -186,9 +199,25 @@ object CodingTests extends TestSuite {
         Right(Some(Logged.Edited(path("a.txt")))),
         Right(Some(Logged.Ran(Event.Shape.Empty)))
       )
-      assert(ran == expected, offered == expected)
+      offered ==> expected
     }
 
+    test(
+      "a commit the run tool logs names the worktree it ran in, as a watch on that worktree reads it"
+    ) {
+      val engine =
+        Toolbox.of(Coding.hosted*).fold(d => throw new java.lang.AssertionError(d), identity)
+      val logged = engine
+        .bind(
+          TestTainted.authority(call("run", ujson.Obj("command" -> "git commit -m x"))),
+          Repairs.All
+        )
+        .map(logsAt(_, worktree, "Exit code 0. Output:\n[main 1a2b3c4] x"))
+      // The key and form `SqlWatched` matches a watch for a commit at a worktree on.
+      logged.map(_.collect { case Logged.Commit(shape) =>
+        ujson.read(Event.Shape.value(shape)).obj.get(Event.Shape.Worktree).flatMap(_.strOpt)
+      }) ==> Right(Some(Some(worktree.written)))
+    }
     test(
       "a run that commits logs its sha and subject; a failed commit, or a command that commits nothing, logs a run"
     ) {
@@ -197,10 +226,10 @@ object CodingTests extends TestSuite {
       def logs(command: String, shown: String) =
         engine
           .bind(TestTainted.authority(call("run", ujson.Obj("command" -> command))), Repairs.All)
-          .map(_.logs(shown))
+          .map(logsAt(_, worktree, shown))
       val made = "Exit code 0. Output:\n[m20 1a2b3c4] turn: a thing\n 1 file changed"
       def commit(sha: String, subject: String) =
-        Event.Shape.commit(sha, Some(subject)).map(s => Some(Logged.Commit(s)))
+        Event.Shape.committed(worktree, sha, Some(subject)).map(s => Some(Logged.Commit(s)))
       val ran = Right(Some(Logged.Ran(Event.Shape.Empty)))
       (
         logs("git add -A && git commit -m 'turn: a thing'", made),

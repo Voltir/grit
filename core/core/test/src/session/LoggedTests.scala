@@ -2,6 +2,8 @@ package grit.core.session
 
 import java.time.Instant
 
+import grit.core.place.{Namespace, Place}
+
 import utest.*
 
 /** What a tool call that ran adds to its session's log, as the event it becomes. */
@@ -19,8 +21,9 @@ object LoggedTests extends TestSuite {
     }
     test("a commit's shape keeps its sha and cuts its subject to fit, ending …") {
       val sha = "1a2b3c4d5e6f"
-      val short = Event.Shape.commit(sha, Some("turn: a thing")).map(Event.Shape.value)
-      val long = Event.Shape.commit(sha, Some("é" * 400)).map(Event.Shape.value)
+      val at = Place.under(Namespace.Fs, Vector("/w"))
+      val short = Event.Shape.committed(at, sha, Some("turn: a thing")).map(Event.Shape.value)
+      val long = Event.Shape.committed(at, sha, Some("é" * 400)).map(Event.Shape.value)
       val cut = long.map(ujson.read(_).obj.get(Event.Shape.Subject).flatMap(_.strOpt))
       (
         short,
@@ -29,7 +32,7 @@ object LoggedTests extends TestSuite {
         cut.map(_.exists(_.length > 100)),
         Logged.Commit(Event.Shape.Empty).event(7, t0, "x").map(_.kind)
       ) ==> (
-        Right("""{"sha":"1a2b3c4d5e6f","subject":"turn: a thing"}"""),
+        Right("""{"worktree":"fs:/w","sha":"1a2b3c4d5e6f","subject":"turn: a thing"}"""),
         Right(true),
         Right(true),
         Right(true),

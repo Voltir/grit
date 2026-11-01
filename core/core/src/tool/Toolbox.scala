@@ -128,12 +128,6 @@ sealed trait Bound {
     * acts on (a path, a pattern, a command), its line breaks shown as spaces.
     */
   def shown: String
-
-  /** What this call adds to its turn's session's log when it runs to [[Outcome.Done]], read
-    * from the `Done` text as its model was shown it, after clipping; `None` for a tool that logs
-    * nothing ([[Hosted.logging]]).
-    */
-  def logs: String -> Option[Logged]
 }
 
 object Bound {
@@ -151,7 +145,6 @@ object Bound {
   final class Free private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: String -> Option[Logged],
       val output: Believed,
       run: CallSlot => Outcome
   ) extends Runs {
@@ -167,7 +160,6 @@ object Bound {
   final class Gated private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: String -> Option[Logged],
       val ask: String,
       val within: FiniteDuration,
       val output: Believed,
@@ -195,7 +187,6 @@ object Bound {
   final class Reading private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: String -> Option[Logged],
       ask: Option[(String, FiniteDuration)],
       output: Believed,
       run: (CallSlot, Reads^) => Outcome
@@ -203,12 +194,11 @@ object Bound {
 
     /** This call, run through `reads`: [[Free]], or [[Gated]] when its tool asks first. */
     def through(reads: Reads^): Runs^{this, reads} = ask match {
-      case None => new Free(tool, shown, logs, output, at => Reading.read(run(at, reads), reads))
+      case None => new Free(tool, shown, output, at => Reading.read(run(at, reads), reads))
       case Some((shownFirst, within)) =>
         new Gated(
           tool,
           shown,
-          logs,
           shownFirst,
           within,
           output,
@@ -223,7 +213,6 @@ object Bound {
   final class Keeping private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: String -> Option[Logged],
       val output: Believed,
       run: CallSlot => (Tx^) ?=> Either[StoreError, Outcome]
   ) extends Bound {
@@ -268,12 +257,15 @@ object Bound {
     * tool waits for their answer then ([[Gate.Ask]]); `retry` is its tool's;
     * `destination`, the place a writing tool's call named ([[Writing]]), which `arguments` no
     * longer hold, `None` for a tool that declares none; `output`, its tool's
-    * ([[Tool.Offered.output]]), what its results are believed at when it runs at no service.
+    * ([[Tool.Offered.output]]), what its results are believed at when it runs at no service;
+    * `logs`, what the call adds to its turn's session's log when the edge at a place ran it to
+    * [[Outcome.Done]], read from that place and the `Done` text as its model was shown it,
+    * after clipping, `None` for a tool that logs nothing ([[Hosted.logging]]).
     */
   final class Hosted private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: String -> Option[Logged],
+      val logs: (Place, String) -> Option[Logged],
       val ask: Option[String],
       val within: FiniteDuration,
       val arguments: ujson.Value,

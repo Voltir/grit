@@ -65,8 +65,8 @@ object SessionLogTests extends TestSuite {
     test("a commit's shape names the worktree it was made in, as the place is written") {
       // Pinned: a watch for a commit at a place matches this key and form in the stored shape.
       val at = Place.under(Namespace.Fs, Vector("/work/grit"))
-      val held = Event.Shape.committed(at, ujson.Obj("sha" -> "abc", "worktree" -> "elsewhere"))
-      assert(held.map(Event.Shape.value) == Right("""{"sha":"abc","worktree":"fs:/work/grit"}"""))
+      val held = Event.Shape.committed(at, "abc", None)
+      assert(held.map(Event.Shape.value) == Right("""{"worktree":"fs:/work/grit","sha":"abc"}"""))
     }
     test("an event's ordinal is above 0 and a read's bytes are not negative") {
       assert(

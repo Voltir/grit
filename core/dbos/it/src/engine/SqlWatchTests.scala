@@ -162,7 +162,7 @@ object SqlWatchTests extends TestSuite {
     ok(Harness.of("claude-code").flatMap(SessionId.of(_, local)))
 
   private def shape(path: String, n: Long): Event.Shape =
-    ok(Event.Shape.committed(worktree(path), ujson.Obj("sha" -> s"sha-$n")))
+    ok(Event.Shape.committed(worktree(path), s"sha-$n", None))
 
   /** A commit in `path` at `at`, logged on the session `local`, at a worktree of its own, working
     * as `holder`.

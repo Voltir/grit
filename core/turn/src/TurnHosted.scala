@@ -6,6 +6,7 @@ import grit.core.durable.{Flow, Step}
 import grit.core.edge.Permit
 import grit.core.id.TurnRef
 import grit.core.place.{Directory, Place}
+import grit.core.session.Logged
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
 import grit.core.visibility.Subject
@@ -133,13 +134,15 @@ object TurnHosted {
           // believed as the edge's would be.
           val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
           val own = Left(level)
+          // An answered or rung call was dispatched, which only a call with a place is.
+          val logs: String -> Option[Logged] = text => h.place.flatMap(hosted.logs(_, text))
           c.waited match {
             case Waited.Unsent =>
               settling.answerFrom(slot, call, shown, own, at)(
                 pins.known.map(_ => unsent(askers, slot.turn, h.place))
               )
             case Waited.Phase(Awaited.Answered(o)) =>
-              settling.answer(slot, call, shown, o, from, at, hosted.logs)
+              settling.answer(slot, call, shown, o, from, at, logs)
             case Waited.Phase(Awaited.Known(o @ Outcome.Declined(Some(_)))) =>
               settling.answer(slot, call, shown, o, from, at)
             case Waited.Phase(Awaited.Known(o)) => settling.answer(slot, call, shown, o, own, at)
@@ -150,7 +153,7 @@ object TurnHosted {
                 pins.known.map(_ => unreadable(failure))
               )
             case Waited.Phase(Awaited.Rung(cs)) =>
-              settling.answerFrom(slot, call, shown, from, at, hosted.logs)(
+              settling.answerFrom(slot, call, shown, from, at, logs)(
                 pins.known
                   .map(_ =>
                     Calling

@@ -182,7 +182,7 @@ object TurnTools {
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     *
-    * A call that ran to [[Outcome.Done]] whose tool logs it ([[Bound.logs]]) is also logged
+    * A hosted call an edge ran to [[Outcome.Done]] whose tool logs it ([[Bound.Hosted.logs]]) is also logged
     * on its conversation's session, in the transaction that keeps its result: as the event at
     * the result's seq, run by the turn's asker (as `askers` reads it), at the conversation's
     * label and place, working as the holder `sessions.holder` names for its origin. Nothing is
@@ -238,7 +238,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at, free.logs)(() =>
+      settle(slot, call, free.shown, Belief.Ran(free.output.at(level)), at, _ => None)(() =>
         Right(free(slot.call))
       )
 
@@ -271,9 +271,7 @@ object TurnTools {
               keeping(slot.call).flatMap {
                 case done: Outcome.Done =>
                   val result = Payload.Result(done.result(call), keeping.shown)
-                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)(
-                    keeping.logs(done.text).map((_, done.text))
-                  )
+                  inserted(slot.turn, slot.resultId, result, believed.of(done), at, None)(None)
                     .map(Keeps.Verdict.Commit(_))
                 case other => Right(Keeps.Verdict.Discard(other))
               }
@@ -301,7 +299,7 @@ object TurnTools {
         level: Integrity,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at, gated.logs)(() =>
+      settle(slot, call, gated.shown, Belief.Ran(gated.output.at(level)), at, _ => None)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
