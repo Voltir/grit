@@ -604,7 +604,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Claiming] = ToolSpec(
       ToolName("project_claim"),
       "Claims an artifact for a session or agent to work in a role, until project_release " +
-        "frees it; the artifact itself is not changed. Refused, naming who holds it, when it " +
+        "frees it; the artifact itself is not changed. Keeps the artifact's brief for what it " +
+        "is claimed for, which that session is shown when its view is next rebuilt. Answers a " +
+        "JSON object: `claimed`, a sentence saying what was claimed; `brief`, `kept` or " +
+        "`none`; and with `none`, `note`, saying why. Refused, naming who holds it, when it " +
         "is claimed already; refused, naming the artifact, when what it is claimed for works " +
         "another; and refused for a role the project's method lacks. Claims made at the same " +
         "moment are not refused: of two for one artifact, the later fails with a store error " +
@@ -674,8 +677,17 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
               )
             )
         }
-        _ <- briefed(own, Brief.of(whole, args.key, view, Projects.BriefChars), args, document, at)
-      } yield s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder."
+        unkept <- briefed(
+          own,
+          Brief.of(whole, args.key, view, Projects.BriefChars),
+          args,
+          document,
+          at
+        )
+      } yield AnswerText.claimed(
+        s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder.",
+        unkept
+      )
     }
   }
 
@@ -683,9 +695,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   object ProjectRelease extends KeepingCommand[Releasing] {
     val spec: ToolSpec[Releasing] = ToolSpec(
       ToolName("project_release"),
-      "Frees an artifact's claim, so it may be claimed again, answering a JSON object: " +
-        "`released`, the artifact's key, and `holder`, who it was claimed for. Refused when " +
-        "it is not claimed.",
+      "Frees an artifact's claim, so it may be claimed again, and removes the brief kept with " +
+        "it, answering a JSON object: `released`, the artifact's key, and `holder`, who it was " +
+        "claimed for. Refused when it is not claimed and has no brief.",
       Args
         .of((key = Field.text("The artifact's key, `<project>/<artifact>`.")))
         .refine(a => parsed("key", a.key, ArtifactKey.read).map(Releasing(_)))
@@ -1351,8 +1363,8 @@ private[plugin] object ProjectCommands {
 
   /** Keeps `rendered`, the claimed artifact's brief, through `own` beside `claimed` (at its label
     * and place), as the brief of `args.holder` ([[DocRef.brief]]), its data naming the holder:
-    * whether one was kept. None is when it is over [[Projects.BriefChars]] or the plugin is
-    * full; then any brief kept before for the artifact is withdrawn.
+    * `None` when one was kept, else why none was: it is over [[Projects.BriefChars]], or the
+    * plugin is full; then any brief kept before for the artifact is withdrawn.
     */
   private def briefed(
       own: DocumentKeeper,
@@ -1360,11 +1372,13 @@ private[plugin] object ProjectCommands {
       args: Claiming,
       claimed: Document,
       at: Instant
-  )(using Tx^): Either[Stop, Boolean] = {
+  )(using Tx^): Either[Stop, Option[String]] = {
+    val over =
+      f"it is over ${Projects.BriefChars}%,d characters; shorten the artifact or what its role carries"
     val written = for {
-      brief <- rendered.toOption
-      key <- briefKey(args.key).toOption
-      text <- DocText.of(brief.text).toOption
+      brief <- rendered.left.map(_ => over)
+      key <- briefKey(args.key)
+      text <- DocText.of(brief.text).left.map(_ => over)
     } yield own.write(
       key,
       claimed.label,
@@ -1376,10 +1390,12 @@ private[plugin] object ProjectCommands {
       at,
       Set(DocRef.brief(args.holder))
     )
+    def none(why: String) = unbriefed(own, args.key, at).map(_ => Some(s"No brief was kept: $why."))
     written match {
-      case Some(Right(_)) => Right(true)
-      case Some(Left(StoreError.Full(_))) | None => unbriefed(own, args.key, at).map(_ => false)
-      case Some(Left(other)) => Left(Stop.Store(other))
+      case Right(Right(_)) => Right(None)
+      case Right(Left(StoreError.Full(bound))) => none(Projects.full(bound))
+      case Right(Left(other)) => Left(Stop.Store(other))
+      case Left(why) => none(why)
     }
   }
 

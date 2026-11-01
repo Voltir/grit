@@ -41,6 +41,10 @@ object ClaimTests extends TestSuite {
   ): CommandOutcome =
     ask(projects, store, "project_claim", "key" -> key, "role" -> role, "holder" -> forHolder)
 
+  /** A claim's answer saying `said`, its brief kept. */
+  private def claimedKept(said: String): CommandOutcome =
+    CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
+
   /** The brief kept for `holder`, as a window would find it just after the claims here. */
   private def briefOf(store: Store, holder: String): Option[Document] = {
     inTx(store.documents.declare(Vector(Projects.Name -> Projects.Terms)))
@@ -84,7 +88,7 @@ object ClaimTests extends TestSuite {
           s"$holder works p/a already, claimed since $at; it lapses at $lapse unless they keep " +
             "working; release it with project_release first"
         ),
-        elsewhere == CommandOutcome.Done("Claimed p/b (note, open) as builder for other.")
+        elsewhere == claimedKept("Claimed p/b (note, open) as builder for other.")
       )
     }
 
@@ -109,7 +113,7 @@ object ClaimTests extends TestSuite {
       val answer = claimed(projects, store)
       val claim = inTx(store.claims.release(right(DocKey.of("p/a")), Label.Public))
       assert(
-        answer == CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $holder."),
+        answer == claimedKept(s"Claimed p/a (note, open) as builder for $holder."),
         claim == Right(
           Some(
             Claim(
@@ -134,7 +138,7 @@ object ClaimTests extends TestSuite {
       done(ask(projects, store, "project_release", "key" -> "p/a"))
       val again = claimed(projects, store, forHolder = "coder-opus/def")
       assert(
-        again == CommandOutcome.Done("Claimed p/a (note, open) as builder for coder-opus/def.")
+        again == claimedKept("Claimed p/a (note, open) as builder for coder-opus/def.")
       )
       done(ask(projects, store, "project_release", "key" -> "p/a"))
       val unclaimed = ask(projects, store, "project_release", "key" -> "p/a")
@@ -192,7 +196,16 @@ object ClaimTests extends TestSuite {
       kept(projects, store, "a", "note", "Text. " * 2000)
       val answer = claimed(projects, store)
       (answer, briefOf(store, holder)) ==> (
-        CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $holder."),
+        CommandOutcome.Done(
+          ujson.write(
+            ujson.Obj(
+              "claimed" -> s"Claimed p/a (note, open) as builder for $holder.",
+              "brief" -> "none",
+              "note" -> ("No brief was kept: it is over 9,500 characters; shorten the artifact " +
+                "or what its role carries.")
+            )
+          )
+        ),
         None
       )
     }
@@ -219,13 +232,13 @@ object ClaimTests extends TestSuite {
           claimed(projects, store, role = role, forHolder = "other")
         ) ==> (
           (
-            CommandOutcome.Done(s"Claimed p/a ($kind, $first) as $role for $holder."),
+            claimedKept(s"Claimed p/a ($kind, $first) as $role for $holder."),
             CommandOutcome.Refused(
               s"p/a is claimed already, as $role for $holder by $by since $at; " +
                 s"it lapses at $lapse unless they keep working; project_release frees it"
             ),
             ujson.Obj("released" -> "p/a", "holder" -> holder),
-            CommandOutcome.Done(s"Claimed p/a ($kind, $first) as $role for other.")
+            claimedKept(s"Claimed p/a ($kind, $first) as $role for other.")
           )
         )
       }
@@ -253,7 +266,7 @@ object ClaimTests extends TestSuite {
       val answer = claimed(projects, store, forHolder = "Coder Opus/3F2A")
       val claim = inTx(store.claims.release(right(DocKey.of("p/a")), Label.Public))
       assert(
-        answer == CommandOutcome.Done("Claimed p/a (note, open) as builder for Coder Opus/3F2A."),
+        answer == claimedKept("Claimed p/a (note, open) as builder for Coder Opus/3F2A."),
         claim.map(_.map(c => ClaimHolder.value(c.holder))) == Right(Some("Coder Opus/3F2A"))
       )
     }
@@ -281,7 +294,7 @@ object ClaimTests extends TestSuite {
         "role" -> "builder",
         "holder" -> "other"
       )
-      assert(taken == CommandOutcome.Done("Claimed p/a (note, open) as builder for other."))
+      assert(taken == claimedKept("Claimed p/a (note, open) as builder for other."))
     }
 
     test("a claim made again by its holder renews it, and it is listed once") {
@@ -292,7 +305,7 @@ object ClaimTests extends TestSuite {
       val again = claimed(projects, store)
       val listed = ujson.read(done(ask(projects, store, "project_claims")))
       assert(
-        again == CommandOutcome.Done(s"Claimed p/a (note, open) as builder for $holder."),
+        again == claimedKept(s"Claimed p/a (note, open) as builder for $holder."),
         listed("claims").arr.size == 1
       )
     }

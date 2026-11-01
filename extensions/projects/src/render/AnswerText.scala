@@ -94,6 +94,17 @@ object AnswerText {
       s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
       "before now, and project_history.").mkString("\n")
 
+  /** A claim made as a JSON object: `claimed`, the sentence `said`; `brief`, `kept` when its
+    * brief was kept, else `none`, with `note`, the sentence `unkept` says why.
+    */
+  def claimed(said: String, unkept: Option[String]): String =
+    ujson.write(
+      ujson.Obj.from(
+        Seq("claimed" -> ujson.Str(said), "brief" -> ujson.Str(unkept.fold("kept")(_ => "none"))) ++
+          unkept.map(n => "note" -> ujson.Str(n))
+      )
+    )
+
   /** A freed claim as a JSON object a program reads: `released`, the artifact's key, and
     * `holder`, who it was claimed for, which no longer works it.
     */
