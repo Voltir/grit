@@ -5,7 +5,16 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.context.{AssemblyError, AssemblyRequest, Shown, Window}
+import grit.core.context.{
+  AssemblyError,
+  AssemblyNote,
+  AssemblyRequest,
+  CarriedWindow,
+  Packing,
+  Projection,
+  Shown,
+  Window
+}
 import grit.core.document.{
   DocLabel,
   DocRef,
@@ -24,7 +33,8 @@ import grit.core.id.{
   Harness,
   PluginName,
   PrincipalId,
-  SessionId
+  SessionId,
+  TurnSeq
 }
 import grit.core.identity.Principal
 import grit.core.message.{Message, Tokens}
@@ -105,15 +115,61 @@ object TurnBriefTests extends TestSuite {
     )
   }
 
-  /** An assembler whose every window is empty, keeping what each request reserved. */
-  private final class Reserving extends Drawing {
+  /** An assembler whose every window is a boundary holding no entry, keeping what each request
+    * reserved; a window drawn with nothing reserved notes a recall of turn 99, which no
+    * conversation here reaches, so a record tells which draw it kept.
+    */
+  private class Reserving extends Drawing {
     // Appended by the turn, which runs on the test's one thread; read by its assertions after.
     @caps.unsafe.untrackedCaptures
     var reserved: Vector[Tokens] = Vector.empty
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] = {
       reserved = reserved :+ request.reserved
-      Right(Window(Vector.empty))
+      val unreserved = Option.when(request.reserved == Tokens.Zero)(TurnSeq(99)).toVector
+      Right(Window(Vector.empty, Vector(AssemblyNote.Recalled(unreserved))))
     }
+  }
+
+  /** As [[Reserving]], but appending to any window carried into its turn. */
+  private final class Appending extends Reserving {
+    override def assemble(request: AssemblyRequest, packing: Packing)(using
+        Db^
+    ): Either[AssemblyError, Projection] =
+      window(request).map(w =>
+        if (request.carried == CarriedWindow.Empty) boundary(w)
+        else Projection.Appended(w, Tokens.Zero)
+      )
+  }
+
+  /** Two turns, rooted on "one" then "two", of a conversation whose holder has a brief and whose
+    * session committed lately, drawn by `assembler`: the second turn's request's messages, the
+    * ids its session was read for, and each window's notes, brief and digest.
+    */
+  private def twice(assembler: Reserving) = {
+    val documents = new InMemoryDocuments
+    brief(documents)
+    val entries = new InMemoryEntryStore
+    val provider = new RecordingProvider
+    val sessions = new RecordedSessions(latest = Some(lately))
+    val durable = new InMemoryDurable()
+    Vector(("one", said), ("two", said.plusSeconds(60))).foreach { (text, at) =>
+      val turn = say(entries, text, at = at)
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          provider,
+          assembler,
+          new InMemoryUsageLedger,
+          documents = documents,
+          sessions = TurnSessions(sessions, _ => Some(holder))
+        )
+      )
+    }
+    (
+      provider.requests.lastOption.map(_.messages),
+      sessions.asked.size,
+      windows(entries).map(_._2).map(w => (w.recalled, w.brief.nonEmpty, w.digest.nonEmpty))
+    )
   }
 
   /** The turn rooted on "one", said at [[said]], run as `holding` names its holder over
@@ -173,6 +229,36 @@ object TurnBriefTests extends TestSuite {
         Some(Vector(answering, Message.User("one"))),
         Vector(Tokens.Zero),
         Vector((None, None))
+      )
+    }
+
+    test("an append reads neither the session nor the brief, and shows neither again") {
+      val assembler = new Appending
+      val (_, asked, recorded) = twice(assembler)
+      (asked, assembler.reserved.size, recorded.map((_, b, d) => (b, d))) ==>
+        (1, 2, Vector((true, true), (false, false)))
+    }
+
+    test(
+      "a boundary at the assembler's limit is drawn again with the brief and digest reserved, and packs that draw"
+    ) {
+      val assembler = new Reserving
+      val (_, asked, recorded) = twice(assembler)
+      val reserved = assembler.reserved
+      (
+        asked,
+        reserved.size,
+        reserved.lift(0) == reserved.lift(2),
+        reserved.lift(1),
+        reserved.lift(0).exists(_ != Tokens.Zero),
+        recorded.lift(1)
+      ) ==> (
+        2,
+        3,
+        true,
+        Some(Tokens.Zero),
+        true,
+        Some((Vector.empty, true, true))
       )
     }
 

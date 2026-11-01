@@ -428,7 +428,9 @@ private[turn] object TurnAssembly {
 
   /** The `assemble` body: `p`'s projection, packed as `packing` says; at a boundary, with the
     * brief of the holder its conversation works as and its session's digest first ([[standing]]),
-    * what they cost reserved from what the assembler draws.
+    * what they cost reserved from what the assembler draws. With nothing carried, the draw is a
+    * boundary and is made once, reserved; with a window carried, an append reads neither, and a
+    * boundary at the assembler's limit is drawn again reserved when either costs anything.
     */
   private def projecting(
       env: TurnEnv^,
@@ -439,16 +441,27 @@ private[turn] object TurnAssembly {
       .picked(env)
       .flatMap { pins =>
         val db = pins.reads(env.db)
-        (for {
-          stands <- standing(env, db, p.turn)
-          asked <- request(env, db, p)
-          projected <- env.assembler.assemble(asked.copy(reserved = stands.reserved), packing)(using
-            db
-          )
-        } yield projected match {
-          case appended: Projection.Appended => appended
-          case Projection.Boundary(window, cost) => stands.packed(window, cost)
-        }).left.map(failed)
+        def drawn(asked: AssemblyRequest, stands: Standing): Either[AssemblyError, Projection] =
+          env.assembler.assemble(asked.copy(reserved = stands.reserved), packing)(using db).map {
+            case appended: Projection.Appended => appended
+            case Projection.Boundary(window, cost) => stands.packed(window, cost)
+          }
+        request(env, db, p)
+          .flatMap { asked =>
+            if (asked.carried == CarriedWindow.Empty)
+              standing(env, db, p.turn).flatMap(drawn(asked, _))
+            else
+              env.assembler.assemble(asked, packing)(using db).flatMap {
+                case appended: Projection.Appended => Right(appended)
+                case Projection.Boundary(window, cost) =>
+                  standing(env, db, p.turn).flatMap(stands =>
+                    if (stands.reserved == Tokens.Zero) Right(stands.packed(window, cost))
+                    else drawn(asked, stands)
+                  )
+              }
+          }
+          .left
+          .map(failed)
       }
 
   /** 2,500: the most characters a session's digest at a boundary shows. */

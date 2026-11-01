@@ -534,8 +534,8 @@ object TurnFixtures {
 
   /** A spy, not a store: every recording made of it kept in order for a test to read, each
     * answered `answer`; `read` answers `held` (when its id is asked), and `lately` answers
-    * `latest` (when its session's id is asked), each refusing when given none; so it stands in
-    * for no store's semantics.
+    * `latest` (when its session's id is asked), each refusing when given none, every id
+    * `lately` is asked for kept in order; so it stands in for no store's semantics.
     */
   final class RecordedSessions(
       answer: Either[StoreError, Sessions.Recorded] = Right(Sessions.Recorded(1, full = false)),
@@ -555,8 +555,14 @@ object TurnFixtures {
     }
     def read(id: SessionId)(using Tx^): Either[StoreError, Option[Session]] =
       held.fold(Left(NoRead))(s => Right(Some(s).filter(_.id == id)))
-    def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] =
+    // Appended by `lately`, on the same thread; read by the test's assertions after.
+    @caps.unsafe.untrackedCaptures
+    var asked: Vector[SessionId] = Vector.empty
+
+    def lately(id: SessionId)(using Tx^): Either[StoreError, Option[Session.Lately]] = {
+      asked = asked :+ id
       latest.fold(Left(NoRead))(l => Right(Some(l).filter(_.session.id == id)))
+    }
     private val NoRead = StoreError.Invalid("a spy keeps no sessions to read")
   }
 
