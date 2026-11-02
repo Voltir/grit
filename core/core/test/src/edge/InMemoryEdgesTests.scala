@@ -1,8 +1,8 @@
 package grit.core.edge
 
 import grit.core.id.ConversationId
-import grit.core.place.Place
-import grit.core.store.Tx
+import grit.core.place.{Directory, Place}
+import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{Clearance, Visibility}
 import grit.dbos.sql.TestTx
 
@@ -21,6 +21,12 @@ object InMemoryEdgesTests extends EdgesContract {
   ): A = body(using TestTx.fake(clearance, visibility))
 
   protected def conversation(name: String): ConversationId = ConversationId(name)
+
+  protected def session(directory: Directory, name: String): ConversationId = {
+    val id = ConversationId(s"tui-$name")
+    edges.originates(id, Origin.Tui(directory, name))
+    id
+  }
 
   protected def desk(places: Set[Place]): Desk^ = edges.desk(places)
 

@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.{Fragment, Layer}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.{
   Clearance,
@@ -45,6 +45,9 @@ abstract class EdgesContract extends TestSuite {
   /** A conversation requests may name, the same one for the same `name`. */
   protected def conversation(name: String): ConversationId
 
+  /** A conversation of its own: the TUI session `name` in `directory` ([[Origin.Tui]]). */
+  protected def session(directory: Directory, name: String): ConversationId
+
   /** A live edge for [[PrincipalId.Local]] hosting `places`, with a desk of its own. */
   protected def desk(places: Set[Place]): Desk^
 
@@ -60,9 +63,10 @@ abstract class EdgesContract extends TestSuite {
       at: Place,
       retry: Retry = Retry.Rerun,
       permit: Permit = Permit.Free,
-      destination: Option[Place] = None
+      destination: Option[Place] = None,
+      of: Option[ConversationId] = None
   ): ToolRequest = {
-    val turn = TurnRef(conversation(name), TurnSeq.First)
+    val turn = TurnRef(of.getOrElse(conversation(name)), TurnSeq.First)
     ToolRequest(
       CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError()),
       ToolRequest.Protocol,
@@ -213,6 +217,19 @@ abstract class EdgesContract extends TestSuite {
       dispatched(r)
       (one.claim(r), two.claim(r)) ==> (Right(true), Right(false))
       keys(one.open()) ==> Right(Vector())
+    }
+
+    test("a desk reads the origin of a request its session claimed, and of no other") {
+      val at = place("origins")
+      val dir = Directory.of("/contract/origins").getOrElse(throw new java.lang.AssertionError())
+      val r = request("origins", 0, at, of = Some(session(dir, "origins")))
+      val one = desk(Set(at))
+      val two = desk(Set(at))
+      dispatched(r)
+      val before = one.origin(r)
+      one.claim(r) ==> Right(true)
+      (before, one.origin(r), two.origin(r)) ==>
+        (Right(None), Right(Some(Origin.Tui(dir, "origins"))), Right(None))
     }
 
     test("dispatching a key again keeps the first request") {

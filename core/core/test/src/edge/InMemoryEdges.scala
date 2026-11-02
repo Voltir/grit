@@ -38,6 +38,14 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   @caps.unsafe.untrackedCaptures
   var answers = Vector.empty[(CallSlot, Outcome)]
 
+  // Each conversation's origin, as `originates` set it: written and read on the test's thread.
+  @caps.unsafe.untrackedCaptures
+  private var origins = Map.empty[grit.core.id.ConversationId, grit.core.store.Origin]
+
+  /** `conversation`'s origin is `origin`, as the conversation store holds one. */
+  def originates(conversation: grit.core.id.ConversationId, origin: grit.core.store.Origin): Unit =
+    origins = origins.updated(conversation, origin)
+
   @caps.unsafe.untrackedCaptures
   private var sessions = 0
 
@@ -166,6 +174,18 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       case _ => false
     }
 
+  private[edge] def origin(
+      reg: Registration,
+      session: Int,
+      q: ToolRequest
+  ): Option[grit.core.store.Origin] =
+    rows
+      .find(r =>
+        r.request.slot == q.slot && r.state == InMemoryEdges.Open &&
+          r.claimedBy.contains((reg.edge, session))
+      )
+      .flatMap(r => origins.get(r.request.conversation))
+
   private[edge] def answer(
       reg: Registration,
       session: Int,
@@ -220,6 +240,8 @@ object InMemoryEdges {
     def open(): Either[DeskError, Vector[ToolRequest]] = Right(edges.open(registration))
     def claim(request: ToolRequest): Either[DeskError, Boolean] =
       Right(edges.claim(registration, session, request))
+    def origin(request: ToolRequest): Either[DeskError, Option[grit.core.store.Origin]] =
+      Right(edges.origin(registration, session, request))
     def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] =
       Right(edges.answer(registration, session, slot, outcome))
     def orphans(): Either[DeskError, Vector[ToolRequest]] = Right(

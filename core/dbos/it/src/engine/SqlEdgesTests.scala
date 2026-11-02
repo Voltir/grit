@@ -6,7 +6,7 @@ import scala.util.Using
 
 import grit.core.edge.{Desk, EdgeDirectory, EdgesContract, ToolRequests}
 import grit.core.id.{ConversationId, PrincipalId}
-import grit.core.place.Place
+import grit.core.place.{Directory, Place}
 import grit.core.store.{Origin, Tx}
 import grit.core.visibility.{Clearance, Visibility}
 import grit.dbos.sql.{LiveDb, Opener, SqlEdgeDirectory, SqlToolRequests, TestPostgres}
@@ -55,6 +55,9 @@ object SqlEdgesTests extends EdgesContract {
 
   protected def conversation(name: String): ConversationId =
     LiveDb.conversation(config, Origin.Task("edges", name)).id
+
+  protected def session(directory: Directory, name: String): ConversationId =
+    LiveDb.conversation(config, Origin.Tui(directory, name)).id
 
   protected def desk(places: Set[Place]): Desk^ =
     SqlDesk.open(

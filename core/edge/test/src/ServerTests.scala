@@ -83,6 +83,8 @@ object ServerTests extends TestSuite {
         val registration = Registration(EdgeId("e"), PrincipalId.Local, Set(api))
         def await(within: FiniteDuration): Boolean = false
         def open(): Either[DeskError, Vector[ToolRequest]] = Right(Vector(lost))
+        def origin(request: ToolRequest): Either[DeskError, Option[grit.core.store.Origin]] =
+          Right(None)
         def claim(q: ToolRequest): Either[DeskError, Boolean] = {
           claims.note(q.slot.key)
           Right(true)
@@ -106,6 +108,8 @@ object ServerTests extends TestSuite {
         val registration = Registration(EdgeId("e"), PrincipalId.Local, Set(api))
         def await(within: FiniteDuration): Boolean = false
         def open(): Either[DeskError, Vector[ToolRequest]] = Right(Vector(lost))
+        def origin(request: ToolRequest): Either[DeskError, Option[grit.core.store.Origin]] =
+          Right(None)
         def claim(q: ToolRequest): Either[DeskError, Boolean] = Right(true)
         def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] = Right(true)
         def orphans(): Either[DeskError, Vector[ToolRequest]] = Right(Vector.empty)

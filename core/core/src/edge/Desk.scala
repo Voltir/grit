@@ -5,6 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.id.{CallSlot, PrincipalId}
 import grit.core.place.Place
 import grit.core.prompt.Fragment
+import grit.core.store.Origin
 import grit.core.tool.{Outcome, ToolSet}
 
 /** An edge's side of the engine's tool requests, on a connection of its own: its
@@ -27,6 +28,12 @@ trait Desk extends caps.SharedCapability {
     * stopped waiting for it.
     */
   def claim(request: ToolRequest): Either[DeskError, Boolean]
+
+  /** The origin of the conversation whose turn made `request`, while this desk's session holds
+    * its claim: where a tool at a service place, whose request names no directory, acts for that
+    * conversation. `None` when this session holds no claim of `request`.
+    */
+  def origin(request: ToolRequest): Either[DeskError, Option[Origin]]
 
   /** Answers the request at `slot`, which this session claimed, with `outcome`, and rings the
     * turn waiting on it ([[Desk.Doorbell]]); false, and nothing rung, when the turn stopped

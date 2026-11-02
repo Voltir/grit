@@ -13,6 +13,7 @@ import grit.core.host.ProcessIdentity
 import grit.core.id.{CallSlot, EdgeId, PrincipalId, WorkflowId}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, FragmentId}
+import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolSet, ToolSetId}
 import grit.dbos.sql.{DbConfig, Opener, SqlNotices, SqlPromptStore, SqlToolRequests, SqlToolSets}
 
@@ -88,6 +89,27 @@ final class SqlDesk private (
       session.toString,
       request.slot.key
     ).map(_ == 1)
+
+  def origin(request: ToolRequest): Either[DeskError, Option[Origin]] =
+    SqlDesk.inTransaction(dataSource, opener) { (tx: grit.core.store.Tx^) ?=>
+      grit.dbos.sql.SqlStatements
+        .attempt {
+          val c: java.sql.Connection^{tx} = grit.core.store.Tx.connection(tx)
+          Using.resource(
+            c.prepareStatement(
+              """SELECT 1 FROM grit.tool_requests
+                | WHERE key = ? AND state = 'claimed' AND claim_session = ?::uuid""".stripMargin
+            )
+          ) { ps =>
+            ps.setString(1, request.slot.key)
+            ps.setString(2, session.toString)
+            Using.resource(ps.executeQuery())(_.next())
+          }
+        }
+        .flatMap(held =>
+          if (held) new grit.dbos.sql.SqlOrigins().of(request.conversation) else Right(None)
+        )
+    }
 
   def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] = {
     val json = ujson.write(OutcomeJson.answer(outcome))
