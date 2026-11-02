@@ -275,7 +275,7 @@ object TurnJournalTests extends TestSuite {
           Window(
             Vector(EntrySeq(0)),
             brief = DocumentVersionId.of(9),
-            digest = Some("Committed a1b2c3d Keep a brief.")
+            sessionLog = Some("Committed a1b2c3d Keep a brief.")
           )
         )
       j.encode(shown) ==>

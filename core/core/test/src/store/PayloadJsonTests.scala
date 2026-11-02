@@ -222,7 +222,7 @@ object PayloadJsonTests extends TestSuite {
           Vector.empty,
           carry = Some(Payload.Carry(None, Tokens(7), None, None)),
           brief = Some(b),
-          digest = Some("Committed a1b2c3d Keep a brief.")
+          sessionLog = Some("Committed a1b2c3d Keep a brief.")
         )
       }
       val plain = Payload.Window(Vector(EntrySeq(0)), Vector.empty, carry = None)

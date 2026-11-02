@@ -168,7 +168,7 @@ object TurnBriefTests extends TestSuite {
     (
       provider.requests.lastOption.map(_.messages),
       sessions.asked.size,
-      windows(entries).map(_._2).map(w => (w.recalled, w.brief.nonEmpty, w.digest.nonEmpty))
+      windows(entries).map(_._2).map(w => (w.recalled, w.brief.nonEmpty, w.sessionLog.nonEmpty))
     )
   }
 
@@ -198,7 +198,7 @@ object TurnBriefTests extends TestSuite {
     (
       provider.requests.headOption.map(_.messages),
       assembler.reserved,
-      windows(entries).map(_._2).map(w => (w.brief, w.digest))
+      windows(entries).map(_._2).map(w => (w.brief, w.sessionLog))
     )
   }
 

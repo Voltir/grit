@@ -79,7 +79,7 @@ object ContextAssembler {
 /** What an assembler is asked to build a window for, how wide the part it draws now may be,
   * the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear), and
   * `reserved`, what the turn packs before a boundary's window ([[Window.brief]] and
-  * [[Window.digest]]), taken off what a boundary draws within under either width
+  * [[Window.sessionLog]]), taken off what a boundary draws within under either width
   * ([[boundary]]); an append ignores it.
   */
 final case class AssemblyRequest(
@@ -198,13 +198,13 @@ enum Width {
 
 /** What the model sees before the turn's own messages: `brief` ([[Shown.brief]]), then each of
   * `nearby`'s sections, then each of `documents` under its plugin's label, then each of `pieces`
-  * under its plugin's label ([[Shown.piece]]), then `digest` ([[Shown.sessionLog]]), then the
+  * under its plugin's label ([[Shown.piece]]), then `sessionLog` ([[Shown.sessionLog]]), then the
   * entries of its own conversation at `entries`, in that order; and notes on how they were
   * chosen. A nearby entry, a document (the brief too) or a piece gone by the time the model is
   * called is left out, as is a document or a piece whose plugin is no longer enabled, and a
   * section left with no message is dropped; an own entry gone fails the turn. Only a part drawn
   * at a boundary holds a `brief`, the brief of the work its conversation's holder claimed, or a
-  * `digest`, what its session had done, as [[grit.core.session.SessionDigest.of]] drew it then.
+  * `sessionLog`, what its session had done, as [[grit.core.session.SessionDigest.of]] drew it then.
   */
 final case class Window(
     entries: Vector[EntrySeq],
@@ -213,7 +213,7 @@ final case class Window(
     documents: Vector[DocumentVersionId] = Vector.empty,
     pieces: Vector[Retrieved.Piece] = Vector.empty,
     brief: Option[DocumentVersionId] = None,
-    digest: Option[String] = None
+    sessionLog: Option[String] = None
 )
 
 object Window {
@@ -230,7 +230,7 @@ object Window {
       record.documents,
       record.pieces.map((id, more) => Retrieved.Piece(id, more)),
       record.brief,
-      record.digest
+      record.sessionLog
     )
 }
 

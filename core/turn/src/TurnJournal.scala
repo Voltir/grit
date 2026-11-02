@@ -40,13 +40,13 @@ import grit.core.visibility.{Integrity, Label}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes, nearby sections, documents, pieces, brief or digest is the bare
+  /** A window with no notes, nearby sections, documents, pieces, brief or session log is the bare
     * array of its entries' seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries":
     * [...], "notes": [...]}`, with `"nearby": [...]` too when it has sections
     * ([[PayloadJson.writeNearby]]), `"documents": [...]` when it has documents
     * ([[PayloadJson.writeVersions]]), `"pieces": [{"piece": id, "more": n}, ...]` when it has
     * pieces ([[writeFound]]), `"brief": version` when it has a brief and `"digest": text` when
-    * it has a digest.
+    * it has a session log.
     */
   given window: Journaled[Either[TurnFailure, Window]] = outcome(writeWindow, readWindow)
 
@@ -115,7 +115,7 @@ private[turn] object TurnJournal {
     val ids = PayloadJson.writeSeqs(w.entries)
     if (
       w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty &&
-      w.brief.isEmpty && w.digest.isEmpty
+      w.brief.isEmpty && w.sessionLog.isEmpty
     ) ids
     else {
       val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
@@ -123,7 +123,7 @@ private[turn] object TurnJournal {
       if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
       if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
       w.brief.foreach(b => o("brief") = ujson.Num(DocumentVersionId.value(b).toDouble))
-      w.digest.foreach(d => o("digest") = d)
+      w.sessionLog.foreach(d => o("digest") = d)
       o
     }
   }

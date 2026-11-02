@@ -427,7 +427,7 @@ private[turn] object TurnAssembly {
     )
 
   /** The `assemble` body: `p`'s projection, packed as `packing` says; at a boundary, with the
-    * brief of the holder its conversation works as and its session's digest first ([[standing]]),
+    * brief of the holder its conversation works as and its session's digest first ([[opening]]),
     * what they cost reserved from what the assembler draws. With nothing carried, the draw is a
     * boundary and is made once, reserved; with a window carried, an append reads neither, and a
     * boundary at the assembler's limit is drawn again reserved when either costs anything.
@@ -441,22 +441,22 @@ private[turn] object TurnAssembly {
       .picked(env)
       .flatMap { pins =>
         val db = pins.reads(env.db)
-        def drawn(asked: AssemblyRequest, stands: Standing): Either[AssemblyError, Projection] =
-          env.assembler.assemble(asked.copy(reserved = stands.reserved), packing)(using db).map {
+        def drawn(asked: AssemblyRequest, opens: Opening): Either[AssemblyError, Projection] =
+          env.assembler.assemble(asked.copy(reserved = opens.reserved), packing)(using db).map {
             case appended: Projection.Appended => appended
-            case Projection.Boundary(window, cost) => stands.packed(window, cost)
+            case Projection.Boundary(window, cost) => opens.packed(window, cost)
           }
         request(env, db, p)
           .flatMap { asked =>
             if (asked.carried == CarriedWindow.Empty)
-              standing(env, db, p.turn).flatMap(drawn(asked, _))
+              opening(env, db, p.turn).flatMap(drawn(asked, _))
             else
               env.assembler.assemble(asked, packing)(using db).flatMap {
                 case appended: Projection.Appended => Right(appended)
                 case Projection.Boundary(window, cost) =>
-                  standing(env, db, p.turn).flatMap(stands =>
-                    if (stands.reserved == Tokens.Zero) Right(stands.packed(window, cost))
-                    else drawn(asked, stands)
+                  opening(env, db, p.turn).flatMap(opens =>
+                    if (opens.reserved == Tokens.Zero) Right(opens.packed(window, cost))
+                    else drawn(asked, opens)
                   )
               }
           }
@@ -473,7 +473,7 @@ private[turn] object TurnAssembly {
     * time), and what its conversation's session did lately (none when the turn does not read
     * it).
     */
-  private def standing(env: TurnEnv^, db: Db^, turn: TurnRef): Either[AssemblyError, Standing] =
+  private def opening(env: TurnEnv^, db: Db^, turn: TurnRef): Either[AssemblyError, Opening] =
     db.read(Subject.Turn(turn)) {
       for {
         found <- env.hosting.conversations.get(turn.conversationId)
@@ -499,7 +499,7 @@ private[turn] object TurnAssembly {
               TurnRef(turn.conversationId, TurnSeq(TurnSeq.value(turn.turnSeq) - 1))
             )
           else Right(Vector.empty)
-      } yield Standing(brief, lately, previous.map(_.seq).toSet, env.records.estimator)
+      } yield Opening(brief, lately, previous.map(_.seq).toSet, env.records.estimator)
     }.left
       .map(AssemblyError.Store(_))
 
@@ -507,7 +507,7 @@ private[turn] object TurnAssembly {
     * the session last said when it holds an entry of the turn before (`previous`), costed by
     * `estimator`.
     */
-  private final case class Standing(
+  private final case class Opening(
       brief: Option[Document],
       lately: Option[Session.Lately],
       previous: Set[EntrySeq],
@@ -524,7 +524,10 @@ private[turn] object TurnAssembly {
         else SessionDigest.Window.LacksLastSaid
       val shown = digest(said)
       val added = briefCost + logCost(shown)
-      Projection.Boundary(window.copy(brief = brief.map(_.version), digest = shown), cost + added)
+      Projection.Boundary(
+        window.copy(brief = brief.map(_.version), sessionLog = shown),
+        cost + added
+      )
     }
 
     private def briefCost = brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d)))

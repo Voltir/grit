@@ -383,7 +383,7 @@ private[turn] object TurnShown {
             )
           )
           val brief = part.brief.map((d, _) => Shown.brief(d)).toVector
-          val digest = part.window.digest.map(Shown.sessionLog).toVector
+          val digest = part.window.sessionLog.map(Shown.sessionLog).toVector
           Right(
             Unshaped.Part(brief ++ sections, part.documents, pieces ++ digest ++ shown ++ carried)
           )

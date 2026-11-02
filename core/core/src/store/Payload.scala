@@ -57,7 +57,7 @@ enum Payload {
     * window carries it ([[Payload.Carry]]): `None` for a record kept before windows were
     * carried, which no later turn carries. With one, what it names is what its turn's window
     * drew (ADR 0052): the whole window at a boundary, else only what was appended after
-    * `carry.after`'s. `brief` and `digest`, the brief and the session's digest a boundary's
+    * `carry.after`'s. `brief` and `sessionLog`, the brief and the session's log a boundary's
     * window showed first ([[grit.core.context.Window.brief]]), kept so a later turn shows the
     * same bytes.
     */
@@ -69,7 +69,7 @@ enum Payload {
       pieces: Vector[(PieceId, Int)] = Vector.empty,
       carry: Option[Payload.Carry],
       brief: Option[DocumentVersionId] = None,
-      digest: Option[String] = None
+      sessionLog: Option[String] = None
   )
 
   /** What happened to the conversation's agenda during the turn the entry belongs to
