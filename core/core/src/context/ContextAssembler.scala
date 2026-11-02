@@ -205,6 +205,8 @@ enum Width {
   * section left with no message is dropped; an own entry gone fails the turn. Only a part drawn
   * at a boundary holds a `brief`, the brief of the work its conversation's holder claimed, or a
   * `sessionLog`, what its session had done, as [[grit.core.session.SessionDigest.of]] drew it then.
+  * The brief is kept by its version, as `documents` are, and read back when shown; the session's
+  * log is kept as text, since the log it was drawn from goes on growing.
   */
 final case class Window(
     entries: Vector[EntrySeq],

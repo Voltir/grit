@@ -2,7 +2,9 @@ package grit.core.host
 
 import scala.concurrent.duration.FiniteDuration
 
-/** Running commands in the checkout. */
+/** Running commands in the checkout: the narrowed view of [[Processes]] a coding tool is given,
+  * one command line at the checkout's root, with no argv and no input.
+  */
 trait Shell extends caps.SharedCapability {
 
   /** Runs `command` with `sh -c` in the checkout's root, with nothing on its input, and

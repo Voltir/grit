@@ -2,7 +2,8 @@ package grit.core.id
 
 /** Who or what works a claim, in its edge's own name for it (a directory's slot, or an agent
   * type's in it): one line of 1 to 160 characters. A session names the holder it works as, and
-  * its work keeps that holder's claims from lapsing ([[grit.core.claim.Claim.lapses]]).
+  * its work keeps that holder's claims from lapsing ([[grit.core.claim.Claim.lapses]]). Not a
+  * [[grit.core.edge.Holder]], the engine holding a database's lock.
   */
 opaque type ClaimHolder = String
 

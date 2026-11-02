@@ -168,7 +168,8 @@ final case class TurnRecords(
 
 /** Where a turn records its session, one per conversation ([[grit.core.id.SessionId]]'s rule),
   * and the claim holder a conversation from each origin works as, whose claims its session
-  * keeps from lapsing ([[grit.core.claim.Claim.lapses]]).
+  * keeps from lapsing ([[grit.core.claim.Claim.lapses]]). Grit's own sessions; another
+  * harness's are recorded by an edge through [[grit.core.edge.EdgeSessions]] (ADR 0050).
   */
 final case class TurnSessions(store: Sessions, holder: Origin -> Option[ClaimHolder]) {
 

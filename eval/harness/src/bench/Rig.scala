@@ -258,7 +258,8 @@ object Rig {
     * `CLAUDE_CONFIG_DIR`, an empty directory only this user can read, in a directory of its own
     * under the system temp directory, so a run writes no transcript under its user's home. That
     * directory, and all in it, is removed once `use` returns or throws. `Left` when it cannot be
-    * made.
+    * made. It makes and removes the directory itself, as host's tree removal does, since the
+    * bench names no `grit.host` (the law's `harness-names-host-from-main-alone`).
     */
   private def configured[A](use: Variables => Either[String, A]): Either[String, A] = {
     val owner = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
