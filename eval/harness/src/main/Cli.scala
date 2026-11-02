@@ -87,11 +87,4 @@ private[main] object Cli {
 
   private[main] def need(f: Map[String, String], k: String): Either[String, String] =
     f.get(k).toRight(s"--$k is required")
-
-  private[main] def exit(result: Either[String, Unit]): Unit = result match {
-    case Right(()) => ()
-    case Left(why) =>
-      System.err.println(s"eval: $why")
-      sys.exit(1)
-  }
 }

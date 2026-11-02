@@ -1,6 +1,7 @@
 package grit.eval.harness.main
 
 import grit.core.clock.{Clock, Fresh}
+import grit.kit.environment.Exit
 
 import Cli.*
 import CaptureCommands.*
@@ -20,6 +21,7 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     val clock: Clock^ = Clock.system() // clock-check: the eval harness's composition root
+    val exit = Exit.process("eval:", 1)
     args.toList match {
       case "capture" :: rest => exit(flags(rest).flatMap(capture))
       case "run" :: rest =>
@@ -67,7 +69,7 @@ object Main {
         ) match {
           case Right(0) => ()
           case Right(code) => sys.exit(code)
-          case Left(why) => exit(Left(why))
+          case Left(why) => exit.refuse(why)
         }
       case _ =>
         exit(

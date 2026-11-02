@@ -20,7 +20,7 @@ import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.host.checkout.{LocalInstructions, Redaction}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
-import grit.kit.environment.{DotEnv, Secrets}
+import grit.kit.environment.{DotEnv, Exit, Secrets}
 import grit.kit.run.{Kit, Launch, LocalEdge, LocalTools}
 import grit.mcp.client.KeyFiles
 import grit.models.{OpenRouterConfig, StubProvider}
@@ -151,6 +151,9 @@ object Main {
   private[main] val RunOrigin: Origin = Origin.Task("m0", "main")
 
   def main(args: Array[String]): Unit = {
+    // A refusal before anything runs ends with status 2; a failure once it runs, with 1.
+    val exitOnLeft = Exit.process("[main]", 2)
+    val failed = Exit.process("[main]", 1)
     val tui = args.isEmpty
     // `grit serve` alone: the engine and the Slack edge (a lone message "serve" is this).
     val serving = args.sameElements(Array("serve"))
@@ -326,9 +329,7 @@ object Main {
         )
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found
-          case Left(refused) =>
-            System.err.println(s"[main] ${refused.message}")
-            sys.exit(1)
+          case Left(refused) => failed.refuse(refused.message)
         }
         Chat.run(
           opener,
@@ -370,10 +371,7 @@ object Main {
         }
 
     if (tui) println(s"[main] log: $log")
-    failure.foreach { message =>
-      System.err.println(s"[main] $message")
-      sys.exit(1)
-    }
+    failure.foreach(failed.refuse)
   }
 
   /** `engine`, the database's engine this process holds for the chat or a run with arguments,
@@ -427,11 +425,4 @@ object Main {
 
   private[main] def describe(turn: TurnRef): String =
     grit.core.id.WorkflowId.value(turn.workflowId)
-
-  private[main] def exitOnLeft[A](result: Either[String, A]): A = result match {
-    case Right(a) => a
-    case Left(message) =>
-      System.err.println(s"[main] $message")
-      sys.exit(2)
-  }
 }

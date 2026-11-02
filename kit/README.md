@@ -33,7 +33,9 @@ In dependency order:
   a service an edge hosts. Imports nothing in kit.
 - **`environment`**: what the process environment supplies, never declared: a `.env` file under
   the real environment, the database, OpenRouter's key and Jev's settings. An edge's
-  credentials are its own `needs`. ← `deployment`
+  credentials are its own `needs`. It also holds `Exit`, how a program ends on a refusal: not
+  something the environment supplies, but the eval harness may name no other kit package
+  (`enola-intent.yaml`), and its command line ends as grit's does. ← `deployment`
 - **`run`**: running a deployment. `Kit.serve` runs the engine and every edge until the process
   is stopped; `Kit.catchUp` hears an edge's catch-up once, estimated, each source's label shown
   and agreed to first, then sweeps until nothing is left to close; `Kit.console` is a screen's
