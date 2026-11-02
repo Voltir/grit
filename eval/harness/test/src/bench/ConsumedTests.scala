@@ -19,12 +19,12 @@ object ConsumedTests extends TestSuite {
       Consumed.of(Streams.at(checkout), checkout).map { c =>
         (
           c.calls.map(k => (k.id, Tokens.value(k.usage.output))),
-          c.usage.copy(costUsd = None)
+          c.usage
         )
       } ==> Right(
         (
           Vector("msg_01a" -> 40L, "msg_01b" -> 20L, "msg_01c" -> 30L),
-          Usage(Tokens(6262), Tokens(500), Tokens(4100), None, Tokens(2150))
+          Usage(Tokens(6262), Tokens(500), Tokens(4100), Some(BigDecimal("0.0031")), Tokens(2150))
         )
       )
     }
@@ -109,12 +109,6 @@ object ConsumedTests extends TestSuite {
 
     test("a run killed before its result has no ending") {
       Consumed.of(Streams.at(checkout).dropRight(1), checkout).map(_.ended) ==> Right(None)
-    }
-
-    test("a run's usage is its result's modelUsage, its cost Claude Code's total") {
-      Consumed.of(Streams.at(checkout), checkout).map(_.usage) ==> Right(
-        Usage(Tokens(6262), Tokens(500), Tokens(4100), Some(BigDecimal("0.0031")), Tokens(2150))
-      )
     }
 
     test("a result's modelUsage is summed over its models") {

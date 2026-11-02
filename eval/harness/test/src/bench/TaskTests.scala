@@ -74,22 +74,29 @@ object TaskTests extends TestSuite {
       )
     }
 
-    test("each frozen task's brief ends with the sentence the rig gives every coder") {
+    test(
+      "each frozen task reads, its brief.md lacking the sentence the rig gives every coder and its brief holding it once, at its end"
+    ) {
       val dir = Path.of(sys.env.getOrElse("GRIT_BENCH_TASKS", "")).toAbsolutePath
       val names = Files.list(dir).iterator.asScala.map(_.getFileName.toString).toVector.sorted
       val read = names.map { n =>
+        val written = Files.readString(dir.resolve(n).resolve("brief.md"))
         for {
           taskName <- TrialRows.TaskName.of(n)
           task <- Task.of(
             taskName,
             Files.readString(dir.resolve(n).resolve("task.json")),
-            Files.readString(dir.resolve(n).resolve("brief.md"))
+            written
           )
-        } yield task.brief.endsWith(rigSentence)
+        } yield (
+          written.contains(rigSentence),
+          task.brief.endsWith(rigSentence),
+          task.brief.indexOf(rigSentence) == task.brief.lastIndexOf(rigSentence)
+        )
       }
       (names, read) ==> (
         Vector("anthropic-provider", "blobs-remove-all-but", "commands-as-tools"),
-        Vector(Right(true), Right(true), Right(true))
+        Vector.fill(3)(Right((false, true, true)))
       )
     }
   }

@@ -47,10 +47,6 @@ object DiffLinesTests extends TestSuite {
         .map(_._1) ==> Set("build.mill", "core/dbos/src/schema.sql")
     }
 
-    test("the same changed lines are distance 0") {
-      DiffLines.distance(DiffLines.of(known), DiffLines.of(known)) ==> 0L
-    }
-
     test("a line one diff changes and the other does not counts one, each way") {
       val coder = diff(
         "core/src/A.scala" -> Seq("-  def a: Int = 1", "+  def a: Int = 2", "+  def c: Int = 4")

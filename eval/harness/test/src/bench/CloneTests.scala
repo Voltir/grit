@@ -91,7 +91,16 @@ object CloneTests extends TestSuite {
 
     test("a checkout is never made over a directory already there") {
       withOrigin("base") { (work, o) =>
-        Clone.fresh(work)(o.path, o.commits("base"), rel("origin")).isLeft ==> true
+        (
+          // Which step refused, before mkdir's own words, which follow the machine's locale.
+          Clone
+            .fresh(work)(o.path, o.commits("base"), rel("origin"))
+            .left
+            .map(_.takeWhile(_ != ':')),
+          git(work, rel("origin"), "rev-parse", "--abbrev-ref", "HEAD"),
+          git(work, rel("origin"), "rev-parse", "HEAD"),
+          git(work, rel("origin"), "status", "--porcelain")
+        ) ==> (Left("`mkdir` failed"), "main", Sha.value(o.commits("base")), "")
       }
     }
 

@@ -42,9 +42,15 @@ object LocalHandingTests extends TestSuite {
       inRoot { dir =>
         val seen =
           new LocalHanding(dir, sys.env, noSecrets).started(RelPath.Root, key, variables())(
-            sh("cat \"$1\"; echo; stat -c %a \"$1\"; stat -c %a \"$(dirname \"$1\")\"")
+            // Its argv and environment are searched for the value by a pattern split in two,
+            // so the script, itself in argv, does not hold it.
+            sh(
+              "cat \"$1\"; echo; stat -c %a \"$1\"; stat -c %a \"$(dirname \"$1\")\"; " +
+                "tr '\\0' '\\n' < /proc/$$/cmdline | grep -c 'planted''-handed'; " +
+                "env | grep -c 'planted''-handed'; true"
+            )
           )(lines)
-        seen ==> Right(Vector(value, "600", "700"))
+        seen ==> Right(Vector(value, "600", "700", "0", "0"))
       }
     }
 
