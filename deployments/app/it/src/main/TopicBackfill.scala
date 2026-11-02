@@ -11,6 +11,7 @@ import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Deployment
+import grit.kit.environment.DotEnv
 import grit.kit.run.{Kit, Launch}
 import grit.knowledge.plugin.TopicDocuments
 
@@ -21,7 +22,7 @@ import grit.knowledge.plugin.TopicDocuments
   * Args: the day's cap in USD, the most topics a run writes, then each day (`yyyy-mm-dd`, UTC),
   * oldest first. The database is `GRIT_DATABASE_*`'s, a copy no one else runs on, in which no
   * workflow is left pending or enqueued (else the engine would run it); OpenRouter's key and the
-  * models' variables come from the environment over `GRIT_ENV_FILE` (`.env` when unset). The
+  * models' variables come from the environment ([[DotEnv.loadDefault]]). The
   * engine runs the topics plugin `topics` at public, its cards read from the plugin `knowledge`'s
   * documents, and keeps each other plugin the database declares documents for declared, so its
   * documents stay searched. The runs are [[grit.kit.run.Kit.runOnce]]'s, one at a time: for
@@ -62,7 +63,7 @@ object TopicBackfill {
           )
         )
       _ <- Either.cond(days.nonEmpty, (), "no day")
-      env <- RoomRun.env
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env).left.map(_.message)
       cards = new TopicRuns.Cards(CardsName, TopicRuns.CardTerms)
       topics <- TopicDocuments.of(

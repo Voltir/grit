@@ -46,8 +46,8 @@ private[main] object RebuildCommands {
     * cap in USD: refused before any call when the writes not kept are estimated over it
     * ([[Queries.Usd]] each), and each call past it skipped. The assembler is built with grit's
     * own window and tail ([[Assembled.Shipped]]) unless `--window` or `--tail` names the
-    * deployment's. OpenRouter's key comes from the environment over `GRIT_ENV_FILE` (`.env`
-    * when unset), read only when a write is to be asked; the database's login from
+    * deployment's. OpenRouter's key comes from the environment
+    * ([[DotEnv.loadDefault]]), read only when a write is to be asked; the database's login from
     * `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts and workflow ids, never text. A
     * call's latency is measured on `clock`.
     */
@@ -80,7 +80,7 @@ private[main] object RebuildCommands {
           .flatMap(CaptureJson.readManifest)
       )
       until = manifest.dump.at
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       _ <- opened(config) { reader =>
         for {
@@ -164,7 +164,7 @@ private[main] object RebuildCommands {
           .toRight("capture.json: not JSON")
           .flatMap(CaptureJson.readManifest)
       )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       counted <- opened(config) { reader =>
         val now = clock.now()
@@ -198,8 +198,8 @@ private[main] object RebuildCommands {
     * ([[Queries.Usd]] each), and each call past it skipped. Written to `<file>`, the summaries'
     * text side by side for a person to read ([[Summaries.review]]); printed: counts, the
     * estimate and the spend. `--dry-run true` prints the cases and the estimate and asks
-    * nothing. OpenRouter's key comes from the environment over `GRIT_ENV_FILE` (`.env` when
-    * unset), read only when an ask is to be made; the database's login from
+    * nothing. OpenRouter's key comes from the environment
+    * ([[DotEnv.loadDefault]]), read only when an ask is to be made; the database's login from
     * `GRIT_DATABASE_USER` and `_PASSWORD`. A call's latency is measured on `clock`.
     */
   private[main] def summaries(f: Map[String, String], clock: Clock^): Either[String, Unit] =
@@ -223,7 +223,7 @@ private[main] object RebuildCommands {
           .toRight("capture.json: not JSON")
           .flatMap(CaptureJson.readManifest)
       )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       cases <- opened(config)(reader => Summaries.of(reader, manifest.dump.at, first))
       pin <- Seed.catalog.map(_.pin.summary.first)

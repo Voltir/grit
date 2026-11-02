@@ -32,6 +32,16 @@ object DotEnv {
           }
       }
 
+  /** The variable naming the `.env` file [[loadDefault]] reads. */
+  val FileVar: String = "GRIT_ENV_FILE"
+
+  /** `env` over the variables of the file `env` names in [[FileVar]], or of `.env` in the working
+    * directory when it names none, read as [[load]] reads one: the environment wins. A program's
+    * launcher may name the file itself (`scripts/eval` names the main checkout's).
+    */
+  def loadDefault(env: Map[String, String]): Either[String, Map[String, String]] =
+    load(java.nio.file.Path.of(env.getOrElse(FileVar, ".env")), env)
+
   /** `env` over the variables of the file at `path`, if it exists: the environment wins. */
   def load(
       path: java.nio.file.Path,

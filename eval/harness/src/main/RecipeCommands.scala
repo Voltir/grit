@@ -80,8 +80,8 @@ private[main] object RecipeCommands {
     * shaped turns it decides as they were recorded ([[TurnVariant.asRecorded]]), naming those
     * it does not. The reference is `--reference` (a file of ids, [[Reference.read]]; none when
     * it does not exist) and the reply labels in `--labels` ([[Reference.labelled]]; none when
-    * it does not exist). Jev's key comes from the environment over `GRIT_ENV_FILE` (`.env`
-    * when unset), read only when a call is to be asked; the database's login from
+    * it does not exist). Jev's key comes from the environment
+    * ([[DotEnv.loadDefault]]), read only when a call is to be asked; the database's login from
     * `GRIT_DATABASE_USER` and `_PASSWORD`. A call's latency is measured on `clock`.
     */
   private[main] def recipes(f: Map[String, String], clock: Clock^): Either[String, Unit] =
@@ -145,7 +145,7 @@ private[main] object RecipeCommands {
         .toLeft(())
         .left
         .map(why => s"refused: $why")
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       store = Cache.at[Vector[Weights]](cacheDir)
       text <- opened(config) { reader =>

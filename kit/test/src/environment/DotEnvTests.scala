@@ -42,5 +42,18 @@ object DotEnvTests extends TestSuite {
       DotEnv.load(file, Map("A" -> "env")) ==> Right(Map("A" -> "env", "B" -> "file"))
       DotEnv.load(dir.resolve("missing"), Map("A" -> "env")) ==> Right(Map("A" -> "env"))
     }
+
+    test(
+      "loadDefault reads the file GRIT_ENV_FILE names in the environment it is given, and .env in the working directory when that names none"
+    ) {
+      val dir = java.nio.file.Files.createTempDirectory("dotenv")
+      val file = dir.resolve("deployment.env")
+      java.nio.file.Files.writeString(file, "A=file\nB=file\n")
+      val named = Map(DotEnv.FileVar -> file.toString, "A" -> "env")
+      DotEnv.loadDefault(named) ==> Right(named + ("B" -> "file"))
+      // The test's working directory holds no `.env`: the environment comes back as it is.
+      java.nio.file.Files.exists(java.nio.file.Path.of(".env")) ==> false
+      DotEnv.loadDefault(Map("A" -> "env")) ==> Right(Map("A" -> "env"))
+    }
   }
 }

@@ -39,8 +39,8 @@ private[main] object LabCommands {
     * ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and
     * `clock`'s now, of the repository at `<path>`. With `--known`, its own commits through its
     * checks ([[Rig.known]]); otherwise a coder run under the caps ([[Rig.trial]]: the agent's
-    * prompt the file `<file>`, the key `ANTHROPIC_API_KEY` from the environment over
-    * `GRIT_ENV_FILE`), kept with its transcript in the database at `<jdbc>` and the blobs at
+    * prompt the file `<file>`, the key `ANTHROPIC_API_KEY` from the environment,
+    * [[DotEnv.loadDefault]]), kept with its transcript in the database at `<jdbc>` and the blobs at
     * `<blobs>` ([[Bench.keep]]). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
@@ -54,7 +54,7 @@ private[main] object LabCommands {
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))
       _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       redaction = Redaction.of(env)
       _ = System.err.println(s"[bench] ${redaction.described}")
       work = new LocalProcesses(root, sys.env, redaction)
@@ -124,7 +124,7 @@ private[main] object LabCommands {
     * `<dir>` within `--spend` USD over all the runs. Each run scored ([[RoomScore.of]]) and all
     * written to `<out>/lab-stitch-<room>.md` ([[Report.lab]]); printed up to the first run's
     * section, before any of the room's text. Jev's key and the database's login
-    * come from the environment over `GRIT_ENV_FILE` (`.env` when unset); each call is timed by
+    * come from the environment ([[DotEnv.loadDefault]]); each call is timed by
     * `clock`.
     */
   private[main] def labStitch(f: Map[String, String], clock: Clock^): Either[String, Unit] =
@@ -164,7 +164,7 @@ private[main] object LabCommands {
         recent = recent,
         burst = burst
       )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       jev <- JevConfig.fromEnv(env).left.map(_.message)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       budget <- Budget.of(cap, BigDecimal(0)).left.map(refused)

@@ -139,7 +139,7 @@ private[main] object ReplyCommands {
             .map(c.gold -> _)
         )
         for {
-          env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+          env <- DotEnv.loadDefault(sys.env)
           config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
           matched <- opened(config) { reader =>
             Traversal.traverse(replied) { (gold, t) =>
@@ -183,7 +183,7 @@ private[main] object ReplyCommands {
         .fold(Right(dumped))(v =>
           Try(Instant.parse(v)).toOption.toRight(s"--until $v: not an instant")
         )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       replayed <- opened(config) { reader =>
         for {

@@ -1,6 +1,5 @@
 package grit.eval.harness.main
 
-import java.nio.file.Path
 import java.time.Instant
 
 import scala.util.Try
@@ -26,7 +25,7 @@ private[main] object IntegrityCommands {
     * conversations whose roots are asked, and writes nothing. Each turn that had a write-out
     * tool withheld has its root asked of Jev once ([[grit.eval.harness.loss.WriteOut]]),
     * uncached; its key
-    * comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), read only when a
+    * comes from the environment ([[DotEnv.loadDefault]]), read only when a
     * root is to be asked, and the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`.
     */
   private[main] def integrityLoss(f: Map[String, String], clock: Clock^): Either[String, Unit] =
@@ -35,7 +34,7 @@ private[main] object IntegrityCommands {
       since <- need(f, "since").flatMap(s =>
         Try(Instant.parse(s)).toOption.toRight(s"--since $s: not an instant (2026-10-14T00:00:00Z)")
       )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       lines <- opened(config) { reader =>
         for {

@@ -35,7 +35,7 @@ private[main] object RunCommands {
     * <dir> [--repeats n (default [[Repeats.Default]])] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for
     * `--no-cache`: the capture's cases' questions rebuilt, how they changed from capture
     * reported, then asked of Jev under the cap, and the log written to `<runs>/<stamp>-<variant>.jsonl`.
-    * The key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), the
+    * The key comes from the environment ([[DotEnv.loadDefault]]), the
     * database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. The stamp and the header's
     * start are `clock`'s now, and each call's latency is measured on it.
     */
@@ -69,7 +69,7 @@ private[main] object RunCommands {
           .toRight("cases.jsonl: a line is not JSON")
           .flatMap(CaptureJson.readCase)
       )
-      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      env <- DotEnv.loadDefault(sys.env)
       jev <- JevConfig.fromEnv(env).left.map(_.message)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       cases = first.fold(all)(n => all.sortBy(c => byTs(c)).take(n))

@@ -10,7 +10,7 @@ import grit.models.{KeptCatalog, Seed}
 
 /** Prints the seed catalog with every model setting approved at runtime laid over it, in the seed's
   * form, for a person to put in `extensions/models/resources/catalog.json` and commit. The settings
-  * are read from the Postgres `GRIT_DATABASE_*` names (a `.env` may set it), and nothing is
+  * are read from the Postgres `GRIT_DATABASE_*` names (a `.env` may set it: [[DotEnv.loadDefault]]), and nothing is
   * written.
   *
   * {{{./mill grit.app.runMain grit.app.main.PromoteModelSettings > extensions/models/resources/catalog.json}}}
@@ -24,9 +24,7 @@ object PromoteModelSettings {
   def main(args: Array[String]): Unit = {
     val _ = args
     val clock: Clock^ = Clock.system() // clock-check: a one-shot command's composition root
-    val env = DotEnv
-      .load(java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
-      .fold(fail, identity)
+    val env = DotEnv.loadDefault(sys.env).fold(fail, identity)
     val config = DbConfig.fromEnv(env).left.map(_.message).fold(fail, identity)
     val seed = Seed.catalog.fold(fail, identity)
     // The reference deployment, serving nothing: its engine opens under the deployment's

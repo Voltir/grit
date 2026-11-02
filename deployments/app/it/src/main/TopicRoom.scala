@@ -15,6 +15,7 @@ import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.DbConfig
 import grit.eval.{Room, TopicScore}
+import grit.kit.environment.DotEnv
 import grit.kit.run.{Launch, OnceRuns}
 import grit.knowledge.card.{Card, CardSummary, UnitVersion}
 import grit.knowledge.plugin.TopicDocuments
@@ -28,7 +29,7 @@ import grit.knowledge.topic.{Aside, Lineage, Passage, Topic, TopicDream, TopicPa
   * writes (default [[TopicDocuments.PerRun]]) and how many of the room's first days are run
   * (default all; the score is then of what those days placed). The database is `GRIT_DATABASE_*`'s, which must
   * be empty and is left as the runs leave it; OpenRouter's key and the models' variables come
-  * from the environment over `GRIT_ENV_FILE` (`.env` when unset). The room is moved whole days
+  * from the environment ([[DotEnv.loadDefault]]). The room is moved whole days
   * so its last day is yesterday (UTC), its messages written as [[RoomRun.seeded]] writes them,
   * and its cards kept by a plugin `knowledge` exporting them, each a Drive file's under its id,
   * written when the room says. The topics plugin at public then runs `topics-dream` once for
@@ -76,7 +77,7 @@ object TopicRoom {
         .fold(Right(Int.MaxValue))(n =>
           n.toIntOption.filter(_ > 0).toRight(s"no number of days: $n")
         )
-      env <- RoomRun.env
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env).left.map(_.message)
       room <- RoomRun.room(file)
       days = (room.messages.map(_.at) ++ room.cards.map(_.at))

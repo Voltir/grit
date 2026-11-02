@@ -21,7 +21,7 @@ import grit.core.visibility.{Integrity, Label, Subject}
 import grit.dbos.engine.Engine
 import grit.eval.Room
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
-import grit.kit.environment.{DotEnv, Secrets}
+import grit.kit.environment.Secrets
 import grit.models.{OpenRouterConfig, Seed}
 import grit.turn.TurnLoop
 
@@ -38,10 +38,6 @@ private[main] object RoomRun {
     val path = Path.of(file).toAbsolutePath
     Room.read(path.getFileName.toString.stripSuffix(".json"), os.read(os.Path(path)))
   }
-
-  /** The environment over `GRIT_ENV_FILE` (`.env` when unset): the environment wins. */
-  def env: Either[String, Map[String, String]] =
-    DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
 
   /** A deployment of `plugins` alone, no edge, its day capped at `cap`, its models
     * OpenRouter's under `env`; and its secrets.

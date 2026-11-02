@@ -164,10 +164,7 @@ object Main {
         Some(exitOnLeft(backfillTopics(args.drop(2).toVector)))
       else None
     val reported = cacheReported(args.toVector)
-    // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
-    // environment: a variable set in both takes the environment's value.
-    val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
-    val env = exitOnLeft(DotEnv.load(envFile, sys.env))
+    val env = exitOnLeft(DotEnv.loadDefault(sys.env))
     val log = env.getOrElse(
       "GRIT_LOG",
       Launch.temp.resolve("grit-tui.log").toString

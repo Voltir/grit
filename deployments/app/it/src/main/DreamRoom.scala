@@ -9,6 +9,7 @@ import grit.core.stitch.StrandShelf
 import grit.core.visibility.{Label, Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
+import grit.kit.environment.DotEnv
 import grit.kit.run.Launch
 import grit.knowledge.plugin.StrandDocuments
 
@@ -17,7 +18,7 @@ import grit.knowledge.plugin.StrandDocuments
   *
   * Args: the room's JSON file, then the day's cap in USD. The database is `GRIT_DATABASE_*`'s,
   * which must be empty and is left as the run leaves it; OpenRouter's key and the models'
-  * variables come from the environment over `GRIT_ENV_FILE` (`.env` when unset). The room's
+  * variables come from the environment ([[DotEnv.loadDefault]]). The room's
   * messages are written as heard, shifted so its last was said an hour ago, each top-level one
   * a Slack thread whose replies are the messages naming it as their `thread`; each top-level
   * message with a topic follows the room's first earlier one with that topic, as the room's
@@ -39,7 +40,7 @@ object DreamRoom {
     for {
       file <- args.headOption.toRight("no room file")
       cap <- args.lift(1).toRight("no cap").flatMap(DailyCap.of)
-      env <- RoomRun.env
+      env <- DotEnv.loadDefault(sys.env)
       config <- DbConfig.fromEnv(env).left.map(_.message)
       room <- RoomRun.room(file)
       last <- room.messages.map(_.at).maxOption.toRight("an empty room")
