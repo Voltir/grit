@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.host.Argv
+import grit.core.place.Directory
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.{McpError, McpTool, Rpc}
 
@@ -207,6 +208,62 @@ object McpStdioTests extends TestSuite {
         c.call(show, ujson.Obj()).left.map(_.message),
         fake.kills
       ) ==> (closed, closed, 1)
+    }
+
+    test(
+      "a server reading the asking directory has that argument out of each schema, set on each call; a call giving it, or with no directory, is not sent"
+    ) {
+      val fake = new FakeStdioServer
+      fake.lists(
+        Vector(
+          ujson.Obj(
+            "name" -> "show",
+            "inputSchema" -> ujson.Obj(
+              "type" -> "object",
+              "properties" -> ujson.Obj(
+                "symbols" -> ujson.Obj("type" -> "array"),
+                "root" -> ujson.Obj("type" -> "string")
+              ),
+              "required" -> ujson.Arr("symbols", "root")
+            ),
+            "annotations" -> ujson.Obj("readOnlyHint" -> true)
+          )
+        )
+      )
+      fake.answers("show", "shown")
+      val server = Argv
+        .of("/opt/fake/server", "mcp")
+        .flatMap(McpServer.stdio("fake", _, McpScope.Open, directoryArgument = Some("root")))
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val c = McpClient.stdio(server, fake, Clock.system())
+      val show = listed(c, "show")
+      val dir =
+        Directory.of("/work/tree").fold(e => throw new java.lang.AssertionError(e), identity)
+      val asked = text(c.call(show, ujson.Obj("symbols" -> ujson.Arr("A")), Some(dir)))
+      val giving = c.call(show, ujson.Obj("root" -> "/elsewhere"), Some(dir)).left.map(_.message)
+      val nowhere = c.call(show, ujson.Obj(), None).left.map(_.message)
+      c.close()
+      (
+        show.inputSchema,
+        asked,
+        fake.received.filter(_("method").str == "tools/call").map(_("params")("arguments")),
+        giving,
+        nowhere
+      ) ==> (
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj("symbols" -> ujson.Obj("type" -> "array")),
+          "required" -> ujson.Arr("symbols")
+        ),
+        Right("shown"),
+        Vector(ujson.Obj("symbols" -> ujson.Arr("A"), "root" -> "/work/tree")),
+        Left(
+          "was not asked: root is set by grit to the directory of the conversation asking; call it without root"
+        ),
+        Left(
+          "was not asked: it reads the directory of the conversation asking, and this conversation works in no directory"
+        )
+      )
     }
 
     test("calls made together each get their own answer") {

@@ -17,7 +17,10 @@ import grit.mcp.wire.McpCalled
   * beside the call's ([[grit.mcp.wire.McpCalled.looked]]); a call lacking a lookup's argument,
   * or one whose lookup the server refuses or does not list as read-only, is not sent
   * ([[grit.mcp.wire.McpError.NotLooked]]). A lookup is grit's own call, made whatever `allow`
-  * and `scope` say of its tool, with the one argument the call already sends.
+  * and `scope` say of its tool, with the one argument the call already sends. The argument
+  * `directoryArgument` names, when it names one, is grit's to give: it is left out of every
+  * tool's schema as offered, and each call is sent with it set to the directory of the
+  * conversation asking ([[McpClient.call]]).
   */
 final case class McpServer[+T <: McpTransport] private (
     name: String,
@@ -25,7 +28,8 @@ final case class McpServer[+T <: McpTransport] private (
     scope: McpScope,
     allow: Set[String],
     accounts: Accounts[McpCalled],
-    lookups: Map[String, Vector[Lookup]]
+    lookups: Map[String, Vector[Lookup]],
+    directoryArgument: Option[String]
 )
 
 /** A call made before a call of a tool that names its subject by `argument` but not where it
@@ -47,7 +51,7 @@ object McpServer {
   /** The server, or why not: `name` not a lowercase letter then lowercase letters, digits or
     * `_` (at most 16 characters); `endpoint` not an absolute `https` URL with a host (`http`
     * only on a loopback host: `localhost`, `127.x.x.x` or `[::1]`); a tool in `lookups`
-    * looking itself up, or one tool twice.
+    * looking itself up, or one tool twice; `directoryArgument` blank.
     */
   def of(
       name: String,
@@ -56,7 +60,8 @@ object McpServer {
       scope: McpScope,
       allow: Set[String] = Set.empty,
       accounts: Accounts[McpCalled] = Accounts.none,
-      lookups: Map[String, Vector[Lookup]] = Map.empty
+      lookups: Map[String, Vector[Lookup]] = Map.empty,
+      directoryArgument: Option[String] = None
   ): Either[String, McpServer[McpTransport.Http]] = {
     val transport: Either[String, McpTransport.Http] = for {
       uri <- Try(new URI(endpoint)).toOption
@@ -68,11 +73,11 @@ object McpServer {
         s"$name's endpoint must be https (http only on a loopback host): '$endpoint'"
       )
     } yield new McpTransport.Http(uri, credential)
-    declared(name, transport, scope, allow, accounts, lookups)
+    declared(name, transport, scope, allow, accounts, lookups, directoryArgument)
   }
 
-  /** The server reached by starting `argv` ([[McpTransport.Stdio]]), or why not: `name` or
-    * `lookups` as [[of]] refuses them.
+  /** The server reached by starting `argv` ([[McpTransport.Stdio]]), or why not: `name`,
+    * `lookups` or `directoryArgument` as [[of]] refuses them.
     */
   def stdio(
       name: String,
@@ -80,9 +85,18 @@ object McpServer {
       scope: McpScope,
       allow: Set[String] = Set.empty,
       accounts: Accounts[McpCalled] = Accounts.none,
-      lookups: Map[String, Vector[Lookup]] = Map.empty
+      lookups: Map[String, Vector[Lookup]] = Map.empty,
+      directoryArgument: Option[String] = None
   ): Either[String, McpServer[McpTransport.Stdio]] =
-    declared(name, Right(new McpTransport.Stdio(argv)), scope, allow, accounts, lookups)
+    declared(
+      name,
+      Right(new McpTransport.Stdio(argv)),
+      scope,
+      allow,
+      accounts,
+      lookups,
+      directoryArgument
+    )
 
   /** The server reached by `transport`, or why not: `name`, then `transport`'s own refusal, then
     * `lookups`, as [[of]] refuses them.
@@ -93,7 +107,8 @@ object McpServer {
       scope: McpScope,
       allow: Set[String],
       accounts: Accounts[McpCalled],
-      lookups: Map[String, Vector[Lookup]]
+      lookups: Map[String, Vector[Lookup]],
+      directoryArgument: Option[String]
   ): Either[String, McpServer[T]] =
     for {
       _ <- Either.cond(
@@ -103,6 +118,11 @@ object McpServer {
           s"digits or _, not '$name'"
       )
       reached <- transport
+      _ <- Either.cond(
+        directoryArgument.forall(_.trim.nonEmpty),
+        (),
+        s"$name's directory argument is blank"
+      )
       _ <- lookups.toVector.sortBy(_._1).foldLeft[Either[String, Unit]](Right(())) {
         case (read, (tool, ls)) =>
           val tools = ls.map(_.tool)
@@ -115,7 +135,7 @@ object McpServer {
                 .fold(Right(()))(t => Left(s"$name's $tool looks up $t twice"))
           }
       }
-    } yield new McpServer(name, reached, scope, allow, accounts, lookups)
+    } yield new McpServer(name, reached, scope, allow, accounts, lookups, directoryArgument)
 
   private val Name = "[a-z][a-z0-9_]{0,15}".r
 

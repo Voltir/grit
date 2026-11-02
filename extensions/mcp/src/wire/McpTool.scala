@@ -18,7 +18,27 @@ final case class McpTool private (
     does: String,
     inputSchema: ujson.Obj,
     params: Vector[McpTool.Param]
-)
+) {
+
+  /** This tool with `names` gone from its schema's `properties` and `required`, and from the
+    * arguments a call mirrors into headers.
+    */
+  private[mcp] def without(names: Set[String]): McpTool =
+    if (names.isEmpty) this
+    else {
+      val schema = ujson.Obj.from(inputSchema.value.map {
+        case ("properties", ujson.Obj(props)) =>
+          "properties" -> ujson.Obj.from(props.filterNot((k, _) => names.contains(k)))
+        case ("required", ujson.Arr(req)) =>
+          "required" -> ujson.Arr.from(req.filterNot(_.strOpt.exists(names.contains)))
+        case other => other
+      })
+      copy(
+        inputSchema = schema,
+        params = params.filterNot(_.path.headOption.exists(names.contains))
+      )
+    }
+}
 
 object McpTool {
 

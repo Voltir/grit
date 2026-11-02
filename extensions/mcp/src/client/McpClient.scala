@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.host.Processes
+import grit.core.place.Directory
 import grit.core.visibility.Itemised
 import grit.mcp.wire.{Answer, McpCalled, McpError, McpTool, Rpc, Skipped}
 
@@ -38,7 +39,8 @@ final class McpClient private (
 
   /** The tools grit may offer from `server`, every page of its list, less those its allowlist
     * leaves out ([[Skipped.NotAllowed]]) and then those its scope excludes
-    * ([[Skipped.OutOfScope]]): the list kept while fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
+    * ([[Skipped.OutOfScope]]), each schema without the server's
+    * [[McpServer.directoryArgument]]: the list kept while fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
     * that page's `ttlMs`, so a page without one makes it stale at once. A re-list that fails
     * returns the kept list when there is one, else its error; [[McpError.Unreadable]] when the
     * list runs past [[McpClient.MaxPages]] pages. A re-list blocks on its server for up to
@@ -66,11 +68,14 @@ final class McpClient private (
     ()
   }
 
-  /** `tool` called with `arguments` as the server's scope sends them
-    * ([[grit.mcp.scope.McpScope.request]]): its answer as the scope shows it
+  /** `tool` called with `arguments`, for a conversation working in `asking`, as the server's
+    * scope sends them ([[grit.mcp.scope.McpScope.request]]), the server's
+    * [[McpServer.directoryArgument]], when it names one, set to `asking`: its answer as the scope shows it
     * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, its items as the server's
     * `accounts` read the shown result: whole ([[Answer.of]]) or cut by item ([[Answer.cut]]);
     * or why none:
+    * [[McpError.Unsent]], with nothing sent, when the call gives the directory argument itself,
+    * or `asking` is none and the server names one;
     * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call;
     * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it;
     * [[McpError.Unplaced]], with none of it shown, when `accounts` cannot place it;
@@ -80,9 +85,14 @@ final class McpClient private (
     * [[stale]], since the server's tools may have changed. Blocks on the server for up to
     * [[McpClient.Timeout]] a request: the call and each of its lookups.
     */
-  def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
+  def call(
+      tool: McpTool,
+      arguments: ujson.Obj,
+      asking: Option[Directory] = None
+  ): Either[McpError, Answer] = {
     val answered = for {
-      sent <- server.scope.request(tool, arguments).left.map(McpError.OutOfScope(_))
+      withDirectory <- directed(arguments, asking)
+      sent <- server.scope.request(tool, withDirectory).left.map(McpError.OutOfScope(_))
       looked <- look(tool.name, sent)
       result <- exchange(Rpc.Call.CallTool(tool, sent))
       shown <- server.scope.shown(tool, result).left.map(McpError.Unattributed(_))
@@ -102,6 +112,33 @@ final class McpClient private (
     }
     answered
   }
+
+  /** `arguments` as sent for a conversation working in `asking`: with the server's
+    * [[McpServer.directoryArgument]] set to it, when it names one; else as given.
+    */
+  private def directed(
+      arguments: ujson.Obj,
+      asking: Option[Directory]
+  ): Either[McpError, ujson.Obj] =
+    server.directoryArgument match {
+      case None => Right(arguments)
+      case Some(name) if arguments.value.contains(name) =>
+        Left(
+          McpError.Unsent(
+            s"$name is set by grit to the directory of the conversation asking; call it without $name"
+          )
+        )
+      case Some(name) =>
+        asking
+          .map(dir =>
+            ujson.Obj.from(arguments.value.toSeq :+ (name -> ujson.Str(Directory.value(dir))))
+          )
+          .toRight(
+            McpError.Unsent(
+              "it reads the directory of the conversation asking, and this conversation works in no directory"
+            )
+          )
+    }
 
   /** The answers of `tool`'s lookups ([[McpServer.lookups]]) for a call sending `sent`, each by
     * its tool's name; [[McpError.NotLooked]], with none sent, when `sent` lacks an argument one
@@ -166,7 +203,10 @@ final class McpClient private (
         }
     from(None, 0, Vector.empty).map { read =>
       val pages = read.map(_._1)
-      val listed = pages.flatMap(_.tools).distinctBy(_.name)
+      val listed = pages
+        .flatMap(_.tools)
+        .distinctBy(_.name)
+        .map(_.without(server.directoryArgument.toSet))
       val skipped = pages.flatMap(_.skipped)
       val (allowed, unallowed) =
         listed.partition(t => server.allow.isEmpty || server.allow.contains(t.name))

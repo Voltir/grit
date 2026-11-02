@@ -67,6 +67,9 @@ enum McpError {
     */
   case Exited(code: Int, errors: String)
 
+  /** The call was not sent, for a reason of grit's: `why`, in words the model reads. */
+  case Unsent(why: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused the token it was given"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -95,6 +98,7 @@ enum McpError {
       s"was not asked, since what it would read could not be looked up first: $why"
     case Exited(code, _) =>
       s"ended before it answered (exit $code); it starts again on the next call"
+    case Unsent(why) => s"was not asked: $why"
   }
 
   /** What the operator's log is told of it: its [[message]], the server's own words in a
