@@ -2,7 +2,20 @@ package grit.tools
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{Clipped, Edits, HostError, Lines, RelPath, Replace, Shell, Workspace}
+import grit.core.host.{
+  Allowlist,
+  Allowlisted,
+  Argv,
+  Clipped,
+  Edits,
+  HostError,
+  Lines,
+  Ran,
+  RelPath,
+  Replace,
+  Shell,
+  Workspace
+}
 import grit.core.place.Place
 import grit.core.session.Event
 import grit.core.session.Event.Unrecorded
@@ -25,9 +38,10 @@ import grit.core.visibility.Integrity
 
 /** The coding tool set: reading, searching, changing and running things in a checkout. Each
   * tool's description is all the model is told of it, so it states the tool's limits and
-  * every failure the model can see. `write`, `edit` and `run` ask a person first, and are
-  * bound only to a call stamped at [[Integrity.Member]] or above. Every tool's results are
-  * believed at [[Integrity.Member]]: the checkout is its operator's own.
+  * every failure the model can see. `write`, `edit` and `run` ask a person first in [[all]], and
+  * nobody in [[allowlisted]] (ADR 0055); either way they are bound only to a call stamped at
+  * [[Integrity.Member]] or above. Every tool's results are believed at [[Integrity.Member]]:
+  * the checkout is its operator's own.
   */
 object Coding {
 
@@ -37,12 +51,15 @@ object Coding {
   type WriteArgs = (path: RelPath, content: String)
   type EditArgs = (path: RelPath, edits: List[Replace])
   type RunArgs = (command: String, timeout: FiniteDuration)
+  type ArgvArgs = (argv: Argv, timeout: FiniteDuration)
 
-  /** The seconds a command may run when the call gives no `timeout`. */
+  /** The seconds a command may run when the call gives no `timeout`, or its allowlist's longest
+    * when that is less.
+    */
   val DefaultTimeout: FiniteDuration = 60.seconds
 
-  /** The most seconds a call may give a command. */
-  val MaxTimeout: FiniteDuration = 600.seconds
+  /** The most arguments an allowlisted `run` passes a program. */
+  val MaxArgs = 256
 
   /** The deepest `list` goes. */
   val MaxDepth = 5
@@ -74,6 +91,33 @@ object Coding {
       shell: Shell^
   ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, shell}]] =
     Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
+
+  /** `read`, `list`, `search`, `write`, `edit` and `run` as an allowlist offers them, in that
+    * order: described, never run; an edge runs them ([[allowlisted]]). None asks first;
+    * `write`, `edit` and `run` are still bound only to a call stamped at [[Integrity.Member]]
+    * or above. `run` takes a program and its arguments, no shell line, its description lists
+    * what `allowlist` permits, and its `timeout` is at most the allowlist's longest.
+    */
+  def allowlistedHosted(allowlist: Allowlist): Vector[Tool.Offered] =
+    Vector(readHosted, listHosted, searchHosted, freeWrite, freeEdit, argvRunHosted(allowlist))
+
+  /** The tools [[allowlistedHosted]] describes for `runs.allowlist`, each `run` refused, running
+    * nothing, when `runs` does not permit it; `Left` names a tool that cannot be offered with
+    * the others.
+    */
+  def allowlisted(
+      ws: Workspace^,
+      edits: Edits^,
+      runs: Allowlisted^
+  ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, runs}]] =
+    Toolbox.of(
+      read(ws),
+      list(ws),
+      search(ws),
+      writing(freeWrite, edits),
+      editing(freeEdit, edits),
+      argvRun(runs)
+    )
 
   /** `read` as the engine offers it: an edge runs it ([[read]]). */
   lazy val readHosted: Hosted[ReadArgs] =
@@ -180,6 +224,18 @@ object Coding {
 
   /** `write` as the engine offers it: an edge runs it ([[write]]). */
   lazy val writeHosted: Hosted[WriteArgs] =
+    writeAs(Gate.Ask(a => {
+      val lines = Clipped.lines(a.content)
+      s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
+        preview(lines, "+ ")
+    }))
+
+  def write(edits: Edits^): Tool[WriteArgs]^{edits} = writing(writeHosted, edits)
+
+  /** `write` as an allowlisted set offers it: asking no one. */
+  private lazy val freeWrite: Hosted[WriteArgs] = writeAs(Gate.Free)
+
+  private def writeAs(gate: Gate[WriteArgs]): Hosted[WriteArgs] =
     new Hosted(
       ToolSpec(
         ToolName("write"),
@@ -200,18 +256,14 @@ object Coding {
         retry = Retry.Rerun,
         action = Some("write files")
       ),
-      Gate.Ask(a => {
-        val lines = Clipped.lines(a.content)
-        s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
-          preview(lines, "+ ")
-      }),
+      gate,
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
 
-  def write(edits: Edits^): Tool[WriteArgs]^{edits} =
-    writeHosted.over(a =>
+  private def writing(hosted: Hosted[WriteArgs], edits: Edits^): Tool[WriteArgs]^{edits} =
+    hosted.over(a =>
       outcome(edits.write(a.path, a.content))(_ =>
         s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
       )
@@ -219,6 +271,21 @@ object Coding {
 
   /** `edit` as the engine offers it: an edge runs it ([[edit]]). */
   lazy val editHosted: Hosted[EditArgs] =
+    editAs(Gate.Ask(a => {
+      val shown = a.edits.zipWithIndex.map { (e, i) =>
+        s"@@ edits[$i]\n" + preview(Clipped.lines(e.oldText), "- ") + "\n" +
+          preview(Clipped.lines(e.newText), "+ ")
+      }
+      s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
+        shown.mkString("\n")
+    }))
+
+  def edit(edits: Edits^): Tool[EditArgs]^{edits} = editing(editHosted, edits)
+
+  /** `edit` as an allowlisted set offers it: asking no one. */
+  private lazy val freeEdit: Hosted[EditArgs] = editAs(Gate.Free)
+
+  private def editAs(gate: Gate[EditArgs]): Hosted[EditArgs] =
     new Hosted(
       ToolSpec(
         ToolName("edit"),
@@ -249,21 +316,14 @@ object Coding {
               .map(p => (path = p, edits = a.edits.map(e => Replace(e.oldText, e.newText))))
           )
       ),
-      Gate.Ask(a => {
-        val shown = a.edits.zipWithIndex.map { (e, i) =>
-          s"@@ edits[$i]\n" + preview(Clipped.lines(e.oldText), "- ") + "\n" +
-            preview(Clipped.lines(e.newText), "+ ")
-        }
-        s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
-          shown.mkString("\n")
-      }),
+      gate,
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
 
-  def edit(edits: Edits^): Tool[EditArgs]^{edits} =
-    editHosted.over(a =>
+  private def editing(hosted: Hosted[EditArgs], edits: Edits^): Tool[EditArgs]^{edits} =
+    hosted.over(a =>
       edits.edit(a.path, a.edits) match {
         case Left(error) => Outcome.Failed(error.message)
         case Right(done) =>
@@ -295,7 +355,7 @@ object Coding {
                 .count(
                   s"The most seconds it may run; ${DefaultTimeout.toSeconds} when not given.",
                   1,
-                  MaxTimeout.toSeconds.toInt
+                  Shell.Longest.toSeconds.toInt
                 )
                 .optional
             )
@@ -308,8 +368,89 @@ object Coding {
     ).requiring(Integrity.Member)
       // A command line is content, never a shape; a commit's sha and subject are its own.
       .logging((a, at, shown) =>
-        Some(committed(at, a.command, shown).getOrElse(Unrecorded.Ran(Event.Shape.Empty)))
+        Some(
+          committed(at, Commits.findFirstIn(a.command).nonEmpty, shown)
+            .getOrElse(Unrecorded.Ran(Event.Shape.Empty))
+        )
       )
+
+  def run(shell: Shell^): Tool[RunArgs]^{shell} =
+    runHosted.over(a => outcome(shell.run(a.command, a.timeout))(answered))
+
+  /** `run` as an allowlisted set offers it: asking no one, taking an argv, its description
+    * listing what `allowlist` permits.
+    */
+  private def argvRunHosted(allowlist: Allowlist): Hosted[ArgvArgs] = {
+    val longest = allowlist.longest
+    val default = DefaultTimeout.min(longest)
+    new Hosted(
+      ToolSpec(
+        ToolName("run"),
+        "Run a program from the list below in the checkout's root, with nothing on its " +
+          "input, and return its exit code and its output and errors, interleaved. " +
+          "`program` and `args` are passed as they are, with no shell: no pipes, `&&`, " +
+          "redirects, globs or variables; use `search` and `read` for what those were for. " +
+          "A non-zero exit is returned, not an error. Shows at most the last " + limits +
+          " of output. Give `git commit` its message with `-m`: no editor can open. Fails, " +
+          "running nothing, when the command is not on the list; fails when it runs past " +
+          s"`timeout` (${default.toSeconds} seconds when not given, at most " +
+          s"${longest.toSeconds} seconds), killing it and everything it started and returning " +
+          "its output so far, or when it cannot start. The commands it runs, where `…` stands " +
+          "for any further arguments:\n" +
+          allowlist.rules.map(r => s"- `${r.written}`").mkString("\n"),
+        Args
+          .of(
+            (
+              program = Field.text("The program, written as the list writes it."),
+              args = Field
+                .texts("Its arguments, in order, each passed as one word.", 0, MaxArgs)
+                .optional,
+              timeout = Field
+                .count(
+                  s"The most seconds it may run; ${default.toSeconds} when not given.",
+                  1,
+                  longest.toSeconds.toInt
+                )
+                .optional
+            )
+          )
+          .refine(a =>
+            Argv
+              .of(a.program, a.args.getOrElse(Nil)*)
+              .left
+              .map(why => ArgsError.Refused("program", s"The command cannot run: $why."))
+              .map(argv => (argv = argv, timeout = a.timeout.fold(default)(_.seconds)))
+          )
+      ),
+      Gate.Free,
+      a => a.argv.written,
+      Believed.At(Integrity.Member)
+    ).requiring(Integrity.Member)
+      // An argv is content, never a shape; a commit's sha and subject are its own.
+      .logging((a, at, shown) =>
+        Some(
+          committed(at, commits(a.argv), shown).getOrElse(Unrecorded.Ran(Event.Shape.Empty))
+        )
+      )
+  }
+
+  private def argvRun(runs: Allowlisted^): Tool[ArgvArgs]^{runs} =
+    argvRunHosted(runs.allowlist).over(a => outcome(runs.run(a.argv, a.timeout))(answered))
+
+  /** A finished command as the model reads it: its exit code, then its output. */
+  private def answered(ran: Ran): String = {
+    val out = ran.output.show
+    if (out.isEmpty) s"$ExitLead${ran.exit}; no output."
+    else s"$ExitLead${ran.exit}. Output:\n$out"
+  }
+
+  /** `argv` runs `git commit`, with any `-C <dir>` before it. */
+  private def commits(argv: Argv): Boolean =
+    argv.program == "git" && (argv.args match {
+      case "commit" :: _ => true
+      case "-C" :: _ :: "commit" :: _ => true
+      case _ => false
+    })
 
   /** `Exit code `: what a run's answer begins with, before its exit code. */
   private val ExitLead: String = "Exit code "
@@ -320,28 +461,16 @@ object Coding {
   /** git's line for a commit it made: `[<branch>[ (root-commit)] <sha>] <subject>`. */
   private val Made = """(?m)^\[\S+(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$""".r
 
-  /** The commit a run of `command` at the worktree `at` made, read from its answer `shown`: when
-    * the command runs `git commit`, it exited 0, and git's line for the commit is in its output.
+  /** The commit a run at the worktree `at` made, read from its answer `shown`: when the command
+    * `commits` (runs `git commit`), it exited 0, and git's line for the commit is in its output.
     */
-  private def committed(at: Place, command: String, shown: String): Option[Unrecorded] =
-    if (
-      Commits.findFirstIn(command).isEmpty || !Seq(".", ";")
-        .exists(e => shown.startsWith(s"${ExitLead}0$e"))
-    ) None
+  private def committed(at: Place, commits: Boolean, shown: String): Option[Unrecorded] =
+    if (!commits || !Seq(".", ";").exists(e => shown.startsWith(s"${ExitLead}0$e"))) None
     else
       Made
         .findFirstMatchIn(shown)
         .flatMap(m => Event.Shape.committed(at, m.group(1), Some(m.group(2))).toOption)
         .map(Unrecorded.Commit(_))
-
-  def run(shell: Shell^): Tool[RunArgs]^{shell} =
-    runHosted.over(a =>
-      outcome(shell.run(a.command, a.timeout)) { ran =>
-        val out = ran.output.show
-        if (out.isEmpty) s"$ExitLead${ran.exit}; no output."
-        else s"$ExitLead${ran.exit}. Output:\n$out"
-      }
-    )
 
   /** One of `edit`'s `edits`. A value of its own: built inline inside the outer `Args.of`,
     * its tuple gets a capture-set variable and `Args.Values` does not reduce.

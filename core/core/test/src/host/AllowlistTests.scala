@@ -9,17 +9,17 @@ import utest.*
   */
 object AllowlistTests extends TestSuite {
 
-  /** Processes that note each run and answer it with exit 0. A fake of a stateful capability,
+  /** Processes that note each run and answer it with `ran`. A fake of a stateful capability,
     * so it may hold its log (STYLE rule 7).
     */
-  final class Noting extends Processes {
+  final class Noting(ran: Ran = Ran(0, Clipped.tail("", _ => None))) extends Processes {
     // Replaced whole by the calls the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
     var log = Vector.empty[(Argv, RelPath, FiniteDuration)]
 
     def run(argv: Argv, dir: RelPath, timeout: FiniteDuration): Either[HostError, Ran] = {
       log = log :+ ((argv, dir, timeout))
-      Right(Ran(0, Clipped.tail("", _ => None)))
+      Right(ran)
     }
 
     def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A] =
@@ -50,16 +50,16 @@ object AllowlistTests extends TestSuite {
       ).map(list.permits) ==> Vector(true, false, false, false, true, true, false, false)
     }
 
-    test("of refuses no rules, and a longest not above zero or past Shell.Longest") {
+    test("of refuses no rules, and a longest under a second or past Shell.Longest") {
       (
         Allowlist.of(Vector.empty, 1.minute),
-        Allowlist.of(Vector(gitStatus), 0.seconds),
+        Allowlist.of(Vector(gitStatus), 999.millis),
         Allowlist.of(Vector(gitStatus), Shell.Longest + 1.second).isLeft,
         Allowlist.of(Vector(gitStatus), Shell.Longest).map(_.longest)
       ) ==> (
         Left("an allowlist names no command"),
         Left(
-          "an allowlist's longest run must be more than zero and at most 10 minutes, not 0 seconds"
+          "an allowlist's longest run must be at least a second and at most 10 minutes, not 999 milliseconds"
         ),
         true,
         Right(Shell.Longest)

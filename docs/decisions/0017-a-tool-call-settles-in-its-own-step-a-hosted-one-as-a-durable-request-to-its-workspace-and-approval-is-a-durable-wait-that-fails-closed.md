@@ -61,5 +61,7 @@ DBOS workflow, not a thread. An edge says what it does with an ask (`ServedEdge.
 `ServedEdge.Asks`): one that answers lists a turn's open asks (`Deliveries.asks`) under that
 turn's subject. While an edge shows none (`Unanswered`), the kit offers no administering tool
 (ADR 0033); a service's (`Never`) holds nothing back.
+In an allowlisted set the deployment's declared command list stands in for the person's approval
+(ADR 0055).
 Requests are journal-class, purged with their period (ADR 0014). Enforced by the replay gate
 and the contract suite `EdgesContract`, with `TurnToolsTests`.

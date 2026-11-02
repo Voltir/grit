@@ -9,10 +9,13 @@ edge runs, over `grit.core.host`'s capabilities; it names no implementation of t
 
 One package, `grit.tools`:
 
-- `Coding` — read, list, search, write, edit and run in a checkout; write, edit and run
-  ask a person first. Everything it reads from the checkout is believed at Member, so a
-  foreign repository cloned into it, its `AGENTS.md` included, is believed at Member too:
-  the person approving the `run` that clones it is the gate.
+- `Coding` — read, list, search, write, edit and run in a checkout. In `Coding.all`, write,
+  edit and run ask a person first; in `Coding.allowlisted`, none asks, and run starts only
+  what the deployment's `Allowlist` permits, as a program and its arguments with no shell
+  (ADR 0055). Everything it reads from the checkout is believed at Member, so a foreign
+  repository cloned into it, its `AGENTS.md` included, is believed at Member too: the gate is
+  the person approving the `run` that clones it, or, in an allowlisted set, the list that
+  permits a command able to clone it.
 - `Tuning` — `propose_model_setting`: a measured setting of a model, kept once a person
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
