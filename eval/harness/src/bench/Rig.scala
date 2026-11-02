@@ -179,7 +179,7 @@ object Rig {
       tried <- tidied(work, dir, keep = true)(
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
-          checkout <- run(work, dir, Clone.Longest)("pwd", "-P").map(_.output.text.trim)
+          checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
           streamed <- configured { variables =>
             val started = clock.millis()
             handing
@@ -355,12 +355,12 @@ object Rig {
       r
     } finally {
       // A checkout that built nothing has no daemon; shutting one down there would start Mill.
-      if (run(work, dir, Clone.Longest)("test", "-d", "out/mill-daemon").isRight) {
-        val _ = run(work, dir, Clone.Longest)("./mill", "shutdown")
+      if (Clone.ran(work, dir, "test", "-d", "out/mill-daemon").isRight) {
+        val _ = Clone.ran(work, dir, "./mill", "shutdown")
       }
-      val _ = run(work, dir, Clone.Longest)("rm", "-rf", "out")
+      val _ = Clone.ran(work, dir, "rm", "-rf", "out")
       if (!(keep && outcome.forall(_.isLeft))) {
-        val _ = run(work, RelPath.Root, Clone.Longest)("rm", "-rf", RelPath.value(dir))
+        val _ = Clone.ran(work, RelPath.Root, "rm", "-rf", RelPath.value(dir))
       }
     }
   }
@@ -423,16 +423,4 @@ object Rig {
             }
       )
 
-  /** `program` with `args` run in `dir`; `Left` when it cannot start, times out or exits other
-    * than 0.
-    */
-  private def run(work: Processes, dir: RelPath, timeout: FiniteDuration)(
-      program: String,
-      args: String*
-  ): Either[String, Ran] =
-    for {
-      argv <- Argv.of(program, args*)
-      ran <- work.run(argv, dir, timeout).left.map(_.message)
-      _ <- Either.cond(ran.exit == 0, (), s"$program exited ${ran.exit}: ${ran.output.text}")
-    } yield ran
 }
