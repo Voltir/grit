@@ -88,16 +88,12 @@ final class SqlDocumentSearch extends DocumentSearch {
          |SELECT $Columns FROM $Labelled d
          | WHERE d.plugin IN (SELECT plugin FROM grit.document_terms WHERE enabled)
          |   AND ${SqlKept.currentAt("d")} AND d.body IS NOT NULL AND ${SqlClearance.kept("d")}
-         |   AND EXISTS (SELECT 1 FROM grit.document_refs r
-         |                WHERE r.version = d.version AND r.kind = ?
-         |                  AND md5(r.ref) = md5(?) AND r.ref = ?)
+         |   AND ${holds("d")}
          | ORDER BY d.written_at DESC, d.version DESC LIMIT 1""".stripMargin
     ) { ps =>
       ps.setObject(SqlClearance.Params + 1, utc(at))
       ps.setObject(SqlClearance.Params + 2, utc(at))
-      ps.setString(SqlClearance.Params + 3, ref.kind)
-      ps.setString(SqlClearance.Params + 4, ref.ref)
-      ps.setString(SqlClearance.Params + 5, ref.ref)
+      bindHolds(ps, SqlClearance.Params + 3, ref)
     }(document).map(_.headOption)
   }
 

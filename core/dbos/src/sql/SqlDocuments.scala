@@ -316,6 +316,18 @@ private[sql] object SqlDocuments {
     ps.setObject(SqlClearance.Params + 6, utc(at))
   }
 
+  /** That the version `alias` holds a reference, whose three parameters [[bindHolds]] sets. */
+  private[sql] def holds(alias: String): String =
+    s"EXISTS (SELECT 1 FROM grit.document_refs r WHERE r.version = $alias.version " +
+      "AND r.kind = ? AND md5(r.ref) = md5(?) AND r.ref = ?)"
+
+  /** Sets [[holds]]'s parameters to `ref`, the first at `from`. */
+  private[sql] def bindHolds(ps: PreparedStatement, from: Int, ref: DocRef): Unit = {
+    ps.setString(from, ref.kind)
+    ps.setString(from + 1, ref.ref)
+    ps.setString(from + 2, ref.ref)
+  }
+
   /** The version `rs` holds ([[Columns]]), a withdrawal included, or why it does not read. */
   def historied(rs: ResultSet): Either[String, DocumentVersion] =
     if (Option(rs.getString("body")).isEmpty)
@@ -449,16 +461,11 @@ private[sql] object SqlDocuments {
           s"""WITH ${SqlClearance.With}
              |SELECT $Columns FROM $Labelled d
              | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
-             |   AND ${SqlClearance.kept("d")}
-             |   AND EXISTS (SELECT 1 FROM grit.document_refs r
-             |                WHERE r.version = d.version AND r.kind = ?
-             |                  AND md5(r.ref) = md5(?) AND r.ref = ?)
+             |   AND ${SqlClearance.kept("d")} AND ${holds("d")}
              | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
         ) { ps =>
           ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
-          ps.setString(SqlClearance.Params + 2, ref.kind)
-          ps.setString(SqlClearance.Params + 3, ref.ref)
-          ps.setString(SqlClearance.Params + 4, ref.ref)
+          bindHolds(ps, SqlClearance.Params + 2, ref)
           ps.setInt(SqlClearance.Params + 5, n)
         }(document)
 
