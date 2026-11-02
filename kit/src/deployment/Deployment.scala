@@ -7,6 +7,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
+import grit.core.host.{Allowlist, Argv, Shell}
 import grit.core.id.{
   AttesterName,
   CorpusName,
@@ -33,13 +34,13 @@ import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
-import grit.core.tool.ToolName
+import grit.core.tool.{Tool, ToolName}
 import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading}
 import grit.core.visibility.{Compartment, Label, Visibility}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.JevClassifier
-import grit.tools.Names
+import grit.tools.{Coding, Names}
 import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -59,6 +60,50 @@ enum Offered {
     * (`Audience.operator`).
     */
   case All
+
+  /** `read`, `list` and `search`, `write`, `edit` and `run` as `allowlist` permits
+    * (`Coding.allowlisted`), and `about`: none asks first, so a run nobody watches may offer it
+    * (ADR 0055).
+    */
+  case Allowlisted(allowlist: Allowlist)
+
+  /** The coding tools this offer hosts, as the engine offers them and its local edge advertises
+    * them.
+    */
+  def hosted: Vector[Tool.Offered] = this match {
+    case Read => Coding.readOnlyHosted
+    case All => Coding.hosted
+    case Allowlisted(allowlist) => Coding.allowlistedHosted(allowlist)
+  }
+}
+
+object Offered {
+
+  /** The reference deployment's allowlist: `git status`, `git diff`, `git log`, `git show`,
+    * `git add` and `git commit`, `./mill` and `scripts/check`, each with any further arguments,
+    * for at most [[Shell.Longest]]. A listed build runs the checkout's code (ADR 0055).
+    */
+  val ReferenceAllowlist: Allowlist = {
+    def leading(program: String, args: String*): Either[String, Allowlist.Rule] =
+      Argv.of(program, args*).map(Allowlist.Rule.Leading(_))
+    val rules = Vector(
+      leading("git", "status"),
+      leading("git", "diff"),
+      leading("git", "log"),
+      leading("git", "show"),
+      leading("git", "add"),
+      leading("git", "commit"),
+      leading("./mill"),
+      leading("scripts/check")
+    )
+    // Every argv above is a non-empty program without a NUL, and Shell.Longest is in bounds.
+    rules
+      .foldLeft[Either[String, Vector[Allowlist.Rule]]](Right(Vector.empty))((all, rule) =>
+        all.flatMap(done => rule.map(done :+ _))
+      )
+      .flatMap(Allowlist.of(_, Shell.Longest))
+      .fold(why => throw new IllegalStateException(why), identity)
+  }
 }
 
 /** How a turn's window is assembled, within `window` estimated tokens. */
@@ -275,7 +320,7 @@ enum DeploymentRefusal {
 
   def message: String = this match {
     case AsksUnanswered(edges) =>
-      s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
+      s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's or an allowlist's"
     case EdgeRepeated(name) => s"two edges are named ${EdgeName.value(name)}"
     case SweepTooOften(every) => s"the sweep, every $every, must be at least a second apart"
     case SpeaksUnjudged(reason) =>
@@ -564,7 +609,7 @@ object Deployment {
         }
         .toLeft(())
       _ <- Either.cond(
-        offer.tools == Offered.Read || unanswered.isEmpty,
+        offer.tools != Offered.All || unanswered.isEmpty,
         (),
         DeploymentRefusal.AsksUnanswered(unanswered)
       )

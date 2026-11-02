@@ -44,7 +44,7 @@ import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{CatalogModels, JevClassifier, JevConfig, Seed, StubClassifier, StubModels}
-import grit.tools.{About, Administering, Cleared, Coding, FileReading, MessageIds, Probes, Tuning}
+import grit.tools.{About, Administering, Cleared, FileReading, MessageIds, Probes, Tuning}
 import grit.turn.{
   Turn,
   TurnEnv,
@@ -527,7 +527,8 @@ private[grit] object Launch {
       Toolbox.of[caps.CapSet^{administration, clock}](administering(d, administration, clock)*)
     val shows = renders(d)
     val launching = d.offer.tools match {
-      case Offered.Read =>
+      // Neither asks first, so neither offers the operator's tools, which do.
+      case Offered.Read | Offered.Allowlisted(_) =>
         (everyone, administers) match {
           case (Right(tools), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
@@ -538,7 +539,7 @@ private[grit] object Launch {
                   TurnTooling[caps.CapSet^{desks, files, administration, clock}](
                     tools,
                     Toolbox.Empty,
-                    Coding.readOnlyHosted,
+                    d.offer.tools.hosted,
                     runtime.jot,
                     d.offer.rounds,
                     worksIn = d.worksIn,
@@ -578,7 +579,7 @@ private[grit] object Launch {
                   TurnTooling[caps.CapSet^{tuned, models, desks, files, administration, clock}](
                     tools,
                     operator,
-                    Coding.hosted,
+                    d.offer.tools.hosted,
                     runtime.jot,
                     d.offer.rounds,
                     worksIn = d.worksIn,

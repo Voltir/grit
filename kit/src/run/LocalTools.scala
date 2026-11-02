@@ -3,17 +3,18 @@ package grit.kit.run
 import java.nio.file.Path
 
 import grit.core.edge.{Route, ToolRequest}
+import grit.core.host.Allowlisted
 import grit.core.place.Directory
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
 import grit.edge.{Run, Tools}
-import grit.host.checkout.{LocalEdits, LocalShell, LocalWorkspace, Redaction}
+import grit.host.checkout.{LocalEdits, LocalProcesses, LocalShell, LocalWorkspace, Redaction}
 import grit.kit.deployment.Offered
 import grit.tools.Coding
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
-  * to (a request routed to a service is `Failed`, and nothing runs): `read`, `list` and
-  * `search` when `offered` is [[Offered.Read]], every coding tool when it is [[Offered.All]].
-  * A command sees the process's own environment, not `.env`'s; what a tool shows is cleared by
+  * to (a request routed to a service is `Failed`, and nothing runs): those `offered` hosts
+  * ([[Offered.hosted]]), an allowlisted `run` starting only what its allowlist permits. A command
+  * sees the process's own environment, not `.env`'s; what a tool shows is cleared by
   * `redaction`, the deployment's one.
   */
 final class LocalTools(offered: Offered, redaction: Redaction) extends Tools {
@@ -22,10 +23,7 @@ final class LocalTools(offered: Offered, redaction: Redaction) extends Tools {
     * with the others.
     */
   def hosted: Either[SetRefusal, ToolSet] =
-    ToolSet.of((offered match {
-      case Offered.Read => Coding.readOnlyHosted
-      case Offered.All => Coding.hosted
-    }).map(_.entry))
+    ToolSet.of(offered.hosted.map(_.entry))
 
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = route match {
     case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)
@@ -46,6 +44,15 @@ final class LocalTools(offered: Offered, redaction: Redaction) extends Tools {
       case Offered.All =>
         Coding
           .all(ws, new LocalEdits(root, redaction), new LocalShell(root, sys.env, redaction))
+          .fold(refused, tools => Run.request(request, tools))
+      case Offered.Allowlisted(allowlist) =>
+        val processes = new LocalProcesses(root, sys.env, redaction)
+        Coding
+          .allowlisted(
+            ws,
+            new LocalEdits(root, redaction),
+            Allowlisted.over(processes, allowlist)
+          )
           .fold(refused, tools => Run.request(request, tools))
     }
   }

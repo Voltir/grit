@@ -87,13 +87,18 @@ object DeploymentTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "Offered.All is refused while an edge is Unanswered; an edge that is Never does not block it"
+      "Offered.All is refused while an edge is Unanswered, and an allowlisted set, which asks no one, is not; an edge that is Never does not block it"
     ) {
       (
         of(Vector(edge("slack", asks = ServedEdge.Asks.Unanswered)), Offered.All),
+        of(
+          Vector(edge("slack", asks = ServedEdge.Asks.Unanswered)),
+          Offered.Allowlisted(Offered.ReferenceAllowlist)
+        ),
         of(Vector(edge("github", asks = ServedEdge.Asks.Never)), Offered.All)
       ) ==> (
         Left(DeploymentRefusal.AsksUnanswered(Vector(EdgeName("slack")))),
+        Right(()),
         Right(())
       )
     }
