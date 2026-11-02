@@ -7,13 +7,13 @@ import grit.core.store.{StoreError, Tx}
 /** The read of `grit.bench_trajectories` that its label filters (ADR 0030), for the bench's rows,
   * which `grit.dbos.internal` lends the eval harness.
   */
-private[dbos] object SqlBenchRows {
+private[dbos] object SqlTrialRows {
 
-  /** The trajectory of the trial whose session is `harness`'s `local`, read by `read` from its
+  /** The transcript of the trial whose session is `harness`'s `local`, read by `read` from its
     * `sha256`, `bytes` and `clipped` columns and its label's ([[SqlLabels.read]]), when this
     * transaction reads it.
     */
-  def trajectory[A](harness: String, local: String)(read: ResultSet => A)(using
+  def transcript[A](harness: String, local: String)(read: ResultSet => A)(using
       Tx^
   ): Either[StoreError, Option[A]] =
     SqlStatements

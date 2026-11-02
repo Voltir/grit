@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
 
 import grit.core.host.{Argv, Processes, RelPath}
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
@@ -39,7 +39,7 @@ object CloneTests extends TestSuite {
       .exists(_.exit == 0)
 
   /** The fixture's commits, by what each made `a.txt` say. */
-  private final case class Origin(path: String, commits: Map[String, Commit])
+  private final case class Origin(path: String, commits: Map[String, Sha])
 
   /** A repository at `origin` under a fresh root whose `a.txt` says each of `texts` in turn, one
     * commit each; `body` of a processes over the root and it, the root deleted after.
@@ -55,7 +55,7 @@ object CloneTests extends TestSuite {
         Files.writeString(root.resolve("origin/a.txt"), s"$text\n")
         val _ = git(work, origin, "add", "a.txt")
         val _ = git(work, origin, "commit", "-q", "-m", text)
-        text -> Commit
+        text -> Sha
           .of(git(work, origin, "rev-parse", "HEAD"))
           .fold(e => throw new java.lang.AssertionError(e), identity)
       }
@@ -65,7 +65,7 @@ object CloneTests extends TestSuite {
 
   private def task(o: Origin, base: String, known: String*): Task =
     Task(
-      BenchRows.TaskName.of("fixture").getOrElse(throw new java.lang.AssertionError("name")),
+      TrialRows.TaskName.of("fixture").getOrElse(throw new java.lang.AssertionError("name")),
       o.commits(base),
       "Do it.",
       known.map(o.commits).toVector,
@@ -78,7 +78,7 @@ object CloneTests extends TestSuite {
         val checkout = rel("checkout")
         Clone.fresh(work)(o.path, o.commits("base"), checkout) ==> Right(())
         Vector("base", "known", "later").map(c =>
-          reaches(work, checkout, Commit.value(o.commits(c)))
+          reaches(work, checkout, Sha.value(o.commits(c)))
         ) ==>
           Vector(true, false, false)
         (
@@ -101,7 +101,7 @@ object CloneTests extends TestSuite {
         Clone.picked(work)(o.path, task(o, "base", "known", "more"), checkout) ==> Right(())
         (
           Files.readString(Path.of(o.path).resolveSibling("picked/a.txt")),
-          reaches(work, checkout, Commit.value(o.commits("later")))
+          reaches(work, checkout, Sha.value(o.commits("later")))
         ) ==> ("more\n", false)
       }
     }

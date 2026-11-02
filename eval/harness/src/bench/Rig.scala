@@ -15,7 +15,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
 import grit.core.secret.Secret
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
   * most it may spend, in USD by Claude Code's own estimate, which a run can pass; and its most
@@ -56,7 +56,7 @@ final case class Arm(claude: String, scout: String, agent: String) extends caps.
   * task's checks as they ran after it.
   */
 final case class Tried(
-    trial: BenchRows.Trial,
+    trial: TrialRows.Trial,
     transcript: Vector[String],
     consumed: Consumed,
     checked: Checked,
@@ -80,7 +80,7 @@ final case class Tried(
     )
     val t = trial
     Vector(
-      s"trial: ${t.session.local} of ${BenchRows.TaskName.value(t.task)} by " +
+      s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by " +
         s"${ModelId.value(t.model)}, ${t.wall.toSeconds} s",
       s"calls: ${t.calls}; before the first edit: " +
         t.callsBeforeEdit
@@ -217,7 +217,7 @@ object Rig {
           checked <- Checks.run(work)(dir, task.checks).left.map(_.message)
           harness <- Harness.of("claude-code")
           session <- SessionId.of(harness, local)
-          trial <- BenchRows.Trial.of(
+          trial <- TrialRows.Trial.of(
             session,
             task.name,
             cap.model,
@@ -227,7 +227,7 @@ object Rig {
             consumed.readBeforeEdit,
             consumed.callsBeforeEdit,
             passed = checked.passed && consumed.ended.exists(!_.error),
-            distance = Option.when(changed.lines.nonEmpty)(Changed.distance(changed, known))
+            distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
           )
         } yield Tried(trial, lines, consumed, checked, stopped)
       )

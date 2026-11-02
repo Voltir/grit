@@ -11,7 +11,7 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Processes, RelPath}
 import grit.core.message.{Tokens, Usage}
 import grit.core.secret.{TestSecrets, Variable}
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
 
 import utest.*
@@ -122,9 +122,9 @@ object RigTests extends TestSuite {
       val _ = git(work, o, "commit", "-q", "-am", "known")
       val known = git(work, o, "rev-parse", "HEAD")
       val task = (for {
-        b <- Commit.of(base)
-        k <- Commit.of(known)
-        n <- BenchRows.TaskName.of("fixture")
+        b <- Sha.of(base)
+        k <- Sha.of(known)
+        n <- TrialRows.TaskName.of("fixture")
       } yield Task(n, b, "Give A an x.", Vector(k), Vector(Check(Runner.Check, Vector("m")))))
         .fold(e => throw new java.lang.AssertionError(e), identity)
       body(

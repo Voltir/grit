@@ -3,12 +3,12 @@ package grit.eval.harness.bench
 /** A diff's changed lines in source files (`*.scala`, `build.mill`, `schema.sql`), counted by file,
   * sign and text.
   */
-final case class Changed private (lines: Map[(String, Char, String), Int]) extends caps.Pure
+final case class DiffLines private (lines: Map[(String, Char, String), Int]) extends caps.Pure
 
-object Changed {
+object DiffLines {
 
   /** The changed source lines of `diff`, as `git diff -U0 --no-renames` prints one. */
-  def of(diff: String): Changed = {
+  def of(diff: String): DiffLines = {
     // Walks the lines once: a `diff --git` line opens a file and leaves its hunks, an `@@` line
     // opens a hunk, and inside one each `+` or `-` line is a change of the file open.
     val counts = scala.collection.mutable.Map.empty[(String, Char, String), Int]
@@ -25,13 +25,13 @@ object Changed {
           counts(key) = counts.getOrElse(key, 0) + 1
         }
     }
-    new Changed(counts.toMap)
+    new DiffLines(counts.toMap)
   }
 
   /** How many changed lines `a` and `b` differ by, each counted as often as one has it more than
     * the other; 0 when they change the same lines.
     */
-  def distance(a: Changed, b: Changed): Long =
+  def distance(a: DiffLines, b: DiffLines): Long =
     (a.lines.keySet ++ b.lines.keySet).toVector
       .map(k => math.abs(a.lines.getOrElse(k, 0) - b.lines.getOrElse(k, 0)).toLong)
       .sum

@@ -12,7 +12,7 @@ import grit.core.host.RelPath
 import grit.core.secret.Secret
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.eval.Room
 import grit.eval.harness.bench.{Arm, Bench, Caps, Rig, Task}
@@ -46,7 +46,7 @@ private[main] object LabCommands {
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       name <- need(f, "task")
-      taskName <- BenchRows.TaskName.of(name)
+      taskName <- TrialRows.TaskName.of(name)
       at <- need(f, "tasks").map(Path.of(_).resolve(name))
       task <- read(at.resolve("task.json")).flatMap(json =>
         read(at.resolve("brief.md")).flatMap(Task.of(taskName, json, _))

@@ -54,8 +54,8 @@ this file holds the package order and the rules the code's signatures cannot sta
   ← `sql`, `workflow`
 - **`internal`**: what `grit.dbos` lends to the eval harness alone (ADR 0030; rule 1h in
   `enola-intent.yaml`): `Reader`, a database read without an engine or its lock, on sessions
-  Postgres keeps read-only; `Scratch`, databases created and dropped; and `BenchRows`, the bench's
-  trials over the bench's own blobs, which it prunes of every blob no trajectory names, so it is
+  Postgres keeps read-only; `Scratch`, databases created and dropped; and `TrialRows`, the bench's
+  trials over the bench's own blobs, which it prunes of every blob no transcript names, so it is
   never handed a file area's. ← `sql`, `workflow`, `engine`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the

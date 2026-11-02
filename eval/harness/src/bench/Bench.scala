@@ -9,9 +9,9 @@ import grit.core.clock.Clock
 import grit.core.host.Blobs
 import grit.core.store.Jot
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 
-/** The bench's keeping: a trial and its transcript into [[BenchRows]] over the bench's own blobs,
+/** The bench's keeping: a trial and its transcript into [[TrialRows]] over the bench's own blobs,
   * oldest out.
   */
 object Bench {
@@ -22,39 +22,39 @@ object Bench {
   val Abandoned: FiniteDuration = 1.hour
 
   /** `trial` kept in `blobs`' rows for `subject`; then the rows pruned of what this and any
-    * earlier keep left ([[BenchRows.prune]], pending blobs [[Abandoned]] by `clock`'s time).
+    * earlier keep left ([[TrialRows.prune]], pending blobs [[Abandoned]] by `clock`'s time).
     * `Left` with the cause, for the operator, when the database or the machine fails, or the
     * database refuses the trial. A trial recorded before a later failure stays recorded, and the
     * next keep prunes what this one left.
     */
   def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject,
-      trial: BenchRows.Trial
-  ): Either[String, (BenchRows.Recorded, BenchRows.Pruned)] =
+      trial: TrialRows.Trial
+  ): Either[String, (TrialRows.Recorded, TrialRows.Pruned)] =
     jot
-      .write(subject)(BenchRows(blobs).record(trial))
+      .write(subject)(TrialRows(blobs).record(trial))
       .left
       .map(e => s"the trial: ${e.described}")
       .flatMap(r => pruned(jot, blobs, clock)(subject).map((r, _)))
 
-  /** As the keep above, with `transcript` as `trial`'s trajectory, labelled `label`, read to
-    * [[BenchRows.Longest]] bytes and one past them; `Left` also when the transcript fails.
+  /** As the keep above, with `transcript` as `trial`'s transcript, labelled `label`, read to
+    * [[TrialRows.Longest]] bytes and one past them; `Left` also when the transcript fails.
     */
   def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject,
-      trial: BenchRows.Trial,
+      trial: TrialRows.Trial,
       transcript: InputStream^,
       label: Label
-  ): Either[String, (BenchRows.Recorded, BenchRows.Pruned)] = {
+  ): Either[String, (TrialRows.Recorded, TrialRows.Pruned)] = {
     // Untracked mutable state, held apart from the stream so `receive`'s body may read it while
     // `receive` holds the stream. No one else can see it change: it is made in this call,
     // reaches only this call's Clip and body, and never leaves `keep`; Clip sets it only while
     // `receive` reads the stream to its end, and the body reads it only after that, on the same
     // thread, so the body reads the final value.
     val clipped = new AtomicBoolean(false)
-    val rows = BenchRows(blobs)
+    val rows = TrialRows(blobs)
     blobs
-      .receive(Clip(transcript, BenchRows.Longest, clipped), BenchRows.Longest) { pending =>
+      .receive(Clip(transcript, TrialRows.Longest, clipped), TrialRows.Longest) { pending =>
         jot.write(subject)(rows.record(trial, pending, clipped.get, label))
       }
       .left
@@ -66,10 +66,10 @@ object Bench {
   /** `blobs`' rows pruned for `subject`, pending blobs [[Abandoned]] by `clock`'s time. */
   private def pruned(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject
-  ): Either[String, BenchRows.Pruned] = {
+  ): Either[String, TrialRows.Pruned] = {
     val before = clock.now().minusMillis(Abandoned.toMillis)
     jot
-      .write(subject)(BenchRows(blobs).prune(before))
+      .write(subject)(TrialRows(blobs).prune(before))
       .left
       .map(e => s"the prune: ${e.described}")
       .flatMap(_.left.map(e => s"the prune's blobs: $e"))

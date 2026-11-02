@@ -11,60 +11,60 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
-import grit.dbos.sql.{SqlBenchRows, SqlLabels, SqlStatements}
+import grit.dbos.sql.{SqlLabels, SqlStatements, SqlTrialRows}
 
-/** The bench's rows over `blobs`: each trial of a harness at a frozen task and its trajectory,
-  * the newest [[BenchRows.Kept]] trials alone. `blobs` must be the bench's own, one store per
-  * database: [[prune]] removes each of its blobs no trajectory names, as a file area's sweep does
+/** The bench's rows over `blobs`: each trial of a harness at a frozen task and its transcript,
+  * the newest [[TrialRows.Kept]] trials alone. `blobs` must be the bench's own, one store per
+  * database: [[prune]] removes each of its blobs no transcript names, as a file area's sweep does
   * by its files, so two such owners of one store would each remove the other's.
   */
-final class BenchRows(blobs: Blobs^) {
+final class TrialRows(blobs: Blobs^) {
 
-  /** `trial` recorded; then every trial but the newest [[BenchRows.Kept]] recorded removed with
-    * its trajectory's row, never its blob ([[prune]]). [[BenchRows.Recorded.Repeat]], writing
+  /** `trial` recorded; then every trial but the newest [[TrialRows.Kept]] recorded removed with
+    * its transcript's row, never its blob ([[prune]]). [[TrialRows.Recorded.Repeat]], writing
     * nothing, when `trial`'s session has a trial already. Waits on any other record or prune
     * until the transaction ends.
     */
-  def record(trial: BenchRows.Trial)(using Tx^): Either[StoreError, BenchRows.Recorded] =
-    BenchRows.begun(trial).flatMap {
-      case None => Right(BenchRows.Recorded.Repeat)
-      case Some(_) => BenchRows.evict().map(BenchRows.Recorded.Fresh(_))
+  def record(trial: TrialRows.Trial)(using Tx^): Either[StoreError, TrialRows.Recorded] =
+    TrialRows.begun(trial).flatMap {
+      case None => Right(TrialRows.Recorded.Repeat)
+      case Some(_) => TrialRows.evict().map(TrialRows.Recorded.Fresh(_))
     }
 
-  /** As `record(trial)`, with `transcript` kept as its trajectory, `clipped` when the transcript
+  /** As `record(trial)`, with `transcript` kept, `clipped` when the transcript
     * ran past what was received, kept at `label` joined with this transaction's floor (ADR 0030:
     * what a transaction writes is kept at least where it writes); on a repeat `transcript` is not
     * kept. `Left(Invalid)`, recording nothing, when `transcript` holds more than
-    * [[BenchRows.Longest]] bytes; `Left(DatabaseError)` when it cannot be kept.
+    * [[TrialRows.Longest]] bytes; `Left(DatabaseError)` when it cannot be kept.
     */
-  def record(trial: BenchRows.Trial, transcript: Pending^, clipped: Boolean, label: Label)(using
+  def record(trial: TrialRows.Trial, transcript: Pending^, clipped: Boolean, label: Label)(using
       Tx^
-  ): Either[StoreError, BenchRows.Recorded] =
-    if (transcript.bytes > BenchRows.Longest)
+  ): Either[StoreError, TrialRows.Recorded] =
+    if (transcript.bytes > TrialRows.Longest)
       Left(
         StoreError.Invalid(
-          s"a trajectory holds at most ${BenchRows.Longest} bytes, not ${transcript.bytes}"
+          s"a trajectory holds at most ${TrialRows.Longest} bytes, not ${transcript.bytes}"
         )
       )
     else {
-      BenchRows.begun(trial).flatMap {
-        case None => Right(BenchRows.Recorded.Repeat)
+      TrialRows.begun(trial).flatMap {
+        case None => Right(TrialRows.Recorded.Repeat)
         case Some(id) =>
           for {
             _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
-            _ <- BenchRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)
-            removed <- BenchRows.evict()
-          } yield BenchRows.Recorded.Fresh(removed)
+            _ <- TrialRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)
+            removed <- TrialRows.evict()
+          } yield TrialRows.Recorded.Fresh(removed)
       }
     }
 
-  /** Every blob no trajectory names removed, and every pending blob last written before
+  /** Every blob no transcript names removed, and every pending blob last written before
     * `before` cleared. Waits on any record, and holds records off, until the transaction ends.
     * `Right(Left)` when `blobs` fails: what was removed before it failed stays removed.
     */
-  def prune(before: Instant)(using Tx^): Either[StoreError, Either[BlobError, BenchRows.Pruned]] =
+  def prune(before: Instant)(using Tx^): Either[StoreError, Either[BlobError, TrialRows.Pruned]] =
     for {
-      _ <- BenchRows.lock()
+      _ <- TrialRows.lock()
       named <- SqlStatements.many("SELECT DISTINCT sha256 FROM grit.bench_trajectories")(_ => ())(
         rs => Sha256.read(rs.getString("sha256")).toRight(s"no digest: ${rs.getString("sha256")}")
       )
@@ -73,28 +73,28 @@ final class BenchRows(blobs: Blobs^) {
       for {
         removed <- blobs.removeAllBut(shas.toSet)
         cleared <- blobs.clearPending(before)
-      } yield BenchRows.Pruned(removed, cleared)
+      } yield TrialRows.Pruned(removed, cleared)
 
   /** Every trial kept, oldest recorded first. */
-  def trials()(using Tx^): Either[StoreError, Vector[BenchRows.Trial]] =
+  def trials()(using Tx^): Either[StoreError, Vector[TrialRows.Trial]] =
     SqlStatements
-      .many("SELECT * FROM grit.bench_trials ORDER BY id")(_ => ())(BenchRows.trialOf)
+      .many("SELECT * FROM grit.bench_trials ORDER BY id")(_ => ())(TrialRows.trialOf)
       .flatMap(SqlStatements.valid)
 
-  /** `session`'s trial's trajectory, when it has one this transaction reads. */
-  def trajectory(session: SessionId)(using Tx^): Either[StoreError, Option[BenchRows.Trajectory]] =
-    SqlBenchRows
-      .trajectory(Harness.value(session.harness), session.local)(BenchRows.trajectoryOf)
+  /** `session`'s trial's transcript, when it has one this transaction reads. */
+  def transcript(session: SessionId)(using Tx^): Either[StoreError, Option[TrialRows.Transcript]] =
+    SqlTrialRows
+      .transcript(Harness.value(session.harness), session.local)(TrialRows.transcriptOf)
       .flatMap(found => SqlStatements.valid(found.toVector))
       .map(_.headOption)
 }
 
-object BenchRows {
+object TrialRows {
 
   /** 60: the most trials kept. */
   val Kept: Int = 60
 
-  /** 32 MiB: the most bytes of a transcript a trajectory keeps. */
+  /** 32 MiB: the most bytes of a transcript kept. */
   val Longest: Long = 32L * 1024 * 1024
 
   /** A frozen task's name: 1 to 80 lower-case letters, digits and `-`, the first no `-`. */
@@ -185,18 +185,18 @@ object BenchRows {
     }
   }
 
-  /** A trial's trajectory as kept: its harness's transcript as it wrote it, the blob `sha256` of
+  /** A trial's transcript as kept: as its harness wrote it, the blob `sha256` of
     * `bytes` bytes, `clipped` when the transcript ran past [[Longest]]; read by whom `label`
     * clears.
     */
-  final case class Trajectory private[dbos] (
+  final case class Transcript private[dbos] (
       sha256: Sha256,
       bytes: Long,
       clipped: Boolean,
       label: Label
   ) extends caps.Pure {
 
-    /** [[Integrity.Member]], every trajectory's: the repository a trial works in is its
+    /** [[Integrity.Member]], every transcript's: the repository a trial works in is its
       * operator's own, as the coding tools' results are.
       */
     def integrity: Integrity = Integrity.Member
@@ -209,7 +209,7 @@ object BenchRows {
     case Repeat
   }
 
-  /** What a prune removed: blobs no trajectory named, and pending blobs abandoned. */
+  /** What a prune removed: blobs no transcript named, and pending blobs abandoned. */
   final case class Pruned(removed: Int, cleared: Int)
 
   /** The advisory lock every record and prune takes until its transaction ends. */
@@ -222,7 +222,7 @@ object BenchRows {
   private def begun(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =
     lock().flatMap(_ => trialRow(trial))
 
-  /** Every trial but the newest [[Kept]] recorded deleted, with its trajectory's row; how many. */
+  /** Every trial but the newest [[Kept]] recorded deleted, with its transcript's row; how many. */
   private def evict()(using Tx^): Either[StoreError, Int] =
     SqlStatements.update(
       """DELETE FROM grit.bench_trials
@@ -258,7 +258,7 @@ object BenchRows {
       ps.setObject(15, trial.distance.map(Long.box).orNull)
     }(_.getLong("id"))
 
-  /** The trajectory row of trial `id`, at `label` joined with the transaction's floor. */
+  /** The transcript row of trial `id`, at `label` joined with the transaction's floor. */
   private def trajectoryRow(id: Long, sha: Sha256, bytes: Long, clipped: Boolean, label: Label)(
       using tx: Tx^
   ): Either[StoreError, Unit] = {
@@ -305,9 +305,9 @@ object BenchRows {
     } yield r
   }
 
-  private def trajectoryOf(rs: ResultSet): Either[String, Trajectory] =
+  private def transcriptOf(rs: ResultSet): Either[String, Transcript] =
     Sha256
       .read(rs.getString("sha256"))
       .toRight(s"no digest: ${rs.getString("sha256")}")
-      .map(Trajectory(_, rs.getLong("bytes"), rs.getBoolean("clipped"), SqlLabels.read(rs)))
+      .map(Transcript(_, rs.getLong("bytes"), rs.getBoolean("clipped"), SqlLabels.read(rs)))
 }

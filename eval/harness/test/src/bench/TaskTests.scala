@@ -4,14 +4,14 @@ import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.dbos.internal.BenchRows
+import grit.dbos.internal.TrialRows
 
 import utest.*
 
 object TaskTests extends TestSuite {
 
   private val name =
-    BenchRows.TaskName.of("a-task").getOrElse(throw new java.lang.AssertionError("name"))
+    TrialRows.TaskName.of("a-task").getOrElse(throw new java.lang.AssertionError("name"))
 
   private val base = "a" * 40
   private val known = "b" * 40
@@ -32,8 +32,8 @@ object TaskTests extends TestSuite {
       val read = Task.of(name, json(commits = s"[\"$known\", \"${"c" * 40}\"]"), "Do it.")
       read.map(t =>
         (
-          Commit.value(t.base),
-          t.commits.map(Commit.value),
+          Sha.value(t.base),
+          t.commits.map(Sha.value),
           t.checks,
           t.brief
         )
@@ -79,7 +79,7 @@ object TaskTests extends TestSuite {
       val names = Files.list(dir).iterator.asScala.map(_.getFileName.toString).toVector.sorted
       val read = names.map { n =>
         for {
-          taskName <- BenchRows.TaskName.of(n)
+          taskName <- TrialRows.TaskName.of(n)
           task <- Task.of(
             taskName,
             Files.readString(dir.resolve(n).resolve("task.json")),

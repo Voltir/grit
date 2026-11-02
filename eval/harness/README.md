@@ -37,11 +37,11 @@ Packages, each importing only those above it:
   Wilson's interval. Pure, naming nothing of grit's. A report shows a price as core's
   `Cost.cents` writes it (`0.29¢`).
 - **`bench`**: the coder bench's keeping: each trial of a harness at a frozen task and its
-  transcript, kept through `grit.dbos.internal`'s `BenchRows` over a blob store that is the
+  transcript, kept through `grit.dbos.internal`'s `TrialRows` over a blob store that is the
   bench's alone, one per bench database; a frozen task (`eval/bench/tasks/<name>/`: its base,
   its commits, its checks and its brief), and its checkout, a repository holding only the base's
   history, through core's `Processes`; the rig, which runs a coder on a task there and measures
-  its trial (a Claude Code coder, whose `stream-json` output is the trajectory it reads and
+  its trial (a Claude Code coder, whose `stream-json` output is the transcript it reads and
   keeps), priced by `grit.models`' `AnthropicRates`, the one function that prices both arms. Only
   `main` names `grit.host`, the harness's composition root (the law's
   `harness-names-host-from-main-alone`). It reports and gates nothing yet.

@@ -16,11 +16,11 @@ object Clone {
     * path) and its history alone, checked out on the branch `bench`, with no remote. `Left`, with
     * git's last words: `dir` exists, or a git command fails or runs past [[Longest]].
     */
-  def fresh(work: Processes)(repository: String, base: Commit, dir: RelPath): Either[String, Unit] =
+  def fresh(work: Processes)(repository: String, base: Sha, dir: RelPath): Either[String, Unit] =
     for {
       _ <- ran(work, RelPath.Root, "mkdir", RelPath.value(dir))
       _ <- git(work, dir, "init", "-q", "-b", "bench")
-      _ <- git(work, dir, "fetch", "-q", "--no-tags", repository, Commit.value(base))
+      _ <- git(work, dir, "fetch", "-q", "--no-tags", repository, Sha.value(base))
       _ <- git(work, dir, "checkout", "-q", "-B", "bench", "FETCH_HEAD")
     } yield ()
 
@@ -30,7 +30,7 @@ object Clone {
   def picked(
       work: Processes
   )(repository: String, task: Task, dir: RelPath): Either[String, Unit] = {
-    val commits = task.commits.map(Commit.value)
+    val commits = task.commits.map(Sha.value)
     for {
       _ <- fresh(work)(repository, task.base, dir)
       _ <- git(work, dir, (Seq("fetch", "-q", "--no-tags", repository) ++ commits)*)
@@ -41,8 +41,8 @@ object Clone {
   /** The source lines `dir`'s files change from `base`, files never added included (they are
     * marked to be added, as `git add -N` does). `Left`, with git's last words, as for [[fresh]].
     */
-  def changed(work: Processes)(dir: RelPath, base: Commit): Either[String, Changed] = {
-    val diff = Seq("diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", Commit.value(base))
+  def changed(work: Processes)(dir: RelPath, base: Sha): Either[String, DiffLines] = {
+    val diff = Seq("diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", Sha.value(base))
     for {
       _ <- git(work, dir, "add", "-N", ".")
       argv <- Argv.of("git", diff*)
@@ -57,7 +57,7 @@ object Clone {
       text <- read.left.map(e => s"`git diff` ${e.message}").flatMap { (exit, text, errors) =>
         if (exit == 0) Right(text) else Left(s"`git diff` failed: ${errors.trim}")
       }
-    } yield Changed.of(text)
+    } yield DiffLines.of(text)
   }
 
   /** `git` with `args` in `dir`, as a picking committer who signs nothing: its output, or why
