@@ -5,7 +5,8 @@ import scala.concurrent.duration.FiniteDuration
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
-import grit.core.id.{ClaimHolder, PrincipalId, SourceId, TurnRef}
+import grit.core.host.{InstructionFile, Instructions}
+import grit.core.id.{ClaimHolder, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
@@ -14,21 +15,19 @@ import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.recipe.TurnRecipe
 import grit.core.stitch.StitchReads
 import grit.core.store.{EntryStore, Origin, Payload}
-import grit.core.tool.{ToolSet, Toolbox}
+import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
-import grit.edge.Server
 import grit.host.checkout.Redaction
 import grit.kit.deployment.Offered
-import grit.kit.run.LocalTools
+import grit.kit.run.{LocalEdge, LocalTools}
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubClassifier, StubModels, StubProvider}
-import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnSessions, TurnTooling}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests: a
@@ -93,9 +92,8 @@ object LiveTurn {
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
     launchIn(engine, entries, provider, java.nio.file.Path.of("").toAbsolutePath)
 
-  /** As [[launch]], the model offered the coding tools over the checkout at `root`: all of
-    * them when `all`, each gated call waiting `answerWithin` for its answer; otherwise the
-    * read-only ones. The session reaches the services of `reaches`, offered as `recipe`
+  /** As [[launch]], the model offered the coding tools `offered` hosts over the checkout at
+    * `root`, each gated call waiting `answerWithin` for its answer. The session reaches the services of `reaches`, offered as `recipe`
     * shapes it by the sources of `knowledge`; a message said to grit that the recipe weighs
     * is asked of the stub classifier. Its turns' sessions work as the holder `holder` names.
     */
@@ -104,7 +102,7 @@ object LiveTurn {
       entries: EntryStore,
       provider: Provider^,
       root: java.nio.file.Path,
-      all: Boolean = false,
+      offered: Offered = Offered.Read,
       answerWithin: FiniteDuration = grit.core.tool.Gate.AnswerWithin,
       reaches: Vector[Reaches] = Vector.empty,
       knowledge: Corpora = Corpora.Empty,
@@ -116,7 +114,7 @@ object LiveTurn {
       entries,
       new LiveModels(provider),
       root,
-      all,
+      offered,
       answerWithin,
       reaches,
       knowledge,
@@ -130,7 +128,7 @@ object LiveTurn {
       entries: EntryStore,
       models: Models^,
       root: java.nio.file.Path,
-      all: Boolean,
+      offered: Offered,
       answerWithin: FiniteDuration,
       reaches: Vector[Reaches],
       knowledge: Corpora,
@@ -319,13 +317,12 @@ object LiveTurn {
         Vector.empty
       )
     val budget = TurnLoop.Rounds.of(5).fold(why => sys.error(why), identity)
-    val hosted = if (all) Coding.hosted else Coding.readOnlyHosted
     val none = Toolbox.of[{}]().fold(d => sys.error(d.toString), identity)
     launch(
       TurnTooling[{}](
         none,
         Toolbox.Empty,
-        hosted,
+        offered.hosted,
         engine.jot,
         budget,
         answerWithin,
@@ -337,25 +334,24 @@ object LiveTurn {
     // This process's edge, serving the checkout as grit's own does.
     val here = origin(root)
     session = here
-    val place = here.place
-    engine.register(PrincipalId.Local, Set(place)) match {
-      case Left(e) => sys.error(s"no edge: ${e.why}")
-      case Right(desk) =>
-        desk
-          .advertise(
-            place,
-            ToolSet.of(hosted.map(_.entry)).fold(d => sys.error(d.toString), identity),
-            Vector.empty
-          )
-          .left
-          .foreach(e => sys.error(s"not advertised: ${e.why}"))
-        new Server(
-          desk,
-          new LocalTools(if (all) Offered.All else Offered.Read, Redaction.of(Map.empty)),
-          run => { val _ = Thread.ofVirtual().start(() => run()) },
-          _ => ()
-        ).serve()
+    here match {
+      case Origin.Tui(directory, _) =>
+        LocalEdge.over(
+          directory,
+          new LocalTools(offered, Redaction.of(Map.empty)),
+          NoInstructions,
+          org.slf4j.LoggerFactory.getLogger("grit.edge")
+        ) match {
+          case Right(edge) => edge.serve(engine)
+          case Left(twice) => sys.error(twice.toString)
+        }
+      case other => sys.error(s"not a directory's session: $other")
     }
+  }
+
+  /** No instruction files anywhere, so a test's prompts are what it scripts. */
+  private object NoInstructions extends Instructions {
+    def around(dir: Directory): Vector[InstructionFile] = Vector.empty
   }
 
   /** Ingests `source` and starts its turn. */

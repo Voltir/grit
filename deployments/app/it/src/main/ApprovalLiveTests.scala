@@ -14,6 +14,7 @@ import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
+import grit.kit.deployment.Offered
 import grit.turn.Turn
 
 import utest.*
@@ -91,7 +92,7 @@ object ApprovalLiveTests extends TestSuite {
       checkout { root =>
         val engine = LiveEngine.open(TestPostgres.freshDatabase("approve_edit"), Turn.Epoch)
         try {
-          launchIn(engine, engine.entries, new Editing, root, all = true)
+          launchIn(engine, engine.entries, new Editing, root, offered = Offered.All)
           val turn = say(engine, "edit it")
           val asks = asked(engine, turn)
           asks.map(_.call) ==> Vector(call)
@@ -119,7 +120,7 @@ object ApprovalLiveTests extends TestSuite {
       checkout { root =>
         val engine = LiveEngine.open(TestPostgres.freshDatabase("decline_edit"), Turn.Epoch)
         try {
-          launchIn(engine, engine.entries, new Editing, root, all = true)
+          launchIn(engine, engine.entries, new Editing, root, offered = Offered.All)
           val turn = say(engine, "edit it")
           val _ = asked(engine, turn)
           engine.inbox
@@ -146,7 +147,14 @@ object ApprovalLiveTests extends TestSuite {
       checkout { root =>
         val engine = LiveEngine.open(TestPostgres.freshDatabase("timeout_edit"), Turn.Epoch)
         try {
-          launchIn(engine, engine.entries, new Editing, root, all = true, answerWithin = 1.second)
+          launchIn(
+            engine,
+            engine.entries,
+            new Editing,
+            root,
+            offered = Offered.All,
+            answerWithin = 1.second
+          )
           val turn = say(engine, "edit it")
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
@@ -163,7 +171,7 @@ object ApprovalLiveTests extends TestSuite {
         val before = LiveEngine.open(config, Turn.Epoch)
         val turn =
           try {
-            launchIn(before, before.entries, new Editing, root, all = true)
+            launchIn(before, before.entries, new Editing, root, offered = Offered.All)
             val t = say(before, "edit it")
             val _ = asked(before, t)
             t
@@ -171,7 +179,7 @@ object ApprovalLiveTests extends TestSuite {
         Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
         val after = LiveEngine.open(config, Turn.Epoch)
         try {
-          launchIn(after, after.entries, new Editing, root, all = true)
+          launchIn(after, after.entries, new Editing, root, offered = Offered.All)
           after.inbox.answer(turn.workflowId, call, Approval.Approved, Account.Local) ==> Right(())
           val _ = after.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a final\n"

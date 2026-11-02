@@ -20,14 +20,31 @@ object ToolRoundsTests extends TestSuite {
         Left("GRIT_TOOL_ROUNDS is not a whole number")
     }
 
-    test("GRIT_TOOLS: unset is every tool in the chat and the read-only ones in a run") {
+    test(
+      "GRIT_TOOLS: unset is every tool in the chat and the read-only ones in a run; allowlist is the reference allowlist in either"
+    ) {
       RunChoices.toolChoice(Map.empty, chat = true) ==> Right(Offered.All)
       RunChoices.toolChoice(Map.empty, chat = false) ==> Right(Offered.Read)
       for (chat <- Seq(true, false)) {
         RunChoices.toolChoice(Map("GRIT_TOOLS" -> "read"), chat) ==> Right(Offered.Read)
+        // It asks no one, so a run, and `grit serve`, may offer it (ADR 0055).
+        RunChoices.toolChoice(Map("GRIT_TOOLS" -> " allowlist"), chat) ==>
+          Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
         RunChoices.toolChoice(Map("GRIT_TOOLS" -> "write"), chat) ==>
-          Left("GRIT_TOOLS is neither read nor all")
+          Left("GRIT_TOOLS is not read, all or allowlist")
       }
+      // What the model and a person read the list as.
+      Offered.ReferenceAllowlist.rules.map(_.written) ==> Vector(
+        "git status …",
+        "git diff …",
+        "git log …",
+        "git show …",
+        "git add …",
+        "git commit …",
+        "./mill …",
+        "scripts/check …"
+      )
+      Offered.ReferenceAllowlist.longest ==> grit.core.host.Shell.Longest
       RunChoices.toolChoice(Map("GRIT_TOOLS" -> " all "), chat = true) ==> Right(Offered.All)
       // A run has nobody to approve a call that changes something.
       RunChoices.toolChoice(Map("GRIT_TOOLS" -> "all"), chat = false) ==>

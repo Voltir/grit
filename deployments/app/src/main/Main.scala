@@ -49,7 +49,9 @@ import Backfills.*
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
   * which leaves each message in the item it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
-  * model is offered the tools `GRIT_TOOLS` names ([[Offered]]) in at most
+  * model is offered the tools `GRIT_TOOLS` names ([[Offered]]: `read`, `all`, or `allowlist`,
+  * whose `write`, `edit` and `run` ask no one and whose `run` starts only what
+  * [[Offered.ReferenceAllowlist]] lists, ADR 0055) in at most
   * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
   * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
@@ -103,7 +105,10 @@ import Backfills.*
   *     `strength-cost`); the Slack users `GRIT_ADMINS` names (ids,
   *     comma-separated) administer ([[visibility]]), and with none it says at start that no one
   *     can lower a room's label, label a public channel or set a room's baseline. Its tools are `read`'s, as in a run with arguments:
-  *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
+  *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. With
+  *     `GRIT_TOOLS=allowlist`, anyone who can address it, in a conversation working in a
+  *     directory an edge serves, drives `write`, `edit` and the listed commands on this
+  *     machine with no prompt (ADR 0055). It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
   *     With `GITHUB_MCP_TOKEN` set it also serves GitHub's read-only tools at
@@ -143,7 +148,7 @@ import Backfills.*
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
-  *     so `GRIT_TOOLS=all` is refused.
+  *     so `GRIT_TOOLS=all` is refused; `allowlist`, which asks no one, is not.
   */
 object Main {
 

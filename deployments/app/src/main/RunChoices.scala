@@ -125,10 +125,11 @@ private[main] object RunChoices {
 
   private[main] val ToolsVar = "GRIT_TOOLS"
 
-  /** The tools `GRIT_TOOLS` names, `read` or `all`, for the chat when `chat`, else for a run
-    * with arguments. Unset is [[Offered.All]] in the chat, where a person approves each
-    * call that changes something, and [[Offered.Read]] in a run, where nobody can; `all`
-    * in a run is refused.
+  /** The tools `GRIT_TOOLS` names, `read`, `all` or `allowlist`, for the chat when `chat`, else
+    * for a run with arguments or `grit serve`. Unset is [[Offered.All]] in the chat, where a
+    * person approves each call that changes something, and [[Offered.Read]] elsewhere, where
+    * nobody can; `all` outside the chat is refused. `allowlist` is
+    * [[Offered.ReferenceAllowlist]] anywhere: it asks no one (ADR 0055).
     */
   private[main] def toolChoice(
       env: Map[String, String],
@@ -140,7 +141,8 @@ private[main] object RunChoices {
       case Some("all") if chat => Right(Offered.All)
       case Some("all") =>
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
-      case Some(_) => Left(s"$ToolsVar is neither read nor all")
+      case Some("allowlist") => Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
+      case Some(_) => Left(s"$ToolsVar is not read, all or allowlist")
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

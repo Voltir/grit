@@ -44,7 +44,8 @@ In dependency order:
     start; the chat and a run with arguments end nothing.
   - Otherwise the engine and the turn: OpenRouter with a key, the stub without; Jev with
     `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise; the coding
-    tools `GRIT_TOOLS` names, over the checkout it runs in, the edits and shell built only when
+    tools `GRIT_TOOLS` names (`read`, `all`, or `allowlist`: `Offered.ReferenceAllowlist`, asking
+    no one, ADR 0055), over the checkout it runs in, the edits and shell built only when
     offered; sweeping every `GRIT_SWEEP`; posting to the plugins `GRIT_PLUGINS` turns on
     (`digest`; `remind`; `knowledge`, over the repository `GRIT_GITHUB_OWNER`/`GRIT_GITHUB_REPO`
     at `GRIT_GITHUB_REF` when `GITHUB_MCP_TOKEN` is set, synced through the GitHub edge `grit

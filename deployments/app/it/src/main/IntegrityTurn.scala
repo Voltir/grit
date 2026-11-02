@@ -268,7 +268,7 @@ object IntegrityTurn {
       engine.entries,
       new ScriptedModels(turn, others),
       java.nio.file.Path.of("").toAbsolutePath,
-      all = false,
+      grit.kit.deployment.Offered.Read,
       grit.core.tool.Gate.AnswerWithin,
       Reached,
       Corpora.Empty,
