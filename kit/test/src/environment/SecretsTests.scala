@@ -1,8 +1,9 @@
 package grit.kit.environment
 
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy, Upstream}
+import grit.core.secret.Secret
 import grit.kit.deployment.{Deployments, Placer}
-import grit.models.OpenRouterConfig
+import grit.models.{AnthropicProvider, JevConfig, OpenRouterConfig}
 
 import utest.*
 
@@ -16,13 +17,29 @@ object SecretsTests extends TestSuite {
       val jev = Deployments.accepted(placer = Placer.Jev)
       val stub = Deployments.accepted(placer = Placer.Stub)
       (
-        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), jev).map(_.jev.map(_.apiKey)),
-        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), stub).map(_.jev.map(_.apiKey)),
+        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), jev).map(_.jev.map(_.apiKey.variable)),
+        Secrets.of(db + ("JEV_API_KEY" -> "sk-jev-1"), stub).map(_.jev.map(_.apiKey.variable)),
         Secrets.of(db + ("JEV_API_KEY" -> " "), jev).map(_ => ())
       ) ==> (
-        Right(Some("sk-jev-1")),
+        Right(Some(JevConfig.KeyVar)),
         Right(None),
-        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("JEV_API_KEY")))
+        Left(SecretsRefusal.Key(Secret.Refusal.Blank(JevConfig.KeyVar)))
+      )
+    }
+
+    test("a key refused is said in one line naming its variable, never its value") {
+      val d = Deployments.accepted()
+      val jev = Deployments.accepted(placer = Placer.Jev)
+      Vector(
+        Secrets.of(db + ("OPENROUTER_API_KEY" -> " "), d),
+        Secrets.of(db + ("ANTHROPIC_API_KEY" -> ""), d),
+        Secrets.of(db + ("JEV_API_KEY" -> " \t"), jev),
+        Secrets.of(db, jev)
+      ).map(_.left.map(_.message).map(_ => ())) ==> Vector(
+        Left("OPENROUTER_API_KEY is set but blank"),
+        Left("ANTHROPIC_API_KEY is set but blank"),
+        Left("JEV_API_KEY is set but blank"),
+        Left("JEV_API_KEY is not set")
       )
     }
 
@@ -36,8 +53,8 @@ object SecretsTests extends TestSuite {
       ) ==> (
         Right(None),
         Right(Some("Keys(openRouter: set, anthropic: unset)")),
-        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))),
-        Left(SecretsRefusal.Key(OpenRouterConfig.Invalid.Empty("ANTHROPIC_API_KEY")))
+        Left(SecretsRefusal.Key(Secret.Refusal.Blank(OpenRouterConfig.KeyVar))),
+        Left(SecretsRefusal.Key(Secret.Refusal.Blank(AnthropicProvider.KeyVar)))
       )
     }
 

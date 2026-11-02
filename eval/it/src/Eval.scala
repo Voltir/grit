@@ -22,6 +22,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.place.Weight
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Routed
+import grit.core.secret.Secret
 import grit.core.store.Nearby
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -336,11 +337,15 @@ object Eval {
   }
 
   def main(args: Array[String]): Unit = {
-    val live: Option[OpenRouterConfig] =
+    val live: Option[(Secret, OpenRouterConfig)] =
       if (!args.contains("--live")) None
       else
-        OpenRouterConfig.forRole(sys.env, ModelRole.Query) match {
-          case Right(c) => Some(c)
+        Secret
+          .read(sys.env, OpenRouterConfig.KeyVar)
+          .left
+          .map(_.message)
+          .flatMap(key => OpenRouterConfig.forRole(sys.env, ModelRole.Query).map(key -> _)) match {
+          case Right(keyed) => Some(keyed)
           case Left(invalid) =>
             System.err.println(s"--live: ${invalid}")
             sys.exit(2)
@@ -351,7 +356,7 @@ object Eval {
       )
     cases.collect { case Left(e) => e }.foreach(e => println(s"unreadable case: $e"))
     val model: Provider^ = live match {
-      case Some(c) => new OpenRouterProvider(c)
+      case Some((key, c)) => new OpenRouterProvider(key, c)
       case None => NoLive
     }
     val writer = new Once(model)
@@ -390,7 +395,7 @@ object Eval {
         (v, s)
       }
     )
-    live.foreach { c =>
+    live.foreach { (_, c) =>
       val spent = writer.spent match {
         case Cost.Exact(usd) => s"$$${usd.bigDecimal.toPlainString}"
         case Cost.AtLeast(usd) => s"at least $$${usd.bigDecimal.toPlainString}"

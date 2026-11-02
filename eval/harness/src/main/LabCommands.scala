@@ -9,7 +9,7 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.RelPath
-import grit.core.secret.{Secret, Variable}
+import grit.core.secret.Secret
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.BenchRows
@@ -71,7 +71,7 @@ private[main] object LabCommands {
             budget <- need(f, "max-budget-usd")
             turns <- need(f, "max-turns")
             cap <- Caps.of(model, budget, turns)
-            key <- Secret.read(env, Variable(AnthropicProvider.KeyVar)).left.map(_.message)
+            key <- Secret.read(env, AnthropicProvider.KeyVar).left.map(_.message)
             arm <-
               for {
                 claude <- need(f, "claude")

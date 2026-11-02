@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration
 
 import grit.core.classify.{Ask, ClassifierError, StateJson}
+import grit.core.secret.TestSecrets
 
 import com.sun.net.httpserver.HttpServer
 import utest.*
@@ -17,7 +18,14 @@ object JevClassifierTests extends TestSuite {
   private val urgent = Ask.yesNo[String]("Does this convey urgency?", None, None)
 
   private def jev(endpoint: URI): JevClassifier =
-    new JevClassifier(JevConfig("test-key", "jev-test", endpoint, Duration.ofSeconds(5)))
+    new JevClassifier(
+      JevConfig(
+        TestSecrets.of(JevConfig.KeyVar, "test-key"),
+        "jev-test",
+        endpoint,
+        Duration.ofSeconds(5)
+      )
+    )
 
   /** `body` with each path's status and response body served on a loopback port. */
   private def serving[A](routes: Map[String, (Int, String)])(body: Int => A): A = {

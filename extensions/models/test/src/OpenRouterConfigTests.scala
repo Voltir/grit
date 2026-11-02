@@ -50,20 +50,6 @@ object OpenRouterConfigTests extends TestSuite {
     Option.when(l.rest.isEmpty && l.first.grade == Grade.Standard)(l.first.assignment)
 
   val tests = Tests {
-    test("key: required and not blank; toString never shows it") {
-      OpenRouterConfig.key(Map.empty) ==> Left(
-        OpenRouterConfig.Invalid.Missing("OPENROUTER_API_KEY")
-      )
-      OpenRouterConfig.key(Map("OPENROUTER_API_KEY" -> " ")) ==>
-        Left(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))
-      OpenRouterConfig.key(Map("OPENROUTER_API_KEY" -> "sk-or-secret")) ==> Right("sk-or-secret")
-      val shown =
-        OpenRouterConfig
-          .of("sk-or-secret", Catalog.of(seedLike, Vector.empty).pin.turn.first)
-          .toString
-      assert(!shown.contains("sk-or-secret"))
-    }
-
     test("policy: with no variables set, the policy stands") {
       overlay() ==> Right(seedLike)
       overlay("GRIT_MODEL" -> " ", "GRIT_SUMMARY_PROVIDER" -> "") ==> Right(seedLike)
@@ -175,10 +161,10 @@ object OpenRouterConfigTests extends TestSuite {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
       val dropped = Profile(seedTurn.ref, replay = Known.Of(ReasoningReplay.Dropped, nick))
       val pin = Catalog.of(seedLike, Vector(dropped)).pin
-      val t = OpenRouterConfig.of("k", pin.turn.first)
+      val t = OpenRouterConfig.of(pin.turn.first)
       (t.model, t.maxTokens, t.upstream.map(Upstream.value), t.effort, t.replay) ==>
         ("big/one", 4096, Some("cerebras/fp16"), Some(Effort.Low), ReasoningReplay.Dropped)
-      val s = OpenRouterConfig.of("k", pin.summary.first)
+      val s = OpenRouterConfig.of(pin.summary.first)
       (s.model, s.maxTokens, s.upstream.map(Upstream.value), s.effort, s.replay) ==>
         ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }
@@ -232,9 +218,9 @@ object OpenRouterConfigTests extends TestSuite {
         Right(("h/m", 4096, None)),
         Right(("d/m", 8192, None))
       )
-      // With nothing set but the key, the query runs on the seed's own budget.
+      // With nothing set, the query runs on the seed's own budget, and no key is read.
       OpenRouterConfig
-        .forRole(Map("OPENROUTER_API_KEY" -> "k"), ModelRole.Query)
+        .forRole(Map.empty, ModelRole.Query)
         .map(_.maxTokens) ==> Right(1024)
     }
     test(

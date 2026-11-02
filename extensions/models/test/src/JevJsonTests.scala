@@ -203,7 +203,7 @@ object JevJsonTests extends TestSuite {
       assert(JevConfig.fromEnv(Map()).left.map(_.message) == Left("JEV_API_KEY is not set"))
       assert(
         JevConfig.fromEnv(Map("JEV_API_KEY" -> " ")).left.map(_.message) == Left(
-          "JEV_API_KEY is empty"
+          "JEV_API_KEY is set but blank"
         )
       )
       val c = JevConfig.fromEnv(Map("JEV_API_KEY" -> "sk-secret"))

@@ -57,9 +57,11 @@ object QueryDoubledProbe {
           ModelRole.Query.upstreamVar -> (if (upstream == "open") "" else upstream),
           ModelRole.Query.maxTokensVar -> MaxTokens.toString
         )
-        OpenRouterConfig.forRole(env, ModelRole.Query) match {
+        ProbeKey
+          .of(env)
+          .flatMap(key => OpenRouterConfig.forRole(env, ModelRole.Query).map(key -> _)) match {
           case Left(invalid) => println(invalid)
-          case Right(config) => run(config, entry(message, heard))
+          case Right((key, config)) => run(key, config, entry(message, heard))
         }
       case _ => println("usage: QueryDoubledProbe <model> <upstream> [--heard] <message>")
     }
@@ -76,7 +78,7 @@ object QueryDoubledProbe {
       Integrity.Member
     )
 
-  private def run(config: OpenRouterConfig, own: Entry): Unit = {
+  private def run(key: String, config: OpenRouterConfig, own: Entry): Unit = {
     val dir = Files.createTempDirectory("query-doubled")
     val body = OpenRouterJson.request(
       config.model,
@@ -97,7 +99,7 @@ object QueryDoubledProbe {
       case ((spent, done), _) if spent > Budget => (spent, done)
       case ((spent, done), (mode, i)) =>
         val file = dir.resolve(s"$mode-$i.${if (mode == "stream") "sse" else "json"}")
-        call(http, config, body, mode == "stream", file) match {
+        call(http, key, config, body, mode == "stream", file) match {
           case Left(why) =>
             println(s"[probe] $mode $i: FAILED $why")
             (spent, done :+ (mode -> "failed"))
@@ -139,6 +141,7 @@ object QueryDoubledProbe {
 
   private def call(
       http: HttpClient,
+      key: String,
       config: OpenRouterConfig,
       sent: ujson.Value,
       streamed: Boolean,
@@ -151,7 +154,7 @@ object QueryDoubledProbe {
         HttpRequest
           .newBuilder(config.endpoint)
           .timeout(config.timeout)
-          .header("Authorization", s"Bearer ${config.apiKey}")
+          .header("Authorization", s"Bearer $key")
           .header("Content-Type", "application/json")
           .header("X-OpenRouter-Title", "grit")
           .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))

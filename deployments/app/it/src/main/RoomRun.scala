@@ -5,6 +5,7 @@ import java.time.{Duration, Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
+import grit.core.edge.Variable
 import grit.core.files.PagedText
 import grit.core.id.{ConversationId, EntryId}
 import grit.core.identity.Account
@@ -53,7 +54,8 @@ private[main] object RoomRun {
     for {
       seed <- Seed.catalog
       policy <-
-        if (!env.contains(OpenRouterConfig.KeyVar)) Left(s"${OpenRouterConfig.KeyVar} is unset")
+        if (!env.contains(Variable.value(OpenRouterConfig.KeyVar)))
+          Left(s"${OpenRouterConfig.KeyVar} is unset")
         else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
       deployment <- Deployment
         .of(

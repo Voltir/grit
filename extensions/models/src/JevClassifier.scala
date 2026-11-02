@@ -5,12 +5,15 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import scala.util.control.NonFatal
 
 import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
+import grit.core.secret.Reveal
 
 /** [[Classifier]] over Jev (`POST /v1/systemone`), one request per call, no retries: a failed
   * connection or a transient status ([[JevJson.error]]) comes back as `Unavailable`, for the
   * caller to back off; any other status or failure as `Refused`.
   */
 final class JevClassifier(config: JevConfig) extends Classifier {
+
+  private val authorization = s"Bearer ${Reveal.text(config.apiKey)}"
 
   private val http = HttpClient.newBuilder().connectTimeout(config.timeout).build()
 
@@ -23,7 +26,7 @@ final class JevClassifier(config: JevConfig) extends Classifier {
         HttpRequest
           .newBuilder(config.endpoint)
           .timeout(config.timeout)
-          .header("Authorization", s"Bearer ${config.apiKey}")
+          .header("Authorization", authorization)
           .header("Content-Type", "application/json")
           .POST(
             HttpRequest.BodyPublishers.ofString(JevJson.body(config.model, state, questions))

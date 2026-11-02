@@ -10,6 +10,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema}
+import grit.core.secret.Variable
 
 /** Live probe of Anthropic's Messages API, three questions the unit tests cannot answer:
   *
@@ -58,7 +59,10 @@ object AnthropicLiveProbe {
   private var failures = Vector.empty[String]
 
   def main(args: Array[String]): Unit =
-    (sys.env.get(AnthropicProvider.KeyVar).filter(_.trim.nonEmpty), args.headOption) match {
+    (
+      sys.env.get(Variable.value(AnthropicProvider.KeyVar)).filter(_.trim.nonEmpty),
+      args.headOption
+    ) match {
       case (None, _) =>
         println(s"[probe] skipped: ${AnthropicProvider.KeyVar} is not set, so no call was made")
       case (Some(_), None) =>

@@ -3,12 +3,12 @@ package grit.models
 import grit.core.message.Message
 import grit.core.model.{ModelRef, Pinned, Policy, Upstream}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.secret.{Secret, Variable}
 
 /** The keys of the gateways grit calls models through, at least one of them set: OpenRouter's
-  * ([[OpenRouterConfig.KeyVar]]) and Anthropic's ([[AnthropicProvider.KeyVar]]). `toString`
-  * shows neither.
+  * ([[OpenRouterConfig.KeyVar]]) and Anthropic's ([[AnthropicProvider.KeyVar]]).
   */
-final class Keys private (openRouter: Option[String], anthropic: Option[String]) {
+final class Keys private (openRouter: Option[Secret], anthropic: Option[Secret]) {
 
   /** A provider whose every call is made under `pinned`, through the gateway that serves its
     * pair: [[AnthropicProvider]] for a pair served by
@@ -26,7 +26,7 @@ final class Keys private (openRouter: Option[String], anthropic: Option[String])
         }
       case Right(key) =>
         if (direct(ref)) new AnthropicProvider(key, pinned)
-        else new OpenRouterProvider(OpenRouterConfig.of(key, pinned))
+        else new OpenRouterProvider(key, OpenRouterConfig.of(pinned))
     }
   }
 
@@ -42,7 +42,7 @@ final class Keys private (openRouter: Option[String], anthropic: Option[String])
   private def direct(ref: ModelRef): Boolean = ref.upstream.contains(Upstream.AnthropicApi)
 
   /** The key `ref`'s gateway is called with, or the variable it is missing from. */
-  private def keyed(ref: ModelRef): Either[Keys.Unkeyed, String] =
+  private def keyed(ref: ModelRef): Either[Keys.Unkeyed, Secret] =
     if (direct(ref)) anthropic.toRight(Keys.Unkeyed(AnthropicProvider.KeyVar, ref))
     else openRouter.toRight(Keys.Unkeyed(OpenRouterConfig.KeyVar, ref))
 
@@ -54,14 +54,16 @@ final class Keys private (openRouter: Option[String], anthropic: Option[String])
 object Keys {
 
   /** `ref` is called through a gateway whose key, read from `variable`, is not set. */
-  final case class Unkeyed(variable: String, ref: ModelRef) {
-    def message: String = s"$variable is not set, but the model catalog calls $ref, which needs it"
+  final case class Unkeyed(variable: Variable, ref: ModelRef) {
+    def message: String =
+      s"${Variable.value(variable)} is not set, but the model catalog calls $ref, which needs it"
   }
 
-  /** `env`'s keys, each variable optional but not blank when set; `None` when neither is set:
-    * the stub model, so no key, no spend.
+  /** `env`'s keys, each read as [[Secret.read]] reads one, but optional: an unset variable is no
+    * key, and one set but blank is refused. `None` when neither is set: the stub model, so no
+    * key, no spend.
     */
-  def of(env: Map[String, String]): Either[OpenRouterConfig.Invalid, Option[Keys]] =
+  def of(env: Map[String, String]): Either[Secret.Refusal, Option[Keys]] =
     for {
       openRouter <- read(env, OpenRouterConfig.KeyVar)
       anthropic <- read(env, AnthropicProvider.KeyVar)
@@ -71,11 +73,11 @@ object Keys {
 
   private def read(
       env: Map[String, String],
-      variable: String
-  ): Either[OpenRouterConfig.Invalid, Option[String]] =
-    env.get(variable) match {
-      case None => Right(None)
-      case Some(key) =>
-        Either.cond(key.trim.nonEmpty, Some(key), OpenRouterConfig.Invalid.Empty(variable))
+      variable: Variable
+  ): Either[Secret.Refusal, Option[Secret]] =
+    Secret.read(env, variable) match {
+      case Right(key) => Right(Some(key))
+      case Left(Secret.Refusal.Unset(_)) => Right(None)
+      case Left(refused) => Left(refused)
     }
 }

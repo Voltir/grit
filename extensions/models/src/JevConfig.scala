@@ -3,14 +3,16 @@ package grit.models
 import java.net.URI
 import java.time.Duration
 
-/** How grit reaches Jev (typesafe.ai's System One API). `toString` never shows the key. */
-final case class JevConfig(apiKey: String, model: String, endpoint: URI, timeout: Duration) {
+import grit.core.secret.{Secret, Variable}
+
+/** How grit reaches Jev (typesafe.ai's System One API). */
+final case class JevConfig(apiKey: Secret, model: String, endpoint: URI, timeout: Duration) {
   override def toString: String = s"JevConfig($model, $endpoint, <key redacted>)"
 }
 
 object JevConfig {
 
-  val KeyVar = "JEV_API_KEY"
+  val KeyVar: Variable = Variable("JEV_API_KEY")
 
   /** The alias for TypeSafe's current stable release (`jev-1.13.0` on 2026-09-24). */
   val DefaultModel = "jev-latest"
@@ -22,10 +24,9 @@ object JevConfig {
     */
   val UsdPerMillionInput: BigDecimal = BigDecimal("0.042")
 
-  /** The key is `JEV_API_KEY` (required); the model is always [[DefaultModel]]. */
-  def fromEnv(env: Map[String, String]): Either[OpenRouterConfig.Invalid, JevConfig] =
-    for {
-      key <- env.get(KeyVar).toRight(OpenRouterConfig.Invalid.Missing(KeyVar))
-      _ <- Either.cond(key.trim.nonEmpty, (), OpenRouterConfig.Invalid.Empty(KeyVar))
-    } yield JevConfig(key, DefaultModel, Endpoint, Duration.ofSeconds(30))
+  /** The key is `JEV_API_KEY` (required, as [[Secret.read]] reads it); the model is always
+    * [[DefaultModel]].
+    */
+  def fromEnv(env: Map[String, String]): Either[Secret.Refusal, JevConfig] =
+    Secret.read(env, KeyVar).map(JevConfig(_, DefaultModel, Endpoint, Duration.ofSeconds(30)))
 }

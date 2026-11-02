@@ -3,7 +3,7 @@ package grit.app.main
 import grit.app.config.{Budgets, Claimed, LifecycleEnv}
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.core.edge.ServedEdge
+import grit.core.edge.{ServedEdge, Variable}
 import grit.core.files.{FileArea, Formats}
 import grit.core.identity.{Identities, Vouching}
 import grit.core.model.Policy
@@ -34,7 +34,7 @@ private[main] object Deploying {
     * `GRIT_STUB_TOPICS` is `1`; else none, saying why.
     */
   private[main] def placer(env: Map[String, String]): Placer =
-    if (env.contains(JevConfig.KeyVar)) Placer.Jev
+    if (env.contains(Variable.value(JevConfig.KeyVar))) Placer.Jev
     else if (env.get(StubPlacerVar).map(_.trim).contains("1")) Placer.Stub
     else Placer.Off(s"${JevConfig.KeyVar} is not set")
 
@@ -43,7 +43,7 @@ private[main] object Deploying {
     */
   private[main] def policy(env: Map[String, String]): Either[String, Policy] =
     Seed.catalog.flatMap { seed =>
-      if (!env.contains(OpenRouterConfig.KeyVar)) Right(seed.policy)
+      if (!env.contains(Variable.value(OpenRouterConfig.KeyVar))) Right(seed.policy)
       else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
     }
 

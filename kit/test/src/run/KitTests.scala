@@ -9,10 +9,11 @@ import grit.core.id.{AttesterName, EdgeName, PluginName, ScheduleKey}
 import grit.core.identity.{Domain, Identities, Realm, Vouching}
 import grit.core.job.{Declared, Grace, Job, SlotRule}
 import grit.core.plugin.Plugin
+import grit.core.secret.Secret
 import grit.core.visibility.{Label, Level}
 import grit.kit.deployment.{Deployments, Placer, TestPlugins}
 import grit.kit.environment.SecretsRefusal
-import grit.models.OpenRouterConfig
+import grit.models.JevConfig
 
 import utest.*
 
@@ -96,7 +97,7 @@ object KitTests extends TestSuite {
       Kit.serve(deployment(Placer.Jev), nowhere + ("SLACK_BOT_TOKEN" -> "xoxb-1")) ==>
         Left(
           KitFailure.Unconfigured(
-            SecretsRefusal.Key(OpenRouterConfig.Invalid.Missing("JEV_API_KEY"))
+            SecretsRefusal.Key(Secret.Refusal.Unset(JevConfig.KeyVar))
           )
         )
     }

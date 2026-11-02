@@ -10,6 +10,7 @@ import grit.core.either.Traversal
 import grit.core.message.{Cost, Tokens}
 import grit.core.period.Probability
 import grit.core.provider.Provider
+import grit.core.secret.Secret
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.capture.CaptureJson
 import grit.eval.harness.jev.Budget
@@ -96,8 +97,8 @@ private[main] object RebuildCommands {
           pins <- Seed.catalog.map(_.pin)
           // The writer's settings name its model, so they key its answers; the key itself is
           // read only when a write is to be asked.
-          keyless = OpenRouterConfig.of("", pins.query.first)
-          estimated = Queries.estimate(requests, keyless, store)
+          settings = OpenRouterConfig.of(pins.query.first)
+          estimated = Queries.estimate(requests, settings, store)
           _ = println(
             s"window-only cases: ${only.size}, withheld: $withheld; queries to write: " +
               s"${requests.distinct.size}, " +
@@ -109,18 +110,13 @@ private[main] object RebuildCommands {
             .map(refused)
           writer <-
             if (estimated == 0) Right(None)
-            else
-              OpenRouterConfig
-                .key(env)
-                .left
-                .map(_.message)
-                .map(k => Some(OpenRouterConfig.of(k, pins.query.first)))
+            else Secret.read(env, OpenRouterConfig.KeyVar).left.map(_.message).map(Some(_))
           answered = {
             val asking: Provider^ = writer match {
-              case Some(c) => new OpenRouterProvider(c)
+              case Some(key) => new OpenRouterProvider(key, settings)
               case None => Queries.unasked()
             }
-            Queries.answer(requests, keyless, store, asking, budget, clock)
+            Queries.answer(requests, settings, store, asking, budget, clock)
           }
           windows = asked.map((w, _) =>
             w -> WindowOnly.window(reader, w, assembled, answered.answers, Width.Deployed)
@@ -234,10 +230,10 @@ private[main] object RebuildCommands {
       requests = cases.map(_.request)
       // Each model's settings name it, so they key its answers; the key itself is read only
       // when an ask is to be made.
-      keyless = models.map(m =>
-        OpenRouterConfig.of("", pin).copy(model = grit.core.model.ModelId.value(m))
+      configs = models.map(m =>
+        OpenRouterConfig.of(pin).copy(model = grit.core.model.ModelId.value(m))
       )
-      estimated = keyless.map(Queries.estimate(requests, _, store)).sum
+      estimated = configs.map(Queries.estimate(requests, _, store)).sum
       _ = println(
         s"summaries: ${cases.size} cases, ${cases.count(_.live.isDefined)} with a live summary; " +
           s"${models.size} models, estimated ${Cost.cents(estimated)}, cap ${Cost.cents(cap)}"
@@ -248,12 +244,13 @@ private[main] object RebuildCommands {
           for {
             budget <- Budget.of(cap, estimated).left.map(refused)
             key <-
-              if (estimated == 0) Right("")
-              else OpenRouterConfig.key(env).left.map(_.message)
-            answered = keyless.foldLeft((budget, Vector.empty[Answered])) { (done, c) =>
-              val asking: Provider^ =
-                if (estimated == 0) Queries.unasked()
-                else new OpenRouterProvider(c.copy(apiKey = key))
+              if (estimated == 0) Right(None)
+              else Secret.read(env, OpenRouterConfig.KeyVar).left.map(_.message).map(Some(_))
+            answered = configs.foldLeft((budget, Vector.empty[Answered])) { (done, c) =>
+              val asking: Provider^ = key match {
+                case Some(k) => new OpenRouterProvider(k, c)
+                case None => Queries.unasked()
+              }
               val a = Queries.answer(requests, c, store, asking, done._1, clock)
               (a.budget, done._2 :+ a)
             }
@@ -263,11 +260,11 @@ private[main] object RebuildCommands {
               Summaries.review(
                 dir.getFileName.toString,
                 cases,
-                keyless.map(_.model).zip(each.map(_.answers))
+                configs.map(_.model).zip(each.map(_.answers))
               )
             )
           } yield {
-            keyless.zip(each).foreach { (c, a) =>
+            configs.zip(each).foreach { (c, a) =>
               println(
                 s"  ${c.model}: asked ${a.asked}, cached ${a.cached}, skipped ${a.skipped}, " +
                   s"failed ${a.failed}"

@@ -6,6 +6,7 @@ import grit.core.persona.Persona
 import grit.core.prompt.Fenced
 import grit.core.provider.{ModelRequest, Provider}
 import grit.core.schema.JsonSchema
+import grit.core.secret.Secret
 import grit.core.store.Speakers
 import grit.knowledge.card.CardSummary
 import grit.knowledge.topic.AttachAsk
@@ -115,11 +116,15 @@ object FenceProbe {
       ModelRole.Dream.upstreamVar -> "",
       ModelRole.Dream.maxTokensVar -> r.maxTokens.toString
     )
-    OpenRouterConfig.forRole(env, ModelRole.Dream) match {
+    Secret
+      .read(env, OpenRouterConfig.KeyVar)
+      .left
+      .map(_.message)
+      .flatMap(key => OpenRouterConfig.forRole(env, ModelRole.Dream).map(key -> _)) match {
       case Left(invalid) => println(invalid)
-      case Right(config) =>
+      case Right((key, config)) =>
         println(s"model ${r.model}, max tokens ${r.maxTokens}")
-        run(new OpenRouterProvider(config), r)
+        run(new OpenRouterProvider(key, config), r)
     }
   }
 

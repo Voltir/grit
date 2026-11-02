@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Processes, RelPath}
 import grit.core.message.{Tokens, Usage}
-import grit.core.secret.{Secret, Variable}
+import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.BenchRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
 
@@ -44,9 +44,7 @@ object RigTests extends TestSuite {
   }
 
   private val env = Map("ANTHROPIC_API_KEY" -> "sk-ant-test-0123")
-  private val key = Secret
-    .read(env, Variable("ANTHROPIC_API_KEY"))
-    .getOrElse(throw new java.lang.AssertionError())
+  private val key = TestSecrets.of(Variable("ANTHROPIC_API_KEY"), "sk-ant-test-0123")
   private val cap =
     Caps.of("claude-haiku-5-5", "0.05", "4").getOrElse(throw new java.lang.AssertionError())
   private val checkout = rel("trial")

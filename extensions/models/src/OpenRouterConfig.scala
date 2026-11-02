@@ -16,13 +16,13 @@ import grit.core.model.{
   Rung,
   Upstream
 }
+import grit.core.secret.Variable
 
-/** How grit reaches OpenRouter for one role: `upstream` alone serves its calls, or whichever
-  * upstream OpenRouter picks when `None`; `effort` is asked of the model when set; earlier
-  * reasoning goes back as `replay` says. `toString` never shows the key.
+/** How grit reaches OpenRouter for one role, its key aside ([[OpenRouterProvider]] takes it):
+  * `upstream` alone serves its calls, or whichever upstream OpenRouter picks when `None`;
+  * `effort` is asked of the model when set; earlier reasoning goes back as `replay` says.
   */
 final case class OpenRouterConfig(
-    apiKey: String,
     model: String,
     maxTokens: Int,
     endpoint: URI,
@@ -30,20 +30,16 @@ final case class OpenRouterConfig(
     upstream: Option[Upstream] = None,
     effort: Option[Effort] = None,
     replay: ReasoningReplay = ReasoningReplay.Details
-) {
-  override def toString: String =
-    s"OpenRouterConfig($model, $maxTokens, ${upstream.fold("open")(Upstream.value)}, $endpoint, <key redacted>)"
-}
+)
 
 object OpenRouterConfig {
 
-  val KeyVar = "OPENROUTER_API_KEY"
+  val KeyVar: Variable = Variable("OPENROUTER_API_KEY")
 
   val Endpoint: URI = URI.create("https://openrouter.ai/api/v1/chat/completions")
 
   enum Invalid {
     case Missing(variable: String)
-    case Empty(variable: String)
     case NotPositive(variable: String)
     case NotAModel(variable: String)
     case NotAnUpstream(variable: String)
@@ -52,7 +48,6 @@ object OpenRouterConfig {
     /** Names the variable, never its value. */
     def message: String = this match {
       case Missing(v) => s"$v is not set"
-      case Empty(v) => s"$v is empty"
       case NotPositive(v) => s"$v is not a positive whole number"
       case NotAModel(v) => s"$v is not an OpenRouter model id, such as openai/gpt-oss-120b"
       case NotAnUpstream(v) =>
@@ -60,13 +55,6 @@ object OpenRouterConfig {
       case NotAnEffort(v) => s"$v is not one of minimal, low, medium, high, xhigh, max"
     }
   }
-
-  /** The key, `OPENROUTER_API_KEY`: required, and not blank. */
-  def key(env: Map[String, String]): Either[Invalid, String] =
-    for {
-      key <- env.get(KeyVar).toRight(Invalid.Missing(KeyVar))
-      _ <- Either.cond(key.trim.nonEmpty, (), Invalid.Empty(KeyVar))
-    } yield key
 
   /** `policy` with each role's variables ([[ModelRole]]) laid over its ladder for this run; a
     * blank variable is unset. A grade's model variable names the model of the role's rungs at
@@ -207,13 +195,12 @@ object OpenRouterConfig {
   private val Grades: Vector[Grade] =
     Grade.Standard +: Grade.values.toVector.filter(_ != Grade.Standard)
 
-  /** A role's configuration under `key`: its pinned assignment's model, budget, upstream and
-    * effort, its settings' reasoning replay, and a five-minute timeout.
+  /** A role's configuration: its pinned assignment's model, budget, upstream and effort, its
+    * settings' reasoning replay, and a five-minute timeout.
     */
-  def of(key: String, pinned: Pinned): OpenRouterConfig = {
+  def of(pinned: Pinned): OpenRouterConfig = {
     val a = pinned.assignment
     OpenRouterConfig(
-      key,
       ModelId.value(a.ref.model),
       a.maxTokens,
       Endpoint,
@@ -224,13 +211,12 @@ object OpenRouterConfig {
     )
   }
 
-  /** `role`'s configuration for this run: the key, and the [[Seed]]'s policy with `env` laid
-    * over it ([[policy]]); `Left` says what is wrong, naming no value.
+  /** `role`'s configuration for this run: the [[Seed]]'s policy with `env` laid over it
+    * ([[policy]]); `Left` says what is wrong, naming no value. Reads no key.
     */
   def forRole(env: Map[String, String], role: ModelRole): Either[String, OpenRouterConfig] =
     for {
-      k <- key(env).left.map(_.message)
       seed <- Seed.catalog
       p <- policy(env, seed.policy).left.map(_.message)
-    } yield of(k, role.in(seed.withPolicy(p)).first)
+    } yield of(role.in(seed.withPolicy(p)).first)
 }

@@ -825,7 +825,6 @@ object RebuildTests extends TestSuite {
       requests.size ==> 1
       val config =
         OpenRouterConfig(
-          "unused",
           "test/query",
           64,
           OpenRouterConfig.Endpoint,

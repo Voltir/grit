@@ -7,6 +7,7 @@ import java.time.Duration
 import grit.core.message.Message
 import grit.core.model.{ModelId, Pinned}
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
+import grit.core.secret.{Reveal, Secret, Variable}
 
 /** [[Provider]] over Anthropic's Messages API, called with `key`, one request per call,
   * streamed or not, no retries, under `pinned`'s model (its id after `anthropic/`), budget and
@@ -22,7 +23,9 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
   * [[ProviderError.Refused]] naming its category; a model not under `anthropic/` is
   * [[ProviderError.Refused]] with no call made.
   */
-final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
+final class AnthropicProvider(key: Secret, pinned: Pinned) extends Provider {
+
+  private val revealed = Reveal.text(key)
 
   private val timeout = Duration.ofMinutes(5)
 
@@ -58,7 +61,7 @@ final class AnthropicProvider(key: String, pinned: Pinned) extends Provider {
     }
 
   private def post(model: String, request: ModelRequest, streamed: Boolean): HttpRequest = {
-    val (headers, body) = AnthropicProvider.wire(key, model, pinned, request)
+    val (headers, body) = AnthropicProvider.wire(revealed, model, pinned, request)
     if (streamed) body("stream") = true
     ProviderHttp.post(AnthropicProvider.Endpoint, timeout, headers, body)
   }
@@ -69,7 +72,7 @@ object AnthropicProvider {
   val Endpoint: URI = URI.create("https://api.anthropic.com/v1/messages")
 
   /** The variable Anthropic's key is read from ([[Keys.of]]). */
-  val KeyVar = "ANTHROPIC_API_KEY"
+  val KeyVar: Variable = Variable("ANTHROPIC_API_KEY")
 
   /** The headers a request is sent with under `key`, besides its content type: under
     * [[AnthropicJson.BindingBeta]] too when it asks [[AnthropicJson.request]]'s `dropBlock`.

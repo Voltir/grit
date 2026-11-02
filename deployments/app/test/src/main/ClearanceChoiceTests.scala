@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.edge.Variable
 import grit.core.model.{Policy, Upstream}
 import grit.core.visibility.{Cleared, Compartments, Label, Party}
 import grit.kit.deployment.Offered
@@ -75,7 +76,10 @@ object ClearanceChoiceTests extends TestSuite {
       (
         clearances(Map.empty, None),
         clearances(Map("GRIT_ADMINS" -> "U012AB34"), Some(TeamId("T0FAKE"))),
-        clearances(Map(OpenRouterConfig.KeyVar -> "sk-test", "GRIT_PROVIDER" -> "acme"), None)
+        clearances(
+          Map(Variable.value(OpenRouterConfig.KeyVar) -> "sk-test", "GRIT_PROVIDER" -> "acme"),
+          None
+        )
       ) ==> (seeded, seeded, Right(always.map(_.clearance) :+ top))
     }
 

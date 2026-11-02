@@ -19,6 +19,7 @@ import grit.core.model.{
   Upstream
 }
 import grit.core.provider.ModelRequest
+import grit.core.secret.Variable
 import grit.core.store.{Db, InMemoryModelSettingStore, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -36,8 +37,12 @@ object CatalogModelsTests extends TestSuite {
   private val turnPair = seed.policy.turn.first.assignment.ref
 
   /** Keys with each of `variables` set. */
-  private def keys(variables: String*): Keys =
-    Keys.of(variables.map(_ -> "k").toMap).toOption.flatten.getOrElse(sys.error("no keys"))
+  private def keys(variables: Variable*): Keys =
+    Keys
+      .of(variables.map(Variable.value(_) -> "k").toMap)
+      .toOption
+      .flatten
+      .getOrElse(sys.error("no keys"))
 
   private def pinned(model: String, upstream: String): Pinned = (for {
     id <- ModelId.of(model)

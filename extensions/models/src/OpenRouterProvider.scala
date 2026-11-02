@@ -4,13 +4,16 @@ import java.net.http.{HttpClient, HttpRequest}
 
 import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
+import grit.core.secret.{Reveal, Secret}
 
-/** [[Provider]] over OpenRouter's chat completions, one request per call, streamed or
-  * not, no retries. A failure to connect, a timeout or a connection lost is
+/** [[Provider]] over OpenRouter's chat completions, called with `key` under `config`, one
+  * request per call, streamed or not, no retries. A failure to connect, a timeout or a connection lost is
   * [[ProviderError.Unavailable]] ([[ProviderHttp]]); how an HTTP error or a model error is
   * classed is [[OpenRouterJson.error]]'s and [[OpenRouterJson.modelError]]'s.
   */
-final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
+final class OpenRouterProvider(key: Secret, config: OpenRouterConfig) extends Provider {
+
+  private val authorization = s"Bearer ${Reveal.text(key)}"
 
   private val http = HttpClient.newBuilder().connectTimeout(config.timeout).build()
 
@@ -49,7 +52,7 @@ final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
     ProviderHttp.post(
       config.endpoint,
       config.timeout,
-      Seq("Authorization" -> s"Bearer ${config.apiKey}", "X-OpenRouter-Title" -> "grit"),
+      Seq("Authorization" -> authorization, "X-OpenRouter-Title" -> "grit"),
       body
     )
 }

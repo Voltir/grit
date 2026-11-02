@@ -2,9 +2,10 @@ package grit.kit.environment
 
 import java.nio.file.Path
 
+import grit.core.secret.Secret
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.{Deployment, Placer}
-import grit.models.{JevConfig, Keys, OpenRouterConfig}
+import grit.models.{JevConfig, Keys}
 
 /** Why [[Secrets.of]] refused; each names the variable, never its value. */
 enum SecretsRefusal {
@@ -12,8 +13,8 @@ enum SecretsRefusal {
   /** The database's variables name no usable database. */
   case Database(invalid: DbConfig.Invalid)
 
-  /** A model's key is set but blank, or Jev's is unset for [[Placer.Jev]]. */
-  case Key(invalid: OpenRouterConfig.Invalid)
+  /** A model's key is set but blank, or Jev's is not read for [[Placer.Jev]]. */
+  case Key(refusal: Secret.Refusal)
 
   /** The file area's directory is named, but not as an absolute path: `why`. */
   case FilesDir(why: String)
@@ -25,7 +26,7 @@ enum SecretsRefusal {
 
   def message: String = this match {
     case Database(invalid) => invalid.message
-    case Key(invalid) => invalid.message
+    case Key(refusal) => refusal.message
     case FilesDir(why) => why
     case Unkeyed(unkeyed) => unkeyed.message
   }

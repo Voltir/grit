@@ -6,6 +6,7 @@ import java.time.Duration
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ToolSchema}
+import grit.core.secret.Variable
 
 /** Live probe of the cache breakpoints [[OpenRouterJson.request]] sends for an Anthropic model,
   * which the unit tests can pin only as written: whether OpenRouter passes them on. Three
@@ -42,7 +43,7 @@ object OpenRouterCacheProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    sys.env.get(OpenRouterConfig.KeyVar).filter(_.trim.nonEmpty) match {
+    sys.env.get(Variable.value(OpenRouterConfig.KeyVar)).filter(_.trim.nonEmpty) match {
       case None =>
         println(s"[probe] skipped: ${OpenRouterConfig.KeyVar} is not set, so no call was made")
       case Some(key) =>

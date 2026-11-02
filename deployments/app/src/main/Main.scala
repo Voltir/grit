@@ -9,7 +9,7 @@ import grit.chat.run.Chat
 import grit.chat.settings.Prefs
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
-import grit.core.edge.{Console, ServedEdge}
+import grit.core.edge.{Console, ServedEdge, Variable}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.Message
@@ -259,7 +259,7 @@ object Main {
         // Who may lower a label or label a public channel, said before serving starts.
         unadministered(exitOnLeft(admins(env))).foreach(line => System.err.println(s"[main] $line"))
         // Which roles a labelled room cannot call, said before serving starts.
-        if (env.contains(OpenRouterConfig.KeyVar))
+        if (env.contains(Variable.value(OpenRouterConfig.KeyVar)))
           uncleared(deployment.policy).foreach(line => System.err.println(s"[main] $line"))
         Kit.serve(deployment, env).left.map(_.message).swap.toOption
       } else if (topicsBackfill.nonEmpty)

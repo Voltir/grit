@@ -40,14 +40,16 @@ object ToolStreamProbe {
         "GRIT_PROVIDER" -> upstream,
         "GRIT_MAX_TOKENS" -> "400"
       )
-      OpenRouterConfig.forRole(env, ModelRole.Turn) match {
+      ProbeKey
+        .of(env)
+        .flatMap(key => OpenRouterConfig.forRole(env, ModelRole.Turn).map(key -> _)) match {
         case Left(invalid) => println(invalid)
-        case Right(config) => println(s"[probe] $model @ $upstream: ${run(config)}")
+        case Right((key, config)) => println(s"[probe] $model @ $upstream: ${run(key, config)}")
       }
     }
   }
 
-  private def run(config: OpenRouterConfig): String = {
+  private def run(key: String, config: OpenRouterConfig): String = {
     val request = ModelRequest(
       "You are a coding agent. Use the tools offered.",
       Vector(Message.User("What does build.mill say? Read it.")),
@@ -65,7 +67,7 @@ object ToolStreamProbe {
         HttpRequest
           .newBuilder(config.endpoint)
           .timeout(config.timeout)
-          .header("Authorization", s"Bearer ${config.apiKey}")
+          .header("Authorization", s"Bearer $key")
           .header("Content-Type", "application/json")
           .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))
           .build(),

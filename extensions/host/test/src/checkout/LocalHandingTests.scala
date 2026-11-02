@@ -3,7 +3,7 @@ package grit.host.checkout
 import java.nio.file.{Files, Path}
 
 import grit.core.host.*
-import grit.core.secret.{Secret, Variable}
+import grit.core.secret.{TestSecrets, Variable}
 
 import utest.*
 
@@ -14,11 +14,7 @@ object LocalHandingTests extends TestSuite {
 
   private val value = "sk-ant-planted-handed-value"
 
-  private val key: Secret =
-    Secret.read(Map("ANTHROPIC_API_KEY" -> value), Variable("ANTHROPIC_API_KEY")) match {
-      case Right(s) => s
-      case Left(why) => throw new java.lang.AssertionError(why.message)
-    }
+  private val key = TestSecrets.of(Variable("ANTHROPIC_API_KEY"), value)
 
   private def variables(values: (String, String)*): Variables =
     Variables.of(values.toMap) match {

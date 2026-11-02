@@ -23,13 +23,15 @@ object ReasoningBillingProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    OpenRouterConfig.forRole(sys.env, ModelRole.Turn) match {
+    ProbeKey
+      .of(sys.env)
+      .flatMap(key => OpenRouterConfig.forRole(sys.env, ModelRole.Turn).map(key -> _)) match {
       case Left(invalid) => println(invalid)
-      case Right(config) => run(config.copy(maxTokens = 600))
+      case Right((key, config)) => run(key, config.copy(maxTokens = 600))
     }
   }
 
-  private def run(config: OpenRouterConfig): Unit = {
+  private def run(key: String, config: OpenRouterConfig): Unit = {
     val http = HttpClient.newBuilder().connectTimeout(config.timeout).build()
 
     /** The host that served `request`, and the reply; pinned to `host` when given. */
@@ -46,7 +48,7 @@ object ReasoningBillingProbe {
           HttpRequest
             .newBuilder(config.endpoint)
             .timeout(config.timeout)
-            .header("Authorization", s"Bearer ${config.apiKey}")
+            .header("Authorization", s"Bearer $key")
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))
             .build(),

@@ -2,6 +2,7 @@ package grit.models
 
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{Delta, ModelRequest}
+import grit.core.secret.Secret
 
 /** Live probe: does a streamed reply come back as the same message a plain call returns,
   * and does its reasoning replay? One question streamed and asked plainly, then a
@@ -15,9 +16,13 @@ object StreamingProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    OpenRouterConfig.forRole(sys.env, ModelRole.Turn) match {
+    Secret
+      .read(sys.env, OpenRouterConfig.KeyVar)
+      .left
+      .map(_.message)
+      .flatMap(key => OpenRouterConfig.forRole(sys.env, ModelRole.Turn).map(key -> _)) match {
       case Left(invalid) => println(invalid)
-      case Right(config) => run(new OpenRouterProvider(config.copy(maxTokens = 300)))
+      case Right((key, config)) => run(new OpenRouterProvider(key, config.copy(maxTokens = 300)))
     }
   }
 
