@@ -13,6 +13,9 @@ import grit.core.host.{
   Ran,
   RelPath,
   Replace,
+  RunId,
+  RunStatus,
+  Runs,
   Shell,
   Workspace
 }
@@ -39,8 +42,8 @@ import grit.core.visibility.Integrity
 /** The coding tool set: reading, searching, changing and running things in a checkout. Each
   * tool's description is all the model is told of it, so it states the tool's limits and
   * every failure the model can see. `write`, `edit` and `run` ask a person first in [[all]], and
-  * nobody in [[allowlisted]] (ADR 0055); either way they are bound only to a call stamped at
-  * [[Integrity.Member]] or above. Every tool's results are believed at [[Integrity.Member]]:
+  * nobody in [[allowlisted]] (ADR 0055), where `stop` joins them; either way they are bound only
+  * to a call stamped at [[Integrity.Member]] or above. Every tool's results are believed at [[Integrity.Member]]:
   * the checkout is its operator's own.
   */
 object Coding {
@@ -51,11 +54,11 @@ object Coding {
   type WriteArgs = (path: RelPath, content: String)
   type EditArgs = (path: RelPath, edits: List[Replace])
   type RunArgs = (command: String, timeout: FiniteDuration)
-  type ArgvArgs = (argv: Argv, timeout: FiniteDuration)
+  type ArgvArgs = (argv: Argv, timeout: FiniteDuration, wait: FiniteDuration)
+  type TailArgs = (id: RunId, wait: FiniteDuration)
+  type StopArgs = (id: RunId)
 
-  /** The seconds a command may run when the call gives no `timeout`, or its allowlist's longest
-    * when that is less.
-    */
+  /** The seconds a command the gated `run` starts may run when the call gives no `timeout`. */
   val DefaultTimeout: FiniteDuration = 60.seconds
 
   /** The most arguments an allowlisted `run` passes a program. */
@@ -92,17 +95,28 @@ object Coding {
   ): Either[SetRefusal, Toolbox[caps.CapSet^{ws, edits, shell}]] =
     Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
 
-  /** `read`, `list`, `search`, `write`, `edit` and `run` as an allowlist offers them, in that
-    * order: described, never run; an edge runs them ([[allowlisted]]). None asks first;
-    * `write`, `edit` and `run` are still bound only to a call stamped at [[Integrity.Member]]
-    * or above. `run` takes a program and its arguments, no shell line, its description lists
-    * what `allowlist` permits, and its `timeout` is at most the allowlist's longest.
+  /** `read`, `list`, `search`, `write`, `edit`, `run`, `tail` and `stop` as an allowlist offers
+    * them, in that order: described, never run; an edge runs them ([[allowlisted]]). None asks
+    * first; `write`, `edit`, `run` and `stop` are still bound only to a call stamped at
+    * [[Integrity.Member]] or above. `run` takes a program and its arguments, no shell line, its
+    * description lists what `allowlist` permits, and its `timeout` is at most the allowlist's
+    * longest; a command still going after its `wait` answers with an id `tail` and `stop` take.
     */
   def allowlistedHosted(allowlist: Allowlist): Vector[Tool.Offered] =
-    Vector(readHosted, listHosted, searchHosted, freeWrite, freeEdit, argvRunHosted(allowlist))
+    Vector(
+      readHosted,
+      listHosted,
+      searchHosted,
+      freeWrite,
+      freeEdit,
+      argvRunHosted(allowlist),
+      tailHosted,
+      stopHosted
+    )
 
   /** The tools [[allowlistedHosted]] describes for `runs.allowlist`, each `run` refused, running
-    * nothing, when `runs` does not permit it; `Left` names a tool that cannot be offered with
+    * nothing, when `runs` does not permit it, and `tail` and `stop` reaching only what `runs`
+    * started; `Left` names a tool that cannot be offered with
     * the others.
     */
   def allowlisted(
@@ -116,7 +130,9 @@ object Coding {
       search(ws),
       writing(freeWrite, edits),
       editing(freeEdit, edits),
-      argvRun(runs)
+      argvRun(runs),
+      tail(runs),
+      stop(runs)
     )
 
   /** `read` as the engine offers it: an edge runs it ([[read]]). */
@@ -382,7 +398,6 @@ object Coding {
     */
   private def argvRunHosted(allowlist: Allowlist): Hosted[ArgvArgs] = {
     val longest = allowlist.longest
-    val default = DefaultTimeout.min(longest)
     new Hosted(
       ToolSpec(
         ToolName("run"),
@@ -391,12 +406,16 @@ object Coding {
           "`program` and `args` are passed as they are, with no shell: no pipes, `&&`, " +
           "redirects, globs or variables; use `search` and `read` for what those were for. " +
           "A non-zero exit is returned, not an error. Shows at most the last " + limits +
-          " of output. Give `git commit` its message with `-m`: no editor can open. Fails, " +
-          "running nothing, when the command is not on the list; fails when it runs past " +
-          s"`timeout` (${default.toSeconds} seconds when not given, at most " +
-          s"${longest.toSeconds} seconds), killing it and everything it started and returning " +
-          "its output so far, or when it cannot start. The commands it runs, where `…` stands " +
-          "for any further arguments:\n" +
+          " of output. Give `git commit` its message with `-m`: no editor can open. Waits up " +
+          s"to `wait` seconds (${Runs.Wait.toSeconds} when not given): a command still running " +
+          "then keeps running, and the answer gives its id and its output so far; follow it " +
+          s"with `tail`, or end it with `stop`. At most ${Runs.Most} commands run at once in a " +
+          "checkout. Fails, running nothing, when the command is not on the list or " +
+          s"${Runs.Most} are already running, and when it cannot start. A command is killed " +
+          "with everything it started when it runs past `timeout` (at most " +
+          s"${longest.toSeconds} seconds, and that when not given) or its output passes " +
+          s"${mb(Workspace.MaxFileBytes)}. The commands it runs, where `…` stands for any " +
+          "further arguments:\n" +
           allowlist.rules.map(r => s"- `${r.written}`").mkString("\n"),
         Args
           .of(
@@ -407,9 +426,18 @@ object Coding {
                 .optional,
               timeout = Field
                 .count(
-                  s"The most seconds it may run; ${default.toSeconds} when not given.",
+                  s"The most seconds it may run, waited on or not; ${longest.toSeconds} when " +
+                    "not given.",
                   1,
                   longest.toSeconds.toInt
+                )
+                .optional,
+              wait = Field
+                .count(
+                  "The most seconds to wait for it to end before answering with its id; " +
+                    s"${Runs.Wait.toSeconds} when not given.",
+                  0,
+                  Shell.Longest.toSeconds.toInt
                 )
                 .optional
             )
@@ -419,7 +447,13 @@ object Coding {
               .of(a.program, a.args.getOrElse(Nil)*)
               .left
               .map(why => ArgsError.Refused("program", s"The command cannot run: $why."))
-              .map(argv => (argv = argv, timeout = a.timeout.fold(default)(_.seconds)))
+              .map(argv =>
+                (
+                  argv = argv,
+                  timeout = a.timeout.fold(longest)(_.seconds),
+                  wait = a.wait.fold(Runs.Wait)(_.seconds)
+                )
+              )
           )
       ),
       Gate.Free,
@@ -435,7 +469,119 @@ object Coding {
   }
 
   private def argvRun(runs: Allowlisted^): Tool[ArgvArgs]^{runs} =
-    argvRunHosted(runs.allowlist).over(a => outcome(runs.run(a.argv, a.timeout))(answered))
+    argvRunHosted(runs.allowlist).over(a =>
+      runs
+        .start(a.argv, a.timeout, a.wait)
+        .fold(e => Outcome.Failed(e.message), s => standing(s.id, s.status))
+    )
+
+  /** `tail` as an allowlisted set offers it: asking no one, bound at any integrity, as `read`. */
+  private lazy val tailHosted: Hosted[TailArgs] =
+    new Hosted(
+      ToolSpec(
+        ToolName("tail"),
+        "See how a command `run` left running stands: still running, with its output so far, " +
+          "or ended, with its exit code and output. Give `wait` to wait up to that many seconds " +
+          "for it to end; the answer comes as soon as it does. Shows at most the last " + limits +
+          " of output; when that cuts it, the answer names the file holding all of it, for " +
+          "`read`. Fails when no command with that id is kept in this checkout: grit restarted " +
+          s"since it started, or it ended and was forgotten after ${Runs.Kept} newer commands " +
+          s"ended; and when its output passed ${mb(Workspace.MaxFileBytes)}, which killed it.",
+        Args
+          .of(
+            (
+              id = idField,
+              wait = Field
+                .count(
+                  "The most seconds to wait for it to end; 0 when not given.",
+                  0,
+                  Shell.Longest.toSeconds.toInt
+                )
+                .optional
+            )
+          )
+          .refine(a =>
+            runId(a.id).map(id => (id = id, wait = a.wait.fold(Duration.Zero)(_.seconds)))
+          )
+      ),
+      Gate.Free,
+      a => s"tail ${a.id.written}",
+      Believed.At(Integrity.Member)
+    ).logging((_, at, shown) => endedCommit(at, shown))
+
+  /** `stop` as an allowlisted set offers it: asking no one, bound only at member, as `run`. */
+  private lazy val stopHosted: Hosted[StopArgs] =
+    new Hosted(
+      ToolSpec(
+        ToolName("stop"),
+        "End a command `run` left running, killing it and everything it started, and return " +
+          "its output until then. A command that already ended is left as it was, and its exit " +
+          "code and output returned. Fails as `tail` does when no command with that id is kept.",
+        Args.of((id = idField)).refine(a => runId(a.id).map(id => (id = id)))
+      ),
+      Gate.Free,
+      a => s"stop ${a.id.written}",
+      Believed.At(Integrity.Member)
+    ).requiring(Integrity.Member)
+      .logging((_, at, shown) => endedCommit(at, shown))
+
+  private def tail(runs: Allowlisted^): Tool[TailArgs]^{runs} =
+    tailHosted.over(a =>
+      runs
+        .tail(a.id, a.wait)
+        .fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status))
+    )
+
+  private def stop(runs: Allowlisted^): Tool[StopArgs]^{runs} =
+    stopHosted.over(a =>
+      runs.stop(a.id).fold(e => Outcome.Failed(e.message), s => named(a.id, s.argv, s.status))
+    )
+
+  /** The `id` field `tail` and `stop` take. */
+  private val idField = Field.text("The id `run` answered with, such as `3f9a2c1e`.")
+
+  /** `raw` as a run's id, refused as the `id` argument. */
+  private def runId(raw: String): Either[ArgsError, RunId] =
+    RunId.parse(raw).left.map(why => ArgsError.Refused("id", why))
+
+  /** How the run `id` stands, as the model reads it, after `lead`. A run past its timeout
+    * fails, as one that timed out within the call always has.
+    */
+  private def standing(id: RunId, status: RunStatus, lead: String = ""): Outcome = status match {
+    case RunStatus.Going(elapsed, timeout, output) =>
+      val so =
+        if (output.show.isEmpty) " No output yet."
+        else s" Its output so far:\n${output.show.stripSuffix("\n")}"
+      Outcome.Done(
+        s"${lead}Still running after ${elapsed.toSeconds} seconds, as `${id.written}`; it is " +
+          s"killed at ${timeout.toSeconds} seconds.$so\n\nCall `tail` with id `${id.written}` to " +
+          "see how it stands, giving `wait` to wait for it to end, or `stop` to end it."
+      )
+    case RunStatus.Ended(ran) => Outcome.Done(lead + answered(ran))
+    case RunStatus.TimedOut(after, output) =>
+      Outcome.Failed(lead + HostError.TimedOut(after, output).message)
+    case RunStatus.Stopped(after, output) =>
+      Outcome.Done(
+        if (output.show.isEmpty) s"${lead}Stopped after ${after.toSeconds} seconds; no output."
+        else
+          s"${lead}Stopped after ${after.toSeconds} seconds. Its output until then:\n${output.show}"
+      )
+  }
+
+  /** [[standing]] after a first line naming the command `argv`, as `tail` and `stop` answer. */
+  private def named(id: RunId, argv: Argv, status: RunStatus): Outcome =
+    standing(id, status, s"`${argv.written}`\n")
+
+  /** The commit an answer of `tail` or `stop` at `at` shows its command made: `shown`'s first
+    * line names a `git commit`, and the rest is a run's answer that [[committed]] reads one from.
+    * Any other answer logs nothing: `run` logged the command.
+    */
+  private def endedCommit(at: Place, shown: String): Option[Unrecorded] =
+    shown.split("\n", 2).toList match {
+      case head :: rest :: Nil =>
+        committed(at, Commits.findFirstIn(head.stripPrefix("`").stripSuffix("`")).nonEmpty, rest)
+      case _ => None
+    }
 
   /** A finished command as the model reads it: its exit code, then its output. */
   private def answered(ran: Ran): String = {

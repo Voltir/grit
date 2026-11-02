@@ -61,9 +61,9 @@ enum Offered {
     */
   case All
 
-  /** `read`, `list` and `search`, `write`, `edit` and `run` as `allowlist` permits
-    * (`Coding.allowlisted`), and `about`: none asks first, so a run nobody watches may offer it
-    * (ADR 0055).
+  /** `read`, `list` and `search`, `write`, `edit` and `run` as `allowlist` permits, `tail` and
+    * `stop` (`Coding.allowlisted`), and `about`: none asks first, so a run nobody watches may
+    * offer it (ADR 0055).
     */
   case Allowlisted(allowlist: Allowlist)
 

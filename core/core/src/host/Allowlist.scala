@@ -56,30 +56,50 @@ object Allowlist {
 }
 
 /** Running at the checkout's root only what one [[Allowlist]] permits: the narrowed view of
-  * [[Processes]] an allowlisted coding tool is given.
+  * [[Runs]] an allowlisted coding tool is given.
   */
 sealed trait Allowlisted extends caps.SharedCapability {
 
   /** What it permits. */
   def allowlist: Allowlist
 
-  /** Runs `argv` at the root as [[Processes.run]] does, for `timeout` but never past
+  /** `argv` started as [[Runs.start]] starts it, for `timeout` but never past
     * `allowlist.longest`. `Left(HostError.Unlisted)` when `allowlist` does not permit it, and
-    * nothing starts; else as [[Processes.run]].
+    * nothing starts; else as [[Runs.start]].
     */
-  def run(argv: Argv, timeout: FiniteDuration): Either[HostError, Ran]
+  def start(
+      argv: Argv,
+      timeout: FiniteDuration,
+      wait: FiniteDuration
+  ): Either[HostError, (id: RunId, status: RunStatus)]
+
+  /** As [[Runs.tail]]. */
+  def tail(id: RunId, wait: FiniteDuration): Either[HostError, (argv: Argv, status: RunStatus)]
+
+  /** As [[Runs.stop]]. */
+  def stop(id: RunId): Either[HostError, (argv: Argv, status: RunStatus)]
 }
 
 object Allowlisted {
 
-  /** `processes` narrowed to what `allowlist` permits, each command run at its root. */
-  def over(processes: Processes^, allowlist: Allowlist): Allowlisted^ = {
+  /** `runs` narrowed to what `allowlist` permits. */
+  def over(runs: Runs^, allowlist: Allowlist): Allowlisted^ = {
     val permitted = allowlist
     new Allowlisted {
       def allowlist: Allowlist = permitted
-      def run(argv: Argv, timeout: FiniteDuration): Either[HostError, Ran] =
+      def start(
+          argv: Argv,
+          timeout: FiniteDuration,
+          wait: FiniteDuration
+      ): Either[HostError, (id: RunId, status: RunStatus)] =
         if (!permitted.permits(argv)) Left(HostError.Unlisted(argv))
-        else processes.run(argv, RelPath.Root, timeout.min(permitted.longest))
+        else runs.start(argv, timeout.min(permitted.longest), wait)
+      def tail(
+          id: RunId,
+          wait: FiniteDuration
+      ): Either[HostError, (argv: Argv, status: RunStatus)] =
+        runs.tail(id, wait)
+      def stop(id: RunId): Either[HostError, (argv: Argv, status: RunStatus)] = runs.stop(id)
     }
   }
 }

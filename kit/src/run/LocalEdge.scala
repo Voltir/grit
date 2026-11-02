@@ -29,7 +29,7 @@ object LocalEdge {
     */
   def over(
       directory: Directory,
-      tools: LocalTools,
+      tools: LocalTools^,
       instructions: Instructions^,
       log: org.slf4j.Logger
   ): Either[SetRefusal, Console.Edge^] =

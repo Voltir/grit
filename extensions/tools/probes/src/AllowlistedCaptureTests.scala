@@ -6,14 +6,14 @@ import utest.*
 
 /** What `Coding.allowlisted`'s declared type refuses: its toolbox acts only through the checkout,
   * its edits and one [[grit.core.host.Allowlisted]], so a tool beside them that starts programs
-  * through a whole `Processes`, or holds a transaction, does not fit it.
+  * through a whole `Processes` or `Runs`, or holds a transaction, does not fit it.
   */
 object AllowlistedCaptureTests extends TestSuite {
 
   private val prelude =
     """package outside
       |import scala.concurrent.duration.Duration
-      |import grit.core.host.{Allowlisted, Argv, Edits, Processes, RelPath, Workspace}
+      |import grit.core.host.{Allowlisted, Argv, Edits, Processes, RelPath, Runs, Workspace}
       |import grit.core.store.Tx
       |import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, SetRefusal, ToolName, ToolSpec, Toolbox}
       |import grit.tools.Coding
@@ -36,7 +36,15 @@ object AllowlistedCaptureTests extends TestSuite {
   private val itself =
     "def made(ws: Workspace^, e: Edits^, r: Allowlisted^): Either[SetRefusal, Toolbox[caps.CapSet^{ws, e, r}]] = Coding.allowlisted(ws, e, r)"
   private val throughAllowlisted =
-    model("", "val _ = r.run(Argv.of(\"true\").toOption.get, Duration(1, \"s\"))")
+    model(
+      "",
+      "val _ = r.start(Argv.of(\"true\").toOption.get, Duration(1, \"s\"), Duration(1, \"s\"))"
+    )
+  private val throughRuns =
+    model(
+      ", rs: Runs^",
+      "val _ = rs.start(Argv.of(\"true\").toOption.get, Duration(1, \"s\"), Duration(1, \"s\"))"
+    )
   private val throughProcesses =
     model(
       ", p: Processes^",
@@ -44,7 +52,10 @@ object AllowlistedCaptureTests extends TestSuite {
     )
   private val holdingTx = model(", tx: Tx^", "val _ = tx")
   private lazy val compiled =
-    Probes.batch(prelude, List(itself, throughAllowlisted, throughProcesses, holdingTx))
+    Probes.batch(
+      prelude,
+      List(itself, throughAllowlisted, throughProcesses, throughRuns, holdingTx)
+    )
 
   val tests = Tests {
     test("one compile answers every probe") {
@@ -62,6 +73,16 @@ object AllowlistedCaptureTests extends TestSuite {
         compiled
           .errors(throughProcesses)
           .exists(_.contains("capability `p` cannot flow into capture set {ws, e, r}"))
+      )
+    }
+
+    test(
+      "a model whose tool starts programs through a whole Runs, past the allowlist, is rejected"
+    ) {
+      assert(
+        compiled
+          .errors(throughRuns)
+          .exists(_.contains("capability `rs` cannot flow into capture set {ws, e, r}"))
       )
     }
 

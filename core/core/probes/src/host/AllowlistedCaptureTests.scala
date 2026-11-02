@@ -17,21 +17,22 @@ object AllowlistedCaptureTests extends TestSuite {
       |""".stripMargin
 
   private val control =
-    """def f(p: Processes^, l: Allowlist): Allowlisted^ = Allowlisted.over(p, l)
+    """def f(p: Runs^, l: Allowlist): Allowlisted^ = Allowlisted.over(p, l)
       |def g(l: Allowlist): () -> Boolean = () => l.rules.isEmpty
       |""".stripMargin
 
   private val implemented =
-    """def f(p: Processes^, l: Allowlist): Allowlisted^ = new Allowlisted {
+    """def f(p: Runs^, l: Allowlist): Allowlisted^ = new Allowlisted {
       |  def allowlist: Allowlist = l
-      |  def run(argv: Argv, timeout: FiniteDuration): Either[HostError, Ran] =
-      |    p.run(argv, RelPath.Root, timeout)
+      |  def start(argv: Argv, timeout: FiniteDuration, wait: FiniteDuration) = p.start(argv, timeout, wait)
+      |  def tail(id: RunId, wait: FiniteDuration) = p.tail(id, wait)
+      |  def stop(id: RunId) = p.stop(id)
       |}
       |""".stripMargin
 
   private val hidden =
     """def f(r: Allowlisted, a: Argv, t: FiniteDuration): () -> Unit = () => {
-      |  val _ = r.run(a, t)
+      |  val _ = r.start(a, t, t)
       |}
       |""".stripMargin
 

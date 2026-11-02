@@ -4,27 +4,38 @@ import scala.concurrent.duration.*
 
 import utest.*
 
-/** [[Allowlist]]'s rules and bounds, and [[Allowlisted]] over a fake [[Processes]]: what it lets
-  * reach the processes, and for how long.
+/** [[Allowlist]]'s rules and bounds, and [[Allowlisted]] over a fake [[Runs]]: what it lets
+  * reach the runs, and for how long.
   */
 object AllowlistTests extends TestSuite {
 
-  /** Processes that note each run and answer it with `ran`. A fake of a stateful capability,
+  /** Runs that note each start's command and timeout, and answer as [[ScriptedRuns]] over
+    * `scripts` does. A fake of a stateful capability,
     * so it may hold its log (STYLE rule 7).
     */
-  final class Noting(ran: Ran = Ran(0, Clipped.tail("", _ => None))) extends Processes {
+  final class Noting(scripts: Map[Argv, ScriptedRuns.Script]) extends Runs {
+    private val runs = new ScriptedRuns(scripts)
+
     // Replaced whole by the calls the test makes on its one thread.
     @caps.unsafe.untrackedCaptures
-    var log = Vector.empty[(Argv, RelPath, FiniteDuration)]
+    var log = Vector.empty[(Argv, FiniteDuration)]
 
-    def run(argv: Argv, dir: RelPath, timeout: FiniteDuration): Either[HostError, Ran] = {
-      log = log :+ ((argv, dir, timeout))
-      Right(ran)
+    def start(
+        argv: Argv,
+        timeout: FiniteDuration,
+        wait: FiniteDuration
+    ): Either[HostError, (id: RunId, status: RunStatus)] = {
+      log = log :+ ((argv, timeout))
+      runs.start(argv, timeout, wait)
     }
 
-    def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A] =
-      Left(HostError.Failed("not started here"))
+    def tail(id: RunId, wait: FiniteDuration): Either[HostError, (argv: Argv, status: RunStatus)] =
+      runs.tail(id, wait)
+
+    def stop(id: RunId): Either[HostError, (argv: Argv, status: RunStatus)] = runs.stop(id)
   }
+
+  private val instant = ScriptedRuns.Script("", "", Some(Duration.Zero), 0)
 
   private def argv(words: String*): Argv =
     Argv.of(words.head, words.tail*).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -67,29 +78,29 @@ object AllowlistTests extends TestSuite {
     }
 
     test(
-      "an unlisted command is refused and never reaches the processes; a listed one runs at the root"
+      "an unlisted command is refused and never reaches the runs; a listed one starts there"
     ) {
-      val processes = new Noting
-      val runs = Allowlisted.over(processes, allowlist(1.minute, gitStatus, gitDiff))
+      val noted = new Noting(Map(argv("git", "diff", "--stat") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(1.minute, gitStatus, gitDiff))
       val unlisted = argv("rm", "-rf", "x")
       (
-        runs.run(unlisted, 5.seconds),
-        runs.run(argv("git", "status", "--porcelain"), 5.seconds),
-        runs.run(argv("git", "diff", "--stat"), 5.seconds).map(_.exit)
+        runs.start(unlisted, 5.seconds, 1.second),
+        runs.start(argv("git", "status", "--porcelain"), 5.seconds, 1.second),
+        runs.start(argv("git", "diff", "--stat"), 5.seconds, 1.second).map(_.status)
       ) ==> (
         Left(HostError.Unlisted(unlisted)),
         Left(HostError.Unlisted(argv("git", "status", "--porcelain"))),
-        Right(0)
+        Right(RunStatus.Ended(Ran(0, Clipped.tail("", _ => None))))
       )
-      processes.log ==> Vector((argv("git", "diff", "--stat"), RelPath.Root, 5.seconds))
+      noted.log ==> Vector((argv("git", "diff", "--stat"), 5.seconds))
     }
 
     test("a listed command runs for its timeout, but never past the allowlist's longest") {
-      val processes = new Noting
-      val runs = Allowlisted.over(processes, allowlist(2.minutes, gitDiff))
-      val _ = runs.run(argv("git", "diff"), 30.seconds)
-      val _ = runs.run(argv("git", "diff"), 20.minutes)
-      processes.log.map(_._3) ==> Vector(30.seconds, 2.minutes)
+      val noted = new Noting(Map(argv("git", "diff") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(2.minutes, gitDiff))
+      val _ = runs.start(argv("git", "diff"), 30.seconds, 1.second)
+      val _ = runs.start(argv("git", "diff"), 20.minutes, 1.second)
+      noted.log.map(_._2) ==> Vector(30.seconds, 2.minutes)
     }
 
     test("written single-quotes a word holding a space, a quote, a shell character, or nothing") {

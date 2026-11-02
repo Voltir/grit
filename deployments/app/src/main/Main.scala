@@ -321,11 +321,12 @@ object Main {
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
+        val tools = new LocalTools(offered, redaction, clock, fresh)
         val here: Console.Edge^ = exitOnLeft(
           LocalEdge
             .over(
               directory,
-              new LocalTools(offered, redaction),
+              tools,
               new LocalInstructions(),
               org.slf4j.LoggerFactory.getLogger("grit.edge")
             )
@@ -336,19 +337,23 @@ object Main {
           case Right(found) => found
           case Left(refused) => failed.refuse(refused.message)
         }
-        Chat.run(
-          opener,
-          origin,
-          model = modelName,
-          session = s"$session · ${written(root)}",
-          startTheme,
-          budget,
-          CharEstimate,
-          prefs = prefsFile,
-          log = Some(java.nio.file.Path.of(log)),
-          clock,
-          fresh
-        )
+        // A command a run left going ends with the chat; a signal leaves it to the next start's
+        // sweep in its checkout.
+        try
+          Chat.run(
+            opener,
+            origin,
+            model = modelName,
+            session = s"$session · ${written(root)}",
+            startTheme,
+            budget,
+            CharEstimate,
+            prefs = prefsFile,
+            log = Some(java.nio.file.Path.of(log)),
+            clock,
+            fresh
+          )
+        finally tools.close()
         None
       } else
         Kit.open(config, deployment, clock) match {

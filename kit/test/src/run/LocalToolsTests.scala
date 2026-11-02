@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.DurationInt
 
+import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Edges, Permit, Registration, ToolRequest}
 import grit.core.host.{Allowlist, Argv, HostError}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
@@ -21,8 +22,24 @@ object LocalToolsTests extends TestSuite {
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
 
+  /** Tools offering `offered`, given to `body`, closed after. */
+  private def offering[A](offered: Offered)(body: LocalTools^ => A): A = {
+    val tools = new LocalTools(offered, Redaction.of(Map.empty), Clock.system(), Fresh.random())
+    try body(tools)
+    finally tools.close()
+  }
+
   /** `tool` called with `arguments` by tools offering `offered` over the checkout `root`. */
-  private def run(offered: Offered, root: Path, tool: String, arguments: ujson.Value): Outcome = {
+  private def run(offered: Offered, root: Path, tool: String, arguments: ujson.Value): Outcome =
+    offering(offered)(call(_, root, tool, arguments))
+
+  /** `tool` called with `arguments` by `tools` over the checkout `root`. */
+  private def call(
+      tools: LocalTools^,
+      root: Path,
+      tool: String,
+      arguments: ujson.Value
+  ): Outcome = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     val q = ToolRequest(
       CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError()),
@@ -40,10 +57,29 @@ object LocalToolsTests extends TestSuite {
     val route = Edges
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Local, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
-    new LocalTools(offered, Redaction.of(Map.empty)).run(route, q, _ => ())
+    tools.run(route, q, _ => ())
   }
 
   val tests = Tests {
+    test("a run's id reaches tail in a later request to the same checkout") {
+      val root = Files.createTempDirectory("allowlisted").toRealPath()
+      val script = root.resolve("slow")
+      Files.writeString(script, "#!/bin/sh\necho begun\nsleep 1\necho finished\n")
+      Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwx------"))
+      val listed = Allowlist.Rule.Leading(right(Argv.of("./slow")))
+      val offered = Offered.Allowlisted(right(Allowlist.of(Vector(listed), 5.seconds)))
+      offering(offered) { tools =>
+        val started = call(tools, root, "run", ujson.Obj("program" -> "./slow", "wait" -> 0))
+        val id = started match {
+          case Outcome.Done(text, _, _, _, _) =>
+            "as `([0-9a-f]{8})`".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("")
+          case _ => ""
+        }
+        call(tools, root, "tail", ujson.Obj("id" -> id, "wait" -> 5)) ==>
+          Outcome.Done("`./slow`\nExit code 0. Output:\nbegun\nfinished\n")
+      }
+    }
+
     test(
       "an allowlisted run starts a listed program named relative to the checkout's root there, and refuses an unlisted one, which leaves nothing"
     ) {

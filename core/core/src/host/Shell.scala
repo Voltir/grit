@@ -18,7 +18,10 @@ trait Shell extends caps.SharedCapability {
 
 object Shell {
 
-  /** 10 minutes: the longest a command a coding tool runs may run, allowlisted or not. */
+  /** 10 minutes: the longest one call of a coding tool waits on a command, and the longest a
+    * command [[Shell.run]] runs may run. A command [[Runs]] started may go on after the call,
+    * up to [[Runs.Longest]].
+    */
   val Longest: FiniteDuration = FiniteDuration(10, java.util.concurrent.TimeUnit.MINUTES)
 }
 
