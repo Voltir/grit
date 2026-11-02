@@ -44,7 +44,7 @@ object ToolRoundsTests extends TestSuite {
         "./mill …",
         "scripts/check …"
       )
-      Offered.ReferenceAllowlist.longest ==> grit.core.host.Shell.Longest
+      Offered.ReferenceAllowlist.longest ==> scala.concurrent.duration.Duration(30, "minutes")
       RunChoices.toolChoice(Map("GRIT_TOOLS" -> " all "), chat = true) ==> Right(Offered.All)
       // A run has nobody to approve a call that changes something.
       RunChoices.toolChoice(Map("GRIT_TOOLS" -> "all"), chat = false) ==>

@@ -7,7 +7,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.core.document.{DocRef, Document, DocumentSearch, DocumentShelf, DocumentVersion}
 import grit.core.edge.ServedEdge
 import grit.core.files.{FileArea, Formats}
-import grit.core.host.{Allowlist, Argv, Shell}
+import grit.core.host.{Allowlist, Argv}
 import grit.core.id.{
   AttesterName,
   CorpusName,
@@ -79,9 +79,14 @@ enum Offered {
 
 object Offered {
 
+  /** 30 minutes: the longest a command the reference allowlist starts may run, long enough for a
+    * whole check of a repository the size of grit's.
+    */
+  val ReferenceLongest: FiniteDuration = 30.minutes
+
   /** The reference deployment's allowlist: `git status`, `git diff`, `git log`, `git show`,
     * `git add` and `git commit`, `./mill` and `scripts/check`, each with any further arguments,
-    * for at most [[Shell.Longest]]. A listed build runs the checkout's code (ADR 0055).
+    * for at most [[ReferenceLongest]]. A listed build runs the checkout's code (ADR 0055).
     */
   val ReferenceAllowlist: Allowlist = {
     def leading(program: String, args: String*): Either[String, Allowlist.Rule] =
@@ -96,12 +101,12 @@ object Offered {
       leading("./mill"),
       leading("scripts/check")
     )
-    // Every argv above is a non-empty program without a NUL, and Shell.Longest is in bounds.
+    // Every argv above is a non-empty program without a NUL, and ReferenceLongest is in bounds.
     rules
       .foldLeft[Either[String, Vector[Allowlist.Rule]]](Right(Vector.empty))((all, rule) =>
         all.flatMap(done => rule.map(done :+ _))
       )
-      .flatMap(Allowlist.of(_, Shell.Longest))
+      .flatMap(Allowlist.of(_, ReferenceLongest))
       .fold(why => throw new IllegalStateException(why), identity)
   }
 }

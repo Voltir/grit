@@ -61,19 +61,21 @@ object AllowlistTests extends TestSuite {
       ).map(list.permits) ==> Vector(true, false, false, false, true, true, false, false)
     }
 
-    test("of refuses no rules, and a longest under a second or past Shell.Longest") {
+    test("of refuses no rules, and a longest under a second or past Runs.Longest") {
       (
         Allowlist.of(Vector.empty, 1.minute),
         Allowlist.of(Vector(gitStatus), 999.millis),
-        Allowlist.of(Vector(gitStatus), Shell.Longest + 1.second).isLeft,
-        Allowlist.of(Vector(gitStatus), Shell.Longest).map(_.longest)
+        Allowlist.of(Vector(gitStatus), Runs.Longest + 1.second).isLeft,
+        Allowlist.of(Vector(gitStatus), Shell.Longest + 1.second).map(_.longest),
+        Allowlist.of(Vector(gitStatus), Runs.Longest).map(_.longest)
       ) ==> (
         Left("an allowlist names no command"),
         Left(
-          "an allowlist's longest run must be at least a second and at most 10 minutes, not 999 milliseconds"
+          "an allowlist's longest run must be at least a second and at most 60 minutes, not 999 milliseconds"
         ),
         true,
-        Right(Shell.Longest)
+        Right(Shell.Longest + 1.second),
+        Right(Runs.Longest)
       )
     }
 

@@ -42,15 +42,15 @@ object Allowlist {
   }
 
   /** `rules`, each command they permit run for at most `longest`, or why not, refused at the
-    * deployment's start: no rules, or `longest` under a second or over [[Shell.Longest]].
+    * deployment's start: no rules, or `longest` under a second or over [[Runs.Longest]].
     */
   def of(rules: Vector[Rule], longest: FiniteDuration): Either[String, Allowlist] =
     if (rules.isEmpty) Left("an allowlist names no command")
     else if (
-      longest < FiniteDuration(1, java.util.concurrent.TimeUnit.SECONDS) || longest > Shell.Longest
+      longest < FiniteDuration(1, java.util.concurrent.TimeUnit.SECONDS) || longest > Runs.Longest
     )
       Left(
-        s"an allowlist's longest run must be at least a second and at most ${Shell.Longest}, not $longest"
+        s"an allowlist's longest run must be at least a second and at most ${Runs.Longest}, not $longest"
       )
     else Right(new Allowlist(rules, longest))
 }
