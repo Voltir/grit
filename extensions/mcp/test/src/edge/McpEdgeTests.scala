@@ -19,21 +19,24 @@ import grit.core.edge.{
   InMemoryDeliveries,
   InMemoryEdges,
   InMemoryOrigins,
+  Permit,
   ServedEdge,
+  ToolRequest,
   Variable
 }
 import grit.core.files.NoIntake
-import grit.core.id.{EdgeName, PrincipalId}
+import grit.core.host.Argv
+import grit.core.id.{CallSlot, ConversationId, EdgeName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
-import grit.core.place.{Place, Service}
+import grit.core.place.{Directory, Place, Service}
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
-import grit.core.tool.{Retry, ToolName, ToolSet}
+import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
+import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.edge.PlaceFragments
-import grit.mcp.client.{Credential, FakeMcpServer, McpServer, McpTransport}
+import grit.mcp.client.{Credential, FakeMcpServer, FakeStdioServer, McpServer, McpTransport}
 import grit.mcp.scope.{Bound, McpScope}
 
 import utest.*
@@ -106,6 +109,36 @@ object McpEdgeTests extends TestSuite {
       case Right(open) => Right(open.close())
     }
     (result, edges, log.asScala.toVector)
+  }
+
+  private val Scout: Service =
+    Service.of("scout").fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** scout as a program [[FakeStdioServer]] stands in for, setting `root` to the asking
+    * conversation's directory.
+    */
+  private val scout: McpServer[McpTransport.Stdio] =
+    Argv
+      .of("/opt/scout", "mcp")
+      .flatMap(McpServer.stdio("scout", _, McpScope.Open, directoryArgument = Some("root")))
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** A request of `tool` from `conversation`'s first turn, call `index`, addressed to scout. */
+  private def asked(conversation: String, index: Int): ToolRequest = {
+    val turn = TurnRef(ConversationId(conversation), TurnSeq.First)
+    ToolRequest(
+      CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError()),
+      ToolRequest.Protocol,
+      turn.conversationId,
+      Scout.place,
+      PrincipalId.Grit,
+      ToolName("scout_show"),
+      Permit.Free,
+      Retry.Rerun,
+      ujson.Obj("symbols" -> ujson.Arr("A")),
+      Set.empty,
+      None
+    )
   }
 
   private def withFake[A](body: FakeMcpServer => A): A = {
@@ -253,6 +286,89 @@ object McpEdgeTests extends TestSuite {
             "service:github: serving github_get_me"
           )
       }
+    }
+
+    test(
+      "local logs a malformed tool alone and offers the rest; served, each call is sent its conversation's directory, and one with none is answered unsent"
+    ) {
+      val fake = new FakeStdioServer
+      fake.lists(
+        Vector(
+          ujson.Obj("inputSchema" -> ujson.Obj("type" -> "object")),
+          ujson.Obj(
+            "name" -> "show",
+            "inputSchema" -> ujson.Obj(
+              "type" -> "object",
+              "properties" -> ujson.Obj("root" -> ujson.Obj("type" -> "string"))
+            ),
+            "annotations" -> ujson.Obj("readOnlyHint" -> true)
+          )
+        )
+      )
+      fake.answers("show", "shown")
+      val log = new ConcurrentLinkedQueue[String]()
+      val local = McpEdge.local(
+        Scout,
+        scout,
+        fake,
+        Clock.system(),
+        None,
+        line => { val _ = log.add(line) }
+      ) match {
+        case Right(local) => local
+        case Left(why) => throw new java.lang.AssertionError(why)
+      }
+      val edges = new InMemoryEdges
+      val dir =
+        Directory.of("/work/tree").fold(e => throw new java.lang.AssertionError(e), identity)
+      edges.originates(ConversationId("chat"), Origin.Tui(dir, "default"))
+      edges.originates(
+        ConversationId("thread"),
+        Origin.Slack("T1", "C1", "1.0")
+      )
+      local.serve(edges)
+      val (chat, thread) = (asked("chat", 0), asked("thread", 1))
+      val tx = TestTx.fake
+      edges.dispatch(Vector(chat, thread), Tx.classification(using tx))(using tx) ==> Right(())
+      val until = System.nanoTime() + 5_000_000_000L
+      while (edges.answers.size < 2 && System.nanoTime() < until) Thread.sleep(20)
+      local.close()
+      (
+        edges.adverts.keys.map(_._2).toVector,
+        log.asScala.toVector.take(2),
+        edges.answers.toMap.get(chat.slot),
+        edges.answers.toMap.get(thread.slot),
+        fake.received.filter(_("method").str == "tools/call").map(_("params")("arguments"))
+      ) ==> (
+        Vector(Scout.place),
+        Vector(
+          "MCP server scout: a listed tool is not offered: a listed tool has no name",
+          "service:scout: serving scout_show"
+        ),
+        Some(Outcome.Done("shown")),
+        Some(
+          Outcome.Failed(
+            "scout was not asked: it reads the directory of the conversation asking, and this " +
+              "conversation works in no directory"
+          )
+        ),
+        Vector(ujson.Obj("symbols" -> ujson.Arr("A"), "root" -> "/work/tree"))
+      )
+    }
+
+    test(
+      "local is refused, and its program stopped, when its server lists no tool that may be offered"
+    ) {
+      val fake = new FakeStdioServer
+      fake.lists(
+        Vector(ujson.Obj("name" -> "show", "inputSchema" -> ujson.Obj("type" -> "object")))
+      )
+      val refused = McpEdge.local(Scout, scout, fake, Clock.system(), None, _ => ()) match {
+        case Right(local) => local.close(); Right(())
+        case Left(why) => Left(why)
+      }
+      (refused, fake.kills) ==>
+        (Left("MCP server scout lists no tool that may be offered"), 1)
     }
 
     test("open is refused when the server lists no tool that may be offered") {

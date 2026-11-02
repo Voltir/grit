@@ -2,6 +2,7 @@ package grit.mcp.edge
 
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Edges, Permit, Registration, Route, ToolRequest, Variable}
+import grit.core.host.Argv
 import grit.core.host.Clipped
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Namespace, Place, Service}
@@ -16,7 +17,7 @@ import grit.core.visibility.{
   Readers,
   ResultPart
 }
-import grit.mcp.client.{Credential, FakeMcpServer, KeyFiles, McpClient, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, FakeStdioServer, KeyFiles, McpClient, McpServer}
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
 
@@ -299,6 +300,55 @@ object McpToolsTests extends TestSuite {
           Outcome.Done("same")
         )
       }
+    }
+
+    test(
+      "a server reading the asking directory is sent the one asking gives; a request it cannot tell is Failed in words"
+    ) {
+      val fake = new FakeStdioServer
+      fake.lists(
+        Vector(
+          ujson.Obj(
+            "name" -> "show",
+            "inputSchema" -> ujson.Obj(
+              "type" -> "object",
+              "properties" -> ujson.Obj("root" -> ujson.Obj("type" -> "string"))
+            ),
+            "annotations" -> ujson.Obj("readOnlyHint" -> true)
+          )
+        )
+      )
+      fake.answers("show", "shown")
+      val server = Argv
+        .of("/opt/scout", "mcp")
+        .flatMap(McpServer.stdio("scout", _, McpScope.Open, directoryArgument = Some("root")))
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val client = McpClient.stdio(server, fake, Clock.system())
+      val dir =
+        Directory.of("/work/tree").fold(e => throw new java.lang.AssertionError(e), identity)
+      val known = new McpTools(
+        client,
+        Vector(client),
+        _ => Right(()),
+        q => if (q.conversation == ConversationId("c")) Right(Some(dir)) else Right(None)
+      )
+      val failing =
+        new McpTools(client, Vector(client), _ => Right(()), _ => Left("the store is down"))
+      val q = request("scout_show", ujson.Obj())
+      val answered = known.run(route(q), q, _ => ())
+      val unknown = failing.run(route(q), q, _ => ())
+      client.close()
+      (
+        answered,
+        fake.received.filter(_("method").str == "tools/call").map(_("params")("arguments")),
+        unknown
+      ) ==> (
+        Outcome.Done("shown"),
+        Vector(ujson.Obj("root" -> "/work/tree")),
+        Outcome.Failed(
+          "scout was not asked: the directory of the conversation asking could not be told: the store is down"
+        )
+      )
     }
 
     test("each tool is advertised as listed: free, rerun when cut short, its schema as sent") {

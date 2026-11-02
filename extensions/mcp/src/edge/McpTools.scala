@@ -2,8 +2,8 @@ package grit.mcp.edge
 
 import java.util.concurrent.atomic.AtomicReference
 
-import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
+import grit.core.place.Directory
 import grit.core.tool.{
   Args,
   Believed,
@@ -20,7 +20,7 @@ import grit.core.tool.{
 import grit.core.visibility.Integrity
 import grit.edge.{Run, Tools}
 import grit.mcp.client.McpClient
-import grit.mcp.wire.McpTool
+import grit.mcp.wire.{McpError, McpTool}
 
 /** The requests an edge is sent, run by calling `clients`' servers, wherever they were routed:
   * a request's tool is found by name in the servers' lists as they stand ([[McpClient.tools]],
@@ -31,15 +31,19 @@ import grit.mcp.wire.McpTool
   * the exchange fails; the run's `said` then hears the cause ([[grit.mcp.wire.McpError.logged]]),
   * its tool named. Before each run, the tools are told to `advertise` when they differ
   * from those it last took (the first time included); one it refused is told again next run.
-  * `clients` read `clock` for their lists' freshness.
+  * A call of a server that reads the asking conversation's directory
+  * ([[grit.mcp.client.McpServer.directoryArgument]]) is sent with the one `asking` tells for its
+  * request, or Failed, unsent, when `asking` cannot tell. `reach` is what `clients` capture, and
+  * nothing more reaches them: the clock their lists are fresh by, or a client itself.
   */
-// `clock` is a parameter, rather than a capture-set parameter over `clients`, so the class's
+// `reach` is a parameter, rather than a capture-set parameter over `clients`, so the class's
 // captures are in its signature (docs/capture-checking.md, "A capset parameter a class's body
 // alone uses").
 final class McpTools(
-    clock: Clock,
-    clients: Vector[McpClient^{clock}],
-    advertise: ToolSet => Either[DeskError, Unit]
+    reach: AnyRef^,
+    clients: Vector[McpClient^{reach}],
+    advertise: ToolSet => Either[DeskError, Unit],
+    asking: ToolRequest => Either[String, Option[Directory]] = _ => Right(None)
 ) extends Tools {
 
   // The set `advertise` last took. Replaced whole; two runs that both find it changed both
@@ -56,7 +60,7 @@ final class McpTools(
     * Given to `advertise` as [[run]] gives it; `Left` when `advertise` refused it.
     */
   def offered(): Either[DeskError, ToolSet] = {
-    val set = McpTools.current(clock, clients).map((_, tool) => McpTools.entry(tool))
+    val set = McpTools.current(reach, clients).map((_, tool) => McpTools.entry(tool))
     val offering = ToolSet.of(set).getOrElse(ToolSet.Empty)
     if (advertised.get().contains(offering)) Right(offering)
     else
@@ -72,13 +76,17 @@ final class McpTools(
     */
   def run(route: Route, request: ToolRequest, said: String => Unit): Outcome = {
     val _ = offered()
-    val tools: Vector[Tool.Offered^{clock, said}] =
-      McpTools.current(clock, clients).flatMap { (at, tool) =>
+    val tools: Vector[Tool.Offered^{reach, said, asking}] =
+      McpTools.current(reach, clients).flatMap { (at, tool) =>
         clients.lift(at).toVector.flatMap { client =>
-          Vector(McpTools.hosted(tool).over(args => McpTools.call(client, tool, args, said)))
+          Vector(
+            McpTools
+              .hosted(tool)
+              .over(args => McpTools.call(client, tool, args, said, () => asking(request)))
+          )
         }
       }
-    Toolbox.of[caps.CapSet^{clock, said}](tools*) match {
+    Toolbox.of[caps.CapSet^{reach, said, asking}](tools*) match {
       case Right(box) => Run.request(request, box)
       // current offers each name once.
       case Left(repeated) =>
@@ -92,7 +100,7 @@ object McpTools {
   /** Each of `clients`' tools as listed now, with its client's index, each name once, the
     * first client's kept.
     */
-  private def current(clock: Clock, clients: Vector[McpClient^{clock}]): Vector[(Int, McpTool)] =
+  private def current(reach: AnyRef^, clients: Vector[McpClient^{reach}]): Vector[(Int, McpTool)] =
     clients
       .map(_.tools())
       .zipWithIndex
@@ -114,32 +122,47 @@ object McpTools {
   /** `tool` as an edge advertises it. */
   private def entry(tool: McpTool): ToolSet.Entry = hosted(tool).entry
 
-  /** `tool` called on `client`'s server with `args`, as the model reads it, `said` told why
-    * when the exchange failed.
+  /** `tool` called on `client`'s server with `args`, for the conversation working where `asking`
+    * tells, read only when the server reads it
+    * ([[grit.mcp.client.McpServer.directoryArgument]]); as the model
+    * reads it, `said` told why when the exchange failed.
     */
   private def call(
       client: McpClient^,
       tool: McpTool,
       args: ujson.Value,
-      said: String => Unit
-  ): Outcome =
+      said: String => Unit,
+      asking: () => Either[String, Option[Directory]]
+  ): Outcome = {
+    val named = s"${ToolName.value(tool.offered)}: ${client.server.name}"
     args.objOpt match {
       case None => Outcome.Failed(s"${tool.name}'s arguments are not a JSON object; nothing ran.")
       case Some(obj) =>
-        client.call(tool, ujson.Obj.from(obj)) match {
-          case Left(error) =>
-            val named = s"${ToolName.value(tool.offered)}: ${client.server.name}"
-            error.logged.foreach(why => said(s"$named $why"))
+        val where =
+          if (client.server.directoryArgument.isEmpty) Right(None)
+          else asking()
+        where match {
+          case Left(why) =>
+            val error =
+              McpError.Unsent(s"the directory of the conversation asking could not be told: $why")
+            error.logged.foreach(w => said(s"$named $w"))
             Outcome.Failed(s"${client.server.name} ${error.message}")
-          case Right(answer) =>
-            if (answer.isError) Outcome.Failed(answer.text)
-            else
-              Outcome.Done(
-                answer.text,
-                items = answer.items,
-                parts = answer.parts,
-                facts = answer.facts
-              )
+          case Right(at) =>
+            client.call(tool, ujson.Obj.from(obj), at) match {
+              case Left(error) =>
+                error.logged.foreach(why => said(s"$named $why"))
+                Outcome.Failed(s"${client.server.name} ${error.message}")
+              case Right(answer) =>
+                if (answer.isError) Outcome.Failed(answer.text)
+                else
+                  Outcome.Done(
+                    answer.text,
+                    items = answer.items,
+                    parts = answer.parts,
+                    facts = answer.facts
+                  )
+            }
         }
     }
+  }
 }

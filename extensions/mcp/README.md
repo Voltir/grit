@@ -44,7 +44,10 @@ In dependency order:
   program core's `Processes` start, kept for later requests and started again after it ends;
   requests go one a line, one at a time, each answered within `McpClient.Timeout` of being asked
   (or `McpClient.ColdStart` of its program's start, when later), or the program is stopped and
-  that request and those queued behind it fail. The JDK HTTP client lives here alone. Imports
+  that request and those queued behind it fail. A server may name an argument grit sets on each
+  call to the asking conversation's directory (`McpServer.directoryArgument`): it is left out
+  of each listed schema, and a call that gives it, or comes from a conversation working in no
+  directory, is not sent. The JDK HTTP client lives here alone. Imports
   `wire` and `scope`.
 - **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
   Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
@@ -72,8 +75,10 @@ In dependency order:
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`
   (the argument core keeps for a writing tool's destination) is skipped alone where its
-  server's list is read, and logged with the other skips. Imports `wire` and
-  `client`.
+  server's list is read, and logged with the other skips. `McpEdge.local` is the same over a
+  stdio program, for the process that runs a console (`Console.Edge`): it reads the list at
+  start, refused when the program cannot be read or offers nothing, and learns each request's
+  directory from its desk (`Desk.origin`). Imports `wire` and `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say;
