@@ -794,9 +794,11 @@ object MovesJournalTests extends TestSuite {
       ) ==> ("v3:", true, false, false)
     }
 
-    // Pinned as written: every check, baseline and bench key hashes the floor and the signals'
-    // templates, so a byte of either moved re-keys every screening a run recorded.
-    test("the check, baseline and bench digests are the ones every recorded screening holds") {
+    // Pinned as written: a new check, baseline and bench key hashes the floor, the signals'
+    // templates and the rewrite's framing, so a byte of any of them moved re-keys every screen
+    // made after it. A key recorded before is compared under the framing it was made with (the
+    // next test).
+    test("a new screen's digests are these") {
       val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
       val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
       val applied = PolicyApplication(DeclassificationPolicy(team, 1), TestPieces.pointer("f"), 1)
@@ -810,6 +812,57 @@ object MovesJournalTests extends TestSuite {
         "v3:4e19d66de3839866dc81ed678c6ace0c2dbcc535604501746f1cb10f465d9c3b",
         "v3:eb1ed11d51bffa793e23e7b79313a7e754b725ad8760e51760b3677e602d2a4f"
       )
+    }
+
+    // The check, baseline and retry digests a screen and a retry made while Fenced.Rule named
+    // no <session_log>, as the recorded declassify histories hold them.
+    test(
+      "a check, baseline or retry recorded before the rule named <session_log> is the same as one made now"
+    ) {
+      val source = DocumentVersionId.of(7).getOrElse(sys.error("no version"))
+      val team = DeclassificationPolicy.Over.Compartment(TestLabels.compartment("team"))
+      val applied = PolicyApplication(DeclassificationPolicy(team, 1), TestPieces.pointer("f"), 1)
+      val rewrite = DocText.of("The team meets offsite.").getOrElse(sys.error("no text"))
+      val floor = (for {
+        text <- DocText.of("The draft.").left.map(_.toString)
+        screened <- Screen
+          .read(Screen.Shape(2, Vector(Must.Present)), Vector(0.5, 0.0, 0.9).map(Judged.YesNo(_)))
+          .left
+          .map(_.said)
+        a <- Declassifying.Again.of(text, "m", screened.fired(None)).toRight("no retry")
+      } yield a).fold(e => throw new java.lang.AssertionError(e), identity)
+      val first = Declassified.Attempt.First
+      (
+        MovesJournal.sameCheck(
+          "v3:93709e5202e09f489cd3ae1599fc237062621f151a100e72ced9d6f18c73d9d6",
+          source,
+          "r1",
+          applied,
+          rewrite,
+          first
+        ),
+        MovesJournal.sameBaseline(
+          "v3:db71504c0ed160fadab9ac24f8b13449b7a867ccd3b273ff0201b1758b438ddd",
+          source,
+          "r1",
+          applied
+        ),
+        MovesJournal.sameRewrite(
+          "v3:8b8adcaff1025ede0ac745f6c770b66907fc7d5fabe096f7f0cd37e8826cd466",
+          source,
+          "r1",
+          applied,
+          Some(floor)
+        ),
+        MovesJournal.sameCheck(
+          "v3:93709e5202e09f489cd3ae1599fc237062621f151a100e72ced9d6f18c73d9d6",
+          source,
+          "r2",
+          applied,
+          rewrite,
+          first
+        )
+      ) ==> (true, true, true, false)
     }
 
     test(
