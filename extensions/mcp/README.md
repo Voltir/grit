@@ -33,14 +33,19 @@ In dependency order:
   caps them. It names a service, no organisation; which repositories, and at what, is the
   deployment's to say. Imports `scope`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
-- **`client`**: a server a deployment declares, reached over HTTP, each request a POST of its
+- **`client`**: a server a deployment declares and the transport it is reached by
+  (`McpTransport`). Over HTTP, each request is a POST of its
   own held to its scope, carrying the token its `Credential` gives: a static token, or a
   service account's, got by a JWT its key signs and kept until near expiry; the secret is
   read from the environment, or a service account's key from the file a variable names
   (`KeyFiles`), and never shown. A tool that names its subject but not where it
   lies is declared with lookups, read-only calls grit makes first with the same argument,
-  whose answers the server's `Accounts` read beside the call's. The JDK HTTP client lives
-  here alone. Imports `wire` and `scope`.
+  whose answers the server's `Accounts` read beside the call's. Over stdio, the server is a
+  program core's `Processes` start, kept for later requests and started again after it ends;
+  requests go one a line, one at a time, each answered within `McpClient.Timeout` of being asked
+  (or `McpClient.ColdStart` of its program's start, when later), or the program is stopped and
+  that request and those queued behind it fail. The JDK HTTP client lives here alone. Imports
+  `wire` and `scope`.
 - **`drive`**: Drive over its v3 REST API, read-only: a file's id as Drive writes it, what
   Drive says of files and their grants, `DriveRest` (a search whose query grit builds from the
   words asked, a listing of one folder's or drive's own files, a file and when it last changed,

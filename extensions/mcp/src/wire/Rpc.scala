@@ -91,6 +91,16 @@ object Rpc {
         }
     }
 
+  /** The response grit sends to a request a server sent it, `id`: error -32601, Method not
+    * found, since grit takes no request from a server.
+    */
+  def refusal(id: ujson.Value): ujson.Obj =
+    ujson.Obj(
+      "jsonrpc" -> "2.0",
+      "id" -> id,
+      "error" -> ujson.Obj("code" -> -32601, "message" -> "grit takes no request from a server")
+    )
+
   /** The most characters of a body [[failure]] keeps: 200. */
   val Excerpt: Int = 200
 

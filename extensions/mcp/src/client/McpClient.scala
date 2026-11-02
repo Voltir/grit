@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
+import grit.core.host.Processes
 import grit.core.visibility.Itemised
 import grit.mcp.wire.{Answer, McpCalled, McpError, McpTool, Rpc, Skipped}
 
@@ -19,7 +20,7 @@ final case class Listed private[client] (
 )
 
 /** `server`'s tools and calls, each request sent over its transport: made by [[McpClient.apply]]
-  * for Streamable HTTP.
+  * for Streamable HTTP, and by [[McpClient.stdio]] for a program started on this machine.
   */
 final class McpClient private (
     val server: McpServer[McpTransport],
@@ -183,7 +184,9 @@ final class McpClient private (
     }
   }
 
-  /** Ends this client's transport: nothing for HTTP, whose every request is its own. */
+  /** Ends this client's transport: a stdio server's program killed and waited for, every
+    * request after it [[McpError.Unreachable]]; nothing for HTTP, whose every request is its own.
+    */
   def close(): Unit = connection.close()
 
   /** The result of one request making `call`. */
@@ -203,10 +206,40 @@ object McpClient {
   ): McpClient^{clock} =
     new McpClient(server, new HttpConnection(server.transport, authorizer, clock), clock)
 
+  /** `server`'s client over stdio: its program started by `processes`, at their root, for the
+    * first request and for the first after it ended; it is killed by [[McpClient.close]]. One
+    * request is sent at a time, in the order asked, each answered within `timeout` of being
+    * asked, or within `coldStart` of its program's start when that ends later; else the program
+    * is killed and the request, and every request queued behind it, is
+    * [[McpError.Unreachable]]. A program that ends before it answers is [[McpError.Exited]] for
+    * the request it was asked; one that cannot start is [[McpError.Unreachable]] in the host's
+    * words. Lines answering no request of grit's are passed over, and a request the server sends
+    * is answered [[Rpc.refusal]]. Closed, a request in flight or queued is
+    * [[McpError.Unreachable]], as is every later one.
+    */
+  def stdio(
+      server: McpServer[McpTransport.Stdio],
+      processes: Processes^,
+      clock: Clock,
+      timeout: FiniteDuration = Timeout,
+      coldStart: FiniteDuration = ColdStart
+  ): McpClient^{processes, clock} =
+    new McpClient(
+      server,
+      new StdioConnection(server.transport, processes, clock, timeout, coldStart),
+      clock
+    )
+
   /** How long one request may take: 60 seconds, well under the 11 minutes a turn waits on a
     * claimed request.
     */
   val Timeout: FiniteDuration = 60.seconds
+
+  /** 3 minutes: how long a request over stdio may take when its program started within it, so a
+    * server that loads what it reads on its first call (scout reads a checkout's compiled
+    * output) still answers it.
+    */
+  val ColdStart: FiniteDuration = 3.minutes
 
   /** JSON-RPC's Invalid params, which a server answers for an unknown tool. */
   private val InvalidParams = -32602

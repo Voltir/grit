@@ -62,6 +62,11 @@ enum McpError {
     */
   case NotLooked(why: String)
 
+  /** A server reached over stdio ended before it answered: its exit `code`, and the tail of
+    * what it wrote to its errors, which only [[logged]] shows.
+    */
+  case Exited(code: Int, errors: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused the token it was given"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -88,10 +93,13 @@ enum McpError {
     case NoToken(why) => s"was not asked: no token could be got for it: $why"
     case NotLooked(why) =>
       s"was not asked, since what it would read could not be looked up first: $why"
+    case Exited(code, _) =>
+      s"ended before it answered (exit $code); it starts again on the next call"
   }
 
   /** What the operator's log is told of it: its [[message]], the server's own words in a
-    * [[Rejected]] or an [[Rpc]] as one line of at most [[McpError.LoggedMost]] characters, cut
+    * [[Rejected]] or an [[Rpc]], and its errors' tail in an [[Exited]], as one line of at most
+    * [[McpError.LoggedMost]] characters, cut
     * at a word and ending " [cut]" when longer, since a server may echo a long argument or
     * answer; `None` for [[OutOfScope]], whose words name the call's arguments, and which the
     * model's own call explains.
@@ -100,6 +108,9 @@ enum McpError {
     case OutOfScope(_) => None
     case Rejected(status, body) => Some(Rejected(status, McpError.capped(body)).message)
     case Rpc(code, text) => Some(Rpc(code, McpError.capped(text)).message)
+    case Exited(code, errors) if errors.trim.isEmpty => Some(Exited(code, errors).message)
+    case Exited(code, errors) =>
+      Some(s"${Exited(code, errors).message}: ${McpError.capped(errors)}")
     case other => Some(other.message)
   }
 
