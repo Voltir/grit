@@ -515,11 +515,7 @@ private[turn] object TurnAssembly {
   ) {
 
     /** What the brief and the longer of the digests cost as shown. */
-    def reserved: Tokens =
-      brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d))) +
-        digest(SessionDigest.Window.LacksLastSaid).fold(Tokens.Zero)(d =>
-          estimator.message(Shown.sessionLog(d))
-        )
+    def reserved: Tokens = briefCost + logCost(digest(SessionDigest.Window.LacksLastSaid))
 
     /** `window`, costing `cost`, with the brief and the digest that fits it, and their cost. */
     def packed(window: Window, cost: Tokens): Projection = {
@@ -527,10 +523,14 @@ private[turn] object TurnAssembly {
         if (window.entries.exists(previous.contains)) SessionDigest.Window.HoldsLastSaid
         else SessionDigest.Window.LacksLastSaid
       val shown = digest(said)
-      val added = brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d))) +
-        shown.fold(Tokens.Zero)(d => estimator.message(Shown.sessionLog(d)))
+      val added = briefCost + logCost(shown)
       Projection.Boundary(window.copy(brief = brief.map(_.version), digest = shown), cost + added)
     }
+
+    private def briefCost = brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d)))
+
+    private def logCost(log: Option[String]) =
+      log.fold(Tokens.Zero)(d => estimator.message(Shown.sessionLog(d)))
 
     private def digest(said: SessionDigest.Window): Option[String] =
       lately.map(SessionDigest.of(_, said, DigestChars)).filter(_.nonEmpty)
