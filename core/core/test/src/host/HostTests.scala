@@ -53,6 +53,21 @@ object HostTests extends TestSuite {
       }
     }
 
+    test("RunId") {
+      test("parse takes 8 lowercase hex digits and nothing else") {
+        RunId.parse("3f9a2c1e").map(_.written) ==> Right("3f9a2c1e")
+        Seq("3F9A2C1E", "3f9a2c1", "3f9a2c1e0", "3f9a2c1g", "").map(RunId.parse(_).isLeft) ==>
+          Seq(true, true, true, true, true)
+        RunId.parse("xyz") ==>
+          Left("`xyz` is not a run's id: ids are 8 letters and digits from 0-9 and a-f.")
+      }
+      test("of makes an id parse reads back, the same for the same nonce") {
+        val id = RunId.of("a nonce")
+        (RunId.parse(id.written), id == RunId.of("a nonce"), id == RunId.of("another")) ==>
+          (Right(id), true, false)
+      }
+    }
+
     test("LineNumbers") {
       test("cat -n style: right-aligned in six columns, wider when a number needs it") {
         LineNumbers.show(9, Vector("x", "", "\ty")) ==> Vector(

@@ -47,6 +47,12 @@ enum HostError {
   /** An [[Allowlist]] does not permit `argv`; nothing started. */
   case Unlisted(argv: Argv)
 
+  /** `most` commands are already running in the checkout ([[Runs.Most]]); nothing started. */
+  case Busy(most: Int)
+
+  /** No run `id` is kept in the checkout ([[Runs]]). */
+  case Gone(id: RunId)
+
   /** One or two sentences: what went wrong, and for a timeout the output so far. */
   def message: String = this match {
     case NotFound(p) => s"There is no file or directory `${RelPath.value(p)}`."
@@ -72,5 +78,12 @@ enum HostError {
     case Unlisted(argv) =>
       s"`${argv.written}` is not on this checkout's command list, so nothing ran. Only the " +
         "commands the run tool's description lists may run."
+    case Busy(most) =>
+      s"$most commands are already running in this checkout, so nothing started. Wait for one " +
+        "with `tail`, or end one with `stop`."
+    case Gone(id) =>
+      s"No command `${id.written}` is kept in this checkout: grit restarted since it started, " +
+        "or it ended and was forgotten after newer commands ended. Its output is gone; run it " +
+        "again to see it."
   }
 }
