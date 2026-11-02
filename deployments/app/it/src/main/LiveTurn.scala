@@ -351,7 +351,7 @@ object LiveTurn {
           .foreach(e => sys.error(s"not advertised: ${e.why}"))
         new Server(
           desk,
-          new LocalTools(if (all) Offered.All else Offered.Read, Redaction.of(sys.env)),
+          new LocalTools(if (all) Offered.All else Offered.Read, Redaction.of(Map.empty)),
           run => { val _ = Thread.ofVirtual().start(() => run()) },
           _ => ()
         ).serve()
