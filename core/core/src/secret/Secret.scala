@@ -11,36 +11,36 @@ final class Secret private[secret] (val variable: Variable, private[secret] val 
 
 object Secret {
 
-  /** `variable`'s value in `env`, blanks around it trimmed, or why not ([[SecretRefusal]]). */
-  def read(env: Map[String, String], variable: Variable): Either[SecretRefusal, Secret] = {
+  /** `variable`'s value in `env`, blanks around it trimmed, or why not. */
+  def read(env: Map[String, String], variable: Variable): Either[Refusal, Secret] = {
     val name = Variable.value(variable)
-    if (!Named.variable(name)) Left(SecretRefusal.NotNamedLikeOne(variable))
+    if (!Named.variable(name)) Left(Refusal.NotNamedLikeOne(variable))
     else
       env.get(name) match {
-        case None => Left(SecretRefusal.Unset(variable))
-        case Some(v) if v.trim.isEmpty => Left(SecretRefusal.Blank(variable))
+        case None => Left(Refusal.Unset(variable))
+        case Some(v) if v.trim.isEmpty => Left(Refusal.Blank(variable))
         case Some(v) => Right(new Secret(variable, v.trim))
       }
   }
-}
 
-/** Why a secret was not read. */
-enum SecretRefusal {
+  /** Why a secret was not read. */
+  enum Refusal {
 
-  /** [[Named.variable]] does not hold of its name. */
-  case NotNamedLikeOne(variable: Variable)
+    /** [[Named.variable]] does not hold of its name. */
+    case NotNamedLikeOne(variable: Variable)
 
-  case Unset(variable: Variable)
+    case Unset(variable: Variable)
 
-  /** Set, but empty or blank. */
-  case Blank(variable: Variable)
+    /** Set, but empty or blank. */
+    case Blank(variable: Variable)
 
-  /** One line a person reads, naming the variable. */
-  def message: String = this match {
-    case NotNamedLikeOne(v) =>
-      s"${Variable.value(v)} is not named like a secret: its name holds none of KEY, TOKEN, SECRET or PASSWORD"
-    case Unset(v) => s"${Variable.value(v)} is not set"
-    case Blank(v) => s"${Variable.value(v)} is set but blank"
+    /** One line a person reads, naming the variable. */
+    def message: String = this match {
+      case NotNamedLikeOne(v) =>
+        s"${Variable.value(v)} is not named like a secret: its name holds none of KEY, TOKEN, SECRET or PASSWORD"
+      case Unset(v) => s"${Variable.value(v)} is not set"
+      case Blank(v) => s"${Variable.value(v)} is set but blank"
+    }
   }
 }
 

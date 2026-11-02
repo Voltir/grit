@@ -16,7 +16,7 @@ object SecretProbes extends TestSuite {
       |""".stripMargin
 
   private val control =
-    """def f(env: Map[String, String]): Either[SecretRefusal, String] =
+    """def f(env: Map[String, String]): Either[Secret.Refusal, String] =
       |  Secret.read(env, Variable("ANTHROPIC_API_KEY")).map(Reveal.text)
       |""".stripMargin
 

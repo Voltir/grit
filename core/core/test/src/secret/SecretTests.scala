@@ -20,14 +20,14 @@ object SecretTests extends TestSuite {
         Right("sk-ant-planted")
       val home = Variable("HOME")
       Secret.read(Map("HOME" -> "/home/someone"), home) ==> Left(
-        SecretRefusal.NotNamedLikeOne(home)
+        Secret.Refusal.NotNamedLikeOne(home)
       )
-      Secret.read(Map.empty, key) ==> Left(SecretRefusal.Unset(key))
-      Secret.read(Map("ANTHROPIC_API_KEY" -> " \t"), key) ==> Left(SecretRefusal.Blank(key))
+      Secret.read(Map.empty, key) ==> Left(Secret.Refusal.Unset(key))
+      Secret.read(Map("ANTHROPIC_API_KEY" -> " \t"), key) ==> Left(Secret.Refusal.Blank(key))
       Vector(
-        SecretRefusal.NotNamedLikeOne(home),
-        SecretRefusal.Unset(key),
-        SecretRefusal.Blank(key)
+        Secret.Refusal.NotNamedLikeOne(home),
+        Secret.Refusal.Unset(key),
+        Secret.Refusal.Blank(key)
       )
         .map(_.message) ==> Vector(
         "HOME is not named like a secret: its name holds none of KEY, TOKEN, SECRET or PASSWORD",
