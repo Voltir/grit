@@ -57,7 +57,9 @@ private[main] object Deploying {
     * administrators are those `GRIT_ADMINS` names there ([[visibility]]). With
     * [[DriveKeyVar]] set, `service:drive` is shared ([[visibility]]), its results are believed
     * up to member, and Drive is cleared for the top label, since its files are already
-    * Google's. The first
+    * Google's. With [[ChatEdges.ScoutVar]] set, every conversation in a directory reaches
+    * `service:scout` and its results are believed up to member, since scout reports what the
+    * compiler read of that conversation's own checkout. The first
     * variable malformed, or the deployment refused, is the failure.
     */
   private[main] def deployment(
@@ -94,12 +96,16 @@ private[main] object Deploying {
       drive <- DriveAt
       // Serving Drive, its place is shared, believed at member, and Drive cleared for the top.
       driving = env.contains(DriveKeyVar)
+      scout <- ChatEdges.ScoutAt
+      // With scout declared, every directory reaches it, its results believed at member.
+      scouting = env.contains(ChatEdges.ScoutVar)
       visible <- visibility(
         named,
         slackIn,
         cleared(models) ++
           Option.when(driving)(Cleared(Party.Service(drive), Compartments.Shipped.top)),
-        capped ++ Option.when(driving)(Cap(drive.place, Integrity.Member)),
+        capped ++ Option.when(driving)(Cap(drive.place, Integrity.Member)) ++
+          Option.when(scouting)(Cap(scout.place, Integrity.Member)),
         Option.when(driving)(drive.place).toVector
       )
       plugins <- pluginChoice(env, visible, zone, Formatted)
@@ -108,7 +114,7 @@ private[main] object Deploying {
           visibility = visible,
           edges = edges,
           worksIn = worksIn,
-          reaches = reaches,
+          reaches = reaches ++ Option.when(scouting)(ChatEdges.scoutReaches(scout)),
           plugins = plugins,
           policy = models,
           offer = Offer(offered, rounds),

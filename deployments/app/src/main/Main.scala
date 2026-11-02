@@ -17,12 +17,13 @@ import grit.core.model.ModelId
 import grit.core.place.Directory
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.{LocalInstructions, Redaction}
+import grit.host.checkout.{LocalInstructions, LocalProcesses, Redaction}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
 import grit.kit.run.{Kit, Launch, LocalEdge, LocalTools}
 import grit.mcp.client.KeyFiles
+import grit.mcp.edge.McpEdge
 import grit.models.{OpenRouterConfig, StubProvider}
 import grit.slack.edge.{Backfill, SlackEdge}
 
@@ -56,7 +57,11 @@ import Backfills.*
   * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
   * runs in, with its instruction files; a command it runs sees only the environment
-  * `LocalShell` passes. Each turn's model is offered `file_read`, more of a file an edge kept
+  * `LocalShell` passes. With `GRIT_SCOUT` set to the absolute path of a scout binary, the TUI
+  * also starts it (`<path> mcp`) and serves its tools at `service:scout`, reached from every
+  * directory's conversations, each call answered about the asking conversation's own directory,
+  * its results believed at member ([[ChatEdges]]); a relative path, or a binary that cannot be
+  * started or lists no tool, refuses the start. Each turn's model is offered `file_read`, more of a file an edge kept
   * in the file area (ADR 0045), whose bytes are kept in `GRIT_FILES_DIR` (default a directory
   * of the machine's temporary directory named for the database), each for `GRIT_FILES_EXPIRY`
   * (default 24 hours, at least a minute), read as [[Defaults]] reads PDFs, Word and Excel
@@ -189,6 +194,8 @@ object Main {
     org.slf4j.LoggerFactory.getLogger("grit.main").info(redaction.described)
 
     val offered = exitOnLeft(toolChoice(env, chat = tui))
+    // The chat also serves scout's tools when GRIT_SCOUT names its binary.
+    val scoutServer = if (tui) exitOnLeft(ChatEdges.scout(env)) else None
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
@@ -322,7 +329,7 @@ object Main {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
         val tools = new LocalTools(offered, redaction, clock, fresh)
-        val here: Console.Edge^ = exitOnLeft(
+        val coding: Console.Edge^ = exitOnLeft(
           LocalEdge
             .over(
               directory,
@@ -333,6 +340,30 @@ object Main {
             .left
             .map(_.refusing("the coding tools"))
         )
+        // scout's program is started now, so a binary that cannot start refuses the chat.
+        val scout: Option[McpEdge.Local^] = scoutServer match {
+          case None => None
+          case Some(server) =>
+            val edgeLog = org.slf4j.LoggerFactory.getLogger("grit.edge")
+            val local: McpEdge.Local^ = exitOnLeft(
+              McpEdge
+                .local(
+                  exitOnLeft(ChatEdges.ScoutAt),
+                  server,
+                  new LocalProcesses(root, sys.env, redaction),
+                  clock,
+                  Some(ChatEdges.ScoutInstructions),
+                  line => edgeLog.info(line)
+                )
+                .left
+                .map(why => s"${ChatEdges.ScoutVar}: $why")
+            )
+            Some(local)
+        }
+        val here: Console.Edge^ = desks => {
+          coding.serve(desks)
+          scout.foreach(_.serve(desks))
+        }
         val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
           case Right(found) => found
           case Left(refused) => failed.refuse(refused.message)
@@ -353,7 +384,10 @@ object Main {
             clock,
             fresh
           )
-        finally tools.close()
+        finally {
+          tools.close()
+          scout.foreach(_.close())
+        }
         None
       } else
         Kit.open(config, deployment, clock) match {
