@@ -10,19 +10,19 @@ import grit.slack.event.{ChannelId, TeamId, UserId}
   * Slack once and kept, what Slack could not say said through `said`.
   */
 private[slack] final class Names(slack: Slack, team: TeamId, said: String => Unit) {
-  import Names.Named
+  import Names.Profile
 
   // Caches, each written only through its own atomic operations. What they hold is looked up
   // again from Slack when missing, so a reader that races a writer sees either value, and both
   // are right.
   @caps.unsafe.untrackedCaptures
-  private val names = new ConcurrentHashMap[UserId, Named]()
+  private val names = new ConcurrentHashMap[UserId, Profile]()
 
   @caps.unsafe.untrackedCaptures
   private val channelNames = new ConcurrentHashMap[ChannelId, String]()
 
   /** Keeps `named` as `user`'s name and zone, as Slack gave them in another answer. */
-  def remember(user: UserId, named: Named): Unit = {
+  def remember(user: UserId, named: Profile): Unit = {
     val _ = names.put(user, named)
   }
 
@@ -35,11 +35,11 @@ private[slack] final class Names(slack: Slack, team: TeamId, said: String => Uni
   /** `user`'s Slack name and zone, asked of Slack once per user; `None` when they have no name,
     * or Slack could not say (the id stands in, and they are asked again next time).
     */
-  def namedOf(user: UserId): Option[Named] =
+  def namedOf(user: UserId): Option[Profile] =
     Option(names.get(user)).orElse {
       slack.member(team, user) match {
         case Right(Member(Some(n), _, zone)) =>
-          val named = Named(n, zone)
+          val named = Profile(n, zone)
           val _ = names.put(user, named)
           Some(named)
         case Right(Member(None, _, _)) => None
@@ -71,5 +71,5 @@ private[slack] object Names {
   /** What the edge keeps of a Slack user it has asked about: the name they show, and the zone
     * Slack places them in, if any.
     */
-  final case class Named(name: String, zone: Option[ZoneId])
+  final case class Profile(name: String, zone: Option[ZoneId])
 }

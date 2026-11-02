@@ -47,7 +47,7 @@ final class SlackEdge(
     said: String => Unit
 ) {
   import SlackEdge.*
-  import Names.Named
+  import Names.Profile
 
   // Set as a join is recorded pending, and taken by joinsWaiting, each atomically. A set racing
   // a take is either seen now or by the next take; the joins it stands for are read from the
@@ -239,7 +239,7 @@ final class SlackEdge(
       SlackAccounts.user(account, self.team).fold(Asked.Said(Standing.Outside)) { user =>
         slack.member(self.team, user) match {
           case Right(m) =>
-            m.name.foreach(n => names.remember(user, Named(n, m.zone)))
+            m.name.foreach(n => names.remember(user, Profile(n, m.zone)))
             Asked.Said(m.standing)
           case Left(e) => Asked.Unreached(e.toString)
         }
