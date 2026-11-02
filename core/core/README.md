@@ -94,7 +94,7 @@ In dependency order, each with the core packages it imports:
   `place`, `secret`
 - **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
   when and its counters, and a capped log of its events in grit's words, an event recorded again
-  known by its source's ordinal, and what a tool's call adds to it (`Logged`). ← `id`, `identity`,
+  known by its source's ordinal, and what a tool's call adds to it (`Event.Unrecorded`). ← `id`, `identity`,
   `place`, `visibility`, `store`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds

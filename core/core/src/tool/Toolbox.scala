@@ -9,7 +9,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
-import grit.core.session.Logged
+import grit.core.session.Event.Unrecorded
 import grit.core.store.{Reads, StoreError, Tx}
 
 /** The tools offered on one model call, their names distinct, each acting only through the
@@ -265,7 +265,7 @@ object Bound {
   final class Hosted private[tool] (
       val tool: ToolName,
       val shown: String,
-      val logs: (Place, String) -> Option[Logged],
+      val logs: (Place, String) -> Option[Unrecorded],
       val ask: Option[String],
       val within: FiniteDuration,
       val arguments: ujson.Value,

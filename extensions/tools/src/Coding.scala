@@ -4,7 +4,8 @@ import scala.concurrent.duration.*
 
 import grit.core.host.{Clipped, Edits, HostError, Lines, RelPath, Replace, Shell, Workspace}
 import grit.core.place.Place
-import grit.core.session.{Event, Logged}
+import grit.core.session.Event
+import grit.core.session.Event.Unrecorded
 import grit.core.tool.{
   Args,
   ArgsError,
@@ -102,9 +103,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
       Believed.At(Integrity.Member)
-    ).logging((a, _, _) =>
-      Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
-    )
+    ).logging((a, _, _) => Some(Unrecorded.read(Event.Shape.Path, RelPath.value(a.path))))
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     readHosted.over(a =>
@@ -140,9 +139,7 @@ object Coding {
       Gate.Free,
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
-    ).logging((a, _, _) =>
-      Some(Logged.Read(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
-    )
+    ).logging((a, _, _) => Some(Unrecorded.read(Event.Shape.Path, RelPath.value(a.path))))
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
     listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
@@ -176,7 +173,7 @@ object Coding {
       Gate.Free,
       a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
       Believed.At(Integrity.Member)
-    ).logging((a, _, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Named, a.pattern))))
+    ).logging((a, _, _) => Some(Unrecorded.read(Event.Shape.Named, a.pattern)))
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
     searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
@@ -211,9 +208,7 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
-      .logging((a, _, _) =>
-        Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
-      )
+      .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
     writeHosted.over(a =>
@@ -265,9 +260,7 @@ object Coding {
       a => RelPath.value(a.path),
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
-      .logging((a, _, _) =>
-        Some(Logged.Edited(Logged.shaped(Event.Shape.Path, RelPath.value(a.path))))
-      )
+      .logging((a, _, _) => Some(Unrecorded.edited(RelPath.value(a.path))))
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
     editHosted.over(a =>
@@ -315,7 +308,7 @@ object Coding {
     ).requiring(Integrity.Member)
       // A command line is content, never a shape; a commit's sha and subject are its own.
       .logging((a, at, shown) =>
-        Some(committed(at, a.command, shown).getOrElse(Logged.Ran(Event.Shape.Empty)))
+        Some(committed(at, a.command, shown).getOrElse(Unrecorded.Ran(Event.Shape.Empty)))
       )
 
   /** `Exit code `: what a run's answer begins with, before its exit code. */
@@ -330,7 +323,7 @@ object Coding {
   /** The commit a run of `command` at the worktree `at` made, read from its answer `shown`: when
     * the command runs `git commit`, it exited 0, and git's line for the commit is in its output.
     */
-  private def committed(at: Place, command: String, shown: String): Option[Logged] =
+  private def committed(at: Place, command: String, shown: String): Option[Unrecorded] =
     if (
       Commits.findFirstIn(command).isEmpty || !Seq(".", ";")
         .exists(e => shown.startsWith(s"${ExitLead}0$e"))
@@ -339,7 +332,7 @@ object Coding {
       Made
         .findFirstMatchIn(shown)
         .flatMap(m => Event.Shape.committed(at, m.group(1), Some(m.group(2))).toOption)
-        .map(Logged.Commit(_))
+        .map(Unrecorded.Commit(_))
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
     runHosted.over(a =>

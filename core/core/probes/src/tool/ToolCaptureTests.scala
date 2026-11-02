@@ -65,7 +65,7 @@ object ToolCaptureTests extends TestSuite {
   /** A hosted tool logged as what its argument names, purely. */
   private val loggingPure =
     """def logs: Hosted[String] =
-      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _, _) => Some(grit.core.session.Logged.Read(grit.core.session.Logged.shaped("path", p))))
+      |  new Hosted(spec, Gate.Free, p => p, Believed.Default).logging((p, _, _) => Some(grit.core.session.Event.Unrecorded.read("path", p)))
       |""".stripMargin
 
   private lazy val compiled =

@@ -5,7 +5,7 @@ import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.place.Place
 import grit.core.provider.ToolSchema
-import grit.core.session.Logged
+import grit.core.session.Event.Unrecorded
 import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.visibility.Integrity
 
@@ -241,7 +241,7 @@ final class Hosted[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    logs: (A, Place, String) -> Option[Logged],
+    logs: (A, Place, String) -> Option[Unrecorded],
     requires: Integrity,
     val output: Believed
 ) extends Tool.Offered {
@@ -279,7 +279,7 @@ final class Hosted[A] private[tool] (
     * after clipping ([[Bound.Hosted.logs]]); a tool not so described logs nothing, and so does
     * every call of the [[Tool]] [[over]] makes, which runs at no place.
     */
-  def logging(logs: (A, Place, String) -> Option[Logged]): Hosted[A] =
+  def logging(logs: (A, Place, String) -> Option[Unrecorded]): Hosted[A] =
     new Hosted(spec, gate, shown, logs, requires, output)
 
   /** This tool, run by `run`. */
@@ -368,7 +368,7 @@ object Hosted {
       spec: ToolSpec[A],
       gate: Gate[A],
       shown: A -> String,
-      logs: (A, Place, String) -> Option[Logged],
+      logs: (A, Place, String) -> Option[Unrecorded],
       output: Believed,
       arguments: ujson.Value,
       repairs: Set[ArgRepair],

@@ -129,4 +129,44 @@ object Event {
 
     def value(s: Shape): String = s
   }
+
+  /** What a tool call that ran adds to its session's log ([[Sessions.record]]): an event's kind
+    * and shape before the store gives it a seq and a time; a read, an edit, a command run or a
+    * commit made.
+    */
+  enum Unrecorded extends caps.Pure {
+    case Read(shape: Shape)
+    case Edited(shape: Shape)
+    case Ran(shape: Shape)
+    case Commit(shape: Shape)
+
+    /** Its kind, of a call whose result the model was shown as `shown`: a read counting its UTF-8
+      * bytes.
+      */
+    def kind(shown: String): Kind = this match {
+      case Read(_) => Kind.Read(shown.getBytes(StandardCharsets.UTF_8).length.toLong)
+      case Edited(_) => Kind.Edited
+      case Ran(_) => Kind.Ran
+      case Commit(_) => Kind.Commit
+    }
+
+    /** Its shape. */
+    def shape: Shape
+  }
+
+  object Unrecorded {
+
+    /** A read of what `value` names under `key` ([[Shape.Path]] or [[Shape.Named]]); its shape
+      * empty when that is over [[Shape.Longest]].
+      */
+    def read(key: String, value: String): Unrecorded = Read(one(key, value))
+
+    /** An edit of the file at `path` ([[Shape.Path]]); its shape empty when that is over
+      * [[Shape.Longest]].
+      */
+    def edited(path: String): Unrecorded = Edited(one(Shape.Path, path))
+
+    private def one(key: String, value: String): Shape =
+      Shape.of(ujson.Obj(key -> value)).getOrElse(Shape.Empty)
+  }
 }

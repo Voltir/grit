@@ -8,7 +8,7 @@ import grit.core.host.*
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.place.{Directory, Place}
-import grit.core.session.{Event, Logged}
+import grit.core.session.Event
 import grit.core.tool.{Believed, Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 import grit.core.visibility.Integrity
 
@@ -81,10 +81,11 @@ object CodingTests extends TestSuite {
   /** What `bound` logs when an edge at `at` ran it to `Done` showing `shown`; `None` for a call
     * no edge runs.
     */
-  private def logsAt(bound: Bound^, at: Place, shown: String): Option[Logged] = bound match {
-    case hosted: Bound.Hosted => hosted.logs(at, shown)
-    case _ => None
-  }
+  private def logsAt(bound: Bound^, at: Place, shown: String): Option[Event.Unrecorded] =
+    bound match {
+      case hosted: Bound.Hosted => hosted.logs(at, shown)
+      case _ => None
+    }
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
@@ -190,14 +191,13 @@ object CodingTests extends TestSuite {
           .bind(TestTainted.authority(call(name, args)), Repairs.All)
           .map(logsAt(_, worktree, ""))
       )
-      val path = (p: String) => Logged.shaped(Event.Shape.Path, p)
       val expected = Vector(
-        Right(Some(Logged.Read(path("src/a.scala")))),
-        Right(Some(Logged.Read(path(".")))),
-        Right(Some(Logged.Read(Logged.shaped(Event.Shape.Named, "def \\w+")))),
-        Right(Some(Logged.Edited(path("a.txt")))),
-        Right(Some(Logged.Edited(path("a.txt")))),
-        Right(Some(Logged.Ran(Event.Shape.Empty)))
+        Right(Some(Event.Unrecorded.read(Event.Shape.Path, "src/a.scala"))),
+        Right(Some(Event.Unrecorded.read(Event.Shape.Path, "."))),
+        Right(Some(Event.Unrecorded.read(Event.Shape.Named, "def \\w+"))),
+        Right(Some(Event.Unrecorded.edited("a.txt"))),
+        Right(Some(Event.Unrecorded.edited("a.txt"))),
+        Right(Some(Event.Unrecorded.Ran(Event.Shape.Empty)))
       )
       offered ==> expected
     }
@@ -214,7 +214,7 @@ object CodingTests extends TestSuite {
         )
         .map(logsAt(_, worktree, "Exit code 0. Output:\n[main 1a2b3c4] x"))
       // The key and form `SqlWatched` matches a watch for a commit at a worktree on.
-      logged.map(_.collect { case Logged.Commit(shape) =>
+      logged.map(_.collect { case Event.Unrecorded.Commit(shape) =>
         ujson.read(Event.Shape.value(shape)).obj.get(Event.Shape.Worktree).flatMap(_.strOpt)
       }) ==> Right(Some(Some(worktree.written)))
     }
@@ -229,8 +229,10 @@ object CodingTests extends TestSuite {
           .map(logsAt(_, worktree, shown))
       val made = "Exit code 0. Output:\n[m20 1a2b3c4] turn: a thing\n 1 file changed"
       def commit(sha: String, subject: String) =
-        Event.Shape.committed(worktree, sha, Some(subject)).map(s => Some(Logged.Commit(s)))
-      val ran = Right(Some(Logged.Ran(Event.Shape.Empty)))
+        Event.Shape
+          .committed(worktree, sha, Some(subject))
+          .map(s => Some(Event.Unrecorded.Commit(s)))
+      val ran = Right(Some(Event.Unrecorded.Ran(Event.Shape.Empty)))
       (
         logs("git add -A && git commit -m 'turn: a thing'", made),
         logs(

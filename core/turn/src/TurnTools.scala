@@ -7,7 +7,7 @@ import grit.core.flow.Mint
 import grit.core.id.{CallSlot, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.{Place, Service}
-import grit.core.session.Logged
+import grit.core.session.Event.Unrecorded
 import grit.core.store.{
   Askers,
   ConversationStore,
@@ -208,7 +208,7 @@ object TurnTools {
         outcome: Outcome,
         from: Either[Integrity, Service],
         at: Instant,
-        logs: String -> Option[Logged] = _ => None
+        logs: String -> Option[Unrecorded] = _ => None
     ): Either[TurnFailure, Settled] =
       settle(slot, call, named, Belief.From(from), at, logs)(() => Right(outcome))
 
@@ -222,7 +222,7 @@ object TurnTools {
         named: String,
         from: Either[Integrity, Service],
         at: Instant,
-        logs: String -> Option[Logged] = _ => None
+        logs: String -> Option[Unrecorded] = _ => None
     )(
         read: (Tx^) ?=> Either[StoreError, Outcome]
     ): Either[TurnFailure, Settled] =
@@ -316,7 +316,7 @@ object TurnTools {
         shown: String,
         believed: Belief,
         at: Instant,
-        logged: String -> Option[Logged]
+        logged: String -> Option[Unrecorded]
     )(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
@@ -379,7 +379,7 @@ object TurnTools {
         believed: Either[Integrity, (Service, Accounted)],
         at: Instant,
         person: Option[(EntryId, Payload)],
-        logs: Option[(Logged, String)]
+        logs: Option[(Unrecorded, String)]
     ): Either[TurnFailure, Entry] =
       jot.write(Subject.Turn(turn))(inserted(turn, id, payload, believed, at, person)(logs)) match {
         case Left(StoreError.DuplicateId(_)) => readBack(turn, id)
@@ -394,7 +394,7 @@ object TurnTools {
         believed: Either[Integrity, (Service, Accounted)],
         at: Instant,
         person: Option[(EntryId, Payload)]
-    )(logs: Option[(Logged, String)])(using tx: Tx^): Either[StoreError, Entry] =
+    )(logs: Option[(Unrecorded, String)])(using tx: Tx^): Either[StoreError, Entry] =
       for {
         next <- entries.lockNext(turn.conversationId)
         output = believed.fold(i => i, Tx.visibility(tx).believed(_, _))
@@ -417,7 +417,7 @@ object TurnTools {
     /** `logged`, the call whose result is `entry` and whose model was shown `shown`, logged on
       * `turn`'s conversation's session as [[Settling]] says.
       */
-    private def session(turn: TurnRef, entry: Entry, logged: Logged, shown: String)(using
+    private def session(turn: TurnRef, entry: Entry, logged: Unrecorded, shown: String)(using
         Tx^
     ): Either[StoreError, Unit] =
       sessions.record(

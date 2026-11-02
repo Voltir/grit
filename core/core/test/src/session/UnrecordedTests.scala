@@ -6,15 +6,18 @@ import grit.core.place.{Namespace, Place}
 
 import utest.*
 
-/** What a tool call that ran adds to its session's log, as the event it becomes. */
-object LoggedTests extends TestSuite {
+/** What a tool call that ran adds to its session's log, before it is recorded. */
+object UnrecordedTests extends TestSuite {
 
   private val t0 = Instant.parse("2026-10-28T10:00:00Z")
-  private val path = Logged.shaped(Event.Shape.Path, "src/a.scala")
+  private val path = Event.Unrecorded.read(Event.Shape.Path, "src/a.scala").shape
+
+  private def event(u: Event.Unrecorded, n: Long, shown: String) =
+    Event.of(n, t0, u.kind(shown), u.shape)
 
   val tests = Tests {
     test("a read counts the UTF-8 bytes of what the model was shown, keeping its shape") {
-      val read = Logged.Read(path).event(4, t0, "héllo")
+      val read = event(Event.Unrecorded.Read(path), 4, "héllo")
       assert(
         read.map(e => (e.n, e.at, e.kind, e.shape)) == Right((4L, t0, Event.Kind.Read(6), path))
       )
@@ -37,25 +40,27 @@ object LoggedTests extends TestSuite {
         long.map(_.getBytes("UTF-8").length <= Event.Shape.Longest),
         cut.map(_.exists(_.endsWith("é…"))),
         cut.map(_.exists(_.length > 100)),
-        Logged.Commit(Event.Shape.Empty).event(7, t0, "x").map(_.kind)
+        Event.Unrecorded.Commit(Event.Shape.Empty).kind("x")
       ) ==> (
         Right("""{"worktree":"fs:/w","sha":"1a2b3c4d5e6f","subject":"turn: a thing"}"""),
         Right(true),
         Right(true),
         Right(true),
-        Right(Event.Kind.Commit)
+        Event.Kind.Commit
       )
     }
     test("an edit and a run count no bytes, whatever was shown") {
       assert(
-        Logged.Edited(path).event(5, t0, "done").map(_.kind) == Right(Event.Kind.Edited),
-        Logged.Ran(Event.Shape.Empty).event(6, t0, "exit 0").map(_.kind) == Right(Event.Kind.Ran)
+        Event.Unrecorded.edited("src/a.scala") == Event.Unrecorded.Edited(path),
+        Event.Unrecorded.Edited(path).kind("done") == Event.Kind.Edited,
+        Event.Unrecorded.Ran(Event.Shape.Empty).kind("exit 0") == Event.Kind.Ran
       )
     }
     test("a shape over the longest a shape takes is the empty shape") {
       assert(
         Event.Shape.value(path) == """{"path":"src/a.scala"}""",
-        Logged.shaped(Event.Shape.Path, "a" * Event.Shape.Longest) == Event.Shape.Empty
+        Event.Unrecorded.read(Event.Shape.Path, "a" * Event.Shape.Longest) ==
+          Event.Unrecorded.Read(Event.Shape.Empty)
       )
     }
   }

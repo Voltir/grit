@@ -20,7 +20,7 @@ import grit.core.id.{
 import grit.core.identity.Principal
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Place, Service}
-import grit.core.session.{Event, Logged, Session}
+import grit.core.session.{Event, Session}
 import grit.core.store.{Askers, Entry, EntryStore, InMemoryEntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{
   Args,
@@ -192,7 +192,7 @@ object TurnToolsTests extends TestSuite {
 
   /** `said` as the engine offers it, logged as a read of the path it is given. */
   private val logged: Hosted[String] =
-    unlogged.logging((p, _, _) => Some(Logged.Read(Logged.shaped(Event.Shape.Path, p))))
+    unlogged.logging((p, _, _) => Some(Event.Unrecorded.read(Event.Shape.Path, p)))
 
   /** The place every call [[logging]] answers was sent to. */
   private val sentTo: Place = Place.under(grit.core.place.Namespace.Fs, Vector("/work/grit"))
@@ -381,7 +381,8 @@ object TurnToolsTests extends TestSuite {
       val expected = for {
         id <- SessionId.of(Harness.Grit, ConversationId.value(conversation))
         n <- seq.toRight("no result")
-        event <- Logged.Read(Logged.shaped(Event.Shape.Path, "x")).event(n, Instant.EPOCH, "héllo")
+        read = Event.Unrecorded.read(Event.Shape.Path, "x")
+        event <- Event.of(n, Instant.EPOCH, read.kind("héllo"), read.shape)
       } yield (
         Session.Header(
           id,

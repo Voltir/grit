@@ -6,7 +6,7 @@ import grit.core.durable.{Flow, Step}
 import grit.core.edge.Permit
 import grit.core.id.TurnRef
 import grit.core.place.{Directory, Place}
-import grit.core.session.Logged
+import grit.core.session.Event.Unrecorded
 import grit.core.store.{Askers, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
 import grit.core.visibility.Subject
@@ -135,7 +135,8 @@ object TurnHosted {
           val from = h.place.flatMap(_.service).toRight(hosted.output.at(level))
           val own = Left(level)
           // An answered or rung call was dispatched, which only a call with a place is.
-          val logs: String -> Option[Logged] = text => h.place.flatMap(hosted.logs(_, text))
+          val logs: String -> Option[Unrecorded] =
+            text => h.place.flatMap(hosted.logs(_, text))
           c.waited match {
             case Waited.Unsent =>
               settling.answerFrom(slot, call, shown, own, at)(
