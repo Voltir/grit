@@ -193,62 +193,28 @@ object Consumed {
   ): Option[Usage] =
     if (models.nonEmpty) Some(Usage.total(models.map(_._2)).copy(costUsd = claimed))
     else
-      obj(e, "usage").map(
-        tokens(
-          _,
-          "input_tokens",
-          "output_tokens",
-          "cache_read_input_tokens",
-          "cache_creation_input_tokens"
-        ).copy(costUsd = claimed)
-      )
+      obj(e, "usage").map(o => AnthropicJson.usageOf(Some(o.value)).copy(costUsd = claimed))
 
   /** What the result's `modelUsage` gives each model, unpriced; empty when it gives none. */
   private def byModel(e: ujson.Obj): Vector[(String, Usage)] =
     obj(e, "modelUsage").fold(Vector.empty[(String, Usage)])(
       _.value.toVector.collect { case (model, o: ujson.Obj) =>
-        model -> tokens(
-          o,
-          "inputTokens",
-          "outputTokens",
-          "cacheReadInputTokens",
-          "cacheCreationInputTokens"
-        )
+        model -> tokens(o)
       }
     )
 
-  /** A result's tokens, read by the names of their fields; unpriced. */
-  private def tokens(
-      o: ujson.Obj,
-      input: String,
-      output: String,
-      read: String,
-      write: String
-  ): Usage = {
-    def count(k: String) = o.value.get(k).flatMap(_.numOpt).fold(0L)(_.toLong)
-    Usage(
-      Tokens(count(input) + count(read) + count(write)),
-      Tokens(count(output)),
-      Tokens(count(read)),
-      None,
-      Tokens(count(write))
-    )
+  /** A `modelUsage` entry's tokens, its fields camelCase; unpriced. */
+  private def tokens(o: ujson.Obj): Usage = {
+    def count(k: String) = Tokens(o.value.get(k).flatMap(_.numOpt).fold(0L)(_.toLong))
+    val read = count("cacheReadInputTokens")
+    val write = count("cacheCreationInputTokens")
+    Usage(count("inputTokens") + read + write, count("outputTokens"), read, None, write)
   }
 
   /** The call of the assistant message `m`, priced by its model. */
   private def call(id: String, m: ujson.Obj): Call = {
     val model = text(m, "model").getOrElse("")
-    def count(k: String) =
-      obj(m, "usage").flatMap(_.value.get(k)).flatMap(_.numOpt).fold(0L)(_.toLong)
-    val read = count("cache_read_input_tokens")
-    val write = count("cache_creation_input_tokens")
-    val usage = Usage(
-      Tokens(count("input_tokens") + read + write),
-      Tokens(count("output_tokens")),
-      Tokens(read),
-      None,
-      Tokens(write)
-    )
+    val usage = AnthropicJson.usageOf(obj(m, "usage").map(_.value))
     Call(id, model, usage.copy(costUsd = AnthropicRates.cost(model, usage)))
   }
 

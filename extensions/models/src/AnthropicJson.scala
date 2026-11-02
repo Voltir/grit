@@ -115,7 +115,7 @@ object AnthropicJson {
         }
     } yield {
       val model = root.get("model").flatMap(_.strOpt).getOrElse("unknown")
-      val counted = usage(root.get("usage").flatMap(_.objOpt))
+      val counted = usageOf(root.get("usage").flatMap(_.objOpt))
       Message.Assistant(
         blocks,
         stop(root.get("stop_reason").flatMap(_.strOpt)),
@@ -242,8 +242,11 @@ object AnthropicJson {
     case None => StopReason.Other("none")
   }
 
-  /** `input_tokens` counts only what was neither read from nor written to the cache. */
-  private def usage(u: Option[collection.Map[String, ujson.Value]]): Usage = {
+  /** The usage an Anthropic `usage` object `u` gives, unpriced: its `input_tokens`, which count
+    * only what was neither read from nor written to the cache, added to the cache's reads and
+    * writes ([[Usage.input]]); a field missing, or `u` missing, counts 0.
+    */
+  def usageOf(u: Option[collection.Map[String, ujson.Value]]): Usage = {
     def count(key: String): Tokens =
       Tokens(u.flatMap(_.get(key)).flatMap(_.numOpt).fold(0L)(_.toLong))
     val read = count("cache_read_input_tokens")
