@@ -46,6 +46,22 @@ object LocalProcessesTests extends TestSuite {
       }
     }
 
+    test("a started program's next line is waited for at most as long as asked, then its end") {
+      inRoot { dir =>
+        val read =
+          new LocalProcesses(dir, sys.env, noSecrets)
+            .started(argv("cat"), RelPath.Root) { s =>
+              val quiet = s.next(50.millis)
+              s.input.write("one\n".getBytes(StandardCharsets.UTF_8))
+              s.input.flush()
+              val line = s.next(5.seconds)
+              s.input.close()
+              (quiet, line, s.next(5.seconds))
+            }
+        read ==> Right((Started.Next.Quiet, Started.Next.Line("one"), Started.Next.Ended))
+      }
+    }
+
     test("leaving its scope kills a program still running, and what it started") {
       inRoot { dir =>
         val pids = new LocalProcesses(dir, sys.env, noSecrets).started(

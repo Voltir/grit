@@ -4,7 +4,8 @@ import java.io.{BufferedReader, InputStreamReader, OutputStream}
 import java.lang.ProcessBuilder
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{ArrayBlockingQueue, TimeUnit}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -113,10 +114,57 @@ private[checkout] object LocalProcesses {
 
     def input: OutputStream^{this} = process.getOutputStream
 
-    def lines: Iterator[String]^{this} = {
-      val reader =
-        new BufferedReader(new InputStreamReader(process.getInputStream, StandardCharsets.UTF_8))
-      Iterator.continually(reader.readLine()).takeWhile(_ != null).map(redaction(_))
+    // The program's lines as one thread reads them, `None` once its output ends; bounded, so a
+    // program whose output nobody reads still blocks. Filled by the reading thread and drained
+    // by the callers of `lines` and `next`, each through the queue's own locking; it holds
+    // strings alone, so no capability flows through it.
+    @caps.unsafe.untrackedCaptures
+    private val read = new ArrayBlockingQueue[Option[String]](LocalProcesses.Buffered)
+
+    // Whether the reading thread has started, and whether the program was killed: each set once,
+    // by its own atomic operation; booleans, so no capability flows through them.
+    @caps.unsafe.untrackedCaptures
+    private val reading = new AtomicBoolean(false)
+    @caps.unsafe.untrackedCaptures
+    private val killed = new AtomicBoolean(false)
+
+    def lines: Iterator[String]^{this} =
+      Iterator
+        .continually(taken(None).flatten)
+        .takeWhile(_.isDefined)
+        .collect { case Some(line) => line }
+
+    def next(within: FiniteDuration): Started.Next =
+      taken(Some(within)) match {
+        case Some(Some(line)) => Started.Next.Line(line)
+        case Some(None) => Started.Next.Ended
+        case None => Started.Next.Quiet
+      }
+
+    /** The next of [[read]], waiting for it up to `within` or without end: `Some(None)` at the
+      * end, which stays there for every later reader; `None` when none came in time.
+      */
+    private def taken(within: Option[FiniteDuration]): Option[Option[String]] = {
+      if (reading.compareAndSet(false, true)) {
+        val reader =
+          new BufferedReader(new InputStreamReader(process.getInputStream, StandardCharsets.UTF_8))
+        val _ = Thread.ofVirtual().name("grit-program-lines").start { () =>
+          try
+            Iterator
+              .continually(reader.readLine())
+              .takeWhile(_ != null)
+              .foreach(line => queued(Some(redaction(line))))
+          catch { case _: java.io.IOException => () }
+          finally queued(None)
+        }
+      }
+      val got = within match {
+        case None => Some(read.take())
+        case Some(w) => Option(read.poll(w.toMillis, TimeUnit.MILLISECONDS))
+      }
+      // The end is put back, so each later read finds it too.
+      got.foreach(line => if (line.isEmpty) { val _ = read.offer(None) })
+      got
     }
 
     def await(timeout: FiniteDuration): Either[HostError, Ran] = {
@@ -128,7 +176,20 @@ private[checkout] object LocalProcesses {
       }
     }
 
-    def kill(): Unit = if (process.isAlive) LocalProcesses.kill(process)
+    /** `line` queued once there is room, or dropped once the program was killed: nothing reads
+      * it then, and the reading thread must not wait on a queue nobody drains.
+      */
+    private def queued(line: Option[String]): Unit =
+      while (
+        !killed.get() && !read.offer(line, LocalProcesses.Offer.toMillis, TimeUnit.MILLISECONDS)
+      ) ()
+
+    def kill(): Unit = {
+      killed.set(true)
+      if (process.isAlive) LocalProcesses.kill(process)
+      read.clear()
+      val _ = read.offer(None)
+    }
   }
 
   /** Whether `process` ended within `timeout`; killed, with its descendants, when it did not. */
@@ -180,6 +241,14 @@ private[checkout] object LocalProcesses {
       catch { case _: java.util.concurrent.TimeoutException => () }
     }
   }
+
+  /** 256: the most lines of a started program's output read ahead of its reader; past them, the
+    * program blocks until one is read.
+    */
+  val Buffered: Int = 256
+
+  /** 100 ms: how often the reading thread, waiting for room, looks whether its program was killed. */
+  private val Offer: FiniteDuration = FiniteDuration(100, TimeUnit.MILLISECONDS)
 
   /** 1 second: how long a kill waits for each killed descendant to be gone. */
   val DescendantWait: FiniteDuration = FiniteDuration(1, TimeUnit.SECONDS)

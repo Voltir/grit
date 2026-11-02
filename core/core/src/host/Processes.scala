@@ -65,6 +65,12 @@ trait Started extends caps.SharedCapability {
     */
   def lines: Iterator[String]^{this}
 
+  /** The program's next line, as [[lines]] reads them, waiting at most `within` for it:
+    * [[Started.Next.Quiet]] when none came in time, [[Started.Next.Ended]] once its output has
+    * ended. It reads the one output [[lines]] reads: a line either gives, the other does not.
+    */
+  def next(within: FiniteDuration): Started.Next
+
   /** Waits for the program to end: its exit code and the tail of its errors. `TimedOut` past
     * `timeout`, after killing it as [[kill]] does.
     */
@@ -74,4 +80,20 @@ trait Started extends caps.SharedCapability {
     * end; nothing when it has ended.
     */
   def kill(): Unit
+}
+
+object Started {
+
+  /** What [[Started.next]] found. */
+  enum Next derives CanEqual {
+
+    /** The program's next line. */
+    case Line(text: String)
+
+    /** No line came within the wait; one may still come. */
+    case Quiet
+
+    /** The program's output ended. */
+    case Ended
+  }
 }
