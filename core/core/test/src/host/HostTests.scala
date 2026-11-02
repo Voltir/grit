@@ -184,5 +184,15 @@ object HostTests extends TestSuite {
           "more of the surrounding lines to make it unique."
       }
     }
+
+    test(
+      "a write over a redacted secret is refused in words that show the mark and the way around it"
+    ) {
+      HostError.Redacted(path("notes.txt")).message ==>
+        "`notes.txt` holds a secret that tools show as `[redacted secret: NAME]`, and your " +
+        "text holds that mark, so writing it would put the mark where the secret was. Nothing " +
+        "was written. Use `edit` to change the lines around it, and leave the redacted ones " +
+        "as they are."
+    }
   }
 }

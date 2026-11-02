@@ -2,6 +2,7 @@ package grit.host.checkout
 
 import java.util.regex.{Matcher, Pattern}
 
+import grit.core.host.RedactionMark
 import grit.core.secret.{Named, Variable}
 
 /** The secrets a deployment holds, as text a program or file shows a tool is cleared of them.
@@ -21,7 +22,7 @@ final class Redaction private (
       Pattern.compile(pieces.keys.toVector.sortBy(-_.length).map(Pattern.quote).mkString("|"))
     )
 
-  /** `text` with each value held replaced by `[redacted secret: VARIABLE]`: a one-line value
+  /** `text` with each value held replaced by its [[RedactionMark]]: a one-line value
     * whole, longest first; a multi-line value line by line, so the text keeps its line count; a
     * value's suffix `text` starts with and its prefix `text` ends with, as a cut leaves them.
     * Only exact text of at least [[Redaction.Shortest]] characters is found: an encoded, split
@@ -43,10 +44,10 @@ final class Redaction private (
       val replaced = pattern
         .matcher(middle)
         .replaceAll(m =>
-          Matcher.quoteReplacement(pieces.get(m.group()).fold(m.group())(Redaction.mark))
+          Matcher.quoteReplacement(pieces.get(m.group()).fold(m.group())(RedactionMark.of))
         )
-      start.fold("")((_, v) => Redaction.mark(v)) + replaced + end.fold("")((_, v) =>
-        Redaction.mark(v)
+      start.fold("")((_, v) => RedactionMark.of(v)) + replaced + end.fold("")((_, v) =>
+        RedactionMark.of(v)
       )
     }
 
@@ -113,11 +114,6 @@ object Redaction {
     */
   val Shortest: Int = 8
 
-  /** Whether `text` holds a mark [[Redaction.apply]] leaves in a value's place. */
-  def marked(text: String): Boolean = text.contains(Mark)
-
-  private val Mark = "[redacted secret: "
-
   /** The lengths of the prefixes of `a` that are suffixes of `b`, longest first, none empty: a
     * Knuth–Morris–Pratt match of `a` over `b`, in time linear in both.
     */
@@ -143,5 +139,4 @@ object Redaction {
       Vector.unfold(q)(n => Option.when(n > 0)((n, border(n - 1))))
     }
 
-  private def mark(v: Variable): String = s"$Mark${Variable.value(v)}]"
 }

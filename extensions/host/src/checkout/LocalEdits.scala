@@ -3,7 +3,7 @@ package grit.host.checkout
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
 
-import grit.core.host.{EditError, Edited, Edits, HostError, RelPath, Replace}
+import grit.core.host.{EditError, Edited, Edits, HostError, RedactionMark, RelPath, Replace}
 
 /** Changing files in the checkout whose root is `root`. A change is written to a temporary
   * file beside the target, which is then renamed over it; an existing file keeps its
@@ -18,7 +18,7 @@ final class LocalEdits(root: Path, redaction: Redaction) extends Edits {
   def write(path: RelPath, text: String): Either[HostError, Unit] =
     checkout.find(path).flatMap { at =>
       if (Files.isDirectory(at)) Left(HostError.NotAFile(path))
-      else if (Redaction.marked(text) && holdsSecret(path, at)) Left(HostError.Redacted(path))
+      else if (RedactionMark.in(text) && holdsSecret(path, at)) Left(HostError.Redacted(path))
       else replace(at, text)
     }
 

@@ -62,7 +62,7 @@ enum HostError {
         output.show
     case Failed(why) => why
     case Redacted(p) =>
-      s"`${RelPath.value(p)}` holds a secret that tools show as `[redacted secret: …]`, and your " +
+      s"`${RelPath.value(p)}` holds a secret that tools show as `${RedactionMark.Example}`, and your " +
         "text holds that mark, so writing it would put the mark where the secret was. Nothing " +
         "was written. Use `edit` to change the lines around it, and leave the redacted ones as " +
         "they are."
