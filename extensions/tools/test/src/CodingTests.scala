@@ -262,7 +262,7 @@ object CodingTests extends TestSuite {
       val schemas = all(new Scripted()).schemas(strict = false)
       val described = schemas.map(s => s.name -> s.description).toMap
       assert(
-        described.get("read").exists(_.contains("2000 lines or 50 KB")),
+        described.get("read").exists(_.contains("2000 lines and 50 KB")),
         described.get("run").exists(_.contains("60 seconds when not given")),
         described.get("edit").exists(_.contains("exactly once")),
         described.get("search").exists(_.contains("cut at 500 characters"))

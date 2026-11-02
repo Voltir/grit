@@ -485,7 +485,7 @@ object Coding {
   )
 
   private val limits =
-    s"${Clipped.MaxLines} lines or ${Clipped.MaxBytes / 1024} KB, whichever comes first"
+    s"${Clipped.MaxLines} lines and ${Clipped.MaxBytes / 1024} KB"
 
   private val pathRule =
     " A path must be relative to the checkout's root and stay inside it, and may not " +
