@@ -4,25 +4,24 @@ import java.net.URI
 
 import scala.util.Try
 
+import grit.core.host.Argv
 import grit.core.visibility.Accounts
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
 
-/** An MCP server grit reaches over Streamable HTTP at [[grit.mcp.wire.Rpc.Version]]: its tools
-  * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any
-  * and `scope` offers; its calls are sent, and their answers shown, as `scope` sends and shows
-  * them, and their items read by `accounts`; each request carries `Authorization: Bearer` with
-  * the token `credential` gives. Before a call of a tool `lookups` names, each of its lookups
-  * is called, in order, and its answer, as the server gave it, read by `accounts` beside the
-  * call's ([[grit.mcp.wire.McpCalled.looked]]); a call lacking a lookup's argument, or one
-  * whose lookup the server refuses or does not list as read-only, is not sent
+/** An MCP server grit reaches by `transport` at [[grit.mcp.wire.Rpc.Version]]: its tools are
+  * offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any and
+  * `scope` offers; its calls are sent, and their answers shown, as `scope` sends and shows them,
+  * and their items read by `accounts`. Before a call of a tool `lookups` names, each of its
+  * lookups is called, in order, and its answer, as the server gave it, read by `accounts`
+  * beside the call's ([[grit.mcp.wire.McpCalled.looked]]); a call lacking a lookup's argument,
+  * or one whose lookup the server refuses or does not list as read-only, is not sent
   * ([[grit.mcp.wire.McpError.NotLooked]]). A lookup is grit's own call, made whatever `allow`
   * and `scope` say of its tool, with the one argument the call already sends.
   */
-final case class McpServer private (
+final case class McpServer[+T <: McpTransport] private (
     name: String,
-    endpoint: URI,
-    credential: Credential,
+    transport: T,
     scope: McpScope,
     allow: Set[String],
     accounts: Accounts[McpCalled],
@@ -58,14 +57,8 @@ object McpServer {
       allow: Set[String] = Set.empty,
       accounts: Accounts[McpCalled] = Accounts.none,
       lookups: Map[String, Vector[Lookup]] = Map.empty
-  ): Either[String, McpServer] =
-    for {
-      _ <- Either.cond(
-        Name.matches(name),
-        (),
-        s"an MCP server's name must be a lowercase letter then up to 15 lowercase letters, " +
-          s"digits or _, not '$name'"
-      )
+  ): Either[String, McpServer[McpTransport.Http]] = {
+    val transport: Either[String, McpTransport.Http] = for {
       uri <- Try(new URI(endpoint)).toOption
         .filter(u => u.isAbsolute && Option(u.getHost).exists(_.nonEmpty))
         .toRight(s"$name's endpoint is not an absolute URL with a host: '$endpoint'")
@@ -74,6 +67,42 @@ object McpServer {
         (),
         s"$name's endpoint must be https (http only on a loopback host): '$endpoint'"
       )
+    } yield new McpTransport.Http(uri, credential)
+    declared(name, transport, scope, allow, accounts, lookups)
+  }
+
+  /** The server reached by starting `argv` ([[McpTransport.Stdio]]), or why not: `name` or
+    * `lookups` as [[of]] refuses them.
+    */
+  def stdio(
+      name: String,
+      argv: Argv,
+      scope: McpScope,
+      allow: Set[String] = Set.empty,
+      accounts: Accounts[McpCalled] = Accounts.none,
+      lookups: Map[String, Vector[Lookup]] = Map.empty
+  ): Either[String, McpServer[McpTransport.Stdio]] =
+    declared(name, Right(new McpTransport.Stdio(argv)), scope, allow, accounts, lookups)
+
+  /** The server reached by `transport`, or why not: `name`, then `transport`'s own refusal, then
+    * `lookups`, as [[of]] refuses them.
+    */
+  private def declared[T <: McpTransport](
+      name: String,
+      transport: Either[String, T],
+      scope: McpScope,
+      allow: Set[String],
+      accounts: Accounts[McpCalled],
+      lookups: Map[String, Vector[Lookup]]
+  ): Either[String, McpServer[T]] =
+    for {
+      _ <- Either.cond(
+        Name.matches(name),
+        (),
+        s"an MCP server's name must be a lowercase letter then up to 15 lowercase letters, " +
+          s"digits or _, not '$name'"
+      )
+      reached <- transport
       _ <- lookups.toVector.sortBy(_._1).foldLeft[Either[String, Unit]](Right(())) {
         case (read, (tool, ls)) =>
           val tools = ls.map(_.tool)
@@ -86,7 +115,7 @@ object McpServer {
                 .fold(Right(()))(t => Left(s"$name's $tool looks up $t twice"))
           }
       }
-    } yield new McpServer(name, uri, credential, scope, allow, accounts, lookups)
+    } yield new McpServer(name, reached, scope, allow, accounts, lookups)
 
   private val Name = "[a-z][a-z0-9_]{0,15}".r
 

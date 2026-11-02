@@ -53,11 +53,15 @@ object McpClientTests extends TestSuite {
       case Left(why) => throw new java.lang.AssertionError(why)
     }
     val authorizer =
-      Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> token), KeyFiles.Local) match {
+      Credential.open(
+        server.transport.credential,
+        Map("FAKE_MCP_TOKEN" -> token),
+        KeyFiles.Local
+      ) match {
         case Right(a) => a
         case Left(why) => throw new java.lang.AssertionError(why.message)
       }
-    new McpClient(server, authorizer, clock)
+    McpClient(server, authorizer, clock)
   }
 
   /** A read-only tool `name` with an empty object schema. */
@@ -490,7 +494,7 @@ object McpClientTests extends TestSuite {
           .of("fake", fake.endpoint, credential, McpScope.Open)
           .fold(why => throw new java.lang.AssertionError(why), identity)
         // A client with no token kept yet.
-        def fresh() = new McpClient(
+        def fresh() = McpClient(
           server,
           Credential
             .open(credential, Map("DRIVE_SA_KEY" -> tokens.keyFile()), KeyFiles.Local)
@@ -546,10 +550,10 @@ object McpClientTests extends TestSuite {
             lookups = Map("read" -> Vector(lookup("meta"), lookup("perms")))
           )
           .fold(why => throw new java.lang.AssertionError(why), identity)
-        val c = new McpClient(
+        val c = McpClient(
           server,
           Credential
-            .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
+            .open(server.transport.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
             .fold(why => throw new java.lang.AssertionError(why.message), identity),
           new Hands()
         )

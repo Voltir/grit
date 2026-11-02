@@ -7,7 +7,7 @@ import grit.core.edge.{ServedEdge, Variable}
 import grit.core.identity.{Domain, Email, Identities}
 import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.visibility.Integrity
-import grit.mcp.client.{Credential, KeyFiles, McpServer}
+import grit.mcp.client.{Credential, KeyFiles, McpServer, McpTransport}
 import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
@@ -90,7 +90,9 @@ private[main] object ServedEdges {
     * token reaches; its answers' items read by [[GitHubItems.accounts]]; why not, naming the variable, when the URL is not one [[McpServer.of]]
     * takes or the list names no tool.
     */
-  private[main] def githubServer(env: Map[String, String]): Either[String, McpServer] = {
+  private[main] def githubServer(
+      env: Map[String, String]
+  ): Either[String, McpServer[McpTransport.Http]] = {
     val allow =
       if (env.contains(GithubToolsVar)) csv(env, GithubToolsVar).toSet else GithubTools
     for {

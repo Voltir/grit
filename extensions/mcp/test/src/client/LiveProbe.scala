@@ -72,7 +72,7 @@ object LiveProbe {
       server <- McpServer.of("github", Endpoint, Credential.static(Token), McpScope.Open)
       bearer <- Bearer.of(sys.env, Token).left.map(_.message)
       authorizer <- Credential
-        .open(server.credential, sys.env, KeyFiles.Local)
+        .open(server.transport.credential, sys.env, KeyFiles.Local)
         .left
         .map(_.message)
     } yield {
@@ -88,9 +88,12 @@ object LiveProbe {
   }
 
   /** The contract against GitHub's server, its read call `get_file_contents` with `arguments`. */
-  private final class GitHubContract(s: McpServer, a: Authorizer, arguments: ujson.Obj)
-      extends McpServerContract {
-    protected def server: McpServer = s
+  private final class GitHubContract(
+      s: McpServer[McpTransport.Http],
+      a: Authorizer,
+      arguments: ujson.Obj
+  ) extends McpServerContract {
+    protected def server: McpServer[McpTransport.Http] = s
     protected def authorizer: Authorizer = a
     protected def read: (String, ujson.Obj) = ("get_file_contents", arguments)
     // A fine-grained PAT's shape, so GitHub refuses it as unknown (401), not as malformed (400).
@@ -105,8 +108,13 @@ object LiveProbe {
   /** The items contract against GitHub's server, each call made as its first `tools/list` page
     * lists the tool.
     */
-  private final class GitHubItems(s: McpServer, b: Bearer, r: String, i: Int, p: Int)
-      extends grit.mcp.github.GitHubItemsContract {
+  private final class GitHubItems(
+      s: McpServer[McpTransport.Http],
+      b: Bearer,
+      r: String,
+      i: Int,
+      p: Int
+  ) extends grit.mcp.github.GitHubItemsContract {
     protected def repository: String = r
     protected def issue: Int = i
     protected def pull: Int = p
@@ -127,7 +135,7 @@ object LiveProbe {
   /** The result `server` answers request `id` making `call`. */
   private def read(
       http: HttpClient,
-      server: McpServer,
+      server: McpServer[McpTransport.Http],
       bearer: Bearer,
       id: Long,
       call: Rpc.Call
@@ -148,7 +156,7 @@ object LiveProbe {
   /** Request `id` making `call`, sent to `server` as its headers say, with `bearer`. */
   private def sent(
       http: HttpClient,
-      server: McpServer,
+      server: McpServer[McpTransport.Http],
       bearer: Bearer,
       id: Long,
       call: Rpc.Call
@@ -156,7 +164,9 @@ object LiveProbe {
     http.send(
       Headers
         .of(call)
-        .foldLeft(HttpRequest.newBuilder(server.endpoint)) { case (r, (k, v)) => r.header(k, v) }
+        .foldLeft(HttpRequest.newBuilder(server.transport.endpoint)) { case (r, (k, v)) =>
+          r.header(k, v)
+        }
         .header("Authorization", s"Bearer ${bearer.value}")
         .POST(HttpRequest.BodyPublishers.ofString(ujson.write(Rpc.request(id, call))))
         .build(),
@@ -167,7 +177,12 @@ object LiveProbe {
     * `arguments` into `dir`, as they came; the call is made as that page lists the tool, so
     * with its `Mcp-Param-*` headers, and is not made when the page does not offer it.
     */
-  private def capture(server: McpServer, bearer: Bearer, arguments: ujson.Obj, dir: Path): Unit = {
+  private def capture(
+      server: McpServer[McpTransport.Http],
+      bearer: Bearer,
+      arguments: ujson.Obj,
+      dir: Path
+  ): Unit = {
     Files.createDirectories(dir)
     val http = HttpClient.newHttpClient()
     def post(id: Long, call: Rpc.Call, name: String): (Boolean, String) = {

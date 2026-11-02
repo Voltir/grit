@@ -17,7 +17,7 @@ import utest.*
 abstract class McpServerContract extends TestSuite {
 
   /** The server under test, declared with no allowlist. */
-  protected def server: McpServer
+  protected def server: McpServer[McpTransport.Http]
 
   /** Its credential, opened. */
   protected def authorizer: Authorizer
@@ -34,7 +34,7 @@ abstract class McpServerContract extends TestSuite {
   protected def read: (String, ujson.Obj)
 
   private def client(a: Authorizer = authorizer): McpClient^ =
-    new McpClient(server, a, Clock.system())
+    McpClient(server, a, Clock.system())
 
   /** A read-only tool of `server`'s that it does not list. */
   private val unlisted: Option[McpTool] =
@@ -75,7 +75,9 @@ abstract class McpServerContract extends TestSuite {
       .newHttpClient()
       .send(
         sent
-          .foldLeft(HttpRequest.newBuilder(server.endpoint)) { case (b, (k, v)) => b.header(k, v) }
+          .foldLeft(HttpRequest.newBuilder(server.transport.endpoint)) { case (b, (k, v)) =>
+            b.header(k, v)
+          }
           .header("Authorization", s"Bearer ${bearer.value}")
           .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))
           .build(),
@@ -224,7 +226,7 @@ object McpServerFakeTests extends McpServerContract {
   private val fake = FakeMcpServer.start()
   fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_file_contents")))
 
-  protected val server: McpServer =
+  protected val server: McpServer[McpTransport.Http] =
     McpServer.of(
       "fake",
       fake.endpoint,
@@ -236,7 +238,11 @@ object McpServerFakeTests extends McpServerContract {
     }
 
   protected val authorizer: Authorizer =
-    Credential.open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local) match {
+    Credential.open(
+      server.transport.credential,
+      Map("FAKE_MCP_TOKEN" -> fake.token),
+      KeyFiles.Local
+    ) match {
       case Right(a) => a
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }

@@ -33,7 +33,7 @@ import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.edge.PlaceFragments
-import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
+import grit.mcp.client.{Credential, FakeMcpServer, McpServer, McpTransport}
 import grit.mcp.scope.{Bound, McpScope}
 
 import utest.*
@@ -57,7 +57,7 @@ object McpEdgeTests extends TestSuite {
       name: String = "github",
       allow: Set[String] = Set.empty,
       scope: McpScope = McpScope.Open
-  ): McpServer =
+  ): McpServer[McpTransport.Http] =
     McpServer
       .of(name, fake.endpoint, Credential.static(Token), scope, allow)
       .fold(why => throw new java.lang.AssertionError(why), identity)

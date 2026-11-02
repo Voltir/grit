@@ -44,12 +44,12 @@ object McpToolsTests extends TestSuite {
         identity
       )
     val authorizer = Credential
-      .open(server.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
+      .open(server.transport.credential, Map("FAKE_MCP_TOKEN" -> fake.token), KeyFiles.Local)
       .fold(
         why => throw new java.lang.AssertionError(why.message),
         identity
       )
-    new McpClient(server, authorizer, clock)
+    McpClient(server, authorizer, clock)
   }
 
   /** The tools over `fake` as the server `github`, its answers' items read by `accounts`,

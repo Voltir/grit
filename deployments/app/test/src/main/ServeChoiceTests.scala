@@ -319,7 +319,7 @@ object ServeChoiceTests extends TestSuite {
       (
         ServedEdges
           .githubServer(env)
-          .map(s => (s.name, s.endpoint.toString, s.credential, s.allow)),
+          .map(s => (s.name, s.transport.endpoint.toString, s.transport.credential, s.allow)),
         ServedEdges
           .github(env)
           .map(
@@ -361,7 +361,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
       def server(more: (String, String)*) =
-        ServedEdges.githubServer(env ++ more).map(s => (s.endpoint.toString, s.allow))
+        ServedEdges.githubServer(env ++ more).map(s => (s.transport.endpoint.toString, s.allow))
       (
         server(
           "GRIT_GITHUB_MCP_URL" -> "http://127.0.0.1:8082/mcp",

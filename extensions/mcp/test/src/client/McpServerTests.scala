@@ -13,7 +13,7 @@ object McpServerTests extends TestSuite {
   private def server(name: String = "github", endpoint: String = "https://example.com/mcp") =
     McpServer
       .of(name, endpoint, Credential.static(token), McpScope.Open)
-      .map(s => (s.name, s.endpoint.toString))
+      .map(s => (s.name, s.transport.endpoint.toString))
 
   val tests = Tests {
     test("a name is a lowercase letter then up to 15 lowercase letters, digits or _") {

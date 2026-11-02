@@ -8,7 +8,7 @@ import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.edge.{PlaceFragments, Server}
-import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer}
+import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer, McpTransport}
 import grit.mcp.wire.{McpError, Skipped}
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
@@ -31,7 +31,7 @@ object McpEdge {
     */
   def serving(
       service: Service,
-      servers: Vector[McpServer],
+      servers: Vector[McpServer[McpTransport.Http]],
       instructions: Option[String] = None
   ): Either[String, ServedEdge] = {
     val names = servers.map(_.name)
@@ -50,13 +50,13 @@ object McpEdge {
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(
       service: Service,
-      servers: Vector[McpServer],
+      servers: Vector[McpServer[McpTransport.Http]],
       declared: Vector[Fragment]
   ) extends ServedEdge {
 
     def name: EdgeName = EdgeName(service.name)
 
-    def needs: Vector[Variable] = servers.flatMap(_.credential.needs).distinct
+    def needs: Vector[Variable] = servers.flatMap(_.transport.credential.needs).distinct
 
     def asks: ServedEdge.Asks = ServedEdge.Asks.Never
 
@@ -70,13 +70,15 @@ object McpEdge {
       val opened =
         servers.foldLeft[Either[EdgeRefusal, Vector[Authorizer]]](Right(Vector.empty)) {
           (read, server) =>
-            read.flatMap(as => Credential.open(server.credential, env, KeyFiles.Local).map(as :+ _))
+            read.flatMap(as =>
+              Credential.open(server.transport.credential, env, KeyFiles.Local).map(as :+ _)
+            )
         }
       opened match {
         case Left(refusal) => Left(refusal)
         case Right(authorizers) =>
           val clients: Vector[McpClient^{clock}] =
-            servers.zip(authorizers).map((server, a) => new McpClient(server, a, clock))
+            servers.zip(authorizers).map((server, a) => McpClient(server, a, clock))
           clients.map(listing(_, log)).collectFirst { case Left(refusal) => refusal } match {
             case Some(refusal) => Left(refusal)
             case None =>
@@ -125,9 +127,12 @@ object McpEdge {
       val server = client.server
       client.tools() match {
         case Left(e) =>
-          val token = e match {
-            case McpError.Unauthorized(_) | McpError.NoToken(_) =>
-              s"; check ${server.credential.needs.map(Variable.value).mkString(", ")}"
+          val token = (e, server.transport) match {
+            case (
+                  McpError.Unauthorized(_) | McpError.NoToken(_),
+                  McpTransport.Http(_, credential)
+                ) =>
+              s"; check ${credential.needs.map(Variable.value).mkString(", ")}"
             case _ => ""
           }
           Left(EdgeRefusal.Refused(s"MCP server ${server.name} ${e.message}$token"))
