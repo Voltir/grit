@@ -38,6 +38,13 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   @caps.unsafe.untrackedCaptures
   var answers = Vector.empty[(CallSlot, Outcome)]
 
+  @caps.unsafe.untrackedCaptures
+  private var sessions = 0
+
+  /** Each edge's session as registered, kept when it is killed: a desk acts under it still. */
+  @caps.unsafe.untrackedCaptures
+  private var registered = Map.empty[EdgeId, Int]
+
   // Each conversation's origin, as `originates` set it: written and read on the test's thread.
   @caps.unsafe.untrackedCaptures
   private var origins = Map.empty[grit.core.id.ConversationId, grit.core.store.Origin]
@@ -45,13 +52,6 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   /** `conversation`'s origin is `origin`, as the conversation store holds one. */
   def originates(conversation: grit.core.id.ConversationId, origin: grit.core.store.Origin): Unit =
     origins = origins.updated(conversation, origin)
-
-  @caps.unsafe.untrackedCaptures
-  private var sessions = 0
-
-  /** Each edge's session as registered, kept when it is killed: a desk acts under it still. */
-  @caps.unsafe.untrackedCaptures
-  private var registered = Map.empty[EdgeId, Int]
 
   private def row(slot: CallSlot): Either[StoreError, Row] =
     rows.find(_.request.slot == slot).toRight(StoreError.Invalid(s"no tool request ${slot.key}"))
