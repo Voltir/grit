@@ -79,5 +79,13 @@ object SessionLogTests extends TestSuite {
           Left("a read is of 0 bytes or more: -1")
       )
     }
+    test("a summary over Longest is cut at a word edge, ending …; an empty one is none") {
+      val words = "words " * 400
+      (
+        Session.Summary.cut(words).map(Session.Summary.value),
+        Session.Summary.cut("built it").map(Session.Summary.value),
+        Session.Summary.cut("")
+      ) ==> (Some(("words " * 333).trim + "…"), Some("built it"), None)
+    }
   }
 }

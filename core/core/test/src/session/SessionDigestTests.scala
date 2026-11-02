@@ -87,15 +87,17 @@ object SessionDigestTests extends TestSuite {
       )
     }
 
-    test("what it last said shows only when the window lacks it, at most Said characters") {
-      val long = "x" * 600
+    test(
+      "what it last said shows only when the window lacks it, at most Said characters, cut at a word edge"
+    ) {
+      val long = "words " * 100
       (
         SessionDigest.of(lately(), Window.LacksLastSaid, 2500),
         SessionDigest.of(lately(Some(long)), Window.LacksLastSaid, 2500),
         SessionDigest.of(lately(None), Window.LacksLastSaid, 2500)
       ) ==> (
         lines(Head, Vector("Last said: built the digest"), Commits, Edited, Read),
-        lines(Head, Vector("Last said: " + "x" * 499 + "…"), Commits, Edited, Read),
+        lines(Head, Vector("Last said: " + ("words " * 83).trim + "…"), Commits, Edited, Read),
         lines(Head, Commits, Edited, Read)
       )
     }
@@ -141,7 +143,7 @@ object SessionDigestTests extends TestSuite {
         lines(Head, said),
         lines(Head, Vector("Last said: buil…")),
         bare,
-        "## This s…",
+        "## This…",
         ""
       )
     }

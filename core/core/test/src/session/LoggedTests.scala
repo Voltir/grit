@@ -19,6 +19,13 @@ object LoggedTests extends TestSuite {
         read.map(e => (e.n, e.at, e.kind, e.shape)) == Right((4L, t0, Event.Kind.Read(6), path))
       )
     }
+    test("a commit's subject is cut at a word edge to fit, ending …") {
+      val at = Place.under(Namespace.Fs, Vector("/w"))
+      val cut = Event.Shape
+        .committed(at, "1a2b3c4d5e6f", Some("fixes " * 60))
+        .map(s => ujson.read(Event.Shape.value(s)).obj.get(Event.Shape.Subject).flatMap(_.strOpt))
+      cut ==> Right(Some(("fixes " * 40).trim + "…"))
+    }
     test("a commit's shape keeps its sha and cuts its subject to fit, ending …") {
       val sha = "1a2b3c4d5e6f"
       val at = Place.under(Namespace.Fs, Vector("/w"))

@@ -3,6 +3,7 @@ package grit.core.session
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
+import grit.core.message.Cut
 import grit.core.place.Place
 
 /** One thing a working session did, in grit's words: `n` its source's own ordinal for it, unique
@@ -106,8 +107,8 @@ object Event {
     val ReplacedChars: Int = 12
 
     /** A commit's shape: the worktree `at` it was made in under [[Worktree]], `sha` under
-      * [[Sha]], and `subject` under [[Subject]], cut to fit [[Longest]], ending `…`, or left out
-      * when not even `…` fits; `Left` when the worktree and `sha` alone do not fit.
+      * [[Sha]], and `subject` under [[Subject]], cut as [[Cut.head]] cuts it to fit [[Longest]], or
+      * left out when not even `…` fits; `Left` when the worktree and `sha` alone do not fit.
       */
     def committed(at: Place, sha: String, subject: Option[String]): Either[String, Shape] = {
       def shaped(s: Option[String]) =
@@ -118,13 +119,8 @@ object Event {
           )
         )
       subject.fold(shaped(None)) { whole =>
-        val points = whole.codePoints.toArray
-        (points.length to 0 by -1).iterator
-          .map(k =>
-            if (k == points.length) whole
-            else new String(points, 0, k) + "…"
-          )
-          .map(s => shaped(Some(s)))
+        (math.min(whole.length, Longest).max(1) to 1 by -1).iterator
+          .map(k => shaped(Some(Cut.head(whole, k))))
           .collectFirst { case Right(shape) => shape }
           .toRight("")
           .orElse(shaped(None))

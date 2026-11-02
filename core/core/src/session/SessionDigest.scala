@@ -3,6 +3,8 @@ package grit.core.session
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
+import grit.core.message.Cut
+
 /** A session's digest: what it has done, for an agent going on with it without its transcript. */
 object SessionDigest {
 
@@ -26,8 +28,8 @@ object SessionDigest {
     * segment (`fixer: core/src/A.scala`).
     *
     * Over `chars`, whole lines go: the oldest read first, then the oldest edited, then the
-    * oldest commit (a list left empty loses its heading too); then what it last said is cut,
-    * ending `…`, or left out; then the lines before it alone, cut, ending `…`. Empty when `chars`
+    * oldest commit (a list left empty loses its heading too); then what it last said is cut as
+    * [[Cut.head]] cuts, or left out; then the lines before it alone, cut so. Empty when `chars`
     * is below 1.
     */
   def of(lately: Session.Lately, window: Window, chars: Int): String = {
@@ -45,7 +47,7 @@ object SessionDigest {
       )
     val said = window match {
       case Window.HoldsLastSaid => None
-      case Window.LacksLastSaid => s.summary.map(Session.Summary.value).map(cut(_, Said))
+      case Window.LacksLastSaid => s.summary.map(Session.Summary.value).map(Cut.head(_, Said))
     }
     val commits = lately.commits.map(m => s"- ${m.sha.take(7)}${m.subject.fold("")(" " + _)}")
     val edited = lately.edited.map(touched)
@@ -73,8 +75,8 @@ object SessionDigest {
         val room = chars - bare.length - 1 - SaidLead.length
         said match {
           case Some(line) if room >= 2 =>
-            text(Some(cut(line, room)), Vector.empty, Vector.empty, Vector.empty)
-          case _ => cut(bare, chars)
+            text(Some(Cut.head(line, room)), Vector.empty, Vector.empty, Vector.empty)
+          case _ => Cut.head(bare, chars)
         }
       }
   }
@@ -84,10 +86,6 @@ object SessionDigest {
   /** `t`'s line: its name, after its worktree's last segment when it names one. */
   private def touched(t: Session.Lately.Touched): String =
     "- " + t.in.flatMap(_.segments.lastOption).fold("")(_ + ": ") + t.name
-
-  /** `text` at most `n` characters: whole, or its first `n - 1` and `…`. */
-  private def cut(text: String, n: Int): String =
-    if (text.length <= n) text else text.take(n - 1) + "…"
 
   /** `lines` under `name`'s heading; nothing when there are none. */
   private def listed(name: String, lines: Vector[String]): Vector[String] =

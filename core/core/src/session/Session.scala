@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.id.{ClaimHolder, SessionId}
 import grit.core.identity.Principal
+import grit.core.message.Cut
 import grit.core.place.Place
 import grit.core.visibility.Label
 
@@ -85,11 +86,10 @@ object Session {
         Left(s"a session's summary is 1 to $Longest characters")
       else Right(text)
 
-    /** `text` as a summary, its first [[Longest]] - 1 characters and `…` when it is longer;
-      * `None` when it is empty.
+    /** `text` as a summary, cut as [[Cut.head]] cuts it to [[Longest]] characters; `None` when
+      * it is empty.
       */
-    def cut(text: String): Option[Summary] =
-      of(if (text.length > Longest) text.take(Longest - 1) + "…" else text).toOption
+    def cut(text: String): Option[Summary] = of(Cut.head(text, Longest)).toOption
 
     def value(s: Summary): String = s
   }
