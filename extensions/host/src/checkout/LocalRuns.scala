@@ -45,8 +45,10 @@ final class LocalRuns(
   private val processes = new LocalProcesses(root, environment, redaction)
   private val runs = root.resolve(Dir)
 
-  /** This process's pid then a fresh id: what its directory and lock under [[Dir]] are named. */
-  private val stem = s"${ProcessHandle.current().pid()}-${RunId.of(fresh.nonce()).written}"
+  /** This process's [[ownPrefix]] then a fresh id: what its directory and lock under [[Dir]]
+    * are named.
+    */
+  private val stem = s"$ownPrefix${RunId.of(fresh.nonce()).written}"
   private val own = runs.resolve(stem)
   private val lock = runs.resolve(s"$stem.lock")
 
@@ -154,7 +156,7 @@ final class LocalRuns(
     * killed first; and every directory without a lock but this process's own, removed.
     */
   private def swept(): Unit = {
-    val mine = s"${ProcessHandle.current().pid()}-"
+    val mine = ownPrefix
     val entries = {
       val listing = Files.list(runs)
       try listing.iterator.asScala.toVector
@@ -230,6 +232,19 @@ final class LocalRuns(
 }
 
 object LocalRuns {
+
+  /** What every directory and lock this process makes under [[Dir]] starts with, and the sweep
+    * skips by name before opening anything, since closing a lock file this process holds lets go
+    * of its lock: `<pid>-<start in epoch milliseconds>-`. A dead process that had the same pid
+    * (pid 1 in a container, or a pid reused) started at another instant, so its files are swept.
+    * Where the system gives no start instant it is `x`, and a dead predecessor of the same pid
+    * and no start instant is skipped too: its files stay until a process of another pid opens
+    * the checkout.
+    */
+  private val ownPrefix: String = {
+    val self = ProcessHandle.current()
+    s"${self.pid()}-${self.info().startInstant().toScala.fold("x")(_.toEpochMilli.toString)}-"
+  }
 
   /** `.grit/runs`: where a checkout's runs keep their files. */
   val Dir: String = ".grit/runs"

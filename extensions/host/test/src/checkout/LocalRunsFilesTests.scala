@@ -112,6 +112,22 @@ object LocalRunsFilesTests extends TestSuite {
       }
     }
 
+    test("a dead process that had this one's pid is swept: its run killed, its files removed") {
+      inCheckout { root =>
+        val runs = root.resolve(".grit/runs")
+        val stem = s"${ProcessHandle.current().pid()}-12345-deadbeef"
+        val process = left(runs, stem, started)
+        try {
+          val made = over(root)
+          try {
+            val ran = made.start(quick, 10.seconds, 5.seconds).isRight
+            val ended = process.waitFor(5, TimeUnit.SECONDS)
+            (ran, ended, listed(runs).filter(_.startsWith(stem))) ==> (true, true, Vector.empty)
+          } finally made.close()
+        } finally { val _ = process.destroyForcibly() }
+      }
+    }
+
     test("a run whose recorded start is not its process's is not killed, though its files go") {
       inCheckout { root =>
         val runs = root.resolve(".grit/runs")
