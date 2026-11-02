@@ -232,14 +232,15 @@ object PayloadJsonTests extends TestSuite {
         PayloadJson.write(plain).render(),
         PayloadJson
           .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"brief":0}"""))
-          .isLeft
+          .left
+          .toOption
       ) ==> (
         Right(
           """{"kind":"window","entries":[0],"recalled":[],"carry":{"cost":7},"brief":9,"digest":"Committed a1b2c3d Keep a brief."}"""
         ),
         shown,
         """{"kind":"window","entries":[0],"recalled":[]}""",
-        true
+        Some("a document version is a whole number from 1")
       )
     }
 

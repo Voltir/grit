@@ -1424,13 +1424,20 @@ abstract class DocumentContract extends TestSuite {
         )
       )
       val over = written("over", DocRef.BriefChars + 1)
-      val atCap = written("at", DocRef.BriefChars)
-      assertMatch(over) { case Left(StoreError.Invalid(_)) => }
+      written("at", DocRef.BriefChars)
       (
+        over.left.toOption,
         transaction(ok(shelf(p).current(key("over"), Label.Public))).map(_.key),
-        transaction(ok(shelf(p).current(key("at"), Label.Public))).map(_.key),
-        atCap.isRight
-      ) ==> (None, Some(key("at")), true)
+        transaction(ok(shelf(p).current(key("at"), Label.Public))).map(_.key)
+      ) ==> (
+        Some(
+          StoreError.Invalid(
+            s"a brief holds at most ${DocRef.BriefChars} characters, not ${DocRef.BriefChars + 1}"
+          )
+        ),
+        None,
+        Some(key("at"))
+      )
     }
 
     test("a ledger that refuses past its bound writes nothing and withdraws none") {

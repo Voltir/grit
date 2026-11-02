@@ -34,33 +34,38 @@ object UnrecordedTests extends TestSuite {
       val at = Place.under(Namespace.Fs, Vector("/w"))
       val short = Event.Shape.committed(at, sha, Some("turn: a thing")).map(Event.Shape.value)
       val long = Event.Shape.committed(at, sha, Some("é" * 400)).map(Event.Shape.value)
-      val cut = long.map(ujson.read(_).obj.get(Event.Shape.Subject).flatMap(_.strOpt))
+      // 52 bytes before the subject and 2 after leave it 246: 121 two-byte é and a three-byte …
       (
         short,
-        long.map(_.getBytes("UTF-8").length <= Event.Shape.Longest),
-        cut.map(_.exists(_.endsWith("é…"))),
-        cut.map(_.exists(_.length > 100)),
+        long,
         Event.Unrecorded.Commit(Event.Shape.Empty).kind("x")
       ) ==> (
         Right("""{"worktree":"fs:/w","sha":"1a2b3c4d5e6f","subject":"turn: a thing"}"""),
-        Right(true),
-        Right(true),
-        Right(true),
+        Right(s"""{"worktree":"fs:/w","sha":"1a2b3c4d5e6f","subject":"${"é" * 121}…"}"""),
         Event.Kind.Commit
       )
     }
-    test("an edit and a run count no bytes, whatever was shown") {
+    test("an edit is of kind edited, at its path, and a run of kind ran, whatever was shown") {
       assert(
         Event.Unrecorded.edited("src/a.scala") == Event.Unrecorded.Edited(path),
         Event.Unrecorded.Edited(path).kind("done") == Event.Kind.Edited,
         Event.Unrecorded.Ran(Event.Shape.Empty).kind("exit 0") == Event.Kind.Ran
       )
     }
-    test("a shape over the longest a shape takes is the empty shape") {
-      assert(
-        Event.Shape.value(path) == """{"path":"src/a.scala"}""",
-        Event.Unrecorded.read(Event.Shape.Path, "a" * Event.Shape.Longest) ==
-          Event.Unrecorded.Read(Event.Shape.Empty)
+    test("a shape at the longest a shape takes is kept, and one a byte over is the empty shape") {
+      // {"path":""} is 11 bytes, so a path of 289 makes a shape of exactly Longest, 300.
+      val at = "a" * (Event.Shape.Longest - 11)
+      (
+        Event.Shape.value(path),
+        Event.Unrecorded.read(Event.Shape.Path, at) match {
+          case Event.Unrecorded.Read(shape) => Event.Shape.value(shape)
+          case other => other.toString
+        },
+        Event.Unrecorded.read(Event.Shape.Path, at + "a")
+      ) ==> (
+        """{"path":"src/a.scala"}""",
+        s"""{"path":"$at"}""",
+        Event.Unrecorded.Read(Event.Shape.Empty)
       )
     }
   }
