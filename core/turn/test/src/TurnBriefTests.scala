@@ -186,7 +186,8 @@ object TurnBriefTests extends TestSuite {
 
   /** The turn rooted on "one", said at [[said]], run as `holding` names its holder over
     * `documents`, its session's reads answering `latest`; what its model was shown, what the
-    * assembler was asked to reserve, and its window's record.
+    * assembler was asked to reserve, its window's record, and what that record says the window
+    * cost (the assembler's window alone costs nothing).
     */
   private def run(
       documents: InMemoryDocuments,
@@ -210,7 +211,8 @@ object TurnBriefTests extends TestSuite {
     (
       provider.requests.headOption.map(_.messages),
       assembler.reserved,
-      windows(entries).map(_._2).map(w => (w.brief, w.sessionLog))
+      windows(entries).map(_._2).map(w => (w.brief, w.sessionLog)),
+      windows(entries).map(_._2.carry.map(_.cost))
     )
   }
 
@@ -222,11 +224,11 @@ object TurnBriefTests extends TestSuite {
       val version = brief(documents)
       val digest =
         SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
-      val (messages, reserved, recorded) = run(documents, Some(holder), Some(lately))
-      (messages, reserved, recorded) ==> (
+      run(documents, Some(holder), Some(lately)) ==> (
         Some(Vector(shownBrief, shownLog, answering, Message.User("one"))),
         Vector(bothCost),
-        Vector((Some(version), Some(digest)))
+        Vector((Some(version), Some(digest))),
+        Vector(Some(bothCost))
       )
       assert(digest.contains("1a2b3c4 core: a brief"))
     }
@@ -239,7 +241,8 @@ object TurnBriefTests extends TestSuite {
       run(documents, None, None) ==> (
         Some(Vector(answering, Message.User("one"))),
         Vector(Tokens.Zero),
-        Vector((None, None))
+        Vector((None, None)),
+        Vector(Some(Tokens.Zero))
       )
     }
 
@@ -275,11 +278,32 @@ object TurnBriefTests extends TestSuite {
       val other = got(ClaimHolder.of("reviewer"))
       val digest =
         SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
-      val (messages, _, recorded) = run(documents, Some(other), Some(lately))
-      (messages, recorded) ==> (
-        Some(Vector(Shown.sessionLog(digest), answering, Message.User("one"))),
-        Vector((None, Some(digest)))
+      val (messages, _, recorded, cost) = run(documents, Some(other), Some(lately))
+      (messages, recorded, cost) ==> (
+        Some(Vector(shownLog, answering, Message.User("one"))),
+        Vector((None, Some(digest))),
+        Vector(Some(CharEstimate.message(shownLog)))
       )
+    }
+
+    test(
+      "a boundary reserves the digest that shows what its session last said, and its record costs what it showed"
+    ) {
+      val documents = new InMemoryDocuments
+      brief(documents)
+      val summary = got(Session.Summary.of("Kept the brief beside the session's log."))
+      val closed = lately.copy(session = lately.session.copy(summary = Some(summary)))
+      def log(window: SessionDigest.Window) =
+        Shown.sessionLog(SessionDigest.of(closed, window, TurnAssembly.DigestChars))
+      val lacking = log(SessionDigest.Window.LacksLastSaid)
+      val cost = CharEstimate.message(shownBrief) + CharEstimate.message(lacking)
+      val (messages, reserved, _, recorded) = run(documents, Some(holder), Some(closed))
+      (
+        lacking != log(SessionDigest.Window.HoldsLastSaid),
+        messages.flatMap(_.lift(1)),
+        reserved,
+        recorded
+      ) ==> (true, Some(lacking), Vector(cost), Vector(Some(cost)))
     }
   }
 }
