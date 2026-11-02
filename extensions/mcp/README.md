@@ -66,7 +66,8 @@ In dependency order:
 - **`edge`**: `McpEdge`, the `ServedEdge` a deployment declares: it registers the service place,
   advertises there (with the instructions the deployment declared for the place, if any, as its
   Place layer), and runs each request by calling its server. A tool whose schema declares `to`
-  (the argument core keeps for a writing tool's destination) is left out. Imports `wire` and
+  (the argument core keeps for a writing tool's destination) is skipped alone where its
+  server's list is read, and logged with the other skips. Imports `wire` and
   `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the

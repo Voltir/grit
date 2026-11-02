@@ -1,7 +1,7 @@
 package grit.mcp.wire
 
 import grit.core.message.Cut
-import grit.core.tool.ToolName
+import grit.core.tool.{ToolName, Writes}
 
 /** A tool a server listed that grit may offer: marked read-only (`readOnlyHint: true`), its
   * `x-mcp-header` annotations within the spec's constraints, and offered as `offered`, its
@@ -93,6 +93,7 @@ object McpTool {
         (),
         Skipped.NotReadOnly(name)
       )
+      _ <- Either.cond(!Writes.declared(ujson.Obj.from(schema)), (), Skipped.DeclaresField(name))
       params <- mirrored(ujson.Obj.from(schema)).left.map(why => Skipped.BadHeader(name, why))
       offered <- ToolName.of(s"${prefix}_$name").left.map(why => Skipped.BadName(name, why))
     } yield new McpTool(
@@ -205,6 +206,11 @@ enum Skipped {
   /** An entry of the list that is not a tool: `why`. */
   case Malformed(why: String)
 
+  /** `tool`'s schema declares [[Writes.Field]], the argument grit keeps for where a writing
+    * tool writes.
+    */
+  case DeclaresField(tool: String)
+
   /** `tool` is not one the server's allowlist names. */
   case NotAllowed(tool: String)
 
@@ -218,6 +224,9 @@ enum Skipped {
     case BadHeader(tool, why) =>
       s"$tool is not offered: its x-mcp-header annotations break the spec: $why"
     case Malformed(why) => s"a listed tool is not offered: $why"
+    case DeclaresField(tool) =>
+      s"$tool is not offered: it declares ${Writes.Field}, the argument grit keeps for where " +
+        "a writing tool writes"
     case NotAllowed(tool) => s"$tool is not offered: the server's allowlist does not name it"
     case OutOfScope(tool) =>
       s"$tool is not offered: its server's scope cannot hold it to its bounds"

@@ -235,6 +235,26 @@ object McpEdgeTests extends TestSuite {
       }
     }
 
+    test("a tool declaring to is logged as skipped, and the rest offered") {
+      withFake { fake =>
+        val sending = ujson.Obj(
+          "name" -> "send_mail",
+          "inputSchema" -> ujson.Obj(
+            "type" -> "object",
+            "properties" -> ujson.Obj("to" -> ujson.Obj("type" -> "string"))
+          ),
+          "annotations" -> ujson.Obj("readOnlyHint" -> true)
+        )
+        fake.lists(Vector(FakeMcpServer.github("get_me"), sending))
+        opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token))._3 ==>
+          Vector(
+            "MCP server github: send_mail is not offered: it declares to, the argument grit " +
+              "keeps for where a writing tool writes",
+            "service:github: serving github_get_me"
+          )
+      }
+    }
+
     test("open is refused when the server lists no tool that may be offered") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.issueWrite))

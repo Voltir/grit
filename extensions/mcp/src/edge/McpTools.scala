@@ -15,8 +15,7 @@ import grit.core.tool.{
   ToolName,
   ToolSet,
   ToolSpec,
-  Toolbox,
-  Writes
+  Toolbox
 }
 import grit.core.visibility.Integrity
 import grit.edge.{Run, Tools}
@@ -51,8 +50,9 @@ final class McpTools(
   /** The tools the servers' lists offer now, each `{server}_{tool}`, free, and rerun when an
     * edge dies running it ([[Retry.Rerun]]), in the order of `clients`, then as listed; a name
     * two servers both offer is the first's. A server whose list cannot be read offers none; a
-    * tool whose schema declares [[Writes.Field]] ([[Writes.declared]]) is neither offered nor
-    * run, since a set advertising it would not read back.
+    * tool whose schema declares [[grit.core.tool.Writes.Field]] is neither offered nor run,
+    * since a set advertising it would not read back: its listing skips it
+    * ([[grit.mcp.wire.Skipped.DeclaresField]]).
     * Given to `advertise` as [[run]] gives it; `Left` when `advertise` refused it.
     */
   def offered(): Either[DeskError, ToolSet] = {
@@ -90,14 +90,13 @@ final class McpTools(
 object McpTools {
 
   /** Each of `clients`' tools as listed now, with its client's index, each name once, the
-    * first client's kept; none whose schema declares [[Writes.Field]].
+    * first client's kept.
     */
   private def current(clock: Clock, clients: Vector[McpClient^{clock}]): Vector[(Int, McpTool)] =
     clients
       .map(_.tools())
       .zipWithIndex
       .flatMap((listed, at) => listed.fold(_ => Vector.empty, _.tools.map((at, _))))
-      .filterNot((_, tool) => Writes.declared(tool.inputSchema))
       .distinctBy(_._2.offered)
 
   /** `tool` as this edge describes it: its arguments the JSON object sent, unchecked; a call

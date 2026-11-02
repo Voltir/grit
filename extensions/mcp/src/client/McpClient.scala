@@ -294,6 +294,7 @@ object McpClient {
     case Skipped.BadHeader(tool, _) => Some(tool)
     case Skipped.NotAllowed(tool) => Some(tool)
     case Skipped.OutOfScope(tool) => Some(tool)
+    case Skipped.DeclaresField(tool) => Some(tool)
     case Skipped.Malformed(_) => None
   }
 
