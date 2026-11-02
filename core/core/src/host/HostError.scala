@@ -44,6 +44,9 @@ enum HostError {
     */
   case Redacted(path: RelPath)
 
+  /** An [[Allowlist]] does not permit `argv`; nothing started. */
+  case Unlisted(argv: Argv)
+
   /** One or two sentences: what went wrong, and for a timeout the output so far. */
   def message: String = this match {
     case NotFound(p) => s"There is no file or directory `${RelPath.value(p)}`."
@@ -66,5 +69,8 @@ enum HostError {
         "text holds that mark, so writing it would put the mark where the secret was. Nothing " +
         "was written. Use `edit` to change the lines around it, and leave the redacted ones as " +
         "they are."
+    case Unlisted(argv) =>
+      s"`${argv.written}` is not on this checkout's command list, so nothing ran. Only the " +
+        "commands the run tool's description lists may run."
   }
 }

@@ -69,11 +69,11 @@ object Calling {
     */
   val ServeWithin: FiniteDuration = 10.seconds
 
-  /** How long a claimed request waits for its answer after [[ServeWithin]]: 11 minutes, the
-    * longest command `run` allows and a minute more. Then it is abandoned, and the call
-    * answered [[Outcome.Interrupted]]: it may have partly run.
+  /** How long a claimed request waits for its answer after [[ServeWithin]]: a minute past
+    * [[grit.core.host.Shell.Longest]]. Then it is abandoned, and the call answered
+    * [[Outcome.Interrupted]]: it may have partly run.
     */
-  val RunWithin: FiniteDuration = 11.minutes
+  val RunWithin: FiniteDuration = grit.core.host.Shell.Longest + 1.minute
 
   /** What `gates` makes of `bound`, a call whose tool may ask first: `Free` when it asks no
     * one; else `Ask` under [[Gates.Asker]], and under [[Gates.Closed]] `Refused` with a

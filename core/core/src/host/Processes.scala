@@ -5,7 +5,13 @@ import java.io.OutputStream
 import scala.concurrent.duration.FiniteDuration
 
 /** A program and its arguments, run as given: no shell reads them. */
-final case class Argv private (program: String, args: List[String]) extends caps.Pure
+final case class Argv private (program: String, args: List[String]) extends caps.Pure {
+
+  /** As a person would type it at a shell, each word holding a space, a quote or a character a
+    * shell reads specially, or nothing, single-quoted: for showing, never for running.
+    */
+  def written: String = (program :: args).map(Argv.quoted).mkString(" ")
+}
 
 object Argv {
 
@@ -16,6 +22,13 @@ object Argv {
     else if (all.exists(_.contains('\u0000'))) Left("a program's name or argument holds a NUL")
     else Right(new Argv(program, args.toList))
   }
+
+  /** The characters a shell reads in a word as something other than itself. */
+  private val Special: Set[Char] = " \t\n'\"\\$`|&;<>()*?[]{}~#!".toSet
+
+  private def quoted(word: String): String =
+    if (word.nonEmpty && !word.exists(Special.contains)) word
+    else "'" + word.replace("'", "'\\''") + "'"
 }
 
 /** Starting programs under a root, as this machine's user, with an environment from which every

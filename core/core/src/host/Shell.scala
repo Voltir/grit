@@ -16,5 +16,11 @@ trait Shell extends caps.SharedCapability {
   def run(command: String, timeout: FiniteDuration): Either[HostError, Ran]
 }
 
+object Shell {
+
+  /** 10 minutes: the longest a command a coding tool runs may run, allowlisted or not. */
+  val Longest: FiniteDuration = FiniteDuration(10, java.util.concurrent.TimeUnit.MINUTES)
+}
+
 /** A command that ran to its end: its exit code and its output. */
 final case class Ran(exit: Int, output: Clipped)
