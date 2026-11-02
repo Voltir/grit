@@ -400,22 +400,35 @@ object TurnToolsTests extends TestSuite {
     test("a call that did not run to done, or whose asker is no person, logs nothing") {
       val failed = new RecordedSessions
       val unasked = new RecordedSessions
+      val byGrit = new RecordedSessions
       val silent = new RecordedSessions
       logging(logged, Outcome.Failed("no"), failed)
       logging(logged, Outcome.Done("ok"), unasked, askedBy(None))
+      logging(logged, Outcome.Done("ok"), byGrit, askedBy(Some(Principal.Grit)))
       logging(unlogged, Outcome.Done("ok"), silent)
-      assert(failed.recorded.isEmpty, unasked.recorded.isEmpty, silent.recorded.isEmpty)
+      (
+        failed.recorded,
+        unasked.recorded,
+        byGrit.recorded,
+        silent.recorded
+      ) ==> (Vector.empty, Vector.empty, Vector.empty, Vector.empty)
     }
 
-    test("a session kept where the turn does not read costs the call nothing") {
+    test(
+      "a session kept where the turn does not read costs the call nothing; a store that fails fails the call"
+    ) {
       val hidden = new RecordedSessions(Left(StoreError.Invalid("kept where this does not read")))
       val broken = new RecordedSessions(Left(StoreError.DatabaseError("down")))
       val (settled, keptIn) = logging(logged, Outcome.Done("ok"), hidden)
       val (failed, _) = logging(logged, Outcome.Done("ok"), broken)
-      assert(
-        settled.map(_.map(_.failed)) == Vector(Right(false)),
-        settled.head.toOption.flatMap(s => kept(keptIn, s.result)).isDefined,
-        failed.forall(_.isLeft)
+      (
+        settled.map(_.map(_.failed)),
+        settled.headOption.flatMap(_.toOption).flatMap(s => kept(keptIn, s.result)).isDefined,
+        failed
+      ) ==> (
+        Vector(Right(false)),
+        true,
+        Vector(Left(TurnFailure.ofStore(StoreError.DatabaseError("down"))))
       )
     }
 

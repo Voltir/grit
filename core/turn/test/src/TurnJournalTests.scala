@@ -281,7 +281,8 @@ object TurnJournalTests extends TestSuite {
       j.encode(shown) ==>
         """{"ok":{"entries":[0],"notes":[],"brief":9,"digest":"Committed a1b2c3d Keep a brief."}}"""
       roundTrip(shown) ==> Right(shown)
-      assert(j.decode("""{"ok":{"entries":[0],"notes":[],"brief":0}}""").isLeft)
+      j.decode("""{"ok":{"entries":[0],"notes":[],"brief":0}}""").left.toOption ==>
+        Some("a document version is a whole number from 1")
     }
 
     test(

@@ -90,6 +90,18 @@ object TurnBriefTests extends TestSuite {
     }
   }
 
+  /** [[brief]] as a boundary shows it. */
+  private val shownBrief = Message.User("<brief briefed=\"2026-10-31\">\nKeep a brief.\n</brief>")
+
+  /** [[lately]]'s digest as a boundary shows it. */
+  private def shownLog =
+    Shown.sessionLog(
+      SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
+    )
+
+  /** What a boundary showing both reserves for them. */
+  private def bothCost = CharEstimate.message(shownBrief) + CharEstimate.message(shownLog)
+
   /** What the conversation's session did lately: one commit. */
   private val lately: Session.Lately = {
     val id = got(SessionId.of(Harness.Grit, ConversationId.value(conversation)))
@@ -208,13 +220,12 @@ object TurnBriefTests extends TestSuite {
     ) {
       val documents = new InMemoryDocuments
       val version = brief(documents)
-      val shownBrief = Message.User("<brief briefed=\"2026-10-31\">\nKeep a brief.\n</brief>")
       val digest =
         SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
       val (messages, reserved, recorded) = run(documents, Some(holder), Some(lately))
       (messages, reserved, recorded) ==> (
-        Some(Vector(shownBrief, Shown.sessionLog(digest), answering, Message.User("one"))),
-        Vector(CharEstimate.message(shownBrief) + CharEstimate.message(Shown.sessionLog(digest))),
+        Some(Vector(shownBrief, shownLog, answering, Message.User("one"))),
+        Vector(bothCost),
         Vector((Some(version), Some(digest)))
       )
       assert(digest.contains("1a2b3c4 core: a brief"))
@@ -232,11 +243,18 @@ object TurnBriefTests extends TestSuite {
       )
     }
 
-    test("an append reads neither the session nor the brief, and shows neither again") {
+    test(
+      "an append does not read the session again, records neither, and its request shows each once"
+    ) {
       val assembler = new Appending
-      val (_, asked, recorded) = twice(assembler)
-      (asked, assembler.reserved.size, recorded.map((_, b, d) => (b, d))) ==>
-        (1, 2, Vector((true, true), (false, false)))
+      val (messages, asked, recorded) = twice(assembler)
+      (
+        asked,
+        assembler.reserved.size,
+        recorded.map((_, b, d) => (b, d)),
+        messages.map(_.count(_ == shownBrief)),
+        messages.map(_.count(_ == shownLog))
+      ) ==> (1, 2, Vector((true, true), (false, false)), Some(1), Some(1))
     }
 
     test(
@@ -244,20 +262,9 @@ object TurnBriefTests extends TestSuite {
     ) {
       val assembler = new Reserving
       val (_, asked, recorded) = twice(assembler)
-      val reserved = assembler.reserved
-      (
-        asked,
-        reserved.size,
-        reserved.lift(0) == reserved.lift(2),
-        reserved.lift(1),
-        reserved.lift(0).exists(_ != Tokens.Zero),
-        recorded.lift(1)
-      ) ==> (
+      (asked, assembler.reserved, recorded.lift(1)) ==> (
         2,
-        3,
-        true,
-        Some(Tokens.Zero),
-        true,
+        Vector(bothCost, Tokens.Zero, bothCost),
         Some((Vector.empty, true, true))
       )
     }
