@@ -505,7 +505,7 @@ object Coding {
           )
       ),
       Gate.Free,
-      a => s"tail ${a.id.written}",
+      a => a.id.written,
       Believed.At(Integrity.Member)
     ).logging((_, at, shown) => endedCommit(at, shown))
 
@@ -520,7 +520,7 @@ object Coding {
         Args.of((id = idField)).refine(a => runId(a.id).map(id => (id = id)))
       ),
       Gate.Free,
-      a => s"stop ${a.id.written}",
+      a => a.id.written,
       Believed.At(Integrity.Member)
     ).requiring(Integrity.Member)
       .logging((_, at, shown) => endedCommit(at, shown))

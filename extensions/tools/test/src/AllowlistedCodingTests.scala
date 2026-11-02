@@ -325,6 +325,22 @@ object AllowlistedCodingTests extends TestSuite {
       )
     }
 
+    test("run, tail and stop are shown as their name, then the command or the id") {
+      val runs = Allowlisted.over(new Noting(scripts), allowlist(10.minutes))
+      val box = tools(new CodingTests.Scripted(), runs)
+      Vector(
+        "run" -> ujson.Obj("program" -> "./mill", "args" -> ujson.Arr("compile")),
+        "tail" -> ujson.Obj("id" -> nth(1), "wait" -> 5),
+        "stop" -> ujson.Obj("id" -> nth(1))
+      ).map((name, args) =>
+        box.bind(TestTainted.authority(call(name, args)), Repairs.All).map(_.shown)
+      ) ==> Vector(
+        Right("run ./mill compile"),
+        Right(s"tail ${nth(1)}"),
+        Right(s"stop ${nth(1)}")
+      )
+    }
+
     test("tail and stop say what they take and how they fail") {
       // What the model reads, word for word.
       (described("tail"), described("stop")) ==> (
