@@ -1,6 +1,6 @@
 # grit.host
 
-Implements `Workspace`, `Edits`, `Shell`, `Processes`, `Instructions` and `Blobs` (`grit.core.host`; what a
+Implements `Workspace`, `Edits`, `Shell`, `Processes`, `Runs`, `Instructions` and `Blobs` (`grit.core.host`; what a
 deployment can supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
 The local host: `grit.core.host`'s capabilities over this machine's files and processes. The
@@ -15,14 +15,18 @@ Its packages, none importing another but `blobs`, which removes a tree with `che
   - `LocalProcesses` — starting a program with arguments under a root, run to its end or held
     by its caller's scope; it sees only an allowlisted environment.
   - `LocalShell` — running a command in a checkout with `sh -c`, through `LocalProcesses`.
+  - `LocalRuns` — commands that outlive the call starting them, through `LocalProcesses`'
+    start, each output a file under the checkout's `.grit/runs`; its first start sweeps what a
+    process that ended left there (ADR 0055).
   - `LocalHanding` — starting a program handed a secret, as a file only this user reads,
     through `LocalProcesses`' start.
   - `Redaction` — the deployment's secrets, replaced by core's `RedactionMark` in what
     a program shows (`run`'s output, a started program's lines, its errors) and in a file's
     text before it is read or searched. Each class above takes the deployment's one.
   - `LocalInstructions` — the instruction files around a directory.
-  - `LocalTree` (private to `grit.host`) — a directory readable by this user alone, and a tree's
-    removal that carries on past what it cannot delete.
+  - `LocalTree` (private to `grit.host`) — a directory readable by this user alone, a tree's
+    removal that carries on past what it cannot delete, and a lock nobody holds freed with its
+    directory (what `LocalBlobs` and `LocalRuns` sweep).
   - `Checkout` (private) — a checkout's root, and how a relative path is found under it.
 - **`machine`**: `LocalMachine` — this process's `ProcessIdentity`.
 - **`blobs`**: `LocalBlobs` — bytes kept in a directory of this machine by their digest, and

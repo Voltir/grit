@@ -11,7 +11,8 @@ One package, `grit.tools`:
 
 - `Coding` — read, list, search, write, edit and run in a checkout. In `Coding.all`, write,
   edit and run ask a person first; in `Coding.allowlisted`, none asks, and run starts only
-  what the deployment's `Allowlist` permits, as a program and its arguments with no shell
+  what the deployment's `Allowlist` permits, as a program and its arguments with no shell;
+  a command still going after its wait answers with an id that `tail` and `stop` take
   (ADR 0055). Everything it reads from the checkout is believed at Member, so a foreign
   repository cloned into it, its `AGENTS.md` included, is believed at Member too: the gate is
   the person approving the `run` that clones it, or, in an allowlisted set, the list that

@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02)
+Status: accepted (2026-11-02); revised (2026-11-02)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
@@ -25,7 +25,7 @@ Decision:
 - **What remains.** `write`, `edit` and `run` still require a call stamped at Member integrity, so
   only an attested asker's turn drives them. `run` takes a program and its arguments, with no
   shell, and `Allowlisted`, a sealed capability, starts only what the list permits, for at most
-  its longest (never past `Shell.Longest`); anything else is refused and nothing starts. The
+  its longest (never past `Runs.Longest`, 60 minutes); anything else is refused and nothing starts. The
   default offers are unchanged: the set is opt-in (`GRIT_TOOLS=allowlist`).
 - **What it does not bound**, by name:
   - a file `write` puts in `.git` (a hook, `core.hooksPath` in `.git/config`) runs at the next
@@ -46,6 +46,17 @@ Decision:
   `run` on the operator's machine with no prompt. The operator accepts this by setting
   `GRIT_TOOLS=allowlist`; the bound is to come from the principal asking, as its integrity and
   clearance allow, which this record does not build.
+
+- **Long runs.** A command still going after `run`'s wait outlives the call: its id comes back,
+  and `tail` and `stop` take it (`Runs`). It belongs to the edge's process, not the turn's
+  workflow, so no step changes and one call still waits at most `Shell.Longest`, on which
+  `Calling.RunWithin` is built. Its handle lives in that process's memory and is forgotten on a
+  restart, which answers `Gone`, never a throw: a table or a `Job` (ADR 0029) would outlive a
+  process that no longer holds the program. Handles are per checkout, not per conversation:
+  any conversation working there reaches them, as it reaches the checkout. The chat's end kills
+  what is going; a signal leaves an orphan to its timeout or to the next start's sweep, which
+  kills a run whose process left it. Its output is a file under `.grit/runs` in the checkout,
+  killed past 16 MB, at most four going and eight ended kept: never a table.
 
 Consequences:
 
