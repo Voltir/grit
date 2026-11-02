@@ -1,15 +1,25 @@
 package grit.host.checkout
 
 import java.io.IOException
+import java.nio.channels.{FileChannel, OverlappingFileLockException}
 import java.nio.file.attribute.{
   BasicFileAttributes,
   FileAttribute,
   PosixFilePermission,
   PosixFilePermissions
 }
-import java.nio.file.{FileVisitResult, Files, LinkOption, Path, SimpleFileVisitor}
+import java.nio.file.{
+  FileVisitResult,
+  Files,
+  LinkOption,
+  Path,
+  SimpleFileVisitor,
+  StandardOpenOption
+}
 
-/** A tree of files on this machine: made readable by this user alone, and removed. */
+/** A tree of files on this machine: made readable by this user alone, removed, and found left by
+  * a process that ended.
+  */
 private[host] object LocalTree {
 
   /** `rwx------`: a directory this user alone may read, write or enter. */
@@ -53,4 +63,25 @@ private[host] object LocalTree {
     }
     left.result()
   }
+
+  /** Whether `lock` was free: when no process holds a lock on it, `before` is given the directory
+    * beside it of the same name less `.lock`, then that directory and `lock` are removed. A lock
+    * held, one that cannot be opened, and one whose removal fails, answer false. Opening a lock
+    * file this process holds lets go of its lock (POSIX locks): never call it on one's own.
+    */
+  def free(lock: Path)(before: Path => Unit): Boolean =
+    try {
+      val channel = FileChannel.open(lock, StandardOpenOption.WRITE)
+      try {
+        val taken =
+          try Option(channel.tryLock())
+          catch { case _: OverlappingFileLockException => None }
+        taken.exists { _ =>
+          val dir = lock.resolveSibling(lock.getFileName.toString.stripSuffix(".lock"))
+          before(dir)
+          val _ = removed(dir)
+          Files.deleteIfExists(lock)
+        }
+      } finally channel.close()
+    } catch { case _: IOException => false }
 }

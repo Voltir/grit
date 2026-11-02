@@ -1,14 +1,7 @@
 package grit.host.blobs
 
 import java.io.{IOException, InputStream}
-import java.nio.channels.{FileChannel, OverlappingFileLockException}
-import java.nio.file.{
-  FileAlreadyExistsException,
-  Files,
-  Path,
-  StandardCopyOption,
-  StandardOpenOption
-}
+import java.nio.file.{FileAlreadyExistsException, Files, Path, StandardCopyOption}
 import java.security.MessageDigest
 import java.time.Instant
 
@@ -143,21 +136,7 @@ object LocalBlobs {
     * Opening a lock file this process held would let go its lock (POSIX locks), but nothing here
     * takes one any more.
     */
-  private def unheld(lock: Path): Boolean =
-    try {
-      val channel = FileChannel.open(lock, StandardOpenOption.WRITE)
-      try {
-        val taken =
-          try Option(channel.tryLock())
-          catch { case _: OverlappingFileLockException => None }
-        taken.exists { _ =>
-          val _ = LocalTree.removed(
-            lock.resolveSibling(lock.getFileName.toString.stripSuffix(".lock"))
-          )
-          Files.deleteIfExists(lock)
-        }
-      } finally channel.close()
-    } catch { case _: IOException => false }
+  private def unheld(lock: Path): Boolean = LocalTree.free(lock)(_ => ())
 
   /** The entries of `dir`. */
   private def listed(dir: Path): Either[BlobError, Vector[Path]] =

@@ -33,23 +33,28 @@ final class LocalProcesses(root: Path, environment: Map[String, String], redacti
       timeout: FiniteDuration,
       hint: Option[Kept] -> Option[String]
   ): Either[HostError, Ran] =
-    place(dir).flatMap { at =>
-      attempt(Files.createTempFile("grit-run-", ".out")).flatMap { out =>
-        try {
-          start(argv, at, Map.empty)(_.redirectErrorStream(true).redirectOutput(out.toFile))
-            .flatMap { process =>
-              process.getOutputStream.close()
-              val finished = LocalProcesses.awaited(process, timeout)
-              attempt(LocalProcesses.tail(out)).flatMap { text =>
-                val output = Clipped.tail(redaction(text), hint)
-                if (finished) Right(Ran(process.exitValue(), output))
-                else Left(HostError.TimedOut(timeout, output))
-              }
-            }
-        } finally {
-          val _ = attempt(Files.deleteIfExists(out))
+    attempt(Files.createTempFile("grit-run-", ".out")).flatMap { out =>
+      try {
+        writing(argv, dir, out).flatMap { process =>
+          val finished = LocalProcesses.awaited(process, timeout)
+          attempt(LocalProcesses.tail(out)).flatMap { text =>
+            val output = Clipped.tail(redaction(text), hint)
+            if (finished) Right(Ran(process.exitValue(), output))
+            else Left(HostError.TimedOut(timeout, output))
+          }
         }
+      } finally {
+        val _ = attempt(Files.deleteIfExists(out))
       }
+    }
+
+  /** `argv` started in `dir` with nothing on its input, its output and errors written to the
+    * file `out` as they come, not a pipe, so it never blocks on them. `Left` as [[started]].
+    */
+  private[checkout] def writing(argv: Argv, dir: RelPath, out: Path): Either[HostError, Process] =
+    place(dir).flatMap { at =>
+      start(argv, at, Map.empty)(_.redirectErrorStream(true).redirectOutput(out.toFile))
+        .flatMap(process => attempt(process.getOutputStream.close()).map(_ => process))
     }
 
   def started[A](argv: Argv, dir: RelPath)(body: Started^ => A): Either[HostError, A] =
@@ -157,13 +162,18 @@ private[checkout] object LocalProcesses {
   /** Kills `process` and its descendants, and waits for it to end, and for each descendant up to
     * [[DescendantWait]].
     */
-  def kill(process: Process): Unit = {
+  def kill(process: Process): Unit = killTree(process.toHandle)
+
+  /** As [[kill]], for a process this one may not have started: nothing is waited for when it
+    * cannot be killed, as one another user runs.
+    */
+  def killTree(process: ProcessHandle): Unit = {
     // The parent first, then what it started (listed before, while the parent still holds
     // them): a shell outliving its child reports the kill ("Killed") into the output.
     val descendants = process.descendants().toList
-    val _ = process.destroyForcibly()
+    val destroyed = process.destroyForcibly()
     descendants.forEach(p => { val _ = p.destroyForcibly() })
-    val _ = process.waitFor()
+    if (destroyed) { val _ = process.onExit().get() }
     // A killed descendant is gone only once reaped; until then it still reads as alive.
     descendants.forEach { p =>
       try { val _ = p.onExit().get(DescendantWait.toMillis, TimeUnit.MILLISECONDS) }
