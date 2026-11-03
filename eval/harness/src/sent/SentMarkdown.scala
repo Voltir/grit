@@ -16,13 +16,14 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Cost, Message, Tokens}
 import grit.core.period.Probability
+import grit.core.provider.ModelRequest
 import grit.core.speech.SpeechJson
 import grit.core.stitch.{Offered, Placed}
 import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
 import grit.eval.harness.capture.Spent
-import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
+import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
 
 /** How long a tool result the file shows may be. */
 enum Cut {
@@ -197,10 +198,11 @@ object SentMarkdown {
 
     // Each call.
     add("## Each call", "")
-    all.foreach { (round, reply, request) =>
-      val row = sent.row(reply)
+    // The ledger row kept under `entry`, and whether `request` estimates as it recorded.
+    def spentOn(entry: EntryId, request: ModelRequest): String = {
+      val row = sent.row(entry)
       val rebuilt = CharEstimate.request(request)
-      val estimate = (row, sent.agrees(reply, request)) match {
+      val estimate = (row, sent.agrees(entry, request)) match {
         case (Some(r), Some(true)) =>
           s"estimate agrees with its ledger row (${Tokens.value(r.estimated)})"
         case (Some(r), _) =>
@@ -211,12 +213,15 @@ object SentMarkdown {
         s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cacheRead)} cached), " +
           s"${Tokens.value(s.usage.output)} out, ${s.usage.costUsd.fold("unpriced")(Cost.cents)}; "
       )
+      usage + estimate
+    }
+    all.foreach { (round, reply, request) =>
       val tools = request.use match {
         case grit.core.provider.ToolUse.Auto => "tools on"
         case grit.core.provider.ToolUse.Off => "tools off"
         case grit.core.provider.ToolUse.Required => "tools required"
       }
-      add(s"- **Call $round** (`${EntryId.value(reply)}`, $tools): $usage$estimate.")
+      add(s"- **Call $round** (`${EntryId.value(reply)}`, $tools): ${spentOn(reply, request)}.")
       last.foreach { l =>
         val n = request.messages.size
         if (request.system != l.system || request.tools != l.tools)
@@ -245,6 +250,22 @@ object SentMarkdown {
             "It is shown with tools on."
         )
       case Picked.On | Picked.Off => ()
+    }
+    // The summary, as `summarise` builds it now: a turn recorded before it rode the prefix
+    // shows that here, its ledger row's cached count beside it.
+    calls.summary.foreach { s =>
+      val id = TurnSummary.id(sent.turn)
+      val prefix = calls.answered.toVector
+        .flatMap(a => Vector(a.on, a.off))
+        .find(c =>
+          s.system == c.system && s.tools == c.tools && s.use == c.use &&
+            s.messages.startsWith(c.messages)
+        )
+      val how = prefix.fold("asked alone: its own system prompt and messages, not the turn's")(c =>
+        s"sent on the answering call's prefix: messages 1–${c.messages.size} above, then its " +
+          "reply and the ask"
+      )
+      add(s"- **Summary** (`${EntryId.value(id)}`): ${spentOn(id, s)}. It was $how.")
     }
     add("")
 

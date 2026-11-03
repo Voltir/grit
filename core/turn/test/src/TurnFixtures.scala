@@ -2099,7 +2099,7 @@ object TurnFixtures {
       )
     )(id)
 
-  /** A profile store already holding [[TestCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it
+  /** A profile store already holding [[TestCatalog]]'s, [[SharedCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it
     * across a turn's restarts: a body built afresh for a resumed turn reads its recorded pin
     * back by id.
     */
@@ -2108,6 +2108,7 @@ object TurnFixtures {
     val _ = kept.pin(WorkflowId("kept"), TestCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("routed"), RoutedCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("graded"), GradedCatalog.pin)(using TestTx.fake)
+    val _ = kept.pin(WorkflowId("shared"), SharedCatalog.pin)(using TestTx.fake)
     kept
   }
 

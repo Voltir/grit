@@ -89,8 +89,8 @@ object TurnRequestsTests extends TestSuite {
     )
 
   /** `turn`, answered by `provider` with `peek` and `poke` offered, in at most `calls` calls,
-    * its growth bounded by `grows` when given, its message's placement asked of `classifier`;
-    * its steps.
+    * its growth bounded by `grows` when given, its message's placement asked of `classifier`,
+    * its models `catalog`'s, its summary asked of `summarizer`; its steps.
     */
   private def answered(
       entries: InMemoryEntryStore,
@@ -98,7 +98,9 @@ object TurnRequestsTests extends TestSuite {
       provider: grit.core.provider.Provider^,
       calls: Int = 5,
       classifier: grit.core.classify.Classifier^ = NoClassifier,
-      grows: Option[Tokens] = None
+      grows: Option[Tokens] = None,
+      summarizer: grit.core.provider.Provider^ = new grit.models.StubProvider(),
+      catalog: Catalog = TestCatalog
   ): Vector[StepRecord] = {
     val durable = new InMemoryDurable
     val ws = new Files(files)
@@ -107,12 +109,13 @@ object TurnRequestsTests extends TestSuite {
         entries,
         provider,
         new InMemoryUsageLedger,
-        new grit.models.StubProvider(),
+        summarizer,
         classifier,
         ws,
         tools(ws),
         calls,
-        grows = grows
+        grows = grows,
+        catalog = catalog
       )
     )
     steps(durable, turn.workflowId)
@@ -269,6 +272,26 @@ object TurnRequestsTests extends TestSuite {
       val calls = TurnRecord.requests(turn, recorded, reads(entries))
       calls.map(sent(_, off = true)) ==> Right(provider.requests)
       calls.map(_.answered.map(_.on) == provider.requests.lastOption) ==> Right(false)
+    }
+
+    test(
+      "a turn's summary is rebuilt as it was sent: on the turn's prefix under its own model, its answer forced or not, and alone under another"
+    ) {
+      Vector(SharedCatalog -> 2, SharedCatalog -> 5, TestCatalog -> 5).map { (catalog, calls) =>
+        val entries = new InMemoryEntryStore
+        val provider = new Scripted((_, n) =>
+          Right(if (n == 0) calling("more", ("t", "peek", "a.txt")) else calling("done"))
+        )
+        val summarizer = new RecordingProvider
+        val turn = say(entries, "go")
+        val recorded =
+          answered(entries, turn, provider, calls, summarizer = summarizer, catalog = catalog)
+        val summary = summarizer.requests.headOption
+        (
+          TurnRecord.requests(turn, recorded, reads(entries)).map(_.summary) == Right(summary),
+          summary.map(_.system == TurnSummary.AgendaSystem)
+        )
+      } ==> Vector((true, Some(false)), (true, Some(false)), (true, Some(true)))
     }
 
     test("a turn that met its growth bound is rebuilt with its last-tools note in place") {

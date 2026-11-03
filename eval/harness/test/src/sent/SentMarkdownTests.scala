@@ -7,7 +7,7 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.ToolSetId
 import grit.eval.harness.capture.Spent
-import grit.turn.{Turn, TurnLoop, TurnOffer, TurnRecord}
+import grit.turn.{Turn, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
 
 import utest.*
 
@@ -37,13 +37,15 @@ object SentMarkdownTests extends TestSuite {
     entry -> Spent(None, "m", Usage(Tokens(10), Tokens(1), Tokens.Zero, None), estimated)
 
   /** A turn of one tool round, then an answer sent `last`; its rows recorded `first` and
-    * `answered` as their estimates; run under `epoch`.
+    * `answered` as their estimates; run under `epoch`; its summary rebuilt as `summary`, its
+    * row recording that request's estimate.
     */
   private def sent(
       last: ModelRequest,
       first: ModelRequest = request(asked),
       recorded: Option[Tokens] = None,
-      epoch: String = Turn.Epoch
+      epoch: String = Turn.Epoch,
+      summary: Option[ModelRequest] = None
   ): TurnSent = {
     val looped = TurnRecord.Call(0, EntryId("call:c1:0:0"), first)
     val off = last.copy(
@@ -61,11 +63,14 @@ object SentMarkdownTests extends TestSuite {
       Vector.empty,
       ToolSetId.of("0123456789abcdef").fold(e => throw new java.lang.AssertionError(e), identity),
       Vector.empty,
-      TurnRecord.Calls(Vector(looped), Some(answered), TurnRecord.Schemas.Sent),
+      TurnRecord.Calls(Vector(looped), Some(answered), TurnRecord.Schemas.Sent, summary),
       Some(Picked.of(answered, recorded.orElse(Some(CharEstimate.request(last))))),
       Vector(
         row(EntryId("call:c1:0:0"), CharEstimate.request(first)),
         row(turn.replyId, recorded.getOrElse(CharEstimate.request(last)))
+      ) ++ summary.map(s =>
+        TurnSummary.id(turn) ->
+          Spent(None, "m", Usage(Tokens(90), Tokens(2), Tokens(80), None), CharEstimate.request(s))
       ),
       Some(Answer(answer, draft = false)),
       None,
@@ -98,6 +103,35 @@ object SentMarkdownTests extends TestSuite {
         !cut.contains("x" * 11)
       )
       assert(shown(t, Cut.Whole).contains(s"```text\n${"x" * 25}\n```"))
+    }
+
+    test(
+      "a summary rebuilt on the answering call's prefix is said to be, beside its ledger row's cached count; one asked alone is said to be alone"
+    ) {
+      val last = request(asked, calling, result("alpha"))
+      val ask = Message.User(TurnSummary.Ask)
+      val onPrefix = last.copy(messages = last.messages :+ answer :+ ask)
+      val alone = ModelRequest(TurnSummary.System, Vector(Message.User("<transcript>")))
+      val line =
+        s"- **Summary** (`${EntryId.value(TurnSummary.id(turn))}`): `m`, 90 in (80 cached), " +
+          "2 out, unpriced; estimate agrees with its ledger row"
+      (
+        shown(sent(last, summary = Some(onPrefix)), Cut.Whole).linesIterator
+          .find(_.startsWith("- **Summary**")),
+        shown(sent(last, summary = Some(alone)), Cut.Whole).linesIterator
+          .find(_.startsWith("- **Summary**")),
+        shown(sent(last), Cut.Whole).contains("- **Summary**")
+      ) ==> (
+        Some(
+          s"$line (${Tokens.value(CharEstimate.request(onPrefix))}). It was sent on the " +
+            "answering call's prefix: messages 1–3 above, then its reply and the ask."
+        ),
+        Some(
+          s"$line (${Tokens.value(CharEstimate.request(alone))}). It was asked alone: its own " +
+            "system prompt and messages, not the turn's."
+        ),
+        false
+      )
     }
 
     test(

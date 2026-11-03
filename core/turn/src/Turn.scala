@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.allot.Allotment
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ToolUse
 import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
@@ -480,10 +480,48 @@ object Turn {
           off <- sent(last, ToolUse.Off, reply)
         } yield Some(TurnRecord.Answered(last.index, reply, on, off))
       )
+      // The summary's request, once the turn asked it, as `summarise` built it under its pins:
+      // on its prefix, the answering call's, its tools offered as its budget offered them.
+      summary <- (answer, routed.map(r => Picked.of(r).summaryAsk)) match {
+        case (Some(reply), Some(Right(ask))) if steps.exists(_.name == Step.Summarise) =>
+          kept("conversation's entries", reads.entries.list(turn.conversationId)).flatMap {
+            listed =>
+              // As the summary was asked: before it was kept and described its item.
+              val all = listed
+                .find(_.id == TurnSummary.id(turn))
+                .fold(listed)(s =>
+                  listed.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(s.seq))
+                )
+              ask match {
+                case SummaryAsk.Alone(_) => Right(Some(TurnSummary.of(all, turn)))
+                case SummaryAsk.OnPrefix(_) =>
+                  val use = limits.fold(ToolUse.Auto)(l =>
+                    TurnLoop.use(l.budget.after(replies.take(last.index)), last)
+                  )
+                  TurnSummary
+                    .onPrefix(
+                      all,
+                      showing,
+                      turn,
+                      reply,
+                      prompt.render,
+                      stubsAt(gates, last, tools.set),
+                      offer.zoned,
+                      direct,
+                      shapeAt(last, use)
+                    )
+                    .map(Some(_))
+                    .left
+                    .map(reason)
+              }
+          }
+        case _ => Right(None)
+      }
     } yield TurnRecord.Calls(
       rounds,
       answered,
-      if (strict) TurnRecord.Schemas.Recorded else TurnRecord.Schemas.Sent
+      if (strict) TurnRecord.Schemas.Recorded else TurnRecord.Schemas.Sent,
+      summary
     )
   }
 
