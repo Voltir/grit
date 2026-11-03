@@ -549,6 +549,9 @@ object Rig {
       // With no locale, the JVM writes its output in ASCII, each `·` and `¢` of a call's line a
       // `?` that no longer reads back as a call.
       "LANG" -> "C.UTF-8",
+      // Read by every `java` grit's tree starts: grit, the Mill daemon, each forked test JVM.
+      // Each defaults to a quarter of the machine's memory, and a few at once took it all.
+      "JDK_JAVA_OPTIONS" -> "-XX:MaxRAMPercentage=15",
       DotEnv.FileVar -> "/dev/null",
       DbConfig.UrlVar -> arm.database,
       "GRIT_TOOLS" -> "allowlist",

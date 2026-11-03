@@ -576,6 +576,7 @@ object RigTests extends TestSuite {
               "GRIT_TOOL_ROUNDS=4",
               s"HOME=${f.root}",
               s"JAVA_HOME=${sys.props("java.home")}",
+              "JDK_JAVA_OPTIONS=-XX:MaxRAMPercentage=15",
               "LANG=C.UTF-8",
               s"PATH=${sys.env.getOrElse("PATH", "/usr/bin:/bin")}"
             )
