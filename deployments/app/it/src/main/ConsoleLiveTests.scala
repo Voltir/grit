@@ -2,6 +2,7 @@ package grit.app.main
 
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
@@ -10,7 +11,7 @@ import grit.core.id.PrincipalId
 import grit.core.place.{Directory, Place}
 import grit.dbos.sql.TestPostgres
 import grit.kit.environment.Secrets
-import grit.kit.run.{Kit, Launch}
+import grit.kit.run.Kit
 
 import utest.*
 
@@ -47,13 +48,7 @@ object ConsoleLiveTests extends TestSuite {
       def edge(dir: String): Console.Edge^ =
         new Registering(Place.of(Directory.of(dir).fold(sys.error, identity)), registered)
       val first =
-        Kit.console(
-          deployment,
-          secrets,
-          Launch.Run(announced = false, stubDelay = 0),
-          clock,
-          edge("/tmp/console-first")
-        ) match {
+        Kit.console(deployment, secrets, 0.millis, clock, edge("/tmp/console-first")) match {
           case Left(failure) => sys.error(failure.message)
           case Right(opener) => opener
         }
@@ -63,13 +58,7 @@ object ConsoleLiveTests extends TestSuite {
       }
       try {
         val second =
-          Kit.console(
-            deployment,
-            secrets,
-            Launch.Run(announced = false, stubDelay = 0),
-            clock,
-            edge("/tmp/console-second")
-          ) match {
+          Kit.console(deployment, secrets, 0.millis, clock, edge("/tmp/console-second")) match {
             case Left(failure) => sys.error(failure.message)
             case Right(opener) => opener
           }

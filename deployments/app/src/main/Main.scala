@@ -1,5 +1,7 @@
 package grit.app.main
 
+import scala.concurrent.duration.DurationLong
+
 import grit.app.config.PrefsEnv
 import grit.assembly.estimate.CharEstimate
 import grit.chat.host.{ChatHost, Replies}
@@ -352,7 +354,14 @@ object Main {
           exitOnLeft(
             ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
               here =>
-                Kit.console(deployment, secrets, run, clock, here) match {
+                Kit.console(
+                  deployment,
+                  secrets,
+                  stubDelay.millis,
+                  clock,
+                  here,
+                  announced = true
+                ) match {
                   case Left(refused) => Left(refused.message)
                   case Right(opener) => Work.opened(opener)(step)
                 }
@@ -367,7 +376,7 @@ object Main {
         exitOnLeft(
           ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
             here =>
-              val opener = Kit.console(deployment, secrets, run, clock, here) match {
+              val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
                 case Right(found) => found
                 case Left(refused) => failed.refuse(refused.message)
               }

@@ -13,7 +13,7 @@ import grit.host.checkout.Redaction
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.Rehearsed
-import grit.kit.run.{Kit, Launch}
+import grit.kit.run.Kit
 
 import utest.*
 
@@ -89,9 +89,10 @@ object WorkLiveTests extends TestSuite {
         Kit.console(
           deployment,
           secrets,
-          Launch.Run(announced = true, stubDelay = 0),
+          scala.concurrent.duration.Duration.Zero,
           clock,
-          here
+          here,
+          announced = true
         ) match {
           case Left(refused) => Left(refused.message)
           case Right(opener) => Work.opened(opener)(step)
