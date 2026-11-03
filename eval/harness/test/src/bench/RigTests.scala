@@ -162,19 +162,23 @@ object RigTests extends TestSuite {
       val work = new LocalProcesses(root, sys.env, Redaction.of(env))
       val origin = Files.createDirectories(root.resolve("origin/scripts")).getParent
       Seq("check", "it", "fetch-enola.sh", "enola-law.sh").foreach { s =>
-        // Each records the JVM options it was given, then passes.
+        // Each records the JVM options it was given, then passes; once `<script>-heavy` exists in
+        // the root, it first marks the root `heavy` and waits, as a check holding much would.
         val script = Files.writeString(
           origin.resolve(s"scripts/$s"),
-          s"#!/bin/sh\nprintf '%s' \"$${JDK_JAVA_OPTIONS-unset}\" > $root/$s-jvm\nexit 0\n"
+          s"#!/bin/sh\nprintf '%s' \"$${JDK_JAVA_OPTIONS-unset}\" > $root/$s-jvm\n" +
+            s"if [ -e $root/$s-heavy ]; then touch $root/heavy; sleep 10; fi\nexit 0\n"
         )
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
-      // A stand-in Mill: records its arguments, and fails once `mill-fails` exists in the root.
+      // A stand-in Mill: records its arguments, and fails once `mill-fails` exists in the root;
+      // once `mill-heavy` does, it first marks the root `heavy` and waits.
       val mill = Files.writeString(
         origin.resolve("mill"),
         s"""#!/bin/sh
            |printf '%s\\n' "$$@" > $root/mill-argv
            |echo compiled
+           |if [ -e $root/mill-heavy ]; then touch $root/heavy; sleep 10; fi
            |if [ -e $root/mill-fails ]; then echo broken; exit 1; fi
            |""".stripMargin
       )
@@ -248,20 +252,33 @@ object RigTests extends TestSuite {
     "# The turn\nrendered"
   )
 
+  /** A fake [[Memory]]: 9 GB held, of 16 GB available, once the root holds `heavy`, which a
+    * stand-in script makes; else `coding` when first asked, as the rig asks before anything runs,
+    * and once the fake grit has started; nothing held between, while the checkout compiles.
+    */
+  private def heavyAt(root: Path, coding: Either[HostError, Memory.Held]): Memory =
+    new Memory {
+      private val asked = new java.util.concurrent.atomic.AtomicBoolean(false)
+      def held(dir: RelPath): Either[HostError, Memory.Held] =
+        if (Files.exists(root.resolve("heavy"))) Right(Memory.Held(9L << 30, 16L << 30))
+        else if (!asked.getAndSet(true) || Files.exists(root.resolve("gargv"))) coding
+        else Right(Memory.Held(0L, 16L << 30))
+    }
+
   /** A grit coder's trial over the fake launcher, its turn read back as `gritTurn`. */
   private def gritTrial(
       f: Fixture^,
       fake: GritFake,
       caps: Caps = cap,
       turn: GritTurn = gritTurn,
-      heldNow: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30))
+      heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30))
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
       f.handing,
       stepping(),
       new CoderTurns { def newest(): Either[String, GritTurn] = Right(turn) },
-      new Memory { def held(dir: RelPath): Either[HostError, Memory.Held] = heldNow }
+      heavyAt(f.root, heldCoding)
     )(
       f.origin,
       f.task,
@@ -714,15 +731,48 @@ object RigTests extends TestSuite {
     test(
       "a grit coder whose processes hold past the memory budget, or leave the machine under its floor, is stopped and kept not passed"
     ) {
+      // A turn with no edit, as a run stopped before its first call has.
+      val unedited = gritTurn.copy(messages = gritTurn.messages.take(1))
+      def stopped(held: Memory.Held) = withTask { f =>
+        gritTrial(f, GritFake(gritLines, hangs = true), turn = unedited, heldCoding = Right(held))
+          .map(t => (t.trial.passed, t.stopped))
+      }
+      (stopped(Memory.Held(9L << 30, 16L << 30)), stopped(Memory.Held(1L << 30, 1L << 29))) ==> (
+        Right((false, Some("its processes held 9 GB, past its memory budget of 8 GB"))),
+        Right((false, Some("the machine had 0.5 GB available, under its floor of 1 GB")))
+      )
+    }
+
+    test(
+      "a pre-compile whose processes pass the memory budget is stopped, the trial refused naming it"
+    ) {
       withTask { f =>
-        // A turn with no edit, as a run stopped before its first call has.
-        val unedited = gritTurn.copy(messages = gritTurn.messages.take(1))
-        def stopped(held: Memory.Held) =
-          gritTrial(f, GritFake(gritLines, hangs = true), turn = unedited, heldNow = Right(held))
-            .map(t => (t.trial.passed, t.stopped))
-        (stopped(Memory.Held(9L << 30, 16L << 30)), stopped(Memory.Held(1L << 30, 1L << 29))) ==> (
-          Right((false, Some("its processes held 9 GB, past its memory budget of 8 GB"))),
-          Right((false, Some("the machine had 0.5 GB available, under its floor of 1 GB")))
+        Files.writeString(f.root.resolve("mill-heavy"), "")
+        (gritTrial(f, GritFake(gritLines)), f.exists("gargv")) ==> (
+          Left(
+            "the checkout's compile before the coder was stopped: its processes held 9 GB, " +
+              "past its memory budget of 8 GB"
+          ),
+          false
+        )
+      }
+    }
+
+    test(
+      "a check whose processes pass the memory budget is stopped, the trial kept not passed naming it"
+    ) {
+      withTask { f =>
+        Files.writeString(f.root.resolve("check-heavy"), "")
+        gritTrial(f, GritFake(gritLines)).map(t =>
+          (t.trial.passed, t.lines.filter(l => l.startsWith("check")))
+        ) ==> Right(
+          (
+            false,
+            Vector(
+              "checks stopped: `scripts/check m` was stopped: its processes held 9 GB, past its " +
+                "memory budget of 8 GB"
+            )
+          )
         )
       }
     }
@@ -730,7 +780,7 @@ object RigTests extends TestSuite {
     test("a grit coder whose memory cannot be read is refused before grit starts") {
       withTask { f =>
         (
-          gritTrial(f, GritFake(gritLines), heldNow = Left(HostError.Failed("no /proc here"))),
+          gritTrial(f, GritFake(gritLines), heldCoding = Left(HostError.Failed("no /proc here"))),
           f.exists("gargv")
         ) ==> (
           Left(

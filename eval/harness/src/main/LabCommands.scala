@@ -76,7 +76,7 @@ private[main] object LabCommands {
       _ <-
         if (f.get("known").contains("true"))
           Rig.known(work)(repository, task, dir).map { c =>
-            c.runs.foreach((run, ok) => println(s"check: $run ${if (ok) "passed" else "failed"}"))
+            c.lines.foreach(println)
             println(s"known: ${if (c.passed) "passed" else "failed"}")
           }
         else

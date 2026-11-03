@@ -4,13 +4,12 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path, StandardOpenOption}
 
-import scala.annotation.tailrec
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Started, Variables}
+import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{Grade, ModelId}
@@ -197,7 +196,7 @@ final case class Tried(
       ) ++ consumed.ended.toVector
         .flatMap(_.denials)
         .map(d => s"denied: ${d.tool} ${d.input.take(200)}") ++
-      checked.runs.map((run, ok) => s"check: $run ${if (ok) "passed" else "failed"}") ++
+      checked.lines ++
       Vector(
         s"passed: ${t.passed}; distance: ${t.distance.fold("no diff")(d => s"$d lines")}"
       )
@@ -329,7 +328,7 @@ object Rig {
       quiet: FiniteDuration,
       output: Path
   ): Either[String, Tried] =
-    tried(work)(repository, task, cap, dir, output) { checkout =>
+    tried(work)(repository, task, cap, dir, output, () => None) { checkout =>
       for {
         streamed <- configured { variables =>
           handing
@@ -342,11 +341,11 @@ object Rig {
                     arguments(arm, cap, task, s"cat '$file'")*
                 )
               } yield argv
-            }(s => streamed(s, clock, quiet, _ => None, () => None))
+            }(s => timed(clock)(Watched.ran(s, quiet, Longest + 2.minutes, _ => None, () => None)))
             .left
             .map(e => s"claude did not run: ${e.message}")
         }
-        Streamed(lines, ended, wall, stopped) = streamed
+        (Watched.Read(lines, ended, stopped), wall) = streamed
         consumed <- Consumed.of(lines, checkout)
         local <- consumed.session.toRight(neverStarted(ended))
         _ <- Either.cond(
@@ -374,12 +373,13 @@ object Rig {
     * `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
     * stopped, a trial not passed, as is one whose processes, all those working in the checkout
     * ([[Memory.held]]), hold more than `memoryCap` allows or leave the machine under its floor
-    * ([[MemoryCap.stops]]), or one whose turn did not succeed; its turn is read from
+    * ([[MemoryCap.stops]]), or one whose turn did not succeed; that budget holds for the compile
+    * before grit, a `Left` naming it, and for the checks as [[Checks.run]] says; its turn is read from
     * `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
     * shut down. What grit wrote to its output, then the tail of its errors, is written to
     * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
     * a model [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
-    * read in the checkout, before grit starts; when `output` cannot be
+    * read in the checkout, before its compile starts; when `output` cannot be
     * written or its turn cannot be read; or when the trial row refuses the run, its
     * [[Tried.spending]] lines first.
     */
@@ -403,42 +403,45 @@ object Rig {
     for {
       _ <- gritCapped(cap)
       none <- Variables.of(Map.empty)
-      tried <- tried(work)(repository, task, cap, dir, output) { _ =>
-        for {
-          _ <- memory
-            .held(dir)
-            .left
-            .map(e =>
-              s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
-            )
-          _ <- warmed(work)(task, arm, cap, dir, output)
-          streamed <- briefed(arm, task) { brief =>
-            handing
-              .started(dir, key, none) { file =>
-                Argv.of(
-                  "timeout",
-                  Vector("-k", "1m", s"${Longest.toSeconds}s") ++
-                    gritEnvironment(arm, cap) ++
-                    Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
-                )
-              }(s =>
-                streamed(
-                  s,
-                  clock,
-                  quiet,
-                  spent(cap),
-                  () => memory.held(dir).toOption.flatMap(MemoryCap.stops(memoryCap))
-                )
-              )
+      tried <- tried(work)(repository, task, cap, dir, output, holding(memory, dir, memoryCap)) {
+        _ =>
+          for {
+            _ <- memory
+              .held(dir)
               .left
-              .map(e => s"grit did not run: ${e.message}")
-          }
-          Streamed(lines, ended, wall, stopped) = streamed
-          _ <- kept(output, lines, ended)
-          turn <- turns.newest()
-          consumed = Consumed.ofTurn(lines, turn, stopped)
-          session <- SessionId.of(Harness.Grit, turn.session)
-        } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
+              .map(e =>
+                s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
+              )
+            _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
+            streamed <- briefed(arm, task) { brief =>
+              handing
+                .started(dir, key, none) { file =>
+                  Argv.of(
+                    "timeout",
+                    Vector("-k", "1m", s"${Longest.toSeconds}s") ++
+                      gritEnvironment(arm, cap) ++
+                      Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
+                  )
+                }(s =>
+                  timed(clock)(
+                    Watched.ran(
+                      s,
+                      quiet,
+                      Longest + 2.minutes,
+                      spent(cap),
+                      holding(memory, dir, memoryCap)
+                    )
+                  )
+                )
+                .left
+                .map(e => s"grit did not run: ${e.message}")
+            }
+            (Watched.Read(lines, ended, stopped), wall) = streamed
+            _ <- kept(output, lines, ended)
+            turn <- turns.newest()
+            consumed = Consumed.ofTurn(lines, turn, stopped)
+            session <- SessionId.of(Harness.Grit, turn.session)
+          } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
       }
     } yield tried
 
@@ -504,44 +507,54 @@ object Rig {
   /** The checkout at `dir` compiled, every module `task`'s checks name and those under it
     * (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
     * the coder's first build or test is not a cold one and nothing it spends goes on it. Its
-    * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` gets the command
-    * and the tail of what it printed. `Left` in words when it fails, takes longer than
-    * [[Warming]], or `output` cannot be written; nothing when the checks name no module.
+    * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` gets the command,
+    * the last 200 lines it printed and the tail of its errors. `watch` is asked while it runs, as
+    * [[Watched.ran]] asks it. `Left` in words when it fails, takes longer than [[Warming]], is
+    * stopped by `watch` (naming the compile and the reason), or `output` cannot be written;
+    * nothing when the checks name no module.
     */
   private def warmed(work: Processes)(
       task: Task,
       arm: Arm.Grit,
       cap: Caps,
       dir: RelPath,
-      output: Path
+      output: Path,
+      watch: () => Option[String]
   ): Either[String, Unit] = {
     val targets = task.checks.flatMap(_.args).distinct.map(m => s"$m.__.compile")
     val mill = Vector("./mill", "--ticker", "false") ++
       targets.flatMap(t => Vector("+", t)).drop(1)
+    val failed = "the checkout did not compile before the coder"
     if (targets.isEmpty) Right(())
     else
       for {
-        argv <- Argv.of("env", gritEnvironment(arm, cap).drop(1) ++ mill*)
-        ran = work.run(argv, dir, Warming)
-        _ <- written(output, append = true)(
-          s"[rig] compiled before the coder: ${mill.mkString(" ")}" +:
-            ran.fold(e => Vector(e.message), r => Vector(r.output.text.stripTrailing))
+        argv <- Argv.of(
+          "timeout",
+          (Vector("-k", "1m", s"${Warming.toSeconds}s", "env") ++
+            gritEnvironment(arm, cap).drop(1) ++ mill)*
         )
-        _ <- ran.left
-          .map(e => s"the checkout did not compile before the coder: ${e.message}")
-          .flatMap(r =>
-            Either.cond(
-              r.exit == 0,
-              (),
-              r.output.text.linesIterator
-                .filter(_.trim.nonEmpty)
-                .toVector
-                .lastOption
-                .fold(s"the checkout did not compile before the coder (exit ${r.exit})")(line =>
-                  s"the checkout did not compile before the coder (exit ${r.exit}): $line"
-                )
-            )
+        read <- work
+          .started(argv, dir)(
+            Watched.ran(_, Warming + 1.minute, Warming + 2.minutes, _ => None, watch)
           )
+          .left
+          .map(e => s"$failed: ${e.message}")
+        _ <- written(output, append = true)(
+          s"[rig] compiled before the coder: ${mill.mkString(" ")}" +: (read.lines.takeRight(200) ++
+            read.ended.fold(Vector(_), r => r.output.text.linesIterator.toVector))
+        )
+        _ <- read.stopped
+          .map(why => s"the checkout's compile before the coder was stopped: $why")
+          .toLeft(())
+        ran <- read.ended.left.map(e => s"$failed: $e")
+        _ <- Either.cond(
+          ran.exit == 0,
+          (),
+          (read.lines ++ ran.output.text.linesIterator)
+            .filter(_.trim.nonEmpty)
+            .lastOption
+            .fold(s"$failed (exit ${ran.exit})")(line => s"$failed (exit ${ran.exit}): $line")
+        )
       } yield ()
   }
 
@@ -595,6 +608,19 @@ object Rig {
         s"grit's rates price no model ${cap.claudeModel}, so its cap could not stop it"
       )
     } yield ()
+
+  /** `run`'s result, and how long it took by `clock`. */
+  private def timed[A](clock: Clock^)(run: => A): (A, FiniteDuration) = {
+    val start = clock.millis()
+    val a = run
+    (a, (clock.millis() - start).max(0L).millis)
+  }
+
+  /** Why the processes working in `dir` are past `cap`, as [[MemoryCap.stops]] says, asked of
+    * `memory`; nothing when `memory` cannot tell.
+    */
+  private def holding(memory: Memory^, dir: RelPath, cap: MemoryCap): () => Option[String] =
+    () => memory.held(dir).toOption.flatMap(MemoryCap.stops(cap))
 
   /** Why a grit run whose output so far is `lines` is stopped under `cap`: its calls, priced by
     * [[AnthropicRates]], cost its budget or more; `None` while they cost less.
@@ -659,14 +685,16 @@ object Rig {
 
   /** A coder's run, as `coded` makes it in the checkout whose absolute path it is given, on
     * `task` under `cap` in a new checkout at `dir` of `repository`; then the task's checks run
-    * there and its diff measured against the known diff. Tidied as [[trial]] says.
+    * there, `watch` asked as [[Checks.run]] says, and its diff measured against the known diff.
+    * Tidied as [[trial]] says.
     */
   private def tried(work: Processes)(
       repository: String,
       task: Task,
       cap: Caps,
       dir: RelPath,
-      output: Path
+      output: Path,
+      watch: () => Option[String]
   )(
       coded: String => Either[String, Coded]
   ): Either[String, Tried] =
@@ -684,7 +712,10 @@ object Rig {
           checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
           c <- coded(checkout)
           changed <- Clone.changed(work)(dir, task.base)
-          checked <- Checks.run(work)(dir, task.checks, Vector(CappedJvm)).left.map(_.message)
+          checked <- Checks
+            .run(work)(dir, task.checks, Vector(CappedJvm), watch)
+            .left
+            .map(_.message)
           trial <- TrialRows.Trial
             .of(
               c.session,
@@ -717,26 +748,6 @@ object Rig {
       stopped: Option[String]
   )
 
-  /** What the started coder `s` writes, read until it ends, writes nothing for `quiet`, or
-    * `stop` gives why it is stopped, or `watch` does ([[streamOf]]); then it is killed,
-    * with every process it started still its descendant, and its wall time read from `clock`.
-    */
-  private def streamed(
-      s: Started^,
-      clock: Clock^,
-      quiet: FiniteDuration,
-      stop: Vector[String] -> Option[String],
-      watch: () => Option[String]
-  ): Streamed = {
-    val started = clock.millis()
-    s.input.close()
-    val (lines, stopped) = streamOf(s, quiet, stop, watch)
-    if (stopped.isDefined) s.kill()
-    val ended = s.await(Longest + 2.minutes).left.map(_.message)
-    s.kill()
-    Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
-  }
-
   /** `task`'s known diff at `dir`, its commits applied to its base, and then its checks run;
     * `Left` when a commit does not apply. The checkout is removed after, as [[trial]]'s is.
     */
@@ -746,18 +757,10 @@ object Rig {
     tidied(work, dir, None)(
       Clone
         .picked(work)(repository, task, dir)
-        .flatMap(_ => Checks.run(work)(dir, task.checks, Vector(CappedJvm)).left.map(_.message))
+        .flatMap(_ =>
+          Checks.run(work)(dir, task.checks, Vector(CappedJvm), () => None).left.map(_.message)
+        )
     )
-
-  /** What the coder wrote to its output, a line each, how its wait ended, how long it ran, and
-    * why it was stopped early, if it was.
-    */
-  private final case class Streamed(
-      lines: Vector[String],
-      ended: Either[String, Ran],
-      wall: FiniteDuration,
-      stopped: Option[String]
-  )
 
   /** `use` of the variables `claude` runs with, none of them a key:
     * `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, so a run writes no memory under its user's home, and
@@ -887,59 +890,6 @@ object Rig {
       }
       val _ = Clone.ran(work, RelPath.Root, "rm", "-rf", RelPath.value(dir))
     }
-
-  /** How often a run's output is checked for quiet: a quiet run is stopped within `quiet` and this
-    * much longer.
-    */
-  private val Tick: FiniteDuration = 500.millis
-
-  /** The lines `s` writes, a line each, and why they stopped early (`Some`, as the report says it):
-    * it wrote nothing for `quiet`, `stop` of the lines so far gave a reason, or `watch` did when
-    * asked, first before any line and then every [[WatchEvery]] polls; `None` when its output
-    * ended. The caller kills `s` once they stop.
-    */
-  private def streamOf(
-      s: Started^,
-      quiet: FiniteDuration,
-      stop: Vector[String] -> Option[String],
-      watch: () => Option[String]
-  ): (Vector[String], Option[String]) = {
-    @tailrec def collect(
-        acc: Vector[String],
-        idle: FiniteDuration,
-        polls: Long
-    ): (Vector[String], Option[String]) = {
-      val since = polls + 1
-      (if (polls % WatchEvery == 0) watch() else None) match {
-        case Some(why) => (acc, Some(why))
-        case None =>
-          s.next(Tick) match {
-            case Started.Next.Quiet if idle + Tick >= quiet =>
-              (
-                acc,
-                Some(s"quiet for ${
-                    if (quiet.toSeconds % 60 == 0) s"${quiet.toMinutes} min"
-                    else s"${quiet.toSeconds} s"
-                  }")
-              )
-            case Started.Next.Quiet => collect(acc, idle + Tick, since)
-            case Started.Next.Ended => (acc, None)
-            case Started.Next.Line(line) =>
-              val lines = acc :+ line
-              stop(lines) match {
-                case Some(why) => (lines, Some(why))
-                case None => collect(lines, 0.millis, since)
-              }
-          }
-      }
-    }
-    collect(Vector.empty, 0.millis, 0L)
-  }
-
-  /** 4: every how many polls of a run's output [[streamOf]] asks its watch, so at most every
-    * 2 seconds (4 [[Tick]]s) while the run writes nothing.
-    */
-  private val WatchEvery: Long = 4
 
   /** Why a run wrote no session: how its wait ended, and for an exit, its code and the last line
     * of its errors.

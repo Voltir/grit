@@ -42,7 +42,9 @@ object ChecksTests extends TestSuite {
   val tests = Tests {
     test("each check and the law run in order, by their command lines, whatever an earlier gave") {
       inCheckout { (work, _) =>
-        Checks.run(work)(checkout, checks, Vector.empty).map(c => (c.runs, c.passed)) ==> Right(
+        Checks
+          .run(work)(checkout, checks, Vector.empty, () => None)
+          .map(c => (c.runs, c.passed)) ==> Right(
           (
             Vector(
               "scripts/check grit.core" -> true,
@@ -59,9 +61,9 @@ object ChecksTests extends TestSuite {
     test("checks pass only when every check and the law exit 0") {
       inCheckout { (work, dir) =>
         val green = Vector(Check(Runner.Check, Vector("grit.core")))
-        val before = Checks.run(work)(checkout, green, Vector.empty).map(_.passed)
+        val before = Checks.run(work)(checkout, green, Vector.empty, () => None).map(_.passed)
         Files.writeString(dir.resolve("law-red"), "")
-        (before, Checks.run(work)(checkout, green, Vector.empty).map(_.passed)) ==> (
+        (before, Checks.run(work)(checkout, green, Vector.empty, () => None).map(_.passed)) ==> (
           Right(true),
           Right(false)
         )

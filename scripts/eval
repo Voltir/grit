@@ -360,7 +360,8 @@
 #       rates as each call answers, the run stopped once it is reached; --max-turns at least 2,
 #       its tool rounds; --max-tokens the most a reply writes (8192); --max-memory-gb the most
 #       its processes, all those working in its checkout, may hold together (8), the run stopped
-#       past it or when the machine has under 1 GB available. --dry prints what its
+#       past it or when the machine has under 1 GB available, in the compile before grit and in
+#       the checks alike. --dry prints what its
 #       first call would send and stops: no key reaches grit, and nothing is spent or kept.
 #
 #   scripts/eval summaries <yyyymmdd> --models <id>,<id> --spend <usd> [--first <n>]
