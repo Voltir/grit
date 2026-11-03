@@ -69,8 +69,9 @@ private[grit] object Launch {
   private lazy val Log = org.slf4j.LoggerFactory.getLogger("grit.launch")
 
   /** What a process wants beside its deployment: whether each model call is printed with
-    * the model it goes to (`announced`: a run with arguments, where a replayed turn is then
-    * visibly one that did not call), and how long the stub model waits before it answers, in
+    * the model it goes to, and once answered with what it consumed (`announced`: a run with
+    * arguments or `grit work`, where a replayed turn is then visibly one that did not call), and
+    * how long the stub model waits before it answers, in
     * milliseconds (`stubDelay`; the stub answers only without OpenRouter's key).
     */
   final case class Run(announced: Boolean, stubDelay: Long)
@@ -820,7 +821,9 @@ private[grit] object Launch {
     case Placer.Off(_) => "none"
   }
 
-  /** `models`, each call printed with the model it goes to. */
+  /** `models`, each call printed with the model it goes to, and once answered with what it
+    * consumed ([[CallLine.answered]]).
+    */
   private def announced(models: Models): Models =
     new Models {
       def catalog(): Either[String, Catalog] = models.catalog()
@@ -831,7 +834,9 @@ private[grit] object Launch {
             println(
               s"[provider] ${pinned.assignment.ref} called with ${request.messages.size} message(s)"
             )
-            model.complete(request)
+            val answer = model.complete(request)
+            answer.foreach(reply => println(CallLine.answered(pinned.assignment.ref, reply.usage)))
+            answer
           }
         }
       }

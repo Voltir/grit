@@ -41,11 +41,11 @@ object CacheReportTests extends TestSuite {
       CacheReport.lines(conversation, Vector(first, second)) ==> Vector(
         "conversation c1",
         "turn 1 · afresh: no-window · cache reads 0% of 100 input",
-        "  round 0 · first · m · in 100 · read 0 · write 90 · 0.1¢",
+        "  round 0 · first · m · in 100 · read 0 · write 90 · out 5 · 0.1¢",
         "turn 2 · carried · cache reads 94% of 500 input · 3m 5s after turn 1's last call",
-        "  round 0 · first · m · in 200 · read 180 · write 10 · 0.02¢",
-        "  round 1 · later · m · in 300 · read 290 · write 10 · 0.03¢",
-        "  summary · s · in 50 · read 0 · write 0 · cost unknown",
+        "  round 0 · first · m · in 200 · read 180 · write 10 · out 5 · 0.02¢",
+        "  round 1 · later · m · in 300 · read 290 · write 10 · out 5 · 0.03¢",
+        "  summary · s · in 50 · read 0 · write 0 · out 5 · cost unknown",
         "carried turns: 1 · at 80% or more: 1"
       )
     }
@@ -73,14 +73,14 @@ object CacheReportTests extends TestSuite {
       ) ==> Vector(
         "conversation c1",
         "turn 1 · carried · cache reads 94% of 100 input",
-        "  round 0 · first · m · in 100 · read 94 · write 0 · cost unknown",
+        "  round 0 · first · m · in 100 · read 94 · write 0 · out 5 · cost unknown",
         "turn 2 · carried · cache reads 80% of 100 input",
-        "  round 0 · first · m · in 100 · read 80 · write 0 · cost unknown",
+        "  round 0 · first · m · in 100 · read 80 · write 0 · out 5 · cost unknown",
         "turn 3 · carried · cache reads 50% of 100 input",
-        "  round 0 · first · m · in 100 · read 50 · write 0 · cost unknown",
+        "  round 0 · first · m · in 100 · read 50 · write 0 · out 5 · cost unknown",
         "turn 4 · afresh: no-window · no own calls",
         "turn 5 · afresh: no-window · no input counted",
-        "  round 0 · first · m · in 0 · read 0 · write 0 · cost unknown",
+        "  round 0 · first · m · in 0 · read 0 · write 0 · out 5 · cost unknown",
         "carried turns: 3 · at 80% or more: 2"
       )
     }

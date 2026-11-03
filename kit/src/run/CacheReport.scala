@@ -1,7 +1,7 @@
 package grit.kit.run
 
 import grit.core.id.{ConversationId, TurnSeq}
-import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.message.Tokens
 import grit.turn.{TurnBasis, TurnCache, TurnRecord}
 
 /** How a conversation's turns used the provider's prompt cache, for a person to read
@@ -34,9 +34,9 @@ object CacheReport {
         (Vector(s"turn ${TurnSeq.value(t.turn.turnSeq)}", basis(t.carried), share) ++ gap)
           .mkString(" · ")
       val own = t.own.zipWithIndex.map { (o, i) =>
-        s"  round ${o.round} · ${if (i == 0) "first" else "later"} · ${o.model} · ${spent(o.usage)}"
+        s"  round ${o.round} · ${if (i == 0) "first" else "later"} · ${o.model} · ${CallLine.spent(o.usage)}"
       }
-      val aside = t.aside.map(a => s"  ${named(a.role)} · ${a.model} · ${spent(a.usage)}")
+      val aside = t.aside.map(a => s"  ${named(a.role)} · ${a.model} · ${CallLine.spent(a.usage)}")
       head +: (own ++ aside)
     }
     val carried = turns.filter(_.carried.exists(_.head.nonEmpty))
@@ -50,10 +50,6 @@ object CacheReport {
     case Some(TurnBasis.Afresh(why)) => s"afresh: ${why.word}"
     case None => "carry not recorded"
   }
-
-  private def spent(u: Usage): String =
-    s"in ${Tokens.value(u.input)} · read ${Tokens.value(u.cacheRead)} · write ${Tokens
-        .value(u.cacheWrite)} · ${u.costUsd.fold("cost unknown")(Cost.cents)}"
 
   private def percent(share: Double): String = s"${math.round(share * 100)}%"
 
