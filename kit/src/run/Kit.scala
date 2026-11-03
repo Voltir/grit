@@ -573,7 +573,7 @@ object Kit {
   /** The way to `deployment`'s engine over the database `secrets` names, for a process that
     * runs its own edge and screen. The engine's lock is taken now. Taken here, the opener
     * starts the engine, has `serving` serve through it, then launches the deployment's
-    * workflows as [[launch]] does, the stub model waiting `stubDelay` before it answers; held by
+    * workflows as [[launch]] does under `run`; held by
     * another process, the opener attaches to that engine and has `serving` serve through it.
     * `serving` serves before any recovered turn runs, so a call to a place it registers is
     * served. A lock taken
@@ -583,7 +583,7 @@ object Kit {
   def console(
       deployment: Deployment,
       secrets: Secrets,
-      stubDelay: FiniteDuration,
+      run: Launch.Run,
       clock: Clock^,
       serving: Console.Edge^
   ): Either[KitFailure, Console.Opener^] = {
@@ -609,14 +609,7 @@ object Kit {
                   // Its edge first: DBOS runs what it recovers as soon as it launches, and a
                   // turn's call to a place no live edge serves is answered as not served.
                   serving.serve(started)
-                  Right(
-                    launch(
-                      started,
-                      deployment,
-                      secrets,
-                      Launch.Run(announced = false, stubDelay.toMillis)
-                    )
-                  )
+                  Right(launch(started, deployment, secrets, run))
                 } catch {
                   case e: Throwable =>
                     // DBOS's threads are non-daemon: an engine that is not handed on is closed.

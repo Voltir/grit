@@ -1,12 +1,79 @@
 package grit.app.main
 
+import grit.core.clock.{Clock, Fresh}
+import grit.core.edge.{Console, Desks}
 import grit.core.host.Argv
-import grit.core.place.{Namespace, Place, Reaches, Service}
+import grit.core.place.{Directory, Namespace, Place, Reaches, Service}
+import grit.host.checkout.{LocalInstructions, LocalProcesses, Redaction}
+import grit.kit.deployment.Offered
+import grit.kit.run.{LocalEdge, LocalTools}
 import grit.mcp.client.{McpServer, McpTransport}
+import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 
-/** The tools the chat serves from its own process besides the coding tools: scout's. */
+/** The edge the chat and `grit work` serve from their own process: the coding tools, and
+  * scout's.
+  */
 private[main] object ChatEdges {
+
+  /** `use` given the edge this process serves for `directory`: the coding tools `offered`
+    * names, run in `root` ([[LocalTools]]), with the instruction files around it, and scout's
+    * tools when `scout` declares its server, its program started now. Both are closed once `use`
+    * returns or throws, which ends any command the tools left running. Why not, before `use`
+    * runs: the coding tools' edge cannot be made, or scout's program cannot start or lists no
+    * tool.
+    */
+  private[main] def serving[A](
+      directory: Directory,
+      root: java.nio.file.Path,
+      offered: Offered,
+      scout: Option[McpServer[McpTransport.Stdio]],
+      redaction: Redaction,
+      clock: Clock^,
+      fresh: Fresh^
+  )(use: Console.Edge^ => A): Either[String, A] = {
+    val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
+    val tools = new LocalTools(offered, redaction, clock, fresh)
+    LocalEdge.over(directory, tools, new LocalInstructions(), log) match {
+      case Left(refused) =>
+        tools.close()
+        Left(refused.refusing("the coding tools"))
+      case Right(coding) =>
+        def served(here: Console.Edge^): Either[String, A] =
+          try Right(use(here))
+          finally tools.close()
+        scout match {
+          case None => served(coding)
+          case Some(server) =>
+            ScoutAt match {
+              case Left(why) =>
+                tools.close()
+                Left(s"$ScoutVar: $why")
+              case Right(at) =>
+                // scout's program is started now, so a binary that cannot start refuses the start.
+                McpEdge.local(
+                  at,
+                  server,
+                  new LocalProcesses(root, sys.env, redaction),
+                  clock,
+                  Some(ScoutInstructions),
+                  line => log.info(line)
+                ) match {
+                  case Left(why) =>
+                    tools.close()
+                    Left(s"$ScoutVar: $why")
+                  case Right(local) =>
+                    try
+                      served((desks: Desks^) => {
+                        coding.serve(desks)
+                        local.serve(desks)
+                      })
+                    finally local.close()
+                }
+            }
+        }
+    }
+  }
 
   /** The variable naming the absolute path of a scout binary (`~` is not expanded); unset, the
     * chat serves no scout.

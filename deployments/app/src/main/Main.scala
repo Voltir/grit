@@ -1,7 +1,5 @@
 package grit.app.main
 
-import scala.concurrent.duration.DurationLong
-
 import grit.app.config.PrefsEnv
 import grit.assembly.estimate.CharEstimate
 import grit.chat.host.{ChatHost, Replies}
@@ -17,13 +15,12 @@ import grit.core.model.ModelId
 import grit.core.place.Directory
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.{LocalInstructions, LocalProcesses, Redaction}
+import grit.host.checkout.Redaction
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
-import grit.kit.run.{Kit, Launch, LocalEdge, LocalTools}
+import grit.kit.run.{Kit, Launch}
 import grit.mcp.client.KeyFiles
-import grit.mcp.edge.McpEdge
 import grit.models.{OpenRouterConfig, StubProvider}
 import grit.slack.edge.{Backfill, SlackEdge}
 
@@ -150,6 +147,19 @@ import Backfills.*
   *     the working directory under `GRIT_SESSION` ([[Kit.find]]); refused when no chat was held
   *     there. It only reads, beside a running grit or none, never starts the engine, and never
   *     creates the conversation.
+  *   - **`work <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
+  *     in the directory grit runs in, under `GRIT_SESSION`, with that directory's edge served
+  *     as the chat serves it ([[ChatEdges.serving]]): the tools `GRIT_TOOLS` names, as in a run
+  *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set. Each
+  *     model call is printed as it is sent and again once answered, with its input, cache reads
+  *     and writes, output and cost ([[grit.kit.run.CallLine.answered]]); then its turn and reply, as for a
+  *     message. The same text said again in the same directory and session awaits the turn it
+  *     started, so a `grit work` restarted mid-turn resumes it. It exits 0 when the turn
+  *     replied, 1 when it did not, 2 when the file cannot be read. A command the turn left
+  *     running ends with it; a signal leaves that command to the next start's sweep in the
+  *     directory. With `--dry`, nothing is said and no model is called: it prints the turn's
+  *     first model call as a dry rehearsal shows it ([[Work.shown]]), every part whole, over the
+  *     same composition; it is refused while a model key is set, so it cannot spend.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
@@ -177,6 +187,10 @@ object Main {
         Some(exitOnLeft(backfillTopics(args.drop(2).toVector)))
       else None
     val reported = cacheReported(args.toVector)
+    // `grit work <file>` or `grit work --dry <file>`: one text said in this directory.
+    val working: Option[Work.Asked] =
+      if (args.headOption.contains("work")) Some(exitOnLeft(Work.asked(args.toVector.drop(1))))
+      else None
     val env = exitOnLeft(DotEnv.loadDefault(sys.env))
     val log = env.getOrElse(
       "GRIT_LOG",
@@ -194,8 +208,8 @@ object Main {
     org.slf4j.LoggerFactory.getLogger("grit.main").info(redaction.described)
 
     val offered = exitOnLeft(toolChoice(env, chat = tui))
-    // The chat also serves scout's tools when GRIT_SCOUT names its binary.
-    val scoutServer = if (tui) exitOnLeft(ChatEdges.scout(env)) else None
+    // The chat and `grit work` also serve scout's tools when GRIT_SCOUT names its binary.
+    val scoutServer = if (tui || working.nonEmpty) exitOnLeft(ChatEdges.scout(env)) else None
     // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
     // conversations working there.
     val githubEdge = if (serving) exitOnLeft(github(env)) else None
@@ -249,7 +263,7 @@ object Main {
     )
     val directory = exitOnLeft(Directory.of(root.toString))
     val session = env.getOrElse("GRIT_SESSION", "default")
-    val origin = if (tui) Origin.Tui(directory, session) else RunOrigin
+    val origin = if (tui || working.nonEmpty) Origin.Tui(directory, session) else RunOrigin
     val prefsFile = PrefsEnv.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
@@ -325,69 +339,53 @@ object Main {
           }
           .swap
           .toOption
+      else if (working.nonEmpty)
+        working.flatMap { asked =>
+          if (asked.dry && secrets.keys.nonEmpty) exitOnLeft(Left(Work.Keyed))
+          val text = exitOnLeft(Work.text(asked.file))
+          // The same composition either way: only the last step differs.
+          val step: Console^ => Either[String, Unit] = console =>
+            if (asked.dry) Work.shown(config, deployment, origin, text, clock, println)
+            else Work.said(console, origin, text, println)
+          // A command the turn left going ends with the run; a signal leaves it to the next
+          // start's sweep in this directory.
+          exitOnLeft(
+            ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
+              here =>
+                Kit.console(deployment, secrets, run, clock, here) match {
+                  case Left(refused) => Left(refused.message)
+                  case Right(opener) => Work.opened(opener)(step)
+                }
+            }
+          ).swap.toOption
+        }
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
-        val tools = new LocalTools(offered, redaction, clock, fresh)
-        val coding: Console.Edge^ = exitOnLeft(
-          LocalEdge
-            .over(
-              directory,
-              tools,
-              new LocalInstructions(),
-              org.slf4j.LoggerFactory.getLogger("grit.edge")
-            )
-            .left
-            .map(_.refusing("the coding tools"))
-        )
-        // scout's program is started now, so a binary that cannot start refuses the chat.
-        val scout: Option[McpEdge.Local^] = scoutServer match {
-          case None => None
-          case Some(server) =>
-            val edgeLog = org.slf4j.LoggerFactory.getLogger("grit.edge")
-            val local: McpEdge.Local^ = exitOnLeft(
-              McpEdge
-                .local(
-                  exitOnLeft(ChatEdges.ScoutAt),
-                  server,
-                  new LocalProcesses(root, sys.env, redaction),
-                  clock,
-                  Some(ChatEdges.ScoutInstructions),
-                  line => edgeLog.info(line)
-                )
-                .left
-                .map(why => s"${ChatEdges.ScoutVar}: $why")
-            )
-            Some(local)
-        }
-        val here: Console.Edge^ = desks => {
-          coding.serve(desks)
-          scout.foreach(_.serve(desks))
-        }
-        val opener = Kit.console(deployment, secrets, stubDelay.millis, clock, here) match {
-          case Right(found) => found
-          case Left(refused) => failed.refuse(refused.message)
-        }
         // A command a run left going ends with the chat; a signal leaves it to the next start's
         // sweep in its checkout.
-        try
-          Chat.run(
-            opener,
-            origin,
-            model = modelName,
-            session = s"$session · ${written(root)}",
-            startTheme,
-            budget,
-            CharEstimate,
-            prefs = prefsFile,
-            log = Some(java.nio.file.Path.of(log)),
-            clock,
-            fresh
-          )
-        finally {
-          tools.close()
-          scout.foreach(_.close())
-        }
+        exitOnLeft(
+          ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
+            here =>
+              val opener = Kit.console(deployment, secrets, run, clock, here) match {
+                case Right(found) => found
+                case Left(refused) => failed.refuse(refused.message)
+              }
+              Chat.run(
+                opener,
+                origin,
+                model = modelName,
+                session = s"$session · ${written(root)}",
+                startTheme,
+                budget,
+                CharEstimate,
+                prefs = prefsFile,
+                log = Some(java.nio.file.Path.of(log)),
+                clock,
+                fresh
+              )
+          }
+        )
         None
       } else
         Kit.open(config, deployment, clock) match {
