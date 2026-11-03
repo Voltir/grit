@@ -424,6 +424,12 @@ object Rig {
       )
     } yield shown
 
+  /** Every JVM started under it held to 15% of the machine's memory: read by every `java` grit's
+    * tree and the task's checks start, grit, a Mill daemon and each forked test JVM alike, each
+    * of which takes a quarter by default, and a few of them at once took it all.
+    */
+  val CappedJvm: (String, String) = "JDK_JAVA_OPTIONS" -> "-XX:MaxRAMPercentage=15"
+
   /** 60 minutes: the longest the checkout's compile before the coder may take. */
   val Warming: FiniteDuration = 60.minutes
 
@@ -545,9 +551,7 @@ object Rig {
       // With no locale, the JVM writes its output in ASCII, each `·` and `¢` of a call's line a
       // `?` that no longer reads back as a call.
       "LANG" -> "C.UTF-8",
-      // Read by every `java` grit's tree starts: grit, the Mill daemon, each forked test JVM.
-      // Each defaults to a quarter of the machine's memory, and a few at once took it all.
-      "JDK_JAVA_OPTIONS" -> "-XX:MaxRAMPercentage=15",
+      CappedJvm,
       DotEnv.FileVar -> "/dev/null",
       DbConfig.UrlVar -> arm.database,
       "GRIT_TOOLS" -> "allowlist",
@@ -612,7 +616,7 @@ object Rig {
           checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
           c <- coded(checkout)
           changed <- Clone.changed(work)(dir, task.base)
-          checked <- Checks.run(work)(dir, task.checks).left.map(_.message)
+          checked <- Checks.run(work)(dir, task.checks, Vector(CappedJvm)).left.map(_.message)
           trial <- TrialRows.Trial
             .of(
               c.session,
@@ -673,7 +677,7 @@ object Rig {
     tidied(work, dir, None)(
       Clone
         .picked(work)(repository, task, dir)
-        .flatMap(_ => Checks.run(work)(dir, task.checks).left.map(_.message))
+        .flatMap(_ => Checks.run(work)(dir, task.checks, Vector(CappedJvm)).left.map(_.message))
     )
 
   /** What the coder wrote to its output, a line each, how its wait ended, how long it ran, and

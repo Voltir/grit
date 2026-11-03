@@ -162,7 +162,11 @@ object RigTests extends TestSuite {
       val work = new LocalProcesses(root, sys.env, Redaction.of(env))
       val origin = Files.createDirectories(root.resolve("origin/scripts")).getParent
       Seq("check", "it", "fetch-enola.sh", "enola-law.sh").foreach { s =>
-        val script = Files.writeString(origin.resolve(s"scripts/$s"), "#!/bin/sh\nexit 0\n")
+        // Each records the JVM options it was given, then passes.
+        val script = Files.writeString(
+          origin.resolve(s"scripts/$s"),
+          s"#!/bin/sh\nprintf '%s' \"$${JDK_JAVA_OPTIONS-unset}\" > $root/$s-jvm\nexit 0\n"
+        )
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
       // A stand-in Mill: records its arguments, and fails once `mill-fails` exists in the root.
@@ -692,6 +696,16 @@ object RigTests extends TestSuite {
           Left("the checkout did not compile before the coder (exit 1): broken"),
           false
         )
+      }
+    }
+
+    test("the task's checks run with every JVM capped, as grit's own are") {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines)).map(_ =>
+          Vector("check", "enola-law.sh").map(s =>
+            Option.when(f.exists(s"$s-jvm"))(f.recorded(s"$s-jvm"))
+          )
+        ) ==> Right(Vector.fill(2)(Some("-XX:MaxRAMPercentage=15")))
       }
     }
 

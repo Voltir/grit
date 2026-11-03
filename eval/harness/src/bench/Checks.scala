@@ -18,10 +18,15 @@ object Checks {
   val Longest: FiniteDuration = 30.minutes
 
   /** `checks`, then the law (`bash scripts/fetch-enola.sh`, then `bash scripts/enola-law.sh`),
-    * run in `dir` in order; every one runs whatever an earlier gave. `Left` only when one cannot
-    * start; one past [[Longest]] did not pass.
+    * run in `dir` in order, each with `variables` added to its environment; every one runs
+    * whatever an earlier gave. `Left` only when one cannot start; one past [[Longest]] did not
+    * pass.
     */
-  def run(work: Processes)(dir: RelPath, checks: Vector[Check]): Either[HostError, Checked] = {
+  def run(work: Processes)(
+      dir: RelPath,
+      checks: Vector[Check],
+      variables: Vector[(String, String)]
+  ): Either[HostError, Checked] = {
     val lines = checks.map { c =>
       val script = c.runner match {
         case Runner.Check => "scripts/check"
@@ -32,7 +37,12 @@ object Checks {
     val (refused, runs) = lines.partitionMap { line =>
       val ran = line.headOption
         .toRight(HostError.Failed("a check with no program"))
-        .flatMap(program => Argv.of(program, line.drop(1)*).left.map(HostError.Failed(_)))
+        .flatMap(_ =>
+          Argv
+            .of("env", (variables.map((k, v) => s"$k=$v") ++ line)*)
+            .left
+            .map(HostError.Failed(_))
+        )
         .flatMap(work.run(_, dir, Longest)) match {
         case Right(r) => Right(r.exit == 0)
         case Left(HostError.TimedOut(_, _)) => Right(false)
