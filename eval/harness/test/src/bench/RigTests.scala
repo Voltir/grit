@@ -8,8 +8,9 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Handing, Processes, RelPath}
-import grit.core.message.{Tokens, Usage}
+import grit.core.host.{Argv, Handing, Processes, RelPath, Variables}
+import grit.core.id.{Harness, ToolCallId}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.secret.{TestSecrets, Variable}
 import grit.dbos.internal.TrialRows
 import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
@@ -66,7 +67,7 @@ object RigTests extends TestSuite {
       origin: String,
       task: Task
   ) {
-    def arm(fake: Fake): Arm = {
+    def arm(fake: Fake): Arm.ClaudeCode = {
       Files.write(root.resolve("stream.jsonl"), fake.lines.asJava)
       val claude = root.resolve("claude")
       Files.writeString(
@@ -94,7 +95,41 @@ object RigTests extends TestSuite {
            |""".stripMargin
       )
       Files.setPosixFilePermissions(claude, PosixFilePermissions.fromString("rwxr-xr-x"))
-      Arm(claude.toString, "/usr/bin/true", "Make the change the brief asks for.")
+      Arm.ClaudeCode(claude.toString, "/usr/bin/true", "Make the change the brief asks for.")
+    }
+
+    /** A fake grit launcher that records its arguments, its environment and its brief, edits
+      * `a.scala`, writes `fake`'s lines, and then hangs or exits 0.
+      */
+    def gritArm(fake: GritFake, maxTokens: Int = 8192): Arm.Grit = {
+      val launcher = root.resolve("grit")
+      Files.write(root.resolve("grit.out"), fake.lines.asJava)
+      Files.writeString(
+        launcher,
+        s"""#!/bin/sh
+           |printf '%s\\n' "$$@" > $root/gargv
+           |env | sort > $root/genv
+           |for a in "$$@"; do brief="$$a"; done
+           |cat "$$brief" > $root/gbrief
+           |printf '%s\\n' 'object A { val x = 1 }' > a.scala
+           |cat $root/grit.out
+           |${if (fake.hangs) "sleep 30" else "exit 0"}
+           |""".stripMargin
+      )
+      Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwxr-xr-x"))
+      (for {
+        passed <- Variables.of(
+          Map("PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"), "HOME" -> root.toString)
+        )
+        arm <- Arm.Grit.of(
+          launcher.toString,
+          "/usr/bin/true",
+          "Make the change.",
+          "jdbc:postgresql://localhost:5432/grit_bench_coder",
+          maxTokens,
+          passed
+        )
+      } yield arm).fold(e => throw new java.lang.AssertionError(e), identity)
     }
     def recorded(name: String): String = Files.readString(root.resolve(name))
     def exists(name: String): Boolean = Files.exists(root.resolve(name))
@@ -138,6 +173,55 @@ object RigTests extends TestSuite {
       )
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
+
+  /** The fake grit launcher's output, a line each, and whether it hangs once written. */
+  private final case class GritFake(lines: Vector[String], hangs: Boolean = false)
+
+  /** What a small grit run prints: two calls' lines among others. */
+  private val gritLines: Vector[String] = Vector(
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com called with 1 message(s)",
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 1200 · read 1000 · " +
+      "write 150 · out 40 · 0.0054¢",
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 300 · read 0 · " +
+      "write 0 · out 10 · 0.0035¢",
+    "[main] done"
+  )
+
+  /** The turn the fake grit coder recorded: a read, then an edit. */
+  private val gritTurn = GritTurn(
+    "c-7",
+    Vector(
+      Message.User("Give A an x."),
+      Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("t1"), "read", ujson.Obj("path" -> "a.scala"))),
+        StopReason.ToolUse,
+        Usage.Zero,
+        "claude-haiku-5-5"
+      ),
+      Message.ToolResult(ToolCallId("t1"), "object A", isError = false),
+      Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("t2"), "edit", ujson.Obj("path" -> "a.scala"))),
+        StopReason.ToolUse,
+        Usage.Zero,
+        "claude-haiku-5-5"
+      )
+    ),
+    "SUCCESS",
+    "# The turn\nrendered"
+  )
+
+  /** A grit coder's trial over the fake launcher, its turn read back as `gritTurn`. */
+  private def gritTrial(
+      f: Fixture^,
+      fake: GritFake,
+      caps: Caps = cap
+  ): Either[String, Tried] =
+    Rig.gritTrial(
+      f.work,
+      f.handing,
+      stepping(),
+      new CoderTurns { def newest(): Either[String, GritTurn] = Right(gritTurn) }
+    )(f.origin, f.task, f.gritArm(fake), caps, key, checkout, Rig.Quiet)
 
   private def trial(
       f: Fixture^,
@@ -385,6 +469,143 @@ object RigTests extends TestSuite {
             false
           )
         )
+      }
+    }
+
+    test(
+      "a grit trial keeps its turn's session, its calls, its measures before the edit and its transcript"
+    ) {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines)).map { t =>
+          (
+            (Harness.value(t.trial.session.harness), t.trial.session.local),
+            t.trial.calls,
+            Tokens.value(t.trial.usage.input),
+            t.trial.callsBeforeEdit,
+            t.trial.readBeforeEdit,
+            t.trial.passed,
+            t.transcript
+          )
+        } ==> Right(
+          (
+            ("grit", "c-7"),
+            2,
+            1500L,
+            Some(1),
+            Some(8L),
+            true,
+            gritLines ++ Vector("# The turn", "rendered")
+          )
+        )
+      }
+    }
+
+    test(
+      "grit runs `grit work` on its brief, in an environment of the rig's alone, the key read from its file"
+    ) {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines)).map { _ =>
+          val argv = f.recorded("gargv").linesIterator.toVector
+          (
+            argv.headOption,
+            argv.lift(1).exists(b => b.endsWith("/brief.md") && !b.startsWith(f.root.toString)),
+            f.recorded("gbrief"),
+            f.recorded("genv")
+              .linesIterator
+              .filterNot(l => Seq("PWD=", "OLDPWD=", "SHLVL=", "_=").exists(l.startsWith))
+              .toVector
+          )
+        } ==> Right(
+          (
+            Some("work"),
+            true,
+            "Make the change.\n\n" + Rig.Preamble + "Give A an x.",
+            Vector(
+              "ANTHROPIC_API_KEY=sk-ant-test-0123",
+              "GRIT_ASSEMBLER=linear",
+              "GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/grit_bench_coder",
+              "GRIT_DREAM_MODEL=anthropic/claude-haiku-5-5",
+              "GRIT_DREAM_PROVIDER=api.anthropic.com",
+              "GRIT_ENV_FILE=/dev/null",
+              "GRIT_LIGHT_MODEL=anthropic/claude-haiku-5-5",
+              "GRIT_LIGHT_PROVIDER=api.anthropic.com",
+              "GRIT_MAX_TOKENS=8192",
+              "GRIT_MODEL=anthropic/claude-haiku-5-5",
+              "GRIT_PROVIDER=api.anthropic.com",
+              "GRIT_SCOUT=/usr/bin/true",
+              "GRIT_SESSION=bench",
+              "GRIT_STRONG_MODEL=anthropic/claude-haiku-5-5",
+              "GRIT_STRONG_PROVIDER=api.anthropic.com",
+              "GRIT_SWEEP=24h",
+              "GRIT_TOOLS=allowlist",
+              "GRIT_TOOL_ROUNDS=4",
+              s"HOME=${f.root}",
+              s"PATH=${sys.env.getOrElse("PATH", "/usr/bin:/bin")}"
+            )
+          )
+        )
+      }
+    }
+
+    test("a grit coder whose calls reach the cap is stopped, and its trial kept not passed") {
+      withTask { f =>
+        val dear = gritLines.take(2) :+
+          ("[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 10 · read 0 · " +
+            "write 0 · out 200000 · 10¢")
+        gritTrial(f, GritFake(dear :+ "[provider] never read", hangs = true)).map { t =>
+          (t.trial.passed, t.trial.calls, t.stopped, t.lines.find(_.startsWith("ended:")))
+        } ==> Right(
+          (
+            false,
+            2,
+            Some("its calls cost 10¢, reaching its cap of 5¢"),
+            Some("ended: its calls cost 10¢, reaching its cap of 5¢, in error")
+          )
+        )
+      }
+    }
+
+    test("a grit trial prints grit's cost alone, since grit estimates none of its own") {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines)).map(_.lines.filter(_.startsWith("cost"))) ==>
+          Right(Vector("cost: 0.0089¢ by grit's rates"))
+      }
+    }
+
+    test("grit is refused fewer than 2 turns, a model with no rates, and the operator's database") {
+      withTask { f =>
+        val oneTurn = Caps.of("claude-haiku-5-5", "0.05", "1").getOrElse(cap)
+        val unpriced = Caps.of("claude-unknown-9", "0.05", "4").getOrElse(cap)
+        val passed = Variables.of(Map.empty).getOrElse(throw new java.lang.AssertionError())
+        def database(url: String) =
+          Arm.Grit.of("/bin/grit", "/usr/bin/true", "c", url, 8192, passed).map(_ => url)
+        (
+          gritTrial(f, GritFake(gritLines), oneTurn),
+          gritTrial(f, GritFake(gritLines), unpriced),
+          database("jdbc:postgresql://localhost:5432/grit"),
+          database("jdbc:postgresql://localhost:5432/"),
+          f.exists("gargv")
+        ) ==> (
+          Left("grit takes at least 2 turns, its first call and one after a tool's; not 1"),
+          Left("grit's rates price no model claude-unknown-9, so its cap could not stop it"),
+          Left("the grit coder's database grit is the operator's own; name one of the bench's"),
+          Left("the grit coder's database URL names no database"),
+          false
+        )
+      }
+    }
+
+    test(
+      "a dry grit run prints what its first call would send, handed no key, and leaves nothing"
+    ) {
+      withTask { f =>
+        val arm = f.gritArm(GritFake(Vector("# The first call", "system: …")))
+        (
+          Rig.dry(f.work)(f.origin, f.task, arm, cap, checkout),
+          f.recorded("gargv").linesIterator.toVector.take(2),
+          f.recorded("genv").linesIterator.exists(_.startsWith("ANTHROPIC_API_KEY")),
+          f.exists("trial")
+        ) ==> (Right("# The first call\nsystem: …"), Vector("work", "--dry"), false, false)
       }
     }
 

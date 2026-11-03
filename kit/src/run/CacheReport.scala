@@ -2,6 +2,7 @@ package grit.kit.run
 
 import grit.core.id.{ConversationId, TurnSeq}
 import grit.core.message.Tokens
+import grit.core.provider.CallLine
 import grit.turn.{TurnBasis, TurnCache, TurnRecord}
 
 /** How a conversation's turns used the provider's prompt cache, for a person to read

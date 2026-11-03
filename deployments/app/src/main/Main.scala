@@ -154,7 +154,7 @@ import Backfills.*
   *     as the chat serves it ([[ChatEdges.serving]]): the tools `GRIT_TOOLS` names, as in a run
   *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set. Each
   *     model call is printed as it is sent and again once answered, with its input, cache reads
-  *     and writes, output and cost ([[grit.kit.run.CallLine.answered]]); then its turn and reply, as for a
+  *     and writes, output and cost ([[grit.core.provider.CallLine.answered]]); then its turn and reply, as for a
   *     message. The same text said again in the same directory and session awaits the turn it
   *     started, so a `grit work` restarted mid-turn resumes it. It exits 0 when the turn
   *     replied, 1 when it did not, 2 when the file cannot be read. A command the turn left

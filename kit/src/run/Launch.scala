@@ -25,7 +25,7 @@ import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.persona.Persona
 import grit.core.place.Weight
 import grit.core.plugin.Plugin
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.provider.{CallLine, ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.{StitchReads, StrandExcerpts, StrandShelf, Tuning as StitchTuning}
 import grit.core.store.{Askers, Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{SetRefusal, Tool, Toolbox}

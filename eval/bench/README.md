@@ -30,6 +30,15 @@ Claude Code's estimate. A run a cap stopped is a trial not passed.
 
 ## The grit arm
 
-`coder-grit.md` is the grit coder's counterpart of `coder.md`, worded for grit's own tools (`run`
-with its allowlist, `tail`, scout's `scout_*`). It is said to `grit work` in the task's checkout,
-before the rig's preamble and the task's brief, as one message.
+`scripts/eval bench --harness grit` runs `grit work` in the task's checkout, outside this
+repository, with one message: `coder-grit.md` (the counterpart of `coder.md`, worded for grit's own
+tools: `run` with its allowlist, `tail`, scout's `scout_*`), the rig's preamble and the task's
+brief. grit starts from an empty environment: the rig sets every variable it reads
+(`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's model in every role at
+the Anthropic API, and the key handed through a file. Its turn is kept in `grit_bench_coder`, which
+`scripts/eval` drops and makes afresh before each run, and read back from there for the trial: the
+calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read
+from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
+the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
+call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
+passed. `--dry` prints what the first call would send, with no key and nothing kept.

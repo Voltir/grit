@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets
 import scala.util.Try
 
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.kit.run.CallLine
+import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
 /** One model call of a run: its message id, the model that answered it, and what it consumed,
@@ -129,22 +129,28 @@ object Consumed {
   /** The tools that edit a file. */
   val Edits: Set[String] = Set("Edit", "Write", "MultiEdit", "NotebookEdit")
 
+  /** The calls of the grit coder whose output is `lines`: each line [[CallLine.answered]] wrote,
+    * in order, named `call-1` on, its model's `anthropic/` left off.
+    */
+  def gritCalls(lines: Vector[String]): Vector[Call] =
+    lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
+      val m = model.stripPrefix("anthropic/")
+      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.cost(m, usage)))
+    }
+
   /** The tools of grit's that edit a file. */
   val GritEdits: Set[String] = Set("write", "edit")
 
   /** What the grit coder whose output is `lines` consumed, in its turn `turn`, stopped early for
-    * `stopped` (as the report says it) when `Some`. Its calls are the lines [[CallLine.answered]]
-    * wrote, side calls among them, in order, named `call-1` on; before its first edit, the calls
+    * `stopped` (as the report says it) when `Some`. Its calls are [[gritCalls]], side calls among
+    * them; before its first edit, the calls
     * its turn made and the UTF-8 bytes its tools returned; its ending the turn's status as its
     * reason, or why it was stopped, in error unless it succeeded unstopped, each `run` that failed
     * a denial; its usage and each model's, its calls' together; no figure of its own beside
     * grit's, and no key source.
     */
   def ofTurn(lines: Vector[String], turn: GritTurn, stopped: Option[String]): Consumed = {
-    val calls = lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
-      val m = model.stripPrefix("anthropic/")
-      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.cost(m, usage)))
-    }
+    val calls = gritCalls(lines)
     val toolCalls = turn.messages.collect { case a: Message.Assistant =>
       a.blocks.collect { case c: AssistantBlock.ToolCall => c }
     }.flatten
@@ -157,11 +163,14 @@ object Consumed {
       case _ => false
     }
     val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
-    val denials = turn.messages.collect {
-      case Message.ToolResult(id, _, true) => toolCalls.find(_.id == id)
-    }.flatten.collect {
-      case c if c.name == "run" => Denial(c.name, ujson.write(c.arguments))
-    }
+    val denials = turn.messages
+      .collect { case Message.ToolResult(id, _, true) =>
+        toolCalls.find(_.id == id)
+      }
+      .flatten
+      .collect {
+        case c if c.name == "run" => Denial(c.name, ujson.write(c.arguments))
+      }
     val byModel = calls.map(_.model).distinct.map { m =>
       m -> Usage.total(calls.filter(_.model == m).map(_.usage))
     }

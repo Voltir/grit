@@ -2,7 +2,6 @@ package grit.eval.harness.bench
 
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Path}
-import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
@@ -13,13 +12,18 @@ import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Processes, Ran, RelPath, Started, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
-import grit.core.model.ModelId
+import grit.core.model.{Grade, ModelId}
 import grit.core.secret.Secret
 import grit.dbos.internal.TrialRows
+import grit.dbos.sql.DbConfig
+import grit.kit.environment.DotEnv
+import grit.models.{AnthropicRates, ModelRole}
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
-  * most it may spend, in USD by Claude Code's own estimate, which a run can pass; and its most
-  * turns.
+  * most it may spend, in USD, which a run can pass (Claude Code's run, by Claude Code's own
+  * estimate; grit's, priced by [[grit.models.AnthropicRates]] as each call answers and stopped
+  * once its calls reach it, so by at most the call that reached it and one then in flight); and
+  * its most turns (grit's tool rounds).
   */
 final case class Caps private (model: ModelId, maxBudgetUsd: BigDecimal, maxTurns: Int)
     extends caps.Pure {
@@ -47,10 +51,72 @@ object Caps {
     } yield Caps(m, b, t)
 }
 
-/** What runs the coder: the `claude` program, scout (the program its MCP server runs, in the
-  * checkout), and the prompt of the bench's coder, the agent the run's session is.
-  */
-final case class Arm(claude: String, scout: String, agent: String) extends caps.Pure
+/** What runs the coder: Claude Code or grit. */
+sealed trait Arm extends caps.Pure
+
+object Arm {
+
+  /** Claude Code: the `claude` program, scout (the program its MCP server runs, in the
+    * checkout), and the prompt of the bench's coder, the agent the run's session is.
+    */
+  final case class ClaudeCode(claude: String, scout: String, agent: String) extends Arm
+
+  /** grit, as `grit work` runs it: the program `launcher` starts grit's app; `scout` is the
+    * program grit's scout service runs; `coder` is the instructions the coder's brief begins
+    * with; `database` is the JDBC URL of the database grit keeps its turn in, logged in as
+    * `docker-compose.yml`'s user; `maxTokens` is the most each reply may write; `passed` are the
+    * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`.
+    */
+  final case class Grit private (
+      launcher: String,
+      scout: String,
+      coder: String,
+      database: String,
+      maxTokens: Int,
+      passed: Variables
+  ) extends Arm
+
+  object Grit {
+
+    /** The arm of these, or why not: a database URL that names no database, or names the
+      * operator's own ([[DbConfig.DefaultDatabase]]), which a run of the bench must never write
+      * to; or `maxTokens` below 1.
+      */
+    def of(
+        launcher: String,
+        scout: String,
+        coder: String,
+        database: String,
+        maxTokens: Int,
+        passed: Variables
+    ): Either[String, Grit] =
+      for {
+        named <- DbConfig.Endpoint
+          .of(database)
+          .database
+          .toRight("the grit coder's database URL names no database")
+        _ <- Either.cond(
+          named != DbConfig.DefaultDatabase,
+          (),
+          s"the grit coder's database $named is the operator's own; name one of the bench's"
+        )
+        _ <- Either.cond(
+          maxTokens >= 1,
+          (),
+          s"the most tokens a reply writes, $maxTokens, is below 1"
+        )
+      } yield Grit(launcher, scout, coder, database, maxTokens, passed)
+  }
+}
+
+/** The grit coder's turn, read back from the database it ran on. */
+trait CoderTurns extends caps.SharedCapability {
+
+  /** The newest turn the database records, read once the coder has ended; `Left` when it records
+    * none or cannot be read.
+    */
+  def newest(): Either[String, GritTurn]
+}
 
 /** A trial, the run's output it was read from, a line a message, what that output gave, and the
   * task's checks as they ran after it.
@@ -63,9 +129,9 @@ final case class Tried(
     stopped: Option[String]
 ) extends caps.Pure {
 
-  /** What a person reads of it, a line each: its measures, each call's tokens, both costs in
-    * cents (grit's, from [[Consumed]], and Claude Code's), how the run ended, each denial, and each
-    * check; never the transcript's text.
+  /** What a person reads of it, a line each: its measures, each call's tokens, its cost in cents
+    * by grit's rates ([[Consumed.gritCost]]) and, for Claude Code's run, by Claude Code's own
+    * estimate, how the run ended, each denial, and each check; never the transcript's text.
     */
   def lines: Vector[String] = {
     def cents(usd: Option[BigDecimal]) = usd.fold("unknown")(Cost.cents)
@@ -89,8 +155,8 @@ final case class Tried(
       s"tokens: ${tokens(t.usage)}"
     ) ++ consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") ++
       Vector(
-        s"cost: $grit, " +
-          s"${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
+        if (t.session.harness == Harness.Grit) s"cost: $grit"
+        else s"cost: $grit, ${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
         consumed.ended.fold(stopped.fold("ended: with no result")(why => s"ended: $why"))(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
         )
@@ -163,11 +229,222 @@ object Rig {
   def trial(work: Processes, handing: Handing, clock: Clock^)(
       repository: String,
       task: Task,
-      arm: Arm,
+      arm: Arm.ClaudeCode,
       cap: Caps,
       key: Secret,
       dir: RelPath,
       quiet: FiniteDuration
+  ): Either[String, Tried] =
+    tried(work)(repository, task, cap, dir) { checkout =>
+      for {
+        streamed <- configured { variables =>
+          handing
+            .started(dir, key, variables) { file =>
+              for {
+                _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
+                argv <- Argv.of(
+                  "timeout",
+                  Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
+                    arguments(arm, cap, task, s"cat '$file'")*
+                )
+              } yield argv
+            }(s => streamed(s, clock, quiet, _ => None))
+            .left
+            .map(e => s"claude did not run: ${e.message}")
+        }
+        Streamed(lines, ended, wall, stopped) = streamed
+        consumed <- Consumed.of(lines, checkout)
+        local <- consumed.session.toRight(neverStarted(ended))
+        _ <- Either.cond(
+          consumed.apiKeySource.contains("apiKeyHelper"),
+          (),
+          consumed.apiKeySource.fold("claude's init line names no apiKeySource") { source =>
+            s"claude used $source, not its apiKeyHelper"
+          }
+        )
+        harness <- Harness.of("claude-code")
+        session <- SessionId.of(harness, local)
+      } yield Coded(session, consumed, lines, wall, stopped)
+    }
+
+  /** The grit coder, as `arm` runs `grit work` under `cap`, on `task` in a new checkout at `dir`
+    * of the repository at `repository`, as [[trial]] runs Claude Code's: the checks run after it,
+    * the diff measured, the checkout tidied, and a quiet run stopped. Its brief is `arm`'s coder
+    * instructions, [[Preamble]] and the task's brief, in a file of its own outside the checkout;
+    * grit starts from an empty environment, but for `arm`'s passed variables and those that
+    * point it at its database, the model `cap` names in every role at the Anthropic API, its
+    * allowlisted tools and scout, `cap`'s turns as its rounds, and `key` as
+    * `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
+    * stopped, a trial not passed, as is one whose turn did not succeed; its turn is read from
+    * `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
+    * shut down. `Left` for fewer than 2 turns, or a model [[AnthropicRates]] has no rates for,
+    * before anything runs; or when its turn cannot be read.
+    */
+  def gritTrial(work: Processes, handing: Handing, clock: Clock^, turns: CoderTurns)(
+      repository: String,
+      task: Task,
+      arm: Arm.Grit,
+      cap: Caps,
+      key: Secret,
+      dir: RelPath,
+      quiet: FiniteDuration
+  ): Either[String, Tried] =
+    for {
+      _ <- gritCapped(cap)
+      none <- Variables.of(Map.empty)
+      tried <- tried(work)(repository, task, cap, dir) { _ =>
+        for {
+          streamed <- briefed(arm, task) { brief =>
+            handing
+              .started(dir, key, none) { file =>
+                Argv.of(
+                  "timeout",
+                  Vector("-k", "1m", s"${Longest.toSeconds}s") ++
+                    gritEnvironment(arm, cap) ++
+                    Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
+                )
+              }(s => streamed(s, clock, quiet, spent(cap)))
+              .left
+              .map(e => s"grit did not run: ${e.message}")
+          }
+          Streamed(lines, _, wall, stopped) = streamed
+          turn <- turns.newest()
+          consumed = Consumed.ofTurn(lines, turn, stopped)
+          session <- SessionId.of(Harness.Grit, turn.session)
+        } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
+      }
+    } yield tried
+
+  /** What the grit coder's first model call on `task` would send, as `grit work --dry` prints
+    * it, in a new checkout at `dir` of `repository`, removed after: run as [[gritTrial]] runs
+    * it, but handed no key, so nothing is sent and nothing spent. `Left` as [[gritTrial]]
+    * refuses, or with the last line of grit's errors when it fails.
+    */
+  def dry(work: Processes)(
+      repository: String,
+      task: Task,
+      arm: Arm.Grit,
+      cap: Caps,
+      dir: RelPath
+  ): Either[String, String] =
+    for {
+      _ <- gritCapped(cap)
+      shown <- tidied(work, dir, keep = false)(
+        for {
+          _ <- Clone.fresh(work)(repository, task.base, dir)
+          shown <- briefed(arm, task) { brief =>
+            for {
+              argv <- Argv.of(
+                "env",
+                gritEnvironment(arm, cap).drop(1) ++ Vector(arm.launcher, "work", "--dry", brief)*
+              )
+              shown <- work
+                .started(argv, dir) { s =>
+                  s.input.close()
+                  val lines = s.lines.toVector
+                  s.await(Longest).left.map(_.message).flatMap { ran =>
+                    Either.cond(
+                      ran.exit == 0,
+                      lines.mkString("\n"),
+                      ran.output.text.linesIterator
+                        .filter(_.trim.nonEmpty)
+                        .toVector
+                        .lastOption
+                        .fold(s"grit work --dry failed (exit ${ran.exit})")(line =>
+                          s"grit work --dry failed (exit ${ran.exit}): $line"
+                        )
+                    )
+                  }
+                }
+                .left
+                .map(e => s"grit did not run: ${e.message}")
+                .flatten
+            } yield shown
+          }
+        } yield shown
+      )
+    } yield shown
+
+  /** `Right` when grit can run under `cap`: at least 2 turns, and a model whose calls
+    * [[AnthropicRates]] prices, since the cap is kept by that price.
+    */
+  private def gritCapped(cap: Caps): Either[String, Unit] =
+    for {
+      _ <- Either.cond(
+        cap.maxTurns >= 2,
+        (),
+        s"grit takes at least 2 turns, its first call and one after a tool's; not ${cap.maxTurns}"
+      )
+      _ <- Either.cond(
+        AnthropicRates.cost(cap.claudeModel, Usage.Zero).isDefined,
+        (),
+        s"grit's rates price no model ${cap.claudeModel}, so its cap could not stop it"
+      )
+    } yield ()
+
+  /** Why a grit run whose output so far is `lines` is stopped under `cap`: its calls, priced by
+    * [[AnthropicRates]], cost its budget or more; `None` while they cost less.
+    */
+  private def spent(cap: Caps)(lines: Vector[String]): Option[String] = {
+    val cost = Consumed.gritCalls(lines).flatMap(_.usage.costUsd).sum
+    Option.when(cost >= cap.maxBudgetUsd)(
+      s"its calls cost ${Cost.cents(cost)}, reaching its cap of ${Cost.cents(cap.maxBudgetUsd)}"
+    )
+  }
+
+  /** `env -i` and the variables grit runs with, as `name=value` arguments, as [[gritTrial]]
+    * says; no key among them.
+    */
+  private def gritEnvironment(arm: Arm.Grit, cap: Caps): Vector[String] = {
+    val model = ModelId.value(cap.model)
+    val upstream = "api.anthropic.com"
+    val roles = Vector(Grade.Standard, Grade.Light, Grade.Strong).flatMap { g =>
+      Vector(ModelRole.Turn.modelVar(g) -> model, ModelRole.Turn.upstreamVar(g) -> upstream)
+    } ++ Vector(ModelRole.Dream.modelVar -> model, ModelRole.Dream.upstreamVar -> upstream)
+    Vector("env", "-i") ++ (arm.passed.values.toVector.sorted ++ Vector(
+      DotEnv.FileVar -> "/dev/null",
+      DbConfig.UrlVar -> arm.database,
+      "GRIT_TOOLS" -> "allowlist",
+      "GRIT_SCOUT" -> arm.scout,
+      ModelRole.Turn.maxTokensVar -> arm.maxTokens.toString,
+      "GRIT_TOOL_ROUNDS" -> cap.maxTurns.toString,
+      "GRIT_ASSEMBLER" -> "linear",
+      "GRIT_SESSION" -> "bench",
+      "GRIT_SWEEP" -> "24h"
+    ) ++ roles).map((k, v) => s"$k=$v")
+  }
+
+  /** The script `sh -c` runs to start grit with its key: the key read from the file its first
+    * argument names into `ANTHROPIC_API_KEY`, then the rest of its arguments run in its place,
+    * so the key is in no program's arguments.
+    */
+  private val Handed: String =
+    """ANTHROPIC_API_KEY="$(cat "$1")"; export ANTHROPIC_API_KEY; shift; exec "$@""""
+
+  /** `use` of the absolute path of a file holding the grit coder's brief for `task`: `arm`'s
+    * coder instructions, [[Preamble]] and the task's brief. The file is in a directory only this
+    * user can read under the system temp directory, removed once `use` returns or throws.
+    */
+  private def briefed[A](arm: Arm.Grit, task: Task)(
+      use: String => Either[String, A]
+  ): Either[String, A] =
+    privately("the brief") { dir =>
+      Try(
+        Files.writeString(
+          dir.resolve("brief.md"),
+          s"${arm.coder.stripTrailing}\n\n$Preamble${task.brief}"
+        )
+      ).toEither.left
+        .map(e => s"the brief was not written: ${e.getClass.getName}")
+        .flatMap(file => use(file.toAbsolutePath.toString))
+    }
+
+  /** A coder's run, as `coded` makes it in the checkout whose absolute path it is given, on
+    * `task` under `cap` in a new checkout at `dir` of `repository`; then the task's checks run
+    * there and its diff measured against the known diff. Tidied as [[trial]] says.
+    */
+  private def tried(work: Processes)(repository: String, task: Task, cap: Caps, dir: RelPath)(
+      coded: String => Either[String, Coded]
   ): Either[String, Tried] =
     for {
       knownDir <- RelPath.of(s"${RelPath.value(dir)}-known").left.map(_.toString)
@@ -180,58 +457,54 @@ object Rig {
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
-          streamed <- configured { variables =>
-            val started = clock.millis()
-            handing
-              .started(dir, key, variables) { file =>
-                for {
-                  _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
-                  argv <- Argv.of(
-                    "timeout",
-                    Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
-                      arguments(arm, cap, task, s"cat '$file'")*
-                  )
-                } yield argv
-              } { s =>
-                s.input.close()
-                val (lines, stopped) = streamOf(s, quiet)
-                if (stopped.isDefined) s.kill()
-                val ended = s.await(Longest + 2.minutes).left.map(_.message)
-                s.kill()
-                Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
-              }
-              .left
-              .map(e => s"claude did not run: ${e.message}")
-          }
-          Streamed(lines, ended, wall, stopped) = streamed
-          consumed <- Consumed.of(lines, checkout)
-          local <- consumed.session.toRight(neverStarted(ended))
-          _ <- Either.cond(
-            consumed.apiKeySource.contains("apiKeyHelper"),
-            (),
-            consumed.apiKeySource.fold("claude's init line names no apiKeySource") { source =>
-              s"claude used $source, not its apiKeyHelper"
-            }
-          )
+          c <- coded(checkout)
           changed <- Clone.changed(work)(dir, task.base)
           checked <- Checks.run(work)(dir, task.checks).left.map(_.message)
-          harness <- Harness.of("claude-code")
-          session <- SessionId.of(harness, local)
           trial <- TrialRows.Trial.of(
-            session,
+            c.session,
             task.name,
             cap.model,
-            consumed.usage,
-            consumed.calls.size,
-            wall,
-            consumed.readBeforeEdit,
-            consumed.callsBeforeEdit,
-            passed = checked.passed && consumed.ended.exists(!_.error),
+            c.consumed.usage,
+            c.consumed.calls.size,
+            c.wall,
+            c.consumed.readBeforeEdit,
+            c.consumed.callsBeforeEdit,
+            passed = checked.passed && c.consumed.ended.exists(!_.error),
             distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
           )
-        } yield Tried(trial, lines, consumed, checked, stopped)
+        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped)
       )
     } yield tried
+
+  /** What a coder's run gave: its session, what it consumed, its transcript, how long it ran,
+    * and why it was stopped early, if it was.
+    */
+  private final case class Coded(
+      session: SessionId,
+      consumed: Consumed,
+      transcript: Vector[String],
+      wall: FiniteDuration,
+      stopped: Option[String]
+  )
+
+  /** What the started coder `s` writes, read until it ends, writes nothing for `quiet`, or
+    * `stop` gives why it is stopped; then it is killed, with every process it started still its
+    * descendant, and its wall time read from `clock`.
+    */
+  private def streamed(
+      s: Started^,
+      clock: Clock^,
+      quiet: FiniteDuration,
+      stop: Vector[String] -> Option[String]
+  ): Streamed = {
+    val started = clock.millis()
+    s.input.close()
+    val (lines, stopped) = streamOf(s, quiet, stop)
+    if (stopped.isDefined) s.kill()
+    val ended = s.await(Longest + 2.minutes).left.map(_.message)
+    s.kill()
+    Streamed(lines, ended, (clock.millis() - started).max(0L).millis, stopped)
+  }
 
   /** `task`'s known diff at `dir`, its commits applied to its base, and then its checks run;
     * `Left` when a commit does not apply. The checkout is removed after, as [[trial]]'s is.
@@ -245,7 +518,9 @@ object Rig {
         .flatMap(_ => Checks.run(work)(dir, task.checks).left.map(_.message))
     )
 
-  /** What `claude` wrote to its output, a line each, and how long it ran. */
+  /** What the coder wrote to its output, a line each, how its wait ended, how long it ran, and
+    * why it was stopped early, if it was.
+    */
   private final case class Streamed(
       lines: Vector[String],
       ended: Either[String, Ran],
@@ -261,26 +536,36 @@ object Rig {
     * made. It makes and removes the directory itself, as host's tree removal does, since the
     * bench names no `grit.host` (the law's `harness-names-host-from-main-alone`).
     */
-  private def configured[A](use: Variables => Either[String, A]): Either[String, A] = {
-    val owner = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
-    Try(Files.createTempDirectory("grit-bench-config", owner)).toEither.left
-      .map(e => s"no directory for claude's config: ${e.getClass.getName}")
+  private def configured[A](use: Variables => Either[String, A]): Either[String, A] =
+    privately("claude's config") { dir =>
+      for {
+        config <- Try(Files.createDirectory(dir.resolve("config"), Owner)).toEither.left
+          .map(e => s"no config directory: ${e.getClass.getName}")
+        variables <- Variables.of(
+          Map(
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1",
+            "CLAUDE_CONFIG_DIR" -> config.toAbsolutePath.toString
+          )
+        )
+        used <- use(variables)
+      } yield used
+    }
+
+  /** `use` of a new directory only this user can read, under the system temp directory, for
+    * `what`; the directory, and all in it, removed once `use` returns or throws. `Left` naming
+    * `what` when it cannot be made.
+    */
+  private def privately[A](what: String)(use: Path => Either[String, A]): Either[String, A] =
+    Try(Files.createTempDirectory("grit-bench", Owner)).toEither.left
+      .map(e => s"no directory for $what: ${e.getClass.getName}")
       .flatMap { dir =>
-        try {
-          for {
-            config <- Try(Files.createDirectory(dir.resolve("config"), owner)).toEither.left
-              .map(e => s"no config directory: ${e.getClass.getName}")
-            variables <- Variables.of(
-              Map(
-                "CLAUDE_CODE_DISABLE_AUTO_MEMORY" -> "1",
-                "CLAUDE_CONFIG_DIR" -> config.toAbsolutePath.toString
-              )
-            )
-            used <- use(variables)
-          } yield used
-        } finally removeTree(dir)
+        try use(dir)
+        finally removeTree(dir)
       }
-  }
+
+  /** Read, written and searched by this user alone. */
+  private val Owner =
+    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
 
   /** Removes `dir` and all in it, deepest first, each path in its own `Try` so that one that
     * cannot go does not keep the rest. A symbolic link is removed as a link, never followed.
@@ -297,7 +582,12 @@ object Rig {
   /** `claude`'s arguments for `task` under `cap`, its program left off; `helper` its
     * `apiKeyHelper`.
     */
-  private def arguments(arm: Arm, cap: Caps, task: Task, helper: String): Vector[String] = {
+  private def arguments(
+      arm: Arm.ClaudeCode,
+      cap: Caps,
+      task: Task,
+      helper: String
+  ): Vector[String] = {
     val settings = ujson.Obj(
       "apiKeyHelper" -> helper,
       "disableAllHooks" -> true,
@@ -371,28 +661,21 @@ object Rig {
     */
   private val Tick: FiniteDuration = 500.millis
 
-  /** The lines `s` writes, a line each, and why they stopped early (`Some`, as the report says it)
-    * when it wrote nothing for `quiet`; `None` when its output ended. The lines are read by a
-    * thread of their own, so that the wait can be timed; the caller kills `s` once they stop, and
-    * the kill ends the output, which ends that thread.
+  /** The lines `s` writes, a line each, and why they stopped early (`Some`, as the report says it):
+    * it wrote nothing for `quiet`, or `stop` of the lines so far gave a reason; `None` when its
+    * output ended. The caller kills `s` once they stop.
     */
-  private def streamOf(s: Started^, quiet: FiniteDuration): (Vector[String], Option[String]) = {
-    val arrived = new LinkedBlockingQueue[Option[String]]()
-    // Read by the thread below alone, and only until its output ends: no other reader is made.
-    @caps.unsafe.untrackedCaptures
-    val lines = s.lines
-    val pump = new Thread(() =>
-      try lines.foreach(line => arrived.put(Some(line)))
-      finally arrived.put(None)
-    )
-    pump.setDaemon(true)
-    pump.start()
+  private def streamOf(
+      s: Started^,
+      quiet: FiniteDuration,
+      stop: Vector[String] -> Option[String]
+  ): (Vector[String], Option[String]) = {
     @tailrec def collect(
         acc: Vector[String],
         idle: FiniteDuration
     ): (Vector[String], Option[String]) =
-      Option(arrived.poll(Tick.toMillis, TimeUnit.MILLISECONDS)) match {
-        case None if idle + Tick >= quiet =>
+      s.next(Tick) match {
+        case Started.Next.Quiet if idle + Tick >= quiet =>
           (
             acc,
             Some(s"quiet for ${
@@ -400,9 +683,14 @@ object Rig {
                 else s"${quiet.toSeconds} s"
               }")
           )
-        case None => collect(acc, idle + Tick)
-        case Some(None) => (acc, None)
-        case Some(Some(line)) => collect(acc :+ line, 0.millis)
+        case Started.Next.Quiet => collect(acc, idle + Tick)
+        case Started.Next.Ended => (acc, None)
+        case Started.Next.Line(line) =>
+          val read = acc :+ line
+          stop(read) match {
+            case Some(why) => (read, Some(why))
+            case None => collect(read, 0.millis)
+          }
       }
     collect(Vector.empty, 0.millis)
   }

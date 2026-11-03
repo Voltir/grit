@@ -1,4 +1,4 @@
-package grit.kit.run
+package grit.core.provider
 
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelRef
