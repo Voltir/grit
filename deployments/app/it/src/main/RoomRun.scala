@@ -22,7 +22,7 @@ import grit.dbos.engine.Engine
 import grit.eval.Room
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
-import grit.models.{OpenRouterConfig, Seed}
+import grit.models.OpenRouterConfig
 import grit.turn.TurnLoop
 
 /** What a run by hand over a room of the eval's shape (`eval/resources/rooms`) shares
@@ -48,11 +48,13 @@ private[main] object RoomRun {
       cap: DailyCap
   ): Either[String, (Deployment, Secrets)] =
     for {
-      seed <- Seed.catalog
-      policy <-
-        if (!env.contains(Variable.value(OpenRouterConfig.KeyVar)))
-          Left(s"${OpenRouterConfig.KeyVar} is unset")
-        else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
+      // The room is asked of OpenRouter's models: without its key, nothing would answer but the stub.
+      _ <- Either.cond(
+        env.contains(Variable.value(OpenRouterConfig.KeyVar)),
+        (),
+        s"${OpenRouterConfig.KeyVar} is unset"
+      )
+      policy <- Deploying.policy(env)
       deployment <- Deployment
         .of(
           edges = Vector.empty,
