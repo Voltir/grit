@@ -667,6 +667,28 @@ object RigTests extends TestSuite {
       }
     }
 
+    test(
+      "old runs under the work root go: checkouts past the newest few, logs past the newest many"
+    ) {
+      val root = Files.createTempDirectory("grit-runs")
+      try {
+        val runs = Vector("a-100", "a-101", "b-102", "b-103")
+        runs.foreach { n =>
+          Files.createDirectories(root.resolve(n).resolve("src"))
+          Files.writeString(root.resolve(s"$n.grit.log"), "x")
+        }
+        Files.createDirectories(root.resolve("a-99-known"))
+        Files.createDirectories(root.resolve("notes"))
+        (
+          Rig.cleared(root)(runs = 3, checkouts = 1),
+          Files.list(root).iterator.asScala.map(_.getFileName.toString).toVector.sorted
+        ) ==> (
+          Right(5),
+          Vector("a-101.grit.log", "b-102.grit.log", "b-103", "b-103.grit.log", "notes")
+        )
+      } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
+    }
+
     test("a known run passes when its commits apply and its checks pass, and leaves nothing") {
       withTask { f =>
         (Rig.known(f.work)(f.origin, f.task, checkout).map(_.passed), f.exists("trial")) ==>

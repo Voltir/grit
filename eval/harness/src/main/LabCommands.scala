@@ -49,7 +49,9 @@ private[main] object LabCommands {
     * the file `<file>`), or grit's ([[Rig.gritTrial]]: its coder's instructions the file
     * `<file>`, its turn kept in the database at `<jdbc>` and read back from there), kept with its
     * transcript in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
-    * ([[Bench.keep]]). Prints what [[Tried.lines]] gives, or each check; never the key.
+    * ([[Bench.keep]]). Before any run, `<work>` is cleared of old runs ([[Rig.cleared]]: the
+    * newest [[Rig.KeptCheckouts]] keep their checkouts, the newest [[TrialRows.Kept]] grit's
+    * output). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
@@ -62,6 +64,9 @@ private[main] object LabCommands {
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))
       _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
+      cleared <- Rig.cleared(root)(TrialRows.Kept, Rig.KeptCheckouts)
+      _ = if (cleared > 0)
+        System.err.println(s"[bench] removed $cleared old runs' entries from $root")
       env <- DotEnv.loadDefault(sys.env)
       redaction = Redaction.of(env)
       _ = System.err.println(s"[bench] ${redaction.described}")

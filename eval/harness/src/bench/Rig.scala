@@ -192,6 +192,48 @@ object Rig {
     */
   val Quiet: FiniteDuration = 10.minutes
 
+  /** 5: the most runs whose checkout the work root keeps, a failed run's checkout being up to
+    * about 200 MB, its law's tools and snapshot included.
+    */
+  val KeptCheckouts: Int = 5
+
+  /** The work root at `root` cleared of old runs, a run being what one trial left under it, named
+    * `<task>-<seconds>` by when it began: its checkout, its known checkout (`-known`) and grit's
+    * output (`.grit.log`). Every run but the newest `checkouts` loses its checkouts, and every run
+    * but the newest `runs` its output too; any other entry is left. How many entries went, or
+    * why the root could not be read; an entry that cannot be removed is left for the next.
+    */
+  def cleared(root: Path)(runs: Int, checkouts: Int): Either[String, Int] =
+    Try(Files.list(root)).toEither.left
+      .map(e => s"the work root $root could not be read: ${e.getClass.getName}")
+      .map { listing =>
+        val entries =
+          try listing.iterator.asScala.toVector
+          finally listing.close()
+        val runOf = entries.flatMap { p =>
+          p.getFileName.toString match {
+            case RunEntry(stem, seconds, suffix) =>
+              seconds.toLongOption.map(s => (p, (s, stem), suffix == ".grit.log"))
+            case _ => None
+          }
+        }
+        val newest = runOf.map(_._2).distinct.sorted.reverse
+        val logsKept = newest.take(runs).toSet
+        val checkoutsKept = newest.take(checkouts).toSet
+        runOf.count { (p, run, log) =>
+          val goes = if (log) !logsKept(run) else !checkoutsKept(run)
+          goes && {
+            if (log) Try(Files.deleteIfExists(p)).isSuccess
+            else { removeTree(p); !Files.exists(p) }
+          }
+        }
+      }
+
+  /** A run's entry under the work root: its stem and when it began, then `-known`, `.grit.log`
+    * or nothing.
+    */
+  private val RunEntry = raw"(.+)-(\d+)(-known|\.grit\.log)?".r
+
   /** The name the bench's coder goes by in `--agents`. */
   val Coder: String = "bench-coder"
 
