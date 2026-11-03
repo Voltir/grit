@@ -39,13 +39,11 @@ private[main] object Deploying {
     else Placer.Off(s"${JevConfig.KeyVar} is not set")
 
   /** The model policy: the seed catalog's ([[Seed]]), with the roles' variables laid over it
-    * ([[OpenRouterConfig.policy]]) when OpenRouter's key is set.
+    * ([[OpenRouterConfig.policy]]) whichever gateway's key is set, or none: without a key the
+    * stub answers, under the policy a keyed run would pin.
     */
   private[main] def policy(env: Map[String, String]): Either[String, Policy] =
-    Seed.catalog.flatMap { seed =>
-      if (!env.contains(Variable.value(OpenRouterConfig.KeyVar))) Right(seed.policy)
-      else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
-    }
+    Seed.catalog.flatMap(seed => OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
 
   /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
     * the conversations `worksIn` links working in their services and `reaches` links reaching
