@@ -27,3 +27,9 @@ run. The baseline is therefore Claude Code under grit's rule, not Claude Code as
 with its own settings, and commands that only read (`ls`, `cat`, `grep`) still run without a rule.
 The run is billed to the Anthropic API key the rig passes, priced by grit's own rates beside
 Claude Code's estimate. A run a cap stopped is a trial not passed.
+
+## The grit arm
+
+`coder-grit.md` is the grit coder's counterpart of `coder.md`, worded for grit's own tools (`run`
+with its allowlist, `tail`, scout's `scout_*`). It is said to `grit work` in the task's checkout,
+before the rig's preamble and the task's brief, as one message.
