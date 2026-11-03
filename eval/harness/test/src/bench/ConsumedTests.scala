@@ -1,6 +1,7 @@
 package grit.eval.harness.bench
 
-import grit.core.message.{Tokens, Usage}
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 
 import utest.*
 
@@ -11,6 +12,43 @@ object ConsumedTests extends TestSuite {
 
   private def call(id: String, usage: String, content: String = "") =
     s"""{"type":"assistant","message":{"id":"$id","model":"claude-haiku-5-5","content":[$content],"usage":{$usage}},"session_id":"s"}"""
+
+  /** An assistant message of the grit coder calling `tool` with `arguments`, as call `id`. */
+  private def calling(id: String, tool: String, arguments: ujson.Value): Message =
+    Message.Assistant(
+      Vector(AssistantBlock.ToolCall(ToolCallId(id), tool, arguments)),
+      StopReason.ToolUse,
+      Usage.Zero,
+      "claude-haiku-5-5"
+    )
+
+  /** What `grit work` printed: two calls' lines, the second a side call, among other lines. */
+  private val gritLines: Vector[String] = Vector(
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com called with 1 message(s)",
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 1200 · read 1000 · " +
+      "write 150 · out 40 · 0.01¢",
+    "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 300 · read 0 · " +
+      "write 0 · out 10 · 0.00¢",
+    "[main] done"
+  )
+
+  /** A grit turn that reads a file, is refused a run, then edits; a read after the edit. */
+  private def gritTurn(status: String) = GritTurn(
+    "c-1",
+    Vector(
+      Message.User("the brief"),
+      calling("t1", "read", ujson.Obj("path" -> "a")),
+      Message.ToolResult(ToolCallId("t1"), "héllo", isError = false),
+      calling("t2", "run", ujson.Obj("argv" -> ujson.Arr("rm", "-rf", "x"))),
+      Message.ToolResult(ToolCallId("t2"), "rm is not on the allowlist", isError = true),
+      calling("t3", "edit", ujson.Obj("path" -> "a")),
+      Message.ToolResult(ToolCallId("t3"), "edited a", isError = false),
+      calling("t4", "read", ujson.Obj("path" -> "b")),
+      Message.ToolResult(ToolCallId("t4"), "after the edit", isError = false)
+    ),
+    status,
+    "the turn, rendered"
+  )
 
   val tests = Tests {
     test(
@@ -167,6 +205,51 @@ object ConsumedTests extends TestSuite {
       )
       Consumed.of(rows, checkout).map(_.gritCost) ==> Right(
         Left("claude-haiku-5-5's side calls may straddle a card")
+      )
+    }
+
+    test(
+      "a grit turn's calls are its answered lines, side calls among them, priced by grit's rates"
+    ) {
+      val c = Consumed.ofTurn(gritLines, gritTurn("SUCCESS"), stopped = None)
+      (
+        c.session,
+        c.calls.map(k => (k.id, k.model, Tokens.value(k.usage.input), k.usage.costUsd)),
+        c.ended.map(e => (e.byModel.map(_._1), e.claimedUsd)),
+        c.gritCost
+      ) ==> (
+        Some("c-1"),
+        Vector(
+          ("call-1", "claude-haiku-5-5", 1200L, Some(BigDecimal("0.00005375"))),
+          ("call-2", "claude-haiku-5-5", 300L, Some(BigDecimal("0.000035")))
+        ),
+        Some((Vector("claude-haiku-5-5"), None)),
+        Right(BigDecimal("0.00008875"))
+      )
+    }
+
+    test(
+      "before a grit turn's first write or edit: the calls made and the bytes its tools returned"
+    ) {
+      val c = Consumed.ofTurn(gritLines, gritTurn("SUCCESS"), stopped = None)
+      (c.callsBeforeEdit, c.readBeforeEdit) ==> (Some(2), Some(32L))
+    }
+
+    test("a grit turn's refused runs are its denials, and only a turn that succeeded unstopped") {
+      def ending(status: String, stopped: Option[String]) =
+        Consumed
+          .ofTurn(gritLines, gritTurn(status), stopped)
+          .ended
+          .map(e => (e.reason, e.error, e.denials))
+      val denied = Vector(Denial("run", """{"argv":["rm","-rf","x"]}"""))
+      (
+        ending("SUCCESS", None),
+        ending("PENDING", None),
+        ending("SUCCESS", Some("spent 10.2¢, at its cap"))
+      ) ==> (
+        Some(("SUCCESS", false, denied)),
+        Some(("PENDING", true, denied)),
+        Some(("spent 10.2¢, at its cap", true, denied))
       )
     }
 

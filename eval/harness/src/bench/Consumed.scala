@@ -4,7 +4,8 @@ import java.nio.charset.StandardCharsets
 
 import scala.util.Try
 
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.kit.run.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
 /** One model call of a run: its message id, the model that answered it, and what it consumed,
@@ -14,13 +15,25 @@ import grit.models.{AnthropicJson, AnthropicRates}
   */
 final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
 
+/** The grit coder's turn as its database recorded it: its conversation's id (its session), the
+  * messages its last model call was sent, oldest first, the status DBOS gives its workflow
+  * (`SUCCESS`, `PENDING`, `ERROR`, …), and the turn as a person reads it, as the eval's `sent`
+  * renders it.
+  */
+final case class GritTurn(
+    session: String,
+    messages: Vector[Message],
+    status: String,
+    rendered: String
+)
+
 /** A tool call the run was refused, by tool and its input as JSON. */
 final case class Denial(tool: String, input: String) extends caps.Pure
 
-/** How a run ended, from its result message: Claude Code's reason (`success`, or a cap's or an
-  * error's, such as `error_max_turns`), whether it ended in error, the cost Claude Code estimated
-  * for it, each tool call it was refused, and the run's usage as its result gives it (`None`
-  * when the result gives none).
+/** How a run ended: its reason (Claude Code's, as `success` or `error_max_turns`; for grit, its
+  * turn's status or why it was stopped), whether it ended in error, the cost Claude Code estimated
+  * for it (`None` for grit, which estimates none of its own), each tool call it was refused, the
+  * run's usage (`None` when Claude Code's result gives none), and each model's.
   */
 final case class Ended(
     reason: String,
@@ -31,7 +44,8 @@ final case class Ended(
     byModel: Vector[(String, Usage)]
 ) extends caps.Pure
 
-/** What a Claude Code run consumed, read from its `stream-json` output: its session, its model
+/** What a coder's run consumed, read from Claude Code's `stream-json` output ([[Consumed.of]]) or
+  * from grit's call lines and turn ([[Consumed.ofTurn]]): its session, its model
   * calls in the order they began, and before its first edit of a file under its checkout the calls
   * made and the UTF-8 bytes its tools returned (both `None`: it made no such edit); and how it
   * ended (`None`: it wrote no result, as when it was killed); and the source of the key its init
@@ -114,6 +128,64 @@ object Consumed {
 
   /** The tools that edit a file. */
   val Edits: Set[String] = Set("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+  /** The tools of grit's that edit a file. */
+  val GritEdits: Set[String] = Set("write", "edit")
+
+  /** What the grit coder whose output is `lines` consumed, in its turn `turn`, stopped early for
+    * `stopped` (as the report says it) when `Some`. Its calls are the lines [[CallLine.answered]]
+    * wrote, side calls among them, in order, named `call-1` on; before its first edit, the calls
+    * its turn made and the UTF-8 bytes its tools returned; its ending the turn's status as its
+    * reason, or why it was stopped, in error unless it succeeded unstopped, each `run` that failed
+    * a denial; its usage and each model's, its calls' together; no figure of its own beside
+    * grit's, and no key source.
+    */
+  def ofTurn(lines: Vector[String], turn: GritTurn, stopped: Option[String]): Consumed = {
+    val calls = lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
+      val m = model.stripPrefix("anthropic/")
+      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.cost(m, usage)))
+    }
+    val toolCalls = turn.messages.collect { case a: Message.Assistant =>
+      a.blocks.collect { case c: AssistantBlock.ToolCall => c }
+    }.flatten
+    val firstEdit = turn.messages.indexWhere {
+      case a: Message.Assistant =>
+        a.blocks.exists {
+          case c: AssistantBlock.ToolCall => GritEdits(c.name)
+          case _ => false
+        }
+      case _ => false
+    }
+    val before = if (firstEdit < 0) None else Some(turn.messages.take(firstEdit))
+    val denials = turn.messages.collect {
+      case Message.ToolResult(id, _, true) => toolCalls.find(_.id == id)
+    }.flatten.collect {
+      case c if c.name == "run" => Denial(c.name, ujson.write(c.arguments))
+    }
+    val byModel = calls.map(_.model).distinct.map { m =>
+      m -> Usage.total(calls.filter(_.model == m).map(_.usage))
+    }
+    Consumed(
+      Some(turn.session),
+      calls,
+      before.map(_.count {
+        case _: Message.Assistant => true
+        case _ => false
+      }),
+      before.map(_.collect { case r: Message.ToolResult => bytes(r.content) }.sum),
+      Some(
+        Ended(
+          stopped.getOrElse(turn.status),
+          stopped.isDefined || turn.status != "SUCCESS",
+          None,
+          denials,
+          Some(Usage.total(calls.map(_.usage))),
+          byModel
+        )
+      ),
+      None
+    )
+  }
 
   /** What the run whose output is `lines` consumed, its checkout at `checkout` (an absolute
     * path); a call counted once, at the last usage its message gave. `Left` naming the first line
