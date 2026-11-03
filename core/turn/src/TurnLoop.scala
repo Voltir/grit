@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.allot.Allotment
-import grit.core.message.{AssistantBlock, Cut, Message, StopReason, Tokens}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolUse}
@@ -205,23 +205,15 @@ object TurnLoop {
     request.copy(messages = sent)
   }
 
-  /** 1,000: the most characters of a tool's description a model is offered, after
-    * [[Stripped.of]], cut at a word ([[Cut.head]]).
-    */
-  val DescribedChars: Int = 1000
-
-  /** `request` as a model is offered its tools: each tool's description [[Stripped.of]], then
-    * cut at a word to [[DescribedChars]]; and under [[ToolGuidance.SystemLines]], when it offers
+  /** `request` as a model is offered its tools: each tool's description [[Stripped.of]], whole;
+    * and under [[ToolGuidance.SystemLines]], when it offers
     * any, its tools named in its system prompt: after a blank line, `Tools you may call:`, then
     * the tools fenced in `<grit_tool_descriptions>` ([[Fenced]]), a line per tool, `- name: `
     * and the first line of that description, trimmed.
     */
   def guided(request: ModelRequest, guidance: ToolGuidance): ModelRequest = {
-    val offered = request.copy(tools =
-      request.tools.map(t =>
-        t.copy(description = Cut.head(Stripped.of(t.description), DescribedChars))
-      )
-    )
+    val offered =
+      request.copy(tools = request.tools.map(t => t.copy(description = Stripped.of(t.description))))
     guidance match {
       case ToolGuidance.SchemaOnly => offered
       case ToolGuidance.SystemLines if offered.tools.isEmpty => offered
