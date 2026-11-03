@@ -34,15 +34,15 @@ object ToolRoundsTests extends TestSuite {
           Left("GRIT_TOOLS is not read, all or allowlist")
       }
       // What the model and a person read the list as.
-      Offered.ReferenceAllowlist.rules.map(_.written) ==> Vector(
-        "git status …",
-        "git diff …",
-        "git log …",
-        "git show …",
-        "git add …",
-        "git commit …",
-        "./mill …",
-        "scripts/check …"
+      Offered.ReferenceAllowlist.rules.map(_.listed) ==> Vector(
+        "`git status …`",
+        "`git diff …`",
+        "`git log …`",
+        "`git show …`",
+        "`git add …`",
+        "`git commit …`",
+        "`./mill …`",
+        "`scripts/check …` (at least one argument: the suites or modules to check)"
       )
       Offered.ReferenceAllowlist.longest ==> scala.concurrent.duration.Duration(30, "minutes")
       RunChoices.toolChoice(Map("GRIT_TOOLS" -> " all "), chat = true) ==> Right(Offered.All)

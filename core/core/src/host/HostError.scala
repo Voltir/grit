@@ -47,6 +47,11 @@ enum HostError {
   /** An [[Allowlist]] does not permit `argv`; nothing started. */
   case Unlisted(argv: Argv)
 
+  /** An [[Allowlist]] permits `argv` only with arguments after it, `what` they are; nothing
+    * started.
+    */
+  case Unfinished(argv: Argv, what: String)
+
   /** `most` commands are already running in the checkout ([[Runs.Most]]); nothing started. */
   case Busy(most: Int)
 
@@ -78,6 +83,9 @@ enum HostError {
     case Unlisted(argv) =>
       s"`${argv.written}` is not on this checkout's command list, so nothing ran. Only the " +
         "commands the run tool's description lists may run."
+    case Unfinished(argv, what) =>
+      s"`${argv.written}` runs only with at least one argument after it, $what, so nothing " +
+        "ran. Name them, as the run tool's description lists."
     case Busy(most) =>
       s"$most commands are already running in this checkout, so nothing started. Wait for one " +
         "with `tail`, or end one with `stop`."

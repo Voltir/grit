@@ -110,6 +110,36 @@ object AllowlistTests extends TestSuite {
         """git commit -m 'a b' '' 'it'\''s' '$HOME' 'x|y' --amend"""
     }
 
+    test(
+      "Following permits its argv only with more after it; bare, it is refused saying what to add"
+    ) {
+      val check = Allowlist.Rule.Following(argv("scripts/check"), "the suites or modules to check")
+      val noted = new Noting(Map(argv("scripts/check", "grit.core") -> instant))
+      val runs = Allowlisted.over(noted, allowlist(1.minute, gitStatus, check))
+      (
+        check.permits(argv("scripts/check")),
+        check.permits(argv("scripts/check", "grit.core")),
+        runs.start(argv("scripts/check"), 5.seconds, 1.second),
+        runs.start(argv("scripts/check", "grit.core"), 5.seconds, 1.second).isRight,
+        check.listed,
+        gitStatus.listed
+      ) ==> (
+        false,
+        true,
+        Left(HostError.Unfinished(argv("scripts/check"), "the suites or modules to check")),
+        true,
+        "`scripts/check …` (at least one argument: the suites or modules to check)",
+        "`git status`"
+      )
+    }
+
+    test("a command run without the arguments its rule needs is refused, saying which to name") {
+      // What the model reads, word for word.
+      HostError.Unfinished(argv("scripts/check"), "the suites or modules to check").message ==>
+        "`scripts/check` runs only with at least one argument after it, the suites or modules " +
+        "to check, so nothing ran. Name them, as the run tool's description lists."
+    }
+
     test("an unlisted command's refusal names it and says nothing ran") {
       // What the model reads, word for word.
       HostError.Unlisted(argv("rm", "-rf", "my dir")).message ==>

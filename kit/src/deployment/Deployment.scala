@@ -99,7 +99,10 @@ object Offered {
       leading("git", "add"),
       leading("git", "commit"),
       leading("./mill"),
-      leading("scripts/check")
+      // Bare, it is the whole gate, lint's second build included: more than a coder's check.
+      Argv
+        .of("scripts/check")
+        .map(Allowlist.Rule.Following(_, "the suites or modules to check"))
     )
     // Every argv above is a non-empty program without a NUL, and ReferenceLongest is in bounds.
     rules

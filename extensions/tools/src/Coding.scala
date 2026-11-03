@@ -416,7 +416,7 @@ object Coding {
           s"${longest.toSeconds} seconds, and that when not given) or its output passes " +
           s"${mb(Workspace.MaxFileBytes)}. The commands it runs, where `…` stands for any " +
           "further arguments:\n" +
-          allowlist.rules.map(r => s"- `${r.written}`").mkString("\n"),
+          allowlist.rules.map(r => s"- ${r.listed}").mkString("\n"),
         Args
           .of(
             (

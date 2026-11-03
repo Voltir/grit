@@ -21,7 +21,7 @@ Decision:
 - **The list is the approval.** In an allowlisted set (`Offered.Allowlisted`, `Coding.allowlisted`)
   the deployment's declared `Allowlist` stands in for a person's approval of `write`, `edit` and
   `run`. It is given once, when the deployment is declared, per command shape (`Exactly` an argv,
-  or `Leading` with one), never per call; none of the three asks.
+  `Leading` with one, or `Following` with at least one more), never per call; none of the three asks.
 - **What remains.** `write`, `edit` and `run` still require a call stamped at Member integrity, so
   only an attested asker's turn drives them. `run` takes a program and its arguments, with no
   shell, and `Allowlisted`, a sealed capability, starts only what the list permits, for at most

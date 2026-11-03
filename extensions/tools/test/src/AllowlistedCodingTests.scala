@@ -28,7 +28,8 @@ object AllowlistedCodingTests extends TestSuite {
         Vector(
           Allowlist.Rule.Exactly(argv("git", "status")),
           Allowlist.Rule.Leading(argv("git", "commit")),
-          Allowlist.Rule.Leading(argv("./mill"))
+          Allowlist.Rule.Leading(argv("./mill")),
+          Allowlist.Rule.Following(argv("scripts/check"), "the suites or modules to check")
         ),
         longest
       )
@@ -308,7 +309,8 @@ object AllowlistedCodingTests extends TestSuite {
         run.exists(
           _.endsWith(
             "The commands it runs, where `…` stands for any further arguments:\n" +
-              "- `git status`\n- `git commit …`\n- `./mill …`"
+              "- `git status`\n- `git commit …`\n- `./mill …`\n" +
+              "- `scripts/check …` (at least one argument: the suites or modules to check)"
           )
         ),
         run.exists(

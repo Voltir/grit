@@ -12,6 +12,12 @@ final case class Allowlist private (rules: Vector[Allowlist.Rule], longest: Fini
 
   /** Whether a rule lets `argv` run. */
   def permits(argv: Argv): Boolean = rules.exists(_.permits(argv))
+
+  /** What must follow `argv` for a rule to let it run, when `argv` is a following rule's
+    * command with nothing after it; `None` otherwise.
+    */
+  def wanting(argv: Argv): Option[String] =
+    rules.collectFirst { case Allowlist.Rule.Following(command, what) if command == argv => what }
 }
 
 object Allowlist {
@@ -27,17 +33,35 @@ object Allowlist {
     /** `argv`'s program and arguments, followed by any more or none. */
     case Leading(argv: Argv)
 
+    /** `argv`'s program and arguments, followed by at least one more: `what` says what they are,
+      * as the model reads it (`the suites or modules to check`).
+      */
+    case Following(argv: Argv, what: String)
+
     /** Whether this rule lets `candidate` run. */
     def permits(candidate: Argv): Boolean = this match {
       case Exactly(argv) => candidate == argv
       case Leading(argv) =>
         candidate.program == argv.program && candidate.args.startsWith(argv.args)
+      case Following(argv, _) =>
+        candidate.program == argv.program && candidate.args.startsWith(argv.args) &&
+        candidate.args.size > argv.args.size
     }
 
-    /** As the model is told of it: `git status`, or `git diff …` for a leading rule. */
+    /** As the model is told of it: `git status`, or `git diff …` for a rule that takes more. */
     def written: String = this match {
       case Exactly(argv) => argv.written
       case Leading(argv) => s"${argv.written} …"
+      case Following(argv, _) => s"${argv.written} …"
+    }
+
+    /** Its line in the run tool's list: [[written]] in backticks, and for a following rule, what
+      * must follow it, as "`scripts/check …` (at least one argument: the suites or modules to
+      * check)".
+      */
+    def listed: String = this match {
+      case Following(_, what) => s"`$written` (at least one argument: $what)"
+      case _ => s"`$written`"
     }
   }
 
@@ -64,8 +88,9 @@ sealed trait Allowlisted extends caps.SharedCapability {
   def allowlist: Allowlist
 
   /** `argv` started as [[Runs.start]] starts it, for `timeout` but never past
-    * `allowlist.longest`. `Left(HostError.Unlisted)` when `allowlist` does not permit it, and
-    * nothing starts; else as [[Runs.start]].
+    * `allowlist.longest`. When `allowlist` does not permit it, nothing starts:
+    * `Left(HostError.Unfinished)` when it is a following rule's command with nothing after it,
+    * else `Left(HostError.Unlisted)`. Otherwise as [[Runs.start]].
     */
   def start(
       argv: Argv,
@@ -92,7 +117,10 @@ object Allowlisted {
           timeout: FiniteDuration,
           wait: FiniteDuration
       ): Either[HostError, (id: RunId, status: RunStatus)] =
-        if (!permitted.permits(argv)) Left(HostError.Unlisted(argv))
+        if (!permitted.permits(argv))
+          Left(
+            permitted.wanting(argv).fold(HostError.Unlisted(argv))(HostError.Unfinished(argv, _))
+          )
         else runs.start(argv, timeout.min(permitted.longest), wait)
       def tail(
           id: RunId,
