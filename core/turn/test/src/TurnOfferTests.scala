@@ -26,7 +26,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
-import grit.core.prompt.SystemPrompt
+import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
 import grit.core.store.{
   Entry,
@@ -311,8 +311,8 @@ object TurnOfferTests extends TestSuite {
 
   /** The recorded offer of `slack`'s first turn, rooted on `root`, its set's names and its
     * rendered prompt: the conversation works in `github`, whose edge advertises
-    * `github_search`, and reaches `elsewhere`, whose edge advertises `entries`; the engine has
-    * `about` of its own.
+    * `github_search`, and reaches `elsewhere`, whose edge advertises `entries` with the Place
+    * fragments `declared`; the engine has `about` of its own.
     */
   private def reaching(
       root: Payload,
@@ -320,7 +320,8 @@ object TurnOfferTests extends TestSuite {
       recipe: TurnRecipe = TurnRecipe.Shipped,
       knowledge: Corpora = Corpora.Empty,
       weighed: Option[Tags] = None,
-      answering: Boolean = false
+      answering: Boolean = false,
+      declared: Vector[Fragment] = Vector.empty
   ): (TurnOffer.Recorded, Vector[String], String) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -328,14 +329,15 @@ object TurnOfferTests extends TestSuite {
       .findOrCreate(slack, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
-    def advertising(at: Place, tools: Vector[ToolSet.Entry]): Unit = {
+    def advertising(at: Place, tools: Vector[ToolSet.Entry], fragments: Vector[Fragment]): Unit = {
       val set =
         ToolSet.of(tools).fold(d => throw new java.lang.AssertionError(d.toString), identity)
       ToolSets.keep(set)
-      edges.advertiseAs(edges.register(Set(at)), at, set, Vector.empty)
+      val _ = Prompts.keep(fragments)
+      edges.advertiseAs(edges.register(Set(at)), at, set, fragments)
     }
-    advertising(github.place, Vector(advert("github_search")))
-    advertising(elsewhere.place, entries)
+    advertising(github.place, Vector(advert("github_search")), Vector.empty)
+    advertising(elsewhere.place, entries, declared)
     val hosting = TurnHosting(
       conversations,
       Prompts,
@@ -1191,6 +1193,41 @@ object TurnOfferTests extends TestSuite {
       recorded.reached ==> Map(named("post_x") -> elsewhere.place)
       assert(!prompt.contains("works in github"))
       assert(prompt.contains("You also reach elsewhere"))
+    }
+
+    test(
+      "a reached service offering tools brings the instructions its edge declared there, last in the prompt; a withheld one does not"
+    ) {
+      val guidance = Fragment(
+        Layer.Place,
+        elsewhere.place.written,
+        s"Instructions for ${elsewhere.place.written}:\n\nPost only what was asked."
+      )
+      val (_, _, offered) = reaching(
+        Payload.Message(Message.User("post it")),
+        Vector(advert("post_x")),
+        declared = Vector(guidance)
+      )
+      // The workspace's source reads 0.1 under a threshold of 0.2 only where elsewhere supplies it.
+      val repoInElsewhere = Corpora
+        .of(Vector(Corpus(repo, "the repository", Place.Everywhere, Some(elsewhere))))
+        .fold(n => throw new java.lang.AssertionError(n), identity)
+      val (recorded, _, withheld) = reaching(
+        Payload.Message(Message.User("post it")),
+        Vector(advert("post_x")),
+        TurnRecipe(
+          ByFocus.both(TurnRecipe.Shipped.addressed),
+          Shaping(Width.Deployed, Offering.BySource(Probability.clamped(0.2)))
+        ),
+        repoInElsewhere,
+        repoReads(0.1),
+        declared = Vector(guidance)
+      )
+      (
+        offered.endsWith("\n\n" + SystemPrompt.of(Vector(guidance)).render),
+        recorded.reached,
+        withheld.contains("Post only what was asked.")
+      ) ==> (true, Map.empty, false)
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {

@@ -162,5 +162,22 @@ object WorkLiveTests extends TestSuite {
         )
       }
     }
+
+    test("a dry run's first call carries scout's declared guidance in its system prompt") {
+      checkout { root =>
+        val config = TestPostgres.freshDatabase("work_dry_guidance")
+        val deployment = deployed(root)
+        val origin = Origin.Tui(right(Directory.of(root.toString)), "bench")
+        var system: Option[String] = None
+        val _ = working(root, config, deployment) { _ =>
+          Work.rehearsed(config, deployment, origin, "say hello", Clock.system()).map { r =>
+            system = r.calls.lastOption.map(_.input).collect {
+              case Rehearsed.Input.Model(request) => request.system
+            }
+          }
+        }
+        system.map(_.contains(ChatEdges.ScoutInstructions)) ==> Some(true)
+      }
+    }
   }
 }

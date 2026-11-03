@@ -133,8 +133,9 @@ object TurnOffer {
     * heard, how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
     * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice set with `/set voice` at a terminal alone
-    * ([[grit.core.store.Audience.Operator]]; none for plain), and the
-    * instruction files the edge read there. Its root is `ByName` when its first entry in
+    * ([[grit.core.store.Audience.Operator]]; none for plain), the
+    * instruction files the edge read there, and, after them, the instructions each reached
+    * service's edge declared there, for each reached service offering tools. Its root is `ByName` when its first entry in
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
     * for any other heard message, else `Addressed`; a `ByName` turn is offered, told and
@@ -147,7 +148,7 @@ object TurnOffer {
     * `weighed`'s answers (none when `weighed` is `None` or `Unanswered`,
     * [[grit.core.recipe.Offering.decide]]). A withheld service's tools are left out of the set,
     * `advertised` and `reached`, and what it may reach there or besides is not said; all of it
-    * is in `shaped`. Its message is dated ([[Zoned]]) in the zone `principals` says its first
+    * is in `shaped`, and its edge's instructions are not carried. Its message is dated ([[Zoned]]) in the zone `principals` says its first
     * entry's account is placed in, else in `deployment`, the deployment's
     * ([[grit.core.spend.Budget.zone]]). `TurnFailure.Store` when a store fails, the conversation
     * is gone, or two tools offered share a name. A stored voice this build does not know is the
@@ -219,15 +220,17 @@ object TurnOffer {
         case Rooted.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
         case Rooted.Heard(_) => Vector.empty
       }
-      reaching <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at)
+      reached <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at)
+      reaching = reached.map((service, set, _) => (service, set))
       took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
       (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
       kept = !atWorkspace.exists(_.offer.withheld)
       offeredHosted = if (kept) hosted else Vector.empty
       // shape takes the reached in reaching's order, one each.
-      offeredReaching = reaching.zip(reachedTook).collect {
+      offeredReached = reached.zip(reachedTook).collect {
         case (r, t) if !t.offer.withheld => r
       }
+      offeredReaching = offeredReached.map((service, set, _) => (service, set))
       administers = administering(root, conversation.origin)
       whole <- setOf(tooling, conversation.origin, administers, hosted, reaching).map(_._2)
       offered <- setOf(tooling, conversation.origin, administers, offeredHosted, offeredReaching)
@@ -237,6 +240,10 @@ object TurnOffer {
       place <- advert.fold[Either[StoreError, SystemPrompt]](Right(SystemPrompt.of(Vector.empty)))(
         a => hosting.prompts.prompt(a.instructions)
       )
+      // Each service the turn takes tools from brings the guidance its edge declared there.
+      guidance <- hosting.prompts.prompt(offeredReached.collect {
+        case (_, set, instructions) if set.tools.nonEmpty => instructions
+      }.flatten)
       voice <- hosting.voices.current()
       prompt = SystemPrompt.of(
         Vector(
@@ -263,7 +270,8 @@ object TurnOffer {
           ) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
           Voice.fragment(voice).filter(_ => conversation.origin.audience == Audience.Operator) ++
-          place.fragments
+          place.fragments ++
+          guidance.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
       person <- first.fold[Either[StoreError, Option[ZoneId]]](Right(None))(e =>
@@ -423,16 +431,19 @@ object TurnOffer {
 
   /** Each of `services` with the entries its live edge advertises that
     * [[Hosted.advertised]] offers and whose name neither `taken` nor an earlier service's
-    * has. A service no live edge serves has none.
+    * has, and the Place fragments its edge declared there. A service no live edge serves has
+    * none of either.
     */
   private def reachedFrom(
       hosting: TurnHosting,
       services: Vector[Service],
       taken: Set[ToolName],
       at: Classification
-  )(using Tx^): Either[StoreError, Vector[(Service, ToolSet)]] =
+  )(using Tx^): Either[StoreError, Vector[(Service, ToolSet, Vector[FragmentId])]] =
     services
-      .foldLeft[Either[StoreError, (Vector[(Service, ToolSet)], Set[ToolName])]](
+      .foldLeft[
+        Either[StoreError, (Vector[(Service, ToolSet, Vector[FragmentId])], Set[ToolName])]
+      ](
         Right((Vector.empty, taken))
       ) { (acc, service) =>
         for {
@@ -451,7 +462,10 @@ object TurnOffer {
             .filter(Hosted.advertised(_).nonEmpty)
           // A ToolSet's entries have distinct names, so a subset's do too.
           offered = ToolSet.of(entries).getOrElse(ToolSet.Empty)
-        } yield (done._1 :+ (service, offered), done._2 ++ entries.map(_.name))
+        } yield (
+          done._1 :+ (service, offered, advert.fold(Vector.empty[FragmentId])(_.instructions)),
+          done._2 ++ entries.map(_.name)
+        )
       }
       .map(_._1)
 }
