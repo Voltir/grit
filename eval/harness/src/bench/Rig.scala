@@ -1,7 +1,8 @@
 package grit.eval.harness.bench
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermissions
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, StandardOpenOption}
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
@@ -322,7 +323,10 @@ object Rig {
 
   /** The grit coder, as `arm` runs `grit work` under `cap`, on `task` in a new checkout at `dir`
     * of the repository at `repository`, as [[trial]] runs Claude Code's: the checks run after it,
-    * the diff measured, the checkout tidied, and a quiet run stopped. Its brief is `arm`'s coder
+    * the diff measured, the checkout tidied, and a quiet run stopped. Before grit starts, the
+    * checkout compiles every module the task's checks name, unbilled, for at most [[Warming]],
+    * its Mill daemon left warm for the coder; a checkout that does not compile is a `Left` saying
+    * so, grit never started. Its brief is `arm`'s coder
     * instructions, [[Preamble]] and the task's brief, in a file of its own outside the checkout;
     * grit starts from an empty environment, but for `arm`'s passed variables and those that
     * point it at its database, the model `cap` names in every role at the Anthropic API, its
@@ -351,6 +355,7 @@ object Rig {
       none <- Variables.of(Map.empty)
       tried <- tried(work)(repository, task, cap, dir) { _ =>
         for {
+          _ <- warmed(work)(task, arm, cap, dir, output)
           streamed <- briefed(arm, task) { brief =>
             handing
               .started(dir, key, none) { file =>
@@ -423,23 +428,84 @@ object Rig {
       )
     } yield shown
 
-  /** Writes `lines`, what grit wrote to its output, to `output`, then the tail of its errors as
-    * `ended` gives them, or why its wait ended; `Left` naming `output` when it cannot be written.
+  /** 60 minutes: the longest the checkout's compile before the coder may take. */
+  val Warming: FiniteDuration = 60.minutes
+
+  /** The checkout at `dir` compiled, every module `task`'s checks name and those under it
+    * (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
+    * the coder's first build or test is not a cold one and nothing it spends goes on it. Its
+    * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` begins with the
+    * command and the tail of what it printed. `Left` in words when it fails, takes longer than
+    * [[Warming]], or `output` cannot be written; nothing when the checks name no module.
+    */
+  private def warmed(work: Processes)(
+      task: Task,
+      arm: Arm.Grit,
+      cap: Caps,
+      dir: RelPath,
+      output: Path
+  ): Either[String, Unit] = {
+    val targets = task.checks.flatMap(_.args).distinct.map(m => s"$m.__.compile")
+    val mill = Vector("./mill", "--ticker", "false") ++
+      targets.flatMap(t => Vector("+", t)).drop(1)
+    if (targets.isEmpty) Right(())
+    else
+      for {
+        argv <- Argv.of("env", gritEnvironment(arm, cap).drop(1) ++ mill*)
+        ran = work.run(argv, dir, Warming)
+        _ <- written(output, append = false)(
+          s"[rig] compiled before the coder: ${mill.mkString(" ")}" +:
+            ran.fold(e => Vector(e.message), r => Vector(r.output.text.stripTrailing))
+        )
+        _ <- ran.left
+          .map(e => s"the checkout did not compile before the coder: ${e.message}")
+          .flatMap(r =>
+            Either.cond(
+              r.exit == 0,
+              (),
+              r.output.text.linesIterator
+                .filter(_.trim.nonEmpty)
+                .toVector
+                .lastOption
+                .fold(s"the checkout did not compile before the coder (exit ${r.exit})")(line =>
+                  s"the checkout did not compile before the coder (exit ${r.exit}): $line"
+                )
+            )
+          )
+      } yield ()
+  }
+
+  /** Writes `lines`, what grit wrote to its output, to `output` after what is there, then the
+    * tail of its errors as `ended` gives them, or why its wait ended; `Left` naming `output` when
+    * it cannot be written.
     */
   private def kept(
       output: Path,
       lines: Vector[String],
       ended: Either[String, Ran]
   ): Either[String, Unit] =
-    Try(
-      Files.writeString(
-        output,
-        (lines :+ "[rig] the tail of grit's errors:" :+ ended
-          .fold(identity, _.output.text)
-          .stripTrailing)
-          .mkString("", "\n", "\n")
-      )
-    ).toEither.left
+    written(output, append = true)(
+      lines :+ "[rig] the tail of grit's errors:" :+ ended
+        .fold(identity, _.output.text)
+        .stripTrailing
+    )
+
+  /** `lines` written to `output`, a line each, after what it holds when `append`; `Left` naming
+    * `output` when they cannot be.
+    */
+  private def written(output: Path, append: Boolean)(lines: Vector[String]): Either[String, Unit] =
+    Try {
+      val text = lines.mkString("", "\n", "\n")
+      if (append)
+        Files.writeString(
+          output,
+          text,
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.APPEND
+        )
+      else Files.writeString(output, text, StandardCharsets.UTF_8)
+    }.toEither.left
       .map(e => s"grit's output was not written to $output: ${e.getClass.getName}")
       .map(_ => ())
 

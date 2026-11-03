@@ -33,7 +33,9 @@ Claude Code's estimate. A run a cap stopped is a trial not passed.
 `scripts/eval bench --harness grit` runs `grit work` in the task's checkout, outside this
 repository, with one message: `coder-grit.md` (the counterpart of `coder.md`, worded for grit's own
 tools: `run` with its allowlist, `tail`, scout's `scout_*`), the rig's preamble and the task's
-brief. grit starts from an empty environment: the rig sets every variable it reads
+brief. Before grit starts, the rig compiles every module the task's checks name in the checkout
+(`./mill <module>.__.compile`, at most an hour, unbilled), so the coder's first build is not a cold
+one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's model in every role at
 the Anthropic API, and the key handed through a file. Its turn is kept in `grit_bench_coder`, which
 `scripts/eval` drops and makes afresh before each run, and read back from there for the trial: the

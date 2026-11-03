@@ -165,6 +165,16 @@ object RigTests extends TestSuite {
         val script = Files.writeString(origin.resolve(s"scripts/$s"), "#!/bin/sh\nexit 0\n")
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"))
       }
+      // A stand-in Mill: records its arguments, and fails once `mill-fails` exists in the root.
+      val mill = Files.writeString(
+        origin.resolve("mill"),
+        s"""#!/bin/sh
+           |printf '%s\\n' "$$@" > $root/mill-argv
+           |echo compiled
+           |if [ -e $root/mill-fails ]; then echo broken; exit 1; fi
+           |""".stripMargin
+      )
+      Files.setPosixFilePermissions(mill, PosixFilePermissions.fromString("rwxr-xr-x"))
       Files.writeString(origin.resolve("a.scala"), "object A\n")
       val o = rel("origin")
       val _ = git(work, o, "init", "-q", "-b", "main")
@@ -607,7 +617,40 @@ object RigTests extends TestSuite {
         val refused = gritTrial(f, GritFake(Vector("[main] said")), turn = gritTurn)
         (refused.isLeft, Option.when(f.exists("grit.log"))(f.recorded("grit.log"))) ==> (
           true,
-          Some("[main] said\n[rig] the tail of grit's errors:\na log line\n")
+          Some(
+            "[rig] compiled before the coder: ./mill --ticker false m.__.compile\ncompiled\n" +
+              "[main] said\n[rig] the tail of grit's errors:\na log line\n"
+          )
+        )
+      }
+    }
+
+    test("the checkout compiles what the task's checks name before grit starts, unbilled") {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines)).map(_ =>
+          (
+            Option.when(f.exists("mill-argv"))(f.recorded("mill-argv").linesIterator.toVector),
+            f.recorded("grit.log").linesIterator.take(3).toVector
+          )
+        ) ==> Right(
+          (
+            Some(Vector("--ticker", "false", "m.__.compile")),
+            Vector(
+              "[rig] compiled before the coder: ./mill --ticker false m.__.compile",
+              "compiled",
+              gritLines.head
+            )
+          )
+        )
+      }
+    }
+
+    test("a checkout that does not compile before grit is a refused trial, and grit never starts") {
+      withTask { f =>
+        Files.writeString(f.root.resolve("mill-fails"), "")
+        (gritTrial(f, GritFake(gritLines)), f.exists("gargv")) ==> (
+          Left("the checkout did not compile before the coder (exit 1): broken"),
+          false
         )
       }
     }
