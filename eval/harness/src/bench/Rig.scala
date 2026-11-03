@@ -193,18 +193,13 @@ object Rig {
     */
   val Quiet: FiniteDuration = 10.minutes
 
-  /** 5: the most runs whose checkout the work root keeps, a failed run's checkout being up to
-    * about 200 MB, its law's tools and snapshot included.
-    */
-  val KeptCheckouts: Int = 5
-
-  /** The work root at `root` cleared of old runs, a run being what one trial left under it, named
-    * `<task>-<seconds>` by when it began: its checkout, its known checkout (`-known`) and grit's
-    * output (`.grit.log`). Every run but the newest `checkouts` loses its checkouts, and every run
-    * but the newest `runs` its output too; any other entry is left. How many entries went, or
+  /** The work root at `root` cleared before a run, a run being what one trial left under it,
+    * named `<task>-<seconds>` by when it began: its checkout and known checkout (`-known`), which
+    * a run removes as it ends unless it was killed, and its log (`.log`). Every run's checkouts
+    * go, and every log but the newest `runs`; any other entry is left. How many entries went, or
     * why the root could not be read; an entry that cannot be removed is left for the next.
     */
-  def cleared(root: Path)(runs: Int, checkouts: Int): Either[String, Int] =
+  def cleared(root: Path)(runs: Int): Either[String, Int] =
     Try(Files.list(root)).toEither.left
       .map(e => s"the work root $root could not be read: ${e.getClass.getName}")
       .map { listing =>
@@ -214,15 +209,14 @@ object Rig {
         val runOf = entries.flatMap { p =>
           p.getFileName.toString match {
             case RunEntry(stem, seconds, suffix) =>
-              seconds.toLongOption.map(s => (p, (s, stem), suffix == ".grit.log"))
+              seconds.toLongOption.map(s => (p, (s, stem), suffix == ".log"))
             case _ => None
           }
         }
         val newest = runOf.map(_._2).distinct.sorted.reverse
         val logsKept = newest.take(runs).toSet
-        val checkoutsKept = newest.take(checkouts).toSet
         runOf.count { (p, run, log) =>
-          val goes = if (log) !logsKept(run) else !checkoutsKept(run)
+          val goes = !log || !logsKept(run)
           goes && {
             if (log) Try(Files.deleteIfExists(p)).isSuccess
             else { removeTree(p); !Files.exists(p) }
@@ -230,10 +224,10 @@ object Rig {
         }
       }
 
-  /** A run's entry under the work root: its stem and when it began, then `-known`, `.grit.log`
+  /** A run's entry under the work root: its stem and when it began, then `-known`, `.log`
     * or nothing.
     */
-  private val RunEntry = raw"(.+)-(\d+)(-known|\.grit\.log)?".r
+  private val RunEntry = raw"(.+)-(\d+)(-known|\.log)?".r
 
   /** The name the bench's coder goes by in `--agents`. */
   val Coder: String = "bench-coder"
@@ -277,8 +271,9 @@ object Rig {
     * against the known diff, `claude` handed `key` for its `apiKeyHelper` to read. A run a cap
     * stopped, or that ended in error,
     * is a trial not passed; a run that writes nothing for `quiet` is stopped and its trial kept
-    * the same way; one that wrote no session is a `Left`. The checkout's `out/` is removed
-    * whatever happens, and the checkout itself unless the result is a `Left`.
+    * the same way; one that wrote no session is a `Left`. `output`, the run's log, is begun
+    * afresh; whatever happens, what the coder left in the checkout ([[Clone.left]]) is added to
+    * it, and then the checkout is removed.
     */
   def trial(work: Processes, handing: Handing, clock: Clock^)(
       repository: String,
@@ -287,9 +282,10 @@ object Rig {
       cap: Caps,
       key: Secret,
       dir: RelPath,
-      quiet: FiniteDuration
+      quiet: FiniteDuration,
+      output: Path
   ): Either[String, Tried] =
-    tried(work)(repository, task, cap, dir) { checkout =>
+    tried(work)(repository, task, cap, dir, output) { checkout =>
       for {
         streamed <- configured { variables =>
           handing
@@ -353,7 +349,7 @@ object Rig {
     for {
       _ <- gritCapped(cap)
       none <- Variables.of(Map.empty)
-      tried <- tried(work)(repository, task, cap, dir) { _ =>
+      tried <- tried(work)(repository, task, cap, dir, output) { _ =>
         for {
           _ <- warmed(work)(task, arm, cap, dir, output)
           streamed <- briefed(arm, task) { brief =>
@@ -392,7 +388,7 @@ object Rig {
   ): Either[String, String] =
     for {
       _ <- gritCapped(cap)
-      shown <- tidied(work, dir, keep = false)(
+      shown <- tidied(work, dir, None)(
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           shown <- briefed(arm, task) { brief =>
@@ -434,8 +430,8 @@ object Rig {
   /** The checkout at `dir` compiled, every module `task`'s checks name and those under it
     * (`./mill <module>.__.compile`), in grit's environment under `cap` but with no key, so that
     * the coder's first build or test is not a cold one and nothing it spends goes on it. Its
-    * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` begins with the
-    * command and the tail of what it printed. `Left` in words when it fails, takes longer than
+    * Mill daemon is left for the coder, and [[tidied]] shuts it down. `output` gets the command
+    * and the tail of what it printed. `Left` in words when it fails, takes longer than
     * [[Warming]], or `output` cannot be written; nothing when the checks name no module.
     */
   private def warmed(work: Processes)(
@@ -453,7 +449,7 @@ object Rig {
       for {
         argv <- Argv.of("env", gritEnvironment(arm, cap).drop(1) ++ mill*)
         ran = work.run(argv, dir, Warming)
-        _ <- written(output, append = false)(
+        _ <- written(output, append = true)(
           s"[rig] compiled before the coder: ${mill.mkString(" ")}" +:
             ran.fold(e => Vector(e.message), r => Vector(r.output.text.stripTrailing))
         )
@@ -495,7 +491,7 @@ object Rig {
     */
   private def written(output: Path, append: Boolean)(lines: Vector[String]): Either[String, Unit] =
     Try {
-      val text = lines.mkString("", "\n", "\n")
+      val text = if (lines.isEmpty) "" else lines.mkString("", "\n", "\n")
       if (append)
         Files.writeString(
           output,
@@ -593,17 +589,24 @@ object Rig {
     * `task` under `cap` in a new checkout at `dir` of `repository`; then the task's checks run
     * there and its diff measured against the known diff. Tidied as [[trial]] says.
     */
-  private def tried(work: Processes)(repository: String, task: Task, cap: Caps, dir: RelPath)(
+  private def tried(work: Processes)(
+      repository: String,
+      task: Task,
+      cap: Caps,
+      dir: RelPath,
+      output: Path
+  )(
       coded: String => Either[String, Coded]
   ): Either[String, Tried] =
     for {
+      _ <- written(output, append = false)(Vector.empty)
       knownDir <- RelPath.of(s"${RelPath.value(dir)}-known").left.map(_.toString)
-      known <- tidied(work, knownDir, keep = false)(
+      known <- tidied(work, knownDir, None)(
         Clone
           .picked(work)(repository, task, knownDir)
           .flatMap(_ => Clone.changed(work)(knownDir, task.base))
       )
-      tried <- tidied(work, dir, keep = true)(
+      tried <- tidied(work, dir, Some((base = task.base, log = output)))(
         for {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
@@ -667,7 +670,7 @@ object Rig {
   def known(
       work: Processes
   )(repository: String, task: Task, dir: RelPath): Either[String, Checked] =
-    tidied(work, dir, keep = true)(
+    tidied(work, dir, None)(
       Clone
         .picked(work)(repository, task, dir)
         .flatMap(_ => Checks.run(work)(dir, task.checks).left.map(_.message))
@@ -788,28 +791,29 @@ object Rig {
     )
   }
 
-  /** `result`, made in the checkout at `dir`; then its Mill daemon shut down and its `out/`
-    * removed, and the checkout itself unless `keep` and `result` is a `Left`.
+  /** `result`, made in the checkout at `dir`; then, whatever it is, its Mill daemon shut down and
+    * its `out/` removed, what the coder left ([[Clone.left]] from `saved`'s base) added to
+    * `saved`'s log, or why it could not be read, and the checkout removed.
     */
-  private def tidied[A](work: Processes, dir: RelPath, keep: Boolean)(
+  private def tidied[A](work: Processes, dir: RelPath, saved: Option[(base: Sha, log: Path)])(
       result: => Either[String, A]
-  ): Either[String, A] = {
-    var outcome = Option.empty[Either[String, A]]
-    try {
-      val r = result
-      outcome = Some(r)
-      r
-    } finally {
+  ): Either[String, A] =
+    try result
+    finally {
       // A checkout that built nothing has no daemon; shutting one down there would start Mill.
       if (Clone.ran(work, dir, "test", "-d", "out/mill-daemon").isRight) {
         val _ = Clone.ran(work, dir, "./mill", "shutdown")
       }
       val _ = Clone.ran(work, dir, "rm", "-rf", "out")
-      if (!(keep && outcome.forall(_.isLeft))) {
-        val _ = Clone.ran(work, RelPath.Root, "rm", "-rf", RelPath.value(dir))
+      saved.foreach { (base, log) =>
+        val _ = written(log, append = true)(
+          Clone
+            .left(work)(dir, base)
+            .fold(why => Vector(s"[rig] what the coder left: $why"), identity)
+        )
       }
+      val _ = Clone.ran(work, RelPath.Root, "rm", "-rf", RelPath.value(dir))
     }
-  }
 
   /** How often a run's output is checked for quiet: a quiet run is stopped within `quiet` and this
     * much longer.

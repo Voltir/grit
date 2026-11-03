@@ -270,7 +270,8 @@ object RigTests extends TestSuite {
       cap,
       key,
       checkout,
-      quiet
+      quiet,
+      f.root.resolve("claude.log")
     )
 
   val tests = Tests {
@@ -468,12 +469,37 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("a trial removes its checkout; a run that fails keeps it, less its build output") {
+    test(
+      "a trial removes its checkout whatever becomes of it, what the coder left saved to its log first"
+    ) {
       withTask { f =>
+        def saved(log: String) =
+          Option.when(f.exists(log))(
+            f.recorded(log)
+              .linesIterator
+              .toVector
+              .filter(l =>
+                l.startsWith("[rig] the coder's") || l.startsWith("[rig] its diff") ||
+                  l.startsWith("+object")
+              )
+          )
         val kept = trial(f, Fake("object A { val x = 1 }")).map(_ => f.exists("trial"))
         val failed = trial(f, Fake("object A { val x = 1 }", Vector.empty))
-        (kept, failed.isLeft, f.exists("trial/a.scala"), f.exists("trial/out")) ==>
-          (Right(false), true, true, false)
+        val refused = gritTrial(f, GritFake(Vector("[main] said")))
+        val left = Vector(
+          "[rig] the coder's commits:",
+          "[rig] its diff against the base:",
+          "+object A { val x = 1 }"
+        )
+        (
+          kept,
+          failed.isLeft,
+          refused.isLeft,
+          f.exists("trial"),
+          saved("claude.log"),
+          saved("grit.log")
+        ) ==>
+          (Right(false), true, true, false, Some(left), Some(left))
       }
     }
 
@@ -616,11 +642,24 @@ object RigTests extends TestSuite {
     test("grit's output and the tail of its errors are kept beside the trial, refused or not") {
       withTask { f =>
         val refused = gritTrial(f, GritFake(Vector("[main] said")), turn = gritTurn)
-        (refused.isLeft, Option.when(f.exists("grit.log"))(f.recorded("grit.log"))) ==> (
+        (
+          refused.isLeft,
+          Option.when(f.exists("grit.log"))(
+            f.recorded("grit.log")
+              .linesIterator
+              .takeWhile(!_.startsWith("[rig] the coder's"))
+              .toVector
+          )
+        ) ==> (
           true,
           Some(
-            "[rig] compiled before the coder: ./mill --ticker false m.__.compile\ncompiled\n" +
-              "[main] said\n[rig] the tail of grit's errors:\na log line\n"
+            Vector(
+              "[rig] compiled before the coder: ./mill --ticker false m.__.compile",
+              "compiled",
+              "[main] said",
+              "[rig] the tail of grit's errors:",
+              "a log line"
+            )
           )
         )
       }
@@ -712,23 +751,23 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "old runs under the work root go: checkouts past the newest few, logs past the newest many"
+      "a new run clears the work root of every run's checkout, and of logs past the newest many"
     ) {
       val root = Files.createTempDirectory("grit-runs")
       try {
         val runs = Vector("a-100", "a-101", "b-102", "b-103")
         runs.foreach { n =>
           Files.createDirectories(root.resolve(n).resolve("src"))
-          Files.writeString(root.resolve(s"$n.grit.log"), "x")
+          Files.writeString(root.resolve(s"$n.log"), "x")
         }
         Files.createDirectories(root.resolve("a-99-known"))
         Files.createDirectories(root.resolve("notes"))
         (
-          Rig.cleared(root)(runs = 3, checkouts = 1),
+          Rig.cleared(root)(runs = 3),
           Files.list(root).iterator.asScala.map(_.getFileName.toString).toVector.sorted
         ) ==> (
-          Right(5),
-          Vector("a-101.grit.log", "b-102.grit.log", "b-103", "b-103.grit.log", "notes")
+          Right(6),
+          Vector("a-101.log", "b-102.log", "b-103.log", "notes")
         )
       } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
     }

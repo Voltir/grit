@@ -348,7 +348,9 @@
 #       tokens per call with cache reads and writes, grit's cost (beside Claude Code's, for its
 #       runs), how the run ended, its denials and its checks. The key is ANTHROPIC_API_KEY, from
 #       the environment over GRIT_ENV_FILE (the main checkout's .env when unset); a run refuses
-#       to start without it. A checkout is kept only when the rig fails, less its out/.
+#       to start without it. Every run's checkout is removed as it ends; its log,
+#       <checkout>.log beside it, keeps the coder's commits and its diff (to 200 KB), and only
+#       the newest 60 logs are kept.
 #       --harness claude-code (the default): Claude Code (claude on PATH, or $CLAUDE), in a
 #       checkout under .local/bench/work/; its budget is Claude Code's own estimate.
 #       --harness grit: `grit work`, built from this checkout, in a checkout under

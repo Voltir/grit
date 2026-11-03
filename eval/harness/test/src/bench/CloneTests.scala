@@ -139,6 +139,40 @@ object CloneTests extends TestSuite {
       }
     }
 
+    test(
+      "what a coder left is its commits since the base, then its diff, cut at a line with a note"
+    ) {
+      withOrigin("base") { (work, o) =>
+        val checkout = rel("coded")
+        Clone.fresh(work)(o.path, o.commits("base"), checkout) ==> Right(())
+        val dir = Path.of(o.path).resolveSibling("coded")
+        Files.writeString(dir.resolve("A.scala"), "object A\n")
+        val _ = git(work, checkout, "add", "A.scala")
+        val _ = git(work, checkout, "commit", "-q", "-m", "the coder's change")
+        Files.writeString(dir.resolve("B.scala"), "object B\n")
+        val short = git(work, checkout, "rev-parse", "--short", "HEAD")
+        val whole = Clone.left(work)(checkout, o.commits("base"), 100000)
+        val cut = Clone.left(work)(checkout, o.commits("base"), 120)
+        (
+          whole.map(_.take(3)),
+          whole.map(_.filter(_.startsWith("+object"))),
+          cut.map(_.lastOption.exists(_.startsWith("[rig] the diff was cut at 120 of "))),
+          cut.map(_.drop(3).init.mkString("\n").length <= 120)
+        ) ==> (
+          Right(
+            Vector(
+              "[rig] the coder's commits:",
+              s"$short the coder's change",
+              "[rig] its diff against the base:"
+            )
+          ),
+          Right(Vector("+object A", "+object B")),
+          Right(true),
+          Right(true)
+        )
+      }
+    }
+
     test("a checkout picked is refused when a task's commit does not apply to its base") {
       withOrigin("base", "between", "known") { (work, o) =>
         Clone.picked(work)(o.path, task(o, "base", "known"), rel("picked")).left.map(_.take(25)) ==>

@@ -15,6 +15,11 @@ Each directory under `tasks/` is one past change, frozen for the coder bench
 
 A task is kept only when its commits apply, in order, to its base and give the known commit's tree.
 
+Every run's checkout is removed as the run ends, passed, failed or refused, and a killed run's at the
+next run's start. Its log, `<checkout>.log` beside it, keeps what is worth keeping: the coder's
+commits and its diff against the base (to 200 KB, with a note when cut), and for grit its output.
+The newest 60 logs are kept, as many as the trials the bench keeps.
+
 ## The Claude Code arm
 
 `scripts/eval bench` runs `claude -p` in the task's checkout, its prompt a fixed preamble and the
@@ -43,6 +48,5 @@ calls and bytes before its first edit, and each `run` that failed as a denial. I
 from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
 the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
-passed. grit's own output and the tail of its errors are written beside the checkout, to
-`<checkout>.grit.log`, whatever becomes of the trial; a run the trial row refuses still prints its
-calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
+passed. grit's own output and the tail of its errors go to the run's log; a run the trial row
+refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
