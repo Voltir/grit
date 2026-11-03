@@ -8,7 +8,7 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Handing, Processes, RelPath, Variables}
+import grit.core.host.{Argv, Handing, HostError, Memory, Processes, RelPath, Variables}
 import grit.core.id.{Harness, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.secret.{TestSecrets, Variable}
@@ -253,14 +253,26 @@ object RigTests extends TestSuite {
       f: Fixture^,
       fake: GritFake,
       caps: Caps = cap,
-      turn: GritTurn = gritTurn
+      turn: GritTurn = gritTurn,
+      heldNow: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30))
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
       f.handing,
       stepping(),
-      new CoderTurns { def newest(): Either[String, GritTurn] = Right(turn) }
-    )(f.origin, f.task, f.gritArm(fake), caps, key, checkout, Rig.Quiet, f.root.resolve("grit.log"))
+      new CoderTurns { def newest(): Either[String, GritTurn] = Right(turn) },
+      new Memory { def held(dir: RelPath): Either[HostError, Memory.Held] = heldNow }
+    )(
+      f.origin,
+      f.task,
+      f.gritArm(fake),
+      caps,
+      MemoryCap.Default,
+      key,
+      checkout,
+      Rig.Quiet,
+      f.root.resolve("grit.log")
+    )
 
   private def trial(
       f: Fixture^,
@@ -697,6 +709,51 @@ object RigTests extends TestSuite {
           false
         )
       }
+    }
+
+    test(
+      "a grit coder whose processes hold past the memory budget, or leave the machine under its floor, is stopped and kept not passed"
+    ) {
+      withTask { f =>
+        // A turn with no edit, as a run stopped before its first call has.
+        val unedited = gritTurn.copy(messages = gritTurn.messages.take(1))
+        def stopped(held: Memory.Held) =
+          gritTrial(f, GritFake(gritLines, hangs = true), turn = unedited, heldNow = Right(held))
+            .map(t => (t.trial.passed, t.stopped))
+        (stopped(Memory.Held(9L << 30, 16L << 30)), stopped(Memory.Held(1L << 30, 1L << 29))) ==> (
+          Right((false, Some("its processes held 9 GB, past its memory budget of 8 GB"))),
+          Right((false, Some("the machine had 0.5 GB available, under its floor of 1 GB")))
+        )
+      }
+    }
+
+    test("a grit coder whose memory cannot be read is refused before grit starts") {
+      withTask { f =>
+        (
+          gritTrial(f, GritFake(gritLines), heldNow = Left(HostError.Failed("no /proc here"))),
+          f.exists("gargv")
+        ) ==> (
+          Left(
+            "the memory grit's processes hold cannot be read, so its budget could not hold: " +
+              "no /proc here"
+          ),
+          false
+        )
+      }
+    }
+
+    test("a memory budget is a whole number of GB of at least 1, the floor always 1 GB") {
+      (
+        MemoryCap.of("12").map(c => (c.most, c.floor)),
+        MemoryCap.of("0"),
+        MemoryCap.of("1.5"),
+        (MemoryCap.Default.most, MemoryCap.Default.floor)
+      ) ==> (
+        Right((12L << 30, 1L << 30)),
+        Left("the memory budget 0 is not a whole number of GB of at least 1"),
+        Left("the memory budget 1.5 is not a whole number of GB of at least 1"),
+        (8L << 30, 1L << 30)
+      )
     }
 
     test("the task's checks run with every JVM capped, as grit's own are") {

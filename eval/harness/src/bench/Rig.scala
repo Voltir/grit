@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 import grit.core.clock.Clock
-import grit.core.host.{Argv, Handing, Processes, Ran, RelPath, Started, Variables}
+import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Started, Variables}
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{Grade, ModelId}
@@ -50,6 +50,50 @@ object Caps {
         .toRight(s"the budget $maxBudgetUsd is not an amount of USD above 0")
       t <- maxTurns.toIntOption.filter(_ >= 1).toRight(s"the turns $maxTurns are not 1 or more")
     } yield Caps(m, b, t)
+}
+
+/** The most memory a coder's processes may hold together while it runs, in bytes, and the least
+  * the machine must keep available meanwhile: past either, the run is stopped.
+  */
+final case class MemoryCap private (most: Long, floor: Long) extends caps.Pure
+
+object MemoryCap {
+
+  /** 1 GB: the least memory the machine must keep available while a coder runs. */
+  val Floor: Long = 1L << 30
+
+  /** 8 GB, its floor [[Floor]]. */
+  val Default: MemoryCap = MemoryCap(8L << 30, Floor)
+
+  /** `gb` gigabytes, its floor [[Floor]], or why not: not a whole number of at least 1. */
+  def of(gb: String): Either[String, MemoryCap] =
+    gb.toIntOption
+      .filter(_ >= 1)
+      .map(n => MemoryCap(n.toLong << 30, Floor))
+      .toRight(s"the memory budget $gb is not a whole number of GB of at least 1")
+
+  /** Why a run whose processes hold what `held` says is stopped under `cap`, as the report says
+    * it: they hold more than its budget, or the machine has less available than its floor;
+    * `None` while neither.
+    */
+  def stops(cap: MemoryCap)(held: Memory.Held): Option[String] =
+    if (held.resident > cap.most)
+      Some(
+        s"its processes held ${gb(held.resident)} GB, past its memory budget of ${gb(cap.most)} GB"
+      )
+    else if (held.available < cap.floor)
+      Some(
+        s"the machine had ${gb(held.available)} GB available, under its floor of ${gb(cap.floor)} GB"
+      )
+    else None
+
+  /** `bytes` in GB to a tenth, its trailing zeros left off. */
+  private def gb(bytes: Long): String =
+    (BigDecimal(bytes) / BigDecimal(1L << 30))
+      .setScale(1, BigDecimal.RoundingMode.HALF_UP)
+      .bigDecimal
+      .stripTrailingZeros
+      .toPlainString
 }
 
 /** What runs the coder: Claude Code or grit. */
@@ -298,7 +342,7 @@ object Rig {
                     arguments(arm, cap, task, s"cat '$file'")*
                 )
               } yield argv
-            }(s => streamed(s, clock, quiet, _ => None))
+            }(s => streamed(s, clock, quiet, _ => None, () => None))
             .left
             .map(e => s"claude did not run: ${e.message}")
         }
@@ -328,19 +372,29 @@ object Rig {
     * point it at its database, the model `cap` names in every role at the Anthropic API, its
     * allowlisted tools and scout, `cap`'s turns as its rounds, and `key` as
     * `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
-    * stopped, a trial not passed, as is one whose turn did not succeed; its turn is read from
+    * stopped, a trial not passed, as is one whose processes, all those working in the checkout
+    * ([[Memory.held]]), hold more than `memoryCap` allows or leave the machine under its floor
+    * ([[MemoryCap.stops]]), or one whose turn did not succeed; its turn is read from
     * `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
     * shut down. What grit wrote to its output, then the tail of its errors, is written to
     * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
-    * a model [[AnthropicRates]] has no rates for, before anything runs; when `output` cannot be
+    * a model [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
+    * read in the checkout, before grit starts; when `output` cannot be
     * written or its turn cannot be read; or when the trial row refuses the run, its
     * [[Tried.spending]] lines first.
     */
-  def gritTrial(work: Processes, handing: Handing, clock: Clock^, turns: CoderTurns)(
+  def gritTrial(
+      work: Processes,
+      handing: Handing,
+      clock: Clock^,
+      turns: CoderTurns,
+      memory: Memory
+  )(
       repository: String,
       task: Task,
       arm: Arm.Grit,
       cap: Caps,
+      memoryCap: MemoryCap,
       key: Secret,
       dir: RelPath,
       quiet: FiniteDuration,
@@ -351,6 +405,12 @@ object Rig {
       none <- Variables.of(Map.empty)
       tried <- tried(work)(repository, task, cap, dir, output) { _ =>
         for {
+          _ <- memory
+            .held(dir)
+            .left
+            .map(e =>
+              s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
+            )
           _ <- warmed(work)(task, arm, cap, dir, output)
           streamed <- briefed(arm, task) { brief =>
             handing
@@ -361,7 +421,15 @@ object Rig {
                     gritEnvironment(arm, cap) ++
                     Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
                 )
-              }(s => streamed(s, clock, quiet, spent(cap)))
+              }(s =>
+                streamed(
+                  s,
+                  clock,
+                  quiet,
+                  spent(cap),
+                  () => memory.held(dir).toOption.flatMap(MemoryCap.stops(memoryCap))
+                )
+              )
               .left
               .map(e => s"grit did not run: ${e.message}")
           }
@@ -650,18 +718,19 @@ object Rig {
   )
 
   /** What the started coder `s` writes, read until it ends, writes nothing for `quiet`, or
-    * `stop` gives why it is stopped; then it is killed, with every process it started still its
-    * descendant, and its wall time read from `clock`.
+    * `stop` gives why it is stopped, or `watch` does ([[streamOf]]); then it is killed,
+    * with every process it started still its descendant, and its wall time read from `clock`.
     */
   private def streamed(
       s: Started^,
       clock: Clock^,
       quiet: FiniteDuration,
-      stop: Vector[String] -> Option[String]
+      stop: Vector[String] -> Option[String],
+      watch: () => Option[String]
   ): Streamed = {
     val started = clock.millis()
     s.input.close()
-    val (lines, stopped) = streamOf(s, quiet, stop)
+    val (lines, stopped) = streamOf(s, quiet, stop, watch)
     if (stopped.isDefined) s.kill()
     val ended = s.await(Longest + 2.minutes).left.map(_.message)
     s.kill()
@@ -825,38 +894,52 @@ object Rig {
   private val Tick: FiniteDuration = 500.millis
 
   /** The lines `s` writes, a line each, and why they stopped early (`Some`, as the report says it):
-    * it wrote nothing for `quiet`, or `stop` of the lines so far gave a reason; `None` when its
-    * output ended. The caller kills `s` once they stop.
+    * it wrote nothing for `quiet`, `stop` of the lines so far gave a reason, or `watch` did when
+    * asked, first before any line and then every [[WatchEvery]] polls; `None` when its output
+    * ended. The caller kills `s` once they stop.
     */
   private def streamOf(
       s: Started^,
       quiet: FiniteDuration,
-      stop: Vector[String] -> Option[String]
+      stop: Vector[String] -> Option[String],
+      watch: () => Option[String]
   ): (Vector[String], Option[String]) = {
     @tailrec def collect(
         acc: Vector[String],
-        idle: FiniteDuration
-    ): (Vector[String], Option[String]) =
-      s.next(Tick) match {
-        case Started.Next.Quiet if idle + Tick >= quiet =>
-          (
-            acc,
-            Some(s"quiet for ${
-                if (quiet.toSeconds % 60 == 0) s"${quiet.toMinutes} min"
-                else s"${quiet.toSeconds} s"
-              }")
-          )
-        case Started.Next.Quiet => collect(acc, idle + Tick)
-        case Started.Next.Ended => (acc, None)
-        case Started.Next.Line(line) =>
-          val read = acc :+ line
-          stop(read) match {
-            case Some(why) => (read, Some(why))
-            case None => collect(read, 0.millis)
+        idle: FiniteDuration,
+        polls: Long
+    ): (Vector[String], Option[String]) = {
+      val since = polls + 1
+      (if (polls % WatchEvery == 0) watch() else None) match {
+        case Some(why) => (acc, Some(why))
+        case None =>
+          s.next(Tick) match {
+            case Started.Next.Quiet if idle + Tick >= quiet =>
+              (
+                acc,
+                Some(s"quiet for ${
+                    if (quiet.toSeconds % 60 == 0) s"${quiet.toMinutes} min"
+                    else s"${quiet.toSeconds} s"
+                  }")
+              )
+            case Started.Next.Quiet => collect(acc, idle + Tick, since)
+            case Started.Next.Ended => (acc, None)
+            case Started.Next.Line(line) =>
+              val lines = acc :+ line
+              stop(lines) match {
+                case Some(why) => (lines, Some(why))
+                case None => collect(lines, 0.millis, since)
+              }
           }
       }
-    collect(Vector.empty, 0.millis)
+    }
+    collect(Vector.empty, 0.millis, 0L)
   }
+
+  /** 4: every how many polls of a run's output [[streamOf]] asks its watch, so at most every
+    * 2 seconds (4 [[Tick]]s) while the run writes nothing.
+    */
+  private val WatchEvery: Long = 4
 
   /** Why a run wrote no session: how its wait ended, and for an exit, its code and the last line
     * of its errors.

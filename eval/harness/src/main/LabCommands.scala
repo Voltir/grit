@@ -17,7 +17,7 @@ import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.eval.Room
-import grit.eval.harness.bench.{Arm, Bench, Caps, CoderTurns, GritTurn, Rig, Task, Tried}
+import grit.eval.harness.bench.{Arm, Bench, Caps, CoderTurns, GritTurn, MemoryCap, Rig, Task, Tried}
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.log.{Cache, Weights}
@@ -25,7 +25,7 @@ import grit.eval.harness.report.{LabRun, Report}
 import grit.eval.harness.score.{Against, RoomScore}
 import grit.eval.harness.sent.{Cut, SentMarkdown, TurnSent}
 import grit.host.blobs.LocalBlobs
-import grit.host.checkout.{LocalHanding, LocalProcesses, Redaction}
+import grit.host.checkout.{LocalHanding, LocalMemory, LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
 import grit.models.JevConfig
 import grit.models.{AnthropicProvider, JevClassifier}
@@ -40,8 +40,8 @@ private[main] object LabCommands {
     * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --scout <program>` and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --coder <file> --coder-url <jdbc>
-    * --max-tokens <n>`: the task `<name>` of `<dir>` ([[Task.of]], its `task.json` and
-    * `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
+    * --max-tokens <n> [--max-memory-gb <n>]` (8 when not given, [[MemoryCap.of]]): the task
+    * `<name>` of `<dir>` ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
     * kept, no key read. Otherwise a coder run under the caps, the key `ANTHROPIC_API_KEY` from
@@ -114,6 +114,7 @@ private[main] object LabCommands {
                   coder <- need(f, "coder").flatMap(c => read(Path.of(c)))
                   url <- need(f, "coder-url")
                   maxTokens <- need(f, "max-tokens").flatMap(positive("max-tokens"))
+                  memoryCap <- f.get("max-memory-gb").fold(Right(MemoryCap.Default))(MemoryCap.of)
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -131,11 +132,18 @@ private[main] object LabCommands {
                         coderDb <- DbConfig.fromEnv(Map(DbConfig.UrlVar -> url)).left.map(_.message)
                         _ = println(s"the run's log: $output")
                         _ <- kept(f, env, clock)(() =>
-                          Rig.gritTrial(work, handing, clock, coderTurns(coderDb, clock))(
+                          Rig.gritTrial(
+                            work,
+                            handing,
+                            clock,
+                            coderTurns(coderDb, clock),
+                            new LocalMemory(root)
+                          )(
                             repository,
                             task,
                             arm,
                             cap,
+                            memoryCap,
                             key,
                             dir,
                             Rig.Quiet,

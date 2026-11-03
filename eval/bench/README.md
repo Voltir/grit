@@ -48,5 +48,8 @@ calls and bytes before its first edit, and each `run` that failed as a denial. I
 from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
 the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
-passed. grit's own output and the tail of its errors go to the run's log; a run the trial row
+passed, as is one whose processes (all those working in its checkout, the Mill daemon and its test
+JVMs among them) hold more than its memory budget (8 GB, `--max-memory-gb`) or leave the machine
+under 1 GB available. Every JVM grit's tree and the task's checks start is held to 15% of the
+machine's memory. grit's own output and the tail of its errors go to the run's log; a run the trial row
 refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
