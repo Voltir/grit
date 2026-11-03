@@ -41,4 +41,6 @@ calls and bytes before its first edit, and each `run` that failed as a denial. I
 from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
 the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
 call that reached it. A run whose turn did not succeed, or that the budget stopped, is a trial not
-passed. `--dry` prints what the first call would send, with no key and nothing kept.
+passed. grit's own output and the tail of its errors are written beside the checkout, to
+`<checkout>.grit.log`, whatever becomes of the trial; a run the trial row refuses still prints its
+calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
