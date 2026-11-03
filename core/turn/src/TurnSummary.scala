@@ -19,16 +19,37 @@ object TurnSummary {
       "file names and identifiers exactly as written. Reply with the summary only."
   )
 
-  /** The system prompt when the summary also names and describes the turn's item. */
-  val AgendaSystem: String = Fenced.told(
-    "You write the memory of a conversation. Read the exchange below and reply with exactly " +
-      "three lines and nothing else:\n" +
+  // The three labelled lines an item's summary replies with ([[read]]), as both its system
+  // prompt and its ask word them. Before them, since an object's vals are set in order.
+  private val Labelled: String =
+    "three lines and nothing else:\n" +
       "Summary: one or two sentences: what was asked, and what was answered or decided. Keep " +
       "names, numbers, file names and identifiers exactly as written.\n" +
       "Topic: the name of the topic this exchange belongs to, at most four words. If the " +
       "topic already has a name, repeat it.\n" +
       "About: one line saying what the topic covers so far, this exchange included."
+
+  /** The system prompt when the summary also names and describes the turn's item. */
+  val AgendaSystem: String = Fenced.told(
+    "You write the memory of a conversation. Read the exchange below and reply with exactly " +
+      Labelled
   )
+
+  /** What a summary asked on the turn's prefix is told, as a user message after the reply
+    * ([[asking]]).
+    */
+  val Ask: String =
+    "That is the end of this exchange. Now write the memory of it, which is kept and read " +
+      "later away from this conversation: one or two sentences on what the person asked in " +
+      "their last message and what was answered or decided since. Keep names, numbers, file " +
+      "names and identifiers exactly as written. Write it plainly, in no persona's voice. Do " +
+      "not call a tool. Reply with the summary only."
+
+  /** [[Ask]] when the summary also names and describes the turn's item: its three labelled
+    * lines ([[read]]) in place of the summary alone.
+    */
+  val AgendaAsk: String =
+    Ask.stripSuffix("Reply with the summary only.") + "Reply with exactly " + Labelled
 
   /** What the request says of an item with no name yet. Worded so it has nothing a model
     * could repeat as a name: "Topic so far: new, not yet named." came back live as the
@@ -59,13 +80,48 @@ object TurnSummary {
     item match {
       case None => ModelRequest(System, Vector(Message.User(transcript)))
       case Some(t) =>
-        val so = t.name.fold(ItemUnnamed)(n =>
-          "Topic so far:\n" +
-            Fenced.in(Tag.Document, n + t.summary.fold("")(a => s" (about: $a)")).rendered
-        )
-        ModelRequest(AgendaSystem, Vector(Message.User(s"$so\n\n$transcript")))
+        ModelRequest(AgendaSystem, Vector(Message.User(s"${soFar(t)}\n\n$transcript")))
     }
   }
+
+  /** The summary asked as one more call after the request it shapes: `reply`, then the ask as
+    * a user message, [[Ask]]; with `item`, the item as it stands, [[AgendaAsk]] after its name
+    * and about so far fenced in `<document>`, as [[request]] asks them. Its system prompt,
+    * tools, tool use and stable messages are the request's.
+    */
+  def asking(reply: Message.Assistant, item: Option[Agenda.Item]): ModelRequest -> ModelRequest =
+    r => {
+      val ask = item.fold(Ask)(t => s"${soFar(t)}\n\n$AgendaAsk")
+      r.copy(messages = r.messages :+ reply :+ Message.User(ask))
+    }
+
+  /** The request that summarises `turn` on its own prefix ([[Turn.SummaryAsk.OnPrefix]]), its
+    * loop's answer kept as `kept`: the request that answer's call was sent, rebuilt from
+    * `showing` under `system` as [[TurnShown.sentBefore]] says with `stubs`, `zoned`, `direct`
+    * and `shape`, then [[asking]] after the answer, of the item `all`, the conversation's
+    * entries, place its message in. Fails as [[TurnShown.sentBefore]] does.
+    */
+  def onPrefix(
+      all: Vector[Entry],
+      showing: TurnShown.Showing,
+      turn: TurnRef,
+      kept: EntryId,
+      system: String,
+      stubs: Map[ItemRef, String],
+      zoned: Option[TurnOffer.Zoned],
+      direct: Boolean,
+      shape: ModelRequest -> ModelRequest
+  ): Either[TurnFailure, ModelRequest] =
+    TurnShown
+      .sentBefore(system, showing, turn, kept, stubs, zoned, direct, shape)
+      .map((sent, reply) => asking(reply, TurnAgenda.itemOf(all, turn))(sent))
+
+  // What the summary of `item`'s exchange is told of the item as it stands.
+  private def soFar(item: Agenda.Item): String =
+    item.name.fold(ItemUnnamed)(n =>
+      "Topic so far:\n" +
+        Fenced.in(Tag.Document, n + item.summary.fold("")(a => s" (about: $a)")).rendered
+    )
 
   /** The request that summarises `turn`, from `all` of its conversation's entries: its own,
     * asking after its item too when it has one. The summary step's own request.

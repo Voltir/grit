@@ -283,8 +283,8 @@ private[turn] object TurnSteps {
     /** The needs gate rejected the heard message of a turn rooted at `root`: nothing drafted. */
     case Unneeded(root: TurnNeeds.Unasked)
 
-    /** Its reply or draft, kept as `entry`. */
-    case Kept(entry: EntryId)
+    /** Its reply or draft, kept as `entry`: the answer to round `at.round` of its loop. */
+    case Kept(entry: EntryId, at: TurnRound.Progress)
   }
 
   /** What `at`'s steps from `stitched` to `append` came to (`result`); the verdict's record
@@ -316,15 +316,10 @@ private[turn] object TurnSteps {
     def turn: TurnRef = at.turn
   }
 
-  /** `turn`'s reply `answered` summarised, routed as `routed`, its rows believed at
-    * `believed`.
+  /** `turn`'s reply `answered` summarised, its loop's answer kept as `kept`: the reply itself,
+    * or the draft a post answered with.
     */
-  final case class Summing(
-      turn: TurnRef,
-      routed: Turn.Routed,
-      answered: EntryId,
-      believed: Option[Integrity]
-  ) extends OfTurn
+  final case class Summing(turn: TurnRef, answered: EntryId, kept: Result.Kept) extends OfTurn
 
   /** `at`'s summary, `message`. */
   final case class Summary(at: Summing, message: Message.Assistant) extends OfTurn {
@@ -593,31 +588,33 @@ private[turn] object TurnSteps {
     )
 
   /** `summarise`: the summary of the turn whose reply is `answered`, asked of the summary's
-    * pin, again while the summarizer is unavailable, as a reply is ([[Asking.reply]]), with
-    * the name and description of its message's item; its reasoning dropped.
-    * `Uncleared` when no summary pin is cleared; `Store` when its route's pins do not read
-    * back ([[Turn.Routed.picked]]).
+    * pin as [[Turn.Picked.summaryAsk]] says ([[summaryRequest]]), again while the summarizer
+    * is unavailable, as a reply is ([[Asking.reply]]), with the name and description of its
+    * message's item; its reasoning dropped. `Uncleared` when no summary pin is cleared;
+    * `Store` when its route's pins do not read back ([[Turn.Routed.picked]]) or the request's
+    * reads fail. A summary asked on the turn's prefix is offered the turn's tools and told to
+    * call none; a reply that calls one anyway has no text, and `append-summary` fails it.
     */
   val summarise: Step[Env, Summing, Either[TurnFailure, Message.Assistant]] =
     Step[Env, Summing, Either[TurnFailure, Message.Assistant]](Names.summarise)(r =>
       in => {
-        val (env, turn) = (r.env, in.turn)
-        in.routed
+        val env = r.env
+        in.kept.at.looping.routed
           .picked(env)
-          .flatMap(pins => pins.summary.map((pins, _)))
-          .flatMap { (pins, pin) =>
+          .flatMap(pins => pins.summaryAsk.map((pins, _)))
+          .flatMap { (pins, ask) =>
             pins
               .reads(env.db)
-              .read(Subject.Turn(turn))(env.records.entries.list(turn.conversationId))
+              .read(Subject.Turn(in.turn))(Right(summaryRequest(r, in, pins, ask)))
               .left
               .map(TurnFailure.ofStore)
-              .flatMap { all =>
-                val request = TurnSummary.of(all, turn)
+              .flatten
+              .flatMap(request =>
                 Asking
-                  .reply(env.models.provider(pin), request, Hearing.silent(), env.clock)
+                  .reply(env.models.provider(ask.pin), request, Hearing.silent(), env.clock)
                   .left
                   .map(TurnFailure.Model(_))
-              }
+              )
           }
           // Nothing reads a summary's reasoning, and it was most of what this step recorded.
           .map[Message.Assistant](m =>
@@ -642,24 +639,66 @@ private[turn] object TurnSteps {
     Step.transact[Env, Summary, Either[TurnFailure, EntryId]](Names.appendSummary, onTurn)(r =>
       in =>
         (tx: Tx^) ?=> {
-          val s = in.at
-          s.routed
+          val (s, at) = (in.at, in.at.kept.at)
+          at.looping.routed
             .pickedIn(r.env.records.profiles)
-            .flatMap(_.summary)
-            .flatMap(pin =>
-              appendSummaryOf(
-                r.env.records,
-                r.env.hosting,
-                s.turn,
-                s.answered,
-                in.message,
-                pin.grade,
-                s.believed,
-                r.env.clock.now()
+            .flatMap(pins => pins.summaryAsk.map((pins, _)))
+            .flatMap((pins, ask) =>
+              // The request rebuilt before the summary is kept, as `summarise` built it.
+              summaryRequest(r, s, pins, ask).flatMap(sent =>
+                appendSummaryOf(
+                  r.env.records,
+                  r.env.hosting,
+                  s.turn,
+                  s.answered,
+                  in.message,
+                  ask.pin.grade,
+                  Some(at.level),
+                  sent,
+                  r.env.clock.now()
+                )
               )
             )
         }
     )
+
+  /** The request `s`'s summary is asked with under `pins`, as `ask` says, read in this
+    * transaction: alone, [[TurnSummary.of]] the conversation's entries; on the turn's prefix,
+    * [[TurnSummary.onPrefix]] of the call that kept its loop's answer, offered and shaped as
+    * that call was ([[Env.sent]]). Fails as its reads, [[Env.sent]] and
+    * [[TurnSummary.onPrefix]] do.
+    */
+  private def summaryRequest(r: Env^, s: Summing, pins: Turn.Picked, ask: Turn.SummaryAsk)(using
+      Tx^
+  ): Either[TurnFailure, ModelRequest] = {
+    val (env, at) = (r.env, s.kept.at)
+    env.records.entries.list(s.turn.conversationId).left.map(TurnFailure.ofStore).flatMap { all =>
+      ask match {
+        case Turn.SummaryAsk.Alone(_) => Right(TurnSummary.of(all, s.turn))
+        case Turn.SummaryAsk.OnPrefix(_) =>
+          for {
+            offer <- env.hosting.offered(at.looping.offer)
+            (stubs, shape) <- r.sent(at, offer, pins)
+            showing <- shown(env.records, s.turn, at.looping.seen).left.map(TurnFailure.ofStore)
+            direct <- TurnShown
+              .direct(env.hosting.conversations, s.turn)
+              .left
+              .map(TurnFailure.ofStore)
+            request <- TurnSummary.onPrefix(
+              all,
+              showing,
+              s.turn,
+              s.kept.entry,
+              offer.system,
+              stubs,
+              offer.zoned,
+              direct,
+              shape
+            )
+          } yield request
+      }
+    }
+  }
 
   /** [[Uncleared.reply]] kept as `turn`'s reply, dated `at`: what a turn said to grit is
     * answered when no turn pin is cleared for `classification`. No call was made, so no cost.
@@ -1052,7 +1091,7 @@ private[turn] object TurnSteps {
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation, believed as
     * [[TurnRound.believedAt]] says of `believed`; and what it cost in the ledger beside the
-    * estimate of the request that produced it, rebuilt as [[appended]] rebuilds its own.
+    * estimate of `sent`, the request that produced it.
     * What it says of the message's item is recorded after it ([[TurnAgenda.describedId]]). The
     * summary closes the conversation's session, at its seq, cut to [[Session.Summary.Longest]]
     * characters ending `…`, when a session is recorded already ([[TurnSessions.record]]).
@@ -1065,6 +1104,7 @@ private[turn] object TurnSteps {
       message: Message.Assistant,
       grade: Grade,
       believed: Option[Integrity],
+      sent: ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
@@ -1107,9 +1147,8 @@ private[turn] object TurnSteps {
         )
         .left
         .map(TurnFailure.ofStore)
-      estimate = estimator.request(TurnSummary.of(all, turn))
       _ <- Asking
-        .spent(ledger, id, turn, message, Some(grade), estimate)
+        .spent(ledger, id, turn, message, Some(grade), estimator.request(sent))
         .left
         .map(TurnFailure.ofStore)
       described = TurnAgenda.itemOf(all, turn).toVector.flatMap(TurnAgenda.described(_, read))

@@ -453,6 +453,43 @@ private[turn] object TurnShown {
       )
       .map(_.origin.place.direct)
 
+  /** The request the call whose reply is kept as `reply` was sent, rebuilt from `showing`:
+    * [[requestOf]] over the turn's own entries kept before that reply alone, each item `stubs`
+    * names shown as its stub, shaped by `shape`; with the reply as kept: a round's that called
+    * tools, the turn's reply or its draft. `Store` naming the reply when `showing` keeps none
+    * of those under it.
+    */
+  def sentBefore(
+      system: String,
+      showing: Showing,
+      turn: TurnRef,
+      reply: EntryId,
+      stubs: Map[ItemRef, String],
+      zoned: Option[TurnOffer.Zoned],
+      direct: Boolean,
+      shape: ModelRequest -> ModelRequest
+  ): Either[TurnFailure, (ModelRequest, Message.Assistant)] =
+    // A call's reply is kept after every own entry the call was shown (recordCall and append
+    // read `shown` after lockNext, which serialises the conversation, and before inserting
+    // the reply), so the own entries it saw are exactly those below the reply's seq. Own
+    // entries `Shown.turn` does not show (a window, a query, an agenda event) change nothing.
+    showing.mine
+      .find(_.id == reply)
+      .flatMap(e =>
+        (e.payload match {
+          case Payload.Message(m: Message.Assistant) => Some(m)
+          case Payload.Exchange(m) => Some(m)
+          case Payload.Draft(m) => Some(m)
+          case _ => None
+        }).map(e -> _)
+      )
+      .toRight(TurnFailure.Store(s"the reply ${EntryId.value(reply)} is not kept"))
+      .flatMap { (at, message) =>
+        val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
+        requestOf(system, showing.copy(mine = before), turn, stubs, zoned, direct)
+          .map(r => (r.shaped(shape), message))
+      }
+
   /** A request of `system`: each of `parts` in order. */
   final case class Unshaped(system: String, parts: Vector[Unshaped.Part]) {
 

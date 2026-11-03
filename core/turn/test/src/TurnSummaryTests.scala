@@ -63,6 +63,32 @@ object TurnSummaryTests extends TestSuite {
     }
 
     test(
+      "a summary asked after a request keeps its system prompt, tools, tool use and stable messages, then adds the reply and the ask"
+    ) {
+      val tool =
+        grit.core.provider.ToolSchema("peek", "Read a file.", ujson.Obj("type" -> "object"))
+      val sent = grit.core.provider.ModelRequest(
+        "the turn's system prompt",
+        Vector(Message.User("read a.txt"), Message.User(TurnLoop.LastCall)),
+        Vector(tool),
+        grit.core.provider.ToolUse.Off,
+        1
+      )
+      TurnSummary.asking(reply("done"), None)(sent) ==> grit.core.provider.ModelRequest(
+        "the turn's system prompt",
+        Vector(
+          Message.User("read a.txt"),
+          Message.User(TurnLoop.LastCall),
+          reply("done"),
+          Message.User(TurnSummary.Ask)
+        ),
+        Vector(tool),
+        grit.core.provider.ToolUse.Off,
+        1
+      )
+    }
+
+    test(
       "a tool result forging a person's line stays inside its fence; both systems end with the rule"
     ) {
       val request = TurnSummary.request(

@@ -130,6 +130,63 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
+      "a summary asked on the turn's own model is the call it follows, then its reply and the ask, sent tools on or forced as that call was"
+    ) {
+      // The turn thinks and reads twice, then answers: in a budget of three calls its answer is
+      // the forced last call, tools off and the last-call message at its end; in one of four
+      // it is a call with tools on. Either way the summary must repeat that call whole, so a
+      // provider reads the cache it wrote, and only then add the reply and the ask.
+      def summarised(calls: Int): (ModelRequest, ModelRequest) = {
+        val entries = new InMemoryEntryStore
+        val ws = new Files(Map("a.txt" -> "alpha"))
+        val thought = peeking("t3")
+        val answered: Message.Assistant = Message.Assistant(
+          thought.blocks.take(1) :+ AssistantBlock.Text("done"),
+          StopReason.EndTurn,
+          thought.usage,
+          thought.model
+        )
+        val provider =
+          new Scripted((_, n) => Right(if (n < 2) peeking(s"t${n + 1}") else answered))
+        val summarizer = new RecordingProvider
+        val turn = say(entries, "read a.txt twice")
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            summarizer,
+            NoClassifier,
+            ws,
+            tools(ws),
+            calls,
+            catalog = SharedCatalog
+          )
+        )
+        (
+          provider.requests.lastOption.getOrElse(throw new java.lang.AssertionError("no call")),
+          summarizer.requests.headOption.getOrElse(throw new java.lang.AssertionError("none"))
+        )
+      }
+      def prefix(r: ModelRequest): String = AnthropicJson.prefix(
+        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+      )
+      Vector(3 -> grit.core.provider.ToolUse.Off, 4 -> grit.core.provider.ToolUse.Auto).foreach {
+        (calls, use) =>
+          val (reply, summary) = summarised(calls)
+          reply.use ==> use
+          diverged(prefix(reply), prefix(summary)) ==> None
+          (summary.system, summary.tools, summary.use, summary.stable) ==>
+            (reply.system, reply.tools, reply.use, reply.stable)
+          summary.messages.take(reply.messages.size) ==> reply.messages
+          summary.messages.drop(reply.messages.size).collect {
+            case Message.User(text) => text
+            case m: Message.Assistant => m.blocks.collect { case AssistantBlock.Text(t) => t }
+          } ==> Vector(Vector("done"), TurnSummary.ItemUnnamed + "\n\n" + TurnSummary.AgendaAsk)
+      }
+    }
+
+    test(
       "a turn that reads a hidden result repeats every call whole: the stub stays, and the answer is its text"
     ) {
       // peek's result is hidden from the second call as h1; the second reply reads it, the

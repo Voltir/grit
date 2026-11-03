@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.allot.Allotment
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
-import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ToolUse
 import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
@@ -11,7 +11,7 @@ import grit.core.visibility.{Classification, Label}
 
 import TurnFailure.reason
 import TurnLoop.Round
-import TurnShown.{asked, gateNotes, gatedOffer, loopShape, offered, requestOf, shown, stubsAt}
+import TurnShown.{asked, gateNotes, gatedOffer, loopShape, offered, shown, stubsAt}
 
 /** The durable turn: one workflow per turn, run as [[TurnFlow]] describes it. Each step's
   * output is recorded, so a turn resumed after a crash never calls a model twice. A step that
@@ -251,7 +251,33 @@ object Turn {
       summary: Either[TurnFailure, Pinned],
       query: Option[Pinned],
       bound: Option[Label]
-  ) extends Bounded
+  ) extends Bounded {
+
+    /** How the turn's summary is asked: [[SummaryAsk.OnPrefix]] when its summary pin names the
+      * turn pin's pair and effort, else [[SummaryAsk.Alone]]; `Uncleared` as [[summary]] is.
+      */
+    def summaryAsk: Either[TurnFailure, SummaryAsk] =
+      summary.map(s =>
+        // A provider's cache is its model's, and a change of effort, a thinking parameter,
+        // invalidates the messages it holds; an output budget changes neither.
+        if (
+          s.assignment.ref == turn.assignment.ref && s.assignment.effort == turn.assignment.effort
+        ) SummaryAsk.OnPrefix(s)
+        else SummaryAsk.Alone(s)
+      )
+  }
+
+  /** How a turn's summary is asked, under the pin it is asked of. */
+  private[turn] enum SummaryAsk {
+
+    /** As one more call on the turn's own prefix ([[TurnSummary.asking]]). */
+    case OnPrefix(pin: Pinned)
+
+    /** As a request of its own ([[TurnSummary.of]]). */
+    case Alone(pin: Pinned)
+
+    def pin: Pinned
+  }
 
   private[turn] object Picked {
     def of(r: Route): Picked =
@@ -408,44 +434,37 @@ object Turn {
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
       tools <- offered(own, asking).left.map(reason)
       schemas = tools.schemas(strict)
-      // What the call whose reply is kept as `reply` was sent, under `use`. Its reply is kept
-      // after every own entry the call was shown: recordCall and append read `shown` after
-      // lockNext, which serialises the conversation, and before inserting the reply, so the
-      // own entries it saw are exactly those below the reply's seq. Own entries Shown.turn
-      // does not show (a window, a query, an agenda event, an ask) change nothing either side.
+      // How round `round`'s call was shaped under `use`, as it was live.
+      shapeAt = (round: Round, use: ToolUse) => {
+        val (shown, lines) = gatedOffer(tools.set, schemas, strict)
+        loopShape(
+          asking,
+          use,
+          shown,
+          settings.afterResult,
+          settings.guidance,
+          lines,
+          gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
+            TurnLoop.notes(l.budget.after(replies.take(round.index)), round)
+          )
+        )
+      }
+      // What the call whose reply is kept as `reply` was sent, under `use`.
       sent = (round: Round, use: ToolUse, reply: EntryId) =>
-        showing.mine.find(_.id == reply) match {
-          case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")
-          case Some(at) =>
-            val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
-            val (shown, lines) =
-              gatedOffer(tools.set, schemas, strict)
-            requestOf(
-              prompt.render,
-              showing.copy(mine = before),
-              turn,
-              stubsAt(gates, round, tools.set),
-              offer.zoned,
-              direct
-            )
-              .map(
-                _.shaped(
-                  loopShape(
-                    asking,
-                    use,
-                    shown,
-                    settings.afterResult,
-                    settings.guidance,
-                    lines,
-                    gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
-                      TurnLoop.notes(l.budget.after(replies.take(round.index)), round)
-                    )
-                  )
-                )
-              )
-              .left
-              .map(reason)
-        }
+        TurnShown
+          .sentBefore(
+            prompt.render,
+            showing,
+            turn,
+            reply,
+            stubsAt(gates, round, tools.set),
+            offer.zoned,
+            direct,
+            shapeAt(round, use)
+          )
+          .map(_._1)
+          .left
+          .map(reason)
       rounds <- calls.foldLeft[Either[String, Vector[TurnRecord.Call]]](Right(Vector.empty)) {
         case (acc, (round, reply)) =>
           acc.flatMap(done =>

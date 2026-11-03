@@ -1386,23 +1386,43 @@ object TurnFixtures {
       Tokens(28)
     )
 
-  /** A catalog whose three roles differ only in their model: what every fixture turn pins. */
-  val TestCatalog: Catalog = {
-    def role(name: String, budget: Int) =
-      Assignment(
-        ModelRef(
-          ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)),
-          None
-        ),
-        budget,
+  /** The assignment of the model `test/<name>` at `budget` output tokens, no effort set. */
+  private def testRole(name: String, budget: Int): Assignment =
+    Assignment(
+      ModelRef(
+        ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)),
         None
-      )
+      ),
+      budget,
+      None
+    )
+
+  /** A catalog whose three roles differ only in their model: what every fixture turn pins. */
+  val TestCatalog: Catalog =
     Catalog.of(
-      Policy
-        .one(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)),
+      Policy.one(
+        testRole("turn", 4096),
+        testRole("summary", 1024),
+        testRole("query", 1024),
+        testRole("summary", 1024)
+      ),
       Vector.empty
     )
-  }
+
+  /** [[TestCatalog]] with its summary on the turn's model at a budget of its own: a summary
+    * asked on the turn's prefix ([[Turn.SummaryAsk.OnPrefix]]), which a [[FixedModels]] still
+    * sends to its summary provider.
+    */
+  val SharedCatalog: Catalog =
+    Catalog.of(
+      Policy.one(
+        testRole("turn", 4096),
+        testRole("turn", 1024),
+        testRole("query", 1024),
+        testRole("turn", 1024)
+      ),
+      Vector.empty
+    )
 
   /** A pair, `model` at `upstream` (`None`: OpenRouter picks, so no party). */
   def pair(model: String, upstream: Option[String]): ModelRef =
@@ -1696,7 +1716,8 @@ object TurnFixtures {
       principals: Principals = new InMemoryPrincipals,
       zone: ZoneId = ZoneOffset.UTC,
       at: Origin = origin,
-      persona: Persona = Persona.Grit
+      persona: Persona = Persona.Grit,
+      catalog: Catalog = TestCatalog
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -1721,7 +1742,7 @@ object TurnFixtures {
           LinearAssembler.DefaultBudget
         ),
         grit.core.classify.TestClassifiers.cleared(NoClassifier),
-        new FixedModels(turn, summary),
+        new FixedModels(turn, summary, catalog),
         FakeDb,
         new NoWait,
         Fresh.random(),
@@ -2000,7 +2021,8 @@ object TurnFixtures {
       hosted: Vector[Tool.Offered] = Vector.empty,
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched(),
-      grows: Option[Tokens] = None
+      grows: Option[Tokens] = None,
+      catalog: Catalog = TestCatalog
   )(id: WorkflowId)(using Durable^): String =
     toolsBody(
       entries,
@@ -2012,7 +2034,8 @@ object TurnFixtures {
       calls,
       clock,
       hosted,
-      grows
+      grows,
+      catalog
     )(
       speech,
       stitching,
@@ -2030,7 +2053,8 @@ object TurnFixtures {
       calls: Int,
       clock: Clock^,
       hosted: Vector[Tool.Offered],
-      grows: Option[Tokens] = None
+      grows: Option[Tokens] = None,
+      catalog: Catalog = TestCatalog
   )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
       Durable^
   ): String =
@@ -2055,7 +2079,7 @@ object TurnFixtures {
           LinearAssembler.DefaultBudget
         ),
         grit.core.classify.TestClassifiers.cleared(classifier),
-        new FixedModels(provider, summarizer),
+        new FixedModels(provider, summarizer, catalog),
         FakeDb,
         clock,
         Fresh.random(),

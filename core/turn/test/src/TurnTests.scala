@@ -1127,7 +1127,62 @@ object TurnTests extends TestSuite {
     }
 
     test(
-      "the voice set reaches every model call of the turn, between its edge and its reach, and never its summary"
+      "a summary asked on the turn's own model is costed beside the estimate of the request it was sent"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val summarizer = new RecordingProvider
+      val turn = say(entries, "hello")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          new RecordingProvider,
+          ledger,
+          summarizer,
+          NoClassifier,
+          ws,
+          tools(ws),
+          3,
+          catalog = SharedCatalog
+        )
+      )
+      val sent = summarizer.requests.map(r => CharEstimate.request(r))
+      sent.size ==> 1
+      ledger.rows.collect {
+        case (id, _, _, _, estimate, _) if id == TurnSummary.id(turn) => estimate
+      } ==> sent
+    }
+
+    test(
+      "a summary asked on the turn's own model is sent the turn's voiced system prompt, then the ask to write it in no persona's voice"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = new RecordingProvider
+      val summary = new RecordingProvider
+      val voices = new InMemoryVoiceStore
+      voices.set(Voice.Named.Sassy)(using TestTx.fake)
+      val asked = say(entries, "hello")
+      new InMemoryDurable().run(asked.workflowId)(
+        voicedBody(entries, turn, summary, voices, catalog = SharedCatalog)
+      )
+      val person = Voice
+        .fragment(Voice.Named.Sassy)
+        .map(_.text)
+        .getOrElse(throw new java.lang.AssertionError())
+      (
+        summary.requests.map(r =>
+          (r.system.contains(person), r.system == turn.requests.head.system)
+        ),
+        summary.requests.flatMap(_.messages.lastOption)
+      ) ==> (
+        Vector((true, true)),
+        Vector(Message.User(TurnSummary.ItemUnnamed + "\n\n" + TurnSummary.AgendaAsk))
+      )
+    }
+
+    test(
+      "the voice set reaches every model call of the turn, between its edge and its reach, and not its summary asked of another model"
     ) {
       val entries = new InMemoryEntryStore
       // Two rounds: a call to a tool the turn does not offer, answered, then a reply.
@@ -1170,7 +1225,9 @@ object TurnTests extends TestSuite {
       summary.requests.map(_.system) ==> Vector(TurnSummary.AgendaSystem)
     }
 
-    test("the persona's voice reaches every model call of a Slack turn, never its summary") {
+    test(
+      "the persona's voice reaches every model call of a Slack turn, and not its summary asked of another model"
+    ) {
       val entries = new InMemoryEntryStore
       // Two rounds: a call to a tool the turn does not offer, answered, then a reply.
       val call: Message.Assistant = Message.Assistant(

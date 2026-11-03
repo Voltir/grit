@@ -157,9 +157,11 @@ private[turn] object TurnFlow {
           .andThen(Flow.step(append))
           .keeping
           .map { case ((a, unrecorded), kept) =>
+            // The level twice for a kept reply, in `Kept`'s progress and here: `level` serves
+            // the turns that end without one too.
             Ended(
               a.at.at,
-              kept.fold(Result.Failed(_), k => Result.Kept(k.reply)),
+              kept.fold(Result.Failed(_), k => Result.Kept(k.reply, a.looped.at)),
               unrecorded,
               Some(a.looped.at.level)
             )
@@ -199,7 +201,7 @@ private[turn] object TurnFlow {
     case Stopped(said: String)
 
     /** A heard or named turn's `draft`, to settle. */
-    case Drafted(at: Ended, draft: EntryId)
+    case Drafted(at: Ended, draft: Result.Kept)
 
     /** A heard, named or by-name turn that failed, or a heard or named one the needs gate
       * rejected: `undrafted`, kept as what became of its draft; `said`, what it did.
@@ -207,18 +209,21 @@ private[turn] object TurnFlow {
     case Unsettled(at: Ended, undrafted: Undrafted, said: String)
 
     /** An addressed or by-name turn's `reply`, to summarise. */
-    case Replied(at: Ended, reply: EntryId)
+    case Replied(at: Ended, reply: Result.Kept)
 
     /** The arm of [[ending]] that goes on with it, in the order the arms are written. */
     def split: Either[
       String,
-      Either[(Ended, EntryId), Either[(Ended, Undrafted, String), (Ended, EntryId)]]
+      Either[
+        (Ended, Result.Kept),
+        Either[(Ended, Undrafted, String), (Ended, EntryId, Result.Kept)]
+      ]
     ] =
       this match {
         case Stopped(said) => Left(said)
         case Drafted(at, draft) => Right(Left((at, draft)))
         case Unsettled(at, undrafted, said) => Right(Right(Left((at, undrafted, said))))
-        case Replied(at, reply) => Right(Right(Right((at, reply))))
+        case Replied(at, reply) => Right(Right(Right((at, reply.entry, reply))))
       }
   }
 
@@ -232,13 +237,13 @@ private[turn] object TurnFlow {
         Unsettled(e, Undrafted(e.turn, Outcome.NothingRecalled), "unneeded")
       case (Result.Failed(failure), TurnOffer.Root.Addressed) =>
         Stopped(s"failed: $failure${e.notes}")
-      case (Result.Kept(draft), TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
+      case (draft: Result.Kept, TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
       case (
             Result.Failed(failure),
             TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName
           ) =>
         Unsettled(e, Undrafted(e.turn, Outcome.Failed(failure.toString)), s"failed: $failure")
-      case (Result.Kept(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
+      case (reply: Result.Kept, TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
         Replied(e, reply)
     }
   }
@@ -257,9 +262,9 @@ private[turn] object TurnFlow {
   /** A heard-rooted turn's draft settled: judged when unprompted, then `record-speech`; a
     * posted one summarised.
     */
-  private def drafted: Flow[Env, (Ended, EntryId), Nothing, String] =
+  private def drafted: Flow[Env, (Ended, Result.Kept), Nothing, String] =
     Flow
-      .branch((e: (Ended, EntryId)) =>
+      .branch((e: (Ended, Result.Kept)) =>
         if (e._1.at.offer.root == TurnOffer.Root.Named) Left(e._1) else Right(e._1)
       )(
         Flow.pass[Ended].map(DraftSettled(_, Settling.Named)),
@@ -273,24 +278,27 @@ private[turn] object TurnFlow {
       .map { case ((e, draft), (_, settled)) =>
         settled match {
           case Left(failure) =>
-            Left(s"drafted: ${EntryId.value(draft)}; not settled: $failure${e.notes}")
-          case Right(Outcome.Posted(_)) => Right((e, e.turn.replyId))
+            Left(s"drafted: ${EntryId.value(draft.entry)}; not settled: $failure${e.notes}")
+          case Right(Outcome.Posted(_)) => Right((e, e.turn.replyId, draft))
           case Right(other) =>
-            Left(s"drafted: ${EntryId.value(draft)}; ${SpeechJson.outcomeName(other)}${e.notes}")
+            Left(
+              s"drafted: ${EntryId.value(draft.entry)}; ${SpeechJson.outcomeName(other)}${e.notes}"
+            )
         }
       }
       .andThen(Flow.either(Flow.pass[String], summarised("posted")))
 
-  /** `answered`, the turn's reply, summarised: what the turn did, as `did` and then its
+  /** `answered`, the turn's reply, summarised, its loop's answer kept as `kept` (the reply
+    * itself, or the draft a post answered with): what the turn did, as `did` and then its
     * summary say.
     */
-  private def summarised(did: String): Flow[Env, (Ended, EntryId), Nothing, String] =
+  private def summarised(did: String): Flow[Env, (Ended, EntryId, Result.Kept), Nothing, String] =
     Flow
-      .pass[(Ended, EntryId)]
-      .map((e, answered) => Summing(e.turn, e.at.routed, answered, e.level))
+      .pass[(Ended, EntryId, Result.Kept)]
+      .map((e, answered, kept) => Summing(e.turn, answered, kept))
       .andThen(Flow.attempt(summary))
       .keeping
-      .map { case ((e, answered), made) =>
+      .map { case ((e, answered, _), made) =>
         val said = made.fold(f => s"no summary: $f", id => s"summarised: ${EntryId.value(id)}")
         s"$did: ${EntryId.value(answered)}; $said${e.notes}"
       }
