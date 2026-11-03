@@ -104,6 +104,19 @@ object RigTests extends TestSuite {
     def gritArm(fake: GritFake, maxTokens: Int = 8192): Arm.Grit = {
       val launcher = root.resolve("grit")
       Files.write(root.resolve("grit.out"), fake.lines.asJava)
+      // Each line as a Java string literal, every character past ASCII escaped, so the source
+      // reads the same whatever its file's encoding.
+      val literals = fake.lines.map(l =>
+        l.flatMap(c => if (c < 128 && c != '"' && c != '\\') c.toString else f"\\u${c.toInt}%04x")
+      )
+      Files.writeString(
+        root.resolve("Answer.java"),
+        s"""class Answer { public static void main(String[] a) {
+           |${literals.map(l => s"""System.out.println("$l");""").mkString("\n")}
+           |} }""".stripMargin
+      )
+      val print =
+        if (fake.jvm) s""""$${JAVA_HOME}/bin/java" $root/Answer.java""" else s"cat $root/grit.out"
       Files.writeString(
         launcher,
         s"""#!/bin/sh
@@ -112,14 +125,19 @@ object RigTests extends TestSuite {
            |for a in "$$@"; do brief="$$a"; done
            |cat "$$brief" > $root/gbrief
            |printf '%s\\n' 'object A { val x = 1 }' > a.scala
-           |cat $root/grit.out
+           |$print
+           |printf 'a log line\\n' >&2
            |${if (fake.hangs) "sleep 30" else "exit 0"}
            |""".stripMargin
       )
       Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwxr-xr-x"))
       (for {
         passed <- Variables.of(
-          Map("PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"), "HOME" -> root.toString)
+          Map(
+            "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
+            "HOME" -> root.toString,
+            "JAVA_HOME" -> sys.props("java.home")
+          )
         )
         arm <- Arm.Grit.of(
           launcher.toString,
@@ -174,8 +192,14 @@ object RigTests extends TestSuite {
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
-  /** The fake grit launcher's output, a line each, and whether it hangs once written. */
-  private final case class GritFake(lines: Vector[String], hangs: Boolean = false)
+  /** The fake grit launcher's output, a line each, whether it hangs once written, and whether a
+    * JVM prints the lines, as `grit work` does, in place of the shell.
+    */
+  private final case class GritFake(
+      lines: Vector[String],
+      hangs: Boolean = false,
+      jvm: Boolean = false
+  )
 
   /** What a small grit run prints: two calls' lines among others. */
   private val gritLines: Vector[String] = Vector(
@@ -214,14 +238,15 @@ object RigTests extends TestSuite {
   private def gritTrial(
       f: Fixture^,
       fake: GritFake,
-      caps: Caps = cap
+      caps: Caps = cap,
+      turn: GritTurn = gritTurn
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
       f.handing,
       stepping(),
-      new CoderTurns { def newest(): Either[String, GritTurn] = Right(gritTurn) }
-    )(f.origin, f.task, f.gritArm(fake), caps, key, checkout, Rig.Quiet)
+      new CoderTurns { def newest(): Either[String, GritTurn] = Right(turn) }
+    )(f.origin, f.task, f.gritArm(fake), caps, key, checkout, Rig.Quiet, f.root.resolve("grit.log"))
 
   private def trial(
       f: Fixture^,
@@ -540,6 +565,8 @@ object RigTests extends TestSuite {
               "GRIT_TOOLS=allowlist",
               "GRIT_TOOL_ROUNDS=4",
               s"HOME=${f.root}",
+              s"JAVA_HOME=${sys.props("java.home")}",
+              "LANG=C.UTF-8",
               s"PATH=${sys.env.getOrElse("PATH", "/usr/bin:/bin")}"
             )
           )
@@ -561,6 +588,37 @@ object RigTests extends TestSuite {
             Some("its calls cost 10¢, reaching its cap of 5¢"),
             Some("ended: its calls cost 10¢, reaching its cap of 5¢, in error")
           )
+        )
+      }
+    }
+
+    test(
+      "grit's answered lines reach the rig whole from its JVM, which starts with no locale of its own"
+    ) {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines, jvm = true)).map(t =>
+          (t.trial.calls, t.lines.filter(_.startsWith("cost")))
+        ) ==> Right((2, Vector("cost: 0.0089¢ by grit's rates")))
+      }
+    }
+
+    test("grit's output and the tail of its errors are kept beside the trial, refused or not") {
+      withTask { f =>
+        val refused = gritTrial(f, GritFake(Vector("[main] said")), turn = gritTurn)
+        (refused.isLeft, Option.when(f.exists("grit.log"))(f.recorded("grit.log"))) ==> (
+          true,
+          Some("[main] said\n[rig] the tail of grit's errors:\na log line\n")
+        )
+      }
+    }
+
+    test("a grit trial the trial row refuses still prints its calls and its cost") {
+      withTask { f =>
+        val twice = gritTurn.copy(messages = gritTurn.messages.take(3) ++ gritTurn.messages.drop(1))
+        gritTrial(f, GritFake(gritLines.take(2)), turn = twice) ==> Left(
+          "call 1 call-1: input 1200 (cache read 1000, written 150)\n" +
+            "cost: 0.0054¢ by grit's rates\n" +
+            "a trial's calls before its first edit are 0 to its calls"
         )
       }
     }

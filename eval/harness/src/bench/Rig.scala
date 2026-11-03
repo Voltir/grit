@@ -134,16 +134,7 @@ final case class Tried(
     * estimate, how the run ended, each denial, and each check; never the transcript's text.
     */
   def lines: Vector[String] = {
-    def cents(usd: Option[BigDecimal]) = usd.fold("unknown")(Cost.cents)
-    def input(u: Usage) = {
-      import Tokens.value
-      s"input ${value(u.input)} (cache read ${value(u.cacheRead)}, written ${value(u.cacheWrite)})"
-    }
-    def tokens(u: Usage) = s"${input(u)}, output ${Tokens.value(u.output)}"
-    val grit = consumed.gritCost.fold(
-      reason => s"grit's rates: $reason",
-      c => s"${Cost.cents(c)} by grit's rates"
-    )
+    def tokens(u: Usage) = s"${Tried.input(u)}, output ${Tokens.value(u.output)}"
     val t = trial
     Vector(
       s"trial: ${t.session.local} of ${TrialRows.TaskName.value(t.task)} by " +
@@ -153,10 +144,8 @@ final case class Tried(
           .zip(t.readBeforeEdit)
           .fold("no edit")((c, b) => s"$c calls, $b bytes read"),
       s"tokens: ${tokens(t.usage)}"
-    ) ++ consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") ++
+    ) ++ Tried.spending(consumed, t.session.harness) ++
       Vector(
-        if (t.session.harness == Harness.Grit) s"cost: $grit"
-        else s"cost: $grit, ${cents(consumed.ended.flatMap(_.claimedUsd))} by Claude Code's",
         consumed.ended.fold(stopped.fold("ended: with no result")(why => s"ended: $why"))(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
         )
@@ -167,6 +156,28 @@ final case class Tried(
       Vector(
         s"passed: ${t.passed}; distance: ${t.distance.fold("no diff")(d => s"$d lines")}"
       )
+  }
+}
+
+object Tried {
+
+  /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
+    * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run of a harness other than
+    * grit, by Claude Code's own estimate. Printed for a trial, and for a run refused one.
+    */
+  def spending(consumed: Consumed, harness: Harness): Vector[String] = {
+    val grit = consumed.gritCost.fold(
+      reason => s"grit's rates: $reason",
+      c => s"${Cost.cents(c)} by grit's rates"
+    )
+    val claimed = consumed.ended.flatMap(_.claimedUsd).fold("unknown")(Cost.cents)
+    consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") :+
+      (if (harness == Harness.Grit) s"cost: $grit" else s"cost: $grit, $claimed by Claude Code's")
+  }
+
+  private def input(u: Usage): String = {
+    import Tokens.value
+    s"input ${value(u.input)} (cache read ${value(u.cacheRead)}, written ${value(u.cacheWrite)})"
   }
 }
 
@@ -277,8 +288,11 @@ object Rig {
     * `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
     * stopped, a trial not passed, as is one whose turn did not succeed; its turn is read from
     * `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
-    * shut down. `Left` for fewer than 2 turns, or a model [[AnthropicRates]] has no rates for,
-    * before anything runs; or when its turn cannot be read.
+    * shut down. What grit wrote to its output, then the tail of its errors, is written to
+    * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
+    * a model [[AnthropicRates]] has no rates for, before anything runs; when `output` cannot be
+    * written or its turn cannot be read; or when the trial row refuses the run, its
+    * [[Tried.spending]] lines first.
     */
   def gritTrial(work: Processes, handing: Handing, clock: Clock^, turns: CoderTurns)(
       repository: String,
@@ -287,7 +301,8 @@ object Rig {
       cap: Caps,
       key: Secret,
       dir: RelPath,
-      quiet: FiniteDuration
+      quiet: FiniteDuration,
+      output: Path
   ): Either[String, Tried] =
     for {
       _ <- gritCapped(cap)
@@ -307,7 +322,8 @@ object Rig {
               .left
               .map(e => s"grit did not run: ${e.message}")
           }
-          Streamed(lines, _, wall, stopped) = streamed
+          Streamed(lines, ended, wall, stopped) = streamed
+          _ <- kept(output, lines, ended)
           turn <- turns.newest()
           consumed = Consumed.ofTurn(lines, turn, stopped)
           session <- SessionId.of(Harness.Grit, turn.session)
@@ -365,6 +381,26 @@ object Rig {
       )
     } yield shown
 
+  /** Writes `lines`, what grit wrote to its output, to `output`, then the tail of its errors as
+    * `ended` gives them, or why its wait ended; `Left` naming `output` when it cannot be written.
+    */
+  private def kept(
+      output: Path,
+      lines: Vector[String],
+      ended: Either[String, Ran]
+  ): Either[String, Unit] =
+    Try(
+      Files.writeString(
+        output,
+        (lines :+ "[rig] the tail of grit's errors:" :+ ended
+          .fold(identity, _.output.text)
+          .stripTrailing)
+          .mkString("", "\n", "\n")
+      )
+    ).toEither.left
+      .map(e => s"grit's output was not written to $output: ${e.getClass.getName}")
+      .map(_ => ())
+
   /** `Right` when grit can run under `cap`: at least 2 turns, and a model whose calls
     * [[AnthropicRates]] prices, since the cap is kept by that price.
     */
@@ -402,6 +438,9 @@ object Rig {
       Vector(ModelRole.Turn.modelVar(g) -> model, ModelRole.Turn.upstreamVar(g) -> upstream)
     } ++ Vector(ModelRole.Dream.modelVar -> model, ModelRole.Dream.upstreamVar -> upstream)
     Vector("env", "-i") ++ (arm.passed.values.toVector.sorted ++ Vector(
+      // With no locale, the JVM writes its output in ASCII, each `·` and `¢` of a call's line a
+      // `?` that no longer reads back as a call.
+      "LANG" -> "C.UTF-8",
       DotEnv.FileVar -> "/dev/null",
       DbConfig.UrlVar -> arm.database,
       "GRIT_TOOLS" -> "allowlist",
@@ -460,18 +499,23 @@ object Rig {
           c <- coded(checkout)
           changed <- Clone.changed(work)(dir, task.base)
           checked <- Checks.run(work)(dir, task.checks).left.map(_.message)
-          trial <- TrialRows.Trial.of(
-            c.session,
-            task.name,
-            cap.model,
-            c.consumed.usage,
-            c.consumed.calls.size,
-            c.wall,
-            c.consumed.readBeforeEdit,
-            c.consumed.callsBeforeEdit,
-            passed = checked.passed && c.consumed.ended.exists(!_.error),
-            distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
-          )
+          trial <- TrialRows.Trial
+            .of(
+              c.session,
+              task.name,
+              cap.model,
+              c.consumed.usage,
+              c.consumed.calls.size,
+              c.wall,
+              c.consumed.readBeforeEdit,
+              c.consumed.callsBeforeEdit,
+              passed = checked.passed && c.consumed.ended.exists(!_.error),
+              distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
+            )
+            .left
+            .map(refused =>
+              (Tried.spending(c.consumed, c.session.harness) :+ refused).mkString("\n")
+            )
         } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped)
       )
     } yield tried

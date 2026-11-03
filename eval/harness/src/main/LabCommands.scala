@@ -121,6 +121,8 @@ private[main] object LabCommands {
                       for {
                         key <- Secret.read(env, AnthropicProvider.KeyVar).left.map(_.message)
                         coderDb <- DbConfig.fromEnv(Map(DbConfig.UrlVar -> url)).left.map(_.message)
+                        output = root.resolve(s"${RelPath.value(dir)}.grit.log")
+                        _ = println(s"grit's output: $output")
                         _ <- kept(f, env, clock)(() =>
                           Rig.gritTrial(work, handing, clock, coderTurns(coderDb, clock))(
                             repository,
@@ -129,7 +131,8 @@ private[main] object LabCommands {
                             cap,
                             key,
                             dir,
-                            Rig.Quiet
+                            Rig.Quiet,
+                            output
                           )
                         )
                       } yield ()
