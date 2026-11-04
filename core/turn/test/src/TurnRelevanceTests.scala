@@ -79,11 +79,12 @@ object TurnRelevanceTests extends TestSuite {
       )
     }
 
-    test("the judge's cut is pinned as measured: 1,200 characters, a 400-token piece's head") {
-      // Pinned as measured: 1,200 characters under 400-token pieces judged more answering
-      // pieces relevant than 800 under 200, the quote still within what was read.
+    test("the judge's cut is pinned as measured: 1,200 characters, a 700-token piece's head") {
+      // Pinned as measured: 1,200 characters under pieces of about 1,600 characters judged
+      // more answering pieces relevant than 800 under half that, the quote still within what
+      // was read. 700 tokens at the estimate's 2.2 characters a token is about that size.
       (TurnRelevance.Chars, grit.core.files.Pieces.Target) ==>
-        (1200, grit.core.message.Tokens(400))
+        (1200, grit.core.message.Tokens(700))
     }
 
     test("only the first thirty are admitted, judged or not") {

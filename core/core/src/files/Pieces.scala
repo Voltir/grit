@@ -76,12 +76,15 @@ object Piece {
 
 object Pieces {
 
-  /** About how many tokens a piece holds, 400: what a window's judge reads of each candidate
+  /** About how many tokens a piece holds, 700, about 1,540 characters as grit estimates them:
+    * what a window's judge reads the head of for each candidate
     * ([[grit.core.files.PiecedFile.target]]: a file cut at another is pieced again).
     */
-  // Measured on retrieval: 400-token pieces under a 1,200-character judge brief had more
-  // answering pieces judged relevant than 200 under 800, the quote still within the brief.
-  val Target: Tokens = Tokens(400)
+  // Measured on retrieval as 400 tokens when the estimate ran 4 characters a token: pieces of
+  // about 1,600 characters under a 1,200-character judge brief had more answering pieces
+  // judged relevant than half that under 800, the quote still within the brief. 700 keeps the
+  // measured size at 2.2 characters a token.
+  val Target: Tokens = Tokens(700)
 
   /** The most pieces one file is cut into; the rest are dropped, and counted. */
   val PerFile: Int = 2000

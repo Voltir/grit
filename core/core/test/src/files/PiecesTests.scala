@@ -58,7 +58,7 @@ object PiecesTests extends TestSuite {
   val tests = Tests {
 
     test("paragraphs are packed whole, greedily, to at most Target tokens under one heading path") {
-      Pieces.Target ==> Tokens(400)
+      Pieces.Target ==> Tokens(700)
       val (pieces, dropped) = Pieces.of(
         tree(
           heading(1, "Policy"),

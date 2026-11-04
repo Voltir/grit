@@ -31,7 +31,8 @@ object TurnRelevance {
   val GroundsAt: Probability = Probability.clamped(0.7)
 
   /** How many characters of the turn's message, and of each candidate, the judge is shown:
-    * 1,200, the head of a piece ([[grit.core.files.Pieces.Target]]).
+    * 1,200, the head of a piece of about 1,540 ([[grit.core.files.Pieces.Target]]), as
+    * measured.
     */
   val Chars = 1200
 
