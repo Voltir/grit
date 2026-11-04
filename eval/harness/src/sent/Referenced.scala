@@ -41,6 +41,9 @@ object Referenced {
       pointed: Int
   ) extends caps.Pure
 
+  /** A request's tools ([[Referenced.tools]]) and tool results ([[Referenced.results]]). */
+  final case class Read(tools: Vector[Tool], results: Vector[Result]) extends caps.Pure
+
   /** Each tool `request` offers, in order. */
   def tools(
       request: ModelRequest,

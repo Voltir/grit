@@ -55,9 +55,12 @@
 #       decision and its judgement, the queries and window, every ledger row), then each
 #       model call's request rebuilt from the turn's recorded inputs (prompt fragments, tool
 #       set, pinned profile, window, entries) through this build's code, each call's estimate
-#       against its ledger row, the answer and the summary. The epoch the turn ran under is
-#       shown beside this build's. Tool results are cut at 4,000 characters unless --full.
-#       Reads <database> through read-only sessions; prints counts, never text.
+#       against its ledger row and its cache (its share read, its misses priced as cache
+#       reads, the prefix re-sent, its fresh tokens), the answer and the summary; then where
+#       the input went: the turn's cache, each call's input by part scaled to the provider's
+#       count, and what nothing later pointed back at (a proxy, not proof). The epoch the turn
+#       ran under is shown beside this build's. Tool results are cut at 4,000 characters unless
+#       --full. Reads <database> through read-only sessions; prints counts, never text.
 #       Given a heard message's entry id (in:<conversation>:<ts>) instead: what Jev was asked
 #       of it and answered, written to .local/eval/review/context-<entry-id>.md: the stitch
 #       state as recorded with its placement, its question as this build words it, and

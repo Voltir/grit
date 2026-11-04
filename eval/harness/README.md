@@ -55,7 +55,11 @@ Packages, each importing only those above it:
 - **`sent`**: one recorded turn as its model was sent it, text and all, for a person to read
   (`scripts/eval context`), and what Jev was asked of a heard message, rebuilt through the
   shipped builder since triage keeps no request. It reads its own records rather than through
-  `capture`, whose readers keep numbers, never text. ← `stats`, `capture`
+  `capture`, whose readers keep numbers, never text. It measures each call too: its cache
+  misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
+  `bench`), its input by part, and what nothing later pointed back at, a proxy only: a part
+  can steer a model without being quoted, so cutting it and rerunning the task decides.
+  ← `stats`, `capture`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn
   questions by id: each its gold (strings a right reply holds) and its asking in each round. Labels judge the inputs a call was given, verdicts the speech decision at its

@@ -247,6 +247,7 @@ private[main] object RunCommands {
               if (Turn.epochOf(sent.epoch) == Turn.Epoch) "" else s" (this build: ${Turn.Epoch})"
             }"
       )
+      SentMarkdown.efficiencyLines(sent).foreach(println)
     }
 
   /** `inputs --capture <dir> --url <jdbc> --out <file> [--variant <name>]`, and `more` for

@@ -130,6 +130,53 @@ object SentMarkdownTests extends TestSuite {
     }
 
     test(
+      "each call with a row says what its cache read, what its misses cost over reads, the prefix re-sent and its fresh tokens"
+    ) {
+      val lines =
+        shown(sent(request(asked, calling, result("alpha"))), Cut.Whole).linesIterator.toVector
+      def under(call: String) =
+        lines.indexWhere(_.startsWith(s"- **Call $call**")) match {
+          case -1 => None
+          case i => lines.lift(i + 1)
+        }
+      // Each row: 10 in, none cached or written, 1 out, on a model with no published rates.
+      (under("0"), under("1")) ==> (
+        Some(
+          "  Cache: 0.0% of its input read (0 of 10, 0 written); misses unpriced (no published " +
+            "rates for `m`); 10 fresh."
+        ),
+        Some(
+          "  Cache: 0.0% of its input read (0 of 10, 0 written); misses unpriced (no published " +
+            "rates for `m`); prefix re-sent 0; -1 fresh."
+        )
+      )
+    }
+
+    test("each call's input by part sums to the input its row counted") {
+      val lines = shown(sent(request(asked, calling, result("alpha"))), Cut.Whole).linesIterator
+      val rows = lines
+        .filter(l => l.startsWith("| 0 |") || l.startsWith("| 1 |"))
+        .map(_.split('|').map(_.trim).filter(_.nonEmpty).toVector)
+        .toVector
+      rows.map(cells =>
+        (
+          cells.lift(1),
+          cells.drop(3).flatMap(_.takeWhile(_ != ' ').toLongOption).sum
+        )
+      ) ==> Vector((Some("10"), 10L), (Some("10"), 10L))
+    }
+
+    test("what nothing later pointed back at is called a proxy, not proof, in both places") {
+      val t = sent(request(asked, calling, result("alpha")))
+      (
+        shown(t, Cut.Whole).linesIterator.contains(
+          "### What nothing later pointed back at (a proxy, not proof)"
+        ),
+        SentMarkdown.efficiencyLines(t).lastOption.map(_.takeWhile(_ != ':'))
+      ) ==> (true, Some("not pointed back at (a proxy, not proof)"))
+    }
+
+    test(
       "a summary rebuilt on the answering call's prefix is said to be, beside its ledger row's cached count; one asked alone is said to be alone"
     ) {
       val last = request(asked, calling, result("alpha"))

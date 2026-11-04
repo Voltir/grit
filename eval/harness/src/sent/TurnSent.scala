@@ -16,7 +16,7 @@ import grit.core.tool.{ToolSet, ToolSetId}
 import grit.core.triage.Tags
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Spent
-import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
+import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
 
 /** A recorded turn as its model was sent it, with the decisions that led there: its
   * `workflow` and `turn`, the `room` its conversation is at, the `epoch` it ran under, when
@@ -82,6 +82,39 @@ final case class TurnSent(
         (BigDecimal(Tokens.value(CharEstimate.request(request))) / in)
           .setScale(2, BigDecimal.RoundingMode.HALF_UP)
       )
+
+  /** Each call of its reply, as [[requests]] gives them, then its summary's when it is kept,
+    * measured against its rows under [[CharEstimate]] ([[MeasuredCall.of]]): a summary asked on
+    * the answering call's prefix as the next of those calls, one asked alone apart, no window
+    * before it.
+    */
+  def measured: Vector[MeasuredCall] = {
+    val looped = requests.map((_, reply, request) => reply -> request)
+    val id = TurnSummary.id(turn)
+    val onPrefix = calls.summary.filter(s =>
+      calls.answered.exists(a =>
+        Vector(a.on, a.off).exists(c =>
+          s.system == c.system && s.tools == c.tools && s.use == c.use &&
+            s.messages.startsWith(c.messages)
+        )
+      )
+    )
+    val alone = calls.summary.filter(_ => onPrefix.isEmpty)
+    MeasuredCall.of(looped ++ onPrefix.map(id -> _), row, calls.window, CharEstimate) ++
+      MeasuredCall.of(alone.map(id -> _).toVector, row, Vector.empty, CharEstimate)
+  }
+
+  /** The tool results and tools of the request of its last call, measured against what the
+    * model wrote after each and its answer ([[Referenced]]) under [[CharEstimate]]; `None`
+    * when it made no call.
+    */
+  def referenced: Option[Referenced.Read] =
+    requests.lastOption.map((_, _, request) =>
+      Referenced.Read(
+        Referenced.tools(request, answer.map(_.message), CharEstimate),
+        Referenced.results(request, answer.map(_.message), CharEstimate)
+      )
+    )
 }
 
 /** A turn's answer: its reply, or the `draft` of a turn rooted on a heard message. */
