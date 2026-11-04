@@ -95,7 +95,7 @@ object TurnRecord {
     * classification `classify` made, and, for each call, the turn's own entries kept before
     * that call's reply. The texts and tools this build adds (labels, gap lines, the topic
     * tag and the `topic` tool, the last-call note, "asks first") are this build's, which may differ from those of the build
-    * that ran the turn. `Calls(Vector.empty, None, _, None)` for a turn whose first call's reply is
+    * that ran the turn. `Calls(Vector.empty, None, _, None, _)` for a turn whose first call's reply is
     * not kept yet.
     *
     * `Left` naming what does not read: steps that do not read as this build's turn (one of
@@ -114,14 +114,26 @@ object TurnRecord {
     * one that answered, once its reply or draft was kept (`answered`); `schemas` says whether
     * their tool definitions are those sent; and the request its summary was asked with, as
     * `summarise` builds it under the turn's pins, once it recorded that step and its summary
-    * pin was cleared (`summary`).
+    * pin was cleared (`summary`); and `window`, one per message its window showed before its
+    * own entries, in order. Every looped and answered request begins with exactly those
+    * messages, as the summary's does when asked on the turn's prefix; one asked alone does not.
     */
   final case class Calls(
       looped: Vector[Call],
       answered: Option[Answered],
       schemas: Schemas,
-      summary: Option[ModelRequest]
+      summary: Option[ModelRequest],
+      window: Vector[WindowMessage]
   )
+
+  /** What a message a turn's window showed before its own entries is: a part's brief, or
+    * anything else it recalled (earlier turns, a carried turn's exchange, nearby sections,
+    * documents, pieces, a session's digest).
+    */
+  enum WindowMessage derives CanEqual {
+    case Brief
+    case Recalled
+  }
 
   /** Call `round` (from 0), whose reply is kept as `reply`, sent `request`. */
   final case class Call(round: Int, reply: EntryId, request: ModelRequest)

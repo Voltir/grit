@@ -63,7 +63,13 @@ object SentMarkdownTests extends TestSuite {
       Vector.empty,
       ToolSetId.of("0123456789abcdef").fold(e => throw new java.lang.AssertionError(e), identity),
       Vector.empty,
-      TurnRecord.Calls(Vector(looped), Some(answered), TurnRecord.Schemas.Sent, summary),
+      TurnRecord.Calls(
+        Vector(looped),
+        Some(answered),
+        TurnRecord.Schemas.Sent,
+        summary,
+        Vector.empty
+      ),
       Some(Picked.of(answered, recorded.orElse(Some(CharEstimate.request(last))))),
       Vector(
         row(EntryId("call:c1:0:0"), CharEstimate.request(first)),

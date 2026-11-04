@@ -2,6 +2,7 @@ package grit.turn
 
 import java.time.LocalDate
 
+import grit.core.approval.Approval
 import grit.core.document.InMemoryDocuments
 import grit.core.durable.{InMemoryDurable, StepRecord}
 import grit.core.files.InMemoryPieces
@@ -465,6 +466,64 @@ object TurnRequestsTests extends TestSuite {
       val calls = TurnRecord.requests(turn, recorded, reads(entries, profiles))
       // These models send the summary to the same provider: its third request.
       calls.map(sent(_, off = true)) ==> Right(provider.requests.take(2))
+    }
+
+    test(
+      "a rebuilt turn names each message its window showed before its own, as sent: a carried declined call's reason told in its result"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val first = new Scripted((_, n) =>
+        Right(if (n == 0) calling("", ("t1", "poke", "a.txt")) else calling("alpha"))
+      )
+      val one = say(entries, "poke a")
+      val durable = new InMemoryDurable
+      val ledger = new InMemoryUsageLedger
+      val stub = new grit.models.StubProvider()
+      val atAsk = crashingAtAsk(entries)
+      assertThrows[InMemoryDurable.Crash](
+        durable.run(one.workflowId)(
+          tooledBody(
+            atAsk,
+            first,
+            ledger,
+            stub,
+            NoClassifier,
+            ws,
+            tools(ws),
+            5,
+            catalog = ToldCatalog
+          )
+        )
+      )
+      durable.send(
+        one.workflowId,
+        Approval.topic(ToolCallId("t1")),
+        Approval.encode(Approval.Declined(Some("not that file")))
+      )
+      val _ = durable.run(one.workflowId)(
+        tooledBody(
+          entries,
+          first,
+          ledger,
+          stub,
+          NoClassifier,
+          ws,
+          tools(ws),
+          5,
+          catalog = ToldCatalog
+        )
+      )
+      val second = new Scripted((_, _) => Right(calling("and beta")))
+      val turn = say(entries, "and b?")
+      val recorded = answered(entries, turn, second, catalog = ToldCatalog)
+      val calls = TurnRecord.requests(turn, recorded, reads(entries))
+      // The carried turn: its dated line, its message, its call, its result with the person's
+      // reason told in it (a message fewer than its entries), and its answer.
+      calls.map(_.window) ==> Right(Vector.fill(5)(TurnRecord.WindowMessage.Recalled))
+      calls.map(sent(_, off = false)) ==> Right(second.requests)
+      second.requests.map(_.messages.lift(5).collect { case Message.User(t) => t.take(29) }) ==>
+        Vector(Some("The message you are answering"))
     }
 
     test("a turn under a pair that enforces strict schemas says its schemas are recorded") {

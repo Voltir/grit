@@ -449,6 +449,40 @@ object Turn {
           )
         )
       }
+      // What the window showed before the turn's own entries, as every call was sent it: the
+      // window alone, shaped as a call is (under InLastResult a message after a carried result
+      // is told in it), with no tag and no note: the asker and every note come after it.
+      briefs = showing.parts.flatMap(_.brief).map((d, _) => grit.core.context.Shown.brief(d)).toSet
+      window <- TurnShown
+        .requestOf(
+          prompt.render,
+          showing.copy(mine = Vector.empty),
+          turn,
+          Map.empty,
+          offer.zoned,
+          direct
+        )
+        .left
+        .map(reason)
+        .map { alone =>
+          val (shown, lines) = gatedOffer(tools.set, schemas, strict)
+          val shape = loopShape(
+            None,
+            ToolUse.Auto,
+            shown,
+            settings.afterResult,
+            settings.guidance,
+            lines,
+            Vector.empty
+          )
+          alone
+            .shaped(shape)
+            .messages
+            .map(m =>
+              if (briefs.contains(m)) TurnRecord.WindowMessage.Brief
+              else TurnRecord.WindowMessage.Recalled
+            )
+        }
       // What the call whose reply is kept as `reply` was sent, under `use`.
       sent = (round: Round, use: ToolUse, reply: EntryId) =>
         TurnShown
@@ -521,7 +555,8 @@ object Turn {
       rounds,
       answered,
       if (strict) TurnRecord.Schemas.Recorded else TurnRecord.Schemas.Sent,
-      summary
+      summary,
+      window
     )
   }
 

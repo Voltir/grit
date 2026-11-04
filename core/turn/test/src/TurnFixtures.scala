@@ -2099,13 +2099,29 @@ object TurnFixtures {
       )
     )(id)
 
-  /** A profile store already holding [[TestCatalog]]'s, [[SharedCatalog]]'s and [[RoutedCatalog]]'s profiles, as the database holds it
+  /** [[TestCatalog]], its first model told a note after a tool result in that result
+    * ([[grit.core.model.AfterToolResult.InLastResult]]).
+    */
+  val ToldCatalog: Catalog = TestCatalog.overlaid(
+    Vector(
+      grit.core.model.Profile(
+        TestCatalog.policy.turn.first.assignment.ref,
+        afterResult = grit.core.model.Known.Of(
+          grit.core.model.AfterToolResult.InLastResult,
+          grit.core.model.Source.Declared("test", java.time.LocalDate.of(2026, 9, 25))
+        )
+      )
+    )
+  )
+
+  /** A profile store already holding [[TestCatalog]]'s, [[SharedCatalog]]'s, [[RoutedCatalog]]'s, [[GradedCatalog]]'s and [[ToldCatalog]]'s profiles, as the database holds it
     * across a turn's restarts: a body built afresh for a resumed turn reads its recorded pin
     * back by id.
     */
   def profilesKept(): InMemoryModelProfileStore = {
     val kept = new InMemoryModelProfileStore
     val _ = kept.pin(WorkflowId("kept"), TestCatalog.pin)(using TestTx.fake)
+    val _ = kept.pin(WorkflowId("told"), ToldCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("routed"), RoutedCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("graded"), GradedCatalog.pin)(using TestTx.fake)
     val _ = kept.pin(WorkflowId("shared"), SharedCatalog.pin)(using TestTx.fake)

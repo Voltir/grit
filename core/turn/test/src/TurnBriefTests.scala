@@ -233,6 +233,51 @@ object TurnBriefTests extends TestSuite {
       assert(digest.contains("1a2b3c4 core: a brief"))
     }
 
+    test("a rebuilt boundary for a holder names its brief, and its digest as recalled") {
+      given grit.core.store.Tx = TestTx.fake
+      val documents = new InMemoryDocuments
+      val _ = brief(documents)
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "one", at = said)
+      val durable = new InMemoryDurable
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          new Reserving,
+          new InMemoryUsageLedger,
+          documents = documents,
+          sessions =
+            TurnSessions(new RecordedSessions(latest = Right(Some(lately))), _ => Some(holder))
+        )
+      )
+      val steps = durable
+        .history(turn.workflowId)
+        .map(s =>
+          grit.core.durable.StepRecord(
+            s.name,
+            s.outcome match {
+              case InMemoryDurable.Outcome.Output(value) => Some(value)
+              case _ => None
+            },
+            None
+          )
+        )
+      val reads = TurnRecord.Reads(
+        hosting().conversations,
+        entries,
+        new grit.core.store.InMemoryPrincipals,
+        documents,
+        new grit.core.files.InMemoryPieces,
+        Prompts,
+        ToolSets,
+        profilesKept()
+      )
+      TurnRecord.requests(turn, steps, reads).map(_.window) ==> Right(
+        Vector(TurnRecord.WindowMessage.Brief, TurnRecord.WindowMessage.Recalled)
+      )
+    }
+
     test(
       "a conversation working as no holder, its session unread, shows neither and reserves nothing"
     ) {
