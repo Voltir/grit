@@ -69,6 +69,19 @@ final case class TurnSent(
     */
   def agrees(reply: EntryId, request: ModelRequest): Option[Boolean] =
     row(reply).map(_.estimated == CharEstimate.request(request))
+
+  /** `request`'s estimate ([[CharEstimate]]) over the input the provider counted for the call
+    * whose reply is kept as `reply`, to two places: above 1 the estimate errs high. `None`
+    * when no row is kept or its input is 0.
+    */
+  def share(reply: EntryId, request: ModelRequest): Option[BigDecimal] =
+    row(reply)
+      .map(r => Tokens.value(r.usage.input))
+      .filter(_ > 0)
+      .map(in =>
+        (BigDecimal(Tokens.value(CharEstimate.request(request))) / in)
+          .setScale(2, BigDecimal.RoundingMode.HALF_UP)
+      )
 }
 
 /** A turn's answer: its reply, or the `draft` of a turn rooted on a heard message. */

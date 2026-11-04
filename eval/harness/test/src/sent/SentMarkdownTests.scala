@@ -106,15 +106,38 @@ object SentMarkdownTests extends TestSuite {
     }
 
     test(
+      "each call gives its rebuilt estimate as a share of the input its ledger row recorded, and says whether the row recorded that estimate"
+    ) {
+      val last = request(asked, calling, result("alpha"))
+      val first = Tokens.value(CharEstimate.request(request(asked)))
+      val answered = Tokens.value(CharEstimate.request(last))
+      // Each row records 10 in; the share is the estimate over it, to two places.
+      def share(estimate: Long): String = (BigDecimal(estimate) / 10).setScale(2).toString
+      val lines = shown(sent(last, recorded = Some(Tokens(7))), Cut.Whole).linesIterator.toVector
+      (
+        lines.find(_.startsWith("- **Call 0**")).map(_.dropWhile(_ != ';')),
+        lines.find(_.startsWith("- **Call 1**")).map(_.dropWhile(_ != ';'))
+      ) ==> (
+        Some(s"; estimate $first, ${share(first)} of its input, as its row recorded."),
+        Some(s"; estimate $answered, ${share(answered)} of its input; its row recorded 7.")
+      )
+    }
+
+    test(
       "a summary rebuilt on the answering call's prefix is said to be, beside its ledger row's cached count; one asked alone is said to be alone"
     ) {
       val last = request(asked, calling, result("alpha"))
       val ask = Message.User(TurnSummary.Ask)
       val onPrefix = last.copy(messages = last.messages :+ answer :+ ask)
       val alone = ModelRequest(TurnSummary.System, Vector(Message.User("<transcript>")))
+      // The summary's row counts 90 in and recorded the request's own estimate.
+      def estimated(r: ModelRequest): String = {
+        val e = Tokens.value(CharEstimate.request(r))
+        s"$e, ${(BigDecimal(e) / 90).setScale(2, BigDecimal.RoundingMode.HALF_UP)} of its input, as its row recorded"
+      }
       val line =
         s"- **Summary** (`${EntryId.value(TurnSummary.id(turn))}`): `m`, 90 in (80 cached), " +
-          "2 out, unpriced; estimate agrees with its ledger row"
+          "2 out, unpriced; estimate"
       (
         shown(sent(last, summary = Some(onPrefix)), Cut.Whole).linesIterator
           .find(_.startsWith("- **Summary**")),
@@ -123,11 +146,11 @@ object SentMarkdownTests extends TestSuite {
         shown(sent(last), Cut.Whole).contains("- **Summary**")
       ) ==> (
         Some(
-          s"$line (${Tokens.value(CharEstimate.request(onPrefix))}). It was sent on the " +
+          s"$line ${estimated(onPrefix)}. It was sent on the " +
             "answering call's prefix: messages 1–3 above, then its reply and the ask."
         ),
         Some(
-          s"$line (${Tokens.value(CharEstimate.request(alone))}). It was asked alone: its own " +
+          s"$line ${estimated(alone)}. It was asked alone: its own " +
             "system prompt and messages, not the turn's."
         ),
         false

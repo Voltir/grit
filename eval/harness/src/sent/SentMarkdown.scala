@@ -49,8 +49,9 @@ object SentMarkdown {
     * build's code, the epoch it ran under beside this build's, flagged when they differ); how
     * it got there (stitch, triage, speech, retrieval, every ledger row); the request (the
     * system prompt as sent, the tools offered, the last call's messages numbered by role);
-    * each call, its usage and whether its rebuilt request's estimate agrees with its ledger
-    * row or differs, with both; then the answer and the summary. Tool results are cut as
+    * each call, its usage, its rebuilt request's estimate as a share of the input the provider
+    * counted, and whether its ledger row recorded that estimate or another, with both; then
+    * the answer and the summary. Tool results are cut as
     * `cut` says; [[TurnRecord.Schemas.Recorded]] is said above the tools.
     */
   def render(sent: TurnSent, from: String, cut: Cut): String = {
@@ -198,16 +199,17 @@ object SentMarkdown {
 
     // Each call.
     add("## Each call", "")
-    // The ledger row kept under `entry`, and whether `request` estimates as it recorded.
+    // The ledger row kept under `entry`, `request`'s estimate as a share of its input, and
+    // whether the row recorded that estimate.
     def spentOn(entry: EntryId, request: ModelRequest): String = {
       val row = sent.row(entry)
-      val rebuilt = CharEstimate.request(request)
+      val rebuilt = Tokens.value(CharEstimate.request(request))
+      val share = sent.share(entry, request).fold("")(s => s", $s of its input")
       val estimate = (row, sent.agrees(entry, request)) match {
-        case (Some(r), Some(true)) =>
-          s"estimate agrees with its ledger row (${Tokens.value(r.estimated)})"
+        case (Some(_), Some(true)) => s"estimate $rebuilt$share, as its row recorded"
         case (Some(r), _) =>
-          s"estimate differs (rebuilt ${Tokens.value(rebuilt)}, recorded ${Tokens.value(r.estimated)})"
-        case (None, _) => s"no ledger row (rebuilt estimate ${Tokens.value(rebuilt)})"
+          s"estimate $rebuilt$share; its row recorded ${Tokens.value(r.estimated)}"
+        case (None, _) => s"no ledger row (estimate $rebuilt)"
       }
       val usage = row.fold("")(s =>
         s"`${s.model}`, ${Tokens.value(s.usage.input)} in (${Tokens.value(s.usage.cacheRead)} cached), " +

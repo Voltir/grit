@@ -235,9 +235,14 @@ private[main] object RunCommands {
     } yield {
       val requests = sent.requests
       val agree = requests.count((_, reply, request) => sent.agrees(reply, request).contains(true))
+      val shares = requests.flatMap((_, reply, request) => sent.share(reply, request))
+      val range =
+        if (shares.isEmpty) "no input counted"
+        else s"estimate over input ${shares.min} to ${shares.max}"
       println(s"written: $out")
       println(
-        s"calls: ${requests.size}, whose estimate agrees with its ledger row: $agree; " +
+        s"calls: ${requests.size}, whose rebuilt estimate is the one its row recorded: $agree; " +
+          s"$range; " +
           s"epoch ${sent.epoch}${
               if (Turn.epochOf(sent.epoch) == Turn.Epoch) "" else s" (this build: ${Turn.Epoch})"
             }"
