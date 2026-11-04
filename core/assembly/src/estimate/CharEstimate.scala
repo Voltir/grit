@@ -4,10 +4,12 @@ import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.provider.{TokenEstimator, ToolSchema}
 
-/** The [[TokenEstimator]] for any model, by characters: a token per [[CharsPerToken]]
-  * characters of what is sent, rounded up, plus [[PerMessage]] for the role framing of
-  * each message and of the system prompt. It counts what the model is billed for: text,
-  * tool calls and tool results.
+/** A [[TokenEstimator]] by characters: a token per `charsPerToken` characters of text sent
+  * (the system prompt, messages, tool calls and results) and per `schemaCharsPerToken` of
+  * tool definitions, rounded up; [[PerMessage]] for each message's framing and the system
+  * prompt's; `toolPreamble` for a request offering tools. [[CharEstimate$ CharEstimate]] is
+  * the one grit runs; another is an estimator for another tokenizer, or a test's that must
+  * not move when grit's is recalibrated.
   *
   * An assistant message costs at least its own output count
   * ([[grit.core.message.Usage.output]]): sent back, what a model wrote is billed about as it
@@ -18,34 +20,29 @@ import grit.core.provider.{TokenEstimator, ToolSchema}
   * sending (a call dropped), for a model that reasons without returning its reasoning (its
   * output count holds it), and for a carried turn's (ADR 0052) replayed reasoning on a model
   * that drops the reasoning of turns before the last user message.
-  * Uncalibrated; English prose runs close to it, code and JSON above it.
   */
-object CharEstimate extends TokenEstimator {
-
-  val CharsPerToken = 4
+class CharEstimate(
+    val charsPerToken: Double,
+    val schemaCharsPerToken: Double,
+    val toolPreamble: Tokens
+) extends TokenEstimator {
 
   val PerMessage: Tokens = Tokens(4)
 
-  val SchemaCharsPerToken: Double = 3.0
-
-  /** What a provider adds to a request offering tools: its tool-use preamble. */
-  val ToolPreamble: Tokens = Tokens(300)
-
   def system(prompt: String): Tokens = PerMessage + text(prompt)
 
-  /** `text` costed as sent with no framing: a token per [[CharsPerToken]] characters, rounded
+  /** `text` costed as sent with no framing: a token per `charsPerToken` characters, rounded
     * up.
     */
-  def text(text: String): Tokens = ceiling(text.length.toLong)
+  def text(text: String): Tokens = ceiling(text.length.toLong, charsPerToken)
 
   override def tools(tools: Vector[ToolSchema]): Tokens =
     if (tools.isEmpty) Tokens.Zero
     else
-      ToolPreamble +
-        Tokens(math.ceil(TokenEstimator.definitions(tools).length / SchemaCharsPerToken).toLong)
+      toolPreamble + ceiling(TokenEstimator.definitions(tools).length.toLong, schemaCharsPerToken)
 
   def message(message: Message): Tokens = {
-    val byChars = PerMessage + ceiling(chars(message))
+    val byChars = PerMessage + ceiling(chars(message), charsPerToken)
     message match {
       case Message.Assistant(blocks, _, usage, _, _) if !blocks.exists(withheld) =>
         val counted = PerMessage + usage.output
@@ -73,5 +70,11 @@ object CharEstimate extends TokenEstimator {
       }.sum
   }
 
-  private def ceiling(chars: Long): Tokens = Tokens((chars + CharsPerToken - 1) / CharsPerToken)
+  private def ceiling(chars: Long, perToken: Double): Tokens =
+    Tokens(math.ceil(chars / perToken).toLong)
 }
+
+/** The estimator grit runs. Uncalibrated; English prose runs close to it, code and JSON above
+  * it.
+  */
+object CharEstimate extends CharEstimate(4, 3.0, Tokens(300))

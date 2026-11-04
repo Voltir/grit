@@ -4,8 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{
+  Estimate,
   FakeDb,
   World,
   c1,
@@ -347,7 +347,7 @@ object RetrievalAssemblerTests extends TestSuite {
       .read(Vector(v))(using TestTx.fake)
       .toOption
       .flatMap(_.headOption)
-      .map(d => Tokens.value(CharEstimate.message(Shown.document(d, got(DocLabel.of("Notes"))))))
+      .map(d => Tokens.value(Estimate.message(Shown.document(d, got(DocLabel.of("Notes"))))))
       .getOrElse(sys.error("no document"))
 
   /** `texts` kept as the pieces of `p`'s file `ref`, written before every turn's root; each one's
@@ -585,7 +585,7 @@ object RetrievalAssemblerTests extends TestSuite {
           c => Origin.Task("conversation", ConversationId.value(c))
         )
       ),
-      CharEstimate,
+      Estimate,
       Tokens(budget),
       Tokens(25),
       tuning,
@@ -624,7 +624,7 @@ object RetrievalAssemblerTests extends TestSuite {
       world.entries,
       world.periods,
       world.principals,
-      CharEstimate,
+      Estimate,
       Tokens(budget)
     )
       .assemble(
@@ -863,7 +863,7 @@ object RetrievalAssemblerTests extends TestSuite {
         .toOption
         .flatten
         .flatMap(ClosingEntry.of)
-        .map(e => CharEstimate.message(Shown.recorded(placeOf("small"), e)))
+        .map(e => Estimate.message(Shown.recorded(placeOf("small"), e)))
         .getOrElse(sys.error("small's closing"))
       assemble(
         world,
@@ -1048,7 +1048,7 @@ object RetrievalAssemblerTests extends TestSuite {
         .getOrElse(sys.error("the ask"))
       val oneLine = Shown
         .asked(askedIn.place, Vector(askEntry), grit.core.store.Speakers.none)
-        .fold(sys.error("no section"))(CharEstimate.message)
+        .fold(sys.error("no section"))(Estimate.message)
       assemble(
         world,
         new Writer(Some("unused")),
@@ -1152,7 +1152,7 @@ object RetrievalAssemblerTests extends TestSuite {
           "database for probes: grit_agent",
           "writer",
           Usage(Tokens(40), Tokens(1), Tokens.Zero, None),
-          writer.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
+          writer.requests.headOption.map(Estimate.request).getOrElse(Tokens.Zero)
         ),
         AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(2)))
       )
@@ -1393,7 +1393,7 @@ object RetrievalAssemblerTests extends TestSuite {
     test("each recalled turn is charged a gap line, and the tail one for the turns it leaves out") {
       // The tail (turns 4 and 5) costs 22, and a gap line 12 (Shown.Gap): 34 before turn 0,
       // which costs 11, and 12 more for the gap line it brings. So 57 recalls it; 56 does not.
-      val gap = Tokens.value(CharEstimate.message(Shown.Gap))
+      val gap = Tokens.value(Estimate.message(Shown.Gap))
       gap ==> 12L
       val turns = (0 to 5).map(filler).toVector :+ ask
       def at(budget: Long): Vector[String] = {
@@ -1492,7 +1492,7 @@ object RetrievalAssemblerTests extends TestSuite {
             "",
             "writer",
             Usage(Tokens(40), Tokens(1), Tokens.Zero, None),
-            blank.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
+            blank.requests.headOption.map(Estimate.request).getOrElse(Tokens.Zero)
           ),
           AssemblyNote.FellBack("the query was blank")
         )
@@ -1741,7 +1741,7 @@ object RetrievalAssemblerTests extends TestSuite {
         .list(api)(using TestTx.fake)
         .toOption
         .flatMap(Shown.nearby(placeOf("api"), _, Speakers.none))
-        .fold(sys.error("no section"))(m => Tokens.value(CharEstimate.message(m)))
+        .fold(sys.error("no section"))(m => Tokens.value(Estimate.message(m)))
       val theirs = assemble(
         world,
         new Writer(Some("probe database")),

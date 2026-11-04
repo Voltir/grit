@@ -91,8 +91,8 @@ object CharEstimateTests extends TestSuite {
         Tokens.value(CharEstimate.tools(Vector.empty)),
         Tokens.value(CharEstimate.request(ModelRequest("", Vector.empty, Vector(peek, look))))
       ) ==> (
-        math.ceil(chars / CharEstimate.SchemaCharsPerToken).toLong +
-          Tokens.value(CharEstimate.ToolPreamble),
+        math.ceil(chars / CharEstimate.schemaCharsPerToken).toLong +
+          Tokens.value(CharEstimate.toolPreamble),
         0L,
         Tokens.value(CharEstimate.system("")) + Tokens.value(CharEstimate.tools(Vector(peek, look)))
       )

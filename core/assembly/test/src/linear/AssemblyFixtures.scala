@@ -2,8 +2,10 @@ package grit.assembly.linear
 
 import java.time.Instant
 
+import grit.assembly.estimate.CharEstimate
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnSeq}
 import grit.core.identity.TestAccounts
+import grit.core.message.Tokens
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{
   Db,
@@ -22,6 +24,12 @@ import grit.dbos.sql.TestTx
 
 /** One conversation in an in-memory store, for the assemblers' tests. */
 object AssemblyFixtures {
+
+  /** The estimator the assemblers' tests cost by: a token per four characters of any text,
+    * and no tool preamble. Fixed, so their budgets stay put when grit's own
+    * ([[CharEstimate$ CharEstimate]]) is recalibrated.
+    */
+  val Estimate: CharEstimate = new CharEstimate(4, 4, Tokens.Zero)
 
   /** The conversation [[store]] writes. */
   val c1: ConversationId = ConversationId("c1")
