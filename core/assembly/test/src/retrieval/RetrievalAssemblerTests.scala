@@ -98,11 +98,14 @@ import utest.*
 
 object RetrievalAssemblerTests extends TestSuite {
 
+  /** A reply of `text` by `model`, its output counted as 1 token: under any text's estimate, so
+    * a turn holding it is costed by its characters.
+    */
   private def reply(text: String, model: String = "test"): Message.Assistant =
     Message.Assistant(
       Vector(AssistantBlock.Text(text)),
       StopReason.EndTurn,
-      Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
+      Usage(Tokens(40), Tokens(1), Tokens.Zero, None),
       model
     )
 
@@ -1148,7 +1151,7 @@ object RetrievalAssemblerTests extends TestSuite {
         AssemblyNote.Queried(
           "database for probes: grit_agent",
           "writer",
-          Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
+          Usage(Tokens(40), Tokens(1), Tokens.Zero, None),
           writer.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
         ),
         AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(2)))
@@ -1488,7 +1491,7 @@ object RetrievalAssemblerTests extends TestSuite {
           AssemblyNote.Queried(
             "",
             "writer",
-            Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
+            Usage(Tokens(40), Tokens(1), Tokens.Zero, None),
             blank.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
           ),
           AssemblyNote.FellBack("the query was blank")

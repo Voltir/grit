@@ -9,12 +9,15 @@ import grit.core.provider.{TokenEstimator, ToolSchema}
   * each message and of the system prompt. It counts what the model is billed for: text,
   * tool calls and tool results.
   *
-  * A message that replays reasoning (a block whose `replay` is kept) costs at least its own
-  * output count ([[grit.core.message.Usage.output]]): the provider bills the replayed
-  * reasoning in full, and a block's text is at most a summary of it. That holds within a
-  * turn's tool loop; on a model that drops the reasoning of turns before the last user
-  * message, a carried turn's (ADR 0052) is costed but not billed, and the estimate is high by
-  * it. Reasoning with nothing to replay is not sent back and costs nothing.
+  * An assistant message costs at least its own output count
+  * ([[grit.core.message.Usage.output]]): sent back, what a model wrote is billed about as it
+  * was counted, and replayed reasoning (a block whose `replay` is kept) in full, though its
+  * text is at most a summary of it. The exception is a message holding reasoning with nothing
+  * to replay: that is not sent back, its output count includes it, and the message costs its
+  * characters. The estimate is high by the difference for a message grit rewrote before
+  * sending (a call dropped), for a model that reasons without returning its reasoning (its
+  * output count holds it), and for a carried turn's (ADR 0052) replayed reasoning on a model
+  * that drops the reasoning of turns before the last user message.
   * Uncalibrated; English prose runs close to it, code and JSON above it.
   */
 object CharEstimate extends TokenEstimator {
@@ -44,15 +47,15 @@ object CharEstimate extends TokenEstimator {
   def message(message: Message): Tokens = {
     val byChars = PerMessage + ceiling(chars(message))
     message match {
-      case Message.Assistant(blocks, _, usage, _, _) if blocks.exists(replays) =>
+      case Message.Assistant(blocks, _, usage, _, _) if !blocks.exists(withheld) =>
         val counted = PerMessage + usage.output
         if (Tokens.value(counted) > Tokens.value(byChars)) counted else byChars
       case _ => byChars
     }
   }
 
-  private def replays(block: AssistantBlock): Boolean = block match {
-    case AssistantBlock.Reasoning(_, Some(_)) => true
+  private def withheld(block: AssistantBlock): Boolean = block match {
+    case AssistantBlock.Reasoning(_, None) => true
     case _ => false
   }
 

@@ -51,7 +51,7 @@ object CharEstimateTests extends TestSuite {
     }
 
     test(
-      "a message that replays reasoning costs at least the output its provider counted; one replaying none costs its characters"
+      "a message costs at least the output its provider counted, unless it holds reasoning not sent back; then its characters"
     ) {
       val replayed = AssistantBlock.Reasoning("x" * 40, Some(ujson.Obj("a" -> "b")))
       val unreplayed = AssistantBlock.Reasoning("x" * 40, None)
@@ -75,7 +75,7 @@ object CharEstimateTests extends TestSuite {
         Tokens.value(CharEstimate.PerMessage) + 900,
         chars,
         estimate(assistant(text)),
-        estimate(assistant(text))
+        Tokens.value(CharEstimate.PerMessage) + 900
       )
     }
 
