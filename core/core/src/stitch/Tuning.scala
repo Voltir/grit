@@ -44,15 +44,17 @@ object Tuning {
     */
   final case class Burst(followsAt: Probability, gap: FiniteDuration)
 
-  /** A week; 2 recent and 2 lexical; 0.6; 1,500 tokens; 800 characters; a burst prior at 0.3
-    * over 120 seconds.
+  /** A week; 2 recent and 2 lexical; 0.6; 2,700 tokens as grit's estimate counts them (about
+    * 6,000 characters); 800 characters; a burst prior at 0.3 over 120 seconds.
     */
+  // The strand's 2,700 tokens were set as 1,500 when the estimate ran 4 characters a token;
+  // 2,700 keeps that size at 2.2.
   val Default: Tuning = Tuning(
     7.days,
     2,
     2,
     Probability.clamped(0.6),
-    Tokens(1_500),
+    Tokens(2_700),
     800,
     Some(Burst(Probability.clamped(0.3), 120.seconds))
   )

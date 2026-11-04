@@ -864,8 +864,11 @@ object RetrievalAssembler {
   /** The note a window drawn with no query pin carries. */
   val NoPin = s"no query: ${Prepared.NoPin}"
 
-  /** The recent tail's default share of the window. */
-  val DefaultTail: Tokens = Tokens(8_000)
+  /** The recent tail's default share of the window, 14,500 tokens as grit's estimate counts
+    * them: about 32,000 characters.
+    */
+  // Set as 8,000 when the estimate ran 4 characters a token; 14,500 keeps that size at 2.2.
+  val DefaultTail: Tokens = Tokens(14_500)
 
   /** What the searches found: the conversation's own hits, the hits elsewhere, the entries
     * of each conversation a hit elsewhere is in, the closings' hits and each one's newest kept

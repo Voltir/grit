@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{
   Estimate,
   FakeDb,
@@ -1824,6 +1825,20 @@ object RetrievalAssemblerTests extends TestSuite {
       // Seen live: a query model wrote a NUL, and Postgres refuses one in a text parameter,
       // which failed the turn's assembly.
       QueryWriter.text(reply("utc\u0000date\u0007 picker")) ==> "utc date picker"
+    }
+
+    test(
+      "the shipped sizes: a 100,000-token window, and a tail and strand sections as large as they were set under the old estimate"
+    ) {
+      // The tail was 8,000 and the strand 1,500 at 4 characters a token: 32,000 and 6,000
+      // characters, which grit's estimator now counts as about 14,500 and 2,700.
+      (
+        LinearAssembler.DefaultBudget,
+        RetrievalAssembler.DefaultTail,
+        Tuning.Default.windowTokens,
+        CharEstimate.text("x" * 32_000),
+        CharEstimate.text("x" * 6_000)
+      ) ==> (Tokens(100_000), Tokens(14_500), Tokens(2_700), Tokens(14_546), Tokens(2_728))
     }
   }
 }

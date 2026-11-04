@@ -128,10 +128,11 @@ final class LinearAssembler(
 
 object LinearAssembler {
 
-  /** The window's default size: a small fraction of a current model's context, so a turn
-    * stays cheap.
+  /** The window's default size, 100,000 tokens as grit's estimate counts them, which errs a
+    * little high of the provider's count: the store's view of the conversation before the
+    * turn, not the system prompt, the tools or the turn's own calls, which come on top.
     */
-  val DefaultBudget: Tokens = Tokens(24_000)
+  val DefaultBudget: Tokens = Tokens(100_000)
 
   /** What a boundary drawn at the deployed width fills: half of `limit`, so the turns after it
     * grow the window to the limit before the next boundary (ADR 0052).
