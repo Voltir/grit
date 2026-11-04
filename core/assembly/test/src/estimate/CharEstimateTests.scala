@@ -26,6 +26,14 @@ object CharEstimateTests extends TestSuite {
       ) ==> 6 + 5 + 4
     }
 
+    test("text costs a token per four characters, rounded up, with no framing") {
+      (
+        Tokens.value(CharEstimate.text("")),
+        Tokens.value(CharEstimate.text("abcd")),
+        Tokens.value(CharEstimate.text("abcde"))
+      ) ==> (0, 1, 2)
+    }
+
     test("a message costs its framing plus a token per four characters, rounded up") {
       estimate(Message.User("")) ==> 4
       estimate(Message.User("abcd")) ==> 5

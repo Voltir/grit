@@ -28,7 +28,12 @@ object CharEstimate extends TokenEstimator {
   /** What a provider adds to a request offering tools: its tool-use preamble. */
   val ToolPreamble: Tokens = Tokens(300)
 
-  def system(prompt: String): Tokens = PerMessage + ceiling(prompt.length.toLong)
+  def system(prompt: String): Tokens = PerMessage + text(prompt)
+
+  /** `text` costed as sent with no framing: a token per [[CharsPerToken]] characters, rounded
+    * up.
+    */
+  def text(text: String): Tokens = ceiling(text.length.toLong)
 
   override def tools(tools: Vector[ToolSchema]): Tokens =
     if (tools.isEmpty) Tokens.Zero

@@ -143,11 +143,8 @@ object TurnCapture {
                       .map(_.layer)
                       .distinct
                       .map(l =>
-                        l -> minus(
-                          CharEstimate.system(
-                            byLayer.getOrElse(l, Vector.empty).map(_.text).mkString("\n\n")
-                          ),
-                          CharEstimate.PerMessage
+                        l -> CharEstimate.text(
+                          byLayer.getOrElse(l, Vector.empty).map(_.text).mkString("\n\n")
                         )
                       )
                   ),

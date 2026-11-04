@@ -219,23 +219,17 @@ object Rehearsed {
       ujson.Obj("description" -> t.description, "parameters" -> t.parameters),
       indent = 2
     )
-    Part(s"tool ${t.name}", text, text.length, estimated(text))
+    Part(s"tool ${t.name}", text, text.length, CharEstimate.text(text))
   }
 
   private def judged(state: ujson.Value, questions: Vector[Question]): Vector[Part] = {
     val written = ujson.write(state, indent = 2)
-    Part("state", written, written.length, estimated(written)) +:
+    Part("state", written, written.length, CharEstimate.text(written)) +:
       questions.zipWithIndex.map { (q, i) =>
         val text = ujson.write(JevJson.question(q))
-        Part(s"question $i", text, text.length, estimated(text))
+        Part(s"question $i", text, text.length, CharEstimate.text(text))
       }
   }
-
-  /** A token per [[CharEstimate.CharsPerToken]] characters, rounded up: as the estimator counts
-    * what it has no framing for.
-    */
-  private def estimated(text: String): Tokens =
-    Tokens((text.length.toLong + CharEstimate.CharsPerToken - 1) / CharEstimate.CharsPerToken)
 
   private def said(m: Message.Assistant): String =
     m.blocks
