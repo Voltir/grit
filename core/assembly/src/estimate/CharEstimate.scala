@@ -74,7 +74,17 @@ class CharEstimate(
     Tokens(math.ceil(chars / perToken).toLong)
 }
 
-/** The estimator grit runs. Uncalibrated; English prose runs close to it, code and JSON above
-  * it.
+/** The estimator grit runs, erring high: 2.2 characters a token of text sent, 3.0 of tool
+  * definitions, and a 300-token tool preamble. Measured against Anthropic's counts for
+  * claude-haiku-5-5 and claude-opus-5-5 on coding turns (a system prompt and brief of
+  * markdown dense with code names, tool definitions, and a transcript of code, compiler
+  * output and JSON): every call of each turn estimated at 1.05 to 1.11 of the provider's
+  * count. Plain English tokenizes lighter, so a conversation of prose reads higher than that;
+  * a model with another tokenizer differs again, unmeasured.
   */
-object CharEstimate extends CharEstimate(4, 3.0, Tokens(300))
+// Fitted on the two recorded turns: a call's input grew 1.4 to 1.8 times its growth at 4
+// characters a token, the code-heavy transcript densest; at 2.2 the transcript's calls land at
+// 1.05 to 1.07, and the first calls, heavier in tool definitions and prose, at 1.08 to 1.11.
+// Solving the two first calls together (one tool set, different prose) put tool definitions
+// near 3.1 characters a token, preamble included.
+object CharEstimate extends CharEstimate(2.2, 3.0, Tokens(300))

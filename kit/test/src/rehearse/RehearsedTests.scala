@@ -172,7 +172,7 @@ object RehearsedTests extends TestSuite {
         counted.startsWith(Rehearsed.Header),
         counted.contains("lunch"),
         counted.contains("Be brief"),
-        counted.contains("    system: 9 chars, ~7 tokens"),
+        counted.contains("    system: 9 chars, ~9 tokens"),
         counted.contains("answered: STAND-IN (supplied)"),
         counted.contains("answered: STAND-IN (stub)"),
         counted.contains("not sent: the turn's own call"),

@@ -18,36 +18,67 @@ object CharEstimateTests extends TestSuite {
 
   private def estimate(m: Message): Long = Tokens.value(CharEstimate.message(m))
 
+  /** The recorded coding call in `estimate-coding-call.json`, and the input its provider
+    * counted.
+    */
+  private def recorded: (ModelRequest, Long) = {
+    val stream = getClass.getResourceAsStream("/estimate-coding-call.json")
+    val json =
+      try ujson.read(scala.io.Source.fromInputStream(stream, "UTF-8").mkString)
+      finally stream.close()
+    val request = ModelRequest(
+      json("system").str,
+      json("messages").arr.map(m => Message.User(m.str)).toVector,
+      json("tools").arr
+        .map(t => ToolSchema(t("name").str, t("description").str, t("parameters")))
+        .toVector
+    )
+    (request, json("input").num.toLong)
+  }
+
   val tests = Tests {
-    test("a request costs its system prompt, framed like a message, and every message") {
-      Tokens.value(CharEstimate.system("abcde")) ==> 6
-      Tokens.value(
-        CharEstimate.request(ModelRequest("abcde", Vector(Message.User("abcd"), Message.User(""))))
-      ) ==> 6 + 5 + 4
+    test(
+      "a recorded coding call, its system prompt, tools and brief, costs 1.00 to 1.15 of the input its provider counted"
+    ) {
+      // The fixture is scrubbed (its note says how), which moves the estimate by under 1%:
+      // the band absorbs it. The exact check is a recorded turn rebuilt by `scripts/eval
+      // context`, which gives every call's share.
+      val (request, input) = recorded
+      val share = Tokens.value(CharEstimate.request(request)).toDouble / input
+      assert(share >= 1.00, share <= 1.15)
     }
 
-    test("text costs a token per four characters, rounded up, with no framing") {
+    test("a request costs its system prompt, framed like a message, and every message") {
+      Tokens.value(CharEstimate.system("x" * 11)) ==> 4 + 5
+      Tokens.value(
+        CharEstimate.request(
+          ModelRequest("x" * 11, Vector(Message.User("x" * 22), Message.User("")))
+        )
+      ) ==> (4 + 5) + (4 + 10) + 4
+    }
+
+    test("text costs a token per 2.2 characters, rounded up, with no framing") {
       (
         Tokens.value(CharEstimate.text("")),
-        Tokens.value(CharEstimate.text("abcd")),
-        Tokens.value(CharEstimate.text("abcde"))
-      ) ==> (0, 1, 2)
+        Tokens.value(CharEstimate.text("x" * 11)),
+        Tokens.value(CharEstimate.text("x" * 12))
+      ) ==> (0, 5, 6)
     }
 
-    test("a message costs its framing plus a token per four characters, rounded up") {
+    test("a message costs its framing plus a token per 2.2 characters, rounded up") {
       estimate(Message.User("")) ==> 4
-      estimate(Message.User("abcd")) ==> 5
-      estimate(Message.User("abcde")) ==> 6
-      estimate(assistant(AssistantBlock.Text("abcd"), AssistantBlock.Text("efgh"))) ==> 6
+      estimate(Message.User("x" * 11)) ==> 9
+      estimate(Message.User("x" * 12)) ==> 10
+      estimate(assistant(AssistantBlock.Text("x" * 11), AssistantBlock.Text("y" * 11))) ==> 14
     }
 
     test(
       "a reasoning block the provider replays costs its text; one it cannot replay costs nothing"
     ) {
       (
-        estimate(assistant(AssistantBlock.Reasoning("x" * 400, Some(ujson.Obj("a" -> "b"))))),
-        estimate(assistant(AssistantBlock.Reasoning("x" * 400, None)))
-      ) ==> (4 + 100, 4)
+        estimate(assistant(AssistantBlock.Reasoning("x" * 440, Some(ujson.Obj("a" -> "b"))))),
+        estimate(assistant(AssistantBlock.Reasoning("x" * 440, None)))
+      ) ==> (4 + 200, 4)
     }
 
     test(
@@ -99,11 +130,11 @@ object CharEstimateTests extends TestSuite {
     }
 
     test("a tool call costs its id, name and arguments; a tool result its id and content") {
-      // "id" + "look" + {"q":1} (7) = 13 characters.
+      // "id" + "look" + {"q":1} (7) = 13 characters, 6 tokens; "id" + "abcdef" = 8, 4.
       estimate(
         assistant(AssistantBlock.ToolCall(ToolCallId("id"), "look", ujson.Obj("q" -> 1)))
-      ) ==> 8
-      estimate(Message.ToolResult(ToolCallId("id"), "abcdef", isError = false)) ==> 6
+      ) ==> 4 + 6
+      estimate(Message.ToolResult(ToolCallId("id"), "abcdef", isError = false)) ==> 4 + 4
     }
   }
 }
