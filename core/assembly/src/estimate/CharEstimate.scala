@@ -14,9 +14,9 @@ import grit.core.provider.{TokenEstimator, ToolSchema}
   * An assistant message costs at least its own output count
   * ([[grit.core.message.Usage.output]]): sent back, what a model wrote is billed about as it
   * was counted, and replayed reasoning (a block whose `replay` is kept) in full, though its
-  * text is at most a summary of it. The exception is a message holding reasoning with nothing
-  * to replay: that is not sent back, its output count includes it, and the message costs its
-  * characters. The estimate is high by the difference for a message grit rewrote before
+  * text is at most a summary of it. The exception is a message that withholds its reasoning
+  * ([[grit.core.message.Message.withholds]]): that is not sent back, its output count includes
+  * it, and the message costs its characters. The estimate is high by the difference for a message grit rewrote before
   * sending (a call dropped), for a model that reasons without returning its reasoning (its
   * output count holds it), and for a carried turn's (ADR 0052) replayed reasoning on a model
   * that drops the reasoning of turns before the last user message.
@@ -44,16 +44,11 @@ class CharEstimate(
   def message(message: Message): Tokens = {
     val byChars = PerMessage + ceiling(chars(message), charsPerToken)
     message match {
-      case Message.Assistant(blocks, _, usage, _, _) if !blocks.exists(withheld) =>
-        val counted = PerMessage + usage.output
+      case a: Message.Assistant if !a.withholds =>
+        val counted = PerMessage + a.usage.output
         if (Tokens.value(counted) > Tokens.value(byChars)) counted else byChars
       case _ => byChars
     }
-  }
-
-  private def withheld(block: AssistantBlock): Boolean = block match {
-    case AssistantBlock.Reasoning(_, None) => true
-    case _ => false
   }
 
   private def chars(message: Message): Long = message match {

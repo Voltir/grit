@@ -36,6 +36,17 @@ object Message {
     */
   def said(text: String, by: String, usage: Usage = Usage.Zero): Message.Assistant =
     Message.Assistant(Vector(AssistantBlock.Text(text)), StopReason.EndTurn, usage, by)
+
+  extension (m: Message.Assistant) {
+
+    /** Whether it holds reasoning it returned nothing to replay (a [[AssistantBlock.Reasoning]]
+      * with no `replay`): sent back, that reasoning is not, though its output count includes it.
+      */
+    def withholds: Boolean = m.blocks.exists {
+      case AssistantBlock.Reasoning(_, None) => true
+      case _ => false
+    }
+  }
 }
 
 /** A block of an assistant message. */
