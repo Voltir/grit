@@ -2,7 +2,7 @@ package grit.assembly.estimate
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, Tokens}
-import grit.core.provider.TokenEstimator
+import grit.core.provider.{TokenEstimator, ToolSchema}
 
 /** The [[TokenEstimator]] for any model, by characters: a token per [[CharsPerToken]]
   * characters of what is sent, rounded up, plus [[PerMessage]] for the role framing of
@@ -23,7 +23,18 @@ object CharEstimate extends TokenEstimator {
 
   val PerMessage: Tokens = Tokens(4)
 
+  val SchemaCharsPerToken: Double = 3.0
+
+  /** What a provider adds to a request offering tools: its tool-use preamble. */
+  val ToolPreamble: Tokens = Tokens(300)
+
   def system(prompt: String): Tokens = PerMessage + ceiling(prompt.length.toLong)
+
+  override def tools(tools: Vector[ToolSchema]): Tokens =
+    if (tools.isEmpty) Tokens.Zero
+    else
+      ToolPreamble +
+        Tokens(math.ceil(TokenEstimator.definitions(tools).length / SchemaCharsPerToken).toLong)
 
   def message(message: Message): Tokens = {
     val byChars = PerMessage + ceiling(chars(message))

@@ -10,7 +10,7 @@ import grit.core.either.Traversal
 import grit.core.id.{DocumentVersionId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
-import grit.core.provider.{ModelRequest, ToolSchema}
+import grit.core.provider.ToolSchema
 import grit.core.speech.Outcome
 import grit.core.store.{Entry, Nearby, Origin, Payload, Position, Speakers, StoreError, Tx}
 import grit.core.tool.{ToolName, ToolSet}
@@ -229,18 +229,7 @@ object TurnCapture {
     * for none.
     */
   def schema(tools: Vector[ToolSet.Entry]): Tokens =
-    if (tools.isEmpty) Tokens.Zero
-    else
-      minus(
-        CharEstimate.request(
-          ModelRequest(
-            "",
-            Vector.empty,
-            tools.map(e => ToolSchema(ToolName.value(e.name), e.does, e.parameters))
-          )
-        ),
-        CharEstimate.system("")
-      )
+    CharEstimate.tools(tools.map(e => ToolSchema(ToolName.value(e.name), e.does, e.parameters)))
 
   /** `window`, drawn for `turn`, by part as [[apply]] captures a recorded one, each costed by
     * [[CharEstimate]] as [[Shown]] shows it now, none with a support, and each document with its

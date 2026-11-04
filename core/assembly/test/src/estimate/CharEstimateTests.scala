@@ -2,7 +2,7 @@ package grit.assembly.estimate
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.ModelRequest
+import grit.core.provider.{ModelRequest, ToolSchema}
 
 import utest.*
 
@@ -68,6 +68,25 @@ object CharEstimateTests extends TestSuite {
         chars,
         estimate(assistant(text)),
         estimate(assistant(text))
+      )
+    }
+
+    test(
+      "offered tools cost their definitions at the schema ratio, rounded up, and the tool preamble once; none cost nothing"
+    ) {
+      val peek = ToolSchema("peek", "Reads.", ujson.Obj("type" -> "object"))
+      val look = ToolSchema("look", "Looks.", ujson.Obj())
+      // "peek\nReads.\n{"type":"object"}" (29) + "\n" + "look\nLooks.\n{}" (14) = 44.
+      val chars = 44
+      (
+        Tokens.value(CharEstimate.tools(Vector(peek, look))),
+        Tokens.value(CharEstimate.tools(Vector.empty)),
+        Tokens.value(CharEstimate.request(ModelRequest("", Vector.empty, Vector(peek, look))))
+      ) ==> (
+        math.ceil(chars / CharEstimate.SchemaCharsPerToken).toLong +
+          Tokens.value(CharEstimate.ToolPreamble),
+        0L,
+        Tokens.value(CharEstimate.system("")) + Tokens.value(CharEstimate.tools(Vector(peek, look)))
       )
     }
 
