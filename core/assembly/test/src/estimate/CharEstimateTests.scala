@@ -42,6 +42,35 @@ object CharEstimateTests extends TestSuite {
       ) ==> (4 + 100, 4)
     }
 
+    test(
+      "a message that replays reasoning costs at least the output its provider counted; one replaying none costs its characters"
+    ) {
+      val replayed = AssistantBlock.Reasoning("x" * 40, Some(ujson.Obj("a" -> "b")))
+      val unreplayed = AssistantBlock.Reasoning("x" * 40, None)
+      val text = AssistantBlock.Text("y" * 40)
+      def said(output: Long, blocks: AssistantBlock*): Long =
+        estimate(
+          Message.Assistant(
+            blocks.toVector,
+            StopReason.EndTurn,
+            Usage(Tokens(5), Tokens(output), Tokens.Zero, None),
+            "test"
+          )
+        )
+      val chars = estimate(assistant(replayed, text))
+      (
+        said(900, replayed, text),
+        said(1, replayed, text),
+        said(900, unreplayed, text),
+        said(900, text)
+      ) ==> (
+        Tokens.value(CharEstimate.PerMessage) + 900,
+        chars,
+        estimate(assistant(text)),
+        estimate(assistant(text))
+      )
+    }
+
     test("a tool call costs its id, name and arguments; a tool result its id and content") {
       // "id" + "look" + {"q":1} (7) = 13 characters.
       estimate(

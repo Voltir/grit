@@ -7,9 +7,14 @@ import grit.core.provider.TokenEstimator
 /** The [[TokenEstimator]] for any model, by characters: a token per [[CharsPerToken]]
   * characters of what is sent, rounded up, plus [[PerMessage]] for the role framing of
   * each message and of the system prompt. It counts what the model is billed for: text,
-  * tool calls and tool results. A reasoning block a provider replays (its `replay` kept) is
-  * sent back and counts its text: a turn's own, within its tool loop, and a carried turn's
-  * (ADR 0052). One with nothing to replay is not sent back and counts nothing.
+  * tool calls and tool results.
+  *
+  * A message that replays reasoning (a block whose `replay` is kept) costs at least its own
+  * output count ([[grit.core.message.Usage.output]]): the provider bills the replayed
+  * reasoning in full, and a block's text is at most a summary of it. That holds within a
+  * turn's tool loop; on a model that drops the reasoning of turns before the last user
+  * message, a carried turn's (ADR 0052) is costed but not billed, and the estimate is high by
+  * it. Reasoning with nothing to replay is not sent back and costs nothing.
   * Uncalibrated; English prose runs close to it, code and JSON above it.
   */
 object CharEstimate extends TokenEstimator {
@@ -21,20 +26,32 @@ object CharEstimate extends TokenEstimator {
   def system(prompt: String): Tokens = PerMessage + ceiling(prompt.length.toLong)
 
   def message(message: Message): Tokens = {
-    val chars = message match {
-      case Message.User(text) => text.length.toLong
-      case Message.ToolResult(callId, content, _) =>
-        ToolCallId.value(callId).length.toLong + content.length
-      case Message.Assistant(blocks, _, _, _, _) =>
-        blocks.map {
-          case AssistantBlock.Text(text) => text.length.toLong
-          case AssistantBlock.Reasoning(text, Some(_)) => text.length.toLong
-          case AssistantBlock.Reasoning(_, None) => 0L
-          case AssistantBlock.ToolCall(id, name, arguments) =>
-            ToolCallId.value(id).length.toLong + name.length + ujson.write(arguments).length
-        }.sum
+    val byChars = PerMessage + ceiling(chars(message))
+    message match {
+      case Message.Assistant(blocks, _, usage, _, _) if blocks.exists(replays) =>
+        val counted = PerMessage + usage.output
+        if (Tokens.value(counted) > Tokens.value(byChars)) counted else byChars
+      case _ => byChars
     }
-    PerMessage + ceiling(chars)
+  }
+
+  private def replays(block: AssistantBlock): Boolean = block match {
+    case AssistantBlock.Reasoning(_, Some(_)) => true
+    case _ => false
+  }
+
+  private def chars(message: Message): Long = message match {
+    case Message.User(text) => text.length.toLong
+    case Message.ToolResult(callId, content, _) =>
+      ToolCallId.value(callId).length.toLong + content.length
+    case Message.Assistant(blocks, _, _, _, _) =>
+      blocks.map {
+        case AssistantBlock.Text(text) => text.length.toLong
+        case AssistantBlock.Reasoning(text, Some(_)) => text.length.toLong
+        case AssistantBlock.Reasoning(_, None) => 0L
+        case AssistantBlock.ToolCall(id, name, arguments) =>
+          ToolCallId.value(id).length.toLong + name.length + ujson.write(arguments).length
+      }.sum
   }
 
   private def ceiling(chars: Long): Tokens = Tokens((chars + CharsPerToken - 1) / CharsPerToken)
