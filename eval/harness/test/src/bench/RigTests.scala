@@ -101,7 +101,7 @@ object RigTests extends TestSuite {
     /** A fake grit launcher that records its arguments, its environment and its brief, edits
       * `a.scala`, writes `fake`'s lines, and then hangs or exits 0.
       */
-    def gritArm(fake: GritFake, maxTokens: Int = 8192): Arm.Grit = {
+    def gritArm(fake: GritFake, maxTokens: Int = 8192, variant: Option[String] = None): Arm.Grit = {
       val launcher = root.resolve("grit")
       Files.write(root.resolve("grit.out"), fake.lines.asJava)
       // Each line as a Java string literal, every character past ASCII escaped, so the source
@@ -145,7 +145,8 @@ object RigTests extends TestSuite {
           "Make the change.",
           "jdbc:postgresql://localhost:5432/grit_bench_coder",
           maxTokens,
-          passed
+          passed,
+          variant
         )
       } yield arm).fold(e => throw new java.lang.AssertionError(e), identity)
     }
@@ -271,7 +272,8 @@ object RigTests extends TestSuite {
       fake: GritFake,
       caps: Caps = cap,
       turn: GritTurn = gritTurn,
-      heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30))
+      heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30)),
+      variant: Option[String] = None
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
@@ -282,7 +284,7 @@ object RigTests extends TestSuite {
     )(
       f.origin,
       f.task,
-      f.gritArm(fake),
+      f.gritArm(fake, variant = variant),
       caps,
       MemoryCap.Default,
       key,
@@ -832,6 +834,34 @@ object RigTests extends TestSuite {
         gritTrial(f, GritFake(gritLines)).map(_.lines.filter(_.startsWith("cost"))) ==>
           Right(Vector("cost: 0.0089¢ by grit's rates"))
       }
+    }
+
+    test(
+      "a grit trial run as a variant is kept under that variant's harness, its cost grit's alone"
+    ) {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines), variant = Some("search")).map { t =>
+          (
+            (Harness.value(t.trial.session.harness), t.trial.session.local),
+            t.lines.filter(_.startsWith("cost"))
+          )
+        } ==> Right((("grit-search", "c-7"), Vector("cost: 0.0089¢ by grit's rates")))
+      }
+    }
+
+    test("a variant is a lower-case slug, refused otherwise") {
+      val passed =
+        Variables.of(Map.empty).fold(e => throw new java.lang.AssertionError(e), identity)
+      val url = "jdbc:postgresql://localhost:5432/grit_bench_coder"
+      Vector(Some("all-cuts"), Some("All Cuts")).map(v =>
+        Arm.Grit
+          .of("/bin/grit", "/usr/bin/true", "c", url, 8192, passed, v)
+          .map(_.harness)
+          .map(Harness.value)
+      ) ==> Vector(
+        Right("grit-all-cuts"),
+        Left("a grit variant's name holds 'A', not a lowercase letter, a digit or '-': All Cuts")
+      )
     }
 
     test("grit is refused fewer than 2 turns, a model with no rates, and the operator's database") {

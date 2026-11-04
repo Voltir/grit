@@ -51,7 +51,8 @@ private[main] object LabCommands {
     * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --scout <program>` and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --coder <file> --coder-url <jdbc>
-    * --max-tokens <n> [--max-memory-gb <n>]` (8 when not given, [[MemoryCap.of]]): the task
+    * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>]` (8 GB when not given,
+    * [[MemoryCap.of]]; the trial kept under `grit-<name>`, [[Arm.Grit.harness]]): the task
     * `<name>` of `<dir>` ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
@@ -147,7 +148,15 @@ private[main] object LabCommands {
                       "JAVA_HOME" -> javaHome
                     )
                   )
-                  arm <- Arm.Grit.of(launcher, scout, coder, url, maxTokens, passed)
+                  arm <- Arm.Grit.of(
+                    launcher,
+                    scout,
+                    coder,
+                    url,
+                    maxTokens,
+                    passed,
+                    f.get("variant")
+                  )
                   _ <-
                     if (f.get("dry").contains("true"))
                       Rig.dry(work)(repository, task, arm, cap, dir).map(println)

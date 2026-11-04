@@ -10,7 +10,7 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
-import grit.core.id.{Harness, SessionId}
+import grit.core.id.{Harness, SessionId, Slug}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{Grade, ModelId}
 import grit.core.secret.Secret
@@ -109,7 +109,9 @@ object Arm {
     * program grit's scout service runs; `coder` is the instructions the coder's brief begins
     * with; `database` is the JDBC URL of the database grit keeps its turn in, logged in as
     * `docker-compose.yml`'s user; `maxTokens` is the most each reply may write; `passed` are the
-    * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`.
+    * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`;
+    * `harness` is what its trials are kept under: [[Harness.Grit]], or `grit-<variant>` for a run
+    * of grit changed by a variant, so the summary keeps each variant's trials apart from grit's.
     */
   final case class Grit private (
       launcher: String,
@@ -117,14 +119,16 @@ object Arm {
       coder: String,
       database: String,
       maxTokens: Int,
-      passed: Variables
+      passed: Variables,
+      harness: Harness
   ) extends Arm
 
   object Grit {
 
     /** The arm of these, or why not: a database URL that names no database, or names the
       * operator's own ([[DbConfig.DefaultDatabase]]), which a run of the bench must never write
-      * to; or `maxTokens` below 1.
+      * to; `maxTokens` below 1; or a `variant` that is no slug ([[Slug.check]], at most
+      * [[Harness.Longest]] less 5 characters).
       */
     def of(
         launcher: String,
@@ -132,7 +136,8 @@ object Arm {
         coder: String,
         database: String,
         maxTokens: Int,
-        passed: Variables
+        passed: Variables,
+        variant: Option[String] = None
     ): Either[String, Grit] =
       for {
         named <- DbConfig.Endpoint
@@ -149,7 +154,12 @@ object Arm {
           (),
           s"the most tokens a reply writes, $maxTokens, is below 1"
         )
-      } yield Grit(launcher, scout, coder, database, maxTokens, passed)
+        harness <- variant.fold[Either[String, Harness]](Right(Harness.Grit))(v =>
+          Slug
+            .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
+            .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
+        )
+      } yield Grit(launcher, scout, coder, database, maxTokens, passed, harness)
   }
 }
 
@@ -162,15 +172,16 @@ trait CoderTurns extends caps.SharedCapability {
   def newest(): Either[String, GritTurn]
 }
 
-/** A trial, the run's output it was read from, a line a message, what that output gave, and the
-  * task's checks as they ran after it.
+/** A trial, the run's output it was read from, a line a message, what that output gave, the
+  * task's checks as they ran after it, and the arm that ran it.
   */
 final case class Tried(
     trial: TrialRows.Trial,
     transcript: Vector[String],
     consumed: Consumed,
     checked: Checked,
-    stopped: Option[String]
+    stopped: Option[String],
+    arm: Arm
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures, each call's tokens, its cost in cents
@@ -188,7 +199,7 @@ final case class Tried(
           .zip(t.readBeforeEdit)
           .fold("no edit")((c, b) => s"$c calls, $b bytes read"),
       s"tokens: ${tokens(t.usage)}"
-    ) ++ Tried.spending(consumed, t.session.harness) ++
+    ) ++ Tried.spending(consumed, arm) ++
       Vector(
         consumed.ended.fold(stopped.fold("ended: with no result")(why => s"ended: $why"))(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
@@ -206,17 +217,20 @@ final case class Tried(
 object Tried {
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
-    * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run of a harness other than
-    * grit, by Claude Code's own estimate. Printed for a trial, and for a run refused one.
+    * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by
+    * Claude Code's own estimate. Printed for a trial, and for a run refused one.
     */
-  def spending(consumed: Consumed, harness: Harness): Vector[String] = {
+  def spending(consumed: Consumed, arm: Arm): Vector[String] = {
     val grit = consumed.gritCost.fold(
       reason => s"grit's rates: $reason",
       c => s"${Cost.cents(c)} by grit's rates"
     )
     val claimed = consumed.ended.flatMap(_.claimedUsd).fold("unknown")(Cost.cents)
     consumed.calls.zipWithIndex.map((c, i) => s"call ${i + 1} ${c.id}: ${input(c.usage)}") :+
-      (if (harness == Harness.Grit) s"cost: $grit" else s"cost: $grit, $claimed by Claude Code's")
+      (arm match {
+        case _: Arm.Grit => s"cost: $grit"
+        case _: Arm.ClaudeCode => s"cost: $grit, $claimed by Claude Code's"
+      })
   }
 
   private def input(u: Usage): String = {
@@ -328,7 +342,7 @@ object Rig {
       quiet: FiniteDuration,
       output: Path
   ): Either[String, Tried] =
-    tried(work)(repository, task, cap, dir, output, () => None) { checkout =>
+    tried(work)(repository, task, arm, cap, dir, output, () => None) { checkout =>
       for {
         streamed <- configured { variables =>
           handing
@@ -403,45 +417,52 @@ object Rig {
     for {
       _ <- gritCapped(cap)
       none <- Variables.of(Map.empty)
-      tried <- tried(work)(repository, task, cap, dir, output, holding(memory, dir, memoryCap)) {
-        _ =>
-          for {
-            _ <- memory
-              .held(dir)
-              .left
-              .map(e =>
-                s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
-              )
-            _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
-            streamed <- briefed(arm, task) { brief =>
-              handing
-                .started(dir, key, none) { file =>
-                  Argv.of(
-                    "timeout",
-                    Vector("-k", "1m", s"${Longest.toSeconds}s") ++
-                      gritEnvironment(arm, cap) ++
-                      Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
-                  )
-                }(s =>
-                  timed(clock)(
-                    Watched.ran(
-                      s,
-                      quiet,
-                      Longest + 2.minutes,
-                      spent(cap),
-                      holding(memory, dir, memoryCap)
-                    )
+      tried <- tried(work)(
+        repository,
+        task,
+        arm,
+        cap,
+        dir,
+        output,
+        holding(memory, dir, memoryCap)
+      ) { _ =>
+        for {
+          _ <- memory
+            .held(dir)
+            .left
+            .map(e =>
+              s"the memory grit's processes hold cannot be read, so its budget could not hold: ${e.message}"
+            )
+          _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
+          streamed <- briefed(arm, task) { brief =>
+            handing
+              .started(dir, key, none) { file =>
+                Argv.of(
+                  "timeout",
+                  Vector("-k", "1m", s"${Longest.toSeconds}s") ++
+                    gritEnvironment(arm, cap) ++
+                    Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
+                )
+              }(s =>
+                timed(clock)(
+                  Watched.ran(
+                    s,
+                    quiet,
+                    Longest + 2.minutes,
+                    spent(cap),
+                    holding(memory, dir, memoryCap)
                   )
                 )
-                .left
-                .map(e => s"grit did not run: ${e.message}")
-            }
-            (Watched.Read(lines, ended, stopped), wall) = streamed
-            _ <- kept(output, lines, ended)
-            turn <- turns.newest()
-            consumed = Consumed.ofTurn(lines, turn, stopped)
-            session <- SessionId.of(Harness.Grit, turn.session)
-          } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
+              )
+              .left
+              .map(e => s"grit did not run: ${e.message}")
+          }
+          (Watched.Read(lines, ended, stopped), wall) = streamed
+          _ <- kept(output, lines, ended)
+          turn <- turns.newest()
+          consumed = Consumed.ofTurn(lines, turn, stopped)
+          session <- SessionId.of(arm.harness, turn.session)
+        } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
       }
     } yield tried
 
@@ -684,13 +705,14 @@ object Rig {
     }
 
   /** A coder's run, as `coded` makes it in the checkout whose absolute path it is given, on
-    * `task` under `cap` in a new checkout at `dir` of `repository`; then the task's checks run
-    * there, `watch` asked as [[Checks.run]] says, and its diff measured against the known diff.
-    * Tidied as [[trial]] says.
+    * `task` under `cap` by `arm` in a new checkout at `dir` of `repository`; then the task's
+    * checks run there, `watch` asked as [[Checks.run]] says, and its diff measured against the
+    * known diff. Tidied as [[trial]] says.
     */
   private def tried(work: Processes)(
       repository: String,
       task: Task,
+      arm: Arm,
       cap: Caps,
       dir: RelPath,
       output: Path,
@@ -730,10 +752,8 @@ object Rig {
               distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
             )
             .left
-            .map(refused =>
-              (Tried.spending(c.consumed, c.session.harness) :+ refused).mkString("\n")
-            )
-        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped)
+            .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))
+        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped, arm)
       )
     } yield tried
 
