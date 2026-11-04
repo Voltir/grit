@@ -85,10 +85,11 @@ object PerPassTests extends TestSuite {
         trial(10, "other", "claude-code", haiku, Some("0.55"), passed = true, Some(40)),
         trial(11, "blobs", "claude-code", haiku, Some("0.01"), passed = false, Some(9))
       )
-      PerPass.lines(trials).drop(1) ==> Vector(
-        "blobs  grit         anthropic/claude-haiku-5-5  2 trials, 2 passed: 2.5¢ a pass (5¢ in all); distance 53–58",
-        "other  claude-code  anthropic/claude-haiku-5-5  1 trial, 1 passed: 55¢ a pass; distance 40",
-        "blobs  claude-code  anthropic/claude-haiku-5-5  1 trial, 0 passed: no pass (1¢ in all)"
+      PerPass.lines(trials) ==> Vector(
+        "task   harness      model                       trials  passed  ¢/pass   total  distance",
+        "blobs  grit         anthropic/claude-haiku-5-5  2       2       2.5¢     5¢     53–58",
+        "other  claude-code  anthropic/claude-haiku-5-5  1       1       55¢      55¢    40",
+        "blobs  claude-code  anthropic/claude-haiku-5-5  1       0       no pass  1¢     —"
       )
     }
   }

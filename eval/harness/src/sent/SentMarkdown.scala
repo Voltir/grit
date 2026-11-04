@@ -52,7 +52,7 @@ object SentMarkdown {
     * each call, its usage, its rebuilt request's estimate as a share of the input the provider
     * counted, and whether its ledger row recorded that estimate or another, with both, and
     * its cache ([[MeasuredCall]]); where the input went (the turn's cache, each call's input by
-    * part, what nothing later pointed back at, [[Referenced]]); then the answer and the
+    * part, what is unreferenced, [[Referenced]]); then the answer and the
     * summary. Tool results are cut as
     * `cut` says; [[TurnRecord.Schemas.Recorded]] is said above the tools.
     */
@@ -297,33 +297,32 @@ object SentMarkdown {
   }
 
   /** What `sent`'s calls cost and held, a line each, for a person reading a terminal: the
-    * turn's cache, its last call's input by part, and what nothing later pointed back at (a
-    * proxy, [[Referenced]]).
+    * turn's cache, its last call's input by part, and what is unreferenced ([[Referenced]]).
     */
   def efficiencyLines(sent: TurnSent): Vector[String] = {
     val measured = sent.measured
     val rows = measured.flatMap(_.row)
     val cache =
       if (rows.isEmpty) "cache: no ledger rows"
-      else
-        s"cache: ${percent1(read(rows), input(rows))} of input read from it; misses " +
-          s"${missedCost(measured).inCents} over cache reads, of ${Cost.total(rows.map(_.usage)).inCents}; " +
-          s"most on ${costliest(measured).map((label, _) => label).mkString(", ")}"
+      else {
+        val most = costliest(measured).map((label, _) => label)
+        s"cache: ${percent1(read(rows), input(rows))} hit; misses cost " +
+          s"${missedCost(measured).inCents} of ${Cost.total(rows.map(_.usage)).inCents}" +
+          (if (most.isEmpty) "" else s" (most on ${most.mkString(", ")})")
+      }
     val parts = sent.requests.lastOption
       .flatMap((_, reply, _) => measured.find(_.reply == reply))
       .flatMap(_.parts)
-      .fold("last call by part: not measured")(p =>
-        "last call by part: " + Labels
+      .fold("last call: not measured")(p =>
+        "last call: " + HeadlineLabels
           .zip(p.parts)
-          .map((l, t) => s"${l.toLowerCase} ${percent0(t, p.total)}")
+          .map((l, t) => s"$l ${percent0(t, p.total)}")
           .mkString(", ")
       )
-    val pointed = sent.referenced.fold("not pointed back at (a proxy, not proof): no call") {
-      read =>
-        val (cost, unpointed) = unpointedOf(read.results)
-        s"not pointed back at (a proxy, not proof): ${read.tools.count(!_.called)} of " +
-          s"${read.tools.size} " +
-          s"tools never called; ${percent0(unpointed, cost)} of tool-result tokens"
+    val pointed = sent.referenced.fold("unreferenced: no call") { read =>
+      val (cost, unpointed) = unpointedOf(read.results)
+      s"unreferenced: ${read.tools.count(!_.called)} of ${read.tools.size} tools never called; " +
+        s"${percent0(unpointed, cost)} of tool-result tokens"
     }
     Vector(cache, parts, pointed)
   }
@@ -332,11 +331,15 @@ object SentMarkdown {
   private val Labels: Vector[String] = Vector(
     "System prompt",
     "Tool descriptions",
-    "Brief and asks",
-    "Own calls",
+    "Task and prompts",
+    "Model's turns",
     "Tool results",
-    "Recalled"
+    "Retrieved"
   )
+
+  /** The parts' short names for the terminal headline, in the same order as [[Labels]]. */
+  private val HeadlineLabels: Vector[String] =
+    Vector("system", "tools", "task", "model's turns", "tool results", "retrieved")
 
   private def read(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.cacheRead)).sum
   private def input(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.input)).sum
@@ -375,33 +378,33 @@ object SentMarkdown {
       case _ => s"call $i"
     }
 
-  /** A call's cache, misses, prefix re-sent and fresh tokens, as one line; `None` with no row. */
+  /** A call's cache, its cache misses, cache breaks and new tokens, as one line; `None` with no row. */
   private def cacheLine(m: MeasuredCall): Option[String] = m.row.map { r =>
     val u = r.usage
     val share = percent1(Tokens.value(u.cacheRead), Tokens.value(u.input))
-    val missed = m.missed.fold(s"misses unpriced (no published rates for `${r.model}`)")(c =>
-      s"misses ${Cost.cents(c)} over cache reads"
+    val missed = m.missed.fold(s"cache misses unpriced (no published rates for `${r.model}`)")(c =>
+      s"cache misses cost ${Cost.cents(c)}"
     )
-    val resent = m.resent.fold("")(t => s"; prefix re-sent ${Tokens.value(t)}")
-    val fresh = m.fresh.fold("not an append, so no fresh count")(t => s"${Tokens.value(t)} fresh")
+    val resent = m.resent.fold("")(t => s"; cache breaks: ${Tokens.value(t)}")
+    val fresh = m.fresh.fold("not an append, so no new count")(t => s"${Tokens.value(t)} new")
     s"Cache: $share of its input read (${Tokens.value(u.cacheRead)} of ${Tokens.value(u.input)}, " +
       s"${Tokens.value(u.cacheWrite)} written); $missed$resent; $fresh."
   }
 
-  /** The tool results' estimate in all, and of it what sits on lines nothing pointed back at. */
+  /** The tool results' estimate in all, and of it what sits on unreferenced lines. */
   private def unpointedOf(results: Vector[Referenced.Result]): (Tokens, Tokens) =
     (
       Tokens(results.map(r => Tokens.value(r.cost)).sum),
       Tokens(results.map(unpointed).map(Tokens.value).sum)
     )
 
-  /** Of `r`'s estimate, the share on lines nothing pointed back at, by characters. */
+  /** Of `r`'s estimate, the share on unreferenced lines, by characters. */
   private def unpointed(r: Referenced.Result): Tokens =
     if (r.chars <= 0) Tokens.Zero
     else Tokens(Tokens.value(r.cost) * (r.chars - r.pointed) / r.chars)
 
   /** Where `sent`'s input went: the cache over the turn, each call's input by part, and what
-    * nothing later pointed back at (a proxy, [[Referenced]]).
+    * what is unreferenced ([[Referenced]]).
     */
   private def efficiency(sent: TurnSent, measured: Vector[MeasuredCall]): Vector[String] = {
     val out = Vector.newBuilder[String]
@@ -412,13 +415,13 @@ object SentMarkdown {
       val most = costliest(measured)
         .map((name, m) =>
           s"$name (${m.missed.fold("unpriced")(Cost.cents)}" +
-            s"${m.fresh.fold("")(f => s", ${Tokens.value(f)} fresh")})"
+            s"${m.fresh.fold("")(f => s", ${Tokens.value(f)} new")})"
         )
         .mkString(", ")
       add(
         s"- The cache: ${percent1(read(rows), input(rows))} of the turn's ${input(rows)} input " +
-          s"tokens read from it; its misses cost ${missedCost(measured).inCents} over cache " +
-          s"reads, of ${Cost.total(rows.map(_.usage)).inCents}." +
+          s"tokens read from it; cache misses cost ${missedCost(measured).inCents} of " +
+          s"${Cost.total(rows.map(_.usage)).inCents}." +
           (if (most.isEmpty) "" else s" Missed most: $most.")
       )
       val resent = measured.zipWithIndex.collect {
@@ -426,15 +429,16 @@ object SentMarkdown {
           s"${callName(measured, i)} (${m.resent.fold(0L)(Tokens.value)})"
       }
       add(
-        if (resent.isEmpty) "- No call re-sent a prefix the call before it had cached."
-        else s"- Re-sent a prefix the call before it had cached: ${resent.mkString(", ")}.",
+        if (resent.isEmpty)
+          "- No cache breaks: no call re-sent a prefix the call before it had cached."
+        else s"- Cache breaks: ${resent.mkString(", ")}.",
         ""
       )
     }
     val parted = measured.zipWithIndex.flatMap((m, i) => m.parts.map(p => (m, i, p)))
     if (parted.nonEmpty) {
       add(
-        s"| Call | In | Fresh | ${Labels.mkString(" | ")} |",
+        s"| Call | In | New | ${Labels.mkString(" | ")} |",
         s"|---|---|---|${Labels.map(_ => "---").mkString("|")}|"
       )
       parted.foreach { (m, i, p) =>
@@ -450,7 +454,7 @@ object SentMarkdown {
       add(
         "",
         "Each call's parts are its estimate by part, scaled to the provider's count: the first " +
-          "call's whole, then what each call appended, scaled to its fresh tokens; a call that " +
+          "call's whole, then what each call appended, scaled to its new tokens; a call that " +
           "does not append is scaled whole.",
         ""
       )
@@ -458,13 +462,14 @@ object SentMarkdown {
     sent.referenced.foreach { read =>
       val (tools, results) = (read.tools, read.results)
       add(
-        "### What nothing later pointed back at (a proxy, not proof)",
+        "### Unreferenced",
         "",
-        "A tool result counts as pointed back at, line by line, where a later call, edit or the " +
-          "reply repeats a name, path or line first seen in it. A part can steer the model " +
-          "without being quoted (a rule obeyed, a failure that ruled a move out), and a repeated " +
-          "name may have come from elsewhere: this ranks what to try cutting, and only rerunning " +
-          "the task without it shows whether it mattered. Tokens here are grit's estimate.",
+        "A tool result counts as referenced later, line by line, where a later call, edit or the " +
+          "reply repeats a name, path or line first seen in it. Unreferenced is a proxy, not " +
+          "proof: a part can steer the model without being quoted (a rule obeyed, a failure that " +
+          "ruled a move out), and a repeated name may have come from elsewhere. This ranks what " +
+          "to try cutting, and only rerunning the task without it shows whether it mattered. " +
+          "Tokens here are grit's estimate.",
         ""
       )
       val unused = tools.filterNot(_.called).sortBy(t => -Tokens.value(t.cost))
@@ -479,8 +484,8 @@ object SentMarkdown {
       val none = results.count(_.pointed == 0)
       add(
         s"- Tool results: ${results.size} in the last call's request, ${Tokens.value(cost)} " +
-          s"tokens; on lines nothing later pointed back at, ${Tokens.value(off)} " +
-          s"(${percent0(off, cost)}); ${none} of them pointed back at nowhere."
+          s"tokens; on unreferenced lines, ${Tokens.value(off)} " +
+          s"(${percent0(off, cost)}); ${none} of them referenced nowhere."
       )
       val largest = results
         .filter(r => Tokens.value(unpointed(r)) > 0)
@@ -489,7 +494,7 @@ object SentMarkdown {
         .map(r =>
           s"message ${r.at + 1} (`${r.tool}`, ${Tokens.value(unpointed(r))} of ${Tokens.value(r.cost)} tokens)"
         )
-      if (largest.nonEmpty) add(s"- Largest not pointed back at: ${largest.mkString(", ")}.")
+      if (largest.nonEmpty) add(s"- Largest unreferenced: ${largest.mkString(", ")}.")
       add("")
     }
     out.result()

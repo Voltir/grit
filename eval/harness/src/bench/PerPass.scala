@@ -51,29 +51,39 @@ object PerPass {
     }
   }
 
-  /** What a person reads of [[groups]] over `trials`: a heading line, then a line a group. */
+  /** What a person reads of [[groups]] over `trials`: a column header line, then a line a group,
+    * its columns aligned under the header.
+    */
   def lines(trials: Vector[TrialRows.Trial]): Vector[String] = {
-    val all = groups(trials)
-    val names = all.map(g =>
-      Vector(TrialRows.TaskName.value(g.task), Harness.value(g.harness), ModelId.value(g.model))
-    )
-    val widths = (0 until 3).map(i => names.flatMap(_.lift(i)).map(_.length).maxOption.getOrElse(0))
-    val heading =
-      "Cents per passing trial: every trial's cost by grit's rates, failed ones included, over " +
-        "how many passed, by task, harness and model; distance (lines from the task's known " +
-        "diff) over passing trials only; quality is not scored yet."
-    heading +: all.zip(names).map { (g: Group, n: Vector[String]) =>
-      val named = n.zip(widths).map((s, w) => s.padTo(w, ' ')).mkString("  ")
-      val ran = s"${g.trials} ${if (g.trials == 1) "trial" else "trials"}, ${g.passed} passed"
-      val inAll = if (g.trials == 1) "" else s" (${g.spent.inCents} in all)"
-      val cost =
-        g.perPass.fold(s"no pass (${g.spent.inCents} in all)")(p => s"${p.inCents} a pass$inAll")
-      val distance = (g.distances.minOption, g.distances.maxOption) match {
-        case (Some(lo), Some(hi)) if lo == hi => s"; distance $lo"
-        case (Some(lo), Some(hi)) => s"; distance $lo–$hi"
-        case _ => ""
-      }
-      s"$named  $ran: $cost$distance"
+    val rows: Vector[Vector[String]] = groups(trials).map { g =>
+      Vector(
+        TrialRows.TaskName.value(g.task),
+        Harness.value(g.harness),
+        ModelId.value(g.model),
+        g.trials.toString,
+        g.passed.toString,
+        g.perPass.fold("no pass")(_.inCents),
+        g.spent.inCents,
+        distance(g)
+      )
     }
+    val all: Vector[Vector[String]] = Header +: rows
+    val widths =
+      Header.indices.map(i => all.flatMap(_.lift(i)).map(_.length).maxOption.getOrElse(0))
+    all.map(row => row.zip(widths).map((s, w) => s.padTo(w, ' ')).mkString("  ").stripTrailing())
   }
+
+  /** The column names of [[lines]]' header. */
+  private val Header: Vector[String] =
+    Vector("task", "harness", "model", "trials", "passed", "¢/pass", "total", "distance")
+
+  /** A group's distances from the task's known diff: one line count when they agree, else the
+    * span they cover; `—` with no passing trial.
+    */
+  private def distance(g: Group): String =
+    (g.distances.minOption, g.distances.maxOption) match {
+      case (Some(lo), Some(hi)) if lo == hi => lo.toString
+      case (Some(lo), Some(hi)) => s"$lo–$hi"
+      case _ => "—"
+    }
 }

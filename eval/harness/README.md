@@ -45,7 +45,8 @@ Packages, each importing only those above it:
   keeps), priced by `grit.models`' `AnthropicRates`, the one function that prices both arms. Only
   `main` names `grit.host`, the harness's composition root (the law's
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
-  through a read-only `Reader`, and gates nothing.
+  through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials
+  too, takes distance over passing trials only, and does not score quality yet.
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt
@@ -58,8 +59,9 @@ Packages, each importing only those above it:
   shipped builder since triage keeps no request. It reads its own records rather than through
   `capture`, whose readers keep numbers, never text. It measures each call too: its cache
   misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
-  `bench`), its input by part, and what nothing later pointed back at, a proxy only: a part
-  can steer a model without being quoted, so cutting it and rerunning the task decides.
+  `bench`), its input by part, and what is unreferenced (no later output refers to it), a
+  proxy only: a part can steer a model without being quoted, so cutting it and rerunning the
+  task decides.
   ← `stats`, `capture`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn
