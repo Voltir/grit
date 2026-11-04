@@ -338,6 +338,12 @@
 #       from, or a Standing document of one of that strand's conversations; with their
 #       workflow ids. Text-free.
 #
+#   scripts/eval bench --summary
+#       Cents per passing trial over grit_bench's trials, by task, harness and model: every
+#       trial's cost by grit's rates, failed ones included, over how many passed, and the
+#       passing trials' distance from the task's known diff. Read-only; spends nothing. A kept
+#       run prints the same after its trial.
+#
 #   scripts/eval bench --task <name> --known
 #   scripts/eval bench --task <name> --model <id> --max-budget-usd <usd> --max-turns <n>
 #                      [--harness claude-code
@@ -828,9 +834,10 @@ reply_labels() {
 }
 
 bench() {
-  local known= dry= arm=claude-code tokens= memory= rest=()
+  local known= dry= summary= arm=claude-code tokens= memory= rest=()
   while [ $# -gt 0 ]; do
     case $1 in
+      --summary) summary=1; shift ;;
       --known) known=1; shift ;;
       --dry) dry=1; shift ;;
       --harness) [ $# -ge 2 ] || usage; arm=$2; shift 2 ;;
@@ -840,6 +847,11 @@ bench() {
       *) usage ;;
     esac
   done
+  if [ -n "$summary" ]; then
+    [ -z "$known$dry$tokens$memory" ] && [ ${#rest[@]} -eq 0 ] || usage
+    harness bench --summary true --url "jdbc:postgresql://localhost:5432/grit_bench"
+    return
+  fi
   local common=(--tasks "$here/eval/bench/tasks" --repository "$main")
   if [ -n "$known" ]; then
     harness bench "${common[@]}" --work "$main/.local/bench/work" --known true "${rest[@]}"

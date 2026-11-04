@@ -20,6 +20,11 @@ next run's start. Its log, `<checkout>.log` beside it, keeps what is worth keepi
 commits and its diff against the base (to 200 KB, with a note when cut), and for grit its output.
 The newest 60 logs are kept, as many as the trials the bench keeps.
 
+What the bench is improved against is cents per passing trial (`scripts/eval bench --summary`,
+and after every kept run): by task, harness and model, every trial's cost, failed ones included,
+over how many passed, beside the passing trials' distance from the known diff. Quality is not
+scored yet.
+
 ## The Claude Code arm
 
 `scripts/eval bench` runs `claude -p` in the task's checkout, its prompt a fixed preamble and the

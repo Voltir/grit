@@ -9,7 +9,7 @@ import grit.core.clock.Clock
 import grit.core.host.Blobs
 import grit.core.store.Jot
 import grit.core.visibility.{Label, Subject}
-import grit.dbos.internal.TrialRows
+import grit.dbos.internal.{Reader, TrialRows}
 
 /** The bench's keeping: a trial and its transcript into [[TrialRows]] over the bench's own blobs,
   * oldest out.
@@ -20,6 +20,12 @@ object Bench {
     * mid-receive left.
     */
   val Abandoned: FiniteDuration = 1.hour
+
+  /** Every trial `reader`'s database keeps, oldest first, read for `subject`. `Left` with the
+    * cause, for the operator, when the database fails.
+    */
+  def trials(reader: Reader^)(subject: Subject): Either[String, Vector[TrialRows.Trial]] =
+    reader.db.read(subject)(TrialRows.trials()).left.map(e => s"the trials: ${e.described}")
 
   /** `trial` kept in `blobs`' rows for `subject`; then the rows pruned of what this and any
     * earlier keep left ([[TrialRows.prune]], pending blobs [[Abandoned]] by `clock`'s time).

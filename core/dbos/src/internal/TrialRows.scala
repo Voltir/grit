@@ -75,12 +75,6 @@ final class TrialRows(blobs: Blobs^) {
         cleared <- blobs.clearPending(before)
       } yield TrialRows.Pruned(removed, cleared)
 
-  /** Every trial kept, oldest recorded first. */
-  def trials()(using Tx^): Either[StoreError, Vector[TrialRows.Trial]] =
-    SqlStatements
-      .many("SELECT * FROM grit.bench_trials ORDER BY id")(_ => ())(TrialRows.trialOf)
-      .flatMap(SqlStatements.valid)
-
   /** `session`'s trial's transcript, when it has one this transaction reads. */
   def transcript(session: SessionId)(using Tx^): Either[StoreError, Option[TrialRows.Transcript]] =
     SqlTrialRows
@@ -90,6 +84,12 @@ final class TrialRows(blobs: Blobs^) {
 }
 
 object TrialRows {
+
+  /** Every trial kept, oldest recorded first: rows alone, which need no blob store. */
+  def trials()(using Tx^): Either[StoreError, Vector[Trial]] =
+    SqlStatements
+      .many("SELECT * FROM grit.bench_trials ORDER BY id")(_ => ())(trialOf)
+      .flatMap(SqlStatements.valid)
 
   /** 60: the most trials kept. */
   val Kept: Int = 60

@@ -44,7 +44,8 @@ Packages, each importing only those above it:
   its trial (a Claude Code coder, whose `stream-json` output is the transcript it reads and
   keeps), priced by `grit.models`' `AnthropicRates`, the one function that prices both arms. Only
   `main` names `grit.host`, the harness's composition root (the law's
-  `harness-names-host-from-main-alone`). It reports and gates nothing yet.
+  `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
+  through a read-only `Reader`, and gates nothing.
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt

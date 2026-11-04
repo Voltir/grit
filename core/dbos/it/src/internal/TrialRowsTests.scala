@@ -70,8 +70,8 @@ object TrialRowsTests extends TestSuite {
       LiveDb.transaction(config, clearance)(rows.record(t, p, clipped = false, label))
     })
 
-  private def trials(rows: TrialRows^): Vector[TrialRows.Trial] =
-    LiveDb.transaction(config, Low)(ok(rows.trials()))
+  private def trials(): Vector[TrialRows.Trial] =
+    LiveDb.transaction(config, Low)(ok(TrialRows.trials()))
 
   private def transcript(
       rows: TrialRows^,
@@ -89,7 +89,7 @@ object TrialRowsTests extends TestSuite {
         val sha = Sha256.text("a transcript")
         assert(
           recorded == Right(TrialRows.Recorded.Fresh(0)),
-          trials(rows).filter(_.session == t.session) == Vector(t),
+          trials().filter(_.session == t.session) == Vector(t),
           transcript(rows, t) == Some(TrialRows.Transcript(sha, 12L, false, Label.Public)),
           blobs.at(sha).isDefined
         )
@@ -105,7 +105,7 @@ object TrialRowsTests extends TestSuite {
         val repeat = withTranscript(blobs, rows, again, "never kept")
         assert(
           repeat == Right(TrialRows.Recorded.Repeat),
-          trials(rows).filter(_.session == first.session) == Vector(first),
+          trials().filter(_.session == first.session) == Vector(first),
           transcript(rows, first) == None,
           blobs.kept() == Right(Vector.empty)
         )
@@ -126,7 +126,7 @@ object TrialRowsTests extends TestSuite {
               s"a trajectory holds at most ${TrialRows.Longest} bytes, not ${TrialRows.Longest + 1}"
             )
           ),
-          trials(rows).filter(_.session == t.session) == Vector.empty,
+          trials().filter(_.session == t.session) == Vector.empty,
           blobs.kept() == Right(Vector.empty)
         )
       }
@@ -162,7 +162,7 @@ object TrialRowsTests extends TestSuite {
         assert(
           middle.forall(_ == Right(TrialRows.Recorded.Fresh(0))),
           last == Right(TrialRows.Recorded.Fresh(1)),
-          LiveDb.transaction(db, Low)(ok(rows.trials())) == all.drop(1),
+          LiveDb.transaction(db, Low)(ok(TrialRows.trials())) == all.drop(1),
           LiveDb.transaction(db, Low)(ok(rows.transcript(all(0).session))) == None,
           blobs.kept() == Right(Vector(Sha256.text("the oldest")))
         )

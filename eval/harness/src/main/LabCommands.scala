@@ -17,7 +17,18 @@ import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.eval.Room
-import grit.eval.harness.bench.{Arm, Bench, Caps, CoderTurns, GritTurn, MemoryCap, Rig, Task, Tried}
+import grit.eval.harness.bench.{
+  Arm,
+  Bench,
+  Caps,
+  CoderTurns,
+  GritTurn,
+  MemoryCap,
+  PerPass,
+  Rig,
+  Task,
+  Tried
+}
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.log.{Cache, Weights}
@@ -54,6 +65,20 @@ private[main] object LabCommands {
     * [[TrialRows.Kept]]). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    if (f.get("summary").contains("true")) summary(f) else run(f, clock)
+
+  /** `bench --summary true --url <jdbc>`: cents per passing trial over every trial the
+    * database at `<jdbc>` keeps ([[PerPass.lines]]), read through a read-only [[Reader]], the
+    * login from `GRIT_DATABASE_USER` and `_PASSWORD`.
+    */
+  private def summary(f: Map[String, String]): Either[String, Unit] =
+    for {
+      url <- need(f, "url")
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      trials <- opened(config)(Bench.trials(_)(Subject.Public))
+    } yield PerPass.lines(trials).foreach(println)
+
+  private def run(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       name <- need(f, "task")
       taskName <- TrialRows.TaskName.of(name)
@@ -186,7 +211,8 @@ private[main] object LabCommands {
             } yield println(s"kept: ${kept._1}; pruned: ${kept._2}")
           }
       }
-    } yield ()
+      trials <- opened(config)(Bench.trials(_)(Subject.Public))
+    } yield PerPass.lines(trials).foreach(println)
 
   /** The grit coder's turns in the database `config` names, logged in as `docker-compose.yml`'s
     * user: the newest created before `clock`'s now, with the messages its last call was sent and
