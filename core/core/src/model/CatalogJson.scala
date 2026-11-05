@@ -3,6 +3,7 @@ package grit.core.model
 import java.time.LocalDate
 
 import grit.core.either.Traversal.sequence
+import grit.core.message.Tokens
 
 /** The stored JSON forms of a [[Catalog]] (the seed file's form) and of a [[TurnProfile]].
   * Written by hand: it is persisted data, so a rename in Scala must not change it, and reading
@@ -237,6 +238,7 @@ object CatalogJson {
     put("repairs", p.repairs, repairs)
     put("afterResult", p.afterResult, v => ujson.Str(AfterWords.of(v)))
     put("guidance", p.guidance, v => ujson.Str(GuidanceWords.of(v)))
+    put("contextLength", p.contextLength, v => ujson.Num(Tokens.value(v).toDouble))
     o
   }
 
@@ -266,6 +268,8 @@ object CatalogJson {
       "guidance" -> GuidanceWords.of(s.guidance),
       "profiled" -> s.profiled
     )
+    // Written only when known, so every pin kept before context lengths keeps its bytes and id.
+    s.contextLength.foreach(l => o("settings")("contextLength") = Tokens.value(l).toDouble)
     o
   }
 
@@ -406,7 +410,8 @@ object CatalogJson {
       repairs <- readKnown(o, "repairs", at)(readRepairs)
       after <- readKnown(o, "afterResult", at)(AfterWords.read)
       guidance <- readKnown(o, "guidance", at)(GuidanceWords.read)
-    } yield Profile(r, strict, replay, names, repairs, after, guidance)
+      length <- readKnown(o, "contextLength", at)(readLength)
+    } yield Profile(r, strict, replay, names, repairs, after, guidance, length)
 
   /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
     * `at`.
@@ -428,12 +433,23 @@ object CatalogJson {
       profiled <- field(so, "profiled", sat).flatMap(
         _.boolOpt.toRight(s"$sat.profiled is not true or false")
       )
+      length <- so.get("contextLength") match {
+        case None => Right(None)
+        case Some(l) => readLength(l, s"$sat.contextLength").map(Some(_))
+      }
     } yield Pinned(
       CatalogVersion(version),
       grade,
       a,
-      Settings(strict, replay, names, repairs, after, guidance, profiled)
+      Settings(strict, replay, names, repairs, after, guidance, profiled, length)
     )
+
+  /** A context length: a whole number of tokens above 0. */
+  private def readLength(v: ujson.Value, at: String): Either[String, Tokens] =
+    v.numOpt
+      .filter(n => n > 0 && n == math.floor(n))
+      .map(n => Tokens(n.toLong))
+      .toRight(s"$at is not a whole number of tokens above 0")
 
   private def readPins(v: ujson.Value, at: String): Either[String, Pins] =
     oneOrMore(v, at)(readPinned).flatMap(ps => Pins.of(ps).left.map(_ => s"$at has no pins"))

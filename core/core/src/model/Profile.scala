@@ -1,5 +1,7 @@
 package grit.core.model
 
+import grit.core.message.Tokens
+
 /** Whether an upstream holds a model's tool arguments to a `strict` schema. */
 enum StrictSchemas {
 
@@ -69,7 +71,8 @@ enum ToolGuidance {
 }
 
 /** Everything grit knows about one pair: data, read and stored as is. A call is made under
-  * the [[Settings]] a profile resolves to, never the profile itself.
+  * the [[Settings]] a profile resolves to, never the profile itself. `contextLength` is the
+  * most tokens, input and output together, the pair accepts in one request.
   */
 final case class Profile(
     ref: ModelRef,
@@ -78,7 +81,8 @@ final case class Profile(
     names: Known[NameRepair] = Known.Unmeasured,
     repairs: Known[Set[ArgRepair]] = Known.Unmeasured,
     afterResult: Known[AfterToolResult] = Known.Unmeasured,
-    guidance: Known[ToolGuidance] = Known.Unmeasured
+    guidance: Known[ToolGuidance] = Known.Unmeasured,
+    contextLength: Known[Tokens] = Known.Unmeasured
 ) {
 
   /** Each of `other`'s settings over this one's where its source ranks higher
@@ -92,11 +96,15 @@ final case class Profile(
       names.orOver(other.names),
       repairs.orOver(other.repairs),
       afterResult.orOver(other.afterResult),
-      guidance.orOver(other.guidance)
+      guidance.orOver(other.guidance),
+      contextLength.orOver(other.contextLength)
     )
 }
 
-/** What a call is made under. `profiled` is false when no profile named the pair. */
+/** What a call is made under. `profiled` is false when no profile named the pair;
+  * `contextLength` is `None` when no profile gives it, and a turn's requests are then bounded
+  * by its window's limit alone.
+  */
 final case class Settings(
     strict: StrictSchemas,
     replay: ReasoningReplay,
@@ -104,7 +112,8 @@ final case class Settings(
     repairs: Set[ArgRepair],
     afterResult: AfterToolResult,
     guidance: ToolGuidance,
-    profiled: Boolean
+    profiled: Boolean,
+    contextLength: Option[Tokens] = None
 )
 
 object Settings {
@@ -123,7 +132,11 @@ object Settings {
       known(_.repairs).getOr(ArgRepair.values.toSet),
       known(_.afterResult).getOr(AfterToolResult.UserMessage),
       known(_.guidance).getOr(ToolGuidance.SchemaOnly),
-      profile.isDefined
+      profile.isDefined,
+      known(_.contextLength) match {
+        case Known.Of(length, _) => Some(length)
+        case Known.Unmeasured => None
+      }
     )
   }
 }

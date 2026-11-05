@@ -13,7 +13,8 @@
       "strict": {
         "value": "ignored",
         "source": { "kind": "measured", "probe": "tool-decoding", "on": "2026-09-25", "runs": 9, "held": 9 }
-      }
+      },
+      "contextLength": { "value": 131072, "source": { "kind": "advertised", "on": "2026-11-05" } }
     },
     {
       "model": "deepseek/deepseek-v4.1-flash-20260910",
@@ -21,7 +22,16 @@
       "replay": {
         "value": "details",
         "source": { "kind": "measured", "probe": "wire-spike", "on": "2026-09-25", "runs": 1, "held": 1 }
-      }
+      },
+      "contextLength": { "value": 1048576, "source": { "kind": "advertised", "on": "2026-11-05" } }
+    },
+    {
+      "model": "google/gemini-3.5-flash-lite",
+      "contextLength": { "value": 1048576, "source": { "kind": "advertised", "on": "2026-11-05" } }
+    },
+    {
+      "model": "anthropic/claude-haiku-5.5",
+      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-05" } }
     }
   ]
 }

@@ -2,6 +2,8 @@ package grit.core.model
 
 import java.time.LocalDate
 
+import grit.core.message.Tokens
+
 import utest.*
 
 object CatalogTests extends TestSuite {
@@ -230,6 +232,26 @@ object CatalogTests extends TestSuite {
         Effort.values.toVector.map(e => Right(Some(e)))
       val turn = every.pin
       CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(turn).render())) ==> Right(turn)
+    }
+
+    test(
+      "stored form: a pair's context length is written only when known, and reads back in its profile and its pin"
+    ) {
+      val long = ossProfile.copy(contextLength = Known.Of(Tokens(131_072), listed))
+      val pin = Catalog.of(policy, Vector(long)).pin
+      val written = CatalogJson.writeProfile(long).render()
+      (
+        written.contains(
+          """"contextLength":{"value":131072,"source":{"kind":"advertised","on":"2026-09-25"}}"""
+        ),
+        CatalogJson.writeProfile(ossProfile).render().contains("contextLength"),
+        CatalogJson.writeTurn(catalog.pin).render().contains("contextLength"),
+        CatalogJson.readProfile(ujson.read(written)),
+        pin.turn.first.settings.contextLength,
+        CatalogJson
+          .readTurn(ujson.read(CatalogJson.writeTurn(pin).render()))
+          .map(_.turn.first.settings.contextLength)
+      ) ==> (true, false, false, Right(long), Some(Tokens(131_072)), Right(Some(Tokens(131_072))))
     }
 
     test("stored form: a turn profile") {
