@@ -22,7 +22,8 @@ trait ContextAssembler extends caps.Pure {
   def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared]
 
   /** What `written`'s query finds for `request.turn`, best first, at most the request's
-    * width's hits of each kind, none that `request.carried` holds; empty for an assembler that
+    * width's hits of each kind, none that `request.carried` holds and never `request.task`'s
+    * entry; empty for an assembler that
     * never asks for a query.
     */
   def search(request: AssemblyRequest, written: Querying.Written)(using
@@ -43,7 +44,8 @@ trait ContextAssembler extends caps.Pure {
     * part, then each admitted result still there, still a candidate and not carried, in its
     * order, each one that fits what is left; one not admitted is never shown. Appended: the
     * turns since the carried window's last part's turn, then each admitted result not carried.
-    * Its notes are the query's, then which earlier turns of its own it recalled.
+    * Its notes are the query's, then which earlier turns of its own it recalled. It never holds
+    * `request.task`'s entry.
     * [[Projection.Boundary]] when `request.carried` is empty or at the assembler's [[limit]];
     * else [[Projection.Appended]], holding nothing `request.carried` holds.
     */
@@ -81,16 +83,19 @@ object ContextAssembler {
 }
 
 /** What an assembler is asked to build a window for, how wide the part it draws now may be,
-  * the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear), and
-  * `reserved`, what the turn packs before a boundary's window ([[Window.brief]] and
-  * [[Window.sessionLog]]), taken off what a boundary draws within under either width
-  * ([[boundary]]); an append ignores it.
+  * the window carried into the turn ([[CarriedWindow.Empty]] at a start or a clear),
+  * `reserved`, what the turn packs before a boundary's window ([[Window.brief]],
+  * [[Window.task]] and [[Window.sessionLog]]), taken off what a boundary draws within under
+  * either width ([[boundary]]), which an append ignores; and `task`, the first entry of the
+  * task a continuation turn goes on with ([[grit.core.store.Payload.Continuation]]), which the
+  * turn packs itself: never drawn or found, at a boundary or an append.
   */
 final case class AssemblyRequest(
     turn: TurnRef,
     width: Width,
     carried: CarriedWindow,
-    reserved: Tokens = Tokens.Zero
+    reserved: Tokens = Tokens.Zero,
+    task: Option[EntrySeq] = None
 ) {
 
   /** What a boundary drawn within `share` may draw: `share` less [[reserved]], never below

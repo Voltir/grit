@@ -25,7 +25,9 @@ import grit.core.visibility.Subject
 /** The window with no choosing: at a boundary, the closing entry of the conversation's newest
   * closed period, then the messages of the most recent whole turns of the turn's own period,
   * before the turn, that fit in what half of `budget` ([[LinearAssembler.share]]) leaves by
-  * `estimator`; never their summaries. The baseline every smarter assembler is measured
+  * `estimator`; never their summaries, nor the request's task
+  * ([[grit.core.context.AssemblyRequest.task]]), its turn's other messages kept. The baseline
+  * every smarter assembler is measured
   * against. It never draws on other conversations.
   *
   * Given a carried window it appends the turns since its last part's turn, every one of them,
@@ -98,7 +100,11 @@ final class LinearAssembler(
         all <- entries.list(request.turn.conversationId)
         speakers <- principals.speakers(all.map(_.id))
       } yield {
-        val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
+        val turns = LinearAssembler.turnsBefore(
+          all.filterNot(e => request.task.contains(e.seq)),
+          opening.first,
+          request.turn.turnSeq
+        )
         LinearAssembler.carrying(
           request.carried,
           opening.first,

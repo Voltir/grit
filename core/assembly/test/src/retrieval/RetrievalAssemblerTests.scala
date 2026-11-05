@@ -494,7 +494,8 @@ object RetrievalAssemblerTests extends TestSuite {
       admit: Results -> Results = r => Results(r.ranked, r.beyond),
       pieces: PieceSearch = new InMemoryPieces,
       carried: CarriedWindow = CarriedWindow.Empty,
-      reserved: Long = 0
+      reserved: Long = 0,
+      task: Option[EntrySeq] = None
   ): Projection = {
     val models = new Writing(writer, QueryPin)
     ContextAssembler
@@ -516,7 +517,8 @@ object RetrievalAssemblerTests extends TestSuite {
           TurnRef(c1, TurnSeq(at)),
           width.getOrElse(Width.Within(Tokens(budget), Hits)),
           carried,
-          Tokens(reserved)
+          Tokens(reserved),
+          task
         )
       )(
         asked =>
@@ -1286,6 +1288,17 @@ object RetrievalAssemblerTests extends TestSuite {
       (turnsOf(world, p.window), p.cost) ==> (Vector("t0", "t4", "t5"), Tokens(57))
       // Every turn fits: no query, and the window costs its six turns.
       projected(world, new Writer(Some("q000")), 1000, new Scripted("t0:1")).cost ==> Tokens(66)
+    }
+
+    test("a request's task is never drawn: its recalled turn shows its reply alone, costing that") {
+      // As above, but turn 0's question is the task: turn 0 recalled costs its reply's 6 with
+      // its gap line 12, after the tail's 34.
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      val world = store(turns*)
+      val task = seqs(world, "t0:0").headOption
+      val p = projected(world, new Writer(Some("q000")), 57, new Scripted("t0:1"), task = task)
+      (ids(world, p.window), p.cost) ==>
+        (Vector("t0:1", "t4:8", "t4:9", "t5:10", "t5:11"), Tokens(52))
     }
 
     test("an appended window recalls no own turn the carried window holds") {

@@ -76,7 +76,9 @@ import grit.core.visibility.Subject
   * [[Shown.document]]; a piece as [[Shown.piece]]; a person's message with its author's name
   * line ([[Shown.of]]).
   *
-  * Own turns join the window in conversation order; packed documents and pieces in rank order. Turns from
+  * Own turns join the window in conversation order, never with the request's task
+  * ([[grit.core.context.AssemblyRequest.task]]), which is neither drawn nor found; packed
+  * documents and pieces in rank order. Turns from
   * elsewhere form one section per conversation ([[Nearby]]), in the order of its best
   * candidate, its turns in its own order. A conversation whose closings match is one
   * candidate, shown as its newest kept closing's record ([[Shown.recorded]]), unless any of its
@@ -374,7 +376,8 @@ final class RetrievalAssembler(
           settings.weight,
           opening.first,
           opening.closing.map(_.entry).toVector,
-          all,
+          // The task is the turn's to pack: never drawn, recalled or found here.
+          all.filterNot(e => request.task.contains(e.seq)),
           speakers,
           open.filterNot(o => members(o.conversation)),
           closed.filterNot(c => members(c.conversation)),

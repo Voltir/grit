@@ -45,10 +45,12 @@ object LinearAssemblerTests extends TestSuite {
       turn: Long,
       budget: Long,
       width: Option[Width] = None,
-      reserved: Long = 0
+      reserved: Long = 0,
+      task: Option[EntrySeq] = None
   ): Vector[String] = {
     val drawn = width.getOrElse(Width.Within(Tokens(budget), 0))
-    val seqs = projection(world, turn, budget, drawn, CarriedWindow.Empty, reserved).window.entries
+    val seqs =
+      projection(world, turn, budget, drawn, CarriedWindow.Empty, reserved, task).window.entries
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
       .getOrElse(sys.error("in-memory store"))
@@ -78,7 +80,8 @@ object LinearAssemblerTests extends TestSuite {
       budget: Long,
       width: Width,
       carried: CarriedWindow,
-      reserved: Long = 0
+      reserved: Long = 0,
+      task: Option[EntrySeq] = None
   ): Projection =
     ContextAssembler
       .draw(
@@ -89,7 +92,7 @@ object LinearAssemblerTests extends TestSuite {
           Estimate,
           Tokens(budget)
         ),
-        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width, carried, Tokens(reserved))
+        AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width, carried, Tokens(reserved), task)
       )(_ => Left("no writer"), r => r)(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), p => p)
 
@@ -267,6 +270,16 @@ object LinearAssemblerTests extends TestSuite {
       val carried = carriedOn(w, CarriedWindow.Empty, 2, 1000)
       projection(w, 4, 1000, Width.Deployed, carried) ==>
         Projection.Appended(Window(seqsOf(w, "t3:6", "t3:7")), Tokens(SmallTurn))
+    }
+
+    test("a request's task is never drawn, at a boundary or an append, its turn's reply kept") {
+      val w = store(small(0), small(1), small(2), Vector(user("now!")))
+      window(w, 3, 1000, task = seqsOf(w, "t0:0").headOption) ==>
+        Vector("t0:1", "t1:2", "t1:3", "t2:4", "t2:5")
+      // Turn 0's window is carried: turns 1 and 2 are appended, turn 1's reply alone (6 tokens).
+      val carried = carriedOn(w, CarriedWindow.Empty, 0, 1000)
+      projection(w, 3, 1000, Width.Deployed, carried, task = seqsOf(w, "t1:2").headOption) ==>
+        Projection.Appended(Window(seqsOf(w, "t1:3", "t2:4", "t2:5")), Tokens(6 + SmallTurn))
     }
 
     test("a carried window the turns since overflow is cleared and re-projected") {
