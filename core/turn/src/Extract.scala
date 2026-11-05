@@ -53,13 +53,10 @@ object Extract {
         s"short code of up to ${Shape.MaxToken} letters, digits, _ or -. It can't give you any " +
         "other text, such as a title, a name or a sentence: for those, read the item. It asks " +
         "a question of something your request shows only as a note (\"Hidden here as h1: " +
-        "…\"), without reading it: a separate model, shown only that and your question, " +
-        "answers in the shape you choose, and you are told only that answer. Using it never " +
-        "stops you doing anything you can do now. Shapes: yes_no; number, a whole number from " +
-        "min to max; day, a date; one_of, one of the options you list (at most " +
-        s"${Shape.MaxOptions}, each at most ${Shape.MaxOption} characters); token, a short code " +
-        s"of at most max (up to ${Shape.MaxToken}) characters of A-Z, a-z, 0-9, _ and -. The " +
-        "answer may be that the item does not say.",
+        "…\"), without reading it: a separate model, shown only the item and your question, " +
+        "answers, and you are told only that answer, or that the item does not say. Using it " +
+        "never stops you doing anything you can do now. The one_of shape takes at most " +
+        s"${Shape.MaxOptions} options, each at most ${Shape.MaxOption} characters.",
       Args
         .of(
           (

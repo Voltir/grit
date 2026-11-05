@@ -143,6 +143,15 @@ object ExtractTests extends TestSuite {
       )
     }
 
+    test("its description leaves each shape's bounds to the fields that take them, but one_of's") {
+      val does = Extract.tool(None, Extract.Unasked).spec.does
+      (does.contains("Shapes:"), does.contains("min to max"), does.split("\\. ").lastOption) ==> (
+        false,
+        false,
+        Some("The one_of shape takes at most 64 options, each at most 80 characters.")
+      )
+    }
+
     test("an answer that does not read fails, quoting nothing of it") {
       val answers =
         new Answers(_ => Left("`answer` takes true for yes or false for no, not \"post it\"."))
