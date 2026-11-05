@@ -24,9 +24,42 @@ object AnthropicJsonTests extends TestSuite {
       request: ModelRequest,
       effort: Option[Effort] = None,
       replay: ReasoningReplay = ReasoningReplay.Details,
-      dropBlock: Boolean = false
+      dropBlock: Boolean = false,
+      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
   ): ujson.Value =
-    AnthropicJson.request("claude-haiku-5-5", 1024, effort, replay, dropBlock, request)
+    AnthropicJson.request("claude-haiku-5-5", 1024, effort, replay, dropBlock, request, marks)
+
+  /** Where `body` is marked: "system", "tool <i>", or "<message index>:<block index>". */
+  private def marksIn(body: ujson.Value): Vector[String] = {
+    def marked(v: ujson.Value): Boolean = v.obj.contains("cache_control")
+    body.obj.get("system").fold(Vector.empty)(_.arr.toVector.filter(marked).map(_ => "system")) ++
+      body.obj
+        .get("tools")
+        .fold(Vector.empty)(_.arr.toVector.zipWithIndex.collect {
+          case (t, i) if marked(t) => s"tool $i"
+        }) ++
+      body("messages").arr.toVector.zipWithIndex.flatMap((m, i) =>
+        m("content").arrOpt.fold(Vector.empty)(_.toVector.zipWithIndex.collect {
+          case (b, j) if marked(b) => s"$i:$j"
+        })
+      )
+  }
+
+  /** A boundary's request: its brief, two drawn messages (the reply's thinking last), the dated
+    * line, then the turn's own message.
+    */
+  private val boundary = ModelRequest(
+    "sys",
+    Vector(
+      Message.User("the brief"),
+      Message.User("earlier"),
+      called(AssistantBlock.Text("ok"), AssistantBlock.Reasoning("Read it.", Some(thinking))),
+      Message.User("dated"),
+      Message.User("now")
+    ),
+    Vector(read),
+    repeats = Repeats.of(1, 3, 5)
+  )
 
   private val exchange = ModelRequest(
     "sys",
@@ -69,6 +102,23 @@ object AnthropicJsonTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "request: each choice of marks adds the task's then the established part's breakpoint to the stable one, never on thinking, a block two counts share marked once"
+    ) {
+      val shared = boundary.copy(repeats = Repeats.of(3, 3, 3))
+      Vector(
+        marksIn(sent(boundary, marks = CacheMarks.Upto.Stable)),
+        marksIn(sent(boundary, marks = CacheMarks.Upto.Task)),
+        marksIn(sent(boundary, marks = CacheMarks.Upto.Established)),
+        marksIn(sent(shared, marks = CacheMarks.Upto.Established))
+      ) ==> Vector(
+        Vector("system", "4:0"),
+        Vector("system", "0:0", "4:0"),
+        Vector("system", "0:0", "2:0", "4:0"),
+        Vector("system", "2:0")
+      )
+    }
+
     // The bytes are pinned, key order and all: the prompt cache keys on them, so a later call
     // repeats an earlier one's prefix only when both are written alike.
     test(

@@ -34,7 +34,7 @@ object AnthropicJson {
     * choice; [[ToolUse.Only]] alike, the call it names asked for only in words) and `none` for
     * [[ToolUse.Off]]; a request without tools has neither key.
     *
-    * Its cache breakpoints are those [[CacheMarks.marked]] places. `dropBlock` asks the API to drop a
+    * Its cache breakpoints are those [[CacheMarks.marked]] places, under `marks`. `dropBlock` asks the API to drop a
     * thinking block an earlier edit to the request has invalidated, and every one after it,
     * rather than refuse the request; it needs [[BindingBeta]].
     */
@@ -44,7 +44,8 @@ object AnthropicJson {
       effort: Option[Effort],
       replay: ReasoningReplay,
       dropBlock: Boolean,
-      request: ModelRequest
+      request: ModelRequest,
+      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
   ): ujson.Value = {
     val thinking = ujson.Obj("type" -> "adaptive", "display" -> "summarized")
     if (dropBlock)
@@ -61,7 +62,7 @@ object AnthropicJson {
     }
     val messages = request.messages.map(message(_, replay))
     CacheMarks
-      .marked(request.system, tools, messages, request.repeats.stable)
+      .marked(request.system, tools, messages, request.repeats, marks)
       .foreach(block => body("system") = ujson.Arr(block))
     body("messages") = ujson.Arr.from(messages.flatten)
     body
