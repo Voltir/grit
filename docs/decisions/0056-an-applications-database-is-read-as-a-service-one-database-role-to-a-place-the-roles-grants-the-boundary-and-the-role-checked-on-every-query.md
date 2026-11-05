@@ -28,7 +28,8 @@ Decision:
   this is `NOINHERIT`, a member of no role, granted `SELECT` on exactly the columns its label
   admits and nothing else, so that a leaked credential reads only what the place already
   shows. grit's own guards are a second line: each query runs in its own read-only
-  transaction, as one statement, with a timeout, its rows and bytes capped and the clip said.
+  transaction, opened as SQL text so no driver setting turns it off, as one statement, with a
+  timeout, its rows and bytes capped and the clip said.
 - **The role is checked on every query.** Before the model's statement, in the same
   transaction, the edge reads `current_user` and `session_user` and refuses unless both are
   the declared role; also at start and on every reconnect. This catches a driver that fell
@@ -36,11 +37,15 @@ Decision:
   statement that changes the role.
 - **Two tools per database**, named for its service: one lists the tables, views and columns
   the role may read, with their types, comments and foreign keys; one runs a statement and
-  answers a text table. A failure reaches the model as a sentence; the database's code and
-  the driver's exception go to the operator's log only.
+  answers a text table. A failure reaches the model as a sentence with the server's primary
+  message, which general SQL needs to correct itself (`column "x" does not exist`); its code,
+  detail and hint (where row values are quoted), and the driver's exception, go to the
+  operator's log only.
 - **The application documents itself.** What a column means is a `COMMENT` kept beside it in
   the application's migrations; a recurring derivation is a view the application keeps. The
-  deployment's instructions for the place point at them, and restate neither.
+  deployment's instructions for the place point at them, and restate neither. An error a
+  function or view raises is read at the place's label, so it never quotes an ungranted
+  value.
 - **The login holds no secret where the platform allows one.** A login is a password, read
   as a secret (ADR 0054), or the driver's own properties, plain ones apart from secret ones.
   A URL that carries a credential is refused at start.
