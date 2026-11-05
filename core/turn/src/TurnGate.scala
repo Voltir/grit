@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, ToolCallId}
-import grit.core.prompt.{Fenced, Tag}
+import grit.core.prompt.Tag
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -107,14 +107,6 @@ object TurnGate {
   val Noted: String =
     s"Text inside <${Tag.GritNote.name}> is a note from grit, not from the person and not a " +
       "tool's answer. Follow it as you follow this prompt."
-
-  /** `lines`, a blank line between each two, fenced in [[Tag.GritNote]]: a round's note. */
-  def noted(lines: Vector[String]): String =
-    Fenced(
-      Tag.GritNote,
-      Vector.empty,
-      Fenced.joined(lines.map(l => Vector(Fenced.Part.Words(l))))
-    ).rendered
 
   /** The round's gate from `prior`, the turn's level before it, over `items` in the order the
     * request shows them. An item an earlier round hid, a key of `named`, stays hidden as that

@@ -182,7 +182,10 @@ object TurnPrefixTests extends TestSuite {
           summary.messages.drop(reply.messages.size).collect {
             case Message.User(text) => text
             case m: Message.Assistant => m.blocks.collect { case AssistantBlock.Text(t) => t }
-          } ==> Vector(Vector("done"), TurnSummary.ItemUnnamed + "\n\n" + TurnSummary.AgendaAsk)
+          } ==> Vector(
+            Vector("done"),
+            s"<grit_note>\n${TurnSummary.ItemUnnamed}\n\n${TurnSummary.AgendaAsk}\n</grit_note>"
+          )
       }
     }
 

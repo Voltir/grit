@@ -1177,8 +1177,29 @@ object TurnTests extends TestSuite {
         summary.requests.flatMap(_.messages.lastOption)
       ) ==> (
         Vector((true, true)),
-        Vector(Message.User(TurnSummary.ItemUnnamed + "\n\n" + TurnSummary.AgendaAsk))
+        Vector(
+          Message.User(
+            s"<grit_note>\n${TurnSummary.ItemUnnamed}\n\n${TurnSummary.AgendaAsk}\n</grit_note>"
+          )
+        )
       )
+    }
+
+    test(
+      "a summary the stub is asked on the turn's own model names no topic: the ask is grit's note, never quoted as said"
+    ) {
+      val entries = new InMemoryEntryStore
+      val asked = say(entries, "hello")
+      new InMemoryDurable().run(asked.workflowId)(
+        voicedBody(
+          entries,
+          new RecordingProvider,
+          new RecordingProvider,
+          new InMemoryVoiceStore,
+          catalog = SharedCatalog
+        )
+      )
+      agenda(entries).items.map(_.name) ==> Vector(None)
     }
 
     test(

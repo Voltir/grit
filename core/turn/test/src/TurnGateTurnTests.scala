@@ -40,6 +40,7 @@ import grit.core.plugin.{
   InMemoryPlugins,
   KeepingCommand
 }
+import grit.core.prompt.Fenced
 import grit.core.provider.ModelRequest
 import grit.core.speech.Speaking
 import grit.core.store.{
@@ -286,7 +287,7 @@ object TurnGateTurnTests extends TestSuite {
       val provider = gatedScript
       val entries = new InMemoryEntryStore
       gatedRun(new InMemoryDurable, entries, say(entries, "read and post"))(provider)
-      val note = Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
+      val note = Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
       provider.requests.map(_.messages.count(_ == note)) ==> Vector(0, 1, 1)
       provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(note)
       provider.requests.map(_.system).distinct.map(_.endsWith(s"\n\n${TurnGate.Noted}")) ==>
@@ -309,7 +310,7 @@ object TurnGateTurnTests extends TestSuite {
       provider.requests.lift(2).flatMap(resultOf(_, "t2")) ==> Some("alpha")
       val withdrawn = "From now until you answer, you can't use post, because you read a " +
         "result from a place people outside the team can write in."
-      val note = Message.User(TurnGate.noted(Vector(withdrawn)))
+      val note = Message.User(Fenced.noted(Vector(withdrawn)))
       provider.requests.map(_.messages.count(_ == note)) ==> Vector(0, 0, 1, 1)
       provider.requests.lift(2).flatMap(_.messages.lastOption) ==> Some(note)
     }
@@ -397,7 +398,7 @@ object TurnGateTurnTests extends TestSuite {
         provider
       )
       val note =
-        Message.User(TurnGate.noted(Vector("From now until you answer, you can't use post.")))
+        Message.User(Fenced.noted(Vector("From now until you answer, you can't use post.")))
       (
         provider.requests.map(_.tools.map(_.name)).distinct,
         provider.requests.map(_.messages.count(_ == note)),
@@ -439,7 +440,7 @@ object TurnGateTurnTests extends TestSuite {
       // The withdrawal names what was read, the guest's message, not read_hidden's answer.
       provider.requests.lift(2).flatMap(_.messages.lastOption) ==> Some(
         Message.User(
-          TurnGate.noted(
+          Fenced.noted(
             Vector(
               "From now until you answer, you can't use post, because you read something from " +
                 "someone, written from outside the team."
@@ -556,7 +557,7 @@ object TurnGateTurnTests extends TestSuite {
           ),
           dated,
           Message.User("two"),
-          Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
+          Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
         )
       )
     }

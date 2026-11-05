@@ -11,6 +11,7 @@ import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, Wo
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
+import grit.core.prompt.Fenced
 import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
 import grit.core.store.{
   ConversationStore,
@@ -84,7 +85,7 @@ private[turn] object TurnShown {
     * its index, made them: [[TurnGate.Guidance]] on the first round whose gate hid an item,
     * then the withdrawal the round's gate makes against the round before's
     * ([[TurnGate.withdrawn]]; the first round's against one withholding nothing), its tools as
-    * `offered` says them; each note as [[TurnGate.noted]] fences it. A round adding neither has
+    * `offered` says them; each note as [[Fenced.noted]] fences it. A round adding neither has
     * none.
     */
   def gateNotes(gates: Map[Int, Gated], round: Round, offered: ToolSet): Vector[(Round, String)] = {
@@ -96,7 +97,7 @@ private[turn] object TurnShown {
           else gates.get(index - 1)
         val lines = Vector(TurnGate.Guidance).filter(_ => firstHid.contains(index)) ++
           before.flatMap(TurnGate.withdrawn(_, now, offered))
-        Option.when(lines.nonEmpty)(Round.at(index) -> TurnGate.noted(lines))
+        Option.when(lines.nonEmpty)(Round.at(index) -> Fenced.noted(lines))
       }
     }
   }

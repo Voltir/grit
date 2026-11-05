@@ -128,6 +128,12 @@ object Fenced {
   def joined(lines: Vector[Vector[Part]]): Vector[Part] =
     lines.zipWithIndex.flatMap((l: Vector[Part], i: Int) => if (i == 0) l else Part.Words("") +: l)
 
+  /** `lines`, grit's own words, a blank line between each two, fenced in [[Tag.GritNote]]: a
+    * note grit adds between a conversation's messages.
+    */
+  def noted(lines: Vector[String]): String =
+    Fenced(Tag.GritNote, Vector.empty, joined(lines.map(l => Vector(Part.Words(l))))).rendered
+
   /** `system`, then a blank line and [[Rule]]: the system text of a request whose messages
     * carry fenced material, which it need not say again.
     */

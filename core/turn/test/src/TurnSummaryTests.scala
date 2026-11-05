@@ -80,7 +80,7 @@ object TurnSummaryTests extends TestSuite {
           Message.User("read a.txt"),
           Message.User(TurnLoop.LastCall),
           reply("done"),
-          Message.User(TurnSummary.Ask)
+          Message.User(s"<grit_note>\n${TurnSummary.Ask}\n</grit_note>")
         ),
         Vector(tool),
         grit.core.provider.ToolUse.Off,

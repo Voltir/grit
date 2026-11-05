@@ -41,6 +41,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.place.Place
+import grit.core.prompt.Fenced
 import grit.core.provider.Provider
 import grit.core.store.{
   Db,
@@ -504,7 +505,7 @@ object TurnDocumentsTests extends TestSuite {
           ),
           dated,
           Message.User("one"),
-          Message.User(TurnGate.noted(Vector(TurnGate.Guidance)))
+          Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
         )
       )
     }

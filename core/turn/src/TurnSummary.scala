@@ -85,14 +85,15 @@ object TurnSummary {
   }
 
   /** The summary asked as one more call after the request it shapes: `reply`, then the ask as
-    * a user message, [[Ask]]; with `item`, the item as it stands, [[AgendaAsk]] after its name
-    * and about so far fenced in `<document>`, as [[request]] asks them. Its system prompt,
-    * tools, tool use and stable messages are the request's.
+    * grit's note ([[Fenced.noted]]), so it is never taken for the person's words: [[Ask]];
+    * with `item`, the item as it stands, [[AgendaAsk]] after its name and about so far fenced
+    * in `<document>`, as [[request]] asks them. Its system prompt, tools, tool use and stable
+    * messages are the request's.
     */
   def asking(reply: Message.Assistant, item: Option[Agenda.Item]): ModelRequest -> ModelRequest =
     r => {
-      val ask = item.fold(Ask)(t => s"${soFar(t)}\n\n$AgendaAsk")
-      r.copy(messages = r.messages :+ reply :+ Message.User(ask))
+      val ask = item.fold(Vector(Ask))(t => Vector(soFar(t), AgendaAsk))
+      r.copy(messages = r.messages :+ reply :+ Message.User(Fenced.noted(ask)))
     }
 
   /** The request that summarises `turn` on its own prefix ([[Turn.SummaryAsk.OnPrefix]]), its
