@@ -5,7 +5,7 @@ import java.time.Duration
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ToolSchema}
+import grit.core.provider.{ModelRequest, Repeats, ToolSchema}
 import grit.core.secret.Variable
 
 /** Live probe of the cache breakpoints [[OpenRouterJson.request]] sends for an Anthropic model,
@@ -87,9 +87,9 @@ object OpenRouterCacheProbe {
     )
     val three = two ++ Vector(said("ok"), Message.User("Now the word yes."))
     val requests = Vector(
-      ModelRequest(system, Vector(asked), tools, stable = 1),
-      ModelRequest(system, two, tools, stable = 3),
-      ModelRequest(system, three, tools, stable = three.size)
+      ModelRequest(system, Vector(asked), tools, repeats = Repeats.stable(1)),
+      ModelRequest(system, two, tools, repeats = Repeats.stable(3)),
+      ModelRequest(system, three, tools, repeats = Repeats.stable(three.size))
     )
     val usages = requests.zipWithIndex.foldLeft(Vector.empty[Usage]) { case (done, (r, i)) =>
       val spent = done.flatMap(_.costUsd).sum

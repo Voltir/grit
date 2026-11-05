@@ -176,8 +176,8 @@ object TurnPrefixTests extends TestSuite {
           val (reply, summary) = summarised(calls)
           reply.use ==> use
           diverged(prefix(reply), prefix(summary)) ==> None
-          (summary.system, summary.tools, summary.use, summary.stable) ==>
-            (reply.system, reply.tools, reply.use, reply.stable)
+          (summary.system, summary.tools, summary.use, summary.repeats.stable) ==>
+            (reply.system, reply.tools, reply.use, reply.repeats.stable)
           summary.messages.take(reply.messages.size) ==> reply.messages
           summary.messages.drop(reply.messages.size).collect {
             case Message.User(text) => text
@@ -311,7 +311,7 @@ object TurnPrefixTests extends TestSuite {
         case Vector(before, after) => before.lastOption.zip(after.headOption)
         case _ => None
       }
-      pairs.map((last, _) => last.stable == last.messages.size) ==> Vector(true, true)
+      pairs.map((last, _) => last.repeats.stable == last.messages.size) ==> Vector(true, true)
       def anthropicOf(r: ModelRequest): ujson.Value =
         AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
       def openRouterOf(r: ModelRequest): ujson.Value =

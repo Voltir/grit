@@ -12,7 +12,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
 import grit.core.prompt.Fenced
-import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, Repeats, ToolSchema, ToolUse}
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -110,8 +110,9 @@ private[turn] object TurnShown {
     * [[TurnLoop.guided]] says under `guidance`, and told as [[TurnLoop.told]] says under
     * `after`. Fed by [[gatedOffer]] and [[gateNotes]], each call's request repeats every message
     * of the call before it, with the same system prompt and tools. It marks stable
-    * ([[ModelRequest.stable]]) every message the call shares with the same request told with
-    * tools on: all of them but the last call's note, or the last result that note ends.
+    * ([[Repeats.stable]]) every message the call shares with the same request told with
+    * tools on: all of them but the last call's note, or the last result that note ends; and it
+    * keeps the plain request's task and established messages so named, none past stable.
     */
   def loopShape(
       asked: Option[TurnAgenda.Classification],
@@ -141,7 +142,11 @@ private[turn] object TurnShown {
       // A later call is sent this one's messages as a call with tools is told them, then more.
       val repeated = TurnLoop.told(ToolUse.Auto, guided, after).messages
       val stable = shaped.messages.zip(repeated).takeWhile(_ == _).size
-      shaped.copy(stable = stable)
+      // The plain request's task and established counts, each past the notes put before it.
+      def past(count: Int): Int = count + before.collect { case (i, n) if i < count => n.size }.sum
+      shaped.copy(repeats =
+        Repeats.of(past(base.repeats.task), past(base.repeats.established), stable)
+      )
     }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
@@ -389,12 +394,7 @@ private[turn] object TurnShown {
       val dated = mine
         .minByOption(e => EntrySeq.value(e.seq))
         .map(root => Message.User(answering(root.createdAt, zoned, direct)))
-      val last =
-        shownParts.lastOption.getOrElse(Unshaped.Part(Vector.empty, Vector.empty, Vector.empty))
-      Unshaped(
-        system,
-        shownParts.dropRight(1) :+ last.copy(after = last.after ++ dated ++ Shown.turn(mine, named))
-      )
+      Unshaped(system, shownParts, dated.toVector ++ Shown.turn(mine, named))
     }
   }
 
@@ -483,14 +483,19 @@ private[turn] object TurnShown {
           .map(r => (r.shaped(shape), message))
       }
 
-  /** A request of `system`: each of `parts` in order. */
-  final case class Unshaped(system: String, parts: Vector[Unshaped.Part]) {
+  /** A request of `system`: each of `parts` in order, then `own`, the turn's own messages. */
+  final case class Unshaped(system: String, parts: Vector[Unshaped.Part], own: Vector[Message]) {
 
     /** This request shaped by `shape`, each document's pointer line shown only when the shaped
       * request offers the tool it names: a model offered no tool of that name could not follow
       * it. The tools offered are those `shape` gives the request with no pointer line shown.
+      * Before `shape`, its [[ModelRequest.repeats]] name the first part's `before` and
+      * documents as the task, and every part's messages as established and stable.
       */
     def shaped(shape: ModelRequest -> ModelRequest): ModelRequest = {
+      val task = parts.headOption.fold(0)(p => p.before.size + p.documents.size)
+      val established =
+        parts.map(p => p.before.size + p.documents.size + p.after.size).sum
       def built(offered: Set[String]): ModelRequest =
         ModelRequest(
           system,
@@ -503,7 +508,8 @@ private[turn] object TurnShown {
                 label
               )
             ) ++ part.after
-          )
+          ) ++ own,
+          repeats = Repeats.of(task, established, established)
         )
       shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
     }

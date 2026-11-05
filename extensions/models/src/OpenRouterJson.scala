@@ -40,7 +40,7 @@ object OpenRouterJson {
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else
         CacheMarks
-          .marked(request.system, tools, messages.map(Some(_)), request.stable)
+          .marked(request.system, tools, messages.map(Some(_)), request.repeats.stable)
           .map(block => ujson.Obj("role" -> "system", "content" -> ujson.Arr(block)))
     val body = ujson.Obj(
       "model" -> model,

@@ -3,7 +3,7 @@ package grit.models
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay, Upstream}
-import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema, ToolUse}
 
 import utest.*
 
@@ -245,7 +245,7 @@ object OpenRouterJsonTests extends TestSuite {
           Message.User("and then?")
         ),
         Vector(read),
-        stable = 3
+        repeats = Repeats.stable(3)
       )
       val mark = ujson.Obj("type" -> "ephemeral")
       def text(t: String) = ujson.Obj("type" -> "text", "text" -> t)
@@ -330,7 +330,7 @@ object OpenRouterJsonTests extends TestSuite {
             ToolSchema("list", "List files.", ujson.Obj("type" -> "object")),
             ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
           ),
-          stable = 2
+          repeats = Repeats.stable(2)
         )
       )
       val mark = ujson.Obj("type" -> "ephemeral")

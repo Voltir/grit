@@ -2,11 +2,26 @@ package grit.turn
 
 import java.time.{Instant, ZoneId, ZoneOffset}
 
-import grit.core.id.ToolCallId
+import grit.core.context.{Shown, Window}
+import grit.core.document.{DocLabel, DocText, Document, Placement}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersionId,
+  EntryId,
+  EntrySeq,
+  PluginName,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{AfterToolResult, ToolGuidance}
-import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.place.Place
+import grit.core.provider.{ModelRequest, Repeats, ToolSchema, ToolUse}
+import grit.core.store.{Entry, Payload, Speakers}
 import grit.core.tool.ToolSet
+import grit.core.visibility.{Integrity, Label}
 
 import utest.*
 
@@ -166,7 +181,7 @@ object TurnShownTests extends TestSuite {
           ToolGuidance.SchemaOnly,
           Vector.empty
         )(ModelRequest("sys", asked ++ Vector(call, result)))
-        (r.stable, r.messages.size)
+        (r.repeats.stable, r.messages.size)
       }
       // A later call repeats every message a call with tools is sent; the last call's note is
       // its own, after the messages or, where a pair refuses a user there, ending the last
@@ -177,6 +192,101 @@ object TurnShownTests extends TestSuite {
         marked(ToolUse.Auto, AfterToolResult.InLastResult),
         marked(ToolUse.Off, AfterToolResult.InLastResult)
       ) ==> Vector((4, 4), (4, 5), (4, 4), (3, 4))
+    }
+
+    test("a note put among the established messages moves their end past it, not the task's") {
+      val call = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      val messages = Vector(
+        Message.User("the task"),
+        call,
+        Message.ToolResult(ToolCallId("t1"), "alpha", isError = false),
+        Message.User("go on")
+      )
+      // No asker: round 1's note goes before the first reply, inside the established part.
+      val r = TurnShown.loopShape(
+        None,
+        ToolUse.Auto,
+        Vector.empty,
+        AfterToolResult.UserMessage,
+        ToolGuidance.SchemaOnly,
+        Vector(TurnLoop.Round.First -> "first")
+      )(ModelRequest("sys", messages, repeats = Repeats.of(1, 3, 4)))
+      (r.repeats.task, r.repeats.established, r.messages.lift(r.repeats.established)) ==>
+        (1, 4, Some(Message.User("go on")))
+    }
+
+    test(
+      "a request repeats its brief as its task part, and every message before its dated line as established"
+    ) {
+      def got[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val brief = Document(
+        got(DocumentVersionId.of(7).toRight("version")),
+        got(PluginName.of("projects")),
+        got(DocKey.of("brief.md")),
+        Label.Public,
+        Integrity.Member,
+        got(Place.read("slack:T1/C1")),
+        got(DocText.of("Move the commands to tools.")),
+        ujson.Obj(),
+        None,
+        At,
+        Placement(0, At),
+        None
+      )
+      def said(n: Long, text: String): Entry = Entry(
+        EntryId(s"e$n"),
+        ConversationId("c"),
+        TurnSeq(n),
+        None,
+        EntrySeq(n),
+        Payload.Message(Message.User(text)),
+        At,
+        Integrity.Member
+      )
+      val drawn = Vector(said(1, "earlier"), said(2, "later"))
+      val showing = TurnShown.Showing(
+        Vector(
+          TurnShown.Part(
+            Window(drawn.map(_.seq), brief = Some(brief.version)),
+            drawn,
+            Vector.empty,
+            Vector.empty,
+            Vector.empty,
+            None,
+            Some(brief -> got(DocLabel.of("Projects")))
+          )
+        ),
+        Vector(said(3, "now")),
+        Speakers.none
+      )
+      val shape = TurnShown.loopShape(
+        None,
+        ToolUse.Auto,
+        Vector.empty,
+        AfterToolResult.UserMessage,
+        ToolGuidance.SchemaOnly,
+        Vector.empty
+      )
+      val r = TurnShown
+        .requestOf("sys", showing, TurnRef(ConversationId("c"), TurnSeq(3)), Map.empty, None, false)
+        .map(_.shaped(shape))
+      r.map(q =>
+        (
+          q.repeats.task,
+          q.repeats.established,
+          q.messages.lift(q.repeats.task - 1),
+          q.messages.lift(q.repeats.established)
+        )
+      ) ==> Right(
+        // The brief, a gap line (turn 1 is not the first), then the two drawn messages.
+        (1, 4, Some(Shown.brief(brief)), Some(Message.User(TurnShown.answering(At, None, false))))
+      )
     }
 
     test(

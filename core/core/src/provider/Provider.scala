@@ -51,18 +51,43 @@ enum Delta {
   * model may call as `use` allows. With no tools the model can only answer in text. What goes
   * in `system` and what in `messages`, and how to word and fence it: the `grit-model-text` skill.
   *
-  * `stable` is how many of `messages`, from the first, the caller's later requests in the same
-  * exchange repeat unchanged: with `tools` and `system` they are the prefix a provider may
-  * cache. 0 keeps only `tools` and `system`, as does a negative count; a count past the end
-  * covers every message. A mark that overclaims costs a cache write, never a different reply.
+  * `repeats` says which of `messages`, from the first, later requests repeat: with `tools` and
+  * `system`, each of its counts is a prefix a provider may cache.
   */
 final case class ModelRequest(
     system: String,
     messages: Vector[Message],
     tools: Vector[ToolSchema] = Vector.empty,
     use: ToolUse = ToolUse.Auto,
-    stable: Int = 0
+    repeats: Repeats = Repeats.Zero
 )
+
+/** How many of a request's messages, from the first, later requests repeat unchanged: the first
+  * `task` hold what its task is (a boundary's brief, nearby sections and documents), the first
+  * `established` also what earlier turns of its window established, and the first `stable`
+  * every message the caller's later requests in the same exchange repeat. A count past the end
+  * of the messages covers every one. A count that overclaims costs a cache write, never a
+  * different reply.
+  */
+final case class Repeats private (task: Int, established: Int, stable: Int)
+
+object Repeats {
+
+  /** No message repeated: only `tools` and `system`. */
+  val Zero: Repeats = new Repeats(0, 0, 0)
+
+  /** These counts, each at least 0 and at most the next: `task` cut to `established`, and
+    * `established` to `stable`.
+    */
+  def of(task: Int, established: Int, stable: Int): Repeats = {
+    val s = stable.max(0)
+    val e = established.max(0).min(s)
+    new Repeats(task.max(0).min(e), e, s)
+  }
+
+  /** The first `count` messages repeated, with no task or established part named. */
+  def stable(count: Int): Repeats = of(0, 0, count)
+}
 
 /** A tool the model may call, as a request shows it: its `name`, what it is for, and a JSON
   * Schema of its arguments (`parameters`, an object schema). `strict` asks the provider to

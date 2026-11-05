@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
-import grit.core.provider.{ModelRequest, ProviderError, ToolSchema}
+import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema}
 import grit.core.secret.Variable
 
 /** Live probe of Anthropic's Messages API, three questions the unit tests cannot answer:
@@ -87,7 +87,7 @@ object AnthropicLiveProbe {
       )
       .mkString("\n")
     val asked = Message.User("Reply with the word ok.")
-    val first = ModelRequest(system, Vector(asked), stable = 1)
+    val first = ModelRequest(system, Vector(asked), repeats = Repeats.stable(1))
     for {
       one <- answered(key, Haiku, 256, first, dropBlock = false, "cache, call 1")
       later = Vector(
@@ -103,7 +103,7 @@ object AnthropicLiveProbe {
         key,
         Haiku,
         256,
-        ModelRequest(system, later, stable = later.size - 1),
+        ModelRequest(system, later, repeats = Repeats.stable(later.size - 1)),
         dropBlock = false,
         "cache, call 2"
       )
@@ -134,7 +134,7 @@ object AnthropicLiveProbe {
         key,
         model,
         maxTokens,
-        ModelRequest("You are terse.", Vector(question), stable = 1),
+        ModelRequest("You are terse.", Vector(question), repeats = Repeats.stable(1)),
         dropBlock = false,
         s"drop_block, $model, its thinking",
         Effort.High
@@ -151,7 +151,7 @@ object AnthropicLiveProbe {
         val edited = ModelRequest(
           "You are terse. Answer in digits.",
           Vector(question, reply, Message.User("And if she buys one pen fewer?")),
-          stable = 2
+          repeats = Repeats.stable(2)
         )
         val without = sent(
           key,
@@ -200,7 +200,7 @@ object AnthropicLiveProbe {
         )
       ),
       Vector(read),
-      stable = 1
+      repeats = Repeats.stable(1)
     )
     val body = AnthropicJson.request(
       Haiku,

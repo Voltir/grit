@@ -3,7 +3,7 @@ package grit.models
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
-import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema, ToolUse}
 
 import utest.*
 
@@ -41,7 +41,7 @@ object AnthropicJsonTests extends TestSuite {
       Message.User("note")
     ),
     Vector(read),
-    stable = 3
+    repeats = Repeats.stable(3)
   )
 
   /** The response body Anthropic documents for a call that thinks, says something and calls
@@ -147,7 +147,7 @@ object AnthropicJsonTests extends TestSuite {
       "request: a stable mark of 0 or less keeps the system breakpoint alone; past the end, the last message"
     ) {
       def marked(stable: Int): Vector[Int] = {
-        val body = sent(exchange.copy(stable = stable))
+        val body = sent(exchange.copy(repeats = Repeats.stable(stable)))
         body("messages").arr.toVector.zipWithIndex.collect {
           case (m, i) if m("content").arr.exists(_.obj.contains("cache_control")) => i
         }
@@ -156,7 +156,7 @@ object AnthropicJsonTests extends TestSuite {
       marked(-2) ==> Vector.empty
       marked(1) ==> Vector(0)
       marked(9) ==> Vector(3)
-      sent(exchange.copy(stable = 0))("system")(0)("cache_control") ==> breakpoint
+      sent(exchange.copy(repeats = Repeats.stable(0)))("system")(0)("cache_control") ==> breakpoint
     }
 
     test(
@@ -195,7 +195,7 @@ object AnthropicJsonTests extends TestSuite {
         "",
         Vector(Message.User("hi"), called(AssistantBlock.Reasoning("", Some(redacted)))),
         Vector(read, read.copy(name = "write")),
-        stable = 2
+        repeats = Repeats.stable(2)
       )
       val body = sent(thoughtOnly)
       body.obj.contains("system") ==> false

@@ -61,7 +61,7 @@ object AnthropicJson {
     }
     val messages = request.messages.map(message(_, replay))
     CacheMarks
-      .marked(request.system, tools, messages, request.stable)
+      .marked(request.system, tools, messages, request.repeats.stable)
       .foreach(block => body("system") = ujson.Arr(block))
     body("messages") = ujson.Arr.from(messages.flatten)
     body
