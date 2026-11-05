@@ -89,6 +89,36 @@ object TurnWatchTests extends TestSuite {
       )
     }
 
+    test(
+      "grit's continuation note arrives as a line saying grit went on, and which turn of the task"
+    ) {
+      val went = Entry(
+        EntryId("continued:2"),
+        c,
+        TurnSeq(1),
+        None,
+        EntrySeq(2),
+        Payload.Continuation(TurnSeq(0), 2),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+      val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"), went)
+      TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))._2 ==> Vector(
+        ChatScreen.Msg.Arrived(
+          Vector(
+            ChatScreen.Said(ChatScreen.Voice.User, "hi"),
+            ChatScreen.Said(ChatScreen.Voice.Reply, "hello"),
+            ChatScreen.Said(
+              ChatScreen.Voice.WentOn,
+              "── grit went on (turn 2): the last turn reached its limit ──",
+              TurnSeq(1)
+            )
+          ),
+          None
+        )
+      )
+    }
+
     test("the conversation so far arrives once, in order") {
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
       val (next, msgs) = TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))

@@ -6,8 +6,9 @@ import java.nio.file.{Files, Path}
 import grit.chat.host.{ChatHost, Replies}
 import grit.core.clock.Clock
 import grit.core.edge.{Console, TurnStatus}
-import grit.core.id.{SourceId, WorkflowId}
+import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
+import grit.core.inbox.TurnEnding
 import grit.core.message.Message
 import grit.core.store.Origin
 import grit.dbos.sql.DbConfig
@@ -60,6 +61,59 @@ private[main] object Work {
     SourceId("work:" + digest.map(b => f"${b & 0xff}%02x").mkString)
   }
 
+  /** The source turn `turn` of the task `text` began is said under: [[source]] for its first,
+    * then that and `:turn`.
+    */
+  def source(text: String, turn: Int): SourceId =
+    if (turn <= 1) source(text) else SourceId(s"${SourceId.value(source(text))}:$turn")
+
+  /** What `grit work` does after the turn `turn` of a task, its workflow named `named`, ended
+    * as `ended`, given at most `cap` turns.
+    */
+  enum After {
+
+    /** Go on with turn `turn`, after printing `line`. */
+    case GoOn(turn: Int, line: String)
+
+    /** Stop, after printing `line` when there is one. */
+    case Stop(line: Option[String])
+  }
+
+  /** [[After]] the turn `turn`, named `named`, ended as `ended`, of at most `cap`. */
+  def after(named: String, ended: TurnEnding, turn: Int, cap: Int): After = ended match {
+    case TurnEnding.Otherwise => After.Stop(None)
+    case TurnEnding.AtLimit if turn >= cap =>
+      After.Stop(
+        Some(
+          s"[main] $named reached its limit at turn $turn, the most $TurnsVar allows; " +
+            s"raise $TurnsVar and rerun"
+        )
+      )
+    case TurnEnding.AtLimit =>
+      After.GoOn(
+        turn + 1,
+        s"[main] $named reached its limit; going on in a fresh turn (turn ${turn + 1} of at most $cap)"
+      )
+  }
+
+  /** The most turns `grit work` gives one task: a stop for a loop that cannot end, not a spend
+    * cap (`GRIT_DAILY_USD` is one).
+    */
+  val TurnsVar: String = "GRIT_WORK_TURNS"
+
+  /** [[TurnsVar]] when unset. */
+  val DefaultTurns: Int = 8
+
+  /** [[TurnsVar]] from `env`, a whole number of at least 1; [[DefaultTurns]] when unset. */
+  def turns(env: Map[String, String]): Either[String, Int] =
+    env.get(TurnsVar).map(_.trim) match {
+      case None => Right(DefaultTurns)
+      case Some(raw) =>
+        raw.toIntOption
+          .filter(_ >= 1)
+          .toRight(s"$TurnsVar is a whole number of at least 1, not $raw")
+    }
+
   /** The text of `file`, read as UTF-8; why not, when it cannot be read or holds only
     * whitespace.
     */
@@ -87,35 +141,66 @@ private[main] object Work {
   /** `text` said once through `console` at `origin` as the local person, its turn started (or,
     * said before, the turn it started found) and waited for until its workflow ends; then the
     * turn's workflow id, what the workflow returned and its reply printed through `print` as one
-    * line, as a run with arguments prints a message's. Why not: the inbox refused the text, or
-    * the turn left no reply.
+    * line, as a run with arguments prints a message's. While a turn ends at its limit, the task
+    * goes on in a new turn rooted on grit's continuation note
+    * ([[grit.core.inbox.Inbox.continued]]), as
+    * [[after]] says, up to `cap` turns, each said under [[source]] of its number, so a rerun
+    * walks the chain to where it stopped. Why not: the inbox refused the text or a
+    * continuation, or a turn left no reply.
     */
   def said(
       console: Console^,
       origin: Origin,
       text: String,
+      cap: Int,
       print: String -> Unit
   ): Either[String, Unit] =
     console.inbox
       .ingest(origin, source(text), Message.User(text), Account.Local, None)
       .flatMap(turn => console.inbox.startTurn(turn).map(_ => turn)) match {
       case Left(error) => Left(ChatHost.notSent(error))
-      case Right(turn) =>
-        // The stream's pieces end when the turn's workflow does: read through, it is the wait.
-        console.stream(turn, TurnStream.Key).foreach(_ => ())
-        val outcome = console.status(turn) match {
-          case TurnStatus.Finished(output) => output
-          case other => other.toString
-        }
-        val named = WorkflowId.value(turn.workflowId)
-        Replies.of(console, turn) match {
-          case Left(why) => Left(why)
-          case Right(None) => Left(s"the turn $named left no reply: $outcome")
-          case Right(Some(reply)) =>
-            print(s"[main] $named -> $outcome: $reply")
-            Right(())
-        }
+      case Right(task) =>
+        def go(turn: TurnRef, n: Int): Either[String, Unit] =
+          awaited(console, turn, print).flatMap { outcome =>
+            after(WorkflowId.value(turn.workflowId), TurnEnding.of(outcome), n, cap) match {
+              case After.Stop(line) => Right(line.foreach(print))
+              case After.GoOn(next, line) =>
+                print(line)
+                console.inbox
+                  .continued(origin, source(text, next), task.turnSeq, next, Account.Local)
+                  .flatMap(t => console.inbox.startTurn(t).map(_ => t)) match {
+                  case Left(error) => Left(ChatHost.notSent(error))
+                  case Right(t) => go(t, next)
+                }
+            }
+          }
+        go(task, 1)
     }
+
+  /** `turn` waited for until its workflow ends, then its workflow id, what the workflow
+    * returned and its reply printed through `print` as one line; what it returned, or why not:
+    * the turn left no reply.
+    */
+  private def awaited(
+      console: Console^,
+      turn: TurnRef,
+      print: String -> Unit
+  ): Either[String, String] = {
+    // The stream's pieces end when the turn's workflow does: read through, it is the wait.
+    console.stream(turn, TurnStream.Key).foreach(_ => ())
+    val outcome = console.status(turn) match {
+      case TurnStatus.Finished(output) => output
+      case other => other.toString
+    }
+    val named = WorkflowId.value(turn.workflowId)
+    Replies.of(console, turn) match {
+      case Left(why) => Left(why)
+      case Right(None) => Left(s"the turn $named left no reply: $outcome")
+      case Right(Some(reply)) =>
+        print(s"[main] $named -> $outcome: $reply")
+        Right(outcome)
+    }
+  }
 
   /** [[Unshaped]], then what `text` said at `origin` would send first ([[rehearsed]]) whole
     * ([[Rehearsed.written]]), printed through `print`; the refusals are [[rehearsed]]'s.

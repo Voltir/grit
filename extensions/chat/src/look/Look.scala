@@ -124,6 +124,10 @@ final case class Look(theme: Theme) {
     )
   )
 
+  /** grit's going on with a task in a new turn: `text`, faint, on one line. */
+  def wentOn(text: String): Block.Text =
+    Block.styled(StyledText.styled(text, Style.fg(theme.faint)))
+
   /** The top bar: grit's name in runes on the accent, then `title`, then `session`,
     * faint, when there is one.
     */

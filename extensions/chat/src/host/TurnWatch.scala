@@ -36,7 +36,8 @@ object TurnWatch {
     * turn in progress has asked about a call ([[Payload.Ask]]) that has neither begun nor
     * come to a result, the screen is told it is asking, and told again when that changes.
     * A tool call shows once it has a result, on one line with it ([[Replies.settled]]), and
-    * a closed period as its divider ([[Replies.closed]]).
+    * a closed period as its divider ([[Replies.closed]]), and grit's going on with a task as
+    * its line ([[Replies.wentOn]]).
     */
   def step(
       state: TurnWatch,
@@ -110,5 +111,6 @@ object TurnWatch {
       .map(ChatScreen.Said(voice, _, e.turnSeq))
       .orElse(Replies.settled(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
       .orElse(Replies.closed(e).map(ChatScreen.Said(ChatScreen.Voice.Closed, _, e.turnSeq)))
+      .orElse(Replies.wentOn(e).map(ChatScreen.Said(ChatScreen.Voice.WentOn, _, e.turnSeq)))
   }
 }

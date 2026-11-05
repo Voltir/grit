@@ -157,8 +157,10 @@ import Backfills.*
   *     turn briefed for one task ([[grit.core.recipe.TurnRecipe.Tasked]]). Each
   *     model call is printed as it is sent and again once answered, with its input, cache reads
   *     and writes, output and cost ([[grit.core.provider.CallLine.answered]]); then its turn and reply, as for a
-  *     message. The same text said again in the same directory and session awaits the turn it
-  *     started, so a `grit work` restarted mid-turn resumes it. It exits 0 when the turn
+  *     message. While a turn ends at its window's limit, the task goes on in a new turn rooted
+  *     on grit's continuation note, up to `GRIT_WORK_TURNS` turns (default
+  *     [[Work.DefaultTurns]]). The same text said again in the same directory and session
+  *     awaits the turns it started, so a `grit work` restarted mid-turn resumes where it stopped. It exits 0 when the turn
   *     replied, 1 when it did not, 2 when the file cannot be read. A command the turn left
   *     running ends with it; a signal leaves that command to the next start's sweep in the
   *     directory. With `--dry`, nothing is said and no model is called: it prints the turn's
@@ -350,10 +352,11 @@ object Main {
         working.flatMap { asked =>
           if (asked.dry && secrets.keys.nonEmpty) exitOnLeft(Left(Work.Keyed))
           val text = exitOnLeft(Work.text(asked.file))
+          val cap = exitOnLeft(Work.turns(env))
           // The same composition either way: only the last step differs.
           val step: Console^ => Either[String, Unit] = console =>
             if (asked.dry) Work.shown(config, deployment, origin, text, clock, println)
-            else Work.said(console, origin, text, println)
+            else Work.said(console, origin, text, cap, println)
           // A command the turn left going ends with the run; a signal leaves it to the next
           // start's sweep in this directory.
           exitOnLeft(

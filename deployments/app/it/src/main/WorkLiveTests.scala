@@ -115,10 +115,10 @@ object WorkLiveTests extends TestSuite {
         val first, second = mutable.ArrayBuffer.empty[String]
         val ran = (
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", line => first += line)
+            Work.said(c, origin, "say hello", Work.DefaultTurns, line => first += line)
           ),
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", line => second += line)
+            Work.said(c, origin, "say hello", Work.DefaultTurns, line => second += line)
           )
         )
         (ran, first.size, first.forall(_.startsWith("[main] ")), second.toVector) ==> (

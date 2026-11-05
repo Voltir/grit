@@ -35,6 +35,15 @@ object Replies {
       None
   }
 
+  /** grit's continuation note as the transcript says it: that grit went on with the task in
+    * a new turn, which turn of it, and why. `None` for any other entry.
+    */
+  def wentOn(entry: Entry): Option[String] = entry.payload match {
+    case Payload.Continuation(_, turn) =>
+      Some(s"── grit went on (turn $turn): the last turn reached its limit ──")
+    case _ => None
+  }
+
   /** A closing entry as the transcript's divider says it: why its period closed (`resolved
     * (0.86)`, its confidence to two places, `lapsed` or `unearned`), and its
     * [[grit.core.period.Closing.headline]]. `None` for any other entry.

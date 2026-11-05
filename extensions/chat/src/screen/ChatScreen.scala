@@ -49,6 +49,9 @@ object ChatScreen {
 
     /** A period closed: why, and what it came to, in one line. */
     case Closed
+
+    /** grit went on with a task in a new turn after one reached its limit, in one line. */
+    case WentOn
   }
 
   /** One message of the conversation, or a line of a turn's tool loop, and the turn it
@@ -599,6 +602,7 @@ object ChatScreen {
         case Entry.Spoken(Said(Voice.Reply, text, t)) => look.assistant(text).map(_ -> Some(t))
         case Entry.Spoken(Said(Voice.Tool, text, t)) => Vector(look.tool(text) -> Some(t))
         case Entry.Spoken(Said(Voice.Closed, text, t)) => look.closed(text).map(_ -> Some(t))
+        case Entry.Spoken(Said(Voice.WentOn, text, t)) => Vector(look.wentOn(text) -> Some(t))
         case Entry.Summary(_) | Entry.Spent(_, _) => Vector.empty
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }
