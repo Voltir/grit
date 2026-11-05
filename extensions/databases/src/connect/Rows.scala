@@ -3,7 +3,7 @@ package grit.databases.connect
 /** A result: `columns`, then each row's values as Postgres writes them as text, `None` for
   * NULL, each row as wide as `columns`.
   */
-final case class Rows private[connect] (
+final case class Rows private[databases] (
     columns: Vector[String],
     rows: Vector[Vector[Option[String]]],
     clip: Option[Clip]

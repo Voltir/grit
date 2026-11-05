@@ -108,6 +108,12 @@ object HostTests extends TestSuite {
         head.hint ==> Some("25/30") // 25 * 2000 + 24 newlines <= 51200 < 26 lines
         assert(head.text.getBytes("UTF-8").length <= Clipped.MaxBytes)
       }
+      test("a head given a byte bound keeps the whole first lines within it") {
+        val text = Vector("aaaa", "bbbb", "cccc").mkString("\n")
+        val head = Clipped.head(text, hintOf, bytes = 9)
+        head.text ==> "aaaa\nbbbb"
+        head.hint ==> Some("2/3")
+      }
       test("a first line over the limit leaves the head empty") {
         val text = "x" * (Clipped.MaxBytes + 1) + "\nnext"
         Clipped.head(text, hintOf).text ==> ""

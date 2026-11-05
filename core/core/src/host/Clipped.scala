@@ -20,12 +20,12 @@ object Clipped {
   /** The most bytes of UTF-8 a clipped text keeps, newlines counted. */
   val MaxBytes: Int = 50 * 1024
 
-  /** `text` whole when it fits, else its first whole lines that do: none when its first
-    * line alone is over [[MaxBytes]]. `hint` is told what was kept, `None` when nothing was
-    * cut, and gives the hint.
+  /** `text` whole when it fits in [[MaxLines]] lines and `bytes` bytes ([[MaxBytes]] by
+    * default), else its first whole lines that do: none when its first line alone is over
+    * `bytes`. `hint` is told what was kept, `None` when nothing was cut, and gives the hint.
     */
-  def head(text: String, hint: Option[Kept] -> Option[String]): Clipped =
-    clip(text, hint, fromEnd = false)
+  def head(text: String, hint: Option[Kept] -> Option[String], bytes: Int = MaxBytes): Clipped =
+    clip(text, hint, fromEnd = false, bytes)
 
   /** Whether `text` is whole within the limits: [[head]] keeps it as it is only then. */
   def fits(text: String): Boolean = head(text, _ => None).text == text
@@ -74,10 +74,11 @@ object Clipped {
   private def clip(
       text: String,
       hint: Option[Kept] -> Option[String],
-      fromEnd: Boolean
+      fromEnd: Boolean,
+      max: Int = MaxBytes
   ): Clipped = {
     val all = lines(text)
-    if (all.size <= MaxLines && bytes(text) <= MaxBytes) Clipped(text, hint(None))
+    if (all.size <= MaxLines && bytes(text) <= max) Clipped(text, hint(None))
     else {
       val ordered = if (fromEnd) all.reverse else all
       // The most lines, from the kept end, whose bytes and joining newlines fit.
@@ -86,13 +87,13 @@ object Clipped {
       var fits = true
       while (fits && n < ordered.size && n < MaxLines) {
         val size = bytes(ordered(n)) + (if (n > 0) 1 else 0)
-        if (used + size <= MaxBytes) { used += size; n += 1 }
+        if (used + size <= max) { used += size; n += 1 }
         else fits = false
       }
       val kept = ordered.take(n)
       if (n == 0 && fromEnd) {
         val last = all.lastOption.getOrElse("")
-        val end = endBytes(last, MaxBytes)
+        val end = endBytes(last, max)
         Clipped(end, hint(Some(Kept(1, all.size, partial = true))))
       } else {
         val shown = (if (fromEnd) kept.reverse else kept).mkString("\n")

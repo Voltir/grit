@@ -70,5 +70,5 @@ Consequences:
 - JDBC now has two roles (ADR 0001): grit's own store in `grit.dbos`, an application's
   database in `grit.databases`, its `connect` package alone naming `java.sql` and `Reveal`.
 - Enforced by the law (the JDBC quarantine rules, `only-quarantines-reveal`, and
-  `databases-names-core-and-edge-alone`), and by the module's integration tests, which
+  `databases-names-core-prose-and-edge-alone`), and by the module's integration tests, which
   attack the role check, the single statement and the read-only transaction.

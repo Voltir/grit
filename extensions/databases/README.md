@@ -1,15 +1,15 @@
 # grit.databases
 
-Will implement `ServedEdge` (its `edge` package), serving an application's Postgres database as
-tools at a service place (what a deployment can supply:
+Implements `ServedEdge` (its `edge` package), serving an application's Postgres database as
+two tools at a service place (what a deployment can supply:
 [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
 An application's database read as a service, one database role to a place
 ([ADR 0057](../../docs/decisions/0057-an-applications-database-is-read-as-a-service-one-database-role-to-a-place-the-roles-grants-the-boundary-and-the-role-checked-on-every-query.md)).
-A shipped extension (ADR 0021): it names core and `grit.edge` alone
-(`databases-names-core-and-edge-alone`), and JDBC's second role beside `grit.dbos` (STYLE rule
-8), in its `connect` package alone. The JDBC driver is the deployment's dependency, not this
-module's: a deployment without one is refused at open.
+A shipped extension (ADR 0021): it names core, prose (a result's table is its markdown) and
+`grit.edge` alone (`databases-names-core-prose-and-edge-alone`), and JDBC's second role beside
+`grit.dbos` (STYLE rule 8), in its `connect` package alone. The JDBC driver is the deployment's
+dependency, not this module's: a deployment without one is refused at open.
 
 In dependency order:
 
@@ -18,6 +18,9 @@ In dependency order:
   the `DatabaseRole` it must be, and its `Limits`. Imports nothing in databases.
 - **`connect`**: the JDBC quarantine, the one package naming `java.sql` and `Reveal`. Imports
   `declare`.
+- **`edge`**: the served edge and its two tools, `{service}_tables` and `{service}_query`, over a
+  `connect` reader: what the model is told, a result written as a markdown table, a refusal as
+  one sentence. Imports `declare` and `connect`.
 
 No source file sits at the module's root. The test tree mirrors it.
 
