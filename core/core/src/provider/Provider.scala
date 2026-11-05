@@ -96,7 +96,8 @@ enum ToolUse {
 
   /** It is asked to call the tool named `name`, and no other: forced where the provider can
     * name one tool. Where it cannot, as on Anthropic's models, whose thinking refuses a forced
-    * choice, it is [[Off]]: the model answers in text.
+    * choice, it is [[Auto]], and the call is asked for only in the request's words: a reply may
+    * call another tool, or none.
     */
   case Only(name: String)
 }

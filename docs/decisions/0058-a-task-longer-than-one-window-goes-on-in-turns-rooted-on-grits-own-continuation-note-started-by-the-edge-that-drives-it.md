@@ -31,8 +31,9 @@ Decision:
 - **Whether the task goes on is the model's declared state** (revised 2026-11-05). A turn its
   limit cut is offered one more tool on its last call with tools and its last, `task_status`:
   `done` with its answer, or `more` with what the next turn needs. Its last call asks for that
-  tool alone where the provider can force one tool (Anthropic's models, whose thinking refuses
-  a forced choice, answer in text there). The loop never runs it: a reply that calls it alone,
+  tool alone, forced where the provider can force one tool; Anthropic's models, whose thinking
+  refuses a forced choice, are asked for it in words with tool choice `auto`, since under
+  `none` a model told to call it was seen to answer nothing. The loop never runs it: a reply that calls it alone,
   or any reply to the last call that calls it, ends the turn, its handoff the reply's text, so
   no tool call reaches the conversation. `done` ends the task; `more`, or no declaration at
   all, ends the turn at its limit, and the driver may go on. Defaulting to "go on" costs at
