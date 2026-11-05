@@ -23,7 +23,7 @@ import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
 import grit.eval.harness.capture.Spent
-import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
+import grit.turn.{Turn, TurnJudge, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
 
 /** How long a tool result the file shows may be. */
 enum Cut {
@@ -325,6 +325,29 @@ object SentMarkdown {
         s"${percent0(unpointed, cost)} of tool-result tokens"
     }
     Vector(cache, parts, pointed)
+  }
+
+  /** `sent`'s calls held against an input limit of `limit`, a line each, for a person reading a
+    * terminal: each call's input as its ledger row counted it and the reserve the loop keeps
+    * beside it ([[TurnLoop.Rounds.reach]]); at the first call whose sum meets `limit`, what the
+    * loop would then do ([[TurnLoop.Rounds.after]]), else that it is never met. A call with no
+    * row is left out.
+    */
+  def limitLines(sent: TurnSent, limit: Tokens): Vector[String] = {
+    val counted =
+      sent.requests.flatMap((round, reply, _) => sent.row(reply).map(r => round -> r.usage.input))
+    val reached = TurnLoop.Rounds.reach(counted.map(_._2))
+    val met = reached.indexWhere(r => Tokens.value(r) >= Tokens.value(limit))
+    val lines = counted.zip(reached).zipWithIndex.map { case (((round, input), reach), i) =>
+      val reserve = Tokens.value(reach) - Tokens.value(input)
+      val line =
+        s"  call $round: ${Tokens.value(input)} in + $reserve reserve = ${Tokens.value(reach)}"
+      if (i == met)
+        s"$line: the limit is met; call ${round + 1} is the last with tools, call ${round + 2} the last"
+      else line
+    }
+    (s"at a limit of ${Tokens.value(limit)} input tokens:" +: lines) ++
+      Option.when(met < 0)("  the limit is never met")
   }
 
   /** The parts' names, in [[Breakdown]]'s field order. */

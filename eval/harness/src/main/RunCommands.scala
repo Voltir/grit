@@ -219,13 +219,21 @@ private[main] object RunCommands {
     }
   }
 
-  /** `context` of a turn (`--workflow`). */
+  /** `context` of a turn (`--workflow`), held against `--limit` input tokens when given. */
   private[main] def turnContext(f: Map[String, String], full: Boolean): Either[String, Unit] =
     for {
       url <- need(f, "url")
       from <- need(f, "from")
       workflow <- need(f, "workflow").map(WorkflowId(_))
       out <- need(f, "out").map(Path.of(_))
+      limit <- f.get("limit") match {
+        case None => Right(None)
+        case Some(raw) =>
+          raw.toLongOption
+            .filter(_ > 0)
+            .map(n => Some(Tokens(n)))
+            .toRight(s"--limit is not a whole number above 0: $raw")
+      }
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       sent <- opened(config)(TurnSent.read(_, workflow))
       _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
@@ -248,6 +256,7 @@ private[main] object RunCommands {
             }"
       )
       SentMarkdown.efficiencyLines(sent).foreach(println)
+      limit.foreach(l => SentMarkdown.limitLines(sent, l).foreach(println))
     }
 
   /** `inputs --capture <dir> --url <jdbc> --out <file> [--variant <name>]`, and `more` for

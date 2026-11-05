@@ -36,12 +36,9 @@ object TurnLoop {
       */
     def after(replies: Vector[Message.Assistant]): Rounds =
       limit.fold(this) { bound =>
-        val inputs = replies.map(r => Tokens.value(r.usage.input))
-        val growths = 0L +: inputs.zip(inputs.drop(1)).map((from, to) => to - from)
-        val largest = growths.scanLeft(0L)(math.max).drop(1)
-        inputs
-          .zip(largest)
-          .indexWhere((input, growth) => input + growth >= Tokens.value(bound)) match {
+        Rounds
+          .reach(replies.map(_.usage.input))
+          .indexWhere(r => Tokens.value(r) >= Tokens.value(bound)) match {
           case -1 => this
           case grown => copy(calls = math.min(calls, grown + 3))
         }
@@ -56,6 +53,18 @@ object TurnLoop {
     def of(calls: Int): Either[String, Rounds] =
       if (calls >= 2) Right(Rounds(calls, None))
       else Left(s"a turn's budget is at least 2 model calls, not $calls")
+
+    /** Each of `inputs`, a turn's requests' inputs as counted, the first first, plus the
+      * largest growth from one request's input to the next's up to it (none for the first):
+      * what [[Rounds.after]] holds against the limit.
+      */
+    def reach(inputs: Vector[Tokens]): Vector[Tokens] = {
+      val counted = inputs.map(Tokens.value)
+      val growths = 0L +: counted.zip(counted.drop(1)).map((from, to) => to - from)
+      counted
+        .zip(growths.scanLeft(0L)(math.max).drop(1))
+        .map((input, growth) => Tokens(input + growth))
+    }
 
     /** Two calls: the fewest a turn makes, the first with tools on. */
     val Fewest: Rounds = Rounds(2, None)

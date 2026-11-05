@@ -48,7 +48,8 @@
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
 #       and how each digest compares to cases.jsonl's: never the file's text.
 #
-#   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--capture <yyyymmdd>]
+#   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--limit <tokens>]
+#                        [--capture <yyyymmdd>]
 #       One recorded turn as its model was sent it, text and all, written to
 #       .local/eval/review/context-<workflow-id>.md for a person to read: how it got there
 #       (the stitch placement and the state its classifier saw, triage's tags, the speech
@@ -60,7 +61,9 @@
 #       the input went: the turn's cache, each call's input by part scaled to the provider's
 #       count, and what nothing later pointed back at (a proxy, not proof). The epoch the turn
 #       ran under is shown beside this build's. Tool results are cut at 4,000 characters unless
-#       --full. Reads <database> through read-only sessions; prints counts, never text.
+#       --full. Reads <database> through read-only sessions; prints counts, never text. With
+#       --limit, each call's input and the reserve the loop keeps beside it are printed against
+#       that input limit, and where the loop would end the turn (TurnLoop.Rounds.after).
 #       Given a heard message's entry id (in:<conversation>:<ts>) instead: what Jev was asked
 #       of it and answered, written to .local/eval/review/context-<entry-id>.md: the stitch
 #       state as recorded with its placement, its question as this build words it, and
@@ -535,13 +538,14 @@ order() {
 }
 
 context() {
-  local id=${1:-} from= full= capture=
+  local id=${1:-} from= full= capture= limit=()
   [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
   while [ $# -gt 0 ]; do
     case $1 in
       --from) from=${2:-}; shift 2 ;;
       --full) full=--full; shift ;;
+      --limit) limit=(--limit "${2:-}"); shift 2 ;;
       --capture) capture=${2:-}; shift 2 ;;
       *) usage ;;
     esac
@@ -550,7 +554,7 @@ context() {
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
   local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
   if [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
-    harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full
+    harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full "${limit[@]}"
   else
     local declared=()
     if [ -n "$capture" ]; then

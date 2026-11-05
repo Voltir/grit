@@ -209,6 +209,29 @@ object SentMarkdownTests extends TestSuite {
     }
 
     test(
+      "at a limit, each call's input and reserve are given against it, and the call where the limit is met says what the loop would do"
+    ) {
+      def spent(input: Long) =
+        Spent(None, "m", Usage(Tokens(input), Tokens(1), Tokens.Zero, None), Tokens(1))
+      val t = sent(request(asked, calling, result("alpha"))).copy(
+        spent = Vector(EntryId("call:c1:0:0") -> spent(1000), turn.replyId -> spent(1600))
+      )
+      (SentMarkdown.limitLines(t, Tokens(2000)), SentMarkdown.limitLines(t, Tokens(5000))) ==> (
+        Vector(
+          "at a limit of 2000 input tokens:",
+          "  call 0: 1000 in + 0 reserve = 1000",
+          "  call 1: 1600 in + 600 reserve = 2200: the limit is met; call 2 is the last with tools, call 3 the last"
+        ),
+        Vector(
+          "at a limit of 5000 input tokens:",
+          "  call 0: 1000 in + 0 reserve = 1000",
+          "  call 1: 1600 in + 600 reserve = 2200",
+          "  the limit is never met"
+        )
+      )
+    }
+
+    test(
       "a turn run under this build's epoch and a deployment's version is not said to differ; one of another epoch is"
     ) {
       val same = shown(sent(request(asked), epoch = s"${Turn.Epoch}+1"), Cut.Whole)
