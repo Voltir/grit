@@ -39,7 +39,7 @@ object TurnFailure {
   private[turn] def ofStore(error: StoreError): TurnFailure = TurnFailure.Store(error.described)
 
   /** What `failure` says. */
-  private[turn] def reason(failure: TurnFailure): String = failure match {
+  def reason(failure: TurnFailure): String = failure match {
     case TurnFailure.Assembly(why) => why
     case TurnFailure.Model(why) => why
     case TurnFailure.Store(why) => why

@@ -17,22 +17,25 @@ final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
 
 /** The grit coder's turn as its database recorded it: its conversation's id (its session), the
   * messages its last model call was sent, oldest first, the status DBOS gives its workflow
-  * (`SUCCESS`, `PENDING`, `ERROR`, …), and the turn as a person reads it, as the eval's `sent`
-  * renders it.
+  * (`SUCCESS`, `PENDING`, `ERROR`, …), the turn as a person reads it, as the eval's `sent`
+  * renders it, and why the turn failed, as `<step>: <reason>`, when it ended without a reply: a
+  * turn fails inside a workflow DBOS records as `SUCCESS`.
   */
 final case class GritTurn(
     session: String,
     messages: Vector[Message],
     status: String,
-    rendered: String
+    rendered: String,
+    failed: Option[String]
 )
 
 /** A tool call the run was refused, by tool and its input as JSON. */
 final case class Denial(tool: String, input: String) extends caps.Pure
 
-/** How a run ended: its reason (Claude Code's, as `success` or `error_max_turns`; for grit, its
-  * turn's status or why it was stopped), whether it ended in error, the cost Claude Code estimated
-  * for it (`None` for grit, which estimates none of its own), each tool call it was refused, the
+/** How a run ended: its reason (Claude Code's, as `success` or `error_max_turns`; for grit, why it
+  * was stopped, why its turn failed, or its workflow's status), whether it ended in error, the
+  * cost Claude Code estimated for it (`None` for grit, which estimates none of its own), each tool
+  * call it was refused, the
   * run's usage (`None` when Claude Code's result gives none), and each model's.
   */
 final case class Ended(
@@ -144,8 +147,9 @@ object Consumed {
   /** What the grit coder whose output is `lines` consumed, in its turn `turn`, stopped early for
     * `stopped` (as the report says it) when `Some`. Its calls are [[gritCalls]], side calls among
     * them; before its first edit, the calls
-    * its turn made and the UTF-8 bytes its tools returned; its ending the turn's status as its
-    * reason, or why it was stopped, in error unless it succeeded unstopped, each `run` that failed
+    * its turn made and the UTF-8 bytes its tools returned; its ending's reason why it was stopped,
+    * else why its turn failed, else its workflow's status, in error unless its turn succeeded
+    * unstopped under a workflow that succeeded, each `run` that failed
     * a denial; its usage and each model's, its calls' together; no figure of its own beside
     * grit's, and no key source.
     */
@@ -184,8 +188,8 @@ object Consumed {
       before.map(_.collect { case r: Message.ToolResult => bytes(r.content) }.sum),
       Some(
         Ended(
-          stopped.getOrElse(turn.status),
-          stopped.isDefined || turn.status != "SUCCESS",
+          stopped.orElse(turn.failed).getOrElse(turn.status),
+          stopped.isDefined || turn.failed.isDefined || turn.status != "SUCCESS",
           None,
           denials,
           Some(Usage.total(calls.map(_.usage))),

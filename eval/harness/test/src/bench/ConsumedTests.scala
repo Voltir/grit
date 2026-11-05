@@ -33,7 +33,7 @@ object ConsumedTests extends TestSuite {
   )
 
   /** A grit turn that reads a file, is refused a run, then edits; a read after the edit. */
-  private def gritTurn(status: String) = GritTurn(
+  private def gritTurn(status: String, failed: Option[String] = None) = GritTurn(
     "c-1",
     Vector(
       Message.User("the brief"),
@@ -47,7 +47,8 @@ object ConsumedTests extends TestSuite {
       Message.ToolResult(ToolCallId("t4"), "after the edit", isError = false)
     ),
     status,
-    "the turn, rendered"
+    "the turn, rendered",
+    failed
   )
 
   val tests = Tests {
@@ -250,6 +251,21 @@ object ConsumedTests extends TestSuite {
         Some(("SUCCESS", false, denied)),
         Some(("PENDING", true, denied)),
         Some(("spent 10.2¢, at its cap", true, denied))
+      )
+    }
+
+    test(
+      "a grit turn that failed ends in error with its failure as the reason, its workflow SUCCESS"
+    ) {
+      val failed = "ask: the reply to ask:5 said nothing and called no tool"
+      def ending(stopped: Option[String]) =
+        Consumed
+          .ofTurn(gritLines, gritTurn("SUCCESS", Some(failed)), stopped)
+          .ended
+          .map(e => (e.reason, e.error))
+      (ending(None), ending(Some("spent 10.2¢, at its cap"))) ==> (
+        Some((failed, true)),
+        Some(("spent 10.2¢, at its cap", true))
       )
     }
 

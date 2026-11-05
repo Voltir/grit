@@ -250,7 +250,8 @@ object RigTests extends TestSuite {
       )
     ),
     "SUCCESS",
-    "# The turn\nrendered"
+    "# The turn\nrendered",
+    None
   )
 
   /** A fake [[Memory]]: 9 GB held, of 16 GB available, once the root holds `heavy`, which a

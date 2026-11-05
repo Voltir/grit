@@ -40,6 +40,7 @@ import grit.host.checkout.{LocalHanding, LocalMemory, LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
 import grit.models.JevConfig
 import grit.models.{AnthropicProvider, JevClassifier}
+import grit.turn.{TurnFailure, TurnRecord}
 
 import Cli.*
 import Engines.*
@@ -237,11 +238,18 @@ private[main] object LabCommands {
             .map(e => s"the grit coder's turns could not be read: ${e.described}")
           last <- turns.lastOption.toRight("the grit coder's database records no turn")
           sent <- TurnSent.read(reader, last._1)
+          steps <- reader
+            .steps(last._1)
+            .left
+            .map(e => s"the grit coder's turn's steps could not be read: ${e.kind}")
         } yield GritTurn(
           ConversationId.value(sent.turn.conversationId),
           sent.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
           last._2.status,
-          SentMarkdown.render(sent, config.endpoint.toString, Cut.Whole)
+          SentMarkdown.render(sent, config.endpoint.toString, Cut.Whole),
+          if (sent.answer.isDefined) None
+          else
+            TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")
         )
       }
   }
