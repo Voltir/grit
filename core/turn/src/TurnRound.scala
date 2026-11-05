@@ -142,7 +142,7 @@ private[turn] object TurnRound {
       copy(gates = gates.updated(round.index, gate))
   }
 
-  /** What a turn's loop is allowed: `budget`, its model calls and growth, and `answerWithin`, the longest
+  /** What a turn's loop is allowed: `budget`, its model calls and input limit, and `answerWithin`, the longest
     * a call that asks a person first waits for them. Recorded with the turn's window, so a
     * rerun keeps the limits its turn started under.
     */

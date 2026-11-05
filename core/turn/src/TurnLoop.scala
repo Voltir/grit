@@ -15,42 +15,42 @@ import grit.core.tool.Outcome
 object TurnLoop {
 
   /** How far one turn's loop may go: `calls` model calls, the last made with tools off, so a
-    * turn that keeps calling tools still ends in text; and, with `growth`, about that much input
-    * added within the turn: once a reply's request has `growth` more input tokens than the
-    * turn's first request, as its provider counted them, the call after it is the last with
-    * tools and the one after that the last ([[after]]). A request's input is counted before its
-    * own results, so a turn can exceed `growth` by one round's results; a provider that reports
-    * no input never meets it.
+    * turn that keeps calling tools still ends in text; and, with `limit`, the input a request
+    * may reach as its provider counts it, less room for one round's results the turn has not
+    * yet seen: once a reply's input plus the largest growth of a round so far meets `limit`, the
+    * call after it is the last with tools and the one after that the last ([[after]]). A turn
+    * can still pass `limit` when one round grows more than every round before it and the room
+    * kept; a provider that reports no input never meets it.
     */
-  final case class Rounds private (calls: Int, growth: Option[Tokens]) {
+  final case class Rounds private (calls: Int, limit: Option[Tokens]) {
 
-    /** This budget, its turns' growth bounded by `growth`; `Left` when it is not above 0. A
-      * provider that reports no input is never bounded by it.
-      */
-    def within(growth: Tokens): Either[String, Rounds] =
-      if (Tokens.value(growth) > 0) Right(copy(growth = Some(growth)))
-      else Left(s"a turn's growth bound is above 0 tokens, not ${Tokens.value(growth)}")
+    /** This budget, its requests' input bounded by `limit`; `Left` when it is not above 0. */
+    def within(limit: Tokens): Either[String, Rounds] =
+      if (Tokens.value(limit) > 0) Right(copy(limit = Some(limit)))
+      else Left(s"a turn's input limit is above 0 tokens, not ${Tokens.value(limit)}")
 
     /** This budget once a turn's replies so far are `replies`, the first first: its calls cut
-      * to three past the first reply whose request grew by `growth` over the first's, when that
-      * is fewer (that reply's round, then the last call with tools, then the last); else
-      * unchanged.
+      * to three past the first reply whose input, plus the largest growth of input from one
+      * reply's request to the next's up to it, meets `limit`, when that is fewer (that reply's
+      * round, then the last call with tools, then the last); else unchanged.
       */
     def after(replies: Vector[Message.Assistant]): Rounds =
-      (growth, replies.headOption) match {
-        case (Some(bound), Some(first)) =>
-          val from = Tokens.value(first.usage.input)
-          replies.indexWhere(r => Tokens.value(r.usage.input) - from >= Tokens.value(bound)) match {
-            case -1 => this
-            case grown => copy(calls = math.min(calls, grown + 3))
-          }
-        case _ => this
+      limit.fold(this) { bound =>
+        val inputs = replies.map(r => Tokens.value(r.usage.input))
+        val growths = 0L +: inputs.zip(inputs.drop(1)).map((from, to) => to - from)
+        val largest = growths.scanLeft(0L)(math.max).drop(1)
+        inputs
+          .zip(largest)
+          .indexWhere((input, growth) => input + growth >= Tokens.value(bound)) match {
+          case -1 => this
+          case grown => copy(calls = math.min(calls, grown + 3))
+        }
       }
   }
 
   object Rounds {
 
-    /** `calls` as a budget, its growth unbounded; `Left` when it is under 2, which leaves no
+    /** `calls` as a budget, its input unbounded; `Left` when it is under 2, which leaves no
       * call with tools on.
       */
     def of(calls: Int): Either[String, Rounds] =
@@ -60,14 +60,14 @@ object TurnLoop {
     /** Two calls: the fewest a turn makes, the first with tools on. */
     val Fewest: Rounds = Rounds(2, None)
 
-    /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls; its growth bound
+    /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls; its input limit
       * kept.
       */
     def allotted(default: Rounds, calls: Allotment.Calls): Rounds = calls match {
       case Allotment.Calls.Default => default
       // Scaled is at least once by construction, so this is at least `default`, at least 2.
       case Allotment.Calls.Scaled(times) => default.copy(calls = default.calls * times)
-      case Allotment.Calls.Fewest => Fewest.copy(growth = default.growth)
+      case Allotment.Calls.Fewest => Fewest.copy(limit = default.limit)
     }
   }
 

@@ -90,31 +90,33 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "a reply whose request grew by the growth bound makes the next call the last with tools, and the one after it the last"
+      "a reply whose input plus the largest growth of a round so far meets the limit makes the next call the last with tools, and the one after it the last"
     ) {
       def input(n: Long) =
         reply("", Vector("t")).copy(usage = Usage(Tokens(n), Tokens(2), Tokens.Zero, None))
-      val bounded = budget(12).within(Tokens(100)).getOrElse(throw new java.lang.AssertionError())
-      // Reply 1's request is 100 past the first's, its round's results not yet counted.
-      val cut = bounded.after(Vector(input(1000), input(1100)))
+      val bounded = budget(12).within(Tokens(1300)).getOrElse(throw new java.lang.AssertionError())
+      // Reply 2's input, 1,250, plus its round's growth, 150, the largest so far, meets 1,300.
+      val cut = bounded.after(Vector(input(1000), input(1100), input(1250)))
       (
         cut.calls,
-        Vector(1, 2, 3).map(n => TurnLoop.use(cut, round(n))),
-        Vector(1, 2, 3).map(n => TurnLoop.notes(cut, round(n))),
-        bounded.after(Vector(input(1000), input(1099))).calls,
+        Vector(2, 3, 4).map(n => TurnLoop.use(cut, round(n))),
+        Vector(2, 3, 4).map(n => TurnLoop.notes(cut, round(n))),
+        bounded.after(Vector(input(1000), input(1100), input(1140))).calls,
+        bounded.after(Vector(input(0), input(0), input(0))).calls,
         budget(12).after(Vector(input(1000), input(9000))).calls,
         budget(12).within(Tokens(0))
       ) ==> (
-        4,
+        5,
         Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off),
         Vector(
           Vector.empty,
-          Vector(round(2) -> TurnLoop.LastTools),
-          Vector(round(2) -> TurnLoop.LastTools)
+          Vector(round(3) -> TurnLoop.LastTools),
+          Vector(round(3) -> TurnLoop.LastTools)
         ),
         12,
         12,
-        Left("a turn's growth bound is above 0 tokens, not 0")
+        12,
+        Left("a turn's input limit is above 0 tokens, not 0")
       )
     }
 

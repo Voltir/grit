@@ -524,13 +524,13 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "a turn whose request grew by its bound is told on its next call that it is the last with tools, and ends in text on the one after"
+      "a turn whose input met its limit is told on its next call that it is the last with tools, and ends in text on the one after"
     ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val ws = new Files(files)
-      // Every reply calls peek; its request's input grows 600 a round, past a 1,000 bound at
-      // round 2: round 3 is told, round 4 is made with tools off, of a budget of 12.
+      // Every reply calls peek; its request's input grows 600 a round, so round 2's 2,200 plus
+      // 600 meets a 2,500 limit: round 3 is told, round 4 is made with tools off, of a budget of 12.
       val provider = new Scripted((_, n) =>
         Right(
           calling(s"r$n", (s"t$n", "peek", "a.txt"))
@@ -548,7 +548,7 @@ object TurnLoopTurnTests extends TestSuite {
           ws,
           tools(ws),
           12,
-          grows = Some(Tokens(1000))
+          limit = Some(Tokens(2500))
         )
       ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
       def told(r: ModelRequest) = r.messages.exists {

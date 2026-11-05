@@ -2006,7 +2006,7 @@ object TurnFixtures {
       .fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** As [[turnBody]], the model offered `tools`, which read `ws`, for at most `calls` model
-    * calls, its growth bounded by `grows` when given ([[TurnLoop.Rounds.within]]).
+    * calls, its requests' input bounded by `limit` when given ([[TurnLoop.Rounds.within]]).
     */
   def tooledBody(
       entries: EntryStore,
@@ -2021,7 +2021,7 @@ object TurnFixtures {
       hosted: Vector[Tool.Offered] = Vector.empty,
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched(),
-      grows: Option[Tokens] = None,
+      limit: Option[Tokens] = None,
       catalog: Catalog = TestCatalog
   )(id: WorkflowId)(using Durable^): String =
     toolsBody(
@@ -2034,7 +2034,7 @@ object TurnFixtures {
       calls,
       clock,
       hosted,
-      grows,
+      limit,
       catalog
     )(
       speech,
@@ -2053,7 +2053,7 @@ object TurnFixtures {
       calls: Int,
       clock: Clock^,
       hosted: Vector[Tool.Offered],
-      grows: Option[Tokens] = None,
+      limit: Option[Tokens] = None,
       catalog: Catalog = TestCatalog
   )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
       Durable^
@@ -2093,7 +2093,7 @@ object TurnFixtures {
         Toolbox.Empty,
         hosted,
         jot,
-        grows.fold(budget(calls))(g =>
+        limit.fold(budget(calls))(g =>
           budget(calls).within(g).fold(why => throw new java.lang.AssertionError(why), identity)
         )
       )

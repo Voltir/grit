@@ -90,7 +90,7 @@ object TurnRequestsTests extends TestSuite {
     )
 
   /** `turn`, answered by `provider` with `peek` and `poke` offered, in at most `calls` calls,
-    * its growth bounded by `grows` when given, its message's placement asked of `classifier`,
+    * its requests' input bounded by `limit` when given, its message's placement asked of `classifier`,
     * its models `catalog`'s, its summary asked of `summarizer`; its steps.
     */
   private def answered(
@@ -99,7 +99,7 @@ object TurnRequestsTests extends TestSuite {
       provider: grit.core.provider.Provider^,
       calls: Int = 5,
       classifier: grit.core.classify.Classifier^ = NoClassifier,
-      grows: Option[Tokens] = None,
+      limit: Option[Tokens] = None,
       summarizer: grit.core.provider.Provider^ = new grit.models.StubProvider(),
       catalog: Catalog = TestCatalog
   ): Vector[StepRecord] = {
@@ -115,7 +115,7 @@ object TurnRequestsTests extends TestSuite {
         ws,
         tools(ws),
         calls,
-        grows = grows,
+        limit = limit,
         catalog = catalog
       )
     )
@@ -295,7 +295,7 @@ object TurnRequestsTests extends TestSuite {
       } ==> Vector((true, Some(false)), (true, Some(false)), (true, Some(true)))
     }
 
-    test("a turn that met its growth bound is rebuilt with its last-tools note in place") {
+    test("a turn that met its input limit is rebuilt with its last-tools note in place") {
       val entries = new InMemoryEntryStore
       val provider = new Scripted((_, n) =>
         Right(
@@ -304,7 +304,7 @@ object TurnRequestsTests extends TestSuite {
         )
       )
       val turn = say(entries, "go")
-      val recorded = answered(entries, turn, provider, calls = 12, grows = Some(Tokens(1000)))
+      val recorded = answered(entries, turn, provider, calls = 12, limit = Some(Tokens(2500)))
       // The setting: five calls, the fourth told it was the last with tools.
       provider.requests.map(_.messages.contains(Message.User(TurnLoop.LastTools))) ==>
         Vector(false, false, false, true, true)

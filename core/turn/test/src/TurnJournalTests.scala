@@ -178,9 +178,9 @@ object TurnJournalTests extends TestSuite {
         Right(Right((Headroom.Ample, Route.Task.Skipped, Allotment.Untouched, None)))
     }
 
-    test("a loop's limits write a growth bound only when there is one, and read back") {
+    test("a loop's limits write an input limit only when there is one, and read back") {
       // A pin of the recorded form: a rerun keeps the limits its turn started under, and an
-      // output recorded before growth bounds must write back byte for byte.
+      // output recorded before input limits must write back byte for byte.
       def of(b: Either[String, TurnLoop.Rounds]): Either[TurnFailure, TurnRound.Limits] =
         b.left
           .map(TurnFailure.Model(_))
@@ -194,7 +194,7 @@ object TurnJournalTests extends TestSuite {
         roundTrip(bounded)
       ) ==> (
         """{"ok":{"budget":4,"answer-within":5000}}""",
-        """{"ok":{"budget":12,"answer-within":5000,"grows":40000}}""",
+        """{"ok":{"budget":12,"answer-within":5000,"limit":40000}}""",
         Right(plain),
         Right(bounded)
       )
