@@ -157,6 +157,38 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test("a search matching more lines than it shows answers each file's count instead") {
+      val lines = (n: Int) => (1 to n).map(i => s"x $i").mkString("\n")
+      inCheckout("a" -> lines(150), "b/c" -> lines(51), "d" -> "y") { dir =>
+        shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root)) ==> Right(
+          s"201 matches in 2 files, too many to show (the limit is ${Workspace.SearchLines}). " +
+            "Matches per file are below; narrow the path or the pattern to see the lines.\n" +
+            "a: 150\nb/c: 51"
+        )
+      }
+    }
+
+    test("a search matching as many lines as it shows shows them all") {
+      val lines = (1 to Workspace.SearchLines).map(i => s"x $i").mkString("\n")
+      inCheckout("a" -> lines) { dir =>
+        new LocalWorkspace(dir, noSecrets)
+          .search("x", RelPath.Root)
+          .map(c => (Clipped.lines(c.show).size, c.hint)) ==> Right((Workspace.SearchLines, None))
+      }
+    }
+
+    test("a search whose matching lines are longer than it shows answers each file's count") {
+      val wide = (n: Int) => (1 to n).map(_ => "x" * Workspace.MaxLineChars).mkString("\n")
+      val n = Workspace.SearchBytes / Workspace.MaxLineChars + 1
+      inCheckout("a" -> wide(n)) { dir =>
+        shown(new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root)) ==> Right(
+          s"$n matches in 1 file, too long to show (the limit is ${Workspace.SearchBytes / 1024} KB). " +
+            "Matches per file are below; narrow the path or the pattern to see the lines.\n" +
+            s"a: $n"
+        )
+      }
+    }
+
     test("a long matching line is cut") {
       inCheckout("a" -> ("x" * 600)) { dir =>
         val line = new LocalWorkspace(dir, noSecrets).search("x", RelPath.Root).map(_.text)

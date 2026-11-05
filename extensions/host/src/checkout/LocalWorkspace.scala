@@ -61,22 +61,15 @@ final class LocalWorkspace(root: Path, redaction: Redaction) extends Workspace {
                 entries(at, Int.MaxValue).map(_.collect { case (p, false) => p })
               else Right(Vector(at))
             files.map { fs =>
-              val matches = fs
-                .map(f => (checkout.relative(top, f), f))
-                .filter((rel, f) =>
-                  !secret(rel) && Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS)
-                )
-                .sortBy(_._1)
-                .flatMap((rel, f) => matching(regex, rel, f))
-              if (matches.isEmpty) Clipped.head("No matches.", _ => None)
-              else
-                Clipped.head(
-                  matches.mkString("\n"),
-                  _.map(k =>
-                    s"Showing ${k.lines} of ${k.total} matching lines. Narrow the pattern, " +
-                      "or search a subdirectory, to see the rest."
+              Workspace.searched(
+                fs
+                  .map(f => (checkout.relative(top, f), f))
+                  .filter((rel, f) =>
+                    !secret(rel) && Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS)
                   )
-                )
+                  .sortBy(_._1)
+                  .map((rel, f) => (rel, matching(regex, rel, f)))
+              )
             }
           }
         }

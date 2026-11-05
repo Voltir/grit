@@ -214,8 +214,10 @@ object Coding {
           "`path:line: text`, in path order; a match anywhere in the line counts. Skips .env " +
           "files, links, hidden directories (such as .git), node_modules, out and target, " +
           s"files over ${mb(Workspace.MaxFileBytes)} and files that are not UTF-8. A line is " +
-          s"cut at ${Workspace.MaxLineChars} characters; at most $limits of matches are " +
-          "shown. Says \"No matches.\" when none match. Fails when the pattern is not a " +
+          s"cut at ${Workspace.MaxLineChars} characters. Shows at most " +
+          s"${Workspace.SearchLines} matches and ${Workspace.SearchBytes / 1024} KB; when more " +
+          "match, it shows how many matched in each file instead, so you can narrow the path " +
+          "or the pattern. Says \"No matches.\" when none match. Fails when the pattern is not a " +
           "valid regular expression or the path does not exist." + pathRule,
         Args
           .of(
