@@ -1,6 +1,7 @@
 package grit.databases.connect
 
-import java.sql.{Connection, DriverManager, SQLException, Statement}
+import java.nio.charset.StandardCharsets
+import java.sql.{Connection, DriverManager, ResultSet, SQLException, Statement}
 import java.util.Properties
 
 import grit.core.either.Traversal
@@ -23,8 +24,80 @@ final class DatabaseReader private (
   @caps.unsafe.untrackedCaptures
   private var connection: Option[Connection] = Some(first)
 
+  /** `statement`'s rows, `None` when it returns none at all (a SET), run in a transaction of its
+    * own that is read-only, under the limits' timeout, and rolled back, so nothing it sets
+    * reaches the next. First, in that transaction, `current_user` and `session_user` must both
+    * be the role. A connection found closed is opened again first. At most the limits' rows and
+    * bytes, the clip said. Or why not.
+    */
+  def query(statement: OneStatement): Either[QueryRefusal, Option[Rows]] = synchronized {
+    session { st =>
+      st.setMaxRows(limits.rows + 1)
+      if (st.execute(OneStatement.text(statement))) {
+        val rs = st.getResultSet
+        try Some(DatabaseReader.rows(rs, limits))
+        finally rs.close()
+      } else None
+    }
+  }
+
   /** Ends the connection; a later call opens it again. */
   def close(): Unit = synchronized {
+    drop()
+  }
+
+  /** `body` on a live connection, in a read-only transaction of its own under the limits'
+    * timeout, after the role check; the connection dropped when the session is not the role or
+    * the failure says it broke.
+    */
+  private def session[A](body: Statement => A): Either[QueryRefusal, A] =
+    live() match {
+      case Left(f) => Left(QueryRefusal.Unreachable(f))
+      case Right(c) =>
+        val ran = DatabaseReader.attempt {
+          DatabaseReader.transaction(c, limits) { st =>
+            DatabaseReader.mismatch(DatabaseReader.who(st), role) match {
+              case Some(seen) => Left(seen)
+              case None => Right(body(st))
+            }
+          }
+        }
+        ran match {
+          case Right(Right(a)) => Right(a)
+          case Right(Left(seen)) =>
+            drop()
+            Left(QueryRefusal.RoleChanged(seen))
+          case Left(f) => Left(refusal(f))
+        }
+    }
+
+  /** What `f` says of a statement, the connection dropped when it says that broke. */
+  private def refusal(f: Failure): QueryRefusal = f.state match {
+    case Some("25006") | Some("25001") => QueryRefusal.Writes
+    case Some("57014") => QueryRefusal.TimedOut
+    case Some("42501") => QueryRefusal.NotPermitted(f)
+    case _ if Postgres.overflowed(f) =>
+      drop()
+      QueryRefusal.TooLarge
+    case _ if Postgres.broken(f) =>
+      drop()
+      QueryRefusal.Unreachable(f)
+    case _ => QueryRefusal.Rejected(f)
+  }
+
+  /** The connection, opened again when there is none or it no longer answers. */
+  private def live(): Either[Failure, Connection] =
+    connection match {
+      case Some(c) if DatabaseReader.valid(c) => Right(c)
+      case _ =>
+        drop()
+        DatabaseReader.connect(url, properties).map { c =>
+          connection = Some(c)
+          c
+        }
+    }
+
+  private def drop(): Unit = {
     connection.foreach(DatabaseReader.quietly)
     connection = None
   }
@@ -82,12 +155,53 @@ object DatabaseReader {
     val st = c.createStatement()
     try {
       st.execute(Postgres.Begin)
-      try {
-        st.execute(Postgres.timeout(limits.timeout.toMillis))
-        body(st)
-      } finally st.execute(Postgres.Rollback)
+      val a =
+        try {
+          st.execute(Postgres.timeout(limits.timeout.toMillis))
+          body(st)
+        } catch {
+          case e: SQLException =>
+            // The failure is the body's; a rollback that fails too says only that it broke.
+            try st.execute(Postgres.Rollback)
+            catch { case _: SQLException => () }
+            throw e
+        }
+      st.execute(Postgres.Rollback)
+      a
     } finally st.close()
   }
+
+  /** `rs`'s rows as `limits` keep them: whole rows while they and the columns' names fit the
+    * limits' bytes of UTF-8, at most the limits' rows, the clip said.
+    */
+  private[connect] def rows(rs: ResultSet, limits: Limits): Rows = {
+    val meta = rs.getMetaData
+    val width = meta.getColumnCount
+    val columns = Vector.tabulate(width)(i => meta.getColumnLabel(i + 1))
+    var kept = Vector.empty[Vector[Option[String]]]
+    var bytes = columns.map(utf8).sum
+    var clip: Option[Clip] = None
+    while (clip.isEmpty && rs.next()) {
+      if (kept.size == limits.rows) clip = Some(Clip.Rows)
+      else {
+        val row = Vector.tabulate(width)(i => Option(rs.getString(i + 1)))
+        val size = row.map(_.fold(0)(utf8)).sum
+        if (bytes + size > limits.bytes) clip = Some(Clip.Bytes)
+        else {
+          kept = kept :+ row
+          bytes += size
+        }
+      }
+    }
+    Rows(columns, kept, clip)
+  }
+
+  private def utf8(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** Whether `c` still answers, within a second. */
+  private[connect] def valid(c: Connection): Boolean =
+    try c.isValid(1)
+    catch { case _: SQLException => false }
 
   private[connect] def who(st: Statement): Seen = {
     val rs = st.executeQuery(Postgres.Who)
