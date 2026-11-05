@@ -42,7 +42,7 @@ service's edge does. Only a turn's asker may answer (ADR 0017).
 
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
-| `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
+| `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving`, `DriveEdge.serving`, `DatabaseEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest`, `Reminders`, `Knowledge` | yes: `Deployment.of(plugins = …)` |
 | `PlainJob`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
 | `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | `Knowledge`'s `knowledge-sync` | yes: a plugin's `jobs`, its plugin declaring `documents` |

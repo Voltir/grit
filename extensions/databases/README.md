@@ -1,6 +1,6 @@
 # grit.databases
 
-Implements `ServedEdge` (its `edge` package), serving an application's Postgres database as
+Implements `ServedEdge` (`DatabaseEdge.serving`), serving an application's Postgres database as
 two tools at a service place (what a deployment can supply:
 [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
