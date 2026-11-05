@@ -15,11 +15,12 @@ import grit.models.{AnthropicJson, AnthropicRates}
   */
 final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
 
-/** The grit coder's turn as its database recorded it: its conversation's id (its session), the
-  * messages its last model call was sent, oldest first, the status DBOS gives its workflow
-  * (`SUCCESS`, `PENDING`, `ERROR`, …), the turn as a person reads it, as the eval's `sent`
-  * renders it, and why the turn failed, as `<step>: <reason>`, when it ended without a reply: a
-  * turn fails inside a workflow DBOS records as `SUCCESS`.
+/** The grit coder's task as its database recorded it: its conversation's id (its session), the
+  * messages its last turn's last model call was sent, oldest first, the status DBOS gives its
+  * last turn's workflow (`SUCCESS`, `PENDING`, `ERROR`, …), every turn of it as a person reads
+  * them, as the eval's `sent` renders a turn, and why its last turn failed, as
+  * `<step>: <reason>`, when it ended without a reply: a turn fails inside a workflow DBOS
+  * records as `SUCCESS`.
   */
 final case class GritTurn(
     session: String,

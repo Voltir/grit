@@ -231,6 +231,35 @@ object TurnSentTests extends TestSuite {
       } finally engine.close()
     }
 
+    test(
+      "a conversation read back holds every turn of it, oldest first, and no other conversation's"
+    ) {
+      val config = TestPostgres.freshDatabase("harness_sent_conversation")
+      val engine = LiveEngine.open(config, Turn.Epoch)
+      try {
+        launch(engine, new Looping)
+        def asked(session: String, source: String, text: String): TurnRef = {
+          val origin = Origin.Tui(right(Directory.of("/tmp/harness-sent")), session)
+          val turn = right(
+            engine.inbox.ingest(origin, SourceId(source), Message.User(text), Account.Local, None)
+          )
+          right(engine.inbox.startTurn(turn))
+          val _ = engine.awaitTurn(turn)
+          turn
+        }
+        val first = asked("s", "t0", "echo twice")
+        val _ = asked("elsewhere", "t1", "echo once")
+        val second = asked("s", "t2", "and again")
+        val reader = Reader.open(config)
+        val read =
+          try ConversationSent.read(reader, first.conversationId, java.time.Instant.parse("2100-01-01T00:00:00Z"))
+          finally reader.close()
+        read.map(c =>
+          (c.turns.map(_.turn), c.entries.map(_.conversationId).distinct, c.entries.size > 2)
+        ) ==> Right((Vector(first, second), Vector(first.conversationId), true))
+      } finally engine.close()
+    }
+
     test("a carried turn read back holds the window it was shown, the turns it carries included") {
       val config = TestPostgres.freshDatabase("harness_sent_carried")
       val engine = LiveEngine.open(config, Turn.Epoch)

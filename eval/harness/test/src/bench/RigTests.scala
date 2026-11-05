@@ -101,7 +101,12 @@ object RigTests extends TestSuite {
     /** A fake grit launcher that records its arguments, its environment and its brief, edits
       * `a.scala`, writes `fake`'s lines, and then hangs or exits 0.
       */
-    def gritArm(fake: GritFake, maxTokens: Int = 8192, variant: Option[String] = None): Arm.Grit = {
+    def gritArm(
+        fake: GritFake,
+        maxTokens: Int = 8192,
+        variant: Option[String] = None,
+        settings: Arm.Settings = Arm.Settings()
+    ): Arm.Grit = {
       val launcher = root.resolve("grit")
       Files.write(root.resolve("grit.out"), fake.lines.asJava)
       // Each line as a Java string literal, every character past ASCII escaped, so the source
@@ -146,7 +151,8 @@ object RigTests extends TestSuite {
           "jdbc:postgresql://localhost:5432/grit_bench_coder",
           maxTokens,
           passed,
-          variant
+          variant,
+          settings
         )
       } yield arm).fold(e => throw new java.lang.AssertionError(e), identity)
     }
@@ -274,18 +280,19 @@ object RigTests extends TestSuite {
       caps: Caps = cap,
       turn: GritTurn = gritTurn,
       heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30)),
-      variant: Option[String] = None
+      variant: Option[String] = None,
+      settings: Arm.Settings = Arm.Settings()
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
       f.handing,
       stepping(),
-      new CoderTurns { def newest(): Either[String, GritTurn] = Right(turn) },
+      new CoderTurns { def task(): Either[String, GritTurn] = Right(turn) },
       heavyAt(f.root, heldCoding)
     )(
       f.origin,
       f.task,
-      f.gritArm(fake, variant = variant),
+      f.gritArm(fake, variant = variant, settings = settings),
       caps,
       MemoryCap.Default,
       key,
@@ -847,6 +854,51 @@ object RigTests extends TestSuite {
             t.lines.filter(_.startsWith("cost"))
           )
         } ==> Right((("grit-search", "c-7"), Vector("cost: 0.0089¢ by grit's rates")))
+      }
+    }
+
+    test(
+      "a grit trial's window, work turns and cache marks reach grit's environment, the trial kept under grit-cache-<word>; cache marks beside a variant are refused"
+    ) {
+      withTask { f =>
+        val settings = Arm.Settings(
+          window = Some(Tokens(25_000)),
+          workTurns = Some(3),
+          marks = Some(grit.models.CacheMarks.Upto.Task)
+        )
+        val ran = gritTrial(f, GritFake(gritLines), settings = settings).map { t =>
+          (
+            Harness.value(t.trial.session.harness),
+            f.recorded("genv")
+              .linesIterator
+              .filter(l => Seq("GRIT_WINDOW", "GRIT_WORK", "GRIT_CACHE").exists(l.startsWith))
+              .toVector
+          )
+        }
+        val both = Variables
+          .of(Map.empty)
+          .flatMap(none =>
+            Arm.Grit.of(
+              "grit",
+              "/usr/bin/true",
+              "c",
+              "jdbc:postgresql://localhost:5432/b",
+              1,
+              none,
+              Some("search"),
+              settings
+            )
+          )
+          .map(_.harness)
+        (ran, both) ==> (
+          Right(
+            (
+              "grit-cache-task",
+              Vector("GRIT_CACHE_MARKS=task", "GRIT_WINDOW_TOKENS=25000", "GRIT_WORK_TURNS=3")
+            )
+          ),
+          Left("a grit trial runs a variant or cache marks, not both")
+        )
       }
     }
 

@@ -12,25 +12,34 @@ import grit.core.provider.Repeats
   */
 object CacheMarks {
 
+  /** The variable a run reads its [[Upto]] from, by its [[Upto.word]]. */
+  val Variable: String = "GRIT_CACHE_MARKS"
+
   /** Which of a request's repeated prefixes ([[Repeats]]) are marked besides `tools` and
-    * `system`.
+    * `system`; `word` is what [[Variable]] says for it.
     */
-  enum Upto {
+  enum Upto(val word: String) {
 
     /** The stable messages alone: two marks with the system prompt's. A turn after a boundary
       * reads only tools and system from the cache.
       */
-    case Stable
+    case Stable extends Upto("stable")
 
     /** [[Stable]], and the task's messages: three. A boundary of the same task also reads its
       * brief.
       */
-    case Task
+    case Task extends Upto("task")
 
     /** [[Task]], and what earlier turns established: four. A boundary also reads the earlier
       * turns it shows, unless its window dropped the oldest of them.
       */
-    case Established
+    case Established extends Upto("established")
+  }
+
+  object Upto {
+
+    /** The choice whose [[Upto.word]] is `word`, if any. */
+    def read(word: String): Option[Upto] = values.find(_.word == word)
   }
 
   /** A cache breakpoint, `{"type":"ephemeral"}`: Anthropic's five-minute cache. A new object on

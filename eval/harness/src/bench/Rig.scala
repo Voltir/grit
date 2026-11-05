@@ -17,7 +17,7 @@ import grit.core.secret.Secret
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
-import grit.models.{AnthropicRates, ModelRole}
+import grit.models.{AnthropicRates, CacheMarks, ModelRole}
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
   * most it may spend, in USD, which a run can pass (Claude Code's run, by Claude Code's own
@@ -110,8 +110,10 @@ object Arm {
     * with; `database` is the JDBC URL of the database grit keeps its turn in, logged in as
     * `docker-compose.yml`'s user; `maxTokens` is the most each reply may write; `passed` are the
     * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`;
-    * `harness` is what its trials are kept under: [[Harness.Grit]], or `grit-<variant>` for a run
-    * of grit changed by a variant, so the summary keeps each variant's trials apart from grit's.
+    * `harness` is what its trials are kept under: [[Harness.Grit]], `grit-<variant>` for a run
+    * of grit changed by a variant, or `grit-cache-<word>` for a run under `settings`' cache
+    * marks ([[CacheMarks.Upto.word]]), so the summary keeps each apart from grit's; `settings`
+    * is what the trial sets of grit's run.
     */
   final case class Grit private (
       launcher: String,
@@ -120,15 +122,28 @@ object Arm {
       database: String,
       maxTokens: Int,
       passed: Variables,
-      harness: Harness
+      harness: Harness,
+      settings: Settings
   ) extends Arm
+
+  /** What a grit trial sets of grit's run besides the rig's own variables: its window's limit
+    * (`window`, `GRIT_WINDOW_TOKENS`), the most turns `grit work` goes on for (`workTurns`,
+    * `GRIT_WORK_TURNS`) and the cache marks its calls place (`marks`, [[CacheMarks.Variable]]);
+    * each unset leaves grit's own default.
+    */
+  final case class Settings(
+      window: Option[Tokens] = None,
+      workTurns: Option[Int] = None,
+      marks: Option[CacheMarks.Upto] = None
+  )
 
   object Grit {
 
     /** The arm of these, or why not: a database URL that names no database, or names the
       * operator's own ([[DbConfig.DefaultDatabase]]), which a run of the bench must never write
-      * to; `maxTokens` below 1; or a `variant` that is no slug ([[Slug.check]], at most
-      * [[Harness.Longest]] less 5 characters).
+      * to; `maxTokens` below 1; a `variant` that is no slug ([[Slug.check]], at most
+      * [[Harness.Longest]] less 5 characters); or a `variant` beside `settings`' cache marks,
+      * which would keep the trial under two harnesses.
       */
     def of(
         launcher: String,
@@ -137,7 +152,8 @@ object Arm {
         database: String,
         maxTokens: Int,
         passed: Variables,
-        variant: Option[String] = None
+        variant: Option[String] = None,
+        settings: Settings = Settings()
     ): Either[String, Grit] =
       for {
         named <- DbConfig.Endpoint
@@ -154,22 +170,26 @@ object Arm {
           (),
           s"the most tokens a reply writes, $maxTokens, is below 1"
         )
-        harness <- variant.fold[Either[String, Harness]](Right(Harness.Grit))(v =>
-          Slug
-            .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
-            .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
-        )
-      } yield Grit(launcher, scout, coder, database, maxTokens, passed, harness)
+        harness <- (variant, settings.marks) match {
+          case (Some(_), Some(_)) => Left("a grit trial runs a variant or cache marks, not both")
+          case (None, Some(m)) => Harness.of(s"${Harness.value(Harness.Grit)}-cache-${m.word}")
+          case (Some(v), None) =>
+            Slug
+              .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
+              .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
+          case (None, None) => Right(Harness.Grit)
+        }
+      } yield Grit(launcher, scout, coder, database, maxTokens, passed, harness, settings)
   }
 }
 
-/** The grit coder's turn, read back from the database it ran on. */
+/** The grit coder's task, read back from the database it ran on. */
 trait CoderTurns extends caps.SharedCapability {
 
-  /** The newest turn the database records, read once the coder has ended; `Left` when it records
-    * none or cannot be read.
+  /** The task of the newest turn the database records, every turn of that turn's conversation,
+    * read once the coder has ended; `Left` when it records none or cannot be read.
     */
-  def newest(): Either[String, GritTurn]
+  def task(): Either[String, GritTurn]
 }
 
 /** A trial, the run's output it was read from, a line a message, what that output gave, the
@@ -383,13 +403,13 @@ object Rig {
     * instructions, [[Preamble]] and the task's brief, in a file of its own outside the checkout;
     * grit starts from an empty environment, but for `arm`'s passed variables and those that
     * point it at its database, the model `cap` names in every role at the Anthropic API, its
-    * allowlisted tools and scout, `cap`'s turns as its rounds, and `key` as
-    * `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
+    * allowlisted tools and scout, `cap`'s turns as its rounds, the linear assembler, `arm`'s
+    * settings ([[Arm.Settings]]), and `key` as `ANTHROPIC_API_KEY`, read from its file. A run whose calls reach `cap`'s budget is
     * stopped, a trial not passed, as is one whose processes, all those working in the checkout
     * ([[Memory.held]]), hold more than `memoryCap` allows or leave the machine under its floor
     * ([[MemoryCap.stops]]), or one whose turn did not succeed; that budget holds for the compile
-    * before grit, a `Left` naming it, and for the checks as [[Checks.run]] says; its turn is read from
-    * `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
+    * before grit, a `Left` naming it, and for the checks as [[Checks.run]] says; its task, every
+    * turn of it, is read from `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
     * shut down. What grit wrote to its output, then the tail of its errors, is written to
     * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
     * a model [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
@@ -459,7 +479,7 @@ object Rig {
           }
           (Watched.Read(lines, ended, stopped), wall) = streamed
           _ <- kept(output, lines, ended)
-          turn <- turns.newest()
+          turn <- turns.task()
           consumed = Consumed.ofTurn(lines, turn, stopped)
           session <- SessionId.of(arm.harness, turn.session)
         } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
@@ -676,8 +696,14 @@ object Rig {
       "GRIT_ASSEMBLER" -> "linear",
       "GRIT_SESSION" -> "bench",
       "GRIT_SWEEP" -> "24h"
-    ) ++ roles).map((k, v) => s"$k=$v")
+    ) ++ roles ++ settings(arm.settings)).map((k, v) => s"$k=$v")
   }
+
+  /** The variables `s` sets, each it leaves unset left out. */
+  private def settings(s: Arm.Settings): Vector[(String, String)] =
+    s.window.map(w => "GRIT_WINDOW_TOKENS" -> Tokens.value(w).toString).toVector ++
+      s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString) ++
+      s.marks.map(m => CacheMarks.Variable -> m.word)
 
   /** The script `sh -c` runs to start grit with its key: the key read from the file its first
     * argument names into `ANTHROPIC_API_KEY`, then the rest of its arguments run in its place,

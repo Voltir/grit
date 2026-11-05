@@ -27,7 +27,7 @@ object CacheMarksChoiceTests extends TestSuite {
         Right(CacheMarks.Upto.Stable),
         Right(CacheMarks.Upto.Task),
         Right(CacheMarks.Upto.Established),
-        Left("GRIT_CACHE_MARKS is none of stable, task or established")
+        Left("GRIT_CACHE_MARKS is none of stable, task, established")
       )
     }
   }

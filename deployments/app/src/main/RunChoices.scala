@@ -146,19 +146,20 @@ private[main] object RunChoices {
       case Some(_) => Left(s"$ToolsVar is not read, all or allowlist")
     }
 
-  private[main] val CacheMarksVar = "GRIT_CACHE_MARKS"
-
   /** Which of a request's repeated prefixes calls to Anthropic's models mark, from
     * `GRIT_CACHE_MARKS`: `stable`, `task` or `established` ([[CacheMarks.Upto]]). Unset is
     * `stable`, the marks every request has had: another choice is a measured experiment's, and
     * becomes the default only once a run shows its boundaries read more for no more cost.
     */
   private[main] def cacheMarks(env: Map[String, String]): Either[String, CacheMarks.Upto] =
-    env.get(CacheMarksVar).map(_.trim) match {
-      case None | Some("stable") => Right(CacheMarks.Upto.Stable)
-      case Some("task") => Right(CacheMarks.Upto.Task)
-      case Some("established") => Right(CacheMarks.Upto.Established)
-      case Some(_) => Left(s"$CacheMarksVar is none of stable, task or established")
+    env.get(CacheMarks.Variable).map(_.trim) match {
+      case None => Right(CacheMarks.Upto.Stable)
+      case Some(word) =>
+        CacheMarks.Upto
+          .read(word)
+          .toRight(
+            s"${CacheMarks.Variable} is none of ${CacheMarks.Upto.values.map(_.word).mkString(", ")}"
+          )
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

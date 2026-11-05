@@ -9,8 +9,8 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.{RelPath, Variables}
-import grit.core.id.ConversationId
-import grit.core.message.Message
+import grit.core.id.{ConversationId, TurnRef, WorkflowId}
+import grit.core.message.{Message, Tokens}
 import grit.core.secret.Secret
 import grit.core.stitch.Tuning as StitchTuning
 import grit.core.visibility.{Label, Subject}
@@ -34,12 +34,12 @@ import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.log.{Cache, Weights}
 import grit.eval.harness.report.{LabRun, Report}
 import grit.eval.harness.score.{Against, RoomScore}
-import grit.eval.harness.sent.{Cut, SentMarkdown, TurnSent}
+import grit.eval.harness.sent.{ConversationSent, Cut, SentMarkdown}
 import grit.host.blobs.LocalBlobs
 import grit.host.checkout.{LocalHanding, LocalMemory, LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
 import grit.models.JevConfig
-import grit.models.{AnthropicProvider, JevClassifier}
+import grit.models.{AnthropicProvider, CacheMarks, JevClassifier}
 import grit.turn.{TurnFailure, TurnRecord}
 
 import Cli.*
@@ -52,8 +52,10 @@ private[main] object LabCommands {
     * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --scout <program>` and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --coder <file> --coder-url <jdbc>
-    * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>]` (8 GB when not given,
-    * [[MemoryCap.of]]; the trial kept under `grit-<name>`, [[Arm.Grit.harness]]): the task
+    * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>] [--window-tokens <n>]
+    * [--work-turns <n>] [--cache-marks <word>]` (8 GB when not given, [[MemoryCap.of]]; the
+    * trial kept under `grit-<name>`, or `grit-cache-<word>` with `--cache-marks`,
+    * [[Arm.Grit.harness]]; the last three grit's [[Arm.Settings]]): the task
     * `<name>` of `<dir>` ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
@@ -142,6 +144,27 @@ private[main] object LabCommands {
                   url <- need(f, "coder-url")
                   maxTokens <- need(f, "max-tokens").flatMap(positive("max-tokens"))
                   memoryCap <- f.get("max-memory-gb").fold(Right(MemoryCap.Default))(MemoryCap.of)
+                  window <- f.get("window-tokens") match {
+                    case None => Right(None)
+                    case Some(_) =>
+                      need(f, "window-tokens")
+                        .flatMap(positive("window-tokens"))
+                        .map(n => Some(Tokens(n.toLong)))
+                  }
+                  workTurns <- f.get("work-turns") match {
+                    case None => Right(None)
+                    case Some(_) => need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
+                  }
+                  marks <- f.get("cache-marks") match {
+                    case None => Right(None)
+                    case Some(w) =>
+                      CacheMarks.Upto
+                        .read(w)
+                        .map(Some(_))
+                        .toRight(
+                          s"--cache-marks is none of ${CacheMarks.Upto.values.map(_.word).mkString(", ")}"
+                        )
+                  }
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -156,7 +179,8 @@ private[main] object LabCommands {
                     url,
                     maxTokens,
                     passed,
-                    f.get("variant")
+                    f.get("variant"),
+                    Arm.Settings(window, workTurns, marks)
                   )
                   _ <-
                     if (f.get("dry").contains("true"))
@@ -225,29 +249,38 @@ private[main] object LabCommands {
     } yield PerPass.lines(trials).foreach(println)
 
   /** The grit coder's turns in the database `config` names, logged in as `docker-compose.yml`'s
-    * user: the newest created before `clock`'s now, with the messages its last call was sent and
-    * the turn rendered whole ([[SentMarkdown.render]]).
+    * user: the conversation of the newest created before `clock`'s now, every turn of it
+    * ([[ConversationSent.read]]) rendered whole ([[SentMarkdown.render]]), with the messages its
+    * last turn's last call was sent.
     */
   private def coderTurns(config: DbConfig, clock: Clock^): CoderTurns^ = new CoderTurns {
-    def newest(): Either[String, GritTurn] =
+    def task(): Either[String, GritTurn] =
       opened(config) { reader =>
+        val now = clock.now()
         for {
           turns <- reader
-            .turns(clock.now())
+            .turns(now)
             .left
             .map(e => s"the grit coder's turns could not be read: ${e.described}")
-          last <- turns.lastOption.toRight("the grit coder's database records no turn")
-          sent <- TurnSent.read(reader, last._1)
+          newest <- turns
+            .flatMap((id, _) => TurnRef.fromWorkflowId(id))
+            .lastOption
+            .toRight("the grit coder's database records no turn")
+          task <- ConversationSent.read(reader, newest.conversationId, now)
+          last <- task.turns.lastOption.toRight("the grit coder's database records no turn")
+          status <- reader
+            .workflow(last.workflow)
+            .toRight(s"DBOS does not know ${WorkflowId.value(last.workflow)}")
           steps <- reader
-            .steps(last._1)
+            .steps(last.workflow)
             .left
             .map(e => s"the grit coder's turn's steps could not be read: ${e.kind}")
         } yield GritTurn(
-          ConversationId.value(sent.turn.conversationId),
-          sent.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
-          last._2.status,
-          SentMarkdown.render(sent, config.endpoint.toString, Cut.Whole),
-          if (sent.answer.isDefined) None
+          ConversationId.value(newest.conversationId),
+          last.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
+          status.status,
+          task.turns.map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole)).mkString("\n"),
+          if (last.answer.isDefined) None
           else
             TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")
         )
