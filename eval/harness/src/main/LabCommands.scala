@@ -153,7 +153,8 @@ private[main] object LabCommands {
                   }
                   workTurns <- f.get("work-turns") match {
                     case None => Right(None)
-                    case Some(_) => need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
+                    case Some(_) =>
+                      need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
                   }
                   marks <- f.get("cache-marks") match {
                     case None => Right(None)
@@ -279,7 +280,9 @@ private[main] object LabCommands {
           ConversationId.value(newest.conversationId),
           last.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
           status.status,
-          task.turns.map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole)).mkString("\n"),
+          task.turns
+            .map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole))
+            .mkString("\n"),
           if (last.answer.isDefined) None
           else
             TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")

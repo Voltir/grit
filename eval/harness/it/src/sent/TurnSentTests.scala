@@ -252,7 +252,12 @@ object TurnSentTests extends TestSuite {
         val second = asked("s", "t2", "and again")
         val reader = Reader.open(config)
         val read =
-          try ConversationSent.read(reader, first.conversationId, java.time.Instant.parse("2100-01-01T00:00:00Z"))
+          try
+            ConversationSent.read(
+              reader,
+              first.conversationId,
+              java.time.Instant.parse("2100-01-01T00:00:00Z")
+            )
           finally reader.close()
         read.map(c =>
           (c.turns.map(_.turn), c.entries.map(_.conversationId).distinct, c.entries.size > 2)

@@ -62,7 +62,9 @@ object AnthropicProviderTests extends TestSuite {
       val alias = "claude-haiku-5-5"
       val snapshot = s"$alias-20261001"
       def sent(model: String) =
-        pinned(s"anthropic/$model").map(p => AnthropicProvider.wire("k", model, p, asked, CacheMarks.Upto.Stable))
+        pinned(s"anthropic/$model").map(p =>
+          AnthropicProvider.wire("k", model, p, asked, CacheMarks.Upto.Stable)
+        )
       // The alias's headers and body, sent under the snapshot's id.
       val asAlias = sent(alias).map { (headers, body) =>
         val renamed = ujson.copy(body)

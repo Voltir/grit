@@ -3,7 +3,7 @@ package grit.models
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
-import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, ProviderError, Repeats, ToolSchema, ToolUse}
 
 import utest.*
 

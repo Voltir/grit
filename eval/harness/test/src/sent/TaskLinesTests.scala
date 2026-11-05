@@ -50,7 +50,14 @@ object TaskLinesTests extends TestSuite {
     ) {
       // Turns 0 to 3 each say one message; turn 3's two calls kept their replies as r1 and r2.
       val entries =
-        Vector(entry(1, 0), entry(2, 1), entry(3, 2), entry(4, 3), entry(5, 3, "r1"), entry(6, 3, "r2"))
+        Vector(
+          entry(1, 0),
+          entry(2, 1),
+          entry(3, 2),
+          entry(4, 3),
+          entry(5, 3, "r1"),
+          entry(6, 3, "r2")
+        )
       def window(seqs: Vector[Long], recalled: Vector[Long], after: Option[EntryId]) =
         Payload.Window(
           seqs.map(EntrySeq(_)),

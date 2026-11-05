@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Effort, ReasoningReplay}
-import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema}
+import grit.core.provider.{ModelRequest, ProviderError, Repeats, ToolSchema}
 import grit.core.secret.Variable
 
 /** Live probe of Anthropic's Messages API, four questions the unit tests cannot answer:
@@ -146,10 +146,30 @@ object AnthropicLiveProbe {
     )
     // Each call marks its task (the first message) and its stable messages (both).
     def asking(word: String) =
-      ModelRequest(system, Vector(task, Message.User(s"Reply with the word $word.")), repeats = Repeats.of(1, 1, 2))
+      ModelRequest(
+        system,
+        Vector(task, Message.User(s"Reply with the word $word.")),
+        repeats = Repeats.of(1, 1, 2)
+      )
     for {
-      one <- answered(key, Haiku, 256, asking("ok"), false, "task, call 1", marks = CacheMarks.Upto.Task)
-      two <- answered(key, Haiku, 256, asking("yes"), false, "task, call 2", marks = CacheMarks.Upto.Task)
+      one <- answered(
+        key,
+        Haiku,
+        256,
+        asking("ok"),
+        false,
+        "task, call 1",
+        marks = CacheMarks.Upto.Task
+      )
+      two <- answered(
+        key,
+        Haiku,
+        256,
+        asking("yes"),
+        false,
+        "task, call 2",
+        marks = CacheMarks.Upto.Task
+      )
     } {
       val cachedByOne = Tokens.value(one.usage.cacheRead) + Tokens.value(one.usage.cacheWrite)
       val readByTwo = Tokens.value(two.usage.cacheRead)
