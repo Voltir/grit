@@ -12,12 +12,15 @@ import grit.core.model.{Effort, ReasoningReplay}
 import grit.core.provider.{ModelRequest, Repeats, ProviderError, ToolSchema}
 import grit.core.secret.Variable
 
-/** Live probe of Anthropic's Messages API, three questions the unit tests cannot answer:
+/** Live probe of Anthropic's Messages API, four questions the unit tests cannot answer:
   *
   *   - **Cache reads.** Two Claude Haiku 5.5 calls share a system prompt well over the minimum
   *     cacheable length; the second adds six blocks after the first's message breakpoint. Its
   *     cache reads must cover all the first call cached (the breakpoint's lookback reaching
   *     back to it), not the system prompt alone.
+  *   - **A task's own mark.** Two Claude Haiku 5.5 calls share a system prompt and a task message
+  *     and differ in the question after it, each marked under [[CacheMarks.Upto.Task]]: the
+  *     second must read all the first cached but its question, not the system prompt alone.
   *   - **`drop_block`, per model.** For Claude Haiku 5.5 and Claude Sonnet 5.5: a reply's
   *     signed thinking, asked for at effort high on a question of a few steps, sent back after
   *     the system prompt was edited, without `drop_block` and with it. A model belongs in
@@ -33,6 +36,8 @@ import grit.core.secret.Variable
   * calls have cost [[Cap]], and prints each call's usage and cost.
   *
   * {{{set -a; . ./.env; set +a; ./mill grit.models.test.runMain grit.models.AnthropicLiveProbe "$PWD/extensions/models/test/resources"}}}
+  *
+  * Names after the directory (`cache`, `task`, `drop`, `stream`) run only those checks.
   *
   * Not a test: `./mill __.test` makes no model calls. Without `ANTHROPIC_API_KEY` it says so
   * and makes none. It exits 1 when a check fails.
@@ -69,10 +74,16 @@ object AnthropicLiveProbe {
         println("[probe] usage: AnthropicLiveProbe <the directory the recordings are saved in>")
         sys.exit(2)
       case (Some(key), Some(dir)) =>
-        cached(key)
-        dropping(key, Haiku, 1024)
-        dropping(key, Sonnet, 450)
-        recorded(key, Path.of(dir))
+        // The checks named after the directory, or every one when none is.
+        val named = args.toVector.drop(1).toSet
+        def runs(check: String): Boolean = named.isEmpty || named.contains(check)
+        if (runs("cache")) cached(key)
+        if (runs("task")) taskMarked(key)
+        if (runs("drop")) {
+          dropping(key, Haiku, 1024)
+          dropping(key, Sonnet, 450)
+        }
+        if (runs("stream")) recorded(key, Path.of(dir))
         println(s"[probe] spent ${cents(spent)} in all")
         failures.foreach(f => println(s"[probe] FAILED: $f"))
         if (failures.nonEmpty) sys.exit(1)
@@ -123,6 +134,35 @@ object AnthropicLiveProbe {
   /** `model`'s thinking asked for within `maxTokens`; the edited calls after it, which need only
     * be answered or refused, are given [[Edited]] tokens at effort low (effort is no edit).
     */
+  private def taskMarked(key: String): Unit = {
+    // About 2,500 tokens of system prompt and 1,500 of task: each over Haiku 5.5's minimum.
+    val system = (1 to 100)
+      .map(i => s"Rule $i: a card names its source, the day it was read and who may read it.")
+      .mkString("\n")
+    val task = Message.User(
+      (1 to 60)
+        .map(i => s"Step $i of the task: move command $i to a tool, with its test, in one commit.")
+        .mkString("\n")
+    )
+    // Each call marks its task (the first message) and its stable messages (both).
+    def asking(word: String) =
+      ModelRequest(system, Vector(task, Message.User(s"Reply with the word $word.")), repeats = Repeats.of(1, 1, 2))
+    for {
+      one <- answered(key, Haiku, 256, asking("ok"), false, "task, call 1", marks = CacheMarks.Upto.Task)
+      two <- answered(key, Haiku, 256, asking("yes"), false, "task, call 2", marks = CacheMarks.Upto.Task)
+    } {
+      val cachedByOne = Tokens.value(one.usage.cacheRead) + Tokens.value(one.usage.cacheWrite)
+      val readByTwo = Tokens.value(two.usage.cacheRead)
+      println(s"[probe] task: call 1 cached $cachedByOne tokens; call 2 read $readByTwo")
+      // All call 1 cached but its question, which is under 64 tokens.
+      check(
+        readByTwo + 64 >= cachedByOne,
+        s"task: the second call read $readByTwo tokens of the $cachedByOne the first cached: " +
+          "the task's mark was not read, only the system prompt's"
+      )
+    }
+  }
+
   private def dropping(key: String, model: String, maxTokens: Int): Unit = {
     val question = Message.User(
       "A shop sells pens at 3 for $4 and notebooks at $7 each. Ana buys 9 pens and 2 " +
@@ -264,9 +304,10 @@ object AnthropicLiveProbe {
       request: ModelRequest,
       dropBlock: Boolean,
       label: String,
-      effort: Effort = Effort.Low
+      effort: Effort = Effort.Low,
+      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
   ): Option[Message.Assistant] =
-    sent(key, model, maxTokens, request, dropBlock, label, effort) match {
+    sent(key, model, maxTokens, request, dropBlock, label, effort, marks = marks) match {
       case None => None
       case Some((200, text)) =>
         AnthropicJson.response(ujson.read(text)) match {
@@ -280,7 +321,7 @@ object AnthropicLiveProbe {
         None
     }
 
-  /** `request` sent on `model` as [[AnthropicJson.request]] writes it (or `raw`), its status and
+  /** `request` sent on `model` as [[AnthropicJson.request]] writes it under `marks` (or `raw`), its status and
     * body, an answer's cost counted under `label`; `None` once the probe's spending has reached
     * [[Cap]].
     */
@@ -292,7 +333,8 @@ object AnthropicLiveProbe {
       dropBlock: Boolean,
       label: String,
       effort: Effort = Effort.Low,
-      raw: Option[ujson.Value] = None
+      raw: Option[ujson.Value] = None,
+      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
   ): Option[(Int, String)] =
     Option.when(affordable(label)) {
       val body = raw.getOrElse(
@@ -302,7 +344,8 @@ object AnthropicLiveProbe {
           Some(effort),
           ReasoningReplay.Details,
           dropBlock,
-          request
+          request,
+          marks
         )
       )
       val response = http.send(
