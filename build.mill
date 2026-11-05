@@ -501,6 +501,17 @@ object grit extends Module {
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
     }
+
+    /* Against a database and roles each suite makes on the run's throwaway Postgres
+     * (TestPostgres), as an attacker's statements would meet them; grit.dbos brings the driver. */
+    object it extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it)
+    }
+
+    /* That a reader is a capability: nothing pure may hold it. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
   }
 
   /* The Slack edge (ADR 0023): the Slack SDK's quarantine (STYLE rule 8), and the edge that
