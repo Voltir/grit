@@ -489,6 +489,20 @@ object grit extends Module {
     }
   }
 
+  /* An application's Postgres database, read as a service: one database role to a place, the
+   * role's grants the boundary (ADR 0056). JDBC's second role beside grit.dbos (STYLE rule 8),
+   * in its connect package alone; the driver is the deployment's dependency, not this one's.
+   * extensions/databases/README.md. */
+  object databases extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "databases"
+    def moduleDeps = Seq(core, edge)
+
+    /* The declaration and what opening refuses before it reaches the network: no driver here. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* The Slack edge (ADR 0023): the Slack SDK's quarantine (STYLE rule 8), and the edge that
    * brings Slack threads in and posts grit's replies out, over core's traits alone, and serves
    * slack_post with grit.edge's server. The SDK

@@ -39,9 +39,10 @@ fi
 # TRAP: enola has no package pattern, so rule 8 is one rule per class. A class a
 # quarantine module starts importing without a matching rule may then be imported
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
-# driver, the pool), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK), grit.formats
+# driver, the pool), grit.databases' connect (JDBC), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK), grit.formats
 # (PDFBox) or grit.host (processes) imports must be named by a rule.
 unruled=$( { grep -oE '"name":"core/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql|com\.zaxxer\.hikari)\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/databases/src/connect -\\u003e (java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
@@ -158,12 +159,12 @@ if [ -n "$mint" ]; then
 fi
 
 # TRAP: rule 1l, as 1f above: a fully qualified use of Reveal makes no edge. Only the packages
-# a secret's value may be revealed in, and core's secret package (its sources, tests and probes), may
+# a secret's value may be revealed in (ADR 0054's list), and core's secret package (its sources, tests and probes), may
 # write `secret.Reveal` or `Reveal.text`.
 reveal=$(names -E 'secret\.Reveal|\bReveal\.text' |
-  grep -vE '^core/core/(src|test/src|probes/src)/secret/|^core/dbos/src/sql/|^extensions/models/src/|^extensions/mcp/src/client/|^extensions/slack/src/client/|^extensions/host/src/checkout/' || true)
+  grep -vE '^core/core/(src|test/src|probes/src)/secret/|^core/dbos/src/sql/|^extensions/models/src/|^extensions/mcp/src/client/|^extensions/slack/src/client/|^extensions/host/src/checkout/|^extensions/databases/src/connect/' || true)
 if [ -n "$reveal" ]; then
-  echo "Only grit.dbos's sql, grit.models, grit.mcp's and grit.slack's clients and grit.host's checkout may name Reveal; these sources do:" >&2
+  echo "Only grit.dbos's sql, grit.models, grit.mcp's and grit.slack's clients, grit.host's checkout and grit.databases' connect may name Reveal; these sources do:" >&2
   printf '  %s\n' $reveal >&2
   failed=1
 fi
