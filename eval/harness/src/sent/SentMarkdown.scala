@@ -228,6 +228,7 @@ object SentMarkdown {
         case grit.core.provider.ToolUse.Auto => "tools on"
         case grit.core.provider.ToolUse.Off => "tools off"
         case grit.core.provider.ToolUse.Required => "tools required"
+        case grit.core.provider.ToolUse.Only(name) => s"$name alone"
       }
       add(s"- **Call $round** (`${EntryId.value(reply)}`, $tools): ${spentOn(reply, request)}.")
       cached(reply)

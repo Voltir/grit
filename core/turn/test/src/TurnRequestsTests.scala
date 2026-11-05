@@ -295,7 +295,9 @@ object TurnRequestsTests extends TestSuite {
       } ==> Vector((true, Some(false)), (true, Some(false)), (true, Some(true)))
     }
 
-    test("a turn that met its input limit is rebuilt with its last-tools note in place") {
+    test(
+      "a turn that met its input limit is rebuilt with its last-tools note, task_status and its forced last call in place"
+    ) {
       val entries = new InMemoryEntryStore
       val provider = new Scripted((_, n) =>
         Right(
@@ -305,9 +307,14 @@ object TurnRequestsTests extends TestSuite {
       )
       val turn = say(entries, "go")
       val recorded = answered(entries, turn, provider, calls = 12, limit = Some(Tokens(2500)))
-      // The setting: five calls, the fourth told it was the last with tools.
-      provider.requests.map(_.messages.contains(Message.User(TurnLoop.LastTools))) ==>
-        Vector(false, false, false, true, true)
+      // The setting: five calls, the fourth told it was the last with tools; task_status
+      // offered from it, and the last asking for it alone.
+      provider.requests.map(r =>
+        (
+          r.messages.contains(Message.User(TurnLoop.LimitTools)),
+          r.tools.exists(_.name == "task_status")
+        )
+      ) ==> Vector((false, false), (false, false), (false, false), (true, true), (true, true))
       TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = true)) ==>
         Right(provider.requests)
     }

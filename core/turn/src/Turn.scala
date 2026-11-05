@@ -436,10 +436,13 @@ object Turn {
       schemas = tools.schemas(strict)
       // How round `round`'s call was shaped under `use`, as it was live.
       shapeAt = (round: Round, use: ToolUse) => {
+        val offer = gatedOffer(tools.set, schemas, strict)
         loopShape(
           asking,
           use,
-          gatedOffer(tools.set, schemas, strict),
+          limits.fold(offer)(l =>
+            TurnLoop.offered(l.budget.after(replies.take(round.index)), round, offer, strict)
+          ),
           settings.afterResult,
           settings.guidance,
           gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
@@ -507,7 +510,12 @@ object Turn {
       answered <- answer.fold[Either[String, Option[TurnRecord.Answered]]](Right(None))(reply =>
         for {
           on <- sent(last, ToolUse.Auto, reply)
-          off <- sent(last, ToolUse.Off, reply)
+          // The budget's last call: tools off, or task_status alone where its limit cut it.
+          forced = limits
+            .map(l => TurnLoop.use(l.budget.after(replies.take(last.index)), last))
+            .filter(_ != ToolUse.Auto)
+            .getOrElse(ToolUse.Off)
+          off <- sent(last, forced, reply)
         } yield Some(TurnRecord.Answered(last.index, reply, on, off))
       )
       // The summary's request, once the turn asked it, as `summarise` built it under its pins:

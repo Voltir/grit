@@ -95,6 +95,53 @@ object TurnLoopTurnTests extends TestSuite {
     * request's tool use and whether it was told it is the last with tools, and what the turn
     * returned.
     */
+  /** A turn of up to 12 calls cut to 5 at a 2,500 limit, its input growing 600 a round: rounds
+    * 0 to 2 call peek, and round 3, its last call with tools, replies `last`; each request's
+    * tools by name, and what the turn returned.
+    */
+  private def cutWith(
+      entries: InMemoryEntryStore,
+      last: Message.Assistant
+  ): (Vector[Vector[String]], String) = {
+    val ws = new Files(files)
+    val provider = new Scripted((_, n) =>
+      Right(
+        (if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else last)
+          .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
+      )
+    )
+    val turn = say(entries, "move them")
+    val said = new InMemoryDurable().run(turn.workflowId)(
+      tooledBody(
+        entries,
+        provider,
+        new InMemoryUsageLedger,
+        new StubProvider(),
+        NoClassifier,
+        ws,
+        tools(ws),
+        12,
+        limit = Some(Tokens(2500))
+      )
+    )
+    (provider.requests.map(_.tools.map(_.name)), said)
+  }
+
+  /** A reply calling task_status alone, declaring `state` with `handoff`. */
+  private def declaring(state: String, handoff: String): Message.Assistant =
+    Message.Assistant(
+      Vector(
+        AssistantBlock.ToolCall(
+          ToolCallId("status"),
+          "task_status",
+          ujson.Obj("state" -> state, "handoff" -> handoff)
+        )
+      ),
+      StopReason.ToolUse,
+      usage,
+      "m"
+    )
+
   private def limited(
       window: Tokens = grit.assembly.linear.LinearAssembler.DefaultBudget,
       catalog: grit.core.model.Catalog = TurnFixtures.TestCatalog
@@ -123,8 +170,8 @@ object TurnLoopTurnTests extends TestSuite {
       )
     )
     def told(r: ModelRequest) = r.messages.exists {
-      case Message.User(t) => t == TurnLoop.LastTools
-      case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LastTools)
+      case Message.User(t) => t == TurnLoop.LimitTools
+      case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LimitTools)
       case _ => false
     }
     (provider.requests.map(r => (r.use, told(r))), said)
@@ -592,16 +639,18 @@ object TurnLoopTurnTests extends TestSuite {
         )
       ) ==> "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit"
       def told(r: ModelRequest) = r.messages.exists {
-        case Message.User(t) => t == TurnLoop.LastTools
-        case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LastTools)
+        case Message.User(t) => t == TurnLoop.LimitTools
+        case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LimitTools)
         case _ => false
       }
+      // Its last call asks for task_status; the scripted reply answers in text and never calls
+      // it, so the turn ended at its limit.
       provider.requests.map(r => (r.use, told(r))) ==> Vector(
         (ToolUse.Auto, false),
         (ToolUse.Auto, false),
         (ToolUse.Auto, false),
         (ToolUse.Auto, true),
-        (ToolUse.Off, true)
+        (ToolUse.Only("task_status"), true)
       )
     }
 
@@ -619,7 +668,7 @@ object TurnLoopTurnTests extends TestSuite {
         (ToolUse.Auto, false),
         (ToolUse.Auto, false),
         (ToolUse.Auto, true),
-        (ToolUse.Off, true)
+        (ToolUse.Only("task_status"), true)
       )
     }
 
@@ -662,6 +711,55 @@ object TurnLoopTurnTests extends TestSuite {
       ) ==> (false, 1, true)
     }
 
+    test(
+      "a cut turn declaring done on its last call with tools is done, not at its limit, its handoff the answer; task_status offered only from that call"
+    ) {
+      val entries = new InMemoryEntryStore
+      val (offered, said) = cutWith(entries, declaring("done", "All four moved, tests pass."))
+      (
+        said,
+        grit.core.inbox.Progress.Done(None, said).ending,
+        texts(entries).filter(_.startsWith("assistant:")),
+        offered.map(_.contains("task_status"))
+      ) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0",
+        grit.core.inbox.TurnEnding.Otherwise,
+        Vector("assistant: All four moved, tests pass."),
+        Vector(false, false, false, true)
+      )
+    }
+
+    test(
+      "a cut turn declaring more is at its limit, and the next turn's boundary shows its handoff as its reply, with no task_status call"
+    ) {
+      val entries = new InMemoryEntryStore
+      val handoff = "Moved two of four; next: c.txt and d.txt."
+      val (_, said) = cutWith(entries, declaring("more", handoff))
+      val next = new Scripted((_, _) => Right(TurnFixtures.said("done")))
+      val ws = new Files(files)
+      new InMemoryDurable().run(
+        continuing(entries, grit.core.id.TurnSeq.First, 2).workflowId
+      )(
+        tooledBody(
+          entries,
+          next,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          tools(ws),
+          12
+        )
+      )
+      val shown = next.requests.headOption.fold(Vector.empty[Vector[AssistantBlock]])(
+        _.messages.collect { case a: Message.Assistant => a.blocks }
+      )
+      (grit.core.inbox.Progress.Done(None, said).ending, shown) ==> (
+        grit.core.inbox.TurnEnding.AtLimit,
+        Vector(Vector(AssistantBlock.Text(handoff)))
+      )
+    }
+
     test("a pin's context length caps a larger window's limit, less its output budget") {
       // 50,000 tokens less the pin's 4,096 out and a clipped result leaves about 23,000: met at
       // reply 1, as a 30,000 window's limit is above. The deployed 100,000 window alone is not.
@@ -682,7 +780,7 @@ object TurnLoopTurnTests extends TestSuite {
           (ToolUse.Auto, false),
           (ToolUse.Auto, false),
           (ToolUse.Auto, true),
-          (ToolUse.Off, true)
+          (ToolUse.Only("task_status"), true)
         ),
         Vector((ToolUse.Auto, false), (ToolUse.Auto, false), (ToolUse.Auto, false))
       )

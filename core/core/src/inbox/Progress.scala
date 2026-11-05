@@ -24,12 +24,15 @@ enum Progress {
 /** How a turn ended, as its workflow's outcome says it ([[Progress.Done.ending]]). */
 enum TurnEnding {
 
-  /** Its requests reached their limit, so its last calls were cut short (ADR 0052): its task
-    * goes on in a new turn only when its driver continues it ([[Inbox.continued]]).
+  /** Its requests reached their limit, so its last calls were cut short (ADR 0052), and its
+    * model did not declare its task done (ADR 0058): its task goes on in a new turn only when
+    * its driver continues it ([[Inbox.continued]]).
     */
   case AtLimit
 
-  /** Any other way: it answered within its limit, ran out of calls, failed or drafted. */
+  /** Any other way: it answered within its limit, declared its task done at it, ran out of
+    * calls, failed or drafted.
+    */
   case Otherwise
 }
 

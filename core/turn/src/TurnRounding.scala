@@ -299,7 +299,8 @@ private[turn] object Rounding {
     loopShape(
       at.looping.asked,
       use,
-      gatedOffer(tools.set, tools.schemas(strict), strict),
+      TurnLoop
+        .offered(at.budget, at.round, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
       settings.afterResult,
       settings.guidance,
       gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, at.round)

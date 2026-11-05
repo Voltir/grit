@@ -126,6 +126,19 @@ object OpenRouterJsonTests extends TestSuite {
       )
       required("tool_choice") ==> ujson.Str("required")
       required("tools") ==> auto("tools")
+      // One tool forced by name; an Anthropic model, whose thinking refuses a forced choice,
+      // is sent none, as on Anthropic's own API.
+      def only(model: String) = OpenRouterJson.request(
+        model,
+        1,
+        None,
+        ModelRequest("s", Vector(Message.User("hi")), Vector(topic), ToolUse.Only("topic"))
+      )
+      (only("m")("tool_choice"), only("anthropic/claude-haiku-5.5")("tool_choice")) ==> (
+        ujson.Obj("type" -> "function", "function" -> ujson.Obj("name" -> "topic")),
+        ujson.Str("none")
+      )
+      only("m")("tools") ==> auto("tools")
       val strict = OpenRouterJson.request(
         "m",
         1,

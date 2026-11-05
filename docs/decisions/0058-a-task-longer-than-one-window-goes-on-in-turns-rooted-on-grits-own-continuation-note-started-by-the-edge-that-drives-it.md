@@ -28,12 +28,26 @@ Decision:
   at its limit (`TurnEnding.AtLimit`, read from the turn's outcome), up to a stop for a loop
   that cannot end (`GRIT_WORK_TURNS`), each turn under a source fixed by the task and its
   number, so a restart finds where the chain stopped.
+- **Whether the task goes on is the model's declared state** (revised 2026-11-05). A turn its
+  limit cut is offered one more tool on its last call with tools and its last, `task_status`:
+  `done` with its answer, or `more` with what the next turn needs. Its last call asks for that
+  tool alone where the provider can force one tool (Anthropic's models, whose thinking refuses
+  a forced choice, answer in text there). The loop never runs it: a reply that calls it alone,
+  or any reply to the last call that calls it, ends the turn, its handoff the reply's text, so
+  no tool call reaches the conversation. `done` ends the task; `more`, or no declaration at
+  all, ends the turn at its limit, and the driver may go on. Defaulting to "go on" costs at
+  most a needless turn; defaulting to "done" would leave a task half finished as if it were
+  finished. Turned down: reading "done" from the reply's words (a guess where a type can say
+  it), and treating every cut turn as at its limit (a finished task got an extra turn).
 - **What the next turn is shown** is ADR 0052's boundary: the conversation's messages, the
-  forced reply among them, no tool calls or results, then the note.
+  forced reply or the handoff among them, no tool calls or results, then the note.
 
 Consequences: a task of several windows is a conversation of turns, each one cached,
-append-only request ending in a hand-off, with no edited prefix. A new driver (a Slack
+append-only request ending in a hand-off, with no edited prefix. Offering `task_status` on a
+cut turn's last call with tools changes its tool set, so that call writes its prefix to the
+cache afresh. A new driver (a Slack
 thread) decides its own policy for going on and reuses the note and the inbox. Every match
 over `Payload` names the new case. The note's words are code, so changing them changes no
 stored row. Enforced by `InboxContract` (who may continue, as whom, at what belief) and
-`ShownTests` (the note is grit's, unescaped).
+`ShownTests` (the note is grit's, unescaped), and `TurnLoopTests` and `TurnLoopTurnTests` (who is
+offered `task_status`, and what each declaration ends in).

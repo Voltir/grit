@@ -3,7 +3,8 @@ package grit.turn
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{AfterToolResult, ToolGuidance}
-import grit.core.provider.ToolUse
+import grit.core.provider.{ToolSchema, ToolUse}
+import grit.core.tool.Outcome
 
 import utest.*
 import TurnLoop.{Next, Pending, Round, Rounds}
@@ -16,6 +17,18 @@ object TurnLoopTests extends TestSuite {
   private def budget(n: Int): Rounds = Rounds.of(n) match {
     case Right(b) => b
     case Left(why) => throw new java.lang.AssertionError(why)
+  }
+
+  /** A budget of 12 calls its limit cut to 5: reply 2's input meets it. */
+  private val cutAt5: Rounds = {
+    val bounded = budget(12).within(Tokens(1300)).getOrElse(throw new java.lang.AssertionError())
+    def input(n: Long): Message.Assistant = Message.Assistant(
+      Vector.empty,
+      StopReason.ToolUse,
+      Usage(Tokens(n), Tokens(2), Tokens.Zero, None),
+      "m"
+    )
+    bounded.after(Vector(input(1000), input(1100), input(1250)))
   }
 
   private def round(n: Int): Round = (0 until n).foldLeft(Round.First)((r, _) => r.next)
@@ -36,6 +49,64 @@ object TurnLoopTests extends TestSuite {
     )
 
   val tests = Tests {
+    test(
+      "a cut turn offers task_status on its last call with tools and its last, which asks for it; an uncut one never offers it"
+    ) {
+      val read = ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
+      val offered = (b: Rounds) =>
+        Vector(2, 3, 4).map(n => TurnLoop.offered(b, round(n), Vector(read), false).map(_.name))
+      (offered(cutAt5), offered(budget(5)), TurnLoop.use(budget(5), round(4))) ==> (
+        Vector(Vector("read"), Vector("read", "task_status"), Vector("read", "task_status")),
+        Vector(Vector("read"), Vector("read"), Vector("read")),
+        ToolUse.Off
+      )
+    }
+
+    test(
+      "a cut turn's reply calling task_status alone ends it with its handoff as the answer; beside other calls it is refused; an uncut turn's is a call like any"
+    ) {
+      def status(state: String, handoff: String): AssistantBlock.ToolCall = AssistantBlock.ToolCall(
+        ToolCallId("s"),
+        "task_status",
+        ujson.Obj("state" -> state, "handoff" -> handoff)
+      )
+      def replying(blocks: AssistantBlock*): Message.Assistant =
+        Message.Assistant(blocks.toVector, StopReason.ToolUse, Usage.Zero, "m")
+      val thought = AssistantBlock.Reasoning("Done, I think.", None)
+      val done =
+        replying(thought, AssistantBlock.Text("Let me record it."), status("done", " All moved. "))
+      val mixed = replying(call("a"), status("more", "Half done."))
+      val blank = replying(status("more", "  "))
+      val answered = replying(thought, AssistantBlock.Text("All moved."))
+      (
+        (TurnLoop.next(cutAt5, round(3), done), TurnLoop.declared(cutAt5, round(3), done)),
+        TurnLoop.next(cutAt5, round(3), mixed),
+        TurnLoop.next(cutAt5, round(3), blank),
+        TurnLoop.declared(cutAt5, round(4), mixed),
+        TurnLoop.next(budget(5), round(3), done),
+        TurnLoop.declared(budget(5), round(3), done)
+      ) ==> (
+        (
+          Next.Answer(answered),
+          Some(TaskStatus.Declared(TaskStatus.State.Done, "All moved."))
+        ),
+        Next.Settle(
+          Vector(
+            Pending.Run(call("a")),
+            Pending.Refused(status("more", "Half done."), Outcome.Failed(TaskStatus.Unrecorded))
+          ),
+          round(4)
+        ),
+        Next.Settle(
+          Vector(Pending.Refused(status("more", "  "), Outcome.Failed(TaskStatus.Unrecorded))),
+          round(4)
+        ),
+        Some(TaskStatus.Declared(TaskStatus.State.More, "Half done.")),
+        Next.Settle(Vector(Pending.Run(status("done", " All moved. "))), round(4)),
+        None
+      )
+    }
+
     test("a budget is at least 2 calls") {
       Rounds.of(1).isLeft ==> true
       Rounds.of(2).map(_.calls) ==> Right(2)
@@ -107,11 +178,11 @@ object TurnLoopTests extends TestSuite {
         budget(12).within(Tokens(0))
       ) ==> (
         5,
-        Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off),
+        Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Only("task_status")),
         Vector(
           Vector.empty,
-          Vector(round(3) -> TurnLoop.LastTools),
-          Vector(round(3) -> TurnLoop.LastTools)
+          Vector(round(3) -> TurnLoop.LimitTools),
+          Vector(round(3) -> TurnLoop.LimitTools)
         ),
         12,
         12,

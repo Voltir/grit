@@ -536,6 +536,7 @@ object MovesJournal {
       case ToolUse.Auto => "auto"
       case ToolUse.Off => "off"
       case ToolUse.Required => "required"
+      case ToolUse.Only(name) => s"only:$name"
     }
     "ask" + text(request.system) + count(request.messages.size) +
       request.messages.map(message).mkString + count(request.tools.size) +

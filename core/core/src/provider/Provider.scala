@@ -93,6 +93,12 @@ enum ToolUse {
     * `auto`, and a reply may make no call.
     */
   case Required
+
+  /** It is asked to call the tool named `name`, and no other: forced where the provider can
+    * name one tool. Where it cannot, as on Anthropic's models, whose thinking refuses a forced
+    * choice, it is [[Off]]: the model answers in text.
+    */
+  case Only(name: String)
 }
 
 /** A model call that produced no response. `cause` says why, on one line or more. */
