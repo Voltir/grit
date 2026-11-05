@@ -41,6 +41,21 @@ final class DatabaseReader private (
     }
   }
 
+  /** The tables, views, materialized views and foreign tables in schemas the role may use, no
+    * system schema and no partition, each with the columns it may select (none listed with
+    * none), by schema and name, columns in table order; and each foreign key whose columns are
+    * all listed. Run as [[query]] is, under the role check and the timeout, but not clipped by
+    * the limits' rows or bytes: the whole catalog the role may read, or [[QueryRefusal.TooLarge]].
+    */
+  def readable(): Either[QueryRefusal, Vector[Relation]] = synchronized {
+    session { st =>
+      st.setMaxRows(0)
+      val columns = DatabaseReader.table(st, Postgres.Columns, 7)
+      val references = DatabaseReader.table(st, Postgres.References, 7)
+      DatabaseReader.relations(columns, references)
+    }
+  }
+
   /** Ends the connection; a later call opens it again. */
   def close(): Unit = synchronized {
     drop()
@@ -197,6 +212,64 @@ object DatabaseReader {
   }
 
   private def utf8(s: String): Int = s.getBytes(StandardCharsets.UTF_8).length
+
+  /** Every row `query` answers on `st`, its first `width` columns as text, NULL as `None`. */
+  private[connect] def table(
+      st: Statement,
+      query: String,
+      width: Int
+  ): Vector[Vector[Option[String]]] = {
+    val rs = st.executeQuery(query)
+    try {
+      var all = Vector.empty[Vector[Option[String]]]
+      while (rs.next()) all = all :+ Vector.tabulate(width)(i => Option(rs.getString(i + 1)))
+      all
+    } finally rs.close()
+  }
+
+  /** The relations `columns` name, in their order, each with its references from `references`
+    * (rows as [[Postgres.Columns]] and [[Postgres.References]] answer them, in their order).
+    */
+  private[connect] def relations(
+      columns: Vector[Vector[Option[String]]],
+      references: Vector[Vector[Option[String]]]
+  ): Vector[Relation] = {
+    def at(row: Vector[Option[String]], i: Int): String = row.lift(i).flatten.getOrElse("")
+    val keys = runs(references)(r => (at(r, 0), at(r, 1), at(r, 4))).collect {
+      case rs @ (first +: _) =>
+        (at(first, 0), at(first, 1)) -> Relation.Reference(
+          at(first, 2),
+          at(first, 3),
+          rs.map(r => (at(r, 5), at(r, 6)))
+        )
+    }
+    runs(columns)(r => (at(r, 0), at(r, 1))).collect { case rs @ (first +: _) =>
+      val key = (at(first, 0), at(first, 1))
+      Relation(
+        key._1,
+        key._2,
+        kind(at(first, 2)),
+        first.lift(3).flatten,
+        rs.map(r => Relation.Column(at(r, 4), at(r, 5), r.lift(6).flatten)),
+        keys.collect { case (k, ref) if k == key => ref }
+      )
+    }
+  }
+
+  /** `as` cut into runs of neighbours with the same `key`, in order; none empty. */
+  private def runs[A, K](as: Vector[A])(key: A => K): Vector[Vector[A]] = {
+    val starts: Vector[Int] =
+      as.indices.toVector.filter(i => i == 0 || key(as(i)) != key(as(i - 1)))
+    starts.zip(starts.drop(1) :+ as.size).map((from, until) => as.slice(from, until))
+  }
+
+  /** A `relkind` as a [[Relation.Kind]]: `v` a view, `m` materialized, `f` foreign, else a table. */
+  private def kind(relkind: String): Relation.Kind = relkind match {
+    case "v" => Relation.Kind.View
+    case "m" => Relation.Kind.MaterializedView
+    case "f" => Relation.Kind.ForeignTable
+    case _ => Relation.Kind.Table
+  }
 
   /** Whether `c` still answers, within a second. */
   private[connect] def valid(c: Connection): Boolean =
