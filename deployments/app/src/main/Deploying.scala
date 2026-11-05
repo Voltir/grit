@@ -9,6 +9,7 @@ import grit.core.identity.{Identities, Vouching}
 import grit.core.model.Policy
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, WorksIn}
+import grit.core.recipe.TurnRecipe
 import grit.core.speech.Speaking
 import grit.core.visibility.{Cap, Cleared, Compartments, Integrity, Party}
 import grit.formats.choice.Defaults
@@ -47,7 +48,7 @@ private[main] object Deploying {
 
   /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
     * the conversations `worksIn` links working in their services and `reaches` links reaching
-    * theirs, its days beginning in
+    * theirs, each turn shaped by `recipe`, its days beginning in
     * `zone`. Serving any edge, it caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
     * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
@@ -67,7 +68,8 @@ private[main] object Deploying {
       worksIn: Vector[WorksIn],
       zone: java.time.ZoneId,
       slackIn: Option[TeamId] = None,
-      reaches: Vector[Reaches] = Vector.empty
+      reaches: Vector[Reaches] = Vector.empty,
+      recipe: TurnRecipe = TurnRecipe.Shipped
   ): Either[String, Deployment] = {
     val serving = edges.nonEmpty
     for {
@@ -116,6 +118,7 @@ private[main] object Deploying {
           plugins = plugins,
           policy = models,
           offer = Offer(offered, rounds),
+          recipe = recipe,
           assembly = if (retrieving) Assembly.Retrieval(window, tail) else Assembly.Linear(window),
           placer = placer(env),
           lifecycle = lifecycle,

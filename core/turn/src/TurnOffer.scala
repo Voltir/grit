@@ -7,7 +7,7 @@ import grit.core.edge.Advert
 import grit.core.id.{ClaimHolder, TurnRef}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
-import grit.core.recipe.{Offering, Rooted, ServiceOffer}
+import grit.core.recipe.{Briefing, Offering, Rooted, ServiceOffer}
 import grit.core.store.{
   Audience,
   EntryStore,
@@ -113,7 +113,8 @@ object TurnOffer {
     * then, on an addressed turn, the tools advertised at each service `tooling.reaches` links
     * its place to ([[grit.core.place.Reaches.of]]) that [[grit.core.tool.Hosted.advertised]]
     * offers, less any whose name an earlier tool has (a heard-rooted turn is offered none of
-    * them), then `tooling`'s own, then its operator tools when
+    * them), then `tooling`'s conversing tools unless its recipe briefs the turn for one task
+    * ([[grit.core.recipe.Briefing.Tasked]]), then its own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]), then its
     * administering tools when its root is `Addressed` or `ByName` and its origin is colleagues'
     * ([[grit.core.store.Audience.Colleagues]]). A service place, its
@@ -124,8 +125,9 @@ object TurnOffer {
     * their arguments go to it. An advertised tool that writes
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
     * and not at all when none is; what it sends and writes out is checked at `at`; one the engine describes, only when it writes to all of its
-    * places. Its prompt: the base,
-    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]],
+    * places. Its prompt: the base ([[TurnPrompt.TaskBase]] when briefed for one task),
+    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]] (not when so
+    * briefed),
     * [[TurnPrompt.Briefed]] when `holder` names one its conversation's origin works as, its
     * edge's fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
     * where its reply goes ([[TurnPrompt.destination]]), what it is called
@@ -208,8 +210,8 @@ object TurnOffer {
         names.contains(h.name) &&
         whole.offerable(sends, at).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
       }
-      engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.administering.names ++
-        tooling.hosted.map(_.name)).toSet
+      engines = (tooling.conversing.names ++ tooling.tools.names ++ tooling.operator.names ++
+        tooling.administering.names ++ tooling.hosted.map(_.name)).toSet
       advertised = served.tools
         .filterNot(e => engines.contains(e.name))
         .flatMap(_.offerable(sends, at))
@@ -245,12 +247,17 @@ object TurnOffer {
         case (_, set, instructions) if set.tools.nonEmpty => instructions
       }.flatten)
       voice <- hosting.voices.current()
+      // A turn briefed for one task is told neither grit's labels nor who may see what.
+      conversing = tooling.recipe.briefing match {
+        case Briefing.Conversing => true
+        case Briefing.Tasked => false
+      }
       prompt = SystemPrompt.of(
         Vector(
-          TurnPrompt.Base,
+          if (conversing) TurnPrompt.Base else TurnPrompt.TaskBase,
           TurnPrompt.Candour,
-          TurnPrompt.Answering,
-          TurnPrompt.Security,
+          TurnPrompt.Answering
+        ) ++ Option.when(conversing)(TurnPrompt.Security) ++ Vector(
           TurnPrompt.TagRule,
           TurnPrompt.edge(conversation.origin)
         ) ++ holder(conversation.origin).map(_ => TurnPrompt.Briefed) ++
@@ -327,7 +334,8 @@ object TurnOffer {
     })
 
   /** The hosted tools of a turn from `origin` as a set, and its whole set: `hosted`, then the
-    * tools of `reaching` that [[Hosted.advertised]] offers, then `tooling`'s own, then its
+    * tools of `reaching` that [[Hosted.advertised]] offers, then `tooling`'s conversing tools
+    * unless its recipe briefs the turn for one task, then its own, then its
     * operator tools for the operator, then its administering tools when `administers`. Why not,
     * naming a name two of them share.
     */
@@ -342,8 +350,13 @@ object TurnOffer {
       .of[{}](hosted*)
       .map(_.set)
       .flatMap(h =>
-        (if (origin.audience.operator) Toolbox.joined(tooling.tools, tooling.operator)
-         else Right(tooling.tools))
+        (tooling.recipe.briefing match {
+          case Briefing.Conversing => Toolbox.joined(tooling.conversing, tooling.tools)
+          case Briefing.Tasked => Right(tooling.tools)
+        })
+          .flatMap(every =>
+            if (origin.audience.operator) Toolbox.joined(every, tooling.operator) else Right(every)
+          )
           .flatMap(own =>
             if (administers) Toolbox.joined(own, tooling.administering) else Right(own)
           )
@@ -376,16 +389,17 @@ object TurnOffer {
       recorded.zoned
     )
 
-  /** The tools `offer`'s set names, in its order: each `tooling`'s own tool, operator tool or
-    * administering tool, else its hosted one, else, for a name `offer` took from an advert, its
+  /** The tools `offer`'s set names, in its order: each `tooling`'s conversing tool, own tool,
+    * operator tool or administering tool, else its hosted one, else, for a name `offer` took from an advert, its
     * workspace's or a reached service's, that tool as
     * [[grit.core.tool.Hosted.advertised]] makes it from the set's entry, else a stand-in for
     * a tool this build no longer has ([[Tool.gone]]).
     */
   def toolbox[C^](tooling: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
     val chosen: Vector[Tool.Offered^{C}] = offer.tools.tools.map { entry =>
-      tooling.tools
+      tooling.conversing
         .tool(entry.name)
+        .orElse(tooling.tools.tool(entry.name))
         .orElse(tooling.operator.tool(entry.name))
         .orElse(tooling.administering.tool(entry.name)) match {
         case Some(own) => own

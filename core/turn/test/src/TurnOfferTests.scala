@@ -709,6 +709,102 @@ object TurnOfferTests extends TestSuite {
       recorded.reached.keySet ==>
         Set("search_x", "post_x", "post_y", "vault_read", "attic_read").map(named)
     }
+    test(
+      "a turn its recipe briefs for one task is offered none of grit's conversation tools and told neither its labels nor who may see what; a conversing one is offered them first, and runs about"
+    ) {
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      val origin = Origin.Tui(dir, "default")
+      def briefed(recipe: TurnRecipe): (Vector[String], String, String) = {
+        given grit.core.store.Tx = TestTx.fake
+        val conversations = new InMemoryConversationStore
+        val c: ConversationId = conversations
+          .findOrCreate(origin, Account.Local, Label.Public)
+          .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
+        val edges = new InMemoryEdges
+        val hosting = TurnHosting(
+          conversations,
+          Prompts,
+          ToolSets,
+          edges,
+          edges,
+          new InMemoryVoiceStore,
+          TurnFixtures.LocalAsker
+        )
+        val tooling = TurnTooling[{}](
+          box(tool(ToolName("digest"), asks = false)),
+          Toolbox.Empty,
+          Vector.empty,
+          new FakeJot,
+          budget(5),
+          recipe = recipe,
+          conversing =
+            box(tool(ToolName("about"), asks = false), tool(ToolName("clearance"), asks = false))
+        )
+        val recorded = TurnOffer
+          .decide(
+            hosting,
+            new InMemoryEntryStore,
+            new InMemoryPrincipals,
+            java.time.ZoneOffset.UTC,
+            tooling,
+            TurnRef(c, TurnSeq.First),
+            None,
+            answering = false,
+            Tx.classification,
+            _ => None
+          )
+          .fold(f => throw new java.lang.AssertionError(f.toString), identity)
+        val offer = TurnOffer
+          .load(ToolSets, Prompts, recorded)
+          .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+        val about = TurnOffer
+          .toolbox(tooling, offer)
+          .bind(
+            TestTainted.authority(
+              AssistantBlock.ToolCall(ToolCallId("c1"), "about", ujson.Obj("text" -> "who"))
+            ),
+            Repairs.All
+          ) match {
+          case Right(f: Bound.Free) => f(TestCallSlots.First).toString
+          case other => other.toString
+        }
+        (offer.tools.tools.map(t => ToolName.value(t.name)), offer.system, about)
+      }
+      // What both are told after the rules, as `expected` builds it.
+      val after = Vector(TurnPrompt.TagRule, TurnPrompt.edge(origin)) ++
+        TurnPrompt.destination(origin) ++ TurnPrompt.called(Persona.Grit, origin) ++
+        Vector(
+          TurnPrompt.room(origin, Label.Public),
+          TurnPrompt.reach(
+            TurnOffer.workspaceOf(origin, Vector.empty),
+            TurnPrompt.Serving.Unserved
+          )
+        )
+      (briefed(TurnRecipe.Shipped), briefed(TurnRecipe.Tasked)) ==> (
+        (
+          Vector("about", "clearance", "digest"),
+          SystemPrompt
+            .of(
+              Vector(
+                TurnPrompt.Base,
+                TurnPrompt.Candour,
+                TurnPrompt.Answering,
+                TurnPrompt.Security
+              ) ++ after
+            )
+            .render,
+          "Done(about,None,Unread,None,None)"
+        ),
+        (
+          Vector("digest"),
+          SystemPrompt
+            .of(Vector(TurnPrompt.TaskBase, TurnPrompt.Candour, TurnPrompt.Answering) ++ after)
+            .render,
+          "Left(Unknown(about,Vector(digest)))"
+        )
+      )
+    }
+
     test("a TUI turn is offered the operator's tools, after those offered everywhere") {
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       names(Origin.Tui(dir, "default")) ==> Vector("about", "propose", "probe")

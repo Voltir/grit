@@ -7,6 +7,7 @@ import scala.collection.mutable
 
 import grit.core.clock.{Clock, Fresh}
 import grit.core.place.Directory
+import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.host.checkout.Redaction
@@ -61,7 +62,8 @@ object WorkLiveTests extends TestSuite {
         offered,
         Vector.empty,
         Vector.empty,
-        java.time.ZoneOffset.UTC
+        java.time.ZoneOffset.UTC,
+        recipe = TurnRecipe.Tasked
       )
     )
 
@@ -154,10 +156,10 @@ object WorkLiveTests extends TestSuite {
         ) ==> (
           Right(()),
           Some(Rehearsed.Answered.Unsent),
-          // The allowlisted coding tools and scout's, beside what every turn is offered.
+          // The allowlisted coding tools and scout's, beside what every turn is offered; none of
+          // grit's conversation tools, the turn briefed for one task.
           Some(
-            "about,clearance,edit,extract,file_read,list,message_ids,read,read_hidden,run," +
-              "scout_find,search,stop,tail,topic,write"
+            "edit,extract,list,read,read_hidden,run,scout_find,search,stop,tail,topic,write"
           ),
           Some(false)
         )

@@ -30,10 +30,29 @@ enum Rooted {
   case Addressed
 }
 
+/** What a turn is told and offered besides its task's tools, by what runs its conversation. */
+enum Briefing {
+
+  /** All a conversation with people may need: who grit is, the labels of its view, who may see
+    * what, and grit's own tools for them (`about`, `clearance`, `message_ids`, `file_read`).
+    */
+  case Conversing
+
+  /** One task, and no conversation to recall or person to explain grit to: none of those. The
+    * room's own label is still told. Sound only while such a turn posts nowhere people read
+    * (ADR 0056).
+    */
+  case Tasked
+}
+
 /** How each turn is shaped: one rooted on a heard message by the focus it was said at; one
-  * rooted on a message said to grit by `addressed`.
+  * rooted on a message said to grit by `addressed`; every one briefed as `briefing` says.
   */
-final case class TurnRecipe(heard: ByFocus[Shaping], addressed: Shaping) {
+final case class TurnRecipe(
+    heard: ByFocus[Shaping],
+    addressed: Shaping,
+    briefing: Briefing = Briefing.Conversing
+) {
 
   def at(rooted: Rooted): Shaping = rooted match {
     case Rooted.Heard(focus) => heard.at(focus)
@@ -70,4 +89,7 @@ object TurnRecipe {
     val shaping = Shaping(Width.Deployed, Offering.All)
     TurnRecipe(ByFocus.both(shaping), shaping)
   }
+
+  /** [[Shipped]], briefed for one task ([[Briefing.Tasked]]): what `grit work` runs. */
+  val Tasked: TurnRecipe = Shipped.copy(briefing = Briefing.Tasked)
 }

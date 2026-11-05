@@ -509,19 +509,23 @@ private[grit] object Launch {
       runtime.askers,
       clock
     )
-    // Offered everywhere: grit's own, every plugin's tools, then the commands it offers turns.
-    val everyone: Either[SetRefusal, Toolbox[caps.CapSet^{desks, files, clock}]] =
-      Toolbox.of[caps.CapSet^{desks, files, clock}](
-        (Vector[Tool.Offered^{desks, files, clock}](
+    // grit's own tools for a conversation with people, offered first unless the recipe briefs a
+    // turn for one task; then, everywhere, every plugin's tools and the commands it offers
+    // turns; and the two joined, refused here when they share a name.
+    type Everyone = caps.CapSet^{desks, files, clock}
+    val everyone: Either[SetRefusal, (Toolbox[Everyone], Toolbox[Everyone], Toolbox[Everyone])] =
+      for {
+        conversing <- Toolbox.of[Everyone](
           own(
             d.persona,
             runtime.askers,
             MessageIds.Stores(runtime.entries, runtime.rooms, runtime.search, runtime.principals),
             files
           )*
-        ) ++
-          plugged.map(_.over(desks)) ++ commands)*
-      )
+        )
+        every <- Toolbox.of[Everyone]((plugged.map(_.over(desks)) ++ commands)*)
+        both <- Toolbox.joined[Everyone](conversing, every)
+      } yield (conversing, every, both)
     // Offered whatever d.offer is, where TurnOffer.decide offers them.
     val administration = runtime.administration
     val administers: Either[SetRefusal, Toolbox[caps.CapSet^{administration, clock}]] =
@@ -531,9 +535,9 @@ private[grit] object Launch {
       // Neither asks first, so neither offers the operator's tools, which do.
       case Offered.Read | Offered.Allowlisted(_) =>
         (everyone, administers) match {
-          case (Right(tools), Right(admin)) =>
+          case (Right((conversing, tools, both)), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[caps.CapSet^{desks, files, administration, clock}](tools, admin).map {
+            Toolbox.joined[caps.CapSet^{desks, files, administration, clock}](both, admin).map {
               all =>
                 reserved(all)
                 launch(
@@ -549,7 +553,8 @@ private[grit] object Launch {
                     knowledge = d.knowledge,
                     persona = d.persona,
                     administering = admin,
-                    renders = shows
+                    renders = shows,
+                    conversing = conversing
                   )
                 )
             }
@@ -564,10 +569,10 @@ private[grit] object Launch {
           Toolbox.of[caps.CapSet^{tuned, models}](operator(tuned, models)*),
           administers
         ) match {
-          case (Right(tools), Right(operator), Right(admin)) =>
+          case (Right((conversing, tools, both)), Right(operator), Right(admin)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox
-              .joined[caps.CapSet^{tuned, models, desks, files, clock}](tools, operator)
+              .joined[caps.CapSet^{tuned, models, desks, files, clock}](both, operator)
               .flatMap(
                 Toolbox.joined[caps.CapSet^{tuned, models, desks, files, administration, clock}](
                   _,
@@ -589,7 +594,8 @@ private[grit] object Launch {
                     knowledge = d.knowledge,
                     persona = d.persona,
                     administering = admin,
-                    renders = shows
+                    renders = shows,
+                    conversing = conversing
                   )
                 )
               }
@@ -635,7 +641,8 @@ private[grit] object Launch {
       stores.savepoints
     )
 
-  /** grit's own tools, offered in every conversation: what grit is, as `persona` is told it
+  /** grit's own tools for a conversation with people ([[TurnTooling.conversing]]): what grit
+    * is, as `persona` is told it
     * ([[About]]), what the person asking is cleared for, its turn's asker as `askers`
     * resolves them, explained as read through the reads its turn hands it ([[Cleared]]), and
     * the ids of this conversation and of the asker's messages, read from `messages`

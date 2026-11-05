@@ -69,6 +69,19 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
+      "the base a task is told is the base less its labels paragraph, every other paragraph in its place and words"
+    ) {
+      val base = TurnPrompt.Base.text.split("\n\n").toVector
+      val task = TurnPrompt.TaskBase.text
+      (
+        SectionTag.values.toVector.filter(l => task.contains(l.tag)),
+        base.lift(1).exists(_.startsWith("grit labels what it writes into your view")),
+        task.split("\n\n").toVector,
+        TurnPrompt.TaskBase.layer
+      ) ==> (Vector.empty, true, base.patch(1, Nil, 1), Layer.Base)
+    }
+
+    test(
       "a Slack thread's edge: several people, who \"the person\" is, Markdown rendered, and no legend for the name lines"
     ) {
       TurnPrompt.edge(Origin.Slack("T1", "C1", "1.0")).text ==>

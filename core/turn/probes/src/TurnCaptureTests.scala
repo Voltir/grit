@@ -53,6 +53,14 @@ object TurnCaptureTests extends TestSuite {
       |  TurnTooling(box, Toolbox.Empty, Vector.empty, j, b)
       |""".stripMargin
 
+  /** A toolbox that edits through `e`, handed to a turn whose own tools act through `ws` alone
+    * as its conversation tools ([[TurnTooling.conversing]]).
+    */
+  private val conversingEdits =
+    """def offered(ws: Workspace^, e: Edits^, own: Toolbox[{ws}], box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Rounds): TurnTooling[{ws}]^{j} =
+      |  TurnTooling(own, Toolbox.Empty, Vector.empty, j, b, conversing = box)
+      |""".stripMargin
+
   /** A tool that edits through `e`, handed to `tooling` as a hosted tool: one the edge runs,
     * which must act through nothing here.
     */
@@ -130,6 +138,7 @@ object TurnCaptureTests extends TestSuite {
       holding(holdsWriting),
       reading,
       editing,
+      conversingEdits,
       smuggled("TurnTooling"),
       breach + smuggled("Breached"),
       reads("pure"),
@@ -175,7 +184,13 @@ object TurnCaptureTests extends TestSuite {
   /** The breaches, their capture sets erased, compiled with capture checking off. */
   private lazy val unchecked = Probes.batch(
     erased(prelude),
-    List(reads("spying"), editing, smuggled("TurnTooling"), extracting("Tool.Offered")).map(erased),
+    List(
+      reads("spying"),
+      editing,
+      conversingEdits,
+      smuggled("TurnTooling"),
+      extracting("Tool.Offered")
+    ).map(erased),
     off
   )
 
@@ -207,6 +222,12 @@ object TurnCaptureTests extends TestSuite {
 
     test("a turn whose tools act through its workspace alone is not handed a tool that edits") {
       assert(rejected(errors(editing)))
+    }
+
+    test(
+      "a turn whose tools act through its workspace alone is not handed a conversation tool that edits"
+    ) {
+      assert(rejected(errors(conversingEdits)))
     }
 
     test("a hosted tool that acts through a capability here is rejected") {
@@ -254,7 +275,8 @@ object TurnCaptureTests extends TestSuite {
     }
 
     test("capture checking is what rejects the tool that edits") {
-      val errs = Vector(editing, smuggled("TurnTooling")).flatMap(s => unchecked.errors(erased(s)))
+      val errs = Vector(editing, conversingEdits, smuggled("TurnTooling"))
+        .flatMap(s => unchecked.errors(erased(s)))
       errs ==> Vector()
     }
   }

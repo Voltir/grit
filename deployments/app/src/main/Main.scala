@@ -15,6 +15,7 @@ import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.model.ModelId
 import grit.core.place.Directory
+import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
 import grit.host.checkout.Redaction
@@ -152,7 +153,8 @@ import Backfills.*
   *   - **`work <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
   *     in the directory grit runs in, under `GRIT_SESSION`, with that directory's edge served
   *     as the chat serves it ([[ChatEdges.serving]]): the tools `GRIT_TOOLS` names, as in a run
-  *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set. Each
+  *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set; its
+  *     turn briefed for one task ([[grit.core.recipe.TurnRecipe.Tasked]]). Each
   *     model call is printed as it is sent and again once answered, with its input, cache reads
   *     and writes, output and cost ([[grit.core.provider.CallLine.answered]]); then its turn and reply, as for a
   *     message. The same text said again in the same directory and session awaits the turn it
@@ -245,7 +247,10 @@ object Main {
           worksIn,
           java.time.ZoneId.systemDefault(),
           slackIn,
-          reaches
+          reaches,
+          // `grit work` says one task, with no conversation to recall or person to explain grit
+          // to: its turn is briefed for it (ADR 0056).
+          if (working.nonEmpty) TurnRecipe.Tasked else TurnRecipe.Shipped
         )
       )
     val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))

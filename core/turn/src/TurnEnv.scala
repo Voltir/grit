@@ -273,7 +273,13 @@ final case class TurnHosting(
   * an edge holds with colleagues ([[grit.core.store.Audience.Colleagues]]), never a heard or
   * unprompted turn, nor one in a direct message, a job's run or a directory's conversation;
   * whatever tools the deployment's `Offered` chose, which governs only the coding and operator
-  * tools.
+  * tools. `conversing`, grit's own tools for a conversation with people, are offered before
+  * `tools` unless `recipe` briefs the turn for one task ([[grit.core.recipe.Briefing.Tasked]]).
+  *
+  * Of its own tools a turn is offered, in this order, by four questions: what runs its
+  * conversation (`recipe`'s briefing: `conversing`), every turn (`tools`), who reads it
+  * (its origin's audience: `operator`), and what it answers in which room (its root and
+  * audience: `administering`). The coding tools, `hosted`, the deployment's `Offered` chose.
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
@@ -288,7 +294,8 @@ final case class TurnTooling[C^](
     knowledge: Corpora = Corpora.Empty,
     persona: Persona = Persona.Grit,
     administering: Toolbox[C] = Toolbox.Empty,
-    renders: Map[EdgeName, String] = Map.empty
+    renders: Map[EdgeName, String] = Map.empty,
+    conversing: Toolbox[C] = Toolbox.Empty
 )
 
 object TurnTooling {
