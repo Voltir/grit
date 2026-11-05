@@ -177,6 +177,20 @@ object QueryLiveTests extends TestSuite {
       }
     }
 
+    // An application may hold a worker's lease as a session advisory lock: one a query takes must
+    // not outlive it on grit's connection, or the worker waits for it forever.
+    test("an advisory lock a query takes is released when it ends, whichever way it was taken") {
+      using(db.reader(db.login("locker", Grants))) { r =>
+        val taken =
+          Right(Some(Rows(Vector("pg_try_advisory_lock"), Vector(Vector(Some("t"))), None)))
+        assert(
+          r.query(statement("SELECT pg_advisory_lock(42)")).isRight,
+          r.query(statement("SELECT pg_try_advisory_lock(43)")) == taken,
+          db.one("SELECT pg_try_advisory_lock(42) AND pg_try_advisory_lock(43)") == "t"
+        )
+      }
+    }
+
     test("an answer past the driver's buffer is refused as too large, and the next query answers") {
       using(db.reader(db.login("huge", Grants), limits = AppDatabase.limits(bytes = 1024))) { r =>
         assert(

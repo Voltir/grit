@@ -29,9 +29,10 @@ No source file sits at the module's root. The test tree mirrors it.
   `SELECT` on exactly the columns its place's label admits.
 - **The catalog is not compartmented.** Any role reads the system catalogs, so every table's and
   column's name and comment is visible to the lowest role: no confidential fact goes in one.
-- **A rollback does not undo everything.** Each query's transaction is rolled back, which undoes
-  every setting a statement makes, but a session's advisory locks and `LISTEN`s outlive it,
-  until the connection ends.
+- **Nothing a query takes outlives it.** Each query's transaction is rolled back, which undoes
+  every setting a statement makes; the session's advisory locks and `LISTEN`s, which a rollback
+  leaves, are then released, or the connection is closed. An application may hold a worker's
+  lease as an advisory lock, and grit's connection must never keep one.
 - **The driver may find a password grit did not pass.** pgjdbc reads `~/.pgpass` (or
   `PGPASSFILE`) when no password is given. The role check catches a login that lands as
   another role, but not a password read from there for the declared role itself.

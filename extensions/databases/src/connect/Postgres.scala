@@ -16,6 +16,9 @@ private[connect] object Postgres {
 
   val Rollback: String = "ROLLBACK"
 
+  /** What clears the session state a rollback leaves: its advisory locks and its `LISTEN`s. */
+  val Reset: Vector[String] = Vector("SELECT pg_advisory_unlock_all()", "UNLISTEN *")
+
   /** Each column the role may select, of each table, view, materialized view or foreign table
     * outside the system schemas and in a schema it may use, no partition, by schema, relation
     * and column order: schema, relation, its kind, its comment, the column, its type and

@@ -165,7 +165,10 @@ object DatabaseReader {
       transaction(c, limits)(st => mismatch(who(st), role))
     }
 
-  /** `body` run in a read-only transaction on `c` under `limits`' timeout, rolled back after. */
+  /** `body` run in a read-only transaction on `c` under `limits`' timeout, rolled back after,
+    * and then the session's advisory locks released and its `LISTEN`s ended, which a rollback
+    * leaves; `c` is closed when that fails, so nothing `body` took outlives it.
+    */
   private[connect] def transaction[A](c: Connection, limits: Limits)(body: Statement => A): A = {
     val st = c.createStatement()
     try {
@@ -179,12 +182,19 @@ object DatabaseReader {
             // The failure is the body's; a rollback that fails too says only that it broke.
             try st.execute(Postgres.Rollback)
             catch { case _: SQLException => () }
+            reset(c, st)
             throw e
         }
       st.execute(Postgres.Rollback)
+      reset(c, st)
       a
     } finally st.close()
   }
+
+  /** What the rollback left of `c`'s session cleared on `st`, or `c` closed. */
+  private def reset(c: Connection, st: Statement): Unit =
+    try Postgres.Reset.foreach(st.execute)
+    catch { case _: SQLException => quietly(c) }
 
   /** `rs`'s rows as `limits` keep them: whole rows while they and the columns' names fit the
     * limits' bytes of UTF-8, at most the limits' rows, the clip said.
