@@ -5,7 +5,7 @@ tools at a service place (what a deployment can supply:
 [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
 An application's database read as a service, one database role to a place
-([ADR 0056](../../docs/decisions/0056-an-applications-database-is-read-as-a-service-one-database-role-to-a-place-the-roles-grants-the-boundary-and-the-role-checked-on-every-query.md)).
+([ADR 0057](../../docs/decisions/0057-an-applications-database-is-read-as-a-service-one-database-role-to-a-place-the-roles-grants-the-boundary-and-the-role-checked-on-every-query.md)).
 A shipped extension (ADR 0021): it names core and `grit.edge` alone
 (`databases-names-core-and-edge-alone`), and JDBC's second role beside `grit.dbos` (STYLE rule
 8), in its `connect` package alone. The JDBC driver is the deployment's dependency, not this

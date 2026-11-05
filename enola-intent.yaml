@@ -45,7 +45,7 @@ components:
     match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**", "extensions/formats/**", "extensions/chat/**", "extensions/databases/**"]
 
   # Every folder but the two JDBC quarantines (STYLE rule 8): grit.dbos, grit's own store, and
-  # grit.databases' connect package, an application's database (ADR 0056). The module's it
+  # grit.databases' connect package, an application's database (ADR 0057). The module's it
   # sources are left out too: its attack tests make roles and grants over an admin connection.
   - name: outside-jdbc
     kind: dependency
@@ -325,7 +325,7 @@ rules:
 
   # -------------------------------------------------------------------------------------
   # 1b. Only the JDBC quarantines import JDBC or the Postgres driver (STYLE rule 8's other
-  # half): grit.dbos for grit's own store, grit.databases' connect for an application's (ADR 0056).
+  # half): grit.dbos for grit's own store, grit.databases' connect for an application's (ADR 0057).
   #
   # java.sql and javax.sql are in the JDK, so no module's classpath lacks them: these
   # rules are the only guard anywhere, not just in grit.app. Same one-class-per-rule
@@ -970,7 +970,7 @@ rules:
     only: [core-code, edge-code, databases-code]
     via: imports
     mode: strict
-    because: "ADR 0021 and 0056: an application's database is served over core's traits and grit.edge alone, naming no other extension and no grit.dbos"
+    because: "ADR 0021 and 0057: an application's database is served over core's traits and grit.edge alone, naming no other extension and no grit.dbos"
 
   - id: formats-names-core-alone
     allow: formats-code

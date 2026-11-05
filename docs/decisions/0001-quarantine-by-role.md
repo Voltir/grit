@@ -10,7 +10,7 @@ application, and one module per library (a driver module each, its logic elsewhe
 
 Decision: a module owns a role, and any Java library that role needs lives only inside it,
 translated into grit's conventions before anything leaves: DBOS and JDBC for grit's own store
-in `grit.dbos`, JDBC for an application's database in `grit.databases` (ADR 0056), the JDK
+in `grit.dbos`, JDBC for an application's database in `grit.databases` (ADR 0057), the JDK
 HTTP client in `grit.models` and `grit.mcp`, the Slack SDK in `grit.slack`, processes in
 `grit.host`. Such *quarantine modules* depend only on `grit.core` (an edge's also on
 `grit.prose` and `grit.edge`), and meet only in `grit.kit` and `grit.app`. Logic that merely

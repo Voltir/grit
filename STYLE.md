@@ -145,7 +145,7 @@ For DBOS the module is `grit.dbos`. Everything ugly — DBOS reflection over
 
 **Nothing outside `grit.dbos` imports `dev.dbos.*`, and nothing outside `grit.dbos` and
 `grit.databases.connect` imports `java.sql.*`** (grit's own store, and an application's database:
-[ADR 0056](docs/decisions/0056-an-applications-database-is-read-as-a-service-one-database-role-to-a-place-the-roles-grants-the-boundary-and-the-role-checked-on-every-query.md)).
+[ADR 0057](docs/decisions/0057-an-applications-database-is-read-as-a-service-one-database-role-to-a-place-the-roles-grants-the-boundary-and-the-role-checked-on-every-query.md)).
 (Opaque type definitions that *alias* a quarantine type — e.g. `opaque type Tx =
 java.sql.Connection` — may name it fully-qualified without an `import`; that is a type
 definition, not an I/O call site.)

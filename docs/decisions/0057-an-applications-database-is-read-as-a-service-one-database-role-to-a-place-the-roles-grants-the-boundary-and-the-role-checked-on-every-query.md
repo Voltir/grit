@@ -1,4 +1,4 @@
-# 0056. An application's database is read as a service, one database role to a place: the role's grants are the boundary, and the role is checked on every query
+# 0057. An application's database is read as a service, one database role to a place: the role's grants are the boundary, and the role is checked on every query
 
 Status: accepted (2026-11-04)
 

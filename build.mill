@@ -490,7 +490,7 @@ object grit extends Module {
   }
 
   /* An application's Postgres database, read as a service: one database role to a place, the
-   * role's grants the boundary (ADR 0056). JDBC's second role beside grit.dbos (STYLE rule 8),
+   * role's grants the boundary (ADR 0057). JDBC's second role beside grit.dbos (STYLE rule 8),
    * in its connect package alone; the driver is the deployment's dependency, not this one's.
    * extensions/databases/README.md. */
   object databases extends GritPublished with Placed {
