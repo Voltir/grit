@@ -58,5 +58,21 @@ object ChatEdgesTests extends TestSuite {
         Right(None)
       )
     }
+
+    test("scout offers the tools its place layer names, and the layer names each of them") {
+      (
+        ChatEdges.scout(Map("GRIT_SCOUT" -> "/opt/scout")).map(_.map(_.allow)),
+        ChatEdges.ScoutInstructions
+      ) ==> (
+        Right(Some(Set("find", "show", "uses", "file", "family"))),
+        "scout reads this checkout's compiled Scala, not its source files: each answer is as " +
+          "current as the last compile of the module it reads. After you edit a Scala file, " +
+          "compile its module with the build's own command (through run) before you ask scout " +
+          "about it. Ask scout_find for a name you don't know, scout_show for a signature or a " +
+          "body, scout_uses for every caller before you change a signature, scout_file for " +
+          "where a file's imports end and its definitions begin, and scout_family for a trait " +
+          "and every implementation of it; use read for files that are not Scala."
+      )
+    }
   }
 }

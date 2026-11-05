@@ -88,19 +88,40 @@ private[main] object ChatEdges {
   private[main] def scoutReaches(scout: Service): Reaches =
     Reaches(Place.under(Namespace.Fs, Vector.empty), scout)
 
-  /** The Place layer advertised at `service:scout`, telling the model what scout reads. */
-  private[main] val ScoutInstructions: String =
+  /** The name scout's server is reached by, each of its tools offered as `scout_<tool>`. */
+  private val ScoutServer = "scout"
+
+  /** The tools of scout's a directory's conversations are offered, by scout's own names, in
+    * order, each with what [[ScoutInstructions]] tells the model to ask it for. Its others
+    * (`area`, `tests`) are not offered.
+    */
+  private[main] val ScoutTools: Vector[(String, String)] = Vector(
+    "find" -> "for a name you don't know",
+    "show" -> "for a signature or a body",
+    "uses" -> "for every caller before you change a signature",
+    "file" -> "for where a file's imports end and its definitions begin",
+    "family" -> "for a trait and every implementation of it"
+  )
+
+  /** The Place layer advertised at `service:scout`, telling the model what scout reads and what
+    * to ask each of [[ScoutTools]] for.
+    */
+  private[main] val ScoutInstructions: String = {
+    val asks = ScoutTools.map((tool, what) => s"${ScoutServer}_$tool $what") match {
+      case Vector(only) => only
+      case init :+ last => s"${init.mkString(", ")}, and $last"
+      case _ => ""
+    }
     "scout reads this checkout's compiled Scala, not its source files: each answer is as " +
       "current as the last compile of the module it reads. After you edit a Scala file, compile " +
-      "its module with the build's own command (through run) before you ask scout about it. Ask " +
-      "scout_find for a name you don't know, scout_show for a signature or a body, scout_uses " +
-      "for every caller before you change a signature, and scout_file for where a file's " +
-      "imports end and its definitions begin; use read for files that are not Scala."
+      s"its module with the build's own command (through run) before you ask scout about it. Ask " +
+      s"$asks; use read for files that are not Scala."
+  }
 
   /** scout's MCP server as `env` declares it: the program [[ScoutVar]] names, run as
-    * `<path> mcp`, every tool it lists offered ([[McpScope.Open]]), its `root` argument set to
-    * the asking conversation's directory; `None` when unset; why not, naming the variable, when
-    * the path is not absolute.
+    * `<path> mcp`, its tools [[ScoutTools]] offered ([[McpScope.Open]]), its `root` argument set
+    * to the asking conversation's directory; `None` when unset; why not, naming the variable,
+    * when the path is not absolute.
     */
   private[main] def scout(
       env: Map[String, String]
@@ -112,7 +133,15 @@ private[main] object ChatEdges {
       case Some(path) =>
         Argv
           .of(path, "mcp")
-          .flatMap(McpServer.stdio("scout", _, McpScope.Open, directoryArgument = Some("root")))
+          .flatMap(
+            McpServer.stdio(
+              ScoutServer,
+              _,
+              McpScope.Open,
+              allow = ScoutTools.map(_._1).toSet,
+              directoryArgument = Some("root")
+            )
+          )
           .map(Some(_))
           .left
           .map(why => s"$ScoutVar: $why")
