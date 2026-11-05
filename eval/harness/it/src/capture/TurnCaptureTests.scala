@@ -170,6 +170,7 @@ object TurnCaptureTests extends TestSuite {
       extends ContextAssembler {
     def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
       under.prepare(request)
+    def limit: Tokens = under.limit
     def search(request: AssemblyRequest, written: Querying.Written)(using
         Db^
     ): Either[AssemblyError, Results] = under.search(request, written)

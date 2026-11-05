@@ -80,6 +80,24 @@ object TurnLoop {
     }
   }
 
+  /** The input a turn's requests are held to ([[Rounds.limit]]): `window`, its assembler's limit,
+    * plus `prefix`, what its system prompt and tools cost; capped, when the pin's
+    * `contextLength` is known, by that less `maxTokens`, the pin's output budget; less
+    * `clipped`, room for one clipped tool result the loop has not yet seen. Never below one
+    * token.
+    */
+  def inputLimit(
+      window: Tokens,
+      prefix: Tokens,
+      contextLength: Option[Tokens],
+      maxTokens: Int,
+      clipped: Tokens
+  ): Tokens = {
+    val drawn = Tokens.value(window) + Tokens.value(prefix)
+    val held = contextLength.fold(drawn)(l => math.min(drawn, Tokens.value(l) - maxTokens))
+    Tokens(math.max(1L, held - Tokens.value(clipped)))
+  }
+
   /** The notes the loop's calls up to `round` add, as a gate's are ([[TurnShown.loopShape]]):
     * [[LastTools]] at `budget`'s last call with tools, once `round` has reached it, unless that
     * is the turn's first call; else none.

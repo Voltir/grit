@@ -125,6 +125,9 @@ final class RetrievalAssembler(
 ) extends ContextAssembler {
   import RetrievalAssembler.{Candidate, Found, Held, Pieced, Shelves}
 
+  /** `budget`. */
+  def limit: Tokens = budget
+
   /** Within half of `budget` and `hits`, or those `request.width` names. */
   def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
     based(request).map { base =>

@@ -90,6 +90,46 @@ object TurnLoopTurnTests extends TestSuite {
     })
   )
 
+  /** A turn of up to 12 calls whose every reply calls peek, its request's input 1,000 then
+    * 20,000 more each round, drawn under a `window` limit and pinned from `catalog`: each
+    * request's tool use and whether it was told it is the last with tools, and what the turn
+    * returned.
+    */
+  private def limited(
+      window: Tokens = grit.assembly.linear.LinearAssembler.DefaultBudget,
+      catalog: grit.core.model.Catalog = TurnFixtures.TestCatalog
+  ): (Vector[(ToolUse, Boolean)], String) = {
+    val entries = new InMemoryEntryStore
+    val ws = new Files(files)
+    val provider = new Scripted((_, n) =>
+      Right(
+        calling(s"r$n", (s"t$n", "peek", "a.txt"))
+          .copy(usage = Usage(Tokens(1000L + 20_000L * n), Tokens(2), Tokens.Zero, None))
+      )
+    )
+    val turn = say(entries, "read them")
+    val said = new InMemoryDurable().run(turn.workflowId)(
+      tooledBody(
+        entries,
+        provider,
+        new InMemoryUsageLedger,
+        new StubProvider(),
+        NoClassifier,
+        ws,
+        tools(ws),
+        12,
+        catalog = catalog,
+        window = window
+      )
+    )
+    def told(r: ModelRequest) = r.messages.exists {
+      case Message.User(t) => t == TurnLoop.LastTools
+      case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LastTools)
+      case _ => false
+    }
+    (provider.requests.map(r => (r.use, told(r))), said)
+  }
+
   val tests = Tests {
     test("three rounds: each call and each tool its own step, the exchange kept in order") {
       val entries = new InMemoryEntryStore
@@ -562,6 +602,47 @@ object TurnLoopTurnTests extends TestSuite {
         (ToolUse.Auto, false),
         (ToolUse.Auto, true),
         (ToolUse.Off, true)
+      )
+    }
+
+    test(
+      "a turn whose input meets its assembler's limit, less a clipped result's room, is told on its next call that it is the last with tools, and ends in text on the one after"
+    ) {
+      // Each round's input grows 20,000: reply 1's 21,000 plus that growth meets a 30,000
+      // window's limit plus the prefix, less one clipped result (about 23,000 tokens).
+      val (requests, said) = limited(window = Tokens(30_000))
+      said ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      requests ==> Vector(
+        (ToolUse.Auto, false),
+        (ToolUse.Auto, false),
+        (ToolUse.Auto, true),
+        (ToolUse.Off, true)
+      )
+    }
+
+    test("a pin's context length caps a larger window's limit, less its output budget") {
+      // 50,000 tokens less the pin's 4,096 out and a clipped result leaves about 23,000: met at
+      // reply 1, as a 30,000 window's limit is above. The deployed 100,000 window alone is not.
+      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
+      val capped = TurnFixtures.TestCatalog.overlaid(
+        Vector(
+          grit.core.model.Profile(
+            ref,
+            contextLength = grit.core.model.Known.Of(
+              Tokens(50_000),
+              grit.core.model.Source.Declared("test", java.time.LocalDate.of(2026, 11, 5))
+            )
+          )
+        )
+      )
+      (limited(catalog = capped)._1, limited()._1.take(3)) ==> (
+        Vector(
+          (ToolUse.Auto, false),
+          (ToolUse.Auto, false),
+          (ToolUse.Auto, true),
+          (ToolUse.Off, true)
+        ),
+        Vector((ToolUse.Auto, false), (ToolUse.Auto, false), (ToolUse.Auto, false))
       )
     }
 

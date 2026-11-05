@@ -50,6 +50,9 @@ final class LinearAssembler(
     budget: Tokens
 ) extends ContextAssembler {
 
+  /** `budget`. */
+  def limit: Tokens = budget
+
   /** Always drawn: it never searches. */
   def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
     Right(Prepared.Drawn(Querying.Drawn(Vector.empty)))

@@ -44,13 +44,17 @@ trait ContextAssembler extends caps.Pure {
     * order, each one that fits what is left; one not admitted is never shown. Appended: the
     * turns since the carried window's last part's turn, then each admitted result not carried.
     * Its notes are the query's, then which earlier turns of its own it recalled.
-    * [[Projection.Boundary]] when `request.carried` is empty or at the assembler's limit, which
-    * each assembler states; else [[Projection.Appended]], holding nothing `request.carried`
-    * holds.
+    * [[Projection.Boundary]] when `request.carried` is empty or at the assembler's [[limit]];
+    * else [[Projection.Appended]], holding nothing `request.carried` holds.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
   ): Either[AssemblyError, Projection]
+
+  /** What the window, carried and appended, may cost by this assembler's estimate before it
+    * draws a boundary (ADR 0052).
+    */
+  def limit: Tokens
 }
 
 object ContextAssembler {

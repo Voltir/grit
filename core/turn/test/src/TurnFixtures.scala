@@ -1219,11 +1219,12 @@ object TurnFixtures {
   private def all(entries: EntryStore): Vector[Entry] =
     entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
 
-  /** An assembler that never searches: each turn's window is [[window]]'s. Its limit is every
-    * window: each is a boundary, costing nothing.
+  /** An assembler that never searches: each turn's window is [[window]]'s. Every window is a
+    * boundary, costing nothing, under the deployed default's limit.
     */
   abstract class Drawing extends ContextAssembler {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
+    def limit: Tokens = LinearAssembler.DefaultBudget
     def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
       Right(Prepared.Drawn(grit.core.context.Querying.Drawn(Vector.empty)))
     def search(request: AssemblyRequest, written: grit.core.context.Querying.Written)(using
@@ -2022,7 +2023,8 @@ object TurnFixtures {
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched(),
       limit: Option[Tokens] = None,
-      catalog: Catalog = TestCatalog
+      catalog: Catalog = TestCatalog,
+      window: Tokens = LinearAssembler.DefaultBudget
   )(id: WorkflowId)(using Durable^): String =
     toolsBody(
       entries,
@@ -2035,7 +2037,8 @@ object TurnFixtures {
       clock,
       hosted,
       limit,
-      catalog
+      catalog,
+      window
     )(
       speech,
       stitching,
@@ -2054,7 +2057,8 @@ object TurnFixtures {
       clock: Clock^,
       hosted: Vector[Tool.Offered],
       limit: Option[Tokens] = None,
-      catalog: Catalog = TestCatalog
+      catalog: Catalog = TestCatalog,
+      window: Tokens = LinearAssembler.DefaultBudget
   )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
       Durable^
   ): String =
@@ -2076,7 +2080,7 @@ object TurnFixtures {
           NoPeriods,
           new InMemoryPrincipals,
           CharEstimate,
-          LinearAssembler.DefaultBudget
+          window
         ),
         grit.core.classify.TestClassifiers.cleared(classifier),
         new FixedModels(provider, summarizer, catalog),

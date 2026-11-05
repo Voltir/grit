@@ -7,9 +7,10 @@ import grit.core.allot.Router
 import grit.core.context.{AssemblyNote, Projection, Window}
 import grit.core.document.Pointer
 import grit.core.durable.{Flow, Step, StepName, StreamWriter}
-import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{Grade, ModelRef, Pinned, TurnProfile, TurnProfileId}
+import grit.core.host.Clipped
+import grit.core.id.{DocumentVersionId, EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
+import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.model.{Grade, ModelRef, Pinned, StrictSchemas, TurnProfile, TurnProfileId}
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.session.{Event, Session}
@@ -53,9 +54,11 @@ private[turn] object TurnSteps {
     ): Either[TurnFailure, TurnOffer.Recorded]
 
     /** The limits a loop offered what `offer` names ([[TurnOffer.load]]), its calls allotted as
-      * `routed` says, its model asked about `asked`, runs under: `TurnFailure.Store` when the
-      * offer's tool set or prompt is not kept, `TurnFailure.Model` when its tools do not make
-      * one toolbox ([[TurnShown.offered]]).
+      * `routed` says, its model asked about `asked`, runs under, its requests' input held to
+      * [[TurnLoop.inputLimit]] of the assembler's limit, the offer's prompt and tools and
+      * `routed`'s turn pin: `TurnFailure.Store` when the offer's tool set or prompt, or the
+      * profile `routed` names, is not kept, `TurnFailure.Model` when its tools do not make one
+      * toolbox ([[TurnShown.offered]]).
       */
     def limits(
         offer: TurnOffer.Recorded,
@@ -134,15 +137,27 @@ private[turn] object TurnSteps {
         routed: Turn.Routed,
         asked: Option[TurnAgenda.Classification]
     )(using Tx^): Either[TurnFailure, TurnRound.Limits] =
-      turnEnv.hosting
-        .offered(offer)
-        .flatMap(o => TurnShown.offered(TurnOffer.toolbox(tooling, o), asked))
-        .map(_ =>
-          TurnRound.Limits(
-            TurnLoop.Rounds.allotted(tooling.budget, routed.calls),
-            tooling.answerWithin
-          )
+      for {
+        o <- turnEnv.hosting.offered(offer)
+        tools <- TurnShown.offered(TurnOffer.toolbox(tooling, o), asked)
+        picked <- routed.pickedIn(turnEnv.records.profiles)
+      } yield {
+        val estimator = turnEnv.records.estimator
+        val pin = picked.turn
+        val strict = pin.settings.strict == StrictSchemas.Enforced
+        val limit = TurnLoop.inputLimit(
+          turnEnv.assembler.limit,
+          estimator.system(o.system) + estimator.tools(tools.schemas(strict)),
+          pin.settings.contextLength,
+          pin.assignment.maxTokens,
+          // One clipped tool result, the most a host tool answers with.
+          estimator.message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false))
         )
+        val budget = TurnLoop.Rounds.allotted(tooling.budget, routed.calls)
+        val held =
+          budget.limit.fold(limit)(own => Tokens(math.min(Tokens.value(own), Tokens.value(limit))))
+        TurnRound.Limits(budget.within(held).getOrElse(budget), tooling.answerWithin)
+      }
 
     def rounds: TurnRound.Env^{this} = rounding
 

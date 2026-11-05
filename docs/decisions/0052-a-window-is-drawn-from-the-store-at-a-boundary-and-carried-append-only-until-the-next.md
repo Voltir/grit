@@ -1,6 +1,6 @@
 # 0052. A window is drawn from the store at a boundary and carried, append-only, until the next
 
-Status: accepted (2026-10-29); revised (2026-10-30)
+Status: accepted (2026-10-29); revised (2026-10-30, 2026-11-05)
 
 Context: a provider caches a request from the front, and current models refuse a history that
 carries thinking blocks once anything before them is edited. A window redrawn every turn misses
@@ -36,13 +36,20 @@ Decision:
   turn's first gate, decided over what it carries, hides none of it; otherwise it draws a
   boundary. So a carried document gone, content this turn's route does not clear, a changed
   tool set or prompt, a turn whose last call was forced (its last-call message is in no
-  record), or one that met its growth bound (its last-tools note is in no record) makes a
+  record), or one that met its input limit (its last-tools note is in no record) makes a
   boundary, never an edited prefix. A window drawn from the store
   replays no reasoning: thinking is bound to the request that produced it.
-- **The limit is the deployment's `Assembly` budget**, read from the assembler, never from a
-  turn's width (a width bounds only what the part drawn now may add). At the limit, when the
-  carried window and the turns since it no longer fit, the window is cleared and re-projected,
-  never slid. What a carried turn costs is counted as it is sent: its tool calls and results.
+- **The limit is the deployment's `Assembly` budget**, read from the assembler
+  (`ContextAssembler.limit`), never from a turn's width (a width bounds only what the part
+  drawn now may add). At the limit, when the carried window and the turns since it no longer
+  fit, the window is cleared and re-projected, never slid. What a carried turn costs is
+  counted as it is sent: its tool calls and results. **Within a turn, a turn at the limit
+  ends, its last call forced**, and the next turn draws a boundary: nothing is cleared inside
+  a turn, whose request only grows. A turn's requests are held to the limit plus what its
+  system prompt and tools cost, capped by the turn pin's context length less its output
+  budget when the pin's profile gives one, less room for one clipped tool result; the loop
+  reads it against each reply's input as the provider counted it, never an estimate, so a
+  turn read back cuts where it cut live.
 - **A boundary draws within half the limit.** The opening, the recent turns and recall fill to
   that share, and later turns' own messages and recall grow the window from there to the limit
   before the next boundary. A boundary drawn to the limit would leave no room for the next turn,
@@ -56,7 +63,7 @@ Decision:
 Consequences: on every turn after a window's first that carries it, the request begins with
 the last one's prefix, so most of its input is read from the cache. Until a gate's notes and
 stubs are carried, boundaries are more frequent than the limit alone makes them: every gated
-turn costs one, as does a turn that met its growth bound and a redeployed tool set or prompt. A window runs from half the limit,
+turn costs one, as does a turn that met its input limit and a redeployed tool set or prompt. A window runs from half the limit,
 just after a boundary, to the limit, where a window redrawn every turn ran at about the limit:
 right after a boundary the model sees about half the history it did, the peak is unchanged,
 and most input is a cache read; a deployment sizes its budget with that in mind. Near the limit an append recalls less, and
