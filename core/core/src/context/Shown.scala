@@ -249,12 +249,14 @@ object Shown {
     * inside a fence or not) to the end, shown under the [[lead]] of the tag that starts it,
     * each line prefixed "> ", and a tag starting one of those lines broken after what
     * precedes it ("> [record]" as "> record —"); the lines before it unchanged. `text` itself
-    * when no line starts with a tag.
+    * when no line starts with a tag. Either way each guidance tag in it escaped
+    * ([[Fenced.escaped]]), so it opens no fence a model is told to follow.
     */
   def pasted(text: String): String = {
-    val lines = text.split("\n", -1).toVector
+    val escaped = Fenced.escaped(text)
+    val lines = escaped.split("\n", -1).toVector
     lines.indexWhere(tagged(_).nonEmpty) match {
-      case -1 => text
+      case -1 => escaped
       case first =>
         val quoted = lines.drop(first).map { l =>
           val broken = tagged(l).fold(l) { (before, section) =>
