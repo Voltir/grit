@@ -29,6 +29,8 @@ object PayloadJson {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Heard(text) => ujson.Obj("kind" -> "heard", "text" -> text)
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
+    case Payload.Continuation(task, turn) =>
+      ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
     case Payload.Window(entries, recalled, nearby, documents, pieces, carry, brief, digest) =>
@@ -138,6 +140,11 @@ object PayloadJson {
         case "message" => field(o, "message").flatMap(readMessage).map(Payload.Message(_))
         case "heard" => str(o, "text").map(Payload.Heard(_))
         case "posted" => str(o, "text").map(Payload.Posted(_))
+        case "continuation" =>
+          for {
+            task <- long(o, "task")
+            turn <- long(o, "turn").filterOrElse(_ >= 2, "a continuation's turn is 2 or more")
+          } yield Payload.Continuation(TurnSeq(task), turn.toInt)
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>

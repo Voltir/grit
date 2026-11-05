@@ -3,7 +3,17 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, EntryId, Href, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  EntryId,
+  Href,
+  ScheduleId,
+  SourceId,
+  ToolCallId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.{Account, Principal}
 import grit.core.job.Slot
 import grit.core.message.Message
@@ -38,6 +48,24 @@ trait Inbox extends caps.SharedCapability {
       message: Message.User,
       by: Account,
       link: Option[Href]
+  ): Either[InboxError, TurnRef]
+
+  /** Records grit's note beginning turn `turn` of the task turn `task` of `origin`'s
+    * conversation began ([[grit.core.store.Payload.Continuation]]), after the turn before it
+    * ended at its limit, as the first entry of a new turn written through `by`, and returns that
+    * turn. `by` must have written the task's first message, so the turn answers the task's
+    * asker at the task's clearance (ADR 0058); it is believed no higher than that message. A
+    * `source` already recorded for `origin` returns its turn. [[InboxError.OverCap]] as
+    * [[ingest]] refuses a new message; [[InboxError.Invalid]] when `origin` has no
+    * conversation, `task` has no first entry in it, or `by` did not write that entry. A
+    * conversation whose period closed since the task still takes it.
+    */
+  def continued(
+      origin: Origin,
+      source: SourceId,
+      task: TurnSeq,
+      turn: Int,
+      by: Account
   ): Either[InboxError, TurnRef]
 
   /** The refusal a new message would get now over the day's cap ([[InboxError.OverCap]]), by

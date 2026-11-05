@@ -267,7 +267,8 @@ object LinearAssembler {
     Shown.of(e, speakers).fold(Tokens.Zero)(estimator.message)
 
   private def isMessage(e: Entry): Boolean = e.payload match {
-    case Payload.Message(_) | Payload.Heard(_) | Payload.Posted(_) => true
+    case Payload.Message(_) | Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _) =>
+      true
     // A turn's tool exchange is its own: a window never holds a call apart from its turn.
     case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
         Payload.Agenda(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Declined(_, _) |

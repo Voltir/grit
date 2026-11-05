@@ -149,6 +149,13 @@ object SlackEdgeLiveTests extends TestSuite {
     * `seen`: the turn, or the account the message was written through.
     */
   private final class Watched(inner: Inbox, seen: Either[Account, TurnRef] -> Unit) extends Inbox {
+    def continued(
+        origin: Origin,
+        source: SourceId,
+        task: grit.core.id.TurnSeq,
+        turn: Int,
+        by: Account
+    ): Either[InboxError, TurnRef] = inner.continued(origin, source, task, turn, by)
     def ingest(
         origin: Origin,
         source: SourceId,

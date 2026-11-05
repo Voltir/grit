@@ -71,6 +71,7 @@ recall never forces a boundary. A strand's and an asking thread's sections are a
 boundary. A period's close clears the window, so the lifecycle's settle time is a chat's cache
 lifetime: a placer that judges nobody waiting during a person's pause clears it. Until a
 deployment setting names the share, a boundary draws half of what a fresh window drew before.
-Enforced by the assembly suites, by a test that a turn's request begins with the last one's
+A task longer than one window is a conversation of turns, each after the first rooted on grit's
+own continuation note (ADR 0058). Enforced by the assembly suites, by a test that a turn's request begins with the last one's
 whole on either gateway, and by tests that a gated turn, a changed offer, a forced last call
 and a carried document gone are each followed by a boundary.

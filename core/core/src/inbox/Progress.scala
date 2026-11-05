@@ -13,4 +13,34 @@ enum Progress {
     * returned none.
     */
   case Done(reply: Option[Message.Assistant], outcome: String)
+
+  /** How the turn ended, as a `Done`'s outcome says; [[TurnEnding.Otherwise]] while `Open`. */
+  def ending: TurnEnding = this match {
+    case Done(_, outcome) => TurnEnding.of(outcome)
+    case Open => TurnEnding.Otherwise
+  }
+}
+
+/** How a turn ended, as its workflow's outcome says it ([[Progress.Done.ending]]). */
+enum TurnEnding {
+
+  /** Its requests reached their limit, so its last calls were cut short (ADR 0052): its task
+    * goes on in a new turn only when its driver continues it ([[Inbox.continued]]).
+    */
+  case AtLimit
+
+  /** Any other way: it answered within its limit, ran out of calls, failed or drafted. */
+  case Otherwise
+}
+
+object TurnEnding {
+
+  /** What the outcome of a turn that ended at its limit ends with. */
+  val AtLimitSaid: String = "; ended at its limit"
+
+  /** How the outcome `outcome` says its turn ended: [[AtLimit]] when it ends with
+    * [[AtLimitSaid]], else [[Otherwise]].
+    */
+  def of(outcome: String): TurnEnding =
+    if (outcome.endsWith(AtLimitSaid)) AtLimit else Otherwise
 }

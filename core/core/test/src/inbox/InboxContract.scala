@@ -330,6 +330,32 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
+      "a continuation is grit's note beginning a new turn of the task's conversation, written by the task's author and believed as its first message; the same source is the same turn, and anyone else's or a task with no first message is refused"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "continued")
+        val ana = TestAccounts.account("task:ana-continued")
+        val bo = TestAccounts.account("task:bo-continued")
+        store.name(ana, "Ana")
+        val task = inbox.ingest(here, SourceId("w"), said("the task"), ana, None)
+        val next = inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, ana)
+        (
+          task.map(_.turnSeq),
+          next.map(_.turnSeq),
+          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, ana),
+          inbox.ingested(here, SourceId("w:2")),
+          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, bo).isLeft,
+          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, ana).isLeft
+        ) ==> (Right(TurnSeq.First), Right(TurnSeq.First.next), next, next.map(Some(_)), true, true)
+        store.written(here) ==> Vector(
+          (Payload.Message(said("the task")), Some("Ana")),
+          (Payload.Continuation(TurnSeq.First, 2), Some("Ana"))
+        )
+        store.believed(here).distinct.size ==> 1
+      }
+    }
+
+    test(
       "a message's link is kept with it, ingested or heard; a redelivery's is not, nor one too long"
     ) {
       withInbox(Uncapped) { (inbox, store) =>

@@ -590,7 +590,7 @@ object TurnLoopTurnTests extends TestSuite {
           12,
           limit = Some(Tokens(2500))
         )
-      ) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      ) ==> "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit"
       def told(r: ModelRequest) = r.messages.exists {
         case Message.User(t) => t == TurnLoop.LastTools
         case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LastTools)
@@ -611,13 +611,55 @@ object TurnLoopTurnTests extends TestSuite {
       // Each round's input grows 20,000: reply 1's 21,000 plus that growth meets a 30,000
       // window's limit plus the prefix, less one clipped result (about 23,000 tokens).
       val (requests, said) = limited(window = Tokens(30_000))
-      said ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      (said, grit.core.inbox.Progress.Done(None, said).ending) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit",
+        grit.core.inbox.TurnEnding.AtLimit
+      )
       requests ==> Vector(
         (ToolUse.Auto, false),
         (ToolUse.Auto, false),
         (ToolUse.Auto, true),
         (ToolUse.Off, true)
       )
+    }
+
+    test(
+      "the turn after one that ended at its limit, rooted on grit's continuation note, draws a boundary of the task and the last reply, no tool results, and ends with the note"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      def run(turn: TurnRef, provider: grit.core.provider.Provider^) =
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            12,
+            window = Tokens(30_000)
+          )
+        )
+      val first = new Scripted((_, n) =>
+        Right(
+          calling(s"r$n", (s"t$n", "peek", "a.txt"))
+            .copy(usage = Usage(Tokens(1000L + 20_000L * n), Tokens(2), Tokens.Zero, None))
+        )
+      )
+      run(say(entries, "read them"), first)
+      val second = new Scripted((_, _) => Right(said("done")))
+      run(continuing(entries, grit.core.id.TurnSeq.First, 2), second)
+      val sent = second.requests.headOption.map(_.messages).getOrElse(Vector.empty)
+      (
+        sent.exists(_.isInstanceOf[Message.ToolResult]),
+        sent.collect { case a: Message.Assistant => a.blocks }.size,
+        sent.lastOption.exists {
+          case Message.User(t) => t.endsWith(Shown.Continuing)
+          case _ => false
+        }
+      ) ==> (false, 1, true)
     }
 
     test("a pin's context length caps a larger window's limit, less its output budget") {

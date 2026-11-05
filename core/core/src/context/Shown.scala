@@ -23,7 +23,8 @@ object Shown {
     * ([[pasted]]); a heard message as a person's under "{name} said, not to you:"
     * ("Someone" when `speakers` does not name its author); grit's post the conversation
     * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
-    * no window opens with an assistant message;
+    * no window opens with an assistant message; grit's continuation note as one user message,
+    * [[Continuing]];
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -46,8 +47,22 @@ object Shown {
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
     case Payload.Posted(text) => Some(Message.User(s"$PostedLead\n${pasted(text)}"))
+    case Payload.Continuation(_, _) => Some(Message.User(Continuing))
     case _ => None
   }
+
+  /** grit's note a task's next turn begins with after a turn ended at its limit
+    * ([[Payload.Continuation]]): grit's own words, fenced as its note, never escaped.
+    */
+  val Continuing: String = Fenced.noted(
+    Vector(
+      "Your last turn on this task reached its limit and ended. This turn starts afresh: it " +
+        "holds this conversation's messages, your last reply among them, but not your tool " +
+        "calls or their results.",
+      "Go on with the task from where your last reply left off. Read again whatever you " +
+        "need, and do not redo what your last reply says is done."
+    )
+  )
 
   /** What follows a heard message's author on the line above its text ([[of]]). */
   val NotToYou: String = " said, not to you:"
@@ -315,7 +330,7 @@ object Shown {
       case ((out, held), e) =>
         val message = e.payload match {
           case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-          case Payload.Heard(_) | Payload.Posted(_) => of(e, speakers)
+          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _) => of(e, speakers)
           case Payload.Message(m) => Some(m)
           case Payload.Exchange(reply) => Some(reply)
           case Payload.Result(r, shown) => Some(fenced(r, shown))

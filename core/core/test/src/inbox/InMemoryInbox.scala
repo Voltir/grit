@@ -3,7 +3,18 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, Href, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  EntrySeq,
+  Href,
+  JobName,
+  ScheduleId,
+  SourceId,
+  ToolCallId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
@@ -176,6 +187,40 @@ final class InMemoryInbox(
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
       Tx.roomLabel(origin.room)(using inForce)
   }
+
+  def continued(
+      origin: Origin,
+      source: SourceId,
+      task: TurnSeq,
+      turn: Int,
+      by: Account
+  ): Either[InboxError, TurnRef] =
+    if (down) unavailable
+    else
+      inTx {
+        found(origin).flatMap(
+          _.fold[Either[StoreError, Option[Entry]]](Right(None))(c =>
+            entries.ofTurn(TurnRef(c.id, task)).map(_.minByOption(e => EntrySeq.value(e.seq)))
+          )
+        )
+      }.left
+        .map(InboxError.stored)
+        .flatMap {
+          case Some(first) if principals.author(first.id).contains(by) =>
+            recorded(
+              origin,
+              source,
+              Payload.Continuation(task, turn),
+              by,
+              labelOf(origin),
+              Some(first.integrity.meet(Tx.integrityOf(person(by))(using inForce))),
+              java.time.Instant.EPOCH,
+              capped = true,
+              None
+            )
+          case _ =>
+            Left(InboxError.Invalid("a task is continued only by whoever wrote its first message"))
+        }
 
   def hear(
       origin: Origin,
@@ -355,8 +400,18 @@ final class InMemoryInbox(
             case Some(c) =>
               entries
                 .get(InboundId.of(c.id, source))
-                .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _, _) =>
-                  TurnRef(e.conversationId, e.turnSeq)
+                .map(_.collect {
+                  case e @ Entry(
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        Payload.Message(_) | Payload.Continuation(_, _),
+                        _,
+                        _
+                      ) =>
+                    TurnRef(e.conversationId, e.turnSeq)
                 })
           }
           .left

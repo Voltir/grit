@@ -18,6 +18,7 @@ import grit.core.id.{
   SourceId,
   ToolCallId,
   TurnRef,
+  TurnSeq,
   WorkflowId
 }
 import grit.core.identity.Account
@@ -95,6 +96,17 @@ final class SqlInbox(
           .fold[Either[InboxError, Unit]](Right(()))(o => enqueue(Stitches.enqueueOptions(o)))
           .map(_ => said.turn)
     }
+  }
+
+  def continued(
+      origin: Origin,
+      source: SourceId,
+      task: TurnSeq,
+      turn: Int,
+      by: Account
+  ): Either[InboxError, TurnRef] = {
+    val now = clock.now()
+    inTransaction(recorder.continued(origin, source, task, turn, by, now)).flatMap(identity)
   }
 
   def hear(
@@ -206,8 +218,18 @@ final class SqlInbox(
         case Some(c) =>
           entries
             .get(InboundId.of(c.id, source))
-            .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _, _) =>
-              TurnRef(e.conversationId, e.turnSeq)
+            .map(_.collect {
+              case e @ Entry(
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    Payload.Message(_) | Payload.Continuation(_, _),
+                    _,
+                    _
+                  ) =>
+                TurnRef(e.conversationId, e.turnSeq)
             })
       }
     }

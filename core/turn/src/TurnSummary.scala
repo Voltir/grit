@@ -224,10 +224,11 @@ object TurnSummary {
       // A result kept with no call shown is shown under its call's id.
       case Payload.Message(r: Message.ToolResult) =>
         line(Payload.Result(r, ToolCallId.value(r.callId)), payloads)
-      // A post is the first entry of a turn that never runs, so never a summarised turn's.
+      // A post is the first entry of a turn that never runs, so never a summarised turn's;
+      // grit's continuation note is grit's, not what the turn did.
       case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
           Payload.Agenda(_) | Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) |
-          Payload.Draft(_) | Payload.Posted(_) =>
+          Payload.Draft(_) | Payload.Posted(_) | Payload.Continuation(_, _) =>
         None
     }
 }

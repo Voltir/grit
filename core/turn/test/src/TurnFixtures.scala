@@ -1160,6 +1160,27 @@ object TurnFixtures {
     TurnRef(conversation, next.turnSeq)
   }
 
+  /** Records grit's note beginning turn `turn` of the task turn `task` began, the first entry
+    * of the conversation's next turn, as [[grit.core.inbox.Inbox.continued]] records it.
+    */
+  def continuing(entries: EntryStore, task: TurnSeq, turn: Int): TurnRef = {
+    given Tx = TestTx.fake
+    val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
+    entries.insert(
+      Entry(
+        EntryId(s"continued:$turn"),
+        conversation,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Continuation(task, turn),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+    )
+    TurnRef(conversation, next.turnSeq)
+  }
+
   /** Records `text` as a heard message, the first entry of the conversation's next turn:
     * what an unprompted turn is rooted on.
     */
@@ -1191,6 +1212,8 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Heard(text) => Some(s"heard: $text")
         case Payload.Posted(text) => Some(s"posted: $text")
+        case Payload.Continuation(task, turn) =>
+          Some(s"continuation: turn $turn of ${TurnSeq.value(task)}")
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
         case Payload.Exchange(Message.Assistant(blocks, _, _, _, _)) =>

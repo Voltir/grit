@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.durable.Flow
 import grit.core.id.{EntryId, TurnRef}
+import grit.core.inbox.TurnEnding
 import grit.core.speech.{Outcome, SpeechJson}
 
 import TurnSteps.*
@@ -298,9 +299,10 @@ private[turn] object TurnFlow {
       .map((e, answered, kept) => Summing(e.turn, answered, kept))
       .andThen(Flow.attempt(summary))
       .keeping
-      .map { case ((e, answered, _), made) =>
+      .map { case ((e, answered, kept), made) =>
         val said = made.fold(f => s"no summary: $f", id => s"summarised: ${EntryId.value(id)}")
-        s"$did: ${EntryId.value(answered)}; $said${e.notes}"
+        val limit = if (kept.at.atLimit) TurnEnding.AtLimitSaid else ""
+        s"$did: ${EntryId.value(answered)}; $said${e.notes}$limit"
       }
 
   /** `summarise` then `append-summary`. */

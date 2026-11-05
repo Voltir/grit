@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{EntryId, Href, SourceId, TriageRef, TurnRef}
+import grit.core.id.{EntryId, EntrySeq, Href, SourceId, TriageRef, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
@@ -123,6 +123,56 @@ private[engine] final class Recorder(
         case Left(refused) => Right(Left(refused))
         case Right(turn) => openingOf(turn).map(opening => Right(Starts.Said(opening, turn)))
       }
+
+  /** grit's note beginning turn `turn` of the task turn `task` of `origin`'s conversation began,
+    * recorded at `at` through `by` as [[grit.core.inbox.Inbox.continued]] says, believed at the
+    * task's first entry's integrity met with `by`'s now; refused as it says.
+    */
+  def continued(
+      origin: Origin,
+      source: SourceId,
+      task: TurnSeq,
+      turn: Int,
+      by: Account,
+      at: Instant
+  )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
+    conversations.find(origin).flatMap {
+      case None => Right(Left(InboxError.Invalid("no conversation to continue a task in")))
+      case Some(c) =>
+        for {
+          first <- entries
+            .ofTurn(TurnRef(c.id, task))
+            .map(_.minByOption(e => EntrySeq.value(e.seq)))
+          wrote <- first.fold[Either[StoreError, Option[String]]](Right(None))(f =>
+            SqlStatements
+              .many("SELECT account FROM grit.inbound WHERE entry_id = ?")(
+                _.setString(1, EntryId.value(f.id))
+              )(_.getString(1))
+              .map(_.headOption)
+          )
+          integrity <- integrityOf(by)
+          result <- (first, wrote) match {
+            case (Some(f), Some(account)) if account == SqlIdentities.written(by) =>
+              recorded(
+                origin,
+                source,
+                Payload.Continuation(task, turn),
+                by,
+                c.label,
+                Some(f.integrity.meet(integrity)),
+                at,
+                capped = true,
+                None
+              )
+            case _ =>
+              Right(
+                Left(
+                  InboxError.Invalid("a task is continued only by whoever wrote its first message")
+                )
+              )
+          }
+        } yield result
+    }
 
   /** `turn`'s message as an [[Opening]] of its conversation, read in the transaction open;
     * `None` when it is not one.

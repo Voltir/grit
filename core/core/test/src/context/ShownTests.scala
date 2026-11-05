@@ -363,6 +363,21 @@ object ShownTests extends TestSuite {
     }
 
     test(
+      "grit's continuation note is one user message, grit's own note, unescaped, in its turn and in a later window alike"
+    ) {
+      val note = entry(Payload.Continuation(grit.core.id.TurnSeq.First, 2))
+      val expected = Message.User(
+        "<grit_note>\nYour last turn on this task reached its limit and ended. This turn starts " +
+          "afresh: it holds this conversation's messages, your last reply among them, but not " +
+          "your tool calls or their results.\n\nGo on with the task from where your last reply " +
+          "left off. Read again whatever you need, and do not redo what your last reply says is " +
+          "done.\n</grit_note>"
+      )
+      (Shown.of(note, Speakers.none), Shown.turn(Vector(note), Speakers.none)) ==>
+        (Some(expected), Vector(expected))
+    }
+
+    test(
       "grit's post a conversation begins with is one user message quoting it under a record label, its pasted labels quoted"
     ) {
       Shown.of(entry(Payload.Posted("The engine's open issues:\n- #12 retries")), Speakers.none) ==>

@@ -138,6 +138,14 @@ private[turn] object TurnRound {
     /** The loop's budget after the replies so far ([[TurnLoop.Rounds.after]]). */
     def budget: TurnLoop.Rounds = looping.budget.after(replies)
 
+    /** Whether the loop's input limit cut its calls short and this round is past the cut's
+      * last call with tools: a turn answering here ended at its limit.
+      */
+    def atLimit: Boolean = {
+      val cut = budget
+      cut.calls < looping.budget.calls && round.index >= cut.calls - 2
+    }
+
     private[TurnRound] def gatedBy(gate: Gated): Progress =
       copy(gates = gates.updated(round.index, gate))
   }
