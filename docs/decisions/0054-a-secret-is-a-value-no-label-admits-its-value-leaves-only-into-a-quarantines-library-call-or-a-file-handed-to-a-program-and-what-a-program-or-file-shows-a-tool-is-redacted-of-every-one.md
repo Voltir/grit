@@ -1,6 +1,6 @@
 # 0054. A secret is a value no label admits: its value leaves only into a quarantine's library call or a file handed to a program, and what a program or file shows a tool is redacted of every one
 
-Status: accepted (2026-11-01)
+Status: accepted (2026-11-01); revised (2026-11-04)
 
 Context: grit holds model gateway keys, MCP and Slack tokens, a service account's private key and
 the database password. Before this record they were guarded by a path rule (`.env`), a rule for
@@ -40,9 +40,9 @@ Decision:
   `Named.file` is the one rule for a secrets file (`.env`, `.env.` and anything).
 - **Confidentiality.** No clearance admits a secret. Rows, step outputs and tool results are built
   from `Journaled` and `ujson` values, which a `Secret` has none of. Its value leaves only through
-  `Reveal.text`, which only these packages may name: `grit.dbos.sql` (JDBC), `grit.models` (an
-  HTTP header), `grit.mcp.client`, `grit.slack.client`, and `grit.host.checkout`, which writes it
-  to a file handed to a program.
+  `Reveal.text`, which only these packages may name: `grit.dbos.sql` and
+  `grit.databases.connect` (JDBC), `grit.models` (an HTTP header), `grit.mcp.client`,
+  `grit.slack.client`, and `grit.host.checkout`, which writes it to a file handed to a program.
 - **Integrity.** Only deployment-declared code hands a secret on. It reaches a program only
   through `Handing`, a capability apart from `Processes`: the secret in a 0600 file in a 0700
   directory of its own outside the checkout, removed when the program's scope ends, its path given

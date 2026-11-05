@@ -100,7 +100,7 @@ capability is a promise of purity.**
 7. Immutable data; mutation only in scoped locals.
 8. **Java libraries are quarantined by role.** Each lives only in the module whose job
    needs it, translated into grit's conventions there; such modules depend only on core and
-   meet only in `grit.kit` and `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
+   meet only in `grit.kit` and `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*`, nothing outside it and `grit.databases` imports `java.sql.*`,
    nothing outside `grit.models` and `grit.mcp` imports `java.net.http.*`, nothing outside `grit.slack` imports
    `com.slack.*`, nothing outside `grit.formats` imports `org.apache.pdfbox.*`, and nothing outside
    `grit.host` starts a process.
