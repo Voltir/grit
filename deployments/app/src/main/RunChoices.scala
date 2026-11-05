@@ -8,10 +8,11 @@ import grit.core.files.Files
 import grit.core.id.ConversationId
 import grit.core.message.Tokens
 import grit.kit.deployment.Offered
+import grit.models.CacheMarks
 import grit.turn.TurnLoop
 
 /** What a run reads from its environment besides the deployment: the window, the stub, the sweep,
-  * files' expiry, the theme, the tools and the assembler.
+  * files' expiry, the theme, the tools, the assembler and the cache marks.
   */
 private[main] object RunChoices {
 
@@ -143,6 +144,21 @@ private[main] object RunChoices {
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some("allowlist") => Right(Offered.Allowlisted(Offered.ReferenceAllowlist))
       case Some(_) => Left(s"$ToolsVar is not read, all or allowlist")
+    }
+
+  private[main] val CacheMarksVar = "GRIT_CACHE_MARKS"
+
+  /** Which of a request's repeated prefixes calls to Anthropic's models mark, from
+    * `GRIT_CACHE_MARKS`: `stable`, `task` or `established` ([[CacheMarks.Upto]]). Unset is
+    * `stable`, the marks every request has had: another choice is a measured experiment's, and
+    * becomes the default only once a run shows its boundaries read more for no more cost.
+    */
+  private[main] def cacheMarks(env: Map[String, String]): Either[String, CacheMarks.Upto] =
+    env.get(CacheMarksVar).map(_.trim) match {
+      case None | Some("stable") => Right(CacheMarks.Upto.Stable)
+      case Some("task") => Right(CacheMarks.Upto.Task)
+      case Some("established") => Right(CacheMarks.Upto.Established)
+      case Some(_) => Left(s"$CacheMarksVar is none of stable, task or established")
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

@@ -141,7 +141,13 @@ private[grit] object Launch {
       case None => new StubModels(run.stubDelay)
       case Some(keys) =>
         val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
-        new CatalogModels(keys, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
+        new CatalogModels(
+          keys,
+          seed.withPolicy(d.policy),
+          engine.db,
+          engine.modelSettings,
+          d.cacheMarks
+        )
     }
     asking(
       engine,

@@ -20,7 +20,8 @@ import grit.core.secret.Variable
 
 /** How grit reaches OpenRouter for one role, its key aside ([[OpenRouterProvider]] takes it):
   * `upstream` alone serves its calls, or whichever upstream OpenRouter picks when `None`;
-  * `effort` is asked of the model when set; earlier reasoning goes back as `replay` says.
+  * `effort` is asked of the model when set; earlier reasoning goes back as `replay` says; an
+  * Anthropic model's requests are marked for caching as `marks` says.
   */
 final case class OpenRouterConfig(
     model: String,
@@ -29,7 +30,8 @@ final case class OpenRouterConfig(
     timeout: Duration,
     upstream: Option[Upstream] = None,
     effort: Option[Effort] = None,
-    replay: ReasoningReplay = ReasoningReplay.Details
+    replay: ReasoningReplay = ReasoningReplay.Details,
+    marks: CacheMarks.Upto = CacheMarks.Upto.Stable
 )
 
 object OpenRouterConfig {
@@ -196,9 +198,9 @@ object OpenRouterConfig {
     Grade.Standard +: Grade.values.toVector.filter(_ != Grade.Standard)
 
   /** A role's configuration: its pinned assignment's model, budget, upstream and effort, its
-    * settings' reasoning replay, and a five-minute timeout.
+    * settings' reasoning replay, `marks`, and a five-minute timeout.
     */
-  def of(pinned: Pinned): OpenRouterConfig = {
+  def of(pinned: Pinned, marks: CacheMarks.Upto = CacheMarks.Upto.Stable): OpenRouterConfig = {
     val a = pinned.assignment
     OpenRouterConfig(
       ModelId.value(a.ref.model),
@@ -207,7 +209,8 @@ object OpenRouterConfig {
       Duration.ofMinutes(5),
       a.ref.upstream,
       a.effort,
-      pinned.settings.replay
+      pinned.settings.replay,
+      marks
     )
   }
 

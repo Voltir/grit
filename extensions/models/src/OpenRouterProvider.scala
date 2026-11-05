@@ -45,7 +45,8 @@ final class OpenRouterProvider(key: Secret, config: OpenRouterConfig) extends Pr
       config.upstream,
       request,
       config.effort,
-      config.replay
+      config.replay,
+      config.marks
     )
 
   private def post(body: ujson.Value): HttpRequest =
