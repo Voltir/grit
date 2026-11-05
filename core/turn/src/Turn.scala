@@ -436,14 +436,12 @@ object Turn {
       schemas = tools.schemas(strict)
       // How round `round`'s call was shaped under `use`, as it was live.
       shapeAt = (round: Round, use: ToolUse) => {
-        val (shown, lines) = gatedOffer(tools.set, schemas, strict)
         loopShape(
           asking,
           use,
-          shown,
+          gatedOffer(tools.set, schemas, strict),
           settings.afterResult,
           settings.guidance,
-          lines,
           gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
             TurnLoop.notes(l.budget.after(replies.take(round.index)), round)
           )
@@ -465,14 +463,12 @@ object Turn {
         .left
         .map(reason)
         .map { alone =>
-          val (shown, lines) = gatedOffer(tools.set, schemas, strict)
           val shape = loopShape(
             None,
             ToolUse.Auto,
-            shown,
+            gatedOffer(tools.set, schemas, strict),
             settings.afterResult,
             settings.guidance,
-            lines,
             Vector.empty
           )
           alone

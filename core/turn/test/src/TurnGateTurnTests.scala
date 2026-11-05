@@ -290,7 +290,7 @@ object TurnGateTurnTests extends TestSuite {
       val note = Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
       provider.requests.map(_.messages.count(_ == note)) ==> Vector(0, 1, 1)
       provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(note)
-      provider.requests.map(_.system).distinct.map(_.endsWith(s"\n\n${TurnGate.Noted}")) ==>
+      provider.requests.map(_.system).distinct.map(_.contains(TurnPrompt.TagRule.text)) ==>
         Vector(true)
     }
 

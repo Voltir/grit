@@ -81,9 +81,12 @@ object TurnLoop {
   }
 
   /** What the model is told on the last call with tools. */
-  val LastTools: String =
-    "[grit: this is your last call with tools in this turn; the next has none. Stop reading: " +
-      "make the changes the work needs now, or answer, and say plainly what you did not get to.]"
+  val LastTools: String = Fenced.noted(
+    Vector(
+      "This is your last call with tools in this turn; the next has none. Stop reading: " +
+        "make the changes the work needs now, or answer, and say plainly what you did not get to."
+    )
+  )
 
   /** Which model call of a turn this is, counting from 0. */
   opaque type Round = Int
@@ -177,11 +180,14 @@ object TurnLoop {
   /** What the model is told on a call made with tools off, after everything else it is
     * sent ([[told]]).
     */
-  val LastCall: String =
-    "[grit: this is your last call in this turn, and it has no tools: call none. Answer " +
-      "now from what you have found so far: say what you found, and plainly what you did " +
-      "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
-      "gap with a guess.]"
+  val LastCall: String = Fenced.noted(
+    Vector(
+      "This is your last call in this turn, and it has no tools: call none. Answer " +
+        "now from what you have found so far: say what you found, and plainly what you did " +
+        "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
+        "gap with a guess."
+    )
+  )
 
   /** `request` as `use` and `after` say to send it: when `use` is [[ToolUse.Off]], with
     * [[LastCall]] after its messages, as a user message; then, under

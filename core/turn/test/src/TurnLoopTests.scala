@@ -143,10 +143,10 @@ object TurnLoopTests extends TestSuite {
     test("the last call's note allows not having found it, and asks for no guess") {
       // Pinned whole: "answer now" alone pushed a model to manufacture an answer.
       TurnLoop.LastCall ==>
-        "[grit: this is your last call in this turn, and it has no tools: call none. Answer " +
-        "now from what you have found so far: say what you found, and plainly what you did " +
-        "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
-        "gap with a guess.]"
+        "<grit_note>\nThis is your last call in this turn, and it has no tools: call none. " +
+        "Answer now from what you have found so far: say what you found, and plainly what you " +
+        "did not find or could not check. \"I could not find it\" is an answer; do not fill " +
+        "the gap with a guess.\n</grit_note>"
     }
 
     test(

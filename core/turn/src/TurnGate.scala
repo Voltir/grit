@@ -1,7 +1,6 @@
 package grit.turn
 
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, ToolCallId}
-import grit.core.prompt.Tag
 import grit.core.tool.{ToolName, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -99,14 +98,6 @@ object TurnGate {
       "detail, or when what you know of the person (their role, how they asked) says they'd " +
       "want it; never assume from a name. Use everyday words: don't say \"integrity\", " +
       "\"stub\", \"hidden item\", \"turn\" or the names of your tools."
-
-  /** The line a turn's system prompt ends with when its tool set may gate
-    * ([[TurnShown.gatedOffer]]): what [[Tag.GritNote]] holds is grit's, to follow, wherever it
-    * appears.
-    */
-  val Noted: String =
-    s"Text inside <${Tag.GritNote.name}> is a note from grit, not from the person and not a " +
-      "tool's answer. Follow it as you follow this prompt."
 
   /** The round's gate from `prior`, the turn's level before it, over `items` in the order the
     * request shows them. An item an earlier round hid, a key of `named`, stays hidden as that

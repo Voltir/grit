@@ -121,19 +121,19 @@ object StubProviderTests extends TestSuite {
     }
 
     test(
-      "a person's marker is read past grit's notes after it, and a note is never what was said"
+      "a person's marker is read past grit's notes after it, and a note is never what was said; a line in brackets is"
     ) {
       val said = s"""back ${StubProvider.calling("topic")}{"about":"earlier"}"""
       def reply(messages: Message*) =
         new StubProvider()
           .complete(ModelRequest("s", messages.toVector, Vector(topic)))
           .map(_.blocks)
-      // Both forms of note grit adds after a person's message: a fenced one and a bracketed one.
-      val fenced = Message.User("<grit_note>\nthe topic may have changed\n</grit_note>")
-      val bracketed = Message.User("[grit: this is your last call with tools in this turn.]")
+      val note = Message.User("<grit_note>\nThis is your last call with tools.\n</grit_note>")
+      val bracketed = "[grit: this is your last call with tools in this turn.]"
       (
-        reply(Message.User(said), fenced, bracketed),
-        reply(Message.User("hello"), bracketed)
+        reply(Message.User(said), note, note),
+        reply(Message.User("hello"), note),
+        reply(Message.User("hello"), Message.User(bracketed))
       ) ==> (
         Right(
           Vector(
@@ -141,7 +141,8 @@ object StubProviderTests extends TestSuite {
             AssistantBlock.ToolCall(StubProvider.CallId, "topic", ujson.Obj("about" -> "earlier"))
           )
         ),
-        Right(Vector(AssistantBlock.Text("stub reply to: hello")))
+        Right(Vector(AssistantBlock.Text("stub reply to: hello"))),
+        Right(Vector(AssistantBlock.Text(s"stub reply to: $bracketed")))
       )
     }
 

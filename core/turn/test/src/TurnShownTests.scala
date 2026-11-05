@@ -94,7 +94,6 @@ object TurnShownTests extends TestSuite {
             Vector.empty,
             AfterToolResult.UserMessage,
             ToolGuidance.SchemaOnly,
-            Vector.empty,
             Vector.empty
           )(ModelRequest("sys", messages))
           .messages
@@ -135,7 +134,6 @@ object TurnShownTests extends TestSuite {
           Vector.empty,
           AfterToolResult.UserMessage,
           ToolGuidance.SchemaOnly,
-          Vector.empty,
           notes
         )(ModelRequest("sys", messages))
         .messages ==> Vector(
@@ -166,7 +164,6 @@ object TurnShownTests extends TestSuite {
           Vector.empty,
           after,
           ToolGuidance.SchemaOnly,
-          Vector.empty,
           Vector.empty
         )(ModelRequest("sys", asked ++ Vector(call, result)))
         (r.stable, r.messages.size)
@@ -183,22 +180,17 @@ object TurnShownTests extends TestSuite {
     }
 
     test(
-      "the offer is the tool set's: read_hidden, extract and the note line whenever a tool requires above the least, whatever the gates decide; a withheld tool stays offered"
+      "the offer is the tool set's: read_hidden and extract whenever a tool requires above the least, whatever the gates decide; a withheld tool stays offered"
     ) {
       // post requires member, so a gate may withhold it; peek and poke require nothing.
       val gating = TurnFixtures.gatedTools(TurnFixtures.NoCheckout)
       val plain = TurnFixtures.tools(TurnFixtures.NoCheckout)
-      def offer(set: ToolSet, schemas: Vector[ToolSchema]) = {
-        val (shown, lines) = TurnShown.gatedOffer(set, schemas, false)
-        (shown.map(_.name), lines)
-      }
+      def offer(set: ToolSet, schemas: Vector[ToolSchema]) =
+        TurnShown.gatedOffer(set, schemas, false).map(_.name)
       Vector(
         offer(gating.set, gating.schemas(false)),
         offer(plain.set, plain.schemas(false))
-      ) ==> Vector(
-        (Vector("read_hidden", "extract", "peek", "post"), Vector(TurnGate.Noted)),
-        (Vector("peek", "poke"), Vector.empty)
-      )
+      ) ==> Vector(Vector("read_hidden", "extract", "peek", "post"), Vector("peek", "poke"))
     }
   }
 }

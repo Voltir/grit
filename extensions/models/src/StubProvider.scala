@@ -138,8 +138,8 @@ object StubProvider {
   private val NamedCall = """#call\(([A-Za-z0-9_-]+)\):""".r
 
   /** Whether `text`, a user message, is a note grit adds rather than what a person said: one
-    * fenced as [[Tag.GritNote]], or one in grit's brackets (`[grit: ...]`).
+    * fenced as [[Tag.GritNote]].
     */
   def note(text: String): Boolean =
-    text.startsWith(s"<${Tag.GritNote.name}>") || text.startsWith("[grit:")
+    text.startsWith(s"<${Tag.GritNote.name}>")
 }

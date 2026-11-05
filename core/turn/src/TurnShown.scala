@@ -62,10 +62,9 @@ private[turn] object TurnShown {
       .map(refused => TurnFailure.Model(refused.message))
   }
 
-  /** What every request of every turn offered `offered` offers of `schemas`, its schemas, and
-    * the lines its system prompt ends with, whatever its gates decide: when
-    * [[ToolSet.mayGate]], read_hidden and extract first ([[ReadHidden]], [[Extract]], `strict`
-    * as `schemas` are), and [[TurnGate.Noted]]; then `schemas`. A tool a round's gate withholds,
+  /** What every request of every turn offered `offered` offers of `schemas`, whatever its gates
+    * decide: when [[ToolSet.mayGate]], read_hidden and extract first ([[ReadHidden]],
+    * [[Extract]], `strict` as `schemas` are); then `schemas`. A tool a round's gate withholds,
     * the first's included, stays offered, and a call of it is refused
     * ([[grit.core.tool.CallError.Withheld]]), as that round's note says ([[gateNotes]]).
     */
@@ -73,13 +72,8 @@ private[turn] object TurnShown {
       offered: ToolSet,
       schemas: Vector[ToolSchema],
       strict: Boolean
-  ): (Vector[ToolSchema], Vector[String]) = {
-    val gating = offered.mayGate
-    (
-      Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => gating) ++ schemas,
-      Vector(TurnGate.Noted).filter(_ => gating)
-    )
-  }
+  ): Vector[ToolSchema] =
+    Vector(unread.schema(strict), unasked.schema(strict)).filter(_ => offered.mayGate) ++ schemas
 
   /** The note each round up to `round` adds, oldest first, as `gates`, each round's gate by
     * its index, made them: [[TurnGate.Guidance]] on the first round whose gate hid an item,
@@ -113,10 +107,9 @@ private[turn] object TurnShown {
     * right before the turn's reply of that round (the round's index counting the replies after
     * the asker's message, [[TurnVerdict.asker]], or from the first message when there is
     * none), one whose reply is not there at the end; offering `tools` as `use` says, guided as
-    * [[TurnLoop.guided]] says under `guidance`, told as [[TurnLoop.told]] says under `after`,
-    * and its system prompt ending with each of `lines`, in order, each after a blank line. Fed
-    * by [[gatedOffer]] and [[gateNotes]], each call's request repeats every message of the call
-    * before it, with the same system prompt and tools. It marks stable
+    * [[TurnLoop.guided]] says under `guidance`, and told as [[TurnLoop.told]] says under
+    * `after`. Fed by [[gatedOffer]] and [[gateNotes]], each call's request repeats every message
+    * of the call before it, with the same system prompt and tools. It marks stable
     * ([[ModelRequest.stable]]) every message the call shares with the same request told with
     * tools on: all of them but the last call's note, or the last result that note ends.
     */
@@ -126,7 +119,6 @@ private[turn] object TurnShown {
       tools: Vector[ToolSchema],
       after: AfterToolResult,
       guidance: ToolGuidance,
-      lines: Vector[String],
       notes: Vector[(Round, String)]
   ): ModelRequest -> ModelRequest =
     base => {
@@ -149,7 +141,7 @@ private[turn] object TurnShown {
       // A later call is sent this one's messages as a call with tools is told them, then more.
       val repeated = TurnLoop.told(ToolUse.Auto, guided, after).messages
       val stable = shaped.messages.zip(repeated).takeWhile(_ == _).size
-      shaped.copy(system = (shaped.system +: lines).mkString("\n\n"), stable = stable)
+      shaped.copy(stable = stable)
     }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate

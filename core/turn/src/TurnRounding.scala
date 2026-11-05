@@ -296,15 +296,12 @@ private[turn] object Rounding {
   ): ModelRequest -> ModelRequest = {
     val settings = pins.turn.settings
     val strict = settings.strict == StrictSchemas.Enforced
-    val (shown, lines) =
-      gatedOffer(tools.set, tools.schemas(strict), strict)
     loopShape(
       at.looping.asked,
       use,
-      shown,
+      gatedOffer(tools.set, tools.schemas(strict), strict),
       settings.afterResult,
       settings.guidance,
-      lines,
       gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, at.round)
     )
   }
@@ -444,15 +441,13 @@ private[turn] object Rounding {
         val held = TurnShown.itemsOf(carrying).map(_.ref).toSet
         val settings = pins.turn.settings
         val strict = settings.strict == StrictSchemas.Enforced
-        val (schemas, lines) = gatedOffer(tools.set, tools.schemas(strict), strict)
         val shape =
           loopShape(
             None,
             ToolUse.Auto,
-            schemas,
+            gatedOffer(tools.set, tools.schemas(strict), strict),
             settings.afterResult,
             settings.guidance,
-            lines,
             Vector.empty
           )
         TurnShown.requestOf(offer.system, carrying, turn, Map.empty, offer.zoned, direct) match {

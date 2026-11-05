@@ -631,7 +631,9 @@ object TurnLoopTurnTests extends TestSuite {
         r.messages.collect { case Message.User(t) => t }.lastOption.getOrElse("")
       val tagged = provider.requests.map(lastUser)
       assert(
-        tagged.headOption.exists(_.startsWith("hm ~0.5\n\n[grit: the topic may have changed."))
+        tagged.headOption.exists(
+          _.startsWith("hm ~0.5\n\n<grit_note>\nThe topic may have changed.")
+        )
       )
       tagged.drop(1) ==> tagged.take(1)
       exchange(entries, turn).collect { case r: Message.ToolResult => r.content } ==>

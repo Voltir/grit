@@ -3,6 +3,7 @@ package grit.turn
 import grit.core.agenda.{Agenda, Placement, Weights}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.prompt.Fenced
 import grit.core.provider.ModelRequest
 import grit.core.tool.{
   Args,
@@ -20,7 +21,7 @@ import grit.core.tool.{
 /** The main model asked where a message went, when the classifier was unsure
   * ([[TurnAgenda.Classification.uncertain]]): `topic` is one of every turn's tools
   * ([[tool]]), offered alike whether or not the turn asks, so turns of one conversation offer
-  * the same tools (ADR 0052); on a turn that asks, a one-line note on the user's message ([[tag]]) asks for it, the same on every
+  * the same tools (ADR 0052); on a turn that asks, grit's note on the user's message ([[tag]]) asks for it, the same on every
   * call ([[tagged]]), and the verdict is the first call's reply's ([[of]]). The exchange stays
   * in the journal and the verdict's record, never among the conversation's messages.
   */
@@ -95,10 +96,14 @@ object TurnVerdict {
     // gpt-oss-20b, which answered a message with "topic(new,movie)").
     val earlierCall =
       if (c.earlier.isEmpty) "" else "`earlier` with that topic in `earlier`, "
-    s"[grit: the topic may have changed. Current topic: $current. Earlier topics: $earlier. " +
-      s"First call the `${ToolName.value(Name)}` tool once to say what this message is " +
-      s"about: `current`, $earlierCall`new` with a short name. Then answer the message " +
-      "as usual, without mentioning topics, this note or the tool.]"
+    Fenced.noted(
+      Vector(
+        s"The topic may have changed. Current topic: $current. Earlier topics: $earlier. " +
+          s"First call the `${ToolName.value(Name)}` tool once to say what this message is " +
+          s"about: `current`, $earlierCall`new` with a short name. Then answer the message " +
+          "as usual, without mentioning topics, this note or the tool."
+      )
+    )
   }
 
   /** `base` with [[tag]] after its last user message that is no note on the loop's exchange (a

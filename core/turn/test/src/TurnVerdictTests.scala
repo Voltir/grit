@@ -97,7 +97,7 @@ object TurnVerdictTests extends TestSuite {
         case other => other.toString
       }
       assert(
-        note.startsWith("hm ~0.5\n\n[grit: the topic may have changed."),
+        note.startsWith("hm ~0.5\n\n<grit_note>\nThe topic may have changed."),
         note.contains("Current topic: new topic."),
         note.contains("Earlier topics: new topic (2).")
       )
