@@ -4,9 +4,8 @@ import java.net.URI
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
-import grit.core.id.{EdgeName, PrincipalId}
+import grit.core.id.EdgeName
 import grit.core.prompt.Fragment
-import grit.core.store.StoreError
 import grit.edge.{PlaceFragments, Server}
 import grit.mcp.client.{Credential, KeyFiles}
 
@@ -31,7 +30,7 @@ object DriveEdge {
     * with `credential`'s tokens, read as `reading` says, with `instructions` as the place's
     * Place layer; or why not: `instructions` blank, or `api` or `slides` not an absolute URL.
     * Opened, it registers the service's
-    * place for grit itself ([[PrincipalId.Grit]]), advertises the three there, logs that it
+    * place for grit itself ([[grit.core.id.PrincipalId.Grit]]), advertises the three there, logs that it
     * serves them, and serves the requests addressed there with [[DriveTools]], reading PDFs,
     * Word and Excel files from the file area its stores give it ([[EdgeStores.files]]), with
     * the formats that area reads with, logging what they say of each run. It needs the
@@ -84,42 +83,33 @@ object DriveEdge {
     ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] = {
       val place = reading.service.place
       val check = s"check ${credential.needs.map(Variable.value).mkString(", ")}"
-      Credential.open(credential, env, KeyFiles.Local).flatMap { authorizer =>
-        val rest: DriveRest^{clock} = new DriveRest(api, slides, authorizer, clock)
-        rest.reachable() match {
-          case Left(DriveError.NoToken(why)) =>
-            Left(EdgeRefusal.Refused(s"Drive gave no access ($why); $check"))
-          // The operator reads a refusal: its cause, and the model's words only where it has none.
-          case Left(other) =>
-            Left(
-              EdgeRefusal.Refused(
-                other.logged.getOrElse(s"Drive could not be read: ${other.message}")
+      // A match, not flatMap: a lambda's result may not hold the fresh capability open's does.
+      Credential.open(credential, env, KeyFiles.Local) match {
+        case Left(refusal) => Left(refusal)
+        case Right(authorizer) =>
+          val rest: DriveRest^{clock} = new DriveRest(api, slides, authorizer, clock)
+          rest.reachable() match {
+            case Left(DriveError.NoToken(why)) =>
+              Left(EdgeRefusal.Refused(s"Drive gave no access ($why); $check"))
+            // The operator reads a refusal: its cause, and the model's words only where it has none.
+            case Left(other) =>
+              Left(
+                EdgeRefusal.Refused(
+                  other.logged.getOrElse(s"Drive could not be read: ${other.message}")
+                )
               )
-            )
-          case Right(()) =>
-            stores.desks.register(PrincipalId.Grit, Set(place)) match {
-              case Left(e) =>
-                Left(EdgeRefusal.Failed(s"its desk could not be registered: ${e.why}"))
-              case Right(desk) =>
-                desk.advertise(place, DriveTools.Offered, Vector(declared)) match {
-                  case Left(e) =>
-                    Left(EdgeRefusal.Failed(s"its tools could not be advertised: ${e.why}"))
-                  case Right(()) =>
-                    log(s"${place.written}: serving drive_list, drive_search, drive_read")
-                    val server = new Server(
-                      desk,
-                      new DriveTools(clock, rest, reading, stores.files),
-                      run => { val _ = Thread.ofVirtual().start(() => run()) },
-                      said => log(s"${place.written}: $said")
+            case Right(()) =>
+              Server.open(stores.desks, place, log) { desk =>
+                desk
+                  .advertise(place, DriveTools.Offered, Vector(declared))
+                  .map(_ =>
+                    new Server.Advertised(
+                      DriveTools.Offered,
+                      new DriveTools(clock, rest, reading, stores.files)
                     )
-                    server.serve()
-                    Right(new ServedEdge.Open {
-                      def deliver(): Either[StoreError, Int] = Right(0)
-                      def close(): Unit = server.close()
-                    })
-                }
-            }
-        }
+                  )
+              }
+          }
       }
     }
   }

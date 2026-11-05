@@ -5,8 +5,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.duration.*
 import scala.util.control.NonFatal
 
-import grit.core.edge.{Desk, Edges, Route, ToolRequest}
-import grit.core.tool.Outcome
+import grit.core.edge.{Desk, DeskError, Desks, EdgeRefusal, Edges, Route, ServedEdge, ToolRequest}
+import grit.core.id.PrincipalId
+import grit.core.place.Place
+import grit.core.store.StoreError
+import grit.core.tool.{Outcome, ToolName, ToolSet}
 
 /** What an edge runs a request with: its tools where [[Edges.authorize]] routed the request
   * ([[Route]]). Never throws: every failure is an [[Outcome]].
@@ -107,4 +110,41 @@ object Server {
 
   /** The longest an idle edge waits before looking again, whatever it is told: 1 second. */
   val Poll: FiniteDuration = 1.second
+
+  /** The set an edge advertised at its place, and the tools that serve it. */
+  final class Advertised(val offered: ToolSet, val tools: Tools^)
+
+  /** `place` registered for grit itself ([[PrincipalId.Grit]]) through `desks` and served:
+    * `advertise`, given the desk, advertises there and gives the set it advertised, logged in
+    * one line ("{place}: serving a, b"), and the tools serving it, run by a [[Server]] of their
+    * own, each request on a virtual thread, what the server says logged after the place. The
+    * edge delivers nothing; closing it stops the server, and the desk stays open. `Failed` when
+    * the desk cannot be registered or `advertise` is refused.
+    */
+  def open(desks: Desks^, place: Place, log: String => Unit)(
+      advertise: (desk: Desk^) => Either[DeskError, Advertised^{desk, caps.any}]
+  ): Either[EdgeRefusal, ServedEdge.Open^{desks, log, advertise, caps.any}] =
+    desks.register(PrincipalId.Grit, Set(place)) match {
+      case Left(e) => Left(EdgeRefusal.Failed(s"its desk could not be registered: ${e.why}"))
+      case Right(desk) =>
+        advertise(desk) match {
+          case Left(e) => Left(EdgeRefusal.Failed(s"its tools could not be advertised: ${e.why}"))
+          case Right(advertised) =>
+            log(
+              s"${place.written}: serving " +
+                advertised.offered.tools.map(e => ToolName.value(e.name)).mkString(", ")
+            )
+            val server = new Server(
+              desk,
+              advertised.tools,
+              run => { val _ = Thread.ofVirtual().start(() => run()) },
+              said => log(s"${place.written}: $said")
+            )
+            server.serve()
+            Right(new ServedEdge.Open {
+              def deliver(): Either[StoreError, Int] = Right(0)
+              def close(): Unit = server.close()
+            })
+        }
+    }
 }

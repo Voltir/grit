@@ -14,8 +14,9 @@ object ServerSeparationTests extends TestSuite {
 
   private val prelude =
     """package probe
-      |import grit.core.edge.{Desk, Route, ToolRequest}
-      |import grit.core.tool.Outcome
+      |import grit.core.edge.{Desk, Desks, EdgeRefusal, Route, ServedEdge, ToolRequest}
+      |import grit.core.place.Place
+      |import grit.core.tool.{Outcome, ToolSet}
       |import grit.edge.{Server, Tools}
       |""".stripMargin
 
@@ -43,7 +44,37 @@ object ServerSeparationTests extends TestSuite {
       |}
       |""".stripMargin
 
-  private lazy val compiled = Probes.batch(prelude, List(lent, held))
+  /** [[Server.open]] serving tools that log through what each run lends them. */
+  private val openLent =
+    """def g(desks: Desks^, place: Place, log: String => Unit)
+      |    : Either[EdgeRefusal, ServedEdge.Open^{desks, log, caps.any}] =
+      |  Server.open(desks, place, log) { desk =>
+      |    val tools = new Tools {
+      |      def run(route: Route, q: ToolRequest, said: String => Unit): Outcome = {
+      |        said("why")
+      |        Outcome.Failed("try again")
+      |      }
+      |    }
+      |    Right(new Server.Advertised(ToolSet.Empty, tools))
+      |  }
+      |""".stripMargin
+
+  /** [[Server.open]] serving tools that hold the log `open` is handed. */
+  private val openHeld =
+    """def g(desks: Desks^, place: Place, log: String => Unit)
+      |    : Either[EdgeRefusal, ServedEdge.Open^{desks, log, caps.any}] =
+      |  Server.open(desks, place, log) { desk =>
+      |    val tools = new Tools {
+      |      def run(route: Route, q: ToolRequest, said: String => Unit): Outcome = {
+      |        log("why")
+      |        Outcome.Failed("try again")
+      |      }
+      |    }
+      |    Right(new Server.Advertised(ToolSet.Empty, tools))
+      |  }
+      |""".stripMargin
+
+  private lazy val compiled = Probes.batch(prelude, List(lent, held, openLent, openHeld))
 
   val tests = Tests {
     test("the probe environment is set") {
@@ -56,6 +87,15 @@ object ServerSeparationTests extends TestSuite {
 
     test("tools that hold the log the server is handed are refused") {
       val errs = compiled.errors(held)
+      assert(errs.nonEmpty, errs.forall(_.contains("Separation failure")))
+    }
+
+    test("tools served through open that log through what each run lends them compile") {
+      assert(compiled.errors(openLent).isEmpty)
+    }
+
+    test("tools served through open that hold the log open is handed are refused") {
+      val errs = compiled.errors(openHeld)
       assert(errs.nonEmpty, errs.forall(_.contains("Separation failure")))
     }
   }

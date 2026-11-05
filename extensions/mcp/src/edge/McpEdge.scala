@@ -1,13 +1,20 @@
 package grit.mcp.edge
 
 import grit.core.clock.Clock
-import grit.core.edge.{Console, Desk, Desks, EdgeRefusal, EdgeStores, ServedEdge, Variable}
+import grit.core.edge.{
+  Console,
+  Desk,
+  DeskError,
+  Desks,
+  EdgeRefusal,
+  EdgeStores,
+  ServedEdge,
+  Variable
+}
 import grit.core.host.Processes
-import grit.core.id.{EdgeName, PrincipalId}
+import grit.core.id.EdgeName
 import grit.core.place.Service
 import grit.core.prompt.Fragment
-import grit.core.store.StoreError
-import grit.core.tool.ToolName
 import grit.edge.{PlaceFragments, Server}
 import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer, McpTransport}
 import grit.mcp.wire.{McpError, Skipped}
@@ -17,7 +24,7 @@ object McpEdge {
 
   /** The edge named for `service`, hosting `servers`' tools there, or why not: no servers, two
     * with one name, or `instructions` given blank. Opened, it registers the service's place for
-    * grit itself ([[PrincipalId.Grit]]); logs in one line the listed tools each server's
+    * grit itself ([[grit.core.id.PrincipalId.Grit]]); logs in one line the listed tools each server's
     * allowlist leaves out, in one line those its scope cannot hold, in one line the allowlisted
     * names it does not list, and each other tool it skips on a line of its own; advertises
     * there each server's tools ([[McpTools.offered]]) with `instructions`, when given, as the
@@ -82,35 +89,26 @@ object McpEdge {
           clients.map(listing(_, log)).collectFirst { case Left(refusal) => refusal } match {
             case Some(refusal) => Left(refusal)
             case None =>
-              stores.desks.register(PrincipalId.Grit, Set(service.place)) match {
-                case Left(e) =>
-                  Left(EdgeRefusal.Failed(s"its desk could not be registered: ${e.why}"))
-                case Right(desk) =>
-                  hosting(desk, service, clock, clients, declared, log).map { server =>
-                    new ServedEdge.Open {
-                      def deliver(): Either[StoreError, Int] = Right(0)
-                      def close(): Unit = server.close()
-                    }
-                  }
-              }
+              Server.open(stores.desks, service.place, log)(
+                hosting(_, service, clock, clients, declared)
+              )
           }
       }
     }
   }
 
   /** The tools `clients` list, advertised through `desk` at `service`'s place with `declared`
-    * as its Place layer, logged, and served there from now on, each call of a server reading the
-    * asking conversation's directory sent with the directory of its request's conversation
-    * ([[grit.core.edge.Desk.origin]]); `Failed` when the tools could not be advertised.
+    * as its Place layer, each call of a server reading the asking conversation's directory sent
+    * with the directory of its request's conversation ([[grit.core.edge.Desk.origin]]); `Left`
+    * when the tools could not be advertised.
     */
   private def hosting(
       desk: Desk^,
       service: Service,
       reach: AnyRef^,
       clients: Vector[McpClient^{reach}],
-      declared: Vector[Fragment],
-      log: String => Unit
-  ): Either[EdgeRefusal, Server^{desk, reach, log}] = {
+      declared: Vector[Fragment]
+  ): Either[DeskError, Server.Advertised^{desk, reach}] = {
     val place = service.place
     val tools = new McpTools(
       reach,
@@ -119,23 +117,7 @@ object McpEdge {
       set => desk.advertise(place, set, declared),
       request => desk.origin(request).left.map(_.why).map(_.flatMap(_.place.directory))
     )
-    tools.offered() match {
-      case Left(e) => Left(EdgeRefusal.Failed(s"its tools could not be advertised: ${e.why}"))
-      case Right(offered) =>
-        log(
-          s"${place.written}: serving " + offered.tools
-            .map(e => ToolName.value(e.name))
-            .mkString(", ")
-        )
-        val server = new Server(
-          desk,
-          tools,
-          run => { val _ = Thread.ofVirtual().start(() => run()) },
-          said => log(s"${place.written}: $said")
-        )
-        server.serve()
-        Right(server)
-    }
+    tools.offered().map(new Server.Advertised(_, tools))
   }
 
   /** The edge hosting the tools of `server`, a program `processes` start (its client
@@ -143,7 +125,7 @@ object McpEdge {
     * console, opened: its list is read now, its skips logged as [[serving]] logs them; or why
     * not: `instructions` given blank, the list unreadable (naming the server and why), or no tool
     * grit may offer. Served ([[Console.Edge.serve]]), it registers the place for grit itself
-    * ([[PrincipalId.Grit]]), advertises the tools there with `instructions`, when given, as the
+    * ([[grit.core.id.PrincipalId.Grit]]), advertises the tools there with `instructions`, when given, as the
     * place's Place layer, and serves the requests addressed there as [[serving]]'s edge does:
     * each call of a server reading the asking conversation's directory
     * ([[McpServer.directoryArgument]]) is sent with its request's conversation's directory, and
@@ -190,14 +172,10 @@ object McpEdge {
         AutoCloseable {
 
     def serve(desks: Desks^): Unit =
-      desks.register(PrincipalId.Grit, Set(service.place)) match {
-        case Left(e) =>
-          log(s"${service.place.written}: not served: its desk could not be registered: ${e.why}")
-        case Right(desk) =>
-          hosting(desk, service, client, Vector(client), declared, log).left.foreach(refusal =>
-            log(s"${service.place.written}: not served: ${refusal.message}")
-          )
-      }
+      Server
+        .open(desks, service.place, log)(hosting(_, service, client, Vector(client), declared))
+        .left
+        .foreach(refusal => log(s"${service.place.written}: not served: ${refusal.message}"))
 
     /** Kills its server's program; later calls are answered unsent. */
     def close(): Unit = client.close()
