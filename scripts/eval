@@ -71,6 +71,15 @@
 #       for the persona and corpora in .local/eval/capture/<yyyymmdd>/ with --capture
 #       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
 #
+#   scripts/eval context --conversation <conversation-id> --from <database> [--full]
+#       Every turn of one conversation, a task's turns, written to
+#       .local/eval/review/context-<conversation-id>.md, each as the line above writes one
+#       turn, after what the turns held in the cache, also printed: the task's cache and the
+#       longest gap between one call's reply and the next; then a line a turn: whether its
+#       window was drawn at a boundary or carried, a boundary's dropped earlier turns flagged
+#       DROPPED, its first call's share of input read from the cache and what its misses cost,
+#       and how much of what the turn before left in the cache its first call did not read.
+#
 #   scripts/eval score <runs file> [--labels <file>]
 #       The run scored, written to .local/eval/reports/<run>.md and printed: text-free, ids
 #       and numbers. Labels come from .local/eval/labels.json (or <file>); with none it says
@@ -538,7 +547,8 @@ order() {
 }
 
 context() {
-  local id=${1:-} from= full= capture= limit=()
+  local id=${1:-} from= full= capture= limit=() conversation=
+  if [ "$id" = --conversation ]; then conversation=${2:-}; id=$conversation; shift; fi
   [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
   while [ $# -gt 0 ]; do
@@ -553,7 +563,9 @@ context() {
   [ -n "$from" ] || usage
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
   local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
-  if [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
+  if [ -n "$conversation" ]; then
+    harness context --url "$url" --from "$from" --conversation "$conversation" --out "$out" $full
+  elif [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
     harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full "${limit[@]}"
   else
     local declared=()

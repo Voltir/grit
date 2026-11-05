@@ -33,7 +33,9 @@ object Main {
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "context" :: rest =>
-        exit(flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"))))
+        exit(
+          flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"), clock))
+        )
       case "score" :: rest => exit(flags(rest).flatMap(score))
       case "order" :: rest => exit(flags(rest).flatMap(order(_, clock)))
       case "pull" :: rest => exit(flags(rest).flatMap(pull(_, clock)))

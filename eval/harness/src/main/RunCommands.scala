@@ -7,7 +7,7 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.either.Traversal
-import grit.core.id.WorkflowId
+import grit.core.id.{ConversationId, WorkflowId}
 import grit.core.message.{Cost, Tokens}
 import grit.core.persona.Persona
 import grit.core.triage.Corpora
@@ -18,7 +18,15 @@ import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Review, Spend, Var
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.Spread
-import grit.eval.harness.sent.{Cut, HeardSent, SentMarkdown, TurnSent}
+import grit.eval.harness.sent.{
+  ConversationSent,
+  Cut,
+  HeardSent,
+  SentMarkdown,
+  TaskLines,
+  TaskTurn,
+  TurnSent
+}
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
@@ -180,10 +188,48 @@ private[main] object RunCommands {
     }
 
   /** `context`: one recorded turn's request as sent, text and all, written to `--out` for a
-    * person to read; prints counts only.
+    * person to read, or with `--conversation` every turn of it ([[conversationContext]]);
+    * prints counts only.
     */
-  private[main] def context(f: Map[String, String], full: Boolean): Either[String, Unit] =
-    if (f.contains("entry")) heardContext(f) else turnContext(f, full)
+  private[main] def context(
+      f: Map[String, String],
+      full: Boolean,
+      clock: Clock^
+  ): Either[String, Unit] =
+    if (f.contains("entry")) heardContext(f)
+    else if (f.contains("conversation")) conversationContext(f, full, clock)
+    else turnContext(f, full)
+
+  /** `context` of every turn of a conversation (`--conversation`), recorded before `clock`'s
+    * now: what the task's turns held in the cache ([[TaskLines]]), printed and written to
+    * `--out`, then each turn as [[SentMarkdown.render]] writes it.
+    */
+  private def conversationContext(
+      f: Map[String, String],
+      full: Boolean,
+      clock: Clock^
+  ): Either[String, Unit] =
+    for {
+      url <- need(f, "url")
+      from <- need(f, "from")
+      conversation <- need(f, "conversation").map(ConversationId(_))
+      out <- need(f, "out").map(Path.of(_))
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      sent <- opened(config)(ConversationSent.read(_, conversation, clock.now()))
+      lines = TaskLines.lines(TaskTurn.all(sent))
+      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
+        s"${out.getParent}: ${e.getClass.getName}"
+      )
+      cut = if (full) Cut.Whole else Cut.Default
+      _ <- write(
+        out,
+        (lines.map(l => s"- $l") ++ sent.turns.map(SentMarkdown.render(_, from, cut)))
+          .mkString("\n\n")
+      )
+    } yield {
+      println(s"written: $out")
+      lines.foreach(println)
+    }
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request
     * worded for the persona and corpora in `--declared` (a capture's directory, its

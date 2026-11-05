@@ -302,15 +302,10 @@ object SentMarkdown {
     */
   def efficiencyLines(sent: TurnSent): Vector[String] = {
     val measured = sent.measured
-    val rows = measured.flatMap(_.row)
-    val cache =
-      if (rows.isEmpty) "cache: no ledger rows"
-      else {
-        val most = costliest(measured).map((label, _) => label)
-        s"cache: ${percent1(read(rows), input(rows))} hit; misses cost " +
-          s"${missedCost(measured).inCents} of ${Cost.total(rows.map(_.usage)).inCents}" +
-          (if (most.isEmpty) "" else s" (most on ${most.mkString(", ")})")
-      }
+    val cache = cacheOf(measured).fold("cache: no ledger rows") { held =>
+      val most = costliest(measured).map((label, _) => label)
+      s"cache: $held" + (if (most.isEmpty) "" else s" (most on ${most.mkString(", ")})")
+    }
     val parts = sent.requests.lastOption
       .flatMap((_, reply, _) => measured.find(_.reply == reply))
       .flatMap(_.parts)
@@ -365,10 +360,21 @@ object SentMarkdown {
   private val HeadlineLabels: Vector[String] =
     Vector("system", "tools", "task", "model's turns", "tool results", "retrieved")
 
+  /** What `measured` held in the cache: "<share of input read> hit; misses cost <cents> of
+    * <cents>", the misses priced as [[MeasuredCall.missed]] says; `None` with no ledger row.
+    */
+  private[sent] def cacheOf(measured: Vector[MeasuredCall]): Option[String] = {
+    val rows = measured.flatMap(_.row)
+    Option.when(rows.nonEmpty)(
+      s"${percent1(read(rows), input(rows))} hit; misses cost " +
+        s"${missedCost(measured).inCents} of ${Cost.total(rows.map(_.usage)).inCents}"
+    )
+  }
+
   private def read(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.cacheRead)).sum
   private def input(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.input)).sum
 
-  private def percent1(part: Long, whole: Long): String =
+  private[sent] def percent1(part: Long, whole: Long): String =
     if (whole <= 0) "0%"
     else s"${(BigDecimal(part) * 100 / whole).setScale(1, BigDecimal.RoundingMode.HALF_UP)}%"
 
