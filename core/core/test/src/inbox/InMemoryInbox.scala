@@ -32,7 +32,8 @@ import grit.core.store.{
   Origin,
   Payload,
   StoreError,
-  Tx
+  Tx,
+  WentOn
 }
 import grit.core.visibility.{Clearance, InMemoryRecorded, Integrity, Label, Visibility}
 import grit.dbos.sql.TestTx
@@ -193,6 +194,7 @@ final class InMemoryInbox(
       source: SourceId,
       task: TurnSeq,
       turn: Int,
+      reason: WentOn,
       by: Account
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
@@ -210,10 +212,15 @@ final class InMemoryInbox(
             recorded(
               origin,
               source,
-              Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
+              Payload.Continuation(task, turn, reason),
               by,
               labelOf(origin),
-              Some(first.integrity.meet(Tx.integrityOf(person(by))(using inForce))),
+              Some(
+                WentOn.believed(
+                  reason,
+                  first.integrity.meet(Tx.integrityOf(person(by))(using inForce))
+                )
+              ),
               java.time.Instant.EPOCH,
               capped = true,
               None

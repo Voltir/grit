@@ -36,7 +36,8 @@ import grit.core.store.{
   Payload,
   PeriodStore,
   StoreError,
-  Tx
+  Tx,
+  WentOn
 }
 import grit.core.visibility.{Integrity, Label, Subject, Visibility}
 import grit.dbos.sql.{SqlSchedules, SqlStatements}
@@ -103,10 +104,12 @@ final class SqlInbox(
       source: SourceId,
       task: TurnSeq,
       turn: Int,
+      reason: WentOn,
       by: Account
   ): Either[InboxError, TurnRef] = {
     val now = clock.now()
-    inTransaction(recorder.continued(origin, source, task, turn, by, now)).flatMap(identity)
+    inTransaction(recorder.continued(origin, source, task, turn, reason, by, now))
+      .flatMap(identity)
   }
 
   def hear(

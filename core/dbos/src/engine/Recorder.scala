@@ -17,7 +17,8 @@ import grit.core.store.{
   Payload,
   PeriodStore,
   StoreError,
-  Tx
+  Tx,
+  WentOn
 }
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.{SqlIdentities, SqlRooms, SqlStatements}
@@ -133,6 +134,7 @@ private[engine] final class Recorder(
       source: SourceId,
       task: TurnSeq,
       turn: Int,
+      reason: WentOn,
       by: Account,
       at: Instant
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
@@ -156,10 +158,10 @@ private[engine] final class Recorder(
               recorded(
                 origin,
                 source,
-                Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
+                Payload.Continuation(task, turn, reason),
                 by,
                 c.label,
-                Some(f.integrity.meet(integrity)),
+                Some(WentOn.believed(reason, f.integrity.meet(integrity))),
                 at,
                 capped = true,
                 None

@@ -154,8 +154,9 @@ object SlackEdgeLiveTests extends TestSuite {
         source: SourceId,
         task: grit.core.id.TurnSeq,
         turn: Int,
+        reason: grit.core.store.WentOn,
         by: Account
-    ): Either[InboxError, TurnRef] = inner.continued(origin, source, task, turn, by)
+    ): Either[InboxError, TurnRef] = inner.continued(origin, source, task, turn, reason, by)
     def ingest(
         origin: Origin,
         source: SourceId,

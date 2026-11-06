@@ -25,7 +25,7 @@ import grit.core.period.{Period, PeriodState}
 import grit.core.place.Place
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
-import grit.core.store.{Origin, Payload}
+import grit.core.store.{Origin, Payload, TestWentOn, WentOn}
 import grit.core.visibility.{
   Cap,
   Compartments,
@@ -338,20 +338,37 @@ abstract class InboxContract extends TestSuite {
         val bo = TestAccounts.account("task:bo-continued")
         store.name(ana, "Ana")
         val task = inbox.ingest(here, SourceId("w"), said("the task"), ana, None)
-        val next = inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, ana)
+        val next = inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana)
         (
           task.map(_.turnSeq),
           next.map(_.turnSeq),
-          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, ana),
+          inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana),
           inbox.ingested(here, SourceId("w:2")),
-          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, bo).isLeft,
-          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, ana).isLeft
+          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, WentOn.AtLimit, bo).isLeft,
+          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, WentOn.AtLimit, ana).isLeft
         ) ==> (Right(TurnSeq.First), Right(TurnSeq.First.next), next, next.map(Some(_)), true, true)
         store.written(here) ==> Vector(
           (Payload.Message(said("the task")), Some("Ana")),
-          (Payload.Continuation(TurnSeq.First, 2, grit.core.store.WentOn.AtLimit), Some("Ana"))
+          (Payload.Continuation(TurnSeq.First, 2, WentOn.AtLimit), Some("Ana"))
         )
         store.believed(here).distinct.size ==> 1
+      }
+    }
+
+    test(
+      "a continuation after a failed check is believed no higher than a member, its task's author's above it"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "checked")
+        val failed = TestWentOn.failed("make test", Some(1), "1 failed")
+        inbox.ingest(here, SourceId("w"), said("the task"), Account.Local, None)
+        inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, Account.Local)
+        inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, failed, Account.Local)
+        store.believed(here) ==> Vector(
+          Integrity.at(Integrity.Level.Authority),
+          Integrity.at(Integrity.Level.Authority),
+          Integrity.Member
+        )
       }
     }
 

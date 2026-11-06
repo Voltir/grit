@@ -10,7 +10,7 @@ import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.TurnEnding
 import grit.core.message.Message
-import grit.core.store.Origin
+import grit.core.store.{Origin, WentOn}
 import grit.dbos.sql.DbConfig
 import grit.kit.deployment.Deployment
 import grit.kit.rehearse.{Rehearse, Rehearsed, Situation, StandIns}
@@ -167,7 +167,14 @@ private[main] object Work {
               case After.GoOn(next, line) =>
                 print(line)
                 console.inbox
-                  .continued(origin, source(text, next), task.turnSeq, next, Account.Local)
+                  .continued(
+                    origin,
+                    source(text, next),
+                    task.turnSeq,
+                    next,
+                    WentOn.AtLimit,
+                    Account.Local
+                  )
                   .flatMap(t => console.inbox.startTurn(t).map(_ => t)) match {
                   case Left(error) => Left(ChatHost.notSent(error))
                   case Right(t) => go(t, next)

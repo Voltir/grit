@@ -3,6 +3,7 @@ package grit.core.store
 import scala.concurrent.duration.*
 
 import grit.core.host.Clipped
+import grit.core.visibility.Integrity
 
 /** Why grit went on with a task in a new turn (ADR 0058). */
 sealed trait WentOn extends caps.Pure
@@ -44,6 +45,15 @@ object WentOn {
       else if (text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > CommandBytes)
         Left(s"the check command is over $CommandBytes bytes")
       else Right(Command(text))
+  }
+
+  /** How far a continuation for `reason` is believed, its task's first message believed at
+    * `task`: a failed check's output is the checkout's, believed no higher than
+    * [[Integrity.Member]], as a coding tool's result is.
+    */
+  def believed(reason: WentOn, task: Integrity): Integrity = reason match {
+    case AtLimit => task
+    case _: CheckFailed => task.meet(Integrity.Member)
   }
 
   /** The most bytes of UTF-8 an acceptance command holds. */
