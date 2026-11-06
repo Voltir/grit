@@ -100,6 +100,30 @@ object MemoryCap {
       .toPlainString
 }
 
+/** A grit coder's run stopped partway and the same `grit work` started again: once `calls` of
+  * its model calls have answered.
+  */
+final case class Restart private (calls: Int) extends caps.Pure {
+
+  /** What the trial's transcript and report say of it. */
+  def said: String =
+    s"after $calls model calls, grit work was stopped and started again in the same checkout " +
+      "and database"
+
+  /** [[said]] once `lines`, a grit run's output so far, hold [[calls]] answered calls
+    * ([[Consumed.gritCalls]]); `None` before.
+    */
+  private[bench] def due(lines: Vector[String]): Option[String] =
+    Option.when(Consumed.gritCalls(lines).size >= calls)(said)
+}
+
+object Restart {
+
+  /** The restart after `calls` calls, or why not: `calls` below 1. */
+  def of(calls: Int): Either[String, Restart] =
+    Either.cond(calls >= 1, Restart(calls), s"a restart after $calls model calls is below 1")
+}
+
 /** What runs the coder: Claude Code or grit. */
 sealed trait Arm extends caps.Pure
 
@@ -190,7 +214,7 @@ trait CoderTurns extends caps.SharedCapability {
 }
 
 /** A trial, the run's output it was read from, a line a message, what that output gave, the
-  * task's checks as they ran after it, and the arm that ran it.
+  * task's checks as they ran after it, the arm that ran it, and its restart, if it was restarted.
   */
 final case class Tried(
     trial: TrialRows.Trial,
@@ -198,12 +222,14 @@ final case class Tried(
     consumed: Consumed,
     checked: Checked,
     stopped: Option[String],
-    arm: Arm
+    arm: Arm,
+    restarted: Option[Restart]
 ) extends caps.Pure {
 
   /** What a person reads of it, a line each: its measures, each call's tokens, its cost in cents
     * by grit's rates ([[Consumed.gritCost]]) and, for Claude Code's run, by Claude Code's own
-    * estimate, how the run ended, each denial, and each check; never the transcript's text.
+    * estimate, how the run ended, whether it was restarted, each denial, and each check; never
+    * the transcript's text.
     */
   def lines: Vector[String] = {
     def tokens(u: Usage) = s"${Tried.input(u)}, output ${Tokens.value(u.output)}"
@@ -221,7 +247,7 @@ final case class Tried(
         consumed.ended.fold(stopped.fold("ended: with no result")(why => s"ended: $why"))(e =>
           s"ended: ${e.reason}${if (e.error) ", in error" else ""}"
         )
-      ) ++ consumed.ended.toVector
+      ) ++ restarted.map(r => s"restarted: ${r.said}") ++ consumed.ended.toVector
         .flatMap(_.denials)
         .map(d => s"denied: ${d.tool} ${d.input.take(200)}") ++
       checked.lines ++
@@ -412,7 +438,7 @@ object Rig {
         )
         harness <- Harness.of("claude-code")
         session <- SessionId.of(harness, local)
-      } yield Coded(session, consumed, lines, wall, stopped)
+      } yield Coded(session, consumed, lines, wall, stopped, None)
     }
 
   /** The grit coder, as `arm` runs `grit work` under `cap`, on `task` in a new checkout at `dir`
@@ -431,7 +457,11 @@ object Rig {
     * ([[MemoryCap.stops]]), or one whose turn did not succeed; that budget holds for the compile
     * before grit, a `Left` naming it, and for the checks as [[Checks.run]] says; its task, every
     * turn of it, is read from `turns` once it has ended. A command it left running dies with it, and its Mill daemon is
-    * shut down. What grit wrote to its output, then the tail of its errors, is written to
+    * shut down. With `restart`, a run is stopped as a capped one is once [[Restart.calls]] of its
+    * calls have answered, and the same `grit work` started again in the checkout on the same
+    * brief and database, the turn it left pending taken up from the store; the budget, the
+    * trial's calls, usage and wall time are both runs', its transcript and log say where it was
+    * restarted, and one that ends or is stopped otherwise before then is not restarted. What grit wrote to its output, then the tail of its errors, is written to
     * `output` once it has ended, whatever becomes of the trial. `Left` for fewer than 2 turns, or
     * a model [[AnthropicRates]] has no rates for, before anything runs; when `memory` cannot be
     * read in the checkout, before its compile starts; when `output` cannot be
@@ -453,7 +483,8 @@ object Rig {
       key: Secret,
       dir: RelPath,
       quiet: FiniteDuration,
-      output: Path
+      output: Path,
+      restart: Option[Restart]
   ): Either[String, Tried] =
     for {
       _ <- gritCapped(cap)
@@ -476,35 +507,51 @@ object Rig {
             )
           _ <- warmed(work)(task, arm, cap, dir, output, holding(memory, dir, memoryCap))
           streamed <- briefed(arm, task) { brief =>
-            handing
-              .started(dir, key, none) { file =>
-                Argv.of(
-                  "timeout",
-                  Vector("-k", "1m", s"${Longest.toSeconds}s") ++
-                    gritEnvironment(arm, cap) ++
-                    Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
-                )
-              }(s =>
-                timed(clock)(
-                  Watched.ran(
-                    s,
-                    quiet,
-                    Longest + 2.minutes,
-                    spent(cap),
-                    holding(memory, dir, memoryCap)
+            // One start of `grit work` on the brief, stopped for `stop`, its output kept.
+            def ran(stop: Vector[String] -> Option[String]): Either[String, Watched.Read] =
+              handing
+                .started(dir, key, none) { file =>
+                  Argv.of(
+                    "timeout",
+                    Vector("-k", "1m", s"${Longest.toSeconds}s") ++
+                      gritEnvironment(arm, cap) ++
+                      Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
                   )
+                }(s =>
+                  Watched.ran(s, quiet, Longest + 2.minutes, stop, holding(memory, dir, memoryCap))
                 )
-              )
-              .left
-              .map(e => s"grit did not run: ${e.message}")
+                .left
+                .map(e => s"grit did not run: ${e.message}")
+                .flatMap(read => kept(output, read.lines, read.ended).map(_ => read))
+            val (read, wall) = timed(clock)(
+              ran(lines => spent(cap)(lines).orElse(restart.flatMap(_.due(lines)))).flatMap {
+                first =>
+                  restart.filter(_.due(first.lines).exists(first.stopped.contains)) match {
+                    case None => Right((first, None))
+                    case Some(r) =>
+                      val line = s"[bench] restarted: ${r.said}"
+                      for {
+                        _ <- written(output, append = true)(Vector(line))
+                        again <- ran(lines => spent(cap)(first.lines ++ lines))
+                      } yield (again.copy(lines = (first.lines :+ line) ++ again.lines), Some(r))
+                  }
+              }
+            )
+            read.map((_, wall))
           }
-          (Watched.Read(lines, ended, stopped), wall) = streamed
-          _ <- kept(output, lines, ended)
+          ((Watched.Read(lines, ended, stopped), restarted), wall) = streamed
           turn <- turns.task()
           reported = ended.fold(_ => turn, r => Consumed.reported(turn, r.exit, r.output.text))
           consumed = Consumed.ofTurn(lines, reported, stopped)
           session <- SessionId.of(arm.harness, turn.session)
-        } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
+        } yield Coded(
+          session,
+          consumed,
+          lines ++ turn.rendered.linesIterator,
+          wall,
+          stopped,
+          restarted
+        )
       }
     } yield tried
 
@@ -800,19 +847,20 @@ object Rig {
             )
             .left
             .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))
-        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped, arm)
+        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped, arm, c.restarted)
       )
     } yield tried
 
   /** What a coder's run gave: its session, what it consumed, its transcript, how long it ran,
-    * and why it was stopped early, if it was.
+    * why it was stopped early, if it was, and its restart, if it was restarted.
     */
   private final case class Coded(
       session: SessionId,
       consumed: Consumed,
       transcript: Vector[String],
       wall: FiniteDuration,
-      stopped: Option[String]
+      stopped: Option[String],
+      restarted: Option[Restart]
   )
 
   /** `task`'s known diff at `dir`, its commits applied to its base, and then its checks run;

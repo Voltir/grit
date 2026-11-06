@@ -25,6 +25,7 @@ import grit.eval.harness.bench.{
   GritTurn,
   MemoryCap,
   PerPass,
+  Restart,
   Rig,
   Task,
   Tried
@@ -155,6 +156,14 @@ private[main] object LabCommands {
                     case Some(_) =>
                       need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
                   }
+                  restart <- f.get("restart-after") match {
+                    case None => Right(None)
+                    case Some(n) =>
+                      n.toIntOption
+                        .toRight(s"--restart-after $n is not a whole number")
+                        .flatMap(Restart.of)
+                        .map(Some(_))
+                  }
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -196,7 +205,8 @@ private[main] object LabCommands {
                             key,
                             dir,
                             Rig.Quiet,
-                            output
+                            output,
+                            restart
                           )
                         )
                       } yield ()

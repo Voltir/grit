@@ -120,6 +120,7 @@ object RigTests extends TestSuite {
            |${literals.map(l => s"""System.out.println("$l");""").mkString("\n")}
            |} }""".stripMargin
       )
+      Files.write(root.resolve("grit-again.out"), fake.again.asJava)
       val print =
         if (fake.jvm) s""""$${JAVA_HOME}/bin/java" $root/Answer.java""" else s"cat $root/grit.out"
       Files.writeString(
@@ -129,8 +130,11 @@ object RigTests extends TestSuite {
            |env | sort > $root/genv
            |for a in "$$@"; do brief="$$a"; done
            |cat "$$brief" > $root/gbrief
+           |cat "$$brief" >> $root/gbriefs
+           |pwd -P >> $root/gdirs
            |printf '%s\\n' 'object A { val x = 1 }' > a.scala
-           |$print
+           |if [ -s $root/gstarted ]; then cat $root/grit-again.out; else $print; fi
+           |printf 'started\\n' >> $root/gstarted
            |printf 'a log line\\n' >&2
            |${if (fake.hangs) "sleep 30" else "exit 0"}
            |""".stripMargin
@@ -218,12 +222,14 @@ object RigTests extends TestSuite {
   }
 
   /** The fake grit launcher's output, a line each, whether it hangs once written, and whether a
-    * JVM prints the lines, as `grit work` does, in place of the shell.
+    * JVM prints the lines, as `grit work` does, in place of the shell; `again` is what every
+    * start after its first writes in their place.
     */
   private final case class GritFake(
       lines: Vector[String],
       hangs: Boolean = false,
-      jvm: Boolean = false
+      jvm: Boolean = false,
+      again: Vector[String] = Vector.empty
   )
 
   /** What a small grit run prints: two calls' lines among others. */
@@ -281,7 +287,8 @@ object RigTests extends TestSuite {
       turn: GritTurn = gritTurn,
       heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30)),
       variant: Option[String] = None,
-      settings: Arm.Settings = Arm.Settings()
+      settings: Arm.Settings = Arm.Settings(),
+      restart: Option[Restart] = None
   ): Either[String, Tried] =
     Rig.gritTrial(
       f.work,
@@ -298,7 +305,8 @@ object RigTests extends TestSuite {
       key,
       checkout,
       Rig.Quiet,
-      f.root.resolve("grit.log")
+      f.root.resolve("grit.log"),
+      restart
     )
 
   private def trial(
@@ -670,6 +678,74 @@ object RigTests extends TestSuite {
           )
         )
       }
+    }
+
+    test(
+      "a grit coder restarted after its nth call is started again on its brief in the same checkout, its trial both runs' and saying so"
+    ) {
+      withTask { f =>
+        val again = Vector(
+          "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 500 · read 0 · " +
+            "write 0 · out 5 · 0.0010¢",
+          "[main] done"
+        )
+        val restart = Restart.of(2).getOrElse(throw new java.lang.AssertionError())
+        gritTrial(f, GritFake(gritLines, again = again), restart = Some(restart)).map { t =>
+          val dirs = f.recorded("gdirs").linesIterator.toVector
+          (
+            dirs.size,
+            dirs.distinct.size,
+            f.recorded("gbriefs") == f.recorded("gbrief") * 2,
+            t.trial.calls,
+            Tokens.value(t.trial.usage.input),
+            t.stopped,
+            t.transcript,
+            t.lines.find(_.startsWith("restarted:"))
+          )
+        } ==> Right(
+          (
+            2,
+            1,
+            true,
+            3,
+            2000L,
+            None,
+            gritLines.take(3) ++ Vector(s"[bench] restarted: ${restart.said}") ++ again ++
+              Vector("# The turn", "rendered"),
+            Some(s"restarted: ${restart.said}")
+          )
+        )
+      }
+    }
+
+    test("a restarted grit coder's cap holds over the calls of both its runs") {
+      withTask { f =>
+        val twoCents =
+          "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 10 · read 0 · " +
+            "write 0 · out 40000 · 2¢"
+        gritTrial(
+          f,
+          GritFake(Vector(twoCents, twoCents), hangs = true, again = Vector(twoCents)),
+          restart = Restart.of(2).toOption
+        ).map(t => (t.trial.passed, t.trial.calls, t.stopped)) ==> Right(
+          (false, 3, Some("its calls cost 6¢, reaching its cap of 5¢"))
+        )
+      }
+    }
+
+    test(
+      "a grit coder that ends before its restart's calls is started once, and not said restarted"
+    ) {
+      withTask { f =>
+        gritTrial(f, GritFake(gritLines), restart = Restart.of(3).toOption).map { t =>
+          (f.recorded("gdirs").linesIterator.size, t.lines.exists(_.startsWith("restarted:")))
+        } ==> Right((1, false))
+      }
+    }
+
+    test("a restart is after at least 1 call") {
+      (Restart.of(0).left.toOption, Restart.of(1).isRight) ==>
+        (Some("a restart after 0 model calls is below 1"), true)
     }
 
     test(

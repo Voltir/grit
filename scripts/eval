@@ -361,7 +361,8 @@
 #                      [--harness claude-code
 #                       | --harness grit [--max-tokens <n>] [--max-memory-gb <n>]
 #                                        [--variant <name>] [--window-tokens <n>]
-#                                        [--work-turns <n>] [--dry]]
+#                                        [--work-turns <n>] [--restart-after <n>]
+#                                        [--dry]]
 #       The coder bench (eval/bench/README.md): the frozen task eval/bench/tasks/<name>, in a
 #       checkout of its own holding only its base's history. With --known, the task's own
 #       commits through its checks, which must pass; nothing is kept.
@@ -387,6 +388,11 @@
 #       the checks alike. --variant names the change this build of grit is run with: its trial
 #       is kept, and summed, under the harness grit-<name>, apart from grit's own.
 #       --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS.
+#       --restart-after stops `grit work`, with every process it started, once <n> of its model
+#       calls have answered, and starts it again in the same checkout on the same brief and
+#       grit_bench_coder, not dropped between, so its turn goes on from the store; the budget and
+#       the trial's calls, tokens and time are both runs', and its transcript and printout say
+#       where it was restarted. A run that ends, or is stopped, before then runs once.
 #       grit runs the linear assembler. --dry prints what its first call would send and stops:
 #       no key reaches grit, and nothing is spent or kept.
 #
@@ -855,7 +861,7 @@ reply_labels() {
 }
 
 bench() {
-  local known= dry= summary= arm=claude-code tokens= memory= variant= settings=() rest=()
+  local known= dry= summary= arm=claude-code tokens= memory= variant= restart= settings=() rest=()
   while [ $# -gt 0 ]; do
     case $1 in
       --summary) summary=1; shift ;;
@@ -865,18 +871,20 @@ bench() {
       --max-tokens) [ $# -ge 2 ] || usage; tokens=$2; shift 2 ;;
       --max-memory-gb) [ $# -ge 2 ] || usage; memory=$2; shift 2 ;;
       --variant) [ $# -ge 2 ] || usage; variant=$2; shift 2 ;;
+      --restart-after) [ $# -ge 2 ] || usage; restart=$2; shift 2 ;;
       --window-tokens | --work-turns) [ $# -ge 2 ] || usage; settings+=("$1" "$2"); shift 2 ;;
       --task | --model | --max-budget-usd | --max-turns) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
       *) usage ;;
     esac
   done
   if [ -n "$summary" ]; then
-    [ -z "$known$dry$tokens$memory$variant" ] && [ ${#rest[@]} -eq 0 ] && [ ${#settings[@]} -eq 0 ] || usage
+    [ -z "$known$dry$tokens$memory$variant$restart" ] && [ ${#rest[@]} -eq 0 ] && [ ${#settings[@]} -eq 0 ] || usage
     harness bench --summary true --url "jdbc:postgresql://localhost:5432/grit_bench"
     return
   fi
   local common=(--tasks "$here/eval/bench/tasks" --repository "$main")
   if [ -n "$known" ]; then
+    [ -z "$restart" ] || usage
     harness bench "${common[@]}" --work "$main/.local/bench/work" --known true "${rest[@]}"
     return
   fi
@@ -884,7 +892,7 @@ bench() {
   export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
   case $arm in
     claude-code)
-      [ -z "$dry" ] && [ -z "$tokens" ] && [ -z "$memory" ] && [ -z "$variant" ] && [ ${#settings[@]} -eq 0 ] || usage
+      [ -z "$dry$tokens$memory$variant$restart" ] && [ ${#settings[@]} -eq 0 ] || usage
       exists "$db" || compose createdb -U grit "$db"
       harness bench "${common[@]}" --work "$main/.local/bench/work" "${rest[@]}" \
         --claude "${CLAUDE:-$(command -v claude)}" --scout "$main/scripts/scout" \
@@ -892,6 +900,7 @@ bench() {
         --url "jdbc:postgresql://localhost:5432/$db" --blobs "$main/.local/bench/blobs/$db"
       ;;
     grit)
+      [ -z "$restart" ] || [ -z "$dry" ] || usage
       # The grit coder's own database, made afresh for each run: the one place it is named.
       compose dropdb -U grit --if-exists grit_bench_coder
       compose createdb -U grit grit_bench_coder
@@ -902,6 +911,7 @@ bench() {
         --coder-url "jdbc:postgresql://localhost:5432/grit_bench_coder"
         --max-tokens "${tokens:-8192}" --max-memory-gb "${memory:-8}")
       [ -z "$variant" ] || flags+=(--variant "$variant")
+      [ -z "$restart" ] || flags+=(--restart-after "$restart")
       flags+=("${settings[@]}")
       if [ -n "$dry" ]; then
         harness bench "${common[@]}" --work "$HOME/.cache/grit-bench/work" "${rest[@]}" \

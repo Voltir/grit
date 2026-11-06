@@ -60,5 +60,10 @@ trial refused, naming the compile) and while each check runs (a trial not passed
 check, and no check after it run). Every JVM grit's tree and the task's checks start is held to 15% of the
 machine's memory. grit's own output and the tail of its errors go to the run's log; a run the trial row
 refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
+A run given `--restart-after <n>` (`Restart`) tests that a turn survives its process: grit is stopped
+as the budget stops it once n calls have answered, then the same `grit work` starts again in the
+same checkout, on the same brief and database, and takes its pending turn up from the store. The
+budget and the trial's figures span both processes; the transcript and the printout say where it
+was restarted.
 A run given `--variant <name>` is kept under the harness `grit-<name>` (`Arm.Grit.harness`), so an
 ablation's trials sum apart from grit's own in `--summary`.
