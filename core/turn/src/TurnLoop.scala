@@ -148,7 +148,8 @@ object TurnLoop {
     Vector(
       "This turn is ending, and this is its last call. Call task_status now, and no other " +
         "tool: done with your " +
-        "answer if the task is finished, or more with what the next turn needs: what you did, " +
+        "answer if the task is finished, or more with what the next turn needs. It sees the " +
+        "task and this handoff, none of your earlier replies, so say what is done so far, " +
         "what is left, and where things are. If you cannot call it, answer in text with what " +
         "the next turn needs."
     )

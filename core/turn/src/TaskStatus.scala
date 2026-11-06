@@ -27,8 +27,9 @@ object TaskStatus {
   /** The tool's spec: `state` is `done` or `more`; `handoff` is trimmed, and refused blank. */
   val Spec: ToolSpec[Declared] = {
     val handoff = Field.text(
-      "For done: your answer to the person. For more: what the next turn needs: what you " +
-        "did, what is left, and where things are."
+      "For done: your answer to the person. For more: what the next turn needs. It sees the " +
+        "task and this handoff, none of your earlier replies, so say what is done so far, " +
+        "what is left, and where things are."
     )
     ToolSpec(
       Name,

@@ -54,6 +54,31 @@ object TurnLoopTests extends TestSuite {
     )
 
   val tests = Tests {
+    test(
+      "the ending note and task_status' handoff both say the next turn sees the task and the handoff, none of the earlier replies"
+    ) {
+      // Pinned whole: a model reads these words, and a person may see them echoed.
+      val handoff = TaskStatus
+        .schema(false)
+        .parameters
+        .obj
+        .get("properties")
+        .flatMap(_.obj.get("handoff"))
+        .flatMap(_.obj.get("description"))
+        .map(_.str)
+      (TurnLoop.Ending, handoff) ==> (
+        "<grit_note>\nThis turn is ending, and this is its last call. Call task_status now, and " +
+          "no other tool: done with your answer if the task is finished, or more with what the " +
+          "next turn needs. It sees the task and this handoff, none of your earlier replies, so " +
+          "say what is done so far, what is left, and where things are. If you cannot call it, " +
+          "answer in text with what the next turn needs.\n</grit_note>",
+        Some(
+          "For done: your answer to the person. For more: what the next turn needs. It sees the " +
+            "task and this handoff, none of your earlier replies, so say what is done so far, " +
+            "what is left, and where things are."
+        )
+      )
+    }
     test("a turn briefed for one task offers task_status on every call; a conversing one never") {
       val read = ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
       (

@@ -59,8 +59,8 @@ object Shown {
   val Continuing: String = Fenced.noted(
     Vector(
       "Your last turn on this task reached its limit and ended. This turn starts afresh: it " +
-        "holds this conversation's messages, your last reply among them, but not your tool " +
-        "calls or their results.",
+        "holds the task and your last reply, but not your earlier replies, your tool calls " +
+        "or their results.",
       "Go on with the task from where your last reply left off. Read again whatever you " +
         "need, and do not redo what your last reply says is done."
     )
@@ -79,8 +79,8 @@ object Shown {
         "Your last reply ended the turn without asking to go on, so grit ran the task's " +
           s"acceptance command in the task's directory. It failed$how. The end of its output " +
           "follows this note.",
-        "This part of the conversation starts afresh: it holds the messages so far, your last " +
-          "reply among them, but not your tool calls or their results. Find what the output " +
+        "This part of the conversation starts afresh: it holds the task and your last reply, " +
+          "but not your earlier replies, your tool calls or their results. Find what the output " +
           "shows is wrong, fix it, and run the command yourself when you can before you say " +
           "the task is done again."
       )
