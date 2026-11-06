@@ -370,7 +370,7 @@
 #                      [--harness claude-code
 #                       | --harness grit [--max-tokens <n>] [--max-memory-gb <n>]
 #                                        [--variant <name>] [--window-tokens <n>]
-#                                        [--work-turns <n>] [--dry]]
+#                                        [--work-turns <n>] [--keep-coder] [--dry]]
 #       The coder bench (eval/bench/README.md): the frozen task eval/bench/tasks/<name>, in a
 #       checkout of its own holding only its base's history. With --known, the task's own
 #       commits through its checks, which must pass; nothing is kept.
@@ -396,8 +396,11 @@
 #       the checks alike. --variant names the change this build of grit is run with: its trial
 #       is kept, and summed, under the harness grit-<name>, apart from grit's own.
 #       --window-tokens and --work-turns set grit's GRIT_WINDOW_TOKENS and GRIT_WORK_TURNS.
-#       grit runs the linear assembler. --dry prints what its first call would send and stops:
-#       no key reaches grit, and nothing is spent or kept.
+#       grit runs the linear assembler. --keep-coder copies grit_bench_coder, once the run
+#       ends however it ends, to grit_bench_coder_<yyyymmddhhmmss> (UTC), so the next trial's
+#       fresh database does not take its turns with it; the copies are dropped by hand.
+#       --dry prints what its first call would send and stops: no key reaches grit, and
+#       nothing is spent or kept.
 #
 #   scripts/eval summaries <yyyymmdd> --models <id>,<id> --spend <usd> [--first <n>]
 #                          [--dry-run]
@@ -866,12 +869,13 @@ reply_labels() {
 }
 
 bench() {
-  local known= dry= summary= arm=claude-code tokens= memory= variant= settings=() rest=()
+  local known= dry= summary= keep= arm=claude-code tokens= memory= variant= settings=() rest=()
   while [ $# -gt 0 ]; do
     case $1 in
       --summary) summary=1; shift ;;
       --known) known=1; shift ;;
       --dry) dry=1; shift ;;
+      --keep-coder) keep=1; shift ;;
       --harness) [ $# -ge 2 ] || usage; arm=$2; shift 2 ;;
       --max-tokens) [ $# -ge 2 ] || usage; tokens=$2; shift 2 ;;
       --max-memory-gb) [ $# -ge 2 ] || usage; memory=$2; shift 2 ;;
@@ -881,8 +885,9 @@ bench() {
       *) usage ;;
     esac
   done
+  [ -z "$keep" ] || { [ "$arm" = grit ] && [ -z "$dry$known" ]; } || usage
   if [ -n "$summary" ]; then
-    [ -z "$known$dry$tokens$memory$variant" ] && [ ${#rest[@]} -eq 0 ] && [ ${#settings[@]} -eq 0 ] || usage
+    [ -z "$known$dry$keep$tokens$memory$variant" ] && [ ${#rest[@]} -eq 0 ] && [ ${#settings[@]} -eq 0 ] || usage
     harness bench --summary true --url "jdbc:postgresql://localhost:5432/grit_bench"
     return
   fi
@@ -919,9 +924,18 @@ bench() {
           "${flags[@]}" --dry true
       else
         exists "$db" || compose createdb -U grit "$db"
+        local status=0
         harness bench "${common[@]}" --work "$HOME/.cache/grit-bench/work" "${rest[@]}" \
           "${flags[@]}" \
-          --url "jdbc:postgresql://localhost:5432/$db" --blobs "$main/.local/bench/blobs/$db"
+          --url "jdbc:postgresql://localhost:5432/$db" --blobs "$main/.local/bench/blobs/$db" ||
+          status=$?
+        if [ -n "$keep" ]; then
+          local kept
+          kept="grit_bench_coder_$(date -u +%Y%m%d%H%M%S)"
+          compose createdb -U grit -T grit_bench_coder "$kept"
+          echo "kept the coder's database as $kept"
+        fi
+        return "$status"
       fi
       ;;
     *) usage ;;

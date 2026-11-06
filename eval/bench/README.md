@@ -48,7 +48,8 @@ brief. Before grit starts, the rig compiles every module the task's checks name 
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's model in every role at
 the Anthropic API, and the key handed through a file. Its turn is kept in `grit_bench_coder`, which
-`scripts/eval` drops and makes afresh before each run, and read back from there for the trial: the
+`scripts/eval` drops and makes afresh before each run (`--keep-coder` copies it as the run
+ends, for a report across its turns), and read back from there for the trial: the
 calls and bytes before its first edit, and each `run` that failed as a denial. Its calls are read
 from the line grit prints as each one answers, side calls among them, and priced by grit's rates,
 the one figure; the run is stopped once they reach the budget, so it can pass the budget by the
