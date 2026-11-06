@@ -3,7 +3,7 @@ package grit.slack.text
 import scala.compiletime.constValue
 import scala.deriving.Mirror
 
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Level, Mark, Span, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.event.UserId
 
@@ -33,6 +33,35 @@ object RichTextTests extends TestSuite {
     }
 
   /** How many cases the sum type `T` has, counted by the compiler. */
+  /** A chart of `categories` (each a row) and `series` (each a column of numbers), or the
+    * test's failure.
+    */
+  private def chart(
+      kind: Chart.Kind,
+      title: String,
+      categories: Vector[String],
+      series: Vector[(String, Vector[String])],
+      axis: String = "Day",
+      values: Option[String] = Some("Leads")
+  ): Block[Nothing] =
+    Chart.of(
+      kind,
+      title,
+      values,
+      axis +: series.map(_._1),
+      categories.indices.toVector.map(k =>
+        Cell.Words(Text.plain(categories(k))) +: series.map(s =>
+          Cell.Number(BigDecimal(s._2(k)), Text.plain(s._2(k)))
+        )
+      )
+    ) match {
+      case Right(c) => Block.Chart(c)
+      case Left(u) => throw new java.lang.AssertionError(s"refused: $u")
+    }
+
+  private def charted(b: Block[Nothing]): Boolean =
+    ujson.write(only(Doc(Vector(b)))).contains("\"data_visualization\"")
+
   private inline def cases[T](using m: Mirror.SumOf[T]): Int =
     constValue[Tuple.Size[m.MirroredElemLabels]]
 
@@ -56,7 +85,7 @@ object RichTextTests extends TestSuite {
         ("language", j => j.contains("rich_text_preformatted") && language.forall(!j.contains(_)))
       case Vector(Block.Table(_, _)) => ("columns aligned", _.contains("rich_text_preformatted"))
       case Vector(Block.Rule) => ("divider", _.contains("\"divider\""))
-      case Vector(Block.Chart(_)) => ("table", _.contains("rich_text_preformatted"))
+      case Vector(Block.Chart(_)) => ("Slack chart", _.contains("\"data_visualization\""))
       case other => throw new java.lang.AssertionError(s"one block, not ${other.size}")
     }
 
@@ -235,6 +264,122 @@ object RichTextTests extends TestSuite {
       RichText.noted(Vector.empty, "strong · <m>") ==> Vector.empty
     }
 
+    test("a bar, line or area chart is a data_visualization block: a series per column") {
+      only(
+        Doc(
+          Vector(
+            chart(
+              Chart.Kind.Line,
+              "Leads",
+              Vector("Mon", "Tue"),
+              Vector("Won" -> Vector("3", "-1.5"))
+            )
+          )
+        )
+      ) ==> ujson.Arr(
+        ujson.Obj(
+          "type" -> "data_visualization",
+          "title" -> "Leads",
+          "chart" -> ujson.Obj(
+            "type" -> "line",
+            "series" -> ujson.Arr(
+              ujson.Obj(
+                "name" -> "Won",
+                "data" -> ujson.Arr(
+                  ujson.Obj("label" -> "Mon", "value" -> 3),
+                  ujson.Obj("label" -> "Tue", "value" -> -1.5)
+                )
+              )
+            ),
+            "axis_config" -> ujson.Obj(
+              "categories" -> ujson.Arr("Mon", "Tue"),
+              "x_label" -> "Day",
+              "y_label" -> "Leads"
+            )
+          )
+        )
+      )
+    }
+
+    test("a pie chart is a data_visualization block of segments") {
+      only(
+        Doc(
+          Vector(
+            chart(Chart.Kind.Pie, "Leads", Vector("Won", "Lost"), Vector("n" -> Vector("3", "1")))
+          )
+        )
+      ) ==>
+        ujson.Arr(
+          ujson.Obj(
+            "type" -> "data_visualization",
+            "title" -> "Leads",
+            "chart" -> ujson.Obj(
+              "type" -> "pie",
+              "segments" -> ujson.Arr(
+                ujson.Obj("label" -> "Won", "value" -> 3),
+                ujson.Obj("label" -> "Lost", "value" -> 1)
+              )
+            )
+          )
+        )
+    }
+
+    test("a chart at each of Slack's limits is charted, and one past it is its title and table") {
+      def x(n: Int) = "x" * n
+      def days(n: Int) = (1 to n).toVector.map(d => s"d$d")
+      def one(n: Int) = Vector("n" -> Vector.fill(n)("1"))
+      def many(n: Int) = (1 to n).toVector.map(k => s"s$k" -> Vector("1"))
+      val bar = Chart.Kind.Bar
+      def at(limit: Int): Vector[Block[Nothing]] = Vector(
+        chart(bar, x(RichText.MaxChartTitle + limit), Vector("a"), one(1)),
+        chart(bar, "t", Vector(x(RichText.MaxChartLabel + limit)), one(1)),
+        chart(bar, "t", Vector("a"), Vector(x(RichText.MaxChartLabel + limit) -> Vector("1"))),
+        chart(bar, "t", Vector("a"), one(1), axis = x(RichText.MaxAxisLabel + limit)),
+        chart(bar, "t", Vector("a"), one(1), values = Some(x(RichText.MaxAxisLabel + limit))),
+        chart(bar, "t", Vector("a"), many(RichText.MaxSeries + limit)),
+        chart(bar, "t", days(RichText.MaxPoints + limit), one(RichText.MaxPoints + limit)),
+        chart(
+          Chart.Kind.Pie,
+          "t",
+          days(RichText.MaxSeries + limit),
+          one(RichText.MaxSeries + limit)
+        )
+      )
+      val past = at(1)
+      (at(0).map(charted), past.map(charted)) ==> (Vector.fill(8)(true), Vector.fill(8)(false))
+      past.map(b => only(Doc(Vector(b)))) ==> past.map {
+        case Block.Chart(c) => only(Doc(c.fallback))
+        case other => throw new java.lang.AssertionError(s"no chart: $other")
+      }
+    }
+
+    test("a post holds at most MaxCharts charts; the next starts a post of its own") {
+      val c = chart(Chart.Kind.Bar, "t", Vector("a"), Vector("n" -> Vector("1")))
+      RichText.render(Doc(Vector.fill(RichText.MaxCharts + 1)(c))).map(_.blocks.value.size) ==>
+        Vector(RichText.MaxCharts, 1)
+    }
+
+    test("a chart whose table is longer than MaxChars stays one chart") {
+      val names = (1 to RichText.MaxSeries).toVector.map(k => f"series $k%013d")
+      val days = (1 to RichText.MaxPoints).toVector.map(d => f"day $d%016d")
+      val c =
+        chart(Chart.Kind.Bar, "t", days, names.map(_ -> Vector.fill(days.length)("1000000000.25")))
+      val posts = RichText.render(Doc(Vector(c)))
+      assert(posts.headOption.exists(_.fallback.length > RichText.MaxChars))
+      posts.map(p => ujson.write(p.blocks).contains("\"data_visualization\"")) ==> Vector(true)
+    }
+
+    test("a chart's plain text, where blocks are not shown, is its title and table") {
+      val c = chart(
+        Chart.Kind.Bar,
+        "Leads",
+        Vector("Mon"),
+        Vector("Won" -> Vector("3"), "Lost" -> Vector("1"))
+      )
+      RichText.render(Doc(Vector(c))).map(_.fallback) ==>
+        Vector("Leads\nDay | Won | Lost\n----+-----+-----\nMon | 3   | 1   ")
+    }
+
     test("an empty reply is no post") {
       RichText.render(Doc.empty) ==> Vector.empty
     }
@@ -250,6 +395,10 @@ object RichTextTests extends TestSuite {
         val json = ujson.write(only(Doc(bs)))
         assert(RichText.Shown.contains(s"$claim:\n$md"), claim.contains(says), holds(json))
       }
+    }
+
+    test("what Slack is told ends with when to write a chart") {
+      assert(RichText.Shown.endsWith("\n\n" + Markdown.chartGuide))
     }
 
     test("a mention is a user element between literal text, and a mention in the plain text") {

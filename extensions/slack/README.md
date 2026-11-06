@@ -22,7 +22,8 @@ In dependency order:
   `team`, else the installing workspace), so a user of a workspace sharing a channel is never
   spelled as one of grit's. A group direct message is ignored. Imports nothing in slack.
 - **`text`**: Slack's text, both ways: a person's message as grit stores it (mentions and links
-  as names, markup written out), and a reply's prose as rich-text posts within Slack's limits.
+  as names, markup written out), and a reply's prose as rich-text posts, a chart as Slack's own, within Slack's
+  limits.
   ← `event`
 - **`client`**: the `Slack` trait, as grit uses Slack, and `SocketSlack`, the SDK over Socket
   Mode behind it. A user's standing is read by one function for `users.info` and `users.list`

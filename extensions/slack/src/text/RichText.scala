@@ -1,12 +1,12 @@
 package grit.slack.text
 
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Mark, Renderer, Span, Text}
+import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Mark, Renderer, Span, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.event.UserId
 
-/** One Slack message of a reply: its rich_text and divider blocks, and the plain text Slack
-  * shows where blocks are not shown (a notification), escaped so it reads as written. Only
-  * [[RichText]] makes one, so none is past Slack's limits.
+/** One Slack message of a reply: its rich_text, divider and data_visualization blocks, and the
+  * plain text Slack shows where blocks are not shown (a notification), escaped so it reads as
+  * written. Only [[RichText]] makes one, so none is past Slack's limits.
   */
 final case class Post private[text] (blocks: ujson.Arr, fallback: String)
 
@@ -19,6 +19,30 @@ object RichText extends Renderer[Vector[Post]] {
   /** 50: Slack refuses a message with more blocks (`msg_blocks_too_many`). */
   val MaxBlocks = 50
 
+  /** 2: the most charts (`data_visualization` blocks) Slack draws in one message; a post holds
+    * at most this many, a later chart starting the next post.
+    */
+  val MaxCharts = 2
+
+  /** 50: the longest chart title Slack takes; a longer one's chart is drawn as its fallback. */
+  val MaxChartTitle = 50
+
+  /** 20: the longest category, series name or pie segment label Slack takes; past it, or
+    * blank, the chart is drawn as its fallback.
+    */
+  val MaxChartLabel = 20
+
+  /** 50: the longest axis label (a chart's `axis` or `values`) Slack takes; past it, the chart
+    * is drawn as its fallback.
+    */
+  val MaxAxisLabel = 50
+
+  /** 12: the most series, or pie segments, Slack draws in a chart; past it, the fallback. */
+  val MaxSeries = 12
+
+  /** 20: the most categories (points of a series) Slack draws; past it, the fallback. */
+  val MaxPoints = 20
+
   /** 3,000: the character limit of a section's text, taken for rich text, whose own limit
     * Slack's reference does not state.
     */
@@ -26,13 +50,18 @@ object RichText extends Renderer[Vector[Post]] {
 
   /** What a Slack message shows of the markdown a reply is written in, for the model that
     * writes it: one line for each kind of block and mark [[render]] draws, a markdown example
-    * and how Slack shows it (a heading as a bold line, a table as preformatted text, a list or
-    * quote inside a quote as its plain text). The same text on every call.
+    * and how Slack shows it (a heading as a bold line, a table as preformatted text, a chart as
+    * a Slack chart, a list or quote inside a quote as its plain text), then when to write a
+    * chart ([[Markdown.chartGuide]]). The same text on every call.
     */
   val Shown: String =
     told
       .map((md, claim) => s"$claim:\n$md")
-      .mkString("How Slack shows the markdown you write, an example of each kind:\n\n", "\n\n", "")
+      .mkString(
+        "How Slack shows the markdown you write, an example of each kind:\n\n",
+        "\n\n",
+        "\n\n" + Markdown.chartGuide
+      )
 
   /** Each example's markdown, and how Slack shows it: [[shows]] of the block or mark it parses
     * to, so a block or mark [[render]] has no words for is a compile error.
@@ -68,8 +97,10 @@ object RichText extends Renderer[Vector[Post]] {
 
   /** `doc` as Slack messages, split at block boundaries (a code block longer than one post at
     * its line boundaries, any other block at spaces) into posts of at most [[MaxBlocks]]
-    * blocks and [[MaxChars]] characters of text; a heading as bold text, a rule as a divider,
-    * a table as preformatted aligned text, a code block's language dropped, a list or quote
+    * blocks and [[MaxChars]] characters of text and [[MaxCharts]] charts; a heading as bold
+    * text, a rule as a divider, a table as preformatted aligned text, a chart as a
+    * `data_visualization` block whose plain text is its fallback's (and, past any of Slack's
+    * limits, as that fallback), a code block's language dropped, a list or quote
     * inside a list item or a quote flattened to its text. None for an empty doc.
     */
   def render(doc: Doc[Nothing]): Vector[Post] =
@@ -119,6 +150,7 @@ object RichText extends Renderer[Vector[Post]] {
     val done = Vector.newBuilder[Post]
     var run = List.empty[Piece] // reversed
     var size = 0
+    var charts = 0
     def flush(): Unit = if (run.nonEmpty) {
       val ps = run.reverse
       done += Post(
@@ -127,11 +159,17 @@ object RichText extends Renderer[Vector[Post]] {
       )
       run = Nil
       size = 0
+      charts = 0
     }
     pieces.foreach { piece =>
-      if (run.size >= MaxBlocks || size + piece.plain.length > MaxChars) flush()
+      val chart = isChart(piece.json)
+      if (
+        run.size >= MaxBlocks || size + piece.plain.length > MaxChars ||
+        (chart && charts >= MaxCharts)
+      ) flush()
       run = piece :: run
       size += piece.plain.length
+      if (chart) charts += 1
     }
     flush()
     done.result()
@@ -141,7 +179,7 @@ object RichText extends Renderer[Vector[Post]] {
     * longer than that at the limit), anything else as plain text at spaces.
     */
   private def fit(piece: Piece): Vector[Piece] =
-    if (piece.plain.length <= MaxChars) Vector(piece)
+    if (piece.plain.length <= MaxChars || isChart(piece.json)) Vector(piece)
     else if (isPreformatted(piece.json))
       chunks(piece.plain.split("\n", -1).toVector.flatMap(_.grouped(MaxChars)), "\n")
         .map(t => Piece(rich(preformatted(t)), t))
@@ -166,6 +204,9 @@ object RichText extends Renderer[Vector[Post]] {
     run.foreach(done += _)
     done.result()
   }
+
+  private def isChart(json: ujson.Value): Boolean =
+    json.objOpt.flatMap(_.get("type")).flatMap(_.strOpt).contains("data_visualization")
 
   private def isPreformatted(json: ujson.Value): Boolean =
     json.objOpt
@@ -206,7 +247,55 @@ object RichText extends Renderer[Vector[Post]] {
     case Block.Table(columns, rows) =>
       val t = table(columns, rows)
       Vector(Piece(rich(preformatted(t)), t))
-    case Block.Chart(c) => c.fallback.flatMap(block)
+    case Block.Chart(c) =>
+      visualization(c) match {
+        case Some(json) => Vector(Piece(json, plainOf(c.fallback)))
+        case None => c.fallback.flatMap(block)
+      }
+  }
+
+  /** `c` as Slack's `data_visualization` block, or `None` past any of Slack's limits. */
+  private def visualization(c: Chart): Option[ujson.Obj] = {
+    def label(s: String): Boolean = s.trim.nonEmpty && s.length <= MaxChartLabel
+    def point(k: Int, v: Cell.Number): Option[ujson.Obj] =
+      c.categories.lift(k).map(l => ujson.Obj("label" -> l, "value" -> v.value.toDouble))
+    val fits = c.title.trim.nonEmpty && c.title.length <= MaxChartTitle &&
+      c.categories.forall(label) && c.categories.length <= MaxPoints
+    val chart: Option[ujson.Obj] = c.kind match {
+      case Chart.Kind.Pie =>
+        c.series.headOption
+          .filter(_ => c.categories.length <= MaxSeries)
+          .map(s =>
+            ujson.Obj(
+              "type" -> "pie",
+              "segments" -> ujson.Arr.from(s.values.zipWithIndex.flatMap((v, k) => point(k, v)))
+            )
+          )
+      case kind =>
+        Option.when(
+          c.series.length <= MaxSeries && c.series.forall(s => label(s.name)) &&
+            c.axis.length <= MaxAxisLabel && c.values.forall(_.length <= MaxAxisLabel)
+        ) {
+          val axes = ujson.Obj("categories" -> ujson.Arr.from(c.categories.map(ujson.Str(_))))
+          if (c.axis.trim.nonEmpty) axes("x_label") = c.axis
+          c.values.filter(_.trim.nonEmpty).foreach(v => axes("y_label") = v)
+          ujson.Obj(
+            "type" -> kind.toString.toLowerCase,
+            "series" -> ujson.Arr.from(
+              c.series.map(s =>
+                ujson.Obj(
+                  "name" -> s.name,
+                  "data" -> ujson.Arr.from(s.values.zipWithIndex.flatMap((v, k) => point(k, v)))
+                )
+              )
+            ),
+            "axis_config" -> axes
+          )
+        }
+    }
+    chart
+      .filter(_ => fits)
+      .map(ch => ujson.Obj("type" -> "data_visualization", "title" -> c.title, "chart" -> ch))
   }
 
   /** How [[block]] draws `b`, in words for the model. */
@@ -224,7 +313,11 @@ object RichText extends Renderer[Vector[Post]] {
       "A numbered list shows numbered, counting on from its first number"
     case Block.Table(_, _) =>
       "A table shows as preformatted text, its columns aligned, not as a grid"
-    case Block.Chart(_) => "A chart shows as its title and table"
+    case Block.Chart(_) =>
+      "A chart shows as a Slack chart (bar, line, area or pie); past Slack's limits it shows as " +
+        s"its title and table: a title of at most $MaxChartTitle characters, at most " +
+        s"$MaxPoints rows and $MaxSeries number columns (a pie: $MaxSeries rows), every name " +
+        s"in the first column and every column name at most $MaxChartLabel characters"
   }
 
   /** A list's items as Slack list elements: one list per run of items, each nested list a list
