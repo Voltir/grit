@@ -241,7 +241,8 @@ private[main] object LabCommands {
   /** The grit coder's turns in the database `config` names, logged in as `docker-compose.yml`'s
     * user: the conversation of the newest created before `clock`'s now, every turn of it
     * ([[ConversationSent.read]]) rendered whole ([[SentMarkdown.render]]), with the messages its
-    * last turn's last call was sent.
+    * last turn's last call was sent; or, when its turns cannot be read back, a turn failed for
+    * why ([[GritTurn.unread]]).
     */
   private def coderTurns(config: DbConfig, clock: Clock^): CoderTurns^ = new CoderTurns {
     def task(): Either[String, GritTurn] =
@@ -256,26 +257,30 @@ private[main] object LabCommands {
             .flatMap((id, _) => TurnRef.fromWorkflowId(id))
             .lastOption
             .toRight("the grit coder's database records no turn")
-          task <- ConversationSent.read(reader, newest.conversationId, now)
-          last <- task.turns.lastOption.toRight("the grit coder's database records no turn")
           status <- reader
-            .workflow(last.workflow)
-            .toRight(s"DBOS does not know ${WorkflowId.value(last.workflow)}")
-          steps <- reader
-            .steps(last.workflow)
-            .left
-            .map(e => s"the grit coder's turn's steps could not be read: ${e.kind}")
-        } yield GritTurn(
-          ConversationId.value(newest.conversationId),
-          last.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
-          status.status,
-          task.turns
-            .map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole))
-            .mkString("\n"),
-          if (last.answer.isDefined) None
-          else
-            TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")
-        )
+            .workflow(newest.workflowId)
+            .toRight(s"DBOS does not know ${WorkflowId.value(newest.workflowId)}")
+          session = ConversationId.value(newest.conversationId)
+          read =
+            for {
+              task <- ConversationSent.read(reader, newest.conversationId, now)
+              last <- task.turns.lastOption.toRight("the grit coder's database records no turn")
+              steps <- reader
+                .steps(last.workflow)
+                .left
+                .map(e => s"the grit coder's turn's steps could not be read: ${e.kind}")
+            } yield GritTurn(
+              session,
+              last.requests.lastOption.fold(Vector.empty[Message])(_._3.messages),
+              status.status,
+              task.turns
+                .map(SentMarkdown.render(_, config.endpoint.toString, Cut.Whole))
+                .mkString("\n"),
+              if (last.answer.isDefined) None
+              else
+                TurnRecord.failure(steps).map((step, f) => s"$step: ${TurnFailure.reason(f)}")
+            )
+        } yield read.fold(GritTurn.unread(session, status.status, _), identity)
       }
   }
 

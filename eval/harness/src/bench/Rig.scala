@@ -184,7 +184,8 @@ object Arm {
 trait CoderTurns extends caps.SharedCapability {
 
   /** The task of the newest turn the database records, every turn of that turn's conversation,
-    * read once the coder has ended; `Left` when it records none or cannot be read.
+    * read once the coder has ended; failed for why when its turns cannot be read back
+    * ([[GritTurn.unread]]); `Left` when the database records no turn, or cannot be read.
     */
   def task(): Either[String, GritTurn]
 }

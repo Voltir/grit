@@ -30,6 +30,16 @@ final case class GritTurn(
     failed: Option[String]
 )
 
+object GritTurn {
+
+  /** The task of the conversation `session`, its last turn's workflow under `status`, when its
+    * turns could not be read back for `why`: no messages, rendered as a line saying so, and
+    * failed for that reason, so its trial is kept, in error, priced from its output alone.
+    */
+  def unread(session: String, status: String, why: String): GritTurn =
+    GritTurn(session, Vector.empty, status, s"Its turns could not be read back: $why", Some(why))
+}
+
 /** A tool call the run was refused, by tool and its input as JSON. */
 final case class Denial(tool: String, input: String) extends caps.Pure
 

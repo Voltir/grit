@@ -270,6 +270,25 @@ object ConsumedTests extends TestSuite {
     }
 
     test(
+      "a grit task whose turns could not be read back is its session's, failed with why, its trial in error and priced from its output"
+    ) {
+      val why = "ask:53 recorded a failure: HTTP 400"
+      val turn = GritTurn.unread("c-1", "SUCCESS", why)
+      val consumed = Consumed.ofTurn(gritLines, turn, None)
+      (
+        turn.rendered,
+        consumed.session,
+        consumed.ended.map(e => (e.reason, e.error)),
+        consumed.calls.map(c => (c.usage.input, c.usage.output))
+      ) ==> (
+        s"Its turns could not be read back: $why",
+        Some("c-1"),
+        Some((why, true)),
+        Vector((Tokens(1200), Tokens(40)), (Tokens(300), Tokens(10)))
+      )
+    }
+
+    test(
       "a grit turn whose steps name no failure takes grit work's own last [main] line as its failure when it exited other than 0"
     ) {
       val said =
