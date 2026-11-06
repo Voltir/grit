@@ -3,11 +3,13 @@ package grit.app.main
 import java.nio.file.{Files, Path}
 
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
+import grit.core.clock.{Clock, Fresh}
 import grit.core.id.SourceId
 import grit.core.inbox.TurnEnding
 import grit.core.store.{TestWentOn, WentOn}
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.{LocalRuns, Redaction}
 
 import utest.*
 
@@ -15,6 +17,17 @@ import utest.*
   * a turn, and its task's check.
   */
 object WorkTests extends TestSuite {
+
+  /** Runs over `root`, as `grit work` checks its task: the system's clock and random ids. */
+  private def over(root: Path): LocalRuns^ =
+    new LocalRuns(root, sys.env, Redaction.of(Map.empty), Clock.system(), Fresh.random())
+
+  /** `dir` and everything under it, deleted. */
+  private def removed(dir: Path): Unit = {
+    val walk = Files.walk(dir)
+    try walk.iterator.asScala.toVector.reverse.foreach(p => { val _ = Files.deleteIfExists(p) })
+    finally walk.close()
+  }
 
   val tests: Tests = Tests {
 
@@ -134,7 +147,7 @@ object WorkTests extends TestSuite {
           "w3: the check failed with the same output as last time; stopping, since another " +
             "turn is unlikely to change it"
         ),
-        Work.After.Fail("the check could not start: no sh"),
+        Work.After.Fail("the check could not run: no sh"),
         Work.After.Stop(None)
       )
     }
@@ -143,8 +156,8 @@ object WorkTests extends TestSuite {
       "a check runs in the task's directory: exit 0 passes; another exit, or past its time, fails with the end of its output"
     ) {
       val root = Files.createTempDirectory("grit-check").toRealPath()
+      val work = over(root)
       try {
-        val work = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
         def check(command: String) = Work.checked(work, TestWentOn.command(command), 1.second)
         (
           check("test -d . && echo fine"),
@@ -170,7 +183,45 @@ object WorkTests extends TestSuite {
           )
         )
       } finally {
-        val _ = Files.deleteIfExists(root)
+        work.close()
+        removed(root)
+      }
+    }
+
+    test(
+      "a check is recorded where the next start's sweep in its directory finds it: a .pid under .grit/runs names its shell while it runs"
+    ) {
+      val root = Files.createTempDirectory("grit-check").toRealPath()
+      val shell = root.resolve("shell.pid")
+      val work = over(root)
+      try {
+        val checking = Thread.ofPlatform().start { () =>
+          val _ =
+            Work.checked(work, TestWentOn.command("echo $$ > shell.pid; sleep 20"), 30.seconds)
+        }
+        val began = System.nanoTime()
+        while (
+          (!Files.exists(shell) || Files.readString(shell).isBlank) &&
+          System.nanoTime() - began < 3.seconds.toNanos
+        ) Thread.sleep(20)
+        val pid = Files.readString(shell).trim
+        val runs = root.resolve(".grit/runs")
+        val recorded =
+          if (!Files.isDirectory(runs)) Vector.empty
+          else {
+            val walk = Files.walk(runs)
+            try
+              walk.iterator.asScala.toVector
+                .filter(_.getFileName.toString.endsWith(".pid"))
+                .map(Files.readString(_).trim.takeWhile(_ != ' '))
+            finally walk.close()
+          }
+        work.close()
+        checking.join(5000)
+        recorded ==> Vector(pid)
+      } finally {
+        work.close()
+        removed(root)
       }
     }
 

@@ -18,7 +18,7 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.{LocalRuns, Redaction}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
@@ -168,9 +168,9 @@ import Backfills.*
   *     awaits the turns it started, so a `grit work` restarted mid-turn resumes where it stopped,
   *     running no check a later turn already followed. It exits 0 when the task ended with a
   *     reply (and its check passed), 1 when a turn left no reply or its check failed for good or
-  *     could not start, 2 when the file cannot be read. A command the turn left
-  *     running ends with it; a signal leaves that command to the next start's sweep in the
-  *     directory. With `--dry`, nothing is said and no model is called: it prints the turn's
+  *     could not run, 2 when the file cannot be read. A command the turn left
+  *     running, or a check, ends with it; a signal leaves either to the next start's sweep in
+  *     the directory. With `--dry`, nothing is said and no model is called: it prints the turn's
   *     first model call as a dry rehearsal shows it ([[Work.shown]]), every part whole, over the
   *     same composition; it is refused while a model key is set, so it cannot spend.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
@@ -364,11 +364,12 @@ object Main {
           val step: Console^ => Either[String, Unit] = console =>
             if (asked.dry) Work.shown(config, deployment, origin, text, clock, println)
             else {
-              val work = new LocalProcesses(root, sys.env, redaction)
-              Work.said(console, origin, text, cap, asked.check, work, println)
+              val checks: LocalRuns^ = new LocalRuns(root, sys.env, redaction, clock, fresh)
+              try Work.said(console, origin, text, cap, asked.check, checks, println)
+              finally checks.close()
             }
-          // A command the turn left going ends with the run; a signal leaves it to the next
-          // start's sweep in this directory.
+          // A command the turn left going, or a check, ends with the run; a signal leaves it to
+          // the next start's sweep in this directory.
           exitOnLeft(
             ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
               here =>

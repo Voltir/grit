@@ -3,12 +3,13 @@ package grit.app.main
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
+import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 
 import grit.chat.host.{ChatHost, Replies}
 import grit.core.clock.Clock
 import grit.core.edge.{Console, TurnStatus}
-import grit.core.host.{Clipped, HostError, Processes, Ran, RelPath}
+import grit.core.host.{Clipped, HostError, Ran, RunId, RunStatus, Runs}
 import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.TurnEnding
@@ -87,7 +88,7 @@ private[main] object Work {
     /** It failed, as `failed` says. */
     case Failed(failed: WentOn.CheckFailed)
 
-    /** It could not start, for `why`. */
+    /** It could not run, for `why`: it could not start, or its run was refused. */
     case Unrun(why: String)
   }
 
@@ -123,7 +124,7 @@ private[main] object Work {
     case (TurnEnding.Answered, Some(Verdict.Passed)) =>
       After.Stop(Some(s"[main] $named: the check passed; the task is done"))
     case (TurnEnding.Answered, Some(Verdict.Unrun(why))) =>
-      After.Fail(s"the check could not start: $why")
+      After.Fail(s"the check could not run: $why")
     case (TurnEnding.Answered, Some(Verdict.Failed(failed))) if last.contains(failed) =>
       After.Fail(
         s"$named: the check failed with the same output as last time; stopping, since another " +
@@ -151,28 +152,45 @@ private[main] object Work {
       )
   }
 
-  /** `check` run with `sh -c` in `work`'s root, with the variables
-    * [[grit.host.checkout.LocalShell.passed]] keeps, waited for at most `within`: exit 0
-    * passes; any other exit, or running past `within`, fails, keeping the end of its output;
-    * [[Verdict.Unrun]] when it cannot start.
+  /** `check` run with `sh -c` as one of `work`'s runs, at its root, and waited for until it
+    * ends, killed with what it started at `within`: exit 0 passes; any other exit, or running
+    * past `within`, fails, keeping the end of its output; [[Verdict.Unrun]] when it cannot
+    * start, or as `work` refuses it (its output past [[grit.core.host.Workspace.MaxFileBytes]]).
+    * A check a `grit work` killed by a signal left going is ended by `work`'s next start, as
+    * any run is.
     */
   def checked(
-      work: Processes^,
+      work: Runs^,
       check: WentOn.Command,
       within: FiniteDuration = WentOn.CheckLongest
   ): Verdict =
     LocalShell.command(check.text) match {
       case Left(why) => Verdict.Unrun(why)
       case Right(argv) =>
-        work.run(argv, RelPath.Root, within) match {
-          case Right(Ran(0, _)) => Verdict.Passed
-          case Right(Ran(exit, output)) =>
-            Verdict.Failed(WentOn.failed(check, Some(exit), output.text))
-          case Left(HostError.TimedOut(_, output)) =>
-            Verdict.Failed(WentOn.failed(check, None, output.text))
-          case Left(other) => Verdict.Unrun(other.message)
+        work.start(argv, within, within).flatMap((id, status) => ended(work, id, status)) match {
+          case Right((Some(0), _)) => Verdict.Passed
+          case Right((exit, output)) => Verdict.Failed(WentOn.failed(check, exit, output.text))
+          case Left(refused) => Verdict.Unrun(refused.message)
         }
     }
+
+  /** The run `id` of `work`, standing as `status`, waited for until it ends: its exit, `None`
+    * when it was killed, and its output.
+    */
+  @tailrec private def ended(
+      work: Runs^,
+      id: RunId,
+      status: RunStatus
+  ): Either[HostError, (Option[Int], Clipped)] = status match {
+    case RunStatus.Going(_, _, _) =>
+      work.tail(id, Runs.Wait) match {
+        case Right((_, next)) => ended(work, id, next)
+        case Left(refused) => Left(refused)
+      }
+    case RunStatus.Ended(Ran(exit, output)) => Right((Some(exit), output))
+    case RunStatus.TimedOut(_, output) => Right((None, output))
+    case RunStatus.Stopped(_, output) => Right((None, output))
+  }
 
   /** The most lines of a failed check's output `grit work` prints. */
   val PrintedLines: Int = 20
@@ -250,7 +268,7 @@ private[main] object Work {
       text: String,
       cap: Int,
       check: Option[WentOn.Command],
-      work: Processes^,
+      work: Runs^,
       print: String -> Unit
   ): Either[String, Unit] =
     console.inbox

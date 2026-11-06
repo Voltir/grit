@@ -10,7 +10,7 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.sql.{DbConfig, TestPostgres}
-import grit.host.checkout.{LocalProcesses, Redaction}
+import grit.host.checkout.{LocalRuns, Redaction}
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.Rehearsed
@@ -70,9 +70,12 @@ object WorkLiveTests extends TestSuite {
   /** A turn's workflow id, as `grit work` prints it. */
   private val Id = "[0-9a-f]{8}-[0-9a-f-]+:[0-9]+"
 
-  /** The processes `grit work` checks a task with in `root`. */
-  private def processes(root: Path): LocalProcesses =
-    new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
+  /** `body` over the runs `grit work` checks a task with in `root`, closed after. */
+  private def checking[A](root: Path)(body: LocalRuns^ => A): A = {
+    val runs = new LocalRuns(root, sys.env, Redaction.of(Map.empty), Clock.system(), Fresh.random())
+    try body(runs)
+    finally runs.close()
+  }
 
   /** `step` run as `grit work` runs its last step: `root`'s edge served, scout's among it,
     * through the console of the engine of `config`'s database.
@@ -122,10 +125,14 @@ object WorkLiveTests extends TestSuite {
         val first, second = mutable.ArrayBuffer.empty[String]
         val ran = (
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", Work.DefaultTurns, None, processes(root), first += _)
+            checking(root)(r =>
+              Work.said(c, origin, "say hello", Work.DefaultTurns, None, r, first += _)
+            )
           ),
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", Work.DefaultTurns, None, processes(root), second += _)
+            checking(root)(r =>
+              Work.said(c, origin, "say hello", Work.DefaultTurns, None, r, second += _)
+            )
           )
         )
         (ran, first.size, first.forall(_.startsWith("[main] ")), second.toVector) ==> (
@@ -154,7 +161,9 @@ object WorkLiveTests extends TestSuite {
         val first, second = mutable.ArrayBuffer.empty[String]
         def run(lines: mutable.ArrayBuffer[String]) =
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", Work.DefaultTurns, check, processes(root), lines += _)
+            checking(root)(r =>
+              Work.said(c, origin, "say hello", Work.DefaultTurns, check, r, lines += _)
+            )
           )
         val ran = (run(first), Files.readAllLines(root.resolve("runs")).size)
         val again = (run(second), Files.readAllLines(root.resolve("runs")).size)
