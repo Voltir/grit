@@ -87,7 +87,7 @@ object MovesFixtures {
             (made, StopReason.ToolUse)
           case ToolUse.Required =>
             (Vector(text()), stop)
-          case ToolUse.Auto | ToolUse.Off | ToolUse.Only(_) =>
+          case ToolUse.Auto =>
             (Vector(text()), stop)
         }
         Right(

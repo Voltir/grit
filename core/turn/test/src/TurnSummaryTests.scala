@@ -71,7 +71,7 @@ object TurnSummaryTests extends TestSuite {
         "the turn's system prompt",
         Vector(Message.User("read a.txt"), Message.User(TurnLoop.LastCall)),
         Vector(tool),
-        grit.core.provider.ToolUse.Off,
+        grit.core.provider.ToolUse.Required,
         grit.core.provider.Repeats.stable(1)
       )
       TurnSummary.asking(reply("done"), None)(sent) ==> grit.core.provider.ModelRequest(
@@ -83,7 +83,7 @@ object TurnSummaryTests extends TestSuite {
           Message.User(s"<grit_note>\n${TurnSummary.Ask}\n</grit_note>")
         ),
         Vector(tool),
-        grit.core.provider.ToolUse.Off,
+        grit.core.provider.ToolUse.Required,
         grit.core.provider.Repeats.stable(1)
       )
     }

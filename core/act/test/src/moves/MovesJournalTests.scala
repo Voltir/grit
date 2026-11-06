@@ -545,7 +545,7 @@ object MovesJournalTests extends TestSuite {
       // ask10:Say hello.1;u2:hi0;4:auto
       MovesJournal.ask(ModelRequest("Say hello.", Vector(Message.User("hi")))) ==>
         "v1:50383539a7ceebdc8ef75dd02f1d8f9b48fa3993e3f7067c1f96e9b7f7135e20"
-      // ask1:s3;u1:qa3;r5:thinkt1:tc2:c110:probe_reado1;4:paths1:ax2:c14:read01;10:probe_read3:off
+      // ask1:s3;u1:qa3;r5:thinkt1:tc2:c110:probe_reado1;4:paths1:ax2:c14:read01;10:probe_read4:auto
       val call = ToolCallId("c1")
       MovesJournal.ask(
         ModelRequest(
@@ -565,9 +565,9 @@ object MovesJournalTests extends TestSuite {
             Message.ToolResult(call, "read", isError = false)
           ),
           Vector(ToolSchema("probe_read", "Reads a path.", ujson.Obj())),
-          ToolUse.Off
+          ToolUse.Auto
         )
-      ) ==> "v1:522fedf1ce2ec8d59b4c9161fac98a23efbd7bcfa20782daeec04f24d7e95075"
+      ) ==> "v1:4adc27fecff9c27ebc6600f0236f613e37ce2c120f2f066b5be85e7beaecd171"
       // ask10:Say hello.1;u2:hi0;8:required
       MovesJournal.ask(
         ModelRequest("Say hello.", Vector(Message.User("hi")), use = ToolUse.Required)

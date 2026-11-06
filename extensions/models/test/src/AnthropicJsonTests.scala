@@ -248,14 +248,12 @@ object AnthropicJsonTests extends TestSuite {
     }
 
     test(
-      "request: each tool strict as its schema says; Required and Auto ask for auto, Only too (its thinking refuses a forced choice, so the call is asked for in words), Off for none; no tools sends neither key"
+      "request: each tool strict as its schema says; Required and Auto ask for auto (its thinking refuses a forced choice); no tools sends neither key"
     ) {
       def choice(use: ToolUse) =
         sent(ModelRequest("s", Vector(Message.User("hi")), Vector(read), use))("tool_choice")
       choice(ToolUse.Auto) ==> ujson.Obj("type" -> "auto")
       choice(ToolUse.Required) ==> ujson.Obj("type" -> "auto")
-      choice(ToolUse.Off) ==> ujson.Obj("type" -> "none")
-      choice(ToolUse.Only("read")) ==> ujson.Obj("type" -> "auto")
       val strict =
         sent(ModelRequest("s", Vector(Message.User("hi")), Vector(read.copy(strict = true))))
       strict("tools")(0)("strict") ==> ujson.True

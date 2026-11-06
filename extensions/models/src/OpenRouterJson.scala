@@ -13,8 +13,7 @@ object OpenRouterJson {
 
   /** The request body for `request` on `model`, served by `upstream` alone with no fallback,
     * or by whichever upstream OpenRouter picks when `None`. A request with
-    * tools names them in `tools`, with `tool_choice` `auto`, `none`, `required`, or for
-    * [[ToolUse.Only]] the function it names (`auto` for an Anthropic model) (OpenRouter's
+    * tools names them in `tools`, with `tool_choice` `auto` or `required` (OpenRouter's
     * tool-calling guide: every request of a tool exchange sends the tools again); one
     * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
     * when set, asks the model to reason that hard; an assistant message's reasoning goes back
@@ -56,12 +55,7 @@ object OpenRouterJson {
       body("tools") = ujson.Arr.from(tools)
       body("tool_choice") = request.use match {
         case ToolUse.Auto => ujson.Str("auto")
-        case ToolUse.Off => ujson.Str("none")
         case ToolUse.Required => ujson.Str("required")
-        // Anthropic's thinking refuses a forced choice, through OpenRouter as on its own API.
-        case ToolUse.Only(_) if cached => ujson.Str("auto")
-        case ToolUse.Only(name) =>
-          ujson.Obj("type" -> "function", "function" -> ujson.Obj("name" -> name))
       }
     }
     body

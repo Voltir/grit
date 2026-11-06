@@ -35,10 +35,7 @@ object StubProviderTests extends TestSuite {
           )
         )
       )
-      // Not while it may not, nor after the tool's result: then it quotes the user.
-      val off = new StubProvider()
-        .complete(ModelRequest("s", Vector(asked), Vector(topic), ToolUse.Off))
-      off.map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
+      // Not after the tool's result: then it quotes the user.
       val after = new StubProvider().complete(
         ModelRequest(
           "s",

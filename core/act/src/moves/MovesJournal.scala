@@ -532,11 +532,10 @@ object MovesJournal {
 
   /** v1's canonical form of an ask of `request`, which [[ask]] hashes. */
   private[moves] def askForm(request: ModelRequest): String = {
+    // v1 also wrote "off" and "only:{name}", for tool uses since retired that no ask recorded.
     val use = request.use match {
       case ToolUse.Auto => "auto"
-      case ToolUse.Off => "off"
       case ToolUse.Required => "required"
-      case ToolUse.Only(name) => s"only:$name"
     }
     "ask" + text(request.system) + count(request.messages.size) +
       request.messages.map(message).mkString + count(request.tools.size) +

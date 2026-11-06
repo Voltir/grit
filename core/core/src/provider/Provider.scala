@@ -107,24 +107,12 @@ enum ToolUse {
   /** It may call one or more of them, or answer in text. */
   case Auto
 
-  /** It may not call any, and answers in text. The tools are still sent: a request whose
-    * messages hold tool calls names the tools they used.
-    */
-  case Off
-
   /** It is asked to call one of them: forced where the provider can (OpenRouter's
     * `tool_choice: "required"`, which [[grit.core.model.StrictSchemas.WhenRequired]] is
     * measured under). Anthropic's current models refuse a forced choice, so there it is
     * `auto`, and a reply may make no call.
     */
   case Required
-
-  /** It is asked to call the tool named `name`, and no other: forced where the provider can
-    * name one tool. Where it cannot, as on Anthropic's models, whose thinking refuses a forced
-    * choice, it is [[Auto]], and the call is asked for only in the request's words: a reply may
-    * call another tool, or none.
-    */
-  case Only(name: String)
 }
 
 /** A model call that produced no response. `cause` says why, on one line or more. */

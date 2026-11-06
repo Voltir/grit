@@ -30,9 +30,8 @@ object AnthropicJson {
     * when they are an object, else as `{}`. Thinking goes back verbatim in its place when
     * `replay` is [[ReasoningReplay.Details]] and it is in Anthropic's form, and never
     * otherwise. Tools are sent `strict` as each [[ToolSchema]] says, with `tool_choice` `auto`
-    * for [[ToolUse.Auto]] and [[ToolUse.Required]] (Anthropic's current models refuse a forced
-    * choice; [[ToolUse.Only]] alike, the call it names asked for only in words) and `none` for
-    * [[ToolUse.Off]]; a request without tools has neither key.
+    * for [[ToolUse.Auto]] and [[ToolUse.Required]] alike (Anthropic's current models refuse a
+    * forced choice); a request without tools has neither key.
     *
     * Its cache breakpoints are those [[CacheMarks.marked]] places. `dropBlock` asks the API to drop a
     * thinking block an earlier edit to the request has invalidated, and every one after it,
@@ -55,8 +54,7 @@ object AnthropicJson {
     if (tools.nonEmpty) {
       body("tools") = ujson.Arr.from(tools)
       body("tool_choice") = ujson.Obj("type" -> (request.use match {
-        case ToolUse.Auto | ToolUse.Required | ToolUse.Only(_) => "auto"
-        case ToolUse.Off => "none"
+        case ToolUse.Auto | ToolUse.Required => "auto"
       }))
     }
     val messages = request.messages.map(message(_, replay))
