@@ -349,7 +349,7 @@ abstract class InboxContract extends TestSuite {
         ) ==> (Right(TurnSeq.First), Right(TurnSeq.First.next), next, next.map(Some(_)), true, true)
         store.written(here) ==> Vector(
           (Payload.Message(said("the task")), Some("Ana")),
-          (Payload.Continuation(TurnSeq.First, 2), Some("Ana"))
+          (Payload.Continuation(TurnSeq.First, 2, grit.core.store.WentOn.AtLimit), Some("Ana"))
         )
         store.believed(here).distinct.size ==> 1
       }

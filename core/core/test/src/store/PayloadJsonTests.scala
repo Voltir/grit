@@ -118,6 +118,45 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(stored)) ==> Right(posted)
     }
 
+    test("a continuation at its limit is stored with no reason, as rows were before reasons") {
+      val note = Payload.Continuation(TurnSeq(7), 2, WentOn.AtLimit)
+      val stored = """{"kind":"continuation","task":7,"turn":2}"""
+      PayloadJson.write(note).render() ==> stored
+      PayloadJson.read(ujson.read(stored)) ==> Right(note)
+    }
+
+    test("a continuation after a failed check keeps its command, exit code and output") {
+      val command = TestWentOn.command("make test")
+      val failed = Payload.Continuation(TurnSeq(7), 3, WentOn.failed(command, Some(2), "1 failed"))
+      val stopped = Payload.Continuation(TurnSeq(7), 3, WentOn.failed(command, None, "slow"))
+      val stored = """{"kind":"continuation","task":7,"turn":3,"reason":""" +
+        """{"kind":"check-failed","command":"make test","exit":2,"tail":"1 failed"}}"""
+      (
+        PayloadJson.write(failed).render(),
+        PayloadJson.read(ujson.read(stored)),
+        PayloadJson.read(PayloadJson.write(stopped))
+      ) ==> (stored, Right(failed), Right(stopped))
+    }
+
+    test("a continuation's reason is refused when unknown, or its output over its bound") {
+      def reason(r: String) =
+        ujson.read(s"""{"kind":"continuation","task":7,"turn":3,"reason":$r}""")
+      val long = "x\n" * (WentOn.TailLines + 1)
+      (
+        PayloadJson.read(reason("""{"kind":"bored"}""")).isLeft,
+        PayloadJson
+          .read(
+            reason(ujson.Obj("kind" -> "check-failed", "command" -> "t", "tail" -> long).render())
+          )
+          .isLeft,
+        PayloadJson
+          .read(
+            reason(ujson.Obj("kind" -> "check-failed", "command" -> "", "tail" -> "x").render())
+          )
+          .isLeft
+      ) ==> (true, true, true)
+    }
+
     test("draft: an assistant's message under its own kind, and nothing else read as one") {
       val reply: Message.Assistant = Message.Assistant(
         Vector(AssistantBlock.Text("the freeze moved to Thursday")),

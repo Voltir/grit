@@ -29,8 +29,18 @@ object PayloadJson {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Heard(text) => ujson.Obj("kind" -> "heard", "text" -> text)
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
-    case Payload.Continuation(task, turn) =>
-      ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
+    case Payload.Continuation(task, turn, reason) =>
+      val o =
+        ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
+      reason match {
+        case WentOn.AtLimit => ()
+        case WentOn.CheckFailed(command, exit, tail) =>
+          val r = ujson.Obj("kind" -> "check-failed", "command" -> command.text)
+          exit.foreach(e => r("exit") = e)
+          r("tail") = tail
+          o("reason") = r
+      }
+      o
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
     case Payload.Window(entries, recalled, nearby, documents, pieces, carry, brief, digest, task) =>
@@ -145,7 +155,8 @@ object PayloadJson {
           for {
             task <- long(o, "task")
             turn <- long(o, "turn").filterOrElse(_ >= 2, "a continuation's turn is 2 or more")
-          } yield Payload.Continuation(TurnSeq(task), turn.toInt)
+            reason <- o.value.get("reason").fold(Right(WentOn.AtLimit))(readWentOn)
+          } yield Payload.Continuation(TurnSeq(task), turn.toInt, reason)
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>
@@ -483,6 +494,27 @@ object PayloadJson {
   }
 
   /** A window record's [[Payload.Carry]]: `after`, `dated` and `tag` only when there are any. */
+  /** A continuation's reason; a row written with none is [[WentOn.AtLimit]]. */
+  private def readWentOn(v: ujson.Value): Either[String, WentOn] =
+    for {
+      o <- obj(v)
+      kind <- str(o, "kind")
+      reason <- kind match {
+        case "check-failed" =>
+          for {
+            command <- str(o, "command").flatMap(WentOn.Command.of)
+            exit <- o.value.get("exit") match {
+              case None => Right(None)
+              case Some(ujson.Num(n)) if n.isWhole && n.isValidInt => Right(Some(n.toInt))
+              case Some(_) => Left("exit is not a whole number")
+            }
+            tail <- str(o, "tail")
+            failed <- WentOn.CheckFailed.read(command, exit, tail)
+          } yield failed
+        case other => Left(s"unknown continuation reason: $other")
+      }
+    } yield reason
+
   private def readCarry(v: ujson.Value): Either[String, Payload.Carry] = {
     def text(o: ujson.Obj, key: String): Either[String, Option[String]] =
       if (o.value.contains(key)) str(o, key).map(Some(_)) else Right(None)

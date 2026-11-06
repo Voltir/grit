@@ -259,7 +259,7 @@ private[turn] object TurnAssembly {
   ): Either[StoreError, Option[EntrySeq]] =
     entries.ofTurn(turn).flatMap { own =>
       own.headOption.map(_.payload) match {
-        case Some(Payload.Continuation(task, _)) =>
+        case Some(Payload.Continuation(task, _, _)) =>
           entries
             .ofTurn(TurnRef(turn.conversationId, task))
             .map(_.headOption.map(_.seq))

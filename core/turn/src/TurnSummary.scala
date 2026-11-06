@@ -228,7 +228,7 @@ object TurnSummary {
       // grit's continuation note is grit's, not what the turn did.
       case Payload.Summary(_) | Payload.Query(_) | (_: Payload.Window) | (_: Payload.Prefix) |
           Payload.Agenda(_) | Payload.Attempt(_) | Payload.Ask(_, _, _) | Payload.Closed(_, _, _) |
-          Payload.Draft(_) | Payload.Posted(_) | Payload.Continuation(_, _) =>
+          Payload.Draft(_) | Payload.Posted(_) | Payload.Continuation(_, _, _) =>
         None
     }
 }

@@ -156,7 +156,7 @@ private[engine] final class Recorder(
               recorded(
                 origin,
                 source,
-                Payload.Continuation(task, turn),
+                Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
                 by,
                 c.label,
                 Some(f.integrity.meet(integrity)),

@@ -10,7 +10,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
 import grit.core.prompt.{Fenced, Tag}
-import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
+import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers, WentOn}
 
 /** What the model is shown of an entry a window names: the one definition, which an
   * assembler costs and the turn sends.
@@ -24,7 +24,7 @@ object Shown {
     * ("Someone" when `speakers` does not name its author); grit's post the conversation
     * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
     * no window opens with an assistant message; grit's continuation note as one user message,
-    * [[Continuing]];
+    * [[Continuing]] after a turn at its limit, [[checkFailed]] after a failed check;
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -47,7 +47,9 @@ object Shown {
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
     case Payload.Posted(text) => Some(Message.User(s"$PostedLead\n${pasted(text)}"))
-    case Payload.Continuation(_, _) => Some(Message.User(Continuing))
+    case Payload.Continuation(_, _, WentOn.AtLimit) => Some(Message.User(Continuing))
+    case Payload.Continuation(_, _, failed: WentOn.CheckFailed) =>
+      Some(Message.User(checkFailed(failed)))
     case _ => None
   }
 
@@ -63,6 +65,27 @@ object Shown {
         "need, and do not redo what your last reply says is done."
     )
   )
+
+  /** grit's note a task's next turn begins with after its acceptance command failed
+    * ([[WentOn.CheckFailed]]): grit's own words, fenced as its note, then `failed`'s output
+    * fenced as a tool's output, its command as the source.
+    */
+  def checkFailed(failed: WentOn.CheckFailed): String = {
+    val how = failed.exit.fold(
+      s": it ran past ${WentOn.CheckLongest.toMinutes} minutes and was stopped"
+    )(code => s" with exit code $code")
+    Fenced.noted(
+      Vector(
+        "Your last reply ended the turn without asking to go on, so grit ran the task's " +
+          s"acceptance command in the task's directory. It failed$how. The end of its output " +
+          "follows this note.",
+        "This part of the conversation starts afresh: it holds the messages so far, your last " +
+          "reply among them, but not your tool calls or their results. Find what the output " +
+          "shows is wrong, fix it, and run the command yourself when you can before you say " +
+          "the task is done again."
+      )
+    ) + "\n\n" + Fenced.toolOutput(failed.command.text, failed.tail).rendered
+  }
 
   /** What follows a heard message's author on the line above its text ([[of]]). */
   val NotToYou: String = " said, not to you:"
@@ -330,7 +353,8 @@ object Shown {
       case ((out, held), e) =>
         val message = e.payload match {
           case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _) => of(e, speakers)
+          case Payload.Heard(_) | Payload.Posted(_) | Payload.Continuation(_, _, _) =>
+            of(e, speakers)
           case Payload.Message(m) => Some(m)
           case Payload.Exchange(reply) => Some(reply)
           case Payload.Result(r, shown) => Some(fenced(r, shown))

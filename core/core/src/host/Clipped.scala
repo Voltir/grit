@@ -53,11 +53,17 @@ object Clipped {
       else s"The answer was cut to its first ${k.lines} of ${k.total} lines."
     }
 
-  /** `text` whole when it fits, else its last lines that do; when its last line alone is
-    * over [[MaxBytes]], the end of that line, cut at a character. `hint` as for [[head]].
+  /** `text` whole when it fits in `lines` lines ([[MaxLines]] by default) and `bytes` bytes
+    * ([[MaxBytes]] by default), else its last lines that do; when its last line alone is over
+    * `bytes`, the end of that line, cut at a character. `hint` as for [[head]].
     */
-  def tail(text: String, hint: Option[Kept] -> Option[String]): Clipped =
-    clip(text, hint, fromEnd = true)
+  def tail(
+      text: String,
+      hint: Option[Kept] -> Option[String],
+      bytes: Int = MaxBytes,
+      lines: Int = MaxLines
+  ): Clipped =
+    clip(text, hint, fromEnd = true, bytes, lines)
 
   /** `text`'s lines: split at `\n`, a final `\n` ending the last line rather than starting
     * another.
@@ -75,17 +81,18 @@ object Clipped {
       text: String,
       hint: Option[Kept] -> Option[String],
       fromEnd: Boolean,
-      max: Int = MaxBytes
+      max: Int = MaxBytes,
+      maxLines: Int = MaxLines
   ): Clipped = {
     val all = lines(text)
-    if (all.size <= MaxLines && bytes(text) <= max) Clipped(text, hint(None))
+    if (all.size <= maxLines && bytes(text) <= max) Clipped(text, hint(None))
     else {
       val ordered = if (fromEnd) all.reverse else all
       // The most lines, from the kept end, whose bytes and joining newlines fit.
       var used = 0
       var n = 0
       var fits = true
-      while (fits && n < ordered.size && n < MaxLines) {
+      while (fits && n < ordered.size && n < maxLines) {
         val size = bytes(ordered(n)) + (if (n > 0) 1 else 0)
         if (used + size <= max) { used += size; n += 1 }
         else fits = false

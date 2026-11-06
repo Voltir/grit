@@ -210,7 +210,7 @@ final class InMemoryInbox(
             recorded(
               origin,
               source,
-              Payload.Continuation(task, turn),
+              Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
               by,
               labelOf(origin),
               Some(first.integrity.meet(Tx.integrityOf(person(by))(using inForce))),
@@ -407,7 +407,7 @@ final class InMemoryInbox(
                         _,
                         _,
                         _,
-                        Payload.Message(_) | Payload.Continuation(_, _),
+                        Payload.Message(_) | Payload.Continuation(_, _, _),
                         _,
                         _
                       ) =>

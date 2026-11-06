@@ -1173,7 +1173,7 @@ object TurnFixtures {
         next.turnSeq,
         None,
         next.seq,
-        Payload.Continuation(task, turn),
+        Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
         Instant.EPOCH,
         Integrity.Member
       )
@@ -1212,7 +1212,7 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Heard(text) => Some(s"heard: $text")
         case Payload.Posted(text) => Some(s"posted: $text")
-        case Payload.Continuation(task, turn) =>
+        case Payload.Continuation(task, turn, _) =>
           Some(s"continuation: turn $turn of ${TurnSeq.value(task)}")
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")

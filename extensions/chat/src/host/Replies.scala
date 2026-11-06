@@ -31,7 +31,7 @@ object Replies {
     case Payload.Heard(_) | Payload.Posted(_) | Payload.Summary(_) | Payload.Query(_) |
         (_: Payload.Window) | (_: Payload.Prefix) | Payload.Agenda(_) | Payload.Exchange(_) |
         Payload.Result(_, _) | Payload.Declined(_, _) | Payload.Attempt(_) | Payload.Ask(_, _, _) |
-        Payload.Closed(_, _, _) | Payload.Draft(_) | Payload.Continuation(_, _) =>
+        Payload.Closed(_, _, _) | Payload.Draft(_) | Payload.Continuation(_, _, _) =>
       None
   }
 
@@ -39,7 +39,7 @@ object Replies {
     * a new turn, which turn of it, and why. `None` for any other entry.
     */
   def wentOn(entry: Entry): Option[String] = entry.payload match {
-    case Payload.Continuation(_, turn) =>
+    case Payload.Continuation(_, turn, _) =>
       Some(s"── grit went on (turn $turn): the last turn reached its limit ──")
     case _ => None
   }

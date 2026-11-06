@@ -98,7 +98,7 @@ object TurnWatchTests extends TestSuite {
         TurnSeq(1),
         None,
         EntrySeq(2),
-        Payload.Continuation(TurnSeq(0), 2),
+        Payload.Continuation(TurnSeq(0), 2, grit.core.store.WentOn.AtLimit),
         Instant.EPOCH,
         Integrity.Member
       )

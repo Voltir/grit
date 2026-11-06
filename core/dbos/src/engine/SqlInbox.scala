@@ -225,7 +225,7 @@ final class SqlInbox(
                     _,
                     _,
                     _,
-                    Payload.Message(_) | Payload.Continuation(_, _),
+                    Payload.Message(_) | Payload.Continuation(_, _, _),
                     _,
                     _
                   ) =>
