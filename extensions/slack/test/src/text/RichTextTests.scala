@@ -24,6 +24,8 @@ object RichTextTests extends TestSuite {
     o
   }
 
+  private def raw(t: String): ujson.Obj = ujson.Obj("type" -> "raw_text", "text" -> t)
+
   private def para(t: String): Block[Nothing] = Block.Paragraph(Text.plain(t))
 
   private def only(doc: Doc[Nothing]): ujson.Arr =
@@ -83,7 +85,7 @@ object RichTextTests extends TestSuite {
         ("plain text", j => j.contains("rich_text_quote") && !j.contains("rich_text_list"))
       case Vector(Block.Code(language, _)) =>
         ("language", j => j.contains("rich_text_preformatted") && language.forall(!j.contains(_)))
-      case Vector(Block.Table(_, _)) => ("columns aligned", _.contains("rich_text_preformatted"))
+      case Vector(Block.Table(_, _)) => ("Slack table", _.contains("\"type\":\"table\""))
       case Vector(Block.Rule) => ("divider", _.contains("\"divider\""))
       case Vector(Block.Chart(_)) => ("Slack chart", _.contains("\"data_visualization\""))
       case other => throw new java.lang.AssertionError(s"one block, not ${other.size}")
@@ -197,7 +199,10 @@ object RichTextTests extends TestSuite {
       )
     }
 
-    test("a table is preformatted text, its columns aligned, each cell as it prints") {
+    test(
+      "a table is Slack's table block: its names a bold first row, each cell as it prints, " +
+        "an empty one a space, a column of numbers right-aligned and one of words wrapped"
+    ) {
       only(
         Doc(
           Vector(
@@ -206,6 +211,126 @@ object RichTextTests extends TestSuite {
                 Column(Text.plain("name")),
                 Column(Text.plain("n"))
               ),
+              Vector(
+                Vector(
+                  Cell.Words(Text.plain("a")),
+                  Cell.Number(BigDecimal(10), Text.plain("10.0"))
+                ),
+                Vector(Cell.Empty(), Cell.Empty(Some("=B1")))
+              )
+            )
+          )
+        )
+      ) ==> ujson.Arr(
+        ujson.Obj(
+          "type" -> "table",
+          "rows" -> ujson.Arr(
+            ujson.Arr(
+              rich(section(text("name", "bold" -> true))),
+              rich(section(text("n", "bold" -> true)))
+            ),
+            ujson.Arr(raw("a"), raw("10.0")),
+            ujson.Arr(raw(" "), raw("=B1 (not calculated)"))
+          ),
+          "column_settings" -> ujson.Arr(
+            ujson.Obj("align" -> "left", "is_wrapped" -> true),
+            ujson.Obj("align" -> "right")
+          )
+        )
+      )
+    }
+
+    test(
+      "a table's cells keep their marks as rich text, and words that read as numbers align right"
+    ) {
+      val md =
+        "| Owner | Leads |\n|---|---|\n| **Ana** | 1,200 |\n| [Bo](https://example.com/bo) | $3 |"
+      only(Markdown.parse(md)) ==> ujson.Arr(
+        ujson.Obj(
+          "type" -> "table",
+          "rows" -> ujson.Arr(
+            ujson.Arr(
+              rich(section(text("Owner", "bold" -> true))),
+              rich(section(text("Leads", "bold" -> true)))
+            ),
+            ujson.Arr(rich(section(text("Ana", "bold" -> true))), raw("1,200")),
+            ujson.Arr(
+              rich(
+                section(
+                  ujson.Obj("type" -> "link", "url" -> "https://example.com/bo", "text" -> "Bo")
+                )
+              ),
+              raw("$3")
+            )
+          ),
+          "column_settings" -> ujson.Arr(
+            ujson.Obj("align" -> "left", "is_wrapped" -> true),
+            ujson.Obj("align" -> "right")
+          )
+        )
+      )
+    }
+
+    test(
+      "a table at each of Slack's limits is a table block, and one past it is preformatted " +
+        "text holding every row"
+    ) {
+      def grid(columns: Int, rows: Int, cell: String = "c"): Block[Nothing] =
+        Block.table(
+          Vector.tabulate(columns)(k => Column(Text.plain(s"h$k"))),
+          Vector.tabulate(rows)(r =>
+            Vector.tabulate(columns)(k => Cell.Words(Text.plain(if (k == 0) s"$cell$r" else "c")))
+          )
+        )
+      def wide(n: Int) = "x" * n
+      def at(limit: Int): Vector[Block[Nothing]] = Vector(
+        grid(1, RichText.MaxTableRows - 1 + limit),
+        grid(RichText.MaxTableColumns + limit, 1),
+        // "h0" and the cell's text and its row's number, 0
+        grid(1, 1, wide(RichText.MaxTableChars - 3 + limit))
+      )
+      def drawn(b: Block[Nothing]): String =
+        RichText.render(Doc(Vector(b))).map(p => ujson.write(p.blocks)).mkString
+      def tabled(b: Block[Nothing]): Boolean = drawn(b).contains("\"type\":\"table\"")
+      val past = at(1)
+      (at(0).map(tabled), past.map(tabled)) ==> (Vector.fill(3)(true), Vector.fill(3)(false))
+      assert(past.forall(b => drawn(b).contains("rich_text_preformatted")))
+      val rows = RichText.render(Doc(Vector(past(0)))).flatMap(_.fallback.split("\n")).map(_.trim)
+      (0 until RichText.MaxTableRows).map(r => s"c$r").filterNot(rows.contains) ==> Vector()
+    }
+
+    test("the tables of one post hold at most MaxTableChars characters; the next starts a post") {
+      // "h", then one cell of `n` characters
+      def one(n: Int): Block[Nothing] =
+        Block.table(
+          Vector(Column(Text.plain("h"))),
+          Vector(Vector(Cell.Words(Text.plain("x" * n))))
+        )
+      val half = RichText.MaxTableChars / 2 - 1
+      def tables(ps: Vector[Post]): Vector[Int] =
+        ps.map(_.blocks.value.count(_.obj.get("type").exists(_.str == "table")))
+      tables(RichText.render(Doc(Vector(one(half), one(half))))) ==> Vector(2)
+      tables(RichText.render(Doc(Vector(one(half), one(half + 1))))) ==> Vector(1, 1)
+    }
+
+    test("a chart past Slack's chart limits is its title and a table block") {
+      val days = (1 to RichText.MaxPoints + 1).toVector.map(d => s"d$d")
+      val c = chart(Chart.Kind.Bar, "t", days, Vector("n" -> Vector.fill(days.length)("1")))
+      only(Doc(Vector(c))).value.map(_("type").str) ==> Vector("rich_text", "table")
+    }
+
+    test(
+      "a table past Slack's limits is preformatted text, its columns aligned, each cell as it prints"
+    ) {
+      val more = RichText.MaxTableColumns - 1
+      only(
+        Doc(
+          Vector(
+            Block.table(
+              Vector(
+                Column(Text.plain("name")),
+                Column(Text.plain("n"))
+              ) ++ Vector.fill(more)(Column(Text.plain("-"))),
               Vector(
                 Vector(
                   Cell.Words(Text.plain("a")),
@@ -222,7 +347,12 @@ object RichTextTests extends TestSuite {
             "type" -> "rich_text_preformatted",
             "elements" -> ujson.Arr(
               text(
-                "name | n                   \n-----+---------------------\na    | 10.0                \nlong | =B1 (not calculated)"
+                Vector(
+                  "name | n                   " + " | -" * more,
+                  "-----+---------------------" + "-+--" * more,
+                  "a    | 10.0                " + " |  " * more,
+                  "long | =B1 (not calculated)" + " |  " * more
+                ).mkString("\n")
               )
             )
           )
@@ -377,7 +507,7 @@ object RichTextTests extends TestSuite {
         Vector("Won" -> Vector("3"), "Lost" -> Vector("1"))
       )
       RichText.render(Doc(Vector(c))).map(_.fallback) ==>
-        Vector("Leads\nDay | Won | Lost\n----+-----+-----\nMon | 3   | 1   ")
+        Vector("Leads\nDay | Won | Lost\nMon | 3 | 1")
     }
 
     test("an empty reply is no post") {
