@@ -480,7 +480,8 @@ object Rig {
           (Watched.Read(lines, ended, stopped), wall) = streamed
           _ <- kept(output, lines, ended)
           turn <- turns.task()
-          consumed = Consumed.ofTurn(lines, turn, stopped)
+          reported = ended.fold(_ => turn, r => Consumed.reported(turn, r.exit, r.output.text))
+          consumed = Consumed.ofTurn(lines, reported, stopped)
           session <- SessionId.of(arm.harness, turn.session)
         } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
       }

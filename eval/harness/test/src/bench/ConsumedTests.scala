@@ -269,6 +269,21 @@ object ConsumedTests extends TestSuite {
       )
     }
 
+    test(
+      "a grit turn whose steps name no failure takes grit work's own last [main] line as its failure when it exited other than 0"
+    ) {
+      val said =
+        "[main] the turn w1 left no reply: failed: the model used its whole output budget " +
+          "thinking and gave no reply (64 output tokens)"
+      val errors = s"[main] w1 began\nat some.Frame\n$said\n"
+      def failed(turn: GritTurn, exit: Int) = Consumed.reported(turn, exit, errors).failed
+      (
+        failed(gritTurn("SUCCESS", None), 2),
+        failed(gritTurn("SUCCESS", None), 0),
+        failed(gritTurn("SUCCESS", Some("ask: down")), 2)
+      ) ==> (Some(said), None, Some("ask: down"))
+    }
+
     test("a line that is not a JSON object is refused, by its number") {
       Consumed.of(Vector(Streams.run(0), "Waiting for background work"), checkout) ==>
         Left("line 2 of the run's output is not a JSON object")

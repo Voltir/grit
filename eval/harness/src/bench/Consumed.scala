@@ -19,8 +19,8 @@ final case class Call(id: String, model: String, usage: Usage) extends caps.Pure
   * messages its last turn's last model call was sent, oldest first, the status DBOS gives its
   * last turn's workflow (`SUCCESS`, `PENDING`, `ERROR`, …), every turn of it as a person reads
   * them, as the eval's `sent` renders a turn, and why its last turn failed, as
-  * `<step>: <reason>`, when it ended without a reply: a turn fails inside a workflow DBOS
-  * records as `SUCCESS`.
+  * `<step>: <reason>`, or as `grit work`'s own line ([[Consumed.reported]]), when it ended
+  * without a reply: a turn fails inside a workflow DBOS records as `SUCCESS`.
   */
 final case class GritTurn(
     session: String,
@@ -144,6 +144,15 @@ object Consumed {
 
   /** The tools of grit's that edit a file. */
   val GritEdits: Set[String] = Set("write", "edit")
+
+  /** `turn`, its failure `grit work`'s own report when its steps name none and `grit work` exited
+    * `exit`, not 0, writing `errors`: their last line that begins `[main]`. A turn that stalls on
+    * a reply (silent, or out of output) records no failure in its steps, only in its outcome,
+    * which `grit work` prints.
+    */
+  def reported(turn: GritTurn, exit: Int, errors: String): GritTurn =
+    if (turn.failed.isDefined || exit == 0) turn
+    else turn.copy(failed = errors.linesIterator.filter(_.startsWith("[main]")).toVector.lastOption)
 
   /** What the grit coder whose output is `lines` consumed, in its turn `turn`, stopped early for
     * `stopped` (as the report says it) when `Some`. Its calls are [[gritCalls]], side calls among
