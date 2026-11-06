@@ -4,7 +4,6 @@ import grit.core.allot.Allotment
 import grit.core.durable.{Durable, Flows, Journaled, StepRecord}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.model.{Pinned, StrictSchemas, TurnProfile, TurnProfileId}
-import grit.core.provider.ToolUse
 import grit.core.store.{Db, Entry, Jot, ModelProfileStore, Payload, StoreError, Tx}
 import grit.core.tool.{Tool, Toolbox}
 import grit.core.visibility.{Classification, Label}
@@ -434,22 +433,18 @@ object Turn {
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
       tools <- offered(own, asking).left.map(reason)
       schemas = tools.schemas(strict)
-      // How round `round`'s call was shaped under `use`, as it was live.
-      shapeAt = (round: Round, use: ToolUse) => {
-        val offer = gatedOffer(tools.set, schemas, strict)
+      offering = TurnLoop.offered(byRef.briefing, gatedOffer(tools.set, schemas, strict), strict)
+      // How round `round`'s call was shaped, as it was live, with `more` notes besides.
+      shapeAt = (round: Round, more: Vector[(Round, String)]) =>
         loopShape(
           asking,
-          use,
-          limits.fold(offer)(l =>
-            TurnLoop.offered(l.budget.after(replies.take(round.index)), round, offer, strict)
-          ),
+          offering,
           settings.afterResult,
           settings.guidance,
           gateNotes(gates, round, tools.set) ++ limits.fold(Vector.empty)(l =>
-            TurnLoop.notes(l.budget.after(replies.take(round.index)), round)
-          )
+            TurnLoop.notes(l.budget.after(replies.take(round.index)), byRef.briefing, round)
+          ) ++ more
         )
-      }
       // What the window showed before the turn's own entries, as every call was sent it: the
       // window alone, shaped as a call is (under InLastResult a message after a carried result
       // is told in it), with no tag and no note: the asker and every note come after it.
@@ -468,8 +463,7 @@ object Turn {
         .map { alone =>
           val shape = loopShape(
             None,
-            ToolUse.Auto,
-            gatedOffer(tools.set, schemas, strict),
+            offering,
             settings.afterResult,
             settings.guidance,
             Vector.empty
@@ -482,8 +476,8 @@ object Turn {
               else TurnRecord.WindowMessage.Recalled
             )
         }
-      // What the call whose reply is kept as `reply` was sent, under `use`.
-      sent = (round: Round, use: ToolUse, reply: EntryId) =>
+      // What the call whose reply is kept as `reply` was sent, with `more` notes besides.
+      sent = (round: Round, more: Vector[(Round, String)], reply: EntryId) =>
         TurnShown
           .sentBefore(
             prompt.render,
@@ -493,7 +487,7 @@ object Turn {
             stubsAt(gates, round, tools.set),
             offer.zoned,
             direct,
-            shapeAt(round, use)
+            shapeAt(round, more)
           )
           .map(_._1)
           .left
@@ -501,7 +495,7 @@ object Turn {
       rounds <- calls.foldLeft[Either[String, Vector[TurnRecord.Call]]](Right(Vector.empty)) {
         case (acc, (round, reply)) =>
           acc.flatMap(done =>
-            sent(round, ToolUse.Auto, reply).map(r =>
+            sent(round, Vector.empty, reply).map(r =>
               done :+ TurnRecord.Call(round.index, reply, r)
             )
           )
@@ -509,17 +503,13 @@ object Turn {
       last = Round.at(calls.size)
       answered <- answer.fold[Either[String, Option[TurnRecord.Answered]]](Right(None))(reply =>
         for {
-          on <- sent(last, ToolUse.Auto, reply)
-          // The budget's last call: tools off, or task_status alone where its limit cut it.
-          forced = limits
-            .map(l => TurnLoop.use(l.budget.after(replies.take(last.index)), last))
-            .filter(_ != ToolUse.Auto)
-            .getOrElse(ToolUse.Off)
-          off <- sent(last, forced, reply)
-        } yield Some(TurnRecord.Answered(last.index, reply, on, off))
+          on <- sent(last, Vector.empty, reply)
+          // With no limits recorded the budget is not known: as its last call, told so.
+          told <- limits.fold(sent(last, Vector(last -> TurnLoop.LastCall), reply))(_ => Right(on))
+        } yield Some(TurnRecord.Answered(last.index, reply, on, told))
       )
       // The summary's request, once the turn asked it, as `summarise` built it under its pins:
-      // on its prefix, the answering call's, its tools offered as its budget offered them.
+      // on its prefix, the answering call's, offered and noted as that call was.
       summary <- (answer, routed.map(r => Picked.of(r).summaryAsk)) match {
         case (Some(reply), Some(Right(ask))) if steps.exists(_.name == Step.Summarise) =>
           kept("conversation's entries", reads.entries.list(turn.conversationId)).flatMap {
@@ -533,9 +523,6 @@ object Turn {
               ask match {
                 case SummaryAsk.Alone(_) => Right(Some(TurnSummary.of(all, turn)))
                 case SummaryAsk.OnPrefix(_) =>
-                  val use = limits.fold(ToolUse.Auto)(l =>
-                    TurnLoop.use(l.budget.after(replies.take(last.index)), last)
-                  )
                   TurnSummary
                     .onPrefix(
                       all,
@@ -546,7 +533,7 @@ object Turn {
                       stubsAt(gates, last, tools.set),
                       offer.zoned,
                       direct,
-                      shapeAt(last, use)
+                      shapeAt(last, Vector.empty)
                     )
                     .map(Some(_))
                     .left

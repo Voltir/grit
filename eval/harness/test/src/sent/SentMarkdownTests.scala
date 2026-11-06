@@ -4,7 +4,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Place
-import grit.core.provider.{ModelRequest, ToolUse}
+import grit.core.provider.ModelRequest
 import grit.core.tool.ToolSetId
 import grit.eval.harness.capture.Spent
 import grit.turn.{Turn, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
@@ -48,11 +48,8 @@ object SentMarkdownTests extends TestSuite {
       summary: Option[ModelRequest] = None
   ): TurnSent = {
     val looped = TurnRecord.Call(0, EntryId("call:c1:0:0"), first)
-    val off = last.copy(
-      messages = last.messages :+ Message.User(TurnLoop.LastCall),
-      use = ToolUse.Off
-    )
-    val answered = TurnRecord.Answered(1, turn.replyId, last, off)
+    val told = last.copy(messages = last.messages :+ Message.User(TurnLoop.LastCall))
+    val answered = TurnRecord.Answered(1, turn.replyId, last, told)
     TurnSent(
       turn.workflowId,
       turn,

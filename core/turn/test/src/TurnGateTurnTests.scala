@@ -316,6 +316,17 @@ object TurnGateTurnTests extends TestSuite {
     }
 
     test(
+      "every request of a gated turn starts with the one before it and its reply: a stub, once shown, is the same on every later call, though its read lowered the level"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = hidingScript
+      val turn = say(entries, "read and post")
+      gatedRun(new InMemoryDurable, entries, turn)(provider) ==>
+        "replied: reply:c1:0; summarised: summary:c1:0"
+      grows(provider.requests) ==> Vector(true, true, true)
+    }
+
+    test(
       "a stub asked through extract keeps what reading it would withdraw, its answer at the turn's level"
     ) {
       val entries = new InMemoryEntryStore

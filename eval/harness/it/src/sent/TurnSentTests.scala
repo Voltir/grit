@@ -13,7 +13,7 @@ import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.place.Directory
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolUse}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Limits, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.Tuning
@@ -78,7 +78,7 @@ object TurnSentTests extends TestSuite {
       }
       val results = request.messages.drop(person + 1).count(_.isInstanceOf[Message.ToolResult])
       val blocks =
-        if (results < 2 && request.use == ToolUse.Auto)
+        if (results < 2 && !request.messages.contains(Message.User(TurnLoop.LastCall)))
           Vector(
             AssistantBlock.Text("calling"),
             AssistantBlock.ToolCall(

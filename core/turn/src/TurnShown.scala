@@ -12,7 +12,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.period.{Balance, Closing, Flows}
 import grit.core.prompt.Fenced
-import grit.core.provider.{ModelRequest, Repeats, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, Repeats, ToolSchema}
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -106,17 +106,15 @@ private[turn] object TurnShown {
     * ([[TurnVerdict.tagged]]); then each of `notes` as a user message, as written: a round's
     * right before the turn's reply of that round (the round's index counting the replies after
     * the asker's message, [[TurnVerdict.asker]], or from the first message when there is
-    * none), one whose reply is not there at the end; offering `tools` as `use` says, guided as
+    * none), one whose reply is not there at the end; offering `tools`, guided as
     * [[TurnLoop.guided]] says under `guidance`, and told as [[TurnLoop.told]] says under
-    * `after`. Fed by [[gatedOffer]] and [[gateNotes]], each call's request repeats every message
-    * of the call before it, with the same system prompt and tools. It marks stable
-    * ([[Repeats.stable]]) every message the call shares with the same request told with
-    * tools on: all of them but the last call's note, or the last result that note ends; and it
-    * keeps the plain request's task and established messages so named, none past stable.
+    * `after`. Fed by [[gatedOffer]], [[gateNotes]] and [[TurnLoop.notes]], each call's request
+    * repeats every message of the call before it, with the same system prompt, tools and tool
+    * use, so it marks every message stable ([[Repeats.stable]]); and it keeps the plain
+    * request's task and established messages so named.
     */
   def loopShape(
       asked: Option[TurnAgenda.Classification],
-      use: ToolUse,
       tools: Vector[ToolSchema],
       after: AfterToolResult,
       guidance: ToolGuidance,
@@ -137,21 +135,23 @@ private[turn] object TurnShown {
           before.getOrElse(i, Vector.empty).map(Message.User(_)) :+ m
         ) ++ late.map(Message.User(_))
       )
-      val guided = TurnLoop.guided(noted.copy(tools = tools, use = use), guidance)
-      val shaped = TurnLoop.told(use, guided, after)
-      // A later call is sent this one's messages as a call with tools is told them, then more.
-      val repeated = TurnLoop.told(ToolUse.Auto, guided, after).messages
-      val stable = shaped.messages.zip(repeated).takeWhile(_ == _).size
+      val shaped = TurnLoop.told(TurnLoop.guided(noted.copy(tools = tools), guidance), after)
       // The plain request's task and established counts, each past the notes put before it.
       def past(count: Int): Int = count + before.collect { case (i, n) if i < count => n.size }.sum
       shaped.copy(repeats =
-        Repeats.of(past(base.repeats.task), past(base.repeats.established), stable)
+        Repeats.of(
+          past(base.repeats.task),
+          past(base.repeats.established),
+          shaped.messages.size
+        )
       )
     }
 
   /** The stubs `round`'s request shows, by the ref of the item each stands for, as its gate
     * in `gates` hid them, their tools as `offered` says them ([[TurnGate.stub]]); none for a
-    * round with no gate.
+    * round with no gate. A round's gate keeps every item an earlier one hid as it hid it, and
+    * hides none an earlier one showed, whose integrity dominates every later level
+    * ([[TurnGate.decide]]): so each round's stubs hold every earlier round's, unchanged.
     */
   def stubsAt(
       gates: Map[Int, Gated],

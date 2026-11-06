@@ -90,25 +90,33 @@ object TurnLoopTurnTests extends TestSuite {
     })
   )
 
-  /** A turn of up to 12 calls whose every reply calls peek, its request's input 1,000 then
-    * 20,000 more each round, drawn under a `window` limit and pinned from `catalog`: each
-    * request's tool use and whether it was told it is the last with tools, and what the turn
-    * returned.
-    */
-  /** A turn of up to 12 calls cut to 5 at a 2,500 limit, its input growing 600 a round: rounds
-    * 0 to 2 call peek, and round 3, its last call with tools, replies `last`; each request's
-    * tools by name, and what the turn returned.
+  /** A turn briefed for one task, of up to 12 calls cut to 5 at a 2,500 limit, its input
+    * growing 600 a round: rounds 0 to 2 call peek, and round 3, its last call with tools,
+    * replies `last`; each request's tools by name, and what the turn returned.
     */
   private def cutWith(
       entries: InMemoryEntryStore,
       last: Message.Assistant
   ): (Vector[Vector[String]], String) = {
+    val (requests, said) = cutTurn(
+      entries,
+      grit.core.recipe.TurnRecipe.Tasked,
+      n => if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else last
+    )
+    (requests.map(_.tools.map(_.name)), said)
+  }
+
+  /** A turn under `recipe`, of up to 12 calls cut to 5 at a 2,500 limit, its input growing 600
+    * a round, call `n` replied `reply(n)`: each request, and what the turn returned.
+    */
+  private def cutTurn(
+      entries: InMemoryEntryStore,
+      recipe: grit.core.recipe.TurnRecipe,
+      reply: Int -> Message.Assistant
+  ): (Vector[ModelRequest], String) = {
     val ws = new Files(files)
     val provider = new Scripted((_, n) =>
-      Right(
-        (if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else last)
-          .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
-      )
+      Right(reply(n).copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None)))
     )
     val turn = say(entries, "move them")
     val said = new InMemoryDurable().run(turn.workflowId)(
@@ -121,11 +129,18 @@ object TurnLoopTurnTests extends TestSuite {
         ws,
         tools(ws),
         12,
-        limit = Some(Tokens(2500))
+        limit = Some(Tokens(2500)),
+        recipe = recipe
       )
     )
-    (provider.requests.map(_.tools.map(_.name)), said)
+    (provider.requests, said)
   }
+
+  /** The text of `request`'s last message when it is a user's (a note, the asker's message);
+    * `None` for a tool result.
+    */
+  private def lastSaid(request: ModelRequest): Option[String] =
+    request.messages.lastOption.collect { case Message.User(text) => text }
 
   /** A reply calling task_status alone, declaring `state` with `handoff`. */
   private def declaring(state: String, handoff: String): Message.Assistant =
@@ -142,15 +157,21 @@ object TurnLoopTurnTests extends TestSuite {
       "m"
     )
 
+  /** A turn briefed for one task, of up to 12 calls, whose every reply calls peek until it is
+    * told its turn is ending, its request's input 1,000 then 20,000 more each round, drawn under
+    * a `window` limit and pinned from `catalog`: whether each request was told it is the last
+    * with tools and the last, and what the turn returned.
+    */
   private def limited(
       window: Tokens = grit.assembly.linear.LinearAssembler.DefaultBudget,
       catalog: grit.core.model.Catalog = TurnFixtures.TestCatalog
-  ): (Vector[(ToolUse, Boolean)], String) = {
+  ): (Vector[(Boolean, Boolean)], String) = {
     val entries = new InMemoryEntryStore
     val ws = new Files(files)
-    val provider = new Scripted((_, n) =>
+    val provider = new Scripted((r, n) =>
       Right(
-        calling(s"r$n", (s"t$n", "peek", "a.txt"))
+        (if (told(r, TurnLoop.Ending)) TurnFixtures.said(s"r$n")
+         else calling(s"r$n", (s"t$n", "peek", "a.txt")))
           .copy(usage = Usage(Tokens(1000L + 20_000L * n), Tokens(2), Tokens.Zero, None))
       )
     )
@@ -166,15 +187,21 @@ object TurnLoopTurnTests extends TestSuite {
         tools(ws),
         12,
         catalog = catalog,
-        window = window
+        window = window,
+        recipe = grit.core.recipe.TurnRecipe.Tasked
       )
     )
-    def told(r: ModelRequest) = r.messages.exists {
-      case Message.User(t) => t == TurnLoop.LimitTools
-      case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LimitTools)
-      case _ => false
-    }
-    (provider.requests.map(r => (r.use, told(r))), said)
+    (
+      provider.requests.map(r => (told(r, TurnLoop.LimitTools), told(r, TurnLoop.Ending))),
+      said
+    )
+  }
+
+  /** Whether `r` tells the model `note`, as a user message or ending a tool result. */
+  private def told(r: ModelRequest, note: String): Boolean = r.messages.exists {
+    case Message.User(t) => t == note
+    case Message.ToolResult(_, t, _) => t.endsWith(note)
+    case _ => false
   }
 
   val tests = Tests {
@@ -589,14 +616,15 @@ object TurnLoopTurnTests extends TestSuite {
         Vector(TurnLoop.CutOff.result(ToolCallId("t1")))
     }
 
-    test("the budget's last call is made with tools off, and its calls dropped") {
+    test("the budget's last call is told it is the last, and nothing keeps the note") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
-      val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("more", ("t", "peek", "a.txt")) else TurnFixtures.said("more"))
+      )
       val turn = say(entries, "go")
       val ledger = new InMemoryUsageLedger
       looped(new InMemoryDurable, entries, entries, turn, provider, ws, ledger, calls = 2)
-      provider.requests.map(_.use) ==> Vector(ToolUse.Auto, ToolUse.Off)
       // Only the last call is told it is the last, after all it is sent; nothing keeps it.
       provider.requests.map(_.messages.lastOption) ==> Vector(
         Some(Message.User("go")),
@@ -616,11 +644,13 @@ object TurnLoopTurnTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val ws = new Files(files)
-      // Every reply calls peek; its request's input grows 600 a round, so round 2's 2,200 plus
-      // 600 meets a 2,500 limit: round 3 is told, round 4 is made with tools off, of a budget of 12.
-      val provider = new Scripted((_, n) =>
+      // Every reply calls peek until told the turn is ending; its request's input grows 600 a
+      // round, so round 2's 2,200 plus 600 meets a 2,500 limit: round 3 is told it is the last
+      // with tools, round 4 that it is the last, of a budget of 12.
+      val provider = new Scripted((r, n) =>
         Right(
-          calling(s"r$n", (s"t$n", "peek", "a.txt"))
+          (if (told(r, TurnLoop.Ending)) TurnFixtures.said(s"r$n")
+           else calling(s"r$n", (s"t$n", "peek", "a.txt")))
             .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
         )
       )
@@ -635,23 +665,14 @@ object TurnLoopTurnTests extends TestSuite {
           ws,
           tools(ws),
           12,
-          limit = Some(Tokens(2500))
+          limit = Some(Tokens(2500)),
+          recipe = grit.core.recipe.TurnRecipe.Tasked
         )
       ) ==> "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit"
-      def told(r: ModelRequest) = r.messages.exists {
-        case Message.User(t) => t == TurnLoop.LimitTools
-        case Message.ToolResult(_, t, _) => t.endsWith(TurnLoop.LimitTools)
-        case _ => false
-      }
       // Its last call asks for task_status; the scripted reply answers in text and never calls
       // it, so the turn ended at its limit.
-      provider.requests.map(r => (r.use, told(r))) ==> Vector(
-        (ToolUse.Auto, false),
-        (ToolUse.Auto, false),
-        (ToolUse.Auto, false),
-        (ToolUse.Auto, true),
-        (ToolUse.Only("task_status"), true)
-      )
+      provider.requests.map(r => (told(r, TurnLoop.LimitTools), told(r, TurnLoop.Ending))) ==>
+        Vector((false, false), (false, false), (false, false), (true, false), (true, true))
     }
 
     test(
@@ -664,12 +685,7 @@ object TurnLoopTurnTests extends TestSuite {
         "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit",
         grit.core.inbox.TurnEnding.AtLimit
       )
-      requests ==> Vector(
-        (ToolUse.Auto, false),
-        (ToolUse.Auto, false),
-        (ToolUse.Auto, true),
-        (ToolUse.Only("task_status"), true)
-      )
+      requests ==> Vector((false, false), (false, false), (true, false), (true, true))
     }
 
     test(
@@ -752,7 +768,7 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "a cut turn declaring done on its last call with tools is done, not at its limit, its handoff the answer; task_status offered only from that call"
+      "a cut turn declaring done on its last call with tools is done, not at its limit, its handoff the answer; task_status offered on every call"
     ) {
       val entries = new InMemoryEntryStore
       val (offered, said) = cutWith(entries, declaring("done", "All four moved, tests pass."))
@@ -765,7 +781,7 @@ object TurnLoopTurnTests extends TestSuite {
         "replied: reply:c1:0; summarised: summary:c1:0",
         grit.core.inbox.TurnEnding.Answered,
         Vector("assistant: All four moved, tests pass."),
-        Vector(false, false, false, true)
+        Vector(true, true, true, true)
       )
     }
 
@@ -800,6 +816,104 @@ object TurnLoopTurnTests extends TestSuite {
       )
     }
 
+    test(
+      "every request of a cut turn briefed for one task carries the same system prompt, tools and tool use, and starts with the one before it and its reply"
+    ) {
+      val entries = new InMemoryEntryStore
+      val (requests, said) = cutTurn(
+        entries,
+        grit.core.recipe.TurnRecipe.Tasked,
+        n => if (n < 4) calling(s"r$n", (s"t$n", "peek", "a.txt")) else TurnFixtures.said("r4")
+      )
+      (
+        said,
+        requests.map(_.system).distinct.size,
+        requests.map(_.tools.map(_.name)).distinct,
+        requests.map(_.use).distinct,
+        grows(requests),
+        requests.map(lastSaid)
+      ) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit",
+        1,
+        Vector(Vector("topic", "peek", "poke", "task_status")),
+        Vector(ToolUse.Auto),
+        Vector.fill(4)(true),
+        Vector(Some("move them"), None, None, Some(TurnLoop.LimitTools), Some(TurnLoop.Ending))
+      )
+    }
+
+    test("an uncut turn's every request, its last included, carries the same tools and tool use") {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n < 2) calling(s"r$n", (s"t$n", "peek", "a.txt")) else TurnFixtures.said("r2"))
+      )
+      val turn = say(entries, "go")
+      looped(new InMemoryDurable, entries, entries, turn, provider, ws, calls = 3)
+      (
+        provider.requests.map(_.tools.map(_.name)).distinct,
+        provider.requests.map(_.use).distinct,
+        grows(provider.requests),
+        provider.requests.map(lastSaid)
+      ) ==> (
+        Vector(Vector("topic", "peek", "poke")),
+        Vector(ToolUse.Auto),
+        Vector(true, true),
+        Vector(Some("go"), Some(TurnLoop.LastTools), Some(TurnLoop.LastCall))
+      )
+    }
+
+    test(
+      "a conversing turn its limit cut never offers task_status, and is told its last call with tools and its last as an uncut one is"
+    ) {
+      val entries = new InMemoryEntryStore
+      val (requests, _) = cutTurn(
+        entries,
+        grit.core.recipe.TurnRecipe.Shipped,
+        n => if (n < 4) calling(s"r$n", (s"t$n", "peek", "a.txt")) else TurnFixtures.said("r4")
+      )
+      (
+        requests.map(_.tools.map(_.name)).distinct,
+        requests.map(lastSaid).drop(3)
+      ) ==> (
+        Vector(Vector("topic", "peek", "poke")),
+        Vector(Some(TurnLoop.LastTools), Some(TurnLoop.LastCall))
+      )
+    }
+
+    test(
+      "a call to task_status before a turn briefed for one task is ending is refused as early, and the turn goes on"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) declaring("done", "All moved.") else TurnFixtures.said("moved"))
+      )
+      val turn = say(entries, "move them")
+      val said = new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          NoClassifier,
+          ws,
+          tools(ws),
+          5,
+          recipe = grit.core.recipe.TurnRecipe.Tasked
+        )
+      )
+      // The refusal is fenced as any result is; its words are the early refusal's.
+      val refused = provider.requests.lift(1).flatMap(_.messages.lastOption).collect {
+        case Message.ToolResult(id, content, isError) =>
+          (id, content.contains(TaskStatus.Early), isError)
+      }
+      (said, refused) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0",
+        Some((ToolCallId("status"), true, true))
+      )
+    }
+
     test("a pin's context length caps a larger window's limit, less its output budget") {
       // 50,000 tokens less the pin's 4,096 out and a clipped result leaves about 23,000: met at
       // reply 1, as a 30,000 window's limit is above. The deployed 100,000 window alone is not.
@@ -816,13 +930,8 @@ object TurnLoopTurnTests extends TestSuite {
         )
       )
       (limited(catalog = capped)._1, limited()._1.take(3)) ==> (
-        Vector(
-          (ToolUse.Auto, false),
-          (ToolUse.Auto, false),
-          (ToolUse.Auto, true),
-          (ToolUse.Only("task_status"), true)
-        ),
-        Vector((ToolUse.Auto, false), (ToolUse.Auto, false), (ToolUse.Auto, false))
+        Vector((false, false), (false, false), (true, false), (true, true)),
+        Vector((false, false), (false, false), (false, false))
       )
     }
 

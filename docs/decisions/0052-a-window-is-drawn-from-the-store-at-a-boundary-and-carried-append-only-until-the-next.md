@@ -35,8 +35,8 @@ Decision:
   same digest, and this
   turn's first gate, decided over what it carries, hides none of it; otherwise it draws a
   boundary. So a carried document gone, content this turn's route does not clear, a changed
-  tool set or prompt, a turn whose last call was forced (its last-call message is in no
-  record), or one that met its input limit (its last-tools note is in no record) makes a
+  tool set or prompt, a turn that answered its budget's last call (its last-call message is in
+  no record), or one that met its input limit (its last-tools note is in no record) makes a
   boundary, never an edited prefix. A window drawn from the store
   replays no reasoning: thinking is bound to the request that produced it.
 - **The limit is the deployment's `Assembly` budget**, read from the assembler
@@ -44,7 +44,7 @@ Decision:
   drawn now may add). At the limit, when the carried window and the turns since it no longer
   fit, the window is cleared and re-projected, never slid. What a carried turn costs is
   counted as it is sent: its tool calls and results. **Within a turn, a turn at the limit
-  ends, its last call forced**, and the next turn draws a boundary: nothing is cleared inside
+  ends**, its last calls told so, and the next turn draws a boundary: nothing is cleared inside
   a turn, whose request only grows. A turn's requests are held to the limit plus what its
   system prompt and tools cost, capped by the turn pin's context length less its output
   budget when the pin's profile gives one, less room for one clipped tool result; the loop
@@ -55,8 +55,14 @@ Decision:
   before the next boundary. A boundary drawn to the limit would leave no room for the next turn,
   and the limit would clear the window every other turn.
 - **What a turn sends only grows within the turn**, gates included (ADR 0036), so a gated turn
-  keeps its cache within the turn. What a turn offers is its tool set's alone, whatever its
-  gates decide, and `topic` on every turn, whatever its classifier decides, so turns of one conversation send the same tools and system prompt. A gate's
+  keeps its cache within the turn. Every call of a turn sends the same system prompt, tools and
+  tool choice, its last included: a provider binds a reply's thinking to the tools it was made
+  under, and a changed tool list discards the whole cached prefix. What a call may not call (a
+  tool its gate withholds, `task_status` before a turn is ending, any tool on its budget's last
+  call) is refused when called, as a tool result, never withdrawn from the request. What a
+  turn offers is its tool set's alone, whatever its gates decide, `topic` on every turn,
+  whatever its classifier decides, and `task_status` on every turn briefed for one task, so
+  turns of one conversation send the same tools and system prompt. A gate's
   notes and stubs are kept in no window record yet, so the turn after one whose gate hid an
   item or wrote a note draws a boundary.
 
@@ -73,5 +79,6 @@ lifetime: a placer that judges nobody waiting during a person's pause clears it.
 deployment setting names the share, a boundary draws half of what a fresh window drew before.
 A task longer than one window is a conversation of turns, each after the first rooted on grit's
 own continuation note (ADR 0058). Enforced by the assembly suites, by a test that a turn's request begins with the last one's
-whole on either gateway, and by tests that a gated turn, a changed offer, a forced last call
-and a carried document gone are each followed by a boundary.
+whole on either gateway, by a test that every request of a cut turn carries the same tools and
+tool choice, and by tests that a gated turn, a changed offer, an answered last call and a
+carried document gone are each followed by a boundary.

@@ -137,11 +137,11 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
-      "a summary asked on the turn's own model is the call it follows, then its reply and the ask, sent tools on or forced as that call was"
+      "a summary asked on the turn's own model is the call it follows, then its reply and the ask, told it was the last or not as that call was"
     ) {
       // The turn thinks and reads twice, then answers: in a budget of three calls its answer is
-      // the forced last call, tools off and the last-call message at its end; in one of four
-      // it is a call with tools on. Either way the summary must repeat that call whole, so a
+      // the budget's last call, the last-call message at its end; in one of four it is not.
+      // Either way the summary must repeat that call whole, so a
       // provider reads the cache it wrote, and only then add the reply and the ask.
       def summarised(calls: Int): (ModelRequest, ModelRequest) = {
         val entries = new InMemoryEntryStore
@@ -185,21 +185,20 @@ object TurnPrefixTests extends TestSuite {
           r
         )
       )
-      Vector(3 -> grit.core.provider.ToolUse.Off, 4 -> grit.core.provider.ToolUse.Auto).foreach {
-        (calls, use) =>
-          val (reply, summary) = summarised(calls)
-          reply.use ==> use
-          diverged(prefix(reply), prefix(summary)) ==> None
-          (summary.system, summary.tools, summary.use, summary.repeats.stable) ==>
-            (reply.system, reply.tools, reply.use, reply.repeats.stable)
-          summary.messages.take(reply.messages.size) ==> reply.messages
-          summary.messages.drop(reply.messages.size).collect {
-            case Message.User(text) => text
-            case m: Message.Assistant => m.blocks.collect { case AssistantBlock.Text(t) => t }
-          } ==> Vector(
-            Vector("done"),
-            s"<grit_note>\n${TurnSummary.ItemUnnamed}\n\n${TurnSummary.AgendaAsk}\n</grit_note>"
-          )
+      Vector(3 -> true, 4 -> false).foreach { (calls, last) =>
+        val (reply, summary) = summarised(calls)
+        reply.messages.lastOption.contains(Message.User(TurnLoop.LastCall)) ==> last
+        diverged(prefix(reply), prefix(summary)) ==> None
+        (summary.system, summary.tools, summary.use, summary.repeats.stable) ==>
+          (reply.system, reply.tools, reply.use, reply.repeats.stable)
+        summary.messages.take(reply.messages.size) ==> reply.messages
+        summary.messages.drop(reply.messages.size).collect {
+          case Message.User(text) => text
+          case m: Message.Assistant => m.blocks.collect { case AssistantBlock.Text(t) => t }
+        } ==> Vector(
+          Vector("done"),
+          s"<grit_note>\n${TurnSummary.ItemUnnamed}\n\n${TurnSummary.AgendaAsk}\n</grit_note>"
+        )
       }
     }
 
@@ -417,10 +416,10 @@ object TurnPrefixTests extends TestSuite {
     }
 
     test(
-      "a turn after one whose last call was forced draws its window afresh, never sending that turn's final reply without the message it answered"
+      "a turn after one that answered its budget's last call draws its window afresh, never sending that turn's final reply without the message it answered"
     ) {
-      // The first turn thinks and reads twice, so its third and last call is made with tools
-      // off, the last-call message at its end. A later turn that carried it would send its
+      // The first turn thinks and reads twice, so its third and last call is told it is the
+      // last, the last-call message at its end. A later turn that carried it would send its
       // final reply without that message, an edit before the reply's thinking that a provider
       // refuses: it must either repeat that call whole or replay none of its thinking.
       val entries = new InMemoryEntryStore
@@ -441,7 +440,7 @@ object TurnPrefixTests extends TestSuite {
         )
         t
       }
-      // The forced call's reply thinks, then answers.
+      // The last call's reply thinks, then answers.
       val thought = peeking("t3")
       val answered: Message.Assistant = Message.Assistant(
         thought.blocks.take(1) :+ AssistantBlock.Text("done"),
@@ -464,12 +463,12 @@ object TurnPrefixTests extends TestSuite {
         )
       val replays = later.requests.exists(r => ujson.write(anthropicOf(r)).contains("sig-t"))
       (
-        first.requests.lastOption.map(_.use),
+        first.requests.lastOption.flatMap(_.messages.lastOption),
         replays,
         windows(entries).collectFirst {
           case (id, w) if id == Turn.windowId(second) => w.carry.map(_.after)
         }
-      ) ==> (Some(grit.core.provider.ToolUse.Off), false, Some(Some(None)))
+      ) ==> (Some(Message.User(TurnLoop.LastCall)), false, Some(Some(None)))
     }
 
     test(

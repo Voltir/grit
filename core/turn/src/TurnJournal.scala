@@ -25,7 +25,7 @@ import grit.core.model.{CatalogJson, Grade, TurnProfileId}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
 import grit.core.prompt.FragmentId
-import grit.core.recipe.ServiceOffer
+import grit.core.recipe.{Briefing, ServiceOffer}
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
@@ -674,9 +674,10 @@ private[turn] object TurnJournal {
     * {tool name: place written}` when it took tools from a reached service's. References
     * only: the texts are kept by id. No `root` reads as addressed and no `advertised` or
     * `reached` as none, so every offer recorded before them reads as it did; `"shaped"`
-    * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped; and
+    * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped;
     * `"zoned": {"person": zone id, "deployment": zone id}` when its message was dated in a zone,
-    * `person` absent when not known, none reading as dated in UTC.
+    * `person` absent when not known, none reading as dated in UTC; and `"briefing": "tasked"`
+    * for a turn briefed for one task, none reading as conversing.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(writeRecorded, readRecorded)
@@ -711,6 +712,11 @@ private[turn] object TurnJournal {
       val zoned = ujson.Obj("deployment" -> z.deployment.getId)
       z.person.foreach(p => zoned("person") = p.getId)
       o("zoned") = zoned
+    }
+    // Written only for a turn briefed for one task, so every conversing offer keeps its form.
+    r.briefing match {
+      case Briefing.Tasked => o("briefing") = "tasked"
+      case Briefing.Conversing => ()
     }
     o
   }
@@ -804,7 +810,22 @@ private[turn] object TurnJournal {
             }
           } yield Some(TurnOffer.Zoned(person, deployment))
       }
-    } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped, zoned)
+      briefing <- o.get("briefing") match {
+        case None => Right(Briefing.Conversing)
+        case Some(ujson.Str("tasked")) => Right(Briefing.Tasked)
+        case Some(other) => Left(s"offer: unknown briefing ${other.render()}")
+      }
+    } yield TurnOffer.Recorded(
+      workspace,
+      tools,
+      prompt,
+      root,
+      advertised,
+      reached,
+      shaped,
+      zoned,
+      briefing
+    )
 
   /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",
     * "hits"}`; each service `{"service", "via": "workspace" | "reached", "tools": [names],

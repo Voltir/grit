@@ -29,7 +29,7 @@ import grit.core.model.{
   Rung,
   Upstream
 }
-import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.route.Uncleared
 import grit.core.store.{Db, InMemoryEntryStore, InMemoryUsageLedger, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Args, Believed, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
@@ -205,12 +205,12 @@ object TurnRouteTests extends TestSuite {
     )
 
   /** Calls an unknown tool every call it may, so the loop runs its whole budget, and says
-    * "done" on the last, made with tools off.
+    * "done" on the last, told so.
     */
   private def looping =
     new Scripted((request, n) =>
       Right(
-        if (request.use == ToolUse.Off) said("done")
+        if (request.messages.lastOption.contains(Message.User(TurnLoop.LastCall))) said("done")
         else
           Message.Assistant(
             Vector(AssistantBlock.ToolCall(ToolCallId(s"c$n"), "nothing", ujson.Obj())),

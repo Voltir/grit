@@ -58,12 +58,14 @@ final case class TurnSent(
   def row(entry: EntryId): Option[Spent] = spent.collectFirst { case (e, s) if e == entry => s }
 
   /** Each call of its reply, oldest first: its round, the entry its reply is kept under, and
-    * its request as rebuilt; the answering call's as `picked` says, with tools on unless it
-    * picked them off.
+    * its request as rebuilt; the answering call's as `picked` says, noted as its round was
+    * unless it picked the budget's last call.
     */
   def requests: Vector[(Int, EntryId, ModelRequest)] =
     calls.looped.map(c => (c.round, c.reply, c.request)) ++
-      calls.answered.map(a => (a.round, a.reply, if (picked.contains(Picked.Off)) a.off else a.on))
+      calls.answered.map(a =>
+        (a.round, a.reply, if (picked.contains(Picked.Last)) a.last else a.on)
+      )
 
   /** Whether `request`, sent by the call whose reply is kept as `reply`, estimates
     * ([[CharEstimate]]) as that call's ledger row recorded; `None` when no row is kept.
@@ -94,7 +96,7 @@ final case class TurnSent(
     val id = TurnSummary.id(turn)
     val onPrefix = calls.summary.filter(s =>
       calls.answered.exists(a =>
-        Vector(a.on, a.off).exists(c =>
+        Vector(a.on, a.last).exists(c =>
           s.system == c.system && s.tools == c.tools && s.use == c.use &&
             s.messages.startsWith(c.messages)
         )
@@ -122,15 +124,15 @@ final case class TurnSent(
 final case class Answer(message: Message.Assistant, draft: Boolean)
 
 /** Which request the answering call was sent, by the estimate its ledger row recorded
-  * ([[CharEstimate]], the estimator the kit wires): `On` or `Off` when exactly that one's
+  * ([[CharEstimate]], the estimator the kit wires): `On` or `Last` when exactly that one's
   * estimate agrees, `Unsure` with both and the recorded estimate otherwise, or when the row
   * is gone. Under [[TurnRecord.Schemas.Recorded]] neither estimate is that of what was
   * sent, so the answer is always `Unsure`.
   */
 enum Picked {
   case On
-  case Off
-  case Unsure(on: Tokens, off: Tokens, recorded: Option[Tokens])
+  case Last
+  case Unsure(on: Tokens, last: Tokens, recorded: Option[Tokens])
 }
 
 object Picked {
@@ -138,11 +140,11 @@ object Picked {
   /** Which of `answered`'s requests estimates as `recorded`. */
   def of(answered: TurnRecord.Answered, recorded: Option[Tokens]): Picked = {
     val on = CharEstimate.request(answered.on)
-    val off = CharEstimate.request(answered.off)
-    (recorded.contains(on), recorded.contains(off)) match {
+    val last = CharEstimate.request(answered.last)
+    (recorded.contains(on), recorded.contains(last)) match {
       case (true, false) => On
-      case (false, true) => Off
-      case _ => Unsure(on, off, recorded)
+      case (false, true) => Last
+      case _ => Unsure(on, last, recorded)
     }
   }
 }

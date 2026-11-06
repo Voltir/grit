@@ -12,7 +12,7 @@ import grit.core.flow.{Extracted, Shape, Trusted}
 import grit.core.id.{CallSlot, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.model.{Grade, StrictSchemas}
-import grit.core.provider.{ModelRequest, ToolUse}
+import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Jot, Keeps, Payload, Reads, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Subject}
@@ -41,7 +41,7 @@ private[turn] final class Rounding[C^](
       Rounding.gateOf(env, l.turn, l.seen, l.offer.root, tools.set, prior, named)(using l.routed)
     }
 
-  def call(at: TurnRound.Progress, use: ToolUse): Either[TurnFailure, Message.Assistant] =
+  def call(at: TurnRound.Progress): Either[TurnFailure, Message.Assistant] =
     for {
       offer <- offered(at)
       pins <- at.looping.routed.picked(env)
@@ -53,7 +53,7 @@ private[turn] final class Rounding[C^](
         l.turn,
         l.seen,
         stubs,
-        Rounding.shapeAs(at, tools, use, pins)
+        Rounding.shapeAs(at, tools, pins)
       )(using env, pins, offer)
     } yield reply
 
@@ -258,8 +258,8 @@ private[turn] final class Rounding[C^](
 private[turn] object Rounding {
 
   /** What round `at.round`'s request, offered as `offer` under `pins`, was sent: the stub of
-    * each item its gate hid, by the item's ref, and how it is shaped from the plain request,
-    * offering tools as its budget does. Fails as [[TurnRound.Env.record]] does.
+    * each item its gate hid, by the item's ref, and how it is shaped from the plain request.
+    * Fails as [[TurnRound.Env.record]] does.
     */
   def sent[C^](
       tooling: TurnTooling[C]^,
@@ -270,7 +270,7 @@ private[turn] object Rounding {
     tools(tooling, offer, at.looping.asked).map(tools =>
       (
         stubsAt(at.gates, at.round, tools.set),
-        shapeAs(at, tools, TurnLoop.use(at.budget, at.round), pins)
+        shapeAs(at, tools, pins)
       )
     )
 
@@ -284,26 +284,24 @@ private[turn] object Rounding {
   ): Either[TurnFailure, Toolbox[C]] =
     TurnShown.offered(TurnOffer.toolbox(tooling, offer), asked)
 
-  /** Round `at.round`'s request from the plain one, offering `tools` as `use` says, their
-    * schemas strict when `pins`' turn pair is known to enforce them, and told and guided as
-    * that pair is.
+  /** Round `at.round`'s request from the plain one, offering `tools` as every call of its turn
+    * does ([[TurnLoop.offered]]), their schemas strict when `pins`' turn pair is known to
+    * enforce them, and told and guided as that pair is.
     */
   private def shapeAs[C^](
       at: TurnRound.Progress,
       tools: Toolbox[C],
-      use: ToolUse,
       pins: Turn.Picked
   ): ModelRequest -> ModelRequest = {
     val settings = pins.turn.settings
     val strict = settings.strict == StrictSchemas.Enforced
+    val briefing = at.looping.offer.briefing
     loopShape(
       at.looping.asked,
-      use,
-      TurnLoop
-        .offered(at.budget, at.round, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
+      TurnLoop.offered(briefing, gatedOffer(tools.set, tools.schemas(strict), strict), strict),
       settings.afterResult,
       settings.guidance,
-      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, at.round)
+      gateNotes(at.gates, at.round, tools.set) ++ TurnLoop.notes(at.budget, briefing, at.round)
     )
   }
 
@@ -356,7 +354,7 @@ private[turn] object Rounding {
     * model asked about `asked`, read as `routed` bounds it: the conversation's newest window
     * record of an earlier turn whose chain is read whole and after which no period of the
     * conversation closed ([[Payload.Closed]]), when the request `turn` would send of
-    * that window alone, offered as its calls are ([[TurnShown.gatedOffer]]), goes to the pair
+    * that window alone, offered as its calls are ([[TurnLoop.offered]]), goes to the pair
     * that turn's [[Payload.Prefix]] names and repeats it byte for byte
     * ([[TurnShown.prefixOf]]), and its first gate, decided over what it carries
     * ([[TurnGate.decide]], from [[startOf]]), hides none of it; else why not, the first of
@@ -445,8 +443,11 @@ private[turn] object Rounding {
         val shape =
           loopShape(
             None,
-            ToolUse.Auto,
-            gatedOffer(tools.set, tools.schemas(strict), strict),
+            TurnLoop.offered(
+              recorded.briefing,
+              gatedOffer(tools.set, tools.schemas(strict), strict),
+              strict
+            ),
             settings.afterResult,
             settings.guidance,
             Vector.empty

@@ -7,7 +7,7 @@ boundary (ADR 0052). A task longer than one window, such as `grit work` given an
 coding, therefore needs a next turn, and something must say it. Turned down: the edge saying
 a fixed line as the person (it puts words in a person's mouth, shown and escaped as theirs,
 searched, and stored as text in every row); a model's summary of the turn so far (ADR 0052
-turned compaction by summary down; the forced last reply, written on the cached prefix, is
+turned compaction by summary down; the last reply, written on the cached prefix, is
 the hand-off); clearing the window inside the turn (the slide ADR 0052 turned down); the
 engine continuing every turn that ends at its limit (going on unattended, spending, is the
 policy of whoever drives the conversation, and a person in a Slack thread may not want it).

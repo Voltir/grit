@@ -18,7 +18,7 @@ import grit.core.id.{
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.place.Place
-import grit.core.provider.{ModelRequest, Repeats, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, Repeats, ToolSchema}
 import grit.core.store.{Entry, Payload, Speakers}
 import grit.core.tool.ToolSet
 import grit.core.visibility.{Integrity, Label}
@@ -95,7 +95,6 @@ object TurnShownTests extends TestSuite {
     )
     val shape = TurnShown.loopShape(
       None,
-      ToolUse.Auto,
       Vector.empty,
       AfterToolResult.UserMessage,
       ToolGuidance.SchemaOnly,
@@ -167,22 +166,27 @@ object TurnShownTests extends TestSuite {
         Message.User("No, not that one.")
       )
       val second = Vector(reply("", "t2"), Message.ToolResult(ToolCallId("t2"), "beta", false))
-      def shaped(use: ToolUse, messages: Vector[Message]): Vector[Message] =
+      def shaped(
+          messages: Vector[Message],
+          notes: Vector[(TurnLoop.Round, String)] = Vector.empty
+      ): Vector[Message] =
         TurnShown
           .loopShape(
             Some(c),
-            use,
             Vector.empty,
             AfterToolResult.UserMessage,
             ToolGuidance.SchemaOnly,
-            Vector.empty
+            notes
           )(ModelRequest("sys", messages))
           .messages
-      val first = shaped(ToolUse.Auto, asked)
+      val first = shaped(asked)
       first.lastOption ==> Some(Message.User(s"read it\n\n${TurnVerdict.tag(c)}"))
       (
-        shaped(ToolUse.Auto, asked ++ exchange),
-        shaped(ToolUse.Off, asked ++ exchange ++ second)
+        shaped(asked ++ exchange),
+        shaped(
+          asked ++ exchange ++ second,
+          Vector(TurnLoop.Round.First.next.next -> TurnLoop.LastCall)
+        )
       ) ==> (
         first ++ exchange,
         first ++ exchange ++ second :+ Message.User(TurnLoop.LastCall)
@@ -211,7 +215,6 @@ object TurnShownTests extends TestSuite {
       TurnShown
         .loopShape(
           Some(c),
-          ToolUse.Auto,
           Vector.empty,
           AfterToolResult.UserMessage,
           ToolGuidance.SchemaOnly,
@@ -229,7 +232,7 @@ object TurnShownTests extends TestSuite {
       )
     }
 
-    test("the loop's request marks stable every message but the last call's note") {
+    test("the loop's request marks every message stable, a last call's note included") {
       val asked = Vector(Message.User("earlier"), Message.User("read it"))
       val call = Message.Assistant(
         Vector(AssistantBlock.ToolCall(ToolCallId("t1"), "peek", ujson.Obj())),
@@ -238,26 +241,25 @@ object TurnShownTests extends TestSuite {
         "m"
       )
       val result = Message.ToolResult(ToolCallId("t1"), "alpha", isError = false)
-      def marked(use: ToolUse, after: AfterToolResult): (Int, Int) = {
+      def marked(noted: Boolean, after: AfterToolResult): (Int, Int) = {
         val r = TurnShown.loopShape(
           None,
-          use,
           Vector.empty,
           after,
           ToolGuidance.SchemaOnly,
-          Vector.empty
+          Vector(TurnLoop.Round.First.next -> TurnLoop.LastCall).filter(_ => noted)
         )(ModelRequest("sys", asked ++ Vector(call, result)))
         (r.repeats.stable, r.messages.size)
       }
-      // A later call repeats every message a call with tools is sent; the last call's note is
-      // its own, after the messages or, where a pair refuses a user there, ending the last
-      // result, which no later call repeats either.
+      // A later call repeats every message this one is sent, a note included: it sits before
+      // this call's reply there, after the messages or, where a pair refuses a user there,
+      // ending the last result, as here.
       Vector(
-        marked(ToolUse.Auto, AfterToolResult.UserMessage),
-        marked(ToolUse.Off, AfterToolResult.UserMessage),
-        marked(ToolUse.Auto, AfterToolResult.InLastResult),
-        marked(ToolUse.Off, AfterToolResult.InLastResult)
-      ) ==> Vector((4, 4), (4, 5), (4, 4), (3, 4))
+        marked(false, AfterToolResult.UserMessage),
+        marked(true, AfterToolResult.UserMessage),
+        marked(false, AfterToolResult.InLastResult),
+        marked(true, AfterToolResult.InLastResult)
+      ) ==> Vector((4, 4), (5, 5), (4, 4), (4, 4))
     }
 
     test("a note put among the established messages moves their end past it, not the task's") {
@@ -276,7 +278,6 @@ object TurnShownTests extends TestSuite {
       // No asker: round 1's note goes before the first reply, inside the established part.
       val r = TurnShown.loopShape(
         None,
-        ToolUse.Auto,
         Vector.empty,
         AfterToolResult.UserMessage,
         ToolGuidance.SchemaOnly,

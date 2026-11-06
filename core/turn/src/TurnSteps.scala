@@ -1237,8 +1237,8 @@ private[turn] object TurnSteps {
         .left
         .map(TurnFailure.ofStore)
       // What a later turn must send again to carry this one (ADR 0052): the last call whole,
-      // since its reply's thinking is bound to every message before it. A forced last call's
-      // note ([[TurnLoop.LastCall]]) is in no record, so a later turn renders this one without
+      // since its reply's thinking is bound to every message before it. A budget's last call's
+      // note ([[TurnLoop.notes]]) is in no record, so a later turn renders this one without
       // it, its digest differs, and it draws a boundary rather than send the reply unanswered.
       prefix = TurnShown.prefixOf(sent).copy(pair = Some(pair))
       _ <- entries

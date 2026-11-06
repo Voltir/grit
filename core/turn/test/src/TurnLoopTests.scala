@@ -3,7 +3,8 @@ package grit.turn
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{AfterToolResult, ToolGuidance}
-import grit.core.provider.{ToolSchema, ToolUse}
+import grit.core.provider.ToolSchema
+import grit.core.recipe.Briefing
 import grit.core.tool.Outcome
 
 import utest.*
@@ -49,21 +50,36 @@ object TurnLoopTests extends TestSuite {
     )
 
   val tests = Tests {
-    test(
-      "a cut turn offers task_status on its last call with tools and its last, which asks for it; an uncut one never offers it"
-    ) {
+    test("a turn briefed for one task offers task_status on every call; a conversing one never") {
       val read = ToolSchema("read", "Read a file.", ujson.Obj("type" -> "object"))
-      val offered = (b: Rounds) =>
-        Vector(2, 3, 4).map(n => TurnLoop.offered(b, round(n), Vector(read), false).map(_.name))
-      (offered(cutAt5), offered(budget(5)), TurnLoop.use(budget(5), round(4))) ==> (
-        Vector(Vector("read"), Vector("read", "task_status"), Vector("read", "task_status")),
-        Vector(Vector("read"), Vector("read"), Vector("read")),
-        ToolUse.Off
+      (
+        TurnLoop.offered(Briefing.Tasked, Vector(read), strict = true),
+        TurnLoop.offered(Briefing.Conversing, Vector(read), strict = true)
+      ) ==> (Vector(read, TaskStatus.schema(true)), Vector(read))
+    }
+
+    test("a call to task_status before a turn briefed for one task is ending is refused as early") {
+      val status: AssistantBlock.ToolCall = AssistantBlock.ToolCall(
+        ToolCallId("s"),
+        "task_status",
+        ujson.Obj("state" -> "done", "handoff" -> "All moved.")
+      )
+      val early: Message.Assistant =
+        Message.Assistant(Vector(call("a"), status), StopReason.ToolUse, Usage.Zero, "m")
+      val refused = Pending.Refused(status, Outcome.Failed(TaskStatus.Early))
+      (
+        TurnLoop.next(cutAt5, Briefing.Tasked, round(2), early),
+        TurnLoop.next(budget(5), Briefing.Tasked, round(3), early),
+        TurnLoop.next(budget(5), Briefing.Conversing, round(3), early)
+      ) ==> (
+        Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
+        Next.Settle(Vector(Pending.Run(call("a")), refused), round(4)),
+        Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(status)), round(4))
       )
     }
 
     test(
-      "a cut turn's reply calling task_status alone ends it with its handoff as the answer; beside other calls it is refused; an uncut turn's is a call like any"
+      "a cut turn's reply calling task_status alone ends it with its handoff as the answer; beside other calls it is refused; a conversing turn's, never offered it, is a call like any"
     ) {
       def status(state: String, handoff: String): AssistantBlock.ToolCall = AssistantBlock.ToolCall(
         ToolCallId("s"),
@@ -79,11 +95,14 @@ object TurnLoopTests extends TestSuite {
       val blank = replying(status("more", "  "))
       val answered = replying(thought, AssistantBlock.Text("All moved."))
       (
-        (TurnLoop.next(cutAt5, round(3), done), TurnLoop.declared(cutAt5, round(3), done)),
-        TurnLoop.next(cutAt5, round(3), mixed),
-        TurnLoop.next(cutAt5, round(3), blank),
+        (
+          TurnLoop.next(cutAt5, Briefing.Tasked, round(3), done),
+          TurnLoop.declared(cutAt5, round(3), done)
+        ),
+        TurnLoop.next(cutAt5, Briefing.Tasked, round(3), mixed),
+        TurnLoop.next(cutAt5, Briefing.Tasked, round(3), blank),
         TurnLoop.declared(cutAt5, round(4), mixed),
-        TurnLoop.next(budget(5), round(3), done),
+        TurnLoop.next(budget(5), Briefing.Conversing, round(3), done),
         TurnLoop.declared(budget(5), round(3), done)
       ) ==> (
         (
@@ -170,7 +189,7 @@ object TurnLoopTests extends TestSuite {
         )
       )
       table.foreach { (r, sent, expected) =>
-        (r.index, TurnLoop.next(b, r, sent)) ==> (r.index, expected)
+        (r.index, TurnLoop.next(b, Briefing.Conversing, r, sent)) ==> (r.index, expected)
       }
     }
 
@@ -184,20 +203,20 @@ object TurnLoopTests extends TestSuite {
       val cut = bounded.after(Vector(input(1000), input(1100), input(1250)))
       (
         cut.calls,
-        Vector(2, 3, 4).map(n => TurnLoop.use(cut, round(n))),
-        Vector(2, 3, 4).map(n => TurnLoop.notes(cut, round(n))),
+        Vector(2, 3, 4).map(n => TurnLoop.notes(cut, Briefing.Tasked, round(n))),
+        TurnLoop.notes(cut, Briefing.Conversing, round(4)),
         bounded.after(Vector(input(1000), input(1100), input(1140))).calls,
         bounded.after(Vector(input(0), input(0), input(0))).calls,
         budget(12).after(Vector(input(1000), input(9000))).calls,
         budget(12).within(Tokens(0))
       ) ==> (
         5,
-        Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Only("task_status")),
         Vector(
           Vector.empty,
           Vector(round(3) -> TurnLoop.LimitTools),
-          Vector(round(3) -> TurnLoop.LimitTools)
+          Vector(round(3) -> TurnLoop.LimitTools, round(4) -> TurnLoop.Ending)
         ),
+        Vector(round(3) -> TurnLoop.LastTools, round(4) -> TurnLoop.LastCall),
         12,
         12,
         12,
@@ -206,58 +225,48 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "the last call with tools is told so, and the calls after it keep the note; a first call never is"
+      "the last call with tools and the last are told so, the calls after each keeping its note, whatever the briefing of a turn no limit cut; a first call never is"
     ) {
       (
-        Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), round(n))),
-        TurnLoop.notes(Rounds.Fewest, round(0))
+        Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), Briefing.Conversing, round(n))),
+        TurnLoop.notes(budget(4), Briefing.Tasked, round(3)),
+        TurnLoop.notes(Rounds.Fewest, Briefing.Conversing, round(1))
       ) ==> (
         Vector(
           Vector.empty,
           Vector.empty,
           Vector(round(2) -> TurnLoop.LastTools),
-          Vector(round(2) -> TurnLoop.LastTools)
+          Vector(round(2) -> TurnLoop.LastTools, round(3) -> TurnLoop.LastCall)
         ),
-        Vector.empty
+        Vector(round(2) -> TurnLoop.LastTools, round(3) -> TurnLoop.LastCall),
+        Vector(round(1) -> TurnLoop.LastCall)
       )
-    }
-
-    test("a call's tools are on before the budget's last call, and off from it") {
-      Vector(0, 1, 2, 3).map(n => TurnLoop.use(budget(3), round(n))) ==>
-        Vector(ToolUse.Auto, ToolUse.Auto, ToolUse.Off, ToolUse.Off)
     }
 
     test("the last call's note allows not having found it, and asks for no guess") {
       // Pinned whole: "answer now" alone pushed a model to manufacture an answer.
       TurnLoop.LastCall ==>
-        "<grit_note>\nThis is your last call in this turn, and it has no tools: call none. " +
+        "<grit_note>\nThis is your last call in this turn: call no tool. " +
         "Answer now from what you have found so far: say what you found, and plainly what you " +
         "did not find or could not check. \"I could not find it\" is an answer; do not fill " +
         "the gap with a guess.\n</grit_note>"
     }
 
     test(
-      "the last call's note follows the messages, or ends the last result where a pair refuses a user there"
+      "a note after a tool result stays a user message, or ends that result where a pair refuses a user there"
     ) {
       val result: Message.ToolResult =
         Message.ToolResult(ToolCallId("c1"), "3 lines", isError = false)
-      val asked = grit.core.provider.ModelRequest("s", Vector(Message.User("hi"), result))
-      def told(
-          use: ToolUse,
-          after: AfterToolResult,
-          request: grit.core.provider.ModelRequest = asked
-      ) =
-        TurnLoop.told(use, request, after).messages
-      told(ToolUse.Off, AfterToolResult.UserMessage) ==>
-        Vector(Message.User("hi"), result, Message.User(TurnLoop.LastCall))
-      told(ToolUse.Off, AfterToolResult.InLastResult) ==>
+      val note = Message.User(TurnLoop.LastCall)
+      val asked = grit.core.provider.ModelRequest("s", Vector(Message.User("hi"), result, note))
+      def told(after: AfterToolResult, request: grit.core.provider.ModelRequest = asked) =
+        TurnLoop.told(request, after).messages
+      told(AfterToolResult.UserMessage) ==> asked.messages
+      told(AfterToolResult.InLastResult) ==>
         Vector(Message.User("hi"), result.copy(content = s"3 lines\n\n${TurnLoop.LastCall}"))
-      // With no tool result last, the note is a user message whatever the pair.
-      val plain = grit.core.provider.ModelRequest("s", Vector(Message.User("hi")))
-      told(ToolUse.Off, AfterToolResult.InLastResult, plain) ==>
-        Vector(Message.User("hi"), Message.User(TurnLoop.LastCall))
-      told(ToolUse.Auto, AfterToolResult.InLastResult) ==> asked.messages
-      told(ToolUse.Required, AfterToolResult.InLastResult) ==> asked.messages
+      // With no tool result before it, the note is a user message whatever the pair.
+      val plain = grit.core.provider.ModelRequest("s", Vector(Message.User("hi"), note))
+      told(AfterToolResult.InLastResult, plain) ==> plain.messages
     }
 
     test(
@@ -271,15 +280,16 @@ object TurnLoopTests extends TestSuite {
         "s",
         Vector(Message.User("hi"), reply("", Vector("c1", "c2")), first, last, reason)
       )
-      TurnLoop.told(ToolUse.Auto, asked, AfterToolResult.UserMessage) ==> asked
-      TurnLoop.told(ToolUse.Auto, asked, AfterToolResult.InLastResult).messages ==>
+      TurnLoop.told(asked, AfterToolResult.UserMessage) ==> asked
+      TurnLoop.told(asked, AfterToolResult.InLastResult).messages ==>
         Vector(
           Message.User("hi"),
           reply("", Vector("c1", "c2")),
           first,
           last.copy(content = s"r2\n\n$said")
         )
-      TurnLoop.told(ToolUse.Off, asked, AfterToolResult.InLastResult).messages.lastOption ==>
+      val noted = asked.copy(messages = asked.messages :+ Message.User(TurnLoop.LastCall))
+      TurnLoop.told(noted, AfterToolResult.InLastResult).messages.lastOption ==>
         Some(last.copy(content = s"r2\n\n$said\n\n${TurnLoop.LastCall}"))
     }
 
@@ -297,8 +307,9 @@ object TurnLoopTests extends TestSuite {
         grit.core.visibility.Integrity.Member
       )
       val shown = grit.core.context.Shown.turn(Vector(entry), grit.core.store.Speakers.none)
-      val asked = grit.core.provider.ModelRequest("s", shown)
-      TurnLoop.told(ToolUse.Off, asked, AfterToolResult.InLastResult).messages ==> Vector(
+      val asked =
+        grit.core.provider.ModelRequest("s", shown :+ Message.User(TurnLoop.LastCall))
+      TurnLoop.told(asked, AfterToolResult.InLastResult).messages ==> Vector(
         result.copy(content =
           s"<tool_output source=\"read a.md\">\n3 lines\n</tool_output>\n\n${TurnLoop.LastCall}"
         )

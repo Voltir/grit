@@ -496,6 +496,25 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "an offer briefed for one task is written so, a conversing one as before; an offer recorded without it reads as conversing"
+    ) {
+      // Pinned: whether a turn's calls offer task_status is read back from its offer.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      def briefed(b: grit.core.recipe.Briefing): Either[TurnFailure, TurnOffer.Recorded] =
+        Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed, briefing = b))
+      val (tasked, conversing) =
+        (briefed(grit.core.recipe.Briefing.Tasked), briefed(grit.core.recipe.Briefing.Conversing))
+      (j.encode(tasked), j.encode(conversing)) ==> (
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"briefing":"tasked"}}""",
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}"""
+      )
+      (j.decode(j.encode(tasked)), j.decode(j.encode(conversing))) ==>
+        (Right(tasked), Right(conversing))
+    }
+
+    test(
       "an offer's reached tools are written with their places, and an offer recorded before them reads as none"
     ) {
       // Pinned: replay reads this key to address each reached tool's calls to its place.

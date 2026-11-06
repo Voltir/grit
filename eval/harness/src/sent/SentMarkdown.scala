@@ -252,22 +252,22 @@ object SentMarkdown {
       }
     }
     sent.picked.foreach {
-      case Picked.Unsure(on, off, recorded) =>
+      case Picked.Unsure(on, last, recorded) =>
         add(
           "",
-          s"Which way the answering call was sent is unsure: with tools on its estimate is " +
-            s"${Tokens.value(on)}, with them off (the budget's last call) ${Tokens.value(off)}, and " +
+          s"Which way the answering call was sent is unsure: noted as its round its estimate is " +
+            s"${Tokens.value(on)}, told it was the budget's last call ${Tokens.value(last)}, and " +
             s"its ledger row recorded ${recorded.fold("none")(r => Tokens.value(r).toString)}. " +
-            "It is shown with tools on."
+            "It is shown noted as its round."
         )
-      case Picked.On | Picked.Off => ()
+      case Picked.On | Picked.Last => ()
     }
     // The summary, as `summarise` builds it now: a turn recorded before it rode the prefix
     // shows that here, its ledger row's cached count beside it.
     calls.summary.foreach { s =>
       val id = TurnSummary.id(sent.turn)
       val prefix = calls.answered.toVector
-        .flatMap(a => Vector(a.on, a.off))
+        .flatMap(a => Vector(a.on, a.last))
         .find(c =>
           s.system == c.system && s.tools == c.tools && s.use == c.use &&
             s.messages.startsWith(c.messages)

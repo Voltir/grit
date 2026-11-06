@@ -139,12 +139,13 @@ object TurnRecord {
   /** Call `round` (from 0), whose reply is kept as `reply`, sent `request`. */
   final case class Call(round: Int, reply: EntryId, request: ModelRequest)
 
-  /** The call that answered, round `round`, its reply or draft kept as `reply`: sent `on`,
-    * with the tools on, unless it was the turn's budget's last call, when it was sent `off`
-    * ([[TurnLoop.use]], [[TurnLoop.LastCall]]). Which one is not recorded; its ledger row
-    * keeps the estimate of the request it was sent.
+  /** The call that answered, round `round`, its reply or draft kept as `reply`: sent `on`, noted
+    * as its round was ([[TurnLoop.notes]]), or `last`, as its budget's last call, told so
+    * ([[TurnLoop.LastCall]]). The two differ only for a turn recorded before its loop's limits
+    * were (no `record-window` step), whose budget is not known, so which it was sent is not
+    * either; its ledger row keeps the estimate of the request it was sent.
     */
-  final case class Answered(round: Int, reply: EntryId, on: ModelRequest, off: ModelRequest)
+  final case class Answered(round: Int, reply: EntryId, on: ModelRequest, last: ModelRequest)
 
   /** Whether a rebuilt request's tool definitions are those sent. */
   enum Schemas {

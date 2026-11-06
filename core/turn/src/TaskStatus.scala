@@ -4,10 +4,10 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.ToolSchema
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 
-/** The `task_status` tool, where a turn its input limit cut short says whether its task is
-  * done ([[TurnLoop.declared]]). It is offered only on such a turn's last call with tools and
-  * its last ([[TurnLoop.offered]]), and never run: a reply that declares ends the turn, its
-  * handoff the reply's text.
+/** The `task_status` tool, where a turn briefed for one task that its input limit cut short
+  * says whether its task is done ([[TurnLoop.declared]]). It is offered on every call of such a
+  * turn ([[TurnLoop.offered]]), and never run: a reply that declares ends the turn, its handoff
+  * the reply's text; a call before the turn is ending is refused ([[Early]]).
   */
 object TaskStatus {
 
@@ -32,7 +32,8 @@ object TaskStatus {
     )
     ToolSpec(
       Name,
-      "Say whether the task is done, as this turn ends. Call it alone: done gives your " +
+      "Say whether the task is done, once you are told this turn is ending; before then it " +
+        "is not recorded. Call it alone: done gives your " +
         "answer to the person; more hands the work to a new turn, which goes on from your handoff.",
       Args
         .of(
@@ -71,4 +72,11 @@ object TaskStatus {
   val Unrecorded: String =
     "Not recorded. Call task_status alone, with state done or more and a handoff that is not " +
       "blank."
+
+  /** What a call to it is answered before its turn is ending: before the last call with tools
+    * of a turn its limit cut ([[TurnLoop.Rounds.cut]]), or on a turn no limit cut.
+    */
+  val Early: String =
+    "Not recorded: task_status is for a turn that is ending, and you will be told when this " +
+      "one is. Go on with the task, and answer in text when it is done."
 }

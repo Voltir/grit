@@ -13,7 +13,6 @@ import grit.core.edge.Permit
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.Message
 import grit.core.place.Place
-import grit.core.provider.ToolUse
 import grit.core.store.{EntryStore, Tx}
 import grit.core.tool.{Bound, ToolName}
 import grit.core.visibility.{Integrity, Subject}
@@ -45,10 +44,8 @@ private[turn] object TurnRound {
       */
     def gate(at: Progress): Either[TurnFailure, Gated]
 
-    /** The body of round `at.round`'s model call: the model's reply, offered tools as `use`
-      * says.
-      */
-    def call(at: Progress, use: ToolUse): Either[TurnFailure, Message.Assistant]
+    /** The body of round `at.round`'s model call: the model's reply. */
+    def call(at: Progress): Either[TurnFailure, Message.Assistant]
 
     /** `ask:n:record`'s body: `reply`, the reply to `at.round` that called tools, kept, and
       * what each of its `calls` is. Fails, as every member here does, when the tools the round
@@ -388,7 +385,7 @@ private[turn] object TurnRound {
     val calling = Step[Env, Progress, Either[TurnFailure, Message.Assistant]](
       Names.ask,
       at => Some(AskRecorded(at.round.index))
-    )(r => at => r.call(at, TurnLoop.use(at.budget, at.round)))
+    )(r => at => r.call(at))
     gating
       .andThen(Flow.decide(calling)(replied))
       .andThen(
@@ -408,7 +405,7 @@ private[turn] object TurnRound {
       case Left(failure) => Left(Stalled(failure, at))
       case Right(reply) =>
         val now = at.copy(replies = at.replies :+ reply)
-        TurnLoop.next(now.budget, at.round, reply) match {
+        TurnLoop.next(now.budget, at.looping.offer.briefing, at.round, reply) match {
           case Next.Answer(answer) => Right(Right(Looped(answer, now)))
           case Next.Silent(_) =>
             val said =

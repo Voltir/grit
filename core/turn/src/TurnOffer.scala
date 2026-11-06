@@ -61,7 +61,9 @@ object TurnOffer {
     * rebuilds both from the recorded set. `shaped`, what its recipe made of it; `None` for an
     * offer recorded before recipes, which was drawn at the deployed width with nothing
     * withheld. `zoned`, the zone its message is dated in; `None` for an offer recorded before
-    * zones, whose message was dated in UTC.
+    * zones, whose message was dated in UTC. `briefing`, how its recipe briefs the turn, which
+    * decides whether its calls offer [[TaskStatus]] ([[TurnLoop.offered]]); `Conversing` for an
+    * offer recorded before it.
     */
   final case class Recorded(
       workspace: Option[Place],
@@ -71,7 +73,8 @@ object TurnOffer {
       advertised: Vector[ToolName] = Vector.empty,
       reached: Map[ToolName, Place] = Map.empty,
       shaped: Option[TurnShape] = None,
-      zoned: Option[Zoned] = None
+      zoned: Option[Zoned] = None,
+      briefing: Briefing = Briefing.Conversing
   ) {
 
     /** The width the turn's window is drawn at: its shape's, else the deployed width. */
@@ -292,7 +295,8 @@ object TurnOffer {
       if (kept) advertised.map(_.name) else Vector.empty,
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
       Some(TurnShape(shaping.width, whole.id, took)),
-      Some(Zoned(person, deployment))
+      Some(Zoned(person, deployment)),
+      tooling.recipe.briefing
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources

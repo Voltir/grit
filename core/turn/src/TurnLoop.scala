@@ -4,18 +4,21 @@ import grit.core.allot.Allotment
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
 import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
-import grit.core.provider.{ModelRequest, ToolSchema, ToolUse}
+import grit.core.provider.{ModelRequest, ToolSchema}
+import grit.core.recipe.Briefing
 import grit.core.tool.{Outcome, ToolName}
 
 /** What a turn's tool loop decides: the model is called, the tools its reply calls are
-  * settled, and it is called again, until a reply calls no tool or the budget's last call, made
-  * with tools off. Each call sees the turn's own messages so far, after its window. The turn's
-  * rounds make its steps ([[TurnRound]]).
+  * settled, and it is called again, until a reply calls no tool or the budget's last call, told
+  * to call none. Every call of a turn offers the same tools the same way; what a call may not
+  * call is refused here, never withdrawn from its request. Each call sees the turn's own
+  * messages so far, after its window. The turn's rounds make its steps ([[TurnRound]]).
   */
 object TurnLoop {
 
-  /** How far one turn's loop may go: `calls` model calls, the last made with tools off, so a
-    * turn that keeps calling tools still ends in text; and, with `limit`, the input a request
+  /** How far one turn's loop may go: `calls` model calls, the last told to call no tool (or, on
+    * a turn briefed for one task that `limit` cut, task_status alone), so a turn that keeps
+    * calling tools still ends; and, with `limit`, the input a request
     * may reach as its provider counts it, less room for one round's results the turn has not
     * yet seen: once a reply's input plus the largest growth of a round so far meets `limit`, the
     * call after it is the last with tools and the one after that the last ([[after]]). A turn
@@ -99,42 +102,50 @@ object TurnLoop {
     Tokens(math.max(1L, held - Tokens.value(clipped)))
   }
 
-  /** The notes the loop's calls up to `round` add, as a gate's are ([[TurnShown.loopShape]]):
-    * [[LastTools]] at `budget`'s last call with tools, once `round` has reached it, unless that
-    * is the turn's first call, or [[LimitTools]] when its limit cut it; else none.
+  /** The notes the loop's calls up to `round` add, each at the round it is first sent, as a
+    * gate's are ([[TurnShown.loopShape]]): at `budget`'s last call with tools, unless that is the
+    * turn's first, [[LimitTools]] when its limit cut it ([[Rounds.cut]]) on a turn `briefing`
+    * says is for one task, else [[LastTools]]; at its last call, [[Ending]] or [[LastCall]]
+    * alike.
     */
-  def notes(budget: Rounds, round: Round): Vector[(Round, String)] = {
+  def notes(budget: Rounds, briefing: Briefing, round: Round): Vector[(Round, String)] = {
     val lastTools = budget.calls - 2
-    val note = if (budget.cut) LimitTools else LastTools
-    Vector(lastTools -> note).filter(_ => lastTools > 0 && round >= lastTools)
+    val last = budget.calls - 1
+    val ending = budget.cut && declares(briefing)
+    Vector(
+      lastTools -> (if (ending) LimitTools else LastTools),
+      last -> (if (ending) Ending else LastCall)
+    ).filter((at, _) => at > 0 && round >= at)
   }
 
   /** What the model is told on the last call with tools. */
   val LastTools: String = Fenced.noted(
     Vector(
-      "This is your last call with tools in this turn; the next has none. Stop reading: " +
+      "This is your last call with tools in this turn; the next may call none. Stop reading: " +
         "make the changes the work needs now, or answer, and say plainly what you did not get to."
     )
   )
 
-  /** What the model is told on the last call with tools of a turn its limit cut
-    * ([[Rounds.cut]]), in place of [[LastTools]].
+  /** What the model is told on the last call with tools of a turn briefed for one task that its
+    * limit cut ([[Rounds.cut]]), in place of [[LastTools]].
     */
   val LimitTools: String = Fenced.noted(
     Vector(
-      "This turn is ending: this is your last call with tools, and the next has none. Make " +
+      "This turn is ending: this is your last call with tools, and the next may call " +
+        "task_status alone. Make " +
         "the changes the work needs now. When nothing is left to change, call task_status " +
         "alone: done with your answer if the task is finished, or more with what the next " +
         "turn needs."
     )
   )
 
-  /** What the model is told on the last call of a turn its limit cut, in place of
-    * [[LastCall]].
+  /** What the model is told on the last call of a turn briefed for one task that its limit cut,
+    * in place of [[LastCall]].
     */
   val Ending: String = Fenced.noted(
     Vector(
-      "This turn is ending, and this is its last call. Call task_status now: done with your " +
+      "This turn is ending, and this is its last call. Call task_status now, and no other " +
+        "tool: done with your " +
         "answer if the task is finished, or more with what the next turn needs: what you did, " +
         "what is left, and where things are. If you cannot call it, answer in text with what " +
         "the next turn needs."
@@ -188,9 +199,7 @@ object TurnLoop {
       */
     case OutOfOutput(reply: Message.Assistant)
 
-    /** Settle `calls`, in order, then make the call `round`, its tools on or off as [[use]]
-      * says.
-      */
+    /** Settle `calls`, in order, then make the call `round`. */
     case Settle(calls: Vector[Pending], round: Round)
   }
 
@@ -202,16 +211,17 @@ object TurnLoop {
       "was not run. Make the call again with shorter arguments, or split the work."
   )
 
-  /** What the loop does after `reply`, the reply to `round`. A reply that [[declared]] through
-    * [[TaskStatus]] answers with its handoff as its text, its calls dropped. A reply that calls no tool, or
-    * any reply to the budget's last call (or a later one), answers, or is silent when no
-    * text that is not blank is left once its calls are dropped; out of output instead when
-    * it stopped at max tokens with no tool call at all. Otherwise its calls are
-    * settled, each run, or each refused with [[CutOff]] when the reply stopped at max
-    * tokens, and a call to [[TaskStatus]] where it is offered refused with
-    * [[TaskStatus.Unrecorded]]; then the next call is made.
+  /** What the loop does after `reply`, the reply to `round` of a turn briefed as `briefing`. A
+    * reply that [[declared]] through [[TaskStatus]] answers with its handoff as its text, its
+    * calls dropped. A reply that calls no tool, or any reply to the budget's last call (or a
+    * later one), answers, or is silent when no text that is not blank is left once its calls
+    * are dropped; out of output instead when it stopped at max tokens with no tool call at all.
+    * Otherwise its calls are settled, each run, or each refused with [[CutOff]] when the reply
+    * stopped at max tokens; a call to [[TaskStatus]] on a turn briefed for one task refused
+    * with [[TaskStatus.Early]] before the cut's last call with tools, and with
+    * [[TaskStatus.Unrecorded]] from it; then the next call is made.
     */
-  def next(budget: Rounds, round: Round, reply: Message.Assistant): Next = {
+  def next(budget: Rounds, briefing: Briefing, round: Round, reply: Message.Assistant): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
     val last = budget.calls - 1
     val status = declared(budget, round, reply)
@@ -232,31 +242,39 @@ object TurnLoop {
       else if (reply.stop == StopReason.MaxTokens && calls.isEmpty) Next.OutOfOutput(answer)
       else Next.Silent(answer)
     } else {
-      val offersStatus = asksStatus(budget, round)
+      val ending = asksStatus(budget, round)
       val pending =
         if (reply.stop == StopReason.MaxTokens) calls.map(Pending.Refused(_, CutOff))
         else
           calls.map(c =>
-            // Offered, it is never run: beside other calls, or unreadable, it is refused.
-            if (offersStatus && c.name == ToolName.value(TaskStatus.Name))
-              Pending.Refused(c, Outcome.Failed(TaskStatus.Unrecorded))
+            // Offered, it is never run: early, beside other calls, or unreadable, it is refused.
+            if (declares(briefing) && c.name == ToolName.value(TaskStatus.Name))
+              Pending.Refused(
+                c,
+                Outcome.Failed(if (ending) TaskStatus.Unrecorded else TaskStatus.Early)
+              )
             else Pending.Run(c)
           )
       Next.Settle(pending, round + 1)
     }
   }
 
-  /** `schemas`, the tools `round`'s call offers, with [[TaskStatus]] after them, its schema
-    * strict when `strict`, on a budget its limit cut ([[Rounds.cut]]) from its last call with
-    * tools on.
+  /** Whether a turn briefed as `briefing` is offered [[TaskStatus]]: one briefed for one task. */
+  private def declares(briefing: Briefing): Boolean = briefing match {
+    case Briefing.Tasked => true
+    case Briefing.Conversing => false
+  }
+
+  /** `schemas`, the tools every call of a turn briefed as `briefing` offers, with
+    * [[TaskStatus]] after them, its schema strict when `strict`, when `briefing` is
+    * [[Briefing.Tasked]].
     */
   def offered(
-      budget: Rounds,
-      round: Round,
+      briefing: Briefing,
       schemas: Vector[ToolSchema],
       strict: Boolean
   ): Vector[ToolSchema] =
-    if (asksStatus(budget, round)) schemas :+ TaskStatus.schema(strict) else schemas
+    if (declares(briefing)) schemas :+ TaskStatus.schema(strict) else schemas
 
   /** What `reply`, the reply to `round`, declares through [[TaskStatus]] when that ends the
     * turn: on a budget its limit cut, from its last call with tools on, a reply whose readable
@@ -278,49 +296,31 @@ object TurnLoop {
       .flatten
   }
 
-  /** Whether `round` of `budget` offers [[TaskStatus]]: its limit cut it, and this is its last
-    * call with tools or after.
+  /** Whether `round` of `budget` may end its turn through [[TaskStatus]]: its limit cut it, and
+    * this is its last call with tools or after.
     */
   private def asksStatus(budget: Rounds, round: Round): Boolean =
     budget.cut && round >= budget.calls - 2
 
-  /** Whether `round`'s call offers tools the model may call: [[ToolUse.Auto]] before the
-    * budget's last call; from it, [[ToolUse.Off]], or on a budget its limit cut
-    * ([[Rounds.cut]]) [[TaskStatus]] alone.
-    */
-  def use(budget: Rounds, round: Round): ToolUse =
-    if (round < budget.calls - 1) ToolUse.Auto
-    else if (budget.cut) ToolUse.Only(ToolName.value(TaskStatus.Name))
-    else ToolUse.Off
-
-  /** What the model is told on a call made with tools off, after everything else it is
-    * sent ([[told]]).
-    */
+  /** What the model is told on the budget's last call ([[notes]]). */
   val LastCall: String = Fenced.noted(
     Vector(
-      "This is your last call in this turn, and it has no tools: call none. Answer " +
+      "This is your last call in this turn: call no tool. Answer " +
         "now from what you have found so far: say what you found, and plainly what you did " +
         "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
         "gap with a guess."
     )
   )
 
-  /** `request` as `use` and `after` say to send it: when `use` is [[ToolUse.Off]], with
-    * [[LastCall]] after its messages, as a user message, and when it is [[ToolUse.Only]], with
-    * [[Ending]]; then, under
-    * [[AfterToolResult.InLastResult]], each user message right after a tool result moved to the
-    * end of that result's content, after a blank line (a declined call's reason, the note).
+  /** `request` as `after` says to send it: under [[AfterToolResult.InLastResult]], each user
+    * message right after a tool result moved to the end of that result's content, after a
+    * blank line (a declined call's reason, a note).
     */
-  def told(use: ToolUse, request: ModelRequest, after: AfterToolResult): ModelRequest = {
-    val noted = use match {
-      case ToolUse.Auto | ToolUse.Required => request.messages
-      case ToolUse.Off => request.messages :+ Message.User(LastCall)
-      case ToolUse.Only(_) => request.messages :+ Message.User(Ending)
-    }
+  def told(request: ModelRequest, after: AfterToolResult): ModelRequest = {
     val sent = after match {
-      case AfterToolResult.UserMessage => noted
+      case AfterToolResult.UserMessage => request.messages
       case AfterToolResult.InLastResult =>
-        noted.foldLeft(Vector.empty[Message]) {
+        request.messages.foldLeft(Vector.empty[Message]) {
           case (init :+ (r: Message.ToolResult), Message.User(text)) =>
             init :+ r.copy(content = s"${r.content}\n\n$text")
           case (out, m) => out :+ m

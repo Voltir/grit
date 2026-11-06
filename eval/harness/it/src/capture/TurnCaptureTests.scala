@@ -37,7 +37,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.Directory
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, ToolUse}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.{Limits, Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
@@ -136,7 +136,10 @@ object TurnCaptureTests extends TestSuite {
         )
       )
       if (said.contains("~fail")) Left(ProviderError.Refused(s"$Marker refused"))
-      else if (said.contains("~loop") && results < 2 && request.use == ToolUse.Auto)
+      else if (
+        said.contains("~loop") && results < 2 &&
+        !request.messages.contains(Message.User(TurnLoop.LastCall))
+      )
         reply(
           AssistantBlock.Text(s"$Marker calling"),
           AssistantBlock.ToolCall(

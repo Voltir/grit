@@ -1202,6 +1202,15 @@ object TurnFixtures {
     TurnRef(conversation, next.turnSeq)
   }
 
+  /** Whether each request after the first starts with every message of the one before it, then
+    * a reply: what a thinking block's signature and the cache both need.
+    */
+  def grows(requests: Vector[ModelRequest]): Vector[Boolean] =
+    requests.zip(requests.drop(1)).map { (before, after) =>
+      after.messages.startsWith(before.messages) &&
+      after.messages.lift(before.messages.size).exists(_.isInstanceOf[Message.Assistant])
+    }
+
   /** The conversation as a transcript: every entry but the windows' records. */
   def texts(entries: EntryStore): Vector[String] =
     all(entries).flatMap {
@@ -2047,7 +2056,8 @@ object TurnFixtures {
       stitching: TurnStitching^ = unstitched(),
       limit: Option[Tokens] = None,
       catalog: Catalog = TestCatalog,
-      window: Tokens = LinearAssembler.DefaultBudget
+      window: Tokens = LinearAssembler.DefaultBudget,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
   )(id: WorkflowId)(using Durable^): String =
     toolsBody(
       entries,
@@ -2061,7 +2071,8 @@ object TurnFixtures {
       hosted,
       limit,
       catalog,
-      window
+      window,
+      recipe
     )(
       speech,
       stitching,
@@ -2081,7 +2092,8 @@ object TurnFixtures {
       hosted: Vector[Tool.Offered],
       limit: Option[Tokens] = None,
       catalog: Catalog = TestCatalog,
-      window: Tokens = LinearAssembler.DefaultBudget
+      window: Tokens = LinearAssembler.DefaultBudget,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
   )(speech: TurnSpeech, stitching: TurnStitching^, jot: Jot^)(id: WorkflowId)(using
       Durable^
   ): String =
@@ -2122,7 +2134,8 @@ object TurnFixtures {
         jot,
         limit.fold(budget(calls))(g =>
           budget(calls).within(g).fold(why => throw new java.lang.AssertionError(why), identity)
-        )
+        ),
+        recipe = recipe
       )
     )(id)
 

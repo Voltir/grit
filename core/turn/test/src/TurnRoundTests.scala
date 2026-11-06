@@ -9,7 +9,6 @@ import grit.core.context.Window
 import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.ToolUse
 import grit.core.store.{InMemoryEntryStore, Jot, Tx}
 import grit.core.tool.{Bound, ToolSet}
 import grit.core.visibility.Integrity
@@ -50,8 +49,8 @@ object TurnRoundTests extends TestSuite {
   /** The scripted replies, the first to the first round. */
   private def replying(
       replies: Either[TurnFailure, Message.Assistant]*
-  ): (Round, ToolUse) -> Either[TurnFailure, Message.Assistant] =
-    (round, _) => replies.lift(round.index).getOrElse(Left(TurnFailure.Model("no reply scripted")))
+  ): Round -> Either[TurnFailure, Message.Assistant] =
+    round => replies.lift(round.index).getOrElse(Left(TurnFailure.Model("no reply scripted")))
 
   private val offer =
     TurnOffer.Recorded(None, ToolSet.Empty.id, Vector.empty, TurnOffer.Root.Addressed)
@@ -64,14 +63,14 @@ object TurnRoundTests extends TestSuite {
   private final class Scripted(
       jot: Jot^,
       entries: InMemoryEntryStore,
-      script: (Round, ToolUse) -> Either[TurnFailure, Message.Assistant],
+      script: Round -> Either[TurnFailure, Message.Assistant],
       levels: Int -> Integrity,
       kept: Either[TurnFailure, EntryId]
   ) extends TurnRound.Env {
     def gate(at: TurnRound.Progress): Either[TurnFailure, Gated] =
       Right(Gated(levels(at.round.index), Vector.empty, Vector.empty))
-    def call(at: TurnRound.Progress, use: ToolUse): Either[TurnFailure, Message.Assistant] =
-      script(at.round, use)
+    def call(at: TurnRound.Progress): Either[TurnFailure, Message.Assistant] =
+      script(at.round)
     def record(at: TurnRound.Progress, reply: Message.Assistant, calls: Vector[Pending])(using
         Tx^
     ): Either[TurnFailure, TurnRound.Kept] =
@@ -125,7 +124,7 @@ object TurnRoundTests extends TestSuite {
     */
   private def rounds(
       n: Int,
-      script: (Round, ToolUse) -> Either[TurnFailure, Message.Assistant],
+      script: Round -> Either[TurnFailure, Message.Assistant],
       levels: Int -> Integrity = _ => Integrity.Member,
       kept: Either[TurnFailure, EntryId] = Right(EntryId("kept")),
       durable: InMemoryDurable = new InMemoryDurable
@@ -190,11 +189,11 @@ object TurnRoundTests extends TestSuite {
       )
     }
 
-    test("the budget's last call is made with tools off, and its calls are dropped") {
-      val script: (Round, ToolUse) -> Either[TurnFailure, Message.Assistant] = (round, use) =>
-        Right(if (round.index == 0) reply("", Vector("a")) else reply(s"so $use", Vector("b")))
+    test("a reply to the budget's last call answers, its calls dropped") {
+      val script: Round -> Either[TurnFailure, Message.Assistant] =
+        round => Right(if (round.index == 0) reply("", Vector("a")) else reply("so", Vector("b")))
       rounds(2, script) ==> (
-        "answered so Off at 1 of 2, believed member",
+        "answered so at 1 of 2, believed member",
         Vector(
           "gate:0",
           "ask:0",

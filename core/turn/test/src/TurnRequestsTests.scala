@@ -101,7 +101,8 @@ object TurnRequestsTests extends TestSuite {
       classifier: grit.core.classify.Classifier^ = NoClassifier,
       limit: Option[Tokens] = None,
       summarizer: grit.core.provider.Provider^ = new grit.models.StubProvider(),
-      catalog: Catalog = TestCatalog
+      catalog: Catalog = TestCatalog,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
   ): Vector[StepRecord] = {
     val durable = new InMemoryDurable
     val ws = new Files(files)
@@ -116,7 +117,8 @@ object TurnRequestsTests extends TestSuite {
         tools(ws),
         calls,
         limit = limit,
-        catalog = catalog
+        catalog = catalog,
+        recipe = recipe
       )
     )
     steps(durable, turn.workflowId)
@@ -147,10 +149,9 @@ object TurnRequestsTests extends TestSuite {
     (turn, entries, profiles, steps(durable, turn.workflowId))
   }
 
-  /** Each request rebuilt, as sent if the answer's `use` was `off` or not. */
-  private def sent(calls: TurnRecord.Calls, off: Boolean): Vector[ModelRequest] =
-    calls.looped.map(_.request) ++
-      calls.answered.map(a => if (off) a.off else a.on).toVector
+  /** Each request rebuilt, the answer's as its round was noted. */
+  private def sent(calls: TurnRecord.Calls): Vector[ModelRequest] =
+    calls.looped.map(_.request) ++ calls.answered.map(_.on).toVector
 
   /** An entry store that no longer holds the entries at `gone`. */
   private final class Purged(underlying: EntryStore, gone: Set[EntrySeq]) extends EntryStore {
@@ -193,7 +194,7 @@ object TurnRequestsTests extends TestSuite {
             Some((2, turn.replyId))
           )
         )
-      calls.map(sent(_, off = false)) ==> Right(provider.requests)
+      calls.map(sent(_)) ==> Right(provider.requests)
       calls.map(_.schemas) ==> Right(TurnRecord.Schemas.Sent)
     }
 
@@ -213,7 +214,7 @@ object TurnRequestsTests extends TestSuite {
       val recorded = answered(entries, turn, second)
       // The second request carries the first turn: its exchange, its result and its answer.
       second.requests.headOption.map(_.messages.size) ==> Some(7)
-      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false)) ==>
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_)) ==>
         Right(second.requests)
     }
 
@@ -238,9 +239,9 @@ object TurnRequestsTests extends TestSuite {
         )
       )
       val calls = TurnRecord.requests(turn, steps(durable, turn.workflowId), reads(entries))
-      calls.map(sent(_, off = false).map(r => (r.system, r.tools.map(_.name)))) ==>
+      calls.map(sent(_).map(r => (r.system, r.tools.map(_.name)))) ==>
         Right(provider.requests.map(r => (r.system, r.tools.map(_.name))))
-      calls.map(sent(_, off = false)) ==> Right(provider.requests)
+      calls.map(sent(_)) ==> Right(provider.requests)
     }
 
     test("a turn's hidden items are rebuilt as sent: stubs in their places until read") {
@@ -262,17 +263,22 @@ object TurnRequestsTests extends TestSuite {
         )
       )
       val calls = TurnRecord.requests(turn, steps(durable, turn.workflowId), reads(entries))
-      calls.map(sent(_, off = false)) ==> Right(provider.requests)
+      calls.map(sent(_)) ==> Right(provider.requests)
     }
 
-    test("a turn's budget's last call is rebuilt as sent with tools off") {
+    test(
+      "a turn's budget's last call is rebuilt as sent, told it is the last, as its answer however its limits are read"
+    ) {
       val entries = new InMemoryEntryStore
-      val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("more", ("t", "peek", "a.txt")) else calling("done"))
+      )
       val turn = say(entries, "go")
       val recorded = answered(entries, turn, provider, calls = 2)
       val calls = TurnRecord.requests(turn, recorded, reads(entries))
-      calls.map(sent(_, off = true)) ==> Right(provider.requests)
-      calls.map(_.answered.map(_.on) == provider.requests.lastOption) ==> Right(false)
+      calls.map(sent(_)) ==> Right(provider.requests)
+      calls.map(_.answered.map(a => (a.last == a.on, a.on.messages.lastOption))) ==>
+        Right(Some((true, Some(Message.User(TurnLoop.LastCall)))))
     }
 
     test(
@@ -296,26 +302,40 @@ object TurnRequestsTests extends TestSuite {
     }
 
     test(
-      "a turn that met its input limit is rebuilt with its last-tools note, task_status and its forced last call in place"
+      "a turn briefed for one task that met its input limit is rebuilt with task_status on every call and its ending's notes in place"
     ) {
       val entries = new InMemoryEntryStore
       val provider = new Scripted((_, n) =>
         Right(
-          calling("more", ("t", "peek", "a.txt"))
+          (if (n < 4) calling("more", ("t", "peek", "a.txt")) else calling("done"))
             .copy(usage = Usage(Tokens(1000L + 600L * n), Tokens(2), Tokens.Zero, None))
         )
       )
       val turn = say(entries, "go")
-      val recorded = answered(entries, turn, provider, calls = 12, limit = Some(Tokens(2500)))
-      // The setting: five calls, the fourth told it was the last with tools; task_status
-      // offered from it, and the last asking for it alone.
+      val recorded = answered(
+        entries,
+        turn,
+        provider,
+        calls = 12,
+        limit = Some(Tokens(2500)),
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      )
+      // The setting: five calls, the fourth told it was the last with tools and the fifth that
+      // it was the last; task_status offered on every one.
       provider.requests.map(r =>
         (
           r.messages.contains(Message.User(TurnLoop.LimitTools)),
+          r.messages.lastOption.contains(Message.User(TurnLoop.Ending)),
           r.tools.exists(_.name == "task_status")
         )
-      ) ==> Vector((false, false), (false, false), (false, false), (true, true), (true, true))
-      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = true)) ==>
+      ) ==> Vector(
+        (false, false, true),
+        (false, false, true),
+        (false, false, true),
+        (true, false, true),
+        (true, true, true)
+      )
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_)) ==>
         Right(provider.requests)
     }
 
@@ -351,7 +371,7 @@ object TurnRequestsTests extends TestSuite {
         Vector("topic", "peek", "poke")
       )
       val calls = TurnRecord.requests(turn, recorded, reads(entries))
-      calls.map(sent(_, off = false)) ==> Right(provider.requests)
+      calls.map(sent(_)) ==> Right(provider.requests)
     }
 
     test("a turn its classifier was sure of is rebuilt with topic offered and no tag") {
@@ -371,7 +391,7 @@ object TurnRequestsTests extends TestSuite {
       val recorded = answered(entries, turn, provider, classifier = classifier)
       provider.requests.headOption.map(r => (r.tools.map(_.name), r.messages.lastOption)) ==>
         Some((Vector("topic", "peek", "poke"), Some(Message.User("more ~0.9"))))
-      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false)) ==>
+      TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_)) ==>
         Right(provider.requests)
     }
 
@@ -411,7 +431,7 @@ object TurnRequestsTests extends TestSuite {
       val recorded = answered(entries, turn, provider, classifier = classifier)
       (
         agenda(entries).placed(turn.turnSeq),
-        TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_, off = false))
+        TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_))
       ) ==> (
         Some(
           grit.core.agenda.Agenda.ItemId
@@ -472,7 +492,7 @@ object TurnRequestsTests extends TestSuite {
         pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
       val calls = TurnRecord.requests(turn, recorded, reads(entries, profiles))
       // These models send the summary to the same provider: its third request.
-      calls.map(sent(_, off = true)) ==> Right(provider.requests.take(2))
+      calls.map(sent(_)) ==> Right(provider.requests.take(2))
     }
 
     test(
@@ -528,7 +548,7 @@ object TurnRequestsTests extends TestSuite {
       // The carried turn: its dated line, its message, its call, its result with the person's
       // reason told in it (a message fewer than its entries), and its answer.
       calls.map(_.window) ==> Right(Vector.fill(5)(TurnRecord.WindowMessage.Recalled))
-      calls.map(sent(_, off = false)) ==> Right(second.requests)
+      calls.map(sent(_)) ==> Right(second.requests)
       second.requests.map(_.messages.lift(5).collect { case Message.User(t) => t.take(29) }) ==>
         Vector(Some("The message you are answering"))
     }
