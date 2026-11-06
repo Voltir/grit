@@ -1516,9 +1516,11 @@ CREATE INDEX IF NOT EXISTS idx_pieces_bm25 ON grit.pieces
 -- only what its session lacks. The session is named by `harness` and `local`, never by a key:
 -- whichever edge saw it records it, perhaps in another database, under its own retention.
 -- `id` is the order recorded, which the cap reads. `calls_before_edit` and `read_before_edit`
--- are NULL together: the trial made no edit.
+-- are NULL together: the trial made no edit. `thinking_tokens` is NULL where some call did not
+-- report its thinking (the trial's usage sums it only when every call did), and counts within
+-- `output_tokens` where set.
 -- Retention: capped: every trial but the newest BenchRows.Kept (60) is deleted by the record
--- that passes it. Steady state: 60 rows of about 200 bytes.
+-- that passes it. Steady state: 60 rows of about 208 bytes.
 CREATE TABLE IF NOT EXISTS grit.bench_trials (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     harness            TEXT NOT NULL CHECK (harness ~ '^[a-z][a-z0-9-]{0,63}$'),
@@ -1529,6 +1531,7 @@ CREATE TABLE IF NOT EXISTS grit.bench_trials (
     cache_read_tokens  BIGINT NOT NULL CHECK (cache_read_tokens >= 0),
     cache_write_tokens BIGINT NOT NULL CHECK (cache_write_tokens >= 0),
     output_tokens      BIGINT NOT NULL CHECK (output_tokens >= 0),
+    thinking_tokens    BIGINT CHECK (thinking_tokens >= 0),
     cost_usd           NUMERIC CHECK (cost_usd >= 0),
     calls              INT NOT NULL CHECK (calls >= 0),
     wall_ms            BIGINT NOT NULL CHECK (wall_ms >= 0),
@@ -1538,6 +1541,7 @@ CREATE TABLE IF NOT EXISTS grit.bench_trials (
     distance           BIGINT CHECK (distance >= 0),
     UNIQUE (harness, local),
     CHECK (cache_read_tokens + cache_write_tokens <= input_tokens),
+    CONSTRAINT bench_trials_thinking_le_output CHECK (thinking_tokens IS NULL OR thinking_tokens <= output_tokens),
     CHECK ((read_before_edit IS NULL) = (calls_before_edit IS NULL))
 );
 

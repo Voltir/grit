@@ -29,10 +29,15 @@ final case class Caps private (model: ModelId, maxBudgetUsd: BigDecimal, maxTurn
     extends caps.Pure {
 
   /** The model as `claude --model` takes it, its `anthropic/` left off. */
-  def claudeModel: String = ModelId.value(model).stripPrefix("anthropic/")
+  def claudeModel: String = Caps.anthropicId(model)
 }
 
 object Caps {
+
+  /** `model` by the Anthropic API's own id, as [[AnthropicRates]] and `claude --model` take it:
+    * its `anthropic/` left off.
+    */
+  def anthropicId(model: ModelId): String = ModelId.value(model).stripPrefix("anthropic/")
 
   /** The caps of these, or why not: a model not `claude-` and a model id's letters, a budget not a
     * decimal above 0, or turns not a whole number of at least 1.

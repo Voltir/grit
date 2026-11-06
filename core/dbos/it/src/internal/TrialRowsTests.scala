@@ -33,7 +33,11 @@ object TrialRowsTests extends TestSuite {
   private def ok[A](e: Either[Any, A]): A =
     e.fold(x => throw new java.lang.AssertionError(x.toString), identity)
 
-  private def trial(local: String, task: String = "split-reader"): TrialRows.Trial =
+  private def trial(
+      local: String,
+      task: String = "split-reader",
+      thinking: Option[Tokens] = None
+  ): TrialRows.Trial =
     ok(
       for {
         h <- Harness.of("claude-code")
@@ -44,7 +48,14 @@ object TrialRowsTests extends TestSuite {
           s,
           t,
           m,
-          Usage(Tokens(1200), Tokens(300), Tokens(800), Some(BigDecimal("0.0123")), Tokens(100)),
+          Usage(
+            Tokens(1200),
+            Tokens(300),
+            Tokens(800),
+            Some(BigDecimal("0.0123")),
+            Tokens(100),
+            thinking
+          ),
           calls = 7,
           wall = 95.seconds,
           readBeforeEdit = Some(4096L),
@@ -165,6 +176,20 @@ object TrialRowsTests extends TestSuite {
           LiveDb.transaction(db, Low)(ok(TrialRows.trials())) == all.drop(1),
           LiveDb.transaction(db, Low)(ok(rows.transcript(all(0).session))) == None,
           blobs.kept() == Right(Vector(Sha256.text("the oldest")))
+        )
+      }
+    }
+
+    test("a trial's thinking is read back as recorded, reported or not reported") {
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val reported = trial("t-thinks", thinking = Some(Tokens(250)))
+        val silent = trial("t-silent")
+        ok(LiveDb.transaction(config, Low)(rows.record(reported)))
+        ok(LiveDb.transaction(config, Low)(rows.record(silent)))
+        assert(
+          trials().filter(_.session == reported.session) == Vector(reported),
+          trials().filter(_.session == silent.session) == Vector(silent)
         )
       }
     }

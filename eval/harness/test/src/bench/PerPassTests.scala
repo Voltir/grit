@@ -23,14 +23,21 @@ object PerPassTests extends TestSuite {
       model: String,
       usd: Option[String],
       passed: Boolean,
-      distance: Option[Long]
+      distance: Option[Long],
+      thinking: Option[Long] = None
   ): TrialRows.Trial = {
     got(
       TrialRows.Trial.of(
         got(SessionId.of(got(Harness.of(harness)), s"s$id")),
         got(TrialRows.TaskName.of(task)),
         ModelId.of(model).getOrElse(throw new java.lang.AssertionError(model)),
-        Usage(Tokens(100), Tokens(10), Tokens.Zero, usd.map(BigDecimal(_))),
+        Usage(
+          Tokens(100),
+          Tokens(10000),
+          Tokens.Zero,
+          usd.map(BigDecimal(_)),
+          thinking = thinking.map(Tokens(_))
+        ),
         3,
         1.second,
         None,
@@ -86,10 +93,25 @@ object PerPassTests extends TestSuite {
         trial(11, "blobs", "claude-code", haiku, Some("0.01"), passed = false, Some(9))
       )
       PerPass.lines(trials) ==> Vector(
-        "task   harness      model                       trials  passed  ¢/pass   total  distance",
-        "blobs  grit         anthropic/claude-haiku-5-5  2       2       2.5¢     5¢     53–58",
-        "other  claude-code  anthropic/claude-haiku-5-5  1       1       55¢      55¢    40",
-        "blobs  claude-code  anthropic/claude-haiku-5-5  1       0       no pass  1¢     —"
+        "task   harness      model                       trials  passed  ¢/pass   thinking      thinking ¢/pass  total  distance",
+        "blobs  grit         anthropic/claude-haiku-5-5  2       2       2.5¢     not reported  not reported     5¢     53–58",
+        "other  claude-code  anthropic/claude-haiku-5-5  1       1       55¢      not reported  not reported     55¢    40",
+        "blobs  claude-code  anthropic/claude-haiku-5-5  1       0       no pass  not reported  not reported     1¢     —"
+      )
+    }
+
+    test("a person reads a trial's thinking and its cost a pass, or that it is not reported") {
+      val trials = Vector(
+        trial(8, "blobs", "grit", haiku, Some("0.022"), passed = true, Some(58), Some(2000)),
+        trial(9, "blobs", "grit", haiku, Some("0.028"), passed = true, Some(53), Some(4000)),
+        trial(10, "other", "claude-code", haiku, Some("0.55"), passed = true, Some(40)),
+        trial(11, "blobs", "claude-code", haiku, Some("0.01"), passed = false, Some(9), Some(1000))
+      )
+      PerPass.lines(trials) ==> Vector(
+        "task   harness      model                       trials  passed  ¢/pass   thinking      thinking ¢/pass  total  distance",
+        "blobs  grit         anthropic/claude-haiku-5-5  2       2       2.5¢     6000          0.15¢            5¢     53–58",
+        "other  claude-code  anthropic/claude-haiku-5-5  1       1       55¢      not reported  not reported     55¢    40",
+        "blobs  claude-code  anthropic/claude-haiku-5-5  1       0       no pass  1000          no pass          1¢     —"
       )
     }
   }

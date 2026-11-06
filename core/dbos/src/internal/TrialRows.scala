@@ -234,9 +234,9 @@ object TrialRows {
     SqlStatements.one(
       """INSERT INTO grit.bench_trials
         |       (harness, local, task, model, input_tokens, cache_read_tokens, cache_write_tokens,
-        |        output_tokens, cost_usd, calls, wall_ms, read_before_edit, calls_before_edit,
-        |        passed, distance)
-        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        |        output_tokens, thinking_tokens, cost_usd, calls, wall_ms, read_before_edit,
+        |        calls_before_edit, passed, distance)
+        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         |ON CONFLICT (harness, local) DO NOTHING
         |RETURNING id""".stripMargin
     ) { ps =>
@@ -249,13 +249,14 @@ object TrialRows {
       ps.setLong(6, Tokens.value(u.cacheRead))
       ps.setLong(7, Tokens.value(u.cacheWrite))
       ps.setLong(8, Tokens.value(u.output))
-      ps.setBigDecimal(9, u.costUsd.map(_.bigDecimal).orNull)
-      ps.setInt(10, trial.calls)
-      ps.setLong(11, trial.wall.toMillis)
-      ps.setObject(12, trial.readBeforeEdit.map(Long.box).orNull)
-      ps.setObject(13, trial.callsBeforeEdit.map(Int.box).orNull)
-      ps.setBoolean(14, trial.passed)
-      ps.setObject(15, trial.distance.map(Long.box).orNull)
+      ps.setObject(9, u.thinking.map(t => Long.box(Tokens.value(t))).orNull)
+      ps.setBigDecimal(10, u.costUsd.map(_.bigDecimal).orNull)
+      ps.setInt(11, trial.calls)
+      ps.setLong(12, trial.wall.toMillis)
+      ps.setObject(13, trial.readBeforeEdit.map(Long.box).orNull)
+      ps.setObject(14, trial.callsBeforeEdit.map(Int.box).orNull)
+      ps.setBoolean(15, trial.passed)
+      ps.setObject(16, trial.distance.map(Long.box).orNull)
     }(_.getLong("id"))
 
   /** The transcript row of trial `id`, at `label` joined with the transaction's floor. */
@@ -293,7 +294,8 @@ object TrialRows {
           Tokens(rs.getLong("output_tokens")),
           Tokens(rs.getLong("cache_read_tokens")),
           Option(rs.getBigDecimal("cost_usd")).map(BigDecimal(_)),
-          Tokens(rs.getLong("cache_write_tokens"))
+          Tokens(rs.getLong("cache_write_tokens")),
+          maybeLong("thinking_tokens").map(Tokens(_))
         ),
         rs.getInt("calls"),
         rs.getLong("wall_ms").millis,
