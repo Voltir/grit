@@ -119,6 +119,23 @@ object TurnWatchTests extends TestSuite {
       )
     }
 
+    test(
+      "grit's continuation note after a failed check arrives as a line saying the check failed"
+    ) {
+      val failed = grit.core.store.TestWentOn.failed("make test", Some(1), "1 failed")
+      val went = Entry(
+        EntryId("continued:3"),
+        c,
+        TurnSeq(2),
+        None,
+        EntrySeq(2),
+        Payload.Continuation(TurnSeq(0), 3, failed),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+      Replies.wentOn(went) ==> Some("── grit went on (turn 3): the check failed ──")
+    }
+
     test("the conversation so far arrives once, in order") {
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
       val (next, msgs) = TurnWatch.step(TurnWatch.start, entries, all(TurnStatus.Unknown))

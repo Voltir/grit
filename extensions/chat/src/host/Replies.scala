@@ -4,7 +4,7 @@ import grit.core.edge.Console
 import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, WentOn}
 import grit.core.visibility.Subject
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */
@@ -39,8 +39,10 @@ object Replies {
     * a new turn, which turn of it, and why. `None` for any other entry.
     */
   def wentOn(entry: Entry): Option[String] = entry.payload match {
-    case Payload.Continuation(_, turn, _) =>
+    case Payload.Continuation(_, turn, WentOn.AtLimit) =>
       Some(s"── grit went on (turn $turn): the last turn reached its limit ──")
+    case Payload.Continuation(_, turn, _: WentOn.CheckFailed) =>
+      Some(s"── grit went on (turn $turn): the check failed ──")
     case _ => None
   }
 
