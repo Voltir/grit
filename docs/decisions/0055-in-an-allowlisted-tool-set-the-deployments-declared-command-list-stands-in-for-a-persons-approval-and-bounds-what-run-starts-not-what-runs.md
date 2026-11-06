@@ -40,11 +40,12 @@ Decision:
 - **Why it is accepted:** it is the grant a Claude Code coder runs under, its allowed commands
   and no prompts, so a bench compares the two harnesses on like terms; and it holds only until an
   OS boundary contains what runs.
-- **Under `grit serve`** the allowlisted set is offered too: the operator runs the deployment
-  locally and trusts the members of the workspace it serves. Anyone who can address the
-  deployment there, and whose conversation works in the checkout, drives `write`, `edit` and
-  `run` on the operator's machine with no prompt. The operator accepts this by setting
-  `GRIT_TOOLS=allowlist`; the bound is to come from the principal asking, as its integrity and
+- **Under `grit serve`** the allowlisted set is offered too, but no conversation `serve`
+  answers reaches it: the coding tools are served only by the local edge, which the chat and
+  `grit work` start for their directory and `serve` does not, and only a chat conversation works
+  in a directory. Were a conversation from a served edge to work in a checkout, anyone who can
+  address the deployment there would drive `write`, `edit` and `run` on the operator's machine
+  with no prompt; the bound is to come first, from the principal asking, as its integrity and
   clearance allow, which this record does not build.
 
 - **Long runs.** A command still going after `run`'s wait outlives the call: its id comes back,
