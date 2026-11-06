@@ -125,8 +125,9 @@ final case class Answer(message: Message.Assistant, draft: Boolean)
 
 /** Which request the answering call was sent, by the estimate its ledger row recorded
   * ([[CharEstimate]], the estimator the kit wires): `On` or `Last` when exactly that one's
-  * estimate agrees, `Unsure` with both and the recorded estimate otherwise, or when the row
-  * is gone. Under [[TurnRecord.Schemas.Recorded]] neither estimate is that of what was
+  * estimate agrees, `On` when the two requests are one and its estimate agrees (a turn whose
+  * limits were recorded), `Unsure` with both and the recorded estimate otherwise, or when the
+  * row is gone. Under [[TurnRecord.Schemas.Recorded]] neither estimate is that of what was
   * sent, so the answer is always `Unsure`.
   */
 enum Picked {
@@ -143,6 +144,7 @@ object Picked {
     val last = CharEstimate.request(answered.last)
     (recorded.contains(on), recorded.contains(last)) match {
       case (true, false) => On
+      case (true, true) if answered.on == answered.last => On
       case (false, true) => Last
       case _ => Unsure(on, last, recorded)
     }

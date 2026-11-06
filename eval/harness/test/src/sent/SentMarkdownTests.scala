@@ -264,5 +264,16 @@ object SentMarkdownTests extends TestSuite {
         other.contains("**they differ**")
       )
     }
+
+    test(
+      "an answering call whose two requests are one, as when the turn's limits were recorded, is picked as on, and two that differ are told apart"
+    ) {
+      val on = request(asked, calling, result("alpha"))
+      val told = on.copy(messages = on.messages :+ Message.User(TurnLoop.LastCall))
+      def picked(last: ModelRequest, recorded: ModelRequest) =
+        Picked.of(TurnRecord.Answered(1, turn.replyId, on, last), Some(CharEstimate.request(recorded)))
+      (picked(on, on), picked(told, on), picked(told, told)) ==>
+        (Picked.On, Picked.On, Picked.Last)
+    }
   }
 }
