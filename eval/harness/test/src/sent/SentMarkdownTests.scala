@@ -271,7 +271,10 @@ object SentMarkdownTests extends TestSuite {
       val on = request(asked, calling, result("alpha"))
       val told = on.copy(messages = on.messages :+ Message.User(TurnLoop.LastCall))
       def picked(last: ModelRequest, recorded: ModelRequest) =
-        Picked.of(TurnRecord.Answered(1, turn.replyId, on, last), Some(CharEstimate.request(recorded)))
+        Picked.of(
+          TurnRecord.Answered(1, turn.replyId, on, last),
+          Some(CharEstimate.request(recorded))
+        )
       (picked(on, on), picked(told, on), picked(told, told)) ==>
         (Picked.On, Picked.On, Picked.Last)
     }
