@@ -45,6 +45,11 @@ and again after you edit it. Change files with `edit` (exact text) or `write` (a
   `./mill <module>.compile`. Run a test only to see it red or green (`scripts/check <Suite>`).
   Run the module's check once per commit, when its edits are done. The checks the task is held
   to run after you stop.
+- **One build at a time: memory is capped.** The run is stopped once the processes working in
+  this directory together hold more than its memory budget. Never start `./mill` or
+  `scripts/check` while another is still going: a `run` that came back with an id is still
+  going, so `tail` it to its end or `stop` it first. Compile the modules you touched, by name;
+  never `./mill __.compile`, `__.test` or several test modules at once.
 - **A new unit test is fast.** One over 5 s is a defect.
 - Commit in the repository's message style (see `git log`), one item per commit, on `bench`.
 

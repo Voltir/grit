@@ -41,6 +41,10 @@ text). Scout answers from compiled output: compile before trusting it.
   burst of edits, `./mill <module>.compile`. Run a test only to see it red or green
   (`scripts/check <Suite>`). Run the module's check once per commit, when its edits are done,
   and a bare `scripts/check` once at the end. Never poll a log in a loop.
+- **One build at a time: memory is capped.** The run is stopped once the processes working in
+  this directory together hold more than its memory budget. Never start `./mill` or
+  `scripts/check` while another is still going, a background one included. Compile the modules
+  you touched, by name; never `./mill __.compile`, `__.test` or several test modules at once.
 - **A new unit test is fast.** One over 5 s is a defect.
 - Commit in the repository's message style (see `git log`), one item per commit, on `bench`.
 
