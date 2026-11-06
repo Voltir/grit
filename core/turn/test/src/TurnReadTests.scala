@@ -21,13 +21,17 @@ object TurnReadTests extends TestSuite {
   /** The markers of the turn's patches, each with the records its point may follow:
     * `heard-quiet-exit` comes after the last batch judged, `ask:relevance-2`, or that batch's
     * record when it kept one; `carried-window` after the message is placed, `record-topic`;
-    * `carry-reasons` after `carried-window`'s marker.
+    * `carry-reasons` after `carried-window`'s marker; `last-call-refused` after a round's
+    * model call, `ask:n`.
     */
-  private val Patches: Map[String, Set[String]] =
-    Map(
+  private val Patches: Map[String, String => Boolean] =
+    Map[String, String => Boolean](
       StepRecord.marker("heard-quiet-exit") -> Set("ask:relevance-2", "ask:relevance-2:record"),
       StepRecord.marker(TurnAssembly.Carrying) -> Set("record-topic"),
-      StepRecord.marker(TurnAssembly.CarryReasons) -> Set(StepRecord.marker(TurnAssembly.Carrying))
+      StepRecord.marker(TurnAssembly.CarryReasons) -> Set(StepRecord.marker(TurnAssembly.Carrying)),
+      StepRecord.marker(TurnRound.LastCallRefused) -> ((name: String) =>
+        Turn.Step.family(name).contains(Turn.Step.Ask)
+      )
     )
 
   /** The histories a recorder stopped while their turn was in flight, at a crash it did not

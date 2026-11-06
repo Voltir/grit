@@ -390,32 +390,65 @@ private[turn] object TurnRound {
       .andThen(Flow.decide(calling)(replied))
       .andThen(
         Flow.either(
-          settles.map[Either[Progress, Looped]](Left(_)),
+          Flow.either(settles.map[Either[Progress, Looped]](Left(_)), retried),
           Flow.pass[Looped].map[Either[Progress, Looped]](Right(_))
         )
       )
   }
 
-  /** What a round does after its call came to `called`: ends, answers, or settles its calls. */
+  /** The patch under which a reply to the budget's last call that calls a tool is refused and
+    * that call made once more (ADR 0004); a history from before it answered that reply, its
+    * calls dropped.
+    */
+  val LastCallRefused: String = "last-call-refused"
+
+  /** A reply to the budget's last call that called a tool ([[Next.Again]]): `settle`, its calls
+    * each refused, before the last call made once more; `before`, how the round ended for a
+    * history recorded before the patch `last-call-refused`.
+    */
+  private final case class Retry(settle: Settle, before: Either[Stalled, Looped])
+
+  /** What a round does after its call came to `called`: ends, answers, settles its calls, or
+    * settles them refused and makes the last call again.
+    */
   private def replied(
       at: Progress,
       called: Either[TurnFailure, Message.Assistant]
-  ): Either[Stalled, Either[Settle, Looped]] =
+  ): Either[Stalled, Either[Either[Settle, Retry], Looped]] =
     called match {
       case Left(failure) => Left(Stalled(failure, at))
       case Right(reply) =>
         val now = at.copy(replies = at.replies :+ reply)
         TurnLoop.next(now.budget, at.looping.offer.briefing, at.round, reply) match {
-          case Next.Answer(answer) => Right(Right(Looped(answer, now)))
-          case Next.Silent(_) =>
-            val said =
-              s"the reply to ${Names.Step.Ask(at.round.index).name} said nothing and called no tool"
-            Left(Stalled(TurnFailure.Model(said), now))
-          case Next.OutOfOutput(reply) =>
-            Left(Stalled(TurnFailure.OutOfOutput(reply.usage.output), now))
-          case Next.Settle(calls, next) => Right(Left(Settle(now, reply, calls, next)))
+          case Next.Ends(ending) => ends(now, ending).map(Right(_))
+          case Next.Settle(calls, next) => Right(Left(Left(Settle(now, reply, calls, next))))
+          case Next.Again(calls, next, before) =>
+            Right(Left(Right(Retry(Settle(now, reply, calls, next), ends(now, before)))))
         }
     }
+
+  /** How the round `now` stands at, its reply the last of `now.replies`, ends as `ending`. */
+  private def ends(now: Progress, ending: TurnLoop.Ended): Either[Stalled, Looped] =
+    ending match {
+      case TurnLoop.Ended.Answer(answer) => Right(Looped(answer, now))
+      case TurnLoop.Ended.Silent(_) =>
+        val said =
+          s"the reply to ${Names.Step.Ask(now.round.index).name} said nothing and called no tool"
+        Left(Stalled(TurnFailure.Model(said), now))
+      case TurnLoop.Ended.OutOfOutput(reply) =>
+        Left(Stalled(TurnFailure.OutOfOutput(reply.usage.output), now))
+    }
+
+  /** After a reply to the budget's last call that called a tool: its calls settled, each
+    * refused, then the round after, the last call made once more. A history recorded before the
+    * patch `last-call-refused` holds the round's ending here instead, and ends as it did then
+    * (ADR 0004).
+    */
+  private def retried: Flow[Env, Retry, Stalled, Either[Progress, Looped]] =
+    Flow.patch[Env, Retry, Stalled, Either[Progress, Looped]](LastCallRefused)(
+      Flow.fromEither[Retry, Stalled, Either[Progress, Looped]](_.before.map(Right(_))),
+      Flow.pass[Retry].map(_.settle).andThen(settles.map[Either[Progress, Looped]](Left(_)))
+    )
 
   /** A reply's calls settled: the reply kept with what each of its calls is, its free hosted
     * calls sent, and each call settled in order; then the round after.

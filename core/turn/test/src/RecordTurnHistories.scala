@@ -495,7 +495,9 @@ object RecordTurnHistories {
         crash: Option[grit.core.store.Entry -> Boolean] = None,
         answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty,
         gated: Boolean = false,
-        extracted: Option[ujson.Value] = None
+        extracted: Option[ujson.Value] = None,
+        limit: Option[grit.core.message.Tokens] = None,
+        recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
     ): History = {
       // The summary's pair answers an extraction with `extracted`, and is the stub otherwise.
       val summarizer: grit.core.provider.Provider^ = extracted match {
@@ -522,7 +524,9 @@ object RecordTurnHistories {
               classifier,
               ws,
               if (gated) gatedTools(ws) else tools(ws),
-              5
+              limit.fold(5)(_ => 12),
+              limit = limit,
+              recipe = recipe
             )
           )
         catch { case _: InMemoryDurable.Crash => "" }
@@ -606,6 +610,54 @@ object RecordTurnHistories {
 
     Vector(
       "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
+      // Every reply calls peek, its last's too: recorded before the patch last-call-refused,
+      // the last reply's call was dropped and its text answered.
+      "loop-last-called" -> looping(
+        Vector("read them"),
+        new TurnFixtures.Scripted((_, n) =>
+          Right(calling(s"read $n", (s"t$n", "peek", peeking("a.txt"))))
+        )
+      ),
+      // Under the patch last-call-refused: the last reply's call is refused, and the call made
+      // again answers in text.
+      "loop-last-refused" -> looping(
+        Vector("read them"),
+        new TurnFixtures.Scripted((_, n) =>
+          Right(
+            if (n < 5) calling(s"read $n", (s"t$n", "peek", peeking("a.txt")))
+            else calling("all read")
+          )
+        )
+      ),
+      // A turn briefed for one task, cut at its limit: task_status offered on every call, and
+      // its reply to the last call with tools declares the task done.
+      "loop-cut-declared" -> looping(
+        Vector("move them"),
+        new TurnFixtures.Scripted((_, n) =>
+          Right(
+            (if (n < 3) calling(s"moving $n", (s"t$n", "peek", peeking("a.txt")))
+             else
+               calling(
+                 "",
+                 (
+                   "status",
+                   "task_status",
+                   ujson.Obj("state" -> "done", "handoff" -> "All moved.")
+                 )
+               ))
+              .copy(usage =
+                grit.core.message.Usage(
+                  grit.core.message.Tokens(1000L + 600L * n),
+                  grit.core.message.Tokens(2),
+                  grit.core.message.Tokens.Zero,
+                  None
+                )
+              )
+          )
+        ),
+        limit = Some(grit.core.message.Tokens(2500)),
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      ),
       // A result believed at nothing withholds post, which requires member, from the next
       // round, and the call of it there is answered that it is withheld.
       "gated-withheld" -> looping(Vector("read and post"), gatedScript, gated = true),

@@ -136,6 +136,18 @@ object TurnLoopTurnTests extends TestSuite {
     (provider.requests, said)
   }
 
+  /** What `request` answered the call `id` with, when that was a refusal: its outcome, the
+    * fence the result is shown in looked past.
+    */
+  private def refusedWith(request: ModelRequest, id: String): Option[Outcome] =
+    request.messages.collectFirst {
+      case Message.ToolResult(c, content, true) if c == ToolCallId(id) =>
+        Vector(TurnLoop.EndingRefused, TurnLoop.LastRefused, TurnLoop.CutOff).find {
+          case Outcome.Failed(why) => content.contains(why)
+          case _ => false
+        }
+    }.flatten
+
   /** The text of `request`'s last message when it is a user's (a note, the asker's message);
     * `None` for a tool result.
     */
@@ -878,6 +890,73 @@ object TurnLoopTurnTests extends TestSuite {
       ) ==> (
         Vector(Vector("topic", "peek", "poke")),
         Vector(Some(TurnLoop.LastTools), Some(TurnLoop.LastCall))
+      )
+    }
+
+    test(
+      "a cut turn's ending reply calling another tool is refused, and the ending asked again, which task_status ends"
+    ) {
+      val entries = new InMemoryEntryStore
+      val (requests, said) = cutTurn(
+        entries,
+        grit.core.recipe.TurnRecipe.Tasked,
+        n =>
+          if (n < 5) calling(s"r$n", (s"t$n", "peek", "a.txt"))
+          else declaring("done", "All four moved.")
+      )
+      (
+        said,
+        texts(entries).filter(_.startsWith("assistant:")).lastOption,
+        requests.size,
+        requests.map(_.tools.map(_.name)).distinct,
+        grows(requests),
+        requests.lastOption.flatMap(refusedWith(_, "t4"))
+      ) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0",
+        Some("assistant: All four moved."),
+        6,
+        Vector(Vector("topic", "peek", "poke", "task_status")),
+        Vector.fill(5)(true),
+        Some(TurnLoop.EndingRefused)
+      )
+    }
+
+    test(
+      "an uncut turn's last reply calling a tool is refused once, and the call after it answers in text"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else TurnFixtures.said("r3"))
+      )
+      val turn = say(entries, "go")
+      val said = looped(new InMemoryDurable, entries, entries, turn, provider, ws, calls = 3)
+      (
+        said,
+        texts(entries).filter(_.startsWith("assistant:")).lastOption,
+        provider.requests.size,
+        grows(provider.requests),
+        provider.requests.lastOption.flatMap(refusedWith(_, "t2"))
+      ) ==> (
+        "replied: reply:c1:0; summarised: summary:c1:0",
+        Some("assistant: r3"),
+        4,
+        Vector(true, true, true),
+        Some(TurnLoop.LastRefused)
+      )
+    }
+
+    test(
+      "a reply to the last call's retry that calls a tool and says nothing ends the turn silent"
+    ) {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) => Right(calling("", (s"t$n", "peek", "a.txt"))))
+      val turn = say(entries, "go")
+      val said = looped(new InMemoryDurable, entries, entries, turn, provider, ws, calls = 2)
+      (said, provider.requests.size) ==> (
+        "failed: Model(the reply to ask:2 said nothing and called no tool)",
+        3
       )
     }
 

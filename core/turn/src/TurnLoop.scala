@@ -18,7 +18,9 @@ object TurnLoop {
 
   /** How far one turn's loop may go: `calls` model calls, the last told to call no tool (or, on
     * a turn briefed for one task that `limit` cut, task_status alone), so a turn that keeps
-    * calling tools still ends; and, with `limit`, the input a request
+    * calling tools still ends: a reply to the last call that calls a tool is refused, and that
+    * call made once more, so a turn makes at most `calls + 1`, and a second such reply that says
+    * nothing ends the turn silent ([[next]]); and, with `limit`, the input a request
     * may reach as its provider counts it, less room for one round's results the turn has not
     * yet seen: once a reply's input plus the largest growth of a round so far meets `limit`, the
     * call after it is the last with tools and the one after that the last ([[after]]). A turn
@@ -184,6 +186,22 @@ object TurnLoop {
   /** What the loop does after a reply. */
   enum Next {
 
+    /** The turn ends as `ending` says. */
+    case Ends(ending: Ended)
+
+    /** Settle `calls`, in order, then make the call `round`. */
+    case Settle(calls: Vector[Pending], round: Round)
+
+    /** Settle `calls`, each refused, then make the budget's last call once more, as `round`;
+      * a history recorded before the patch `last-call-refused` ends as `before` instead
+      * (ADR 0004).
+      */
+    case Again(calls: Vector[Pending], round: Round, before: Ended)
+  }
+
+  /** How a reply ends its turn. */
+  enum Ended {
+
     /** `reply` answers the turn: it has text that is not blank, and holds no tool call
       * (those of a reply to the budget's last call are dropped).
       */
@@ -198,9 +216,25 @@ object TurnLoop {
       * its thinking used the whole budget. The round failed, and nothing asks again.
       */
     case OutOfOutput(reply: Message.Assistant)
+  }
 
-    /** Settle `calls`, in order, then make the call `round`. */
-    case Settle(calls: Vector[Pending], round: Round)
+  /** How `reply` ends its turn as a reply that calls no tool, or whose calls are dropped:
+    * answers, its calls dropped; silent when no text that is not blank is left; out of output
+    * when it stopped at max tokens with no tool call at all.
+    */
+  def ended(reply: Message.Assistant): Ended = {
+    val answer: Message.Assistant = reply.copy(blocks = reply.blocks.filter {
+      case AssistantBlock.ToolCall(_, _, _) => false
+      case _ => true
+    })
+    val said = answer.blocks.exists {
+      case AssistantBlock.Text(text) => text.trim.nonEmpty
+      case _ => false
+    }
+    val called = reply.blocks.exists(_.isInstanceOf[AssistantBlock.ToolCall])
+    if (said) Ended.Answer(answer)
+    else if (reply.stop == StopReason.MaxTokens && !called) Ended.OutOfOutput(answer)
+    else Ended.Silent(answer)
   }
 
   /** What `CutOff` calls are answered: a reply cut off at max tokens may hold a call whose
@@ -211,14 +245,28 @@ object TurnLoop {
       "was not run. Make the call again with shorter arguments, or split the work."
   )
 
+  /** What a call on the last call of a turn told [[Ending]] is answered, unless it declares. */
+  val EndingRefused: Outcome = Outcome.Failed(
+    "Not run: this turn is ending, and its last call may call task_status alone. Call it " +
+      "now: done with your answer if the task is finished, or more with what the next turn " +
+      "needs."
+  )
+
+  /** What a call on the last call of a turn told [[LastCall]] is answered. */
+  val LastRefused: Outcome = Outcome.Failed(
+    "Not run: this is your last call in this turn, and it may call no tool. Answer in text " +
+      "now from what you have found so far, and say plainly what you did not get to."
+  )
+
   /** What the loop does after `reply`, the reply to `round` of a turn briefed as `briefing`. A
     * reply that [[declared]] through [[TaskStatus]] answers with its handoff as its text, its
-    * calls dropped. A reply that calls no tool, or any reply to the budget's last call (or a
-    * later one), answers, or is silent when no text that is not blank is left once its calls
-    * are dropped; out of output instead when it stopped at max tokens with no tool call at all.
-    * Otherwise its calls are settled, each run, or each refused with [[CutOff]] when the reply
-    * stopped at max tokens; a call to [[TaskStatus]] on a turn briefed for one task refused
-    * with [[TaskStatus.Early]] before the cut's last call with tools, and with
+    * calls dropped. A reply that calls no tool, or any reply after the budget's last call (its
+    * one retry), ends as [[ended]] says. A reply to the budget's last call that calls a tool:
+    * [[Next.Again]], each call refused with [[CutOff]] when the reply stopped at max tokens,
+    * else with [[EndingRefused]] on a turn told [[Ending]], else [[LastRefused]]. Otherwise its
+    * calls are settled, each run, or each refused with [[CutOff]] when the reply stopped at max
+    * tokens; a call to [[TaskStatus]] on a turn briefed for one task refused with
+    * [[TaskStatus.Early]] before the cut's last call with tools, and with
     * [[TaskStatus.Unrecorded]] from it; then the next call is made.
     */
   def next(budget: Rounds, briefing: Briefing, round: Round, reply: Message.Assistant): Next = {
@@ -228,19 +276,16 @@ object TurnLoop {
     if (status.isDefined) {
       // Its call becomes the reply's text: no tool call reaches the conversation.
       val kept = reply.blocks.filter(_.isInstanceOf[AssistantBlock.Reasoning])
-      Next.Answer(reply.copy(blocks = kept ++ status.map(d => AssistantBlock.Text(d.handoff))))
-    } else if (calls.isEmpty || round >= last) {
-      val answer: Message.Assistant = reply.copy(blocks = reply.blocks.filter {
-        case AssistantBlock.ToolCall(_, _, _) => false
-        case _ => true
-      })
-      val said = answer.blocks.exists {
-        case AssistantBlock.Text(text) => text.trim.nonEmpty
-        case _ => false
-      }
-      if (said) Next.Answer(answer)
-      else if (reply.stop == StopReason.MaxTokens && calls.isEmpty) Next.OutOfOutput(answer)
-      else Next.Silent(answer)
+      Next.Ends(
+        Ended.Answer(reply.copy(blocks = kept ++ status.map(d => AssistantBlock.Text(d.handoff))))
+      )
+    } else if (calls.isEmpty || round > last) Next.Ends(ended(reply))
+    else if (round == last) {
+      val refusal =
+        if (reply.stop == StopReason.MaxTokens) CutOff
+        else if (budget.cut && declares(briefing)) EndingRefused
+        else LastRefused
+      Next.Again(calls.map(Pending.Refused(_, refusal)), round + 1, ended(reply))
     } else {
       val ending = asksStatus(budget, round)
       val pending =

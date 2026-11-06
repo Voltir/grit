@@ -480,19 +480,23 @@ object TurnRequestsTests extends TestSuite {
         Left("window names unknown entries at seqs: 0")
     }
 
-    test("a turn guided in its system prompt and told in its last result is rebuilt as sent") {
+    test(
+      "a turn guided in its system prompt and told in its last result is rebuilt as sent, its last call's refused reply and the call made again included"
+    ) {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
       val pair = Profile(
         TestCatalog.policy.turn.first.assignment.ref,
         afterResult = Known.Of(AfterToolResult.InLastResult, nick),
         guidance = Known.Of(ToolGuidance.SystemLines, nick)
       )
-      val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))
+      val provider = new Scripted((_, n) =>
+        Right(if (n < 2) calling("more", (s"t$n", "peek", "a.txt")) else calling("done"))
+      )
       val (turn, entries, profiles, recorded) =
         pinnedRun(provider, TestCatalog.overlaid(Vector(pair)))
       val calls = TurnRecord.requests(turn, recorded, reads(entries, profiles))
-      // These models send the summary to the same provider: its third request.
-      calls.map(sent(_)) ==> Right(provider.requests.take(2))
+      // These models send the summary to the same provider: its fourth request.
+      calls.map(sent(_)) ==> Right(provider.requests.take(3))
     }
 
     test(

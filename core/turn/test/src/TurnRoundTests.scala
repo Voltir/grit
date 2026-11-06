@@ -189,18 +189,25 @@ object TurnRoundTests extends TestSuite {
       )
     }
 
-    test("a reply to the budget's last call answers, its calls dropped") {
+    test(
+      "a reply to the budget's last call that calls a tool has it refused under its patch, and that call made once more, whose reply answers, its calls dropped"
+    ) {
       val script: Round -> Either[TurnFailure, Message.Assistant] =
         round => Right(if (round.index == 0) reply("", Vector("a")) else reply("so", Vector("b")))
       rounds(2, script) ==> (
-        "answered so at 1 of 2, believed member",
+        "answered so at 2 of 3, believed member",
         Vector(
           "gate:0",
           "ask:0",
           "ask:0:record",
           "call:0:0 Right(false)",
           "gate:1",
-          "ask:1"
+          "ask:1",
+          "DBOS.patch-last-call-refused",
+          "ask:1:record",
+          "call:1:0 Right(true)",
+          "gate:2",
+          "ask:2"
         )
       )
     }

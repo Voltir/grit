@@ -8,7 +8,7 @@ import grit.core.recipe.Briefing
 import grit.core.tool.Outcome
 
 import utest.*
-import TurnLoop.{Next, Pending, Round, Rounds}
+import TurnLoop.{Ended, Next, Pending, Round, Rounds}
 
 /** What [[TurnLoop]] decides, as tables: a turn's budget, what it does after each reply, and
   * what each call is told. The steps its rounds make are [[TurnRoundTests]]'.
@@ -31,6 +31,10 @@ object TurnLoopTests extends TestSuite {
     )
     bounded.after(Vector(input(1000), input(1100), input(1250)))
   }
+
+  private def answers(reply: Message.Assistant): Next = Next.Ends(Ended.Answer(reply))
+  private def silent(reply: Message.Assistant): Next = Next.Ends(Ended.Silent(reply))
+  private def outOfOutput(reply: Message.Assistant): Next = Next.Ends(Ended.OutOfOutput(reply))
 
   private def round(n: Int): Round = (0 until n).foldLeft(Round.First)((r, _) => r.next)
 
@@ -56,6 +60,27 @@ object TurnLoopTests extends TestSuite {
         TurnLoop.offered(Briefing.Tasked, Vector(read), strict = true),
         TurnLoop.offered(Briefing.Conversing, Vector(read), strict = true)
       ) ==> (Vector(read, TaskStatus.schema(true)), Vector(read))
+    }
+
+    test(
+      "a reply to a cut turn's last call calling a tool is refused as its note told it: task_status alone on a turn briefed for one task, no tool on a conversing one"
+    ) {
+      val read = reply("reading", Vector("a"))
+      (
+        TurnLoop.next(cutAt5, Briefing.Tasked, round(4), read),
+        TurnLoop.next(cutAt5, Briefing.Conversing, round(4), read)
+      ) ==> (
+        Next.Again(
+          Vector(Pending.Refused(call("a"), TurnLoop.EndingRefused)),
+          round(5),
+          Ended.Answer(reply("reading"))
+        ),
+        Next.Again(
+          Vector(Pending.Refused(call("a"), TurnLoop.LastRefused)),
+          round(5),
+          Ended.Answer(reply("reading"))
+        )
+      )
     }
 
     test("a call to task_status before a turn briefed for one task is ending is refused as early") {
@@ -106,7 +131,7 @@ object TurnLoopTests extends TestSuite {
         TurnLoop.declared(budget(5), round(3), done)
       ) ==> (
         (
-          Next.Answer(answered),
+          answers(answered),
           Some(TaskStatus.Declared(TaskStatus.State.Done, "All moved."))
         ),
         Next.Settle(
@@ -142,16 +167,16 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "after each reply the loop answers, fails as silent or out of output, or settles its calls, refusing them when cut off"
+      "after each reply the loop answers, fails as silent or out of output, or settles its calls, refusing them when cut off; the last call's, each refused, then that call made once more, whose reply answers, its calls dropped"
     ) {
       val b = budget(3)
       val calling = reply("", Vector("a", "b"))
       val thought = reply("", stop = StopReason.MaxTokens)
         .copy(blocks = Vector(AssistantBlock.Reasoning("weighing it", None)))
       val table: Vector[(Round, Message.Assistant, Next)] = Vector(
-        (round(0), reply("hi"), Next.Answer(reply("hi"))),
-        (round(0), reply(""), Next.Silent(reply(""))),
-        (round(0), reply("  \n"), Next.Silent(reply("  \n"))),
+        (round(0), reply("hi"), answers(reply("hi"))),
+        (round(0), reply(""), silent(reply(""))),
+        (round(0), reply("  \n"), silent(reply("  \n"))),
         (
           round(0),
           calling,
@@ -162,9 +187,30 @@ object TurnLoopTests extends TestSuite {
           calling,
           Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(call("b"))), round(2))
         ),
-        (round(2), reply("done", Vector("a")), Next.Answer(reply("done"))),
-        (round(2), calling, Next.Silent(reply(""))),
-        (round(5), reply("late", Vector("a")), Next.Answer(reply("late"))),
+        (
+          round(2),
+          reply("done", Vector("a")),
+          Next.Again(
+            Vector(Pending.Refused(call("a"), TurnLoop.LastRefused)),
+            round(3),
+            Ended.Answer(reply("done"))
+          )
+        ),
+        (
+          round(2),
+          calling,
+          Next.Again(
+            Vector(
+              Pending.Refused(call("a"), TurnLoop.LastRefused),
+              Pending.Refused(call("b"), TurnLoop.LastRefused)
+            ),
+            round(3),
+            Ended.Silent(reply(""))
+          )
+        ),
+        (round(3), reply("done", Vector("a")), answers(reply("done"))),
+        (round(3), calling, silent(reply(""))),
+        (round(5), reply("late", Vector("a")), answers(reply("late"))),
         (
           round(0),
           reply("cut", Vector("a"), StopReason.MaxTokens),
@@ -173,19 +219,28 @@ object TurnLoopTests extends TestSuite {
         (
           round(0),
           reply("cut", stop = StopReason.MaxTokens),
-          Next.Answer(reply("cut", stop = StopReason.MaxTokens))
+          answers(reply("cut", stop = StopReason.MaxTokens))
         ),
-        (round(0), thought, Next.OutOfOutput(thought)),
+        (round(0), thought, outOfOutput(thought)),
         (
           round(0),
           reply(" ", stop = StopReason.MaxTokens),
-          Next.OutOfOutput(reply(" ", stop = StopReason.MaxTokens))
+          outOfOutput(reply(" ", stop = StopReason.MaxTokens))
         ),
-        (round(2), thought, Next.OutOfOutput(thought)),
+        (round(2), thought, outOfOutput(thought)),
         (
           round(2),
           reply("", Vector("a"), StopReason.MaxTokens),
-          Next.Silent(reply("", stop = StopReason.MaxTokens))
+          Next.Again(
+            Vector(Pending.Refused(call("a"), TurnLoop.CutOff)),
+            round(3),
+            Ended.Silent(reply("", stop = StopReason.MaxTokens))
+          )
+        ),
+        (
+          round(3),
+          reply("", Vector("a"), StopReason.MaxTokens),
+          silent(reply("", stop = StopReason.MaxTokens))
         )
       )
       table.foreach { (r, sent, expected) =>
