@@ -24,7 +24,8 @@ object PerPassTests extends TestSuite {
       usd: Option[String],
       passed: Boolean,
       distance: Option[Long],
-      thinking: Option[Long] = None
+      thinking: Option[Long] = None,
+      input: Long = 100
   ): TrialRows.Trial = {
     got(
       TrialRows.Trial.of(
@@ -32,7 +33,7 @@ object PerPassTests extends TestSuite {
         got(TrialRows.TaskName.of(task)),
         ModelId.of(model).getOrElse(throw new java.lang.AssertionError(model)),
         Usage(
-          Tokens(100),
+          Tokens(input),
           Tokens(10000),
           Tokens.Zero,
           usd.map(BigDecimal(_)),
@@ -112,6 +113,28 @@ object PerPassTests extends TestSuite {
         "blobs  grit         anthropic/claude-haiku-5-5  2       2       2.5¢     6000          0.15¢            5¢     53–58",
         "other  claude-code  anthropic/claude-haiku-5-5  1       1       55¢      not reported  not reported     55¢    40",
         "blobs  claude-code  anthropic/claude-haiku-5-5  1       0       no pass  1000          no pass          1¢     —"
+      )
+    }
+    test(
+      "a trial whose calls together passed a card's bound has its thinking priced at least at the short card, never all at the long"
+    ) {
+      // 4091 thinking tokens at Claude Haiku 5.5's short card (0.50 USD a million) are 0.2¢; its
+      // calls' inputs summed pass 100,000, which one call's prompt need not have.
+      val trials = Vector(
+        trial(
+          12,
+          "blobs",
+          "grit",
+          haiku,
+          Some("0.025"),
+          passed = true,
+          Some(69),
+          Some(4091),
+          input = 240000
+        )
+      )
+      PerPass.groups(trials).map(_.thinkingSpent) ==> Vector(
+        Some(Cost.AtLeast(BigDecimal("0.0020455")))
       )
     }
   }
