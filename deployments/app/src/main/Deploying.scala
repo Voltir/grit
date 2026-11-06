@@ -48,8 +48,7 @@ private[main] object Deploying {
 
   /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
     * the conversations `worksIn` links working in their services and `reaches` links reaching
-    * theirs, each turn shaped by `recipe`, its days beginning in
-    * `zone`, its calls to Anthropic's models marked for caching as [[cacheMarks]] reads.
+    * theirs, each turn shaped by `recipe`, its days beginning in `zone`.
     * Serving any edge, it caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
     * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
@@ -77,7 +76,6 @@ private[main] object Deploying {
       window <- tokens(env, BudgetVar, LinearAssembler.DefaultBudget)
       tail <- tokens(env, TailVar, RetrievalAssembler.DefaultTail)
       retrieving <- assemblerChoice(env)
-      marks <- cacheMarks(env)
       rounds <- toolRounds(env)
       models <- policy(env)
       sweep <- sweepEvery(env)
@@ -133,8 +131,7 @@ private[main] object Deploying {
           persona = Persona.Grit,
           identities = identities,
           files = FileArea.Bounds.Default.copy(expiry = expiry),
-          formats = Formatted,
-          cacheMarks = marks
+          formats = Formatted
         )
         .left
         .map(_.message)

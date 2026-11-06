@@ -145,8 +145,7 @@ private[grit] object Launch {
           keys,
           seed.withPolicy(d.policy),
           engine.db,
-          engine.modelSettings,
-          d.cacheMarks
+          engine.modelSettings
         )
     }
     asking(

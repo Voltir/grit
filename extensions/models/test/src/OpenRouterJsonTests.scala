@@ -37,7 +37,7 @@ object OpenRouterJsonTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "request: an Anthropic model's request takes the task's and the established part's breakpoints as the marks chosen say; any other model's none"
+      "request: an Anthropic model's request takes breakpoints after system and the task's, the established and the stable messages; any other model's none"
     ) {
       val request = ModelRequest(
         "be brief",
@@ -50,9 +50,9 @@ object OpenRouterJsonTests extends TestSuite {
         repeats = Repeats.of(1, 2, 4)
       )
       // The wire messages, the system prompt first, that hold a marked part.
-      def marked(model: String, marks: CacheMarks.Upto): Vector[Int] =
+      def marked(model: String): Vector[Int] =
         OpenRouterJson
-          .request(model, 512, None, request, marks = marks)("messages")
+          .request(model, 512, None, request)("messages")
           .arr
           .toVector
           .zipWithIndex
@@ -63,12 +63,8 @@ object OpenRouterJsonTests extends TestSuite {
                 ) =>
               i
           }
-      Vector(
-        marked("anthropic/claude-haiku-5.5", CacheMarks.Upto.Stable),
-        marked("anthropic/claude-haiku-5.5", CacheMarks.Upto.Task),
-        marked("anthropic/claude-haiku-5.5", CacheMarks.Upto.Established),
-        marked("openai/gpt-5.5", CacheMarks.Upto.Established)
-      ) ==> Vector(Vector(0, 4), Vector(0, 1, 4), Vector(0, 1, 2, 4), Vector.empty)
+      Vector(marked("anthropic/claude-haiku-5.5"), marked("openai/gpt-5.5")) ==>
+        Vector(Vector(0, 1, 2, 4), Vector.empty)
     }
 
     test("request: the system prompt first, then each message in its role") {

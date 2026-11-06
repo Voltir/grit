@@ -39,7 +39,7 @@ import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading}
 import grit.core.visibility.{Compartment, Label, Visibility}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
-import grit.models.{CacheMarks, JevClassifier}
+import grit.models.JevClassifier
 import grit.tools.{Coding, Names}
 import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
@@ -411,8 +411,7 @@ enum DeploymentRefusal {
   * domains it claims (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
   * them; how long its file area keeps a file and how much it keeps (`files`, ADR 0045), and the
   * `formats` every file kept there is read with, by an edge that puts it and by `file_read`
-  * alike (ADR 0044); which of a request's repeated prefixes its calls to Anthropic's models mark
-  * for caching (`cacheMarks`). The database and the model's keys come from the environment
+  * alike (ADR 0044). The database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
   */
@@ -441,8 +440,7 @@ final case class Deployment private (
     version: DeploymentVersion,
     allJobs: Jobs,
     files: FileArea.Bounds,
-    formats: Formats,
-    cacheMarks: CacheMarks.Upto
+    formats: Formats
 ) {
 
   /** The application version this deployment's engines open under: grit's epoch and its
@@ -491,8 +489,7 @@ object Deployment {
       identities: Identities = Identities.Shipped,
       version: DeploymentVersion = DeploymentVersion.First,
       files: FileArea.Bounds = FileArea.Bounds.Default,
-      formats: Formats,
-      cacheMarks: CacheMarks.Upto = CacheMarks.Upto.Stable
+      formats: Formats
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filter(_.asks == ServedEdge.Asks.Unanswered).map(_.name)
@@ -706,8 +703,7 @@ object Deployment {
       version,
       all,
       files,
-      formats,
-      cacheMarks
+      formats
     )
   }
 

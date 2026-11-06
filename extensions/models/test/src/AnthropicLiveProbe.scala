@@ -19,7 +19,7 @@ import grit.core.secret.Variable
   *     cache reads must cover all the first call cached (the breakpoint's lookback reaching
   *     back to it), not the system prompt alone.
   *   - **A task's own mark.** Two Claude Haiku 5.5 calls share a system prompt and a task message
-  *     and differ in the question after it, each marked under [[CacheMarks.Upto.Task]]: the
+  *     and differ in the question after it, each marked as [[CacheMarks]] places: the
   *     second must read all the first cached but its question, not the system prompt alone.
   *   - **`drop_block`, per model.** For Claude Haiku 5.5 and Claude Sonnet 5.5: a reply's
   *     signed thinking, asked for at effort high on a question of a few steps, sent back after
@@ -158,8 +158,7 @@ object AnthropicLiveProbe {
         256,
         asking("ok"),
         false,
-        "task, call 1",
-        marks = CacheMarks.Upto.Task
+        "task, call 1"
       )
       two <- answered(
         key,
@@ -167,8 +166,7 @@ object AnthropicLiveProbe {
         256,
         asking("yes"),
         false,
-        "task, call 2",
-        marks = CacheMarks.Upto.Task
+        "task, call 2"
       )
     } {
       val cachedByOne = Tokens.value(one.usage.cacheRead) + Tokens.value(one.usage.cacheWrite)
@@ -324,10 +322,9 @@ object AnthropicLiveProbe {
       request: ModelRequest,
       dropBlock: Boolean,
       label: String,
-      effort: Effort = Effort.Low,
-      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
+      effort: Effort = Effort.Low
   ): Option[Message.Assistant] =
-    sent(key, model, maxTokens, request, dropBlock, label, effort, marks = marks) match {
+    sent(key, model, maxTokens, request, dropBlock, label, effort) match {
       case None => None
       case Some((200, text)) =>
         AnthropicJson.response(ujson.read(text)) match {
@@ -341,7 +338,7 @@ object AnthropicLiveProbe {
         None
     }
 
-  /** `request` sent on `model` as [[AnthropicJson.request]] writes it under `marks` (or `raw`), its status and
+  /** `request` sent on `model` as [[AnthropicJson.request]] writes it (or `raw`), its status and
     * body, an answer's cost counted under `label`; `None` once the probe's spending has reached
     * [[Cap]].
     */
@@ -353,8 +350,7 @@ object AnthropicLiveProbe {
       dropBlock: Boolean,
       label: String,
       effort: Effort = Effort.Low,
-      raw: Option[ujson.Value] = None,
-      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
+      raw: Option[ujson.Value] = None
   ): Option[(Int, String)] =
     Option.when(affordable(label)) {
       val body = raw.getOrElse(
@@ -364,8 +360,7 @@ object AnthropicLiveProbe {
           effort,
           ReasoningReplay.Details,
           dropBlock,
-          request,
-          marks
+          request
         )
       )
       val response = http.send(

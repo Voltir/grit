@@ -15,9 +15,9 @@ final class Keys private (openRouter: Option[Secret], anthropic: Option[Secret])
     * [[grit.core.model.Upstream.AnthropicApi]], [[OpenRouterProvider]] for any other. When that
     * gateway's key is not set here, every call is [[grit.core.provider.ProviderError.Refused]]
     * with [[Keys.Unkeyed.message]], and none is made. An Anthropic model's requests are marked
-    * for caching as `marks` says.
+    * for caching as [[CacheMarks]] says.
     */
-  def provider(pinned: Pinned, marks: CacheMarks.Upto): Provider^ = {
+  def provider(pinned: Pinned): Provider^ = {
     val ref = pinned.assignment.ref
     keyed(ref) match {
       case Left(unkeyed) =>
@@ -26,8 +26,8 @@ final class Keys private (openRouter: Option[Secret], anthropic: Option[Secret])
             Left(ProviderError.Refused(unkeyed.message))
         }
       case Right(key) =>
-        if (direct(ref)) new AnthropicProvider(key, pinned, marks)
-        else new OpenRouterProvider(key, OpenRouterConfig.of(pinned, marks))
+        if (direct(ref)) new AnthropicProvider(key, pinned)
+        else new OpenRouterProvider(key, OpenRouterConfig.of(pinned))
     }
   }
 

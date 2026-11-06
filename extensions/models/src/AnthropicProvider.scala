@@ -12,7 +12,7 @@ import grit.core.secret.{Reveal, Secret, Variable}
 /** [[Provider]] over Anthropic's Messages API, called with `key`, one request per call,
   * streamed or not, no retries, under `pinned`'s model (its id after `anthropic/`), budget and
   * effort ([[AnthropicProvider.DefaultEffort]] when it asks none), thinking adaptive and summarised, earlier thinking sent back as its settings'
-  * replay says. Caches `tools` and `system`, and the request's repeated prefixes `marks` names
+  * replay says. Caches `tools` and `system`, and the request's repeated prefixes
   * ([[CacheMarks.marked]]), with a breakpoint after each. Each reply records
   * [[grit.core.model.Upstream.AnthropicApi]] as the upstream that served it, and its cost from
   * [[AnthropicRates]].
@@ -25,8 +25,7 @@ import grit.core.secret.{Reveal, Secret, Variable}
   */
 final class AnthropicProvider(
     key: Secret,
-    pinned: Pinned,
-    marks: CacheMarks.Upto = CacheMarks.Upto.Stable
+    pinned: Pinned
 ) extends Provider {
 
   private val revealed = Reveal.text(key)
@@ -65,7 +64,7 @@ final class AnthropicProvider(
     }
 
   private def post(model: String, request: ModelRequest, streamed: Boolean): HttpRequest = {
-    val (headers, body) = AnthropicProvider.wire(revealed, model, pinned, request, marks)
+    val (headers, body) = AnthropicProvider.wire(revealed, model, pinned, request)
     if (streamed) body("stream") = true
     ProviderHttp.post(AnthropicProvider.Endpoint, timeout, headers, body)
   }
@@ -91,16 +90,15 @@ object AnthropicProvider {
       Option.when(dropBlock)("anthropic-beta" -> AnthropicJson.BindingBeta)
 
   /** The headers and the body a plain call of `request` is sent with under `key`, on `model`
-    * (Anthropic's own id) and `pinned`'s budget, effort and replay, its breakpoints as `marks`
-    * says; asking `dropBlock` for a
+    * (Anthropic's own id) and `pinned`'s budget, effort and replay, its breakpoints as
+    * [[CacheMarks.marked]] places; asking `dropBlock` for a
     * model in [[DropsMismatchedThinking]].
     */
   private[models] def wire(
       key: String,
       model: String,
       pinned: Pinned,
-      request: ModelRequest,
-      marks: CacheMarks.Upto
+      request: ModelRequest
   ): (Seq[(String, String)], ujson.Value) = {
     val dropBlock = DropsMismatchedThinking.exists(AnthropicJson.isOrSnapshotOf(model, _))
     val body = AnthropicJson.request(
@@ -109,8 +107,7 @@ object AnthropicProvider {
       pinned.assignment.effort.getOrElse(DefaultEffort),
       pinned.settings.replay,
       dropBlock,
-      request,
-      marks
+      request
     )
     (headers(key, dropBlock), body)
   }

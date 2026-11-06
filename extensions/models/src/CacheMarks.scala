@@ -9,38 +9,15 @@ import grit.core.provider.Repeats
   * from a breakpoint an earlier request placed (Anthropic's lookback looks for earlier writes,
   * not for content that happens to match), so each prefix a later request is to read needs its
   * own mark. The API allows four; every one here is five-minute.
+  *
+  * The four go where a continued task's prefixes stop changing: after the tools and system
+  * prompt, which a task never changes; after what the task is, which every turn of it shows;
+  * after what its earlier turns established, which a later boundary shows again; and after the
+  * stable messages, which the calls within a turn share. So a turn drawn at a later boundary
+  * reads the task and what earlier turns established from the cache, and pays to write only
+  * what is new since.
   */
 object CacheMarks {
-
-  /** The variable a run reads its [[Upto]] from, by its [[Upto.word]]. */
-  val Variable: String = "GRIT_CACHE_MARKS"
-
-  /** Which of a request's repeated prefixes ([[Repeats]]) are marked besides `tools` and
-    * `system`; `word` is what [[Variable]] says for it.
-    */
-  enum Upto(val word: String) {
-
-    /** The stable messages alone: two marks with the system prompt's. A turn after a boundary
-      * reads only tools and system from the cache.
-      */
-    case Stable extends Upto("stable")
-
-    /** [[Stable]], and the task's messages: three. A boundary of the same task also reads its
-      * brief.
-      */
-    case Task extends Upto("task")
-
-    /** [[Task]], and what earlier turns established: four. A boundary also reads the earlier
-      * turns it shows, unless its window dropped the oldest of them.
-      */
-    case Established extends Upto("established")
-  }
-
-  object Upto {
-
-    /** The choice whose [[Upto.word]] is `word`, if any. */
-    def read(word: String): Option[Upto] = values.find(_.word == word)
-  }
 
   /** A cache breakpoint, `{"type":"ephemeral"}`: Anthropic's five-minute cache. A new object on
     * each call, so marking one block never marks another.
@@ -65,8 +42,8 @@ object CacheMarks {
 
   /** Marks a cached request's breakpoints, at most the four Anthropic allows: one after
     * `system`, or with no system prompt after the last of `tools`; one on the block ending
-    * `repeats`' stable messages ([[markOn]], whose form `messages` takes); and as `upto` says,
-    * one ending its task's and one ending its established messages. Two counts ending on the
+    * `repeats`' task messages, one on the block ending its established messages, and one on
+    * the block ending its stable messages ([[markOn]], whose form `messages` takes). Two counts ending on the
     * same block mark it once. `tools` and `messages` are the request's own, marked in place;
     * the system prompt's one text block is returned, marked, `None` when `system` is empty.
     */
@@ -74,18 +51,13 @@ object CacheMarks {
       system: String,
       tools: Vector[ujson.Obj],
       messages: Vector[Option[ujson.Obj]],
-      repeats: Repeats,
-      upto: Upto
+      repeats: Repeats
   ): Option[ujson.Obj] = {
     val block = Option.when(system.nonEmpty)(
       ujson.Obj("type" -> "text", "text" -> system, "cache_control" -> ephemeral)
     )
     if (block.isEmpty) tools.lastOption.foreach(_("cache_control") = ephemeral)
-    val counts = upto match {
-      case Upto.Stable => Vector(repeats.stable)
-      case Upto.Task => Vector(repeats.task, repeats.stable)
-      case Upto.Established => Vector(repeats.task, repeats.established, repeats.stable)
-    }
+    val counts = Vector(repeats.task, repeats.established, repeats.stable)
     // Two counts ending on one block set the same key twice: one mark.
     counts.flatMap(markOn(messages, _)).foreach(_("cache_control") = ephemeral)
     block

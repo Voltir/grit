@@ -877,47 +877,19 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial's window, work turns and cache marks reach grit's environment, the trial kept under grit-cache-<word>; cache marks beside a variant are refused"
+      "a grit trial's window and work turns reach grit's environment, the trial kept under grit"
     ) {
       withTask { f =>
-        val settings = Arm.Settings(
-          window = Some(Tokens(25_000)),
-          workTurns = Some(3),
-          marks = Some(grit.models.CacheMarks.Upto.Task)
-        )
-        val ran = gritTrial(f, GritFake(gritLines), settings = settings).map { t =>
+        val settings = Arm.Settings(window = Some(Tokens(25_000)), workTurns = Some(3))
+        gritTrial(f, GritFake(gritLines), settings = settings).map { t =>
           (
             Harness.value(t.trial.session.harness),
             f.recorded("genv")
               .linesIterator
-              .filter(l => Seq("GRIT_WINDOW", "GRIT_WORK", "GRIT_CACHE").exists(l.startsWith))
+              .filter(l => Seq("GRIT_WINDOW", "GRIT_WORK").exists(l.startsWith))
               .toVector
           )
-        }
-        val both = Variables
-          .of(Map.empty)
-          .flatMap(none =>
-            Arm.Grit.of(
-              "grit",
-              "/usr/bin/true",
-              "c",
-              "jdbc:postgresql://localhost:5432/b",
-              1,
-              none,
-              Some("search"),
-              settings
-            )
-          )
-          .map(_.harness)
-        (ran, both) ==> (
-          Right(
-            (
-              "grit-cache-task",
-              Vector("GRIT_CACHE_MARKS=task", "GRIT_WINDOW_TOKENS=25000", "GRIT_WORK_TURNS=3")
-            )
-          ),
-          Left("a grit trial runs a variant or cache marks, not both")
-        )
+        } ==> Right(("grit", Vector("GRIT_WINDOW_TOKENS=25000", "GRIT_WORK_TURNS=3")))
       }
     }
 

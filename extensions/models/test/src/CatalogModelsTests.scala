@@ -74,8 +74,7 @@ object CatalogModelsTests extends TestSuite {
         keys(OpenRouterConfig.KeyVar),
         seed,
         FakeDb,
-        settings,
-        CacheMarks.Upto.Stable
+        settings
       )
       models.catalog() ==> Right(seed)
       val on = LocalDate.of(2026, 9, 25)
@@ -96,7 +95,7 @@ object CatalogModelsTests extends TestSuite {
       val hi = ModelRequest("s", Vector(Message.User("hi")))
       // Which provider serves `p`; a refusing one says why, with no call made.
       def served(keys: Keys, p: Pinned): String =
-        new CatalogModels(keys, seed, FakeDb, new InMemoryModelSettingStore, CacheMarks.Upto.Stable)
+        new CatalogModels(keys, seed, FakeDb, new InMemoryModelSettingStore)
           .provider(p) match {
           case _: AnthropicProvider => "Anthropic"
           case _: OpenRouterProvider => "OpenRouter"

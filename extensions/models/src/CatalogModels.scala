@@ -9,20 +9,19 @@ import grit.core.store.{Db, ModelSettingStore}
   * ([[KeptCatalog.read]]). Each pin's calls go through the gateway that serves its pair, with
   * that gateway's key, as [[Keys.provider]] says; the providers for `seed`'s own pins are
   * made once, here, and any other pin gets a new provider on each call. Every provider marks an
-  * Anthropic model's requests for caching as `marks` says.
+  * Anthropic model's requests for caching as [[CacheMarks]] says.
   */
 final class CatalogModels(
     keys: Keys,
     seed: Catalog,
     db: Db^,
-    settings: ModelSettingStore,
-    marks: CacheMarks.Upto
+    settings: ModelSettingStore
 ) extends Models {
 
   private val pins = seed.pin
-  private val turn: Provider = keys.provider(pins.turn.first, marks)
-  private val summary: Provider = keys.provider(pins.summary.first, marks)
-  private val query: Provider = keys.provider(pins.query.first, marks)
+  private val turn: Provider = keys.provider(pins.turn.first)
+  private val summary: Provider = keys.provider(pins.summary.first)
+  private val query: Provider = keys.provider(pins.query.first)
 
   def catalog(): Either[String, Catalog] = KeptCatalog.read(seed, db, settings)
 
@@ -30,7 +29,7 @@ final class CatalogModels(
     if (pinned == pins.turn.first) turn
     else if (pinned == pins.summary.first) summary
     else if (pinned == pins.query.first) query
-    else keys.provider(pinned, marks)
+    else keys.provider(pinned)
 }
 
 /** [[Models]] that call nothing: every role's calls are the stub's, under [[StubModels.Catalog]];

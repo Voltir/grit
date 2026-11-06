@@ -49,7 +49,7 @@ object AnthropicProviderTests extends TestSuite {
       val asked = ModelRequest("s", Vector(Message.User("hi")))
       def sent(model: String): Option[(Option[String], ujson.Value)] =
         pinned(s"anthropic/$model").map { p =>
-          val (headers, body) = AnthropicProvider.wire("k", model, p, asked, CacheMarks.Upto.Stable)
+          val (headers, body) = AnthropicProvider.wire("k", model, p, asked)
           (
             headers.collectFirst { case ("anthropic-beta", beta) => beta },
             body("thinking").obj.getOrElse("block_binding", ujson.Null)
@@ -71,9 +71,7 @@ object AnthropicProviderTests extends TestSuite {
       val alias = "claude-haiku-5-5"
       val snapshot = s"$alias-20261001"
       def sent(model: String) =
-        pinned(s"anthropic/$model").map(p =>
-          AnthropicProvider.wire("k", model, p, asked, CacheMarks.Upto.Stable)
-        )
+        pinned(s"anthropic/$model").map(p => AnthropicProvider.wire("k", model, p, asked))
       // The alias's headers and body, sent under the snapshot's id.
       val asAlias = sent(alias).map { (headers, body) =>
         val renamed = ujson.copy(body)
@@ -89,7 +87,7 @@ object AnthropicProviderTests extends TestSuite {
       val asked = ModelRequest("s", Vector(Message.User("hi")))
       def effortSent(p: Pinned) =
         AnthropicProvider
-          .wire("k", "claude-haiku-5-5", p, asked, CacheMarks.Upto.Stable)
+          .wire("k", "claude-haiku-5-5", p, asked)
           ._2
           .obj
           .get("output_config")

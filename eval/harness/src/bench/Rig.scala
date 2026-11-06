@@ -17,7 +17,7 @@ import grit.core.secret.Secret
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
-import grit.models.{AnthropicRates, CacheMarks, ModelRole}
+import grit.models.{AnthropicRates, ModelRole}
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
   * most it may spend, in USD, which a run can pass (Claude Code's run, by Claude Code's own
@@ -115,10 +115,9 @@ object Arm {
     * with; `database` is the JDBC URL of the database grit keeps its turn in, logged in as
     * `docker-compose.yml`'s user; `maxTokens` is the most each reply may write; `passed` are the
     * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`;
-    * `harness` is what its trials are kept under: [[Harness.Grit]], `grit-<variant>` for a run
-    * of grit changed by a variant, or `grit-cache-<word>` for a run under `settings`' cache
-    * marks ([[CacheMarks.Upto.word]]), so the summary keeps each apart from grit's; `settings`
-    * is what the trial sets of grit's run.
+    * `harness` is what its trials are kept under: [[Harness.Grit]], or `grit-<variant>` for a
+    * run of grit changed by a variant, so the summary keeps it apart from grit's; `settings` is
+    * what the trial sets of grit's run.
     */
   final case class Grit private (
       launcher: String,
@@ -132,14 +131,12 @@ object Arm {
   ) extends Arm
 
   /** What a grit trial sets of grit's run besides the rig's own variables: its window's limit
-    * (`window`, `GRIT_WINDOW_TOKENS`), the most turns `grit work` goes on for (`workTurns`,
-    * `GRIT_WORK_TURNS`) and the cache marks its calls place (`marks`, [[CacheMarks.Variable]]);
-    * each unset leaves grit's own default.
+    * (`window`, `GRIT_WINDOW_TOKENS`) and the most turns `grit work` goes on for (`workTurns`,
+    * `GRIT_WORK_TURNS`); each unset leaves grit's own default.
     */
   final case class Settings(
       window: Option[Tokens] = None,
-      workTurns: Option[Int] = None,
-      marks: Option[CacheMarks.Upto] = None
+      workTurns: Option[Int] = None
   )
 
   object Grit {
@@ -147,8 +144,7 @@ object Arm {
     /** The arm of these, or why not: a database URL that names no database, or names the
       * operator's own ([[DbConfig.DefaultDatabase]]), which a run of the bench must never write
       * to; `maxTokens` below 1; a `variant` that is no slug ([[Slug.check]], at most
-      * [[Harness.Longest]] less 5 characters); or a `variant` beside `settings`' cache marks,
-      * which would keep the trial under two harnesses.
+      * [[Harness.Longest]] less 5 characters).
       */
     def of(
         launcher: String,
@@ -175,15 +171,11 @@ object Arm {
           (),
           s"the most tokens a reply writes, $maxTokens, is below 1"
         )
-        harness <- (variant, settings.marks) match {
-          case (Some(_), Some(_)) => Left("a grit trial runs a variant or cache marks, not both")
-          case (None, Some(m)) => Harness.of(s"${Harness.value(Harness.Grit)}-cache-${m.word}")
-          case (Some(v), None) =>
-            Slug
-              .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
-              .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
-          case (None, None) => Right(Harness.Grit)
-        }
+        harness <- variant.fold(Right(Harness.Grit))(v =>
+          Slug
+            .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
+            .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
+        )
       } yield Grit(launcher, scout, coder, database, maxTokens, passed, harness, settings)
   }
 }
@@ -732,8 +724,7 @@ object Rig {
   /** The variables `s` sets, each it leaves unset left out. */
   private def settings(s: Arm.Settings): Vector[(String, String)] =
     s.window.map(w => "GRIT_WINDOW_TOKENS" -> Tokens.value(w).toString).toVector ++
-      s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString) ++
-      s.marks.map(m => CacheMarks.Variable -> m.word)
+      s.workTurns.map(n => "GRIT_WORK_TURNS" -> n.toString)
 
   /** The script `sh -c` runs to start grit with its key: the key read from the file its first
     * argument names into `ANTHROPIC_API_KEY`, then the rest of its arguments run in its place,

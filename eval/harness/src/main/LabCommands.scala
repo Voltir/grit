@@ -39,7 +39,7 @@ import grit.host.blobs.LocalBlobs
 import grit.host.checkout.{LocalHanding, LocalMemory, LocalProcesses, Redaction}
 import grit.kit.environment.DotEnv
 import grit.models.JevConfig
-import grit.models.{AnthropicProvider, CacheMarks, JevClassifier}
+import grit.models.{AnthropicProvider, JevClassifier}
 import grit.turn.{TurnFailure, TurnRecord}
 
 import Cli.*
@@ -53,9 +53,8 @@ private[main] object LabCommands {
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
     * `--harness grit` with `--grit <launcher> --java-home <dir> --coder <file> --coder-url <jdbc>
     * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>] [--window-tokens <n>]
-    * [--work-turns <n>] [--cache-marks <word>]` (8 GB when not given, [[MemoryCap.of]]; the
-    * trial kept under `grit-<name>`, or `grit-cache-<word>` with `--cache-marks`,
-    * [[Arm.Grit.harness]]; the last three grit's [[Arm.Settings]]): the task
+    * [--work-turns <n>]` (8 GB when not given, [[MemoryCap.of]]; the trial kept under
+    * `grit-<name>`, [[Arm.Grit.harness]]; the last two grit's [[Arm.Settings]]): the task
     * `<name>` of `<dir>` ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
@@ -156,16 +155,6 @@ private[main] object LabCommands {
                     case Some(_) =>
                       need(f, "work-turns").flatMap(positive("work-turns")).map(Some(_))
                   }
-                  marks <- f.get("cache-marks") match {
-                    case None => Right(None)
-                    case Some(w) =>
-                      CacheMarks.Upto
-                        .read(w)
-                        .map(Some(_))
-                        .toRight(
-                          s"--cache-marks is none of ${CacheMarks.Upto.values.map(_.word).mkString(", ")}"
-                        )
-                  }
                   passed <- Variables.of(
                     Map(
                       "PATH" -> sys.env.getOrElse("PATH", "/usr/bin:/bin"),
@@ -181,7 +170,7 @@ private[main] object LabCommands {
                     maxTokens,
                     passed,
                     f.get("variant"),
-                    Arm.Settings(window, workTurns, marks)
+                    Arm.Settings(window, workTurns)
                   )
                   _ <-
                     if (f.get("dry").contains("true"))

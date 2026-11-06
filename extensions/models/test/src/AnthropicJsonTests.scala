@@ -24,10 +24,9 @@ object AnthropicJsonTests extends TestSuite {
       request: ModelRequest,
       effort: Effort = Effort.Medium,
       replay: ReasoningReplay = ReasoningReplay.Details,
-      dropBlock: Boolean = false,
-      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
+      dropBlock: Boolean = false
   ): ujson.Value =
-    AnthropicJson.request("claude-haiku-5-5", 1024, effort, replay, dropBlock, request, marks)
+    AnthropicJson.request("claude-haiku-5-5", 1024, effort, replay, dropBlock, request)
 
   /** Where `body` is marked: "system", "tool <i>", or "<message index>:<block index>". */
   private def marksIn(body: ujson.Value): Vector[String] = {
@@ -103,17 +102,10 @@ object AnthropicJsonTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "request: each choice of marks adds the task's then the established part's breakpoint to the stable one, never on thinking, a block two counts share marked once"
+      "request: a breakpoint after system and after the task's, the established and the stable messages, never on thinking, a block two counts share marked once"
     ) {
       val shared = boundary.copy(repeats = Repeats.of(3, 3, 3))
-      Vector(
-        marksIn(sent(boundary, marks = CacheMarks.Upto.Stable)),
-        marksIn(sent(boundary, marks = CacheMarks.Upto.Task)),
-        marksIn(sent(boundary, marks = CacheMarks.Upto.Established)),
-        marksIn(sent(shared, marks = CacheMarks.Upto.Established))
-      ) ==> Vector(
-        Vector("system", "4:0"),
-        Vector("system", "0:0", "4:0"),
+      Vector(marksIn(sent(boundary)), marksIn(sent(shared))) ==> Vector(
         Vector("system", "0:0", "2:0", "4:0"),
         Vector("system", "2:0")
       )

@@ -23,7 +23,7 @@ object OpenRouterJson {
     *
     * For a model under [[AnthropicProvider.Vendor]], every text that is not empty goes as
     * text parts, an empty system prompt is left out, and its breakpoints are those
-    * [[CacheMarks.marked]] places under `marks`. Any other model's body has none, and its texts are strings.
+    * [[CacheMarks.marked]] places. Any other model's body has none, and its texts are strings.
     */
   def request(
       model: String,
@@ -31,8 +31,7 @@ object OpenRouterJson {
       upstream: Option[Upstream],
       request: ModelRequest,
       effort: Option[Effort] = None,
-      replay: ReasoningReplay = ReasoningReplay.Details,
-      marks: CacheMarks.Upto = CacheMarks.Upto.Stable
+      replay: ReasoningReplay = ReasoningReplay.Details
   ): ujson.Value = {
     val cached = model.startsWith(AnthropicProvider.Vendor)
     val tools = request.tools.map(tool)
@@ -41,7 +40,7 @@ object OpenRouterJson {
       if (!cached) Some(ujson.Obj("role" -> "system", "content" -> request.system))
       else
         CacheMarks
-          .marked(request.system, tools, messages.map(Some(_)), request.repeats, marks)
+          .marked(request.system, tools, messages.map(Some(_)), request.repeats)
           .map(block => ujson.Obj("role" -> "system", "content" -> ujson.Arr(block)))
     val body = ujson.Obj(
       "model" -> model,
