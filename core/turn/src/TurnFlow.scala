@@ -196,7 +196,7 @@ private[turn] object TurnFlow {
       Flow.pass[String],
       // A draft's branch first: a reader names the steps in the order a run reaches them,
       // and a drafting turn judges before it records its speech.
-      Flow.either(drafted, Flow.either(undrafting, summarised("replied")))
+      Flow.either(drafted, Flow.either(undrafting, summarised(TurnEnding.Replied)))
     )
 
   /** What a turn's steps came to, by what its root is: what [[ending]] goes on with. */

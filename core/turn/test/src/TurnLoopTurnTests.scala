@@ -763,7 +763,7 @@ object TurnLoopTurnTests extends TestSuite {
         offered.map(_.contains("task_status"))
       ) ==> (
         "replied: reply:c1:0; summarised: summary:c1:0",
-        grit.core.inbox.TurnEnding.Otherwise,
+        grit.core.inbox.TurnEnding.Answered,
         Vector("assistant: All four moved, tests pass."),
         Vector(false, false, false, true)
       )

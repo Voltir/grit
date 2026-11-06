@@ -81,7 +81,7 @@ private[main] object Work {
 
   /** [[After]] the turn `turn`, named `named`, ended as `ended`, of at most `cap`. */
   def after(named: String, ended: TurnEnding, turn: Int, cap: Int): After = ended match {
-    case TurnEnding.Otherwise => After.Stop(None)
+    case TurnEnding.Otherwise | TurnEnding.Answered => After.Stop(None)
     case TurnEnding.AtLimit if turn >= cap =>
       After.Stop(
         Some(

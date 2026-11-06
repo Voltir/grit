@@ -30,20 +30,28 @@ enum TurnEnding {
     */
   case AtLimit
 
-  /** Any other way: it answered within its limit, declared its task done at it, ran out of
-    * calls, failed or drafted.
+  /** It ended with a reply and no request to go on: within its limit, declaring its task
+    * done at it, or when its calls ran out. Its driver may check its task (ADR 0058).
     */
+  case Answered
+
+  /** Any other way: it failed, or drafted or posted its answer. */
   case Otherwise
 }
 
 object TurnEnding {
 
+  /** What the outcome of a turn that ended with a reply begins with, before `": "`. */
+  val Replied: String = "replied"
+
   /** What the outcome of a turn that ended at its limit ends with. */
   val AtLimitSaid: String = "; ended at its limit"
 
   /** How the outcome `outcome` says its turn ended: [[AtLimit]] when it ends with
-    * [[AtLimitSaid]], else [[Otherwise]].
+    * [[AtLimitSaid]], [[Answered]] when it begins with [[Replied]], else [[Otherwise]].
     */
   def of(outcome: String): TurnEnding =
-    if (outcome.endsWith(AtLimitSaid)) AtLimit else Otherwise
+    if (outcome.endsWith(AtLimitSaid)) AtLimit
+    else if (outcome.startsWith(Replied + ": ")) Answered
+    else Otherwise
 }
