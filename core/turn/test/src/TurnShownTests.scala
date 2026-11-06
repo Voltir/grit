@@ -303,6 +303,21 @@ object TurnShownTests extends TestSuite {
       )
     }
 
+    test("a boundary's digest follows its entries") {
+      // What the session did changes at every boundary: after the entries, it leaves what
+      // earlier turns established a prefix the next boundary can repeat.
+      val drawn = Vector(said(1, "earlier"), said(2, "later"))
+      boundary(Window(drawn.map(_.seq), sessionLog = Some("Committed a1b2c3d.")), drawn)
+        .map(_.messages.take(4)) ==> Right(
+        Vector(
+          Shown.Gap,
+          Message.User("earlier"),
+          Message.User("later"),
+          Shown.sessionLog("Committed a1b2c3d.")
+        )
+      )
+    }
+
     test(
       "a boundary's task follows its brief, inside its task part, and is not shown again among its entries"
     ) {

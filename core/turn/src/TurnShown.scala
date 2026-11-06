@@ -338,10 +338,11 @@ private[turn] object TurnShown {
     * A part shows its brief as one user message ([[Shown.brief]]), its task as [[Shown.of]]
     * shows it, each nearby section as one
     * ([[Shown.section]], a section with none of its entries left dropped), then each document
-    * as one ([[Shown.document]]), then each piece as one ([[Shown.piece]]), then its digest as
-    * one ([[Shown.sessionLog]]), then what the model is shown of its entries
-    * ([[Shown.own]]: its messages, a closing entry as one user message, and a gap line wherever
-    * turns are left out, the turn before them the part before's); then, for a carried part,
+    * as one ([[Shown.document]]), then each piece as one ([[Shown.piece]]), then what the
+    * model is shown of its entries ([[Shown.own]]: its messages, a closing entry as one user
+    * message, and a gap line wherever turns are left out, the turn before them the part
+    * before's), then its digest as one ([[Shown.sessionLog]]), which changes at every boundary
+    * and so follows what earlier turns established; then, for a carried part,
     * its record's dated line as one user message and its turn's own entries as
     * [[Shown.turn]] shows them, its record's note added to its asking message
     * ([[TurnVerdict.taggedWith]]). The turn's own follow: when it has an own entry,
@@ -388,7 +389,7 @@ private[turn] object TurnShown {
             Unshaped.Part(
               brief ++ task ++ sections,
               part.documents,
-              pieces ++ digest ++ shown ++ carried
+              pieces ++ shown ++ digest ++ carried
             )
           )
       }

@@ -207,10 +207,10 @@ enum Width {
 
 /** What the model sees before the turn's own messages: `brief` ([[Shown.brief]]), then `task`,
   * the first entry of the task a continuation turn goes on with
-  * ([[AssemblyRequest.task]]), as [[Shown.of]] shows it, then each of `nearby`'s sections, then each of `documents` under its plugin's label, then each of `pieces`
-  * under its plugin's label ([[Shown.piece]]), then `sessionLog` ([[Shown.sessionLog]]), then the
-  * entries of its own conversation at `entries`, in that order; and notes on how they were
-  * chosen. A nearby entry, a document (the brief too) or a piece gone by the time the model is
+  * ([[AssemblyRequest.task]]), as [[Shown.of]] shows it, then each of `nearby`'s sections, then
+  * each of `documents` under its plugin's label, then each of `pieces` under its plugin's label
+  * ([[Shown.piece]]), then the entries of its own conversation at `entries`, then `sessionLog`
+  * ([[Shown.sessionLog]]), in that order; and notes on how they were chosen. A nearby entry, a document (the brief too) or a piece gone by the time the model is
   * called is left out, as is a document or a piece whose plugin is no longer enabled, and a
   * section left with no message is dropped; an own entry gone, the task's too, fails the turn.
   * Only a part drawn at a boundary holds a `brief`, the brief of the work its conversation's
