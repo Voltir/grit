@@ -14,6 +14,20 @@ object AnthropicRatesTests extends TestSuite {
 
   val tests = Tests {
     test(
+      "thinking costs its tokens at the output rate of the card its call takes; none when not reported or unrated"
+    ) {
+      def thought(input: Long, t: Option[Long]) =
+        usage(input, 0, 0, 1000).copy(thinking = t.map(Tokens(_)))
+      // 400 thinking at $0.50 on the short card, at $2.50 on the long one.
+      (
+        AnthropicRates.thinking("claude-haiku-5-5", thought(10000, Some(400))),
+        AnthropicRates.thinking("claude-haiku-5-5", thought(120000, Some(400))),
+        AnthropicRates.thinking("claude-haiku-5-5", thought(10000, None)),
+        AnthropicRates.thinking("gpt-oss", thought(10000, Some(400)))
+      ) ==> (Some(BigDecimal("0.0002")), Some(BigDecimal("0.001")), None, None)
+    }
+
+    test(
       "Haiku 5.5: its short card to 100,000 prompt tokens, its long card past them, reads and writes counted"
     ) {
       // 2,000 uncached at $0.10, 2,000 written at $0.125, 6,000 read at $0.01, 1,000 out at $0.50.

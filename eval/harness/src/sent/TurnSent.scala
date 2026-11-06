@@ -23,7 +23,8 @@ import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
   * its first message was `heard`, and its `root`; the `prompt` fragments and the tool set
   * (`toolSet`, `tools`) its offer recorded; its model `calls`, rebuilt through this build's
   * code ([[TurnRecord.requests]]), the answer's request `picked` by its ledger row; every
-  * ledger row of the workflow (`spent`), its reply or draft (`answer`) and `summary`, the
+  * ledger row of the workflow (`spent`), each with the thinking its reply's kept usage reports,
+  * its reply or draft (`answer`) and `summary`, the
   * search `queries` assembly wrote and the `window` it was shown, a carried window's parts
   * included ([[CarriedWindow.whole]]); the stitch placement of its
   * conversation's first message (`stitch`), triage's `tags` on its root, what became of a
@@ -201,10 +202,21 @@ object TurnSent {
       speech <- TurnRecord.speech(steps)
       judged <- TurnRecord.judged(steps, offered.root)
     } yield {
-      val spent = rows.map(r =>
-        r.entry -> Spent(TurnRecord.role(turn, r.entry), r.model, r.usage, r.estimatedInput)
-      )
       def kept(entry: EntryId): Option[Entry] = mine.find(_.id == entry)
+      // The ledger keeps no thinking: the reply's own usage, kept with its entry, says it.
+      def thinking(entry: EntryId): Option[Tokens] = kept(entry).flatMap(_.payload match {
+        case Payload.Message(m: Message.Assistant) => m.usage.thinking
+        case Payload.Draft(m) => m.usage.thinking
+        case _ => None
+      })
+      val spent = rows.map(r =>
+        r.entry -> Spent(
+          TurnRecord.role(turn, r.entry),
+          r.model,
+          r.usage.copy(thinking = thinking(r.entry)),
+          r.estimatedInput
+        )
+      )
       val answer = kept(turn.draftId)
         .collect { case Entry(_, _, _, _, _, Payload.Draft(m), _, _) => Answer(m, draft = true) }
         .orElse(kept(turn.replyId).collect {

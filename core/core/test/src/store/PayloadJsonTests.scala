@@ -86,6 +86,18 @@ object PayloadJsonTests extends TestSuite {
         Right(Payload.Message(assistant))
     }
 
+    test(
+      "an assistant's thinking is written only when reported, and read as not reported when absent"
+    ) {
+      // As cache writes: what was written before thinking was kept reads back and re-encodes
+      // byte for byte.
+      val thought = assistant.copy(usage = assistant.usage.copy(thinking = Some(Tokens(4))))
+      val written = PayloadJson.write(Payload.Message(thought)).render()
+      assert(written.contains(""""thinking":4"""))
+      PayloadJson.read(ujson.read(written)) ==> Right(Payload.Message(thought))
+      PayloadJson.write(Payload.Message(assistant)).render().contains("\"thinking\":") ==> false
+    }
+
     test("tool result") {
       PayloadJson.write(Payload.Message(samples(3))).render() ==>
         """{"kind":"message","message":{"role":"tool_result","callId":"c1",""" +

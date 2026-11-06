@@ -14,7 +14,7 @@ import grit.core.id.{
   ToolCallId,
   TurnSeq
 }
-import grit.core.message.{AssistantBlock, Cost, Message, Tokens}
+import grit.core.message.{AssistantBlock, Cost, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.provider.ModelRequest
 import grit.core.speech.SpeechJson
@@ -23,6 +23,7 @@ import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
 import grit.eval.harness.capture.Spent
+import grit.models.AnthropicRates
 import grit.turn.{Turn, TurnJudge, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
 
 /** How long a tool result the file shows may be. */
@@ -421,6 +422,33 @@ object SentMarkdown {
       s"${Tokens.value(u.cacheWrite)} written); $missed$resent; $fresh."
   }
 
+  /** The turn's thinking over the calls of `measured` with rows, and each one's, its cost at
+    * [[AnthropicRates.thinking]] (`unpriced` for a model it has no rates for); `not reported`
+    * where a call's provider said nothing of it, never an estimate.
+    */
+  private def thinkingLine(measured: Vector[MeasuredCall]): String = {
+    val calls = measured.zipWithIndex.flatMap((m, i) => m.row.map(r => (callName(measured, i), r)))
+    def priced(r: Spent): Cost =
+      AnthropicRates.thinking(r.model, r.usage).fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
+    val each = calls
+      .map((name, r) =>
+        r.usage.thinking.fold(s"$name not reported")(t =>
+          s"$name ${Tokens.value(t)} (${AnthropicRates.thinking(r.model, r.usage).fold("unpriced")(Cost.cents)})"
+        )
+      )
+      .mkString(", ")
+    val total = Usage.total(calls.map(_._2.usage))
+    total.thinking match {
+      case Some(t) =>
+        val cost = calls.map((_, r) => priced(r)).foldLeft(Cost.Zero)(_ + _)
+        s"- Thinking: ${Tokens.value(t)} of the turn's ${Tokens.value(total.output)} output " +
+          s"tokens, ${cost.inCents}: $each."
+      case None if calls.exists(_._2.usage.thinking.isDefined) =>
+        s"- Thinking: not reported by every call: $each."
+      case None => "- Thinking: not reported."
+    }
+  }
+
   /** The tool results' estimate in all, and of it what sits on unreferenced lines. */
   private def unpointedOf(results: Vector[Referenced.Result]): (Tokens, Tokens) =
     (
@@ -433,8 +461,8 @@ object SentMarkdown {
     if (r.chars <= 0) Tokens.Zero
     else Tokens(Tokens.value(r.cost) * (r.chars - r.pointed) / r.chars)
 
-  /** Where `sent`'s input went: the cache over the turn, each call's input by part, and what
-    * what is unreferenced ([[Referenced]]).
+  /** Where `sent`'s input went: the cache over the turn, its thinking ([[thinkingLine]]), each
+    * call's input by part, and what what is unreferenced ([[Referenced]]).
     */
   private def efficiency(sent: TurnSent, measured: Vector[MeasuredCall]): Vector[String] = {
     val out = Vector.newBuilder[String]
@@ -462,6 +490,7 @@ object SentMarkdown {
         if (resent.isEmpty)
           "- No cache breaks: no call re-sent a prefix the call before it had cached."
         else s"- Cache breaks: ${resent.mkString(", ")}.",
+        thinkingLine(measured),
         ""
       )
     }

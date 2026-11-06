@@ -386,6 +386,15 @@ object OpenRouterJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "response: thinking is usage's completion_tokens_details.reasoning_tokens, and not reported without it"
+    ) {
+      val body = ujson.read(ujson.write(sampleResponse))
+      body("usage")("completion_tokens_details") = ujson.Obj("reasoning_tokens" -> 21)
+      def thinking(b: ujson.Value) = OpenRouterJson.response(b).map(_.usage.thinking)
+      (thinking(body), thinking(sampleResponse)) ==> (Right(Some(Tokens(21))), Right(None))
+    }
+
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {
       OpenRouterJson.response(sampleResponse) ==> Right(
         Message.Assistant(

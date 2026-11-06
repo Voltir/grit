@@ -238,7 +238,7 @@ object Tried {
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
     * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by
-    * Claude Code's own estimate. Printed for a trial, and for a run refused one.
+    * Claude Code's own estimate, then its thinking ([[thinking]]). Printed for a trial, and for a run refused one.
     */
   def spending(consumed: Consumed, arm: Arm): Vector[String] = {
     val grit = consumed.gritCost.fold(
@@ -250,7 +250,31 @@ object Tried {
       (arm match {
         case _: Arm.Grit => s"cost: $grit"
         case _: Arm.ClaudeCode => s"cost: $grit, $claimed by Claude Code's"
-      })
+      }) :+ thinking(consumed.calls)
+  }
+
+  /** The thinking of `calls` together, its cost at [[AnthropicRates.thinking]] (`≥` first when a
+    * call's model has no rates); `not reported` where a call's provider said nothing of it.
+    */
+  private def thinking(calls: Vector[Call]): String = {
+    import Tokens.value
+    val total = Usage.total(calls.map(_.usage))
+    val reported = calls.flatMap(_.usage.thinking)
+    total.thinking match {
+      case Some(t) =>
+        val cost = calls
+          .map(c =>
+            AnthropicRates
+              .thinking(c.model, c.usage)
+              .fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
+          )
+          .foldLeft(Cost.Zero)(_ + _)
+        s"thinking: ${value(t)} of ${value(total.output)} output tokens, ${cost.inCents} by grit's rates"
+      case None if reported.nonEmpty =>
+        s"thinking: not reported by every call (${reported.map(value).sum} over the " +
+          s"${reported.size} of ${calls.size} that did)"
+      case None => "thinking: not reported"
+    }
   }
 
   private def input(u: Usage): String = {

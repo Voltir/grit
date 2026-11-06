@@ -35,6 +35,17 @@ object UsageTests extends TestSuite {
       Usage.Zero.costUsd ==> Some(BigDecimal(0))
     }
 
+    test("thinking adds where both calls report it, and is not reported when either does not") {
+      def thought(n: Option[Long]) = usage(1, None).copy(thinking = n.map(Tokens(_)))
+      (
+        (thought(Some(3)) + thought(Some(4))).thinking,
+        (thought(Some(3)) + thought(None)).thinking,
+        (thought(None) + thought(Some(4))).thinking,
+        Usage.total(Vector(thought(Some(3)), thought(Some(4)))).thinking,
+        Usage.total(Vector.empty).thinking
+      ) ==> (Some(Tokens(7)), None, None, Some(Tokens(7)), Some(Tokens.Zero))
+    }
+
     test("the total of calls is unknown when any one's cost is") {
       Usage.total(Vector(usage(1, Some("0.001")), usage(2, Some("0.002")))) ==>
         usage(3, Some("0.003"))

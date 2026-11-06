@@ -338,6 +338,15 @@ object AnthropicJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "response: thinking is usage's output_tokens_details.thinking_tokens, and not reported without it"
+    ) {
+      val detailed = ujson.copy(reply)
+      detailed("usage")("output_tokens_details") = ujson.Obj("thinking_tokens" -> 312)
+      def thinking(body: ujson.Value) = AnthropicJson.response(body).map(_.usage.thinking)
+      (thinking(detailed), thinking(reply)) ==> (Right(Some(Tokens(312))), Right(None))
+    }
+
     test("response: stop reasons map, keeping unknown ones") {
       def stop(reason: String) = AnthropicJson.response(stopped(reason)).map(_.stop)
       stop("end_turn") ==> Right(StopReason.EndTurn)

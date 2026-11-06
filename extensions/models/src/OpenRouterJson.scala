@@ -124,7 +124,9 @@ object OpenRouterJson {
 
   /** The assistant message in a 200 response, or why there is none: a top-level or a
     * choice's `error` (an upstream can refuse after the 200) is `model error: …`. Its
-    * `upstream` is the response's `provider`, the name of the upstream that served it.
+    * `upstream` is the response's `provider`, the name of the upstream that served it. Its
+    * usage's thinking is `completion_tokens_details.reasoning_tokens`, not reported when that is
+    * missing.
     */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
@@ -240,7 +242,12 @@ object OpenRouterJson {
       // ujson reads numbers as doubles; a double's shortest form is the decimal the
       // provider wrote for any cost it reports (at most ~15 significant digits).
       u.flatMap(_.get("cost")).flatMap(_.numOpt).map(d => BigDecimal(d.toString)),
-      count(details.flatMap(_.get("cache_write_tokens")))
+      count(details.flatMap(_.get("cache_write_tokens"))),
+      u.flatMap(_.get("completion_tokens_details"))
+        .flatMap(_.objOpt)
+        .flatMap(_.get("reasoning_tokens"))
+        .flatMap(_.numOpt)
+        .map(n => Tokens(n.toLong))
     )
   }
 

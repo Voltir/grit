@@ -246,14 +246,21 @@ object AnthropicJson {
 
   /** The usage an Anthropic `usage` object `u` gives, unpriced: its `input_tokens`, which count
     * only what was neither read from nor written to the cache, added to the cache's reads and
-    * writes ([[Usage.input]]); a field missing, or `u` missing, counts 0.
+    * writes ([[Usage.input]]); a field missing, or `u` missing, counts 0. Its thinking is
+    * `output_tokens_details.thinking_tokens`, not reported when that is missing.
     */
   def usageOf(u: Option[collection.Map[String, ujson.Value]]): Usage = {
     def count(key: String): Tokens =
       Tokens(u.flatMap(_.get(key)).flatMap(_.numOpt).fold(0L)(_.toLong))
     val read = count("cache_read_input_tokens")
     val write = count("cache_creation_input_tokens")
-    Usage(count("input_tokens") + read + write, count("output_tokens"), read, None, write)
+    val thinking = u
+      .flatMap(_.get("output_tokens_details"))
+      .flatMap(_.objOpt)
+      .flatMap(_.get("thinking_tokens"))
+      .flatMap(_.numOpt)
+      .map(n => Tokens(n.toLong))
+    Usage(count("input_tokens") + read + write, count("output_tokens"), read, None, write, thinking)
   }
 
   private def describe(error: collection.Map[String, ujson.Value]): String = {

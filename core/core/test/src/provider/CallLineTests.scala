@@ -41,6 +41,23 @@ object CallLineTests extends TestSuite {
       )
     }
 
+    test(
+      "a call's line names the thinking of its output when reported, and reads it back; a line without it reads as not reported"
+    ) {
+      val usage = Usage(Tokens(1200), Tokens(40), Tokens(1000), None, Tokens(150), Some(Tokens(31)))
+      val line = CallLine.answered(ref, usage)
+      (
+        line,
+        CallLine.read(line),
+        CallLine.read(CallLine.answered(ref, usage.copy(thinking = None)))
+      ) ==> (
+        "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com answered · in 1200 · " +
+          "read 1000 · write 150 · out 40 (thinking 31) · cost unknown",
+        Some(("anthropic/claude-haiku-5-5", usage)),
+        Some(("anthropic/claude-haiku-5-5", usage.copy(thinking = None)))
+      )
+    }
+
     test("a call its provider did not price says its cost is unknown") {
       CallLine.spent(Usage(Tokens(10), Tokens(2), Tokens(0), None)) ==>
         "in 10 · read 0 · write 0 · out 2 · cost unknown"

@@ -12,6 +12,17 @@ object AnthropicRates {
     * takes its alias's rates. A Claude Haiku 5.5 prompt over 100,000 tokens, its cache reads
     * and writes counted, takes the long-context card.
     */
+  /** What `usage`'s thinking cost on `model`, in USD: its thinking tokens at the output rate of
+    * the card [[cost]] takes for it; `None` when its thinking is not reported or the model has no
+    * rates.
+    */
+  def thinking(model: String, usage: Usage): Option[BigDecimal] =
+    usage.thinking.flatMap(t =>
+      card(model, Tokens.value(usage.input)).map(c =>
+        c.output * Tokens.value(t) / BigDecimal(1000000)
+      )
+    )
+
   def cost(model: String, usage: Usage): Option[BigDecimal] =
     card(model, Tokens.value(usage.input)).map { c =>
       val read = Tokens.value(usage.cacheRead)

@@ -152,6 +152,30 @@ object SentMarkdownTests extends TestSuite {
       )
     }
 
+    test(
+      "where the input went gives the turn's thinking and each call's, with their cost, or says it was not reported"
+    ) {
+      val base = sent(request(asked, calling, result("alpha")))
+      def line(thinking: Option[Long]*) = {
+        val t = base.copy(spent = base.spent.zip(thinking).map { case ((e, s), k) =>
+          e -> s.copy(
+            model = "claude-haiku-5-5",
+            usage = s.usage.copy(output = Tokens(4000), thinking = k.map(Tokens(_)))
+          )
+        })
+        shown(t, Cut.Whole).linesIterator.find(_.startsWith("- Thinking"))
+      }
+      // At Haiku 5.5's $0.50 a million output tokens: 2000 is 0.1¢, 1000 is 0.05¢.
+      (line(Some(2000), Some(1000)), line(Some(2000), None), line(None, None)) ==> (
+        Some(
+          "- Thinking: 3000 of the turn's 8000 output tokens, 0.15¢: call 0 2000 (0.1¢), " +
+            "call 1 1000 (0.05¢)."
+        ),
+        Some("- Thinking: not reported by every call: call 0 2000 (0.1¢), call 1 not reported."),
+        Some("- Thinking: not reported.")
+      )
+    }
+
     test("each call's input by part sums to the input its row counted") {
       val lines = shown(sent(request(asked, calling, result("alpha"))), Cut.Whole).linesIterator
       val rows = lines

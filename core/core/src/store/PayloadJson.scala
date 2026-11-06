@@ -280,7 +280,8 @@ object PayloadJson {
 
   /** A [[Usage]] in the stored form; the cost is a string so the provider's decimal
     * survives exactly. Cache reads are stored as `cachedInput`, and cache writes only when
-    * there are some, so a usage stored before writes were kept re-encodes as it was.
+    * there are some, and thinking only when reported, so a usage stored before either was kept
+    * re-encodes as it was.
     */
   def writeUsage(u: Usage): ujson.Value = {
     val o = ujson.Obj(
@@ -290,6 +291,7 @@ object PayloadJson {
     )
     if (Tokens.value(u.cacheWrite) != 0) o("cacheWrite") = Tokens.value(u.cacheWrite).toDouble
     u.costUsd.foreach(c => o("costUsd") = c.toString)
+    u.thinking.foreach(t => o("thinking") = Tokens.value(t).toDouble)
     o
   }
 
@@ -349,7 +351,7 @@ object PayloadJson {
     }
 
   /** The [[Usage]] `v` encodes in [[writeUsage]]'s form, or why it encodes none; no cache
-    * writes when it names none.
+    * writes when it names none, and its thinking not reported when it names none.
     */
   def readUsage(v: ujson.Value): Either[String, Usage] =
     for {
@@ -364,7 +366,10 @@ object PayloadJson {
           scala.util.Try(BigDecimal(s)).toOption.map(Some(_)).toRight(s"bad costUsd: $s")
         case Some(_) => Left("costUsd is not a string")
       }
-    } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost, Tokens(written))
+      thinking <-
+        if (o.value.contains("thinking")) long(o, "thinking").map(t => Some(Tokens(t)))
+        else Right(None)
+    } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost, Tokens(written), thinking)
 
   /** A nearby section's stored form: its conversation, its place as written, and an open
     * one's `entries`, a strand's `entries` marked `"strand": true`, an asked one's `entries`

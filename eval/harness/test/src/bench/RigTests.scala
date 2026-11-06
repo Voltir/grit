@@ -832,9 +832,28 @@ object RigTests extends TestSuite {
         gritTrial(f, GritFake(gritLines.take(2)), turn = twice) ==> Left(
           "call 1 call-1: input 1200 (cache read 1000, written 150)\n" +
             "cost: 0.0054¢ by grit's rates\n" +
+            "thinking: not reported\n" +
             "a trial's calls before its first edit are 0 to its calls"
         )
       }
+    }
+
+    test(
+      "a grit trial prints its thinking and its cost by grit's rates, or that a call did not report it"
+    ) {
+      // Haiku 5.5's short card: $0.50 a million output tokens; 30 + 6 thinking is 0.0018¢.
+      val thought = gritLines.map(
+        _.replace("out 40 ·", "out 40 (thinking 30) ·").replace("out 10 ·", "out 10 (thinking 6) ·")
+      )
+      val half = gritLines.map(_.replace("out 40 ·", "out 40 (thinking 30) ·"))
+      def printed(lines: Vector[String]) = withTask { f =>
+        gritTrial(f, GritFake(lines)).map(_.lines.filter(_.startsWith("thinking")))
+      }
+      (printed(thought), printed(half), printed(gritLines)) ==> (
+        Right(Vector("thinking: 36 of 50 output tokens, 0.0018¢ by grit's rates")),
+        Right(Vector("thinking: not reported by every call (30 over the 1 of 2 that did)")),
+        Right(Vector("thinking: not reported"))
+      )
     }
 
     test("a grit trial prints grit's cost alone, since grit estimates none of its own") {
