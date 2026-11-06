@@ -136,12 +136,12 @@ object Tx {
   def integrityOf(principal: Principal)(using tx: Tx^): Integrity =
     principal match {
       case Principal.Grit => Integrity.top(tx.visibility.compartments)
-      case Principal.Person(_, held) =>
+      case p: Principal.Person =>
         val v = tx.visibility
         val in = declaredIn(principal).map(_.group).toSet
-        val authority = Option.when(
-          held.exists(_.account == Account.Local) || v.administrators.exists(in.contains)
-        )(Integrity.at(Integrity.Level.Authority))
+        val authority = Option.when(local(p) || v.administrators.exists(in.contains))(
+          Integrity.at(Integrity.Level.Authority)
+        )
         val stewarded = v.stewards
           .filter(s => in.contains(s.group))
           .map(s => Integrity.at(Integrity.Level.Authority, s.compartment))
@@ -154,6 +154,23 @@ object Tx {
     * Read through [[explain]] at the top label, which every grant is under, so the one rule for
     * who is in a group is its.
     */
+  /** Whether the deployment lets `principal` have a turn change this machine through the coding
+    * tools (ADR 0059), before the integrity their words entered at is weighed: grit and the local
+    * operator always; a person only as a declared member of [[Visibility.hostWriters]], by an
+    * account it names or as a full member of a realm it names, never one added through grit; with
+    * no such group, no other person.
+    */
+  def writesHost(principal: Principal)(using tx: Tx^): Boolean =
+    principal match {
+      case Principal.Grit => true
+      case p: Principal.Person =>
+        local(p) || tx.visibility.hostWriters.exists(g => declaredIn(p).exists(_.group == g))
+    }
+
+  /** Whether `person` holds the local operator's account. */
+  private def local(person: Principal.Person): Boolean =
+    person.accounts.exists(_.account == Account.Local)
+
   private[core] def declaredIn(principal: Principal)(using tx: Tx^): Vector[Explanation.In] =
     explain(Some(principal), tx.visibility.compartments.top).groups
       .filter(i => i.through.nonEmpty || i.members.nonEmpty)

@@ -585,5 +585,59 @@ object VisibilityTests extends TestSuite {
         Integrity.Outside
       )
     }
+
+    test(
+      "a host writers group not declared, or named as a declared compartment, is refused: clear " +
+        "could add people who change this machine"
+    ) {
+      Vector(
+        Visibility
+          .of(compartments, RoomLabels.Public, groups, grants, hostWriters = Some(group("coders"))),
+        Visibility.of(
+          compartments,
+          RoomLabels.Public,
+          groups :+ Group(group("trial"), Set(ana)),
+          grants,
+          hostWriters = Some(group("trial"))
+        )
+      ) ==> Vector(
+        Left(VisibilityRefusal.NoSuchGroup(group("coders"))),
+        Left(VisibilityRefusal.WritesHostThroughCompartment(group("trial")))
+      )
+    }
+
+    test(
+      "grit and the local operator may change this machine always; a person only as a declared " +
+        "member of the host writers group, by account or by realm, never one added through grit; " +
+        "with no host writers group, no other person"
+    ) {
+      val writers = groups :+ Group(group("coders"), Set(bo), Set(t1))
+      def declaring(hostWriters: Option[GroupName]) = Visibility
+        .of(compartments, RoomLabels.Public, writers, grants, hostWriters = hostWriters)
+        .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+      val cy = TestAccounts.account("test:cy")
+      val askers = Vector(
+        Principal.Grit,
+        person(Account.Local -> false),
+        person(bo -> false),
+        person(TestAccounts.account("slack:T1/U1") -> true),
+        person(TestAccounts.account("slack:T1/U1") -> false),
+        person(ana -> false),
+        person(cy -> false)
+      )
+      val added = Recorded(Map.empty, Map(group("coders") -> Set(cy)))
+      val named = {
+        given Tx = TestTx.inForce(declaring(Some(group("coders"))), added)
+        askers.map(Tx.writesHost)
+      }
+      val none = {
+        given Tx = TestTx.inForce(declaring(None), added)
+        askers.map(Tx.writesHost)
+      }
+      (named, none) ==> (
+        Vector(true, true, true, true, false, false, false),
+        Vector(true, true, false, false, false, false, false)
+      )
+    }
   }
 }

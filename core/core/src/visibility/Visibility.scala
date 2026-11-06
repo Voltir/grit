@@ -16,6 +16,7 @@ final case class Visibility private (
     grants: Vector[Grant],
     clearances: Clearances,
     administrators: Option[GroupName],
+    hostWriters: Option[GroupName],
     stewards: Vector[Steward],
     private val caps: PlaceMap[Integrity],
     private val invited: Vector[Place]
@@ -74,6 +75,7 @@ object Visibility {
       Vector.empty,
       Clearances.Empty,
       None,
+      None,
       Vector.empty,
       PlaceMap.Empty,
       Vector.empty
@@ -87,7 +89,11 @@ object Visibility {
     * the one named as it (`AdministersCompartment`), which people cleared for it through grit
     * join.
     * `administrators`' declared members alone may make the changes
-    * [[grit.core.admin.Authority]] reserves to administrators; with none, no one may. A
+    * [[grit.core.admin.Authority]] reserves to administrators; with none, no one may.
+    * `hostWriters` is refused as `administrators` is, its own group by
+    * `WritesHostThroughCompartment`; its declared members alone, besides grit and the local
+    * operator, may have a turn change this machine ([[grit.core.store.Tx.writesHost]]); with
+    * none, no other person may. A
     * steward of a compartment not declared (`Undeclared`, by [[Namer.Stewarded]]), through a
     * group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),
@@ -108,7 +114,8 @@ object Visibility {
       administrators: Option[GroupName] = None,
       stewards: Vector[Steward] = Vector.empty,
       caps: Vector[Cap] = Vector.empty,
-      invited: Vector[Place] = Vector.empty
+      invited: Vector[Place] = Vector.empty,
+      hostWriters: Option[GroupName] = None
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -119,6 +126,14 @@ object Visibility {
       case _ => Vector.empty
     }
     val names = groups.map(_.name)
+    // A group whose declared members alone hold a power: declared, and no compartment's own
+    // group, which people cleared for it through grit join.
+    def declaredOutside(
+        g: GroupName,
+        refusal: GroupName => VisibilityRefusal
+    ): Option[VisibilityRefusal] =
+      if (!names.contains(g)) Some(VisibilityRefusal.NoSuchGroup(g))
+      else ownGroupOf(compartments, g).map(_ => refusal(g))
     val cleared = Clearances.of(clearances).left.map(VisibilityRefusal.ClearedTwice(_))
     val capped =
       PlaceMap.of(caps.map(c => (c.place, c.integrity))).left.map(VisibilityRefusal.CappedTwice(_))
@@ -148,10 +163,12 @@ object Visibility {
           clearances.flatMap(c => undeclared(Namer.Cleared(c.party), c.clearance)).headOption
         )
         .orElse(cleared.left.toOption)
-        .orElse(administrators.flatMap { g =>
-          if (!names.contains(g)) Some(VisibilityRefusal.NoSuchGroup(g))
-          else ownGroupOf(compartments, g).map(_ => VisibilityRefusal.AdministersCompartment(g))
-        })
+        .orElse(
+          administrators.flatMap(declaredOutside(_, VisibilityRefusal.AdministersCompartment(_)))
+        )
+        .orElse(
+          hostWriters.flatMap(declaredOutside(_, VisibilityRefusal.WritesHostThroughCompartment(_)))
+        )
         .orElse(stewards.flatMap { st =>
           val c = st.compartment
           if (!compartments.declared.contains(c))
@@ -195,6 +212,7 @@ object Visibility {
       grants,
       c,
       administrators,
+      hostWriters,
       stewards,
       m,
       invited
@@ -246,6 +264,11 @@ enum VisibilityRefusal {
     * compartment through grit would administer.
     */
   case AdministersCompartment(group: GroupName)
+
+  /** `group`, the host writers group ([[Visibility.hostWriters]]), is named as a declared
+    * compartment: people added to that compartment through grit would change this machine.
+    */
+  case WritesHostThroughCompartment(group: GroupName)
 
   /** `compartment` is stewarded through `group`, the own group of another compartment. Name the
     * compartment's own group, or a group no compartment is named for.
