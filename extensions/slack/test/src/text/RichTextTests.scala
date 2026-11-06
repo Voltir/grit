@@ -56,6 +56,7 @@ object RichTextTests extends TestSuite {
         ("language", j => j.contains("rich_text_preformatted") && language.forall(!j.contains(_)))
       case Vector(Block.Table(_, _)) => ("columns aligned", _.contains("rich_text_preformatted"))
       case Vector(Block.Rule) => ("divider", _.contains("\"divider\""))
+      case Vector(Block.Chart(_)) => ("table", _.contains("rich_text_preformatted"))
       case other => throw new java.lang.AssertionError(s"one block, not ${other.size}")
     }
 

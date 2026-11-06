@@ -26,6 +26,7 @@ object MarkdownTests extends TestSuite {
       case Block.Code(_, _) => Vector("code")
       case Block.Table(_, _) => Vector("table")
       case Block.Rule => Vector("hr")
+      case Block.Chart(_) => Vector("chart")
     }
 
   /** Every character a reader would be shown, marks dropped. */
@@ -42,6 +43,7 @@ object MarkdownTests extends TestSuite {
           (cs.map(_.name.plain).mkString("|") +: rs.map(_.map(_.shown.plain).mkString("|")))
             .mkString("\n")
         case Block.Rule => ""
+        case Block.Chart(c) => shown(c.fallback)
       }
       .mkString("\n")
 
@@ -177,7 +179,7 @@ object MarkdownTests extends TestSuite {
         case Block.Table(cs, rs) =>
           (cs.map(_.name) ++ rs.flatten.map(_.shown))
             .flatMap(_.spans.map(_.text.replace('\n', ' ').replace("|", "\\|")))
-        case Block.Code(_, _) | Block.Rule => Vector.empty
+        case Block.Code(_, _) | Block.Chart(_) | Block.Rule => Vector.empty
       }
       def leads(s: String): Boolean =
         s.headOption.exists(c => c.isDigit || "#>-+*~:|=`_<".contains(c))

@@ -10,7 +10,9 @@ library.
 In dependency order:
 
 - **`form`** -- the blocks (`Doc`, `Block`, `Item`, `Level`), a table's `Column`s and typed
-  `Cell`s, their inline text (`Text`, `Span`, `Mark`), and `Renderer`, the trait each
+  `Cell`s (`Cell.Number.read`, what words read as a number), a `Chart` (numbers compared across
+  categories, its data a table, made only by `Chart.of`) and the `fallback` a consumer that
+  cannot chart draws of it, their inline text (`Text`, `Span`, `Mark`), and `Renderer`, the trait each
   consumer's output mode implements. A span may carry notes, pure data its writer says of it
   that no renderer shows: a doc with notes of `A` is a `Doc[A]`, and plain prose, which
   renderers take, a `Doc[Nothing]`. A cell keeps its value and the text its source showed;
@@ -21,11 +23,15 @@ In dependency order:
   any doc, each span's text written bare but for what would start a block, and read back
   exactly by `parse` only for a doc `parse` made that holds no inline marker.
   Hand-written, total, and a subset: what it reads and writes is in `Blocks` and `Inlines`.
+  A chart is a fenced block of language `chart`, its body a pipe table, its attributes
+  pandoc's braced form (`{.chart type=bar title="…"}`, which `write` writes) or CommonMark's
+  bare info string (`chart type=bar title="…"`); `Markdown.chartGuide` tells a model so.
   ← `form`
 - **`json`** -- `ProseJson`, the stored form: a flat list of records under a schema version,
   notes written once by the keeper's codec. ← `form`
 
-  Its records, by `"type"`: `para`, `heading`, `code`, `table` and `rule`, one block each; a
+  Its records, by `"type"`: `para`, `heading`, `code`, `table`, `chart` (a table's record with
+  the chart's `"kind"`, `"title"` and, when given, `"values"`) and `rule`, one block each; a
   list as its items, each an `item` record (`"list"`: `bullet` or `number`, `"level"`, its
   first paragraph as `"text"` when it opens with one), its other blocks after it a level
   deeper, a nested list's items as items and any other block as an `item-more` holding it;
@@ -37,6 +43,9 @@ In dependency order:
   every quote around it, so `"new": n` says which of them opens afresh, the `n`th counted from
   the outermost, those outside it continuing (two quotes side by side inside one quote are
   `"depth": 2, "new": 2` at the second's first record).
+
+  A doc is written at the lowest version that holds it: 1, unless it holds a chart, which only
+  version 2 has; both are read.
 
 - **`index`** -- `IndexText`, the text a search index ranks for a doc: its words a block a
   line, each under its heading path, a table row as `column: value` pairs. ← `form`

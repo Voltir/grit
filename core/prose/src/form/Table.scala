@@ -40,6 +40,27 @@ object Cell {
   final case class Number(value: BigDecimal, shown: Text[Nothing], formula: Option[String] = None)
       extends Cell[Nothing]
 
+  object Number {
+
+    /** `shown` as a number cell, shown as written less the spaces around it, when it reads as
+      * one: an optional `-` or `+`, an optional currency sign (`$`, `€` or `£`), then digits,
+      * plain or grouped in threes by `,`, then an optional `.` and digits, then an optional
+      * `%`. Its value is the number as written: `12%` is 12, `$1,200` is 1200. `None` for
+      * anything else: a suffix such as `1.2k` (`k`, `M` and `B` scale by convention, not by
+      * rule), a unit after the number, a `,` as the decimal mark.
+      */
+    def read(shown: String): Option[Number] = {
+      val s = shown.trim
+      Written.findFirstMatchIn(s).map { m =>
+        val sign = if (m.group(1) == "-") "-" else ""
+        val digits = m.group(2).replace(",", "") + Option(m.group(3)).getOrElse("")
+        Number(BigDecimal(sign + digits), Text.plain(s))
+      }
+    }
+
+    private val Written = """^([-+])?[$€£]?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?%?$""".r
+  }
+
   final case class Date(
       value: LocalDate | LocalDateTime,
       shown: Text[Nothing],

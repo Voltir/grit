@@ -4,7 +4,7 @@ import java.time.{LocalDate, LocalDateTime}
 
 import scala.util.Try
 
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Level, Mark, Span, Text}
 
 /** Prose as grit stores it: a flat list of blocks, a list item's level and kind as fields, under
   * a schema version (`"v"`), read back to the doc it was written from. Notes are written by
@@ -13,10 +13,13 @@ import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
   */
 object ProseJson {
 
-  /** 1: the version [[write]] writes and the one [[read]] reads. */
-  val Version: Int = 1
+  /** 2: the newest version, the one a doc holding a chart is written at; a doc holding none is
+    * written at 1, which has no chart record. [[read]] reads both.
+    */
+  val Version: Int = 2
 
-  /** `doc` as stored, `{"v": [[Version]], "notes": [...], "blocks": [...]}`: each distinct note
+  /** `doc` as stored, `{"v": n, "notes": [...], "blocks": [...]}`, `n` the lowest version that
+    * holds it (1, or [[Version]] when it holds a chart, at any depth): each distinct note
     * of `doc` written by `note` once, in the order it first appears, and named by its index
     * from each span carrying it; the blocks as a flat list of records, a nested list's items by
     * their level and a nested quote's blocks by their depth. [[read]] of it, given a `note`
@@ -27,14 +30,15 @@ object ProseJson {
     val index: Map[A, Int] = notes.zipWithIndex.toMap
     def text(t: Text[A]): ujson.Value = ujson.Arr.from(t.spans.map(span(_, index)))
     ujson.Obj(
-      "v" -> Version,
+      "v" -> (if (charted(doc.blocks)) Version else 1),
       "notes" -> ujson.Arr.from(notes.map(note)),
       "blocks" -> ujson.Arr.from(stream(doc.blocks, text))
     )
   }
 
-  /** `json` as the doc it was written from, or why not: another version (named), a note `note`
-    * refuses (its reason), or not this form.
+  /** `json` as the doc it was written from, or why not: a version other than 1 or [[Version]]
+    * (named), a note `note` refuses (its reason), a chart that makes none (its
+    * [[grit.prose.form.Chart.Unfit]]), or not this form.
     */
   def read[A <: caps.Pure](
       json: ujson.Value,
@@ -43,7 +47,7 @@ object ProseJson {
     for {
       o <- obj(json, "prose")
       _ <- o.get("v").flatMap(_.numOpt) match {
-        case Some(n) if n == Version => Right(())
+        case Some(n) if n == 1 || n == Version => Right(())
         case Some(n) => Left(s"prose of version ${fmt(n)}, which this reader does not know")
         case None => Left("prose with no version")
       }
@@ -98,17 +102,36 @@ object ProseJson {
       val o = ujson.Obj("type" -> "code", "lines" -> ujson.Arr.from(lines.map(ujson.Str(_))))
       language.foreach(l => o("language") = l)
       Vector(o)
-    case Block.Table(columns, rows) =>
-      Vector(
-        ujson.Obj(
-          "type" -> "table",
-          "columns" -> ujson.Arr.from(
-            columns.map(c => ujson.Obj("name" -> text(c.name)))
-          ),
-          "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(cell(_, text)))))
-        )
-      )
+    case Block.Table(columns, rows) => Vector(table("table", columns, rows, text))
     case Block.Rule => Vector(ujson.Obj("type" -> "rule"))
+    case Block.Chart(c) =>
+      // The chart's table, as a table is stored, with what makes it a chart beside it.
+      val o = table("chart", c.table.columns, c.table.rows, text)
+      o("kind") = c.kind.toString.toLowerCase
+      o("title") = c.title
+      c.values.foreach(v => o("values") = v)
+      Vector(o)
+  }
+
+  private def table[A <: caps.Pure](
+      kind: String,
+      columns: Vector[Column[A]],
+      rows: Vector[Vector[Cell[A]]],
+      text: Text[A] -> ujson.Value
+  ): ujson.Obj =
+    ujson.Obj(
+      "type" -> kind,
+      "columns" -> ujson.Arr.from(columns.map(c => ujson.Obj("name" -> text(c.name)))),
+      "rows" -> ujson.Arr.from(rows.map(r => ujson.Arr.from(r.map(cell(_, text)))))
+    )
+
+  /** Whether `blocks` hold a chart, inside a list or a quote too. */
+  private def charted[A <: caps.Pure](blocks: Vector[Block[A]]): Boolean = blocks.exists {
+    case Block.Chart(_) => true
+    case Block.Quote(bs) => charted(bs)
+    case Block.Bullets(items) => items.exists(i => charted(i.blocks))
+    case Block.Numbered(_, items) => items.exists(i => charted(i.blocks))
+    case _ => false
   }
 
   private def list[A <: caps.Pure](
@@ -293,13 +316,30 @@ object ProseJson {
         array(r.get("lines"), "a code block's lines")
           .flatMap(traverse(_)(l => string(Some(l), "a code block's line")))
           .map(lines => Vector(Block.Code(r.get("language").flatMap(_.strOpt), lines)))
-      case "table" =>
+      case "table" => table(r).map(t => Vector(Block.table(t.columns, t.rows)))
+      case "chart" =>
         for {
-          columns <- array(r.get("columns"), "a table's columns").flatMap(traverse(_)(column))
-          rows <- array(r.get("rows"), "a table's rows").flatMap(
-            traverse(_)(row => array(Some(row), "a table's row").flatMap(traverse(_)(cell)))
-          )
-        } yield Vector(Block.table(columns, rows))
+          t <- table(r)
+          kind <- r
+            .get("kind")
+            .flatMap(_.strOpt)
+            .flatMap(k => Chart.Kind.values.find(_.toString.toLowerCase == k))
+            .toRight(s"a chart of no kind: ${shownRecord(r)}")
+          title <- string(r.get("title"), "a chart's title")
+          chart <- Chart
+            .of(
+              kind,
+              title,
+              r.get("values").flatMap(_.strOpt),
+              t.columns.map(_.name.plain),
+              t.rows.map(_.map {
+                case n: Cell.Number => n
+                case c => Cell.Words(Text.plain(c.printed.plain))
+              })
+            )
+            .left
+            .map(u => s"a chart that makes none: $u")
+        } yield Vector(Block.Chart(chart))
       case "list" =>
         kindOf(r) match {
           case Some("bullet") => Right(Vector(Block.Bullets(Vector.empty)))
@@ -318,6 +358,14 @@ object ProseJson {
         o <- obj(v, "a column")
         name <- text(o.get("name"), "a column's name")
       } yield Column(name)
+
+    private def table(r: Obj): Read[Tabled[A]] =
+      for {
+        columns <- array(r.get("columns"), "a table's columns").flatMap(traverse(_)(column))
+        rows <- array(r.get("rows"), "a table's rows").flatMap(
+          traverse(_)(row => array(Some(row), "a table's row").flatMap(traverse(_)(cell)))
+        )
+      } yield Tabled(columns, rows)
 
     private def cell(v: ujson.Value): Read[Cell[A]] =
       obj(v, "a cell").flatMap { o =>
@@ -403,6 +451,12 @@ object ProseJson {
   extension (vs: Vector[ujson.Value]) {
     private def traverseObj(what: String): Read[Vector[Obj]] = traverse(vs)(obj(_, what))
   }
+
+  /** A table record's columns and rows, as read. */
+  private final case class Tabled[A <: caps.Pure](
+      columns: Vector[Column[A]],
+      rows: Vector[Vector[Cell[A]]]
+  )
 
   /** An item read, and the record it opened with. */
   private final case class Listed[A <: caps.Pure](head: Option[Obj], item: Item[A])

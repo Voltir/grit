@@ -2,7 +2,7 @@ package grit.prose.json
 
 import java.time.{LocalDate, LocalDateTime}
 
-import grit.prose.form.{Block, Cell, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Level, Mark, Span, Text}
 
 import utest.*
 
@@ -22,6 +22,16 @@ object ProseJsonTests extends TestSuite {
     ProseJson.read(ProseJson.write(d, noteJson), readNote)
 
   private def plain(s: String): Text[Nothing] = Text.plain(s)
+
+  private val leads: Block[Nothing] = Chart
+    .of(
+      Chart.Kind.Pie,
+      "Leads",
+      Some("Won"),
+      Vector("Day", "Won"),
+      Vector(Vector(Cell.Words(plain("Mon")), Cell.Number(BigDecimal(3), plain("3"))))
+    )
+    .fold(u => throw new java.lang.AssertionError(s"refused: $u"), Block.Chart(_))
 
   private def para(s: String): Block[Nothing] = Block.Paragraph(plain(s))
 
@@ -238,8 +248,41 @@ object ProseJsonTests extends TestSuite {
     }
 
     test("another version is refused, naming it") {
-      val json = ujson.Obj("v" -> 2, "notes" -> ujson.Arr(), "blocks" -> ujson.Arr())
-      ProseJson.read(json, readNote) ==> Left("prose of version 2, which this reader does not know")
+      val json = ujson.Obj("v" -> 3, "notes" -> ujson.Arr(), "blocks" -> ujson.Arr())
+      ProseJson.read(json, readNote) ==> Left("prose of version 3, which this reader does not know")
+    }
+
+    test(
+      "a doc holding a chart reads back as written, stored at version 2; one holding none at 1"
+    ) {
+      val doc: Doc[N] = Doc(Vector(Block.Paragraph(noted("leads", 1)), leads))
+      val versions = Vector(doc, Doc(Vector(para("x")))).map(d => ProseJson.write(d, noteJson)("v"))
+      (roundTrip(doc), versions) ==> (Right(doc), Vector(ujson.Num(2), ujson.Num(1)))
+    }
+
+    test("a chart is stored as its table, with its kind, title and what its numbers are") {
+      ujson.write(ProseJson.write(Doc(Vector(leads)), noteJson)) ==>
+        """{"v":2,"notes":[],"blocks":[{"type":"chart",""" +
+        """"columns":[{"name":[{"t":"Day"}]},{"name":[{"t":"Won"}]}],""" +
+        """"rows":[[{"w":[{"t":"Mon"}]},{"n":"3","shown":[{"t":"3"}]}]],""" +
+        """"kind":"pie","title":"Leads","values":"Won"}]}"""
+    }
+
+    test("a stored chart that makes no chart is refused, naming why") {
+      val json = ujson.Obj(
+        "v" -> 2,
+        "notes" -> ujson.Arr(),
+        "blocks" -> ujson.Arr(
+          ujson.Obj(
+            "type" -> "chart",
+            "kind" -> "pie",
+            "title" -> "Leads",
+            "columns" -> ujson.Arr(ujson.Obj("name" -> ujson.Arr(ujson.Obj("t" -> "Day")))),
+            "rows" -> ujson.Arr(ujson.Arr(ujson.Obj("w" -> ujson.Arr(ujson.Obj("t" -> "Mon")))))
+          )
+        )
+      )
+      ProseJson.read(json, readNote) ==> Left("a chart that makes none: NoSeries")
     }
 
     test("a span noting an index past the notes is refused, naming it") {

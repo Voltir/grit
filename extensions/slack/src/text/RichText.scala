@@ -58,6 +58,7 @@ object RichText extends Renderer[Vector[Post]] {
     "> We agreed:\n> - ship on Friday",
     "```scala\nval total = 3\n```",
     "| Owner | Due |\n|---|---|\n| Ana | Friday |",
+    Markdown.chartExample,
     "---",
     "**done**",
     "*soon*",
@@ -205,6 +206,7 @@ object RichText extends Renderer[Vector[Post]] {
     case Block.Table(columns, rows) =>
       val t = table(columns, rows)
       Vector(Piece(rich(preformatted(t)), t))
+    case Block.Chart(c) => c.fallback.flatMap(block)
   }
 
   /** How [[block]] draws `b`, in words for the model. */
@@ -222,6 +224,7 @@ object RichText extends Renderer[Vector[Post]] {
       "A numbered list shows numbered, counting on from its first number"
     case Block.Table(_, _) =>
       "A table shows as preformatted text, its columns aligned, not as a grid"
+    case Block.Chart(_) => "A chart shows as its title and table"
   }
 
   /** A list's items as Slack list elements: one list per run of items, each nested list a list
@@ -290,6 +293,7 @@ object RichText extends Renderer[Vector[Post]] {
         case Block.Numbered(_, items) => items.map(i => plainOf(i.blocks)).mkString("\n")
         case Block.Table(columns, rows) => table(columns, rows)
         case Block.Rule => ""
+        case Block.Chart(c) => plainOf(c.fallback)
       }
       .mkString("\n")
 

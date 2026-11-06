@@ -39,6 +39,13 @@ object IndexTextTests extends TestSuite {
           |Logs.""".stripMargin
     }
 
+    test("a chart is written as its title, then its table's rows") {
+      val doc = Markdown.parse(
+        "```chart title=\"Leads per day\"\n| Day | Won |\n|---|---|\n| Mon | 3 |\n| Tue | 5 |\n```"
+      )
+      IndexText.render(doc) ==> "Leads per day\nDay: Mon; Won: 3\nDay: Tue; Won: 5"
+    }
+
     test("a table row is written as column: value pairs, an empty cell left out") {
       val doc = Doc(
         Vector(

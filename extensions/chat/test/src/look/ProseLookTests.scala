@@ -150,6 +150,25 @@ object ProseLookTests extends TestSuite {
       )
     }
 
+    test("a chart is shown as its bold title and its table, one series with bars") {
+      val chart =
+        "```chart title=\"Leads per day\"\n| Day | Leads |\n|---|---|\n| Mon | 4 |\n| Tue | 2 |\n```"
+      val s = painted(ProseLook(Look(Theme.Default)).reply(chart), Size(8, 50))
+      val (row, col) = find(s, "Leads per day")
+      (rows(s).take(7), s.at(row, col).style.bold) ==> (
+        Vector(
+          "▌ᚨ Leads per day",
+          "",
+          "    Day │ Leads │",
+          "    ────┼───────┼─────────────────────",
+          "    Mon │ 4     │ ████████████████████",
+          "    Tue │ 2     │ ██████████",
+          ""
+        ),
+        true
+      )
+    }
+
     test("a table's cells are shown as they print: a number as its source showed it") {
       import grit.prose.form.{Block as Prose, Cell, Column, Doc as ProseDoc, Text}
       val doc = ProseDoc(

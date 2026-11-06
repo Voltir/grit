@@ -3,8 +3,8 @@ package grit.prose.index
 import grit.prose.form.{Block, Doc, Renderer, Text}
 
 /** The text a search index ranks for a doc: each block's words after its heading path
-  * (headings joined by ` > `), a table row as `column: value` pairs, marks and code fences
-  * dropped, one block a line.
+  * (headings joined by ` > `), a table row as `column: value` pairs, a chart as its title and
+  * then its table's rows, marks and code fences dropped, one block a line.
   */
 object IndexText extends Renderer[String] {
 
@@ -36,6 +36,7 @@ object IndexText extends Renderer[String] {
           .mkString("; ")
       }
     case Block.Rule => Vector.empty
+    case Block.Chart(chart) => chart.title.trim +: lines(chart.table)
   }
 
   /** `text`'s characters on one line. */

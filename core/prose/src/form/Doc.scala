@@ -46,6 +46,9 @@ enum Block[+A <: caps.Pure] {
 
   /** A break between sections. */
   case Rule
+
+  /** A chart; a consumer that cannot chart draws its [[grit.prose.form.Chart.fallback]]. */
+  case Chart(chart: grit.prose.form.Chart) extends Block[Nothing]
 }
 
 object Block {
@@ -105,6 +108,7 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Numbered(start, is) => Block.Numbered(start, items(is))
       case Block.Quote(bs) => Block.Quote(bs.map(block))
       case c: Block.Code => c
+      case c: Block.Chart => c
       case Block.Table(cs, rows) =>
         Block.table(cs.map(c => Column(text(c.name))), rows.map(_.map(_.mapText(text))))
       case Block.Rule => Block.Rule
@@ -128,7 +132,7 @@ final case class Doc[+A <: caps.Pure](blocks: Vector[Block[A]]) {
       case Block.Bullets(is) => is.flatMap(_.blocks.flatMap(block))
       case Block.Numbered(_, is) => is.flatMap(_.blocks.flatMap(block))
       case Block.Quote(bs) => bs.flatMap(block)
-      case Block.Code(_, _) | Block.Rule => Vector.empty
+      case Block.Code(_, _) | Block.Chart(_) | Block.Rule => Vector.empty
       case Block.Table(cs, rows) =>
         cs.flatMap(c => text(c.name)) ++ rows.flatten.flatMap(c => text(c.shown))
     }

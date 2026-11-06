@@ -2,9 +2,10 @@ package grit.prose.markdown
 
 import scala.util.matching.Regex
 
-import grit.prose.form.{Block, Cell, Column, Item, Level, Text}
+import grit.prose.form.{Block, Cell, Chart, Column, Item, Level, Mark, Span, Text}
 
-/** Markdown's block syntax, read line by line into blocks: ATX headings, fenced code,
+/** Markdown's block syntax, read line by line into blocks: ATX headings, fenced code (a
+  * `chart` fence holding a pipe table as a chart, [[Markdown.parse]]),
   * thematic breaks, block quotes, bullet and numbered lists (nested by indentation; a
   * marker of another character, `-` `+` `*` or `.` `)`, starts a new list, as in
   * CommonMark), pipe tables, and paragraphs. A line break inside a paragraph is kept. Not supported,
@@ -35,10 +36,13 @@ private[markdown] object Blocks {
       if (blank(line)) { i += 1 }
       else
         fence(line) match {
-          case Some((indent, marker, language)) =>
+          case Some(opening) =>
             var j = i + 1
-            while (j < n && !closes(lines(j), marker)) j += 1
-            out += Block.Code(language, lines.slice(i + 1, j).map(dropColumns(_, indent)))
+            while (j < n && !closes(lines(j), opening.marker)) j += 1
+            val body = lines.slice(i + 1, j).map(dropColumns(_, opening.indent))
+            // A chart still arriving would be shown as code, then flip to a chart: held back.
+            if (opening.isChart) { if (!(open && j >= n)) out ++= chart(opening, body, newline) }
+            else out += Block.Code(opening.language, body)
             i = math.min(n, j + 1)
           case None =>
             if (Rule.matches(line)) {
@@ -172,6 +176,13 @@ private[markdown] object Blocks {
           rows.map(r => row(r.map(_.printed)))
       // Not `---`, which after an item's marker would read as a rule rather than the item's.
       case Block.Rule => Vector("***")
+      case Block.Chart(c) =>
+        def quoted(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        val info = s"{.chart type=${c.kind.toString.toLowerCase} title=${quoted(c.title)}" +
+          c.values.map(v => s" values=${quoted(v)}").getOrElse("") + "}"
+        // A backtick fence's info may hold no backtick (CommonMark); a tilde fence's may.
+        val fence = if (info.contains('`')) "~~~" else "```"
+        (fence + info) +: write(c.table, apart = false, markup) :+ fence
     }
 
   /** An item under `marker`, its lines after the first indented to the marker's text. */
@@ -274,7 +285,7 @@ private[markdown] object Blocks {
     (list, k)
   }
 
-  private val Fence: Regex = """^( {0,3})(`{3,}|~{3,})[ \t]*([^`\s]*)[^`]*$""".r
+  private val Fence: Regex = """^( {0,3})(`{3,}|~{3,})[ \t]*(.*?)[ \t]*$""".r
   private val Atx: Regex = """^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$""".r
   private val Rule: Regex = """^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$""".r
   private val Quote: Regex = """^ {0,3}> ?(.*)$""".r
@@ -283,11 +294,98 @@ private[markdown] object Blocks {
   /** A table's delimiter row, `|---|:--:|`. */
   val Delimiter: Regex = """^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$""".r
 
-  /** An opening fence: its indent, its fence string, and the language tag after it. */
-  private def fence(line: String): Option[(Int, String, Option[String])] =
-    Fence.findFirstMatchIn(line).map { m =>
-      (m.group(1).length, m.group(2), Option(m.group(3)).filter(_.nonEmpty))
+  /** An opening fence: its indent, its fence string, and the info string after it. */
+  private final case class Opening(indent: Int, marker: String, info: String) {
+
+    /** Pandoc's braced attributes, `{.class key=value}`, or CommonMark's free info string. */
+    private def braced: Option[String] =
+      if (info.startsWith("{") && info.endsWith("}")) Some(info.drop(1).dropRight(1)) else None
+
+    /** The first word of a bare info string, or the first class of a braced one. */
+    def language: Option[String] = (braced match {
+      case Some(attrs) => words(attrs).collectFirst { case w if w.startsWith(".") => w.drop(1) }
+      case None => words(info).headOption
+    }).filter(_.nonEmpty)
+
+    def isChart: Boolean = language.contains("chart")
+
+    /** The `key=value` pairs after the language, a value bare or in double quotes, in which
+      * `\"` is a quote and `\\` a backslash. A word of no `=` (a class, an id) is left out.
+      */
+    def attributes: Map[String, String] =
+      words(braced.getOrElse(info))
+        .drop(if (braced.isEmpty) 1 else 0)
+        .flatMap { w =>
+          w.indexOf('=') match {
+            case k if k > 0 =>
+              val v = w.drop(k + 1)
+              val value =
+                if (v.length >= 2 && v.startsWith("\"") && v.endsWith("\""))
+                  v.drop(1).dropRight(1).replaceAll("""\\(["\\])""", "$1")
+                else v
+              Vector(w.take(k) -> value)
+            case _ => Vector.empty
+          }
+        }
+        .toMap
+  }
+
+  /** `s` split at spaces outside double quotes, a quote escaped by `\` staying inside. */
+  private def words(s: String): Vector[String] = {
+    val out = Vector.newBuilder[String]
+    val word = new StringBuilder
+    var quoted = false
+    var k = 0
+    while (k < s.length) {
+      val c = s.charAt(k)
+      if (quoted && c == '\\' && k + 1 < s.length) { word += c; word += s.charAt(k + 1); k += 1 }
+      else if (c == '"') { quoted = !quoted; word += c }
+      else if (!quoted && (c == ' ' || c == '\t')) {
+        if (word.nonEmpty) out += word.result()
+        word.clear()
+      } else word += c
+      k += 1
     }
+    if (word.nonEmpty) out += word.result()
+    out.result()
+  }
+
+  private def fence(line: String): Option[Opening] =
+    Fence
+      .findFirstMatchIn(line)
+      .map(m => Opening(m.group(1).length, m.group(2), m.group(3)))
+      // A backtick fence's info string holding a backtick makes the line no fence (CommonMark).
+      .filterNot(o => o.marker.startsWith("`") && o.info.contains('`'))
+
+  /** A chart fence's blocks: the chart its attributes and body make; else, when its body is a
+    * table, its title (strong, when it has one) and that table; else its lines as code.
+    */
+  private def chart(
+      opening: Opening,
+      body: Vector[String],
+      newline: Markdown.Newline
+  ): Vector[Block[Nothing]] = {
+    val attrs = opening.attributes
+    val title = attrs.getOrElse("title", "")
+    parse(body, open = false, newline) match {
+      case Vector(t @ Block.Table(columns, rows)) =>
+        val kind = attrs.get("type") match {
+          case None => Some(Chart.Kind.Bar)
+          case Some(k) => Chart.Kind.values.find(_.toString.toLowerCase == k)
+        }
+        kind.flatMap(k =>
+          Chart.of(k, title, attrs.get("values"), columns.map(_.name.plain), rows).toOption
+        ) match {
+          case Some(c) => Vector(Block.Chart(c))
+          case None =>
+            val heading =
+              if (title.trim.isEmpty) Vector.empty
+              else Vector(Block.Paragraph(Text(Vector(Span(title, Set(Mark.Strong))))))
+            heading :+ t
+        }
+      case _ => Vector(Block.Code(Some("chart"), body))
+    }
+  }
 
   /** Whether `line` closes a fence opened by `marker`. */
   private def closes(line: String, marker: String): Boolean = {

@@ -197,6 +197,7 @@ object Pieces {
       */
     def cut(block: Block[Locus]): Vector[Block[Locus]] = block match {
       case Block.Rule => Vector.empty
+      case Block.Chart(chart) => if (fits(block)) Vector(block) else chart.fallback.flatMap(cut)
       case Block.Paragraph(text) if text.plain.isBlank => Vector.empty
       case b if fits(b) => Vector(b)
       case Block.Paragraph(text) =>

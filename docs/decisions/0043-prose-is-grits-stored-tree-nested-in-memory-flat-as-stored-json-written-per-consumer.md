@@ -1,6 +1,6 @@
 # 0043. Prose is grit's stored tree: nested in memory, flat as stored JSON, written per consumer
 
-Status: accepted (2026-10-22)
+Status: accepted (2026-10-22), revised (2026-11-06)
 
 Context: `grit.prose` began as a reply's structure, markdown in and blocks out for each edge to
 draw. Files, pieces of them and topics now need one form for text grit keeps: a reader turns a
@@ -18,7 +18,10 @@ Decision:
   pure notes of `A`, as pandoc nests them. A table's cells are typed (`Cell`), each row as
   wide as its columns (`Block.table`): a number or a date keeps its value beside the text its
   source showed, and `Cell.printed` is the one text every renderer prints for a cell, never
-  reformatted. The
+  reformatted. A chart is a block whose data is a table, as pandoc reads one (a `chart` div
+  around a table), but typed: its kind, title and series are fields `Chart.of` checks, not
+  attributes each renderer checks again, and a consumer that cannot chart draws its fallback,
+  the title and the table. The
   tree gains a construct only when a reader emits it and a consumer reads it.
 - **Flat as stored.** `grit.prose.json.ProseJson` writes a doc as `{"v", "notes", "blocks"}`:
   a list of records, a list item's kind and level as fields, a quote's blocks with their
@@ -43,7 +46,9 @@ Decision:
 
 Consequences: a reader, a store and a renderer meet at one type, and a new consumer is one
 `Renderer`. Changing the stored form is a new `ProseJson.Version` and a version of each
-keeper's data; topics moved onto it at their data's version 2. A topic of version 1 is not
+keeper's data, unless the new version only adds a record: then a doc is written at the lowest
+version that holds it, so a doc an older reader could read is still written for it, and only a
+doc holding the new record is refused there, by name (the chart record, version 2, came so); topics moved onto it at their data's version 2. A topic of version 1 is not
 read: the dream's scan withdraws it, and a nightly run opens it again only from the strands
 spoken in within its `recent`; one written from older strands comes back through runs for
 their past days, `grit backfill topics --days N` on a live database (`Kit.runOnce` over

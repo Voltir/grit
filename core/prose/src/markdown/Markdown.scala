@@ -1,6 +1,6 @@
 package grit.prose.markdown
 
-import grit.prose.form.Doc
+import grit.prose.form.{Block, Cell, Chart, Doc, Text}
 
 /** Markdown in, prose out: the subset a model writes by habit ([[Blocks]], [[Inlines]]).
   * Total: any string is some prose, and nothing here throws.
@@ -11,6 +11,14 @@ object Markdown {
     * under [[Newline.Break]] and a space under [[Newline.Space]]; a line ending in `\` or two
     * spaces is a break under both. An emphasis or code span left unclosed is literal text; a
     * code fence left unclosed runs to the end.
+    *
+    * A fence whose language is `chart` -- pandoc's braced form, `{.chart type=bar title="…"}`,
+    * or CommonMark's bare info string, `chart type=bar title="…"` -- holding a pipe table is a
+    * chart ([[grit.prose.form.Chart.of]]): `type` one of `bar` (when not given), `line`,
+    * `area` or `pie`, `title` required, `values` what the numbers are; a value bare or in
+    * double quotes, inside which `\"` is a quote and `\\` a backslash; another key is
+    * ignored. One that makes no chart is its title (strong, when given) and its table; one
+    * whose body is no table, its lines as code.
     */
   def parse(text: String, newline: Newline = Newline.Break): Doc[Nothing] =
     Doc(Blocks.parse(lines(text), open = false, newline))
@@ -27,8 +35,8 @@ object Markdown {
 
   /** The start of markdown still arriving -- a reply as it streams -- as prose that the
     * rest will only extend: an unclosed span runs to the end, a delimiter or a line that
-    * may yet turn into a block marker is held back until it has, and an unclosed fence is
-    * code. So each prefix renders close to the last, rather than flipping between
+    * may yet turn into a block marker is held back until it has, an unclosed chart fence is
+    * held back whole, and any other unclosed fence is code. So each prefix renders close to the last, rather than flipping between
     * literal markers and styled text as tokens land.
     */
   def parsePrefix(text: String): Doc[Nothing] =
@@ -36,7 +44,8 @@ object Markdown {
 
   /** `doc` as markdown, for a reader, not for [[parse]]: a table's cells as they print
     * ([[grit.prose.form.Cell.printed]]), a line break as `\` at its line's end (a space in a
-    * heading or a cell), a list at any depth. Each span's text is written whole and bare, but
+    * heading or a cell), a list at any depth, a chart as pandoc's braced fence (`~~~` when its
+    * attributes hold a backtick) around its table. Each span's text is written whole and bare, but
     * for what a block needs escaped: a line's leading block marker, `.` or `)` after a line's
     * leading digits, `#` in a heading and `|` in a cell. Of a doc whose text holds no `\`,
     * backtick, bracket, `<`, `!`, `*` or `_`, this is [[writeExact]]'s markdown; of any other,
@@ -52,6 +61,34 @@ object Markdown {
     */
   def writeExact(doc: Doc[Nothing]): String =
     Blocks.write(doc.blocks, Inlines.Markup).mkString("\n")
+
+  /** A chart as a model writes one, [[write]]'s own form of it: the example [[chartGuide]]
+    * refers to.
+    */
+  val chartExample: String = {
+    val days = Vector(Vector("Mon", "3", "1"), Vector("Tue", "5", "0"), Vector("Wed", "2", "2"))
+    Chart
+      .of(
+        Chart.Kind.Bar,
+        "Leads per day",
+        Some("Leads"),
+        Vector("Day", "Won", "Lost"),
+        days.map(_.map(c => Cell.Words(Text.plain(c))))
+      )
+      .fold(_ => "", c => write(Doc(Vector(Block.Chart(c)))))
+  }
+
+  /** What a model is told of when and how to write a chart, in words for any edge, which shows
+    * it [[chartExample]] beside them.
+    */
+  val chartGuide: String =
+    "When your reply compares a few numbers across a handful of things (counts per day, " +
+      "totals per outcome, from any tool's results), write them as a chart, a fenced block " +
+      "like the chart example, rather than as a list or text bars. `type` is bar, line, area " +
+      "or pie; a pie has one column of numbers, every one above 0. `title` is required, and " +
+      "`values` says what the numbers are. The first column names the things compared; each " +
+      "other column is one set of numbers, under its name. Where a chart cannot be drawn, its " +
+      "title and table are shown instead."
 
   /** `text` split into lines, carriage returns dropped. */
   private def lines(text: String): Vector[String] =

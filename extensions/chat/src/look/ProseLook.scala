@@ -114,6 +114,18 @@ final case class ProseLook(look: Look) extends Renderer[Vector[Block]] {
         own(first, rest) :+ table(columns.map(_.name), rows.map(_.map(_.printed)), rest ++ " ")
       case Prose.Rule =>
         own(first, rest) :+ Block.Separator(Style.fg(theme.rail), '─', lead = rest)
+      // The terminal draws no chart: its fallback, a blank row between its blocks as between any.
+      case Prose.Chart(chart) =>
+        val out = Vector.newBuilder[Block]
+        var j = 0
+        while (j < chart.fallback.length) {
+          if (j > 0) out += Block.Text("")
+          chart.fallback
+            .lift(j)
+            .foreach(b => out ++= block(b, if (j == 0) first else rest, rest, depth))
+          j += 1
+        }
+        out.result()
     }
 
   /** A list's items, each marked by `marker(k)`, its rows hanging after the marker. The
