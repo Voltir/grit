@@ -318,6 +318,15 @@ object TurnShownTests extends TestSuite {
       )
     }
 
+    test("a boundary's established part ends with its entries, before its digest") {
+      // The digest is drawn again at every boundary: covered by the established mark, that
+      // prefix would differ at each one and never be read from the cache.
+      val drawn = Vector(said(1, "earlier"), said(2, "later"))
+      boundary(Window(drawn.map(_.seq), sessionLog = Some("Committed a1b2c3d.")), drawn)
+        .map(q => (q.repeats.established, q.messages.lift(q.repeats.established))) ==>
+        Right((3, Some(Shown.sessionLog("Committed a1b2c3d."))))
+    }
+
     test(
       "a boundary's task follows its brief, inside its task part, and is not shown again among its entries"
     ) {

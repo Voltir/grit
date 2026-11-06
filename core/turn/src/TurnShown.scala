@@ -384,12 +384,14 @@ private[turn] object TurnShown {
           )
           val brief = part.brief.map((d, _) => Shown.brief(d)).toVector
           val task = part.window.task.flatMap(bySeq.get).flatMap(Shown.of(_, named)).toVector
-          val digest = part.window.sessionLog.map(Shown.sessionLog).toVector
+          val digest = part.window.sessionLog.map(Shown.sessionLog)
           Right(
             Unshaped.Part(
               brief ++ task ++ sections,
               part.documents,
-              pieces ++ shown ++ digest ++ carried
+              pieces ++ shown,
+              digest,
+              carried
             )
           )
       }
@@ -497,12 +499,21 @@ private[turn] object TurnShown {
       * request offers the tool it names: a model offered no tool of that name could not follow
       * it. The tools offered are those `shape` gives the request with no pointer line shown.
       * Before `shape`, its [[ModelRequest.repeats]] name the first part's `before` and
-      * documents as the task, and every part's messages as established and stable.
+      * documents as the task, every part's messages before the first `digest` as established,
+      * and every part's messages as stable.
       */
     def shaped(shape: ModelRequest -> ModelRequest): ModelRequest = {
       val task = parts.headOption.fold(0)(p => p.before.size + p.documents.size)
-      val established =
-        parts.map(p => p.before.size + p.documents.size + p.after.size).sum
+      def drawn(p: Unshaped.Part) = p.before.size + p.documents.size + p.after.size
+      def whole(p: Unshaped.Part) = drawn(p) + p.digest.size + p.carried.size
+      val stable = parts.map(whole).sum
+      val established = parts
+        .foldLeft((0, false)) { case ((n, cut), p) =>
+          if (cut) (n, cut)
+          else if (p.digest.isDefined) (n + drawn(p), true)
+          else (n + whole(p), false)
+        }
+        ._1
       def built(offered: Set[String]): ModelRequest =
         ModelRequest(
           system,
@@ -514,9 +525,9 @@ private[turn] object TurnShown {
                 ),
                 label
               )
-            ) ++ part.after
+            ) ++ part.after ++ part.digest ++ part.carried
           ) ++ own,
-          repeats = Repeats.of(task, established, established)
+          repeats = Repeats.of(task, established, stable)
         )
       shape(built(shape(built(Set.empty)).tools.map(_.name).toSet))
     }
@@ -525,12 +536,15 @@ private[turn] object TurnShown {
   object Unshaped {
 
     /** Part of a request: `before`, then each of `documents` as one user message, then
-      * `after`.
+      * `after`, what it drew; then its session's `digest`, which each boundary draws afresh;
+      * then `carried`, the lines a carried part's turn repeats.
       */
     final case class Part(
         before: Vector[Message],
         documents: Vector[(Document, DocLabel)],
-        after: Vector[Message]
+        after: Vector[Message],
+        digest: Option[Message] = None,
+        carried: Vector[Message] = Vector.empty
     )
   }
 
