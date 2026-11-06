@@ -27,6 +27,7 @@ import grit.core.store.{
   InMemoryPrincipals,
   InMemoryUsageLedger,
   ModelProfileStore,
+  Payload,
   StoreError,
   Tx
 }
@@ -216,6 +217,31 @@ object TurnRequestsTests extends TestSuite {
       second.requests.headOption.map(_.messages.size) ==> Some(7)
       TurnRecord.requests(turn, recorded, reads(entries)).map(sent(_)) ==>
         Right(second.requests)
+    }
+    test(
+      "a turn's requests rebuilt under another window show it in place of the one the turn kept"
+    ) {
+      val entries = new InMemoryEntryStore
+      val first = new Scripted((_, n) =>
+        Right(n match {
+          case 0 => calling("looking", ("t1", "peek", "a.txt"))
+          case _ => calling("alpha")
+        })
+      )
+      answered(entries, say(entries, "read it"), first)
+      val second = new Scripted((_, _) => Right(calling("and beta")))
+      val turn = say(entries, "and b?")
+      val recorded = answered(entries, turn, second)
+      val kept = entries.get(Turn.windowId(turn)).toOption.flatten.map(_.payload).collect {
+        case w: Payload.Window => w
+      }
+      // The same turn drawn afresh with nothing before it: no carried first turn, so its own
+      // messages follow a gap line.
+      val alone = kept.map(w => w.copy(entries = Vector.empty, carry = None))
+      val sentFirst = second.requests.headOption.map(_.messages).getOrElse(Vector.empty)
+      alone.map(w =>
+        TurnRecord.redrawn(turn, recorded, reads(entries), w).map(sent(_).map(_.messages))
+      ) ==> Some(Right(Vector(grit.core.context.Shown.Gap +: sentFirst.drop(5))))
     }
 
     test(

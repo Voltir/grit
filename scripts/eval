@@ -72,6 +72,7 @@
 #       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
 #
 #   scripts/eval context --conversation <conversation-id> --from <database> [--full]
+#                        [--redraw <tokens>]
 #       Every turn of one conversation, a task's turns, written to
 #       .local/eval/review/context-<conversation-id>.md, each as the line above writes one
 #       turn, after what the turns held in the cache, also printed: the task's cache and the
@@ -79,6 +80,14 @@
 #       window was drawn at a boundary or carried, a boundary's dropped earlier turns flagged
 #       DROPPED, its first call's share of input read from the cache and what its misses cost,
 #       and how much of what the turn before left in the cache its first call did not read.
+#       With --redraw, each boundary's window is drawn afresh by this build's linear assembler
+#       at a limit of <tokens> (the window tokens the turns ran under), the turn's first call
+#       rebuilt under it, and a table printed and written: per boundary, recorded beside
+#       redrawn, the earlier turns shown, the first call and its task, earlier turns and
+#       digest (grit's estimate scaled to the provider's count), the room to the last call
+#       and to the input limit, what the earlier turns' summaries would cost appended, and how
+#       many of its tool calls name a file the digest lists; each redrawn request is written
+#       message by message. No model is called.
 #
 #   scripts/eval score <runs file> [--labels <file>]
 #       The run scored, written to .local/eval/reports/<run>.md and printed: text-free, ids
@@ -549,7 +558,7 @@ order() {
 }
 
 context() {
-  local id=${1:-} from= full= capture= limit=() conversation=
+  local id=${1:-} from= full= capture= limit=() conversation= redraw=()
   if [ "$id" = --conversation ]; then conversation=${2:-}; id=$conversation; shift; fi
   [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
@@ -558,6 +567,7 @@ context() {
       --from) from=${2:-}; shift 2 ;;
       --full) full=--full; shift ;;
       --limit) limit=(--limit "${2:-}"); shift 2 ;;
+      --redraw) redraw=(--redraw "${2:-}"); shift 2 ;;
       --capture) capture=${2:-}; shift 2 ;;
       *) usage ;;
     esac
@@ -566,7 +576,8 @@ context() {
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
   local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
   if [ -n "$conversation" ]; then
-    harness context --url "$url" --from "$from" --conversation "$conversation" --out "$out" $full
+    harness context --url "$url" --from "$from" --conversation "$conversation" --out "$out" $full \
+      "${redraw[@]}"
   elif [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
     harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full "${limit[@]}"
   else

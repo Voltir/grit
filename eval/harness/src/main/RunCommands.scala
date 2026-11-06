@@ -5,6 +5,8 @@ import java.time.ZoneOffset
 
 import scala.util.Try
 
+import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.LinearAssembler
 import grit.core.clock.Clock
 import grit.core.either.Traversal
 import grit.core.id.{ConversationId, WorkflowId}
@@ -22,6 +24,7 @@ import grit.eval.harness.sent.{
   ConversationSent,
   Cut,
   HeardSent,
+  Redrawn,
   SentMarkdown,
   TaskLines,
   TaskTurn,
@@ -202,7 +205,10 @@ private[main] object RunCommands {
 
   /** `context` of every turn of a conversation (`--conversation`), recorded before `clock`'s
     * now: what the task's turns held in the cache ([[TaskLines]]), printed and written to
-    * `--out`, then each turn as [[SentMarkdown.render]] writes it.
+    * `--out`; with `--redraw <tokens>`, each boundary's first call beside its window drawn
+    * afresh by this build's linear assembler at a limit of that many tokens ([[Redrawn]]), its
+    * table printed and each turn's redrawn request written; then each turn as
+    * [[SentMarkdown.render]] writes it.
     */
   private def conversationContext(
       f: Map[String, String],
@@ -214,21 +220,55 @@ private[main] object RunCommands {
       from <- need(f, "from")
       conversation <- need(f, "conversation").map(ConversationId(_))
       out <- need(f, "out").map(Path.of(_))
+      redraw <- f.get("redraw") match {
+        case None => Right(None)
+        case Some(raw) =>
+          raw.toLongOption
+            .filter(_ > 0)
+            .map(n => Some(Tokens(n)))
+            .toRight(s"--redraw is not a whole number above 0: $raw")
+      }
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
-      sent <- opened(config)(ConversationSent.read(_, conversation, clock.now()))
+      read <- opened[(ConversationSent, Vector[Redrawn])](config)(reader =>
+        ConversationSent
+          .read(reader, conversation, clock.now())
+          .flatMap(sent =>
+            redraw
+              .fold[Either[String, Vector[Redrawn]]](Right(Vector.empty))(limit =>
+                Redrawn.read(
+                  reader,
+                  sent,
+                  new LinearAssembler(
+                    reader.entries,
+                    reader.periods,
+                    reader.principals,
+                    CharEstimate,
+                    limit
+                  )
+                )
+              )
+              .map(sent -> _)
+          )
+      )
+      sent = read._1
+      redrawn: Vector[Redrawn] = read._2
       lines = TaskLines.lines(TaskTurn.all(sent))
+      table = if (redraw.isEmpty) Vector.empty else Redrawn.table(redrawn)
       _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
         s"${out.getParent}: ${e.getClass.getName}"
       )
       cut = if (full) Cut.Whole else Cut.Default
       _ <- write(
         out,
-        (lines.map(l => s"- $l") ++ sent.turns.map(SentMarkdown.render(_, from, cut)))
+        (lines.map(l => s"- $l") ++ table.headOption.map(_ => table.mkString("\n")) ++
+          redrawn.map(Redrawn.markdown(_).mkString("\n")) ++
+          sent.turns.map(SentMarkdown.render(_, from, cut)))
           .mkString("\n\n")
       )
     } yield {
       println(s"written: $out")
       lines.foreach(println)
+      table.foreach(println)
     }
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request

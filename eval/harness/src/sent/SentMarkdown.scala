@@ -672,7 +672,7 @@ object SentMarkdown {
   }
 
   /** Message `n`, `m`, as a numbered block: its role and what it is, then its text. */
-  private def message(n: Int, m: Message, cut: Cut): Vector[String] = m match {
+  private[sent] def message(n: Int, m: Message, cut: Cut): Vector[String] = m match {
     case Message.User(t) =>
       Vector("", s"**$n · user** (${kind(t)})") ++ fenced(t, "text")
     case Message.Assistant(blocks, _, _, _, _) =>

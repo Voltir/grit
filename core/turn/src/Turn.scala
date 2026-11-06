@@ -342,11 +342,14 @@ object Turn {
       route.in(p).left.map(TurnFailure.Store(_)).map(Picked.of)
   }
 
-  /** [[TurnRecord.requests]]. */
+  /** [[TurnRecord.requests]], under `redrawn` in place of the window record the turn kept when
+    * given ([[TurnRecord.redrawn]]).
+    */
   private[turn] def rebuilt(
       turn: TurnRef,
       steps: Vector[StepRecord],
-      reads: TurnRecord.Reads
+      reads: TurnRecord.Reads,
+      redrawn: Option[Payload.Window]
   )(using Tx^): Either[String, TurnRecord.Calls] = {
     import TurnJournal.given
     val workflow = WorkflowId.value(turn.workflowId)
@@ -387,10 +390,10 @@ object Turn {
       offer <- kept("offer", TurnOffer.load(reads.toolSets, reads.prompts, byRef))
       (set, prompt) = (offer.tools, offer.prompt)
       // What the turn's requests showed before its own entries, as its window record keeps it.
-      record <- kept("window", reads.entries.get(windowId(turn))).flatMap {
+      record <- redrawn.fold(kept("window", reads.entries.get(windowId(turn))).flatMap {
         case Some(Entry(_, _, _, _, _, w: Payload.Window, _, _)) => Right(w)
         case _ => Left(s"$workflow kept no window record")
-      }
+      })(Right(_))
       showing <- kept(
         "window",
         shown(

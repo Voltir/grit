@@ -61,7 +61,9 @@ Packages, each importing only those above it:
   misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
   `bench`), its input by part, and what is unreferenced (no later output refers to it), a
   proxy only: a part can steer a model without being quoted, so cutting it and rerunning the
-  task decides.
+  task decides. A task's boundaries can be redrawn by this build's assembler, each first call
+  rebuilt under the window drawn afresh, so a change to what a boundary draws is seen in
+  tokens before a model is paid to run it.
   ← `stats`, `capture`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn

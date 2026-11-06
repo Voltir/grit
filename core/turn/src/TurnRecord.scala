@@ -15,6 +15,7 @@ import grit.core.store.{
   ConversationStore,
   EntryStore,
   ModelProfileStore,
+  Payload,
   Principals,
   PromptStore,
   Tx
@@ -110,7 +111,24 @@ object TurnRecord {
   def requests(turn: TurnRef, steps: Vector[StepRecord], reads: Reads)(using
       Tx^
   ): Either[String, Calls] =
-    Turn.rebuilt(turn, steps, reads)
+    Turn.rebuilt(turn, steps, reads, None)
+
+  /** The model calls `turn`'s reply made, rebuilt as [[requests]] rebuilds them but with
+    * `window` in place of the window record the turn kept: the requests it would have sent had
+    * its window been drawn so. Refused as [[requests]] is, `window` naming an entry not kept
+    * among them.
+    */
+  def redrawn(turn: TurnRef, steps: Vector[StepRecord], reads: Reads, window: Payload.Window)(using
+      Tx^
+  ): Either[String, Calls] =
+    Turn.rebuilt(turn, steps, reads, Some(window))
+
+  /** The limits `steps` recorded with the turn's window; `None` when no such step is recorded,
+    * or it recorded a failure. `Left` naming the step when its output does not read.
+    */
+  def limits(steps: Vector[StepRecord]): Either[String, Option[TurnRound.Limits]] =
+    read[Either[TurnFailure, TurnRound.Limits]](steps, Turn.Step.RecordWindow)
+      .map(_.flatMap(_.toOption))
 
   /** A turn's model calls: each whose reply called tools, oldest first (`looped`), then the
     * one that answered, once its reply or draft was kept (`answered`); `schemas` says whether

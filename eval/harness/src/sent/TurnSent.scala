@@ -153,6 +153,19 @@ object Picked {
 
 object TurnSent {
 
+  /** The stores a turn's requests are rebuilt from, as `reader` reads them. */
+  private[sent] def reads(reader: Reader^): TurnRecord.Reads =
+    TurnRecord.Reads(
+      reader.conversations,
+      reader.entries,
+      reader.principals,
+      reader.documents,
+      reader.pieces,
+      reader.prompts,
+      reader.toolSets,
+      reader.profiles
+    )
+
   /** Workflow `workflow`'s turn, read through `reader`. `Left` when it is not a turn's
     * workflow id, DBOS does not know it, its conversation is gone, a store cannot be read,
     * or [[TurnRecord.requests]] refuses it (its reason given).
@@ -173,24 +186,7 @@ object TurnSent {
       prompt <- read("prompt")(reader.prompts.prompt(offered.prompt))
       set <- read("tool set")(reader.toolSets.get(offered.tools))
       calls <- reader.all
-        .read((tx: Tx^) ?=>
-          Right(
-            TurnRecord.requests(
-              turn,
-              steps,
-              TurnRecord.Reads(
-                reader.conversations,
-                reader.entries,
-                reader.principals,
-                reader.documents,
-                reader.pieces,
-                reader.prompts,
-                reader.toolSets,
-                reader.profiles
-              )
-            )
-          )
-        )
+        .read((tx: Tx^) ?=> Right(TurnRecord.requests(turn, steps, reads(reader))))
         .left
         .map(e => s"requests of $id unread: ${e.kind}")
         .flatten
