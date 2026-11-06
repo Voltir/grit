@@ -14,11 +14,13 @@ import grit.models.{AnthropicProvider, StubProvider}
   * thinking block's signature binds and the cache needs (ADR 0052). One turn briefed for one
   * task, over the fixtures' in-memory stores, offered `peek` and `poke` over four files each
   * naming the next, the first padded to about 3,000 tokens, its input limit 7,000 tokens so the
-  * limit cuts it after its second reply: four calls, a fifth if its last reply calls a tool.
+  * limit cuts it after its second reply: three calls when the cut's last call with tools calls
+  * `task_status`, four when the ending call does, a fifth if that reply calls another tool.
   *
-  * It passes when the API refuses no call, every call after the first reads from the cache at
-  * least all the call before it read and wrote, and the turn ends through `task_status` or
-  * text. It prints each call's usage and cost, and how many of the turn's calls were refused
+  * It passes when the API refuses no call, the turn reaches its cut, some call before the
+  * turn's last spent tokens thinking (else no signature was sent back to bind), every call
+  * after the first reads from the cache at least all the call before it read and wrote, and the
+  * turn ends through `task_status` or text. It prints each call's usage and cost, and how many of the turn's calls were refused
   * in code ([[TurnLoop.EndingRefused]], [[TurnLoop.LastRefused]], [[TaskStatus.Early]]). It
   * stops before any call once its calls have cost [[Cap]].
   *
@@ -70,7 +72,10 @@ object TurnCutLiveProbe {
           .mkString("\n")
         val ws = new Files(
           Map(
-            "a.txt" -> s"$pad\nThe next file is b.txt.",
+            // Worked out, not read off, so the reply after it thinks: 17 × 23 = 391, which is
+            // 1 mod 26, so the letter is the second, b.
+            "a.txt" -> (s"$pad\nThe next file is named by one lowercase letter and .txt: the " +
+              "letter whose place in the alphabet is (17 × 23 mod 26) + 1."),
             "b.txt" -> "The next file is c.txt.",
             "c.txt" -> "The next file is d.txt.",
             "d.txt" -> "This is the last file. The word is: lantern."
@@ -102,7 +107,8 @@ object TurnCutLiveProbe {
           val u = reply.usage
           println(
             s"[probe] call $i: input ${u.input} (read ${u.cacheRead}, written ${u.cacheWrite}), " +
-              s"output ${u.output}, ${cents(u.costUsd.getOrElse(BigDecimal(0)))}; stop ${reply.stop}"
+              s"output ${u.output} (thinking ${u.thinking
+                  .fold("not reported")(t => Tokens.value(t).toString)}), ${cents(u.costUsd.getOrElse(BigDecimal(0)))}; stop ${reply.stop}"
           )
         }
         val refusals = Vector(TurnLoop.EndingRefused, TurnLoop.LastRefused).collect {
@@ -118,7 +124,10 @@ object TurnCutLiveProbe {
           Option.when(metered.failed.nonEmpty)(
             s"the API refused a call: ${metered.failed.mkString("; ")}"
           ),
-          Option.when(calls.size < 4)(s"the turn made ${calls.size} calls, under the cut's four"),
+          Option.when(calls.size < 3)(s"the turn made ${calls.size} calls, under the cut's three"),
+          Option.when(
+            !calls.dropRight(1).exists(_._2.usage.thinking.exists(t => Tokens.value(t) > 0))
+          )("no call before the last spent tokens thinking, so no signature was bound"),
           Option.when(!said.startsWith("replied:"))(s"the turn did not answer: $said")
         ).flatten ++ calls.zip(calls.drop(1)).zipWithIndex.collect {
           case (((_, before), (_, after)), i)
