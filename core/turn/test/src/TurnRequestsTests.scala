@@ -480,6 +480,20 @@ object TurnRequestsTests extends TestSuite {
         Left("window names unknown entries at seqs: 0")
     }
 
+    test("a turn whose call failed is rebuilt up to it, its calls before it as sent") {
+      val entries = new InMemoryEntryStore
+      val provider = new Scripted((_, n) =>
+        if (n == 0) Right(calling("more", ("t", "peek", "a.txt")))
+        else Left(grit.core.provider.ProviderError.Unavailable("HTTP 400"))
+      )
+      val turn = say(entries, "go")
+      val recorded = answered(entries, turn, provider)
+      TurnRecord
+        .requests(turn, recorded, reads(entries))
+        .map(c => (sent(c), c.answered, c.summary)) ==>
+        Right((provider.requests.take(1), None, None))
+    }
+
     test(
       "a turn guided in its system prompt and told in its last result is rebuilt as sent, its last call's refused reply and the call made again included"
     ) {

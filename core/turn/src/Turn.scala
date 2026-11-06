@@ -410,13 +410,16 @@ object Turn {
           )
       }
       answer <- recorded[TurnSteps.Appended](Step.Append).map(_.map(_.reply))
-      // The loop's limits and each round's reply, which decide its notes as they did live.
+      // The loop's limits and each round's reply, which decide its notes as they did live. A
+      // call that recorded a failure has no reply, and ended the turn: its failure is the
+      // turn's own ([[TurnRecord.failure]]), so it is read as the round with none.
       limits <- recorded[TurnRound.Limits](Step.RecordWindow)
       replies <- rounds.foldLeft[Either[String, Vector[grit.core.message.Message.Assistant]]](
         Right(Vector.empty)
       ) { (acc, n) =>
         acc.flatMap(done =>
-          recorded[grit.core.message.Message.Assistant](Loop.Ask(n).name).map(done ++ _)
+          output[Either[TurnFailure, grit.core.message.Message.Assistant]](Loop.Ask(n).name)
+            .map(done ++ _.flatMap(_.toOption))
         )
       }
       gates <- gated.foldLeft[Either[String, Map[Int, Gated]]](Right(Map.empty)) {

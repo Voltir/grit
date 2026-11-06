@@ -97,7 +97,8 @@ object TurnRecord {
     * that call's reply. The texts and tools this build adds (labels, gap lines, the topic
     * tag and the `topic` tool, the last-call note, "asks first") are this build's, which may differ from those of the build
     * that ran the turn. `Calls(Vector.empty, None, _, None, _)` for a turn whose first call's reply is
-    * not kept yet.
+    * not kept yet. A turn whose call failed reads up to that call, with no answer: the failed
+    * call's own request is not among them ([[failure]] names its failure).
     *
     * `Left` naming what does not read: steps that do not read as this build's turn (one of
     * another epoch, [[grit.core.durable.Flows.read]]), a step whose output does not read, a prompt, tool set
