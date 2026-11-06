@@ -21,7 +21,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{Hosted, Tool, ToolName, ToolSet, ToolSetId, ToolSets, Toolbox}
 import grit.core.triage.{Corpora, Tags}
-import grit.core.visibility.Classification
+import grit.core.visibility.{Classification, Integrity}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none when its conversation has none
@@ -61,7 +61,9 @@ object TurnOffer {
     * rebuilds both from the recorded set. `shaped`, what its recipe made of it; `None` for an
     * offer recorded before recipes, which was drawn at the deployed width with nothing
     * withheld. `zoned`, the zone its message is dated in; `None` for an offer recorded before
-    * zones, whose message was dated in UTC.
+    * zones, whose message was dated in UTC. `unadmitted`, the workspace's tools left out for who
+    * asks ([[TurnOffer.unadmitted]]), in `shaped`'s whole set alone; none for an offer recorded
+    * before.
     */
   final case class Recorded(
       workspace: Option[Place],
@@ -71,7 +73,8 @@ object TurnOffer {
       advertised: Vector[ToolName] = Vector.empty,
       reached: Map[ToolName, Place] = Map.empty,
       shaped: Option[TurnShape] = None,
-      zoned: Option[Zoned] = None
+      zoned: Option[Zoned] = None,
+      unadmitted: Vector[ToolName] = Vector.empty
   ) {
 
     /** The width the turn's window is drawn at: its shape's, else the deployed width. */
@@ -150,7 +153,10 @@ object TurnOffer {
     * `weighed`'s answers (none when `weighed` is `None` or `Unanswered`,
     * [[grit.core.recipe.Offering.decide]]). A withheld service's tools are left out of the set,
     * `advertised` and `reached`, and what it may reach there or besides is not said; all of it
-    * is in `shaped`, and its edge's instructions are not carried. Its message is dated ([[Zoned]]) in the zone `principals` says its first
+    * is in `shaped`, and its edge's instructions are not carried. At a directory, the tools
+    * [[unadmitted]] names for its asker (`hosting.askers`, read there alone) and its first
+    * entry's integrity are left out of the set and `advertised`, kept in `shaped`'s whole set,
+    * recorded, and the prompt says files there may be read but not changed. Its message is dated ([[Zoned]]) in the zone `principals` says its first
     * entry's account is placed in, else in `deployment`, the deployment's
     * ([[grit.core.spend.Budget.zone]]). `TurnFailure.Store` when a store fails, the conversation
     * is gone, or two tools offered share a name. A stored voice this build does not know is the
@@ -217,6 +223,16 @@ object TurnOffer {
         .flatMap(_.offerable(sends, at))
         .flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
+      // Who asks weighs only at a directory, this machine.
+      asker <-
+        if (workspace.exists(_.directory.isDefined)) hosting.askers.of(turn) else Right(None)
+      unadmitted = TurnOffer.unadmitted(
+        hosted,
+        workspace,
+        asker.exists(Tx.writesHost),
+        first.fold(Integrity.Untrusted)(_.integrity)
+      )
+      admitted = hosted.filterNot(h => unadmitted.contains(h.name))
       // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
       services = rooted match {
         case Rooted.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
@@ -227,7 +243,7 @@ object TurnOffer {
       took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
       (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
       kept = !atWorkspace.exists(_.offer.withheld)
-      offeredHosted = if (kept) hosted else Vector.empty
+      offeredHosted = if (kept) admitted else Vector.empty
       // shape takes the reached in reaching's order, one each.
       offeredReached = reached.zip(reachedTook).collect {
         case (r, t) if !t.offer.withheld => r
@@ -271,7 +287,7 @@ object TurnOffer {
             TurnPrompt.reach(
               workspace,
               servedAt.fold(TurnPrompt.Serving.Unserved)(_ =>
-                TurnPrompt.Serving.Offering(hostedSet)
+                TurnPrompt.Serving.Offering(hostedSet, unadmitted = unadmitted.nonEmpty)
               )
             )
           ) ++
@@ -289,10 +305,11 @@ object TurnOffer {
       set.id,
       prompt.ids,
       root,
-      if (kept) advertised.map(_.name) else Vector.empty,
+      if (kept) advertised.map(_.name).filterNot(unadmitted.contains) else Vector.empty,
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
       Some(TurnShape(shaping.width, whole.id, took)),
-      Some(Zoned(person, deployment))
+      Some(Zoned(person, deployment)),
+      unadmitted
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
@@ -434,6 +451,28 @@ object TurnOffer {
     val offering = tooling.recipe.at(Rooted.Addressed).offering
     linked.exists(s => offering.gate(covering.getOrElse(s, Vector.empty)).nonEmpty)
   }
+
+  /** The names of `hosted`, in order, a turn is not offered for who asks it (ADR 0059): at a
+    * directory `workspace`, this machine, each [[TurnGate.withheldAt]] withholds at `trigger`,
+    * what the turn's first entry is believed at ([[Integrity.Untrusted]] when it has none), and,
+    * unless `admitted` (its asker is one [[grit.core.store.Tx.writesHost]] admits; never with no
+    * asker), at `trigger` met with [[Integrity.Outside]], as if its words came from outside the
+    * team; none at a service place or with no workspace.
+    */
+  def unadmitted(
+      hosted: Vector[Tool.Offered],
+      workspace: Option[Place],
+      admitted: Boolean,
+      trigger: Integrity
+  ): Vector[ToolName] =
+    if (!workspace.exists(_.directory.isDefined)) Vector.empty
+    else
+      TurnGate
+        .withheldAt(
+          hosted.map(_.entry),
+          if (admitted) trigger else trigger.meet(Integrity.Outside)
+        )
+        .map(_.name)
 
   /** Where a conversation from `origin` works: a TUI session's directory; else the service the
     * first of `links` holding its place names ([[WorksIn.of]]); else none.

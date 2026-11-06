@@ -21,7 +21,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.{Account, TestAccounts}
+import grit.core.identity.{Account, Evidence, Held, Principal, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.persona.Persona
@@ -29,6 +29,7 @@ import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
 import grit.core.store.{
+  Askers,
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
@@ -57,7 +58,7 @@ import grit.core.tool.{
 }
 import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
 import grit.core.visibility.Integrity
-import grit.core.visibility.{Clearance, Cleared, Label, Level, Party, TestLabels, Visibility}
+import grit.core.visibility.{Clearance, Cleared, Group, Label, Level, Party, TestLabels, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -492,7 +493,9 @@ object TurnOfferTests extends TestSuite {
       adverts: Vector[(Place, Vector[ToolSet.Entry])],
       worksIn: Vector[WorksIn] = Vector.empty,
       reaches: Vector[Reaches] = Vector.empty,
-      hosted: Vector[Tool.Offered] = Vector(described("fetch"))
+      hosted: Vector[Tool.Offered] = Vector(described("fetch")),
+      asker: Askers = TurnFixtures.LocalAsker,
+      trigger: Integrity = Integrity.Member
   ): (TurnOffer.Recorded, ToolSet, String) = {
     given Tx = tx
     val conversations = new InMemoryConversationStore
@@ -514,7 +517,7 @@ object TurnOfferTests extends TestSuite {
         edges,
         edges,
         new InMemoryVoiceStore,
-        TurnFixtures.LocalAsker
+        asker
       )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
@@ -535,7 +538,7 @@ object TurnOfferTests extends TestSuite {
         EntrySeq(0),
         Payload.Message(Message.User("go")),
         Instant.EPOCH,
-        Integrity.Member
+        trigger
       )
     )
     TurnOffer
@@ -585,6 +588,63 @@ object TurnOfferTests extends TestSuite {
     TestTx.fake(Clearance.inRoom(slack.place, confidentialTrial, asker), labelled)
 
   private def namesOf(set: ToolSet): Vector[String] = set.tools.map(t => ToolName.value(t.name))
+
+  /** A full member of `slack:T1`, its account `slack:T1/{user}`. */
+  private def member(user: String): Principal = {
+    val account = TestAccounts.account(s"slack:T1/$user")
+    Principal.Person(TestAccounts.principalId(account), Set(Held(account, Evidence.Home, true)))
+  }
+
+  /** A deployment whose host writers are the group `coders`, naming `slack:T1/U-bo`. */
+  private val coders: Tx = TestTx.inForce(
+    Visibility
+      .of(
+        grit.core.visibility.Compartments.Shipped,
+        grit.core.visibility.RoomLabels.Public,
+        Vector(Group(TestLabels.group("coders"), Set(TestAccounts.account("slack:T1/U-bo")))),
+        Vector.empty,
+        hostWriters = Some(TestLabels.group("coders"))
+      )
+      .fold(r => throw new java.lang.AssertionError(r.toString), identity)
+  )
+
+  /** The directory's tools: `read` and `search`, which need no one's word, and `write` and
+    * `run`, which need the team's.
+    */
+  private val coding: Vector[ToolSet.Entry] = Vector(
+    advert("read"),
+    advert("search"),
+    advert("write").copy(requires = Integrity.Member),
+    advert("run").copy(requires = Integrity.Member)
+  )
+
+  /** The offer of a TUI turn in [[dir]], under [[coders]], asked by `asker`, its first entry
+    * believed at `trigger`, and the names of its whole set.
+    */
+  private def atDirectory(
+      asker: Option[Principal],
+      trigger: Integrity = Integrity.Member
+  ): (TurnOffer.Recorded, ToolSet, String, Vector[String]) = {
+    val (recorded, set, prompt) = offeredIn(
+      coders,
+      Origin.Tui(dir, "default"),
+      Vector(Place.of(dir) -> coding),
+      hosted = Vector.empty,
+      asker = TurnFixtures.askedBy(asker),
+      trigger = trigger
+    )
+    given Tx = coders
+    val whole = recorded.shaped
+      .toRight("no shape")
+      .flatMap(s => ToolSets.get(s.whole).left.map(_.toString))
+      .fold(e => throw new java.lang.AssertionError(e), namesOf)
+    (recorded, set, prompt, whole)
+  }
+
+  private val readOnly =
+    "In this conversation you can read and search files in /work, but not change them or " +
+      "run commands: that isn't allowed here. If someone asks for a change, tell them plainly " +
+      "that it can't be done from this conversation."
 
   private def writesOf(set: ToolSet, name: String): Option[Vector[String]] =
     set.named(named(name)).flatMap(_.writes).map(_.to.keys.toVector)
@@ -644,7 +704,12 @@ object TurnOfferTests extends TestSuite {
       assert(!prompt.contains("vault"), !prompt.contains("attic"), !prompt.contains("elsewhere"))
       assert(
         prompt.contains(
-          TurnPrompt.reach(Some(github.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text
+          TurnPrompt
+            .reach(
+              Some(github.place),
+              TurnPrompt.Serving.Offering(ToolSet.Empty, unadmitted = false)
+            )
+            .text
         )
       )
     }
@@ -680,6 +745,71 @@ object TurnOfferTests extends TestSuite {
       )
       namesOf(set) ==> Vector("post_e", "about")
       writesOf(set, "post_e") ==> Some(Vector("trial"))
+    }
+
+    test(
+      "at a directory, a turn asked by an attested member the deployment does not admit is " +
+        "offered only the tools needing no one's word, told it may read but not change, and " +
+        "records what was left out, which its whole set keeps"
+    ) {
+      val (recorded, set, prompt, whole) = atDirectory(Some(member("U-cy")))
+      (
+        namesOf(set),
+        recorded.unadmitted.map(ToolName.value),
+        recorded.advertised.map(ToolName.value),
+        prompt.contains(readOnly),
+        whole
+      ) ==> (
+        Vector("read", "search", "about"),
+        Vector("write", "run"),
+        Vector("read", "search"),
+        true,
+        Vector("read", "search", "write", "run", "about")
+      )
+    }
+
+    test(
+      "at a directory, a declared host writer, the local operator and grit are offered every " +
+        "tool, nothing left out and nothing said of it"
+    ) {
+      val local = Principal.Person(
+        TestAccounts.principalId(Account.Local),
+        Set(Held(Account.Local, Evidence.Home, false))
+      )
+      Vector(Some(member("U-bo")), Some(local), Some(Principal.Grit)).map { asker =>
+        val (recorded, set, prompt, _) = atDirectory(asker)
+        (namesOf(set), recorded.unadmitted, prompt.contains("isn't allowed here"))
+      } ==> Vector.fill(3)(
+        (Vector("read", "search", "write", "run", "about"), Vector.empty[ToolName], false)
+      )
+    }
+
+    test(
+      "at a directory, a turn no one asks, or whose first entry is believed below member though " +
+        "grit or a host writer asks, is offered only the tools needing no one's word"
+    ) {
+      Vector(
+        atDirectory(None),
+        atDirectory(Some(Principal.Grit), trigger = Integrity.Outside),
+        atDirectory(Some(member("U-bo")), trigger = Integrity.Outside)
+      ).map((recorded, set, prompt, _) =>
+        (namesOf(set), recorded.unadmitted.map(ToolName.value), prompt.contains(readOnly))
+      ) ==> Vector.fill(3)((Vector("read", "search", "about"), Vector("write", "run"), true))
+    }
+
+    test("at a service place, nothing is left out for who asks, though no one does") {
+      val (recorded, set, _) = offeredIn(
+        coders,
+        slack,
+        Vector(github.place -> coding),
+        Vector(WorksIn(everyTeam, github)),
+        hosted = Vector.empty,
+        asker = TurnFixtures.askedBy(None)
+      )
+      (namesOf(set), recorded.unadmitted) ==> (
+        Vector("read", "search", "write", "run", "about"),
+        Vector.empty[ToolName]
+      )
     }
 
     test("a TUI conversation is offered its directory's tools at its own room's label") {
@@ -1140,7 +1270,10 @@ object TurnOfferTests extends TestSuite {
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
         TurnPrompt.room(slack, Label.Public),
         TurnPrompt
-          .reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
+          .reach(
+            Some(github.place),
+            TurnPrompt.Serving.Offering(set(advert("github_search")), unadmitted = false)
+          )
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }
 

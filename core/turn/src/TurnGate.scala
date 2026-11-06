@@ -118,7 +118,7 @@ object TurnGate {
       read: Map[ItemRef, HiddenName],
       named: Map[ItemRef, Fate.Hidden]
   ): Gated = {
-    def withheldAt(level: Integrity) = offered.tools.filterNot(t => level.dominates(t.requires))
+    def withheldAt(level: Integrity) = TurnGate.withheldAt(offered.tools, level)
     val listed = items.filter(i => named.contains(i.ref) || !i.integrity.dominates(prior))
     val (level, decided, _) =
       listed.foldLeft((prior, Vector.empty[Decided], HiddenName.after(named.values.map(_.name)))) {
@@ -144,6 +144,13 @@ object TurnGate {
       }
     Gated(level, decided, withheldAt(level).map(t => Withheld(t.name, t.requires)))
   }
+
+  /** Each of `tools`, in order, that a call stamped at `level` may not be bound to: those whose
+    * `requires` `level` does not dominate. The one rule by which a turn's level withholds a
+    * tool, at its offer ([[TurnOffer.unadmitted]]) and at each round ([[decide]]).
+    */
+  def withheldAt(tools: Vector[ToolSet.Entry], level: Integrity): Vector[ToolSet.Entry] =
+    tools.filterNot(t => level.dominates(t.requires))
 
   /** What the model is shown in `item`'s place when `hidden` hides it, in words it may repeat
     * to a person: its name, where it comes from ([[described]]), what reading it costs until

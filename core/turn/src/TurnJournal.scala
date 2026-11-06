@@ -676,7 +676,8 @@ private[turn] object TurnJournal {
     * `reached` as none, so every offer recorded before them reads as it did; `"shaped"`
     * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped; and
     * `"zoned": {"person": zone id, "deployment": zone id}` when its message was dated in a zone,
-    * `person` absent when not known, none reading as dated in UTC.
+    * `person` absent when not known, none reading as dated in UTC; and `"unadmitted": [tool
+    * names]` when it left some out for who asks, none reading as none.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(writeRecorded, readRecorded)
@@ -712,6 +713,9 @@ private[turn] object TurnJournal {
       z.person.foreach(p => zoned("person") = p.getId)
       o("zoned") = zoned
     }
+    // Written only when some were left out, so every other offer keeps its earlier form.
+    if (r.unadmitted.nonEmpty)
+      o("unadmitted") = ujson.Arr.from(r.unadmitted.map(n => ujson.Str(ToolName.value(n))))
     o
   }
 
@@ -750,23 +754,8 @@ private[turn] object TurnJournal {
         case Some(ujson.Str("by-name")) => Right(TurnOffer.Root.ByName)
         case Some(other) => Left(s"offer: unknown root ${other.render()}")
       }
-      advertised <- o.get("advertised") match {
-        case None => Right(Vector.empty)
-        case Some(names) =>
-          names.arrOpt
-            .toRight("offer: advertised is not an array")
-            .flatMap(
-              _.toVector.foldLeft[Either[String, Vector[ToolName]]](Right(Vector.empty)) {
-                (acc, n) =>
-                  acc.flatMap(done =>
-                    n.strOpt
-                      .toRight("offer: an advertised name is not a string")
-                      .flatMap(ToolName.of(_).left.map(e => s"offer: $e"))
-                      .map(done :+ _)
-                  )
-              }
-            )
-      }
+      advertised <- readNames(o, "advertised")
+      unadmitted <- readNames(o, "unadmitted")
       reached <- o.get("reached") match {
         case None => Right(Map.empty[ToolName, Place])
         case Some(places) =>
@@ -804,7 +793,36 @@ private[turn] object TurnJournal {
             }
           } yield Some(TurnOffer.Zoned(person, deployment))
       }
-    } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped, zoned)
+    } yield TurnOffer.Recorded(
+      workspace,
+      tools,
+      prompt,
+      root,
+      advertised,
+      reached,
+      shaped,
+      zoned,
+      unadmitted
+    )
+
+  /** The tool names under `key` of an offer's object, none when it has no `key`. */
+  private def readNames(o: ujson.Obj, key: String): Either[String, Vector[ToolName]] =
+    o.value.get(key) match {
+      case None => Right(Vector.empty)
+      case Some(names) =>
+        names.arrOpt
+          .toRight(s"offer: $key is not an array")
+          .flatMap(
+            _.toVector.foldLeft[Either[String, Vector[ToolName]]](Right(Vector.empty)) { (acc, n) =>
+              acc.flatMap(done =>
+                n.strOpt
+                  .toRight(s"offer: a name under $key is not a string")
+                  .flatMap(ToolName.of(_).left.map(e => s"offer: $e"))
+                  .map(done :+ _)
+              )
+            }
+          )
+    }
 
   /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",
     * "hits"}`; each service `{"service", "via": "workspace" | "reached", "tools": [names],

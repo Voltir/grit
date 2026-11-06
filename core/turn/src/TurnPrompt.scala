@@ -307,14 +307,17 @@ object TurnPrompt {
     * a service place, the tools offered run at that service. Said instead: that nothing serves
     * it, when no edge does; that its tools are not available in this conversation, when one
     * does and none is offered (the conversation's labels allow none), naming only the directory
-    * or the service; that it has no workspace, when the conversation has none (a place neither
+    * or the service; that files in the directory may be read and searched but not changed nor
+    * commands run, and a request for a change refused plainly, when some are offered but those
+    * were left out for who asks (`unadmitted`), never saying why; that it has no workspace,
+    * when the conversation has none (a place neither
     * a directory nor a service reads as none). Worded by workspace, never by what serves it,
     * so another edge serving the same one leaves the prompt the same.
     */
   def reach(workspace: Option[Place], serving: Serving): Fragment = {
-    val tools = serving match {
-      case Serving.Unserved => ToolSet.Empty
-      case Serving.Offering(set) => set
+    val (tools, unadmitted) = serving match {
+      case Serving.Unserved => (ToolSet.Empty, false)
+      case Serving.Offering(set, unadmitted) => (set, unadmitted)
     }
     val served = serving != Serving.Unserved
     val text = (workspace.flatMap(_.directory), workspace.flatMap(_.service)) match {
@@ -326,6 +329,12 @@ object TurnPrompt {
              "conversation, so you "
          else s"Nothing is serving the directory ${Directory.value(dir)} right now, so you ") +
           "cannot read or change files there or run commands."
+      case (Some(dir), _) if unadmitted =>
+        // Never said why: true of an asker the deployment does not admit, of a room capped
+        // below the team, and of a turn no one asked alike.
+        s"In this conversation you can read and search files in ${Directory.value(dir)}, but " +
+          "not change them or run commands: that isn't allowed here. If someone asks for a " +
+          "change, tell them plainly that it can't be done from this conversation."
       case (Some(dir), _) =>
         val asks =
           if (tools.tools.exists(_.asks))
@@ -351,9 +360,10 @@ object TurnPrompt {
     case Unserved
 
     /** An edge serves it, and the turn is offered `tools` of what it advertises: none when
-      * the conversation's labels allow none.
+      * the conversation's labels allow none; `unadmitted` when those that change files or run
+      * commands were left out for who asks ([[TurnOffer.unadmitted]]).
       */
-    case Offering(tools: ToolSet)
+    case Offering(tools: ToolSet, unadmitted: Boolean)
   }
 
   /** What a turn is told of `service`, a service it reaches besides its workspace

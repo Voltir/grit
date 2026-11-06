@@ -55,7 +55,7 @@ object TurnSessionsTests extends TestSuite {
       val id = SessionId
         .of(Harness.Grit, ConversationId.value(conversation))
         .fold(e => throw new java.lang.AssertionError(e), identity)
-      val local: Principal.Person = Principal.Person(PrincipalId.Local, Set.empty)
+      val local: Principal.Person = TurnFixtures.Local
       val held = Session(
         id,
         None,

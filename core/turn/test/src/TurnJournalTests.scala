@@ -473,6 +473,35 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "an offer's tools left out for who asks are written by name only when some were, and an offer recorded before them reads as none"
+    ) {
+      // Pinned: an offer that left nothing out keeps its earlier form, so every history replays.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      val workspace = grit.core.place.Place.read("fs:/work").toOption
+      def leaving(names: grit.core.tool.ToolName*): Either[TurnFailure, TurnOffer.Recorded] = Right(
+        TurnOffer.Recorded(
+          workspace,
+          tools,
+          Vector.empty,
+          TurnOffer.Root.Addressed,
+          unadmitted = names.toVector
+        )
+      )
+      (
+        j.encode(leaving(grit.core.tool.ToolName("write"), grit.core.tool.ToolName("run"))),
+        j.encode(leaving())
+      ) ==> (
+        s"""{"ok":{"workspace":"fs:/work","tools":"$set","prompt":[],"unadmitted":["write","run"]}}""",
+        s"""{"ok":{"workspace":"fs:/work","tools":"$set","prompt":[]}}"""
+      )
+      j.decode(
+        j.encode(leaving(grit.core.tool.ToolName("write"), grit.core.tool.ToolName("run")))
+      ) ==> Right(leaving(grit.core.tool.ToolName("write"), grit.core.tool.ToolName("run")))
+    }
+
+    test(
       "an offer's zones are written by id, the person's only when known; an offer recorded without a zone reads with none"
     ) {
       // Pinned: a rebuilt request dates its message in the zones its offer recorded.

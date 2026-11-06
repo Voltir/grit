@@ -387,7 +387,7 @@ object TurnToolsTests extends TestSuite {
         Session.Header(
           id,
           None,
-          Principal.Person(PrincipalId.Local, Set.empty),
+          TurnFixtures.Local,
           Label.Public,
           origin.place,
           Some(holder)

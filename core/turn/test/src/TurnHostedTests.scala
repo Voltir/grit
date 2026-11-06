@@ -312,7 +312,7 @@ object TurnHostedTests extends TestSuite {
       val provider = model(("t1", "fetch", "a.txt"))
       val unread = readsAskers(Vector.empty)
       val out = durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = unread))
-      (out, edge.sent) ==> ("failed: Store(DatabaseError(down))", Vector.empty)
+      (out, edge.sent) ==> ("failed: Store(down)", Vector.empty)
     }
 
     test(
@@ -323,7 +323,8 @@ object TurnHostedTests extends TestSuite {
       val durable = new InMemoryDurable
       val edge = served(durable, _ => Serve.Now(Outcome.Done("read")))
       val provider = model(("t1", "fetch", "a.txt"))
-      val once = readsAskers(Vector(Right(None)))
+      // The offer reads its asker first, then the call.
+      val once = readsAskers(Vector(Right(None), Right(None)))
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge, askers = once)) ==> Done
       (edge.sent, results(provider).map(r => (r.content, r.isError))) ==> (
         Vector.empty,

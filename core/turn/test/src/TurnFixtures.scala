@@ -223,10 +223,14 @@ object TurnFixtures {
     }
   }
 
-  /** The fixture's asker for every turn: the local person, as a terminal session's turns are
-    * asked.
-    */
-  val LocalAsker: Askers = askedBy(Some(Principal.Person(PrincipalId.Local, Set.empty)))
+  /** The local person, holding the local operator's account. */
+  val Local: Principal.Person = Principal.Person(
+    PrincipalId.Local,
+    Set(grit.core.identity.Held(Account.Local, grit.core.identity.Evidence.Home, false))
+  )
+
+  /** The fixture's asker for every turn: [[Local]], as a terminal session's turns are asked. */
+  val LocalAsker: Askers = askedBy(Some(Local))
 
   /** A search that finds nothing: what a turn whose conversation is never stitched reads. */
   object NoSearch extends grit.core.store.EntrySearch {
