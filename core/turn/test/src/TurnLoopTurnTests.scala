@@ -778,6 +778,67 @@ object TurnLoopTurnTests extends TestSuite {
       shape(run(continuing(entries, grit.core.id.TurnSeq.First, 3), "three")) ==>
         (Some(Message.User("the task")), 1, false)
     }
+    // A short task's turns, each first request as its provider was sent it: turn 1 could carry
+    // turn 0's window, and turn 2 turn 1's, had the turns not gone on with a task.
+    def task(reasons: grit.core.store.WentOn*): Vector[Vector[Message]] = {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      def run(turn: TurnRef, reply: String): Vector[Message] = {
+        val provider = new Scripted((_, _) => Right(said(reply)))
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            12
+          )
+        )
+        provider.requests.headOption.map(_.messages).getOrElse(Vector.empty)
+      }
+      val first: Vector[Message] = run(say(entries, "the task"), "reply 0")
+      val rest: Vector[Vector[Message]] =
+        reasons.toVector.zipWithIndex.map((r: grit.core.store.WentOn, i: Int) =>
+          run(continuing(entries, grit.core.id.TurnSeq.First, i + 2, r), s"reply ${i + 1}")
+        )
+      first +: rest
+    }
+    def replies(sent: Vector[Message]): Vector[Vector[AssistantBlock]] =
+      sent.collect { case a: Message.Assistant => a.blocks }
+    test(
+      "a continuation's boundary shows the task, a gap line, then the newest turn's note and reply, and no earlier reply"
+    ) {
+      val atLimit = grit.core.store.WentOn.AtLimit
+      val sent = task(atLimit, atLimit).lastOption.getOrElse(Vector.empty)
+      (sent.take(3), replies(sent)) ==> (
+        Vector(Message.User("the task"), Shown.Gap, Message.User(Shown.Continuing)),
+        Vector(Vector(AssistantBlock.Text("reply 1")))
+      )
+    }
+    test(
+      "after a failed check, the next turn shows the task, the answer the check failed and the check's output, and no earlier reply"
+    ) {
+      val failed = grit.core.store.WentOn.Command
+        .of("./check")
+        .map(grit.core.store.WentOn.failed(_, Some(1), "1 test failed"))
+        .getOrElse(sys.error("a command"))
+      val sent = task(grit.core.store.WentOn.AtLimit, failed).lastOption.getOrElse(Vector.empty)
+      (
+        sent.take(2),
+        replies(sent),
+        sent.exists {
+          case Message.User(text) => text.contains(Shown.checkFailed(failed))
+          case _ => false
+        }
+      ) ==> (
+        Vector(Message.User("the task"), Shown.Gap),
+        Vector(Vector(AssistantBlock.Text("reply 1"))),
+        true
+      )
+    }
 
     test(
       "a cut turn declaring done on its last call with tools is done, not at its limit, its handoff the answer; task_status offered on every call"

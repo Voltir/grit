@@ -1160,10 +1160,16 @@ object TurnFixtures {
     TurnRef(conversation, next.turnSeq)
   }
 
-  /** Records grit's note beginning turn `turn` of the task turn `task` began, the first entry
-    * of the conversation's next turn, as [[grit.core.inbox.Inbox.continued]] records it.
+  /** Records grit's note beginning turn `turn` of the task turn `task` began, gone on with for
+    * `reason`, the first entry of the conversation's next turn, as
+    * [[grit.core.inbox.Inbox.continued]] records it.
     */
-  def continuing(entries: EntryStore, task: TurnSeq, turn: Int): TurnRef = {
+  def continuing(
+      entries: EntryStore,
+      task: TurnSeq,
+      turn: Int,
+      reason: grit.core.store.WentOn = grit.core.store.WentOn.AtLimit
+  ): TurnRef = {
     given Tx = TestTx.fake
     val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
     entries.insert(
@@ -1173,7 +1179,7 @@ object TurnFixtures {
         next.turnSeq,
         None,
         next.seq,
-        Payload.Continuation(task, turn, grit.core.store.WentOn.AtLimit),
+        Payload.Continuation(task, turn, reason),
         Instant.EPOCH,
         Integrity.Member
       )

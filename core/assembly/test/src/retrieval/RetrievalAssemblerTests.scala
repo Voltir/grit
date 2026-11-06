@@ -1290,15 +1290,43 @@ object RetrievalAssemblerTests extends TestSuite {
       projected(world, new Writer(Some("q000")), 1000, new Scripted("t0:1")).cost ==> Tokens(66)
     }
 
-    test("a request's task is never drawn: its recalled turn shows its reply alone, costing that") {
-      // As above, but turn 0's question is the task: turn 0 recalled costs its reply's 6 with
-      // its gap line 12, after the tail's 34.
+    test(
+      "a continuation's boundary draws only its newest earlier turn and writes no query for its own earlier turns"
+    ) {
+      // As above, turn 0's question the task: the search would find turn 0, but a
+      // continuation's earlier turns are never candidates. Turn 5 alone costs 11, with its gap
+      // line 12; with nothing elsewhere, no query is written.
       val turns = (0 to 5).map(filler).toVector :+ ask
       val world = store(turns*)
       val task = seqs(world, "t0:0").headOption
-      val p = projected(world, new Writer(Some("q000")), 57, new Scripted("t0:1"), task = task)
-      (ids(world, p.window), p.cost) ==>
-        (Vector("t0:1", "t4:8", "t4:9", "t5:10", "t5:11"), Tokens(52))
+      val writer = new Writer(Some("q000"))
+      val p = projected(world, writer, 57, new Scripted("t0:1"), task = task)
+      (ids(world, p.window), p.cost, writer.requests) ==>
+        (Vector("t5:10", "t5:11"), Tokens(23), Vector.empty)
+    }
+    test("a continuation is drawn at a boundary whatever is carried, recalling none of its turns") {
+      // Turn 6's window is carried, with room to append turn 6 at turn 7.
+      val world = store(((0 to 5).map(filler).toVector :+ ask :+ ask)*)
+      val writer = new Writer(Some("q000"))
+      val at6 = projected(
+        world,
+        writer,
+        1000,
+        new Scripted(),
+        width = Some(Width.Within(Tokens(1000), Hits))
+      )
+      val carried = CarriedWindow.Empty.after(at6, TurnSeq(6))
+      val at7 = projected(
+        world,
+        writer,
+        1000,
+        new Scripted("t0:1", "t1:3"),
+        at = 7,
+        width = Some(Width.Within(Tokens(200), Hits)),
+        carried = carried,
+        task = seqs(world, "t0:0").headOption
+      )
+      (at7.isInstanceOf[Projection.Boundary], turnsOf(world, at7.window)) ==> (true, Vector("t6"))
     }
 
     test("an appended window recalls no own turn the carried window holds") {

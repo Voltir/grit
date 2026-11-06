@@ -26,11 +26,12 @@ import grit.core.visibility.Subject
   * closed period, then the messages of the most recent whole turns of the turn's own period,
   * before the turn, that fit in what half of `budget` ([[LinearAssembler.share]]) leaves by
   * `estimator`; never their summaries, nor the request's task
-  * ([[grit.core.context.AssemblyRequest.task]]), its turn's other messages kept. The baseline
-  * every smarter assembler is measured
-  * against. It never draws on other conversations.
+  * ([[grit.core.context.AssemblyRequest.task]]), its turn's other messages kept; of a
+  * continuation's turns, only those [[grit.core.context.AssemblyRequest.drawable]] keeps, its
+  * gap line paid for first when that leaves turns out. The baseline every smarter assembler
+  * is measured against. It never draws on other conversations.
   *
-  * Given a carried window it appends the turns since its last part's turn, every one of them,
+  * Given a carried window and no task it appends the turns since its last part's turn, every one of them,
   * with no closing and no gap line. Its limit, at which it draws afresh as with nothing
   * carried: the turn's period began after a carried part's turn (a close since), or the
   * carried parts' costs, their turns as sent ([[LinearAssembler.sent]]) and the turns since
@@ -105,22 +106,34 @@ final class LinearAssembler(
           opening.first,
           request.turn.turnSeq
         )
-        LinearAssembler.carrying(
-          request.carried,
-          opening.first,
-          all,
-          turns,
-          speakers,
-          estimator,
-          this.budget
-        ) match {
+        val carrying =
+          if (request.task.isDefined) None
+          else
+            LinearAssembler.carrying(
+              request.carried,
+              opening.first,
+              all,
+              turns,
+              speakers,
+              estimator,
+              this.budget
+            )
+        carrying match {
           case Some(LinearAssembler.Carrying(since, added, _)) =>
             Projection.Appended(Window(since.flatten.sortBy(_.seq).map(_.seq), notes), added)
           case None =>
             val drawn = request.boundary(budget)
             val (closings, left) =
               LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, drawn)
-            val kept = LinearAssembler.tail(turns, speakers, estimator, left)
+            // A continuation's turns left out are behind a gap line, paid for first.
+            val drawable = request.drawable(turns)
+            val room =
+              if (drawable.size == turns.size) left
+              else
+                Tokens(
+                  math.max(0L, Tokens.value(left) - Tokens.value(LinearAssembler.gap(estimator)))
+                )
+            val kept = LinearAssembler.tail(drawable, speakers, estimator, room)
             val gapped =
               if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
             Projection.Boundary(

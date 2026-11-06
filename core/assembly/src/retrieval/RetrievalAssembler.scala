@@ -77,7 +77,10 @@ import grit.core.visibility.Subject
   * line ([[Shown.of]]).
   *
   * Own turns join the window in conversation order, never with the request's task
-  * ([[grit.core.context.AssemblyRequest.task]]), which is neither drawn nor found; packed
+  * ([[grit.core.context.AssemblyRequest.task]]), which is neither drawn nor found, and of a
+  * continuation's turns only those [[grit.core.context.AssemblyRequest.drawable]] keeps, in its
+  * tail, its gap line paid for first when that leaves turns out, none of the others ever a
+  * candidate; packed
   * documents and pieces in rank order. Turns from
   * elsewhere form one section per conversation ([[Nearby]]), in the order of its best
   * candidate, its turns in its own order. A conversation whose closings match is one
@@ -102,7 +105,7 @@ import grit.core.visibility.Subject
   * A boundary at the deployed width is drawn within half of `budget`
   * ([[LinearAssembler.share]]), recall filling to that share, not to `budget`; at either width,
   * less what the request reserves ([[AssemblyRequest.boundary]]). Given a carried
-  * window it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
+  * window and no task it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
   * what a query finds that the carried window does not hold, filling to the same share of
   * `budget` with the carried window counted; it draws no closing, asked or strand section and
   * reads none: those are its boundary's. Its limit is [[LinearAssembler]]'s, against `budget`.
@@ -329,7 +332,8 @@ final class RetrievalAssembler(
       case Width.Deployed => (LinearAssembler.share(this.budget), this.hits)
       case Width.Within(b, h) => (b, h)
     }
-    val appending = request.carried.parts.nonEmpty
+    // A continuation is drawn at a boundary whatever it carries.
+    val appending = request.carried.parts.nonEmpty && request.task.isEmpty
     db.read(Subject.Turn(turn)) {
       for {
         settings <- lifecycle.current()
@@ -392,7 +396,7 @@ final class RetrievalAssembler(
       .map(AssemblyError.Store(_))
       .flatMap { read =>
         if (appending) appended(request, read, budget, hits)
-        else boundary(turn, read, request.boundary(budget), hits)
+        else boundary(request, read, request.boundary(budget), hits)
       }
   }
 
@@ -443,9 +447,10 @@ final class RetrievalAssembler(
   /** What a boundary starts from: the closings, the asked and strand sections, and the recent
     * turns, paid from `budget`.
     */
-  private def boundary(turn: TurnRef, read: Read, budget: Tokens, hits: Int)(using
+  private def boundary(request: AssemblyRequest, read: Read, budget: Tokens, hits: Int)(using
       db: Db^
   ): Either[AssemblyError, Base] = {
+    val turn = request.turn
     val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
     val allowance = Tokens(
       math.min(Tokens.value(tuning.windowTokens), Tokens.value(afterClosing))
@@ -461,9 +466,16 @@ final class RetrievalAssembler(
       val left = Tokens(
         Tokens.value(afterClosing) - Tokens.value(askedCost) - Tokens.value(strandCost)
       )
-      val turns = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
-      val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
-      val ownToFind = linear.size != turns.size
+      val period = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
+      // A continuation's turns: the newest alone, behind a gap line paid for first when that
+      // leaves turns out, and none of the others ever found.
+      val turns = request.drawable(period)
+      val room =
+        if (turns.size == period.size) left
+        else Tokens(math.max(0L, Tokens.value(left) - Tokens.value(LinearAssembler.gap(estimator))))
+      val linear = LinearAssembler.tail(turns, read.speakers, estimator, room)
+      val leftOut = linear.size != period.size
+      val ownToFind = leftOut && request.task.isEmpty
       val recent =
         if (!ownToFind) linear
         else
@@ -476,7 +488,7 @@ final class RetrievalAssembler(
       // The tail leaves turns out, so the window holds a gap line before it.
       val used = Tokens(Tokens.value(budget) - Tokens.value(left)) +
         LinearAssembler.cost(recent.flatten, read.speakers, estimator) +
-        (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
+        (if (leftOut) LinearAssembler.gap(estimator) else Tokens.Zero)
       Base(
         read,
         budget,
@@ -492,7 +504,7 @@ final class RetrievalAssembler(
         used,
         Tokens(Tokens.value(budget) - Tokens.value(left)) +
           LinearAssembler.cost(linear.flatten, read.speakers, estimator) +
-          (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero),
+          (if (leftOut) LinearAssembler.gap(estimator) else Tokens.Zero),
         read.all.filter(_.turnSeq == turn.turnSeq),
         Held.none,
         Tokens.Zero

@@ -272,14 +272,35 @@ object LinearAssemblerTests extends TestSuite {
         Projection.Appended(Window(seqsOf(w, "t3:6", "t3:7")), Tokens(SmallTurn))
     }
 
-    test("a request's task is never drawn, at a boundary or an append, its turn's reply kept") {
+    test("a request's task is never drawn, its turn's reply kept") {
+      val w = store(small(0), small(1), Vector(user("now!")))
+      window(w, 1, 1000, task = seqsOf(w, "t0:0").headOption) ==> Vector("t0:1")
+    }
+    test(
+      "a continuation's boundary draws only its newest earlier turn, with one gap line when that leaves turns out"
+    ) {
       val w = store(small(0), small(1), small(2), Vector(user("now!")))
-      window(w, 3, 1000, task = seqsOf(w, "t0:0").headOption) ==>
-        Vector("t0:1", "t1:2", "t1:3", "t2:4", "t2:5")
-      // Turn 0's window is carried: turns 1 and 2 are appended, turn 1's reply alone (6 tokens).
-      val carried = carriedOn(w, CarriedWindow.Empty, 0, 1000)
-      projection(w, 3, 1000, Width.Deployed, carried, task = seqsOf(w, "t1:2").headOption) ==>
-        Projection.Appended(Window(seqsOf(w, "t1:3", "t2:4", "t2:5")), Tokens(6 + SmallTurn))
+      val task = seqsOf(w, "t0:0").headOption
+      window(w, 3, 1000, task = task) ==> Vector("t2:4", "t2:5")
+    }
+    test("a continuation's boundary is charged its gap line exactly when one is shown") {
+      val w = store(small(0), small(1), small(2), Vector(user("now!")))
+      val task = seqsOf(w, "t0:0").headOption
+      val within = Width.Within(Tokens(1000), 0)
+      // Turn 1: turn 0's reply alone (6 tokens), nothing left out, no gap line.
+      projection(w, 1, 1000, within, CarriedWindow.Empty, task = task) ==>
+        Projection.Boundary(Window(seqsOf(w, "t0:1")), Tokens(6))
+      // Turn 3: turn 2 alone, turns 0 and 1 left out behind one gap line.
+      projection(w, 3, 1000, within, CarriedWindow.Empty, task = task) ==>
+        Projection.Boundary(Window(seqsOf(w, "t2:4", "t2:5")), Tokens(SmallTurn + Gap))
+    }
+    test("a continuation is drawn at a boundary whatever is carried") {
+      val w = store(small(0), small(1), small(2), Vector(user("now!")))
+      val task = seqsOf(w, "t0:0").headOption
+      // Turn 1's window is carried, with room for turns 1 and 2 to be appended.
+      val carried = carriedOn(w, CarriedWindow.Empty, 1, 1000)
+      projection(w, 3, 1000, Width.Deployed, carried, task = task) ==>
+        Projection.Boundary(Window(seqsOf(w, "t2:4", "t2:5")), Tokens(SmallTurn + Gap))
     }
 
     test("a carried window the turns since overflow is cleared and re-projected") {

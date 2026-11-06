@@ -45,9 +45,12 @@ trait ContextAssembler extends caps.Pure {
     * order, each one that fits what is left; one not admitted is never shown. Appended: the
     * turns since the carried window's last part's turn, then each admitted result not carried.
     * Its notes are the query's, then which earlier turns of its own it recalled. It never holds
-    * `request.task`'s entry.
-    * [[Projection.Boundary]] when `request.carried` is empty or at the assembler's [[limit]];
-    * else [[Projection.Appended]], holding nothing `request.carried` holds.
+    * `request.task`'s entry, and of a continuation's earlier turns (a request with a task) it
+    * holds only those [[AssemblyRequest.drawable]] keeps, recalling none of the others, so the
+    * task and its newest turn's handoff stand for every turn before.
+    * [[Projection.Boundary]] when `request.carried` is empty, the request has a task, or at
+    * the assembler's [[limit]]; else [[Projection.Appended]], holding nothing `request.carried`
+    * holds.
     */
   def assemble(request: AssemblyRequest, packing: Packing)(using
       Db^
@@ -88,7 +91,8 @@ object ContextAssembler {
   * [[Window.task]] and [[Window.sessionLog]]), taken off what a boundary draws within under
   * either width ([[boundary]]), which an append ignores; and `task`, the first entry of the
   * task a continuation turn goes on with ([[grit.core.store.Payload.Continuation]]), which the
-  * turn packs itself: never drawn or found, at a boundary or an append.
+  * turn packs itself: never drawn or found. What an assembler draws of a request with a task:
+  * [[ContextAssembler.assemble]].
   */
 final case class AssemblyRequest(
     turn: TurnRef,
@@ -103,6 +107,12 @@ final case class AssemblyRequest(
     */
   def boundary(share: Tokens): Tokens =
     Tokens(math.max(0L, Tokens.value(share) - Tokens.value(reserved)))
+
+  /** Of `turns`, the conversation's earlier turns oldest first, those a boundary may draw or
+    * find: with a [[task]], only the newest; without one, all of them.
+    */
+  def drawable[A](turns: Vector[A]): Vector[A] =
+    if (task.isDefined) turns.takeRight(1) else turns
 }
 
 /** Where a window starts: drawn with no search, or a query to write first. */

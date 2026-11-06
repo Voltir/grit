@@ -1,6 +1,6 @@
 # 0058. A task longer than one window goes on in turns rooted on grit's own continuation note, started by the edge that drives it
 
-Status: accepted (2026-11-05); revised (2026-11-05)
+Status: accepted (2026-11-05); revised (2026-11-05, 2026-11-06)
 
 Context: a turn at its window's limit ends, its last call forced, and the next turn draws a
 boundary (ADR 0052). A task longer than one window, such as `grit work` given an hour of
@@ -53,8 +53,24 @@ Decision:
   already decided. Turned down: the model's word alone (a live run showed a wrong path
   declared done); the engine running the check (the driver's policy, as going on is); a
   separate entry kind for a failed check (a second root beside an identical one).
-- **What the next turn is shown** is ADR 0052's boundary: the conversation's messages, the
-  forced reply or the handoff among them, no tool calls or results, then the note.
+- **What the next turn is shown** is a boundary, whatever the turn before left carried
+  (revised 2026-11-06): the task, then of the conversation's earlier turns only the newest,
+  the note or message it answered and the reply that handed the task on, behind one gap line
+  when that leaves turns out; then the session's digest and the note. No tool calls or
+  results, and no earlier reply: each handoff is cumulative, so an earlier one is superseded
+  state, and showing every turn whole grows each boundary by a handoff, shrinking the room
+  every later turn has to work in until the window slides and the cached prefix after the
+  task is written afresh. With the newest turn alone every boundary of a task draws about the
+  same and reads the same prefix, the task included, from the cache. It is a rule of every
+  assembler, at a boundary and in what it may recall (`ContextAssembler.assemble`,
+  `AssemblyRequest.drawable`), so retrieval finds none of the task's earlier turns either:
+  the handoff is the model's declared state, and the digest grit's own log of what was done.
+  A driver that goes on after a turn that left no reply gets a window of the task alone (`grit
+  work` ends the chain there instead). Turned down: the end-of-turn summaries of the earlier
+  turns appended (still growing, ten times slower, and shown beside the digest that already
+  logs the work), the last two handoffs (the older one contradicts the newer), and folding
+  or dropping earlier turns in large steps (each fold misses the cache after the task, and
+  the room still falls).
 - **A continuation's boundary holds its task first, reserved as a brief is** (revised
   2026-11-05). The task's first message is packed by the turn after the brief, its cost
   reserved from what the assembler draws (`AssemblyRequest.task`, `Window.task`), and no
@@ -72,5 +88,7 @@ stored row. Enforced by `InboxContract` (who may continue, as whom, at what beli
 `ShownTests` (the note is grit's, unescaped, a check's output fenced as material),
 `PayloadJsonTests` (a reason's stored form and its bounds), `WorkTests` (when `grit work`
 checks, goes on and stops), and `TurnLoopTests` and `TurnLoopTurnTests` (who is
-offered `task_status`, what each declaration ends in, and the task held at a boundary), and
+offered `task_status`, what each declaration ends in, and the task held at a boundary beside
+its newest turn alone), `LinearAssemblerTests` and `RetrievalAssemblerTests` (a continuation
+drawn at a boundary, its newest earlier turn alone, none recalled), and
 `TurnGateTurnTests` (the task hidden as its stub).
