@@ -25,7 +25,7 @@ import grit.core.period.Probability
 import grit.core.provider.TokenEstimator
 import grit.core.route.Routed
 import grit.core.session.{Session, SessionDigest}
-import grit.core.store.{Db, StoreError, Tx}
+import grit.core.store.{Db, EntryStore, Payload, StoreError, Tx}
 import grit.core.visibility.Subject
 
 import TurnJournal.given
@@ -236,18 +236,36 @@ private[turn] object TurnAssembly {
     Judging.Charged(p.turn, p.turn.workflowId, Subject.Turn(p.turn))
 
   /** What `p`'s window is asked for, read through `db`: drawn against the window its `carried`
-    * step read ([[CarriedWindow.chain]]), or afresh when it read none.
+    * step read ([[CarriedWindow.chain]]), or afresh when it read none; holding back the task it
+    * goes on with ([[taskOf]]).
     */
   private def request(env: TurnEnv^, db: Db^, p: Placed): Either[AssemblyError, AssemblyRequest] =
-    p.carried
-      .fold[Either[StoreError, CarriedWindow]](Right(CarriedWindow.Empty))(head =>
-        db.read(Subject.Turn(p.turn))(
-          CarriedWindow.chain(head)(env.records.entries.get).map(CarriedWindow.of)
+    db.read(Subject.Turn(p.turn)) {
+      for {
+        carried <- p.carried.fold[Either[StoreError, CarriedWindow]](Right(CarriedWindow.Empty))(
+          head => CarriedWindow.chain(head)(env.records.entries.get).map(CarriedWindow.of)
         )
-      )
-      .map(AssemblyRequest(p.turn, p.at.offer.width, _))
-      .left
+        task <- taskOf(env.records.entries, p.turn)
+      } yield AssemblyRequest(p.turn, p.at.offer.width, carried, task = task)
+    }.left
       .map(AssemblyError.Store(_))
+
+  /** The seq of the first entry of the task `turn` goes on with, when its own first entry is
+    * grit's continuation note ([[Payload.Continuation]]); none for any other turn, or when the
+    * task's turn has no entry left.
+    */
+  private def taskOf(entries: EntryStore, turn: TurnRef)(using
+      Tx^
+  ): Either[StoreError, Option[EntrySeq]] =
+    entries.ofTurn(turn).flatMap { own =>
+      own.headOption.map(_.payload) match {
+        case Some(Payload.Continuation(task, _)) =>
+          entries
+            .ofTurn(TurnRef(turn.conversationId, task))
+            .map(_.headOption.map(_.seq))
+        case _ => Right(None)
+      }
+    }
 
   private def failed(error: AssemblyError): TurnFailure = error match {
     case AssemblyError.Store(e) => TurnFailure.Assembly(e.described)
@@ -427,10 +445,11 @@ private[turn] object TurnAssembly {
     )
 
   /** The `assemble` body: `p`'s projection, packed as `packing` says; at a boundary, with the
-    * brief of the holder its conversation works as and its session's digest first ([[opening]]),
-    * what they cost reserved from what the assembler draws. With nothing carried, the draw is a
-    * boundary and is made once, reserved; with a window carried, an append reads neither, and a
-    * boundary at the assembler's limit is drawn again reserved when either costs anything.
+    * brief of the holder its conversation works as, the task it goes on with and its session's
+    * digest first ([[opening]]), what they cost reserved from what the assembler draws. With
+    * nothing carried, the draw is a boundary and is made once, reserved; with a window carried,
+    * an append reads none of them, and a boundary at the assembler's limit is drawn again
+    * reserved when any costs anything.
     */
   private def projecting(
       env: TurnEnv^,
@@ -449,12 +468,12 @@ private[turn] object TurnAssembly {
         request(env, db, p)
           .flatMap { asked =>
             if (asked.carried == CarriedWindow.Empty)
-              opening(env, db, p.turn).flatMap(drawn(asked, _))
+              opening(env, db, p.turn, asked.task).flatMap(drawn(asked, _))
             else
               env.assembler.assemble(asked, packing)(using db).flatMap {
                 case appended: Projection.Appended => Right(appended)
                 case Projection.Boundary(window, cost) =>
-                  opening(env, db, p.turn).flatMap(opens =>
+                  opening(env, db, p.turn, asked.task).flatMap(opens =>
                     if (opens.reserved == Tokens.Zero) Right(opens.packed(window, cost))
                     else drawn(asked, opens)
                   )
@@ -470,10 +489,15 @@ private[turn] object TurnAssembly {
   /** What a boundary of `turn`'s window shows before what its assembler draws, read through
     * `db`: the brief of the holder its conversation's origin works as
     * ([[TurnSessions.holder]], [[grit.core.document.DocumentSearch.briefOf]] at its first entry's
-    * time), and what its conversation's session did lately (none when the turn does not read
-    * it).
+    * time), the entry of its conversation at `task` (the task it goes on with, [[taskOf]]),
+    * and what its conversation's session did lately (none when the turn does not read it).
     */
-  private def opening(env: TurnEnv^, db: Db^, turn: TurnRef): Either[AssemblyError, Opening] =
+  private def opening(
+      env: TurnEnv^,
+      db: Db^,
+      turn: TurnRef,
+      task: Option[EntrySeq]
+  ): Either[AssemblyError, Opening] =
     db.read(Subject.Turn(turn)) {
       for {
         found <- env.hosting.conversations.get(turn.conversationId)
@@ -483,6 +507,10 @@ private[turn] object TurnAssembly {
           case (Some(holder), Some(at)) => env.records.documents.briefOf(holder, at)
           case _ => Right(None)
         }
+        held <- task.fold(Right(Vector.empty))(s =>
+          env.records.entries.at(turn.conversationId, Vector(s))
+        )
+        named <- env.records.principals.speakers(held.map(_.id))
         lately <- SessionId
           .of(Harness.Grit, ConversationId.value(turn.conversationId))
           .fold(
@@ -499,33 +527,48 @@ private[turn] object TurnAssembly {
               TurnRef(turn.conversationId, TurnSeq(TurnSeq.value(turn.turnSeq) - 1))
             )
           else Right(Vector.empty)
-      } yield Opening(brief, lately, previous.map(_.seq).toSet, env.records.estimator)
+      } yield {
+        val shown = held.headOption.flatMap(e => Shown.of(e, named).map(e.seq -> _))
+        Opening(
+          brief,
+          shown.map(_._1),
+          shown.fold(Tokens.Zero)((_, m) => env.records.estimator.message(m)),
+          lately,
+          previous.map(_.seq).toSet,
+          env.records.estimator
+        )
+      }
     }.left
       .map(AssemblyError.Store(_))
 
-  /** What a boundary shows first: `brief`, and `lately`'s digest, for a window that holds what
-    * the session last said when it holds an entry of the turn before (`previous`), costed by
-    * `estimator`.
+  /** What a boundary shows first: `brief`, then the entry at `task`, costing `taskCost` as
+    * shown, and `lately`'s digest, for a window that holds what the session last said when it
+    * holds an entry of the turn before (`previous`), costed by `estimator`.
     */
   private final case class Opening(
       brief: Option[Document],
+      task: Option[EntrySeq],
+      taskCost: Tokens,
       lately: Option[Session.Lately],
       previous: Set[EntrySeq],
       estimator: TokenEstimator
   ) {
 
-    /** What the brief and the longer of the digests cost as shown. */
-    def reserved: Tokens = briefCost + logCost(digest(SessionDigest.Window.LacksLastSaid))
+    /** What the brief, the task and the longer of the digests cost as shown. */
+    def reserved: Tokens =
+      briefCost + taskCost + logCost(digest(SessionDigest.Window.LacksLastSaid))
 
-    /** `window`, costing `cost`, with the brief and the digest that fits it, and their cost. */
+    /** `window`, costing `cost`, with the brief, the task and the digest that fits it, and
+      * their cost.
+      */
     def packed(window: Window, cost: Tokens): Projection = {
       val said =
         if (window.entries.exists(previous.contains)) SessionDigest.Window.HoldsLastSaid
         else SessionDigest.Window.LacksLastSaid
       val shown = digest(said)
-      val added = briefCost + logCost(shown)
+      val added = briefCost + taskCost + logCost(shown)
       Projection.Boundary(
-        window.copy(brief = brief.map(_.version), sessionLog = shown),
+        window.copy(brief = brief.map(_.version), task = task, sessionLog = shown),
         cost + added
       )
     }

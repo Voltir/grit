@@ -244,7 +244,7 @@ private[turn] object TurnShown {
   )(using Tx^): Either[StoreError, Showing] = {
     def part(window: Window, record: Option[CarriedWindow.Record]): Either[StoreError, Part] =
       for {
-        at <- entries.at(turn.conversationId, window.entries)
+        at <- entries.at(turn.conversationId, window.task.toVector ++ window.entries)
         near <- Nearby.read(window.nearby, entries)
         labelled <- documents.labelled(window.documents)
         brief <- documents.labelled(window.brief.toVector)
@@ -296,7 +296,7 @@ private[turn] object TurnShown {
   final case class Carried(turn: TurnSeq, own: Vector[Entry], carry: Payload.Carry)
 
   /** One part of a window as [[shown]] read it: `window`, what was drawn; `entries`, the
-    * entries at its seqs that exist; `near`, its nearby entries that still exist; `documents`,
+    * entries at its seqs and its task's that exist; `near`, its nearby entries that still exist; `documents`,
     * its documents still kept whose plugin is enabled, in its order, each with its plugin's
     * label; `pieces`, its pieces likewise, each with its plugin's label and how many more of
     * its file matched; for a part carried from an earlier turn, that turn (`carried`); and its
@@ -335,7 +335,8 @@ private[turn] object TurnShown {
 
   /** The request [[request]] builds from `showing`, each item `stubs` names shown as its stub
     * there ([[hiding]]), to be shaped ([[Unshaped]]): each part in order, then the turn's own.
-    * A part shows its brief as one user message ([[Shown.brief]]), each nearby section as one
+    * A part shows its brief as one user message ([[Shown.brief]]), its task as [[Shown.of]]
+    * shows it, each nearby section as one
     * ([[Shown.section]], a section with none of its entries left dropped), then each document
     * as one ([[Shown.document]]), then each piece as one ([[Shown.piece]]), then its digest as
     * one ([[Shown.sessionLog]]), then what the model is shown of its entries
@@ -361,7 +362,7 @@ private[turn] object TurnShown {
     val befores = None +: parts.map(_.carried.map(_.turn))
     traverse(parts.zip(befores)) { (part, before) =>
       val bySeq = part.entries.map(e => e.seq -> e).toMap
-      part.window.entries.filterNot(bySeq.contains) match {
+      (part.window.task.toVector ++ part.window.entries).filterNot(bySeq.contains) match {
         case missing if missing.nonEmpty =>
           Left(
             TurnFailure.Assembly(
@@ -381,9 +382,14 @@ private[turn] object TurnShown {
             )
           )
           val brief = part.brief.map((d, _) => Shown.brief(d)).toVector
+          val task = part.window.task.flatMap(bySeq.get).flatMap(Shown.of(_, named)).toVector
           val digest = part.window.sessionLog.map(Shown.sessionLog).toVector
           Right(
-            Unshaped.Part(brief ++ sections, part.documents, pieces ++ digest ++ shown ++ carried)
+            Unshaped.Part(
+              brief ++ task ++ sections,
+              part.documents,
+              pieces ++ digest ++ shown ++ carried
+            )
           )
       }
     }.map { shownParts =>
@@ -528,7 +534,7 @@ private[turn] object TurnShown {
   }
 
   /** Each item a request shows the model of `showing`, in the order it shows them: part by
-    * part, the entries its nearby sections show, section by section ([[Shown.section]]), its
+    * part, its brief, its task (an own entry), the entries its nearby sections show, section by section ([[Shown.section]]), its
     * documents, its pieces, its entries [[Shown.own]] shows, and a carried part's turn's own
     * entries [[Shown.turn]] shows; then the turn's own entries [[Shown.turn]] shows; an entry
     * kept as a tool's result by the call it answers, named by its tool, and any other by its
@@ -576,9 +582,13 @@ private[turn] object TurnShown {
             .flatMap(e => entry(e, ItemRef.Nearby(e.conversationId, e.seq)))
         }
       }
+      val (task, drawn) = part.entries.partition(e => part.window.task.contains(e.seq))
       part.brief.toVector.map((d, label) =>
         Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
       ) ++
+        task
+          .filter(e => Shown.of(e, named).isDefined)
+          .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
         nearby ++
         part.documents.map((d, label) =>
           Item(ItemRef.Document(d.version), d.integrity, DocLabel.value(label))
@@ -586,7 +596,7 @@ private[turn] object TurnShown {
         part.pieces.map((k, label, _) =>
           Item(ItemRef.Piece(k.id), k.integrity, DocLabel.value(label))
         ) ++
-        part.entries
+        drawn
           .filter(e => Shown.of(e, named).isDefined)
           .flatMap(e => entry(e, ItemRef.Own(e.seq))) ++
         part.carried.fold(Vector.empty)(c => turned(c.own))

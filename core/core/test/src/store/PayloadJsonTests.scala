@@ -244,6 +244,28 @@ object PayloadJsonTests extends TestSuite {
       )
     }
 
+    test(
+      "a boundary's task is stored by its entry's seq, and a window stored without one reads as holding none"
+    ) {
+      // The "task" key is stored in every window record a continuation's boundary keeps.
+      val held =
+        Payload.Window(Vector(EntrySeq(3)), Vector.empty, carry = None, task = Some(EntrySeq(0)))
+      (
+        PayloadJson.write(held).render(),
+        PayloadJson.read(PayloadJson.write(held)),
+        PayloadJson.read(ujson.read("""{"kind":"window","entries":[3],"recalled":[]}""")),
+        PayloadJson
+          .read(ujson.read("""{"kind":"window","entries":[3],"recalled":[],"task":-1}"""))
+          .left
+          .toOption
+      ) ==> (
+        """{"kind":"window","entries":[3],"recalled":[],"task":0}""",
+        Right(held),
+        Right(held.copy(task = None)),
+        Some("an entry seq is not a non-negative whole number")
+      )
+    }
+
     test("a turn's last prefix is stored as its count of messages and its digest, and read back") {
       // A later turn compares its own digest with these bytes to carry the turn (ADR 0052).
       val prefix = Payload.Prefix(4, Sha256.text("abc"))

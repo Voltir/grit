@@ -285,6 +285,14 @@ object TurnJournalTests extends TestSuite {
         Some("a document version is a whole number from 1")
     }
 
+    test("a boundary's task is recorded by its entry's seq, and read back") {
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      val shown: Either[TurnFailure, Window] =
+        Right(Window(Vector(EntrySeq(3)), task = Some(EntrySeq(0))))
+      j.encode(shown) ==> """{"ok":{"entries":[3],"notes":[],"task":0}}"""
+      roundTrip(shown) ==> Right(shown)
+    }
+
     test(
       "a window's pieces are recorded by id and how many more, after its documents, and read back"
     ) {

@@ -1392,7 +1392,8 @@ private[turn] object TurnSteps {
               window.pieces.map(p => (p.id, p.more)),
               carry,
               window.brief,
-              window.sessionLog
+              window.sessionLog,
+              window.task
             ),
             at,
             level

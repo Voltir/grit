@@ -562,6 +562,32 @@ object TurnGateTurnTests extends TestSuite {
       )
     }
 
+    test("a continuation's task said from outside is hidden as its stub, first in its window") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      guest(entries, "the task")
+      val turn = continuing(entries, TurnSeq.First, 2)
+      val drawing = new Drawing {
+        def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector.empty, Vector.empty))
+      }
+      val posting = Toolbox
+        .of[caps.CapSet^{NoCheckout}](hostedPost.over(_ => grit.core.tool.Outcome.Done("posted")))
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(entries, provider, drawing, new InMemoryUsageLedger, tools = posting)
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(
+          Message.User(stub("h1", "something from someone, written from outside the team")),
+          grit.core.context.Shown.Gap,
+          dated,
+          Message.User(grit.core.context.Shown.Continuing),
+          Message.User(Fenced.noted(Vector(TurnGate.Guidance)))
+        )
+      )
+    }
+
     test("what a request never shows, an earlier turn's tool exchange and result, is no item") {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider

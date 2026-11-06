@@ -40,6 +40,72 @@ object TurnShownTests extends TestSuite {
       s"unless they say otherwise, and answer with times in $short. Times grit shows you in your " +
       "view are UTC."
 
+  private def got[A](e: Either[String, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** A brief, version 7, as a boundary of a claim holder's turn holds it. */
+  private val brief = Document(
+    got(DocumentVersionId.of(7).toRight("version")),
+    got(PluginName.of("projects")),
+    got(DocKey.of("brief.md")),
+    Label.Public,
+    Integrity.Member,
+    got(Place.read("slack:T1/C1")),
+    got(DocText.of("Move the commands to tools.")),
+    ujson.Obj(),
+    None,
+    At,
+    Placement(0, At),
+    None
+  )
+
+  /** A person's message `text`, the first entry of turn `n` at seq `n`. */
+  private def said(n: Long, text: String): Entry = Entry(
+    EntryId(s"e$n"),
+    ConversationId("c"),
+    TurnSeq(n),
+    None,
+    EntrySeq(n),
+    Payload.Message(Message.User(text)),
+    At,
+    Integrity.Member
+  )
+
+  /** Turn 3's request, rooted on "now", over one part drawing `window` from `entries`, with
+    * [[brief]] when `window` names it, shaped for an unasked loop.
+    */
+  private def boundary(
+      window: Window,
+      entries: Vector[Entry]
+  ): Either[TurnFailure, ModelRequest] = {
+    val showing = TurnShown.Showing(
+      Vector(
+        TurnShown.Part(
+          window,
+          entries,
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          None,
+          window.brief.map(_ => brief -> got(DocLabel.of("Projects")))
+        )
+      ),
+      Vector(said(3, "now")),
+      Speakers.none
+    )
+    val shape = TurnShown.loopShape(
+      None,
+      ToolUse.Auto,
+      Vector.empty,
+      AfterToolResult.UserMessage,
+      ToolGuidance.SchemaOnly,
+      Vector.empty
+    )
+    TurnShown
+      .requestOf("sys", showing, TurnRef(ConversationId("c"), TurnSeq(3)), Map.empty, None, false)
+      .map(_.shaped(shape))
+  }
+
   val tests = Tests {
     test(
       "the answering line dates the message in the person's zone, says whose, then UTC, and how to read times"
@@ -223,60 +289,8 @@ object TurnShownTests extends TestSuite {
     test(
       "a request repeats its brief as its task part, and every message before its dated line as established"
     ) {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
-      val brief = Document(
-        got(DocumentVersionId.of(7).toRight("version")),
-        got(PluginName.of("projects")),
-        got(DocKey.of("brief.md")),
-        Label.Public,
-        Integrity.Member,
-        got(Place.read("slack:T1/C1")),
-        got(DocText.of("Move the commands to tools.")),
-        ujson.Obj(),
-        None,
-        At,
-        Placement(0, At),
-        None
-      )
-      def said(n: Long, text: String): Entry = Entry(
-        EntryId(s"e$n"),
-        ConversationId("c"),
-        TurnSeq(n),
-        None,
-        EntrySeq(n),
-        Payload.Message(Message.User(text)),
-        At,
-        Integrity.Member
-      )
       val drawn = Vector(said(1, "earlier"), said(2, "later"))
-      val showing = TurnShown.Showing(
-        Vector(
-          TurnShown.Part(
-            Window(drawn.map(_.seq), brief = Some(brief.version)),
-            drawn,
-            Vector.empty,
-            Vector.empty,
-            Vector.empty,
-            None,
-            Some(brief -> got(DocLabel.of("Projects")))
-          )
-        ),
-        Vector(said(3, "now")),
-        Speakers.none
-      )
-      val shape = TurnShown.loopShape(
-        None,
-        ToolUse.Auto,
-        Vector.empty,
-        AfterToolResult.UserMessage,
-        ToolGuidance.SchemaOnly,
-        Vector.empty
-      )
-      val r = TurnShown
-        .requestOf("sys", showing, TurnRef(ConversationId("c"), TurnSeq(3)), Map.empty, None, false)
-        .map(_.shaped(shape))
-      r.map(q =>
+      boundary(Window(drawn.map(_.seq), brief = Some(brief.version)), drawn).map(q =>
         (
           q.repeats.task,
           q.repeats.established,
@@ -286,6 +300,20 @@ object TurnShownTests extends TestSuite {
       ) ==> Right(
         // The brief, a gap line (turn 1 is not the first), then the two drawn messages.
         (1, 4, Some(Shown.brief(brief)), Some(Message.User(TurnShown.answering(At, None, false))))
+      )
+    }
+
+    test(
+      "a boundary's task follows its brief, inside its task part, and is not shown again among its entries"
+    ) {
+      val task = said(0, "Move the commands.")
+      val drawn = Vector(said(1, "earlier"), said(2, "later"))
+      boundary(
+        Window(drawn.map(_.seq), brief = Some(brief.version), task = Some(task.seq)),
+        task +: drawn
+      ).map(q => (q.repeats.task, q.messages.take(3))) ==> Right(
+        // The brief, the task, then a gap line: turn 1 is not the first.
+        (2, Vector(Shown.brief(brief), Message.User("Move the commands."), Shown.Gap))
       )
     }
 

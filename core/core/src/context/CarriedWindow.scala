@@ -67,7 +67,9 @@ object CarriedWindow {
       get(id) match {
         case Left(e) => Left(e)
         case Right(
-              Some(Entry(_, _, turn, _, _, w @ Payload.Window(_, _, _, _, _, Some(c), _, _), _, _))
+              Some(
+                Entry(_, _, turn, _, _, w @ Payload.Window(_, _, _, _, _, Some(c), _, _, _), _, _)
+              )
             ) if later.headOption.forall(next => TurnSeq.value(turn) < TurnSeq.value(next._1)) =>
           val done = (turn, w, c) :: later
           c.after match {
@@ -91,7 +93,7 @@ object CarriedWindow {
       .find(_.id == last)
       .flatMap(kept =>
         kept.payload match {
-          case w @ Payload.Window(_, _, _, _, _, None, _, _) => Some(w)
+          case w @ Payload.Window(_, _, _, _, _, None, _, _, _) => Some(w)
           case _: Payload.Window =>
             val records = walked(last)(id => Right(all.find(_.id == id))).getOrElse(Vector.empty)
             Option.when(records.nonEmpty) {

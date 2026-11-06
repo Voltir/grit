@@ -40,13 +40,13 @@ import grit.core.visibility.{Integrity, Label}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes, nearby sections, documents, pieces, brief or session log is the bare
+  /** A window with no notes, nearby sections, documents, pieces, brief, session log or task is the bare
     * array of its entries' seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries":
     * [...], "notes": [...]}`, with `"nearby": [...]` too when it has sections
     * ([[PayloadJson.writeNearby]]), `"documents": [...]` when it has documents
     * ([[PayloadJson.writeVersions]]), `"pieces": [{"piece": id, "more": n}, ...]` when it has
-    * pieces ([[writeFound]]), `"brief": version` when it has a brief and `"digest": text` when
-    * it has a session log.
+    * pieces ([[writeFound]]), `"brief": version` when it has a brief, `"digest": text` when
+    * it has a session log and `"task": seq` when it holds a task.
     */
   given window: Journaled[Either[TurnFailure, Window]] = outcome(writeWindow, readWindow)
 
@@ -115,7 +115,7 @@ private[turn] object TurnJournal {
     val ids = PayloadJson.writeSeqs(w.entries)
     if (
       w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty && w.pieces.isEmpty &&
-      w.brief.isEmpty && w.sessionLog.isEmpty
+      w.brief.isEmpty && w.sessionLog.isEmpty && w.task.isEmpty
     ) ids
     else {
       val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
@@ -124,6 +124,7 @@ private[turn] object TurnJournal {
       if (w.pieces.nonEmpty) o("pieces") = ujson.Arr.from(w.pieces.map(writeFound(_)))
       w.brief.foreach(b => o("brief") = ujson.Num(DocumentVersionId.value(b).toDouble))
       w.sessionLog.foreach(d => o("digest") = d)
+      w.task.foreach(t => o("task") = ujson.Num(EntrySeq.value(t).toDouble))
       o
     }
   }
@@ -177,7 +178,19 @@ private[turn] object TurnJournal {
             case Some(ujson.Str(d)) => Right(Some(d))
             case Some(_) => Left("window: digest is not a string")
           }
-        } yield Window(ids, notes, nearby, documents, pieces, brief.headOption, digest)
+          task <- o.value
+            .get("task")
+            .fold(Right(Vector.empty))(v => PayloadJson.readSeqs(ujson.Arr(v)))
+        } yield Window(
+          ids,
+          notes,
+          nearby,
+          documents,
+          pieces,
+          brief.headOption,
+          digest,
+          task.headOption
+        )
       case _ => Left("window: expected an array or an object")
     }
 

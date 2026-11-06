@@ -42,6 +42,12 @@ Decision:
   it), and treating every cut turn as at its limit (a finished task got an extra turn).
 - **What the next turn is shown** is ADR 0052's boundary: the conversation's messages, the
   forced reply or the handoff among them, no tool calls or results, then the note.
+- **A continuation's boundary holds its task first, reserved as a brief is** (revised
+  2026-11-05). The task's first message is packed by the turn after the brief, its cost
+  reserved from what the assembler draws (`AssemblyRequest.task`, `Window.task`), and no
+  assembler draws or finds it, so it stays in view however many of the task's turns the tail
+  has dropped, shown once, in the part a provider caches as the task's. It is an own entry to
+  the turn's gate, hidden as its stub like any other.
 
 Consequences: a task of several windows is a conversation of turns, each one cached,
 append-only request ending in a hand-off, with no edited prefix. Offering `task_status` on a
@@ -51,4 +57,5 @@ thread) decides its own policy for going on and reuses the note and the inbox. E
 over `Payload` names the new case. The note's words are code, so changing them changes no
 stored row. Enforced by `InboxContract` (who may continue, as whom, at what belief) and
 `ShownTests` (the note is grit's, unescaped), and `TurnLoopTests` and `TurnLoopTurnTests` (who is
-offered `task_status`, and what each declaration ends in).
+offered `task_status`, what each declaration ends in, and the task held at a boundary), and
+`TurnGateTurnTests` (the task hidden as its stub).

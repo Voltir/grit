@@ -33,7 +33,7 @@ object PayloadJson {
       ujson.Obj("kind" -> "continuation", "task" -> TurnSeq.value(task).toDouble, "turn" -> turn)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
-    case Payload.Window(entries, recalled, nearby, documents, pieces, carry, brief, digest) =>
+    case Payload.Window(entries, recalled, nearby, documents, pieces, carry, brief, digest, task) =>
       val o = ujson.Obj(
         "kind" -> "window",
         "entries" -> writeSeqs(entries),
@@ -59,6 +59,7 @@ object PayloadJson {
       }
       brief.foreach(b => o("brief") = ujson.Num(DocumentVersionId.value(b).toDouble))
       digest.foreach(d => o("digest") = d)
+      task.foreach(t => o("task") = ujson.Num(EntrySeq.value(t).toDouble))
       o
     // "topic" is the agenda's kind from before its rename.
     case Payload.Agenda(events) =>
@@ -163,6 +164,7 @@ object PayloadJson {
             brief <- o.value.get("brief").fold(Right(Vector.empty))(v => readVersions(ujson.Arr(v)))
             digest <-
               if (o.value.contains("digest")) str(o, "digest").map(Some(_)) else Right(None)
+            task <- o.value.get("task").fold(Right(None))(seq(_).map(Some(_)))
           } yield Payload.Window(
             entries,
             recalled,
@@ -171,7 +173,8 @@ object PayloadJson {
             pieces,
             carry,
             brief.headOption,
-            digest
+            digest,
+            task
           )
         case "prefix" =>
           for {

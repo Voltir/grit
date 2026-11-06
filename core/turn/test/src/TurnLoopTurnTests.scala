@@ -712,6 +712,46 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
+      "a continuation's boundary shows its task first, once, though its tail no longer holds the task's turn"
+    ) {
+      // Turn 1 carries turn 0's window; turn 2's carried window, with replies of about 18,200
+      // and 12,700 tokens, passes the 30,000-token limit, so its boundary draws within 15,000:
+      // turn 1 alone, turn 0's long reply dropped.
+      val long = "x" * 40_000
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      def run(turn: TurnRef, reply: String) = {
+        val provider = new Scripted((_, _) => Right(said(reply)))
+        new InMemoryDurable().run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            tools(ws),
+            12,
+            window = Tokens(30_000)
+          )
+        )
+        provider.requests.headOption.map(_.messages).getOrElse(Vector.empty)
+      }
+      def shape(sent: Vector[Message]) = (
+        sent.headOption,
+        sent.count(_ == Message.User("the task")),
+        sent.exists {
+          case a: Message.Assistant => a.blocks == Vector(AssistantBlock.Text(long))
+          case _ => false
+        }
+      )
+      run(say(entries, "the task"), long)
+      run(continuing(entries, grit.core.id.TurnSeq.First, 2), "y" * 28_000)
+      shape(run(continuing(entries, grit.core.id.TurnSeq.First, 3), "three")) ==>
+        (Some(Message.User("the task")), 1, false)
+    }
+
+    test(
       "a cut turn declaring done on its last call with tools is done, not at its limit, its handoff the answer; task_status offered only from that call"
     ) {
       val entries = new InMemoryEntryStore
