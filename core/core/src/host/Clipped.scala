@@ -81,7 +81,7 @@ object Clipped {
       text: String,
       hint: Option[Kept] -> Option[String],
       fromEnd: Boolean,
-      max: Int = MaxBytes,
+      max: Int,
       maxLines: Int = MaxLines
   ): Clipped = {
     val all = lines(text)

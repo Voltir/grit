@@ -11,7 +11,9 @@ import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
 
-/** What `grit work` reads before it starts anything: its arguments and the source of its text. */
+/** What `grit work` decides with no database: its arguments, its text's source, what follows
+  * a turn, and its task's check.
+  */
 object WorkTests extends TestSuite {
 
   val tests: Tests = Tests {
