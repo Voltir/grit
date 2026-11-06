@@ -25,6 +25,7 @@ object AssemblerCaptureTests extends TestSuite {
   private def assembler(field: String, use: String): String =
     s"""def make($field): Unit = {
        |    val made = new ContextAssembler {
+       |      def limit: grit.core.message.Tokens = grit.core.message.Tokens.Zero
        |      def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
        |        Right(Prepared.Drawn(Querying.Drawn(Vector(AssemblyNote.FellBack($use)))))
        |      def search(request: AssemblyRequest, written: Querying.Written)(using Db^): Either[AssemblyError, Results] =
