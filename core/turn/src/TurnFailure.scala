@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.act.phase.Faults
+import grit.core.message.Tokens
 import grit.core.route
 import grit.core.store.StoreError
 import grit.core.visibility.Label
@@ -26,6 +27,12 @@ enum TurnFailure {
     * redeploy can change them. The call is not run.
     */
   case ToolsChanged(reason: String)
+
+  /** The model's reply stopped at its output budget, `output` tokens, with neither text nor a
+    * tool call: it spent the budget thinking. Nothing retries it; whoever drives the turn decides
+    * what follows.
+    */
+  case OutOfOutput(output: Tokens)
 }
 
 object TurnFailure {
@@ -38,6 +45,15 @@ object TurnFailure {
     */
   private[turn] def ofStore(error: StoreError): TurnFailure = TurnFailure.Store(error.described)
 
+  /** How a turn's outcome writes `failure`, after `failed: `: [[OutOfOutput]] as its [[reason]],
+    * for whoever drives the turn to read; any other case as its name and fields, as in
+    * `Model(HTTP 529)`.
+    */
+  def written(failure: TurnFailure): String = failure match {
+    case f: TurnFailure.OutOfOutput => reason(f)
+    case f => f.toString
+  }
+
   /** What `failure` says. */
   def reason(failure: TurnFailure): String = failure match {
     case TurnFailure.Assembly(why) => why
@@ -45,5 +61,7 @@ object TurnFailure {
     case TurnFailure.Store(why) => why
     case TurnFailure.ToolsChanged(why) => why
     case TurnFailure.Uncleared(c) => route.Uncleared.reply(route.Uncleared(c))
+    case TurnFailure.OutOfOutput(output) =>
+      s"the model used its whole output budget thinking and gave no reply ($output output tokens)"
   }
 }

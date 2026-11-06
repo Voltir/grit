@@ -215,6 +215,15 @@ object TurnRoundTests extends TestSuite {
       )
     }
 
+    test(
+      "a reply whose thinking used its whole output budget fails the turn as out of output, its tokens named"
+    ) {
+      val thought = reply("", stop = StopReason.MaxTokens)
+        .copy(blocks = Vector(AssistantBlock.Reasoning("weighing it", None)))
+      val (out, steps) = rounds(3, replying(Right(reply("", Vector("a"))), Right(thought)))
+      (out, steps.lastOption) ==> ("stalled OutOfOutput(2) after 2, believed member", Some("ask:1"))
+    }
+
     test("a reply cut off at max tokens has its calls refused, not run") {
       val cut = reply("", Vector("a"), StopReason.MaxTokens)
       rounds(3, replying(Right(cut), Right(reply("ok")))) ==> (

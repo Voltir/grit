@@ -183,6 +183,11 @@ object TurnLoop {
       */
     case Silent(reply: Message.Assistant)
 
+    /** `reply` stopped at its output budget with no text that is not blank and no tool call:
+      * its thinking used the whole budget. The round failed, and nothing asks again.
+      */
+    case OutOfOutput(reply: Message.Assistant)
+
     /** Settle `calls`, in order, then make the call `round`, its tools on or off as [[use]]
       * says.
       */
@@ -200,7 +205,8 @@ object TurnLoop {
   /** What the loop does after `reply`, the reply to `round`. A reply that [[declared]] through
     * [[TaskStatus]] answers with its handoff as its text, its calls dropped. A reply that calls no tool, or
     * any reply to the budget's last call (or a later one), answers, or is silent when no
-    * text that is not blank is left once its calls are dropped. Otherwise its calls are
+    * text that is not blank is left once its calls are dropped; out of output instead when
+    * it stopped at max tokens with no tool call at all. Otherwise its calls are
     * settled, each run, or each refused with [[CutOff]] when the reply stopped at max
     * tokens, and a call to [[TaskStatus]] where it is offered refused with
     * [[TaskStatus.Unrecorded]]; then the next call is made.
@@ -222,7 +228,9 @@ object TurnLoop {
         case AssistantBlock.Text(text) => text.trim.nonEmpty
         case _ => false
       }
-      if (said) Next.Answer(answer) else Next.Silent(answer)
+      if (said) Next.Answer(answer)
+      else if (reply.stop == StopReason.MaxTokens && calls.isEmpty) Next.OutOfOutput(answer)
+      else Next.Silent(answer)
     } else {
       val offersStatus = asksStatus(budget, round)
       val pending =

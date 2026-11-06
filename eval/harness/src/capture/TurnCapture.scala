@@ -423,6 +423,7 @@ object TurnCapture {
                 case TurnFailure.Store(_) => Ended.Kind.Store
                 case TurnFailure.Uncleared(_) => Ended.Kind.Uncleared
                 case TurnFailure.ToolsChanged(_) => Ended.Kind.ToolsChanged
+                case TurnFailure.OutOfOutput(_) => Ended.Kind.OutOfOutput
               }
             )
           case None => Ended.Unfinished(status)

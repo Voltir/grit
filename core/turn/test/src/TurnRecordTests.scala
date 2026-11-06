@@ -82,6 +82,7 @@ object TurnRecordTests extends TestSuite {
               case TurnFailure.Store(_) => "store"
               case TurnFailure.Uncleared(_) => "uncleared"
               case TurnFailure.ToolsChanged(_) => "tools-changed"
+              case TurnFailure.OutOfOutput(_) => "out-of-output"
             })
           )
       Vector("model-failed", "summary-failed", "replied").map(failed) ==> Vector(

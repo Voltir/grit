@@ -1406,6 +1406,7 @@ private[turn] object TurnJournal {
             case TurnFailure.Store(r) => ("store", r)
             case TurnFailure.ToolsChanged(r) => ("tools-changed", r)
             case TurnFailure.Uncleared(c) => ("uncleared", Label.written(c))
+            case TurnFailure.OutOfOutput(n) => ("out-of-output", Tokens.value(n).toString)
           }
           ujson.Obj("failed" -> kind, "reason" -> reason)
       },
@@ -1438,6 +1439,8 @@ private[turn] object TurnJournal {
       case (Some("store"), Some(r)) => Some(TurnFailure.Store(r))
       case (Some("tools-changed"), Some(r)) => Some(TurnFailure.ToolsChanged(r))
       case (Some("uncleared"), Some(r)) => Label.read(r).toOption.map(TurnFailure.Uncleared(_))
+      case (Some("out-of-output"), Some(r)) =>
+        r.toLongOption.map(n => TurnFailure.OutOfOutput(Tokens(n)))
       case _ => None
     }
 }

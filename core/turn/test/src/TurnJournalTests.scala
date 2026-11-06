@@ -64,7 +64,8 @@ object TurnJournalTests extends TestSuite {
           TurnFailure.Assembly("a"),
           TurnFailure.Model("m"),
           TurnFailure.Store("s"),
-          TurnFailure.ToolsChanged("t")
+          TurnFailure.ToolsChanged("t"),
+          TurnFailure.OutOfOutput(Tokens(4096))
         )
       ) {
         val id: Either[TurnFailure, EntryId] = Left(failure)
@@ -417,6 +418,8 @@ object TurnJournalTests extends TestSuite {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       j.encode(Right(EntryId("reply:c1:0"))) ==> """{"ok":"reply:c1:0"}"""
       j.encode(Left(TurnFailure.Model("down"))) ==> """{"failed":"model","reason":"down"}"""
+      j.encode(Left(TurnFailure.OutOfOutput(Tokens(4096)))) ==>
+        """{"failed":"out-of-output","reason":"4096"}"""
     }
 
     test(

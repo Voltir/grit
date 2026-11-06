@@ -6,6 +6,7 @@ import grit.core.inbox.TurnEnding
 import grit.core.speech.{Outcome, SpeechJson}
 
 import TurnSteps.*
+import TurnFailure.written
 
 /** The durable turn, as one flow: what [[Turn.body]] runs. Its steps, their order and which
   * run when, are its description: each part below says what its steps do ([[Turn.Step.all]]
@@ -54,7 +55,10 @@ private[turn] object TurnFlow {
       .step(recordFailure)
       .keeping
       .map((f, kept) =>
-        kept.fold(e => s"failed: ${f.failure}; not recorded: $e", _ => s"failed: ${f.failure}")
+        kept.fold(
+          e => s"failed: ${written(f.failure)}; not recorded: $e",
+          _ => s"failed: ${written(f.failure)}"
+        )
       )
 
   /** From `stitched` to `append`: what the turn's steps came to, whether it failed before its
@@ -237,13 +241,17 @@ private[turn] object TurnFlow {
       case (Result.Unneeded(_), _) =>
         Unsettled(e, Undrafted(e.turn, Outcome.NothingRecalled), "unneeded")
       case (Result.Failed(failure), TurnOffer.Root.Addressed) =>
-        Stopped(s"failed: $failure${e.notes}")
+        Stopped(s"failed: ${written(failure)}${e.notes}")
       case (draft: Result.Kept, TurnOffer.Root.Heard | TurnOffer.Root.Named) => Drafted(e, draft)
       case (
             Result.Failed(failure),
             TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName
           ) =>
-        Unsettled(e, Undrafted(e.turn, Outcome.Failed(failure.toString)), s"failed: $failure")
+        Unsettled(
+          e,
+          Undrafted(e.turn, Outcome.Failed(written(failure))),
+          s"failed: ${written(failure)}"
+        )
       case (reply: Result.Kept, TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
         Replied(e, reply)
     }

@@ -846,6 +846,26 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
+      "a reply whose thinking used its whole output budget ends the turn with no reply, saying so in plain words, and nothing asks again"
+    ) {
+      val entries = new InMemoryEntryStore
+      val thought: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.Reasoning("weighing it", None)),
+        StopReason.MaxTokens,
+        Usage(Tokens(10), Tokens(4096), Tokens.Zero, None),
+        "m"
+      )
+      val provider = new Scripted((_, _) => Right(thought))
+      val turn = say(entries, "go")
+      looped(new InMemoryDurable, entries, entries, turn, provider, new Files(files)) ==>
+        "failed: the model used its whole output budget thinking and gave no reply (4096 output tokens)"
+      (provider.requests.size, texts(entries).filter(_.startsWith("assistant:"))) ==> (
+        1,
+        Vector.empty
+      )
+    }
+
+    test(
       "unsure of the item: topic offered first, asked for on every call at the same message, its verdict recorded"
     ) {
       val entries = new InMemoryEntryStore

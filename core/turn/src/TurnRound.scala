@@ -414,6 +414,8 @@ private[turn] object TurnRound {
             val said =
               s"the reply to ${Names.Step.Ask(at.round.index).name} said nothing and called no tool"
             Left(Stalled(TurnFailure.Model(said), now))
+          case Next.OutOfOutput(reply) =>
+            Left(Stalled(TurnFailure.OutOfOutput(reply.usage.output), now))
           case Next.Settle(calls, next) => Right(Left(Settle(now, reply, calls, next)))
         }
     }

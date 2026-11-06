@@ -123,10 +123,12 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "after each reply the loop answers, fails as silent, or settles its calls, refusing them when cut off"
+      "after each reply the loop answers, fails as silent or out of output, or settles its calls, refusing them when cut off"
     ) {
       val b = budget(3)
       val calling = reply("", Vector("a", "b"))
+      val thought = reply("", stop = StopReason.MaxTokens)
+        .copy(blocks = Vector(AssistantBlock.Reasoning("weighing it", None)))
       val table: Vector[(Round, Message.Assistant, Next)] = Vector(
         (round(0), reply("hi"), Next.Answer(reply("hi"))),
         (round(0), reply(""), Next.Silent(reply(""))),
@@ -153,6 +155,18 @@ object TurnLoopTests extends TestSuite {
           round(0),
           reply("cut", stop = StopReason.MaxTokens),
           Next.Answer(reply("cut", stop = StopReason.MaxTokens))
+        ),
+        (round(0), thought, Next.OutOfOutput(thought)),
+        (
+          round(0),
+          reply(" ", stop = StopReason.MaxTokens),
+          Next.OutOfOutput(reply(" ", stop = StopReason.MaxTokens))
+        ),
+        (round(2), thought, Next.OutOfOutput(thought)),
+        (
+          round(2),
+          reply("", Vector("a"), StopReason.MaxTokens),
+          Next.Silent(reply("", stop = StopReason.MaxTokens))
         )
       )
       table.foreach { (r, sent, expected) =>
