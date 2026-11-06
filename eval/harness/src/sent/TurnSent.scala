@@ -203,12 +203,18 @@ object TurnSent {
       judged <- TurnRecord.judged(steps, offered.root)
     } yield {
       def kept(entry: EntryId): Option[Entry] = mine.find(_.id == entry)
-      // The ledger keeps no thinking: the reply's own usage, kept with its entry, says it.
-      def thinking(entry: EntryId): Option[Tokens] = kept(entry).flatMap(_.payload match {
-        case Payload.Message(m: Message.Assistant) => m.usage.thinking
-        case Payload.Draft(m) => m.usage.thinking
-        case _ => None
-      })
+      // The ledger keeps no thinking: the reply's own usage says it, kept with its entry, or,
+      // for the summary, whose entry keeps its text alone, recorded by its step.
+      def thinking(entry: EntryId): Option[Tokens] =
+        if (entry == grit.turn.TurnSummary.id(turn))
+          TurnRecord.summaryReply(steps).flatMap(_.usage.thinking)
+        else
+          kept(entry).flatMap(_.payload match {
+            case Payload.Message(m: Message.Assistant) => m.usage.thinking
+            case Payload.Exchange(m) => m.usage.thinking
+            case Payload.Draft(m) => m.usage.thinking
+            case _ => None
+          })
       val spent = rows.map(r =>
         r.entry -> Spent(
           TurnRecord.role(turn, r.entry),

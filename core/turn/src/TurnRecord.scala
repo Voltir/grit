@@ -8,6 +8,7 @@ import grit.core.edge.RequestState
 import grit.core.either.Traversal.sequence
 import grit.core.files.PieceSearch
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
+import grit.core.message.Message
 import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
 import grit.core.store.{
@@ -216,6 +217,18 @@ object TurnRecord {
     */
   def speech(steps: Vector[StepRecord]): Either[String, Option[Outcome]] = {
     read[Either[TurnFailure, Outcome]](steps, Turn.Step.RecordSpeech).map(_.flatMap(_.toOption))
+  }
+
+  /** The reply the turn's summary was asked for, as `steps`' `summarise` step recorded it, its
+    * usage whole; `None` when no summary was asked, it failed, or its output cannot be read.
+    */
+  def summaryReply(steps: Vector[StepRecord]): Option[Message.Assistant] = {
+    val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, Message.Assistant]]]
+    steps
+      .find(s => Turn.Step.family(s.name).contains(Turn.Step.Summarise))
+      .flatMap(_.output)
+      .flatMap(journal.decode(_).toOption)
+      .flatMap(_.toOption)
   }
 
   /** The tool loop's calls `steps` show given up on, by round and index, each from 0 (the

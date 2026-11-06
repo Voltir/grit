@@ -92,6 +92,12 @@ object TurnRecordTests extends TestSuite {
       )
     }
 
+    test("a summary's reply reads from its summarise step; a failed summary or none has none") {
+      Vector("replied", "summary-failed", "model-failed").map(n =>
+        TurnRecord.summaryReply(steps(n)).map(m => (m.model, m.usage.thinking))
+      ) ==> Vector(Some(("grit/stub", None)), None, None)
+    }
+
     test("a heard turn's judgement reads from its judge step; a named or replied turn has none") {
       def scores(name: String, root: TurnOffer.Root, epoch: String = Turn.Epoch) = TurnRecord
         .judged(steps(name, epoch), root)
