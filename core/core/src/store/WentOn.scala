@@ -70,7 +70,8 @@ object WentOn {
 
   /** `command` failed with `exit` (`None`: stopped past [[CheckLongest]]), its output
     * `output` kept as its end: ANSI escapes and control characters other than newline and tab
-    * removed (a carriage return read as a newline), then cut to its last [[TailLines]] lines
+    * removed (a carriage return read as a newline) and trailing whitespace dropped, then cut
+    * to its last [[TailLines]] lines
     * and [[TailBytes]] bytes. A check that exits 0 passes; an `exit` of 0 given here is kept
     * as `None`.
     */
@@ -86,6 +87,7 @@ object WentOn {
       .replace("\r\n", "\n")
       .replace('\r', '\n')
       .replaceAll("[\\p{Cc}&&[^\n\t]]", "")
+      .stripTrailing()
     Clipped.tail(clean, _ => None, TailBytes, TailLines).text
   }
 }

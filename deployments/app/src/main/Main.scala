@@ -18,7 +18,7 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.Redaction
+import grit.host.checkout.{LocalProcesses, Redaction}
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
@@ -150,7 +150,7 @@ import Backfills.*
   *     the working directory under `GRIT_SESSION` ([[Kit.find]]); refused when no chat was held
   *     there. It only reads, beside a running grit or none, never starts the engine, and never
   *     creates the conversation.
-  *   - **`work <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
+  *   - **`work [--check '<command>'] <file>` or `work --dry <file>`: `grit work`**, the file's text said once to grit
   *     in the directory grit runs in, under `GRIT_SESSION`, with that directory's edge served
   *     as the chat serves it ([[ChatEdges.serving]]): the tools `GRIT_TOOLS` names, as in a run
   *     with arguments, its instruction files, and scout's tools when `GRIT_SCOUT` is set; its
@@ -159,9 +159,16 @@ import Backfills.*
   *     and writes, output and cost ([[grit.core.provider.CallLine.answered]]); then its turn and reply, as for a
   *     message. While a turn ends at its window's limit, the task goes on in a new turn rooted
   *     on grit's continuation note, up to `GRIT_WORK_TURNS` turns (default
-  *     [[Work.DefaultTurns]]). The same text said again in the same directory and session
-  *     awaits the turns it started, so a `grit work` restarted mid-turn resumes where it stopped. It exits 0 when the turn
-  *     replied, 1 when it did not, 2 when the file cannot be read. A command the turn left
+  *     [[Work.DefaultTurns]]). With `--check`, a turn that ends with a reply and no request to
+  *     go on is followed by the command, run with `sh -c` in that directory for at most
+  *     [[grit.core.store.WentOn.CheckLongest]], seeing only the variables a coding tool's
+  *     command sees ([[grit.host.checkout.LocalShell.passed]]): exit 0 ends the task; a failure
+  *     goes on in a new turn shown the end of its output, under the same cap, and stops when it
+  *     fails with the same output twice running. The same text said again in the same directory and session
+  *     awaits the turns it started, so a `grit work` restarted mid-turn resumes where it stopped,
+  *     running no check a later turn already followed. It exits 0 when the task ended with a
+  *     reply (and its check passed), 1 when a turn left no reply or its check failed for good or
+  *     could not start, 2 when the file cannot be read. A command the turn left
   *     running ends with it; a signal leaves that command to the next start's sweep in the
   *     directory. With `--dry`, nothing is said and no model is called: it prints the turn's
   *     first model call as a dry rehearsal shows it ([[Work.shown]]), every part whole, over the
@@ -356,7 +363,10 @@ object Main {
           // The same composition either way: only the last step differs.
           val step: Console^ => Either[String, Unit] = console =>
             if (asked.dry) Work.shown(config, deployment, origin, text, clock, println)
-            else Work.said(console, origin, text, cap, println)
+            else {
+              val work = new LocalProcesses(root, sys.env, redaction)
+              Work.said(console, origin, text, cap, asked.check, work, println)
+            }
           // A command the turn left going ends with the run; a signal leaves it to the next
           // start's sweep in this directory.
           exitOnLeft(

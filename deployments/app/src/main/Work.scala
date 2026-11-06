@@ -3,15 +3,20 @@ package grit.app.main
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.chat.host.{ChatHost, Replies}
 import grit.core.clock.Clock
 import grit.core.edge.{Console, TurnStatus}
+import grit.core.host.{Clipped, HostError, Processes, Ran, RelPath}
 import grit.core.id.{SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.TurnEnding
 import grit.core.message.Message
-import grit.core.store.{Origin, WentOn}
+import grit.core.store.{Origin, Payload, WentOn}
+import grit.core.visibility.Subject
 import grit.dbos.sql.DbConfig
+import grit.host.checkout.LocalShell
 import grit.kit.deployment.Deployment
 import grit.kit.rehearse.{Rehearse, Rehearsed, Situation, StandIns}
 import grit.turn.TurnStream
@@ -21,11 +26,14 @@ import grit.turn.TurnStream
   */
 private[main] object Work {
 
-  /** What `grit work` was asked: the file holding its text, and whether it is dry. */
-  final case class Asked(file: Path, dry: Boolean)
+  /** What `grit work` was asked: the file holding its text, whether it is dry, and the
+    * acceptance command `--check` names, when it names one.
+    */
+  final case class Asked(file: Path, dry: Boolean, check: Option[WentOn.Command])
 
   /** Why `grit work`'s arguments are refused: its form. */
-  val Usage: String = "grit work takes one file: grit work <file>, or grit work --dry <file>"
+  val Usage: String =
+    "grit work takes one file: grit work [--check '<command>'] <file>, or grit work --dry <file>"
 
   /** Why `grit work --dry` is refused while a model key is set. */
   val Keyed: String =
@@ -38,15 +46,18 @@ private[main] object Work {
       "that is not shown: where it marks the prompt cache (after the system prompt, and on the " +
       "last message the next call repeats) and how it encodes each tool."
 
-  /** `rest`, the arguments after `work`, as asked: a file, or `--dry` and a file; [[Usage]]
-    * otherwise.
+  /** `rest`, the arguments after `work`, as asked: a file, `--check`, a command and a file, or
+    * `--dry` and a file; [[Usage]] otherwise, and why a command is not one
+    * ([[WentOn.Command.of]]).
     */
   def asked(rest: Vector[String]): Either[String, Asked] = {
-    def at(file: String, dry: Boolean) =
-      scala.util.Try(Path.of(file)).toOption.map(Asked(_, dry)).toRight(Usage)
+    def at(file: String, dry: Boolean, check: Option[WentOn.Command]) =
+      scala.util.Try(Path.of(file)).toOption.map(Asked(_, dry, check)).toRight(Usage)
     rest match {
-      case Vector("--dry", file) => at(file, dry = true)
-      case Vector(file) if file != "--dry" => at(file, dry = false)
+      case Vector("--dry", file) => at(file, dry = true, None)
+      case Vector("--check", command, file) if !file.startsWith("--") =>
+        WentOn.Command.of(command).flatMap(c => at(file, dry = false, Some(c)))
+      case Vector(file) if !file.startsWith("--") => at(file, dry = false, None)
       case _ => Left(Usage)
     }
   }
@@ -67,33 +78,116 @@ private[main] object Work {
   def source(text: String, turn: Int): SourceId =
     if (turn <= 1) source(text) else SourceId(s"${SourceId.value(source(text))}:$turn")
 
+  /** What a task's acceptance command came to, run after a turn that answered. */
+  enum Verdict extends caps.Pure {
+
+    /** It exited 0: the task is done. */
+    case Passed
+
+    /** It failed, as `failed` says. */
+    case Failed(failed: WentOn.CheckFailed)
+
+    /** It could not start, for `why`. */
+    case Unrun(why: String)
+  }
+
   /** What `grit work` does after the turn `turn` of a task, its workflow named `named`, ended
     * as `ended`, given at most `cap` turns.
     */
   enum After {
 
-    /** Go on with turn `turn`, after printing `line`. */
-    case GoOn(turn: Int, line: String)
+    /** Go on with turn `turn`, as `reason` says, after printing `line`. */
+    case GoOn(turn: Int, reason: WentOn, line: String)
 
-    /** Stop, after printing `line` when there is one. */
+    /** Stop, after printing `line` when there is one: the task is done or cannot go on. */
     case Stop(line: Option[String])
+
+    /** Stop and fail: `grit work` ends with `why`, its status 1. */
+    case Fail(why: String)
   }
 
-  /** [[After]] the turn `turn`, named `named`, ended as `ended`, of at most `cap`. */
-  def after(named: String, ended: TurnEnding, turn: Int, cap: Int): After = ended match {
-    case TurnEnding.Otherwise | TurnEnding.Answered => After.Stop(None)
-    case TurnEnding.AtLimit if turn >= cap =>
+  /** [[After]] the turn `turn`, named `named`, ended as `ended`, of at most `cap`; `verdict`
+    * what its task's check came to, when it was checked, and `last` the check that failed
+    * after the turn before, when one did. A turn that answered goes on only when its check
+    * failed, below `cap`, with output other than `last`'s.
+    */
+  def after(
+      named: String,
+      ended: TurnEnding,
+      turn: Int,
+      cap: Int,
+      verdict: Option[Verdict],
+      last: Option[WentOn.CheckFailed]
+  ): After = (ended, verdict) match {
+    case (TurnEnding.Otherwise, _) | (TurnEnding.Answered, None) => After.Stop(None)
+    case (TurnEnding.Answered, Some(Verdict.Passed)) =>
+      After.Stop(Some(s"[main] $named: the check passed; the task is done"))
+    case (TurnEnding.Answered, Some(Verdict.Unrun(why))) =>
+      After.Fail(s"the check could not start: $why")
+    case (TurnEnding.Answered, Some(Verdict.Failed(failed))) if last.contains(failed) =>
+      After.Fail(
+        s"$named: the check failed with the same output as last time; stopping, since another " +
+          "turn is unlikely to change it"
+      )
+    case (TurnEnding.Answered, Some(Verdict.Failed(_))) if turn >= cap =>
+      After.Fail(
+        s"$named: the check still fails at turn $turn, the most $TurnsVar allows; fix it or " +
+          s"raise $TurnsVar and rerun"
+      )
+    case (TurnEnding.Answered, Some(Verdict.Failed(failed))) =>
+      After.GoOn(turn + 1, failed, wentOn(named, failed, turn + 1, cap))
+    case (TurnEnding.AtLimit, _) if turn >= cap =>
       After.Stop(
         Some(
           s"[main] $named reached its limit at turn $turn, the most $TurnsVar allows; " +
             s"raise $TurnsVar and rerun"
         )
       )
-    case TurnEnding.AtLimit =>
+    case (TurnEnding.AtLimit, _) =>
       After.GoOn(
         turn + 1,
+        WentOn.AtLimit,
         s"[main] $named reached its limit; going on in a fresh turn (turn ${turn + 1} of at most $cap)"
       )
+  }
+
+  /** `check` run with `sh -c` in `work`'s root, with the variables
+    * [[grit.host.checkout.LocalShell.passed]] keeps, waited for at most `within`: exit 0
+    * passes; any other exit, or running past `within`, fails, keeping the end of its output;
+    * [[Verdict.Unrun]] when it cannot start.
+    */
+  def checked(
+      work: Processes^,
+      check: WentOn.Command,
+      within: FiniteDuration = WentOn.CheckLongest
+  ): Verdict =
+    LocalShell.command(check.text) match {
+      case Left(why) => Verdict.Unrun(why)
+      case Right(argv) =>
+        work.run(argv, RelPath.Root, within) match {
+          case Right(Ran(0, _)) => Verdict.Passed
+          case Right(Ran(exit, output)) =>
+            Verdict.Failed(WentOn.failed(check, Some(exit), output.text))
+          case Left(HostError.TimedOut(_, output)) =>
+            Verdict.Failed(WentOn.failed(check, None, output.text))
+          case Left(other) => Verdict.Unrun(other.message)
+        }
+    }
+
+  /** The most lines of a failed check's output `grit work` prints. */
+  val PrintedLines: Int = 20
+
+  /** What `grit work` prints when the turn named `named` failed its check `failed` and the task
+    * goes on in turn `next` of at most `cap`: the failure, then the last [[PrintedLines]] lines
+    * of its output, each indented under a bar.
+    */
+  def wentOn(named: String, failed: WentOn.CheckFailed, next: Int, cap: Int): String = {
+    val how = failed.exit.fold(
+      s"it ran past ${WentOn.CheckLongest.toMinutes} minutes and was stopped"
+    )(code => s"exit $code")
+    val lines = Clipped.lines(failed.tail).takeRight(PrintedLines).map(l => s"\n  | $l")
+    s"[main] $named: the check failed ($how); going on in a fresh turn (turn $next of at most $cap)" +
+      lines.mkString
   }
 
   /** The most turns `grit work` gives one task: a stop for a loop that cannot end, not a spend
@@ -141,18 +235,22 @@ private[main] object Work {
   /** `text` said once through `console` at `origin` as the local person, its turn started (or,
     * said before, the turn it started found) and waited for until its workflow ends; then the
     * turn's workflow id, what the workflow returned and its reply printed through `print` as one
-    * line, as a run with arguments prints a message's. While a turn ends at its limit, the task
-    * goes on in a new turn rooted on grit's continuation note
-    * ([[grit.core.inbox.Inbox.continued]]), as
-    * [[after]] says, up to `cap` turns, each said under [[source]] of its number, so a rerun
-    * walks the chain to where it stopped. Why not: the inbox refused the text or a
-    * continuation, or a turn left no reply.
+    * line, as a run with arguments prints a message's. While a turn ends at its limit, or
+    * answers and its task's acceptance command `check` then fails ([[checked]] over `work`),
+    * the task goes on in a new turn rooted on grit's continuation note
+    * ([[grit.core.inbox.Inbox.continued]]), as [[after]] says, up to `cap` turns, each said
+    * under [[source]] of its number, so a rerun walks the chain to where it stopped: a turn
+    * that answered and was followed by a recorded turn is not checked again, its failure
+    * printed as recorded. Why not: the inbox refused the text or a continuation, a turn left
+    * no reply, or as [[After.Fail]] says.
     */
   def said(
       console: Console^,
       origin: Origin,
       text: String,
       cap: Int,
+      check: Option[WentOn.Command],
+      work: Processes^,
       print: String -> Unit
   ): Either[String, Unit] =
     console.inbox
@@ -160,28 +258,68 @@ private[main] object Work {
       .flatMap(turn => console.inbox.startTurn(turn).map(_ => turn)) match {
       case Left(error) => Left(ChatHost.notSent(error))
       case Right(task) =>
-        def go(turn: TurnRef, n: Int): Either[String, Unit] =
+        def started(next: Either[grit.core.inbox.InboxError, TurnRef]) =
+          next.flatMap(t => console.inbox.startTurn(t).map(_ => t)).left.map(ChatHost.notSent)
+        def go(turn: TurnRef, n: Int, last: Option[WentOn.CheckFailed]): Either[String, Unit] =
           awaited(console, turn, print).flatMap { outcome =>
-            after(WorkflowId.value(turn.workflowId), TurnEnding.of(outcome), n, cap) match {
-              case After.Stop(line) => Right(line.foreach(print))
-              case After.GoOn(next, line) =>
-                print(line)
-                console.inbox
-                  .continued(
-                    origin,
-                    source(text, next),
-                    task.turnSeq,
-                    next,
-                    WentOn.AtLimit,
-                    Account.Local
-                  )
-                  .flatMap(t => console.inbox.startTurn(t).map(_ => t)) match {
-                  case Left(error) => Left(ChatHost.notSent(error))
-                  case Right(t) => go(t, next)
+            val named = WorkflowId.value(turn.workflowId)
+            val ended = TurnEnding.of(outcome)
+            val answered = ended == TurnEnding.Answered && check.nonEmpty
+            val recorded =
+              if (answered) checkedBefore(console, origin, source(text, n + 1))
+              else Right(None)
+            recorded.flatMap {
+              case Some((next, failed)) =>
+                print(wentOn(named, failed, n + 1, cap))
+                started(Right(next)).flatMap(go(_, n + 1, Some(failed)))
+              case None =>
+                val verdict = check.filter(_ => answered).map { c =>
+                  print(s"[main] $named ended its turn; checking: ${c.text}")
+                  checked(work, c)
+                }
+                after(named, ended, n, cap, verdict, last) match {
+                  case After.Stop(line) => Right(line.foreach(print))
+                  case After.Fail(why) => Left(why)
+                  case After.GoOn(next, reason, line) =>
+                    print(line)
+                    val failed = reason match {
+                      case f: WentOn.CheckFailed => Some(f)
+                      case WentOn.AtLimit => None
+                    }
+                    started(
+                      console.inbox.continued(
+                        origin,
+                        source(text, next),
+                        task.turnSeq,
+                        next,
+                        reason,
+                        Account.Local
+                      )
+                    ).flatMap(go(_, next, failed))
                 }
             }
           }
-        go(task, 1)
+        go(task, 1, None)
+    }
+
+  /** The turn recorded at `origin` under `source` and the failed check it went on after, when
+    * one is: a check a rerun need not run again. Why not: the store cannot be read.
+    */
+  private def checkedBefore(
+      console: Console^,
+      origin: Origin,
+      source: SourceId
+  ): Either[String, Option[(TurnRef, WentOn.CheckFailed)]] =
+    console.inbox.ingested(origin, source).left.map(ChatHost.notSent).flatMap {
+      case None => Right(None)
+      case Some(next) =>
+        console.db
+          .read(Subject.Turn(next))(console.entries.ofTurn(next))
+          .left
+          .map(e => s"unreadable: $e")
+          .map(_.map(_.payload).collectFirst {
+            case Payload.Continuation(_, _, f: WentOn.CheckFailed) => (next, f)
+          })
     }
 
   /** `turn` waited for until its workflow ends, then its workflow id, what the workflow

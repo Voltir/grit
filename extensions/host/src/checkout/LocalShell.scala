@@ -19,7 +19,7 @@ final class LocalShell(root: Path, environment: Map[String, String], redaction: 
   private val processes = new LocalProcesses(root, environment, redaction)
 
   def run(command: String, timeout: FiniteDuration): Either[HostError, Ran] =
-    Argv.of("sh", "-c", command) match {
+    LocalShell.command(command) match {
       case Left(why) => Left(HostError.Failed(why))
       case Right(argv) => processes.ran(argv, RelPath.Root, timeout, hint)
     }
@@ -40,6 +40,9 @@ final class LocalShell(root: Path, environment: Map[String, String], redaction: 
 }
 
 object LocalShell {
+
+  /** `command` as the program that runs it: `sh -c` and `command`; why not when it holds a NUL. */
+  def command(command: String): Either[String, Argv] = Argv.of("sh", "-c", command)
 
   /** The variables a command may see, when they are set: where programs are, who and where
     * the user is, the locale and the terminal, and the toolchains a build in the checkout

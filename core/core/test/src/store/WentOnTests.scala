@@ -7,8 +7,11 @@ object WentOnTests extends TestSuite {
   private val make = TestWentOn.command("make test")
 
   val tests = Tests {
-    test("a failed check's output is kept clean: no escapes or control characters, CR as LF") {
-      val output = "\u001b[31mred\u001b[0m\r\nbell\u0007 tab\there\rover\u001b]0;title\u0007"
+    test(
+      "a failed check's output is kept clean: no escapes, control characters or trailing blanks, CR as LF"
+    ) {
+      val output =
+        "\u001b[31mred\u001b[0m\r\nbell\u0007 tab\there\rover\u001b]0;title\u0007 \n\n"
       WentOn.failed(make, Some(1), output).tail ==> "red\nbell tab\there\nover"
     }
 

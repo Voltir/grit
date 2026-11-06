@@ -1,9 +1,13 @@
 package grit.app.main
 
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
+
+import scala.concurrent.duration.*
 
 import grit.core.id.SourceId
 import grit.core.inbox.TurnEnding
+import grit.core.store.{TestWentOn, WentOn}
+import grit.host.checkout.{LocalProcesses, Redaction}
 
 import utest.*
 
@@ -20,19 +24,29 @@ object WorkTests extends TestSuite {
       )
     }
 
-    test("work takes a file, or --dry and a file; anything else is refused with the form") {
+    test(
+      "work takes a file, --check, a command and a file, or --dry and a file; anything else is refused with the form"
+    ) {
       (
         Work.asked(Vector("brief.md")),
         Work.asked(Vector("--dry", "brief.md")),
+        Work.asked(Vector("--check", "make test", "brief.md")),
         Work.asked(Vector.empty),
         Work.asked(Vector("brief.md", "--dry")),
-        Work.asked(Vector("a.md", "b.md"))
+        Work.asked(Vector("a.md", "b.md")),
+        Work.asked(Vector("--check", "make test", "--dry", "brief.md")),
+        Work.asked(Vector("--check", "brief.md")),
+        Work.asked(Vector("--check", " ", "brief.md"))
       ) ==> (
-        Right(Work.Asked(Path.of("brief.md"), dry = false)),
-        Right(Work.Asked(Path.of("brief.md"), dry = true)),
+        Right(Work.Asked(Path.of("brief.md"), dry = false, None)),
+        Right(Work.Asked(Path.of("brief.md"), dry = true, None)),
+        Right(Work.Asked(Path.of("brief.md"), dry = false, Some(TestWentOn.command("make test")))),
         Left(Work.Usage),
         Left(Work.Usage),
-        Left(Work.Usage)
+        Left(Work.Usage),
+        Left(Work.Usage),
+        Left(Work.Usage),
+        Left("the check command is empty")
       )
     }
 
@@ -47,12 +61,13 @@ object WorkTests extends TestSuite {
       "a turn that ended at its limit goes on to the next until GRIT_WORK_TURNS, said in one line; any other ending stops"
     ) {
       (
-        Work.after("w1", TurnEnding.AtLimit, 1, 8),
-        Work.after("w8", TurnEnding.AtLimit, 8, 8),
-        Work.after("w3", TurnEnding.Otherwise, 3, 8)
+        Work.after("w1", TurnEnding.AtLimit, 1, 8, None, None),
+        Work.after("w8", TurnEnding.AtLimit, 8, 8, None, None),
+        Work.after("w3", TurnEnding.Otherwise, 3, 8, None, None)
       ) ==> (
         Work.After.GoOn(
           2,
+          WentOn.AtLimit,
           "[main] w1 reached its limit; going on in a fresh turn (turn 2 of at most 8)"
         ),
         Work.After.Stop(
@@ -62,6 +77,99 @@ object WorkTests extends TestSuite {
         ),
         Work.After.Stop(None)
       )
+    }
+
+    test(
+      "a turn that answered stops unchecked or when its check passes; a failed check goes on with its output's last lines, until the cap or a repeat"
+    ) {
+      val failed =
+        TestWentOn.failed("make test", Some(1), (1 to 30).map(n => s"l$n").mkString("\n"))
+      val stopped = TestWentOn.failed("make test", None, "slow")
+      val tail = (11 to 30).map(n => s"\n  | l$n").mkString
+      (
+        Work.after("w2", TurnEnding.Answered, 2, 8, None, None),
+        Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Passed), Some(failed)),
+        Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Failed(failed)), None),
+        Work.after(
+          "w2",
+          TurnEnding.Answered,
+          2,
+          8,
+          Some(Work.Verdict.Failed(stopped)),
+          Some(failed)
+        ),
+        Work.after("w8", TurnEnding.Answered, 8, 8, Some(Work.Verdict.Failed(failed)), None),
+        Work.after(
+          "w3",
+          TurnEnding.Answered,
+          3,
+          8,
+          Some(Work.Verdict.Failed(failed)),
+          Some(failed)
+        ),
+        Work.after("w2", TurnEnding.Answered, 2, 8, Some(Work.Verdict.Unrun("no sh")), None),
+        Work.after("w2", TurnEnding.Otherwise, 2, 8, Some(Work.Verdict.Failed(failed)), None)
+      ) ==> (
+        Work.After.Stop(None),
+        Work.After.Stop(Some("[main] w2: the check passed; the task is done")),
+        Work.After.GoOn(
+          3,
+          failed,
+          "[main] w2: the check failed (exit 1); going on in a fresh turn (turn 3 of at most 8)" +
+            tail
+        ),
+        Work.After.GoOn(
+          3,
+          stopped,
+          "[main] w2: the check failed (it ran past 30 minutes and was stopped); going on in a " +
+            "fresh turn (turn 3 of at most 8)\n  | slow"
+        ),
+        Work.After.Fail(
+          "w8: the check still fails at turn 8, the most GRIT_WORK_TURNS allows; fix it or " +
+            "raise GRIT_WORK_TURNS and rerun"
+        ),
+        Work.After.Fail(
+          "w3: the check failed with the same output as last time; stopping, since another " +
+            "turn is unlikely to change it"
+        ),
+        Work.After.Fail("the check could not start: no sh"),
+        Work.After.Stop(None)
+      )
+    }
+
+    test(
+      "a check runs in the task's directory: exit 0 passes; another exit, or past its time, fails with the end of its output"
+    ) {
+      val root = Files.createTempDirectory("grit-check").toRealPath()
+      try {
+        val work = new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
+        def check(command: String) = Work.checked(work, TestWentOn.command(command), 1.second)
+        (
+          check("test -d . && echo fine"),
+          check("echo wrong in $(basename $PWD); exit 3"),
+          check("echo started; sleep 5"),
+          check("seq 1 20000; exit 1")
+        ) ==> (
+          Work.Verdict.Passed,
+          Work.Verdict.Failed(
+            TestWentOn.failed(
+              "echo wrong in $(basename $PWD); exit 3",
+              Some(3),
+              s"wrong in ${root.getFileName}"
+            )
+          ),
+          Work.Verdict.Failed(TestWentOn.failed("echo started; sleep 5", None, "started")),
+          Work.Verdict.Failed(
+            TestWentOn.failed(
+              "seq 1 20000; exit 1",
+              Some(1),
+              (20001 - WentOn.TailLines to 20000).mkString("\n")
+            )
+          )
+        )
+      } finally {
+        val _ = Files.deleteIfExists(root)
+      }
     }
 
     test("GRIT_WORK_TURNS: unset is 8; under 1 or not a whole number is an error") {

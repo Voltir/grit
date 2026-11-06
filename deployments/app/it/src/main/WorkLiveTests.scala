@@ -10,7 +10,7 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.sql.{DbConfig, TestPostgres}
-import grit.host.checkout.Redaction
+import grit.host.checkout.{LocalProcesses, Redaction}
 import grit.kit.deployment.{Deployment, Offered}
 import grit.kit.environment.Secrets
 import grit.kit.rehearse.Rehearsed
@@ -67,6 +67,13 @@ object WorkLiveTests extends TestSuite {
       )
     )
 
+  /** A turn's workflow id, as `grit work` prints it. */
+  private val Id = "[0-9a-f]{8}-[0-9a-f-]+:[0-9]+"
+
+  /** The processes `grit work` checks a task with in `root`. */
+  private def processes(root: Path): LocalProcesses =
+    new LocalProcesses(root, sys.env, Redaction.of(Map.empty))
+
   /** `step` run as `grit work` runs its last step: `root`'s edge served, scout's among it,
     * through the console of the engine of `config`'s database.
     */
@@ -115,10 +122,10 @@ object WorkLiveTests extends TestSuite {
         val first, second = mutable.ArrayBuffer.empty[String]
         val ran = (
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", Work.DefaultTurns, line => first += line)
+            Work.said(c, origin, "say hello", Work.DefaultTurns, None, processes(root), first += _)
           ),
           working(root, config, deployment)(c =>
-            Work.said(c, origin, "say hello", Work.DefaultTurns, line => second += line)
+            Work.said(c, origin, "say hello", Work.DefaultTurns, None, processes(root), second += _)
           )
         )
         (ran, first.size, first.forall(_.startsWith("[main] ")), second.toVector) ==> (
@@ -126,6 +133,66 @@ object WorkLiveTests extends TestSuite {
           1,
           true,
           first.toVector
+        )
+      }
+    }
+
+    test(
+      "a work run checks its task once its turn answers: a failure goes on in a fresh turn, a pass ends it; run again, it re-runs no check a later turn followed"
+    ) {
+      checkout { root =>
+        val config = TestPostgres.freshDatabase("work_checked")
+        val deployment = deployed(root)
+        val origin = Origin.Tui(right(Directory.of(root.toString)), "bench")
+        val check = Some(
+          right(
+            grit.core.store.WentOn.Command.of(
+              "echo ran >> runs; test -f once || { touch once; echo 'once is missing'; exit 4; }"
+            )
+          )
+        )
+        val first, second = mutable.ArrayBuffer.empty[String]
+        def run(lines: mutable.ArrayBuffer[String]) =
+          working(root, config, deployment)(c =>
+            Work.said(c, origin, "say hello", Work.DefaultTurns, check, processes(root), lines += _)
+          )
+        val ran = (run(first), Files.readAllLines(root.resolve("runs")).size)
+        val again = (run(second), Files.readAllLines(root.resolve("runs")).size)
+        def shapes(lines: mutable.ArrayBuffer[String]) =
+          lines.toVector.map(_.replaceAll(Id, "<id>").takeWhile(_ != ':'))
+        (
+          ran,
+          again,
+          shapes(first),
+          shapes(second),
+          first.drop(1).take(1).map(_.replaceAll(Id, "<id>"))
+        ) ==> (
+          (Right(()), 2),
+          (Right(()), 3),
+          Vector(
+            "[main] <id> -> replied",
+            "[main] <id> ended its turn; checking",
+            "[main] <id>",
+            "[main] <id> -> replied",
+            "[main] <id> ended its turn; checking",
+            "[main] <id>"
+          ),
+          Vector(
+            "[main] <id> -> replied",
+            "[main] <id>",
+            "[main] <id> -> replied",
+            "[main] <id> ended its turn; checking",
+            "[main] <id>"
+          ),
+          Vector(
+            "[main] <id> ended its turn; checking: echo ran >> runs; test -f once || { touch " +
+              "once; echo 'once is missing'; exit 4; }"
+          )
+        )
+        (first(2).replaceAll(Id, "<id>"), first(5).replaceAll(Id, "<id>")) ==> (
+          "[main] <id>: the check failed (exit 4); going on in a fresh turn (turn 2 of at most 8)" +
+            "\n  | once is missing",
+          "[main] <id>: the check passed; the task is done"
         )
       }
     }
