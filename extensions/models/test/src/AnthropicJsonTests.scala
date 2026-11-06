@@ -22,7 +22,7 @@ object AnthropicJsonTests extends TestSuite {
 
   private def sent(
       request: ModelRequest,
-      effort: Option[Effort] = None,
+      effort: Effort = Effort.Medium,
       replay: ReasoningReplay = ReasoningReplay.Details,
       dropBlock: Boolean = false,
       marks: CacheMarks.Upto = CacheMarks.Upto.Stable
@@ -128,6 +128,7 @@ object AnthropicJsonTests extends TestSuite {
         "model" -> "claude-haiku-5-5",
         "max_tokens" -> 1024,
         "thinking" -> ujson.Obj("type" -> "adaptive", "display" -> "summarized"),
+        "output_config" -> ujson.Obj("effort" -> "medium"),
         "tools" -> ujson.Arr(
           ujson.Obj("name" -> "read", "description" -> "Reads a file.", "input_schema" -> schema)
         ),
@@ -296,12 +297,11 @@ object AnthropicJsonTests extends TestSuite {
       ) ==> ujson.Arr(text)
     }
 
-    test("request: effort in Anthropic's words under output_config; none asked sends none") {
-      def effort(e: Option[Effort]) = sent(exchange, effort = e).obj.get("output_config")
-      effort(Some(Effort.Minimal)) ==> Some(ujson.Obj("effort" -> "low"))
-      effort(Some(Effort.XHigh)) ==> Some(ujson.Obj("effort" -> "xhigh"))
-      effort(Some(Effort.Max)) ==> Some(ujson.Obj("effort" -> "max"))
-      effort(None) ==> None
+    test("request: effort in Anthropic's words under output_config") {
+      def effort(e: Effort) = sent(exchange, effort = e).obj.get("output_config")
+      effort(Effort.Minimal) ==> Some(ujson.Obj("effort" -> "low"))
+      effort(Effort.XHigh) ==> Some(ujson.Obj("effort" -> "xhigh"))
+      effort(Effort.Max) ==> Some(ujson.Obj("effort" -> "max"))
     }
 
     test("request: a mismatched thinking block is dropped only when asked") {

@@ -265,7 +265,7 @@ object AnthropicLiveProbe {
     val body = AnthropicJson.request(
       Haiku,
       1024,
-      Some(Effort.High),
+      Effort.High,
       ReasoningReplay.Details,
       dropBlock = false,
       request
@@ -361,7 +361,7 @@ object AnthropicLiveProbe {
         AnthropicJson.request(
           model,
           maxTokens,
-          Some(effort),
+          effort,
           ReasoningReplay.Details,
           dropBlock,
           request,

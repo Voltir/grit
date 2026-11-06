@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.durable.InMemoryDurable
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.ReasoningReplay
+import grit.core.model.{Effort, ReasoningReplay}
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 import grit.core.visibility.Integrity
@@ -117,7 +117,14 @@ object TurnPrefixTests extends TestSuite {
         )
       )
       def prefix(r: ModelRequest): String = AnthropicJson.prefix(
-        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+        AnthropicJson.request(
+          "claude-haiku-5-5",
+          1024,
+          Effort.Medium,
+          ReasoningReplay.Details,
+          false,
+          r
+        )
       )
       val prefixes = provider.requests.map(prefix)
       // A line of the earlier call missing from the later one's place is a cache miss from
@@ -169,7 +176,14 @@ object TurnPrefixTests extends TestSuite {
         )
       }
       def prefix(r: ModelRequest): String = AnthropicJson.prefix(
-        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+        AnthropicJson.request(
+          "claude-haiku-5-5",
+          1024,
+          Effort.Medium,
+          ReasoningReplay.Details,
+          false,
+          r
+        )
       )
       Vector(3 -> grit.core.provider.ToolUse.Off, 4 -> grit.core.provider.ToolUse.Auto).foreach {
         (calls, use) =>
@@ -239,7 +253,8 @@ object TurnPrefixTests extends TestSuite {
       requests.size ==> 4
       val sent = requests
         .map(
-          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+          AnthropicJson
+            .request("claude-haiku-5-5", 1024, Effort.Medium, ReasoningReplay.Details, false, _)
         )
         .map(unmarked)
       sent.sliding(2).map(p => p.drop(1).flatten.startsWith(p.take(1).flatten)).toVector ==>
@@ -313,7 +328,14 @@ object TurnPrefixTests extends TestSuite {
       }
       pairs.map((last, _) => last.repeats.stable == last.messages.size) ==> Vector(true, true)
       def anthropicOf(r: ModelRequest): ujson.Value =
-        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+        AnthropicJson.request(
+          "claude-haiku-5-5",
+          1024,
+          Effort.Medium,
+          ReasoningReplay.Details,
+          false,
+          r
+        )
       def openRouterOf(r: ModelRequest): ujson.Value =
         OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, r)
       val anthropic = pairs.map((a, b) => (anthropicOf(a), anthropicOf(b)))
@@ -366,7 +388,14 @@ object TurnPrefixTests extends TestSuite {
       )
       val (second, next) = turn("and again?", 5, (r, _) => new StubProvider().complete(r))
       def anthropicOf(r: ModelRequest): ujson.Value =
-        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+        AnthropicJson.request(
+          "claude-haiku-5-5",
+          1024,
+          Effort.Medium,
+          ReasoningReplay.Details,
+          false,
+          r
+        )
       def openRouterOf(r: ModelRequest): ujson.Value =
         OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, r)
       val sent = first.lastOption.zip(next.headOption).toVector.flatMap { (a, b) =>
@@ -425,7 +454,14 @@ object TurnPrefixTests extends TestSuite {
       val later = new Scripted((r, _) => new StubProvider().complete(r))
       val second = run("and now?", later)
       def anthropicOf(r: ModelRequest): ujson.Value =
-        AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, r)
+        AnthropicJson.request(
+          "claude-haiku-5-5",
+          1024,
+          Effort.Medium,
+          ReasoningReplay.Details,
+          false,
+          r
+        )
       val replays = later.requests.exists(r => ujson.write(anthropicOf(r)).contains("sig-t"))
       (
         first.requests.lastOption.map(_.use),
@@ -518,7 +554,8 @@ object TurnPrefixTests extends TestSuite {
       ).flatten
       val bodies = Vector(
         requests.map(
-          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+          AnthropicJson
+            .request("claude-haiku-5-5", 1024, Effort.Medium, ReasoningReplay.Details, false, _)
         ),
         requests.map(OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, _))
       )
@@ -553,7 +590,14 @@ object TurnPrefixTests extends TestSuite {
       requests.size ==> 3
       val anthropic =
         requests.map(
-          AnthropicJson.request("claude-haiku-5-5", 1024, None, ReasoningReplay.Details, false, _)
+          AnthropicJson.request(
+            "claude-haiku-5-5",
+            1024,
+            Effort.Medium,
+            ReasoningReplay.Details,
+            false,
+            _
+          )
         )
       val openRouter =
         requests.map(OpenRouterJson.request("anthropic/claude-haiku-5.5", 1024, None, _))

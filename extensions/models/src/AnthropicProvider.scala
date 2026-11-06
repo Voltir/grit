@@ -5,13 +5,13 @@ import java.net.http.{HttpClient, HttpRequest}
 import java.time.Duration
 
 import grit.core.message.Message
-import grit.core.model.{ModelId, Pinned}
+import grit.core.model.{Effort, ModelId, Pinned}
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.secret.{Reveal, Secret, Variable}
 
 /** [[Provider]] over Anthropic's Messages API, called with `key`, one request per call,
   * streamed or not, no retries, under `pinned`'s model (its id after `anthropic/`), budget and
-  * effort, thinking adaptive and summarised, earlier thinking sent back as its settings'
+  * effort ([[AnthropicProvider.DefaultEffort]] when it asks none), thinking adaptive and summarised, earlier thinking sent back as its settings'
   * replay says. Caches `tools` and `system`, and the request's repeated prefixes `marks` names
   * ([[CacheMarks.marked]]), with a breakpoint after each. Each reply records
   * [[grit.core.model.Upstream.AnthropicApi]] as the upstream that served it, and its cost from
@@ -78,6 +78,11 @@ object AnthropicProvider {
   /** The variable Anthropic's key is read from ([[Keys.of]]). */
   val KeyVar: Variable = Variable("ANTHROPIC_API_KEY")
 
+  /** The effort asked under a pin that asks none: every request names one, so that a model
+    * whose own default is higher (`high` on most) never applies it unasked.
+    */
+  val DefaultEffort: Effort = Effort.Medium
+
   /** The headers a request is sent with under `key`, besides its content type: under
     * [[AnthropicJson.BindingBeta]] too when it asks [[AnthropicJson.request]]'s `dropBlock`.
     */
@@ -101,7 +106,7 @@ object AnthropicProvider {
     val body = AnthropicJson.request(
       model,
       pinned.assignment.maxTokens,
-      pinned.assignment.effort,
+      pinned.assignment.effort.getOrElse(DefaultEffort),
       pinned.settings.replay,
       dropBlock,
       request,

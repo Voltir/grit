@@ -13,7 +13,8 @@ enum Effort(val word: String) {
 }
 
 /** Which pair does one job, with its output budget (`maxTokens`, at least 1) and the effort
-  * asked of it (`None`: none is asked, and the model's default holds).
+  * asked of it (`None`: the pin asks none, and its provider's default holds: grit's own where
+  * the provider always names one, as Anthropic's API does, else the model's).
   */
 final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort]) derives CanEqual
 

@@ -1,7 +1,16 @@
 package grit.models
 
 import grit.core.message.Message
-import grit.core.model.{Assignment, CatalogVersion, Grade, ModelId, ModelRef, Pinned, Settings}
+import grit.core.model.{
+  Assignment,
+  CatalogVersion,
+  Effort,
+  Grade,
+  ModelId,
+  ModelRef,
+  Pinned,
+  Settings
+}
 import grit.core.provider.{ModelRequest, ProviderError}
 
 import utest.*
@@ -72,6 +81,23 @@ object AnthropicProviderTests extends TestSuite {
         (headers.toVector, renamed)
       }
       sent(snapshot).map((headers, body) => (headers.toVector, body)) ==> asAlias
+    }
+
+    test(
+      "a pin asking no effort is sent medium, never the API's default; one asking its own sends it"
+    ) {
+      val asked = ModelRequest("s", Vector(Message.User("hi")))
+      def effortSent(p: Pinned) =
+        AnthropicProvider
+          .wire("k", "claude-haiku-5-5", p, asked, CacheMarks.Upto.Stable)
+          ._2
+          .obj
+          .get("output_config")
+      val none = pinned("anthropic/claude-haiku-5-5")
+      none.map(effortSent) ==> Some(Some(ujson.Obj("effort" -> "medium")))
+      none.map(p =>
+        effortSent(p.copy(assignment = p.assignment.copy(effort = Some(Effort.High))))
+      ) ==> Some(Some(ujson.Obj("effort" -> "high")))
     }
   }
 }

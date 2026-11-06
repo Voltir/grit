@@ -24,7 +24,7 @@ object AnthropicJson {
     model == alias || model.startsWith(alias + "-")
 
   /** The request body for `request` on `model` (Anthropic's own id), its thinking adaptive and
-    * summarised and its effort `effort` when set. Each [[Message]] is one wire message, in
+    * summarised and its effort `effort`. Each [[Message]] is one wire message, in
     * order: a user's empty text, and an assistant message left with nothing to send, are
     * left out, since the API refuses an empty block. A tool call's arguments go back as sent
     * when they are an object, else as `{}`. Thinking goes back verbatim in its place when
@@ -41,7 +41,7 @@ object AnthropicJson {
   def request(
       model: String,
       maxTokens: Int,
-      effort: Option[Effort],
+      effort: Effort,
       replay: ReasoningReplay,
       dropBlock: Boolean,
       request: ModelRequest,
@@ -51,7 +51,7 @@ object AnthropicJson {
     if (dropBlock)
       thinking("block_binding") = ujson.Obj("prefix_mismatch_behavior" -> "drop_block")
     val body = ujson.Obj("model" -> model, "max_tokens" -> maxTokens, "thinking" -> thinking)
-    effort.foreach(e => body("output_config") = ujson.Obj("effort" -> effortWord(e)))
+    body("output_config") = ujson.Obj("effort" -> effortWord(effort))
     val tools = request.tools.map(tool)
     if (tools.nonEmpty) {
       body("tools") = ujson.Arr.from(tools)
