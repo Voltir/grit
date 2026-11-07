@@ -26,6 +26,7 @@ import grit.projects.name.{
   ArtifactKey,
   CheckName,
   KindName,
+  LocalKey,
   MethodName,
   Pin,
   ProjectKey,
@@ -477,14 +478,21 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
       "Lists a project's artifacts, one line each: key, kind, state, title, the artifact it " +
-        "sits under, and the opening words of its text. Only those of a kind, or in a state, " +
-        "when given.",
+        "sits under, and the opening words of its text. Only those of a kind, in a state, or " +
+        "directly under a parent, when given. Refused for a parent the project lacks, naming " +
+        "the nearest keys it has.",
       Args
         .of(
           (
             project = Field.text("The project's key."),
             kind = Field.text("Only artifacts of this kind.").optional,
-            state = Field.text("Only artifacts in this state.").optional
+            state = Field.text("Only artifacts in this state.").optional,
+            parent = Field
+              .text(
+                "Only the artifacts directly under this one, `<project>/<artifact>`; not those " +
+                  "under them."
+              )
+              .optional
           )
         )
         .refine(a =>
@@ -492,15 +500,37 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
             p <- parsed("project", a.project, ProjectKey.of)
             kind <- a.kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
             state <- a.state.fold(Right(None))(s => parsed("state", s, StateName.of).map(Some(_)))
-          } yield Listing(p, kind, state)
+            parent <- a.parent.fold(Right(None)) { k =>
+              parsed("parent", k, ArtifactKey.read).flatMap(key =>
+                Either.cond(
+                  key.project == p,
+                  Some(key.local),
+                  ArgsError.Refused(
+                    "parent",
+                    s"The parent ${key.value} is not in project ${ProjectKey.value(p)}."
+                  )
+                )
+              )
+            }
+          } yield Listing(p, kind, state, parent)
         )
     )
     def run(args: Listing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
-      loaded(own.documents, args.project).map { project =>
+      for {
+        project <- loaded(own.documents, args.project)
+        parent <- args.parent.fold(Right(None)) { local =>
+          refuse(ArtifactKey.of(args.project, LocalKey.value(local)))
+            .flatMap(artifact(project, _))
+            .map(found => Some(found._2.head.key))
+        }
+      } yield {
         val listed = project.artifacts
-          .filter(a => args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state))
+          .filter(a =>
+            args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state) &&
+              parent.forall(p => a.head.parent.contains(p))
+          )
           .sortBy(_.head.key.value)
         AnswerText.listed(listed, "No artifact matches.")
       }
@@ -1156,9 +1186,13 @@ private[plugin] object ProjectCommands {
       .toOption
       .toRight(s"`$text` is not an ISO-8601 instant such as 2026-10-27T12:00:00Z")
 
-  /** `project_list`'s arguments. */
-  final case class Listing(project: ProjectKey, kind: Option[KindName], state: Option[StateName])
-      extends caps.Pure
+  /** `project_list`'s arguments; `parent` is a local key of `project`. */
+  final case class Listing(
+      project: ProjectKey,
+      kind: Option[KindName],
+      state: Option[StateName],
+      parent: Option[LocalKey]
+  ) extends caps.Pure
 
   /** `project_find`'s arguments. */
   final case class Finding(query: String, project: Option[ProjectKey], ended: Boolean)

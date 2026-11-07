@@ -528,6 +528,53 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    test("project_list with parent lists only the artifacts directly under it, not under them") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Top.")
+      val under = (local: String, parent: String) =>
+        done(
+          ask(
+            projects,
+            store,
+            "project_keep",
+            "key" -> s"p/$local",
+            "kind" -> "note",
+            "title" -> s"Title $local",
+            "body" -> "Below.",
+            "parent" -> parent
+          )
+        )
+      under("b", "p/a")
+      under("c", "p/b")
+      under("d", "p/a")
+      done(ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a")) ==>
+        "p/b (note, open): Title b · under p/a · Below.\n" +
+        "p/d (note, open): Title d · under p/a · Below."
+    }
+
+    test(
+      "project_list refuses a parent in another project, and one the project lacks naming its nearest"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "plan-c5", "note", "Top.")
+      val read = projects.commands
+        .find(c => ToolName.value(c.spec.name) == "project_list")
+        .map(_.spec.args.read(ujson.Obj("project" -> "p", "parent" -> "q/plan-c5")))
+      (
+        read.map(_.left.map(_.message)),
+        ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/plan-c")
+      ) ==> (
+        Some(
+          Left(ArgsError.Refused("parent", "The parent q/plan-c5 is not in project p.").message)
+        ),
+        CommandOutcome.Refused("project p has no artifact p/plan-c (nearest: p/plan-c5)")
+      )
+    }
+
     test("project_find finds artifacts by the words of their bodies") {
       val projects = plugin()
       val store = Store()
