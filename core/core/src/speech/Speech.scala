@@ -20,9 +20,10 @@ import grit.core.visibility.Integrity
 final case class Reach(replyTo: Option[ReplyTo], asked: Set[Account])
 
 /** A heard message's reply addresses: in its `thread`, and at its room's top level (`room`),
-  * `None` where its edge has no top level to post at.
+  * `None` where its edge has no top level to post at; and the thread the message is in
+  * (`within`), named alike for every message of that thread, `None` where its edge names none.
   */
-final case class ReplyTo(thread: String, room: Option[String] = None)
+final case class ReplyTo(thread: String, room: Option[String] = None, within: Option[String] = None)
 
 /** Where an unprompted reply is posted: in its message's thread, or at its room's top level, at
   * `to`, the message's [[ReplyTo.room]].
@@ -82,14 +83,16 @@ enum Stage {
 }
 
 /** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), its stage,
-  * and where its reply goes (`venue`).
+  * where its reply goes (`venue`), and the thread its heard message was in
+  * ([[ReplyTo.within]]).
   */
 final case class Spoken(
     turn: TurnRef,
     room: Place,
     at: Instant,
     stage: Stage,
-    venue: Venue = Venue.Thread
+    venue: Venue = Venue.Thread,
+    thread: Option[String] = None
 )
 
 /** The speech ledger as a decision needs it: the unprompted turns decided within the longest
@@ -279,7 +282,9 @@ object Speech {
     }
 
   /** How many of `spoken`'s posted turns decided within `rate.per` before `at` are `which`. */
-  private def posted(spoken: Vector[Spoken], rate: Rate, at: Instant)(which: Spoken => Boolean): Int =
+  private def posted(spoken: Vector[Spoken], rate: Rate, at: Instant)(
+      which: Spoken => Boolean
+  ): Int =
     spoken.count(t =>
       (t.stage match {
         case Stage.Posted(_) => true
@@ -309,6 +314,13 @@ object Speech {
   ): Decision = {
     def within(rate: Rate, spoken: Spoken => Boolean): Int = posted(ledger.turns, rate, now)(spoken)
     def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
+    // The thread rate counts the heard message's thread wherever its posts were recorded: a
+    // channel's top level is one conversation of many threads (ADR 0060). Without a thread on
+    // either side, the conversation.
+    def inThread(t: Spoken): Boolean = (t.thread, heard.reach.replyTo.flatMap(_.within)) match {
+      case (Some(theirs), Some(ours)) => theirs == ours
+      case _ => here(t)
+    }
     // Placement never holds: a gate that fails or is unread, a spent rate or no address is the
     // thread.
     def placed(limits: Limits): Venue =
@@ -333,6 +345,8 @@ object Speech {
         () => heard.cues.continued.map(Silence.Continued(_)),
         () => gated(limits, heard),
         () => heard.cues.spoken.map(Silence.Spoken(_)),
+        // Per conversation, not per thread: grit drafting, or having posted since, anywhere in
+        // the conversation answers the message as far as grit can tell.
         () =>
           ledger.turns
             .find(t =>
@@ -344,7 +358,7 @@ object Speech {
             )
             .map(t => Silence.Unanswered(t.turn)),
         () => {
-          val n = within(limits.thread, here)
+          val n = within(limits.thread, inThread)
           Option.when(n >= limits.thread.count)(Silence.Thread(n))
         },
         () => {

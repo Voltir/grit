@@ -7,6 +7,7 @@ import scala.util.Using
 import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlSpeechStore, TestPostgres}
+
 import utest.*
 
 /** [[SqlSpeechStore.lockRoom]] against a real Postgres: what two transactions at once see. */

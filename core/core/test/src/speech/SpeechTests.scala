@@ -239,6 +239,17 @@ object SpeechTests extends TestSuite {
         val l = empty.copy(turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))))
         assert(decide(l = l) == held(Silence.Thread(1)))
       }
+      test(
+        "posts in this message's thread within the thread rate, wherever that thread's posts were recorded"
+      ) {
+        // The root's reply, recorded in the room's conversation, holds a reply in its thread.
+        val inThread =
+          heard.copy(reach = Reach(Some(ReplyTo("C/1/2", None, Some("C/1"))), Set.empty))
+        val l = empty.copy(turns =
+          Vector(posted("room", 3, now.minusSeconds(5 * 60 * 60)).copy(thread = Some("C/1")))
+        )
+        assert(decide(inThread, l) == held(Silence.Thread(1)))
+      }
       test("posts in this room within the room rate") {
         val l = empty.copy(turns =
           Vector(posted("a", 1, now.minusSeconds(600)), posted("b", 1, now.minusSeconds(1200)))
@@ -442,7 +453,9 @@ object SpeechTests extends TestSuite {
       "placement never holds a message: with no placement, no room address, a gate that fails or is unread, or the room's top-level rate spent, the draft goes in its thread"
     ) {
       val spent =
-        empty.copy(turns = Vector(posted("a", 1, now.minusSeconds(3600)).copy(venue = Venue.Room("C"))))
+        empty.copy(turns =
+          Vector(posted("a", 1, now.minusSeconds(3600)).copy(venue = Venue.Room("C")))
+        )
       val failing = atTop.copy(tags = forRoom(0.4))
       val unread = atTop.copy(tags = tags())
       Vector(
@@ -452,6 +465,16 @@ object SpeechTests extends TestSuite {
         decide(unread, s = Speaking.Within(placing)),
         decide(atTop, spent, Speaking.Within(placing))
       ) ==> Vector.fill(5)(Decision.Drafting(turn, Venue.Thread))
+    }
+
+    test(
+      "two messages at one room's top level are each replied to: the thread rate counts each message's own thread, not the room's conversation"
+    ) {
+      val second = heard.copy(reach = Reach(Some(ReplyTo("C/2/2", None, Some("C/2"))), Set.empty))
+      val l = empty.copy(turns =
+        Vector(posted("c", 3, now.minusSeconds(60 * 60)).copy(thread = Some("C/1")))
+      )
+      decide(second, l) ==> Decision.Drafting(turn, Venue.Thread)
     }
 
     test(
@@ -465,7 +488,12 @@ object SpeechTests extends TestSuite {
         Speech.placing(turn, Vector(mine), Some(rate), now),
         Speech.placing(turn, Vector(mine, posted("b", 1, now.minusSeconds(600))), Some(rate), now),
         Speech.placing(turn, Vector(mine, topped.copy(room = elsewhere)), Some(rate), now),
-        Speech.placing(turn, Vector(topped.copy(at = now.minusSeconds(3 * 3600)), mine), Some(rate), now),
+        Speech.placing(
+          turn,
+          Vector(topped.copy(at = now.minusSeconds(3 * 3600)), mine),
+          Some(rate),
+          now
+        ),
         Speech.placing(turn, Vector(mine, topped.copy(stage = Stage.Drafting)), Some(rate), now),
         Speech.placing(turn, Vector(mine, topped), Some(rate), now),
         Speech.placing(turn, Vector(mine), None, now),

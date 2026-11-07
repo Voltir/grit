@@ -507,7 +507,8 @@ final class SlackEdge(
         val to = Option.when(live)(
           ReplyTo(
             Address(m.channel, Some(m.thread), m.ts).written,
-            Some(Address(m.channel, None, m.ts).written)
+            Some(Address(m.channel, None, m.ts).written),
+            Some(s"${ChannelId.value(m.channel)}/${Ts.value(m.thread)}")
           )
         )
         for {

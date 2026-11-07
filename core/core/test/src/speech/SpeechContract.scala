@@ -417,5 +417,25 @@ abstract class SpeechContract extends TestSuite {
       transaction(right(speech.heard(turn, reach)))
       transaction(speech.reach(turn)) ==> Right(Some(reach))
     }
+
+    test(
+      "a decided turn is read with the thread its heard message's reach was kept in; none when its reach names none, or none was kept"
+    ) {
+      val c = conversation("speech-within")
+      val within = decide(c, At, drafting = true)
+      val nameless = decide(c, At.plusSeconds(1), drafting = true)
+      val unkept = decide(c, At.plusSeconds(2), drafting = true)
+      transaction {
+        right(speech.heard(within, Reach(Some(ReplyTo("C/1/2", None, Some("C/1"))), Set.empty)))
+        right(speech.heard(nameless, Reach(Some(ReplyTo("C/1/3")), Set.empty)))
+      }
+      (
+        transaction(speech.reach(within)).map(_.flatMap(_.replyTo).flatMap(_.within)),
+        mine(c, At).map(t => (t.turn, t.thread))
+      ) ==> (
+        Right(Some("C/1")),
+        Vector((within, Some("C/1")), (nameless, None), (unkept, None))
+      )
+    }
   }
 }

@@ -52,7 +52,8 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
               case Some((_, _, Some(seq))) => Stage.Posted(seq)
               case Some((_, _, None)) => Stage.Settled
             }
-            Spoken(turn, h.room, at, stage, venue)
+            val thread = reaches.get(turn).flatMap(_._2.replyTo).flatMap(_.within)
+            Spoken(turn, h.room, at, stage, venue, thread)
         }
         .sortBy(s => (s.at, WorkflowId.value(s.turn.workflowId)))
     )
@@ -93,7 +94,8 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
 
   def toThread(turn: TurnRef)(using Tx^): Either[StoreError, Unit] = {
     decisions = decisions.map {
-      case (h, Decision.Drafting(t, _), d) if t == turn => (h, Decision.Drafting(t, Venue.Thread), d)
+      case (h, Decision.Drafting(t, _), d) if t == turn =>
+        (h, Decision.Drafting(t, Venue.Thread), d)
       case d => d
     }
     Right(())

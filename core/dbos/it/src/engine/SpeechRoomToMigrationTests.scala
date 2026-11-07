@@ -14,7 +14,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlSpeechStore, TestPostg
 import utest.*
 
 /** `speech-room-to.sql`, the one-off that adds a heard message's room address and a draft's
-  * venue, run on a database of the schema before it: this schema's tables without `room_to`.
+  * venue, run on a database of the schema before it: this schema's tables without `room_to` and `within`.
   */
 object SpeechRoomToMigrationTests extends TestSuite {
 
@@ -39,6 +39,7 @@ object SpeechRoomToMigrationTests extends TestSuite {
     sql(
       c,
       """ALTER TABLE grit.heard DROP COLUMN room_to;
+        |ALTER TABLE grit.heard DROP COLUMN within;
         |ALTER TABLE grit.speech DROP COLUMN room_to""".stripMargin
     )
     c
@@ -47,7 +48,8 @@ object SpeechRoomToMigrationTests extends TestSuite {
   private val entries = new SqlEntryStore()
   private val speech = new SqlSpeechStore()
 
-  private val reach = Reach(Some(ReplyTo("C1/1.0/1.0", Some("C1//1.0"))), Set.empty)
+  private val reach =
+    Reach(Some(ReplyTo("C1/1.0/1.0", Some("C1//1.0"), Some("C1/1.0"))), Set.empty)
 
   /** A message heard in `channel`'s top level, its reach kept and read back. */
   private def heard(config: DbConfig, channel: String): Either[String, Option[Reach]] = {
@@ -78,7 +80,7 @@ object SpeechRoomToMigrationTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "before the file a room address cannot be kept; after it, it is kept and read back; run again, it changes nothing"
+      "before the file a room address and a thread cannot be kept; after it, both are kept and read back; run again, it changes nothing"
     ) {
       val config = previous("speech_room_to")
       heard(config, "C1") match {

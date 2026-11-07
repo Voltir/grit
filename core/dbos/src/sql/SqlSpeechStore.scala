@@ -38,8 +38,9 @@ final class SqlSpeechStore extends SpeechStore {
       // From the turn's first entry, so only a heard message's turn inserts a row.
       Using.resource(
         conn.prepareStatement(
-          """INSERT INTO grit.heard (entry_id, conversation_id, turn_seq, reply_to, asked, room_to)
-            |SELECT id, conversation_id, turn_seq, ?, ?::jsonb, ? FROM (
+          """INSERT INTO grit.heard
+            |  (entry_id, conversation_id, turn_seq, reply_to, asked, room_to, within)
+            |SELECT id, conversation_id, turn_seq, ?, ?::jsonb, ?, ? FROM (
             |  SELECT id, conversation_id, turn_seq, payload FROM grit.entries
             |   WHERE conversation_id = ?::uuid AND turn_seq = ? ORDER BY seq LIMIT 1) first
             | WHERE payload ->> 'kind' = 'heard'
@@ -54,6 +55,10 @@ final class SqlSpeechStore extends SpeechStore {
           case Some(to) => ps.setString(3, to)
           case None => ps.setNull(3, java.sql.Types.VARCHAR)
         }
+        reach.replyTo.flatMap(_.within) match {
+          case Some(in) => ps.setString(4, in)
+          case None => ps.setNull(4, java.sql.Types.VARCHAR)
+        }
         // As JSON, so no Java array crosses JDBC (separation checking).
         ps.setString(
           2,
@@ -61,8 +66,8 @@ final class SqlSpeechStore extends SpeechStore {
             .from(reach.asked.toVector.map(a => ujson.Str(SqlIdentities.written(a))))
             .render()
         )
-        ps.setString(4, ConversationId.value(turn.conversationId))
-        ps.setLong(5, TurnSeq.value(turn.turnSeq))
+        ps.setString(5, ConversationId.value(turn.conversationId))
+        ps.setLong(6, TurnSeq.value(turn.turnSeq))
         ps.executeUpdate()
       }
     }.flatMap { _ =>
@@ -82,7 +87,7 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT reply_to, asked::text, room_to FROM grit.heard
+          """SELECT reply_to, asked::text, room_to, within FROM grit.heard
             | WHERE conversation_id = ?::uuid AND turn_seq = ?""".stripMargin
         )
       ) { ps =>
@@ -94,7 +99,11 @@ final class SqlSpeechStore extends SpeechStore {
               .read(rs.getString(2))
               .arrOpt
               .fold(Vector.empty[String])(_.flatMap(_.strOpt).toVector)
-            (Option(rs.getString(1)).map(ReplyTo(_, Option(rs.getString(3)))), asked)
+            (
+              Option(rs.getString(1))
+                .map(ReplyTo(_, Option(rs.getString(3)), Option(rs.getString(4)))),
+              asked
+            )
           }
         }
       }
@@ -114,10 +123,13 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT workflow, room, decided_at, outcome_kind, posted_seq, room_to
-            |  FROM grit.speech
-            | WHERE drafting AND NOT answering AND decided_at >= ?
-            | ORDER BY decided_at, workflow""".stripMargin
+          """SELECT s.workflow, s.room, s.decided_at, s.outcome_kind, s.posted_seq, s.room_to,
+            |       h.within
+            |  FROM grit.speech s
+            |  LEFT JOIN grit.heard h
+            |    ON h.conversation_id = s.conversation_id AND h.turn_seq = s.turn_seq
+            | WHERE s.drafting AND NOT s.answering AND s.decided_at >= ?
+            | ORDER BY s.decided_at, s.workflow""".stripMargin
         )
       ) { ps =>
         ps.setObject(1, since.atOffset(ZoneOffset.UTC))
@@ -141,7 +153,8 @@ final class SqlSpeechStore extends SpeechStore {
               room,
               rs.getObject(3, classOf[OffsetDateTime]).toInstant,
               stage,
-              venue
+              venue,
+              Option(rs.getString(7))
             ))
           }
           rows.result()

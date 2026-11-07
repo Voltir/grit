@@ -460,7 +460,7 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a message heard live keeps its thread and its channel's top level as where a reply could go, and whom it names besides grit"
+      "a message heard live keeps its thread and its channel's top level as where a reply could go, the thread it is in, named alike for its root and a reply under it, and whom it names besides grit"
     ) {
       val w = new World
       w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
@@ -468,11 +468,16 @@ object SlackEdgeTests extends TestSuite {
       w.reached("2.0") ==> Vector(
         Some(
           Reach(
-            Some(ReplyTo("C123ABC456/2.0/2.0", Some("C123ABC456//2.0"))),
+            Some(ReplyTo("C123ABC456/2.0/2.0", Some("C123ABC456//2.0"), Some("C123ABC456/2.0"))),
             Set(TestAccounts.account(s"slack:$Team/$Ben"))
           )
         ),
-        Some(Reach(Some(ReplyTo("C123ABC456/2.0/2.1", Some("C123ABC456//2.1"))), Set.empty))
+        Some(
+          Reach(
+            Some(ReplyTo("C123ABC456/2.0/2.1", Some("C123ABC456//2.1"), Some("C123ABC456/2.0"))),
+            Set.empty
+          )
+        )
       )
     }
 

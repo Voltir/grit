@@ -842,7 +842,9 @@ CREATE INDEX IF NOT EXISTS idx_triage_shadows_name_at ON grit.triage_shadows (na
 -- Where a reply to each heard message could go, and whom it names (grit.core.speech.Reach): its
 -- edge's own address in its thread, NULL when it is never answered (a past message), and at its
 -- room's top level (`room_to`, grit.core.speech.ReplyTo.room; NULL where the edge has none, and
--- whenever `reply_to` is), and the principals it names besides the assistant. Written by
+-- whenever `reply_to` is), the thread it is in (`within`, grit.core.speech.ReplyTo.within, the
+-- key the thread rate counts by; NULL likewise), and the principals it names besides the
+-- assistant. Written by
 -- Inbox.hear; the first kept stands. One row a heard message; an address is a few dozen bytes.
 -- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
 CREATE TABLE IF NOT EXISTS grit.heard (
@@ -852,8 +854,10 @@ CREATE TABLE IF NOT EXISTS grit.heard (
     reply_to        TEXT,
     asked           JSONB NOT NULL DEFAULT '[]'::jsonb,
     room_to         TEXT,
+    within          TEXT,
     UNIQUE (conversation_id, turn_seq),
-    CONSTRAINT heard_room_to_check CHECK (room_to IS NULL OR reply_to IS NOT NULL)
+    CONSTRAINT heard_room_to_check CHECK (room_to IS NULL OR reply_to IS NOT NULL),
+    CONSTRAINT heard_within_check CHECK (within IS NULL OR reply_to IS NOT NULL)
 );
 
 -- The hosted call whose post a conversation begins with (Inbox.posted): a thread under a
