@@ -8,6 +8,7 @@ import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
 import grit.core.triage.{Bound, Gate, Reading, Tags}
+import grit.core.visibility.Integrity
 
 import utest.*
 
@@ -57,6 +58,7 @@ object SpeechJsonTests extends TestSuite {
     Outcome.Withdrawn,
     Outcome.Unjudged("down"),
     Outcome.Below(judged, p(0.5)),
+    Outcome.Untrusted(judged, Integrity.Untrusted),
     Outcome.Shadowed(Cleared.Scored(judged)),
     Outcome.Shadowed(Cleared.Named),
     Outcome.Posted(Cleared.Scored(judged)),
@@ -101,6 +103,10 @@ object SpeechJsonTests extends TestSuite {
       SpeechJson.writeOutcome(Outcome.Posted(Cleared.Scored(judged))).render() ==>
         """{"kind":"posted","judged":{"grounded":0.5,"worth":0.625,"model":"jev",""" +
         """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}}"""
+      SpeechJson.writeOutcome(Outcome.Untrusted(judged, Integrity.Untrusted)).render() ==>
+        """{"kind":"untrusted","judged":{"grounded":0.5,"worth":0.625,"model":"jev",""" +
+        """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}},""" +
+        """"at":"untrusted"}"""
       outcomes.map(SpeechJson.outcomeName) ==> Vector(
         "passed",
         "nothing_recalled",
@@ -108,6 +114,7 @@ object SpeechJsonTests extends TestSuite {
         "withdrawn",
         "unjudged",
         "below",
+        "untrusted",
         "shadowed",
         "shadowed",
         "posted",

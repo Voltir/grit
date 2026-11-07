@@ -222,6 +222,12 @@ enum Outcome {
   /** An unprompted draft scored under `postAt`: not posted. */
   case Below(judged: Judged, postAt: Probability)
 
+  /** An unprompted draft scored to post, or to be shadowed, whose turn is believed at `at`,
+    * below [[Integrity.Outside]] (ADR 0036): what it read came from outside the team, such as
+    * text the public typed, so it does not steer what grit says unasked. Not posted.
+    */
+  case Untrusted(judged: Judged, at: Integrity)
+
   /** Cleared under [[Speaking.Shadow]]: not posted. */
   case Shadowed(cleared: Cleared)
 
@@ -358,21 +364,24 @@ object Speech {
       .minByOption(_.createdAt)
       .map(e => Outcome.Spoken(e.id))
 
-  /** What becomes of an unprompted draft `judged` under `speaking`: `Posted` (or `Shadowed`
-    * under [[Speaking.Shadow]]) when its score is at or above `postAt`, else `Below`;
-    * `Unjudged`, with why, when it was not judged; `Withdrawn` under [[Speaking.Off]].
+  /** What becomes of an unprompted draft `judged`, its turn believed at `believed`, under
+    * `speaking`: `Posted` (or `Shadowed` under [[Speaking.Shadow]]) when its score is at or
+    * above `postAt`, unless `believed` is below [[Integrity.Outside]], when it is `Untrusted`;
+    * `Below` when its score is under `postAt`; `Unjudged`, with why, when it was not judged;
+    * `Withdrawn` under [[Speaking.Off]].
     */
-  def post(speaking: Speaking, judged: Either[String, Judged]): Outcome =
+  def post(speaking: Speaking, judged: Either[String, Judged], believed: Integrity): Outcome = {
+    def cleared(limits: Limits, j: Judged, as: Cleared => Outcome): Outcome =
+      if (!(j.score >= limits.postAt)) Outcome.Below(j, limits.postAt)
+      else if (believed.belowOutside) Outcome.Untrusted(j, believed)
+      else as(Cleared.Scored(j))
     (speaking, judged) match {
       case (Speaking.Off, _) => Outcome.Withdrawn
       case (_, Left(why)) => Outcome.Unjudged(why)
-      case (Speaking.Shadow(limits), Right(j)) =>
-        if (j.score >= limits.postAt) Outcome.Shadowed(Cleared.Scored(j))
-        else Outcome.Below(j, limits.postAt)
-      case (Speaking.Within(limits), Right(j)) =>
-        if (j.score >= limits.postAt) Outcome.Posted(Cleared.Scored(j))
-        else Outcome.Below(j, limits.postAt)
+      case (Speaking.Shadow(limits), Right(j)) => cleared(limits, j, Outcome.Shadowed(_))
+      case (Speaking.Within(limits), Right(j)) => cleared(limits, j, Outcome.Posted(_))
     }
+  }
 
   /** What becomes of a named turn's draft, which is not judged, under `speaking`: `Posted`
     * under [[Speaking.Within]], `Shadowed` under [[Speaking.Shadow]], `Withdrawn` under

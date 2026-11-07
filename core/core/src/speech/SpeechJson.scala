@@ -145,6 +145,8 @@ object SpeechJson {
       case Outcome.Spoken(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
       case Outcome.Unjudged(why) => Vector("why" -> ujson.Str(why))
       case Outcome.Below(j, at) => Vector("judged" -> writeJudged(j), "post_at" -> num(at))
+      case Outcome.Untrusted(j, at) =>
+        Vector("judged" -> writeJudged(j), "at" -> ujson.Str(Integrity.written(at)))
       case Outcome.Shadowed(c) => Vector(cleared(c))
       case Outcome.Posted(c) => Vector(cleared(c))
       case Outcome.Failed(why) => Vector("why" -> ujson.Str(why))
@@ -179,6 +181,11 @@ object SpeechJson {
             j <- judged
             at <- probability(o, "post_at")
           } yield Outcome.Below(j, at)
+        case "untrusted" =>
+          for {
+            j <- judged
+            at <- str(o, "at").flatMap(Integrity.read)
+          } yield Outcome.Untrusted(j, at)
         case "shadowed" => cleared.map(Outcome.Shadowed(_))
         case "posted" => cleared.map(Outcome.Posted(_))
         case "failed" => str(o, "why").map(Outcome.Failed(_))
@@ -190,6 +197,7 @@ object SpeechJson {
   /** The judgement an outcome carries; `None` for one that was not judged. */
   def judgedOf(out: Outcome): Option[Judged] = out match {
     case Outcome.Below(j, _) => Some(j)
+    case Outcome.Untrusted(j, _) => Some(j)
     case Outcome.Shadowed(Cleared.Scored(j)) => Some(j)
     case Outcome.Posted(Cleared.Scored(j)) => Some(j)
     case Outcome.Shadowed(Cleared.Named) | Outcome.Posted(Cleared.Named) | Outcome.Passed |
@@ -206,6 +214,7 @@ object SpeechJson {
     case Outcome.Withdrawn => "withdrawn"
     case Outcome.Unjudged(_) => "unjudged"
     case Outcome.Below(_, _) => "below"
+    case Outcome.Untrusted(_, _) => "untrusted"
     case Outcome.Shadowed(_) => "shadowed"
     case Outcome.Posted(_) => "posted"
     case Outcome.Replied => "replied"

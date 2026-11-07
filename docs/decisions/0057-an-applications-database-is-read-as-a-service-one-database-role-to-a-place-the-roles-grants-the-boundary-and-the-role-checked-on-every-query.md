@@ -52,8 +52,9 @@ Decision:
 - **The cap follows who wrote what the role reads** (ADR 0036): columns only the
   application writes, `member`; text a supplier wrote, such as an error reason, `outside`;
   text the public typed, `untrusted`. An untrusted result still lets an addressed turn reply
-  in its thread, but no note is kept from it and its level carries forward, so a role that
-  reads public text is the last resort, not the default.
+  in its thread, though not an unprompted draft post (ADR 0022), but no note is kept from it
+  and its level carries forward, so a role that reads public text is the last resort, not the
+  default.
 
 Consequences:
 

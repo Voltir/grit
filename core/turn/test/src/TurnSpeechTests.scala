@@ -166,6 +166,38 @@ object TurnSpeechTests extends TestSuite {
         Vector(TurnJudge.id(w.turn))
     }
 
+    test(
+      "scored to post after reading a reached service's answer believed below outside: kept untrusted, nothing posted; the same turn whose call nothing answered posts"
+    ) {
+      // An undeclared service's answer is believed untrusted, as rows the public typed are.
+      def ran(serve: Serve): (SpeechWorld, String) = {
+        val w = speechWorld()
+        val durable = new InMemoryDurable
+        val done = durable.run(w.turn.workflowId)(
+          heardReachingBody(
+            w,
+            durable,
+            _ => serve,
+            new Judge(Some((0.9, 0.9))),
+            Speaking.Within(speechLimits)
+          )
+        )
+        (w, done)
+      }
+      val (read, done) = ran(Serve.Now(grit.core.tool.Outcome.Done("It moved to Thursday.")))
+      (outcome(read), awaited(read), reply(read)) ==> (
+        Some(Outcome.Untrusted(judged(0.9, 0.9), Integrity.Untrusted)),
+        Vector.empty,
+        None
+      )
+      assert(!done.startsWith("posted"))
+      val (unanswered, _) = ran(Serve.Never)
+      (outcome(unanswered), awaited(unanswered)) ==> (
+        Some(Outcome.Posted(Cleared.Scored(judged(0.9, 0.9)))),
+        Vector((unanswered.turn, "C/1"))
+      )
+    }
+
     test("under Shadow, scored the same: nothing posted, kept shadowed") {
       val w = speechWorld()
       run(w, new Judge(Some((0.9, 0.5))), Speaking.Shadow(speechLimits))

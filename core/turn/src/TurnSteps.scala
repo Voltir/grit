@@ -1002,7 +1002,8 @@ private[turn] object TurnSteps {
       .map(_.strand)
 
   /** The `record-speech` step: what becomes of `turn`'s draft, as `settling` and the
-    * speaking in force say (an unprompted draft by [[Speech.post]], a named one, unless it
+    * speaking in force say (an unprompted draft by [[Speech.post]], believed at the level its
+    * rows are written at ([[TurnRound.believedAt]]), a named one, unless it
     * passes, by [[Speech.postNamed]]), unless the assistant already replied after its root
     * ([[Speech.spoken]]); the judge's cost in the ledger; a posted draft written as the
     * turn's reply and awaited at the address its heard message was heard with; and the
@@ -1030,6 +1031,7 @@ private[turn] object TurnSteps {
         }
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(TurnFailure.ofStore)
+      level <- believedAt(entries, turn, believed)
       // The strand after the root, to now: the assistant's reply there holds the draft too.
       strand <- strandOf(
         env.stitching,
@@ -1045,9 +1047,9 @@ private[turn] object TurnSteps {
           case Settling.Judged(TurnJudge.Judgement.Passed) => Outcome.Passed
           case Settling.Judged(TurnJudge.Judgement.NothingRecalled) => Outcome.NothingRecalled
           case Settling.Judged(TurnJudge.Judgement.Unjudged(why)) =>
-            Speech.post(speaking, Left(why))
+            Speech.post(speaking, Left(why), level)
           case Settling.Judged(TurnJudge.Judgement.Scored(j, _)) =>
-            Speech.post(speaking, Right(j))
+            Speech.post(speaking, Right(j), level)
           case Settling.Named =>
             TurnJudge.said(draft).fold(Outcome.Passed)(_ => Speech.postNamed(speaking))
         })
@@ -1079,7 +1081,6 @@ private[turn] object TurnSteps {
         case (Outcome.Posted(_), Some(to)) =>
           for {
             next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
-            level <- believedAt(entries, turn, believed)
             _ <- entries
               .insert(
                 Entry(

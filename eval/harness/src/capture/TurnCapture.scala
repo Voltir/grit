@@ -446,6 +446,7 @@ object TurnCapture {
       case Outcome.Withdrawn => Drafted(Drafted.Kind.Withdrawn, None, None, None)
       case Outcome.Unjudged(_) => Drafted(Drafted.Kind.Unjudged, None, None, None)
       case Outcome.Below(j, postAt) => scored(Drafted.Kind.Below, j, Some(postAt))
+      case Outcome.Untrusted(j, _) => scored(Drafted.Kind.Untrusted, j, None)
       case Outcome.Shadowed(c) => cleared(Drafted.Kind.Shadowed, c)
       case Outcome.Posted(c) => cleared(Drafted.Kind.Posted, c)
       case Outcome.Replied => Drafted(Drafted.Kind.Replied, None, None, None)

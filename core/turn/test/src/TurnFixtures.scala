@@ -2030,6 +2030,72 @@ object TurnFixtures {
     SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)
   }
 
+  /** The service a heard turn reaches in [[heardReachingBody]]. */
+  val lookingUp: grit.core.place.Service =
+    grit.core.place.Service
+      .of("elsewhere")
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The body of `w`'s heard turn under `speaking`, its draft judged by `judge`, reaching
+    * [[lookingUp]] by a link that lets a heard turn read it; the edge there, over `durable`,
+    * advertises `lookup` and serves each call as `serve` says. Its model calls `lookup`, then
+    * drafts "It moved to Thursday.".
+    */
+  def heardReachingBody(
+      w: SpeechWorld,
+      durable: InMemoryDurable,
+      serve: ToolRequest -> Serve,
+      judge: Classifier^,
+      speaking: grit.core.speech.Speaking
+  )(id: WorkflowId)(using Durable^): String = {
+    val there = new Served(new InMemoryEdges, durable, serve, lookingUp.place)
+    there.advertise(
+      Hosted
+        .advertised(
+          ToolSet.Entry(
+            ToolName("lookup"),
+            "Looks it up.",
+            ujson.Obj("type" -> "object"),
+            false,
+            grit.core.tool.Retry.Rerun
+          )
+        )
+        .toVector
+    )
+    def said(blocks: Vector[AssistantBlock], stop: StopReason): Message.Assistant =
+      Message.Assistant(blocks, stop, Usage(Tokens(10), Tokens(2), Tokens.Zero, None), "m")
+    val provider = new Scripted((_, n) =>
+      Right(
+        if (n == 0)
+          said(
+            Vector(AssistantBlock.ToolCall(ToolCallId("r1"), "lookup", ujson.Obj("q" -> "freeze"))),
+            StopReason.ToolUse
+          )
+        else said(Vector(AssistantBlock.Text("It moved to Thursday.")), StopReason.EndTurn)
+      )
+    )
+    val conversations = new InMemoryConversationStore
+    conversations.findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
+    turnBodyWith(
+      w.entries,
+      provider,
+      new Before(w.entries),
+      w.ledger,
+      judge,
+      TurnSpeech(speaking, w.store, w.deliveries),
+      hosted = TurnHosting(
+        conversations,
+        Prompts,
+        ToolSets,
+        there,
+        there.edges,
+        new InMemoryVoiceStore,
+        LocalAsker
+      ),
+      reaches = Vector(Reaches(Place.Everywhere, lookingUp, Reaches.Heard.ReadOnly))
+    )(id)
+  }
+
   /** Speaking off, over stores of its own: what a turn not rooted on a heard message never
     * reads.
     */

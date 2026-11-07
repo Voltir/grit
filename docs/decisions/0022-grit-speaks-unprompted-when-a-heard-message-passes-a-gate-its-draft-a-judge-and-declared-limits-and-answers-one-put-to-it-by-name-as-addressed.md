@@ -18,8 +18,8 @@ Decision:
 - **The deployment says whether grit speaks**: `Speaking.Off`, `Shadow` (draft and judge,
   never post) or `Within(Limits)`. `Limits` holds `drafts`, a gate over triage's answers;
   `postAt`; freshness; post rates per thread, room and deployment; and a daily speech cap.
-  A gate (`grit.core.triage.Gate`) is a bound on a reading of a named answer, all of some
-  gates, or any of them: a closed set of forms a deployment composes. The reference deployment drafts by live triage's own
+  A gate (`grit.core.triage.Gate`) is a closed set of forms a deployment composes: a bound on
+  a named answer's reading, all of some gates, or any. The reference deployment drafts by live triage's own
   (`TriageQuestions.ShippedSpeak`). A gate reading a question live triage does not ask is
   refused at declaration (`SpeechUnread`).
 - **Triage considers each heard message it tagged** (`Speech.decide`), a few seconds after it
@@ -41,31 +41,31 @@ Decision:
   `Off`), or the budget. Its turn's root is `ByName`: offered, told and reached as
   addressed, its reply the turn's own message (`Replied`), posted by the edge, counted in no
   rate or speech spend. This is the one point where a classifier's reading decides
-  addressing. Turned down: drafting it and letting it `pass`, which dropped answerable
-  questions (`TurnOffer.Root.Named`, kept for offers that recorded it).
+  addressing. Turned down: drafting it, which let answerable questions `pass`
+  (`TurnOffer.Root.Named`, kept for old offers).
 - **Otherwise the turn drafts** (root `Heard`): told it was not addressed, to add what the
   thread lacks or reply `pass`. It is offered its workspace's tools by the recipe, and of
   each service a `Reaches` links its place to, only when that link lets a heard turn read it
-  (`Reaches.Heard.ReadOnly`; `Never` by default), and then only the tools that write nothing
-  out of grit and ask no one, as their declarations say. A draft is never shown, never
-  searched, and not a period's activity.
+  (`Reaches.Heard.ReadOnly`; `Never` by default), and then only the tools whose declarations
+  write nothing out of grit and ask no one. A draft is never shown, never searched, and not a
+  period's activity.
 - **A classifier judges the draft** against the heard message, its thread, and what the turn
   recalled: sections from elsewhere, documents, its own record where the thread cuts what it
   covers, and what its own calls read: is it `grounded` in those, and `worth` posting? The
   weaker is its score (`Judged.score`). A pass, or a draft with nothing recalled, is settled
   without asking; a document above the judge's clearance leaves it unjudged, so not posted.
 - **The draft is posted** in the message's thread only when its score reaches `postAt`,
-  speaking is `Within`, and grit has not replied since, in the thread or its strand
-  (ADR 0023), checked in the transaction that writes the reply.
+  speaking is `Within`, its turn is believed at `Outside` or above (one that read rows the
+  public typed, ADR 0057, is kept `Untrusted`), and grit has not replied since, in the thread
+  or its strand (ADR 0023), checked in the transaction that writes the reply.
 - **Replay.** Whether a turn drafts and the tools it is offered are recorded in its `offer`
   (`root`, `reached`), never read live.
 - **Every decision, score and outcome is kept** (`grit.speech`) as long as its period's
   usage. A heard turn that fails before its offer keeps `Failed` (`record-failure`).
 
-**Measuring the gate.** A person labels by reaction whether a reply would have been welcome
-(`grit.core.review`); a review's rows are keyed by entry id with no foreign key and hold no
-text.
+**Measuring the gate.** People label by reaction whether a reply was welcome
+(`grit.core.review`), in rows keyed by entry id that hold no text.
 
 Consequences: every unprompted post traces to the scores and cues that allowed it. Harder:
 every heard message in a speaking deployment writes a decision row. Enforced by `SpeechTests`,
-`TurnOfferTests`, the reviews store's contract and `TurnReplayTests`.
+the reviews store's contract and `TurnReplayTests`.

@@ -322,7 +322,7 @@ object Drafted {
 
   /** [[grit.core.speech.Outcome]]'s case, never its words. */
   enum Kind {
-    case Passed, NothingRecalled, Spoken, Withdrawn, Unjudged, Below, Shadowed, Posted, Replied,
-      Failed
+    case Passed, NothingRecalled, Spoken, Withdrawn, Unjudged, Below, Untrusted, Shadowed, Posted,
+      Replied, Failed
   }
 }

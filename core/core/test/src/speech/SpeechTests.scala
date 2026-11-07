@@ -280,26 +280,37 @@ object SpeechTests extends TestSuite {
     test("what becomes of a draft") {
       test("at or above postAt, within: posted") {
         assert(
-          Speech.post(within, Right(scored(0.5, 0.8))) ==
+          Speech.post(within, Right(scored(0.5, 0.8)), Integrity.Member) ==
             Outcome.Posted(Cleared.Scored(scored(0.5, 0.8)))
         )
       }
       test("at or above postAt, shadow: shadowed") {
         assert(
-          Speech.post(Speaking.Shadow(limits), Right(judged)) ==
+          Speech.post(Speaking.Shadow(limits), Right(judged), Integrity.Member) ==
             Outcome.Shadowed(Cleared.Scored(judged))
         )
       }
       test("under postAt: below, within or shadow") {
         val weak = scored(0.6, 0.49)
-        Vector(within, Speaking.Shadow(limits)).map(Speech.post(_, Right(weak))) ==>
+        Vector(within, Speaking.Shadow(limits))
+          .map(Speech.post(_, Right(weak), Integrity.Member)) ==>
           Vector(Outcome.Below(weak, p(0.5)), Outcome.Below(weak, p(0.5)))
       }
+      test("at or above postAt, believed below outside: untrusted, within or shadow") {
+        val below = Integrity.Untrusted
+        Vector(within, Speaking.Shadow(limits)).map(Speech.post(_, Right(judged), below)) ==>
+          Vector(Outcome.Untrusted(judged, below), Outcome.Untrusted(judged, below))
+        // Outside is the least a heard message may be believed at to be drafted after.
+        Speech.post(within, Right(judged), Integrity.Outside) ==>
+          Outcome.Posted(Cleared.Scored(judged))
+        val weak = scored(0.6, 0.49)
+        Speech.post(within, Right(weak), below) ==> Outcome.Below(weak, p(0.5))
+      }
       test("not judged: unjudged, with why") {
-        assert(Speech.post(within, Left("down")) == Outcome.Unjudged("down"))
+        assert(Speech.post(within, Left("down"), Integrity.Member) == Outcome.Unjudged("down"))
       }
       test("speaking switched off since: withdrawn, judged or not") {
-        Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _)) ==>
+        Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _, Integrity.Member)) ==>
           Vector(Outcome.Withdrawn, Outcome.Withdrawn)
       }
     }

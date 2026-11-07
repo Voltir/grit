@@ -64,7 +64,7 @@
     },
     {
       "name": "ask:0",
-      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"tool_call\",\"id\":\"r1\",\"name\":\"lookup\",\"arguments\":{\"q\":\"freeze\"}}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"m\",\"stop\":\"tool_use\"}}}"
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"tool_call\",\"id\":\"r1\",\"name\":\"lookup\",\"arguments\":{\"q\":\"freeze\"}}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0},\"model\":\"m\",\"stop\":\"tool_use\"}}}"
     },
     {
       "name": "ask:0:record",
@@ -92,7 +92,7 @@
     },
     {
       "name": "ask:1",
-      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"It moved to Thursday.\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0,\"costUsd\":\"0.001\"},\"model\":\"m\",\"stop\":\"tool_use\"}}}"
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"It moved to Thursday.\"}],\"usage\":{\"input\":10,\"output\":2,\"cachedInput\":0},\"model\":\"m\",\"stop\":\"end_turn\"}}}"
     },
     {
       "name": "append",
@@ -104,15 +104,7 @@
     },
     {
       "name": "record-speech",
-      "output": "{\"ok\":{\"kind\":\"posted\",\"judged\":{\"grounded\":0.9,\"worth\":0.9,\"model\":\"jev\",\"usage\":{\"input\":40,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.0000017\"}}}}"
-    },
-    {
-      "name": "summarise",
-      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub reply to: This exchange starts a topic that has no name yet: give it one.\\n\\n<transcript>\\nOverheard: is the freeze still on?\\n\\nAssistant: [called lookup (r1) with {\\\"q\\\":\\\"freeze\\\"}]\\n\\nTool result (r1):\\n<tool_output source=\\\"lookup {&quot;q&quot;:&quot;freeze&quot;}\\\">\\nThe freeze moved to Thursday.\\n</tool_output>\\n\\nAssistant: It moved to Thursday.\\n</transcript>\"}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\",\"thinking\":0},\"model\":\"grit/stub\",\"stop\":\"end_turn\"}}}"
-    },
-    {
-      "name": "append-summary",
-      "output": "{\"ok\":\"summary:c1:1\"}"
+      "output": "{\"ok\":{\"kind\":\"untrusted\",\"judged\":{\"grounded\":0.9,\"worth\":0.9,\"model\":\"jev\",\"usage\":{\"input\":40,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.0000017\"}},\"at\":\"untrusted\"}}"
     }
   ],
   "kept": {
