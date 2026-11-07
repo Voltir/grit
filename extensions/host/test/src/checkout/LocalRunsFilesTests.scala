@@ -179,7 +179,9 @@ object LocalRunsFilesTests extends TestSuite {
         def hint(argv: Argv) =
           runs.start(argv, 10.seconds, 5.seconds).map {
             case (id, RunStatus.Ended(ran)) =>
-              ran.output.hint.map(_.replaceFirst("runs/[^/]+/", "runs/<p>/").replace(id.written, "<id>"))
+              ran.output.hint.map(
+                _.replaceFirst("runs/[^/]+/", "runs/<p>/").replace(id.written, "<id>")
+              )
             case (_, other) => Some(s"not ended: $other")
           }
         val lines = hint(sh("seq 1 3000"))

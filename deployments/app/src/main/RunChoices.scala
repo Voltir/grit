@@ -38,7 +38,11 @@ private[main] object RunChoices {
   /** The non-negative whole number in `variable`, or `default` when it is unset; `Left` naming
     * `variable` for any other text.
     */
-  private def whole(env: Map[String, String], variable: String, default: Long): Either[String, Long] =
+  private def whole(
+      env: Map[String, String],
+      variable: String,
+      default: Long
+  ): Either[String, Long] =
     env.get(variable) match {
       case None => Right(default)
       case Some(raw) =>

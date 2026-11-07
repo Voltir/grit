@@ -2,6 +2,7 @@ package grit.core.words
 
 import utest.*
 
+/** [[Words]]: the English grit writes alike everywhere. */
 object WordsTests extends TestSuite {
 
   val tests = Tests {

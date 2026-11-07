@@ -62,6 +62,5 @@ object StrandDocument {
     } yield (ConversationId(root), digest)
   }
 
-
   private def day(at: Instant): String = LocalDate.ofInstant(at, ZoneOffset.UTC).toString
 }

@@ -394,7 +394,6 @@ object TopicDream {
         "and card shown exactly once."
   }
 
-
   // The tags the prompts name, as Dreaming.shown fences what an ask is shown.
   private val Discussion = Tag.Discussion.name
   private val Document = Tag.Document.name

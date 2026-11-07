@@ -12,7 +12,11 @@ object CountChoiceTests extends TestSuite {
   val tests = Tests {
     test("a token count: unset is the default; a non-negative whole number, or an error") {
       val read = (raw: Option[String]) =>
-        RunChoices.tokens(raw.fold(Map.empty)(r => Map("GRIT_WINDOW_TOKENS" -> r)), "GRIT_WINDOW_TOKENS", Tokens(7))
+        RunChoices.tokens(
+          raw.fold(Map.empty)(r => Map("GRIT_WINDOW_TOKENS" -> r)),
+          "GRIT_WINDOW_TOKENS",
+          Tokens(7)
+        )
       (read(None), read(Some(" 0 ")), read(Some("1200")), read(Some("-1")), read(Some("1k"))) ==> (
         Right(Tokens(7)),
         Right(Tokens(0)),

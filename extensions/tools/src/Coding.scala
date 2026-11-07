@@ -653,7 +653,6 @@ object Coding {
   private def outcome[A](result: Either[HostError, A])(done: A -> String): Outcome =
     result.fold(e => Outcome.Failed(e.message), a => Outcome.Done(done(a)))
 
-
   /** At most [[Preview]] of `lines`, each after `mark`, then how many were left out. */
   private def preview(lines: Vector[String], mark: String): String = {
     val kept = lines.take(Preview).map(mark + _)

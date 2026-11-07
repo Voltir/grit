@@ -156,7 +156,11 @@ object OpenRouterJson {
   def modelError(error: collection.Map[String, ujson.Value]): ProviderError =
     ProviderHttp.modelError(
       describe(error),
-      error.get("code").flatMap(_.numOpt).filter(_.isWhole).exists(c => ProviderHttp.transient(c.toInt))
+      error
+        .get("code")
+        .flatMap(_.numOpt)
+        .filter(_.isWhole)
+        .exists(c => ProviderHttp.transient(c.toInt))
     )
 
   private def errorIn(at: collection.Map[String, ujson.Value]): Either[ProviderError, Unit] =
