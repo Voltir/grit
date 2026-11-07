@@ -25,13 +25,7 @@ private[main] object RunChoices {
 
   /** The milliseconds in `variable`, or 0 when it is unset. */
   private[main] def millis(env: Map[String, String], variable: String): Either[String, Long] =
-    env.get(variable) match {
-      case None => Right(0L)
-      case Some(raw) =>
-        raw.trim.toLongOption
-          .filter(_ >= 0)
-          .toRight(s"$variable is not a non-negative whole number")
-    }
+    whole(env, variable, 0L)
 
   /** The token count in `variable`, or `default` when it is unset. */
   private[main] def tokens(
@@ -39,12 +33,17 @@ private[main] object RunChoices {
       variable: String,
       default: Tokens
   ): Either[String, Tokens] =
+    whole(env, variable, Tokens.value(default)).map(Tokens(_))
+
+  /** The non-negative whole number in `variable`, or `default` when it is unset; `Left` naming
+    * `variable` for any other text.
+    */
+  private def whole(env: Map[String, String], variable: String, default: Long): Either[String, Long] =
     env.get(variable) match {
       case None => Right(default)
       case Some(raw) =>
         raw.trim.toLongOption
           .filter(_ >= 0)
-          .map(Tokens(_))
           .toRight(s"$variable is not a non-negative whole number")
     }
 
@@ -68,15 +67,7 @@ private[main] object RunChoices {
     * second; [[DefaultSweep]] when unset.
     */
   private[main] def sweepEvery(env: Map[String, String]): Either[String, FiniteDuration] =
-    env.get(SweepVar) match {
-      case None => Right(DefaultSweep)
-      case Some(raw) =>
-        Durations
-          .read(raw)
-          .left
-          .map(why => s"$SweepVar: $why")
-          .filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
-    }
+    duration(env, SweepVar, DefaultSweep, 1.second, "a second")
 
   private[main] val FilesExpiryVar = "GRIT_FILES_EXPIRY"
 
@@ -84,14 +75,26 @@ private[main] object RunChoices {
     * of at least a minute; [[Files.Expiry]] when unset.
     */
   private[main] def filesExpiry(env: Map[String, String]): Either[String, FiniteDuration] =
-    env.get(FilesExpiryVar) match {
-      case None => Right(Files.Expiry)
+    duration(env, FilesExpiryVar, Files.Expiry, 1.minute, "a minute")
+
+  /** The duration ([[Durations]]) in `variable`, at least `least`, which its refusal says as
+    * `leastWords`; `default` when it is unset.
+    */
+  private def duration(
+      env: Map[String, String],
+      variable: String,
+      default: FiniteDuration,
+      least: FiniteDuration,
+      leastWords: String
+  ): Either[String, FiniteDuration] =
+    env.get(variable) match {
+      case None => Right(default)
       case Some(raw) =>
         Durations
           .read(raw)
           .left
-          .map(why => s"$FilesExpiryVar: $why")
-          .filterOrElse(_ >= 1.minute, s"$FilesExpiryVar must be at least a minute")
+          .map(why => s"$variable: $why")
+          .filterOrElse(_ >= least, s"$variable must be at least $leastWords")
     }
 
   private[main] val ThemeVar = "GRIT_THEME"
