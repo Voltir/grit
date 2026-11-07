@@ -299,10 +299,12 @@ object Main {
     val failure: Option[String] =
       if (serving) {
         // Who may lower a label or label a public channel, said before serving starts.
-        unadministered(exitOnLeft(admins(env))).foreach(line => System.err.println(s"[main] $line"))
+        unadministered(exitOnLeft(admins(env))).foreach(line =>
+          System.err.println(exitOnLeft.line(line))
+        )
         // Which roles a labelled room cannot call, said before serving starts.
         if (env.contains(Variable.value(OpenRouterConfig.KeyVar)))
-          uncleared(deployment.policy).foreach(line => System.err.println(s"[main] $line"))
+          uncleared(deployment.policy).foreach(line => System.err.println(exitOnLeft.line(line)))
         Kit.serve(deployment, env).left.map(_.message).swap.toOption
       } else if (topicsBackfill.nonEmpty)
         topicsBackfill.flatMap(b =>
