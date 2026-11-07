@@ -3,7 +3,7 @@ package grit.eval.harness.bench
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
 
-import grit.core.host.{Argv, HostError, Processes, RelPath}
+import grit.core.host.{HostError, Processes, RelPath}
 
 /** Each check run, by its command line, with whether it exited 0, and why the one after them was
   * stopped, when it was, as the report says it.
@@ -53,12 +53,8 @@ object Checks {
         case None => Right(Checked(runs, None))
         case Some(line) =>
           val shown = line.mkString(" ")
-          val read = Argv
-            .of(
-              "timeout",
-              (Vector("-k", "1m", s"${Longest.toSeconds}s", "env") ++
-                variables.map((k, v) => s"$k=$v") ++ line)*
-            )
+          val read = Watched
+            .limited(Longest, (Vector("env") ++ variables.map((k, v) => s"$k=$v") ++ line)*)
             .left
             .map(HostError.Failed(_))
             .flatMap(

@@ -385,10 +385,9 @@ object Rig {
             .started(dir, key, variables) { file =>
               for {
                 _ <- Either.cond(!file.contains("'"), (), s"$file cannot be quoted")
-                argv <- Argv.of(
-                  "timeout",
-                  Vector("-k", "1m", s"${Longest.toSeconds}s", arm.claude) ++
-                    arguments(arm, cap, task, s"cat '$file'")*
+                argv <- Watched.limited(
+                  Longest,
+                  arm.claude +: arguments(arm, cap, task, s"cat '$file'")*
                 )
               } yield argv
             }(s => timed(clock)(Watched.ran(s, quiet, Longest + 2.minutes, _ => None, () => None)))
@@ -473,10 +472,9 @@ object Rig {
           streamed <- briefed(arm, task) { brief =>
             handing
               .started(dir, key, none) { file =>
-                Argv.of(
-                  "timeout",
-                  Vector("-k", "1m", s"${Longest.toSeconds}s") ++
-                    gritEnvironment(arm, cap) ++
+                Watched.limited(
+                  Longest,
+                  gritEnvironment(arm, cap) ++
                     Vector("sh", "-c", Handed, "sh", file, arm.launcher, "work", brief)*
                 )
               }(s =>
@@ -586,10 +584,9 @@ object Rig {
     if (targets.isEmpty) Right(())
     else
       for {
-        argv <- Argv.of(
-          "timeout",
-          (Vector("-k", "1m", s"${Warming.toSeconds}s", "env") ++
-            gritEnvironment(arm, cap).drop(1) ++ mill)*
+        argv <- Watched.limited(
+          Warming,
+          (Vector("env") ++ gritEnvironment(arm, cap).drop(1) ++ mill)*
         )
         read <- work
           .started(argv, dir)(

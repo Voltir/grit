@@ -3,7 +3,7 @@ package grit.eval.harness.bench
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
 
-import grit.core.host.{Ran, Started}
+import grit.core.host.{Argv, Ran, Started}
 
 /** A started program read and watched to its end: the one loop a run's phases share, the coder,
   * the compile before it and each check alike, each passing its own `stop` and `watch`.
@@ -34,6 +34,12 @@ private[bench] object Watched {
     s.kill()
     Read(lines, ended, stopped)
   }
+
+  /** `args` run under coreutils' `timeout`: sent TERM after `limit`, in whole seconds, and KILL a
+    * minute later; `Left` as [[Argv.of]] gives it.
+    */
+  def limited(limit: FiniteDuration, args: String*): Either[String, Argv] =
+    Argv.of("timeout", (Vector("-k", "1m", s"${limit.toSeconds}s") ++ args)*)
 
   /** How often a run's output is checked for quiet: a quiet run is stopped within `quiet` and this
     * much longer.
