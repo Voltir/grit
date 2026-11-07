@@ -2,6 +2,7 @@ package grit.projects.render
 
 import scala.util.Try
 
+import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
@@ -30,26 +31,38 @@ object ProjectMarkdown {
 
   /** `artifact`'s file as [[render]] writes it: its path, and its text. */
   def file(artifact: Artifact): (String, String) =
-    s"${artifact.head.key.value}.md" -> (fronted(artifact.head) + "\n" +
-      Body.markdown(artifact.body) + "\n")
+    s"${artifact.head.key.value}.md" -> filed(artifact, None)
 
-  /** `artifact` without its whole body: its file's front matter, then its body's first
+  /** `artifact` kept as `version`, as `project_show` gives it: [[file]]'s text with a last front
+    * matter line `version: <n>`. [[read]] never reads one back: an export holds no version.
+    */
+  def shown(artifact: Artifact, version: DocumentVersionId): String =
+    filed(artifact, Some(version))
+
+  private def filed(artifact: Artifact, version: Option[DocumentVersionId]): String =
+    fronted(artifact.head, version) + "\n" + Body.markdown(artifact.body) + "\n"
+
+  /** `artifact` kept as `version` without its whole body: [[shown]]'s front matter, then its body's first
     * paragraph whole ([[Body.lead]]), then `Sections: ` and its `##` headings' titles, `; `
     * between them (`none` when it has none), with the size of its body as markdown in KB, to
     * one decimal: `Sections: Goal; Reads (2.4 KB in all)`.
     */
-  def head(artifact: Artifact): String = {
+  def head(artifact: Artifact, version: DocumentVersionId): String = {
     val markdown = Body.markdown(artifact.body)
     val kb = markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8).length / 1024.0
     val sections = Body.sections(artifact.body)
     val lead = Body.lead(artifact.body, Int.MaxValue)
-    fronted(artifact.head) + "\n" + Vector(lead).filter(_.nonEmpty).map(_ + "\n\n").mkString +
+    fronted(artifact.head, Some(version)) + "\n" + Vector(lead)
+      .filter(_.nonEmpty)
+      .map(_ + "\n\n")
+      .mkString +
       f"Sections: ${
           if (sections.isEmpty) "none" else sections.mkString("; ")
         } ($kb%.1f KB in all)\n"
   }
 
-  private def fronted(h: ArtifactHead): String =
+  /** `h` as front matter, `version` its last line when given. */
+  private def fronted(h: ArtifactHead, version: Option[DocumentVersionId]): String =
     front(
       Vector(
         "key" -> h.key.value,
@@ -59,7 +72,7 @@ object ProjectMarkdown {
         "parent" -> h.parent.fold("null")(_.value),
         "cites" -> h.cites.map(_.value).mkString("[", ", ", "]"),
         "by" -> h.by.fold("null")(quoted)
-      )
+      ) ++ version.map(v => "version" -> DocumentVersionId.value(v).toString)
     )
 
   /** Files as [[render]] writes them, as a project, or every file that is not one, with why: a

@@ -429,7 +429,8 @@ object ProjectCommandsTests extends TestSuite {
       val headed = done(ask(projects, store, "project_show", "key" -> "p/a", "head" -> true))
       headed ==>
         "---\nkey: p/a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
-        s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n---\n\n" +
+        s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
+        "version: 2\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
     }
 

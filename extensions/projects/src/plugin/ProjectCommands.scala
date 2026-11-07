@@ -316,8 +316,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
 
     val spec: ToolSpec[Showing] = ToolSpec(
       ToolName("project_show"),
-      "Shows artifacts by key: each one's key, kind, state, title, parent, cites and author, " +
-        "then its text as markdown. With head, only those lines, its opening paragraph and " +
+      "Shows artifacts by key: each one's key, kind, state, title, parent, cites, author and " +
+        "version (what project_keep's version takes), then its text as markdown. With head, only those lines, its opening paragraph and " +
         "the names of its sections: enough to tell what it is without reading it all.",
       Args
         .of(
@@ -358,9 +358,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
     def run(args: Showing, by: CommandBy, own: PluginReads, at: Instant)(using
         Tx^
     ): Either[StoreError, CommandOutcome] = answered {
-      def version(project: Loaded, key: ArtifactKey): Either[Stop, Artifact] =
+      def version(project: Loaded, key: ArtifactKey): Either[Stop, (Document, Artifact)] =
         args.at match {
-          case None => artifact(project, key).map(_._2)
+          case None => artifact(project, key)
           case Some(when) =>
             for {
               where <- recorded(own.documents, project, key)
@@ -368,10 +368,11 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
               found <- stored(own.documents.asOf(doc, label, when))
               document <- found.toRight(Stop.Refused(s"${key.value} had no version at $when"))
               version <- refuse(readable(document))
-            } yield version
+            } yield (document, version)
         }
-      def rendered(a: Artifact): String =
-        if (args.head) ProjectMarkdown.head(a) else ProjectMarkdown.file(a)._2
+      def rendered(kept: (Document, Artifact)): String =
+        if (args.head) ProjectMarkdown.head(kept._2, kept._1.version)
+        else ProjectMarkdown.shown(kept._2, kept._1.version)
       args.keys match {
         case ShowKeys.One(key) =>
           loaded(own.documents, key.project).flatMap(version(_, key)).map(rendered)
