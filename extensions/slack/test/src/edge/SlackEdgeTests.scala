@@ -460,17 +460,65 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a message heard live keeps its thread as where a reply would go, and whom it names besides grit"
+      "a message heard live keeps its thread and its channel's top level as where a reply could go, and whom it names besides grit"
     ) {
       val w = new World
       w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
       w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
       w.reached("2.0") ==> Vector(
         Some(
-          Reach(Some(ReplyTo("C123ABC456/2.0/2.0")), Set(TestAccounts.account(s"slack:$Team/$Ben")))
+          Reach(
+            Some(ReplyTo("C123ABC456/2.0/2.0", Some("C123ABC456//2.0"))),
+            Set(TestAccounts.account(s"slack:$Team/$Ben"))
+          )
         ),
-        Some(Reach(Some(ReplyTo("C123ABC456/2.0/2.1")), Set.empty))
+        Some(Reach(Some(ReplyTo("C123ABC456/2.0/2.1", Some("C123ABC456//2.1"))), Set.empty))
       )
+    }
+
+    test(
+      "an unprompted reply placed at a channel's top level is posted there, its later parts in the thread its first part starts"
+    ) {
+      val w = new World
+      w.slack.deliver(message("2.0", "heads up: the deploy moves to five")) ==> true
+      val heard = w.inbox.conversations.all
+        .find(_.origin == w.origin("2.0"))
+        .map(c => TurnRef(c.id, grit.core.id.TurnSeq.First))
+        .getOrElse(throw new java.lang.AssertionError("not heard"))
+      // As record-speech does for a draft placed at the top level: awaited at the room's address.
+      val to =
+        w.reached("2.0").flatten.flatMap(_.replyTo).flatMap(_.room).headOption.getOrElse("none")
+      w.deliveries.await(heard, to)(using TestTx.fake) ==> Right(())
+      val long = Vector.fill(2)("x" * (RichText.MaxChars - 10)).mkString("\n\n")
+      w.inbox.finish(heard, Some(reply(long)), "posted")
+      w.first.deliver() ==> Right(1)
+      w.slack.posts match {
+        case Vector(first, second) =>
+          (first.thread == first.ts, second.thread == first.ts, first.tag, second.tag) ==>
+            (true, true, tag(heard, 0), tag(heard, 1))
+        case other => throw new java.lang.AssertionError(s"two parts, not $other")
+      }
+    }
+
+    test(
+      "a part at a channel's top level that Slack took but the store did not mark posted is not posted again"
+    ) {
+      val w = new World
+      w.slack.deliver(message("2.0", "heads up: the deploy moves to five")) ==> true
+      val heard = w.inbox.conversations.all
+        .find(_.origin == w.origin("2.0"))
+        .map(c => TurnRef(c.id, grit.core.id.TurnSeq.First))
+        .getOrElse(throw new java.lang.AssertionError("not heard"))
+      w.deliveries.await(heard, "C123ABC456//2.0")(using TestTx.fake) ==> Right(())
+      w.deliveries.posting(heard, 0)(using TestTx.fake) ==> Right(())
+      val earlier = w.slack.postTopLevel(
+        C,
+        RichText.render(Markdown.parse("Five.")).headOption.getOrElse(sys.error("no post")),
+        tag(heard, 0)
+      )
+      w.inbox.finish(heard, Some(reply("Five.")), "posted")
+      w.first.deliver() ==> Right(1)
+      w.slack.posts.map(p => Right(p.ts)) ==> Vector(earlier)
     }
 
     test("an unprompted reply to a top-level message is posted in a thread under it") {

@@ -1,0 +1,34 @@
+{
+  "method": "conversations.history",
+  "params": {
+    "channel": "C0000000001",
+    "oldest": "1790782267.387839",
+    "inclusive": "false",
+    "include_all_metadata": "true",
+    "limit": "200"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "has_more": false,
+    "messages": [
+      {
+        "ts": "1790782300.000100",
+        "user": "U0000000002",
+        "bot_id": "B0000000001",
+        "text": "hi",
+        "metadata": {
+          "event_type": "grit_reply",
+          "event_payload": {
+            "turn": "contract",
+            "part": "0"
+          }
+        }
+      }
+    ]
+  },
+  "source": "hand-written from Slack's conversations.history docs and 039's post, not yet captured"
+}

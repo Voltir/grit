@@ -121,6 +121,19 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test(
+      "taggedAtTop finds a post at the channel's top level after a message by its tag, and nothing for another tag"
+    ) {
+      withSlack() { slack =>
+        val after = w.ts("m3")
+        val posted = slack.postTopLevel(Public, post, Tag.Reply("contract", 0))
+        (
+          slack.taggedAtTop(Public, after, Tag.Reply("contract", 0)),
+          slack.taggedAtTop(Public, after, Tag.Reply("contract", 1))
+        ) ==> (posted.map(Vector(_)), Right(Vector.empty))
+      }
+    }
+
     test("root of a thread grit posted is grit's bot's message, with its tag and text") {
       withSlack() { slack =>
         slack.postTopLevel(Public, post, Tag.Sent("contract")).flatMap(slack.root(Public, _)) ==>

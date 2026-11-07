@@ -19,8 +19,9 @@ import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
   * These recordings were written by hand from Slack's API docs, not captured: `036` and `037`
   * (`users.info`), `047` and `048` (`users.list`), and `049` and `050`
   * (`users.conversations`), checked against a live workspace's answers by shape only (the
-  * last two against Slack's docs alone), and `051` and `052` (`chat.postEphemeral`), from
-  * Slack's docs alone; and `is_member` was added by hand to `032`–`034`
+  * last two against Slack's docs alone), `051` and `052` (`chat.postEphemeral`), from
+  * Slack's docs alone, and `053` (`conversations.history` with metadata), from Slack's docs
+  * and `039`'s post; and `is_member` was added by hand to `032`–`034`
   * (`conversations.info`). It also answers slash commands' response urls ([[commands]]), by
   * hand as well: `live` takes every answer (`200`, `ok`) and keeps it ([[responses]]), and
   * `expired` refuses each (`404`, `expired_url`), as a url past its 30 minutes is refused.

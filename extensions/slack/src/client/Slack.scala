@@ -137,6 +137,12 @@ trait Slack extends caps.SharedCapability {
     */
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]]
 
+  /** The messages at `channel`'s top level after `after` that carry `tag`, oldest first, among
+    * the newest [[Slack.Scanned]] said there since it, read in one call: a tagged message
+    * further back is not found.
+    */
+  def taggedAtTop(channel: ChannelId, after: Ts, tag: Tag): Either[SlackError, Vector[Ts]]
+
   /** The message `thread` of `channel` begins with; `None` when there is none. */
   def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]]
 
@@ -208,6 +214,14 @@ trait Slack extends caps.SharedCapability {
     * one grit may not look at, or none at all; Slack being unreachable is still `Unreachable`.
     */
   def channelName(channel: ChannelId): Either[SlackError, Option[String]]
+}
+
+object Slack {
+
+  /** 200: how many of a channel's newest top-level messages [[Slack.taggedAtTop]] reads, one
+    * page of Slack's history.
+    */
+  val Scanned: Int = 200
 }
 
 /** What a conversation is, as Slack reports it to grit's bot. */

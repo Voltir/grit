@@ -113,6 +113,23 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
   def ask(channel: ChannelId, thread: Ts, user: UserId, card: Card): Either[SlackError, Unit] =
     call(methods.chatPostEphemeral(ephemeral(channel, thread, user, card))).map(_ => ())
 
+  def taggedAtTop(channel: ChannelId, after: Ts, tag: Tag): Either[SlackError, Vector[Ts]] = {
+    val req = ConversationsHistoryRequest
+      .builder()
+      .channel(ChannelId.value(channel))
+      .oldest(Ts.value(after))
+      .inclusive(false)
+      .includeAllMetadata(true)
+      .limit(Slack.Scanned)
+    call(methods.conversationsHistory(req.build())).map(r =>
+      Option(r.getMessages)
+        .fold(Vector.empty[Message])(_.asScala.toVector)
+        .filter(carries(_, tag))
+        .map(m => Ts(m.getTs))
+        .reverse
+    )
+  }
+
   def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts] =
     call(methods.chatPostMessage(topLevel(channel, post, tag))).map(r => Ts(r.getTs))
 

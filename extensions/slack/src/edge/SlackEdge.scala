@@ -496,14 +496,20 @@ final class SlackEdge(
     }
 
   /** Records `m`, heard, in its thread's conversation, with whom it names besides grit, its
-    * link ([[linkTo]]) and, when it is heard `live`, its thread as where a reply to it would
-    * go; nothing in a conversation grit does not serve.
+    * link ([[linkTo]]) and, when it is heard `live`, its thread and its channel's top level as
+    * where a reply to it could go; nothing in a conversation grit does not serve.
     */
   private def hear(m: Event.Said, origin: Origin, live: Boolean): Either[String, Unit] =
     spoken(m).flatMap {
       case None => Right(())
       case Some((author, text)) =>
-        val to = Option.when(live)(Address(m.channel, m.thread, m.ts).written)
+        // A reply could go in its thread, or at the channel's top level (ADR 0059).
+        val to = Option.when(live)(
+          ReplyTo(
+            Address(m.channel, Some(m.thread), m.ts).written,
+            Some(Address(m.channel, None, m.ts).written)
+          )
+        )
         for {
           asked <- Mentioned
             .findAllMatchIn(m.text)
@@ -520,7 +526,7 @@ final class SlackEdge(
               text,
               author,
               m.at,
-              Reach(to.map(ReplyTo(_)), asked),
+              Reach(to, asked),
               linkTo(m.channel, m.thread, m.ts)
             )
             .left
@@ -580,7 +586,7 @@ final class SlackEdge(
     voiced(m.author, m.user, m.text).flatMap { (author, text) =>
       ingest(
         Origin.Direct(author, Ts.value(m.thread)),
-        Address(m.channel, m.thread, m.ts),
+        Address(m.channel, Some(m.thread), m.ts),
         Message.User(text),
         author
       )
@@ -592,7 +598,7 @@ final class SlackEdge(
       case Some((author, text)) =>
         val message: Message.User = Message.User(text)
         opening(m, origin, author).flatMap(_ =>
-          ingest(origin, Address(m.channel, m.thread, m.ts), message, author)
+          ingest(origin, Address(m.channel, Some(m.thread), m.ts), message, author)
         )
     }
 
@@ -613,7 +619,7 @@ final class SlackEdge(
         SourceId(Ts.value(at.answered)),
         message,
         author,
-        linkTo(at.channel, at.thread, at.answered)
+        linkTo(at.channel, at.under, at.answered)
       ) match {
       case Left(over @ InboxError.OverCap(_, _, _)) =>
         said(
@@ -1093,16 +1099,25 @@ object SlackEdge {
   /** A link as Slack escapes one in a message's text, `<https://…>` or `<https://…|label>`. */
   private[edge] val Linked = "<(https?://[^|>]+)(?:\\|[^>]*)?>".r
 
-  /** Where a reply goes: the channel, the thread to post in, and the message it answers (whose
-    * `:eyes:` it removes). Written as `{channel}/{thread}/{answered}` in [[grit.core.edge.Deliveries]].
+  /** Where a reply goes: the channel, the thread to post in (`None`: at the channel's top
+    * level), and the message it answers (whose `:eyes:` it removes). Written as
+    * `{channel}/{thread}/{answered}` in [[grit.core.edge.Deliveries]], the thread empty at the
+    * top level.
     */
-  private[edge] final case class Address(channel: ChannelId, thread: Ts, answered: Ts) {
-    def written: String = s"${ChannelId.value(channel)}/${Ts.value(thread)}/${Ts.value(answered)}"
+  private[edge] final case class Address(channel: ChannelId, thread: Option[Ts], answered: Ts) {
+    def written: String =
+      s"${ChannelId.value(channel)}/${thread.fold("")(Ts.value)}/${Ts.value(answered)}"
+
+    /** The thread a note or card about its turn goes in: its thread, or at the top level the
+      * one under the message it answers.
+      */
+    def under: Ts = thread.getOrElse(answered)
   }
 
   private[edge] object Address {
     def read(s: String): Option[Address] = s.split('/') match {
-      case Array(c, t, a) => Some(Address(ChannelId(c), Ts(t), Ts(a)))
+      case Array(c, "", a) => Some(Address(ChannelId(c), None, Ts(a)))
+      case Array(c, t, a) => Some(Address(ChannelId(c), Some(Ts(t)), Ts(a)))
       case _ => None
     }
   }

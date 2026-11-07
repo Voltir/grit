@@ -49,15 +49,17 @@ private[slack] final class Delivering(
   @caps.unsafe.untrackedCaptures
   private val carded = ConcurrentHashMap.newKeySet[(WorkflowId, ToolCallId)]()
 
-  /** Posts `posts` in `at`'s thread under `tag`, unless a message there already carries it. */
+  /** Posts `posts` in the thread `at` is under ([[Address.under]]) under `tag`, unless a
+    * message there already carries it.
+    */
   def once(at: Address, tag: Tag, posts: Vector[Post]): Either[String, Unit] =
     slack
-      .tagged(at.channel, at.thread, tag)
+      .tagged(at.channel, at.under, tag)
       .flatMap { there =>
         if (there.nonEmpty) Right(())
         else
           posts.foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
-            done.flatMap(_ => slack.post(at.channel, at.thread, post, tag).map(_ => ()))
+            done.flatMap(_ => slack.post(at.channel, at.under, post, tag).map(_ => ()))
           )
       }
       .left
@@ -225,7 +227,7 @@ private[slack] final class Delivering(
                   )
                 slack.ask(
                   to.channel,
-                  to.thread,
+                  to.under,
                   user,
                   Card(workflow, a.call, a.shown, until)
                 ) match {
@@ -289,7 +291,11 @@ private[slack] final class Delivering(
         .map(_.name)
     }
 
-  /** Posts `p`'s reply, part by part; whether all of it is posted and the turn delivered. */
+  /** Posts `p`'s reply, part by part, in its address's thread, or at the channel's top level
+    * with its later parts in the thread the first starts; whether all of it is posted and the
+    * turn delivered. A part that may have reached Slack is looked for first, by its tag: in its
+    * thread, or among the channel's newest top-level messages ([[Slack.taggedAtTop]]).
+    */
   private def post(p: Pending, reply: Option[Message.Assistant], outcome: String): Boolean =
     Address.read(p.to) match {
       case None =>
@@ -311,33 +317,49 @@ private[slack] final class Delivering(
         }
       case Some(to) =>
         val parts = noted(p, reply, posts(reply, outcome))
-        val all = parts.zipWithIndex.forall { (part, i) =>
-          val tag = Tag.Reply(WorkflowId.value(p.turn.workflowId), i)
-          val there: Either[SlackError, Boolean] = p.parts.get(i) match {
-            case Some(Part.Posted(_)) => Right(true)
-            case Some(Part.Posting) => slack.tagged(to.channel, to.thread, tag).map(_.nonEmpty)
-            case None => Right(false)
+        // Each part's ts, once posted; at the top level the first's is the rest's thread.
+        val all = parts.zipWithIndex
+          .foldLeft[Option[Option[Ts]]](Some(to.thread)) {
+            case (None, _) => None
+            case (Some(thread), (part, i)) =>
+              val tag = Tag.Reply(WorkflowId.value(p.turn.workflowId), i)
+              val there: Either[SlackError, Option[Ts]] = p.parts.get(i) match {
+                case Some(Part.Posted(ts)) => Right(Some(Ts(ts)))
+                case Some(Part.Posting) =>
+                  thread
+                    .fold(slack.taggedAtTop(to.channel, to.answered, tag))(
+                      slack.tagged(to.channel, _, tag)
+                    )
+                    .map(_.headOption)
+                case None => Right(None)
+              }
+              val done = there.flatMap {
+                case Some(ts) => Right(ts)
+                case None =>
+                  for {
+                    _ <- stores.jot
+                      .write(Subject.Turn(p.turn))(stores.deliveries.posting(p.turn, i))
+                      .left
+                      .map(e => SlackError.Unreachable(e.toString))
+                    ts <- thread.fold(slack.postTopLevel(to.channel, part, tag))(
+                      slack.post(to.channel, _, part, tag)
+                    )
+                    _ <- stores.jot
+                      .write(Subject.Turn(p.turn))(
+                        stores.deliveries.posted(p.turn, i, Ts.value(ts))
+                      )
+                      .left
+                      .map(e => SlackError.Unreachable(e.toString))
+                  } yield ts
+              }
+              done match {
+                case Left(e) =>
+                  said(s"slack: part $i of ${WorkflowId.value(p.turn.workflowId)} not posted: $e")
+                  None
+                case Right(ts) => Some(thread.orElse(Some(ts)))
+              }
           }
-          val done = there.flatMap { yes =>
-            if (yes) Right(())
-            else
-              for {
-                _ <- stores.jot
-                  .write(Subject.Turn(p.turn))(stores.deliveries.posting(p.turn, i))
-                  .left
-                  .map(e => SlackError.Unreachable(e.toString))
-                ts <- slack.post(to.channel, to.thread, part, tag)
-                _ <- stores.jot
-                  .write(Subject.Turn(p.turn))(stores.deliveries.posted(p.turn, i, Ts.value(ts)))
-                  .left
-                  .map(e => SlackError.Unreachable(e.toString))
-              } yield ()
-          }
-          done.left.foreach(e =>
-            said(s"slack: part $i of ${WorkflowId.value(p.turn.workflowId)} not posted: $e")
-          )
-          done.isRight
-        }
+          .isDefined
         all && {
           slack
             .unreact(to.channel, to.answered, Working)

@@ -251,10 +251,23 @@ final class FakeSlack extends Slack {
 
   /** A microsecond after the latest ts it knows. */
   private def next(): Ts = {
-    val known = histories.values.flatten.map(_.ts) ++ posts.map(_.ts)
+    val known = histories.values.flatten.map(_.ts) ++ posts.map(_.ts) ++ delivered.map(_._2)
     val latest = known.flatMap(ts => scala.util.Try(BigDecimal(Ts.value(ts))).toOption).maxOption
     Ts((latest.getOrElse(BigDecimal(0)) + FakeSlack.Micro).setScale(6).toString)
   }
+
+  /** Over its own posts at the top level, those whose thread is their own ts. */
+  def taggedAtTop(channel: ChannelId, after: Ts, tag: Tag): Either[SlackError, Vector[Ts]] =
+    request {
+      def at(ts: Ts) = scala.util.Try(BigDecimal(Ts.value(ts))).getOrElse(BigDecimal(0))
+      Right(
+        posts
+          .filter(p => p.channel == channel && p.thread == p.ts && at(p.ts) > at(after))
+          .takeRight(Slack.Scanned)
+          .filter(_.tag == tag)
+          .map(_.ts)
+      )
+    }
 
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]] =
     request {
