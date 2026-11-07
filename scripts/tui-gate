@@ -123,8 +123,8 @@ E=$'\033'
 
 # A no-daemon JVM still has to start; scripting input before the app is listening loses it.
 STARTUP=3
-# grit.app paints at once and opens DBOS behind a ward; typing waits for the engine.
-APP_STARTUP=12
+# grit.app paints at once and opens DBOS behind a ward: a scenario on it waits for the status
+# bar's 'ᛁ idle' before it types.
 
 # Whether the screen painted so far holds $1, read off the capture while the app runs
 # (run_one's $out, $rows, $cols, which a scenario's script sees as its caller's locals).
@@ -140,6 +140,9 @@ until_gone() {
   local i
   for i in $(seq $((${2:-30} * 10))); do painted "$1" || return; sleep 0.1; done
 }
+# Type $1 into the prompt, and send it once the prompt shows it ($2, the part to look for,
+# when the draft is wider than the prompt).
+send() { printf '%s' "$1"; until_painted "${2:-$1}" 10; printf '\r'; }
 # The row of the screen painted so far that holds $1, waiting up to 5 s for it; 1, the
 # header, when it never appears, so the click misses and the scenario's checks say so. A
 # click aimed by text survives a line added above its target.
@@ -245,14 +248,19 @@ script_burst() {
   printf '\021'; sleep 1
 }
 
+# Each app scenario's step waits for the screen the next one acts on, as turn-modal's do: the
+# engine open, a draft in the prompt before it is sent, a reply painted and its turn settled
+# before the next, a copy reported before the quit.
 script_chat() {
-  sleep $APP_STARTUP
-  printf 'gate says hi'; sleep 0.4
-  printf '\r'; sleep 4
-  # Drag from the message's rune (row 3, col 1) to the end of its reply (row 4).
-  printf "%s" "${E}[<0;1;3M"; sleep 0.2
-  printf "%s" "${E}[<32;60;4M"; sleep 0.3
-  printf "%s" "${E}[<0;60;4m"; sleep 0.8
+  local from to
+  until_painted 'ᛁ idle' 60
+  send 'gate says hi'
+  until_painted 'stub reply to: gate says hi'; until_painted 'ᛁ idle'
+  # Drag from the message's rune (col 1) to the end of its reply, each row found by its text.
+  from=$(row_of 'ᛗ gate says hi'); to=$(row_of 'stub reply to: gate says hi')
+  printf "%s" "${E}[<0;1;${from}M"; sleep 0.2
+  printf "%s" "${E}[<32;60;${to}M"; sleep 0.3
+  printf "%s" "${E}[<0;60;${to}m"; until_painted 'copied' 10
   printf '\021'; sleep 2
 }
 
@@ -262,19 +270,21 @@ script_chat() {
 COLUMNS_ROWS=16
 COLUMNS_COLS=120
 script_columns() {
-  sleep $APP_STARTUP
+  local k=0
+  until_painted 'ᛁ idle' 60
   for n in one two three four five; do
-    printf 'message %s' "$n"; sleep 0.3; printf '\r'; sleep 2.5
+    k=$((k + 1))
+    send "message $n"
+    until_painted "stub reply to: message $n"; until_painted "TURN $k  · done"
   done
-  sleep 1
   for _ in 1 2; do printf "%s" "${E}[<65;100;6M"; sleep 0.3; done   # wheel down, panel
-  sleep 0.8
+  until_gone 'TURN 5' 10                                             # its title scrolled away
   for _ in 1 2; do printf "%s" "${E}[<64;20;6M"; sleep 0.3; done    # wheel up, transcript
-  sleep 0.8
+  until_gone 'stub reply to: message five' 10                        # the last reply below it
   printf "%s" "${E}[<0;5;3M"                                         # press in the transcript
   for c in 30 60 90 105; do sleep 0.1; printf "%s" "${E}[<32;${c};8M"; done  # into the panel
   sleep 0.3; printf "%s" "${E}[<0;105;8m"
-  sleep 0.8; printf 'still here'; sleep 0.8
+  until_painted 'copied' 10; printf 'still here'; until_painted 'still here' 10
   printf '\021'; sleep 2
 }
 
@@ -308,14 +318,18 @@ script_turn-modal() {
 PALETTE_ROWS=30
 PALETTE_COLS=110
 script_palette() {
-  sleep $APP_STARTUP
-  printf '/'; sleep 0.8                 # the list, every command
-  printf 'th'; sleep 0.8                # filtered to /theme
-  printf '\r'; sleep 0.8                # chosen: the themes, as a second list
-  printf 'tokyo-n'; sleep 0.8           # filtered to tokyo-night
-  printf '\r'; sleep 1.2                # chosen: the screen repaints, the list closes
-  printf '/'; sleep 0.8                 # open again
-  printf '\033'; sleep 1.2              # Escape dismisses it
+  local i
+  until_painted 'ᛁ idle' 60
+  printf '/'; until_painted 'leave grit' 10           # the list, every command
+  printf 'th'; until_gone 'leave grit' 10             # filtered to /theme
+  printf '\r'; until_painted 'nightshade' 10          # chosen: the themes, as a second list
+  printf 'tokyo-n'; until_gone 'nightshade' 10        # filtered to tokyo-night
+  printf '\r'; until_painted 'theme tokyo-night' 10   # chosen: the screen repaints, the list closes
+  for i in $(seq 100); do                             # and the choice is kept
+    grep -qx 'theme=tokyo-night' "$WORK/config/grit/prefs" 2>/dev/null && break; sleep 0.1
+  done
+  printf '/'; until_painted 'leave grit' 10           # open again
+  printf '\033'; until_gone 'leave grit' 10           # Escape dismisses it
   printf '\021'; sleep 2
 }
 
@@ -325,37 +339,41 @@ script_palette() {
 TABS_ROWS=24
 TABS_COLS=120
 script_tabs() {
-  sleep $APP_STARTUP
-  printf 'tabs one'; sleep 0.3; printf '\r'; sleep 3
-  printf '\024'; sleep 1.2                                              # ctrl-t: session
+  until_painted 'ᛁ idle' 60
+  send 'tabs one'
+  until_painted 'stub reply to: tabs one'; until_painted 'TURN 1  · done'
+  printf '\024'; until_painted 'said     2 messages' 10                 # ctrl-t: session
   printf "%s" "${E}[<0;86;2M"; sleep 0.1; printf "%s" "${E}[<0;86;2m"   # click: turn
-  sleep 1.2
+  until_painted 'TURN 1' 10
   printf "%s" "${E}[<0;95;2M"; sleep 0.1; printf "%s" "${E}[<0;95;2m"   # click: session
-  sleep 1.2
+  until_painted 'said     2 messages' 10
   printf '\021'; sleep 2
 }
 
 TOPICS_ROWS=40
 TOPICS_COLS=120
 script_topics() {
-  sleep $APP_STARTUP
-  printf 'knots one'; sleep 0.3; printf '\r'; sleep 3
-  printf 'sailing ~0.1'; sleep 0.3; printf '\r'; sleep 3
-  printf '%s' 'back to it ~0.5 #call(topic):{"about":"earlier","earlier":"new topic (2)"}'
-  sleep 0.3; printf '\r'; sleep 4
-  printf '\024'; sleep 0.6; printf '\024'; sleep 1.5                    # ctrl-t twice: topics
+  until_painted 'ᛁ idle' 60
+  send 'knots one'
+  until_painted 'stub reply to: knots one'; until_painted 'TURN 1  · done'
+  send 'sailing ~0.1'
+  until_painted 'stub reply to: sailing'; until_painted 'TURN 2  · done'
+  send 'back to it ~0.5 #call(topic):{"about":"earlier","earlier":"new topic (2)"}' 'back to it'
+  until_painted 'stub reply to: back to it'; until_painted 'TURN 3  · done'
+  printf '\024\024'; until_painted 'jev and the model disagree' 10      # ctrl-t twice: topics
   printf '\021'; sleep 2
 }
 
 script_stream() {
-  sleep $APP_STARTUP
-  printf 'rune one two three four five six seven eight nine ten eleven twelve'
-  sleep 0.3; printf '\r'; sleep 9
+  local asked='rune one two three four five six seven eight nine ten eleven twelve'
+  until_painted 'ᛁ idle' 60
+  send "$asked"
+  until_painted "stub reply to: $asked"; until_painted 'ᛁ idle'
   printf '\021'; sleep 2
 }
 
 script_reload() {
-  sleep $((APP_STARTUP + 2))
+  until_painted 'ᛁ idle' 60; until_painted 'stub reply to: gate says hi' 10
   printf '\021'; sleep 2
 }
 
