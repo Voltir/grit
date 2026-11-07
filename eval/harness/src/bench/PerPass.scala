@@ -98,7 +98,7 @@ object PerPass {
   }
 
   /** The column names of [[lines]]' header. */
-  private val Header: Vector[String] =
+  private[harness] val Header: Vector[String] =
     Vector(
       "task",
       "harness",

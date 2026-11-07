@@ -217,14 +217,18 @@ final case class Tried(
       ) ++ consumed.ended.toVector
         .flatMap(_.denials)
         .map(d => s"denied: ${d.tool} ${d.input.take(200)}") ++
-      checked.lines ++
-      Vector(
-        s"passed: ${t.passed}; distance: ${t.distance.fold("no diff")(d => s"$d lines")}"
-      )
+      checked.lines :+
+      Tried.verdict(t)
   }
 }
 
 object Tried {
+
+  /** `trial`'s grade as a person reads it, the last of [[Tried.lines]]: whether it passed, and
+    * its distance from its task's known diff in lines, or `no diff`.
+    */
+  def verdict(trial: TrialRows.Trial): String =
+    s"passed: ${trial.passed}; distance: ${trial.distance.fold("no diff")(d => s"$d lines")}"
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
     * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by
