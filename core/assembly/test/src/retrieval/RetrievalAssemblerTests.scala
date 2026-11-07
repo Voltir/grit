@@ -1543,6 +1543,52 @@ object RetrievalAssemblerTests extends TestSuite {
       (at1.isInstanceOf[Projection.Appended], at1.window.documents) ==> (true, Vector.empty)
     }
 
+    test(
+      "a room's carried turn appends what the rest of the room said since its last part, and nothing its parts show"
+    ) {
+      val top = Origin.Room("T", "C")
+      val origins = (c: ConversationId) =>
+        if (c == c1) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val _ = said(world, "c1", "and the venue?" -> -200, "and lunch?" -> -400)
+      val a = said(world, "1.0", "the freeze is Thursday" -> -100, "the hall is booked" -> -300)
+      def at(turn: Long, carried: CarriedWindow) = projected(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = turn,
+        origin = top,
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        carried = carried
+      )
+      val place = Origin.Thread("T", "C", "1.0").place
+      val at1 = at(1, CarriedWindow.Empty)
+      at1.window.nearby ==> Vector(Nearby.Along(a, place, seqs(world, "1.0:0")))
+      val at2 = at(2, CarriedWindow.Empty.after(at1, TurnSeq(1)))
+      (at2.isInstanceOf[Projection.Appended], at2.window.nearby) ==>
+        (true, Vector(Nearby.Along(a, place, seqs(world, "1.0:1"))))
+    }
+
+    test("a room's carried turn whose room said more since than the limit holds is a boundary") {
+      val top = Origin.Room("T", "C")
+      val origins = (c: ConversationId) =>
+        if (c == c1) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val _ = said(world, "c1", "and the venue?" -> -200, "and lunch?" -> -400)
+      val _ = said(world, "1.0", "the freeze is Thursday" -> -100, ("word " * 1500) -> -300)
+      def at(turn: Long, carried: CarriedWindow) = projected(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = turn,
+        origin = top,
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        carried = carried
+      )
+      val at1 = at(1, CarriedWindow.Empty)
+      at(2, CarriedWindow.Empty.after(at1, TurnSeq(1))).isInstanceOf[Projection.Appended] ==> false
+    }
+
     test("an appended window reads and shows no strand: that is its boundary's") {
       val world = closed(Vector(Vector(ask, ask)), Vector.empty, threads)
       val a = said(world, "1.0", "where did we land on the Engine contract term?" -> 120)

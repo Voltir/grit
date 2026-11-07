@@ -107,7 +107,10 @@ import grit.core.visibility.Subject
   * room's open period opened (its own, for the top level), no closing among them, the newest
   * that fit `settings.rolling.shown`, paid as the strand is; a thread is shown its room's newest
   * kept closing by its record first, and, while its period is its first, the room's turn it is
-  * under as its [[Nearby.Asked]] section, which the room's section then leaves out.
+  * under as its [[Nearby.Asked]] section, which the room's section then leaves out. A carried
+  * turn's append adds, before its own messages, what the room said since its last part was
+  * drawn and no part shows, within the same cap; one that would pass the limit is drawn at a
+  * boundary instead.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
   * period and nothing elsewhere and no document or piece is to be drawn.
@@ -333,7 +336,8 @@ final class RetrievalAssembler(
       }
 
   /** What every stage starts from: one read of the store, and what the window holds before
-    * any search. An append reads no strand and no asking turn: those are its boundary's. At
+    * any search. An append reads no strand and no asking turn: those are its boundary's; a
+    * room's append reads what the room said since its last part. At
     * the limit it is the boundary's, as with nothing carried.
     */
   private def based(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Base] = {
@@ -362,7 +366,13 @@ final class RetrievalAssembler(
           .orElse(all.map(_.createdAt).maxOption.map(_.plusSeconds(1)))
           .getOrElse(java.time.Instant.EPOCH)
         began = all.minByOption(_.seq).fold(until)(_.createdAt)
-        roomSaid <- if (appending) Right(None) else roomRead(conversation, turn, open, until)
+        // An append's room section is what was said since its last part was drawn.
+        lastPart = request.carried.parts.lastOption.flatMap(p =>
+          all.filter(_.turnSeq == p.turn).map(_.createdAt).minOption
+        )
+        roomSaid <-
+          if (appending && lastPart.isEmpty) Right(None)
+          else roomRead(conversation, turn, open, until, lastPart.filter(_ => appending))
         read <- roomSaid.fold(
           if (appending) Right(Strand.Read.empty)
           else Along.read(stitches, conversation, began.minusNanos(tuning.horizon.toNanos), until)
@@ -391,7 +401,20 @@ final class RetrievalAssembler(
       } yield {
         // A thread's root turn is shown once, as its asked section, never also in its room's.
         val askedShown = asked.toVector.flatMap(_._3).map(_.id).toSet
-        val strand = read.copy(said = read.said.filterNot(s => askedShown(s.entry.id)))
+        // Nor is anything a carried part already shows of the room shown again.
+        val carriedSaid = request.carried.parts
+          .flatMap(_.window.nearby)
+          .collect {
+            case Nearby.Along(c, _, es) => es.map(c -> _)
+            case Nearby.Asked(c, _, es) => es.map(c -> _)
+          }
+          .flatten
+          .toSet
+        val strand = read.copy(said =
+          read.said.filterNot(s =>
+            askedShown(s.entry.id) || carriedSaid((s.conversation, s.entry.seq))
+          )
+        )
         val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
         val shelves = root.flatMap(at =>
           Shelves.of(at, stocked.map(_._1), stocked.map((s, t) => s.plugin -> t).toMap)
@@ -421,11 +444,12 @@ final class RetrievalAssembler(
       }
   }
 
-  /** What an append to `request.carried` starts from, the window carried and the turns since
-    * paid from `budget`; at the limit, the boundary's, as with nothing carried.
+  /** What an append to `request.carried` starts from, the window carried, what its room said
+    * since its last part and the turns since paid from `budget`; at the limit, the
+    * boundary's, as with nothing carried.
     */
   private def appended(request: AssemblyRequest, read: Read, budget: Tokens, hits: Int)(using
-      Db^
+      db: Db^
   ): Either[AssemblyError, Base] = {
     val turn = request.turn
     val period = LinearAssembler.turnsBefore(read.all, read.first, turn.turnSeq)
@@ -442,26 +466,40 @@ final class RetrievalAssembler(
       case Some(LinearAssembler.Carrying(since, sinceCost, spentWith)) =>
         val held = Held.of(request.carried, read.all)
         val turns = period.filterNot(_.headOption.exists(e => held.own(e.turnSeq)))
-        Right(
-          Base(
-            read,
-            budget,
-            hits,
-            Vector.empty,
-            Vector.empty,
-            Vector.empty,
-            turns,
-            since,
-            turns.size != since.size,
-            since,
-            since.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
-            spentWith,
-            sinceCost,
-            read.all.filter(_.turnSeq == turn.turnSeq),
-            held,
-            Tokens(Tokens.value(spentWith) - Tokens.value(sinceCost))
-          )
-        )
+        // What the room said since the last part joins the append, before the turn's own
+        // messages; one it overflows is the boundary's.
+        val room =
+          if (read.strand.said.isEmpty) Right((Vector.empty[Nearby], Tokens.Zero))
+          else
+            db.read(Subject.Turn(turn))(strandSections(read, read.strandCap))
+              .left
+              .map(AssemblyError.Store(_))
+        room.flatMap { (roomShown, roomCost) =>
+          val used = spentWith + roomCost
+          if (Tokens.value(used) > Tokens.value(this.budget))
+            based(request.copy(carried = CarriedWindow.Empty))
+          else
+            Right(
+              Base(
+                read,
+                budget,
+                hits,
+                Vector.empty,
+                Vector.empty,
+                roomShown,
+                turns,
+                since,
+                turns.size != since.size,
+                since,
+                since.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
+                used,
+                sinceCost + roomCost,
+                read.all.filter(_.turnSeq == turn.turnSeq),
+                held,
+                Tokens(Tokens.value(spentWith) - Tokens.value(sinceCost))
+              )
+            )
+        }
     }
   }
 
@@ -630,25 +668,29 @@ final class RetrievalAssembler(
     }
 
   /** What the rest of the room of `conversation`, a channel's top level or a thread under it
-    * (ADR 0060), said since the room's open period opened, until `until`: every other
-    * conversation's messages, grit's replies and posts there, oldest first, no closing among
-    * them, as a strand's members are read; and, for a thread, its room's newest kept closing,
-    * shown by its record (`gone`). `None` for any other conversation.
+    * (ADR 0060), said since the room's open period opened, or since `after` when given (an
+    * append's last part), until `until`: every other conversation's messages, grit's replies
+    * and posts there, oldest first, no closing among them, as a strand's members are read;
+    * and, for a thread with no `after`, its room's newest kept closing, shown by its record
+    * (`gone`). `None` for any other conversation.
     */
   private def roomRead(
       conversation: Conversation,
       turn: TurnRef,
       open: Vector[OpenPeriod],
-      until: java.time.Instant
+      until: java.time.Instant,
+      after: Option[java.time.Instant]
   )(using grit.core.store.Tx^): Either[StoreError, Option[Strand.Read]] = {
     val room = conversation.origin.room
     def since(
-        of: Either[StoreError, Option[grit.core.period.Period]]
+        of: => Either[StoreError, Option[grit.core.period.Period]]
     ): Either[StoreError, Vector[Said]] =
-      of.flatMap {
-        case Some(p) => stitches.spokenIn(room, p.openedAt, until)
-        case None => Right(Vector.empty)
-      }
+      after.fold(
+        of.flatMap {
+          case Some(p) => stitches.spokenIn(room, p.openedAt, until)
+          case None => Right(Vector.empty)
+        }
+      )(stitches.spokenIn(room, _, until))
     def read(said: Vector[Said], gone: Vector[ConversationId]): Strand.Read = {
       val shown = said.filter(s =>
         s.conversation != conversation.id && (s.entry.payload match {
@@ -668,7 +710,7 @@ final class RetrievalAssembler(
               open
                 .find(_.conversation == top.id)
                 .fold(Right(None))(o => periods.of(TurnRef(top.id, o.first)))
-            ).map(said => Some(read(said, Vector(top.id))))
+            ).map(said => Some(read(said, if (after.isEmpty) Vector(top.id) else Vector.empty)))
         }
       case _ => Right(None)
     }
