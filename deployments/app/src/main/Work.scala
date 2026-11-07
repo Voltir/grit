@@ -10,7 +10,7 @@ import grit.chat.host.{ChatHost, Replies}
 import grit.core.clock.Clock
 import grit.core.edge.{Console, TurnStatus}
 import grit.core.host.{Clipped, HostError, Ran, RunId, RunStatus, Runs}
-import grit.core.id.{SourceId, TurnRef, WorkflowId}
+import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
 import grit.core.inbox.TurnEnding
 import grit.core.message.Message
@@ -66,12 +66,7 @@ private[main] object Work {
   /** The source a text is said under: `work:` and the lower-case hex of its UTF-8 SHA-256, so
     * the same text said again in the same session names the turn it started.
     */
-  def source(text: String): SourceId = {
-    val digest = java.security.MessageDigest
-      .getInstance("SHA-256")
-      .digest(text.getBytes(StandardCharsets.UTF_8))
-    SourceId("work:" + digest.map(b => f"${b & 0xff}%02x").mkString)
-  }
+  def source(text: String): SourceId = SourceId("work:" + Sha256.text(text).hex)
 
   /** The source turn `turn` of the task `text` began is said under: [[source]] for its first,
     * then that and `:turn`.
