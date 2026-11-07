@@ -47,6 +47,11 @@ Packages, each importing only those above it:
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
   through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials
   too, takes distance over passing trials only, and does not score quality yet.
+- **`evidence`**: what a proposer of amendments to the coder's standing text is given to read: a
+  frozen task blind to its grading, an evidence checkout's files, and the patterns an amendment
+  says its coder will be seen acting on, matched over a kept trajectory's lines. Nothing a grade
+  reads reaches a proposer but through `Shown`, whose scan refuses the bench's own grade shapes:
+  a file the checkout is to hold is built into one, never written beside it. ← `bench`
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt
