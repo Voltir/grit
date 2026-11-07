@@ -7,7 +7,7 @@ import java.time.Duration
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
-import grit.core.message.Message
+import grit.core.message.{Message, Tokens}
 import grit.core.provider.ProviderError
 
 /** A model call over HTTP, as every [[grit.core.provider.Provider]] here makes it: one JSON
@@ -44,6 +44,25 @@ private[models] object ProviderHttp {
 
   /** `unreadable response: <why>`. */
   def unreadable(why: String): ProviderError = ProviderError.Refused(s"unreadable response: $why")
+
+  /** An error object's `message` (`no message` when it has none), then ` (<kind>)` when there
+    * is a `kind`.
+    */
+  def describe(error: collection.Map[String, ujson.Value], kind: Option[String]): String = {
+    val message = error.get("message").flatMap(_.strOpt).getOrElse("no message")
+    kind.fold(message)(k => s"$message ($k)")
+  }
+
+  /** An error event sent after the 200, as `model error: <detail>`:
+    * [[ProviderError.Unavailable]] when `transient`, else [[ProviderError.Refused]].
+    */
+  def modelError(detail: String, transient: Boolean): ProviderError = {
+    val cause = s"model error: $detail"
+    if (transient) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
+  }
+
+  /** The number `v` holds, as tokens; 0 when it is missing or not a number. */
+  def tokens(v: Option[ujson.Value]): Tokens = Tokens(v.flatMap(_.numOpt).fold(0L)(_.toLong))
 
   /** `body` POSTed to `endpoint` as JSON with `headers` besides its content type; the response
     * must begin within `timeout`.

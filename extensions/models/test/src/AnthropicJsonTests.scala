@@ -371,5 +371,15 @@ object AnthropicJsonTests extends TestSuite {
         "HTTP 502: Bad Gateway"
       )
     }
+
+    test("error: an error object without a message says so, with its type when it has one") {
+      (
+        AnthropicJson.error(400, """{"error":{"type":"invalid_request_error"}}"""),
+        AnthropicJson.error(400, """{"error":{}}""")
+      ) ==> (
+        ProviderError.Refused("HTTP 400: no message (invalid_request_error)"),
+        ProviderError.Refused("HTTP 400: no message")
+      )
+    }
   }
 }

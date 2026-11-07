@@ -132,13 +132,11 @@ object AnthropicJson {
     * [[ProviderError.Unavailable]] when its type is `overloaded_error` or `api_error`,
     * [[ProviderError.Refused]] for any other.
     */
-  def modelError(error: collection.Map[String, ujson.Value]): ProviderError = {
-    val cause = s"model error: ${describe(error)}"
-    error.get("type").flatMap(_.strOpt) match {
-      case Some("overloaded_error" | "api_error") => ProviderError.Unavailable(cause)
-      case _ => ProviderError.Refused(cause)
-    }
-  }
+  def modelError(error: collection.Map[String, ujson.Value]): ProviderError =
+    ProviderHttp.modelError(
+      describe(error),
+      error.get("type").flatMap(_.strOpt).exists(t => t == "overloaded_error" || t == "api_error")
+    )
 
   private def tool(t: ToolSchema): ujson.Obj = {
     val wire =
@@ -247,8 +245,7 @@ object AnthropicJson {
     * `output_tokens_details.thinking_tokens`, not reported when that is missing.
     */
   def usageOf(u: Option[collection.Map[String, ujson.Value]]): Usage = {
-    def count(key: String): Tokens =
-      Tokens(u.flatMap(_.get(key)).flatMap(_.numOpt).fold(0L)(_.toLong))
+    def count(key: String): Tokens = ProviderHttp.tokens(u.flatMap(_.get(key)))
     val read = count("cache_read_input_tokens")
     val write = count("cache_creation_input_tokens")
     val thinking = u
@@ -260,9 +257,7 @@ object AnthropicJson {
     Usage(count("input_tokens") + read + write, count("output_tokens"), read, None, write, thinking)
   }
 
-  private def describe(error: collection.Map[String, ujson.Value]): String = {
-    val message = error.get("message").flatMap(_.strOpt).getOrElse("no message")
-    error.get("type").flatMap(_.strOpt).fold(message)(t => s"$message ($t)")
-  }
+  private def describe(error: collection.Map[String, ujson.Value]): String =
+    ProviderHttp.describe(error, error.get("type").flatMap(_.strOpt))
 
 }

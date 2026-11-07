@@ -153,13 +153,11 @@ object OpenRouterJson {
     * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[ProviderHttp.transient]]
     * status, [[ProviderError.Refused]] otherwise.
     */
-  def modelError(error: collection.Map[String, ujson.Value]): ProviderError = {
-    val cause = s"model error: ${describe(error)}"
-    error.get("code").flatMap(_.numOpt).filter(_.isWhole).map(_.toInt) match {
-      case Some(code) if ProviderHttp.transient(code) => ProviderError.Unavailable(cause)
-      case _ => ProviderError.Refused(cause)
-    }
-  }
+  def modelError(error: collection.Map[String, ujson.Value]): ProviderError =
+    ProviderHttp.modelError(
+      describe(error),
+      error.get("code").flatMap(_.numOpt).filter(_.isWhole).exists(c => ProviderHttp.transient(c.toInt))
+    )
 
   private def errorIn(at: collection.Map[String, ujson.Value]): Either[ProviderError, Unit] =
     at.get("error").flatMap(_.objOpt) match {
@@ -167,15 +165,11 @@ object OpenRouterJson {
       case None => Right(())
     }
 
-  private def describe(error: collection.Map[String, ujson.Value]): String = {
-    val message = error.get("message").flatMap(_.strOpt).getOrElse("no message")
-    val kind = error
-      .get("metadata")
-      .flatMap(_.objOpt)
-      .flatMap(_.get("error_type"))
-      .flatMap(_.strOpt)
-    kind.fold(message)(k => s"$message ($k)")
-  }
+  private def describe(error: collection.Map[String, ujson.Value]): String =
+    ProviderHttp.describe(
+      error,
+      error.get("metadata").flatMap(_.objOpt).flatMap(_.get("error_type")).flatMap(_.strOpt)
+    )
 
   private def blockList(
       message: collection.Map[String, ujson.Value]
@@ -226,16 +220,16 @@ object OpenRouterJson {
   }
 
   private def usage(u: Option[collection.Map[String, ujson.Value]]): Usage = {
-    def count(v: Option[ujson.Value]): Tokens = Tokens(v.flatMap(_.numOpt).fold(0L)(_.toLong))
+    import ProviderHttp.tokens
     val details = u.flatMap(_.get("prompt_tokens_details")).flatMap(_.objOpt)
     Usage(
-      count(u.flatMap(_.get("prompt_tokens"))),
-      count(u.flatMap(_.get("completion_tokens"))),
-      count(details.flatMap(_.get("cached_tokens"))),
+      tokens(u.flatMap(_.get("prompt_tokens"))),
+      tokens(u.flatMap(_.get("completion_tokens"))),
+      tokens(details.flatMap(_.get("cached_tokens"))),
       // ujson reads numbers as doubles; a double's shortest form is the decimal the
       // provider wrote for any cost it reports (at most ~15 significant digits).
       u.flatMap(_.get("cost")).flatMap(_.numOpt).map(d => BigDecimal(d.toString)),
-      count(details.flatMap(_.get("cache_write_tokens"))),
+      tokens(details.flatMap(_.get("cache_write_tokens"))),
       u.flatMap(_.get("completion_tokens_details"))
         .flatMap(_.objOpt)
         .flatMap(_.get("reasoning_tokens"))
