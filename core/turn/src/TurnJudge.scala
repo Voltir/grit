@@ -30,18 +30,28 @@ object TurnJudge {
   /** The judge's state: `{"message": ..., "thread": ..., "draft": ..., "recalled": ...}`,
     * the heard message's first [[ThreadChars]] (the thread leaves it out), the thread's last
     * [[ThreadChars]] (what came before the heard message, and every reply after it), the draft,
-    * and what the turn recalled its first [[RecalledChars]].
+    * and what the turn recalled its first [[RecalledChars]]; and, for a draft posted at its
+    * room's top level (`atTop`, [[grit.core.speech.Venue.Room]]), `"posted"` saying so.
     */
-  final case class State(message: String, thread: String, draft: String, recalled: String)
+  final case class State(
+      message: String,
+      thread: String,
+      draft: String,
+      recalled: String,
+      atTop: Boolean = false
+  )
 
-  given StateJson[State] = StateJson.instance(s =>
-    ujson.Obj(
+  given StateJson[State] = StateJson.instance { s =>
+    val o = ujson.Obj(
       "message" -> s.message.take(ThreadChars),
       "thread" -> s.thread.takeRight(ThreadChars),
       "draft" -> s.draft,
       "recalled" -> s.recalled.take(RecalledChars)
     )
-  )
+    // Written only at the top level, so a draft in its thread is judged as before.
+    if (s.atTop) o("posted") = "at the channel's top level, read by people who did not see message"
+    o
+  }
 
   /** What became of judging a draft. */
   enum Judgement {
@@ -81,6 +91,15 @@ object TurnJudge {
       "question is no."
   )
 
+  // `worth` for a draft posted at the room's top level: the same, and it says what it answers,
+  // since its readers did not see the message. A draft in its thread is asked as before.
+  private val worthAtTop = yesNo(
+    "Read message, thread, draft and posted. Does draft answer what message, or the thread " +
+      "before it, asks, and is it not already answered in thread? A greeting, an aside, or a " +
+      "reply that only restates the question is no, and so is one that does not say what it " +
+      "answers: it is posted where its readers did not see message."
+  )
+
   /** A draft's text: `None` when it passes, its whole text, trimmed and lower-cased,
     * [[TurnPrompt.Pass]] or nothing.
     */
@@ -96,7 +115,7 @@ object TurnJudge {
   def judge(classifier: Classifier^, estimator: TokenEstimator, state: State): Judgement =
     if (state.recalled.trim.isEmpty) Judgement.NothingRecalled
     else
-      classifier.ask(state, grounded.zip(worth)) match {
+      classifier.ask(state, grounded.zip(if (state.atTop) worthAtTop else worth)) match {
         case Right(answered) =>
           val (g, w) = answered.value
           Judgement.Scored(
@@ -122,7 +141,7 @@ object TurnJudge {
     * record among the window's entries whose earlier messages the thread does
     * not show whole (some cut whole or cut inside, or none in it), then each of the turn's own
     * tool results but a failed one, under its call as a person is shown it: a strand is context,
-    * not recall.
+    * not recall. `atTop` when the draft goes at its room's top level.
     */
   private[turn] def state(
       all: Vector[Entry],
@@ -130,7 +149,8 @@ object TurnJudge {
       strand: Strand.Read,
       strandChars: Int,
       speakers: Speakers,
-      draft: String
+      draft: String,
+      atTop: Boolean
   ): State = {
     val Told(message, said, others, thread) = told(all, showing.mine, strand, strandChars, speakers)
     // A record stands for what was said before it, so it is recall only when the thread does
@@ -168,7 +188,7 @@ object TurnJudge {
     val recalled =
       (sections ++ documents ++ pieces ++ records).collect { case Message.User(text) => text } ++
         read
-    State(message, thread.text, draft, recalled.mkString("\n\n"))
+    State(message, thread.text, draft, recalled.mkString("\n\n"), atTop)
   }
 
   /** The heard message and the thread around it, as the judge and the needs gate

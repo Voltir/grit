@@ -577,8 +577,10 @@ private[turn] object TurnSteps {
     )
 
   /** `judge` ([[judgeDraft]]). */
-  val judge: Step[Env, OfTurn, TurnJudge.Judgement] =
-    Step[Env, OfTurn, TurnJudge.Judgement](Names.judge)(r => in => judgeDraft(r.env, in.turn))
+  val judge: Step[Env, Ended, TurnJudge.Judgement] =
+    Step[Env, Ended, TurnJudge.Judgement](Names.judge)(r =>
+      in => judgeDraft(r.env, in.turn, in.at.offer.venue)
+    )
 
   /** `turn`, its draft never made: `outcome` kept as what became of it. */
   final case class Undrafted(turn: TurnRef, outcome: Outcome) extends OfTurn
@@ -926,10 +928,11 @@ private[turn] object TurnSteps {
     }
 
   /** The `judge` step: what the classifier makes of `turn`'s draft against its thread and
-    * what its recorded window recalled ([[TurnJudge]]); `Passed`, asking nothing, when the
+    * what its recorded window recalled ([[TurnJudge]]), told when `venue` is its room's top
+    * level; `Passed`, asking nothing, when the
     * draft passes; `Unjudged` when the store cannot be read or the draft is not there.
     */
-  private def judgeDraft(env: TurnEnv^, turn: TurnRef): TurnJudge.Judgement = {
+  private def judgeDraft(env: TurnEnv^, turn: TurnRef, venue: Venue): TurnJudge.Judgement = {
     val records = env.records
     val stitching = env.stitching
     val conversations = env.hosting.conversations
@@ -973,7 +976,8 @@ private[turn] object TurnSteps {
                     strand,
                     stitching.tuning.strandChars,
                     named,
-                    text
+                    text,
+                    venue != Venue.Thread
                   )
                 )
             }

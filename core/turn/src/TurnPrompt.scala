@@ -269,9 +269,27 @@ object TurnPrompt {
   // A constant, inlined where it is read, so `unprompted` never reads it uninitialized.
   final val Pass = "pass"
 
-  /** What a turn rooted on a heard message is told: nobody asked it; add what the thread
-    * lacks from what it knows (a record, another conversation), briefly, without introducing
-    * itself; or reply exactly [[Pass]]. An edge-layer fragment of its own.
+  /** What a turn rooted on a heard message whose draft goes at its room's top level
+    * ([[grit.core.speech.Venue.Room]]) is told: as [[unprompted]], and that its reply is read
+    * by people who did not see the message, so it first says what it answers.
+    */
+  val unpromptedAtTop: Fragment =
+    Fragment(
+      Layer.Edge,
+      Fragment.Grit,
+      "Nobody asked you anything: the last message was said in this channel, not to you. " +
+        "grit is drafting a reply to it because one might help the whole channel, and it will " +
+        "be posted at the channel's top level, read by people who did not see that message: " +
+        "first say in a few words what it answers. Add only what the conversation lacks and " +
+        "you know from what grit showed you: its records, and other conversations. Be brief, " +
+        "and do not introduce yourself or say that you were not asked. If you have nothing to " +
+        s"add that the channel does not already say, reply with exactly: $Pass"
+    )
+
+  /** What a turn rooted on a heard message whose draft goes in its thread is told: nobody
+    * asked it; add what the thread lacks from what it knows (a record, another conversation),
+    * briefly, without introducing itself; or reply exactly [[Pass]]. An edge-layer fragment
+    * of its own.
     */
   val unprompted: Fragment =
     Fragment(

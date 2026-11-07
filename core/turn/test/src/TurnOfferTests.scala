@@ -1066,6 +1066,17 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
+      "a heard-rooted turn whose draft goes at its room's top level is told so, in place of the thread's words"
+    ) {
+      val r = recordedAs(slack, Payload.Heard("heads up"), venue = Venue.Room("C//1"))
+      val told = r.prompt.toSet
+      (
+        told.contains(TurnPrompt.unpromptedAtTop.id),
+        told.contains(TurnPrompt.unprompted.id)
+      ) ==> (true, false)
+    }
+
+    test(
       "a heard-rooted turn records the venue its decision placed its draft at; one answered as said to grit, or addressed, its thread"
     ) {
       val room = Venue.Room("C//1")

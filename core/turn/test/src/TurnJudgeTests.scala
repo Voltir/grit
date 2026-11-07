@@ -98,7 +98,8 @@ object TurnJudgeTests extends TestSuite {
       strand,
       strandChars,
       speakers,
-      draft
+      draft,
+      atTop = false
     )
 
   val tests = Tests {
@@ -456,6 +457,23 @@ object TurnJudgeTests extends TestSuite {
       )
     }
 
+    test(
+      "a draft posted at its room's top level is asked whether it answers the message and says what it answers"
+    ) {
+      val judge = new TurnFixtures.Judge(Some((0.9, 0.9)))
+      TurnJudge.judge(
+        judge,
+        grit.assembly.estimate.CharEstimate,
+        TurnJudge.State("m", "t", "d", "r", atTop = true)
+      )
+      judge.asked.lastOption ==> Some(
+        "Read message, thread, draft and posted. Does draft answer what message, or the thread " +
+          "before it, asks, and is it not already answered in thread? A greeting, an aside, or a " +
+          "reply that only restates the question is no, and so is one that does not say what it " +
+          "answers: it is posted where its readers did not see message."
+      )
+    }
+
     test("a window with no record recalls nothing") {
       judging(
         all,
@@ -466,6 +484,17 @@ object TurnJudgeTests extends TestSuite {
         names,
         "d"
       ).recalled ==> ""
+    }
+
+    test(
+      "a draft posted at its room's top level is judged knowing it, one in its thread as before"
+    ) {
+      def json(atTop: Boolean) =
+        StateJson[TurnJudge.State].json(TurnJudge.State("m", "t", "d", "r", atTop)).obj
+      (json(true).get("posted").map(_.str), json(false).keys.toVector) ==> (
+        Some("at the channel's top level, read by people who did not see message"),
+        Vector("message", "thread", "draft", "recalled")
+      )
     }
 
     test("the judge is shown the thread's end and the recalled's start, each cut to its limit") {

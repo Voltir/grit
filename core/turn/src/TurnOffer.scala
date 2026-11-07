@@ -140,7 +140,7 @@ object TurnOffer {
     * edge's fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
     * where its reply goes ([[TurnPrompt.destination]]), what it is called
     * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
-    * heard, how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
+    * heard ([[TurnPrompt.unpromptedAtTop]] when `venue` is its room's top level), how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
     * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice set with `/set voice` at a terminal alone
     * ([[grit.core.store.Audience.Operator]]; none for plain), the
@@ -198,7 +198,10 @@ object TurnOffer {
             Rooted.Heard(
               conversation.origin.focus(if (opening) Position.Opening else Position.Reply)
             ),
-            Some(TurnPrompt.unprompted),
+            Some(venue match {
+              case Venue.Thread => TurnPrompt.unprompted
+              case Venue.Room(_) => TurnPrompt.unpromptedAtTop
+            }),
             venue
           )
         case _ => (Root.Addressed, Rooted.Addressed, None, Venue.Thread)
