@@ -32,6 +32,7 @@ import grit.core.id.{
 }
 import grit.core.inbox.InboundId
 import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.period.Rolling
 import grit.core.place.{Place, Weight}
 import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Along, Said, StitchStore, Strand, Tuning}
@@ -97,7 +98,7 @@ import grit.core.visibility.Subject
   *
   * A channel's top level or a thread under it (ADR 0060) reads no strand: each other conversation
   * of its room is shown one [[Nearby.Along]] section, of what it said since the room's open period
-  * opened, newest first within `settings.rolling.shown`, and a thread first its room's newest kept
+  * opened, newest first within `Rolling.Default.shown`, and a thread first its room's newest kept
   * closing and, in its first period, the turn it is under ([[Nearby.Asked]]). An append adds what
   * the room said since its last part. A room's kept closings are each a candidate, but those the
   * window shows; so are a top level's earlier periods' turns, as its own.
@@ -436,7 +437,7 @@ final class RetrievalAssembler(
           closed.filterNot(c => members(c.conversation)),
           strand,
           closed.filter(c => strand.gone.contains(c.conversation)),
-          if (roomSaid.isDefined) settings.rolling.shown else tuning.windowTokens,
+          if (roomSaid.isDefined) Rolling.Default.shown else tuning.windowTokens,
           asked,
           shelves,
           root.flatMap(Pieced.of(_, holding)),

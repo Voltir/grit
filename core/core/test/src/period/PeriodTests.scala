@@ -3,6 +3,7 @@ package grit.core.period
 import java.time.Instant
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.jdk.DurationConverters.*
 
 import grit.core.id.{
   CloseRef,
@@ -48,14 +49,6 @@ object PeriodTests extends TestSuite {
       TurnSeq(last),
       Judgement.Weighed(p(f), p(0), p(1 - f), "jev")
     )
-
-  /** Settings whose rolling closes at `chars` characters, or a day after opening. */
-  private def budget(chars: Int): LifecycleSettings =
-    (for {
-      r <- Rolling.of(chars, 1.day, grit.core.message.Tokens(100))
-      w <- Windows.of(1.hour, 30.days, 180.days)
-      s <- LifecycleSettings.of(w, 3, 5.minutes, p(0.8), 3, Weight.Default, r)
-    } yield s).getOrElse(throw new java.lang.AssertionError(chars))
 
   /** An open period of [[p1]] kept at `pace`, newest active at noon, its newest turn `last`,
     * and a verdict of nobody waiting about it, which no rolling period heeds.
@@ -131,52 +124,43 @@ object PeriodTests extends TestSuite {
     test(
       "a rolling period is due when the turn that brought what was said to the budget began, cut at that turn, whatever came after"
     ) {
-      // Turns 1 to 4, a minute apart; 4,000 characters reached at turn 3.
-      val spoken = Vector(1500L, 1500L, 1000L, 2000L).zipWithIndex.map((c, i) =>
+      // Turns 1 to 4, a minute apart; Rolling.Default's 30,000 characters reached at turn 3.
+      def turns(chars: Vector[Long]) = chars.zipWithIndex.map((c, i) =>
         Spoken(TurnSeq(i + 1L), Noon.plusSeconds(60L * (i + 1)), c)
       )
-      val a = rolling(Pace.Rolls(Noon, spoken), last = 4)
-      a.due(budget(4000)) ==> Due(Noon.plusSeconds(180), CloseReason.Rolled, TurnSeq(3))
-      a.attempt(budget(4000)) ==> CloseRef(p1, TurnSeq(3), Noon.plusSeconds(180))
+      val a = rolling(Pace.Rolls(Noon, turns(Vector(11000L, 11000L, 8000L, 2000L))), last = 4)
+      a.due(LifecycleSettings.Default) ==>
+        Due(Noon.plusSeconds(180), CloseReason.Rolled, TurnSeq(3))
+      a.attempt(LifecycleSettings.Default) ==> CloseRef(p1, TurnSeq(3), Noon.plusSeconds(180))
       // Under the budget by one character, it is not due until its most.
-      a.due(budget(6001)) ==> Due(Noon.plusSeconds(86400), CloseReason.Rolled, TurnSeq(4))
+      rolling(Pace.Rolls(Noon, turns(Vector(7500L, 7500L, 7500L, 7499L))), last = 4)
+        .due(LifecycleSettings.Default) ==>
+        Due(Noon.plus(Rolling.Default.most.toJava), CloseReason.Rolled, TurnSeq(4))
     }
 
     test(
       "a rolling period under its budget is due its most after it opened, at the newest turn begun by then; never asked, never lapsed"
     ) {
+      val most = Noon.plus(Rolling.Default.most.toJava)
       val spoken = Vector(
         Spoken(TurnSeq(1), Noon, 10),
         Spoken(TurnSeq(2), Noon.plusSeconds(3600), 10),
-        Spoken(TurnSeq(3), Noon.plusSeconds(86401), 10)
+        Spoken(TurnSeq(3), most.plusSeconds(1), 10)
       )
-      // Quiet for a day before turn 3: a period that settled would have lapsed.
+      // Quiet for its most before turn 3: a period that settled would have lapsed.
       val a = rolling(Pace.Rolls(Noon, spoken), last = 3)
-      a.due(budget(4000)) ==> Due(Noon.plusSeconds(86400), CloseReason.Rolled, TurnSeq(2))
-      a.asks(budget(4000)) ==> None
-      rolling(Pace.Rolls(Noon, Vector.empty), last = 1).due(budget(4000)) ==>
-        Due(Noon.plusSeconds(86400), CloseReason.Rolled, TurnSeq(1))
+      a.due(LifecycleSettings.Default) ==> Due(most, CloseReason.Rolled, TurnSeq(2))
+      a.asks(LifecycleSettings.Default) ==> None
+      rolling(Pace.Rolls(Noon, Vector.empty), last = 1).due(LifecycleSettings.Default) ==>
+        Due(most, CloseReason.Rolled, TurnSeq(1))
     }
 
     test("a rolling period is never asked, though quiet, unasked and with no verdict") {
       val quiet = Activity(p1, Noon, TurnSeq(1), None, 0, Pace.Rolls(Noon, Vector.empty))
-      quiet.asks(budget(4000)) ==> None
+      quiet.asks(LifecycleSettings.Default) ==> None
       // The same period settling is asked the settle window after its activity.
-      quiet.copy(pace = Pace.Settles).asks(budget(4000)) ==> Some(Noon.plusSeconds(300))
-    }
-
-    test("a rolling is refused under one character, with no most, or shown below nothing") {
-      val t = grit.core.message.Tokens(1)
-      Vector(
-        Rolling.of(0, 1.day, t),
-        Rolling.of(1, 0.seconds, t),
-        Rolling.of(1, 1.day, grit.core.message.Tokens(-1))
-      ) ==> Vector(
-        Left("chars must be at least 1"),
-        Left("most must be positive"),
-        Left("shown must not be negative")
-      )
-      Rolling.of(1, 1.day, grit.core.message.Tokens.Zero).isRight ==> true
+      quiet.copy(pace = Pace.Settles).asks(LifecycleSettings.Default) ==>
+        Some(Noon.plus(LifecycleSettings.Default.settle.toJava))
     }
 
     test("windows are refused when one is not positive") {

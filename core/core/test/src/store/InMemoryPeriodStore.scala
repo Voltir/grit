@@ -328,13 +328,7 @@ final class InMemoryLifecycleStore extends LifecycleStore {
     Right(stored.getOrElse(LifecycleSettings.Default))
 
   def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit] = {
-    // As the SQL store's row, which keeps no rolling: it reads back the default.
-    val s = settings
-    stored = Some(
-      LifecycleSettings
-        .of(s.windows, s.balance, s.settle, s.resolveAt, s.asks, s.weight)
-        .getOrElse(LifecycleSettings.Default)
-    )
+    stored = Some(settings)
     Right(())
   }
 }

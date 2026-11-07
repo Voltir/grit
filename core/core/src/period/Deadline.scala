@@ -22,12 +22,12 @@ object Deadline {
     * the idle window after its newest activity, Lapsed.
     *
     * A period that rolls, Rolled, never by a verdict nor idleness: at the turn whose characters
-    * brought what was said in it to `settings.rolling.chars`, when that turn began; otherwise
-    * `settings.rolling.most` after it opened, at the newest turn begun by then.
+    * brought what was said in it to [[Rolling.Default]]'s `chars`, when that turn began;
+    * otherwise its `most` after it opened, at the newest turn begun by then.
     */
   def of(activity: Activity, settings: LifecycleSettings): Due = activity.pace match {
     case Pace.Rolls(opened, spoken) =>
-      val r = settings.rolling
+      val r = Rolling.Default
       val reached = spoken
         .scanLeft(0L)(_ + _.chars)
         .drop(1)

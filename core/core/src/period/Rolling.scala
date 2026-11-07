@@ -12,16 +12,6 @@ final case class Rolling private (chars: Int, most: FiniteDuration, shown: Token
 
 object Rolling {
 
-  /** The rolling, or why not: `chars` must be at least 1, `most` positive, and `shown` not
-    * negative.
-    */
-  def of(chars: Int, most: FiniteDuration, shown: Tokens): Either[String, Rolling] =
-    for {
-      _ <- Either.cond(chars >= 1, (), "chars must be at least 1")
-      _ <- Either.cond(most > Duration.Zero, (), "most must be positive")
-      _ <- Either.cond(Tokens.value(shown) >= 0, (), "shown must not be negative")
-    } yield new Rolling(chars, most, shown)
-
   /** 30,000 characters, 7 days, and 6,000 tokens shown. The characters stay under what a
     * window's tail holds, so a room's open period is drawn whole at a boundary.
     */
