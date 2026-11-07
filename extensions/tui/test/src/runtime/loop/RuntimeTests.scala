@@ -2,10 +2,13 @@ package grit.tui.runtime.loop
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
+import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.Node.*
-import grit.tui.components.tree.{Node, OnInput}
+import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.components.view.View
+import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
+import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.model.surface.{Cell, Pos, Size, Surface}
 import grit.tui.runtime.app.{App, Effect, Fault, Host, Mailbox, TimerId}
 import grit.tui.wire.paint.Vt
@@ -121,6 +124,52 @@ object RuntimeTests extends TestSuite {
   }
 
   private def quit(s: St): (St, Effect[Msg]) = (s, Effect.Quit)
+
+  private enum Dragged extends caps.Pure {
+    case Pane(m: Scroller.Msg)
+    case Hold
+    case Done
+  }
+
+  /** Forty one-row blocks in a pane over a one-row strip, read from the top, that copies a
+    * finished drag. `Hold` keeps the loop inside `update` until `go` opens, so that what
+    * arrives meanwhile is handled as one batch.
+    */
+  private final class Dragging(go: CountDownLatch) extends App[Scroller.State, Dragged] {
+    private val doc = Doc(Vector.tabulate(40)(i => Block.Text(s"line $i")))
+    def init: (Scroller.State, Effect[Dragged]) =
+      (Scroller.State(Anchor.At(DocPos(0, 0))), Effect.NoOp)
+    def update(msg: Dragged, s: Scroller.State): (Scroller.State, Effect[Dragged]) = msg match {
+      case Dragged.Hold =>
+        val _ = go.await(5L, TimeUnit.SECONDS)
+        (s, Effect.NoOp)
+      case Dragged.Done => (s, Effect.Quit)
+      case Dragged.Pane(Scroller.Msg.Copied(text, _)) => (s, Effect.CopyOut(text))
+      case Dragged.Pane(m) => (Scroller.update(m, s), Effect.NoOp)
+    }
+    def view(s: Scroller.State): Node[Dragged] =
+      column(
+        flex() -> Scroller.view(PaneKey.of("dragged"), doc, s).map(Dragged.Pane(_)),
+        fixed(1) -> paint(Card(""))
+      )
+  }
+
+  /** The text of each row's reverse-video cells in the first `frames` frames `painted` holds,
+    * trimmed, for every row that has any.
+    */
+  private def highlighted(painted: String, frames: Int, size: Size): Vector[String] = {
+    val end = "\u001b[?2026l"
+    var at = 0
+    var i = 0
+    while (i < frames && at >= 0) {
+      val next = painted.indexOf(end, at)
+      at = if (next < 0) -1 else next + end.length
+      i += 1
+    }
+    val vt = new Vt(size.rows, size.cols)
+    vt.feed(if (at < 0) painted else painted.take(at))
+    vt.cells.map(_.filter(_.style.reverse).map(_.ch).mkString.trim).filter(_.nonEmpty)
+  }
 
   val tests = Tests {
 
@@ -456,6 +505,39 @@ object RuntimeTests extends TestSuite {
       scheduler.after(TimerId.of("after-teardown"), 1L)(() => ())
       assert(scheduler.pendingCount == 0)
       assert(term.readsInFlightAtClose == 0) // and the reader was joined on the way out
+    }
+
+    test("a release after an autoscroll tick in its batch copies what the screen highlighted") {
+      // The tick scrolls the pane a row and the selection follows onto the row that arrived;
+      // a release in the same batch copies the selection as the tick left it, so the frame
+      // on screen when it is handled must be one painted after the tick.
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      val go = new CountDownLatch(1)
+      val runtime = new Runtime(new Dragging(go), term, scheduler, escapeTimeoutMs = 20L)
+      val done = started(runtime, "dragging-under-test")
+      try {
+        assert(waitUntil(() => term.calls.contains("flush")))
+        term.send(pressAt(Pos(2, 0)))
+        term.send(s"$Esc[<32;20;10M") // parked on the strip below the pane: autoscroll
+        assert(waitUntil(() => runtime.state.exists(_.anchor != Anchor.At(DocPos(0, 0)))))
+        runtime.mailbox.offer(Dragged.Hold)
+        Thread.sleep(150L) // a tick fires while the loop is held
+        term.send(s"$Esc[<0;20;10m")
+        Thread.sleep(100L) // and the release is read
+        go.countDown()
+        assert(waitUntil(() => term.copied.nonEmpty))
+        val calls = term.calls
+        val before = calls.takeWhile(!_.startsWith("copyOut:")).count(_ == "flush")
+        val shown = highlighted(term.painted, before, term.size)
+        val copied = term.copied.head.split("\n").map(_.trim).filter(_.nonEmpty).toVector
+        assert(shown.nonEmpty)
+        copied ==> shown
+      } finally {
+        runtime.mailbox.offer(Dragged.Done)
+        val _ = done.await(5L, TimeUnit.SECONDS)
+        scheduler.close()
+      }
     }
   }
 }

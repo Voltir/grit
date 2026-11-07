@@ -14,6 +14,10 @@ import grit.tui.runtime.route.{Grab, Route, Routed, Tick, Timer}
   * on screen. `fault` is the latest throwable caught in the app ([[Fault]]), drawn over
   * the bottom row until a key is pressed after it was shown (`shown`); `faults` counts
   * every one caught, so the runtime can tell when a new one has come.
+  *
+  * `stale` says the targets were laid out for an older state than `state`; `behind`, that
+  * the screen shows an older one, changed since the last paint by a step that was not
+  * routed against that paint ([[owesFrame]]).
   */
 final case class Loop[S, M](
     state: S,
@@ -21,6 +25,7 @@ final case class Loop[S, M](
     memo: Memo,
     grab: Grab,
     stale: Boolean = false,
+    behind: Boolean = false,
     good: Option[Frame] = None,
     fault: Option[Fault] = None,
     shown: Boolean = false,
@@ -46,7 +51,8 @@ object Loop {
   ): (Frame, Loop[S, M]) =
     try {
       val (frame, painted, memo) = Paint.frame(app.view(l.state), size, l.memo)
-      val next = l.copy(painted = painted, memo = memo, stale = false, good = Some(frame))
+      val next =
+        l.copy(painted = painted, memo = memo, stale = false, behind = false, good = Some(frame))
       (next.fault.fold(frame)(banner(frame, _)), next.copy(shown = next.fault.nonEmpty))
     } catch {
       case e: Throwable if Fault.survivable(e) =>
@@ -55,7 +61,7 @@ object Loop {
           if (g.surface.size == size) g
           else Frame(Surface.blank(size).blit(g.surface, Pos(0, 0)), None)
         }
-        (banner(last, f), l.failed(f).copy(stale = false, shown = true))
+        (banner(last, f), l.failed(f).copy(stale = false, behind = false, shown = true))
     }
 
   /** `frame` with `f` said on its bottom row, in reverse video: the library has no
@@ -90,13 +96,15 @@ object Loop {
       }
     }
 
-  /** `r`'s messages run through `update` in order, collecting their effects. A message
-    * whose `update` throws is dropped: the state stays as it was before it.
+  /** `r`'s messages run through `update` in order, collecting their effects, `onScreen` when
+    * `r` was routed against the last paint ([[owesFrame]]). A message whose `update` throws
+    * is dropped: the state stays as it was before it.
     */
   def applied[S, M <: caps.Pure](
       l: Loop[S, M],
       r: Routed[M],
-      app: App[S, M]
+      app: App[S, M],
+      onScreen: Boolean = false
   ): (Loop[S, M], Vector[Effect[M]], Vector[Timer]) = {
     var at = l
     var s = l.state
@@ -112,13 +120,35 @@ object Loop {
       }
       i += 1
     }
-    (at.copy(state = s, grab = r.grab, stale = l.stale || r.msgs.nonEmpty), fx.result(), r.timers)
+    val changed = r.msgs.nonEmpty
+    val next = at.copy(
+      state = s,
+      grab = r.grab,
+      stale = l.stale || changed,
+      behind = l.behind || (changed && !onScreen)
+    )
+    (next, fx.result(), r.timers)
   }
 
+  /** Whether `in` is routed against the last paint, under `l`'s grab: a drag or a release. */
+  def routedOnScreen[S, M](l: Loop[S, M], in: Input): Boolean = (l.grab, in) match {
+    case (Grab.Idle, _) => false
+    case (_, Input.Mouse(e)) => e.kind == MouseKind.Drag || e.kind == MouseKind.Release
+    case _ => false
+  }
+
+  /** Whether `l` must be painted before `in` is handled: `in` is routed against the last
+    * paint ([[routedOnScreen]]) and the screen is [[Loop.behind]] the state, as when an
+    * autoscroll tick earlier in the batch scrolled the pane. Routed against the old frame, a
+    * release would copy a row that frame never highlighted.
+    */
+  def owesFrame[S, M](l: Loop[S, M], in: Input): Boolean = l.behind && routedOnScreen(l, in)
+
   /** A terminal input, routed against the last layout and applied. A drag or release
-    * under a grab is routed against what was *painted* -- the pane the user sees -- and
-    * everything else against a layout of the current state ([[fresh]]). A key dismisses
-    * a fault that has been shown; a handler that throws drops the input.
+    * under a grab is routed against what was *painted* -- the pane the user sees, once the
+    * caller has painted what [[owesFrame]] says it owes -- and everything else against a
+    * layout of the current state ([[fresh]]). A key dismisses a fault that has been shown;
+    * a handler that throws drops the input.
     */
   def input[S, M <: caps.Pure](
       l0: Loop[S, M],
@@ -129,17 +159,13 @@ object Loop {
       case Input.Keyboard(_) | Input.Paste(_) if l0.shown => l0.copy(fault = None, shown = false)
       case _ => l0
     }
-    val grabbed = (l.grab, in) match {
-      case (Grab.Idle, _) => false
-      case (_, Input.Mouse(e)) => e.kind == MouseKind.Drag || e.kind == MouseKind.Release
-      case _ => false
-    }
+    val grabbed = routedOnScreen(l, in)
     val at = if (grabbed) l else fresh(l, app)
     val routed =
       try { Right(Route.input(in, at.painted, at.grab)) }
       catch { case e: Throwable if Fault.survivable(e) => Left(Fault.of(Fault.Stage.Handler, e)) }
     routed match {
-      case Right(r) => applied(at, r, app)
+      case Right(r) => applied(at, r, app, onScreen = grabbed)
       case Left(f) => (at.failed(f).copy(grab = Grab.Idle), Vector.empty, Vector.empty)
     }
   }

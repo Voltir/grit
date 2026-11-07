@@ -25,10 +25,15 @@ final case class Headless[S, M <: caps.Pure](
 
   def state: S = loop.state
 
-  /** A terminal input, routed against what is on screen now. */
-  def input(in: Input): Headless[S, M] = stepped(Loop.input(loop, in, app))
+  /** A terminal input, routed against what is on screen now, painted first where the
+    * runtime would paint it ([[Loop.owesFrame]]).
+    */
+  def input(in: Input): Headless[S, M] = {
+    val at = if (Loop.owesFrame(loop, in)) repainted else this
+    at.stepped(Loop.input(at.loop, in, app))
+  }
 
-  /** Each input in turn, with no paint between them: one batch. */
+  /** Each input in turn, painted between them only where the runtime would: one batch. */
   def inputs(ins: Input*): Headless[S, M] = ins.foldLeft(this)(_.input(_))
 
   /** A message from outside the app: a host's answer, or a timer that fired. */

@@ -82,6 +82,11 @@ final class Runtime[S, M <: caps.Pure](
         while (running && seen < BatchLimit && event.isDefined) {
           event match {
             case Some(e) =>
+              e match {
+                case Event.FromTerminal(in) if Loop.owesFrame(loop, in) =>
+                  loop = repaint(loop, force = false)
+                case _ => ()
+              }
               val (next, touched) = step(e, loop)
               report(loop, next)
               loop = next
@@ -108,7 +113,7 @@ final class Runtime[S, M <: caps.Pure](
   private def step(event: Event[M], loop: Loop[S, M]): (Loop[S, M], Boolean) = event match {
     case Event.Wake => (loop, false)
     // Layout is the paint's: a resize is only a repaint at the new size.
-    case Event.FromTerminal(Input.Resize(_)) => (loop, true)
+    case Event.FromTerminal(Input.Resize(_)) => (loop.copy(behind = true), true)
     case Event.FromTerminal(in) => perform(Loop.input(loop, in, app))
     case Event.FromApp(m) => perform(Loop.message(loop, m, app))
     case Event.Own(t) => perform(Loop.tick(loop, t, app))
