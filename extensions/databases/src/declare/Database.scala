@@ -15,5 +15,5 @@ final case class Database(
     login: Login,
     role: DatabaseRole,
     instructions: String,
-    limits: Limits = Limits.Default
+    limits: QueryLimits = QueryLimits.Default
 )

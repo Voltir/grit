@@ -15,7 +15,7 @@ In dependency order:
 
 - **`declare`**: what a deployment declares, pure: a `Database` at a service, its URL's
   variable, its `Login` (a password, or the driver's own properties, plain apart from secret),
-  the `DatabaseRole` it must be, and its `Limits`. Imports nothing in databases.
+  the `DatabaseRole` it must be, and its `QueryLimits`. Imports nothing in databases.
 - **`connect`**: the JDBC quarantine, the one package naming `java.sql` and `Reveal`. Imports
   `declare`.
 - **`edge`**: the served edge and its two tools, `{service}_tables` and `{service}_query`, over a

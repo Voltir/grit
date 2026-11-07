@@ -33,7 +33,7 @@ import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName}
 import grit.core.visibility.Subject
 import grit.databases.connect.AppDatabase
-import grit.databases.declare.{Database, Limits}
+import grit.databases.declare.{Database, QueryLimits}
 import grit.dbos.sql.TestTx
 import grit.edge.PlaceFragments
 
@@ -110,7 +110,7 @@ object DatabaseEdgeLiveTests extends TestSuite {
   private def run(
       tool: String,
       arguments: ujson.Value,
-      limits: Limits = Limits.Default,
+      limits: QueryLimits = QueryLimits.Default,
       said: String => Unit = _ => ()
   ): Outcome = {
     val database = db.database(reader, limits)
@@ -263,7 +263,7 @@ object DatabaseEdgeLiveTests extends TestSuite {
 
     test("each refusal is its sentence; the operator alone hears the state") {
       val said = new ConcurrentLinkedQueue[String]()
-      def failed(sql: String, limits: Limits = Limits.Default): String =
+      def failed(sql: String, limits: QueryLimits = QueryLimits.Default): String =
         run("leads_query", ujson.Obj("sql" -> sql), limits, s => { val _ = said.add(s) }) match {
           case Outcome.Failed(why) => why
           case other => throw new java.lang.AssertionError(other.toString)

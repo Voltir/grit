@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.place.Service
 import grit.core.secret.Variable
-import grit.databases.declare.{Database, DatabaseRole, Limits, Login}
+import grit.databases.declare.{Database, DatabaseRole, Login, QueryLimits}
 import grit.dbos.sql.{DbConfig, TestPostgres}
 
 /** A database shaped like an application's, made fresh on the run's throwaway Postgres, with its
@@ -62,7 +62,7 @@ final class AppDatabase private (config: DbConfig, val name: String) {
   }
 
   /** The reader's declaration for logging in as `user` and being `role`, under `limits`. */
-  def database(role: String, limits: Limits = Limits.Default): Database =
+  def database(role: String, limits: QueryLimits = QueryLimits.Default): Database =
     (for {
       service <- Service.of("leads")
       r <- DatabaseRole.of(role)
@@ -89,7 +89,7 @@ final class AppDatabase private (config: DbConfig, val name: String) {
   def reader(
       user: String,
       role: Option[String] = None,
-      limits: Limits = Limits.Default
+      limits: QueryLimits = QueryLimits.Default
   ): DatabaseReader =
     DatabaseReader.open(database(role.getOrElse(user), limits), env(user)) match {
       case Right(r) => r
@@ -133,8 +133,8 @@ object AppDatabase {
       rows: Int = 200,
       bytes: Int = 32 * 1024,
       timeout: FiniteDuration = 10.seconds
-  ): Limits =
-    Limits.of(rows, bytes, timeout) match {
+  ): QueryLimits =
+    QueryLimits.of(rows, bytes, timeout) match {
       case Right(l) => l
       case Left(why) => throw new IllegalStateException(why)
     }

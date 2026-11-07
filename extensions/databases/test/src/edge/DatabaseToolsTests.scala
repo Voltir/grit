@@ -6,7 +6,7 @@ import grit.core.place.Service
 import grit.core.secret.Variable
 import grit.core.tool.{ArgsError, Retry, ToolName}
 import grit.databases.connect.{Clip, Failure, QueryRefusal, Relation, Rows, Seen}
-import grit.databases.declare.{Database, DatabaseRole, Limits, Login}
+import grit.databases.declare.{Database, DatabaseRole, Login, QueryLimits}
 
 import utest.*
 
@@ -18,7 +18,10 @@ object DatabaseToolsTests extends TestSuite {
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new IllegalStateException(why), identity)
 
-  private def database(name: String = "leads", limits: Limits = Limits.Default): Database =
+  private def database(
+      name: String = "leads",
+      limits: QueryLimits = QueryLimits.Default
+  ): Database =
     Database(
       right(Service.of(name)),
       Variable("APP_DB_URL"),
@@ -35,7 +38,7 @@ object DatabaseToolsTests extends TestSuite {
       bytes: Int = 32 * 1024,
       timeout: FiniteDuration = 10.seconds
   ) =
-    right(Limits.of(rows, bytes, timeout))
+    right(QueryLimits.of(rows, bytes, timeout))
 
   private val leads = Relation(
     "app",

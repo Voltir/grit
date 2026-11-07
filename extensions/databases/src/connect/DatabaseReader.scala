@@ -5,13 +5,13 @@ import java.sql.{Connection, DriverManager, ResultSet, SQLException, Statement}
 import java.util.Properties
 
 import grit.core.secret.{Reveal, Secret, Variable}
-import grit.databases.declare.{Database, DatabaseRole, Limits, Login}
+import grit.databases.declare.{Database, DatabaseRole, Login, QueryLimits}
 import grit.prose.either.Traversal
 
 /** A connection to a [[Database]] as its role alone, read-only. Its calls run one at a time. */
 final class DatabaseReader private (
     role: DatabaseRole,
-    limits: Limits,
+    limits: QueryLimits,
     url: String,
     properties: Properties,
     first: Connection
@@ -159,7 +159,7 @@ object DatabaseReader {
   private def checked(
       c: Connection,
       role: DatabaseRole,
-      limits: Limits
+      limits: QueryLimits
   ): Either[Failure, Option[Seen]] =
     attempt {
       transaction(c, limits)(st => mismatch(who(st), role))
@@ -169,7 +169,10 @@ object DatabaseReader {
     * and then the session's advisory locks released and its `LISTEN`s ended, which a rollback
     * leaves; `c` is closed when that fails, so nothing `body` took outlives it.
     */
-  private[connect] def transaction[A](c: Connection, limits: Limits)(body: Statement => A): A = {
+  private[connect] def transaction[A](
+      c: Connection,
+      limits: QueryLimits
+  )(body: Statement => A): A = {
     val st = c.createStatement()
     try {
       st.execute(Postgres.Begin)
@@ -199,7 +202,7 @@ object DatabaseReader {
   /** `rs`'s rows as `limits` keep them: whole rows while they and the columns' names fit the
     * limits' bytes of UTF-8, at most the limits' rows, the clip said.
     */
-  private[connect] def rows(rs: ResultSet, limits: Limits): Rows = {
+  private[connect] def rows(rs: ResultSet, limits: QueryLimits): Rows = {
     val meta = rs.getMetaData
     val width = meta.getColumnCount
     val columns = Vector.tabulate(width)(i => meta.getColumnLabel(i + 1))
@@ -348,7 +351,7 @@ object DatabaseReader {
     * failure's message, the login and socket timeouts, its name to the server, and the driver's
     * buffer for one answer.
     */
-  private def grits(p: Properties, limits: Limits): Unit = {
+  private def grits(p: Properties, limits: QueryLimits): Unit = {
     val seconds = math.max(1L, (limits.timeout.toMillis + 999) / 1000)
     p.setProperty("logServerErrorDetail", "false")
     p.setProperty("loginTimeout", seconds.toString)
@@ -358,7 +361,8 @@ object DatabaseReader {
   }
 
   /** The most bytes the driver reads of one answer: 16 times the limits' bytes, at least 4 MiB. */
-  private[connect] def buffer(limits: Limits): Long = math.max(16L * limits.bytes, 4L * 1024 * 1024)
+  private[connect] def buffer(limits: QueryLimits): Long =
+    math.max(16L * limits.bytes, 4L * 1024 * 1024)
 
   private def driver(url: String): Either[OpenRefusal, Unit] =
     try {
