@@ -200,7 +200,9 @@ object TurnLoop {
     case Again(calls: Vector[Pending], round: Round, before: Ended)
   }
 
-  /** How a reply ends its turn. */
+  /** How a reply ends its turn: one round's reply, as the loop reads it. How the whole turn
+    * ended, as its outcome says it, is [[grit.core.inbox.TurnEnding]].
+    */
   enum Ended {
 
     /** `reply` answers the turn: it has text that is not blank, and holds no tool call
@@ -214,7 +216,8 @@ object TurnLoop {
     case Silent(reply: Message.Assistant)
 
     /** `reply` stopped at its output budget with no text that is not blank and no tool call:
-      * its thinking used the whole budget. The round failed, and nothing asks again.
+      * its thinking used the whole budget. The round failed, as [[TurnFailure.OutOfOutput]],
+      * and nothing asks again.
       */
     case OutOfOutput(reply: Message.Assistant)
   }

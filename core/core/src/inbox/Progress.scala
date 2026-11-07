@@ -21,7 +21,10 @@ enum Progress {
   }
 }
 
-/** How a turn ended, as its workflow's outcome says it ([[Progress.Done.ending]]). */
+/** How a turn ended, as its workflow's outcome says it ([[Progress.Done.ending]]): the whole
+  * turn's ending, where the turn's `TurnLoop.Ended` is how one round's reply ended it, and a
+  * failure such as running out of output is [[Otherwise]].
+  */
 enum TurnEnding {
 
   /** Its requests reached their limit, so its last calls were cut short (ADR 0052), and its

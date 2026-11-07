@@ -29,8 +29,8 @@ enum TurnFailure {
   case ToolsChanged(reason: String)
 
   /** The model's reply stopped at its output budget, `output` tokens, with neither text nor a
-    * tool call: it spent the budget thinking. Nothing retries it; whoever drives the turn decides
-    * what follows.
+    * tool call: it spent the budget thinking ([[TurnLoop.Ended.OutOfOutput]]). Nothing retries
+    * it; whoever drives the turn decides what follows.
     */
   case OutOfOutput(output: Tokens)
 }
