@@ -110,7 +110,10 @@ import grit.core.visibility.Subject
   * under as its [[Nearby.Asked]] section, which the room's section then leaves out. A carried
   * turn's append adds, before its own messages, what the room said since its last part was
   * drawn and no part shows, within the same cap; one that would pass the limit is drawn at a
-  * boundary instead.
+  * boundary instead. A room's kept closings are each a candidate of their own, wherever the
+  * window is, the room's own and a thread's room's included, but none the window shows; and a
+  * top level's own candidates include its earlier periods' kept turns, searched from its
+  * first.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
   * period and nothing elsewhere and no document or piece is to be drawn.
@@ -121,7 +124,7 @@ import grit.core.visibility.Subject
   * window and no task it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
   * what a query finds that the carried window does not hold, filling to the same share of
   * `budget` with the carried window counted; it draws no closing, asked or strand section and
-  * reads none: those are its boundary's. Its limit is [[LinearAssembler]]'s, against `budget`.
+  * reads none, but a room's section of what was said since: those are its boundary's. Its limit is [[LinearAssembler]]'s, against `budget`.
   * A request's width bounds what the part drawn now adds, never the limit.
   * `AssemblyError.Store` when a store fails or the conversation is gone.
   */
@@ -141,7 +144,7 @@ final class RetrievalAssembler(
     tuning: Tuning,
     hits: Int = RetrievalAssembler.DefaultHits
 ) extends ContextAssembler {
-  import RetrievalAssembler.{Candidate, Found, Held, Pieced, Shelves}
+  import RetrievalAssembler.{Candidate, Found, Held, Pieced, Shelves, shownElsewhere}
 
   /** `budget`. */
   def limit: Tokens = budget
@@ -228,6 +231,7 @@ final class RetrievalAssembler(
     case Candidate.Own(_, t) => t.flatMap(Shown.of(_, speakers))
     case Candidate.Near(_, place, _, t) => Shown.nearby(place, t, speakers).toVector
     case Candidate.Record(_, place, record) => Vector(Shown.recorded(place, record))
+    case Candidate.Closing(_, place, record) => Vector(Shown.recorded(place, record))
     case Candidate.Doc(document, terms) => Vector(Shown.document(document, terms.label))
     case Candidate.Piece(kept, terms, more) => Vector(Shown.piece(kept, terms.label, more))
   }
@@ -240,7 +244,7 @@ final class RetrievalAssembler(
       db: Db^
   ): Either[AssemblyError, (Vector[Candidate], Speakers)] = {
     val read = base.read
-    val older = base.turns
+    val older = (read.earlier ++ base.turns)
       .flatMap(t => t.headOption.filter(e => before(e.turnSeq, base.from)).map(_.turnSeq -> t))
       .toMap
     val terms = read.shelves.fold(Map.empty)(_.terms)
@@ -277,6 +281,18 @@ final class RetrievalAssembler(
               entries
                 .get(k.newest)
                 .map(_.flatMap(ClosingEntry.of).map(Candidate.Record(c, k.place, _)))
+          }
+        case Retrieved.Closing(c, seq) =>
+          read.rooms.get(c).orElse(read.closed.find(_.conversation == c).map(_.place)) match {
+            case None => Right(None)
+            case Some(place) =>
+              entries
+                .at(c, Vector(seq))
+                .map(
+                  _.find(shownElsewhere)
+                    .flatMap(ClosingEntry.of)
+                    .map(Candidate.Closing(c, place, _))
+                )
           }
         case Retrieved.Doc(version) =>
           Right(read.shelves.zip(docs.get(version)).flatMap { (s, d) =>
@@ -323,12 +339,15 @@ final class RetrievalAssembler(
     ).left
       .map(AssemblyError.Store(_))
       .map { found =>
-        val older = base.turns.filter(t => t.headOption.exists(e => before(e.turnSeq, base.from)))
+        val older = base.read.earlier ++
+          base.turns.filter(t => t.headOption.exists(e => before(e.turnSeq, base.from)))
         rank(
           found,
           older,
           base.read.open.map(o => o.conversation -> o.place).toMap,
           base.read.closed,
+          base.closings.map(e => (request.turn.conversationId, e.seq)).toSet ++
+            base.strand.collect { case Nearby.Closed(c, _, seq) => (c, seq) },
           base.read.weight,
           base.read.shelves.fold(Map.empty)(_.terms),
           base.read.pieced.fold(Map.empty)(_.terms)
@@ -395,6 +414,7 @@ final class RetrievalAssembler(
             }
         asked <-
           if (appending) Right(None) else askedOf(conversation, posted, opening.closing.isEmpty)
+        rooms <- roomsOf(conversation, all, opening.closing.map(_.entry.seq), closed)
         speakers <- principals.speakers(
           (all ++ read.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
         )
@@ -433,7 +453,16 @@ final class RetrievalAssembler(
           if (roomSaid.isDefined) settings.rolling.shown else tuning.windowTokens,
           asked,
           shelves,
-          root.flatMap(Pieced.of(_, holding))
+          root.flatMap(Pieced.of(_, holding)),
+          rooms,
+          // A room's earlier periods' kept turns are its own candidates (ADR 0013).
+          if (!conversation.origin.rolls) Vector.empty
+          else
+            LinearAssembler.turnsBefore(
+              all.filterNot(e => request.task.contains(e.seq)),
+              TurnSeq.First,
+              opening.first
+            )
         )
       }
     }.left
@@ -599,12 +628,14 @@ final class RetrievalAssembler(
     /** Whether a search could find anything the linear window leaves out. */
     def searchable: Boolean =
       ownToFind || read.open.nonEmpty || read.closed.nonEmpty || read.shelves.nonEmpty ||
-        read.pieced.nonEmpty
+        read.pieced.nonEmpty || read.rooms.nonEmpty || read.earlier.nonEmpty
   }
 
   /** What one read of the store gave: the weight in force, the turn's period's first turn,
     * the closings that open it, every entry of the conversation and who of them is named,
-    * the open periods elsewhere, and the places holding documents.
+    * the open periods elsewhere, and the places holding documents; the conversations of the
+    * window's own room whose kept closings are each searched as a candidate of its own
+    * (`rooms`), and a room's turns of its earlier periods (`earlier`).
     */
   private final case class Read(
       weight: Weight,
@@ -619,7 +650,9 @@ final class RetrievalAssembler(
       strandCap: Tokens,
       asked: Option[(ConversationId, Place, Vector[Entry])],
       shelves: Option[Shelves],
-      pieced: Option[Pieced]
+      pieced: Option[Pieced],
+      rooms: Map[ConversationId, Place],
+      earlier: Vector[Vector[Entry]]
   )
 
   /** The turn that asked for the post `conversation` begins with, made by the call `posted`
@@ -646,6 +679,37 @@ final class RetrievalAssembler(
           case _ => Right(None)
         }
       case _ => Right(None)
+    }
+
+  /** The conversations of `conversation`'s room whose kept closings are each a candidate of
+    * their own (ADR 0013, ADR 0060): a channel's top level's own, when it keeps one besides
+    * `opensFrom`, in `all`; a thread's room's, when it keeps one (`closed`); none for any
+    * other conversation.
+    */
+  private def roomsOf(
+      conversation: Conversation,
+      all: Vector[Entry],
+      opensFrom: Option[EntrySeq],
+      closed: Vector[ClosedElsewhere]
+  )(using grit.core.store.Tx^): Either[StoreError, Map[ConversationId, Place]] =
+    conversation.origin match {
+      case Origin.Room(_, _) =>
+        Right(
+          Option
+            .when(all.exists(e => shownElsewhere(e) && !opensFrom.contains(e.seq)))(
+              conversation.id -> conversation.origin.place
+            )
+            .toMap
+        )
+      case Origin.Thread(team, channel, _) =>
+        conversations
+          .find(Origin.Room(team, channel))
+          .map(
+            _.filter(r => closed.exists(_.conversation == r.id))
+              .map(r => r.id -> r.origin.place)
+              .toMap
+          )
+      case _ => Right(Map.empty)
     }
 
   /** The room's turn a thread under a channel's top level is under (ADR 0060): the turn its
@@ -803,7 +867,8 @@ final class RetrievalAssembler(
   }
 
   /** The searches for `query`, `hits` each, in one read: the period's own earlier turns
-    * before `from` when `own`, the open periods elsewhere, their closings, and the documents
+    * before `from` when `own`, and a room's earlier periods' turns; the open periods
+    * elsewhere, the closings elsewhere and of the window's own room, and the documents
     * shelved; with the turns the nearby hits point into.
     */
   private def find(
@@ -817,15 +882,53 @@ final class RetrievalAssembler(
       grit.core.store.Tx^
   ): Either[StoreError, Found] =
     for {
+      // A room's earlier periods are searched with its own, from its first kept turn.
+      start = if (read.earlier.nonEmpty) TurnSeq.First else read.first
+      end = if (own) from else read.first
       mine <-
-        if (own) search.search(turn.conversationId, read.first, from, query, hits)
+        if (own || before(start, end))
+          search.search(turn.conversationId, start, end, query, hits)
         else Right(Vector.empty)
       near <-
         if (read.open.isEmpty) Right(Vector.empty)
         else search.nearby(read.open, query, hits)
+      searched = read.closed.map(_.conversation) ++
+        read.rooms.keys.toVector.filterNot(c => read.closed.exists(_.conversation == c))
       records <-
-        if (read.closed.isEmpty) Right(Vector.empty)
-        else search.closings(read.closed.map(_.conversation), query, hits)
+        if (searched.isEmpty) Right(Vector.empty)
+        else search.closings(searched, query, hits)
+      // A room's closings are each a candidate (ADR 0060): which matched conversations are.
+      rolling <- read.closed
+        .filter(c =>
+          !read.rooms.contains(c.conversation) &&
+            records.exists(_.turn.conversationId == c.conversation)
+        )
+        .foldLeft[Either[StoreError, Map[ConversationId, Place]]](Right(read.rooms)) { (acc, c) =>
+          acc.flatMap(done =>
+            conversations
+              .get(c.conversation)
+              .map(found =>
+                if (found.exists(_.origin.rolls)) done + (c.conversation -> c.place) else done
+              )
+          )
+        }
+      each <- records
+        .filter(h => rolling.contains(h.turn.conversationId))
+        .foldLeft[Either[StoreError, Vector[(Double, Candidate.Closing)]]](Right(Vector.empty)) {
+          (acc, h) =>
+            val c = h.turn.conversationId
+            acc.flatMap(done =>
+              entries
+                .get(h.id)
+                .map(e =>
+                  done ++ e
+                    .filter(shownElsewhere)
+                    .flatMap(ClosingEntry.of)
+                    .zip(rolling.get(c))
+                    .map((r, place) => (h.score, Candidate.Closing(c, place, r)))
+                )
+            )
+        }
       docs <- read.shelves.fold(Right(Vector.empty))(s =>
         documents.search(s.places, query, hits, s.at)
       )
@@ -834,7 +937,10 @@ final class RetrievalAssembler(
       )
       // Each conversation a closing matched is shown by its newest kept closing.
       newest <- read.closed
-        .filter(c => records.exists(_.turn.conversationId == c.conversation))
+        .filter(c =>
+          !rolling.contains(c.conversation) &&
+            records.exists(_.turn.conversationId == c.conversation)
+        )
         .foldLeft[Either[StoreError, Map[ConversationId, ClosingEntry]]](Right(Map.empty)) {
           (acc, c) =>
             acc.flatMap(done =>
@@ -849,9 +955,10 @@ final class RetrievalAssembler(
         .foldLeft[Either[StoreError, Map[ConversationId, Vector[Entry]]]](Right(Map.empty)) {
           (acc, c) => acc.flatMap(done => entries.list(c).map(es => done + (c -> es)))
         }
-    } yield Found(mine, near, theirs, records, newest, docs, parts)
+    } yield Found(mine, near, theirs, records, newest, each, docs, parts)
 
-  /** The candidates, best first: each hit scores its turn, own ones × `weight`, and each
+  /** The candidates, best first, none of the closings the window already `shown`: each hit
+    * scores its turn, own ones × `weight`, and each
     * document its own score × its plugin's weight in `terms`; a turn scores its best hit, and a
     * tie keeps the order the hits came in, own ones first, then those elsewhere, documents last.
     */
@@ -860,6 +967,7 @@ final class RetrievalAssembler(
       older: Vector[Vector[Entry]],
       places: Map[ConversationId, Place],
       closed: Vector[ClosedElsewhere],
+      shown: Set[(ConversationId, EntrySeq)],
       weight: Weight,
       terms: Map[PluginName, DocumentTerms],
       pieceTerms: Map[PluginName, DocumentTerms]
@@ -903,9 +1011,11 @@ final class RetrievalAssembler(
         .get(h.piece.plugin)
         .map(t => (h.score * DocWeight.value(t.weight), Candidate.Piece(h.piece, t, h.more)))
     }
+    val closings =
+      found.closings.filterNot((_, c) => shown((c.conversation, c.record.entry.seq)))
     (own ++ near ++ records.filterNot(r =>
       openHere(r._2.conversation)
-    ) ++ docs ++ parts).zipWithIndex
+    ) ++ closings ++ docs ++ parts).zipWithIndex
       .sortBy { case ((score, _), i) => (-score, i) }
       .map { case ((score, c), _) => (c, score) }
       .distinctBy(_._1.key)
@@ -935,6 +1045,8 @@ final class RetrievalAssembler(
             Tokens(Tokens.value(shown(place, before ++ t, speakers)) - Tokens.value(without))
           case Candidate.Record(_, place, record) =>
             estimator.message(Shown.recorded(place, record))
+          case Candidate.Closing(_, place, record) =>
+            estimator.message(Shown.recorded(place, record))
           case Candidate.Doc(document, terms) =>
             estimator.message(Shown.document(document, terms.label))
           case Candidate.Piece(kept, terms, more) =>
@@ -958,6 +1070,7 @@ final class RetrievalAssembler(
       .collect {
         case n: Candidate.Near => n.conversation
         case r: Candidate.Record => r.conversation
+        case r: Candidate.Closing => r.conversation
       }
       .distinct
       .flatMap { c =>
@@ -972,6 +1085,8 @@ final class RetrievalAssembler(
           }
           .toVector ++ packed.collect {
           case Candidate.Record(k, place, record) if k == c =>
+            Nearby.Closed(c, place, record.entry.seq)
+          case Candidate.Closing(k, place, record) if k == c =>
             Nearby.Closed(c, place, record.entry.seq)
         }
       }
@@ -1012,7 +1127,7 @@ object RetrievalAssembler {
 
   /** What the searches found: the conversation's own hits, the hits elsewhere, the entries
     * of each conversation a hit elsewhere is in, the closings' hits and each one's newest kept
-    * closing, and the documents' hits.
+    * closing, a room's matched closings each as its own candidate, and the documents' hits.
     */
   private final case class Found(
       own: Vector[EntrySearch.Hit],
@@ -1020,6 +1135,7 @@ object RetrievalAssembler {
       theirs: Map[ConversationId, Vector[Entry]],
       records: Vector[EntrySearch.Hit],
       newest: Map[ConversationId, ClosingEntry],
+      closings: Vector[(Double, Candidate.Closing)],
       documents: Vector[DocumentSearch.Hit],
       pieces: Vector[PieceSearch.Hit]
   )
@@ -1062,14 +1178,23 @@ object RetrievalAssembler {
 
   /** What a carried window holds of what a search finds: its `own` turns, the conversations it
     * shows along or asking (never candidates), the turns elsewhere (`near`) and closings
-    * elsewhere it shows, and its documents and pieces. `carrying` whether anything is carried.
+    * elsewhere it shows, each closing it shows (`closings`), and its documents and pieces. `carrying` whether anything is carried.
     */
+  /** Whether `e` is a closing entry shown outside its own conversation
+    * ([[grit.core.period.CloseReason.shownElsewhere]]).
+    */
+  private def shownElsewhere(e: Entry): Boolean = e.payload match {
+    case Payload.Closed(_, reason, _) => reason.shownElsewhere
+    case _ => false
+  }
+
   private final case class Held(
       carrying: Boolean,
       own: Set[TurnSeq],
       shown: Set[ConversationId],
       near: Set[(ConversationId, EntrySeq)],
       closed: Set[ConversationId],
+      closings: Set[(ConversationId, EntrySeq)],
       documents: Set[DocumentVersionId],
       pieces: Set[PieceId]
   ) {
@@ -1080,13 +1205,16 @@ object RetrievalAssembler {
       case Candidate.Near(conversation, _, _, turn) =>
         shown(conversation) || turn.exists(e => near((conversation, e.seq)))
       case Candidate.Record(conversation, _, _) => shown(conversation) || closed(conversation)
+      case Candidate.Closing(conversation, _, record) =>
+        closings((conversation, record.entry.seq))
       case Candidate.Doc(document, _) => documents(document.version)
       case Candidate.Piece(kept, _, _) => pieces(kept.id)
     }
   }
 
   private object Held {
-    val none: Held = Held(false, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty)
+    val none: Held =
+      Held(false, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty, Set.empty)
 
     /** What `carried` holds, its own turns read from `all`: each part's entries' turns and its
       * own turn.
@@ -1104,6 +1232,8 @@ object RetrievalAssembler {
         }.toSet,
         nearby.collect { case Nearby.Open(c, _, es) => es.map(c -> _) }.flatten.toSet,
         nearby.collect { case Nearby.Closed(c, _, _) => c }.toSet,
+        nearby.collect { case Nearby.Closed(c, _, seq) => (c, seq) }.toSet ++
+          all.filter(e => entries(e.seq) && shownElsewhere(e)).map(e => (e.conversationId, e.seq)),
         windows.flatMap(_.documents).toSet,
         windows.flatMap(_.pieces.map(_.id)).toSet
       )
@@ -1111,13 +1241,14 @@ object RetrievalAssembler {
   }
 
   /** What the pool ranks: a turn of the conversation's own, one from elsewhere, a closing
-    * elsewhere, a document under its plugin's terms, or a piece of a kept file under its
+    * elsewhere, one closing of a room (ADR 0060), a document under its plugin's terms, or a piece of a kept file under its
     * plugin's, with how many more of its file matched.
     */
   private enum Candidate {
     case Own(seq: TurnSeq, turn: Vector[Entry])
     case Near(conversation: ConversationId, place: Place, seq: TurnSeq, turn: Vector[Entry])
     case Record(conversation: ConversationId, place: Place, record: ClosingEntry)
+    case Closing(conversation: ConversationId, place: Place, record: ClosingEntry)
     case Doc(document: Document, terms: DocumentTerms)
     case Piece(kept: KeptPiece, terms: DocumentTerms, more: Int)
 
@@ -1127,6 +1258,7 @@ object RetrievalAssembler {
       case Near(c, _, s, _) => Retrieved.Near(c, s)
       // One record per conversation, whichever of its closings matched.
       case Record(c, _, _) => Retrieved.Closed(c)
+      case Closing(c, _, record) => Retrieved.Closing(c, record.entry.seq)
       case Doc(d, _) => Retrieved.Doc(d.version)
       case Piece(k, _, more) => Retrieved.Piece(k.id, more)
     }

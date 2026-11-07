@@ -984,6 +984,93 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
+    test(
+      "a room's closings elsewhere are each a candidate of its own, not shown by its newest"
+    ) {
+      val ops = ConversationId("ops")
+      val top = Origin.Room("T", "ops")
+      val origins = (c: ConversationId) =>
+        if (c == ops) top else Origin.Task("conversation", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val _ = elsewhere(world, "ops", close = true, exchange("when is the freeze?", "Friday"))
+      val newest = closeAgain(world, ops, 2, "and hotfixes?", "Hotfixes skip it.")
+      val search = new Scripted()
+      search.closed = Vector((ops, firstClosing(ops), 2.0))
+      val w = assemble(
+        world,
+        new Writer(Some("deploy freeze")),
+        budget = 1000,
+        search,
+        at = 0,
+        others = Vector(Conversation(ops, top, Account.Local, Instant.EPOCH, Label.Public))
+      )
+      w.nearby ==> Vector(Nearby.Closed(ops, top.place, seqs(world, firstClosing(ops))(0)))
+      assert(firstClosing(ops) != newest)
+    }
+
+    test("a room's own earlier closings are each a candidate, but the one its turn opens from") {
+      val top = Origin.Room("T", "C")
+      val world = closed(
+        Vector(
+          Vector(exchange("when is the freeze?", "Friday")),
+          Vector(exchange("the venue?", "the hall")),
+          Vector(ask)
+        ),
+        Vector("We set the freeze.", "We chose the hall."),
+        _ => top
+      )
+      val search = new Scripted()
+      search.closed = Vector((c1, closingOf(1), 2.0), (c1, closingOf(2), 1.0))
+      val w =
+        assemble(world, new Writer(Some("the freeze")), budget = 1000, search, at = 2, origin = top)
+      search.closedAsked ==> Vector(List(c1))
+      w.nearby ==> Vector(Nearby.Closed(c1, top.place, seqs(world, closingOf(1))(0)))
+    }
+
+    test("a room's earlier periods' kept turns are its own candidates, searched from its first") {
+      val top = Origin.Room("T", "C")
+      val world = closed(
+        Vector(Vector(exchange("when is the freeze?", "Friday")), Vector(ask)),
+        Vector("We talked."),
+        _ => top
+      )
+      val search = new Scripted("t0:0")
+      val w =
+        assemble(world, new Writer(Some("the freeze")), budget = 1000, search, at = 1, origin = top)
+      search.asked.map(a => (a.from, a.before)) ==> Vector((TurnSeq(0), TurnSeq(1)))
+      // The closing it opens from, then the recalled turn of the period that closing closed.
+      turnsOf(world, w) ==> Vector("closing", "t0")
+    }
+
+    test(
+      "a thread's room's older closings are each a candidate; its newest is shown by its record"
+    ) {
+      val top = Origin.Room("T", "C")
+      val room = ConversationId("room")
+      val origins = (c: ConversationId) =>
+        if (c == room) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val older = closeAgain(world, room, 1, "the freeze is Thursday", "We set the freeze.")
+      val newest = closeAgain(world, room, 2, "the venue is the hall", "We chose the hall.")
+      val _ = said(world, "c1", "and the date?" -> -100)
+      val search = new Scripted()
+      search.closed = Vector((room, older, 2.0), (room, newest, 1.0))
+      val w = assemble(
+        world,
+        new Writer(Some("the freeze")),
+        budget = 1000,
+        search,
+        at = 1,
+        origin = Origin.Thread("T", "C", "2.0"),
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        others = Vector(Conversation(room, top, Account.Local, Instant.EPOCH, Label.Public))
+      )
+      w.nearby.toSet ==> Set(
+        Nearby.Closed(room, top.place, seqs(world, newest)(0)),
+        Nearby.Closed(room, top.place, seqs(world, older)(0))
+      )
+    }
+
     test("a room's period rolls before what was said in it outgrows the default tail") {
       val tail = CharEstimate.text("x" * grit.core.period.Rolling.Default.chars)
       assert(Tokens.value(tail) < Tokens.value(RetrievalAssembler.DefaultTail))

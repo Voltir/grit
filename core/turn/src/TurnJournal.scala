@@ -1172,7 +1172,7 @@ private[turn] object TurnJournal {
   }
 
   /** A found candidate as an object's fields, then `more`: `{"own": seq}`, `{"near":
-    * conversation, "turn": seq}`, `{"closed": conversation}`, `{"doc": version}` or `{"piece":
+    * conversation, "turn": seq}`, `{"closed": conversation}`, `{"closing": conversation, "seq": seq}`, `{"doc": version}` or `{"piece":
     * id, "more": n}`.
     */
   private def writeFound(found: Retrieved, more: (String, ujson.Value)*): ujson.Obj = {
@@ -1184,6 +1184,11 @@ private[turn] object TurnJournal {
           "turn" -> ujson.Num(TurnSeq.value(t).toDouble)
         )
       case Retrieved.Closed(c) => Vector("closed" -> ujson.Str(ConversationId.value(c)))
+      case Retrieved.Closing(c, seq) =>
+        Vector(
+          "closing" -> ujson.Str(ConversationId.value(c)),
+          "seq" -> ujson.Num(EntrySeq.value(seq).toDouble)
+        )
       case Retrieved.Doc(d) => Vector("doc" -> ujson.Num(DocumentVersionId.value(d).toDouble))
       case Retrieved.Piece(id, more) =>
         Vector("piece" -> ujson.Num(PieceId.value(id).toDouble), "more" -> ujson.Num(more.toDouble))
@@ -1209,6 +1214,11 @@ private[turn] object TurnJournal {
         .flatMap(c => seq("turn").map(Retrieved.Near(c, _)))
     else if (o.contains("closed"))
       conversation("closed").toRight("found: no closed").map(Retrieved.Closed(_))
+    else if (o.contains("closing"))
+      (for {
+        c <- conversation("closing")
+        n <- o.get("seq").flatMap(_.numOpt).filter(n => n.isWhole && n >= 0)
+      } yield Retrieved.Closing(c, EntrySeq(n.toLong))).toRight("found: no closing")
     else if (o.contains("piece"))
       (for {
         id <- o.get("piece").flatMap(_.numOpt).filter(_.isWhole).flatMap(n => PieceId.of(n.toLong))

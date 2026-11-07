@@ -154,14 +154,19 @@ enum Querying {
   case Written(text: String, queried: AssemblyNote.Queried)
 }
 
-/** What a search can find: an earlier turn of the period, an open turn elsewhere, a
-  * conversation elsewhere shown by its newest kept closing, a document version, or a piece of
-  * a kept file.
+/** What a search can find: an earlier turn of the conversation, an open turn elsewhere, a
+  * conversation elsewhere shown by its newest kept closing, one closing of a room, a document
+  * version, or a piece of a kept file.
   */
 enum Retrieved {
   case Own(turn: TurnSeq)
   case Near(conversation: ConversationId, turn: TurnSeq)
   case Closed(conversation: ConversationId)
+
+  /** One kept closing of a channel's top level (ADR 0060), by its closing entry: a room's
+    * closings are each a candidate of their own, never shown by its newest.
+    */
+  case Closing(conversation: ConversationId, closing: EntrySeq)
   case Doc(version: DocumentVersionId)
 
   /** Piece `id`, and how many more of its file's pieces its search matched past

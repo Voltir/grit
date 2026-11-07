@@ -688,6 +688,14 @@ object TurnJournalTests extends TestSuite {
         """{"ok":{"ranked":[{"near":"c2","turn":5,"score":1}],"beyond":0}}"""
     }
 
+    test("a room's closing found reads back as written, in its pinned form") {
+      val closing = Retrieved.Closing(ConversationId("room"), EntrySeq(12))
+      val results = Results(Vector(closing -> 1.5))
+      roundTrip[Either[TurnFailure, Results]](Right(results)) ==> Right(Right(results))
+      summon[Journaled[Either[TurnFailure, Results]]].encode(Right(results)) ==>
+        """{"ok":{"ranked":[{"closing":"room","seq":12,"score":1.5}],"beyond":0}}"""
+    }
+
     test(
       "the needs gate's verdict reads back as written, in the fields a batch's verdict carries"
     ) {
