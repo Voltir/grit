@@ -334,6 +334,22 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.all(r)).map(_.map(_.ref.seq)) ==> Right(Vector(PeriodSeq.First, first(2)))
     }
 
+    test(
+      "a room's period sealed before its newest turn for a reason other than Rolled is cut at that turn too: its conversation decides, not the reason"
+    ) {
+      val r = room("cut-lapsed")
+      val t0 = say(r, 0)
+      val t1 = say(r, 5)
+      val p1 = PeriodRef(r, PeriodSeq.First)
+      transaction(
+        right(
+          periods.seal(CloseRef(p1, t0.turnSeq, at(30)), CloseReason.Lapsed, closing("cut"), at(30))
+        )
+      ) ==> Sealed.Closed(p1.closingId)
+      transaction(periods.of(t1)) ==>
+        Right(Some(Period(PeriodRef(r, first(2)), TurnSeq(1), at(5), PeriodState.Open)))
+    }
+
     test("a seal of a period already closed is abandoned, and writes nothing") {
       val c = conversation("sealed-twice")
       val t0 = say(c, 0)

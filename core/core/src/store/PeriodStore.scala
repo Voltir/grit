@@ -50,10 +50,12 @@ trait PeriodStore {
   /** Closes `attempt.period` at `at` for `reason`, with `closing` recorded as its closing
     * entry after everything in the conversation, believed at the meet of the integrity of the
     * period's entries, what its writer was shown ([[grit.core.visibility.Integrity.Untrusted]]
-    * when it has none), if it is open and its newest turn is still `attempt.last`; `Abandoned` otherwise, with nothing written. A period of a
-    * conversation that rolls ([[Origin.rolls]]) is sealed at `attempt.last` whatever came in
-    * after, abandoned only when no such turn has begun: the turns after it open the next
-    * period, opened when the first of them was written, which opens from this closing. It takes the next
+    * when it has none), if it is open and its newest turn is still `attempt.last`; `Abandoned`
+    * otherwise, with nothing written. Its conversation decides how it is cut, never `reason`:
+    * a period of a conversation that rolls ([[Origin.rolls]]) is sealed at `attempt.last`
+    * whatever came in after, abandoned only when no such turn has begun, and the turns after
+    * `attempt.last` open the next period, opened when the first of them was written, which
+    * opens from this closing. It takes the next
     * [[CloseOrdinal]], and no seal commits before one that took an earlier ordinal.
     */
   def seal(attempt: CloseRef, reason: CloseReason, closing: Closing, at: Instant)(using
