@@ -3,14 +3,16 @@ package grit.core.secret
 /** What is named like a secret: an environment variable that holds one, a file that holds them. */
 object Named {
 
-  /** Whether the environment variable `name` holds a secret: it contains KEY, TOKEN, SECRET or
-    * PASSWORD, in any case. Name-matching is the current rule, not the intended one: detection
-    * by value is designed in kalandra's `grit/note-secret-detection-design`, and ADR 0054 holds
-    * the model.
+  /** KEY, TOKEN, SECRET and PASSWORD: the words a secret's variable name holds one of. */
+  val Words: Vector[String] = Vector("KEY", "TOKEN", "SECRET", "PASSWORD")
+
+  /** Whether the environment variable `name` holds a secret: it contains one of [[Words]], in
+    * any case. Name-matching is the current rule, not the intended one: detection by value is
+    * designed in kalandra's `grit/note-secret-detection-design`, and ADR 0054 holds the model.
     */
   def variable(name: String): Boolean = {
     val upper = name.toUpperCase
-    Vector("KEY", "TOKEN", "SECRET", "PASSWORD").exists(upper.contains)
+    Words.exists(upper.contains)
   }
 
   /** Whether the path segment `name` is a secrets file: `.env`, or `.env.` and anything. */

@@ -31,7 +31,8 @@ object Secret {
     /** One line a person reads, naming the variable. */
     def message: String = this match {
       case NotNamedLikeOne(v) =>
-        s"${Variable.value(v)} is not named like a secret: its name holds none of KEY, TOKEN, SECRET or PASSWORD"
+        s"${Variable.value(v)} is not named like a secret: its name holds none of " +
+          Named.Words.dropRight(1).mkString(", ") + Named.Words.lastOption.fold("")(" or " + _)
       case Unset(v) => s"${Variable.value(v)} is not set"
       case Blank(v) => s"${Variable.value(v)} is set but blank"
     }

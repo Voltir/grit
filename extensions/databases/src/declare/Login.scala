@@ -2,8 +2,9 @@ package grit.databases.declare
 
 import grit.core.secret.Variable
 
-/** How the reader logs in. A secret's variable must be named like one (KEY, TOKEN, SECRET or
-  * PASSWORD in its name); no secret's value is shown in a refusal, a row or a log line.
+/** How the reader logs in. A secret's variable must be named like one
+  * ([[grit.core.secret.Named.Words]]); no secret's value is shown in a refusal, a row or a log
+  * line.
   */
 sealed trait Login
 
