@@ -119,7 +119,8 @@ object TrustingLiveTests extends TestSuite {
             SlackEdge.serving(
               SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity),
               grit.slack.edge.Backfill.Default,
-              grit.slack.edge.ReplyNote.Off
+              grit.slack.edge.ReplyNote.Off,
+              grit.slack.edge.Conversations.PerThread
             )
           ),
           Vector.empty,

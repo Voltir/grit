@@ -4,13 +4,14 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.id.{ConversationId, EntryId, TriageRef, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, SourceId, TriageRef, TurnRef, WorkflowId}
+import grit.core.inbox.InboundId
 import grit.core.period.{Judgement, PeriodState}
 import grit.core.recipe.Records
 import grit.core.speech.{Decision, Heard, Ledger, Reach, Silence, Speaking, Speech}
 import grit.core.spend.Budget
 import grit.core.stitch.{Along, Placed}
-import grit.core.store.{Conversation, Entry, PeriodStore, StoreError, Tx}
+import grit.core.store.{Conversation, Entry, Origin, PeriodStore, StoreError, Tx}
 import grit.core.triage.{Cues, Tags}
 
 /** The triage's `consider` step: whether grit drafts a reply to the heard message it tagged
@@ -151,7 +152,20 @@ private[triage] object Speak {
       )
     } yield Cues(
       named = reach.asked.nonEmpty,
-      spoken = Speech.spoken(heard, all, read.strand.shown).map(_.by),
+      spoken = (conversation.origin match {
+        // A channel's top level holds every message's turn: grit answered this one in its
+        // own turn, or in the thread under it (ADR 0060).
+        case Origin.Room(team, channel) =>
+          val under = InboundId
+            .source(heard.id)
+            .map((_, s) => Origin.Thread(team, channel, SourceId.value(s)).place)
+          Speech.spoken(
+            heard,
+            all.filter(_.turnSeq == heard.turnSeq),
+            read.strand.shown ++ room.collect { case s if under.contains(s.place) => s.entry }
+          )
+        case _ => Speech.spoken(heard, all, read.strand.shown)
+      }).map(_.by),
       continued = (later.filter(theirs) ++ followers).minByOption(_.createdAt).map(_.id),
       settled = settled,
       records = hits.headOption.map((h, _) => Cues.Match(h.document.plugin, h.score, hits.size))

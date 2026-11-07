@@ -237,6 +237,12 @@ object TriageFixtures {
       TestTx.fake
     )
 
+    /** `origin`'s conversation, created when it is not. */
+    def conversationAt(origin: Origin): ConversationId =
+      conversations
+        .findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), _.id)
+
     /** Another thread of channel C, rooted at `ts`. */
     def thread(ts: String): ConversationId =
       conversations
@@ -255,15 +261,18 @@ object TriageFixtures {
         by: Option[(String, String)],
         minutes: Long,
         in: ConversationId,
-        seconds: Long = 0
+        seconds: Long = 0,
+        source: Option[String] = None
     ): Entry = {
       given Tx = TestTx.fake
       val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
       val said = at(minutes).plusSeconds(seconds)
       periods.openFor(in, next.turnSeq, said)
-      val id = if (in == c) s"e${next.seq}" else s"${ConversationId.value(in)}:e${next.seq}"
+      val id = source.fold(
+        EntryId(if (in == c) s"e${next.seq}" else s"${ConversationId.value(in)}:e${next.seq}")
+      )(s => grit.core.inbox.InboundId.of(in, grit.core.id.SourceId(s)))
       val e =
-        Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, said, Integrity.Member)
+        Entry(id, in, next.turnSeq, None, next.seq, payload, said, Integrity.Member)
       entries.insert(e)
       by.foreach { (id, name) =>
         principals.name(TestAccounts.account(id), name)
@@ -281,9 +290,11 @@ object TriageFixtures {
         minutes: Long,
         in: ConversationId = c,
         asked: Set[Account] = Set.empty,
-        seconds: Long = 0
+        seconds: Long = 0,
+        source: Option[String] = None
     ): TriageRef = {
-      val e = insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in, seconds)
+      val e =
+        insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in, seconds, source)
       speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), asked))(using TestTx.fake)
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }

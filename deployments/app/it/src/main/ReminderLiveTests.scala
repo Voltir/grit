@@ -193,6 +193,7 @@ object ReminderLiveTests extends TestSuite {
       ),
       None,
       grit.slack.edge.ReplyNote.Off,
+      grit.slack.edge.Conversations.PerThread,
       grit.core.clock.Clock.system(),
       _ => ()
     )

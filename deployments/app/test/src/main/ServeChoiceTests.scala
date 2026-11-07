@@ -91,7 +91,14 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             Map.empty,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
+            Vector(
+              SlackEdge.serving(
+                Grit,
+                Backfill.Default,
+                ReplyNote.Off,
+                grit.slack.edge.Conversations.PerThread
+              )
+            ),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -110,7 +117,14 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             env,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
+            Vector(
+              SlackEdge.serving(
+                Grit,
+                Backfill.Default,
+                ReplyNote.Off,
+                grit.slack.edge.Conversations.PerThread
+              )
+            ),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -154,7 +168,14 @@ object ServeChoiceTests extends TestSuite {
           .deployment(
             env,
             Offered.Read,
-            Vector(SlackEdge.serving(Grit, Backfill.Default, ReplyNote.Off)),
+            Vector(
+              SlackEdge.serving(
+                Grit,
+                Backfill.Default,
+                ReplyNote.Off,
+                grit.slack.edge.Conversations.PerThread
+              )
+            ),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn
@@ -226,6 +247,23 @@ object ServeChoiceTests extends TestSuite {
           Right(ReplyNote.Off),
           Right(ReplyNote.StrengthAndCost),
           Left("GRIT_SLACK_REPLY_NOTE is one of off, strength, strength-cost, not 'cost'")
+        )
+    }
+
+    test(
+      "Slack's conversations are GRIT_SLACK_CONVERSATIONS, threads when unset, each word its own, any other refused naming the words"
+    ) {
+      Vector(None, Some("threads"), Some(" rooms "), Some("room"))
+        .map(v =>
+          ServedEdges.slackConversations(
+            v.fold(Map.empty)(w => Map("GRIT_SLACK_CONVERSATIONS" -> w))
+          )
+        ) ==>
+        Vector(
+          Right(grit.slack.edge.Conversations.PerThread),
+          Right(grit.slack.edge.Conversations.PerThread),
+          Right(grit.slack.edge.Conversations.PerRoom),
+          Left("GRIT_SLACK_CONVERSATIONS is one of threads, rooms, not 'room'")
         )
     }
 

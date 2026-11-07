@@ -175,6 +175,7 @@ object PromptingTests extends TestSuite {
       ),
       Some(review),
       ReplyNote.Off,
+      grit.slack.edge.Conversations.PerThread,
       grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )

@@ -363,9 +363,15 @@ final class InMemoryInbox(
     else if (origin.place.direct) Left(InboxError.Invalid("grit's posts begin no direct message"))
     else
       inTx {
+        // As the SQL inbox: a channel's top level takes a post as a turn of its own, by source.
+        val top = origin match {
+          case Origin.Room(_, _) => true
+          case _ => false
+        }
         val result: Either[StoreError, Boolean] = found(origin).flatMap {
-          case Some(_) => Right(false)
-          case None =>
+          case Some(c) if !top || entries.everything.exists(_.id == InboundId.of(c.id, source)) =>
+            Right(false)
+          case _ =>
             for {
               conversation <- conversations.findOrCreate(
                 origin,
@@ -390,7 +396,8 @@ final class InMemoryInbox(
                 )
               )(using capping)
             } yield {
-              conversations.posts = conversations.posts.updated(conversation.id, request)
+              if (!top)
+                conversations.posts = conversations.posts.updated(conversation.id, request)
               true
             }
         }

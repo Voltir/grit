@@ -66,7 +66,14 @@ object ClearanceChoiceTests extends TestSuite {
           .deployment(
             env,
             Offered.Read,
-            Vector(SlackEdge.serving(grit, Backfill.Default, ReplyNote.Off)),
+            Vector(
+              SlackEdge.serving(
+                grit,
+                Backfill.Default,
+                ReplyNote.Off,
+                _root_.grit.slack.edge.Conversations.PerThread
+              )
+            ),
             Vector.empty,
             java.time.ZoneOffset.UTC,
             slackIn

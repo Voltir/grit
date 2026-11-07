@@ -105,6 +105,7 @@ object SlackAttestingTests extends TestSuite {
         ),
         None,
         grit.slack.edge.ReplyNote.Off,
+        grit.slack.edge.Conversations.PerThread,
         grit.core.clock.Clock.system(),
         s => logged = logged :+ s
       )

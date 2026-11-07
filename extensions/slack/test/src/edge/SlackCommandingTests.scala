@@ -183,6 +183,7 @@ object SlackCommandingTests extends TestSuite {
         ),
         None,
         grit.slack.edge.ReplyNote.Off,
+        grit.slack.edge.Conversations.PerThread,
         Stopped,
         s => logged = logged :+ s
       )

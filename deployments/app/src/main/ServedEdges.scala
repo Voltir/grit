@@ -12,7 +12,7 @@ import grit.mcp.drive.{DriveEdge, DriveReading, DriveRest}
 import grit.mcp.edge.McpEdge
 import grit.mcp.github.GitHubItems
 import grit.mcp.scope.McpScope
-import grit.slack.edge.{ReplyNote, SlackCommand}
+import grit.slack.edge.{Conversations, ReplyNote, SlackCommand}
 
 /** The edges `grit serve` serves besides Slack's events: Slack's command and reply note, and
   * GitHub's and Drive's tools.
@@ -44,6 +44,25 @@ private[main] object ServedEdges {
           .named(raw.trim)
           .toRight(
             s"$NoteVar is one of ${ReplyNote.values.map(_.word).mkString(", ")}, not '$raw'"
+          )
+    }
+
+  /** The variable naming which conversation `grit serve`'s and `grit backfill`'s Slack edge
+    * records a channel's messages in ([[Conversations]]).
+    */
+  private[main] val ConversationsVar = "GRIT_SLACK_CONVERSATIONS"
+
+  /** The conversations `env` names ([[ConversationsVar]]), [[Conversations.Default]] when
+    * unset; why not, naming the variable and the word, when it names none.
+    */
+  private[main] def slackConversations(env: Map[String, String]): Either[String, Conversations] =
+    env.get(ConversationsVar) match {
+      case None => Right(Conversations.Default)
+      case Some(raw) =>
+        Conversations
+          .named(raw.trim)
+          .toRight(
+            s"$ConversationsVar is one of ${Conversations.values.map(_.word).mkString(", ")}, not '$raw'"
           )
     }
 

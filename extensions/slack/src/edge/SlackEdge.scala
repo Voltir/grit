@@ -33,8 +33,9 @@ import grit.slack.text.{Incoming, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
   * the stores alone; grit being `self` in the workspace, answering `review` when one is
-  * given, and noting under each reply it delivers what `note` says ([[ReplyNote]]); `clock`
-  * dates the marks it puts up and takes down. `said` is told what it did that a person running
+  * given, noting under each reply it delivers what `note` says ([[ReplyNote]]), and recording
+  * each channel's messages in the conversations `conversations` names; `clock` dates the marks
+  * it puts up and takes down. `said` is told what it did that a person running
   * it may want to read.
   */
 final class SlackEdge(
@@ -43,6 +44,7 @@ final class SlackEdge(
     stores: EdgeStores^,
     review: Option[SlackReview],
     note: ReplyNote,
+    conversations: Conversations,
     clock: Clock^,
     said: String => Unit
 ) {
@@ -129,7 +131,12 @@ final class SlackEdge(
 
   /** One Events API payload. A person's message in a channel grit's bot is a member of (never
     * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose
-    * root did. Addressed, it is recorded as a turn of its thread's conversation, in the person's
+    * root did. It is recorded in its thread's conversation, or with rooms
+    * ([[Conversations.PerRoom]], ADR 0060): a top-level message in its channel's top level
+    * ([[Origin.Room]]), skipped when a thread recorded before rooms heard it; a reply in a
+    * thread recorded before rooms in that thread, addressed as there; any other reply in its
+    * own thread ([[Origin.Thread]]), addressed when its root, a top-level message, was.
+    * Addressed, it is recorded as a turn of that conversation, in the person's
     * words ([[Incoming]]), written through their account in their own team
     * ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them; its turn is
     * started, its reply awaited, and the message marked `:eyes:` until the reply is posted. A new
@@ -187,22 +194,12 @@ final class SlackEdge(
             false
         }
       case Right(m: Event.Said) =>
-        val origin =
-          Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
-        val result = for {
-          wanted <-
-            if (m.mentions) Right(true)
-            else if (m.thread == m.ts) Right(false)
-            else
-              stores.inbox
-                .ingested(origin, SourceId(Ts.value(m.thread)))
-                .map(_.nonEmpty)
-                .left
-                .map(_.toString)
-          done <-
+        val result = placed(m).flatMap {
+          case None => Right(())
+          case Some((origin, wanted)) =>
             if (wanted) record(m, origin)
             else hear(m, origin, live = true)
-        } yield done
+        }
         result match {
           case Right(()) => true
           case Left(why) =>
@@ -332,11 +329,20 @@ final class SlackEdge(
       .toVector
       .foldLeft[Either[String, Set[Ts]]](Right(Set.empty)) { case (acc, (thread, ms)) =>
         acc.flatMap(known =>
-          stores.inbox
-            .recorded(originOf(channel, thread), ms.map(m => SourceId(Ts.value(m.ts))).toSet)
-            .left
-            .map(_.toString)
-            .map(r => known ++ r.map(s => Ts(SourceId.value(s))))
+          (originOf(channel, thread) +: (conversations match {
+            case Conversations.PerThread => Vector.empty
+            case Conversations.PerRoom =>
+              val (team, c) = (TeamId.value(self.team), ChannelId.value(channel))
+              Vector(Origin.Room(team, c), Origin.Thread(team, c, Ts.value(thread)))
+          })).foldLeft[Either[String, Set[Ts]]](Right(known)) { (in, origin) =>
+            in.flatMap(found =>
+              stores.inbox
+                .recorded(origin, ms.map(m => SourceId(Ts.value(m.ts))).toSet)
+                .left
+                .map(_.toString)
+                .map(r => found ++ r.map(s => Ts(SourceId.value(s))))
+            )
+          }
         )
       }
       .map(known => spoken.filterNot(m => known.contains(m.ts)))
@@ -417,6 +423,44 @@ final class SlackEdge(
     }
   }
 
+  /** The conversation `m` is recorded in, as [[conversations]] says, and whether it is said to
+    * grit: when it mentions grit, or is a reply in a thread whose root was said to grit, the
+    * root of a thread under a channel's top level being a message of that top level. `None`,
+    * with rooms, for a top-level message heard in a thread recorded before rooms.
+    */
+  private def placed(m: Event.Said): Either[String, Option[(Origin, Boolean)]] = {
+    val (team, channel) = (TeamId.value(m.team), ChannelId.value(m.channel))
+    val legacy = Origin.Slack(team, channel, Ts.value(m.thread))
+    def toGrit(root: Origin): Either[String, Boolean] =
+      if (m.mentions) Right(true)
+      else
+        stores.inbox
+          .ingested(root, SourceId(Ts.value(m.thread)))
+          .map(_.nonEmpty)
+          .left
+          .map(_.toString)
+    val top = m.thread == m.ts
+    conversations match {
+      case Conversations.PerThread =>
+        (if (top) Right(m.mentions) else toGrit(legacy)).map(said => Some(legacy -> said))
+      case Conversations.PerRoom =>
+        val room = Origin.Room(team, channel)
+        if (top)
+          stores.inbox
+            .recorded(legacy, Set(SourceId(Ts.value(m.ts))))
+            .left
+            .map(_.toString)
+            .map(heard => Option.when(heard.isEmpty)(room -> m.mentions))
+        else
+          stores.inbox.begun(legacy).left.map(_.toString).flatMap { before =>
+            val (origin, root) =
+              if (before) (legacy, legacy)
+              else (Origin.Thread(team, channel, Ts.value(m.thread)), room)
+            toGrit(root).map(said => Some(origin -> said))
+          }
+    }
+  }
+
   /** The conversation of the thread rooted at `thread` in `channel`. */
   private def originOf(channel: ChannelId, thread: Ts): Origin =
     Origin.Slack(TeamId.value(self.team), ChannelId.value(channel), Ts.value(thread))
@@ -442,13 +486,12 @@ final class SlackEdge(
     messages.foldLeft[Either[String, Boolean]](Right(true)) { (going, m) =>
       going.flatMap { on =>
         if (!on || stopping()) Right(false)
-        else {
-          val origin =
-            Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
-          hear(m, origin, live = false).left
+        else
+          placed(m)
+            .flatMap(_.fold(Right(()))((origin, _) => hear(m, origin, live = false)))
+            .left
             .map(why => s"message ${Ts.value(m.ts)} not heard: $why")
             .map(_ => true)
-        }
       }
     }
 
@@ -597,8 +640,9 @@ final class SlackEdge(
     }
 
   /** Records grit's post that `m`'s thread begins with as its conversation's opening
-    * ([[grit.core.inbox.Inbox.posted]]), written by `by`, when `m` is a reply that begins its
-    * conversation and grit's bot posted the thread's root with `slack_post` ([[Tag.Sent]]):
+    * ([[grit.core.inbox.Inbox.posted]]), or as a turn of its channel's top level when the
+    * thread is under it ([[Origin.Thread]]), written by `by`, when `m` is a reply that begins
+    * its conversation and grit's bot posted the thread's root with `slack_post` ([[Tag.Sent]]):
     * its text as Slack gives it, made by the call its tag names. Nothing for any other
     * message. When Slack cannot be asked for the root, or the post is not recorded, that is
     * said and `m` goes on without it; why not, when the inbox could not be asked.
@@ -619,14 +663,19 @@ final class SlackEdge(
               (CallSlot.read(key), Events.time(Ts.value(m.thread))) match {
                 case (Some(request), Some(at)) =>
                   val shown = Incoming.text(text, self.bot, _ => None, _ => None)
+                  // A thread under a channel's top level hangs under the post, a turn of it.
+                  val in = origin match {
+                    case Origin.Thread(team, channel, _) => Origin.Room(team, channel)
+                    case other => other
+                  }
                   stores.inbox
-                    .posted(origin, SourceId(Ts.value(m.thread)), shown, at, request, by)
+                    .posted(in, SourceId(Ts.value(m.thread)), shown, at, request, by)
                     .left
                     .map(_.toString)
                     .map { recorded =>
                       if (!recorded)
                         said(
-                          s"slack: grit's post ${Ts.value(m.thread)} not recorded: its thread has begun"
+                          s"slack: grit's post ${Ts.value(m.thread)} not recorded: it is recorded already, or its thread began without it"
                         )
                     }
                 case _ =>
@@ -836,10 +885,16 @@ object SlackEdge {
     * deployment trusts it there, it says who each account is as Slack states it
     * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
     * the workspace's users once when any account is due. Each reply it delivers is noted as
-    * `note` says ([[ReplyNote]]).
+    * `note` says ([[ReplyNote]]), and each message recorded in the conversation
+    * `conversations` names for it.
     */
-  def serving(command: SlackCommand, backfill: Backfill, note: ReplyNote): ServedEdge =
-    serving(command, backfill, None, None, note)
+  def serving(
+      command: SlackCommand,
+      backfill: Backfill,
+      note: ReplyNote,
+      conversations: Conversations
+  ): ServedEdge =
+    serving(command, backfill, None, None, note, conversations)
 
   /** As [[serving]], posting when `posting` is given, and answering `review` when given.
     * With `posting`, it serves `slack_post` at [[PostsAt]]'s place, in every channel its bot is
@@ -861,9 +916,19 @@ object SlackEdge {
       backfill: Backfill,
       posting: Option[Rate],
       review: Option[SlackReview],
-      note: ReplyNote
+      note: ReplyNote,
+      conversations: Conversations
   ): ServedEdge =
-    Served.serving(command, backfill, posting, review, note, Socket, Backfilling.Virtual)
+    Served.serving(
+      command,
+      backfill,
+      posting,
+      review,
+      note,
+      conversations,
+      Socket,
+      Backfilling.Virtual
+    )
 
   /** Triage's review, over `reviews`, as an edge of `team` prompts for it: each prompt of the
     * heard message it names in `team`'s Slack, the bold question "Would a reply here have been
@@ -878,19 +943,24 @@ object SlackEdge {
     Prompting(
       reviews,
       p => EntryId.value(p.entry),
-      p =>
+      p => {
+        def in(channel: String): Prompting.Of =
+          InboundId.source(p.entry) match {
+            case Some((_, source)) =>
+              Prompting.Of.Message(ChannelId(channel), Ts(SourceId.value(source)))
+            case None =>
+              Prompting.Of.Elsewhere(
+                Some(s"slack: the review's ${EntryId.value(p.entry)} names no Slack message")
+              )
+          }
+        val ours = TeamId.value(team)
         p.origin match {
-          case Origin.Slack(t, channel, _) if t == TeamId.value(team) =>
-            InboundId.source(p.entry) match {
-              case Some((_, source)) =>
-                Prompting.Of.Message(ChannelId(channel), Ts(SourceId.value(source)))
-              case None =>
-                Prompting.Of.Elsewhere(
-                  Some(s"slack: the review's ${EntryId.value(p.entry)} names no Slack message")
-                )
-            }
+          case Origin.Slack(t, channel, _) if t == ours => in(channel)
+          case Origin.Room(t, channel) if t == ours => in(channel)
+          case Origin.Thread(t, channel, _) if t == ours => in(channel)
           case _ => Prompting.Of.Elsewhere(None)
-        },
+        }
+      },
       _ => None,
       // Every prompt of triage's is of a message, so linked is always given.
       (_, linked, _) =>
@@ -935,11 +1005,12 @@ object SlackEdge {
     * opens that the database has not recorded, one [[grit.core.edge.Unheard]] per channel, in
     * the channel's room; heard at the times it was said, a past mention of grit never
     * answered, each author checked first as [[serving]]'s edge checks one. Which channels the
-    * bot is in is read from Slack and recorded as [[serving]]'s open records it. Refused when
-    * the bot is in none, or Slack will not list them.
+    * bot is in is read from Slack and recorded as [[serving]]'s open records it, each message
+    * in the conversation `conversations` names for it. Refused when the bot is in none, or
+    * Slack will not list them.
     */
-  def backfill(days: Int): CatchUp =
-    Served.backfill(days, Socket)
+  def backfill(days: Int, conversations: Conversations): CatchUp =
+    Served.backfill(days, conversations, Socket)
 
   /** The team grit's bot token, `SLACK_BOT_TOKEN`, is installed in (`auth.test`): the
     * workspace [[serving]]'s edge attests, which a deployment trusts by default for it. Refused,

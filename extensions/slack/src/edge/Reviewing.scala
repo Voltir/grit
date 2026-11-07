@@ -232,6 +232,8 @@ private[slack] final class Reviewing(
     stores.jot.write(Subject.Room(place))(stores.origins.of(conversation)) match {
       case Right(Some(Origin.Slack(team, channel, thread))) if team == TeamId.value(self.team) =>
         slack.permalink(ChannelId(channel), Ts(thread)).toOption
+      case Right(Some(Origin.Thread(team, channel, thread))) if team == TeamId.value(self.team) =>
+        slack.permalink(ChannelId(channel), Ts(thread)).toOption
       case _ => None
     }
 }

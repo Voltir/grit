@@ -174,9 +174,15 @@ final class SqlInbox(
       by: Account
   ): Either[InboxError, Boolean] =
     inTransaction {
+      // A channel's top level takes each post as a turn of its own, by its source; any other
+      // origin's post is its conversation's first entry, or nothing.
+      val top = origin match {
+        case Origin.Room(_, _) => true
+        case _ => false
+      }
       conversations.find(origin).flatMap {
-        case Some(_) => Right(false)
-        case None =>
+        case Some(_) if !top => Right(false)
+        case _ =>
           for {
             label <- recorder.roomOf(origin)
             conversation <- conversations.findOrCreate(origin, by, label)
@@ -184,10 +190,10 @@ final class SqlInbox(
             // holds is settled.
             next <- entries.lockNext(conversation.id)
             before <- entries.list(conversation.id)
+            id = InboundId.of(conversation.id, source)
             recorded <-
-              if (before.nonEmpty) Right(false)
+              if (if (top) before.exists(_.id == id) else before.nonEmpty) Right(false)
               else {
-                val id = InboundId.of(conversation.id, source)
                 for {
                   _ <- periods.openFor(conversation.id, next.turnSeq, at)
                   // grit's words, believed as the turn that posted them was then.
@@ -204,7 +210,8 @@ final class SqlInbox(
                       posting
                     )
                   )
-                  _ <- SqlInbox.madeBy(id, conversation.id, request)
+                  // grit.posted keeps one post a conversation: a thread's opening, never a room's.
+                  _ <- if (top) Right(()) else SqlInbox.madeBy(id, conversation.id, request)
                 } yield true
               }
           } yield recorded

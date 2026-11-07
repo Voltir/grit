@@ -152,7 +152,16 @@ object ServedTests extends TestSuite {
     /** The edge as `serving` makes it, opened on `at`; logged in [[logged]]. */
     def openAt(at: Clock^): ServedEdge.Open^{this, at} =
       Served
-        .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, connect, Inline)
+        .serving(
+          Grit,
+          Backfill.Default,
+          None,
+          None,
+          ReplyNote.Off,
+          Conversations.PerThread,
+          connect,
+          Inline
+        )
         .open(stores, Env, at, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -163,7 +172,16 @@ object ServedTests extends TestSuite {
       */
     def openPosting(): ServedEdge.Open^{this} =
       Served
-        .serving(Grit, Backfill.Default, Some(TwoAnHour), None, ReplyNote.Off, connect, Inline)
+        .serving(
+          Grit,
+          Backfill.Default,
+          Some(TwoAnHour),
+          None,
+          ReplyNote.Off,
+          Conversations.PerThread,
+          connect,
+          Inline
+        )
         .open(stores, Env, clock, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -318,7 +336,16 @@ object ServedTests extends TestSuite {
       (
         refusal(
           Served
-            .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+            .serving(
+              Grit,
+              Backfill.Default,
+              None,
+              None,
+              ReplyNote.Off,
+              Conversations.PerThread,
+              w.connect,
+              Inline
+            )
             .open(w.stores, Env, w.clock, _ => ())
         ),
         w.slack.closed
@@ -332,7 +359,16 @@ object ServedTests extends TestSuite {
       val w = new World
       val review = reviewAt(Team, "C123ABC456")
       Served
-        .serving(Grit, Backfill.Default, None, Some(review), ReplyNote.Off, w.connect, Inline)
+        .serving(
+          Grit,
+          Backfill.Default,
+          None,
+          Some(review),
+          ReplyNote.Off,
+          Conversations.PerThread,
+          w.connect,
+          Inline
+        )
         .open(w.stores, Env, w.clock, w.logged :+= _) match {
         case Right(o) => o.close()
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -353,6 +389,7 @@ object ServedTests extends TestSuite {
             None,
             Some(review),
             ReplyNote.Off,
+            Conversations.PerThread,
             new World().connect,
             Inline
           )
@@ -364,6 +401,7 @@ object ServedTests extends TestSuite {
             Some(TwoAnHour),
             None,
             ReplyNote.Off,
+            Conversations.PerThread,
             new World().connect,
             Inline
           )
@@ -381,6 +419,7 @@ object ServedTests extends TestSuite {
             None,
             Some(reviewAt("T0OTHER01", "C0REVIEW1")),
             ReplyNote.Off,
+            Conversations.PerThread,
             w.connect,
             Inline
           )
@@ -435,7 +474,16 @@ object ServedTests extends TestSuite {
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
       val edge =
-        Served.serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+        Served.serving(
+          Grit,
+          Backfill.Default,
+          None,
+          None,
+          ReplyNote.Off,
+          Conversations.PerThread,
+          w.connect,
+          Inline
+        )
       def refused(env: Map[String, String]) = refusal(edge.open(w.stores, env, w.clock, _ => ()))
       refused(Map("SLACK_APP_TOKEN" -> "xapp-1")) ==>
         Some(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN")))
@@ -452,7 +500,16 @@ object ServedTests extends TestSuite {
       val review = reviewAt(Team, "C0REVIEW1")
       val open =
         Served
-          .serving(Grit, Backfill.Default, None, Some(review), ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            Some(review),
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -475,7 +532,16 @@ object ServedTests extends TestSuite {
       val w = new World
       val _ =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ())
       val _ = w.slack.command(command("help"))
       val _ = w.slack.command(command("help", name = "/other"))
@@ -486,7 +552,16 @@ object ServedTests extends TestSuite {
       val w = new World
       val _ =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ())
       w.slack.deliver(mention("1.0")) ==> true
       val t = w.inbox
@@ -532,7 +607,16 @@ object ServedTests extends TestSuite {
       val w = new World
       val open =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -556,7 +640,16 @@ object ServedTests extends TestSuite {
       val dated = new DatedAcknowledgements(w.acknowledgements)
       val open =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores.copy(acknowledgements = dated), Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -580,7 +673,16 @@ object ServedTests extends TestSuite {
       var logged: Vector[String] = Vector.empty
       val open =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, logged :+= _) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -666,7 +768,16 @@ object ServedTests extends TestSuite {
       w.slack.down = true
       refusal(
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ())
       ) ==>
         Some(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
@@ -677,9 +788,18 @@ object ServedTests extends TestSuite {
       val w = new World
       (
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .attester,
-        Served.backfill(1, w.connect).attester
+        Served.backfill(1, Conversations.PerThread, w.connect).attester
       ) ==>
         (Some(SlackAccounts.Attester), Some(SlackAccounts.Attester))
     }
@@ -687,7 +807,16 @@ object ServedTests extends TestSuite {
     test("serving says its replies show as RichText draws them") {
       val w = new World
       Served
-        .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+        .serving(
+          Grit,
+          Backfill.Default,
+          None,
+          None,
+          ReplyNote.Off,
+          Conversations.PerThread,
+          w.connect,
+          Inline
+        )
         .renders ==> Some(grit.slack.text.RichText.Shown)
     }
 
@@ -698,7 +827,16 @@ object ServedTests extends TestSuite {
       w.voucher.saw(TestAccounts.account(s"slack:$Team/$Ana"))
       val open =
         Served
-          .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, w.connect, Inline)
+          .serving(
+            Grit,
+            Backfill.Default,
+            None,
+            None,
+            ReplyNote.Off,
+            Conversations.PerThread,
+            w.connect,
+            Inline
+          )
           .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -712,7 +850,9 @@ object ServedTests extends TestSuite {
       w.slack.histories =
         Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hm")))
       val open =
-        Served.backfill(3, w.connect).open(w.stores, Env, w.clock, _ => ()) match {
+        Served
+          .backfill(3, Conversations.PerThread, w.connect)
+          .open(w.stores, Env, w.clock, _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
         }
@@ -746,7 +886,16 @@ object ServedTests extends TestSuite {
 
     test("serving says its asks are answered") {
       Served
-        .serving(Grit, Backfill.Default, None, None, ReplyNote.Off, new World().connect, Inline)
+        .serving(
+          Grit,
+          Backfill.Default,
+          None,
+          None,
+          ReplyNote.Off,
+          Conversations.PerThread,
+          new World().connect,
+          Inline
+        )
         .asks ==> ServedEdge.Asks.Answered
     }
 
@@ -768,7 +917,7 @@ object ServedTests extends TestSuite {
       val now = Instant.ofEpochSecond(86_400 * 3)
       val open =
         Served
-          .backfill(3, w.connect)
+          .backfill(3, Conversations.PerThread, w.connect)
           .open(w.stores, Env, new SetClock(now), _ => ()) match {
           case Right(o) => o
           case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -782,7 +931,7 @@ object ServedTests extends TestSuite {
       )
       open.hear() ==> Right(())
       Served
-        .backfill(3, w.connect)
+        .backfill(3, Conversations.PerThread, w.connect)
         .open(w.stores, Env, new SetClock(now), _ => ()) match {
         case Right(again) =>
           again.unheard ==> Vector(
@@ -802,7 +951,7 @@ object ServedTests extends TestSuite {
       w.slack.channelNames = w.slack.channelNames + (First -> "general")
       w.slack.unreachable = Set(First)
       refusal(
-        Served.backfill(3, w.connect).open(w.stores, Env, w.clock, _ => ())
+        Served.backfill(3, Conversations.PerThread, w.connect).open(w.stores, Env, w.clock, _ => ())
       ) ==> Some(EdgeRefusal.Refused("C0AAAAAAAA1 not read: Unreachable(gone)"))
       w.slack.closed ==> true
     }
@@ -813,7 +962,7 @@ object ServedTests extends TestSuite {
       val w = new World
       w.slack.notIn = Set(C)
       refusal(
-        Served.backfill(2, w.connect).open(w.stores, Env, w.clock, _ => ())
+        Served.backfill(2, Conversations.PerThread, w.connect).open(w.stores, Env, w.clock, _ => ())
       ) ==> Some(
         EdgeRefusal.Refused("grit's bot is a member of no channel: there is nothing to backfill")
       )

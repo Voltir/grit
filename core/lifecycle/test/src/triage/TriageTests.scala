@@ -99,6 +99,27 @@ object TriageTests extends TestSuite {
   /** What a triage logs of the placement of a room's first opening, which nothing is offered. */
   private val Unoffered = "placed: nothing asked; "
 
+  /** What triage recorded as the assistant's reply to a message heard in a channel's top level,
+    * after grit replied there to another, and, when `underReply`, in the thread under it; and
+    * that thread reply's id when there is one.
+    */
+  private def roomSpoken(
+      underReply: Boolean
+  ): (Vector[Option[grit.core.id.EntryId]], Option[grit.core.id.EntryId]) = {
+    given Tx = TestTx.fake
+    val w = new World
+    val room = w.conversationAt(grit.core.store.Origin.Room("T", "C"))
+    val t = w.hear("is the freeze on?", "Ana", 0, in = room, source = Some("5.0"))
+    w.hear("lunch?", "Bo", 1, in = room)
+    w.reply("Noon.", 2, in = room)
+    val under =
+      if (underReply)
+        Some(w.reply("It is.", 3, w.conversationAt(grit.core.store.Origin.Thread("T", "C", "5.0"))))
+      else None
+    new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
+    (w.speech.decisions.map(_._1.cues.spoken), under.map(_.id))
+  }
+
   val tests = Tests {
     test(
       "a triage asks live's question set about the state TriageInput.build makes, with the sources covering its conversation"
@@ -623,6 +644,14 @@ object TriageTests extends TestSuite {
         case other =>
           throw new java.lang.AssertionError(s"one decision with a record match, not $other")
       }
+    }
+
+    test(
+      "in a channel's top level, grit's reply to another message is not the assistant's reply to this one; its reply in the thread under it is"
+    ) {
+      val (aside, _) = roomSpoken(underReply = false)
+      val (inThread, reply) = roomSpoken(underReply = true)
+      (aside, inThread) ==> (Vector(None), Vector(reply))
     }
 
     test(

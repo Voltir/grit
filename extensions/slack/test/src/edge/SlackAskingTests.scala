@@ -105,6 +105,7 @@ object SlackAskingTests extends TestSuite {
         stores,
         None,
         ReplyNote.Off,
+        grit.slack.edge.Conversations.PerThread,
         Stopped,
         s => logged = logged :+ s
       )

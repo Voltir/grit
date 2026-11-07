@@ -170,6 +170,7 @@ object RunRetentionLiveTests extends TestSuite {
           ),
           None,
           grit.slack.edge.ReplyNote.Off,
+          grit.slack.edge.Conversations.PerThread,
           clock,
           _ => ()
         )

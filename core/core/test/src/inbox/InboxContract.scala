@@ -892,6 +892,24 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "a post in a channel's top level is a turn of its own after what it holds, its call not kept; a source recorded already records nothing"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val room = Origin.Room("T1", "posting")
+        inbox.hear(room, SourceId("1.0"), "morning", Account.Local, Said, Reach.Nowhere, None) ==>
+          Right(())
+        inbox.posted(room, SourceId("2.0"), "grit's post", PostedAt, Asking, Account.Local) ==>
+          Right(true)
+        inbox.posted(room, SourceId("2.0"), "grit's post", PostedAt, Asking, Account.Local) ==>
+          Right(false)
+        inbox.posted(room, SourceId("1.0"), "not this", PostedAt, Asking, Account.Local) ==>
+          Right(false)
+        (store.written(room).map(_._1), store.postedBy(room)) ==>
+          (Vector(Payload.Heard("morning"), Payload.Posted("grit's post")), None)
+      }
+    }
+
     test("a post records nothing once its origin has anything, a repeat of itself included") {
       withInbox(Uncapped) { (inbox, store) =>
         val heard = Origin.Task("inbox", "posted-late")

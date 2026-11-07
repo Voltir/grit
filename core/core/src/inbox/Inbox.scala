@@ -103,10 +103,12 @@ trait Inbox extends caps.SharedCapability {
 
   /** Records `text`, grit's post that `origin`'s thread begins with, as its conversation's
     * first entry ([[grit.core.store.Payload.Posted]]), dated `at`, its source `source`, made by
-    * the hosted call at `request` ([[grit.core.store.ConversationStore.postedBy]]); the
-    * conversation is created by `by`, at its room's label, an account not seen before kept as a
-    * new person's one account. `true` when this call recorded it; `false`, recording
-    * nothing, when anything is recorded for `origin` already, a repeat included. Never
+    * the hosted call at `request` ([[grit.core.store.ConversationStore.postedBy]]); or, in a
+    * channel's top level ([[grit.core.store.Origin.Room]]), as the first entry of a turn of its
+    * own after what it holds, its call not kept. The conversation is created by `by`, at its
+    * room's label, an account not seen before kept as a new person's one account. `true` when
+    * this call recorded it; `false`, recording nothing, when `source` is recorded for `origin`
+    * already, a repeat included, or, but in a channel's top level, anything is. Never
     * triaged, never a turn that runs, never refused over the day's cap.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]]: grit's posts begin no
     * direct message.

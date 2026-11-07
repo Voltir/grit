@@ -107,7 +107,9 @@ import Backfills.*
   *     `GRIT_SLACK_COMMAND` names (default `/grit`, as registered for the Slack app) to its
   *     asker alone ([[SlackEdge.command]]), and notes under a reply answered above standard what
   *     `GRIT_SLACK_REPLY_NOTE` says ([[replyNote]]: `off`, `strength` by default, or
-  *     `strength-cost`); the Slack users `GRIT_ADMINS` names (ids,
+  *     `strength-cost`), and records a channel's messages as `GRIT_SLACK_CONVERSATIONS` says
+  *     ([[slackConversations]]: `threads` by default, or `rooms`, ADR 0060), as `grit backfill`
+  *     does; the Slack users `GRIT_ADMINS` names (ids,
   *     comma-separated) administer ([[visibility]]), and with none it says at start that no one
   *     can lower a room's label, label a public channel or set a room's baseline. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. With
@@ -237,7 +239,8 @@ object Main {
                PlaceNames.of(driveEdge.map(_.names).toVector)
              ),
              exitOnLeft(Backfill.read(env)),
-             exitOnLeft(replyNote(env))
+             exitOnLeft(replyNote(env)),
+             exitOnLeft(slackConversations(env))
            )
          )
        else Vector.empty) ++ githubEdge.map(_.edge) ++ driveEdge.map(_.edge)
@@ -343,11 +346,12 @@ object Main {
       else if (backfilling)
         Backfill
           .days(env)
-          .flatMap { days =>
+          .flatMap(days => slackConversations(env).map(days -> _))
+          .flatMap { (days, conversations) =>
             Kit
               .catchUp(
                 deployment,
-                SlackEdge.backfill(days),
+                SlackEdge.backfill(days, conversations),
                 env,
                 agreed(args.contains("--yes")),
                 println

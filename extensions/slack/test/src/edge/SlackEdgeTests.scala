@@ -120,7 +120,8 @@ object SlackEdgeTests extends TestSuite {
       review: Option[SlackReview] = None,
       reconciled: Boolean = true,
       note: ReplyNote = ReplyNote.Off,
-      spendReadable: Boolean = true
+      spendReadable: Boolean = true,
+      conversations: Conversations = Conversations.PerThread
   ) {
     val slack = new FakeSlack
     private val voucher =
@@ -174,7 +175,7 @@ object SlackEdgeTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var logged: Vector[String] = Vector.empty
 
-    def edge(): SlackEdge^{this} =
+    def edge(conversations: Conversations = conversations): SlackEdge^{this} =
       new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot), grit.core.id.Href.of("https://acme.slack.com/")),
@@ -196,6 +197,7 @@ object SlackEdgeTests extends TestSuite {
         ),
         review,
         note,
+        conversations,
         Stopped,
         s => logged = logged :+ s
       )
@@ -203,6 +205,12 @@ object SlackEdgeTests extends TestSuite {
     /** The entries of the thread rooted at `thread`, in order. */
     def written(thread: String): Vector[Payload] =
       inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.payload)
+      }
+
+    /** The entries of `origin`'s conversation, in order. */
+    def payloadsOf(origin: Origin): Vector[Payload] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
         inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.payload)
       }
 
@@ -352,6 +360,10 @@ object SlackEdgeTests extends TestSuite {
 
   private def tag(turn: TurnRef, part: Int): Tag =
     Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
+
+  /** [[C]]'s top level as a conversation, and the thread under its message `ts` (ADR 0060). */
+  private val InRoom: Origin = Origin.Room(Team, "C123ABC456")
+  private def Under(ts: String): Origin = Origin.Thread(Team, "C123ABC456", ts)
 
   /** [[C]]'s room, and the team's rooms it is within. */
   private val Room: grit.core.place.Place = Origin.channel(Team, "C123ABC456")
@@ -581,6 +593,80 @@ object SlackEdgeTests extends TestSuite {
       )
       w.postedBy(root) ==> Some(Asking)
       w.inbox.started ==> Vector(w.turn(root, "9.1"))
+    }
+
+    test(
+      "with rooms, every top-level message is a turn of its channel's room, a mention said to grit and the rest heard; a reply is heard in its own thread"
+    ) {
+      val w = new World(conversations = Conversations.PerRoom)
+      w.slack.deliver(message("1.0", "is the freeze on Thursday?")) ==> true
+      w.slack.deliver(mention("2.0")) ==> true
+      w.slack.deliver(message("1.1", "it is", Some("1.0"))) ==> true
+      val said = w.inbox.ingested(InRoom, SourceId("2.0")).getOrElse(None)
+      w.inbox.started ==> said.toVector
+      w.payloadsOf(InRoom).collect { case Payload.Heard(t) => t } ==>
+        Vector("is the freeze on Thursday?")
+      w.payloadsOf(InRoom).size ==> 2
+      w.payloadsOf(Under("1.0")) ==> Vector(Payload.Heard("it is"))
+      w.inbox.conversations.all.exists(_.origin == w.origin("1.0")) ==> false
+    }
+
+    test(
+      "with rooms, a reply under a message said to grit is said to grit, and one under a heard message is heard unless it mentions grit"
+    ) {
+      val w = new World(conversations = Conversations.PerRoom)
+      w.slack.deliver(mention("2.0")) ==> true
+      w.slack.deliver(message("2.1", "and the date?", Some("2.0"))) ==> true
+      w.slack.deliver(message("3.0", "lunch?")) ==> true
+      w.slack.deliver(message("3.1", "noon", Some("3.0"))) ==> true
+      w.slack.deliver(mentionIn("3.0", "3.2")) ==> true
+      def turnIn(origin: Origin, ts: String) =
+        w.inbox.ingested(origin, SourceId(ts)).getOrElse(None).toVector
+      w.inbox.started ==>
+        turnIn(InRoom, "2.0") ++ turnIn(Under("2.0"), "2.1") ++ turnIn(Under("3.0"), "3.2")
+      w.payloadsOf(Under("3.0")).collect { case Payload.Heard(t) => t } ==> Vector("noon")
+    }
+
+    test(
+      "with rooms, a reply in a thread recorded before rooms joins it, said to grit as its root was; a message heard there before is not heard again"
+    ) {
+      val w = new World(conversations = Conversations.PerRoom)
+      val before = w.edge(Conversations.PerThread)
+      before.receive(mention("4.0")) ==> true
+      before.receive(message("5.0", "standup moved")) ==> true
+      w.slack.deliver(message("4.1", "and the date?", Some("4.0"))) ==> true
+      w.slack.deliver(message("5.1", "to ten", Some("5.0"))) ==> true
+      w.slack.deliver(message("5.0", "standup moved")) ==> true
+      w.inbox.started.drop(1) ==> Vector(w.turn("4.0", "4.1"))
+      w.heard("5.0").map(_._1) ==> Vector("standup moved", "to ten")
+      w.inbox.conversations.all.map(_.origin).filter(o => o == InRoom || o.rolls) ==> Vector.empty
+    }
+
+    test(
+      "with rooms, replies under grit's post record the post in its room once, as a turn of its own, then each reply in its thread"
+    ) {
+      val w = new World(conversations = Conversations.PerRoom)
+      w.slack.deliver(message("8.0", "morning")) ==> true
+      val root = w.post(Asking)
+      w.slack.deliver(message("9.1", "why this?", Some(root))) ==> true
+      w.slack.deliver(message("9.2", "no idea", Some(root))) ==> true
+      w.payloadsOf(InRoom) ==>
+        Vector(Payload.Heard("morning"), Payload.Posted("The engine's open issues."))
+      w.payloadsOf(Under(root)) ==> Vector(Payload.Heard("why this?"), Payload.Heard("no idea"))
+    }
+
+    test("with rooms, backfill hears a top-level message in its room and a reply in its thread") {
+      val w = new World(conversations = Conversations.PerRoom)
+      w.slack.histories = Map(
+        C -> Vector(
+          Listed(Ts("1.0"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "is the freeze on?"),
+          Listed(Ts("1.1"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "it is")
+        )
+      )
+      w.first.unheard(C, java.time.Instant.EPOCH).flatMap(w.first.backfill) ==> Right(())
+      w.payloadsOf(InRoom) ==> Vector(Payload.Heard("is the freeze on?"))
+      w.payloadsOf(Under("1.0")) ==> Vector(Payload.Heard("it is"))
+      w.first.unheard(C, java.time.Instant.EPOCH) ==> Right(Vector.empty)
     }
 
     test("heard replies under grit's post record the post once, before the first") {
