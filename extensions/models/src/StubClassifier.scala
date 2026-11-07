@@ -1,7 +1,7 @@
 package grit.models
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.Usage
 
 /** A [[Classifier]] that calls no model, for tests and the gate: [[StubClassifier.answers]],
   * at no cost.
@@ -58,7 +58,7 @@ object StubClassifier {
           val position = ps.zipWithIndex.map((p, i) => p * i).sum
           Answer.Score(position, ps, Answer.scoreConfidence(ps))
       },
-      Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
+      Usage.Zero,
       Model
     )
   }

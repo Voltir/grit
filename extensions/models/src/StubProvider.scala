@@ -1,7 +1,7 @@
 package grit.models
 
 import grit.core.id.ToolCallId
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.prompt.Tag
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse}
 
@@ -88,7 +88,7 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
         AssistantBlock.ToolCall(StubProvider.CallId, name, args)
       ),
       if (call.nonEmpty) StopReason.ToolUse else StopReason.EndTurn,
-      Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
+      Usage.Zero,
       StubProvider.Model
     )
   }
