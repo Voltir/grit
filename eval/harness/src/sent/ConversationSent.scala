@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.store.{Entry, Tx}
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 
 /** A conversation's turns as their models were sent them: `turns`, each [[TurnSent]], oldest
   * first, and `entries`, every entry the conversation keeps, in order.
@@ -41,6 +42,6 @@ object ConversationSent {
       entries <- reader.all
         .read((tx: Tx^) ?=> reader.entries.list(conversation)(using tx))
         .left
-        .map(e => s"the entries of ${ConversationId.value(conversation)} unread: ${e.kind}")
+        .map(Unread.said(s"the entries of ${ConversationId.value(conversation)}"))
     } yield ConversationSent(turns, entries)
 }

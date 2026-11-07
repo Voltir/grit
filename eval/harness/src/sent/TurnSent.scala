@@ -15,7 +15,7 @@ import grit.core.store.{Entry, Payload, StoreError, Tx}
 import grit.core.tool.{ToolSet, ToolSetId}
 import grit.core.triage.Tags
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Spent
+import grit.eval.harness.capture.{Spent, Unread}
 import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
 
 /** A recorded turn as its model was sent it, with the decisions that led there: its
@@ -173,11 +173,11 @@ object TurnSent {
   def read(reader: Reader^, workflow: WorkflowId): Either[String, TurnSent] = {
     val id = WorkflowId.value(workflow)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.all.read(body).left.map(e => s"$what of $id unread: ${e.kind}")
+      reader.all.read(body).left.map(Unread.said(s"$what of $id"))
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$id is not a turn's workflow id")
       recorded <- reader.workflow(workflow).toRight(s"DBOS does not know $id")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $id unread: ${e.kind}")
+      steps <- reader.steps(workflow).left.map(Unread.said(s"steps of $id"))
       offered <- TurnRecord.offer(steps).flatMap(_.toRight(s"$id recorded no offer"))
       conversation <- read("conversation")(reader.conversations.get(turn.conversationId))
         .flatMap(_.toRight(s"the conversation of $id is gone"))
@@ -188,7 +188,7 @@ object TurnSent {
       calls <- reader.all
         .read((tx: Tx^) ?=> Right(TurnRecord.requests(turn, steps, reads(reader))))
         .left
-        .map(e => s"requests of $id unread: ${e.kind}")
+        .map(Unread.said(s"requests of $id"))
         .flatten
       rows <- read("ledger")(reader.ledger.of(workflow))
       all <- read("conversation's entries")(reader.entries.list(turn.conversationId))

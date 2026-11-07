@@ -8,9 +8,9 @@ import grit.core.clock.Fresh
 import grit.core.context.{CarriedWindow, Shown}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
-import grit.core.store.{Entry, Nearby, Payload, Speakers, StoreError}
+import grit.core.store.{Entry, Nearby, Payload, Speakers}
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{CaseId, Drafted, Ended, Part, Said, TurnCase}
+import grit.eval.harness.capture.{CaseId, Drafted, Ended, Part, Said, TurnCase, Unread}
 import grit.eval.harness.label.{Found, Locator, ReplyGuide, ReplyLabel, ReplyLabels}
 import grit.prose.either.Traversal
 import grit.turn.{Turn, TurnOffer}
@@ -248,7 +248,7 @@ object ReplyReview {
     */
   def read(reader: Reader^, t: TurnCase, records: Boolean): Either[String, Reviewed] = {
     val w = WorkflowId.value(t.workflow)
-    def unread(what: String)(e: StoreError) = s"$w: $what unread: ${e.kind}"
+    def unread(what: String) = Unread.said(s"$w: $what")
     val ref = TurnRef(t.conversation, t.turn)
     for {
       all <- reader.all.read(reader.entries.list(t.conversation)).left.map(unread("entries"))

@@ -11,7 +11,7 @@ import grit.core.period.Probability
 import grit.core.provider.Provider
 import grit.core.secret.Secret
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.capture.CaptureJson
+import grit.eval.harness.capture.{CaptureJson, Unread}
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.log.Cache
 import grit.eval.harness.reply.{
@@ -168,10 +168,8 @@ private[main] object RebuildCommands {
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       counted <- opened(config) { reader =>
         val now = clock.now()
-        def unread(what: String)(e: grit.core.store.StoreError) =
-          s"$what unread: ${e.kind}"
         for {
-          workflows <- reader.turns(manifest.dump.at).left.map(unread("turn workflows"))
+          workflows <- reader.turns(manifest.dump.at).left.map(Unread.said("turn workflows"))
           windows = workflows.map((w, _) =>
             w -> Rebuild
               .redrawn(reader, w, assembled, Width.Deployed, now)
@@ -179,11 +177,11 @@ private[main] object RebuildCommands {
                 reader.all
                   .read(reader.documents.read(drawn.documents.distinct))
                   .left
-                  .map(unread("its documents"))
+                  .map(Unread.said("its documents"))
               )
           )
           roots = Duplication.roots(windows.flatMap(_._2.toOption).flatten)
-          links <- reader.all.read(reader.stitches.links(roots)).left.map(unread("links"))
+          links <- reader.all.read(reader.stitches.links(roots)).left.map(Unread.said("links"))
         } yield Duplication.of(windows, links)
       }
     } yield counted.lines.foreach(println)

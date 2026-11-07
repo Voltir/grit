@@ -8,6 +8,7 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** What Jev was asked of a heard message, and what it answered: the `entry`, its `turn`; the
@@ -48,7 +49,7 @@ object HeardSent {
   ): Either[String, HeardSent] = {
     val id = EntryId.value(entry)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.all.read(body).left.map(e => s"$what of $id unread: ${e.kind}")
+      reader.all.read(body).left.map(Unread.said(s"$what of $id"))
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
@@ -74,7 +75,7 @@ object HeardSent {
           Stitching
             .offered(reads, reader.db.as(Subject.Conversation(turn.conversationId)), turn, tuning)
             .left
-            .map(e => s"stitch of $id unread: ${e.kind}")
+            .map(Unread.said(s"stitch of $id"))
       tags <- read("tags")(reader.triage.of(Vector(entry))).map(_.get(entry))
     } yield {
       val set = TriageQuestions.shipped(persona)

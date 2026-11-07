@@ -40,7 +40,7 @@ object Capture {
       reader.principals
     )
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.all.read(body).left.map(e => s"$what unread: ${e.kind}")
+      reader.all.read(body).left.map(Unread.said(what))
     def originOf(c: ConversationId): Either[String, Option[Origin]] =
       read("conversation")(reader.conversations.get(c)).map(_.map(_.origin))
     def opening(c: ConversationId): Either[String, CaseId] =
@@ -49,7 +49,7 @@ object Capture {
       )
     for {
       tagged <- read("tags")(reader.triage.tagged(Instant.EPOCH, dump.at))
-      starts <- reader.starts().left.map(e => s"engine starts unread: ${e.kind}")
+      starts <- reader.starts().left.map(Unread.said("engine starts"))
       settings <- read("settings")(reader.lifecycle.current())
       placed <- traverse(tagged)(t =>
         read("placement")(reader.stitches.placed(t.entry)).map(t -> _)

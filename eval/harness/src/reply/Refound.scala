@@ -11,6 +11,7 @@ import grit.core.place.Place
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 
@@ -155,7 +156,7 @@ object Refound {
     val name = WorkflowId.value(workflow)
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${e.kind}")
+      steps <- reader.steps(workflow).left.map(Unread.said(s"steps of $name"))
       searched <- TurnRecord
         .retrieval(steps)
         .left
@@ -170,7 +171,7 @@ object Refound {
             kept <- reader.all
               .read(reader.documents.read(versions.distinct))
               .left
-              .map((e: StoreError) => s"the documents $name followed unread: ${e.kind}")
+              .map(Unread.said(s"the documents $name followed"))
             // `shipped` reads through an `AsOf`; at the dump it hides nothing, as a restored
             // capture is never written after it. Its documents are read at the dump, not at the
             // turn's root, where the shipped assembler draws them: the index as it is now.

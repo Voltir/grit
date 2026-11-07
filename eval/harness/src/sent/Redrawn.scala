@@ -16,6 +16,7 @@ import grit.core.provider.{ModelRequest, TokenEstimator}
 import grit.core.store.{Entry, Payload, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.turn.{Turn, TurnRecord}
 
 /** A boundary's first call by part, in tokens: its system prompt and tools; the task it goes on
@@ -210,7 +211,7 @@ object Redrawn {
       case (acc, (t, record, first, row)) =>
         val named = s"turn ${TurnSeq.value(t.turn.turnSeq)}"
         def kept[A](what: String)(read: Either[grit.core.store.StoreError, A]) =
-          read.left.map(e => s"$named: $what unread: ${e.kind}")
+          read.left.map(Unread.said(s"$named: $what"))
         acc.flatMap { done =>
           for {
             _ <- Either.cond(record.brief.isEmpty, (), s"$named: its window held a brief")

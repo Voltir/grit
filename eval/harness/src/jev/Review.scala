@@ -3,11 +3,10 @@ package grit.eval.harness.jev
 import grit.core.classify.Request
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{StitchReads, Stitching, Tuning}
-import grit.core.store.StoreError
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{Case, CaseId}
+import grit.eval.harness.capture.{Case, CaseId, Unread}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** A case's inputs as the shipped builders make them, text and all, for a person to read
@@ -78,7 +77,7 @@ object Review {
       reader.principals
     )
     val under = c.tuning.getOrElse(tuning)
-    def unread(what: String)(e: StoreError): String = s"${c.id.written}: $what unread: ${e.kind}"
+    def unread(what: String) = Unread.said(s"${c.id.written}: $what")
     for {
       ref <- TriageRef
         .fromWorkflowId(c.triage.workflow)

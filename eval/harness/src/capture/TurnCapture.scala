@@ -33,10 +33,10 @@ object TurnCapture {
     */
   def apply(reader: Reader^, dump: Dump): Either[String, Turns] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]) =
-      reader.all.read(body).left.map(e => s"$what unread: ${e.kind}")
+      reader.all.read(body).left.map(Unread.said(what))
     for {
-      workflows <- reader.turns(dump.at).left.map(e => s"turn workflows unread: ${e.kind}")
-      starts <- reader.starts().left.map(e => s"engine starts unread: ${e.kind}")
+      workflows <- reader.turns(dump.at).left.map(Unread.said("turn workflows"))
+      starts <- reader.starts().left.map(Unread.said("engine starts"))
       current <- read("current documents")(reader.current())
       pointers = current.flatMap(_.pointer)
       cases <- Traversal.traverse(workflows) { (workflow, recorded) =>
@@ -79,7 +79,7 @@ object TurnCapture {
       reader.all
         .read(body)
         .left
-        .map(e => s"$what of ${WorkflowId.value(turn.workflowId)} unread: ${e.kind}")
+        .map(Unread.said(s"$what of ${WorkflowId.value(turn.workflowId)}"))
     val mine = all.filter(_.turnSeq == turn.turnSeq).sortBy(e => EntrySeq.value(e.seq))
     val said: Option[(Entry, Said)] = mine.headOption.flatMap { first =>
       origin match {
@@ -119,7 +119,7 @@ object TurnCapture {
           steps <- reader
             .steps(turn.workflowId)
             .left
-            .map(e => s"steps of ${WorkflowId.value(turn.workflowId)} unread: ${e.kind}")
+            .map(Unread.said(s"steps of ${WorkflowId.value(turn.workflowId)}"))
           tags <-
             if (heard) read("tags")(reader.triage.of(Vector(first.id))).map(_.get(first.id))
             else Right(None)
@@ -261,7 +261,7 @@ object TurnCapture {
         )
       )
       .left
-      .map(e => s"the window of ${WorkflowId.value(turn.workflowId)} unread: ${e.kind}")
+      .map(Unread.said(s"the window of ${WorkflowId.value(turn.workflowId)}"))
 
   /** Each of `versions` as a window holding it shows it today: its document, if it is still
     * kept, and its plugin's label, if its plugin is enabled.

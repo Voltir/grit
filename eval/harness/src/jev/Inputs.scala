@@ -7,7 +7,7 @@ import grit.core.store.Focus
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{Case, Digest}
+import grit.eval.harness.capture.{Case, Digest, Unread}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions}
 
 /** One of a case's questions, as the shipped call asks it. */
@@ -117,7 +117,7 @@ object Inputs {
               under
             )
             .left
-            .map(e => s"${c.id.written}: stitch unread: ${e.kind}")
+            .map(Unread.said(s"${c.id.written}: stitch"))
     } yield {
       val read =
         TriageInput

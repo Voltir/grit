@@ -25,6 +25,7 @@ import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.models.Seed
 import grit.turn.{Turn, TurnRecord}
 
@@ -143,7 +144,7 @@ object Rebuild {
   ): Either[String, RebuiltWindow] = {
     val name = WorkflowId.value(workflow)
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.all.read(body).left.map(e => s"$what of $name unread: ${e.kind}")
+      reader.all.read(body).left.map(Unread.said(s"$what of $name"))
     for {
       begun <- this.begun(reader, workflow)
       Begun(turn, steps, at, query) = begun
@@ -218,7 +219,7 @@ object Rebuild {
       .read(CarriedWindow.chain(Turn.windowId(turn))(reader.entries.get))
       .map(chain => CarriedWindow.of(chain.dropRight(1)))
       .left
-      .map(e => s"window chain of ${WorkflowId.value(turn.workflowId)} unread: ${e.kind}")
+      .map(Unread.said(s"window chain of ${WorkflowId.value(turn.workflowId)}"))
 
   /** What a turn recorded of its start: its `steps`, when its `assemble` step started (`at`),
     * and the query it recorded.
@@ -234,7 +235,7 @@ object Rebuild {
     val name = WorkflowId.value(workflow)
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
-      steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${e.kind}")
+      steps <- reader.steps(workflow).left.map(Unread.said(s"steps of $name"))
       at <- steps
         .find(_.name == Turn.Step.Assemble)
         .toRight(s"$name recorded no assemble step")
@@ -242,7 +243,7 @@ object Rebuild {
       query <- reader.all
         .read(reader.entries.get(Turn.queryId(turn, 0)))
         .left
-        .map(e => s"query of $name unread: ${e.kind}")
+        .map(Unread.said(s"query of $name"))
         .map(
           _.flatMap(e =>
             e.payload match {

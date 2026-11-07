@@ -8,7 +8,7 @@ import scala.util.Try
 import grit.core.clock.{Clock, Fresh}
 import grit.core.id.WorkflowId
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.capture.CaptureJson
+import grit.eval.harness.capture.{CaptureJson, Unread}
 import grit.eval.harness.label.{ChurnQuestions, ReplyLabels, Verdicts}
 import grit.eval.harness.reply.{Assembled, Refound, ReplyReview}
 import grit.eval.harness.report.Report
@@ -191,7 +191,7 @@ private[main] object ReplyCommands {
           current <- reader.all
             .read(reader.current())
             .left
-            .map(e => s"the current documents unread: ${e.kind}")
+            .map(Unread.said("the current documents"))
             .map(Refound.Current.of)
         } yield workflows
           .filter(_._2.created.isBefore(until))

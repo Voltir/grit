@@ -5,8 +5,9 @@ import java.time.Instant
 import grit.core.classify.{Classifier, ClassifierError}
 import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
 import grit.core.period.Probability
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.Tx
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.prose.either.Traversal
 
 /** The turns a database recorded in a window, read for the lost-tool measure through
@@ -26,7 +27,7 @@ object LossWindow {
       until: Instant
   ): Either[String, Vector[(TurnRef, TurnGates)]] =
     for {
-      workflows <- reader.turns(until).left.map(e => s"turn workflows unread: ${e.kind}")
+      workflows <- reader.turns(until).left.map(Unread.said("turn workflows"))
       window = workflows.collect {
         case (w, recorded) if !recorded.created.isBefore(since) => TurnRef.fromWorkflowId(w)
       }.flatten
@@ -35,7 +36,7 @@ object LossWindow {
         reader
           .steps(turn.workflowId)
           .left
-          .map(e => s"steps of $id unread: ${e.kind}")
+          .map(Unread.said(s"steps of $id"))
           .flatMap(TurnGates.of(_).left.map(why => s"$id: $why"))
           .map(turn -> _)
       }
@@ -55,7 +56,7 @@ object LossWindow {
         reader.all
           .read((tx: Tx^) ?=> reader.entries.list(conversation))
           .left
-          .map((e: StoreError) => s"entries unread: ${e.kind}")
+          .map(Unread.said("entries"))
           .map(conversation -> _)
       }
       .map { listed =>

@@ -9,6 +9,7 @@ import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.triage.{Bound, Cues, Gate, Reading, Tags}
 import grit.dbos.internal.Reader
+import grit.eval.harness.capture.Unread
 import grit.models.Seed
 
 /** A heard message live triage read as asking (its `gap` question's most weighted key `asks`,
@@ -31,8 +32,8 @@ object WindowOnly {
       tagged <- reader.all
         .read(reader.triage.tagged(Instant.EPOCH, until))
         .left
-        .map(e => s"triage unread: ${e.kind}")
-      turns <- reader.turns(until).left.map(e => s"turn workflows unread: ${e.kind}")
+        .map(Unread.said("triage"))
+      turns <- reader.turns(until).left.map(Unread.said("turn workflows"))
     } yield {
       val answered = turns.map(_._1).toSet
       tagged.flatMap { t =>

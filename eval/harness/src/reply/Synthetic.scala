@@ -14,7 +14,7 @@ import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.core.visibility.Subject
 import grit.dbos.internal.{Reader, Scratch}
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.capture.{Parts, TurnCapture}
+import grit.eval.harness.capture.{Parts, TurnCapture, Unread}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
 import grit.models.Seed
@@ -198,7 +198,7 @@ object Synthetic {
     reader.all
       .read(reader.conversations.find(origin))
       .left
-      .map(e => s"$name: its conversations unread: ${e.kind}")
+      .map(Unread.said(s"$name: its conversations"))
       .flatMap(
         _.map(_.id).toRight(
           s"$name: ${origin.place.written} is not in the database"

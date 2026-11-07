@@ -7,7 +7,7 @@ import scala.util.Try
 import grit.core.id.WorkflowId
 import grit.core.tool.ToolSet
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{CaptureJson, Case, TurnCase, TurnJson}
+import grit.eval.harness.capture.{CaptureJson, Case, TurnCase, TurnJson, Unread}
 import grit.prose.either.Traversal
 
 import Cli.*
@@ -24,7 +24,7 @@ private[main] object CaseFiles {
         .read(reader.toolSets.get(o.drawn))
         .map(_.tools)
         .left
-        .map(e => s"tool set of ${WorkflowId.value(t.workflow)} unread: ${e.kind}")
+        .map(Unread.said(s"tool set of ${WorkflowId.value(t.workflow)}"))
     )
 
   /** The turns of the capture in `dir`, from `turns.jsonl`. */
