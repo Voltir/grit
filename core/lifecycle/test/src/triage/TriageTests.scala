@@ -106,7 +106,6 @@ object TriageTests extends TestSuite {
   private def roomSpoken(
       underReply: Boolean
   ): (Vector[Option[grit.core.id.EntryId]], Option[grit.core.id.EntryId]) = {
-    given Tx = TestTx.fake
     val w = new World
     val room = w.conversationAt(grit.core.store.Origin.Room("T", "C"))
     val t = w.hear("is the freeze on?", "Ana", 0, in = room, source = Some("5.0"))

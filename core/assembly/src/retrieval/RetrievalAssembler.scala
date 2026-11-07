@@ -57,76 +57,62 @@ import grit.core.store.{
 }
 import grit.core.visibility.Subject
 
-/** A window of the closing entry that opens the turn's period, the recent turns, and what a
-  * written query finds, at a boundary: the period's earlier turns; the open periods' turns and kept closings
-  * of other conversations its turn may read, wherever they are; and, with the enabled plugins'
-  * terms ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's time
-  * (its earliest entry's; none for a turn with no entries) that its turn may read, and the
+/** A window of the closing entry that opens the turn's period, the recent turns, and what a written
+  * query finds, at a boundary: the period's earlier turns; the open periods' turns and kept
+  * closings of other conversations its turn may read, wherever they are; and, with the enabled
+  * plugins' terms ([[DocumentSearch.shelvesAt]]), the documents current at the turn's root entry's
+  * time (its earliest entry's; none for a turn with no entries) that its turn may read, and the
   * pieces of kept files current then that it may read, of the enabled plugins holding any
   * ([[PieceSearch.holding]]), at most [[PieceSearch.PerFile]] of one file, each saying how many
   * more of its file matched.
   *
-  * The closing is paid first and the recent tail next, as in [[LinearAssembler]] (`tail`
-  * tokens, or what is left when less). Its query is asked of a writer as [[QueryWriter]] puts
-  * it; `search`, `documents` and `pieces` rank each kind of candidate against
-  * it, `hits` of each, in one pool: the turn's own scores times the settings' weight, a
-  * document's or a piece's times its plugin's, a tie going to the turn's own, then to entries
-  * elsewhere, then to documents.
-  * They fill the rest of `budget`, best first, one that does not fit passed over for the next,
-  * each costed as it is shown: a recalled own turn with a gap line ([[Shown.Gap]]), as is a
-  * tail that leaves turns out; a section as [[Shown.section]]; a document as
-  * [[Shown.document]]; a piece as [[Shown.piece]]; a person's message with its author's name
-  * line ([[Shown.of]]).
+  * The closing is paid first and the recent tail next, as in [[LinearAssembler]] (`tail` tokens, or
+  * what is left when less). Its query is asked of a writer as [[QueryWriter]] puts it; `search`,
+  * `documents` and `pieces` rank each kind of candidate against it, `hits` of each, in one pool:
+  * the turn's own scores times the settings' weight, a document's or a piece's times its plugin's,
+  * a tie going to the turn's own, then to entries elsewhere, then to documents. They fill the rest
+  * of `budget`, best first, one that does not fit passed over for the next, each costed as it is
+  * shown: a recalled own turn with a gap line ([[Shown.Gap]]), as is a tail that leaves turns out;
+  * a section as [[Shown.section]]; a document as [[Shown.document]]; a piece as [[Shown.piece]]; a
+  * person's message with its author's name line ([[Shown.of]]).
   *
   * Own turns join the window in conversation order, never with the request's task
   * ([[grit.core.context.AssemblyRequest.task]]), which is neither drawn nor found, and of a
   * continuation's turns only those [[grit.core.context.AssemblyRequest.drawable]] keeps, in its
   * tail, its gap line paid for first when that leaves turns out, none of the others ever a
-  * candidate; packed
-  * documents and pieces in rank order. Turns from
-  * elsewhere form one section per conversation ([[Nearby]]), in the order of its best
-  * candidate, its turns in its own order. A conversation whose closings match is one
-  * candidate, shown as its newest kept closing's record ([[Shown.recorded]]), unless any of its
-  * open turns is one: then those alone are its section. The own closing is never a candidate.
-  * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches`, from
-  * `tuning.horizon` before its first message until before the turn) is shown one
-  * [[Nearby.Along]] section per other member, after any from afar: its root's
-  * opening message, then the messages nearest the turn, newest first while they fit in
-  * `tuning.windowTokens`, paid after the closing and before the tail; a member whose first
-  * message is gone, by its newest kept closing's record. A conversation that begins with
-  * grit's post ([[grit.core.store.ConversationStore.postedBy]]) is shown first, the turn that
-  * asked for it as one [[Nearby.Asked]] section, while the turn's period is the conversation's
-  * first and both conversations are colleagues' ([[Audience.Colleagues]]):
-  * its person's messages and grit's reply from the first, as many as fit in the strand's
-  * allowance, paid from it before the strand. Neither a strand member nor the asking
-  * conversation is ever also a candidate.
+  * candidate; packed documents and pieces in rank order. Turns from elsewhere form one section per
+  * conversation ([[Nearby]]), in the order of its best candidate, its turns in its own order. A
+  * conversation whose closings match is one candidate, shown as its newest kept closing's record
+  * ([[Shown.recorded]]), unless any of its open turns is one: then those alone are its section. The
+  * own closing is never a candidate. A conversation in a strand ([[grit.core.stitch.Strand]], read
+  * through `stitches`) is shown one [[Nearby.Along]] section per other member, after any from afar:
+  * its root's opening message, then the messages nearest the turn, newest first while they fit in
+  * `tuning.windowTokens`, paid after the closing and before the tail; a member whose first message
+  * is gone, by its newest kept closing's record. A conversation that begins with grit's post
+  * ([[grit.core.store.ConversationStore.postedBy]]) is shown first, the turn that asked for it as
+  * one [[Nearby.Asked]] section, while the turn's period is the conversation's first and both
+  * conversations are colleagues' ([[Audience.Colleagues]]): its person's messages and grit's reply
+  * from the first, as many as fit in the strand's allowance, paid from it before the strand.
+  * Neither a strand member nor the asking conversation is ever also a candidate.
   *
-  * A channel's top level, or a thread under it ([[grit.core.store.Origin.Room]],
-  * [[grit.core.store.Origin.Thread]]; ADR 0060), reads no strand: in its place, every other
-  * conversation of its room is shown one [[Nearby.Along]] section, of what it said since the
-  * room's open period opened (its own, for the top level), no closing among them, the newest
-  * that fit `settings.rolling.shown`, paid as the strand is; a thread is shown its room's newest
-  * kept closing by its record first, and, while its period is its first, the room's turn it is
-  * under as its [[Nearby.Asked]] section, which the room's section then leaves out. A carried
-  * turn's append adds, before its own messages, what the room said since its last part was
-  * drawn and no part shows, within the same cap; one that would pass the limit is drawn at a
-  * boundary instead. A room's kept closings are each a candidate of their own, wherever the
-  * window is, the room's own and a thread's room's included, but none the window shows; and a
-  * top level's own candidates include its earlier periods' kept turns, searched from its
-  * first.
+  * A channel's top level or a thread under it (ADR 0060) reads no strand: each other conversation
+  * of its room is shown one [[Nearby.Along]] section, of what it said since the room's open period
+  * opened, newest first within `settings.rolling.shown`, and a thread first its room's newest kept
+  * closing and, in its first period, the turn it is under ([[Nearby.Asked]]). An append adds what
+  * the room said since its last part. A room's kept closings are each a candidate, but those the
+  * window shows; so are a top level's earlier periods' turns, as its own.
   *
-  * No query is written when the linear window of `budget` holds every earlier turn of the
-  * period and nothing elsewhere and no document or piece is to be drawn.
+  * No query is written when the linear window of `budget` holds every earlier turn of the period
+  * and nothing elsewhere and no document or piece is to be drawn.
   *
-  * A boundary at the deployed width is drawn within half of `budget`
-  * ([[LinearAssembler.share]]), recall filling to that share, not to `budget`; at either width,
-  * less what the request reserves ([[AssemblyRequest.boundary]]). Given a carried
-  * window and no task it appends, as [[LinearAssembler]] does, the turns since its last part's turn, then
-  * what a query finds that the carried window does not hold, filling to the same share of
-  * `budget` with the carried window counted; it draws no closing, asked or strand section and
-  * reads none, but a room's section of what was said since: those are its boundary's. Its limit is [[LinearAssembler]]'s, against `budget`.
-  * A request's width bounds what the part drawn now adds, never the limit.
-  * `AssemblyError.Store` when a store fails or the conversation is gone.
+  * A boundary at the deployed width is drawn within half of `budget` ([[LinearAssembler.share]]),
+  * recall filling to that share, not to `budget`; at either width, less what the request reserves
+  * ([[AssemblyRequest.boundary]]). Given a carried window and no task it appends, as
+  * [[LinearAssembler]] does, the turns since its last part's turn, then what a query finds that the
+  * carried window does not hold, filling to the same share of `budget` with the carried window
+  * counted; it draws no closing, asked or strand section: those are its boundary's. Its limit is
+  * [[LinearAssembler]]'s, against `budget`; a request's width bounds what the part drawn now adds,
+  * never the limit. `AssemblyError.Store` when a store fails or the conversation is gone.
   */
 final class RetrievalAssembler(
     entries: EntryStore,
