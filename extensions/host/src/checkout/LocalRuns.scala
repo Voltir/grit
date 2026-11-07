@@ -200,9 +200,7 @@ final class LocalRuns(
 
   /** `entry`'s output so far, its last lines, the hint naming its file. */
   private def output(entry: Entry): Either[HostError, Clipped] =
-    written(entry.out).flatMap { at =>
-      attempt(LocalProcesses.tail(entry.out)).map(text => Clipped.tail(redaction(text), hint(at)))
-    }
+    written(entry.out).flatMap(at => LocalProcesses.shown(entry.out, redaction, hint(at)))
 
   /** `file` as a path in the checkout. */
   private def written(file: Path): Either[HostError, RelPath] =
@@ -332,16 +330,7 @@ object LocalRuns {
 
   /** The words for what a run's clipped output left out, naming `at`, its whole output. */
   private def hint(at: RelPath): Option[Kept] -> Option[String] = {
-    case Some(Kept(_, total, true)) =>
-      Some(
-        s"Showing the last ${Clipped.MaxBytes / 1024} KB of line $total, the output's last. " +
-          s"The whole output is in `${RelPath.value(at)}`, for `read`."
-      )
-    case Some(k) =>
-      Some(
-        s"Showing the last ${k.lines} of ${k.total} lines. The whole output is in " +
-          s"`${RelPath.value(at)}`, for `read`."
-      )
-    case None => None
+    val whole = s"The whole output is in `${RelPath.value(at)}`, for `read`."
+    LocalProcesses.tailHint(cut = whole, partial = whole)
   }
 }

@@ -171,5 +171,35 @@ object LocalRunsFilesTests extends TestSuite {
         }
       }
     }
+
+    test("a run's clipped output names the file holding it whole, for read") {
+      inCheckout { root =>
+        val runs = over(root)
+        // The file lies under a directory named for this process; `<p>` stands for it.
+        def hint(argv: Argv) =
+          runs.start(argv, 10.seconds, 5.seconds).map {
+            case (id, RunStatus.Ended(ran)) =>
+              ran.output.hint.map(_.replaceFirst("runs/[^/]+/", "runs/<p>/").replace(id.written, "<id>"))
+            case (_, other) => Some(s"not ended: $other")
+          }
+        val lines = hint(sh("seq 1 3000"))
+        val long = hint(sh("head -c 60000 /dev/zero | tr '\\0' a"))
+        runs.close()
+        (lines, long) ==> (
+          Right(
+            Some(
+              "Showing the last 2000 of 3000 lines. The whole output is in " +
+                "`.grit/runs/<p>/<id>.out`, for `read`."
+            )
+          ),
+          Right(
+            Some(
+              "Showing the last 50 KB of line 1, the output's last. The whole output is in " +
+                "`.grit/runs/<p>/<id>.out`, for `read`."
+            )
+          )
+        )
+      }
+    }
   }
 }

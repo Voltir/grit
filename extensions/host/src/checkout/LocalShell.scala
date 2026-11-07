@@ -4,7 +4,7 @@ import java.nio.file.Path
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.host.{Argv, Clipped, HostError, Kept, Ran, RelPath, Shell}
+import grit.core.host.{Argv, HostError, Kept, Ran, RelPath, Shell}
 import grit.core.secret.Named
 
 /** Running commands in the checkout whose root is `root`, with `sh -c`, as
@@ -24,19 +24,10 @@ final class LocalShell(root: Path, environment: Map[String, String], redaction: 
       case Right(argv) => processes.ran(argv, RelPath.Root, timeout, hint)
     }
 
-  private val hint: Option[Kept] -> Option[String] = {
-    case Some(Kept(_, total, true)) =>
-      Some(
-        s"Showing the last ${Clipped.MaxBytes / 1024} KB of line $total, the output's last. " +
-          "Narrow the command's output to see the rest."
-      )
-    case Some(k) =>
-      Some(
-        s"Showing the last ${k.lines} of ${k.total} lines. Narrow the command's output, " +
-          "for example with grep, head or tail, to see the rest."
-      )
-    case None => None
-  }
+  private val hint: Option[Kept] -> Option[String] = LocalProcesses.tailHint(
+    cut = "Narrow the command's output, for example with grep, head or tail, to see the rest.",
+    partial = "Narrow the command's output to see the rest."
+  )
 }
 
 object LocalShell {

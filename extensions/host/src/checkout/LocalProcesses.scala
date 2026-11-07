@@ -36,14 +36,7 @@ final class LocalProcesses(root: Path, environment: Map[String, String], redacti
   ): Either[HostError, Ran] =
     attempt(Files.createTempFile("grit-run-", ".out")).flatMap { out =>
       try {
-        writing(argv, dir, out).flatMap { process =>
-          val finished = LocalProcesses.awaited(process, timeout)
-          attempt(LocalProcesses.tail(out)).flatMap { text =>
-            val output = Clipped.tail(redaction(text), hint)
-            if (finished) Right(Ran(process.exitValue(), output))
-            else Left(HostError.TimedOut(timeout, output))
-          }
-        }
+        writing(argv, dir, out).flatMap(LocalProcesses.ended(_, timeout, out, redaction, hint))
       } finally {
         val _ = attempt(Files.deleteIfExists(out))
       }
@@ -167,14 +160,8 @@ private[checkout] object LocalProcesses {
       got
     }
 
-    def await(timeout: FiniteDuration): Either[HostError, Ran] = {
-      val finished = awaited(process, timeout)
-      attempt(tail(errors)).flatMap { text =>
-        val shown = Clipped.tail(redaction(text), _ => None)
-        if (finished) Right(Ran(process.exitValue(), shown))
-        else Left(HostError.TimedOut(timeout, shown))
-      }
-    }
+    def await(timeout: FiniteDuration): Either[HostError, Ran] =
+      ended(process, timeout, errors, redaction, _ => None)
 
     /** `line` queued once there is room, or dropped once the program was killed: nothing reads
       * it then, and the reading thread must not wait on a queue nobody drains.
@@ -203,6 +190,47 @@ private[checkout] object LocalProcesses {
       }
     if (!finished) kill(process)
     finished
+  }
+
+  /** `process` [[awaited]] up to `timeout`, then the file `out` [[shown]]: `Ran` with its exit
+    * code when it ended in time, else `TimedOut` with what it showed.
+    */
+  def ended(
+      process: Process,
+      timeout: FiniteDuration,
+      out: Path,
+      redaction: Redaction,
+      hint: Option[Kept] -> Option[String]
+  ): Either[HostError, Ran] = {
+    val finished = awaited(process, timeout)
+    shown(out, redaction, hint).flatMap { output =>
+      if (finished) Right(Ran(process.exitValue(), output))
+      else Left(HostError.TimedOut(timeout, output))
+    }
+  }
+
+  /** The file `out`'s [[tail]], cleared by `redaction` and clipped from its end with `hint`'s
+    * words.
+    */
+  def shown(
+      out: Path,
+      redaction: Redaction,
+      hint: Option[Kept] -> Option[String]
+  ): Either[HostError, Clipped] =
+    attempt(tail(out)).map(text => Clipped.tail(redaction(text), hint))
+
+  /** The words for what an output clipped from its end left out: the lines kept of how many,
+    * then `cut`; or, when only the end of its last line is kept, that it is the last
+    * [[Clipped.MaxBytes]] of that line, then `partial`.
+    */
+  def tailHint(cut: String, partial: String): Option[Kept] -> Option[String] = {
+    case Some(Kept(_, total, true)) =>
+      Some(
+        s"Showing the last ${Clipped.MaxBytes / 1024} KB of line $total, the output's last. " +
+          partial
+      )
+    case Some(k) => Some(s"Showing the last ${k.lines} of ${k.total} lines. $cut")
+    case None => None
   }
 
   /** The text of the file `out`, or of its last [[Workspace.MaxFileBytes]] when it is longer;

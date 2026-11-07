@@ -329,6 +329,22 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test("run keeps the end of a last line too long to show, and says so") {
+      inCheckout() { dir =>
+        val ran = new LocalShell(dir, sys.env, noSecrets)
+          .run("head -c 60000 /dev/zero | tr '\\0' a", 10.seconds)
+        ran.map(r => (r.output.text.length, r.output.hint)) ==> Right(
+          (
+            50 * 1024,
+            Some(
+              "Showing the last 50 KB of line 1, the output's last. Narrow the command's output " +
+                "to see the rest."
+            )
+          )
+        )
+      }
+    }
+
     test("a command's output, and a timeout's, show a secret's value redacted") {
       inCheckout() { dir =>
         val shell = new LocalShell(dir, sys.env, planted)
