@@ -49,18 +49,20 @@ trait SpeechStore {
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean]
 
   /** Where `turn`'s reply goes: the venue its decision placed it at ([[Decision.Drafting]]),
-    * unless [[placing]] moved it since; [[Venue.Thread]] for any other turn, decided on or not.
+    * unless [[toThread]] moved it since; [[Venue.Thread]] for any other turn, decided on or not.
     */
   def venue(turn: TurnRef)(using Tx^): Either[StoreError, Venue]
 
-  /** Where `turn`'s reply goes when it is posted `at`: its [[venue]], unless that is its
-    * room's top level and `rate` is spent there, `rate.count` of its room's other turns decided
-    * within `rate.per` before `at` posted at the top ([[Spoken.venue]]), or `rate` is `None`;
-    * then its thread, kept so.
+  /** Moves `turn`'s reply from its room's top level to its thread, kept so ([[venue]]); nothing
+    * for a turn in its thread already, or not decided on.
     */
-  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
-      Tx^
-  ): Either[StoreError, Venue]
+  def toThread(turn: TurnRef)(using Tx^): Either[StoreError, Unit]
+
+  /** Holds, until the transaction ends, the lock that each re-check of a placement in `turn`'s
+    * room takes ([[Speech.placing]]), so two such re-checks run one after the other and the
+    * second counts the post the first committed; nothing for a turn not decided on.
+    */
+  def lockRoom(turn: TurnRef)(using Tx^): Either[StoreError, Unit]
 
   /** Keeps what became of the turn `turn`, drafting or answering (`outcome`, settled `at`),
     * with the first [[SpeechStore.Excerpt]] characters of `draft`, its draft or reply. A `Posted` outcome keeps

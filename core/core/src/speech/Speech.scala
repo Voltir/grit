@@ -264,6 +264,34 @@ enum Outcome {
 
 object Speech {
 
+  /** Where `turn`'s reply goes when it is posted `at`, read from `spoken`, the turns decided
+    * from `rate.per` before `at` on ([[SpeechStore.spoken]]): its venue there, unless that is
+    * its room's top level and `rate.count` of that room's other turns decided within `rate.per`
+    * before `at` were posted at the top, or `rate` is `None`; then its thread. A turn `spoken`
+    * lacks goes in its thread.
+    */
+  def placing(turn: TurnRef, spoken: Vector[Spoken], rate: Option[Rate], at: Instant): Venue =
+    (spoken.find(_.turn == turn).map(t => (t.room, t.venue)), rate) match {
+      case (Some((room, top @ Venue.Room(_))), Some(r))
+          if posted(spoken, r, at)(t => t.turn != turn && t.room == room && atTop(t)) < r.count =>
+        top
+      case _ => Venue.Thread
+    }
+
+  /** How many of `spoken`'s posted turns decided within `rate.per` before `at` are `which`. */
+  private def posted(spoken: Vector[Spoken], rate: Rate, at: Instant)(which: Spoken => Boolean): Int =
+    spoken.count(t =>
+      (t.stage match {
+        case Stage.Posted(_) => true
+        case Stage.Drafting | Stage.Settled => false
+      }) && which(t) && t.at.isAfter(at.minus(JDuration.ofNanos(rate.per.toNanos)))
+    )
+
+  private def atTop(t: Spoken): Boolean = t.venue match {
+    case Venue.Room(_) => true
+    case Venue.Thread => false
+  }
+
   /** Whether grit drafts after `heard` at `now`, under `speaking`, given `ledger` and the
     * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`,
     * at its room's top level when [[Limits.toRoom]] places it there ([[ToRoom]]), else in its
@@ -279,13 +307,7 @@ object Speech {
       budget: Budget,
       now: Instant
   ): Decision = {
-    def within(rate: Rate, spoken: Spoken => Boolean): Int =
-      ledger.turns.count(t =>
-        (t.stage match {
-          case Stage.Posted(_) => true
-          case Stage.Drafting | Stage.Settled => false
-        }) && spoken(t) && t.at.isAfter(now.minus(JDuration.ofNanos(rate.per.toNanos)))
-      )
+    def within(rate: Rate, spoken: Spoken => Boolean): Int = posted(ledger.turns, rate, now)(spoken)
     def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
     // Placement never holds: a gate that fails or is unread, a spent rate or no address is the
     // thread.
@@ -293,7 +315,7 @@ object Speech {
       (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
         case (Some(r), Some(to), Tags.Weighed(answers, _, _))
             if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
-              within(r.rate, t => t.venue != Venue.Thread && t.room == heard.room) < r.rate.count =>
+              within(r.rate, t => atTop(t) && t.room == heard.room) < r.rate.count =>
           Venue.Room(to)
         case _ => Venue.Thread
       }

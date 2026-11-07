@@ -36,8 +36,9 @@ Decision:
   placement would read.
 - **The draft and the judge are told** where it goes: the draft to say first what it answers,
   the judge to ask that of it. A draft in its thread is told and judged as before.
-- **Counted again when posted**, in the transaction that writes the reply
-  (`SpeechStore.placing`): a rate spent since is the thread, kept so. The post counts in the
+- **Counted again when posted**, in the transaction that writes the reply, under a lock on
+  the room (`Speech.placing`, `SpeechStore.lockRoom`): a rate spent since is the thread, kept
+  so. The post counts in the
   thread, room and deployment rates as any post.
 - **Recorded.** The speech row keeps the room address while the draft goes there; the turn's
   `offer` records the venue, the thread when absent, so replay reads where it went, never the

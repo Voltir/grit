@@ -387,53 +387,26 @@ abstract class SpeechContract extends TestSuite {
     }
 
     test(
-      "a draft placed at its room's top level keeps its venue while its room's top-level rate allows; spent, or with no rate, it goes in its thread, kept so; any other turn's venue is the thread"
+      "a draft placed at its room's top level keeps its venue until moved to its thread, kept so; any other turn's venue is the thread, and moving it changes nothing"
     ) {
       val c = conversation("speech-venue")
-      val hour = Rate(1, 1.hour)
       val top = decide(c, At, drafting = true, Venue.Room("C//1"))
       val thread = decide(c, At.plusSeconds(1), drafting = true)
       val held = decide(c, At.plusSeconds(2), drafting = false)
-      val unrated = decide(c, At.plusSeconds(3), drafting = true, Venue.Room("C//3"))
-      def venues = transaction(Vector(top, thread, held, unrated).map(t => right(speech.venue(t))))
+      val kept = decide(c, At.plusSeconds(3), drafting = true, Venue.Room("C//3"))
+      def venues = transaction(Vector(top, thread, held, kept).map(t => right(speech.venue(t))))
       val before = (venues, mine(c, At).map(_.venue))
-      val allowed = transaction(right(speech.placing(top, Some(hour), At.plusSeconds(60))))
-      // Another of its room's drafts posted at the top since: the rate is spent.
-      val other = decide(c, At.plusSeconds(4), drafting = true, Venue.Room("C//4"))
       transaction {
-        val n = right(entries.lockNext(c))
-        right(
-          entries.insert(
-            Entry(
-              other.replyId,
-              c,
-              other.turnSeq,
-              None,
-              n.seq,
-              Payload.Message(reply),
-              At,
-              Integrity.Member
-            )
-          )
-        )
+        Vector(top, thread, held).foreach(t => right(speech.toThread(t)))
+        right(speech.lockRoom(kept))
       }
-      transaction(right(speech.drafted(other, Outcome.Posted(Cleared.Scored(judged)), None, At)))
-      val placed = transaction(
-        Vector(
-          right(speech.placing(top, Some(hour), At.plusSeconds(60))),
-          right(speech.placing(thread, Some(hour), At.plusSeconds(60))),
-          right(speech.placing(held, Some(hour), At.plusSeconds(60))),
-          right(speech.placing(unrated, None, At.plusSeconds(60)))
-        )
-      )
-      (before, allowed, placed, venues) ==> (
+      (before, venues, mine(c, At).map(_.venue)) ==> (
         (
           Vector(Venue.Room("C//1"), Venue.Thread, Venue.Thread, Venue.Room("C//3")),
           Vector(Venue.Room("C//1"), Venue.Thread, Venue.Room("C//3"))
         ),
-        Venue.Room("C//1"),
-        Vector.fill(4)(Venue.Thread),
-        Vector.fill(4)(Venue.Thread)
+        Vector(Venue.Thread, Venue.Thread, Venue.Thread, Venue.Room("C//3")),
+        Vector(Venue.Thread, Venue.Thread, Venue.Room("C//3"))
       )
     }
 

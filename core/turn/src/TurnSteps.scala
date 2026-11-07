@@ -1024,7 +1024,7 @@ private[turn] object TurnSteps {
     * turn's reply and awaited at the address its heard message was heard with: at its room's
     * top level when its offer recorded that `venue` and the room's top-level rate
     * ([[grit.core.speech.ToRoom]]) still allows it, counted again here, else in its thread
-    * ([[grit.core.speech.SpeechStore.placing]]); and the outcome kept
+    * ([[grit.core.speech.Speech.placing]]); and the outcome kept
     * ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no address to go to
     * is `Failed`.
     */
@@ -1127,7 +1127,9 @@ private[turn] object TurnSteps {
 
   /** The address `turn`'s posted draft goes to, posted `at`: `venue`'s, at its room's top
     * level, when `speaking`'s [[grit.core.speech.ToRoom]] rate still allows another post
-    * there ([[SpeechStore.placing]]), else its thread's.
+    * there, counted under its room's lock ([[Speech.placing]], [[SpeechStore.lockRoom]]), else
+    * its thread's, kept so. A turn decided longer than the rate's window before `at` goes in its
+    * thread.
     */
   private def placedAt(
       speaking: Speaking,
@@ -1144,7 +1146,15 @@ private[turn] object TurnSteps {
           case Speaking.Within(limits) => limits.toRoom.map(_.rate)
           case Speaking.Shadow(_) | Speaking.Off => None
         }
-        store.placing(turn, rate, at).map {
+        for {
+          _ <- store.lockRoom(turn)
+          spoken <- store.spoken(rate.fold(at)(r => at.minusNanos(r.per.toNanos)))
+          placed = Speech.placing(turn, spoken, rate, at)
+          _ <- placed match {
+            case Venue.Room(_) => Right(())
+            case Venue.Thread => store.toThread(turn)
+          }
+        } yield placed match {
           case Venue.Room(to) => to
           case Venue.Thread => replyTo.thread
         }

@@ -454,6 +454,26 @@ object SpeechTests extends TestSuite {
       ) ==> Vector.fill(5)(Decision.Drafting(turn, Venue.Thread))
     }
 
+    test(
+      "a reply placed at its room's top level stays there when posted while fewer than the rate's count of that room's other turns decided in its window were posted at the top; else, with no rate, or not in the ledger, it goes in its thread"
+    ) {
+      val rate = Rate(1, 2.hours)
+      val mine = Spoken(turn, room, now.minusSeconds(60), Stage.Drafting, Venue.Room("C"))
+      val topped = posted("a", 1, now.minusSeconds(600)).copy(venue = Venue.Room("C//a"))
+      val elsewhere = Place.under(Namespace.Slack, Vector("T", "D"))
+      Vector(
+        Speech.placing(turn, Vector(mine), Some(rate), now),
+        Speech.placing(turn, Vector(mine, posted("b", 1, now.minusSeconds(600))), Some(rate), now),
+        Speech.placing(turn, Vector(mine, topped.copy(room = elsewhere)), Some(rate), now),
+        Speech.placing(turn, Vector(topped.copy(at = now.minusSeconds(3 * 3600)), mine), Some(rate), now),
+        Speech.placing(turn, Vector(mine, topped.copy(stage = Stage.Drafting)), Some(rate), now),
+        Speech.placing(turn, Vector(mine, topped), Some(rate), now),
+        Speech.placing(turn, Vector(mine), None, now),
+        Speech.placing(turn, Vector(topped), Some(rate), now),
+        Speech.placing(turn, Vector(mine.copy(venue = Venue.Thread)), Some(rate), now)
+      ) ==> Vector.fill(5)(Venue.Room("C")) ++ Vector.fill(4)(Venue.Thread)
+    }
+
     test("a message put to grit by name is answered in its thread, though placement would pass") {
       val loud = named.copy(
         tags = Tags.Weighed(directed.updated(Tags.V7.forRoom, Answer.YesNo(0.9)), "jev", usage),

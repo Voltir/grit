@@ -244,40 +244,32 @@ final class SqlSpeechStore extends SpeechStore {
     }
   }
 
-  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
-      tx: Tx^
-  ): Either[StoreError, Venue] = {
+  def toThread(turn: TurnRef)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
-      // Its room's other turns posted at the top, decided within the rate's window.
-      val placed = Using.resource(
+      Using.resource(
+        conn.prepareStatement("UPDATE grit.speech SET room_to = NULL WHERE workflow = ?")
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        val _ = ps.executeUpdate()
+      }
+    }
+  }
+
+  def lockRoom(turn: TurnRef)(using tx: Tx^): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      // A transaction-scoped advisory lock keyed on the room: released at commit or rollback.
+      Using.resource(
         conn.prepareStatement(
-          """SELECT s.room_to, (SELECT count(*) FROM grit.speech o
-            |   WHERE o.room = s.room AND o.room_to IS NOT NULL AND o.posted_seq IS NOT NULL
-            |     AND o.workflow <> s.workflow AND o.decided_at > ?)
-            |  FROM grit.speech s WHERE s.workflow = ? AND s.room_to IS NOT NULL""".stripMargin
+          """SELECT pg_advisory_xact_lock(hashtextextended('grit.speech.top:' || room, 0))
+            |  FROM grit.speech WHERE workflow = ?""".stripMargin
         )
       ) { ps =>
-        ps.setObject(
-          1,
-          rate.fold(at)(r => at.minusNanos(r.per.toNanos)).atOffset(ZoneOffset.UTC)
-        )
-        ps.setString(2, WorkflowId.value(turn.workflowId))
+        ps.setString(1, WorkflowId.value(turn.workflowId))
         Using.resource(ps.executeQuery()) { rs =>
-          Option.when(rs.next())((rs.getString(1), rs.getInt(2)))
+          while (rs.next()) {}
         }
-      }
-      placed match {
-        case None => Venue.Thread
-        case Some((to, posted)) if rate.exists(posted < _.count) => Venue.Room(to)
-        case Some(_) =>
-          Using.resource(
-            conn.prepareStatement("UPDATE grit.speech SET room_to = NULL WHERE workflow = ?")
-          ) { ps =>
-            ps.setString(1, WorkflowId.value(turn.workflowId))
-            val _ = ps.executeUpdate()
-          }
-          Venue.Thread
       }
     }
   }

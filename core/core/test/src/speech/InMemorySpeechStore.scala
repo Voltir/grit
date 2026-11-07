@@ -91,36 +91,16 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
         .getOrElse(Venue.Thread)
     )
 
-  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
-      Tx^
-  ): Either[StoreError, Venue] =
-    decisions.collectFirst {
-      case (h, Decision.Drafting(t, v), _) if t == turn => (h.room, v)
-    } match {
-      case Some((room, Venue.Room(to))) =>
-        spoken(Instant.MIN).map { all =>
-          val spent = rate.forall(r =>
-            all.count(s =>
-              s.venue != Venue.Thread && s.room == room && s.turn != turn && s.at.isAfter(
-                at.minusNanos(r.per.toNanos)
-              ) && (s.stage match {
-                case Stage.Posted(_) => true
-                case Stage.Drafting | Stage.Settled => false
-              })
-            ) >= r.count
-          )
-          if (!spent) Venue.Room(to)
-          else {
-            decisions = decisions.map {
-              case (h, Decision.Drafting(t, _), d) if t == turn =>
-                (h, Decision.Drafting(t, Venue.Thread), d)
-              case d => d
-            }
-            Venue.Thread
-          }
-        }
-      case _ => Right(Venue.Thread)
+  def toThread(turn: TurnRef)(using Tx^): Either[StoreError, Unit] = {
+    decisions = decisions.map {
+      case (h, Decision.Drafting(t, _), d) if t == turn => (h, Decision.Drafting(t, Venue.Thread), d)
+      case d => d
     }
+    Right(())
+  }
+
+  /** Nothing to hold: a test's transactions never run together. */
+  def lockRoom(turn: TurnRef)(using Tx^): Either[StoreError, Unit] = Right(())
 
   def drafted(turn: TurnRef, outcome: Outcome, draft: Option[String], at: Instant)(using
       Tx^

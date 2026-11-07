@@ -2039,7 +2039,9 @@ object TurnFixtures {
       replyTo
         .filter(_ => answering)
         .fold(Decision.Drafting(turn, venue))(Decision.Answering(turn, _)),
-      Instant.EPOCH
+      // Decided as the turn under test tells the time (NoWait), so a re-check when it posts
+      // reads this decision within its rate's window.
+      Instant.now()
     )
     SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)
   }
