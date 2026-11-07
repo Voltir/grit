@@ -1163,10 +1163,6 @@ object RetrievalAssembler {
       Option.when(holding.nonEmpty)(Pieced(at, holding.map(_._1), holding.toMap))
   }
 
-  /** What a carried window holds of what a search finds: its `own` turns, the conversations it
-    * shows along or asking (never candidates), the turns elsewhere (`near`) and closings
-    * elsewhere it shows, each closing it shows (`closings`), and its documents and pieces. `carrying` whether anything is carried.
-    */
   /** Whether `e` is a closing entry shown outside its own conversation
     * ([[grit.core.period.CloseReason.shownElsewhere]]).
     */
@@ -1175,6 +1171,11 @@ object RetrievalAssembler {
     case _ => false
   }
 
+  /** What a carried window holds of what a search finds: its `own` turns, the conversations it
+    * shows along or asking (never candidates), the turns elsewhere (`near`) and closings
+    * elsewhere it shows, each closing it shows (`closings`), and its documents and pieces;
+    * `carrying`, whether anything is carried.
+    */
   private final case class Held(
       carrying: Boolean,
       own: Set[TurnSeq],

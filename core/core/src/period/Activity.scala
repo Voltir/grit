@@ -5,9 +5,10 @@ import java.time.Instant
 import grit.core.id.{CloseRef, PeriodRef, SettleRef, TurnSeq}
 
 /** An open period as its deadline sees it: its `newest` activity (the latest of its opening
-  * and its entries' times, a draft's left out: [[grit.core.store.Payload.Draft]]), its `last` turn (its first while it has no entries), its
-  * latest `verdict`, how many verdicts it has had (`asked`), and how its deadline is kept
-  * (`pace`).
+  * and its entries' times, a draft's left out: [[grit.core.store.Payload.Draft]]), its `last`
+  * turn (its first while it has no entries), its latest `verdict`, how many verdicts it has had
+  * (`asked`), and how its deadline is kept (`pace`), a rolling one's turns bounded by its roll
+  * ([[Pace.Rolls]]).
   */
 final case class Activity(
     period: PeriodRef,
@@ -42,7 +43,9 @@ enum Pace {
 
   /** Rolled at a budget of what was said in it ([[Rolling]]), its conversation being one that
     * rolls ([[grit.core.store.Origin.rolls]]): it opened `opened`, and `spoken` is each of its
-    * turns, oldest first.
+    * turns, oldest first. The roll bounds them: the period closes once they hold
+    * [[Rolling.Default]]'s `chars` or it has been open its `most`, so they are the room's turns
+    * of at most that span, and those begun before its close ran.
     */
   case Rolls(opened: Instant, spoken: Vector[Spoken])
 }
