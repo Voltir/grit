@@ -136,6 +136,8 @@ knows what is running; never put it at the end of a script.
   `Vector` code is the way out.
 - `caps.Capability` is **sealed** — `caps.SharedCapability` is the extension point for making
   the terminal a tracked capability.
-- Virtual threads are load-bearing (blocked timers and the input reader). JDK 26 means
+- Virtual threads are load-bearing (blocked timers). The input reader is not one: its
+  polling read never parks, so on a virtual thread it would hold a carrier for good, and on
+  one core starve every other virtual thread (`Background`). JDK 26 means
   `synchronized` no longer pins a carrier (JEP 491), so runtime locks can stay simple — but
   do not assume that on an older JDK.

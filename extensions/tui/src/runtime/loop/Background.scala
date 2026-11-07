@@ -24,7 +24,10 @@ final class Background private[runtime] (thread: Thread) extends AutoCloseable {
 
 object Background {
 
-  /** Run `body` on a virtual thread until it returns or the background is closed.
+  /** Run `body` on a thread of its own until it returns or the background is closed.
+    *
+    * `body` may block, or loop without ever parking as the terminal reader's polling read
+    * does, and no virtual thread waits for it.
     *
     * The capture set is the closure's, so the handle cannot outlive what it captured --
     * a background that escaped its resources is not expressible rather than merely
@@ -32,7 +35,8 @@ object Background {
     */
   def start(name: String)(body: () => Unit): Background^{body} = {
     val thread = Thread
-      .ofVirtual()
+      .ofPlatform()
+      .daemon(true)
       .name(name)
       .unstarted { () =>
         // An interrupt is how `close` says stop, so it is an ending, not a failure.
