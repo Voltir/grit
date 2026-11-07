@@ -258,6 +258,22 @@ object ClaimTests extends TestSuite {
       })
     }
 
+    test("a move that would put a claimed artifact's brief past 9,500 characters is refused") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      // 9,441 characters of body come to a 9,499-character brief while p/a is open; closed is
+      // two characters longer than open, in the brief's header line.
+      kept(projects, store, "a", "note", "x" * 9441)
+      done(claimed(projects, store))
+      ask(projects, store, "project_move", "key" -> "p/a", "state" -> "closed") ==>
+        CommandOutcome.Refused(
+          s"the brief of p/a, claimed as builder for $holder, would be 9,501 characters, " +
+            "1 over the 9,500 a brief holds (the artifact with what its role always carries): " +
+            "cut at least 1 character from p/a"
+        )
+    }
+
     test("a keep that shortens a brief already over the budget is kept") {
       val projects = plugin()
       val store = Store()

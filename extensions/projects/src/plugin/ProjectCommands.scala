@@ -171,71 +171,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
-    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      for {
-        project <- loaded(own, args.key.project)
-        method <- refuse(declared(project.pin))
-        existing = project.documents.find(_._2.head.key == args.key)
-        _ <- unchanged(args.key, args.version, existing, project.artifacts)
-        placed <- (existing, args.kind) match {
-          case (Some((_, a)), Some(k)) if k != a.head.kind =>
-            Left(
-              Stop.Refused(
-                s"${headed(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
-              )
-            )
-          case (Some((_, a)), _) => Right((a.head.kind, a.head.state))
-          case (None, Some(k)) =>
-            method.kinds
-              .find(_.name == k)
-              .map(kind => (kind.name, kind.first))
-              .toRight(
-                Stop.Refused(
-                  s"${KindName.value(k)} is no kind of method ${MethodName.value(method.name)}; its kinds: " +
-                    method.kinds.map(k => KindName.value(k.name)).mkString(", ")
-                )
-              )
-          case (None, None) =>
-            Left(
-              Stop.Refused(
-                s"${args.key.value} is new, so give its kind" +
-                  ArtifactKey.near(args.key, project.artifacts.map(_.head.key))
-              )
-            )
-        }
-        (kind, state) = placed
-        body <- refuse(Body.read(args.body))
-        artifact = Artifact(
-          ArtifactHead(
-            args.key,
-            kind,
-            state,
-            args.title,
-            args.parent.getOrElse(existing.flatMap(_._2.head.parent)),
-            args.cites.getOrElse(existing.fold(Vector.empty)(_._2.head.cites)),
-            Some(author(by))
-          ),
-          body
-        )
-        after <- refuse(
-          Project.of(
-            args.key.project,
-            project.pin,
-            project.artifacts.filterNot(_.head.key == args.key) :+ artifact
-          )
-        )
-        live <- stored(claims.live(at))
-        _ <- within(
-          method,
-          Project.of(args.key.project, project.pin, project.artifacts).toOption,
-          after,
-          live,
-          Vector(args.key)
-        )
-        _ <- atTheirLabels(existing.toVector.map((d, a) => d -> a.head.key.value), "keep")
-        _ <- kept(own, artifact, existing.map(_._1.label), at)
-      } yield s"Kept ${headed(artifact.head)}."
-    }
+    )(using Tx^): Either[StoreError, CommandOutcome] =
+      answered(alone(own, claims, args.key.project, Step.Keep(args), by, at, "keep"))
   }
 
   /** `project_move`. */
@@ -268,35 +205,8 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         own: DocumentKeeper,
         claims: Claims,
         at: Instant
-    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
-      for {
-        project <- loaded(own, args.key.project)
-        method <- refuse(declared(project.pin))
-        _ <- Either.cond(
-          method.digest == project.pin.digest,
-          (),
-          Stop.Refused(Method.changed(args.key.project, method))
-        )
-        found <- artifact(project, args.key)
-        (document, _) = found
-        done <- method
-          .move(project.artifacts, args.key, args.to)
-          .left
-          .map(r => Stop.Refused(refusal(r)))
-        into <- done.changed.fold(Right(None))(c => artifact(project, c.head.key).map(Some(_)))
-        _ <- atTheirLabels(
-          (found +: into.toVector).map((d, a) => d -> a.head.key.value),
-          "move"
-        )
-        writer = Some(author(by))
-        moved = Artifact(done.artifact.head.copy(by = writer), done.artifact.body)
-        _ <- kept(own, moved, Some(document.label), at)
-        _ <- done.changed.zip(into).fold(Right(())) { (c, held) =>
-          kept(own, Artifact(c.head.copy(by = writer), c.body), Some(held._1.label), at)
-        }
-      } yield s"Moved ${headed(moved.head)}." +
-        done.changed.fold("")(c => s" Merged its deltas into ${headed(c.head)}.")
-    }
+    )(using Tx^): Either[StoreError, CommandOutcome] =
+      answered(alone(own, claims, args.key.project, Step.Move(args), by, at, "move"))
   }
 
   /** `project_show`. */
@@ -1115,6 +1025,28 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   private def latest(name: MethodName): Option[Method] =
     methods.filter(_.name == name).maxByOption(_.version)
 
+  /** `step` alone over project `key`, as `project_keep` or `project_move` takes it, saying
+    * `verb` of an artifact kept below this room: its answer, or why it was refused.
+    */
+  private def alone(
+      own: DocumentKeeper,
+      claims: Claims,
+      key: ProjectKey,
+      step: Step,
+      by: CommandBy,
+      at: Instant,
+      verb: String
+  )(using Tx^): Either[Stop, String] =
+    for {
+      project <- loaded(own, key)
+      method <- refuse(declared(project.pin))
+      plan = planned(project, method, Vector(step), author(by), onward = false)
+      (said, steps) = plan
+      answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
+      _ <- settled(claims, project, method, key, steps, at, verb)
+      _ <- wrote(own, project, steps, at)
+    } yield answer
+
   /** The method version `pin` names, or why not. */
   private def declared(pin: Pin): Either[String, Method] =
     methods
@@ -1178,6 +1110,12 @@ private[plugin] object ProjectCommands {
             .toRight(ArgsError.Refused("version", "A version is at least 1."))
         )
       } yield Keeping(key, kind, title, body, parent, cites, version)
+  }
+
+  /** One step of `project_batch`, read as its command reads its arguments. */
+  enum Step extends caps.Pure {
+    case Keep(args: Keeping)
+    case Move(args: Moving)
   }
 
   /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
@@ -1427,7 +1365,7 @@ private[plugin] object ProjectCommands {
         f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
           f"${ClaimHolder.value(c.holder)}, would be $size%,d characters, $cut%,d over the " +
           f"${DocRef.BriefChars}%,d a brief holds (the artifact with what its role always " +
-          f"carries): cut at least $cut%,d characters from " +
+          f"carries): cut at least $cut%,d character${if (cut == 1) "" else "s"} from " +
           (if (held.isEmpty) changed else held).map(_.value).mkString(", ")
       }
     } match {
@@ -1435,6 +1373,173 @@ private[plugin] object ProjectCommands {
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
   }
+
+  /** What steps have made of a loaded project so far: its artifacts, and the keys of those they
+    * changed, in the order first changed.
+    */
+  private final case class Stepping(artifacts: Vector[Artifact], changed: Vector[ArtifactKey])
+      extends caps.Pure
+
+  /** `steps` over `project`, each as its command would take it and seeing what those before it
+    * did, written as `writer`: each step's answer or refusal, in order, and what they made of
+    * it. A refused step changes nothing; past one, the rest are taken only when `onward`.
+    */
+  private def planned(
+      project: Loaded,
+      method: Method,
+      steps: Vector[Step],
+      writer: String,
+      onward: Boolean
+  ): (Vector[Either[Stop, String]], Stepping) =
+    steps.foldLeft(
+      (Vector.empty[Either[Stop, String]], Stepping(project.artifacts, Vector.empty))
+    ) { (sofar: (Vector[Either[Stop, String]], Stepping), step: Step) =>
+      val (said, now) = sofar
+      if (!onward && said.exists(_.isLeft)) sofar
+      else
+        stepped(project, method, now, step, writer) match {
+          case Right((next, answer)) => (said :+ Right(answer), next)
+          case Left(why) => (said :+ Left(why), now)
+        }
+    }
+
+  /** `step` taken over `now`, from `project` as loaded, written as `writer`: what it makes of
+    * `now` and its answer, or why it is refused, as `project_keep` or `project_move` refuses.
+    */
+  private def stepped(
+      project: Loaded,
+      method: Method,
+      now: Stepping,
+      step: Step,
+      writer: String
+  ): Either[Stop, (Stepping, String)] = {
+    def changing(changed: Vector[Artifact]): Stepping = {
+      val keys = changed.map(_.head.key)
+      Stepping(
+        now.artifacts.map(a => changed.find(_.head.key == a.head.key).getOrElse(a)) ++
+          changed.filterNot(c => now.artifacts.exists(_.head.key == c.head.key)),
+        now.changed ++ keys.filterNot(now.changed.contains)
+      )
+    }
+    step match {
+      case Step.Keep(args) =>
+        val existing = now.artifacts.find(_.head.key == args.key)
+        for {
+          _ <- unchanged(
+            args.key,
+            args.version,
+            project.documents.find(_._2.head.key == args.key),
+            now.artifacts
+          )
+          placed <- (existing, args.kind) match {
+            case (Some(a), Some(k)) if k != a.head.kind =>
+              Left(
+                Stop.Refused(
+                  s"${headed(a.head)} keeps its kind; it cannot become ${KindName.value(k)}"
+                )
+              )
+            case (Some(a), _) => Right((a.head.kind, a.head.state))
+            case (None, Some(k)) =>
+              method.kinds
+                .find(_.name == k)
+                .map(kind => (kind.name, kind.first))
+                .toRight(
+                  Stop.Refused(
+                    s"${KindName.value(k)} is no kind of method ${MethodName.value(method.name)}; its kinds: " +
+                      method.kinds.map(k => KindName.value(k.name)).mkString(", ")
+                  )
+                )
+            case (None, None) =>
+              Left(
+                Stop.Refused(
+                  s"${args.key.value} is new, so give its kind" +
+                    ArtifactKey.near(args.key, now.artifacts.map(_.head.key))
+                )
+              )
+          }
+          (kind, state) = placed
+          body <- refuse(Body.read(args.body))
+          artifact = Artifact(
+            ArtifactHead(
+              args.key,
+              kind,
+              state,
+              args.title,
+              args.parent.getOrElse(existing.flatMap(_.head.parent)),
+              args.cites.getOrElse(existing.fold(Vector.empty)(_.head.cites)),
+              Some(writer)
+            ),
+            body
+          )
+          next = changing(Vector(artifact))
+          _ <- refuse(Project.of(args.key.project, project.pin, next.artifacts))
+        } yield (next, s"Kept ${headed(artifact.head)}.")
+      case Step.Move(args) =>
+        for {
+          _ <- Either.cond(
+            method.digest == project.pin.digest,
+            (),
+            Stop.Refused(Method.changed(args.key.project, method))
+          )
+          _ <- now.artifacts
+            .find(_.head.key == args.key)
+            .toRight(lacking(args.key, now.artifacts))
+          done <- method
+            .move(now.artifacts, args.key, args.to)
+            .left
+            .map(r => Stop.Refused(refusal(r)))
+          moved = Artifact(done.artifact.head.copy(by = Some(writer)), done.artifact.body)
+          merged = done.changed.map(c => Artifact(c.head.copy(by = Some(writer)), c.body))
+        } yield (
+          changing(moved +: merged.toVector),
+          s"Moved ${headed(moved.head)}." +
+            merged.fold("")(c => s" Merged its deltas into ${headed(c.head)}.")
+        )
+    }
+  }
+
+  /** Nothing, or why what `steps` made of `project` may not be kept: a brief over its budget
+    * ([[within]]), or an artifact changed that is kept below what this room writes
+    * ([[atTheirLabels]], saying `verb`).
+    */
+  private def settled(
+      claims: Claims,
+      project: Loaded,
+      method: Method,
+      key: ProjectKey,
+      steps: Stepping,
+      at: Instant,
+      verb: String
+  )(using Tx^): Either[Stop, Unit] =
+    for {
+      after <- refuse(Project.of(key, project.pin, steps.artifacts))
+      live <- stored(claims.live(at))
+      _ <- within(
+        method,
+        Project.of(key, project.pin, project.artifacts).toOption,
+        after,
+        live,
+        steps.changed
+      )
+      _ <- atTheirLabels(
+        project.documents
+          .filter((_, a) => steps.changed.contains(a.head.key))
+          .map((d, a) => d -> a.head.key.value),
+        verb
+      )
+    } yield ()
+
+  /** Keeps each artifact `steps` changed through `own`, once, as they left it: at its document's
+    * label, or at public when new.
+    */
+  private def wrote(own: DocumentKeeper, project: Loaded, steps: Stepping, at: Instant)(using
+      Tx^
+  ): Either[Stop, Unit] =
+    Traversal
+      .traverse(steps.changed.flatMap(k => steps.artifacts.find(_.head.key == k)))(a =>
+        kept(own, a, project.documents.find(_._2.head.key == a.head.key).map(_._1.label), at)
+      )
+      .map(_ => ())
 
   /** Nothing, or a refusal when `read`, the version a keep of `key` was read at, is not that of
     * `current`, its document: the version it is at, and who kept it when; or when `key` is new,
