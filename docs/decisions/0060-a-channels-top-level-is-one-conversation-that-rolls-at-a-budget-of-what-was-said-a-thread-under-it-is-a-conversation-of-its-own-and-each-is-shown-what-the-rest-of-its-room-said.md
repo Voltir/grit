@@ -1,6 +1,6 @@
 # 0060. A channel's top level is one conversation that rolls at a budget of what was said, a thread under it is a conversation of its own, and each is shown what the rest of its room said
 
-Status: accepted (2026-11-06)
+Status: accepted (2026-11-06); revised (2026-11-07)
 
 Context: a channel is where a team talks, mostly at the top level, in one-line turns whose
 topics interleave within minutes and come back days later. A conversation per thread left
@@ -42,6 +42,7 @@ Decision:
   (`Origin.Slack`) keeps its rule: a reply joins it, its first message may have been stitched
   to an exchange of its room (`Origin.stitchable`), and its strand, a root and the threads that
   follow it directly, is read as context (`Along.read`), until its entries age out.
+- **Whether an unprompted reply goes at the top level or in its thread** is ADR 0059's.
 - **Rooms are a deployment's switch**, `GRIT_SLACK_CONVERSATIONS=rooms`, off by default and
   honoured by backfill; a message heard under a thread before the switch is not heard again.
 

@@ -1,6 +1,6 @@
 # 0022. grit speaks unprompted when a heard message passes a gate, its draft a judge, and declared limits; one put to it by name is answered as addressed
 
-Status: accepted (2026-09-30); revised (2026-11-06)
+Status: accepted (2026-09-30); revised (2026-11-07)
 
 Context: a listened channel (ADR 0020) is kept, but grit only answered what was said to it.
 A deployment also wants grit to join in when it is worth interrupting. Turned down: a
@@ -50,13 +50,13 @@ Decision:
   recalled or its own calls read: is it `grounded` in those, and `worth` posting? The
   weaker is its score (`Judged.score`). A pass, or a draft with nothing recalled, is settled
   without asking; a document above the judge's clearance leaves it unjudged, so not posted.
-- **The draft is posted** in the message's thread only when its score reaches `postAt`,
+- **The draft is posted** where its decision placed it (ADR 0059) only when it reaches `postAt`,
   speaking is `Within`, its turn is believed at `Outside` or above (one that read rows the
   public typed, ADR 0057, is kept `Untrusted`), and grit has not replied to it, in its turn or
   the thread under it, or in a strand (ADR 0060), checked in the transaction that writes the
   reply.
-- **Replay.** Whether a turn drafts and the tools it is offered are recorded in its `offer`
-  (`root`, `reached`), never read live.
+- **Replay.** Whether a turn drafts, its tools and where it posts are in its `offer`
+  (`root`, `reached`, `venue`), never read live.
 - **Every decision, score and outcome is kept** (`grit.speech`) as long as its period's
   usage. A heard turn failed before its offer keeps `Failed`.
 
