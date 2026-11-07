@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, EdgeStores, Route, ToolRequest, Variable}
 import grit.core.files.NoIntake
-import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef}
+import grit.core.id.{SourceId, ToolCallId, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.model.{Catalog, Pinned}
@@ -299,14 +299,12 @@ object IntegrityTurn {
       new NoIntake
     )
     val place = SlackEdge.PostsAt.place
-    val desk = engine.register(PrincipalId.Grit, Set(place)) match {
-      case Right(d) => d
-      case Left(e) => sys.error(e.why)
+    val posting = Server.open(engine, place, _ => ()) { desk =>
+      desk.advertise(place, Posting, Vector.empty).map(_ => new Server.Advertised(Posting, posts))
+    } match {
+      case Right(open) => open
+      case Left(refused) => sys.error(refused.message)
     }
-    desk.advertise(place, Posting, Vector.empty).fold(e => sys.error(e.why), identity)
-    val posting =
-      new Server(desk, posts, Server.onVirtualThreads(), _ => ())
-    posting.serve()
     try {
       McpEdge
         .serving(Github, Vector(server))

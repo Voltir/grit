@@ -10,7 +10,7 @@ import grit.core.act.{Called, Keeping, MoveLimits, MoveName, Moves, Posed}
 import grit.core.classify.{Ask, StateJson}
 import grit.core.clock.SetClock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
-import grit.core.edge.{Desk, Route, ToolRequest}
+import grit.core.edge.{Desk, Route, ServedEdge, ToolRequest}
 import grit.core.files.PagedText
 import grit.core.flow.{Tainted, Trusted}
 import grit.core.id.{
@@ -292,13 +292,15 @@ object JobMovesLiveTests extends TestSuite {
     d
   }
 
-  /** An edge serving [[Reading]] through `desk`, until closed. */
-  private def serving(desk: Desk^): Server^{desk} = {
-    val server =
-      new Server(desk, Reading, Server.onVirtualThreads(), _ => ())
-    server.serve()
-    server
-  }
+  /** An edge on `engine` serving [[Reading]] at `service:probe` for grit, until closed. */
+  private def serving(engine: Engine^): ServedEdge.Open^ =
+    Server.open(engine, probe.place, _ => ()) { d =>
+      d.advertise(probe.place, Reading.offered, Vector.empty)
+        .map(_ => new Server.Advertised(Reading.offered, Reading))
+    } match {
+      case Right(open) => open
+      case Left(refused) => sys.error(refused.message)
+    }
 
   /** The run the clock edge starts on `engine` for `d`'s slot of `id` at `at`. */
   private def started(
@@ -412,7 +414,7 @@ object JobMovesLiveTests extends TestSuite {
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
       launch(engine, config, d)
-      val server = serving(desk(engine))
+      val server = serving(engine)
       try {
         val turn = started(engine, d, at)
         val said = awaited(config, engine, turn)
@@ -528,7 +530,7 @@ object JobMovesLiveTests extends TestSuite {
       val after = LiveEngine.open(config, Turn.Epoch)
       try {
         // Served before the run is recovered, so the ring is waiting for its wait.
-        val server = serving(desk(after))
+        val server = serving(after)
         try {
           launch(after, config, d)
           val said = awaited(config, after, turn).replace(replyOf(turn), "{reply}")
