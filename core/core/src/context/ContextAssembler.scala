@@ -3,7 +3,7 @@ package grit.core.context
 import grit.core.id.{ConversationId, DocumentVersionId, EntrySeq, PieceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
-import grit.core.store.{Db, Nearby, Payload, StoreError}
+import grit.core.store.{Db, Entry, Nearby, Payload, StoreError}
 
 /** Chooses what the model sees on a turn: a projection of the store drawn at a boundary and
   * carried, append-only, until the next (ADR 0052). Given the window carried into a turn
@@ -108,11 +108,21 @@ final case class AssemblyRequest(
   def boundary(share: Tokens): Tokens =
     Tokens(math.max(0L, Tokens.value(share) - Tokens.value(reserved)))
 
-  /** Of `turns`, the conversation's earlier turns oldest first, those a boundary may draw or
-    * find: with a [[task]], only the newest; without one, all of them.
+  /** Of `turns`, the conversation's earlier turns oldest first, each its entries, those a
+    * boundary may draw or find: with a [[task]], only the newest, less the continuation note
+    * it began with ([[Payload.Continuation]]), which this turn's own note supersedes, and
+    * none when that note was all it held; without one, all of them.
     */
-  def drawable[A](turns: Vector[A]): Vector[A] =
-    if (task.isDefined) turns.takeRight(1) else turns
+  def drawable(turns: Vector[Vector[Entry]]): Vector[Vector[Entry]] =
+    if (task.isEmpty) turns
+    else
+      turns
+        .takeRight(1)
+        .map(_.filter(_.payload match {
+          case _: Payload.Continuation => false
+          case _ => true
+        }))
+        .filter(_.nonEmpty)
 }
 
 /** Where a window starts: drawn with no search, or a query to write first. */

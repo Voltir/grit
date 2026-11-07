@@ -809,34 +809,50 @@ object TurnLoopTurnTests extends TestSuite {
     def replies(sent: Vector[Message]): Vector[Vector[AssistantBlock]] =
       sent.collect { case a: Message.Assistant => a.blocks }
     test(
-      "a continuation's boundary shows the task, a gap line, then the newest turn's note and reply, and no earlier reply"
+      "a continuation's boundary shows the task, a gap line, then the newest turn's reply without its note, no earlier reply, and its own note last"
     ) {
       val atLimit = grit.core.store.WentOn.AtLimit
       val sent = task(atLimit, atLimit).lastOption.getOrElse(Vector.empty)
-      (sent.take(3), replies(sent)) ==> (
-        Vector(Message.User("the task"), Shown.Gap, Message.User(Shown.Continuing)),
-        Vector(Vector(AssistantBlock.Text("reply 1")))
+      val noted = sent.collect {
+        case Message.User(text) if text.contains(Shown.Continuing) => text
+      }
+      (
+        sent.take(2),
+        sent.lift(2).collect { case a: Message.Assistant => a.blocks },
+        replies(sent),
+        noted.size,
+        sent.lastOption.collect { case Message.User(t) => t.endsWith(Shown.Continuing) }
+      ) ==> (
+        Vector(Message.User("the task"), Shown.Gap),
+        Some(Vector(AssistantBlock.Text("reply 1"))),
+        Vector(Vector(AssistantBlock.Text("reply 1"))),
+        1,
+        Some(true)
       )
     }
     test(
-      "after a failed check, the next turn shows the task, the answer the check failed and the check's output, and no earlier reply"
+      "after a failed check, the next turn shows the task, the answer the check failed and the check's output, and no earlier reply or note"
     ) {
-      val failed = grit.core.store.WentOn.Command
+      def failing(output: String) = grit.core.store.WentOn.Command
         .of("./check")
-        .map(grit.core.store.WentOn.failed(_, Some(1), "1 test failed"))
+        .map(grit.core.store.WentOn.failed(_, Some(1), output))
         .getOrElse(sys.error("a command"))
-      val sent = task(grit.core.store.WentOn.AtLimit, failed).lastOption.getOrElse(Vector.empty)
+      val (earlier, failed) = (failing("2 tests failed"), failing("1 test failed"))
+      val sent = task(earlier, failed).lastOption.getOrElse(Vector.empty)
+      def shows(note: String) = sent.exists {
+        case Message.User(text) => text.contains(note)
+        case _ => false
+      }
       (
         sent.take(2),
         replies(sent),
-        sent.exists {
-          case Message.User(text) => text.contains(Shown.checkFailed(failed))
-          case _ => false
-        }
+        shows(Shown.checkFailed(failed)),
+        shows(Shown.checkFailed(earlier))
       ) ==> (
         Vector(Message.User("the task"), Shown.Gap),
         Vector(Vector(AssistantBlock.Text("reply 1"))),
-        true
+        true,
+        false
       )
     }
 
