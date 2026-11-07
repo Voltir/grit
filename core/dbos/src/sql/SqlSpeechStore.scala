@@ -13,7 +13,6 @@ import grit.core.speech.{
   Decision,
   Heard,
   Outcome,
-  Rate,
   Reach,
   ReplyTo,
   SpeechJson,

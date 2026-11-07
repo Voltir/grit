@@ -2,7 +2,6 @@ package grit.core.speech
 
 import java.time.Instant
 
-import scala.concurrent.duration.*
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
