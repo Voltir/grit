@@ -121,7 +121,8 @@ private[slack] object Served {
                         s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}, answering ${command.name}"
                       )
                       val posts = posting match {
-                        case Some(rate) => served(slack, self.team, rate, stores, clock, log, edge)
+                        case Some(rate) =>
+                          served(slack, self.team, rate, conversations, stores, clock, log, edge)
                         case None => None
                       }
                       val backfilling = new Backfilling(
@@ -177,13 +178,16 @@ private[slack] object Served {
 
   /** `slack_post` served at [[SlackEdge.PostsAt]] through `slack`, at most `rate` posts,
     * counted on `clock`, over the channels of `team` that `edge` says it may post in, offered
-    * at once and again on each [[PostingServed.reoffer]]; each change of them logged. `None`, logged,
+    * at once and again on each [[PostingServed.reoffer]]; each change of them logged. Each
+    * post at a channel's top level is recorded as `conversations` says
+    * ([[SlackEdge.topLevel]]). `None`, logged,
     * when the desk would not register, so the edge serves its replies without it.
     */
   private def served(
       slack: Slack^,
       team: TeamId,
       rate: Rate,
+      conversations: Conversations,
       stores: EdgeStores^,
       clock: Clock^,
       log: String => Unit,
@@ -195,7 +199,14 @@ private[slack] object Served {
         log(s"slack: posts nowhere: ${place.written} not registered: ${e.why}")
         None
       case Right(desk) =>
-        val tool = new Posting(slack, clock, rate, team)
+        val tool =
+          new Posting(
+            slack,
+            clock,
+            rate,
+            team,
+            SlackEdge.topLevel(stores.inbox, team, conversations)
+          )
         // The tool set last advertised, so only a change is logged; written and read only by
         // offer, run by the open and then by the kit's delivery rounds, one after another.
         @caps.unsafe.untrackedCaptures

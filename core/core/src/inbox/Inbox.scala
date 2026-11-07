@@ -108,7 +108,8 @@ trait Inbox extends caps.SharedCapability {
     * own after what it holds, its call not kept. The conversation is created by `by`, at its
     * room's label, an account not seen before kept as a new person's one account. `true` when
     * this call recorded it; `false`, recording nothing, when `source` is recorded for `origin`
-    * already, a repeat included, or, but in a channel's top level, anything is. Never
+    * already (a repeat of this call included), or, outside a channel's top level, when
+    * anything is recorded for `origin`. Never
     * triaged, never a turn that runs, never refused over the day's cap.
     * [[InboxError.Invalid]] for an [[grit.core.store.Origin.Direct]]: grit's posts begin no
     * direct message.

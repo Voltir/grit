@@ -655,6 +655,40 @@ object SlackEdgeTests extends TestSuite {
       w.payloadsOf(Under(root)) ==> Vector(Payload.Heard("why this?"), Payload.Heard("no idea"))
     }
 
+    test(
+      "with rooms, grit's post at a channel's top level is a turn of its room once made, and a reply under it records it no second time"
+    ) {
+      val w = new World(conversations = Conversations.PerRoom)
+      val root = w.post(Asking)
+      SlackEdge.topLevel(w.inbox, TeamId(Team), Conversations.PerRoom)(
+        C,
+        Ts(root),
+        "The engine's open issues.",
+        Asking
+      ) ==> Right(())
+      w.payloadsOf(InRoom) ==> Vector(Payload.Posted("The engine's open issues."))
+      w.slack.deliver(message("9.1", "why this?", Some(root))) ==> true
+      w.payloadsOf(InRoom) ==> Vector(Payload.Posted("The engine's open issues."))
+      w.payloadsOf(Under(root)) ==> Vector(Payload.Heard("why this?"))
+      w.logged ==> Vector.empty
+    }
+
+    test(
+      "with threads, grit's post at a channel's top level is recorded only when a reply under it arrives"
+    ) {
+      val w = new World
+      val root = w.post(Asking)
+      SlackEdge.topLevel(w.inbox, TeamId(Team), Conversations.PerThread)(
+        C,
+        Ts(root),
+        "The engine's open issues.",
+        Asking
+      ) ==> Right(())
+      w.inbox.conversations.all.map(_.origin) ==> Vector.empty
+      w.slack.deliver(message("9.1", "why this?", Some(root))) ==> true
+      w.written(root).take(1) ==> Vector(Payload.Posted("The engine's open issues."))
+    }
+
     test("with rooms, backfill hears a top-level message in its room and a reply in its thread") {
       val w = new World(conversations = Conversations.PerRoom)
       w.slack.histories = Map(

@@ -208,7 +208,7 @@ object ServedTests extends TestSuite {
 
     /** The id of `slack_post` offered over `named`, at most [[TwoAnHour]]. */
     def offering(named: (String, ChannelId)*): ToolSetId =
-      new Posting(slack, Clock.system(), TwoAnHour, TeamId(Team))
+      new Posting(slack, Clock.system(), TwoAnHour, TeamId(Team), (_, _, _, _) => Right(()))
         .offer(named.toVector)
         .fold(why => throw new java.lang.AssertionError(why), _.id)
 

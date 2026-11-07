@@ -37,11 +37,35 @@ object PostingTests extends TestSuite {
   private val TwoAnHour: Rate =
     Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
 
+  /** What a posting told of its top-level posts, in order, each answered as `unrecorded` says. */
+  private final class Told {
+    // Appended by the posting's calls, which the test makes on its one thread.
+    @caps.unsafe.untrackedCaptures
+    var posts: Vector[(ChannelId, Ts, String, CallSlot)] = Vector.empty
+
+    /** Why each post told is not recorded, if set. */
+    // Set by the test's thread alone, between calls.
+    @caps.unsafe.untrackedCaptures
+    var unrecorded: Option[String] = None
+
+    val topLevel: (ChannelId, Ts, String, CallSlot) -> Either[String, Unit] = (c, ts, text, s) => {
+      posts = posts :+ (c, ts, text, s)
+      unrecorded.toLeft(())
+    }
+  }
+
   private final class World {
     val slack: FakeSlack^ = new FakeSlack
     slack.channelNames = Map(Skynet -> "probably-not-skynet", General -> "general")
     val clock: SetClock^ = new SetClock(Instant.parse("2026-10-01T12:00:00Z"))
-    val posting: Posting^{slack, clock} = new Posting(slack, clock, TwoAnHour, TeamId(Team))
+    val told = new Told
+
+    /** What the posting said, in order. */
+    // Appended by the posting's calls, which the test makes on its one thread.
+    @caps.unsafe.untrackedCaptures
+    var said: Vector[String] = Vector.empty
+    val posting: Posting^{slack, clock} =
+      new Posting(slack, clock, TwoAnHour, TeamId(Team), told.topLevel)
     posting
       .offer(Vector(("probably-not-skynet", Skynet), ("general", General)))
       .fold(why => throw new java.lang.AssertionError(why), _ => ())
@@ -56,7 +80,7 @@ object PostingTests extends TestSuite {
     def call(arguments: ujson.Obj, destination: Option[Place] = Some(SkynetAt)): Outcome = {
       val q = request(arguments, calls, destination)
       calls += 1
-      posting.run(route(q), q, _ => ())
+      posting.run(route(q), q, s => said = said :+ s)
     }
 
     /** What Slack was posted: channel, thread, fallback text, tag. */
@@ -131,6 +155,28 @@ object PostingTests extends TestSuite {
         Outcome.Done("Posted in #general.")
       )
       w.posted.map((c, _, text, _) => (c, text)) ==> Vector((Skynet, "one"), (General, "two"))
+    }
+
+    test(
+      "a post at a channel's top level is told once Slack took it, with its ts, its text and its call; one in a thread or refused is not"
+    ) {
+      val w = new World
+      w.call(post("The build is **green**.")) ==> Outcome.Done("Posted in #probably-not-skynet.")
+      w.call(reply("one", RootLink)) ==>
+        Outcome.Done("Posted in the thread in #probably-not-skynet.")
+      w.slack.notIn = Set(Skynet)
+      val _ = w.call(post("not taken"))
+      w.told.posts ==>
+        w.slack.posts.take(1).map(p => (Skynet, p.ts, "The build is **green**.", slot(0)))
+      w.slack.posts.size ==> 2
+      w.said ==> Vector.empty
+    }
+
+    test("a top-level post not recorded is still posted, and why is said") {
+      val w = new World
+      w.told.unrecorded = Some("the inbox is down")
+      w.call(post("The build is green.")) ==> Outcome.Done("Posted in #probably-not-skynet.")
+      w.said.map(_.contains("the inbox is down")) ==> Vector(true)
     }
 
     test("it posts in the thread a link to a message in that channel names") {

@@ -8,6 +8,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
+import grit.core.id.CallSlot
 import grit.core.place.Place
 import grit.core.speech.Rate
 import grit.core.store.Origin
@@ -28,17 +29,23 @@ import grit.core.tool.{
 import grit.edge.{Run, Tools}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{Slack, SlackError, Tag}
-import grit.slack.event.{ChannelId, MessageLink, TeamId}
+import grit.slack.event.{ChannelId, MessageLink, TeamId, Ts}
 import grit.slack.text.RichText
 
 /** `slack_post`, run by the Slack edge wherever a request to it was routed: a post in the
   * channel its request was checked to write to, at its top level or in the thread a message
   * link names, through `slack`, at most `rate` across every channel it offers, before and after
   * a change of them ([[offer]]), the posts counted by `clock`'s time. The channels it offers
-  * are `team`'s; it offers none until [[offer]] names some.
+  * are `team`'s; it offers none until [[offer]] names some. Each post Slack took at a
+  * channel's top level is told to `topLevel` once made, and why it was not recorded said.
   */
-private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team: TeamId)
-    extends Tools {
+private[slack] final class Posting(
+    slack: Slack,
+    clock: Clock,
+    rate: Rate,
+    team: TeamId,
+    topLevel: Posting.TopLevel
+) extends Tools {
   import Posting.*
 
   // The tool as last offered, replaced whole by offer; read once by each call and each advert,
@@ -81,7 +88,7 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
           s"You are in no channel ${ToolName.value(Name)} may post in now. $Unposted"
         )
       case Some(hosted) =>
-        Toolbox.of(hosted.over((a, to) => post(request.slot.key, a, to))) match {
+        Toolbox.of(hosted.over((a, to) => post(request.slot, a, to, said))) match {
           case Right(box) => Run.request(request, box)
           // One tool cannot repeat its own name.
           case Left(_) =>
@@ -89,8 +96,11 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
         }
     }
 
-  /** `a` posted in `to` for the request keyed `request`, as the tool's text says. */
-  private def post(request: String, a: PostArgs, to: Channel): Outcome = {
+  /** `a` posted in `to` for the call at `slot`, as the tool's text says; what an operator
+    * would want to know of it told to `said`.
+    */
+  private def post(slot: CallSlot, a: PostArgs, to: Channel, said: String => Unit): Outcome = {
+    val request = slot.key
     val (name, id) = (to.name, to.id)
     RichText.render(Markdown.parse(a.text)) match {
       case Vector() => Outcome.Failed(s"The text is empty. $Unposted")
@@ -108,7 +118,11 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
               )
             } match {
               case Left(refusal) => Outcome.Failed(refusal)
-              case Right(Right(_)) =>
+              case Right(Right(ts)) =>
+                if (in.isEmpty)
+                  topLevel(id, ts, a.text, slot).left.foreach(why =>
+                    said(s"the post ${Ts.value(ts)} in #$name is not recorded: $why")
+                  )
                 Outcome.Done(
                   if (in.isEmpty) s"Posted in #$name." else s"Posted in the thread in #$name."
                 )
@@ -151,6 +165,11 @@ private[slack] final class Posting(slack: Slack, clock: Clock, rate: Rate, team:
 }
 
 private[slack] object Posting {
+
+  /** Told of a post at a channel's top level once Slack took it: the channel, the post's ts,
+    * the text its call asked for, and that call's slot; why it was not recorded, when not.
+    */
+  type TopLevel = (ChannelId, Ts, String, CallSlot) => Either[String, Unit]
 
   /** What a call of `slack_post` reads into; the channel it posts in is its destination. */
   type PostArgs = (text: String, thread: Option[String])

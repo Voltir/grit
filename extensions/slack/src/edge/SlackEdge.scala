@@ -641,7 +641,8 @@ final class SlackEdge(
 
   /** Records grit's post that `m`'s thread begins with as its conversation's opening
     * ([[grit.core.inbox.Inbox.posted]]), or as a turn of its channel's top level when the
-    * thread is under it ([[Origin.Thread]]), written by `by`, when `m` is a reply that begins
+    * thread is under it ([[Origin.Thread]]) and the post was not recorded as it was made
+    * ([[SlackEdge.topLevel]]), written by `by`, when `m` is a reply that begins
     * its conversation and grit's bot posted the thread's root with `slack_post` ([[Tag.Sent]]):
     * its text as Slack gives it, made by the call its tag names. Nothing for any other
     * message. When Slack cannot be asked for the root, or the post is not recorded, that is
@@ -673,7 +674,9 @@ final class SlackEdge(
                     .left
                     .map(_.toString)
                     .map { recorded =>
-                      if (!recorded)
+                      // A post at a channel's top level is recorded as it is made, so is
+                      // normally recorded already (SlackEdge.topLevel).
+                      if (!recorded && in == origin)
                         said(
                           s"slack: grit's post ${Ts.value(m.thread)} not recorded: it is recorded already, or its thread began without it"
                         )
@@ -866,6 +869,39 @@ final class SlackEdge(
 }
 
 object SlackEdge {
+
+  /** Records each post grit makes at a channel's top level of `team` in `inbox`, as a turn of
+    * the channel's room ([[Origin.Room]], [[grit.core.inbox.Inbox.posted]]) dated by its ts,
+    * when `conversations` records rooms; with threads nothing, the post recorded when its first
+    * reply arrives instead. A post recorded already records nothing again. Why not, when the
+    * inbox could not record it.
+    */
+  private[slack] def topLevel(
+      inbox: grit.core.inbox.Inbox,
+      team: TeamId,
+      conversations: Conversations
+  ): (ChannelId, Ts, String, CallSlot) ->{inbox} Either[String, Unit] =
+    (channel, ts, text, request) =>
+      conversations match {
+        case Conversations.PerThread => Right(())
+        case Conversations.PerRoom =>
+          Events.time(Ts.value(ts)) match {
+            case None => Left(s"its ts ${Ts.value(ts)} names no time")
+            case Some(at) =>
+              inbox
+                .posted(
+                  Origin.Room(TeamId.value(team), ChannelId.value(channel)),
+                  SourceId(Ts.value(ts)),
+                  text,
+                  at,
+                  request,
+                  Account.Grit
+                )
+                .map(_ => ())
+                .left
+                .map(_.toString)
+          }
+      }
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in a channel its bot is a member of heard (ADR 0020, 0033), one addressed to
