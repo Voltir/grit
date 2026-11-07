@@ -189,6 +189,92 @@ object ClaimTests extends TestSuite {
         CommandOutcome.Refused("p/a is not claimed")
       )
     }
+    test(
+      "a keep that would put a claimed artifact's brief past 9,500 characters is refused naming the characters to cut, keeping nothing"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      done(claimed(projects, store))
+      val answer = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/a",
+        "title" -> "Title a",
+        "body" -> ("Text. " * 2000).trim
+      )
+      // 11,999 characters of body, and the brief's header line and blank lines (BriefTests).
+      (answer, shown(projects, store, "p/a").endsWith("\nText.\n")) ==> (
+        CommandOutcome.Refused(
+          s"the brief of p/a, claimed as builder for $holder, would be 12,057 characters, " +
+            "2,557 over the 9,500 a brief holds (the artifact with what its role always carries): " +
+            "cut at least 2,557 characters from p/a"
+        ),
+        true
+      )
+    }
+
+    test(
+      "a keep of an artifact a claimed brief carries is refused when that brief would pass the budget"
+    ) {
+      val view = MethodFixtures.right(
+        grit.projects.method.RoleView.of(
+          MethodFixtures.role("manager"),
+          Set(MethodFixtures.note.name),
+          1,
+          Set(MethodFixtures.right(grit.projects.name.LocalKey.of("process")))
+        )
+      )
+      val carrying = grit.projects.method.Method
+        .of(
+          methodName,
+          1,
+          Vector(MethodFixtures.change, MethodFixtures.note),
+          MethodFixtures.transitions,
+          Vector(view),
+          grit.projects.method.TransitionChecks.all
+        )
+        .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+      val projects = plugin(carrying)
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "m", "note", "The manager's note.")
+      kept(projects, store, "process", "note", "How work is run.")
+      done(claimed(projects, store, "p/m", "manager"))
+      val answer = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/process",
+        "title" -> "Title process",
+        "body" -> ("Rule. " * 2000).trim
+      )
+      assert(answer match {
+        case CommandOutcome.Refused(why) =>
+          why.startsWith(s"the brief of p/m, claimed as manager for $holder, would be ") &&
+          why.endsWith(" characters from p/process")
+        case CommandOutcome.Done(_) => false
+      })
+    }
+
+    test("a keep that shortens a brief already over the budget is kept") {
+      val projects = plugin()
+      val store = Store()
+      holding(projects, store)
+      kept(projects, store, "a", "note", ("Text. " * 2000).trim)
+      done(claimed(projects, store))
+      val answer = ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> "p/a",
+        "title" -> "Title a",
+        "body" -> ("Text. " * 1900).trim
+      )
+      answer ==> CommandOutcome.Done("Kept p/a (note, open).")
+    }
+
     test("a brief over its cap is kept as none, and the claim stands") {
       val projects = plugin()
       val store = Store()

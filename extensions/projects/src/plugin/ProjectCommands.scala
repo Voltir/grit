@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{ClaimRole, Claimed, Claims}
+import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{
   DocRef,
   DocText,
@@ -137,8 +137,10 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         "state; or a new version of one kept already, its kind and state unchanged (only " +
         "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
         "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
-        "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused " +
-        "for a parent or a cite the project lacks.",
+        "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused, " +
+        "keeping nothing: for a parent or a cite the project lacks, naming the nearest keys it " +
+        f"has; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
+        "characters, naming the characters to cut.",
       Args
         .of(
           (
@@ -222,12 +224,20 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
           ),
           body
         )
-        _ <- refuse(
+        after <- refuse(
           Project.of(
             args.key.project,
             project.pin,
             project.artifacts.filterNot(_.head.key == args.key) :+ artifact
           )
+        )
+        live <- stored(claims.live(at))
+        _ <- within(
+          method,
+          Project.of(args.key.project, project.pin, project.artifacts).toOption,
+          after,
+          live,
+          Vector(args.key)
         )
         _ <- atTheirLabels(existing.toVector.map((d, a) => d -> a.head.key.value), "keep")
         _ <- kept(own, artifact, existing.map(_._1.label), at)
@@ -1335,6 +1345,45 @@ private[plugin] object ProjectCommands {
     project.documents
       .find(_._2.head.key == key)
       .toRight(lacking(key, project.artifacts))
+
+  /** Nothing, or a refusal naming each claim of `live` on an artifact of `after` whose brief, at
+    * most [[DocRef.BriefChars]] characters, `after` puts over that budget when `before` did not,
+    * or makes longer than `before` did (`before` none: as if it did not), and the characters to
+    * cut from those of `changed` the brief holds whole (the claimed artifact, or one its role
+    * carries); a claim whose role `method` shows no view of is passed over.
+    */
+  private def within(
+      method: Method,
+      before: Option[Project],
+      after: Project,
+      live: Vector[Claim],
+      changed: Vector[ArtifactKey]
+  ): Either[Stop, Unit] = {
+    def over(p: Project, key: ArtifactKey, view: RoleView): Option[Int] =
+      Brief.of(p, key, view, DocRef.BriefChars).left.toOption.collect {
+        case BriefRefusal.Over(size) => size
+      }
+    live.flatMap { c =>
+      for {
+        key <- ArtifactKey.read(DocKey.value(c.subject)).toOption
+        if key.project == after.key
+        view <- method.views.find(_.role == c.role)
+        size <- over(after, key, view)
+        if before.flatMap(over(_, key, view)).forall(_ < size)
+      } yield {
+        val held = changed.filter(k => k == key || view.carried.contains(k.local))
+        val cut = size - DocRef.BriefChars
+        f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
+          f"${ClaimHolder.value(c.holder)}, would be $size%,d characters, $cut%,d over the " +
+          f"${DocRef.BriefChars}%,d a brief holds (the artifact with what its role always " +
+          f"carries): cut at least $cut%,d characters from " +
+          (if (held.isEmpty) changed else held).map(_.value).mkString(", ")
+      }
+    } match {
+      case Vector() => Right(())
+      case refusals => Left(Stop.Refused(refusals.mkString("; ")))
+    }
+  }
 
   /** That `key`'s project has no artifact `key`, naming the nearest of `among`. */
   private def lacking(key: ArtifactKey, among: Vector[Artifact]): Stop =
