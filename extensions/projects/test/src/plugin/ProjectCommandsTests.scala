@@ -73,7 +73,9 @@ object ProjectCommandsTests extends TestSuite {
       assert(text.contains(writer))
     }
 
-    test("a turn is offered the reads, new, keep and move; not withdraw, migrate or claims") {
+    test(
+      "a turn is offered the reads, new, keep and move; not batch, withdraw, migrate or claims"
+    ) {
       plugin().commands.filter(_.offeredToTurns).map(c => ToolName.value(c.spec.name)).sorted ==>
         Vector(
           "project_brief",

@@ -50,6 +50,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       New,
       Keep,
       Move,
+      Batch,
       Show,
       History,
       List,
@@ -207,6 +208,168 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(alone(own, claims, args.key.project, Step.Move(args), by, at, "move"))
+  }
+
+  /** `project_batch`. */
+  object Batch extends KeepingCommand[Batching] {
+
+    override def shown(args: Batching): String =
+      s"${ProjectKey.value(args.project)}, ${args.steps.size} steps" +
+        (if (args.dry) ", dry" else "")
+
+    val spec: ToolSpec[Batching] = ToolSpec(
+      ToolName("project_batch"),
+      "Keeps and moves artifacts of one project, in the order given, each step as " +
+        "project_keep or project_move would and seeing what the steps before it did; all of " +
+        "them are kept, or none when any is refused. A keep's version is checked against the " +
+        "artifact as it was before the batch, and each artifact changed is kept once, as the " +
+        "last step left it. With dry, keeps nothing and answers what each step would do. " +
+        "Refused, naming the step and why, as its command would refuse it; and when a claimed " +
+        f"artifact's brief would pass ${DocRef.BriefChars}%,d characters once every step is done.",
+      Args
+        .of(
+          (
+            project = Field.text("The project's key; every step's key is in it."),
+            steps = Field.each(
+              s"The steps, 1 to $BatchMost, in order: each a keep or a move.",
+              BatchStep
+            ),
+            dry = Field.flag("Answer what each step would do, keeping nothing.").optional
+          )
+        )
+        .refine(a =>
+          for {
+            project <- parsed("project", a.project, ProjectKey.of)
+            steps <- Traversal.traverse(a.steps.toVector.zipWithIndex)((s, i) =>
+              for {
+                key <- parsed("key", s.key, ArtifactKey.read)
+                step <- s.command match {
+                  case "move" =>
+                    val keeps = Vector(
+                      "kind" -> s.kind.isDefined,
+                      "title" -> s.title.isDefined,
+                      "body" -> s.body.isDefined,
+                      "parent" -> s.parent.isDefined,
+                      "cites" -> s.cites.isDefined,
+                      "version" -> s.version.isDefined
+                    ).collect { case (name, true) => name }
+                    if (keeps.nonEmpty)
+                      Left(
+                        ArgsError.Refused(
+                          "steps",
+                          s"A move takes key and state alone; step ${i + 1} gives " +
+                            s"${keeps.mkString(", ")}."
+                        )
+                      )
+                    else
+                      s.state
+                        .toRight(
+                          ArgsError
+                            .Refused("steps", s"A move needs its state; step ${i + 1} gives none.")
+                        )
+                        .flatMap(st => parsed("state", st, StateName.of))
+                        .map(to => Step.Move(Moving(key, to)))
+                  case _ =>
+                    (s.state, s.title, s.body) match {
+                      case (Some(_), _, _) =>
+                        Left(
+                          ArgsError.Refused(
+                            "steps",
+                            s"A keep takes no state; step ${i + 1} gives one: move it with a " +
+                              "move step."
+                          )
+                        )
+                      case (None, Some(title), Some(body)) =>
+                        Keeping
+                          .read(key, s.kind, title, body, s.parent, s.cites, s.version)
+                          .map(Step.Keep(_))
+                      case (None, _, _) =>
+                        Left(
+                          ArgsError.Refused(
+                            "steps",
+                            s"A keep needs its title and body; step ${i + 1} lacks " +
+                              Vector("title" -> s.title, "body" -> s.body)
+                                .collect { case (name, None) => name }
+                                .mkString(" and ") +
+                              "."
+                          )
+                        )
+                    }
+                }
+              } yield step
+            )
+            batching <- Batching
+              .of(project, steps, a.dry.getOrElse(false))
+              .left
+              .map(ArgsError.Refused("steps", _))
+          } yield batching
+        )
+    )
+
+    def run(
+        args: Batching,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      val n = args.steps.size
+      for {
+        project <- loaded(own, args.project)
+        method <- refuse(declared(project.pin))
+        plan = planned(project, method, args.steps, author(by), onward = args.dry)
+        (said, steps) = plan
+        answers <- Traversal.traverse(said.zipWithIndex) {
+          case (Right(answer), i) => Right(s"${i + 1}. $answer")
+          case (Left(Stop.Refused(why)), i) => Right(s"${i + 1}. Refused: $why")
+          case (Left(failed), _) => Left(failed)
+        }
+        lines = answers.mkString("\n")
+        refused = said.zipWithIndex.collectFirst { case (Left(Stop.Refused(why)), i) => (i, why) }
+        done <- (refused, args.dry) match {
+          case (Some((i, why)), false) =>
+            Left(
+              Stop.Refused(
+                s"Nothing was kept: step ${i + 1} of $n (${described(args.steps, i)}) was " +
+                  s"refused: $why"
+              )
+            )
+          case (Some(_), true) =>
+            Left(
+              Stop.Refused(
+                "Dry run, nothing kept; the batch would be refused. Each step would answer:\n" +
+                  lines
+              )
+            )
+          case (None, false) =>
+            settled(claims, project, method, args.project, steps, at, "change it").left
+              .map {
+                case Stop.Refused(why) => Stop.Refused(s"Nothing was kept: $why")
+                case failed => failed
+              }
+              .flatMap(_ => wrote(own, project, steps, at))
+              .map(_ => s"Every step is done:\n$lines")
+          case (None, true) =>
+            settled(claims, project, method, args.project, steps, at, "change it").left
+              .map {
+                case Stop.Refused(why) =>
+                  Stop.Refused(
+                    "Dry run, nothing kept; the batch would be refused. Each step would " +
+                      s"answer:\n$lines\nOnce every step is done, refused: $why"
+                  )
+                case failed => failed
+              }
+              .map(_ => s"Dry run, nothing kept. Each step would answer:\n$lines")
+        }
+      } yield done
+    }
+
+    /** Step `i` of `steps` in a few words: `keep <key>`, or `move <key> to <state>`. */
+    private def described(steps: Vector[Step], i: Int): String =
+      steps.lift(i).fold("") {
+        case Step.Keep(k) => s"keep ${k.key.value}"
+        case Step.Move(m) => s"move ${m.key.value} to ${StateName.value(m.to)}"
+      }
   }
 
   /** `project_show`. */
@@ -1111,6 +1274,59 @@ private[plugin] object ProjectCommands {
         )
       } yield Keeping(key, kind, title, body, parent, cites, version)
   }
+
+  /** `project_batch`'s arguments. */
+  final case class Batching private (project: ProjectKey, steps: Vector[Step], dry: Boolean)
+      extends caps.Pure
+
+  object Batching {
+
+    /** These as `project_batch`'s arguments, or why not: no step, more than [[BatchMost]], or a
+      * step's key outside `project`.
+      */
+    def of(project: ProjectKey, steps: Vector[Step], dry: Boolean): Either[String, Batching] = {
+      val outside = steps.zipWithIndex
+        .map {
+          case (Step.Keep(k), i) => (k.key, i)
+          case (Step.Move(m), i) => (m.key, i)
+        }
+        .filterNot(_._1.project == project)
+      if (steps.isEmpty) Left("A batch takes at least one step.")
+      else if (steps.size > BatchMost)
+        Left(s"At most $BatchMost steps; ${steps.size} were given.")
+      else
+        outside.headOption.fold(Right(new Batching(project, steps, dry))) { (k, i) =>
+          Left(
+            s"Step ${i + 1}'s key ${k.value} is in project ${ProjectKey.value(k.project)}, " +
+              s"not ${ProjectKey.value(project)}."
+          )
+        }
+    }
+  }
+
+  /** 50: the most steps one `project_batch` takes, so one transaction keeps at most 100
+    * artifacts (a move may merge into a second).
+    */
+  val BatchMost: Int = 50
+
+  /** A step of `project_batch`, as sent. */
+  private val BatchStep = Args.of(
+    (
+      command = Field.oneOf(
+        "What the step does: keep, as project_keep, or move, as project_move.",
+        "keep",
+        "move"
+      ),
+      key = Field.text("The artifact's key, `<project>/<artifact>`."),
+      state = Field.text("For a move, the state to move it to.").optional,
+      kind = Field.text(s"For a keep: ${KeepMeaning.kind}").optional,
+      title = Field.text(s"For a keep: ${KeepMeaning.title}").optional,
+      body = Field.text(s"For a keep: ${KeepMeaning.body}").optional,
+      parent = Field.text(s"For a keep: ${KeepMeaning.parent}").optional,
+      cites = Field.texts(s"For a keep: ${KeepMeaning.cites}", 0, DocRef.Most).optional,
+      version = Field.integer(s"For a keep: ${KeepMeaning.version}", 1, Long.MaxValue).optional
+    )
+  )
 
   /** One step of `project_batch`, read as its command reads its arguments. */
   enum Step extends caps.Pure {
