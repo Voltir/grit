@@ -21,15 +21,16 @@ import grit.core.context.{
 import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
 import grit.core.files.{KeptPiece, PieceSearch}
 import grit.core.id.{
-  CallSlot,
   ConversationId,
   DocumentVersionId,
   EntrySeq,
   PieceId,
   PluginName,
+  SourceId,
   TurnRef,
   TurnSeq
 }
+import grit.core.inbox.InboundId
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Place, Weight}
 import grit.core.provider.TokenEstimator
@@ -47,6 +48,7 @@ import grit.core.store.{
   LifecycleStore,
   Nearby,
   OpenPeriod,
+  Origin,
   Payload,
   PeriodStore,
   Principals,
@@ -98,6 +100,14 @@ import grit.core.visibility.Subject
   * its person's messages and grit's reply from the first, as many as fit in the strand's
   * allowance, paid from it before the strand. Neither a strand member nor the asking
   * conversation is ever also a candidate.
+  *
+  * A channel's top level, or a thread under it ([[grit.core.store.Origin.Room]],
+  * [[grit.core.store.Origin.Thread]]; ADR 0060), reads no strand: in its place, every other
+  * conversation of its room is shown one [[Nearby.Along]] section, of what it said since the
+  * room's open period opened (its own, for the top level), no closing among them, the newest
+  * that fit `settings.rolling.shown`, paid as the strand is; a thread is shown its room's newest
+  * kept closing by its record first, and, while its period is its first, the room's turn it is
+  * under as its [[Nearby.Asked]] section, which the room's section then leaves out.
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the
   * period and nothing elsewhere and no document or piece is to be drawn.
@@ -352,9 +362,11 @@ final class RetrievalAssembler(
           .orElse(all.map(_.createdAt).maxOption.map(_.plusSeconds(1)))
           .getOrElse(java.time.Instant.EPOCH)
         began = all.minByOption(_.seq).fold(until)(_.createdAt)
-        strand <-
+        roomSaid <- if (appending) Right(None) else roomRead(conversation, turn, open, until)
+        read <- roomSaid.fold(
           if (appending) Right(Strand.Read.empty)
           else Along.read(stitches, conversation, began.minusNanos(tuning.horizon.toNanos), until)
+        )(Right(_))
         // Documents are drawn as of the turn's root: a turn with no entry yet has none.
         root = all.filter(_.turnSeq == turn.turnSeq).map(_.createdAt).minOption
         stocked <- root.fold(Right(Vector.empty))(documents.shelvesAt)
@@ -365,13 +377,21 @@ final class RetrievalAssembler(
           }
         )
         posted <-
-          if (appending) Right(None) else conversations.postedBy(turn.conversationId)
+          if (appending) Right(None)
+          else
+            conversations.postedBy(turn.conversationId).flatMap {
+              case Some(slot) => Right(Some(slot.turn))
+              case None => underOf(conversation)
+            }
         asked <-
           if (appending) Right(None) else askedOf(conversation, posted, opening.closing.isEmpty)
         speakers <- principals.speakers(
-          (all ++ strand.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
+          (all ++ read.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
         )
       } yield {
+        // A thread's root turn is shown once, as its asked section, never also in its room's.
+        val askedShown = asked.toVector.flatMap(_._3).map(_.id).toSet
+        val strand = read.copy(said = read.said.filterNot(s => askedShown(s.entry.id)))
         val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
         val shelves = root.flatMap(at =>
           Shelves.of(at, stocked.map(_._1), stocked.map((s, t) => s.plugin -> t).toMap)
@@ -387,6 +407,7 @@ final class RetrievalAssembler(
           closed.filterNot(c => members(c.conversation)),
           strand,
           closed.filter(c => strand.gone.contains(c.conversation)),
+          if (roomSaid.isDefined) settings.rolling.shown else tuning.windowTokens,
           asked,
           shelves,
           root.flatMap(Pieced.of(_, holding))
@@ -453,7 +474,7 @@ final class RetrievalAssembler(
     val turn = request.turn
     val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
     val allowance = Tokens(
-      math.min(Tokens.value(tuning.windowTokens), Tokens.value(afterClosing))
+      math.min(Tokens.value(read.strandCap), Tokens.value(afterClosing))
     )
     val (askedShown, askedCost) = askedSection(read, allowance)
     val along = db
@@ -557,6 +578,7 @@ final class RetrievalAssembler(
       closed: Vector[ClosedElsewhere],
       strand: Strand.Read,
       goneRecords: Vector[ClosedElsewhere],
+      strandCap: Tokens,
       asked: Option[(ConversationId, Place, Vector[Entry])],
       shelves: Option[Shelves],
       pieced: Option[Pieced]
@@ -569,24 +591,88 @@ final class RetrievalAssembler(
     */
   private def askedOf(
       conversation: Conversation,
-      posted: Option[CallSlot],
+      posted: Option[TurnRef],
       first: Boolean
   )(using
       grit.core.store.Tx^
   ): Either[StoreError, Option[(ConversationId, Place, Vector[Entry])]] =
     posted match {
-      case Some(slot) if first && conversation.origin.audience == Audience.Colleagues =>
-        val by = slot.turn.conversationId
+      case Some(asking) if first && conversation.origin.audience == Audience.Colleagues =>
+        val by = asking.conversationId
         conversations.get(by).flatMap {
           case Some(asker) if asker.origin.audience == Audience.Colleagues =>
             entries.list(by).map { all =>
-              val said = all.filter(e => e.turnSeq == slot.turn.turnSeq && spoken(e))
+              val said = all.filter(e => e.turnSeq == asking.turnSeq && spoken(e))
               Option.when(said.nonEmpty)((by, asker.origin.place, said))
             }
           case _ => Right(None)
         }
       case _ => Right(None)
     }
+
+  /** The room's turn a thread under a channel's top level is under (ADR 0060): the turn its
+    * root message was recorded as, heard, said to grit or grit's post; `None` for any other
+    * conversation, or when that message was never recorded or is gone.
+    */
+  private def underOf(conversation: Conversation)(using
+      grit.core.store.Tx^
+  ): Either[StoreError, Option[TurnRef]] =
+    conversation.origin match {
+      case Origin.Thread(team, channel, root) =>
+        conversations.find(Origin.Room(team, channel)).flatMap {
+          case Some(room) =>
+            entries
+              .get(InboundId.of(room.id, SourceId(root)))
+              .map(_.map(e => TurnRef(room.id, e.turnSeq)))
+          case None => Right(None)
+        }
+      case _ => Right(None)
+    }
+
+  /** What the rest of the room of `conversation`, a channel's top level or a thread under it
+    * (ADR 0060), said since the room's open period opened, until `until`: every other
+    * conversation's messages, grit's replies and posts there, oldest first, no closing among
+    * them, as a strand's members are read; and, for a thread, its room's newest kept closing,
+    * shown by its record (`gone`). `None` for any other conversation.
+    */
+  private def roomRead(
+      conversation: Conversation,
+      turn: TurnRef,
+      open: Vector[OpenPeriod],
+      until: java.time.Instant
+  )(using grit.core.store.Tx^): Either[StoreError, Option[Strand.Read]] = {
+    val room = conversation.origin.room
+    def since(
+        of: Either[StoreError, Option[grit.core.period.Period]]
+    ): Either[StoreError, Vector[Said]] =
+      of.flatMap {
+        case Some(p) => stitches.spokenIn(room, p.openedAt, until)
+        case None => Right(Vector.empty)
+      }
+    def read(said: Vector[Said], gone: Vector[ConversationId]): Strand.Read = {
+      val shown = said.filter(s =>
+        s.conversation != conversation.id && (s.entry.payload match {
+          case Payload.Closed(_, _, _) => false
+          case _ => true
+        })
+      )
+      Strand.Read(None, shown, gone, shown.map(_.conversation).toSet ++ gone)
+    }
+    conversation.origin match {
+      case Origin.Room(_, _) => since(periods.of(turn)).map(said => Some(read(said, Vector.empty)))
+      case Origin.Thread(team, channel, _) =>
+        conversations.find(Origin.Room(team, channel)).flatMap {
+          case None => Right(Some(Strand.Read.empty))
+          case Some(top) =>
+            since(
+              open
+                .find(_.conversation == top.id)
+                .fold(Right(None))(o => periods.of(TurnRef(top.id, o.first)))
+            ).map(said => Some(read(said, Vector(top.id))))
+        }
+      case _ => Right(None)
+    }
+  }
 
   /** Whether `e` is a message with words: a person's, or grit's reply with text. */
   private def spoken(e: Entry): Boolean = e.payload match {

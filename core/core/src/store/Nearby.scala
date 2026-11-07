@@ -14,9 +14,10 @@ enum Nearby {
   /** One of its closed periods, by its closing entry. */
   case Closed(conversation: ConversationId, place: Place, closing: EntrySeq)
 
-  /** Its entries at `entries`, a conversation in the window's own strand
-    * ([[grit.core.stitch.Strand]]), in the order said: context the window's conversation
-    * continues, shown unranked, not recall.
+  /** Its entries at `entries`, a conversation of the window's own room when the window's is a
+    * channel's top level or a thread under it (ADR 0060), else of its strand
+    * ([[grit.core.stitch.Strand]]), in the order said: what the rest of the room said, or the
+    * context the window's conversation continues, shown unranked, not recall.
     */
   case Along(conversation: ConversationId, place: Place, entries: Vector[EntrySeq])
 

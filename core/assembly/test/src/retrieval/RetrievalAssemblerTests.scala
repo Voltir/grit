@@ -909,6 +909,77 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test(
+      "a channel's top level is shown what its threads said since its period opened, unranked, its own turns and a closing left out"
+    ) {
+      val top = Origin.Room("T", "C")
+      val origins = (c: ConversationId) =>
+        if (c == c1) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val _ = said(world, "c1", "and the venue?" -> -200)
+      val _ = said(world, "0.5", "said before the period" -> 10)
+      val a = said(world, "1.0", "the freeze is Thursday" -> -50, "an aside" -> -100)
+      val _ = closeAgain(world, a, 1, "ok", "We set the freeze.")
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        origin = top,
+        stitches = Some(new InMemoryStitchStore(world.entries, origins))
+      ).nearby ==> Vector(
+        Nearby.Along(
+          a,
+          Origin.Thread("T", "C", "1.0").place,
+          seqs(world, "1.0:t2:2", "1.0:0", "1.0:1")
+        )
+      )
+    }
+
+    test("a room's period rolls before what was said in it outgrows the default tail") {
+      val tail = CharEstimate.text("x" * grit.core.period.Rolling.Default.chars)
+      assert(Tokens.value(tail) < Tokens.value(RetrievalAssembler.DefaultTail))
+    }
+
+    test(
+      "a thread under a channel's top level is shown the turn it is under first, and what the top level said since its period opened"
+    ) {
+      val top = Origin.Room("T", "C")
+      val room = ConversationId("room")
+      val origins = (c: ConversationId) =>
+        if (c == room) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      given Tx = TestTx.fake
+      val next = world.entries.lockNext(room).getOrElse(sys.error("in-memory store"))
+      val _ = world.periods.openFor(room, next.turnSeq, Instant.EPOCH)
+      val root = Entry(
+        grit.core.inbox.InboundId.of(room, grit.core.id.SourceId("2.0")),
+        room,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Heard("is the freeze on?"),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+      val _ = world.entries.insert(root)
+      val _ = said(world, "room", "lunch?" -> -10)
+      val _ = said(world, "c1", "and the date?" -> -100)
+      val w = assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        origin = Origin.Thread("T", "C", "2.0"),
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        others = Vector(Conversation(room, top, Account.Local, Instant.EPOCH, Label.Public))
+      )
+      w.nearby ==> Vector(
+        Nearby.Asked(room, top.place, Vector(root.seq)),
+        Nearby.Along(room, top.place, seqs(world, "room:0").filterNot(_ == root.seq))
+      )
+    }
+
+    test(
       "a stitched conversation's window shows its strand before its own turns: the opening, then the nearest that fit windowTokens"
     ) {
       val world = closed(Vector(Vector(ask)), Vector.empty, threads)
