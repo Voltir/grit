@@ -618,6 +618,34 @@ abstract class DocumentContract extends TestSuite {
       ) ==> (Some("new#brief"), Some("old#brief"), None, Vector("plain"), Vector("plain"))
     }
     test(
+      "a brief the transaction does not read is never found, and never hides an older one it does"
+    ) {
+      val p = name("doc-brief-above")
+      transaction(ok(store.declare(Vector(p -> terms()))))
+      val h = got(ClaimHolder.of("coder/above"))
+      val k = keeper(p, terms())
+      put(k, "low#brief", "the brief low", 1, refs = Set(DocRef.brief(h)))
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(
+            key("high#brief"),
+            Label.Public,
+            Integrity.Member,
+            place("here"),
+            text("the brief high"),
+            Empty,
+            None,
+            at(2),
+            Set(DocRef.brief(h))
+          )
+        )
+      )
+      def briefAt(clearance: Clearance) =
+        opened(clearance)(ok(search.briefOf(h, at(5)))).map(d => DocKey.value(d.key))
+      (briefAt(Clearance.of(Label.Public)), briefAt(Clearance.of(TestLabels.Trial))) ==>
+        (Some("low#brief"), Some("high#brief"))
+    }
+    test(
       "labelOf keeps those whose plugin is enabled, in their order, each with its plugin's label"
     ) {
       val (p, q, r) = (name("doc-label-of-p"), name("doc-label-of-q"), name("doc-label-of-r"))
