@@ -3,7 +3,7 @@ package grit.eval.harness.sent
 import java.time.Instant
 
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
-import grit.core.store.{Entry, Tx}
+import grit.core.store.{Entry, Payload, Tx}
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Unread
 
@@ -44,4 +44,9 @@ object ConversationSent {
         .left
         .map(Unread.said(s"the entries of ${ConversationId.value(conversation)}"))
     } yield ConversationSent(turns, entries)
+
+  /** Whether `w` was drawn at a boundary rather than carried: nothing was carried after it. A
+    * window recorded before windows were carried counts as drawn.
+    */
+  def boundary(w: Payload.Window): Boolean = w.carry.forall(_.after.isEmpty)
 }

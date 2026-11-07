@@ -33,7 +33,7 @@ object TaskTurn {
   ): TaskTurn = {
     val turnOf = entries.map(e => e.seq -> e.turnSeq).toMap
     val keptAt = entries.map(e => e.id -> e.createdAt).toMap
-    val boundary = window.exists(_.carry.forall(_.after.isEmpty))
+    val boundary = window.exists(ConversationSent.boundary)
     val dropped = window.filter(_ => boundary).fold(Vector.empty[TurnSeq]) { w =>
       val shown = (w.entries.flatMap(turnOf.get) ++ w.recalled).toSet
       entries

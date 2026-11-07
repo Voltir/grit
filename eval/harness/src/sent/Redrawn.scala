@@ -200,7 +200,7 @@ object Redrawn {
       for {
         record <- conversation.entries.collectFirst {
           case Entry(id, _, _, _, _, w: Payload.Window, _, _)
-              if id == Turn.windowId(t.turn) && w.carry.forall(_.after.isEmpty) =>
+              if id == Turn.windowId(t.turn) && ConversationSent.boundary(w) =>
             w
         }
         first <- t.measured.headOption
