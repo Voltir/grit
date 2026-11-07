@@ -20,13 +20,13 @@ import grit.eval.Room
 import grit.eval.harness.bench.{
   Arm,
   Bench,
+  BenchTask,
   Caps,
   CoderTurns,
   GritTurn,
   MemoryCap,
   PerPass,
   Rig,
-  Task,
   Tried
 }
 import grit.eval.harness.jev.Budget
@@ -55,7 +55,7 @@ private[main] object LabCommands {
     * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>] [--window-tokens <n>]
     * [--work-turns <n>]` (8 GB when not given, [[MemoryCap.of]]; the trial kept under
     * `grit-<name>`, [[Arm.Grit.harness]]; the last two grit's [[Arm.Settings]]): the task
-    * `<name>` of `<dir>` ([[Task.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
+    * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
     * kept, no key read. Otherwise a coder run under the caps, the key `ANTHROPIC_API_KEY` from
@@ -87,7 +87,7 @@ private[main] object LabCommands {
       taskName <- TrialRows.TaskName.of(name)
       at <- need(f, "tasks").map(Path.of(_).resolve(name))
       task <- read(at.resolve("task.json")).flatMap(json =>
-        read(at.resolve("brief.md")).flatMap(Task.of(taskName, json, _))
+        read(at.resolve("brief.md")).flatMap(BenchTask.of(taskName, json, _))
       )
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))

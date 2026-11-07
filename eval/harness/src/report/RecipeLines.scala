@@ -152,12 +152,12 @@ private[report] object RecipeLines {
                   Vector(
                     m,
                     perMillion(r.input),
-                    r.cached.fold("—")(perMillion),
-                    r.written.fold("—")(perMillion),
+                    r.cacheRead.fold("—")(perMillion),
+                    r.cacheWrite.fold("—")(perMillion),
                     perMillion(r.output),
                     s"${r.rows}",
-                    s"${r.cachedRows}",
-                    s"${r.writtenRows}",
+                    s"${r.cacheReadRows}",
+                    s"${r.cacheWriteRows}",
                     f"${r.worst * 100}%.1f%%"
                   )
                 case (m, Left(why)) => Vector(m, s"none: $why", "—", "—", "—", "—", "—", "—", "—")

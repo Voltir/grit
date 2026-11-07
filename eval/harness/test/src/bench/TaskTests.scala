@@ -25,11 +25,11 @@ object TaskTests extends TestSuite {
 
   /** The refusal of `text`, or what it read as when it was not refused. */
   private def refusal(text: String, brief: String = "Do it."): String =
-    Task.of(name, text, brief).fold(identity, t => s"read: $t")
+    BenchTask.of(name, text, brief).fold(identity, t => s"read: $t")
 
   val tests = Tests {
     test("a task file names its base, its commits in order, and each check with its runner") {
-      val read = Task.of(name, json(commits = s"[\"$known\", \"${"c" * 40}\"]"), "Do it.")
+      val read = BenchTask.of(name, json(commits = s"[\"$known\", \"${"c" * 40}\"]"), "Do it.")
       read.map(t =>
         (
           Sha.value(t.base),
@@ -45,7 +45,7 @@ object TaskTests extends TestSuite {
             Check(Runner.Check, Vector("grit.core")),
             Check(Runner.It, Vector("grit.dbos.it.testOnly", "grit.dbos.engine.SqlStoreTests"))
           ),
-          "Do it.\n\n" + Task.closing
+          "Do it.\n\n" + BenchTask.closing
         )
       )
     }
@@ -83,7 +83,7 @@ object TaskTests extends TestSuite {
         val written = Files.readString(dir.resolve(n).resolve("brief.md"))
         for {
           taskName <- TrialRows.TaskName.of(n)
-          task <- Task.of(
+          task <- BenchTask.of(
             taskName,
             Files.readString(dir.resolve(n).resolve("task.json")),
             written

@@ -31,7 +31,7 @@ final case class Check(runner: Runner, args: Vector[String]) extends caps.Pure
 /** A past change frozen as a task: the commit it started from, the brief its coder was given, the
   * commits that made it, in order, and its checks (the law is every task's, beside them).
   */
-final case class Task(
+final case class BenchTask(
     name: TrialRows.TaskName,
     base: Sha,
     brief: String,
@@ -39,7 +39,7 @@ final case class Task(
     checks: Vector[Check]
 ) extends caps.Pure
 
-object Task {
+object BenchTask {
 
   /** The sentence every brief ends with: the rig runs the checks itself, so the coder runs only
     * the suites it touched.
@@ -53,7 +53,7 @@ object Task {
     * digits; no commits; no checks; a runner not `check` or `it`; a check with no arguments; an
     * empty brief.
     */
-  def of(name: TrialRows.TaskName, json: String, brief: String): Either[String, Task] = {
+  def of(name: TrialRows.TaskName, json: String, brief: String): Either[String, BenchTask] = {
     val named = TrialRows.TaskName.value(name)
     val what = s"$named's task.json"
     for {
@@ -67,7 +67,7 @@ object Task {
       checks <- each(written)(check(named, _))
       _ <- Either.cond(checks.nonEmpty, (), s"$what names no checks")
       _ <- Either.cond(brief.trim.nonEmpty, (), s"$named's brief is empty")
-    } yield Task(name, base, s"${brief.stripTrailing}\n\n$closing", commits, checks)
+    } yield BenchTask(name, base, s"${brief.stripTrailing}\n\n$closing", commits, checks)
   }
 
   /** The check `v` of the task `named`, or why not. */

@@ -49,7 +49,7 @@ final case class Denial(tool: String, input: String) extends caps.Pure
   * call it was refused, the
   * run's usage (`None` when Claude Code's result gives none), and each model's.
   */
-final case class Ended(
+final case class CoderEnded(
     reason: String,
     error: Boolean,
     claimedUsd: Option[BigDecimal],
@@ -70,7 +70,7 @@ final case class Consumed(
     calls: Vector[Call],
     callsBeforeEdit: Option[Int],
     readBeforeEdit: Option[Long],
-    ended: Option[Ended],
+    ended: Option[CoderEnded],
     apiKeySource: Option[String]
 ) extends caps.Pure {
 
@@ -207,7 +207,7 @@ object Consumed {
       }),
       before.map(_.collect { case r: Message.ToolResult => bytes(r.content) }.sum),
       Some(
-        Ended(
+        CoderEnded(
           stopped.orElse(turn.failed).getOrElse(turn.status),
           stopped.isDefined || turn.failed.isDefined || turn.status != "SUCCESS",
           None,
@@ -242,7 +242,7 @@ object Consumed {
     var calls = Map.empty[String, Call]
     var read = 0L
     var edit = Option.empty[(Int, Long)]
-    var ended = Option.empty[Ended]
+    var ended = Option.empty[CoderEnded]
     events.foreach { e =>
       text(e, "type") match {
         case Some("assistant") =>
@@ -260,7 +260,7 @@ object Consumed {
           val claimed = e.value.get("total_cost_usd").flatMap(_.numOpt).map(BigDecimal(_))
           val models = byModel(e)
           ended = Some(
-            Ended(
+            CoderEnded(
               text(e, "subtype").getOrElse(""),
               e.value.get("is_error").flatMap(_.boolOpt).getOrElse(false),
               claimed,

@@ -31,7 +31,7 @@ object Clone {
     */
   def picked(
       work: Processes
-  )(repository: String, task: Task, dir: RelPath): Either[String, Unit] = {
+  )(repository: String, task: BenchTask, dir: RelPath): Either[String, Unit] = {
     val commits = task.commits.map(Sha.value)
     for {
       _ <- fresh(work)(repository, task.base, dir)

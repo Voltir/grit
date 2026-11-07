@@ -123,7 +123,7 @@ object ConsumedTests extends TestSuite {
         (
           Some("5e55-a1"),
           Some(
-            Ended(
+            CoderEnded(
               "error_max_turns",
               error = true,
               Some(BigDecimal("0.0031")),

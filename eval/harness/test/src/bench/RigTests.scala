@@ -65,7 +65,7 @@ object RigTests extends TestSuite {
       handing: Handing,
       root: Path,
       origin: String,
-      task: Task
+      task: BenchTask
   ) {
     def arm(fake: Fake): Arm.ClaudeCode = {
       Files.write(root.resolve("stream.jsonl"), fake.lines.asJava)
@@ -203,7 +203,7 @@ object RigTests extends TestSuite {
         b <- Sha.of(base)
         k <- Sha.of(known)
         n <- TrialRows.TaskName.of("fixture")
-      } yield Task(n, b, "Give A an x.", Vector(k), Vector(Check(Runner.Check, Vector("m")))))
+      } yield BenchTask(n, b, "Give A an x.", Vector(k), Vector(Check(Runner.Check, Vector("m")))))
         .fold(e => throw new java.lang.AssertionError(e), identity)
       body(
         Fixture(

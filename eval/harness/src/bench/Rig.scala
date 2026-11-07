@@ -370,7 +370,7 @@ object Rig {
     */
   def trial(work: Processes, handing: Handing, clock: Clock^)(
       repository: String,
-      task: Task,
+      task: BenchTask,
       arm: Arm.ClaudeCode,
       cap: Caps,
       key: Secret,
@@ -440,7 +440,7 @@ object Rig {
       memory: Memory
   )(
       repository: String,
-      task: Task,
+      task: BenchTask,
       arm: Arm.Grit,
       cap: Caps,
       memoryCap: MemoryCap,
@@ -508,7 +508,7 @@ object Rig {
     */
   def dry(work: Processes)(
       repository: String,
-      task: Task,
+      task: BenchTask,
       arm: Arm.Grit,
       cap: Caps,
       dir: RelPath
@@ -570,7 +570,7 @@ object Rig {
     * nothing when the checks name no module.
     */
   private def warmed(work: Processes)(
-      task: Task,
+      task: BenchTask,
       arm: Arm.Grit,
       cap: Caps,
       dir: RelPath,
@@ -729,7 +729,7 @@ object Rig {
     * coder instructions, [[Preamble]] and the task's brief. The file is in a directory only this
     * user can read under the system temp directory, removed once `use` returns or throws.
     */
-  private def briefed[A](arm: Arm.Grit, task: Task)(
+  private def briefed[A](arm: Arm.Grit, task: BenchTask)(
       use: String => Either[String, A]
   ): Either[String, A] =
     privately("the brief") { dir =>
@@ -750,7 +750,7 @@ object Rig {
     */
   private def tried(work: Processes)(
       repository: String,
-      task: Task,
+      task: BenchTask,
       arm: Arm,
       cap: Caps,
       dir: RelPath,
@@ -812,7 +812,7 @@ object Rig {
     */
   def known(
       work: Processes
-  )(repository: String, task: Task, dir: RelPath): Either[String, Checked] =
+  )(repository: String, task: BenchTask, dir: RelPath): Either[String, Checked] =
     tidied(work, dir, None)(
       Clone
         .picked(work)(repository, task, dir)
@@ -878,7 +878,7 @@ object Rig {
   private def arguments(
       arm: Arm.ClaudeCode,
       cap: Caps,
-      task: Task,
+      task: BenchTask,
       helper: String
   ): Vector[String] = {
     val settings = ujson.Obj(

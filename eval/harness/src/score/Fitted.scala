@@ -5,20 +5,20 @@ import scala.collection.immutable.VectorMap
 import grit.core.message.{Tokens, Usage}
 import grit.eval.harness.capture.Spent
 
-/** A model's prices in USD a token, read from its ledger rows: its uncached `input`, its
-  * `cached` input read, its input `written` to the cache, and its `output`; over `rows` priced
-  * rows, `cachedRows` of them with cached tokens and `writtenRows` with written ones. `cached`
-  * (`written`) is `None` where no row had a cached (written) token to read it from. `worst`: the
-  * largest share by which the rate misprices a row it was read from.
+/** A model's prices in USD a token, read from its ledger rows: its uncached `input`, its input
+  * read from the cache (`cacheRead`), its input written to it (`cacheWrite`), and its `output`;
+  * over `rows` priced rows, `cacheReadRows` of them with cached tokens and `cacheWriteRows` with
+  * written ones. `cacheRead` (`cacheWrite`) is `None` where no row had a cached (written) token
+  * to read it from. `worst`: the largest share by which the rate misprices a row it was read from.
   */
 final case class Rate(
     input: Double,
-    cached: Option[Double],
-    written: Option[Double],
+    cacheRead: Option[Double],
+    cacheWrite: Option[Double],
     output: Double,
     rows: Int,
-    cachedRows: Int,
-    writtenRows: Int,
+    cacheReadRows: Int,
+    cacheWriteRows: Int,
     worst: Double
 )
 

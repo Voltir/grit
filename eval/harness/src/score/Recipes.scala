@@ -196,7 +196,7 @@ object Recipe {
       else
         prices.rates.get(s.model).flatMap(_.toOption).flatMap { r =>
           val uncached = saved * r.input
-          val cached = r.cached.map(saved * _)
+          val cached = r.cacheRead.map(saved * _)
           val effective =
             if (hit == 0) Some(uncached) else cached.map(c => (1 - hit) * uncached + hit * c)
           effective.map(e => (e, uncached, cached))

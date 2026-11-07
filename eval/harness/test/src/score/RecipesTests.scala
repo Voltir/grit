@@ -227,10 +227,10 @@ object RecipesTests extends TestSuite {
       def read(r: Rate) =
         (
           r12(r.input),
-          r.cached.map(r12),
+          r.cacheRead.map(r12),
           r12(r.output),
           r.rows,
-          r.cachedRows,
+          r.cacheReadRows,
           math.round(r.worst * 1e9)
         )
       rates.view.mapValues(_.map(read)).toVector ==> Vector(
@@ -264,12 +264,12 @@ object RecipesTests extends TestSuite {
         .map(_.map { r =>
           (
             r12(r.input),
-            r.cached.map(r12),
-            r.written.map(r12),
+            r.cacheRead.map(r12),
+            r.cacheWrite.map(r12),
             r12(r.output),
             r.rows,
-            r.cachedRows,
-            r.writtenRows,
+            r.cacheReadRows,
+            r.cacheWriteRows,
             math.round(r.worst * 1e9)
           )
         }) ==> Some(Right((3e-6, Some(3e-7), Some(3.75e-6), 1.5e-5, 5, 2, 2, 0L)))

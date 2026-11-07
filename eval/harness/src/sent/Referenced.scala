@@ -26,7 +26,7 @@ object Referenced {
   /** A tool offered, whether any call the request holds or the reply makes names it, and what
     * offering it costs (the estimate of the tools less the estimate without it).
     */
-  final case class Tool(name: String, called: Boolean, cost: Tokens) extends caps.Pure
+  final case class OfferedTool(name: String, called: Boolean, cost: Tokens) extends caps.Pure
 
   /** The tool result at message `at` (from 0), answering `call` to `tool` (the name its call
     * gave, or the id when no call in the request has it), costing `cost`: of its `chars`
@@ -42,21 +42,21 @@ object Referenced {
   ) extends caps.Pure
 
   /** A request's tools ([[Referenced.tools]]) and tool results ([[Referenced.results]]). */
-  final case class Read(tools: Vector[Tool], results: Vector[Result]) extends caps.Pure
+  final case class Read(tools: Vector[OfferedTool], results: Vector[Result]) extends caps.Pure
 
   /** Each tool `request` offers, in order. */
   def tools(
       request: ModelRequest,
       reply: Option[Message.Assistant],
       estimator: TokenEstimator
-  ): Vector[Tool] = {
+  ): Vector[OfferedTool] = {
     val named = (request.messages ++ reply.toVector).flatMap {
       case a: Message.Assistant => a.blocks.collect { case AssistantBlock.ToolCall(_, n, _) => n }
       case _ => Vector.empty
     }.toSet
     val all = Tokens.value(estimator.tools(request.tools))
     request.tools.map(t =>
-      Tool(
+      OfferedTool(
         t.name,
         named.contains(t.name),
         Tokens(all - Tokens.value(estimator.tools(request.tools.filterNot(_ == t))))

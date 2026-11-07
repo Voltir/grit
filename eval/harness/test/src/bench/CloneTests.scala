@@ -63,8 +63,8 @@ object CloneTests extends TestSuite {
     } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
   }
 
-  private def task(o: Origin, base: String, known: String*): Task =
-    Task(
+  private def task(o: Origin, base: String, known: String*): BenchTask =
+    BenchTask(
       TrialRows.TaskName.of("fixture").getOrElse(throw new java.lang.AssertionError("name")),
       o.commits(base),
       "Do it.",
