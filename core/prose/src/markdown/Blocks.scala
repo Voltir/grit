@@ -178,7 +178,7 @@ private[markdown] object Blocks {
       case Block.Rule => Vector("***")
       case Block.Chart(c) =>
         def quoted(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-        val info = s"{.chart type=${c.kind.toString.toLowerCase} title=${quoted(c.title)}" +
+        val info = s"{.chart type=${c.kind.name} title=${quoted(c.title)}" +
           c.values.map(v => s" values=${quoted(v)}").getOrElse("") + "}"
         // A backtick fence's info may hold no backtick (CommonMark); a tilde fence's may.
         val fence = if (info.contains('`')) "~~~" else "```"
@@ -371,7 +371,7 @@ private[markdown] object Blocks {
       case Vector(t @ Block.Table(columns, rows)) =>
         val kind = attrs.get("type") match {
           case None => Some(Chart.Kind.Bar)
-          case Some(k) => Chart.Kind.values.find(_.toString.toLowerCase == k)
+          case Some(k) => Chart.Kind.named(k)
         }
         kind.flatMap(k =>
           Chart.of(k, title, attrs.get("values"), columns.map(_.name.plain), rows).toOption

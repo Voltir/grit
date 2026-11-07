@@ -63,6 +63,15 @@ object Chart {
   /** How a chart draws its numbers. */
   enum Kind {
     case Bar, Line, Area, Pie
+
+    /** Its written name, in stored prose and in markdown: `bar`, `line`, `area` or `pie`. */
+    def name: String = toString.toLowerCase
+  }
+
+  object Kind {
+
+    /** The kind whose [[Kind.name]] is `name`, if any. */
+    def named(name: String): Option[Kind] = values.find(_.name == name)
   }
 
   /** A series' name, and one number per category, in the categories' order. */

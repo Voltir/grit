@@ -108,7 +108,7 @@ object ProseJson {
     case Block.Chart(c) =>
       // The chart's table, as a table is stored, with what makes it a chart beside it.
       val o = table("chart", c.table.columns, c.table.rows, text)
-      o("kind") = c.kind.toString.toLowerCase
+      o("kind") = c.kind.name
       o("title") = c.title
       c.values.foreach(v => o("values") = v)
       Vector(o)
@@ -324,7 +324,7 @@ object ProseJson {
           kind <- r
             .get("kind")
             .flatMap(_.strOpt)
-            .flatMap(k => Chart.Kind.values.find(_.toString.toLowerCase == k))
+            .flatMap(Chart.Kind.named)
             .toRight(s"a chart of no kind: ${shownRecord(r)}")
           title <- string(r.get("title"), "a chart's title")
           chart <- Chart
