@@ -315,13 +315,8 @@ object DatabaseReader {
     try c.close()
     catch { case _: SQLException => () }
 
-  /** A plain variable's value, trimmed, or why not. */
   private def plain(env: Map[String, String], variable: Variable): Either[OpenRefusal, String] =
-    env.get(Variable.value(variable)) match {
-      case None => Left(OpenRefusal.Unread(Secret.Refusal.Unset(variable)))
-      case Some(v) if v.trim.isEmpty => Left(OpenRefusal.Unread(Secret.Refusal.Blank(variable)))
-      case Some(v) => Right(v.trim)
-    }
+    Variable.read(env, variable).left.map(OpenRefusal.Unread(_))
 
   private def secret(env: Map[String, String], variable: Variable): Either[OpenRefusal, Secret] =
     Secret.read(env, variable).left.map(OpenRefusal.Unread(_))

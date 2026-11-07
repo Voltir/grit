@@ -13,14 +13,8 @@ object Secret {
 
   /** `variable`'s value in `env`, blanks around it trimmed, or why not. */
   def read(env: Map[String, String], variable: Variable): Either[Refusal, Secret] = {
-    val name = Variable.value(variable)
-    if (!Named.variable(name)) Left(Refusal.NotNamedLikeOne(variable))
-    else
-      env.get(name) match {
-        case None => Left(Refusal.Unset(variable))
-        case Some(v) if v.trim.isEmpty => Left(Refusal.Blank(variable))
-        case Some(v) => Right(new Secret(variable, v.trim))
-      }
+    if (!Named.variable(Variable.value(variable))) Left(Refusal.NotNamedLikeOne(variable))
+    else Variable.read(env, variable).map(new Secret(variable, _))
   }
 
   /** Why a secret was not read. */
