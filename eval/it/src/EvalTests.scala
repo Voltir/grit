@@ -127,9 +127,10 @@ object EvalTests extends TestSuite {
         val renamed = Case.parse("sample2", sample).fold(sys.error, identity)
         val loaded = Eval.load(engine, renamed, Variant.Plain)
         val held = Vector(EntryId("sample2/plain/t0:0"), EntryId("sample2/plain/t0:1"))
-        // "one" is 1 + 4 tokens, "two" 1 + 4 (CharEstimate).
+        // "one" is 2 + 4 tokens, "two" 2 + 4: three characters at 2.2 a token, rounded up, and
+        // the message's framing (CharEstimate).
         Eval.score(loaded, held) ==>
-          Eval.Score(1, 2, Tokens(10), Vector(EntryId("sample2/plain/t1:2")), Vector.empty)
+          Eval.Score(1, 2, Tokens(12), Vector(EntryId("sample2/plain/t1:2")), Vector.empty)
         Eval.run(engine, loaded, Eval.Strategy.Oracle, Eval.NoLive).map(_.got) ==> Right(2)
       }
     }
