@@ -23,8 +23,8 @@ trait SpeechStore {
     */
   def reach(turn: TurnRef)(using Tx^): Either[StoreError, Option[Reach]]
 
-  /** Every unprompted turn decided at or after `since`, oldest first, at its stage and
-    * [[venue]]: none answered as said to grit ([[Decision.Answering]]), which, as an addressed
+  /** Every unprompted turn decided at or after `since`, oldest first, at its stage, its venue
+    * and its heard message's thread ([[Spoken]]): none answered as said to grit ([[Decision.Answering]]), which, as an addressed
     * turn, counts in no rate.
     */
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]]

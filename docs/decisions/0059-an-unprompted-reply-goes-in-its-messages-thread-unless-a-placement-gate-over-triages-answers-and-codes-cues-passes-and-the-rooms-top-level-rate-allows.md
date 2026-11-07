@@ -44,8 +44,8 @@ Decision:
   `offer` records the venue, the thread when absent, so replay reads where it went, never the
   store.
 - **Recorded once.** A reply at the top level is its turn's reply in its turn's conversation,
-  as every reply is (ADR 0060); the edge records it nowhere else, so the room's other windows
-  show it once.
+  as every reply is (ADR 0060): a message heard in a thread and placed at the top is recorded
+  in that thread. The edge records it nowhere else, so the room's other windows show it once.
 
 Consequences: every top-level post traces to the bounds and the rate that allowed it; the
 bounds are tuned by replaying `Speech.decide` over kept tags and cues, as ADR 0022's are.

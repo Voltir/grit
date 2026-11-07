@@ -156,13 +156,16 @@ private[triage] object Speak {
         case Origin.Thread(team, channel, _) => Some(Origin.Room(team, channel).place)
         case _ => None
       }
+      // People's messages at that top level in the pace window, read from its room.
       before <- top.fold[Either[StoreError, Vector[grit.core.stitch.Said]]](Right(Vector.empty))(
-        _ =>
-          records.stitches.spokenIn(
-            conversation.origin.room,
-            heard.createdAt.minusNanos(Cues.PaceWindow.toNanos),
-            heard.createdAt
-          )
+        at =>
+          records.stitches
+            .spokenIn(
+              conversation.origin.room,
+              heard.createdAt.minusNanos(Cues.PaceWindow.toNanos),
+              heard.createdAt
+            )
+            .map(_.filter(s => s.place == at && s.entry.payload.said.isDefined))
       )
     } yield Cues(
       named = reach.asked.nonEmpty,
@@ -189,7 +192,7 @@ private[triage] object Speak {
         // A conversation per thread: its first message is said at the top level.
         case _ => opening
       },
-      pace = top.map(at => before.count(s => s.place == at && s.entry.payload.said.isDefined))
+      pace = top.map(_ => before.size)
     )
   }
 

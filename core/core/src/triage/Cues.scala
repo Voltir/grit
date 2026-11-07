@@ -1,5 +1,7 @@
 package grit.core.triage
 
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
+
 import grit.core.id.{EntryId, PluginName}
 import grit.core.period.{Judgement, Probability}
 
@@ -36,8 +38,7 @@ object Cues {
   val Searched: Int = 3
 
   /** 1 hour: how far back from a heard message its room's pace is counted. */
-  val PaceWindow: scala.concurrent.duration.FiniteDuration =
-    scala.concurrent.duration.Duration(1, scala.concurrent.duration.HOURS)
+  val PaceWindow: FiniteDuration = 1.hour
 
   /** Nothing read: what a decision kept before cues reads as. */
   val Empty: Cues = Cues(named = false, None, None, None, None)

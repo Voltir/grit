@@ -81,8 +81,8 @@ object Limits {
 /** When an unprompted draft is posted at its room's top level instead of its message's thread
   * ([[Speech.decide]]): its message has a room address ([[ReplyTo.room]]), triage's answers and
   * the cues pass `gate` ([[Gate.check]]; failing or unread is the thread), and fewer than
-  * `rate.count` of its room's posts were made there within `rate.per`, counted again when the
-  * draft is posted. It never holds a message.
+  * `rate.count` of its room's posts there were decided within `rate.per`, counted again when
+  * the draft is posted ([[Speech.placing]]). It never holds a message.
   */
 final case class ToRoom(gate: Gate, rate: Rate)
 

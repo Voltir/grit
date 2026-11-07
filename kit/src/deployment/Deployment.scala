@@ -640,9 +640,9 @@ object Deployment {
       _ <- speaking match {
         // Live triage's answers hold only what it asks: a gate reading more holds everything.
         case Speaking.Shadow(limits) =>
-          unread(live, limits.drafts).flatMap(_ => placing(live, limits))
+          unread(live, limits.drafts).flatMap(_ => placementRead(live, limits))
         case Speaking.Within(limits) =>
-          unread(live, limits.drafts).flatMap(_ => placing(live, limits))
+          unread(live, limits.drafts).flatMap(_ => placementRead(live, limits))
         case Speaking.Off => Right(())
       }
       shadowNames = shadows.map(_.name)
@@ -836,7 +836,10 @@ object Deployment {
       .toLeft(())
 
   /** Whether `live` asks every reading of `limits`' placement gate, when it has one. */
-  private def placing(live: TriageQuestions, limits: Limits): Either[DeploymentRefusal, Unit] =
+  private def placementRead(
+      live: TriageQuestions,
+      limits: Limits
+  ): Either[DeploymentRefusal, Unit] =
     limits.toRoom
       .flatMap(r => live.unread(r.gate, Corpora.Empty))
       .map(DeploymentRefusal.PlacementUnread(_))
