@@ -3,17 +3,21 @@ package grit.eval.harness.evidence
 import scala.util.matching.Regex
 
 import grit.core.host.RelPath
-import grit.eval.harness.bench.{Checked, PerPass, Tried}
+import grit.eval.harness.bench.PerPass
 
 /** A shape of the bench's own grading text, as its writer puts it in a line. Every shape the bench
   * writes is a case here, and a new one is added here alone: [[Shown.of]] scans for each case.
   */
 enum GradeShape extends caps.Pure {
 
-  /** A trial's pass-and-distance line, as [[Tried.verdict]] writes it, anywhere in a line. */
+  /** A trial's pass-and-distance line, as [[grit.eval.harness.bench.Tried.verdict]] writes it,
+    * anywhere in a line.
+    */
   case Verdict
 
-  /** A check's outcome or the checks' stop, as [[Checked.lines]] writes them, a line each. */
+  /** A check's outcome or the checks' stop, as [[grit.eval.harness.bench.Checked.lines]] writes
+    * them, a line each.
+    */
   case CheckOutcome
 
   /** The bench summary's header line or one of its rows, as [[PerPass.lines]] writes them. */
