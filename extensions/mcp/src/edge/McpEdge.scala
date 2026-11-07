@@ -48,12 +48,20 @@ object McpEdge {
       names.diff(names.distinct).headOption match {
         case Some(repeated) => Left(s"two MCP servers are named $repeated")
         case None =>
-          instructions
-            .map(PlaceFragments.declared(service.place, _))
-            .fold(Right(Vector.empty))(_.map(Vector(_)))
-            .map(new Edge(service, servers, _))
+          declared(service, instructions).map(new Edge(service, servers, _))
       }
   }
+
+  /** `instructions` as `service`'s Place layer ([[PlaceFragments.declared]]): none when not given;
+    * `Left` when given blank.
+    */
+  private def declared(
+      service: Service,
+      instructions: Option[String]
+  ): Either[String, Vector[Fragment]] =
+    instructions.fold(Right(Vector.empty))(
+      PlaceFragments.declared(service.place, _).map(Vector(_))
+    )
 
   /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
   private final class Edge(
@@ -142,10 +150,7 @@ object McpEdge {
       instructions: Option[String],
       log: String -> Unit
   ): Either[String, Local^] = {
-    val declared = instructions
-      .map(PlaceFragments.declared(service.place, _))
-      .fold(Right(Vector.empty))(_.map(Vector(_)))
-    declared match {
+    declared(service, instructions) match {
       case Left(why) => Left(why)
       case Right(fragments) =>
         val client: McpClient^{processes, clock} = McpClient.stdio(server, processes, clock)
