@@ -295,7 +295,7 @@ object JobMovesLiveTests extends TestSuite {
   /** An edge serving [[Reading]] through `desk`, until closed. */
   private def serving(desk: Desk^): Server^{desk} = {
     val server =
-      new Server(desk, Reading, run => { val _ = Thread.ofVirtual().start(() => run()) }, _ => ())
+      new Server(desk, Reading, Server.onVirtualThreads(), _ => ())
     server.serve()
     server
   }

@@ -305,7 +305,7 @@ object IntegrityTurn {
     }
     desk.advertise(place, Posting, Vector.empty).fold(e => sys.error(e.why), identity)
     val posting =
-      new Server(desk, posts, run => { val _ = Thread.ofVirtual().start(() => run()) }, _ => ())
+      new Server(desk, posts, Server.onVirtualThreads(), _ => ())
     posting.serve()
     try {
       McpEdge

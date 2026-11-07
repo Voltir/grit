@@ -78,7 +78,7 @@ object LocalEdge {
         new Server(
           desk,
           tools,
-          run => { val _ = Thread.ofVirtual().name("grit-tool").start(() => run()) },
+          Server.onVirtualThreads("grit-tool"),
           info
         ).serve()
     }

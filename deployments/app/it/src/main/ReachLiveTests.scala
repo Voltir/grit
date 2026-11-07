@@ -118,7 +118,7 @@ object ReachLiveTests extends TestSuite {
       val server = new Server(
         desk,
         Noting,
-        run => { val _ = Thread.ofVirtual().start(() => run()) },
+        Server.onVirtualThreads(),
         _ => ()
       )
       server.serve()

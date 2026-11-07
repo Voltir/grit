@@ -220,7 +220,7 @@ private[slack] object Served {
         val server = new Server(
           desk,
           tool,
-          run => { val _ = Thread.ofVirtual().start(() => run()) },
+          Server.onVirtualThreads(),
           said => log(s"${place.written}: $said")
         )
         edge.reoffer(offer)

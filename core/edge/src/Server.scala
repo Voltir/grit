@@ -111,6 +111,12 @@ object Server {
   /** The longest an idle edge waits before looking again, whatever it is told: 1 second. */
   val Poll: FiniteDuration = 1.second
 
+  /** A [[Server]]'s `runner`: each run on a virtual thread of its own, named `named` (an
+    * unnamed virtual thread's name is empty, the default).
+    */
+  def onVirtualThreads(named: String = ""): (() => Unit) => Unit =
+    run => { val _ = Thread.ofVirtual().name(named).start(() => run()) }
+
   /** The set an edge advertised at its place, and the tools that serve it. */
   final class Advertised(val offered: ToolSet, val tools: Tools^)
 
@@ -137,7 +143,7 @@ object Server {
             val server = new Server(
               desk,
               advertised.tools,
-              run => { val _ = Thread.ofVirtual().start(() => run()) },
+              onVirtualThreads(),
               said => log(s"${place.written}: $said")
             )
             server.serve()
