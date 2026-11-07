@@ -470,9 +470,7 @@ final class RetrievalAssembler(
       // A continuation's turns: the newest alone, behind a gap line paid for first when that
       // leaves turns out, and none of the others ever found.
       val turns = request.drawable(period)
-      val room =
-        if (turns.size == period.size) left
-        else Tokens(math.max(0L, Tokens.value(left) - Tokens.value(LinearAssembler.gap(estimator))))
+      val room = LinearAssembler.roomFor(turns, period, left, estimator)
       val linear = LinearAssembler.tail(turns, read.speakers, estimator, room)
       val leftOut = linear.size != period.size
       val ownToFind = leftOut && request.task.isEmpty
@@ -485,10 +483,8 @@ final class RetrievalAssembler(
             estimator,
             Tokens(Tokens.value(tail) min Tokens.value(left))
           )
-      // The tail leaves turns out, so the window holds a gap line before it.
-      val used = Tokens(Tokens.value(budget) - Tokens.value(left)) +
-        LinearAssembler.cost(recent.flatten, read.speakers, estimator) +
-        (if (leftOut) LinearAssembler.gap(estimator) else Tokens.Zero)
+      val spent = Tokens(Tokens.value(budget) - Tokens.value(left))
+      val used = LinearAssembler.windowCost(spent, recent, leftOut, read.speakers, estimator)
       Base(
         read,
         budget,
@@ -502,9 +498,7 @@ final class RetrievalAssembler(
         recent,
         recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq),
         used,
-        Tokens(Tokens.value(budget) - Tokens.value(left)) +
-          LinearAssembler.cost(linear.flatten, read.speakers, estimator) +
-          (if (leftOut) LinearAssembler.gap(estimator) else Tokens.Zero),
+        LinearAssembler.windowCost(spent, linear, leftOut, read.speakers, estimator),
         read.all.filter(_.turnSeq == turn.turnSeq),
         Held.none,
         Tokens.Zero

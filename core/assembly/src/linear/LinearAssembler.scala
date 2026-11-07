@@ -125,21 +125,18 @@ final class LinearAssembler(
             val drawn = request.boundary(budget)
             val (closings, left) =
               LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, drawn)
-            // A continuation's turns left out are behind a gap line, paid for first.
             val drawable = request.drawable(turns)
-            val room =
-              if (drawable.size == turns.size) left
-              else
-                Tokens(
-                  math.max(0L, Tokens.value(left) - Tokens.value(LinearAssembler.gap(estimator)))
-                )
+            val room = LinearAssembler.roomFor(drawable, turns, left, estimator)
             val kept = LinearAssembler.tail(drawable, speakers, estimator, room)
-            val gapped =
-              if (kept.size != turns.size) LinearAssembler.gap(estimator) else Tokens.Zero
             Projection.Boundary(
               Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq), notes),
-              Tokens(Tokens.value(drawn) - Tokens.value(left)) +
-                LinearAssembler.cost(kept.flatten, speakers, estimator) + gapped
+              LinearAssembler.windowCost(
+                Tokens(Tokens.value(drawn) - Tokens.value(left)),
+                kept,
+                kept.size != turns.size,
+                speakers,
+                estimator
+              )
             )
         }
       }
@@ -269,6 +266,31 @@ object LinearAssembler {
 
   /** What one gap line ([[Shown.Gap]]) costs by `estimator`. */
   def gap(estimator: TokenEstimator): Tokens = estimator.message(Shown.Gap)
+
+  /** What `left` leaves for `drawable`, the turns of `period` a request may draw
+    * ([[AssemblyRequest.drawable]]): all of it when they are all of `period`, else less one gap
+    * line ([[gap]]), paid for first, and never below zero.
+    */
+  def roomFor(
+      drawable: Vector[Vector[Entry]],
+      period: Vector[Vector[Entry]],
+      left: Tokens,
+      estimator: TokenEstimator
+  ): Tokens =
+    if (drawable.size == period.size) left
+    else Tokens(math.max(0L, Tokens.value(left) - Tokens.value(gap(estimator))))
+
+  /** What a boundary window costs as shown: `spent` before its turns, `kept`'s turns with
+    * `speakers`' names, and one gap line ([[gap]]) when it `leftOut` turns of its period.
+    */
+  def windowCost(
+      spent: Tokens,
+      kept: Vector[Vector[Entry]],
+      leftOut: Boolean,
+      speakers: Speakers,
+      estimator: TokenEstimator
+  ): Tokens =
+    spent + cost(kept.flatten, speakers, estimator) + (if (leftOut) gap(estimator) else Tokens.Zero)
 
   /** What the model is shown of `entries`, with `speakers`' names, costs by `estimator`
     * ([[Shown.of]]).
