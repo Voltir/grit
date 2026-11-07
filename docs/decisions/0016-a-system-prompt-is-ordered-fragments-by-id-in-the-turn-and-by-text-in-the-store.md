@@ -1,6 +1,6 @@
 # 0016. A system prompt is ordered fragments: by id in the turn, by text in the store
 
-Status: accepted (2026-09-27); revised (2026-09-27, 2026-10-21, 2026-10-23, 2026-10-29)
+Status: accepted (2026-09-27); revised (2026-10-29)
 
 Context: the system prompt was one string, and the one model input not in the store: nothing
 showed what a turn was sent. It comes from several places (grit's own words, the edge, the

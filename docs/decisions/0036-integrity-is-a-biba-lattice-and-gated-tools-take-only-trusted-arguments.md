@@ -1,6 +1,6 @@
 # 0036. Integrity is a Biba lattice beside confidentiality, a turn falls to the meet of what it read, and a gated tool takes only trusted arguments
 
-Status: accepted (2026-10-13); revised (2026-10-16, 2026-10-29)
+Status: accepted (2026-10-13); revised (2026-10-29)
 
 Context: ADRs 0030–0033 label what may be *read* (Bell–LaPadula). Nothing labelled what may be
 *believed*: text a turn reads from a tool, a web page or a guest can steer a write out of
