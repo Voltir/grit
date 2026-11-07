@@ -39,7 +39,8 @@ object BenchTests extends TestSuite {
           readBeforeEdit = None,
           callsBeforeEdit = None,
           passed = false,
-          distance = None
+          distance = None,
+          standing = None
         )
       } yield r
     )
@@ -55,6 +56,7 @@ object BenchTests extends TestSuite {
             Bench.keep(engine.jot, blobs, Clock.system())(
               Subject.Public,
               trial(s"k-$i"),
+              None,
               new ByteArrayInputStream(s"transcript $i".getBytes("UTF-8")),
               Label.Public
             )

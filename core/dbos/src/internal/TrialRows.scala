@@ -1,5 +1,7 @@
 package grit.dbos.internal
 
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
 import java.sql.ResultSet
 import java.time.Instant
 
@@ -13,31 +15,40 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.{SqlLabels, SqlStatements, SqlTrialRows}
 
-/** The bench's rows over `blobs`: each trial of a harness at a frozen task and its transcript,
-  * the newest [[TrialRows.MostTrials]] trials alone. `blobs` must be the bench's own, one store per
-  * database: [[prune]] removes each of its blobs no transcript names, as a file area's sweep does
-  * by its files, so two such owners of one store would each remove the other's.
+/** The bench's rows over `blobs`: each trial of a harness at a frozen task, its transcript and
+  * its standing text, the newest [[TrialRows.MostTrials]] trials alone. `blobs` must be the
+  * bench's own, one store per database: [[prune]] removes each of its blobs no row names, as a
+  * file area's sweep does by its files, so two such owners of one store would each remove the
+  * other's.
   */
 final class TrialRows(blobs: Blobs^) {
 
-  /** `trial` recorded; then every trial but the newest [[TrialRows.MostTrials]] recorded removed with
-    * its transcript's row, never its blob ([[prune]]). [[TrialRows.Recorded.Repeat]], writing
-    * nothing, when `trial`'s session has a trial already. Waits on any other record or prune
-    * until the transaction ends.
+  /** `trial` recorded, with `standing`, the standing text whose digest is `trial.standing`, kept
+    * as that digest's blob; then every trial but the newest [[TrialRows.MostTrials]] recorded
+    * removed with its transcript's row, never a blob ([[prune]]).
+    * [[TrialRows.Recorded.Repeat]], writing nothing, when `trial`'s session has a trial already.
+    * `Left(Invalid)`, recording nothing, when `standing`'s digest is not `trial.standing`;
+    * `Left(DatabaseError)` when it cannot be kept. Waits on any other record or prune until the
+    * transaction ends.
     */
-  def record(trial: TrialRows.Trial)(using Tx^): Either[StoreError, TrialRows.Recorded] =
-    TrialRows.begun(trial).flatMap {
-      case None => Right(TrialRows.Recorded.Repeat)
-      case Some(_) => TrialRows.evict().map(TrialRows.Recorded.Fresh(_))
-    }
+  def record(trial: TrialRows.Trial, standing: Option[String])(using
+      Tx^
+  ): Either[StoreError, TrialRows.Recorded] =
+    recorded(trial, standing)(_ => Right(()))
 
-  /** As `record(trial)`, with `transcript` kept, `clipped` when the transcript
+  /** As `record(trial, standing)`, with `transcript` kept, `clipped` when the transcript
     * ran past what was received, kept at `label` joined with this transaction's floor (ADR 0030:
     * what a transaction writes is kept at least where it writes); on a repeat `transcript` is not
-    * kept. `Left(Invalid)`, recording nothing, when `transcript` holds more than
-    * [[TrialRows.MostBytes]] bytes; `Left(DatabaseError)` when it cannot be kept.
+    * kept. `Left(Invalid)`, recording nothing, also when `transcript` holds more than
+    * [[TrialRows.MostBytes]] bytes.
     */
-  def record(trial: TrialRows.Trial, transcript: Pending^, clipped: Boolean, label: Label)(using
+  def record(
+      trial: TrialRows.Trial,
+      standing: Option[String],
+      transcript: Pending^,
+      clipped: Boolean,
+      label: Label
+  )(using
       Tx^
   ): Either[StoreError, TrialRows.Recorded] =
     if (transcript.bytes > TrialRows.MostBytes)
@@ -46,27 +57,59 @@ final class TrialRows(blobs: Blobs^) {
           s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not ${transcript.bytes}"
         )
       )
-    else {
+    else
+      recorded(trial, standing) { id => (tx: Tx^) ?=>
+        for {
+          _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
+          _ <- TrialRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)(
+            using tx
+          )
+        } yield ()
+      }
+
+  /** `trial` recorded as `record(trial, standing)` says, with `rest` of its row's id done before
+    * the cap is held; on a repeat, `rest` is not done.
+    */
+  private def recorded(trial: TrialRows.Trial, standing: Option[String])(
+      rest: Long => (Tx^) ?=> Either[StoreError, Unit]
+  )(using Tx^): Either[StoreError, TrialRows.Recorded] =
+    if (standing.map(Sha256.text) != trial.standing)
+      Left(StoreError.Invalid("a trial's standing text is not the one its digest names"))
+    else
       TrialRows.begun(trial).flatMap {
         case None => Right(TrialRows.Recorded.Repeat)
         case Some(id) =>
           for {
-            _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
-            _ <- TrialRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)
+            _ <- standing.fold(Right(()))(text =>
+              blobs
+                .receive(
+                  ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)),
+                  TrialRows.MostBytes
+                )(
+                  _.keep()
+                )
+                .flatMap(identity)
+                .left
+                .map(e => StoreError.DatabaseError(s"its standing text: $e"))
+            )
+            _ <- rest(id)
             removed <- TrialRows.evict()
           } yield TrialRows.Recorded.Fresh(removed)
       }
-    }
 
-  /** Every blob no transcript names removed, and every pending blob last written before
-    * `before` cleared. Waits on any record, and holds records off, until the transaction ends.
+  /** Every blob no transcript or trial's standing text names removed, and every pending blob
+    * last written before `before` cleared. Waits on any record, and holds records off, until the
+    * transaction ends.
     * `Right(Left)` when `blobs` fails: what was removed before it failed stays removed.
     */
   def prune(before: Instant)(using Tx^): Either[StoreError, Either[BlobError, TrialRows.Pruned]] =
     for {
       _ <- TrialRows.lock()
-      named <- SqlStatements.many("SELECT DISTINCT sha256 FROM grit.bench_trajectories")(_ => ())(
-        rs => Sha256.read(rs.getString("sha256")).toRight(s"no digest: ${rs.getString("sha256")}")
+      named <- SqlStatements.many(
+        """SELECT sha256 FROM grit.bench_trajectories
+          |UNION SELECT standing FROM grit.bench_trials WHERE standing IS NOT NULL""".stripMargin
+      )(_ => ())(rs =>
+        Sha256.read(rs.getString("sha256")).toRight(s"no digest: ${rs.getString("sha256")}")
       )
       shas <- SqlStatements.valid(named)
     } yield
@@ -117,8 +160,9 @@ object TrialRows {
   /** One trial: the session that ran it, which names its harness; the task and model; what its
     * model calls consumed and cost, as [[Usage]] counts them, and how many it made; its wall
     * time; before its first edit, the bytes its tools returned and the model calls it made (both
-    * `None`: it made no edit); whether the task's checks passed; and how many lines its diff
-    * differs from the task's known diff by (`None`: it left none).
+    * `None`: it made no edit); whether the task's checks passed; how many lines its diff
+    * differs from the task's known diff by (`None`: it left none); and the digest of the standing
+    * text its coder's brief began with (`None`: its harness has none, as Claude Code's).
     */
   final case class Trial private (
       session: SessionId,
@@ -130,7 +174,8 @@ object TrialRows {
       readBeforeEdit: Option[Long],
       callsBeforeEdit: Option[Int],
       passed: Boolean,
-      distance: Option[Long]
+      distance: Option[Long],
+      standing: Option[Sha256]
   ) extends caps.Pure
 
   object Trial {
@@ -149,7 +194,8 @@ object TrialRows {
         readBeforeEdit: Option[Long],
         callsBeforeEdit: Option[Int],
         passed: Boolean,
-        distance: Option[Long]
+        distance: Option[Long],
+        standing: Option[Sha256]
     ): Either[String, Trial] = {
       val tokens = Vector(usage.input, usage.output, usage.cacheRead, usage.cacheWrite)
         .map(Tokens.value)
@@ -179,7 +225,8 @@ object TrialRows {
             readBeforeEdit,
             callsBeforeEdit,
             passed,
-            distance
+            distance,
+            standing
           )
         )
     }
@@ -235,8 +282,8 @@ object TrialRows {
       """INSERT INTO grit.bench_trials
         |       (harness, local, task, model, input_tokens, cache_read_tokens, cache_write_tokens,
         |        output_tokens, thinking_tokens, cost_usd, calls, wall_ms, read_before_edit,
-        |        calls_before_edit, passed, distance)
-        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        |        calls_before_edit, passed, distance, standing)
+        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         |ON CONFLICT (harness, local) DO NOTHING
         |RETURNING id""".stripMargin
     ) { ps =>
@@ -257,6 +304,7 @@ object TrialRows {
       ps.setObject(14, trial.callsBeforeEdit.map(Int.box).orNull)
       ps.setBoolean(15, trial.passed)
       ps.setObject(16, trial.distance.map(Long.box).orNull)
+      ps.setString(17, trial.standing.map(_.hex).orNull)
     }(_.getLong("id"))
 
   /** The transcript row of trial `id`, at `label` joined with the transaction's floor. */
@@ -280,7 +328,11 @@ object TrialRows {
 
   private def trialOf(rs: ResultSet): Either[String, Trial] = {
     def maybeLong(c: String) = Option(rs.getObject(c, classOf[java.lang.Long])).map(_.longValue)
+    val standing = Option(rs.getString("standing"))
     for {
+      digest <- standing.fold(Right(None))(hex =>
+        Sha256.read(hex).map(Some(_)).toRight(s"no digest: $hex")
+      )
       h <- Harness.of(rs.getString("harness"))
       s <- SessionId.of(h, rs.getString("local"))
       t <- TaskName.of(rs.getString("task"))
@@ -302,7 +354,8 @@ object TrialRows {
         maybeLong("read_before_edit"),
         Option(rs.getObject("calls_before_edit", classOf[java.lang.Integer])).map(_.intValue),
         rs.getBoolean("passed"),
-        maybeLong("distance")
+        maybeLong("distance"),
+        digest
       )
     } yield r
   }

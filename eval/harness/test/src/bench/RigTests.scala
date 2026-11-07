@@ -602,6 +602,19 @@ object RigTests extends TestSuite {
       }
     }
 
+    test("a grit trial records its standing text by digest, and a Claude Code trial none") {
+      withTask { f =>
+        (
+          gritTrial(f, GritFake(gritLines)).map(_.trial.standing.map(_.hex)),
+          trial(f, Fake("object A { val x = 1 }")).map(_.trial.standing)
+        ) ==> (
+          // The sha256 of "Make the change.", the fixture's standing text, as `sha256sum` prints it.
+          Right(Some("a0d3e561a1dc63765375a61b17f86f53d1650aee7c659e88fb79456e419a1365")),
+          Right(None)
+        )
+      }
+    }
+
     test(
       "grit runs `grit work` on its brief, in an environment of the rig's alone, the key read from its file"
     ) {

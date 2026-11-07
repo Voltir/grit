@@ -27,28 +27,18 @@ object Bench {
   def trials(reader: Reader^)(subject: Subject): Either[String, Vector[TrialRows.Trial]] =
     reader.db.read(subject)(TrialRows.trials()).left.map(e => s"the trials: ${e.described}")
 
-  /** `trial` kept in `blobs`' rows for `subject`; then the rows pruned of what this and any
-    * earlier keep left ([[TrialRows.prune]], pending blobs [[Abandoned]] by `clock`'s time).
-    * `Left` with the cause, for the operator, when the database or the machine fails, or the
-    * database refuses the trial. A trial recorded before a later failure stays recorded, and the
-    * next keep prunes what this one left.
-    */
-  def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
-      subject: Subject,
-      trial: TrialRows.Trial
-  ): Either[String, (TrialRows.Recorded, TrialRows.Pruned)] =
-    jot
-      .write(subject)(TrialRows(blobs).record(trial))
-      .left
-      .map(e => s"the trial: ${e.described}")
-      .flatMap(r => pruned(jot, blobs, clock)(subject).map((r, _)))
-
-  /** As the keep above, with `transcript` as `trial`'s transcript, labelled `label`, read to
-    * [[TrialRows.MostBytes]] bytes and one past them; `Left` also when the transcript fails.
+  /** `trial` kept in `blobs`' rows for `subject`, with `standing`, the standing text whose digest
+    * is `trial.standing` ([[TrialRows.record]]), and `transcript` as its transcript, labelled
+    * `label`, read to [[TrialRows.MostBytes]] bytes and one past them; then the rows pruned of
+    * what this and any earlier keep left ([[TrialRows.prune]], pending blobs [[Abandoned]] by
+    * `clock`'s time). `Left` with the cause, for the operator, when the database, the machine or
+    * the transcript fails, or the database refuses the trial. A trial recorded before a later
+    * failure stays recorded, and the next keep prunes what this one left.
     */
   def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject,
       trial: TrialRows.Trial,
+      standing: Option[String],
       transcript: InputStream^,
       label: Label
   ): Either[String, (TrialRows.Recorded, TrialRows.Pruned)] = {
@@ -61,7 +51,7 @@ object Bench {
     val rows = TrialRows(blobs)
     blobs
       .receive(Clip(transcript, TrialRows.MostBytes, clipped), TrialRows.MostBytes) { pending =>
-        jot.write(subject)(rows.record(trial, pending, clipped.get, label))
+        jot.write(subject)(rows.record(trial, standing, pending, clipped.get, label))
       }
       .left
       .map(e => s"the transcript: $e")

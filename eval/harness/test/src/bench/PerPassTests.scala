@@ -44,7 +44,8 @@ object PerPassTests extends TestSuite {
         None,
         None,
         passed,
-        distance
+        distance,
+        None
       )
     )
   }

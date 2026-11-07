@@ -36,7 +36,8 @@ object TrialRowsTests extends TestSuite {
   private def trial(
       local: String,
       task: String = "split-reader",
-      thinking: Option[Tokens] = None
+      thinking: Option[Tokens] = None,
+      standing: Option[Sha256] = None
   ): TrialRows.Trial =
     ok(
       for {
@@ -61,7 +62,8 @@ object TrialRowsTests extends TestSuite {
           readBeforeEdit = Some(4096L),
           callsBeforeEdit = Some(3),
           passed = true,
-          distance = Some(12L)
+          distance = Some(12L),
+          standing = standing
         )
       } yield r
     )
@@ -78,7 +80,7 @@ object TrialRowsTests extends TestSuite {
       clearance: Clearance = Low
   ): Either[StoreError, TrialRows.Recorded] =
     ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
-      LiveDb.transaction(config, clearance)(rows.record(t, p, clipped = false, label))
+      LiveDb.transaction(config, clearance)(rows.record(t, None, p, clipped = false, label))
     })
 
   private def trials(): Vector[TrialRows.Trial] =
@@ -111,7 +113,7 @@ object TrialRowsTests extends TestSuite {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         val first = trial("t-repeat")
-        ok(LiveDb.transaction(config, Low)(rows.record(first)))
+        ok(LiveDb.transaction(config, Low)(rows.record(first, None)))
         val again = trial("t-repeat", task = "another-task")
         val repeat = withTranscript(blobs, rows, again, "never kept")
         assert(
@@ -129,7 +131,7 @@ object TrialRowsTests extends TestSuite {
         val t = trial("t-long")
         val big = bytes("x".repeat((TrialRows.MostBytes + 1).toInt))
         val refused = ok(blobs.receive(big, TrialRows.MostBytes + 1) { p =>
-          LiveDb.transaction(config, Low)(rows.record(t, p, clipped = false, Label.Public))
+          LiveDb.transaction(config, Low)(rows.record(t, None, p, clipped = false, Label.Public))
         })
         assert(
           refused == Left(
@@ -165,11 +167,13 @@ object TrialRowsTests extends TestSuite {
         val rows = TrialRows(blobs)
         val all = Vector.tabulate(TrialRows.MostTrials + 1)(i => trial(s"t-$i"))
         ok(blobs.receive(bytes("the oldest"), TrialRows.MostBytes) { p =>
-          LiveDb.transaction(db, Low)(rows.record(all(0), p, clipped = false, Label.Public))
+          LiveDb.transaction(db, Low)(rows.record(all(0), None, p, clipped = false, Label.Public))
         })
         val middle =
-          all.slice(1, TrialRows.MostTrials).map(t => LiveDb.transaction(db, Low)(rows.record(t)))
-        val last = LiveDb.transaction(db, Low)(rows.record(all(TrialRows.MostTrials)))
+          all
+            .slice(1, TrialRows.MostTrials)
+            .map(t => LiveDb.transaction(db, Low)(rows.record(t, None)))
+        val last = LiveDb.transaction(db, Low)(rows.record(all(TrialRows.MostTrials), None))
         assert(
           middle.forall(_ == Right(TrialRows.Recorded.Fresh(0))),
           last == Right(TrialRows.Recorded.Fresh(1)),
@@ -185,8 +189,8 @@ object TrialRowsTests extends TestSuite {
         val rows = TrialRows(blobs)
         val reported = trial("t-thinks", thinking = Some(Tokens(250)))
         val silent = trial("t-silent")
-        ok(LiveDb.transaction(config, Low)(rows.record(reported)))
-        ok(LiveDb.transaction(config, Low)(rows.record(silent)))
+        ok(LiveDb.transaction(config, Low)(rows.record(reported, None)))
+        ok(LiveDb.transaction(config, Low)(rows.record(silent, None)))
         assert(
           trials().filter(_.session == reported.session) == Vector(reported),
           trials().filter(_.session == silent.session) == Vector(silent)
@@ -203,7 +207,7 @@ object TrialRowsTests extends TestSuite {
         val rows = TrialRows(blobs)
         def kept(t: TrialRows.Trial, text: String) =
           ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
-            LiveDb.transaction(db, Low)(rows.record(t, p, clipped = false, Label.Public))
+            LiveDb.transaction(db, Low)(rows.record(t, None, p, clipped = false, Label.Public))
           })
         kept(trial("p-a"), "shared")
         kept(trial("p-b"), "shared")
@@ -213,6 +217,64 @@ object TrialRowsTests extends TestSuite {
         assert(
           pruned == Right(Right(TrialRows.Pruned(1, 0))),
           blobs.kept().map(_.toSet) == Right(Set(Sha256.text("shared"), Sha256.text("its own")))
+        )
+      }
+    }
+
+    test(
+      "a trial's standing text is recorded by its digest and kept, through a prune, as its blob"
+    ) {
+      val db = TestPostgres.freshDatabase("bench_standing")
+      LiveEngine.open(db, "test").close()
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val text = "You work by these rules."
+        // The sha256 of `text`'s UTF-8 bytes, as `sha256sum` prints it.
+        val digest = "74f00f5498dbded008ef1327ac055d11587f05959f307a9a24dbc34d21ce0a40"
+        val t = trial("s-kept", standing = Sha256.read(digest))
+        val recorded = LiveDb.transaction(db, Low)(rows.record(t, Some(text)))
+        val pruned = LiveDb.transaction(db, Low)(rows.prune(java.time.Instant.EPOCH))
+        assert(
+          recorded == Right(TrialRows.Recorded.Fresh(0)),
+          pruned == Right(Right(TrialRows.Pruned(0, 0))),
+          LiveDb.transaction(db, Low)(ok(TrialRows.trials())).map(_.standing.map(_.hex)) ==
+            Vector(Some(digest)),
+          Sha256.read(digest).flatMap(blobs.at).map(java.nio.file.Files.readString) == Some(text)
+        )
+      }
+    }
+
+    test("a standing text its trial's digest does not name is refused, recording nothing") {
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val t = trial("s-other", standing = Some(Sha256.text("the rules")))
+        val recorded = LiveDb.transaction(config, Low)(rows.record(t, Some("other rules")))
+        assert(
+          recorded == Left(
+            StoreError.Invalid("a trial's standing text is not the one its digest names")
+          ),
+          trials().filter(_.session == t.session) == Vector.empty,
+          blobs.kept() == Right(Vector.empty)
+        )
+      }
+    }
+
+    test("a trial pruned past the cap takes its standing text's blob with it") {
+      val db = TestPostgres.freshDatabase("bench_standing_cap")
+      LiveEngine.open(db, "test").close()
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val oldest = trial("s-0", standing = Some(Sha256.text("the oldest rules")))
+        ok(LiveDb.transaction(db, Low)(rows.record(oldest, Some("the oldest rules"))))
+        val kept = blobs.kept()
+        Vector
+          .tabulate(TrialRows.MostTrials)(i => trial(s"s-${i + 1}"))
+          .foreach(t => ok(LiveDb.transaction(db, Low)(rows.record(t, None))))
+        val pruned = LiveDb.transaction(db, Low)(rows.prune(java.time.Instant.EPOCH))
+        assert(
+          kept == Right(Vector(Sha256.text("the oldest rules"))),
+          pruned == Right(Right(TrialRows.Pruned(1, 0))),
+          blobs.kept() == Right(Vector.empty)
         )
       }
     }

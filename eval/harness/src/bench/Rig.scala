@@ -794,7 +794,8 @@ object Rig {
               c.consumed.readBeforeEdit,
               c.consumed.callsBeforeEdit,
               passed = checked.passed && c.consumed.ended.exists(!_.error),
-              distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known))
+              distance = Option.when(changed.lines.nonEmpty)(DiffLines.distance(changed, known)),
+              standing = Standing.ofArm(arm).map(_.sha256)
             )
             .left
             .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))

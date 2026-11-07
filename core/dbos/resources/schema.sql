@@ -1512,15 +1512,18 @@ CREATE TABLE IF NOT EXISTS grit.pieces (
 CREATE INDEX IF NOT EXISTS idx_pieces_bm25 ON grit.pieces
     USING bm25 (search_text) WITH (text_config = 'english');
 
--- The bench's trials (grit.dbos.internal.BenchRows): one harness's go at a frozen task, holding
+-- The bench's trials (grit.dbos.internal.TrialRows): one harness's go at a frozen task, holding
 -- only what its session lacks. The session is named by `harness` and `local`, never by a key:
 -- whichever edge saw it records it, perhaps in another database, under its own retention.
 -- `id` is the order recorded, which the cap reads. `calls_before_edit` and `read_before_edit`
 -- are NULL together: the trial made no edit. `thinking_tokens` is NULL where some call did not
 -- report its thinking (the trial's usage sums it only when every call did), and counts within
--- `output_tokens` where set.
--- Retention: capped: every trial but the newest BenchRows.Kept (60) is deleted by the record
--- that passes it. Steady state: 60 rows of about 208 bytes.
+-- `output_tokens` where set. `standing` is the sha256 of the standing text its coder's brief
+-- began with, kept as a blob of the bench's own store under it; NULL for a harness with none
+-- (Claude Code's). Its blob is removed by the next prune once no trial or trajectory names it.
+-- Retention: capped: every trial but the newest TrialRows.MostTrials (60) is deleted by the record
+-- that passes it. Steady state: 60 rows of about 272 bytes; standing blobs at most 60 × 32 MiB,
+-- in practice a few of a few KB, since trials share a standing text by its digest.
 CREATE TABLE IF NOT EXISTS grit.bench_trials (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     harness            TEXT NOT NULL CHECK (harness ~ '^[a-z][a-z0-9-]{0,63}$'),
@@ -1539,6 +1542,7 @@ CREATE TABLE IF NOT EXISTS grit.bench_trials (
     calls_before_edit  INT CHECK (calls_before_edit BETWEEN 0 AND calls),
     passed             BOOLEAN NOT NULL,
     distance           BIGINT CHECK (distance >= 0),
+    standing           TEXT CHECK (standing ~ '^[0-9a-f]{64}$'),
     UNIQUE (harness, local),
     CHECK (cache_read_tokens + cache_write_tokens <= input_tokens),
     CONSTRAINT bench_trials_thinking_le_output CHECK (thinking_tokens IS NULL OR thinking_tokens <= output_tokens),
@@ -1546,7 +1550,7 @@ CREATE TABLE IF NOT EXISTS grit.bench_trials (
 );
 
 -- A trial's trajectory: its harness's transcript, kept as a blob of the bench's own store under
--- `sha256`, at most BenchRows.Longest (32 MiB) bytes, `clipped` when the transcript ran past
+-- `sha256`, at most TrialRows.MostBytes (32 MiB) bytes, `clipped` when the transcript ran past
 -- them. `room_id` is never set: it is there so SqlClearance.kept reads the row by its label.
 -- Retention: capped: with its trial, by cascade; its blob is removed by the next prune once no
 -- row names it. Steady state: 60 rows of about 100 bytes; blobs at most 60 × 32 MiB.

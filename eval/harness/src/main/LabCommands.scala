@@ -226,6 +226,7 @@ private[main] object LabCommands {
               kept <- Bench.keep(engine.jot, blobs, clock)(
                 Subject.Public,
                 tried.trial,
+                Standing.ofArm(tried.arm).map(_.text),
                 new ByteArrayInputStream(
                   tried.transcript.mkString("", "\n", "\n").getBytes(StandardCharsets.UTF_8)
                 ),

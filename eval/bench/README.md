@@ -45,7 +45,9 @@ repository, with one message: the standing text in the file `--standing` names (
 missing or blank file is refused), the rig's account of where the coder works
 (`Rig.GritPreamble`), and the task's brief. The standing text is how a grit coder works wherever it
 runs, kept in the planning store and exported to a file for the run; it is worded for grit's own
-tools (`run` with its allowlist, `tail`, scout's `scout_*`). Before grit starts, the rig compiles every module the task's checks name in the checkout
+tools (`run` with its allowlist, `tail`, scout's `scout_*`). Its trial records the standing text by
+its sha256 (`bench_trials.standing`), the text kept as a blob beside the trial's transcript, so
+trials sort by the version of the standing text they ran under. Before grit starts, the rig compiles every module the task's checks name in the checkout
 (`./mill <module>.__.compile`, at most an hour, unbilled), so the coder's first build is not a cold
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's model in every role at
