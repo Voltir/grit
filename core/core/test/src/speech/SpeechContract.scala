@@ -2,7 +2,6 @@ package grit.core.speech
 
 import java.time.Instant
 
-
 import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
