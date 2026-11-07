@@ -114,7 +114,7 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT workflow, room, decided_at, outcome_kind, posted_seq, room_to IS NOT NULL
+          """SELECT workflow, room, decided_at, outcome_kind, posted_seq, room_to
             |  FROM grit.speech
             | WHERE drafting AND NOT answering AND decided_at >= ?
             | ORDER BY decided_at, workflow""".stripMargin
@@ -125,7 +125,7 @@ final class SqlSpeechStore extends SpeechStore {
           val rows = Vector.newBuilder[Either[StoreError, Spoken]]
           while (rs.next()) {
             val workflow = rs.getString(1)
-            val atTop = rs.getBoolean(6)
+            val venue = Option(rs.getString(6)).fold(Venue.Thread)(Venue.Room(_))
             val posted = rs.getLong(5)
             val stage =
               if (!rs.wasNull()) Stage.Posted(EntrySeq(posted))
@@ -141,7 +141,7 @@ final class SqlSpeechStore extends SpeechStore {
               room,
               rs.getObject(3, classOf[OffsetDateTime]).toInstant,
               stage,
-              atTop
+              venue
             ))
           }
           rows.result()

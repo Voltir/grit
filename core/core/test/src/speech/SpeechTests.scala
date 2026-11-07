@@ -442,7 +442,7 @@ object SpeechTests extends TestSuite {
       "placement never holds a message: with no placement, no room address, a gate that fails or is unread, or the room's top-level rate spent, the draft goes in its thread"
     ) {
       val spent =
-        empty.copy(turns = Vector(posted("a", 1, now.minusSeconds(3600)).copy(atTop = true)))
+        empty.copy(turns = Vector(posted("a", 1, now.minusSeconds(3600)).copy(venue = Venue.Room("C"))))
       val failing = atTop.copy(tags = forRoom(0.4))
       val unread = atTop.copy(tags = tags())
       Vector(

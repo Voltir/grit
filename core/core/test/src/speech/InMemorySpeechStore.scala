@@ -52,7 +52,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
               case Some((_, _, Some(seq))) => Stage.Posted(seq)
               case Some((_, _, None)) => Stage.Settled
             }
-            Spoken(turn, h.room, at, stage, venue != Venue.Thread)
+            Spoken(turn, h.room, at, stage, venue)
         }
         .sortBy(s => (s.at, WorkflowId.value(s.turn.workflowId)))
     )
@@ -101,7 +101,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
         spoken(Instant.MIN).map { all =>
           val spent = rate.forall(r =>
             all.count(s =>
-              s.atTop && s.room == room && s.turn != turn && s.at.isAfter(
+              s.venue != Venue.Thread && s.room == room && s.turn != turn && s.at.isAfter(
                 at.minusNanos(r.per.toNanos)
               ) && (s.stage match {
                 case Stage.Posted(_) => true

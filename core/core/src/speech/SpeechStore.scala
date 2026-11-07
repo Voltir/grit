@@ -55,7 +55,7 @@ trait SpeechStore {
 
   /** Where `turn`'s reply goes when it is posted `at`: its [[venue]], unless that is its
     * room's top level and `rate` is spent there, `rate.count` of its room's other turns decided
-    * within `rate.per` before `at` posted at the top ([[Spoken.atTop]]), or `rate` is `None`;
+    * within `rate.per` before `at` posted at the top ([[Spoken.venue]]), or `rate` is `None`;
     * then its thread, kept so.
     */
   def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using

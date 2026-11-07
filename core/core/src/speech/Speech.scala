@@ -82,14 +82,14 @@ enum Stage {
 }
 
 /** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), its stage,
-  * and whether its reply goes at its room's top level (`atTop`, [[Venue.Room]]).
+  * and where its reply goes (`venue`).
   */
 final case class Spoken(
     turn: TurnRef,
     room: Place,
     at: Instant,
     stage: Stage,
-    atTop: Boolean = false
+    venue: Venue = Venue.Thread
 )
 
 /** The speech ledger as a decision needs it: the unprompted turns decided within the longest
@@ -293,7 +293,7 @@ object Speech {
       (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
         case (Some(r), Some(to), Tags.Weighed(answers, _, _))
             if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
-              within(r.rate, t => t.atTop && t.room == heard.room) < r.rate.count =>
+              within(r.rate, t => t.venue != Venue.Thread && t.room == heard.room) < r.rate.count =>
           Venue.Room(to)
         case _ => Venue.Thread
       }

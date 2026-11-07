@@ -396,7 +396,7 @@ abstract class SpeechContract extends TestSuite {
       val held = decide(c, At.plusSeconds(2), drafting = false)
       val unrated = decide(c, At.plusSeconds(3), drafting = true, Venue.Room("C//3"))
       def venues = transaction(Vector(top, thread, held, unrated).map(t => right(speech.venue(t))))
-      val before = (venues, mine(c, At).map(_.atTop))
+      val before = (venues, mine(c, At).map(_.venue))
       val allowed = transaction(right(speech.placing(top, Some(hour), At.plusSeconds(60))))
       // Another of its room's drafts posted at the top since: the rate is spent.
       val other = decide(c, At.plusSeconds(4), drafting = true, Venue.Room("C//4"))
@@ -429,7 +429,7 @@ abstract class SpeechContract extends TestSuite {
       (before, allowed, placed, venues) ==> (
         (
           Vector(Venue.Room("C//1"), Venue.Thread, Venue.Thread, Venue.Room("C//3")),
-          Vector(true, false, true)
+          Vector(Venue.Room("C//1"), Venue.Thread, Venue.Room("C//3"))
         ),
         Venue.Room("C//1"),
         Vector.fill(4)(Venue.Thread),
