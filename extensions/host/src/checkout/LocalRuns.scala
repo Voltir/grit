@@ -208,11 +208,11 @@ final class LocalRuns(
   private def written(file: Path): Either[HostError, RelPath] =
     RelPath.of(root.relativize(file).toString).left.map(e => HostError.Failed(e.message))
 
-  /** The ended runs past [[Runs.Kept]] forgotten, the one started first first. */
+  /** The ended runs past [[Runs.MostEnded]] forgotten, the one started first first. */
   private def forgetting(): Unit = {
     val past = synchronized {
       val ended = kept.asScala.toVector.filterNot((_, e) => e.process.isAlive)
-      ended.take((ended.size - Runs.Kept).max(0))
+      ended.take((ended.size - Runs.MostEnded).max(0))
     }
     past.foreach((id, e) => forget(id, e))
   }

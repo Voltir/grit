@@ -487,7 +487,7 @@ object Coding {
           "for it to end; the answer comes as soon as it does. Shows at most the last " + limits +
           " of output; when that cuts it, the answer names the file holding all of it, for " +
           "`read`. Fails when no command with that id is kept in this checkout: grit restarted " +
-          s"since it started, or it ended and was forgotten after ${Runs.Kept} newer commands " +
+          s"since it started, or it ended and was forgotten after ${Runs.MostEnded} newer commands " +
           s"ended; and when its output passed ${mb(Workspace.MaxFileBytes)}, which killed it.",
         Args
           .of(

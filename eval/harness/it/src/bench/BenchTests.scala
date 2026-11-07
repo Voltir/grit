@@ -50,7 +50,7 @@ object BenchTests extends TestSuite {
       val engine = LiveEngine.open(db, "test")
       try {
         TempBlobs.around { blobs =>
-          val n = TrialRows.Kept + 1
+          val n = TrialRows.MostTrials + 1
           val kept = (0 until n).map { i =>
             Bench.keep(engine.jot, blobs, Clock.system())(
               Subject.Public,

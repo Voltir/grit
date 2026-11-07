@@ -77,7 +77,7 @@ object TrialRowsTests extends TestSuite {
       label: Label = Label.Public,
       clearance: Clearance = Low
   ): Either[StoreError, TrialRows.Recorded] =
-    ok(blobs.receive(bytes(text), TrialRows.Longest) { p =>
+    ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
       LiveDb.transaction(config, clearance)(rows.record(t, p, clipped = false, label))
     })
 
@@ -127,14 +127,14 @@ object TrialRowsTests extends TestSuite {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         val t = trial("t-long")
-        val big = bytes("x".repeat((TrialRows.Longest + 1).toInt))
-        val refused = ok(blobs.receive(big, TrialRows.Longest + 1) { p =>
+        val big = bytes("x".repeat((TrialRows.MostBytes + 1).toInt))
+        val refused = ok(blobs.receive(big, TrialRows.MostBytes + 1) { p =>
           LiveDb.transaction(config, Low)(rows.record(t, p, clipped = false, Label.Public))
         })
         assert(
           refused == Left(
             StoreError.Invalid(
-              s"a trajectory holds at most ${TrialRows.Longest} bytes, not ${TrialRows.Longest + 1}"
+              s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not ${TrialRows.MostBytes + 1}"
             )
           ),
           trials().filter(_.session == t.session) == Vector.empty,
@@ -163,13 +163,13 @@ object TrialRowsTests extends TestSuite {
       LiveEngine.open(db, "test").close()
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
-        val all = Vector.tabulate(TrialRows.Kept + 1)(i => trial(s"t-$i"))
-        ok(blobs.receive(bytes("the oldest"), TrialRows.Longest) { p =>
+        val all = Vector.tabulate(TrialRows.MostTrials + 1)(i => trial(s"t-$i"))
+        ok(blobs.receive(bytes("the oldest"), TrialRows.MostBytes) { p =>
           LiveDb.transaction(db, Low)(rows.record(all(0), p, clipped = false, Label.Public))
         })
         val middle =
-          all.slice(1, TrialRows.Kept).map(t => LiveDb.transaction(db, Low)(rows.record(t)))
-        val last = LiveDb.transaction(db, Low)(rows.record(all(TrialRows.Kept)))
+          all.slice(1, TrialRows.MostTrials).map(t => LiveDb.transaction(db, Low)(rows.record(t)))
+        val last = LiveDb.transaction(db, Low)(rows.record(all(TrialRows.MostTrials)))
         assert(
           middle.forall(_ == Right(TrialRows.Recorded.Fresh(0))),
           last == Right(TrialRows.Recorded.Fresh(1)),
@@ -202,7 +202,7 @@ object TrialRowsTests extends TestSuite {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         def kept(t: TrialRows.Trial, text: String) =
-          ok(blobs.receive(bytes(text), TrialRows.Longest) { p =>
+          ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
             LiveDb.transaction(db, Low)(rows.record(t, p, clipped = false, Label.Public))
           })
         kept(trial("p-a"), "shared")

@@ -118,14 +118,16 @@ abstract class RunsContract extends TestSuite {
       }
     }
 
-    test("an ended run is forgotten once Runs.Kept newer ones have ended: Gone") {
+    test("an ended run is forgotten once Runs.MostEnded newer ones have ended: Gone") {
       fresh { runs =>
         val ids =
-          (0 to Runs.Kept).flatMap(_ => runs.start(quick, 10.seconds, ample).toOption.map(_.id))
+          (0 to Runs.MostEnded).flatMap(_ =>
+            runs.start(quick, 10.seconds, ample).toOption.map(_.id)
+          )
         val first = ids.headOption.map(id => runs.tail(id, Duration.Zero))
         val last = ids.lastOption.map(id => runs.tail(id, Duration.Zero).isRight)
         (ids.size, first, last) ==>
-          (Runs.Kept + 1, ids.headOption.map(id => Left(HostError.Gone(id))), Some(true))
+          (Runs.MostEnded + 1, ids.headOption.map(id => Left(HostError.Gone(id))), Some(true))
       }
     }
 
@@ -150,7 +152,7 @@ abstract class RunsContract extends TestSuite {
     test("a run whose output passed the most is forgotten, so it never pushes an ended run out") {
       fresh { runs =>
         val first = runs.start(quick, 10.seconds, ample).toOption.map(_.id)
-        val floods = (1 to Runs.Kept).map(_ => runs.start(flood, 10.seconds, ample))
+        val floods = (1 to Runs.MostEnded).map(_ => runs.start(flood, 10.seconds, ample))
         (
           floods.count {
             case Left(HostError.TooLarge(_, _, _)) => true
@@ -164,7 +166,7 @@ abstract class RunsContract extends TestSuite {
                 case _ => None
               })
           )
-        ) ==> (Runs.Kept, Some(Right(Some((3, "hi")))))
+        ) ==> (Runs.MostEnded, Some(Right(Some((3, "hi")))))
       }
     }
 

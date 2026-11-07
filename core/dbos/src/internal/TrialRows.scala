@@ -14,13 +14,13 @@ import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.{SqlLabels, SqlStatements, SqlTrialRows}
 
 /** The bench's rows over `blobs`: each trial of a harness at a frozen task and its transcript,
-  * the newest [[TrialRows.Kept]] trials alone. `blobs` must be the bench's own, one store per
+  * the newest [[TrialRows.MostTrials]] trials alone. `blobs` must be the bench's own, one store per
   * database: [[prune]] removes each of its blobs no transcript names, as a file area's sweep does
   * by its files, so two such owners of one store would each remove the other's.
   */
 final class TrialRows(blobs: Blobs^) {
 
-  /** `trial` recorded; then every trial but the newest [[TrialRows.Kept]] recorded removed with
+  /** `trial` recorded; then every trial but the newest [[TrialRows.MostTrials]] recorded removed with
     * its transcript's row, never its blob ([[prune]]). [[TrialRows.Recorded.Repeat]], writing
     * nothing, when `trial`'s session has a trial already. Waits on any other record or prune
     * until the transaction ends.
@@ -35,15 +35,15 @@ final class TrialRows(blobs: Blobs^) {
     * ran past what was received, kept at `label` joined with this transaction's floor (ADR 0030:
     * what a transaction writes is kept at least where it writes); on a repeat `transcript` is not
     * kept. `Left(Invalid)`, recording nothing, when `transcript` holds more than
-    * [[TrialRows.Longest]] bytes; `Left(DatabaseError)` when it cannot be kept.
+    * [[TrialRows.MostBytes]] bytes; `Left(DatabaseError)` when it cannot be kept.
     */
   def record(trial: TrialRows.Trial, transcript: Pending^, clipped: Boolean, label: Label)(using
       Tx^
   ): Either[StoreError, TrialRows.Recorded] =
-    if (transcript.bytes > TrialRows.Longest)
+    if (transcript.bytes > TrialRows.MostBytes)
       Left(
         StoreError.Invalid(
-          s"a trajectory holds at most ${TrialRows.Longest} bytes, not ${transcript.bytes}"
+          s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not ${transcript.bytes}"
         )
       )
     else {
@@ -92,10 +92,10 @@ object TrialRows {
       .flatMap(SqlStatements.valid)
 
   /** 60: the most trials kept. */
-  val Kept: Int = 60
+  val MostTrials: Int = 60
 
   /** 32 MiB: the most bytes of a transcript kept. */
-  val Longest: Long = 32L * 1024 * 1024
+  val MostBytes: Long = 32L * 1024 * 1024
 
   /** A frozen task's name: 1 to 80 lower-case letters, digits and `-`, the first no `-`. */
   opaque type TaskName = String
@@ -186,7 +186,7 @@ object TrialRows {
   }
 
   /** A trial's transcript as kept: as its harness wrote it, the blob `sha256` of
-    * `bytes` bytes, `clipped` when the transcript ran past [[Longest]]; read by whom `label`
+    * `bytes` bytes, `clipped` when the transcript ran past [[MostBytes]]; read by whom `label`
     * clears.
     */
   final case class Transcript private[dbos] (
@@ -204,7 +204,7 @@ object TrialRows {
 
   enum Recorded {
 
-    /** Recorded, and `removed` older trials removed past [[Kept]]. */
+    /** Recorded, and `removed` older trials removed past [[MostTrials]]. */
     case Fresh(removed: Int)
     case Repeat
   }
@@ -222,12 +222,12 @@ object TrialRows {
   private def begun(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =
     lock().flatMap(_ => trialRow(trial))
 
-  /** Every trial but the newest [[Kept]] recorded deleted, with its transcript's row; how many. */
+  /** Every trial but the newest [[MostTrials]] recorded deleted, with its transcript's row; how many. */
   private def evict()(using Tx^): Either[StoreError, Int] =
     SqlStatements.update(
       """DELETE FROM grit.bench_trials
         | WHERE id NOT IN (SELECT id FROM grit.bench_trials ORDER BY id DESC LIMIT ?)""".stripMargin
-    )(_.setInt(1, Kept))
+    )(_.setInt(1, MostTrials))
 
   /** `trial`'s row inserted, its id; `None` when its session has one. */
   private def trialRow(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =

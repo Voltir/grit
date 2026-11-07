@@ -94,10 +94,10 @@ final class ScriptedRuns(scripts: Map[Argv, ScriptedRuns.Script]) extends Runs {
         }
     }
 
-  /** `runs` with the ended ones past [[Runs.Kept]] forgotten, the one started first first. */
+  /** `runs` with the ended ones past [[Runs.MostEnded]] forgotten, the one started first first. */
   private def forgetting(runs: Vector[(RunId, Run)]): Vector[(RunId, Run)] = {
     val ended = runs.filterNot((_, r) => going(r)).map(_._1)
-    val forgotten = ended.take((ended.size - Runs.Kept).max(0)).toSet
+    val forgotten = ended.take((ended.size - Runs.MostEnded).max(0)).toSet
     runs.filterNot((k, _) => forgotten.contains(k))
   }
 }

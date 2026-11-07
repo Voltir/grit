@@ -65,7 +65,7 @@ private[main] object LabCommands {
     * transcript in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
     * ([[Bench.keep]]), its log at `<work>/<checkout>.log`. Before any run, `<work>` is cleared
     * ([[Rig.cleared]]: every checkout a killed run left, and every log but the newest
-    * [[TrialRows.Kept]]). Prints what [[Tried.lines]] gives, or each check; never the key.
+    * [[TrialRows.MostTrials]]). Prints what [[Tried.lines]] gives, or each check; never the key.
     */
   private[main] def bench(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     if (f.get("summary").contains("true")) summary(f) else run(f, clock)
@@ -92,7 +92,7 @@ private[main] object LabCommands {
       repository <- need(f, "repository")
       root <- need(f, "work").map(Path.of(_))
       _ <- Try(Files.createDirectories(root)).toEither.left.map(e => s"no work directory: $e")
-      cleared <- Rig.cleared(root)(TrialRows.Kept)
+      cleared <- Rig.cleared(root)(TrialRows.MostTrials)
       _ = if (cleared > 0)
         System.err.println(s"[bench] removed $cleared old runs' entries from $root")
       env <- DotEnv.loadDefault(sys.env)

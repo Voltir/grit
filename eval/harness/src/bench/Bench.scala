@@ -44,7 +44,7 @@ object Bench {
       .flatMap(r => pruned(jot, blobs, clock)(subject).map((r, _)))
 
   /** As the keep above, with `transcript` as `trial`'s transcript, labelled `label`, read to
-    * [[TrialRows.Longest]] bytes and one past them; `Left` also when the transcript fails.
+    * [[TrialRows.MostBytes]] bytes and one past them; `Left` also when the transcript fails.
     */
   def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject,
@@ -60,7 +60,7 @@ object Bench {
     val clipped = new AtomicBoolean(false)
     val rows = TrialRows(blobs)
     blobs
-      .receive(Clip(transcript, TrialRows.Longest, clipped), TrialRows.Longest) { pending =>
+      .receive(Clip(transcript, TrialRows.MostBytes, clipped), TrialRows.MostBytes) { pending =>
         jot.write(subject)(rows.record(trial, pending, clipped.get, label))
       }
       .left

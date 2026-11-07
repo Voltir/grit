@@ -48,7 +48,7 @@ enum RunStatus {
 }
 
 /** Commands started at the checkout's root that outlive the call starting them, each known by
-  * its [[RunId]] to the `Runs` that started it, until [[Runs.Kept]] newer ones have ended or its
+  * its [[RunId]] to the `Runs` that started it, until [[Runs.MostEnded]] newer ones have ended or its
   * process ends.
   */
 trait Runs extends caps.SharedCapability {
@@ -84,7 +84,7 @@ object Runs {
   val Most = 4
 
   /** 8: the most ended runs kept; past that, the one started first is forgotten. */
-  val Kept = 8
+  val MostEnded = 8
 
   /** 30 seconds: how long `run` waits for a command before answering with its id. */
   val Wait: FiniteDuration = 30.seconds
