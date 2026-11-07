@@ -1,6 +1,6 @@
 # 0054. A secret is a value no label admits: its value leaves only into a quarantine's library call or a file handed to a program, and what a program or file shows a tool is redacted of every one
 
-Status: accepted (2026-11-01); revised (2026-11-04)
+Status: accepted (2026-11-01); revised (2026-11-06)
 
 Context: grit holds model gateway keys, MCP and Slack tokens, a service account's private key and
 the database password. Before this record they were guarded by a path rule (`.env`), a rule for
@@ -33,16 +33,19 @@ Turned down:
 
 Decision:
 
-- **What a secret is.** A value whose disclosure grants authority outside grit, held as
-  `grit.core.secret.Secret`: no public accessor, no JSON or `Journaled` form, equal only to
-  itself, shown as `Secret(VARIABLE)`. `Secret.read` reads one from the environment, trimmed,
-  only for a variable `Named.variable` holds of (KEY, TOKEN, SECRET or PASSWORD, in any case).
-  `Named.file` is the one rule for a secrets file (`.env`, `.env.` and anything).
-- **Confidentiality.** No clearance admits a secret. Rows, step outputs and tool results are built
-  from `Journaled` and `ujson` values, which a `Secret` has none of. Its value leaves only through
-  `Reveal.text`, which only these packages may name: `grit.dbos.sql` and
-  `grit.databases.connect` (JDBC), `grit.models` (an HTTP header), `grit.mcp.client`,
-  `grit.slack.client`, and `grit.host.checkout`, which writes it to a file handed to a program.
+- **What a secret is.** A value whose disclosure grants authority outside grit. The model
+  gateway keys, an application database's login and what is handed to a program in a file are
+  held as `grit.core.secret.Secret`: no public accessor, no JSON or `Journaled` form, equal
+  only to itself, shown as `Secret(VARIABLE)`. `Secret.read` reads one from the environment,
+  trimmed, only for a variable `Named.variable` holds of (KEY, TOKEN, SECRET or PASSWORD, in
+  any case). `Named.file` is the one rule for a secrets file (`.env`, `.env.` and anything).
+- **Confidentiality.** No clearance admits a secret. Rows, step outputs and tool results are
+  built from `Journaled` and `ujson` values, which a `Secret` has none of. Its value leaves
+  only through `Reveal.text`, which only quarantines may name (`grit.dbos.sql`,
+  `grit.databases.connect`, `grit.models`, `grit.mcp.client`, `grit.slack.client` and
+  `grit.host.checkout`); it is named today in `grit.models` (an HTTP header),
+  `grit.databases.connect` (JDBC) and `grit.host.checkout`, which writes it to a file handed to
+  a program.
 - **Integrity.** Only deployment-declared code hands a secret on. It reaches a program only
   through `Handing`, a capability apart from `Processes`: the secret in a 0600 file in a 0700
   directory of its own outside the checkout, removed when the program's scope ends, its path given
@@ -76,8 +79,15 @@ Consequences:
 - The bench's `claude` can read its key back: `/proc/$PPID/cmdline` names the key file's path,
   and the file is readable by the OS user until the trial ends. Accepted: the file is 0600,
   outside the checkout and deleted after each trial, and transcripts are redacted.
-- Code holding only `Processes` cannot hand a secret on, whatever its arguments; a new caller that
-  needs one takes a `Handing` in its signature, where review sees it.
+- **Not yet `Secret`s**: grit's own database password, Slack's bot and app tokens, MCP's bearer
+  token and Drive's service-account key are plain values in their quarantines: the password a
+  public field of `grit.dbos.sql.DbConfig`, the tokens private to `grit.slack.client` and
+  `grit.mcp.client`, Drive's key a JDK key object. MCP's bearer is still cut from an error's
+  body by one `replace`. The redaction covers the password and the tokens, read from variables
+  named like secrets; Drive's key is read from a file a variable names, so the redaction holds
+  its path, not the key.
+- Code holding only `Processes` cannot hand a secret on, whatever its arguments; a new caller
+  that needs one takes a `Handing` in its signature, where review sees it.
 
 Enforced by: the compiler (`Secret`'s private value and constructor, `Handing` a tracked
 capability apart from `Processes`), the probes `SecretProbes` and `HandingCaptureTests`, and the law
