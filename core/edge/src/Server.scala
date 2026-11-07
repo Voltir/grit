@@ -114,7 +114,7 @@ object Server {
   /** A [[Server]]'s `runner`: each run on a virtual thread of its own, named `named` (an
     * unnamed virtual thread's name is empty, the default).
     */
-  def onVirtualThreads(named: String = ""): (() => Unit) => Unit =
+  def onVirtualThreads(named: String = ""): (() => Unit) -> Unit =
     run => { val _ = Thread.ofVirtual().name(named).start(() => run()) }
 
   /** The set an edge advertised at its place, and the tools that serve it. */
