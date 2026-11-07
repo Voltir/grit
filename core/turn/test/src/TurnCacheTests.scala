@@ -23,8 +23,9 @@ object TurnCacheTests extends TestSuite {
   private val at0 = Instant.parse("2026-10-30T10:00:00Z")
   private val at1 = Instant.parse("2026-10-30T10:00:07Z")
 
-  // A turn that called tools in round 0 and answered in round 1, then summarised: the steps
-  // as it recorded them, under the carry-reasons patch, and its workflow's ledger rows.
+  // A turn that called tools in round 0 and answered in round 1, then summarised on its own
+  // prefix, read from the cache: the steps as it recorded them, under the carry-reasons patch,
+  // and its workflow's ledger rows.
   private val steps: Vector[StepRecord] = Vector(
     StepRecord(StepRecord.marker(TurnAssembly.Carrying), None, None),
     StepRecord(StepRecord.marker(TurnAssembly.CarryReasons), None, None),
@@ -37,7 +38,7 @@ object TurnCacheTests extends TestSuite {
   private val rows: Vector[UsageLedger.Row] = Vector(
     row(TurnTools.callId(turn, TurnLoop.Round.at(0)), "m", usage(100, 0, 90)),
     row(turn.replyId, "m", usage(200, 180, 10)),
-    row(TurnSummary.id(turn), "s", usage(50, 0, 0)),
+    row(TurnSummary.id(turn), "s", usage(250, 230, 0)),
     row(EntryId("not-this-turns"), "x", usage(1, 0, 0))
   )
 
@@ -53,12 +54,14 @@ object TurnCacheTests extends TestSuite {
             TurnCache.Own(0, "m", usage(100, 0, 90), Some(at0)),
             TurnCache.Own(1, "m", usage(200, 180, 10), Some(at1))
           ),
-          Vector(TurnCache.Aside(TurnRecord.Role.Summary, "s", usage(50, 0, 0)))
+          Vector(TurnCache.Aside(TurnRecord.Role.Summary, "s", usage(250, 230, 0)))
         )
       )
     }
 
-    test("a turn's share is its own calls' cache reads over their input, its asides left out") {
+    test(
+      "a turn's share is its own calls' cache reads over their input, its asides left out, a summary on its prefix too"
+    ) {
       TurnCache.of(turn, steps, rows).map(_.share) ==> Right(Some(180.0 / 300))
     }
   }
