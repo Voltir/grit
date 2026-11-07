@@ -263,8 +263,9 @@ final case class TurnHosting(
   * bounds its model calls, the last told to call no tool, and its requests' input when it says so; a call a person approves first
   * waits its tool's own time for their answer ([[grit.core.tool.Gate.Ask]]), at most
   * `answerWithin`. `worksIn` gives a conversation with no directory
-  * its workspace ([[WorksIn.of]]); `reaches` gives an addressed turn the services it reaches
-  * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
+  * its workspace ([[WorksIn.of]]); `reaches` gives a turn the services it reaches besides it
+  * ([[Reaches.of]]), a heard-rooted one only their read tools, by links that let it
+  * ([[Reaches.Heard]]). `recipe` shapes each turn by what it answers: its window's
   * width, and which of those services' tools it is offered, by the corpora
   * `knowledge` says supply each ([[grit.core.triage.Corpora.supplied]]). `persona`
   * is who the turn is told it is ([[TurnPrompt.called]]); `renders`, what each served edge

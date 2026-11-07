@@ -83,7 +83,8 @@ object TurnReadTests extends TestSuite {
   private val Approve = "(call:\\d+:\\d+):approve".r
   private val Dispatch = "(call:\\d+:\\d+):dispatch".r
   private val Expired = "(call:\\d+:\\d+):expire".r
-  private val Sent = "(call:\\d+):send".r
+  // A round's send to its workspace, or to a service it reaches (`call:0:send:service:x`).
+  private val Sent = "(call:\\d+):send(?::.+)?".r
   private val Answered = "(call:\\d+):(\\d+)".r
 
   /** The name a reader gives `names(k)`: its own, or for a wait's record, by the step before

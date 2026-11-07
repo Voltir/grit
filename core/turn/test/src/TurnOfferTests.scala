@@ -311,8 +311,8 @@ object TurnOfferTests extends TestSuite {
 
   /** The recorded offer of `slack`'s first turn, rooted on `root`, its set's names and its
     * rendered prompt: the conversation works in `github`, whose edge advertises
-    * `github_search`, and reaches `elsewhere`, whose edge advertises `entries` with the Place
-    * fragments `declared`; the engine has `about` of its own.
+    * `github_search`, and reaches `elsewhere`, as `heard` lets a heard turn, whose edge
+    * advertises `entries` with the Place fragments `declared`; the engine has `about` of its own.
     */
   private def reaching(
       root: Payload,
@@ -321,7 +321,8 @@ object TurnOfferTests extends TestSuite {
       knowledge: Corpora = Corpora.Empty,
       weighed: Option[Tags] = None,
       answering: Boolean = false,
-      declared: Vector[Fragment] = Vector.empty
+      declared: Vector[Fragment] = Vector.empty,
+      heard: Reaches.Heard = Reaches.Heard.Never
   ): (TurnOffer.Recorded, Vector[String], String) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -355,7 +356,7 @@ object TurnOfferTests extends TestSuite {
       new FakeJot,
       budget(5),
       worksIn = Vector(WorksIn(slackTeams, github)),
-      reaches = Vector(Reaches(slackTeams, elsewhere)),
+      reaches = Vector(Reaches(slackTeams, elsewhere, heard)),
       recipe = recipe,
       knowledge = knowledge
     )
@@ -1144,14 +1145,38 @@ object TurnOfferTests extends TestSuite {
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }
 
-    test("a turn rooted on a heard message is offered none of a reached service's tools") {
+    test(
+      "a heard turn is offered a reached service's read tools when its link lets a heard turn read it, and none of its tools when it does not"
+    ) {
       // Unprompted drafts run tools, and only their reply is gated: a reached tool offered
-      // here would act although grit was configured not to speak unprompted.
-      val (recorded, offered, prompt) =
-        reaching(Payload.Heard("someone should post it"), Vector(advert("post_x")))
+      // here runs on a draft nobody may see.
+      val heard = Payload.Heard("someone should look it up")
+      val (readRecorded, readOffered, readPrompt) =
+        reaching(heard, Vector(advert("lookup")), heard = Reaches.Heard.ReadOnly)
+      readOffered ==> Vector("github_search", "lookup", "about")
+      readRecorded.reached ==> Map(named("lookup") -> elsewhere.place)
+      assert(
+        TurnPrompt
+          .reached(elsewhere, set(advert("lookup")))
+          .exists(f => readPrompt.contains(f.text))
+      )
+      val (recorded, offered, prompt) = reaching(heard, Vector(advert("lookup")))
       offered ==> Vector("github_search", "about")
       recorded.reached ==> Map.empty
       assert(!prompt.contains("You also reach"))
+    }
+
+    test(
+      "a heard turn whose link lets it read a reached service is offered none of its tools that write out of grit or ask a person first"
+    ) {
+      // Read-only is what each tool declares: `writes` and `asks` on its advert's entry.
+      val (recorded, offered, _) = reaching(
+        Payload.Heard("someone should post it"),
+        Vector(advert("lookup"), postY, advert("approve", asks = true)),
+        heard = Reaches.Heard.ReadOnly
+      )
+      offered ==> Vector("github_search", "lookup", "about")
+      recorded.reached ==> Map(named("lookup") -> elsewhere.place)
     }
 
     test(

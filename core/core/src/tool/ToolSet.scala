@@ -55,6 +55,11 @@ object ToolSet {
       */
     def plainly: String = action.getOrElse(used(name))
 
+    /** Whether it declares that its calls write nothing out of grit and wait for no person's
+      * answer.
+      */
+    def readOnly: Boolean = writes.isEmpty && !asks
+
     /** This entry as a call may reach it from a transaction that `sends` its arguments to the
       * service it runs at, or not: one that declares no destination only when it does; one
       * that writes, less the places what was read at `at` is not written to

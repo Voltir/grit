@@ -115,8 +115,9 @@ object TurnOffer {
     * [[grit.core.tool.Hosted.advertised]] offers, less any whose name one of `tooling`'s has,
     * then, on an addressed turn, the tools advertised at each service `tooling.reaches` links
     * its place to ([[grit.core.place.Reaches.of]]) that [[grit.core.tool.Hosted.advertised]]
-    * offers, less any whose name an earlier tool has (a heard-rooted turn is offered none of
-    * them), then `tooling`'s conversing tools unless its recipe briefs the turn for one task
+    * offers, less any whose name an earlier tool has (a heard-rooted turn only those of a link
+    * whose `heard` is [[grit.core.place.Reaches.Heard.ReadOnly]], and of them only the
+    * [[grit.core.tool.ToolSet.Entry.readOnly]]), then `tooling`'s conversing tools unless its recipe briefs the turn for one task
     * ([[grit.core.recipe.Briefing.Tasked]]), then its own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]), then its
     * administering tools when its root is `Addressed` or `ByName` and its origin is colleagues'
@@ -220,12 +221,15 @@ object TurnOffer {
         .flatMap(_.offerable(sends, at))
         .flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
-      // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
-      services = rooted match {
-        case Rooted.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
-        case Rooted.Heard(_) => Vector.empty
+      // A heard-rooted turn's draft runs its calls, and only its reply is gated: it reaches only
+      // what its links let a heard turn read.
+      (services, readOnly) = rooted match {
+        case Rooted.Addressed => (Reaches.of(tooling.reaches, conversation.origin.place), false)
+        case Rooted.Heard(_) =>
+          val reads = tooling.reaches.filter(_.heard == Reaches.Heard.ReadOnly)
+          (Reaches.of(reads, conversation.origin.place), true)
       }
-      reached <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at)
+      reached <- reachedFrom(hosting, services, engines ++ hosted.map(_.name), at, readOnly)
       reaching = reached.map((service, set, _) => (service, set))
       took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
       (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
@@ -448,15 +452,16 @@ object TurnOffer {
   }
 
   /** Each of `services` with the entries its live edge advertises that
-    * [[Hosted.advertised]] offers and whose name neither `taken` nor an earlier service's
-    * has, and the Place fragments its edge declared there. A service no live edge serves has
-    * none of either.
+    * [[Hosted.advertised]] offers, that are [[ToolSet.Entry.readOnly]] when `readOnly`, and
+    * whose name neither `taken` nor an earlier service's has, and the Place fragments its edge
+    * declared there. A service no live edge serves has none of either.
     */
   private def reachedFrom(
       hosting: TurnHosting,
       services: Vector[Service],
       taken: Set[ToolName],
-      at: Classification
+      at: Classification,
+      readOnly: Boolean
   )(using Tx^): Either[StoreError, Vector[(Service, ToolSet, Vector[FragmentId])]] =
     services
       .foldLeft[
@@ -475,7 +480,7 @@ object TurnOffer {
           )
           sends = Tx.sendsTo(service, at)
           entries = set.tools
-            .filter(e => !done._2.contains(e.name))
+            .filter(e => !done._2.contains(e.name) && (!readOnly || e.readOnly))
             .flatMap(_.offerable(sends, at))
             .filter(Hosted.advertised(_).nonEmpty)
           // A ToolSet's entries have distinct names, so a subset's do too.

@@ -1,13 +1,15 @@
 # 0022. grit speaks unprompted when a heard message passes a gate, its draft a judge, and declared limits; one put to it by name is answered as addressed
 
-Status: accepted (2026-09-30); revised (2026-10-20)
+Status: accepted (2026-09-30); revised (2026-10-20, 2026-11-06)
 
 Context: a listened channel (ADR 0020) is kept, but grit only answered what was said to it.
 A deployment also wants grit to join in when it is worth interrupting. Turned down: a
 workflow of its own for speaking (it would duplicate the turn's window, ledger, delivery and
 recovery); the edge deciding (it would hold triage and the ledger); gating on triage alone, or on the kind "question" (one let "yep" through); judging in triage (triage and the turn share their
 conversation's queue slot, so triage cannot wait for a draft); the drafting model as its
-own judge (dearer, and it grades its own work).
+own judge (dearer, and it grades its own work); offering a heard turn every reached service,
+or none (a draft's calls run before the judge, so a writing tool would act on a draft nobody
+may see; and none hid a database the deployment wants drafts to read).
 
 Decision:
 
@@ -42,8 +44,11 @@ Decision:
   addressing. Turned down: drafting it and letting it `pass`, which dropped answerable
   questions (`TurnOffer.Root.Named`, kept for offers that recorded it).
 - **Otherwise the turn drafts** (root `Heard`): told it was not addressed, to add what the
-  thread lacks or reply `pass`. A draft is never shown, never searched, and not a period's
-  activity.
+  thread lacks or reply `pass`. It is offered its workspace's tools by the recipe, and of
+  each service a `Reaches` links its place to, only when that link lets a heard turn read it
+  (`Reaches.Heard.ReadOnly`; `Never` by default), and then only the tools that write nothing
+  out of grit and ask no one, as their declarations say. A draft is never shown, never
+  searched, and not a period's activity.
 - **A classifier judges the draft** against the heard message, its thread, and what the turn
   recalled: sections from elsewhere, documents, its own record where the thread cuts what it
   covers, and what its own calls read: is it `grounded` in those, and `worth` posting? The
@@ -52,15 +57,15 @@ Decision:
 - **The draft is posted** in the message's thread only when its score reaches `postAt`,
   speaking is `Within`, and grit has not replied since, in the thread or its strand
   (ADR 0023), checked in the transaction that writes the reply.
-- **Replay.** Whether a turn drafts is recorded in its `offer` (`root`), never read live.
+- **Replay.** Whether a turn drafts and the tools it is offered are recorded in its `offer`
+  (`root`, `reached`), never read live.
 - **Every decision, score and outcome is kept** (`grit.speech`) as long as its period's
   usage. A heard turn that fails before its offer keeps `Failed` (`record-failure`).
 
 **Measuring the gate.** A person labels by reaction whether a reply would have been welcome
-(`grit.core.review`). Every message a review considers is a row of `grit.reviews` keyed by
-its entry's id with no foreign key, so labels and their population outlive the raw window
-(ADR 0014); it never holds the message's text.
+(`grit.core.review`); a review's rows are keyed by entry id with no foreign key and hold no
+text.
 
 Consequences: every unprompted post traces to the scores and cues that allowed it. Harder:
 every heard message in a speaking deployment writes a decision row. Enforced by `SpeechTests`,
-the reviews store's contract and `TurnReplayTests`.
+`TurnOfferTests`, the reviews store's contract and `TurnReplayTests`.

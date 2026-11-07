@@ -138,7 +138,8 @@ object TurnReplayTests extends TestSuite {
       // Recorded in this epoch after both patches, so drawn under them.
       "loop-last-called.json" -> reasoned,
       "loop-last-refused.json" -> reasoned,
-      "loop-cut-declared.json" -> reasoned
+      "loop-cut-declared.json" -> reasoned,
+      "heard-reached-read.json" -> reasoned
     )
   }
 
@@ -165,7 +166,8 @@ object TurnReplayTests extends TestSuite {
         names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
       // The shapes the gate's rejection, the quiet exit and the carried window made, which no
       // history before them could have, and those recorded in this epoch since: a last reply
-      // that called a tool, before and after its refusal, and a tasked turn declaring.
+      // that called a tool, before and after its refusal, a tasked turn declaring, and a heard
+      // turn calling a reached read tool.
       val rejected = Set(
         "unneeded.json",
         "heard-unneeded.json",
@@ -176,7 +178,8 @@ object TurnReplayTests extends TestSuite {
         "carried-reasoned-boundary.json",
         "loop-last-called.json",
         "loop-last-refused.json",
-        "loop-cut-declared.json"
+        "loop-cut-declared.json",
+        "heard-reached-read.json"
       )
       (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
       before ==> after.collect {
@@ -351,7 +354,8 @@ object TurnReplayTests extends TestSuite {
         "carried-reasoned-boundary.json",
         "loop-last-called.json",
         "loop-last-refused.json",
-        "loop-cut-declared.json"
+        "loop-cut-declared.json",
+        "heard-reached-read.json"
       )
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))

@@ -1681,9 +1681,9 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
-    * and counting `documents` and `pieces`, dated by `clock`, the model offered `tools`; when
-    * `aboveTheClassifier`, routed under [[RoutedCatalog]] at reads its classifier is not
-    * cleared for ([[AboveTheClassifier]]).
+    * and counting `documents` and `pieces`, dated by `clock`, the model offered `tools` and
+    * what `reaches` links it to; when `aboveTheClassifier`, routed under [[RoutedCatalog]] at
+    * reads its classifier is not cleared for ([[AboveTheClassifier]]).
     */
   def turnBodyWith(
       entries: EntryStore,
@@ -1701,7 +1701,8 @@ object TurnFixtures {
       aboveTheClassifier: Boolean = false,
       pieces: PieceStore = new InMemoryPieces,
       tools: Toolbox[caps.CapSet^{NoCheckout}] = noTools,
-      sessions: TurnSessions = unheld()
+      sessions: TurnSessions = unheld(),
+      reaches: Vector[Reaches] = Vector.empty
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -1739,6 +1740,7 @@ object TurnFixtures {
         Vector.empty,
         new FakeJot,
         budget(5),
+        reaches = reaches,
         recipe = recipe
       )
     )(id)

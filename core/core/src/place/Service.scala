@@ -34,11 +34,30 @@ object WorksIn {
 /** Conversations within `within` are also offered, on turns addressed to grit, the tools an
   * edge serves at `service`, beside their workspace's: tools that act beyond the
   * conversation, such as posting elsewhere. A turn nobody addressed, rooted on a message grit
-  * heard, is never offered them.
+  * heard, is offered of them only what `heard` lets it.
   */
-final case class Reaches(within: Place, service: Service)
+final case class Reaches(
+    within: Place,
+    service: Service,
+    heard: Reaches.Heard = Reaches.Heard.Never
+)
 
 object Reaches {
+
+  /** What a turn rooted on a message grit heard, whose draft runs its calls before anyone
+    * judges it, is offered of a reached service's tools.
+    */
+  enum Heard extends caps.Pure {
+
+    /** None of them. */
+    case Never
+
+    /** Those whose declarations say they write nothing out of grit and ask no one
+      * ([[grit.core.tool.ToolSet.Entry.readOnly]]): only as read-only as its edge declares
+      * them, so one that writes out of grit but declares no destination is offered.
+      */
+    case ReadOnly
+  }
 
   /** The services of every one of `links` whose `within` holds `place`, each once, in the
     * order first linked.

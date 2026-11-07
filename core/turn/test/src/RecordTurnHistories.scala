@@ -596,6 +596,74 @@ object RecordTurnHistories {
         "m"
       )
 
+    /** A turn rooted on a heard message, under Within, that reaches `elsewhere` by a link
+      * letting a heard turn read it: its model calls `lookup`, served there, then drafts, and
+      * its draft is judged at 0.9 and posted.
+      */
+    def heardReaching: History = {
+      val w = speechWorld()
+      val durable = new InMemoryDurable
+      val elsewhere = grit.core.place.Service
+        .of("elsewhere")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val there = new Served(
+        new grit.core.edge.InMemoryEdges,
+        durable,
+        _ => Serve.Now(grit.core.tool.Outcome.Done("The freeze moved to Thursday.")),
+        elsewhere.place
+      )
+      there.advertise(
+        grit.core.tool.Hosted
+          .advertised(
+            grit.core.tool.ToolSet.Entry(
+              grit.core.tool.ToolName("lookup"),
+              "Looks it up.",
+              ujson.Obj("type" -> "object"),
+              false,
+              grit.core.tool.Retry.Rerun
+            )
+          )
+          .toVector
+      )
+      val provider = new Scripted((_, n) =>
+        Right(
+          if (n == 0) calling("", ("r1", "lookup", ujson.Obj("q" -> "freeze")))
+          else calling("It moved to Thursday.")
+        )
+      )
+      val conversations = new grit.core.store.InMemoryConversationStore
+      conversations.findOrCreate(origin, grit.core.identity.Account.Local, Label.Public)(using
+        grit.dbos.sql.TestTx.fake
+      )
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          provider,
+          new Before(w.entries),
+          w.ledger,
+          new Judge(Some((0.9, 0.9))),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
+          hosted = TurnHosting(
+            conversations,
+            Prompts,
+            ToolSets,
+            there,
+            there.edges,
+            new grit.core.store.InMemoryVoiceStore,
+            LocalAsker
+          ),
+          reaches = Vector(
+            grit.core.place.Reaches(
+              grit.core.place.Place.Everywhere,
+              elsewhere,
+              grit.core.place.Reaches.Heard.ReadOnly
+            )
+          )
+        )
+      )
+      recorded(durable, w.turn)
+    }
+
     def peeking(p: String): ujson.Value = ujson.Obj("path" -> p)
 
     /** `peek` a, then `peek` b and c, then the answer. */
@@ -754,6 +822,8 @@ object RecordTurnHistories {
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
       "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
+      // A heard turn offered a reached service's read tool, calling it, and posting its draft.
+      "heard-reached-read" -> heardReaching,
       // A heard message triage answered as said to grit: an addressed turn's steps, and, its
       // model failing, its failure kept in record-speech.
       "by-name-replied" -> byName(fail = false),
