@@ -127,8 +127,13 @@ private[client] final class StdioConnection(
               pending.answer.complete(Left(McpError.Exited(code, errors.takeRight(ErrorsKept))))
               on = false
             case Answer.Stalled =>
+              // Only those queued now are behind it: one asked after this drain is left for the
+              // next program. Each hears once the program is stopped, as its error says.
+              val behind = new java.util.ArrayList[Pending]()
+              val _ = queue.drainTo(behind)
+              s.kill()
               pending.answer.complete(Left(Stalled))
-              failQueued(StalledBehind)
+              behind.forEach(p => { val _ = p.answer.complete(Left(StalledBehind)) })
               on = false
             case Answer.Closed =>
               pending.answer.complete(Left(Closed))

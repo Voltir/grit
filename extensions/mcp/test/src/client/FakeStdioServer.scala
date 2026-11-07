@@ -43,6 +43,8 @@ final class FakeStdioServer extends Processes {
   private var startable = true
   @caps.unsafe.untrackedCaptures
   private var heard = Vector.empty[ujson.Value]
+  @caps.unsafe.untrackedCaptures
+  private var killMillis = 0L
 
   // Counters each changed only by their own atomic increments.
   private val starting = new AtomicInteger(0)
@@ -55,6 +57,9 @@ final class FakeStdioServer extends Processes {
   def ends(tool: String): Unit = lock.synchronized { ending += tool }
   def before(lines: Vector[ujson.Value]): Unit = lock.synchronized { ahead = lines }
   def refusesStart(): Unit = lock.synchronized { startable = false }
+
+  /** Each kill takes `millis` before the program has ended, as a real one waits for its process. */
+  def killsAfter(millis: Long): Unit = lock.synchronized { killMillis = millis }
 
   /** Every message the programs read, in order. */
   def received: Vector[ujson.Value] = lock.synchronized(heard)
@@ -121,6 +126,7 @@ final class FakeStdioServer extends Processes {
 
     def kill(): Unit =
       if (!over.get()) {
+        Thread.sleep(lock.synchronized(killMillis))
         val _ = killing.incrementAndGet()
         end(-9)
       }

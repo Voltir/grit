@@ -106,6 +106,8 @@ object McpStdioTests extends TestSuite {
       val fake = new FakeStdioServer
       fake.stalls("show")
       fake.answers("find", "found")
+      // A slow kill: the calls are failed only once their program has been stopped.
+      fake.killsAfter(200)
       val c = client(fake, Vector("show", "find"), timeout = 300.millis)
       val show = listed(c, "show")
       val find = listed(c, "find")
