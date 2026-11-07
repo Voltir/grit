@@ -1,6 +1,6 @@
 # 0056. A turn briefed for one task is told and offered none of grit's conversation apparatus, and the paragraphs naming a tool leave with it
 
-Status: accepted (2026-11-04)
+Status: accepted (2026-11-04); revised (2026-11-06)
 
 Context: every turn was told and offered what a conversation with people needs: how to read
 grit's labels ([record], [afar], [gap], [strand], [doc]), who may see what, and grit's own tools
@@ -25,10 +25,11 @@ A `Tasked` turn is sound only while it posts nowhere people read. A recipe that 
 for one task and offers it a tool that posts where people read (a Slack thread) tells it
 `Security` again.
 
-`topic` stays: `TurnShown.offered` adds it to every call outside the recorded tool set, and a
-turn rebuilt from what it recorded (the eval's rebuild) cannot know the recipe it ran under, so
-withholding it there would make a rebuilt request differ from the one sent. It leaves when the
-briefing is recorded with the offer.
+`topic` stays on every turn, a `Tasked` one included. It is not among `conversing`: it is how a
+turn says where its message went when the classifier was unsure, which any turn the agenda
+places may be asked, and `TurnShown.offered` adds it whatever the classifier decided, so a
+turn's tools never depend on its classification (ADR 0052). A `Tasked` turn is also offered
+`task_status` (ADR 0058).
 
 Consequences: a task's turn sends a shorter fixed prefix on every call, with the conversation's
 tools and prompt unchanged byte for byte. The set and fragments differ by recipe, so their ids
