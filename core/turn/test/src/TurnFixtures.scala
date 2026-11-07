@@ -1303,10 +1303,15 @@ object TurnFixtures {
 
   /** An assembler whose every query is written: it finds `found` earlier turns of its own, best
     * first, each given the text `candidate n`, an even one `relevant candidate n`, then `padding`
-    * dots, cut to the characters asked; its window is the linear one, noted with the query's
+    * dots, cut to the characters asked, and after them `also`, each scored 0.5; its window is the linear one, noted with the query's
     * note and the own turns it was handed to pack ([[AssemblyNote.Recalled]]).
     */
-  final class Searching(entries: EntryStore, found: Int, padding: Int = 0) extends Drawing {
+  final class Searching(
+      entries: EntryStore,
+      found: Int,
+      padding: Int = 0,
+      also: Vector[Retrieved] = Vector.empty
+  ) extends Drawing {
     def window(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
       linearOver(entries, request)
     override def prepare(request: AssemblyRequest)(using Db^): Either[AssemblyError, Prepared] =
@@ -1323,7 +1328,12 @@ object TurnFixtures {
     override def search(request: AssemblyRequest, written: grit.core.context.Querying.Written)(using
         Db^
     ): Either[AssemblyError, Results] =
-      Right(Results((0 until found).toVector.map(n => ownTurn(n) -> (found - n).toDouble)))
+      Right(
+        Results(
+          (0 until found).toVector.map(n => ownTurn(n) -> (found - n).toDouble) ++
+            also.map(_ -> 0.5)
+        )
+      )
     override def judgeText(request: AssemblyRequest, retrieved: Vector[Retrieved], chars: Int)(using
         Db^
     ): Either[AssemblyError, JudgeText] =

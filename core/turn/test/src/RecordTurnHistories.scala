@@ -173,6 +173,111 @@ object RecordTurnHistories {
       durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
       recorded(durable, turn)
     }
+    val roomPlace = grit.core.place.Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
+    val room = grit.core.id.ConversationId("room")
+    // What `in` said, a heard message a turn, from turn 0 on.
+    def roomSaid(entries: InMemoryEntryStore, in: grit.core.id.ConversationId, texts: String*) =
+      texts.zipWithIndex.foreach { (text, i) =>
+        entries.insert(
+          grit.core.store.Entry(
+            grit.core.id.EntryId(s"${grit.core.id.ConversationId.value(in)}:$i"),
+            in,
+            grit.core.id.TurnSeq(i.toLong),
+            None,
+            EntrySeq(i.toLong),
+            Payload.Heard(text),
+            java.time.Instant.EPOCH,
+            Integrity.Member
+          )
+        )(using grit.dbos.sql.TestTx.fake)
+      }
+    // Each window shows `sections`, appended to what is carried, when anything is.
+    def roomDrawing(sections: grit.core.context.AssemblyRequest -> Vector[grit.core.store.Nearby]) =
+      new Drawing {
+        def window(request: grit.core.context.AssemblyRequest)(using
+            grit.core.store.Db^
+        ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
+          Right(grit.core.context.Window(Vector.empty, Vector.empty, sections(request)))
+        override def assemble(
+            request: grit.core.context.AssemblyRequest,
+            packing: grit.core.context.Packing
+        )(using
+            grit.core.store.Db^
+        ): Either[grit.core.context.AssemblyError, grit.core.context.Projection] =
+          window(request).map(w =>
+            if (request.carried.parts.isEmpty) boundary(w)
+            else grit.core.context.Projection.Appended(w, grit.core.message.Tokens.Zero)
+          )
+      }
+    // A turn of a channel's top level whose search finds one of its room's closings.
+    val roomClosingFound = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "is the freeze on?")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          new Searching(
+            entries,
+            0,
+            also = Vector(grit.core.context.Retrieved.Closing(room, EntrySeq(4)))
+          ),
+          new InMemoryUsageLedger,
+          new Sifter,
+          hosted = TurnFixtures.hosting(at = grit.core.store.Origin.Room("T1", "C1"))
+        )
+      )
+      recorded(durable, turn)
+    }
+    // A thread's turn shown the room's turn it is under, then what the room said since.
+    val roomThreadAsked = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      roomSaid(entries, room, "is the freeze on?", "lunch?")
+      val turn = say(entries, "until Friday?")
+      val sections = Vector(
+        grit.core.store.Nearby.Asked(room, roomPlace, Vector(EntrySeq(0))),
+        grit.core.store.Nearby.Along(room, roomPlace, Vector(EntrySeq(1)))
+      )
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          roomDrawing(_ => sections),
+          new InMemoryUsageLedger,
+          hosted = TurnFixtures.hosting(at = grit.core.store.Origin.Thread("T1", "C1", "0.0"))
+        )
+      )
+      recorded(durable, turn)
+    }
+    // A top level's carried turn, appending what a thread said since its last part.
+    val roomCarriedAppended = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val thread = grit.core.id.ConversationId("thread")
+      val threadPlace =
+        grit.core.place.Place.read("slack:T1/C1/0.0").fold(e => sys.error(e), identity)
+      roomSaid(entries, thread, "the freeze is Thursday", "the hall is booked")
+      val drawing = roomDrawing(request =>
+        Vector(
+          grit.core.store.Nearby.Along(
+            thread,
+            threadPlace,
+            Vector(EntrySeq(if (request.carried.parts.isEmpty) 0L else 1L))
+          )
+        )
+      )
+      val at = TurnFixtures.hosting(at = grit.core.store.Origin.Room("T1", "C1"))
+      durable.run(say(entries, "one").workflowId)(
+        turnBodyWith(entries, new RecordingProvider, drawing, new InMemoryUsageLedger, hosted = at)
+      )
+      val turn = say(entries, "two")
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, new RecordingProvider, drawing, new InMemoryUsageLedger, hosted = at)
+      )
+      recorded(durable, turn)
+    }
     val modelFailed = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -827,6 +932,10 @@ object RecordTurnHistories {
       // or why it drew afresh (no prefix).
       "carried-reasoned-appended" -> carriedAppended,
       "carried-reasoned-boundary" -> carriedBoundary,
+      // A channel's top level and a thread under it (ADR 0060).
+      "room-closing-found" -> roomClosingFound,
+      "room-thread-asked" -> roomThreadAsked,
+      "room-carried-appended" -> roomCarriedAppended,
       "model-failed" -> modelFailed,
       "crashed-before-append" -> crashedBeforeAppend,
       "hosted-read" -> hosting(

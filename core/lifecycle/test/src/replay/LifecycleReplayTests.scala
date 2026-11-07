@@ -74,7 +74,9 @@ object LifecycleReplayTests extends TestSuite {
       def namesOf(epoch: String): Map[String, Vector[String]] =
         historiesOf(epoch).collect { case (p, Right(h)) => p -> h.steps.map(_.name) }.toMap
       val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
-      (before.size, before == after) ==> (33, true)
+      // Recorded in this epoch since: a channel's top level's close and triage (ADR 0060).
+      val since = Set("close-rolled.json", "triage-room-drafting.json")
+      (before.size, before == after.filterNot((file, _) => since(file))) ==> (33, true)
     }
 
     test(

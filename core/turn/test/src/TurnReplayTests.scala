@@ -139,7 +139,14 @@ object TurnReplayTests extends TestSuite {
       "loop-last-called.json" -> reasoned,
       "loop-last-refused.json" -> reasoned,
       "loop-cut-declared.json" -> reasoned,
-      "heard-reached-read.json" -> reasoned
+      "heard-reached-read.json" -> reasoned,
+      // A channel's top level and a thread under it, likewise; the first searched, its one
+      // candidate, a room's closing, judged in the first batch.
+      "room-closing-found.json" -> (reasoned.take(3) ++ Vector("ask:needs", "ask:needs:record") ++
+        searched ++ Vector("ask:relevance-0", "ask:relevance-0:record") ++
+        unjudged.drop(1) :+ "assemble"),
+      "room-thread-asked.json" -> reasoned,
+      "room-carried-appended.json" -> reasoned
     )
   }
 
@@ -167,7 +174,7 @@ object TurnReplayTests extends TestSuite {
       // The shapes the gate's rejection, the quiet exit and the carried window made, which no
       // history before them could have, and those recorded in this epoch since: a last reply
       // that called a tool, before and after its refusal, a tasked turn declaring, and a heard
-      // turn calling a reached read tool.
+      // turn calling a reached read tool, and a channel's top level's and a thread's turns.
       val rejected = Set(
         "unneeded.json",
         "heard-unneeded.json",
@@ -179,7 +186,10 @@ object TurnReplayTests extends TestSuite {
         "loop-last-called.json",
         "loop-last-refused.json",
         "loop-cut-declared.json",
-        "heard-reached-read.json"
+        "heard-reached-read.json",
+        "room-closing-found.json",
+        "room-thread-asked.json",
+        "room-carried-appended.json"
       )
       (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
       before ==> after.collect {
@@ -355,7 +365,10 @@ object TurnReplayTests extends TestSuite {
         "loop-last-called.json",
         "loop-last-refused.json",
         "loop-cut-declared.json",
-        "heard-reached-read.json"
+        "heard-reached-read.json",
+        "room-closing-found.json",
+        "room-thread-asked.json",
+        "room-carried-appended.json"
       )
       val failures = outputs.collect {
         case (file, InMemoryDurable.Outcome.Output(text))

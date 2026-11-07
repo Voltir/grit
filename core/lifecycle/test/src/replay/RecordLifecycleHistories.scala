@@ -196,6 +196,16 @@ object RecordLifecycleHistories {
         d.run(t.workflowId)(w.body(asking, 1, speaks))
         t.workflowId
       },
+      triaged("triage-room-drafting") { (w, d) =>
+        // A message heard in a channel's top level (ADR 0060), after grit replied there to
+        // another: drafted, no reply of its own holding it.
+        val room = w.conversationAt(grit.core.store.Origin.Room("T", "C"))
+        val t = w.hear("what did we decide about the refi page?", "Ana", 0, in = room)
+        w.hear("lunch?", "Bo", 1, in = room)
+        w.reply("Noon.", 2, in = room)
+        d.run(t.workflowId)(w.body(asking, 6, speaks))
+        t.workflowId
+      },
       triaged("triage-not-started") { (w, d) =>
         // Drafting, its turn's start failed: the decision settled as failed.
         val t = w.hear("what did we decide about the refi page?", "Ana", 0)
@@ -417,6 +427,18 @@ object RecordLifecycleHistories {
         val id = w.attempt.workflowId
         d.run(id)(
           w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(Lapsed)))
+        )
+        id
+      },
+      record("close-rolled", grit.core.store.Origin.Room("T1", "C1")) { (w, d) =>
+        // A channel's top level (ADR 0060) open its most: closed Rolled at the turn begun by
+        // then, the later turn opening the next period.
+        val week = 7 * 24 * 60L
+        w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+        w.say("and prod?", week + 1)
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(week + 2)))
         )
         id
       },
