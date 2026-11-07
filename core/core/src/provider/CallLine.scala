@@ -23,6 +23,12 @@ object CallLine {
     */
   def answered(ref: ModelRef, u: Usage): String = s"[provider] $ref answered · ${spent(u)}"
 
+  /** `[provider] <pair> called with <n> message(s)`: the line printed before a call `ref`'s
+    * model is sent `messages` messages.
+    */
+  def called(ref: ModelRef, messages: Int): String =
+    s"[provider] $ref called with $messages message(s)"
+
   /** What a line [[answered]] wrote says: its pair's model id and its tokens, with no cost,
     * since the line's cents are rounded for reading, and its thinking not reported when the
     * line names none; `None` for any other line.

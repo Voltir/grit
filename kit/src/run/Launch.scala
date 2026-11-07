@@ -833,8 +833,8 @@ private[grit] object Launch {
     case Placer.Off(_) => "none"
   }
 
-  /** `models`, each call printed with the model it goes to, and once answered with what it
-    * consumed ([[CallLine.answered]]).
+  /** `models`, each call printed with the model it goes to ([[CallLine.called]]), and once
+    * answered with what it consumed ([[CallLine.answered]]).
     */
   private def announced(models: Models): Models =
     new Models {
@@ -843,9 +843,7 @@ private[grit] object Launch {
         val model = models.provider(pinned)
         new Provider {
           def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-            println(
-              s"[provider] ${pinned.assignment.ref} called with ${request.messages.size} message(s)"
-            )
+            println(CallLine.called(pinned.assignment.ref, request.messages.size))
             val answer = model.complete(request)
             answer.foreach(reply => println(CallLine.answered(pinned.assignment.ref, reply.usage)))
             answer

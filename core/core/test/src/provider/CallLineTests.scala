@@ -58,6 +58,11 @@ object CallLineTests extends TestSuite {
       )
     }
 
+    test("a call's sending line names its pair and how many messages it is sent") {
+      CallLine.called(ref, 3) ==>
+        "[provider] anthropic/claude-haiku-5-5 @ api.anthropic.com called with 3 message(s)"
+    }
+
     test("a call its provider did not price says its cost is unknown") {
       CallLine.spent(Usage(Tokens(10), Tokens(2), Tokens(0), None)) ==>
         "in 10 · read 0 · write 0 · out 2 · cost unknown"
