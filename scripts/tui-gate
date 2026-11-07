@@ -80,10 +80,17 @@ MAIN=${MAIN:-grit.tui.examples.Demo}
 
 ROWS=30
 COLS=100
-WORK=${TMPDIR:-/tmp}/grit-tui-gate
+# Every JVM this script forks carries a stamp on its command line, and teardown kills
+# only processes carrying *this* stamp. A blanket `pkill -f Demo` also kills the
+# copy the developer is playing with in another window -- which is exactly what it did
+# the first time this script existed.
+STAMP="gate-$$-$(date +%s)"
+# The run's own work folder, named by its stamp: two gates at once never truncate or read
+# each other's captures. Removed when every scenario passes, kept and named when one fails.
+WORK=${TMPDIR:-/tmp}/grit-tui-gate/$STAMP
 mkdir -p "$WORK"
 
-JAVA_OPTS= ./mill grit.tui.examples.compile grit.app.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; exit 1; }
+JAVA_OPTS= ./mill grit.tui.examples.compile grit.app.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; rm -rf "$WORK"; exit 1; }
 classpath() {
   JAVA_OPTS= ./mill show "$1" 2>/dev/null |
     grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//'
@@ -93,11 +100,6 @@ APP_CP=$(classpath grit.app.runClasspath)
 # The JDK build.mill pins (its jvmId), as Mill fetched it; `show` prints a PathRef, whose path
 # is everything after its third colon.
 J=$(JAVA_OPTS= ./mill --ticker false show grit.tui.examples.javaHome 2>/dev/null | tail -1 | tr -d '"' | cut -d: -f4-)
-# Every JVM this script forks carries a stamp on its command line, and teardown kills
-# only processes carrying *this* stamp. A blanket `pkill -f Demo` also kills the
-# copy the developer is playing with in another window -- which is exactly what it did
-# the first time this script existed.
-STAMP="gate-$$-$(date +%s)"
 RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -cp $CP $MAIN --$STAMP"
 
 # grit.app takes no stamp argument (any argument puts Main in one-shot mode), so the stamp
@@ -112,7 +114,7 @@ RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access
 # what a person runs with, and a log line that reaches the screen instead fails every scenario.
 AGENT_DB=${GRIT_GATE_DB:-grit_agent}
 APP_RUNNER="env -u OPENROUTER_API_KEY -u GRIT_THEME -u GRIT_LOG GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP \
-  XDG_CONFIG_HOME=$WORK/config-$STAMP \
+  XDG_CONFIG_HOME=$WORK/config \
   GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
   $J/bin/java -Dgate.stamp=--$STAMP -Djava.io.tmpdir=$WORK --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp $APP_CP grit.app.main.Main"
@@ -392,7 +394,7 @@ run_one() {
   python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name" || return 1
   if [ "$name" = palette ]; then
     # The choice outlives the run: the next launch starts in it.
-    if grep -qx 'theme=tokyo-night' "$WORK/config-$STAMP/grit/prefs" 2>/dev/null; then
+    if grep -qx 'theme=tokyo-night' "$WORK/config/grit/prefs" 2>/dev/null; then
       echo "  ok    /theme kept the choice for the next run"
     else
       echo "  FAIL  /theme kept the choice for the next run"; return 1
@@ -426,4 +428,5 @@ done
 # clears ISIG and ignores SIGTERM in raw mode. Scoped to this run's stamp: never touch a
 # demo someone else is using.
 pkill -9 -f -- "--$STAMP" 2>/dev/null
+if [ $status = 0 ]; then rm -rf "$WORK"; else echo "gate: captures kept in $WORK" >&2; fi
 exit $status
