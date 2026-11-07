@@ -1,5 +1,7 @@
 package grit.core.host
 
+import grit.core.words.Words
+
 /** Reading the checkout. A path that is a link is followed, and refused
   * ([[HostError.Outside]]) when it leads outside the checkout or to a secrets file.
   */
@@ -68,7 +70,7 @@ object Workspace {
     else if (lines.size <= SearchLines && bytes <= SearchBytes)
       Clipped.head(lines.mkString("\n"), Clipped.cutHint)
     else {
-      val files = if (matching.size == 1) "1 file" else s"${matching.size} files"
+      val files = Words.counted(matching.size, "file")
       val why =
         if (lines.size > SearchLines) s"too many to show (the limit is $SearchLines)"
         else s"too long to show (the limit is ${SearchBytes / 1024} KB)"

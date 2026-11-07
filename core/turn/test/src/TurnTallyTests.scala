@@ -2,7 +2,8 @@ package grit.turn
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, ToolCallId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.place.Place
 import grit.core.store.{
   InMemoryConversationStore,
   InMemoryEntryStore,
@@ -89,6 +90,18 @@ object TurnTallyTests extends TestSuite {
         gone,
         "replied"
       )(using TestTx.fake) ==> Left(StoreError.Invalid("turn c9:0's conversation is gone"))
+    }
+
+    test("a turn of one model call says 1 round, and one calling no tool says no tools") {
+      val at = Place.read("fs:/checkout").fold(sys.error(_), identity)
+      TurnTally(
+        TurnRef(ConversationId("c1"), TurnSeq(0)),
+        at,
+        1,
+        Vector.empty,
+        Cost.Exact(BigDecimal("0.003")),
+        "replied"
+      ).line ==> "turn c1:0 at fs:/checkout: 1 round, no tools; $0.003; replied"
     }
   }
 }

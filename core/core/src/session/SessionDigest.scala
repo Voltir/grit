@@ -4,6 +4,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.message.Cut
+import grit.core.words.Words
 
 /** A session's digest: what it has done, for an agent going on with it without its transcript. */
 object SessionDigest {
@@ -43,7 +44,7 @@ object SessionDigest {
         s"${c.bytesRead / 1024} KB read."
     ) ++ Option.when(s.full)("Its log is full: nothing it did after it filled is shown.") ++
       Option.when(lately.byAgents > 0)(
-        s"Its agents made ${lately.byAgents} commit${if (lately.byAgents == 1) "" else "s"}."
+        s"Its agents made ${Words.counted(lately.byAgents, "commit")}."
       )
     val said = window match {
       case Window.HoldsLastSaid => None

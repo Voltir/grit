@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.id.FileHandle
 import grit.core.store.{StoreError, Tx}
+import grit.core.words.Words
 
 /** Bytes arriving from a source, read once. */
 trait Incoming {
@@ -135,6 +136,6 @@ object FileError {
       if (d.toHours >= 1 && d.toMinutes % 60 == 0) (d.toHours, "hour")
       else if (d.toMinutes >= 1 && d.toSeconds % 60 == 0) (d.toMinutes, "minute")
       else (d.toSeconds, "second")
-    s"for $n $unit${if (n == 1) "" else "s"}"
+    s"for ${Words.counted(n, unit)}"
   }
 }

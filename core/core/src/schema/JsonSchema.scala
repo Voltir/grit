@@ -2,6 +2,7 @@ package grit.core.schema
 
 import grit.core.message.Cut
 import grit.core.model.ArgRepair
+import grit.core.words.Words
 
 /** A JSON Schema in the subset every provider's strict mode accepts, so any upstream can be
   * sent it `strict` and grit's own check means what the provider's does. Read only by
@@ -373,12 +374,13 @@ object JsonSchema {
           }
         case Shape.Items(item, min, max) =>
           val sent = v.arrOpt.fold(Vector.empty[ujson.Value])(_.toVector)
-          def items(n: Int): String = if (n == 1) "1 item" else s"$n items"
           min.filter(sent.size < _) match {
-            case Some(m) => refuse(s"expected at least ${items(m)}, got ${sent.size}")
+            case Some(m) =>
+              refuse(s"expected at least ${Words.counted(m, "item")}, got ${sent.size}")
             case None =>
               max.filter(sent.size > _) match {
-                case Some(m) => refuse(s"expected at most ${items(m)}, got ${sent.size}")
+                case Some(m) =>
+                  refuse(s"expected at most ${Words.counted(m, "item")}, got ${sent.size}")
                 case None =>
                   all(
                     sent.iterator.zipWithIndex.map((s, i) =>

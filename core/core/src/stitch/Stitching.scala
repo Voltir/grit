@@ -31,6 +31,7 @@ import grit.core.store.{
   Speakers,
   StoreError
 }
+import grit.core.words.Words
 
 /** One exchange as the classifier is offered it: its `root` (the conversation it began in),
   * the root's `opening` message, its `latest` messages, its newest closing's headline when it
@@ -597,10 +598,9 @@ object Stitching {
     */
   private[core] def ago(past: Instant, at: Instant): String = {
     val s = math.max(0L, JDuration.between(past, at).getSeconds)
-    def unit(n: Long, name: String) = if (n == 1) s"1 $name" else s"$n ${name}s"
-    if (s < 60) unit(s, "second")
-    else if (s < 3_600) unit(s / 60, "minute")
-    else if (s < 86_400) unit(s / 3_600, "hour")
-    else unit(s / 86_400, "day")
+    if (s < 60) Words.counted(s, "second")
+    else if (s < 3_600) Words.counted(s / 60, "minute")
+    else if (s < 86_400) Words.counted(s / 3_600, "hour")
+    else Words.counted(s / 86_400, "day")
   }
 }

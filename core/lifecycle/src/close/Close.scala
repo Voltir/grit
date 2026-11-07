@@ -24,6 +24,7 @@ import grit.core.store.{
 }
 import grit.core.triage.Earning
 import grit.core.visibility.Subject
+import grit.core.words.Words
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -489,7 +490,7 @@ object Close {
         case Payload.Heard(_) => true
         case _ => false
       })
-      Some(s"Heard $heard message${if (heard == 1) "" else "s"}; nothing kept.")
+      Some(s"Heard ${Words.counted(heard, "message")}; nothing kept.")
     } else {
       val summaries =
         entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _, _) => text }

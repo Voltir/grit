@@ -4,6 +4,7 @@ import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Cost, Message}
 import grit.core.place.Place
 import grit.core.store.{ConversationStore, EntryStore, Payload, StoreError, Tx, UsageLedger}
+import grit.core.words.Words
 
 /** What a finished turn did: where, its model calls in its reply (`rounds`), the tools those
   * called by the names the model called them, in the order called, what all its model calls
@@ -34,7 +35,7 @@ final case class TurnTally(
             }
           )
           .mkString(", ")
-    val counted = if (rounds == 1) "1 round" else s"$rounds rounds"
+    val counted = Words.counted(rounds, "round")
     s"turn ${WorkflowId.value(turn.workflowId)} at ${place.written}: $counted, $called; " +
       s"${cost.written}; $said"
   }
