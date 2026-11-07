@@ -27,6 +27,7 @@ import grit.eval.harness.bench.{
   MemoryCap,
   PerPass,
   Rig,
+  Standing,
   Tried
 }
 import grit.eval.harness.jev.Budget
@@ -51,17 +52,16 @@ private[main] object LabCommands {
   /** `bench --tasks <dir> --task <name> --repository <path> --work <dir>`, then either `--known
     * true`, or `--model <id> --max-budget-usd <usd> --max-turns <n> --scout <program>` and a
     * harness: `--harness claude-code` (the default) with `--claude <program> --agent <file>`, or
-    * `--harness grit` with `--grit <launcher> --java-home <dir> --coder <file> --coder-url <jdbc>
-    * --max-tokens <n> [--max-memory-gb <n>] [--variant <name>] [--window-tokens <n>]
-    * [--work-turns <n>]` (8 GB when not given, [[MemoryCap.of]]; the trial kept under
-    * `grit-<name>`, [[Arm.Grit.harness]]; the last two grit's [[Arm.Settings]]): the task
+    * `--harness grit` with `--grit <launcher> --java-home <dir> --standing <file> --coder-url
+    * <jdbc> --max-tokens <n> [--max-memory-gb <n>] [--window-tokens <n>] [--work-turns <n>]` (8
+    * GB when not given, [[MemoryCap.of]]; the last two grit's [[Arm.Settings]]; a standing file
+    * [[Standing.read]] refuses is refused before anything runs): the task
     * `<name>` of `<dir>` ([[BenchTask.of]], its `task.json` and `brief.md`), in a checkout under `<work>` named for it and `clock`'s now, of the repository
     * at `<path>`. With `--known`, its own commits through its checks ([[Rig.known]]). With `--dry
     * true` and grit, what grit's first call would send ([[Rig.dry]]), printed whole, nothing
     * kept, no key read. Otherwise a coder run under the caps, the key `ANTHROPIC_API_KEY` from
     * the environment ([[DotEnv.loadDefault]]): Claude Code's ([[Rig.trial]], the agent's prompt
-    * the file `<file>`), or grit's ([[Rig.gritTrial]]: its coder's instructions the file
-    * `<file>`, its turn kept in the database at `<jdbc>` and read back from there), kept with its
+    * the file `<file>`), or grit's ([[Rig.gritTrial]]: its standing text the file `<file>`, its turn kept in the database at `<jdbc>` and read back from there), kept with its
     * transcript in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
     * ([[Bench.keep]]), its log at `<work>/<checkout>.log`. Before any run, `<work>` is cleared
     * ([[Rig.cleared]]: every checkout a killed run left, and every log but the newest
@@ -139,7 +139,7 @@ private[main] object LabCommands {
                 for {
                   launcher <- need(f, "grit")
                   javaHome <- need(f, "java-home")
-                  coder <- need(f, "coder").flatMap(c => read(Path.of(c)))
+                  standing <- need(f, "standing").flatMap(s => Standing.read(Path.of(s)))
                   url <- need(f, "coder-url")
                   maxTokens <- need(f, "max-tokens").flatMap(positive("max-tokens"))
                   memoryCap <- f.get("max-memory-gb").fold(Right(MemoryCap.Default))(MemoryCap.of)
@@ -165,11 +165,10 @@ private[main] object LabCommands {
                   arm <- Arm.Grit.of(
                     launcher,
                     scout,
-                    coder,
+                    standing,
                     url,
                     maxTokens,
                     passed,
-                    f.get("variant"),
                     Arm.Settings(window, workTurns)
                   )
                   _ <-

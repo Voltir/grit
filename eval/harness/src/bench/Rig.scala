@@ -10,7 +10,7 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
-import grit.core.id.{Harness, SessionId, Slug}
+import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.{Grade, ModelId}
 import grit.core.secret.Secret
@@ -110,23 +110,20 @@ object Arm {
     */
   final case class ClaudeCode(claude: String, scout: String, agent: String) extends Arm
 
-  /** grit, as `grit work` runs it: the program `launcher` starts grit's app; `scout` is the
-    * program grit's scout service runs; `coder` is the instructions the coder's brief begins
-    * with; `database` is the JDBC URL of the database grit keeps its turn in, logged in as
-    * `docker-compose.yml`'s user; `maxTokens` is the most each reply may write; `passed` are the
-    * variables of this machine's that grit's JVM needs, such as `PATH`, `HOME` and `JAVA_HOME`;
-    * `harness` is what its trials are kept under: [[Harness.Grit]], or `grit-<variant>` for a
-    * run of grit changed by a variant, so the summary keeps it apart from grit's; `settings` is
-    * what the trial sets of grit's run.
+  /** grit, as `grit work` runs it, its trials kept under [[Harness.Grit]]: the program `launcher`
+    * starts grit's app; `scout` is the program grit's scout service runs; `standing` is what the
+    * coder's brief begins with; `database` is the JDBC URL of the database grit keeps its turn
+    * in, logged in as `docker-compose.yml`'s user; `maxTokens` is the most each reply may write;
+    * `passed` are the variables of this machine's that grit's JVM needs, such as `PATH`, `HOME`
+    * and `JAVA_HOME`; `settings` is what the trial sets of grit's run.
     */
   final case class Grit private (
       launcher: String,
       scout: String,
-      coder: String,
+      standing: Standing,
       database: String,
       maxTokens: Int,
       passed: Variables,
-      harness: Harness,
       settings: Settings
   ) extends Arm
 
@@ -143,17 +140,15 @@ object Arm {
 
     /** The arm of these, or why not: a database URL that names no database, or names the
       * operator's own ([[DbConfig.DefaultDatabase]]), which a run of the bench must never write
-      * to; `maxTokens` below 1; a `variant` that is no slug ([[Slug.check]], at most
-      * [[Harness.Longest]] less 5 characters).
+      * to; `maxTokens` below 1.
       */
     def of(
         launcher: String,
         scout: String,
-        coder: String,
+        standing: Standing,
         database: String,
         maxTokens: Int,
         passed: Variables,
-        variant: Option[String] = None,
         settings: Settings = Settings()
     ): Either[String, Grit] =
       for {
@@ -171,12 +166,7 @@ object Arm {
           (),
           s"the most tokens a reply writes, $maxTokens, is below 1"
         )
-        harness <- variant.fold(Right(Harness.Grit))(v =>
-          Slug
-            .check("a grit variant's name", v, Some(Harness.Longest - 5), leadingDigit = false)
-            .flatMap(v => Harness.of(s"${Harness.value(Harness.Grit)}-$v"))
-        )
-      } yield Grit(launcher, scout, coder, database, maxTokens, passed, harness, settings)
+      } yield Grit(launcher, scout, standing, database, maxTokens, passed, settings)
   }
 }
 
@@ -347,17 +337,33 @@ object Rig {
     "Bash(git log *)"
   )
 
-  /** What the coder's prompt says before its task's brief. */
-  val Preamble: String =
+  /** What both arms' coders are told of where they work: this directory and its branch. */
+  private val Situation: String =
     """You work alone in this directory, a fresh git repository on the branch `bench` that holds
       |one commit's history. There is no planning store, no main session or manager to report to,
       |and no GitHub here: where the brief below names them, or a worktree, a branch or a pull
       |request, read it as this directory and the branch `bench`. Build the change the brief
       |describes, with its tests, and commit it on `bench` when it is done. Make no model call.
-      |
-      |# The brief
-      |
       |""".stripMargin
+
+  /** What heads the task's brief, after the situation. */
+  private val Heading: String = "\n# The brief\n\n"
+
+  /** What Claude Code's prompt says before its task's brief: the situation alone, its agent
+    * prompt saying the rest.
+    */
+  val Preamble: String = Situation + Heading
+
+  /** What the grit coder's brief says between its standing text and its task's brief: the
+    * situation, and what holds of a grit run alone, its compiled output and its memory budget.
+    */
+  val GritPreamble: String =
+    Situation +
+      """
+        |Only the modules the task's checks name were compiled here before you started: compile
+        |any other module before you ask scout about it. The run is stopped once the processes
+        |working in this directory together hold more than its memory budget.
+        |""".stripMargin + Heading
 
   /** A coder, as `arm` runs it under `cap`, on `task` in a new checkout at `dir` of the repository
     * at `repository` (an absolute path); then the task's checks run there, and its diff measured
@@ -414,8 +420,8 @@ object Rig {
     * the diff measured, the checkout tidied, and a quiet run stopped. Before grit starts, the
     * checkout compiles every module the task's checks name, unbilled, for at most [[Warming]],
     * its Mill daemon left warm for the coder; a checkout that does not compile is a `Left` saying
-    * so, grit never started. Its brief is `arm`'s coder
-    * instructions, [[Preamble]] and the task's brief, in a file of its own outside the checkout;
+    * so, grit never started. Its brief is `arm`'s standing text, [[GritPreamble]] and the task's
+    * brief, in a file of its own outside the checkout;
     * grit starts from an empty environment, but for `arm`'s passed variables and those that
     * point it at its database, the model `cap` names in every role at the Anthropic API, its
     * allowlisted tools and scout, `cap`'s turns as its rounds, the linear assembler, `arm`'s
@@ -496,7 +502,7 @@ object Rig {
           turn <- turns.task()
           reported = ended.fold(_ => turn, r => Consumed.reported(turn, r.exit, r.output.text))
           consumed = Consumed.ofTurn(lines, reported, stopped)
-          session <- SessionId.of(arm.harness, turn.session)
+          session <- SessionId.of(Harness.Grit, turn.session)
         } yield Coded(session, consumed, lines ++ turn.rendered.linesIterator, wall, stopped)
       }
     } yield tried
@@ -726,7 +732,7 @@ object Rig {
     """ANTHROPIC_API_KEY="$(cat "$1")"; export ANTHROPIC_API_KEY; shift; exec "$@""""
 
   /** `use` of the absolute path of a file holding the grit coder's brief for `task`: `arm`'s
-    * coder instructions, [[Preamble]] and the task's brief. The file is in a directory only this
+    * standing text, [[GritPreamble]] and the task's brief. The file is in a directory only this
     * user can read under the system temp directory, removed once `use` returns or throws.
     */
   private def briefed[A](arm: Arm.Grit, task: BenchTask)(
@@ -736,7 +742,7 @@ object Rig {
       Try(
         Files.writeString(
           dir.resolve("brief.md"),
-          s"${arm.coder.stripTrailing}\n\n$Preamble${task.brief}"
+          s"${arm.standing.text.stripTrailing}\n\n$GritPreamble${task.brief}"
         )
       ).toEither.left
         .map(e => s"the brief was not written: ${e.getClass.getName}")

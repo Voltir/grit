@@ -104,7 +104,6 @@ object RigTests extends TestSuite {
     def gritArm(
         fake: GritFake,
         maxTokens: Int = 8192,
-        variant: Option[String] = None,
         settings: Arm.Settings = Arm.Settings()
     ): Arm.Grit = {
       val launcher = root.resolve("grit")
@@ -144,14 +143,14 @@ object RigTests extends TestSuite {
             "JAVA_HOME" -> sys.props("java.home")
           )
         )
+        standing <- Standing.of("Make the change.")
         arm <- Arm.Grit.of(
           launcher.toString,
           "/usr/bin/true",
-          "Make the change.",
+          standing,
           "jdbc:postgresql://localhost:5432/grit_bench_coder",
           maxTokens,
           passed,
-          variant,
           settings
         )
       } yield arm).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -280,7 +279,6 @@ object RigTests extends TestSuite {
       caps: Caps = cap,
       turn: GritTurn = gritTurn,
       heldCoding: Either[HostError, Memory.Held] = Right(Memory.Held(0L, 16L << 30)),
-      variant: Option[String] = None,
       settings: Arm.Settings = Arm.Settings()
   ): Either[String, Tried] =
     Rig.gritTrial(
@@ -292,7 +290,7 @@ object RigTests extends TestSuite {
     )(
       f.origin,
       f.task,
-      f.gritArm(fake, variant = variant, settings = settings),
+      f.gritArm(fake, settings = settings),
       caps,
       MemoryCap.Default,
       key,
@@ -623,7 +621,7 @@ object RigTests extends TestSuite {
           (
             Some("work"),
             true,
-            "Make the change.\n\n" + Rig.Preamble + "Give A an x.",
+            "Make the change.\n\n" + Rig.GritPreamble + "Give A an x.",
             Vector(
               "ANTHROPIC_API_KEY=sk-ant-test-0123",
               "GRIT_ASSEMBLER=linear",
@@ -864,19 +862,6 @@ object RigTests extends TestSuite {
     }
 
     test(
-      "a grit trial run as a variant is kept under that variant's harness, its cost grit's alone"
-    ) {
-      withTask { f =>
-        gritTrial(f, GritFake(gritLines), variant = Some("search")).map { t =>
-          (
-            (Harness.value(t.trial.session.harness), t.trial.session.local),
-            t.lines.filter(_.startsWith("cost"))
-          )
-        } ==> Right((("grit-search", "c-7"), Vector("cost: 0.0089¢ by grit's rates")))
-      }
-    }
-
-    test(
       "a grit trial's window and work turns reach grit's environment, the trial kept under grit"
     ) {
       withTask { f =>
@@ -893,28 +878,16 @@ object RigTests extends TestSuite {
       }
     }
 
-    test("a variant is a lower-case slug, refused otherwise") {
-      val passed =
-        Variables.of(Map.empty).fold(e => throw new java.lang.AssertionError(e), identity)
-      val url = "jdbc:postgresql://localhost:5432/grit_bench_coder"
-      Vector(Some("all-cuts"), Some("All Cuts")).map(v =>
-        Arm.Grit
-          .of("/bin/grit", "/usr/bin/true", "c", url, 8192, passed, v)
-          .map(_.harness)
-          .map(Harness.value)
-      ) ==> Vector(
-        Right("grit-all-cuts"),
-        Left("a grit variant's name holds 'A', not a lowercase letter, a digit or '-': All Cuts")
-      )
-    }
-
     test("grit is refused fewer than 2 turns, a model with no rates, and the operator's database") {
       withTask { f =>
         val oneTurn = Caps.of("claude-haiku-5-5", "0.05", "1").getOrElse(cap)
         val unpriced = Caps.of("claude-unknown-9", "0.05", "4").getOrElse(cap)
         val passed = Variables.of(Map.empty).getOrElse(throw new java.lang.AssertionError())
         def database(url: String) =
-          Arm.Grit.of("/bin/grit", "/usr/bin/true", "c", url, 8192, passed).map(_ => url)
+          Standing
+            .of("c")
+            .flatMap(Arm.Grit.of("/bin/grit", "/usr/bin/true", _, url, 8192, passed))
+            .map(_ => url)
         (
           gritTrial(f, GritFake(gritLines), oneTurn),
           gritTrial(f, GritFake(gritLines), unpriced),

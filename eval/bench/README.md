@@ -41,9 +41,11 @@ Claude Code's estimate. A run a cap stopped is a trial not passed.
 ## The grit arm
 
 `scripts/eval bench --harness grit` runs `grit work` in the task's checkout, outside this
-repository, with one message: `coder-grit.md` (the counterpart of `coder.md`, worded for grit's own
-tools: `run` with its allowlist, `tail`, scout's `scout_*`), the rig's preamble and the task's
-brief. Before grit starts, the rig compiles every module the task's checks name in the checkout
+repository, with one message: the standing text in the file `--standing` names (required; a
+missing or blank file is refused), the rig's account of where the coder works
+(`Rig.GritPreamble`), and the task's brief. The standing text is how a grit coder works wherever it
+runs, kept in the planning store and exported to a file for the run; it is worded for grit's own
+tools (`run` with its allowlist, `tail`, scout's `scout_*`). Before grit starts, the rig compiles every module the task's checks name in the checkout
 (`./mill <module>.__.compile`, at most an hour, unbilled), so the coder's first build is not a cold
 one; its Mill daemon stays warm for the coder. grit starts from an empty environment: the rig sets every variable it reads
 (`Rig.gritTrial`), its tools the allowlisted coding set and scout, the run's model in every role at
@@ -61,5 +63,3 @@ trial refused, naming the compile) and while each check runs (a trial not passed
 check, and no check after it run). Every JVM grit's tree and the task's checks start is held to 15% of the
 machine's memory. grit's own output and the tail of its errors go to the run's log; a run the trial row
 refuses still prints its calls and cost. `--dry` prints what the first call would send, with no key and nothing kept.
-A run given `--variant <name>` is kept under the harness `grit-<name>` (`Arm.Grit.harness`), so an
-ablation's trials sum apart from grit's own in `--summary`.
