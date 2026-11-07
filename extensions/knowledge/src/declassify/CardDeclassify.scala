@@ -5,7 +5,6 @@ import java.time.Instant
 import grit.core.act.{Declassifying, Dreaming, MoveError, MoveLimits, MoveName}
 import grit.core.document.{Declassified, Document, DocumentKeeper, Pointer, PolicyApplication}
 import grit.core.durable.Journaled
-import grit.core.either.Traversal.traverse
 import grit.core.flow.Trusted
 import grit.core.id.{DocumentVersionId, JobName}
 import grit.core.job.{DreamingJob, JobRun}
@@ -13,6 +12,7 @@ import grit.core.need.Exported
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
 import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
+import grit.prose.either.Traversal.traverse
 
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure

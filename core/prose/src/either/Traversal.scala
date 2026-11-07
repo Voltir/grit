@@ -1,4 +1,4 @@
-package grit.core.either
+package grit.prose.either
 
 /** A vector of `Either`s turned inside out, failing at the first `Left`. */
 object Traversal {

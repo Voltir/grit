@@ -3,9 +3,9 @@ package grit.eval.harness.label
 import scala.collection.immutable.VectorMap
 import scala.util.Try
 
-import grit.core.either.Traversal
 import grit.core.json.Fields
 import grit.eval.harness.capture.CaseId
+import grit.prose.either.Traversal
 
 /** One question asked twice as a new thread: the message that asked it `before` a change, and
   * the one that asked it `after`.

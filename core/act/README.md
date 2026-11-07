@@ -5,7 +5,7 @@ a call of a hosted tool, as phases written over `grit.core`'s traits and its flo
 so its tests run over core's in-memory fakes (`InMemoryDurable`, `InMemoryEdges`,
 `InMemoryUsageLedger`, `InMemorySchedules`). A phase takes its caller's step names, the form
 its failures are recorded in (`Faults`) and its recorded codecs, so each caller's steps keep
-their own names and recorded forms. It names core alone (enola-intent.yaml's `act-names-core-alone`).
+their own names and recorded forms. It names core alone, and grit.prose, which core names (enola-intent.yaml's `act-names-core-alone`).
 
 - **`phase`**: the steps the turn and jobs share: `Asking` (a model's reply, retried while its
   provider is unavailable, admitted by the acting's allowance, its cost recorded once),

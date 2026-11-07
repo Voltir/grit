@@ -1,10 +1,10 @@
 package grit.eval.harness.score
 
-import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.eval.harness.capture.{Call, Called, CaseId, Reading, Said, TurnCase}
 import grit.eval.harness.label.{ChurnQuestions, Gold}
 import grit.eval.harness.stats.{Estimate, Proportion}
+import grit.prose.either.Traversal
 
 /** How many hosted calls turns made before reading what they needed, and whether their replies
   * were right, each question asked once before a change and once after it, in two rounds of

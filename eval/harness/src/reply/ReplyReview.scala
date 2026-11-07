@@ -6,13 +6,13 @@ import scala.util.hashing.MurmurHash3
 
 import grit.core.clock.Fresh
 import grit.core.context.{CarriedWindow, Shown}
-import grit.core.either.Traversal
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, StoreError}
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{CaseId, Drafted, Ended, Part, Said, TurnCase}
 import grit.eval.harness.label.{Found, Locator, ReplyGuide, ReplyLabel, ReplyLabels}
+import grit.prose.either.Traversal
 import grit.turn.{Turn, TurnOffer}
 
 /** A few turns' replies shown to a person to label, text and all, in a file only a person

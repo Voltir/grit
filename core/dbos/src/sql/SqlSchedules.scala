@@ -41,6 +41,7 @@ import grit.core.job.{
 import grit.core.retention.Target
 import grit.core.store.{Jot, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Integrity, Label, Subject}
+import grit.prose.either.Traversal
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the principal whose
@@ -170,12 +171,15 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       tx: Tx^
   ): Either[StoreError, Vector[(ScheduleId, JobName)]] =
     many(sql)(bind)(rs => (rs.getString(1), rs.getString(2))).flatMap(rows =>
-      traverse(rows) { (id, job) =>
-        for {
-          i <- ScheduleId.of(id)
-          j <- JobName.of(job).left.map(why => s"schedule $id: $why")
-        } yield (i, j)
-      }
+      Traversal
+        .traverse(rows) { (id, job) =>
+          for {
+            i <- ScheduleId.of(id)
+            j <- JobName.of(job).left.map(why => s"schedule $id: $why")
+          } yield (i, j)
+        }
+        .left
+        .map(StoreError.Invalid(_))
     )
 
   def replied(slot: Slot, version: Int, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
@@ -467,9 +471,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         ps.setString(1, PrincipalId.value(by))
         ps.setString(2, PrincipalId.value(home))
       }(rs => (rs.getString("id"), stored(rs)))
-      read <- traverse(rows) { (id, row) =>
-        ScheduleId.of(id).flatMap(i => row.map(i -> _))
-      }
+      read <- Traversal
+        .traverse(rows)((id, row) => ScheduleId.of(id).flatMap(i => row.map(i -> _)))
+        .left
+        .map(StoreError.Invalid(_))
     } yield read
   }
 
@@ -617,14 +622,6 @@ private[dbos] object SqlSchedules {
       SqlLabels.read(rs),
       SqlIntegrity.read(rs)
     )
-
-  /** `rows`, each read by `f`, or the first reason one is not. */
-  private def traverse[A, B](
-      rows: Vector[A]
-  )(f: A => Either[String, B]): Either[StoreError, Vector[B]] =
-    rows.foldLeft[Either[StoreError, Vector[B]]](Right(Vector.empty)) { (acc, a) =>
-      acc.flatMap(done => f(a).left.map(StoreError.Invalid(_)).map(done :+ _))
-    }
 
   /** `s`, an asked schedule, as `job` reads it. */
   private def kept[P <: caps.Pure](

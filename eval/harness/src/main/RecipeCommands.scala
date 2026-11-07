@@ -6,7 +6,6 @@ import scala.util.Try
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
-import grit.core.either.Traversal
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{Cost, Tokens}
 import grit.core.persona.Persona
@@ -44,6 +43,7 @@ import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.JevClassifier
 import grit.models.JevConfig
+import grit.prose.either.Traversal
 
 import Cli.*
 import ReplyCommands.*

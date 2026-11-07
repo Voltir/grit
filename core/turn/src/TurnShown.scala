@@ -5,7 +5,6 @@ import java.time.Instant
 import grit.core.clock.Utc
 import grit.core.context.{CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, DocumentSearch}
-import grit.core.either.Traversal.traverse
 import grit.core.files.{KeptPiece, PieceSearch}
 import grit.core.id.{EntryId, EntrySeq, Sha256, ToolCallId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
@@ -27,6 +26,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{Tool, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.Subject
+import grit.prose.either.Traversal.traverse
 
 import TurnLoop.Round
 

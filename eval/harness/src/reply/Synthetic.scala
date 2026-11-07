@@ -6,7 +6,6 @@ import scala.util.control.NonFatal
 
 import grit.core.context.{CarriedWindow, Width}
 import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTerms}
-import grit.core.either.Traversal
 import grit.core.id.{ConversationId, PluginName, TurnRef}
 import grit.core.period.LifecycleSettings
 import grit.core.place.Weight
@@ -19,6 +18,7 @@ import grit.eval.harness.capture.{Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
 import grit.models.Seed
+import grit.prose.either.Traversal
 
 /** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in a
   * database of its own ([[apart]], [[Layout]]), expected to hold its `[must]` entries and none

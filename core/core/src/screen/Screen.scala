@@ -1,8 +1,8 @@
 package grit.core.screen
 
 import grit.core.classify.{Answer, Ask, ClassifierError, StateJson}
-import grit.core.either.Traversal
 import grit.core.period.Probability
+import grit.prose.either.Traversal
 
 /** A screen: its axis's `floor`, asked first, then the signals of each of its sources in order
   * (`first`, then `rest`), each a yes/no about a [[Screen.Text]].

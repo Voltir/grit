@@ -11,7 +11,6 @@ import grit.core.document.{
   DocumentShelf,
   DocumentVersion
 }
-import grit.core.either.Traversal
 import grit.core.id.{ClaimHolder, ConversationId, DocKey, DocumentVersionId, PrincipalId, TurnSeq}
 import grit.core.identity.{Account, Principal}
 import grit.core.need.PluginReads
@@ -33,6 +32,7 @@ import grit.projects.name.{
   StateName
 }
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
+import grit.prose.either.Traversal
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
   * `default`.

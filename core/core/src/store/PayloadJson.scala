@@ -1,7 +1,6 @@
 package grit.core.store
 
 import grit.core.agenda.AgendaJson
-import grit.core.either.Traversal.traverse
 import grit.core.id.{
   ConversationId,
   DocumentVersionId,
@@ -17,6 +16,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.CatalogJson
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
+import grit.prose.either.Traversal.traverse
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
   * persisted data, so a rename in Scala must not change it, and reading it is

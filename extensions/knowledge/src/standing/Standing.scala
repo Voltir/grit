@@ -5,13 +5,13 @@ import java.time.ZoneOffset
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentKeeper, DocumentTerms}
-import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, DocKey, LineId, PeriodSeq}
 import grit.core.period.{Change, Ground, Line, Section}
 import grit.core.plugin.DocumentPosting
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
+import grit.prose.either.Traversal.traverse
 
 /** What each earned closing ([[grit.core.period.CloseReason.shownElsewhere]]) of a conversation
   * settled, kept as one document (ADR 0028) so a window elsewhere can find it once the

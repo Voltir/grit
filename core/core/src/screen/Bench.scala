@@ -2,8 +2,8 @@ package grit.core.screen
 
 import java.util.Locale
 
-import grit.core.either.Traversal
 import grit.core.period.Probability
+import grit.prose.either.Traversal
 
 /** `checks`' examples, each screened by its signals alone. */
 object Bench {

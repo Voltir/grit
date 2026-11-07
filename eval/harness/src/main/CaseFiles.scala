@@ -4,11 +4,11 @@ import java.nio.file.Path
 
 import scala.util.Try
 
-import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.core.tool.ToolSet
 import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{CaptureJson, Case, TurnCase, TurnJson}
+import grit.prose.either.Traversal
 
 import Cli.*
 

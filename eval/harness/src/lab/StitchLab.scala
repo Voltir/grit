@@ -4,7 +4,6 @@ import java.time.Instant
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
-import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -20,6 +19,7 @@ import grit.eval.harness.jev.Budget
 import grit.eval.harness.log.{Cache, Outcome, Row, Suite, Weights}
 import grit.eval.harness.run.Run
 import grit.eval.harness.score.{Against, RoomPlacing}
+import grit.prose.either.Traversal.traverse
 
 /** A room placed through the shipped stitch ask: what each opening made, in the order said; the
   * strands they ended in, each by its openings' ids, root first; the rows of the calls asked;

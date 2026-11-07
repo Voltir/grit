@@ -6,7 +6,6 @@ import java.time.{Instant, ZoneOffset}
 import scala.util.Try
 
 import grit.core.clock.Clock
-import grit.core.either.Traversal
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.Cost
 import grit.core.speech.Limits
@@ -20,6 +19,7 @@ import grit.eval.harness.log.{Footer, Log, LogJson, Weights}
 import grit.eval.harness.pull.{Pull, ShadowLog}
 import grit.eval.harness.report.Report
 import grit.eval.harness.score.GateSweep
+import grit.prose.either.Traversal
 
 import Cli.*
 import CaseFiles.*

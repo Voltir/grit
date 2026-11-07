@@ -10,8 +10,6 @@ the packages' order, each one's idea, and the rules enforced outside the compile
 
 In dependency order, each with the core packages it imports:
 
-- **`either`**: a vector of `Either`s traversed, failing at the first `Left`. Imports nothing in
-  core.
 - **`json`**: a JSON object's fields read, each refusal naming the object and the field. Imports
   nothing in core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
@@ -63,7 +61,7 @@ In dependency order, each with the core packages it imports:
   ← `id`, `message`, `place`, `visibility`, `route`
 - **`screen`**: a text checked by a classifier for its axis's floor and a steward's signals,
   each absent or present, passed by code only when every one holds; a steward's examples
-  benched against the signals first. Names no axis. ← `either`, `period`, `classify`
+  benched against the signals first. Names no axis. ← `period`, `classify`
 - **`spend`**: what grit spends on model calls, read back (a day's, a conversation's, a turn's),
   and the daily budget. ← `id`, `message`, `model`, `store`
 - **`triage`**: what grit makes of a message it heard (ADR 0020): its question sets, the gates

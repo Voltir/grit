@@ -9,6 +9,9 @@ library.
 
 In dependency order:
 
+- **`either`** -- `Traversal`: a vector of `Either`s traversed, failing at the first `Left`. It
+  holds no prose; it sits here, where every grit module can see it, because prose names nothing
+  and core names prose. Imports nothing in prose.
 - **`form`** -- the blocks (`Doc`, `Block`, `Item`, `Level`), a table's `Column`s and typed
   `Cell`s (`Cell.Number.read`, what words read as a number), a `Chart` (numbers compared across
   categories, its data a table, made only by `Chart.of`) and the `fallback` a consumer that
@@ -16,7 +19,7 @@ In dependency order:
   consumer's output mode implements. A span may carry notes, pure data its writer says of it
   that no renderer shows: a doc with notes of `A` is a `Doc[A]`, and plain prose, which
   renderers take, a `Doc[Nothing]`. A cell keeps its value and the text its source showed;
-  `Cell.printed` is what every renderer prints for it. Imports nothing in prose.
+  `Cell.printed` is what every renderer prints for it. ← `either`
 - **`markdown`** -- `Markdown.parse` for a whole reply and `Markdown.parsePrefix` for one
   still streaming, which holds back what the next token may still change so that each
   prefix renders as the start of the whole. `Markdown.write` is the model's text: total over
@@ -28,7 +31,7 @@ In dependency order:
   bare info string (`chart type=bar title="…"`); `Markdown.chartGuide` tells a model so.
   ← `form`
 - **`json`** -- `ProseJson`, the stored form: a flat list of records under a schema version,
-  notes written once by the keeper's codec. ← `form`
+  notes written once by the keeper's codec. ← `either`, `form`
 
   Its records, by `"type"`: `para`, `heading`, `code`, `table`, `chart` (a table's record with
   the chart's `"kind"`, `"title"` and, when given, `"values"`) and `rule`, one block each; a

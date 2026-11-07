@@ -1,7 +1,7 @@
 package grit.core.period
 
-import grit.core.either.Traversal.traverse
 import grit.core.id.{EntryId, PeriodSeq}
+import grit.prose.either.Traversal.traverse
 
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
   * is the first kept: every version from it on stays readable. Written by hand, never

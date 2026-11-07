@@ -4,9 +4,9 @@ import java.nio.charset.StandardCharsets
 import java.sql.{Connection, DriverManager, ResultSet, SQLException, Statement}
 import java.util.Properties
 
-import grit.core.either.Traversal
 import grit.core.secret.{Reveal, Secret, Variable}
 import grit.databases.declare.{Database, DatabaseRole, Limits, Login}
+import grit.prose.either.Traversal
 
 /** A connection to a [[Database]] as its role alone, read-only. Its calls run one at a time. */
 final class DatabaseReader private (

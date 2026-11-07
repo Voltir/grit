@@ -1,5 +1,7 @@
 package grit.prose.form
 
+import grit.prose.either.Traversal.traverse
+
 /** Numbers compared across categories, drawn as `kind`. Its data is a table ([[table]]): the
   * categories down the first column under `axis`, a column of numbers per series. `values`
   * says what the numbers are, when its writer said.
@@ -128,9 +130,4 @@ object Chart {
         .toLeft(())
     } yield Chart(kind, title, columns.headOption.getOrElse(""), values, categories, series)
   }
-
-  private def traverse[X, B](xs: Vector[X])(f: X => Either[Unfit, B]): Either[Unfit, Vector[B]] =
-    xs.foldLeft[Either[Unfit, Vector[B]]](Right(Vector.empty))((acc, x) =>
-      acc.flatMap(bs => f(x).map(bs :+ _))
-    )
 }

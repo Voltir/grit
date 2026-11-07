@@ -3,7 +3,6 @@ package grit.eval.harness.capture
 import scala.util.Try
 
 import grit.core.classify.AnswersJson
-import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
 import grit.core.json.Fields
 import grit.core.json.Fields.opt
@@ -13,6 +12,7 @@ import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.Kind
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
+import grit.prose.either.Traversal.traverse
 
 /** A capture's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
   * `capture.json`. Each value is written with its fields in one fixed order, so equal values

@@ -6,7 +6,6 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.context.Width
-import grit.core.either.Traversal
 import grit.core.message.{Cost, Tokens}
 import grit.core.period.Probability
 import grit.core.provider.Provider
@@ -27,6 +26,7 @@ import grit.eval.harness.reply.{
 }
 import grit.kit.environment.DotEnv
 import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
+import grit.prose.either.Traversal
 
 import Cli.*
 

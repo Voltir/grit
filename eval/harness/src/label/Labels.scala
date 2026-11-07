@@ -2,10 +2,10 @@ package grit.eval.harness.label
 
 import scala.util.Try
 
-import grit.core.either.Traversal
 import grit.core.json.Fields
 import grit.core.triage.Kind
 import grit.eval.harness.capture.CaseId
+import grit.prose.either.Traversal
 
 /** What a person labelled one case: each field `None` until labelled.
   *

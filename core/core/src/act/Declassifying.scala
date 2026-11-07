@@ -3,7 +3,6 @@ package grit.core.act
 import grit.core.classify.Ask
 import grit.core.document.{Declassified, DocText, DocumentKeeper, DocumentSearch, PolicyApplication}
 import grit.core.durable.{Flow, Journaled, Steps}
-import grit.core.either.Traversal
 import grit.core.files.{PieceSearch, Pieces}
 import grit.core.flow.{Raise, Tainted}
 import grit.core.id.{DocumentVersionId, PluginName, Sha256}
@@ -14,6 +13,7 @@ import grit.core.provider.ModelRequest
 import grit.core.screen.{Bench, Benched, Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
+import grit.prose.either.Traversal
 
 /** What [[Dreaming.declassify]] asks and comes to: the rewrite's text for the model, the check's
   * for the classifier, and the declassification it is lowered by.

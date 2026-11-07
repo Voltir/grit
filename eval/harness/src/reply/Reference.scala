@@ -3,12 +3,12 @@ package grit.eval.harness.reply
 import scala.collection.immutable.VectorMap
 import scala.util.Try
 
-import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.core.json.Fields
 import grit.core.place.Service
 import grit.eval.harness.capture.Parts
 import grit.eval.harness.label.{Found, Locator, ReplyLabels}
+import grit.prose.either.Traversal
 
 /** What a turn's build is expected to do, by ids alone. */
 enum Expect {

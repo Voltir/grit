@@ -5,7 +5,6 @@ import grit.core.context.{Querying, Results, Retrieved}
 import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
-import grit.core.either.Traversal.sequence
 import grit.core.files.PieceSearch
 import grit.core.id.{DocumentVersionId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
@@ -22,6 +21,7 @@ import grit.core.store.{
 }
 import grit.core.tool.ToolSets
 import grit.core.visibility.Label
+import grit.prose.either.Traversal.sequence
 
 import TurnJournal.given
 

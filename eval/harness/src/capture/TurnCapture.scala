@@ -6,7 +6,6 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyNote, CarriedWindow, Shown, Window}
 import grit.core.document.{DocLabel, Document, Pointer}
 import grit.core.durable.StepRecord
-import grit.core.either.Traversal
 import grit.core.id.{DocumentVersionId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
@@ -16,6 +15,7 @@ import grit.core.store.{Entry, Nearby, Origin, Payload, Position, Speakers, Stor
 import grit.core.tool.{ToolName, ToolSet}
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
+import grit.prose.either.Traversal
 import grit.turn.{Turn, TurnFailure, TurnJudge, TurnOffer, TurnRecord}
 
 /** The turns a restored database recorded, read through `grit.dbos`'s `Reader` and the turn's

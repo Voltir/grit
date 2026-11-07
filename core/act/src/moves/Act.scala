@@ -38,7 +38,6 @@ import grit.core.document.{
 }
 import grit.core.durable.{Flow, Journaled, Step, StepName}
 import grit.core.edge.{Permit, ToolRequests}
-import grit.core.either.Traversal.sequence
 import grit.core.files.{FileError, PieceKeeper, Understood}
 import grit.core.flow.{Downgrade, Mint}
 import grit.core.id.{
@@ -63,6 +62,7 @@ import grit.core.stitch.{Strand, StrandExcerpts}
 import grit.core.store.{Db, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, Hosted, Outcome, Repairs, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.{Integrity, Label, Subject}
+import grit.prose.either.Traversal.sequence
 
 /** The names a move's steps are recorded under, from the input each step runs over: the move
   * itself as `move`, named for what it is (`ask`, `call` or `keep`), then its phases, each the

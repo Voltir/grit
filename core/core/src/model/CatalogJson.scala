@@ -2,8 +2,8 @@ package grit.core.model
 
 import java.time.LocalDate
 
-import grit.core.either.Traversal.sequence
 import grit.core.message.Tokens
+import grit.prose.either.Traversal.sequence
 
 /** The stored JSON forms of a [[Catalog]] (the seed file's form) and of a [[TurnProfile]].
   * Written by hand: it is persisted data, so a rename in Scala must not change it, and reading

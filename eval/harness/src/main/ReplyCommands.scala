@@ -6,7 +6,6 @@ import java.time.{Instant, ZoneOffset}
 import scala.util.Try
 
 import grit.core.clock.{Clock, Fresh}
-import grit.core.either.Traversal
 import grit.core.id.WorkflowId
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.capture.CaptureJson
@@ -15,6 +14,7 @@ import grit.eval.harness.reply.{Assembled, Refound, ReplyReview}
 import grit.eval.harness.report.Report
 import grit.eval.harness.score.Churn
 import grit.kit.environment.DotEnv
+import grit.prose.either.Traversal
 
 import Cli.*
 import CaseFiles.*

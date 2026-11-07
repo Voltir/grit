@@ -9,7 +9,6 @@ import grit.core.allot.{Allotment, Features, Headroom, TaskKind, Tasking}
 import grit.core.context.{AssemblyNote, Projection, Querying, Results, Retrieved, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
-import grit.core.either.Traversal.sequence
 import grit.core.id.{
   ConversationId,
   CorpusName,
@@ -31,6 +30,7 @@ import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 import grit.core.visibility.{Integrity, Label}
+import grit.prose.either.Traversal.sequence
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`, an uncleared turn's reason its classification's

@@ -1,7 +1,7 @@
 package grit.core.screen
 
-import grit.core.either.Traversal
 import grit.core.prompt.Stripped
+import grit.prose.either.Traversal
 
 /** Whether a screened text must not let a reader infer a signal (`Absent`) or must state it
   * (`Present`); `written`, as checks, a bench row and a screening's record write it.

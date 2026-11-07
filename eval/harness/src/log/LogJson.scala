@@ -4,13 +4,13 @@ import scala.collection.immutable.VectorMap
 import scala.util.Try
 
 import grit.core.classify.{Answer, Question}
-import grit.core.either.Traversal.traverse
 import grit.core.id.QuestionName
 import grit.core.json.Fields
 import grit.core.json.Fields.opt
 import grit.core.store.{Focus, PayloadJson}
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
 import grit.eval.harness.capture.{CaptureJson, CaseId, Digest, Failure}
+import grit.prose.either.Traversal.traverse
 
 /** How a row's answer `A` is written in a run's log and its cache. */
 trait Codec[A] {

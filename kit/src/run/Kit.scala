@@ -8,7 +8,6 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, CatchUp, Console, EdgeRefusal, EdgeStores, PluginCommands}
-import grit.core.either.Traversal.sequence
 import grit.core.files.Intake
 import grit.core.id.{
   AttesterName,
@@ -33,6 +32,7 @@ import grit.host.machine.LocalMachine
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
+import grit.prose.either.Traversal.sequence
 import grit.turn.TurnCache
 
 /** Why [[Kit.serve]], [[Kit.catchUp]], [[Kit.runOnce]], [[Kit.console]], [[Kit.cacheReport]] or

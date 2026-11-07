@@ -4,6 +4,7 @@ import java.time.{LocalDate, LocalDateTime}
 
 import scala.util.Try
 
+import grit.prose.either.Traversal.traverse
 import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Level, Mark, Span, Text}
 
 /** Prose as grit stores it: a flat list of blocks, a list item's level and kind as fields, under
@@ -477,11 +478,6 @@ object ProseJson {
     if (current.nonEmpty) out += current
     out.result()
   }
-
-  private def traverse[X, B](xs: Vector[X])(f: X => Read[B]): Read[Vector[B]] =
-    xs.foldLeft(Right(Vector.empty): Read[Vector[B]])((acc, x) =>
-      acc.flatMap(bs => f(x).map(bs :+ _))
-    )
 
   private def obj(v: ujson.Value, what: String): Read[Obj] =
     v.objOpt.map(_.toMap).toRight(s"$what is no object: ${ujson.write(v)}")

@@ -3,7 +3,6 @@ package grit.eval.harness.capture
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
-import grit.core.either.Traversal.traverse
 import grit.core.id.{
   ConversationId,
   CorpusName,
@@ -24,6 +23,7 @@ import grit.core.recipe.ServiceOffer
 import grit.core.store.Focus
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
+import grit.prose.either.Traversal.traverse
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 /** A turn of a capture as JSON, one line of `turns.jsonl` each, its fields in one fixed order,

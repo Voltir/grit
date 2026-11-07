@@ -3,7 +3,6 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.document.{Document, DocumentSearch, DocumentTerms, Shelved}
-import grit.core.either.Traversal.traverse
 import grit.core.files.PieceSearch
 import grit.core.id.{
   CallSlot,
@@ -52,6 +51,7 @@ import grit.core.store.{
 }
 import grit.core.visibility.Label
 import grit.dbos.internal.Reader
+import grit.prose.either.Traversal.traverse
 
 /** A restored database's stores as they stood at `at`, for an assembler to read a window from
   * as it would have then. Each read returns only the rows created before `at`: entries (and

@@ -5,11 +5,11 @@ import java.time.{Instant, LocalDate}
 import scala.util.Try
 
 import grit.core.document.DocText
-import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, DocKey, DocumentVersionId}
 import grit.core.place.Place
 import grit.core.stitch.StrandDigest
 import grit.knowledge.ref.TopicKey
+import grit.prose.either.Traversal.traverse
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown

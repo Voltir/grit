@@ -2,7 +2,6 @@ package grit.eval.harness.capture
 
 import java.time.Instant
 
-import grit.core.either.Traversal.traverse
 import grit.core.id.{ConversationId, TurnRef}
 import grit.core.stitch.{Placed, Seen, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
@@ -11,6 +10,7 @@ import grit.core.visibility.Subject
 import grit.dbos.engine.Build
 import grit.dbos.internal.Reader
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
+import grit.prose.either.Traversal.traverse
 
 /** A capture: its manifest, and its cases in their order. */
 final case class Captured(manifest: Manifest, cases: Vector[Case])

@@ -8,7 +8,6 @@ import scala.util.Try
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.Clock
-import grit.core.either.Traversal
 import grit.core.id.{ConversationId, WorkflowId}
 import grit.core.message.{Cost, Tokens}
 import grit.core.persona.Persona
@@ -34,6 +33,7 @@ import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
 import grit.models.JevConfig
+import grit.prose.either.Traversal
 import grit.turn.Turn
 
 import Cli.*

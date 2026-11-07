@@ -6,7 +6,6 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError, Question}
-import grit.core.either.Traversal.traverse
 import grit.core.id.{QuestionName, ShadowName, ShadowRef, TurnRef}
 import grit.core.message.Usage
 import grit.core.review.Considered
@@ -19,6 +18,7 @@ import grit.eval.harness.capture.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
 import grit.lifecycle.triage.TriageQuestions
+import grit.prose.either.Traversal.traverse
 
 /** What a deployment's database kept of the heard messages tagged since a time, as run logs
   * the scorers read beside offline runs: live triage's tags ([[Pull.Kept]]), and each named

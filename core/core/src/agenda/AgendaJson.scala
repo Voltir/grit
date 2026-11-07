@@ -1,7 +1,7 @@
 package grit.core.agenda
 
-import grit.core.either.Traversal.traverse
 import grit.core.id.TurnSeq
+import grit.prose.either.Traversal.traverse
 
 /** The stored JSON form of [[Agenda.Event]]s. Written by hand: it is persisted data, so a
   * rename in Scala must not change it, and reading it is total. The `"topic"` key is an
