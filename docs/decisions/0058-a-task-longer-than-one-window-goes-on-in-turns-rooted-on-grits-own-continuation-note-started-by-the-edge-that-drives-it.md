@@ -43,7 +43,7 @@ Decision:
   run declared a wrong path done); the engine running the check (the driver's policy); an entry
   kind for a failed check (a second root like the first).
 - **What the next turn is shown** is a boundary: the task, then of the earlier turns only the
-  newest, the note or message it answered and the reply that handed the task on, behind one gap
+  newest, its reply that handed the task on, not the note it answered, behind one gap
   line when turns are left out; then the session's digest and the note. No tool calls or
   results, and no earlier reply: each handoff is cumulative, and every turn shown would grow
   each boundary until the window slid; the newest alone keeps each boundary about one size, its
