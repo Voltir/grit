@@ -124,8 +124,34 @@ STARTUP=3
 # grit.app paints at once and opens DBOS behind a ward; typing waits for the engine.
 APP_STARTUP=12
 
+# Whether the screen painted so far holds $1, read off the capture while the app runs
+# (run_one's $out, $rows, $cols, which a scenario's script sees as its caller's locals).
+painted() { python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" > /dev/null; }
+# Wait up to $2 seconds (default 30) until the screen holds $1, or (until_gone) no longer does.
+# A step that waits for what it acts on survives a slow machine; one that sleeps a guess does
+# not. On a timeout the script goes on, and the scenario's checks say what never happened.
+until_painted() {
+  local i
+  for i in $(seq $((${2:-30} * 10))); do painted "$1" && return; sleep 0.1; done
+}
+until_gone() {
+  local i
+  for i in $(seq $((${2:-30} * 10))); do painted "$1" || return; sleep 0.1; done
+}
+# The row of the screen painted so far that holds $1, waiting up to 5 s for it; 1, the
+# header, when it never appears, so the click misses and the scenario's checks say so. A
+# click aimed by text survives a line added above its target.
+row_of() {
+  local i
+  for i in $(seq 50); do
+    python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" && return
+    sleep 0.1
+  done
+  echo 1
+}
+
 script_span() {
-  sleep $STARTUP
+  until_painted 'ctrl-q quit'
   printf "%s" "${E}[<0;11;21M"
   for r in 18 15 12 9 6 4 2; do sleep 0.15; printf "%s" "${E}[<32;30;${r}M"; done
   # Parked above the pane, at its *left* edge: autoscroll pulls screens in, and the
@@ -133,8 +159,12 @@ script_span() {
   # made "the highlight fills the pane" quietly depend on the top row being that wide --
   # a short line there clamps the head to its end and highlights nothing, which is
   # correct behaviour failing an oracle that meant to ask something else.
+  # Released once the document's first line is at the top: there autoscroll has nothing left
+  # to pull in, so no tick can move the selection between the last frame and the copy. A
+  # release at a guessed time could land one tick past the last paint, copying a row the
+  # frame never showed (the runtime paints once per batch of events).
   printf "%s" "${E}[<32;1;1M"
-  sleep 2.5
+  until_painted 'ready. type a prompt'
   printf "%s" "${E}[<0;1;1m"
   sleep 0.6; printf '\021'; sleep 1
 }
@@ -250,32 +280,6 @@ script_columns() {
 # its reply, the rule, "second", and the thinking line while the slow stub (6s) answers it.
 MODAL_ROWS=24
 MODAL_COLS=120
-# Whether the screen painted so far holds $1, read off the capture while the app runs
-# (run_one's $out, $rows, $cols).
-painted() { python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" > /dev/null; }
-# Wait up to $2 seconds (default 30) until the screen holds $1, or (until_gone) no longer does.
-# A step that waits for what it acts on survives a slow machine; one that sleeps a guess does
-# not. On a timeout the script goes on, and the scenario's checks say what never happened.
-until_painted() {
-  local i
-  for i in $(seq $((${2:-30} * 10))); do painted "$1" && return; sleep 0.1; done
-}
-until_gone() {
-  local i
-  for i in $(seq $((${2:-30} * 10))); do painted "$1" || return; sleep 0.1; done
-}
-# The row of the screen painted so far that holds $1, waiting up to 5 s for it; 1, the
-# header, when it never appears, so the click misses and the scenario's checks say so. A
-# click aimed by text survives a line added above its target.
-row_of() {
-  local i
-  for i in $(seq 50); do
-    python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" && return
-    sleep 0.1
-  done
-  echo 1
-}
-
 # Each step waits for the screen the next one acts on: the engine open, the first turn
 # answered and settled before the second is asked, the dialog open before a key is typed
 # into it and closed before the click behind it, and the pinned turn painted before Escape
