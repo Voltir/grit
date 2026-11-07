@@ -137,40 +137,32 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         "state; or a new version of one kept already, its kind and state unchanged (only " +
         "project_move changes a state). Its body is markdown; a link to `artifact:<key>` cites " +
         "that artifact. Keeping one that exists, leave out parent or cites to keep them as " +
-        "they are; give cites as [] to clear them, or parent as \"\" to remove it. Refused, " +
-        "keeping nothing: for a parent or a cite the project lacks, naming the nearest keys it " +
-        f"has; and when the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
+        "they are; give cites as [] to clear them, or parent as \"\" to remove it; give " +
+        "version, as project_show shows it, to keep it only if no one has kept it since. " +
+        "Refused, keeping nothing: for a parent or a cite the project lacks, naming the " +
+        "nearest keys it has; for a version that is not the artifact's current one; and when " +
+        f"the brief of an artifact claimed in the project would pass ${DocRef.BriefChars}%,d " +
         "characters, naming the characters to cut.",
       Args
         .of(
           (
             key = Field.text("The artifact's key, `<project>/<artifact>`."),
-            kind = Field.text("Its kind, for a new artifact.").optional,
-            title = Field.text("Its title."),
-            body = Field.text("Its body, as markdown."),
-            parent = Field
-              .text("The key of its parent artifact, or \"\" for none; left as it is if omitted.")
-              .optional,
-            cites = Field
-              .texts(
-                "The keys of the artifacts it cites; left as they are if omitted.",
-                0,
-                DocRef.Most
-              )
-              .optional
+            project =
+              Field.text("The project's key; refused when it is not the key's own.").optional,
+            kind = Field.text(KeepMeaning.kind).optional,
+            title = Field.text(KeepMeaning.title),
+            body = Field.text(KeepMeaning.body),
+            parent = Field.text(KeepMeaning.parent).optional,
+            cites = Field.texts(KeepMeaning.cites, 0, DocRef.Most).optional,
+            version = Field.integer(KeepMeaning.version, 1, Long.MaxValue).optional
           )
         )
         .refine(a =>
           for {
             key <- parsed("key", a.key, ArtifactKey.read)
-            kind <- a.kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
-            parent <- a.parent.fold(Right(None)) { p =>
-              if (p.isEmpty) Right(Some(None))
-              else parsed("parent", p, ArtifactKey.read).map(k => Some(Some(k)))
-            }
-            cites <- a.cites
-              .fold(Right(None))(cs => each("cites", cs.toVector, ArtifactKey.read).map(Some(_)))
-          } yield Keeping(key, kind, a.title, a.body, parent, cites)
+            _ <- a.project.fold(Right(()))(p => inProject("project", key, p))
+            keeping <- Keeping.read(key, a.kind, a.title, a.body, a.parent, a.cites, a.version)
+          } yield keeping
         )
     )
     def run(
@@ -184,6 +176,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
         existing = project.documents.find(_._2.head.key == args.key)
+        _ <- unchanged(args.key, args.version, existing, project.artifacts)
         placed <- (existing, args.kind) match {
           case (Some((_, a)), Some(k)) if k != a.head.kind =>
             Left(
@@ -1143,7 +1136,8 @@ private[plugin] object ProjectCommands {
   final case class Starting(project: ProjectKey, method: Option[MethodName]) extends caps.Pure
 
   /** `project_keep`'s arguments; a `parent` or `cites` of `None` leaves an existing artifact's
-    * as it was (a new one's, none).
+    * as it was (a new one's, none); `version`, when given, is the one its writer read, and the
+    * keep is refused unless it is the artifact's current one.
     */
   final case class Keeping(
       key: ArtifactKey,
@@ -1151,8 +1145,64 @@ private[plugin] object ProjectCommands {
       title: String,
       body: String,
       parent: Option[Option[ArtifactKey]],
-      cites: Option[Vector[ArtifactKey]]
+      cites: Option[Vector[ArtifactKey]],
+      version: Option[DocumentVersionId]
   ) extends caps.Pure
+
+  object Keeping {
+
+    /** `project_keep`'s arguments for `key` as sent, or the argument error naming the field
+      * that does not read.
+      */
+    def read(
+        key: ArtifactKey,
+        kind: Option[String],
+        title: String,
+        body: String,
+        parent: Option[String],
+        cites: Option[List[String]],
+        version: Option[Long]
+    ): Either[ArgsError, Keeping] =
+      for {
+        kind <- kind.fold(Right(None))(k => parsed("kind", k, KindName.of).map(Some(_)))
+        parent <- parent.fold(Right(None)) { p =>
+          if (p.isEmpty) Right(Some(None))
+          else parsed("parent", p, ArtifactKey.read).map(k => Some(Some(k)))
+        }
+        cites <- cites
+          .fold(Right(None))(cs => each("cites", cs.toVector, ArtifactKey.read).map(Some(_)))
+        version <- version.fold(Right(None))(v =>
+          DocumentVersionId
+            .of(v)
+            .map(Some(_))
+            .toRight(ArgsError.Refused("version", "A version is at least 1."))
+        )
+      } yield Keeping(key, kind, title, body, parent, cites, version)
+  }
+
+  /** What `project_keep`'s fields mean, said once for it and for a batch's keeps. */
+  private object KeepMeaning {
+    val kind: String = "Its kind, for a new artifact."
+    val title: String = "Its title."
+    val body: String = "Its body, as markdown."
+    val parent: String =
+      "The key of its parent artifact, or \"\" for none; left as it is if omitted."
+    val cites: String = "The keys of the artifacts it cites; left as they are if omitted."
+    val version: String =
+      "The version it was read at, as project_show or project_history shows it; refused " +
+        "when the artifact has been kept since. Left out, it is kept whatever its version."
+  }
+
+  /** Nothing, or the argument error for `field` when `project` is not `key`'s project. */
+  private def inProject(field: String, key: ArtifactKey, project: String): Either[ArgsError, Unit] =
+    Either.cond(
+      ProjectKey.value(key.project) == project,
+      (),
+      ArgsError.Refused(
+        field,
+        s"The key ${key.value} is in project ${ProjectKey.value(key.project)}, not $project."
+      )
+    )
 
   /** `project_move`'s arguments. */
   final case class Moving(key: ArtifactKey, to: StateName) extends caps.Pure
@@ -1384,6 +1434,36 @@ private[plugin] object ProjectCommands {
       case Vector() => Right(())
       case refusals => Left(Stop.Refused(refusals.mkString("; ")))
     }
+  }
+
+  /** Nothing, or a refusal when `read`, the version a keep of `key` was read at, is not that of
+    * `current`, its document: the version it is at, and who kept it when; or when `key` is new,
+    * naming the nearest of `among`.
+    */
+  private def unchanged(
+      key: ArtifactKey,
+      read: Option[DocumentVersionId],
+      current: Option[(Document, Artifact)],
+      among: Vector[Artifact]
+  ): Either[Stop, Unit] = (read, current) match {
+    case (None, _) => Right(())
+    case (Some(_), None) =>
+      Left(
+        Stop.Refused(
+          s"${key.value} is new, so it has no version to give; leave out version" +
+            ArtifactKey.near(key, among.map(_.head.key))
+        )
+      )
+    case (Some(v), Some((d, _))) if d.version == v => Right(())
+    case (Some(v), Some((d, a))) =>
+      Left(
+        Stop.Refused(
+          s"${key.value} is at version ${DocumentVersionId.value(d.version)}, not " +
+            s"${DocumentVersionId.value(v)} as given: kept since" +
+            a.head.by.fold("")(b => s" by $b") +
+            s" at ${d.written}. Show it again and keep from what it holds now."
+        )
+      )
   }
 
   /** That `key`'s project has no artifact `key`, naming the nearest of `among`. */
