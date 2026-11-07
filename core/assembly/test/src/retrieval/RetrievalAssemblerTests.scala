@@ -1304,6 +1304,18 @@ object RetrievalAssemblerTests extends TestSuite {
       (ids(world, p.window), p.cost, writer.requests) ==>
         (Vector("t5:10", "t5:11"), Tokens(23), Vector.empty)
     }
+    test(
+      "a continuation's boundary draws its newest earlier turn without the note that turn began with"
+    ) {
+      // Turn 5 began with grit's note going on with the task; this turn's own note supersedes it.
+      val note = Payload.Continuation(TurnSeq.First, 5, grit.core.store.WentOn.AtLimit)
+      val turns =
+        (0 to 4).map(filler).toVector :+ Vector(note, Payload.Message(reply("answer05"))) :+ ask
+      val world = store(turns*)
+      val task = seqs(world, "t0:0").headOption
+      val p = projected(world, new Writer(Some("q000")), 1000, new Scripted(), task = task)
+      ids(world, p.window) ==> Vector("t5:11")
+    }
     test("a continuation is drawn at a boundary whatever is carried, recalling none of its turns") {
       // Turn 6's window is carried, with room to append turn 6 at turn 7.
       val world = store(((0 to 5).map(filler).toVector :+ ask :+ ask)*)
