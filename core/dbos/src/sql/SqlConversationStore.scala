@@ -185,6 +185,10 @@ private[dbos] object SqlConversationStore {
       ujson.Obj("kind" -> "tui", "directory" -> Directory.value(directory), "session" -> session)
     case Origin.Slack(team, channel, threadTs) =>
       ujson.Obj("kind" -> "slack", "team" -> team, "channel" -> channel, "threadTs" -> threadTs)
+    case Origin.Room(team, channel) =>
+      ujson.Obj("kind" -> "room", "team" -> team, "channel" -> channel)
+    case Origin.Thread(team, channel, threadTs) =>
+      ujson.Obj("kind" -> "thread", "team" -> team, "channel" -> channel, "threadTs" -> threadTs)
     case Origin.Task(name, run) =>
       ujson.Obj("kind" -> "task", "name" -> name, "run" -> run)
     case Origin.Direct(account, thread) =>
@@ -211,6 +215,13 @@ private[dbos] object SqlConversationStore {
             channel <- str(o, "channel")
             threadTs <- str(o, "threadTs")
           } yield Origin.Slack(team, channel, threadTs)
+        case "room" => str(o, "team").flatMap(t => str(o, "channel").map(Origin.Room(t, _)))
+        case "thread" =>
+          for {
+            team <- str(o, "team")
+            channel <- str(o, "channel")
+            threadTs <- str(o, "threadTs")
+          } yield Origin.Thread(team, channel, threadTs)
         case "task" => str(o, "name").flatMap(n => str(o, "run").map(Origin.Task(n, _)))
         case "direct" =>
           for {

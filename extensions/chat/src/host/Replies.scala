@@ -48,7 +48,7 @@ object Replies {
   }
 
   /** A closing entry as the transcript's divider says it: why its period closed (`resolved
-    * (0.86)`, its confidence to two places, `lapsed` or `unearned`), and its
+    * (0.86)`, its confidence to two places, `lapsed`, `unearned`, `ran` or `rolled`), and its
     * [[grit.core.period.Closing.headline]]. `None` for any other entry.
     */
   def closed(entry: Entry): Option[String] = entry.payload match {
@@ -61,6 +61,7 @@ object Replies {
         case CloseReason.Lapsed => "lapsed"
         case CloseReason.Unearned => "unearned"
         case CloseReason.Ran => "ran"
+        case CloseReason.Rolled => "rolled"
       }
       Some(s"$why · ${closing.headline}")
     case _ => None

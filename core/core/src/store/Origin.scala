@@ -14,8 +14,21 @@ enum Origin {
     */
   case Tui(directory: Directory, session: String)
 
-  /** A Slack thread, named by its root message's timestamp. */
+  /** A Slack thread recorded before rooms, named by its root message's timestamp, its root said
+    * at its channel's top level: replies to it still join it, and its root may have been
+    * stitched (ADR 0060).
+    */
   case Slack(team: String, channel: String, threadTs: String)
+
+  /** A Slack channel's top level: every message said there, heard, said to grit or posted by
+    * grit, each a turn of its own (ADR 0060).
+    */
+  case Room(team: String, channel: String)
+
+  /** A Slack thread under a message of its channel's top level ([[Room]]), named by that
+    * message's timestamp and begun by its first reply.
+    */
+  case Thread(team: String, channel: String, threadTs: String)
 
   /** One run of a triggered task, such as one schedule slot. */
   case Task(name: String, run: String)
@@ -30,13 +43,17 @@ enum Origin {
   case Direct(account: Account.Sourced, thread: String)
 
   /** Where its conversation happens: a TUI session's directory under `fs`; a Slack thread
-    * as `slack:{team}/{channel}/{thread}`; a task's run as `task:{name}/{run}`; a direct
-    * message's thread as `direct:{namespace}/{name}/{thread}`.
+    * as `slack:{team}/{channel}/{thread}`, a channel's top level as `slack:{team}/{channel}`; a
+    * task's run as `task:{name}/{run}`; a direct message's thread as
+    * `direct:{namespace}/{name}/{thread}`.
     */
   def place: Place = this match {
     case Tui(directory, _) => Place.of(directory)
     case Slack(team, channel, threadTs) =>
       Place.under(Namespace.Slack, Vector(team, channel, threadTs))
+    case Thread(team, channel, threadTs) =>
+      Place.under(Namespace.Slack, Vector(team, channel, threadTs))
+    case Room(team, channel) => Origin.channel(team, channel)
     case Task(name, run) => Place.under(Namespace.Task, Vector(name, run))
     case Direct(account, thread) => Origin.direct(account, Vector(thread))
   }
@@ -44,7 +61,7 @@ enum Origin {
   /** The edge its conversation's messages arrive through, and its turns' replies leave by. */
   def edge: EdgeName = this match {
     case Tui(_, _) => EdgeName.Tui
-    case Slack(_, _, _) => EdgeName.Slack
+    case Slack(_, _, _) | Room(_, _) | Thread(_, _, _) => EdgeName.Slack
     case Task(_, _) => EdgeName.Task
     case Direct(account, _) => EdgeName(Account.Sourced.namespace(account))
   }
@@ -54,34 +71,49 @@ enum Origin {
     */
   def audience: Audience = this match {
     case Tui(_, _) => Audience.Operator
-    case Slack(_, _, _) => Audience.Colleagues
+    case Slack(_, _, _) | Room(_, _) | Thread(_, _, _) => Audience.Colleagues
     case Task(_, _) => Audience.Nobody
     case Direct(_, _) => Audience.Person
   }
 
-  /** The focus of a message said `at` its position in its conversation: a Slack thread's
-    * opening is said at its channel's top level, so `Open`, and its replies `Focused`; every
-    * message of a TUI session, a task's run or a direct message `Focused`.
+  /** The focus of a message said `at` its position in its conversation: a legacy Slack
+    * thread's opening is said at its channel's top level, so `Open`, and its replies `Focused`;
+    * every message of a channel's top level `Open`; every message of a thread under it, a TUI
+    * session, a task's run or a direct message `Focused`.
     */
   def focus(at: Position): Focus = (this, at) match {
     case (Slack(_, _, _), Position.Opening) => Focus.Open
     case (Slack(_, _, _), Position.Reply) => Focus.Focused
-    case (Tui(_, _) | Task(_, _) | Direct(_, _), _) => Focus.Focused
+    case (Room(_, _), _) => Focus.Open
+    case (Thread(_, _, _) | Tui(_, _) | Task(_, _) | Direct(_, _), _) => Focus.Focused
   }
 
   /** Whether its conversation's first message may continue an exchange elsewhere in its room
-    * ([[grit.core.stitch.Stitching]]): when that message is said where topics interleave.
+    * ([[grit.core.stitch.Stitching]]): only a legacy [[Slack]] thread's.
     */
-  def stitchable: Boolean = focus(Position.Opening) == Focus.Open
+  def stitchable: Boolean = this match {
+    case Slack(_, _, _) => true
+    case Room(_, _) | Thread(_, _, _) | Tui(_, _) | Task(_, _) | Direct(_, _) => false
+  }
+
+  /** Whether its conversation's period rolls at a budget of what was said in it, rather than
+    * settling or lapsing (ADR 0060): only a channel's top level's.
+    */
+  def rolls: Boolean = this match {
+    case Room(_, _) => true
+    case Slack(_, _, _) | Thread(_, _, _) | Tui(_, _) | Task(_, _) | Direct(_, _) => false
+  }
 
   /** The place its conversation shares with its neighbours, within which it is stitched and
-    * its strand read: a TUI session's directory, a Slack thread's channel
-    * (`slack:{team}/{channel}`), a task's name (`task:{name}`), a direct message's person's
+    * its strand read: a TUI session's directory, a Slack channel (`slack:{team}/{channel}`) for
+    * its top level and each thread in it, a task's name (`task:{name}`), a direct message's person's
     * account (`direct:{namespace}/{name}`).
     */
   def room: Place = this match {
     case Tui(directory, _) => Place.of(directory)
     case Slack(team, channel, _) => Origin.channel(team, channel)
+    case Room(team, channel) => Origin.channel(team, channel)
+    case Thread(team, channel, _) => Origin.channel(team, channel)
     case Task(name, _) => Place.under(Namespace.Task, Vector(name))
     case Direct(account, _) => Origin.direct(account, Vector.empty)
   }
@@ -97,7 +129,8 @@ enum Origin {
   ): Either[StoreError, Option[Principal]] = this match {
     case Direct(account, _) => person(account)
     case Task(_, _) => Right(Some(Principal.Grit))
-    case Tui(_, _) | Slack(_, _, _) => Right(first.map(_.getOrElse(Principal.Grit)))
+    case Tui(_, _) | Slack(_, _, _) | Room(_, _) | Thread(_, _, _) =>
+      Right(first.map(_.getOrElse(Principal.Grit)))
   }
 
 }

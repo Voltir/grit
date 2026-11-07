@@ -92,7 +92,8 @@ private[dbos] final class Opener(visibility: Visibility) {
         named(id, None).flatMap(_.fold(Right(Clearance.of(Label.Public))) { n =>
           n.origin match {
             case Origin.Direct(_, _) => direct(n)
-            case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+            case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
+                Origin.Thread(_, _, _) | Origin.Task(_, _) =>
               Right(Clearance.inRoom(n.origin.room, n.label, n.label))
           }
         })
@@ -101,7 +102,8 @@ private[dbos] final class Opener(visibility: Visibility) {
           .flatMap(_.fold(Right(Clearance.of(Label.Public))) { n =>
             n.origin match {
               case Origin.Direct(_, _) => direct(n)
-              case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+              case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
+                  Origin.Thread(_, _, _) | Origin.Task(_, _) =>
                 Opener
                   .asker(n.origin, n.first)
                   .map(asker =>

@@ -24,9 +24,11 @@ import grit.core.period.{
   Closing,
   Judgement,
   LifecycleSettings,
+  Pace,
   Period,
   PeriodState,
   Probability,
+  Spoken,
   TestClosings,
   Verdict,
   Windows
@@ -73,6 +75,11 @@ abstract class PeriodContract extends TestSuite {
 
   /** The origin of [[conversation]]`(name)`. */
   protected def origin(name: String): Origin
+
+  /** A conversation of a channel's top level ([[Origin.Room]]), which rolls, the same one for
+    * the same `name`.
+    */
+  protected def room(name: String): ConversationId
 
   /** How many verdicts are kept on `period`, read past the store's own methods: no method
     * reads a closed period's.
@@ -135,6 +142,26 @@ abstract class PeriodContract extends TestSuite {
           None,
           next.seq,
           Payload.Message(Message.User("more")),
+          at(minute),
+          Integrity.Member
+        )
+      )
+    )
+  }
+
+  /** `payload` added to `turn` at `minute`. */
+  private def add(turn: TurnRef, minute: Long, payload: Payload): Unit = transaction {
+    val next = right(entries.lockNext(turn.conversationId))
+    val id = EntryId(s"${ConversationId.value(turn.conversationId)}:add:${next.seq}")
+    right(
+      entries.insert(
+        Entry(
+          id,
+          turn.conversationId,
+          turn.turnSeq,
+          None,
+          next.seq,
+          payload,
           at(minute),
           Integrity.Member
         )
@@ -247,6 +274,66 @@ abstract class PeriodContract extends TestSuite {
       transaction(entries.get(p1.closingId)) ==> Right(None)
     }
 
+    test(
+      "a room's open period rolls: opened when it was, each turn oldest first with the characters its people and grit said; a draft, a tool call and its result say nothing"
+    ) {
+      val r = room("rolls")
+      val t0 = say(r, 0)
+      add(t0, 1, Payload.Message(Message.said("hello there", "m")))
+      add(t0, 2, Payload.Draft(Message.said("not said", "m")))
+      add(t0, 2, Payload.Exchange(Message.said("calling", "m")))
+      add(
+        t0,
+        2,
+        Payload.Result(Message.ToolResult(grit.core.id.ToolCallId("c1"), "result", false), "r")
+      )
+      val t1 = say(r, 5)
+      add(t1, 6, Payload.Heard("tr🙂s"))
+      transaction(periods.activity(PeriodRef(r, PeriodSeq.First))).map(_.map(_.pace)) ==>
+        Right(
+          Some(
+            Pace.Rolls(
+              at(0),
+              Vector(Spoken(TurnSeq(0), at(0), 13), Spoken(TurnSeq(1), at(5), 6))
+            )
+          )
+        )
+    }
+
+    test(
+      "a room's period sealed before its newest turn closes at that turn; the turns after it are the next period's, opened when the first was said, from its closing"
+    ) {
+      val r = room("cut")
+      val t0 = say(r, 0)
+      val t1 = say(r, 5)
+      val t2 = say(r, 6)
+      val p1 = PeriodRef(r, PeriodSeq.First)
+      transaction(
+        right(
+          periods.seal(CloseRef(p1, t0.turnSeq, at(30)), CloseReason.Rolled, closing("cut"), at(30))
+        )
+      ) ==> Sealed.Closed(p1.closingId)
+      transaction(periods.get(p1)).map(_.map(p => closed(p.state).map(c => (c._1, c._3)))) ==>
+        Right(Some(Some((TurnSeq(0), CloseReason.Rolled))))
+      val p2 = Period(PeriodRef(r, first(2)), TurnSeq(1), at(5), PeriodState.Open)
+      transaction(periods.of(t1)) ==> Right(Some(p2))
+      transaction(periods.of(t2)) ==> Right(Some(p2))
+      transaction(periods.opening(t2)).map(o => (o.first, o.closing.map(_.entry.id))) ==>
+        Right((TurnSeq(1), Some(p1.closingId)))
+      // Sealed at its newest turn, it opens no next period: the next turn does.
+      transaction(
+        right(
+          periods.seal(
+            CloseRef(p2.ref, t2.turnSeq, at(40)),
+            CloseReason.Rolled,
+            closing("whole"),
+            at(40)
+          )
+        )
+      ) ==> Sealed.Closed(p2.ref.closingId)
+      transaction(periods.all(r)).map(_.map(_.ref.seq)) ==> Right(Vector(PeriodSeq.First, first(2)))
+    }
+
     test("a seal of a period already closed is abandoned, and writes nothing") {
       val c = conversation("sealed-twice")
       val t0 = say(c, 0)
@@ -323,11 +410,11 @@ abstract class PeriodContract extends TestSuite {
       ) ==> Right(
         Vector(
           OpenActivity(
-            Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None, 0),
+            Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None, 0, Pace.Settles),
             origin("activity-a")
           ),
           OpenActivity(
-            Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None, 0),
+            Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None, 0, Pace.Settles),
             origin("activity-quiet")
           )
         ).sortBy(x => ConversationId.value(x.activity.period.conversationId))

@@ -56,7 +56,9 @@ object Slot {
     */
   def of(origin: Origin): Option[Slot] = origin match {
     case Origin.Task(_, run) => read(run)
-    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Direct(_, _) => None
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+        Origin.Direct(_, _) =>
+      None
   }
 
   /** The opening source of a run at `version`, `v{version}`, and back. */

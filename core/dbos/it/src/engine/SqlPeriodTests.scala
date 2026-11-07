@@ -33,6 +33,9 @@ object SqlPeriodTests extends PeriodContract {
 
   protected def origin(name: String): Origin = Origin.Task("contract", name)
 
+  protected def room(name: String): ConversationId =
+    LiveDb.conversation(config, Origin.Room("contract", name)).id
+
   protected def verdictsOn(period: PeriodRef): Int =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)

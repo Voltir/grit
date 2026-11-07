@@ -137,8 +137,12 @@ object AlongTests extends TestSuite {
       val gone = w.thread(Origin.Slack("T", "C1", "3.0"))
       val goneFirst = w.say(gone, "lunch?", 80)
       w.follow(w.say(tui, "and the date?", 40), gone)
+      // So is a channel's top level, which is never stitched (ADR 0060).
+      val room = w.thread(Origin.Room("T", "C1"))
+      w.follow(w.say(room, "and the venue?", 41), gone)
       w.purge(gone, goneFirst)
       w.read(tui) ==> Strand.Read.empty
+      w.read(room) ==> Strand.Read.empty
     }
 
     test("a root whose first message is purged is gone, to be shown by its record") {

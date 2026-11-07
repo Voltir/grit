@@ -2,15 +2,26 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  PeriodRef,
+  PeriodSeq,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.period.{
   Activity,
   CloseOrdinal,
   CloseReason,
   Closing,
   LifecycleSettings,
+  Pace,
   Period,
   PeriodState,
+  Spoken,
   Verdict
 }
 import grit.core.visibility.Integrity
@@ -117,7 +128,18 @@ final class InMemoryPeriodStore(
     val latest = judged.zipWithIndex
       .maxByOption((v, i) => (v.at.getEpochSecond, v.at.getNano / 1000, i))
       .map(_._1)
-    Activity(p.ref, newest, last, latest, judged.size)
+    // As the SQL store reads it: each turn's first entry's time and what was said in it.
+    val pace =
+      if (!origin(p.ref.conversationId).rolls) Pace.Settles
+      else
+        Pace.Rolls(
+          p.openedAt,
+          own.map(_.turnSeq).distinct.sortBy(TurnSeq.value).map { t =>
+            val of = own.filter(_.turnSeq == t)
+            Spoken(t, of.map(_.createdAt).minBy(_.toEpochMilli), of.map(_.payload.spoken).sum)
+          }
+        )
+    Activity(p.ref, newest, last, latest, judged.size, pace)
   }
 
   def open()(using Tx^): Either[StoreError, Vector[OpenActivity]] =
@@ -137,7 +159,14 @@ final class InMemoryPeriodStore(
       case None => Right(Sealed.Abandoned)
       case Some(p) =>
         entries.lockNext(p.ref.conversationId).flatMap { next =>
-          if (next.turnSeq != attempt.last.next) Right(Sealed.Abandoned)
+          val rolls = origin(p.ref.conversationId).rolls
+          val after = everyEntryOf(p.ref.conversationId)
+            .filter(e => TurnSeq.value(e.turnSeq) > TurnSeq.value(attempt.last))
+          if (
+            if (rolls) TurnSeq.value(next.turnSeq) <= TurnSeq.value(attempt.last)
+            else next.turnSeq != attempt.last.next
+          )
+            Right(Sealed.Abandoned)
           else {
             val id = p.ref.closingId
             // What its writer was shown, as the SQL store meets it: the period's entries.
@@ -167,6 +196,15 @@ final class InMemoryPeriodStore(
                 val o = lastOrdinal.next
                 lastOrdinal = o
                 replace(p.copy(state = PeriodState.Closed(attempt.last, at, reason, id, o, None)))
+                // A rolled cut: the turns after it open the next period, when the first was said.
+                after.minByOption(e => EntrySeq.value(e.seq)).foreach { e =>
+                  periods = periods :+ Period(
+                    PeriodRef(p.ref.conversationId, p.ref.seq.next),
+                    e.turnSeq,
+                    e.createdAt,
+                    PeriodState.Open
+                  )
+                }
                 Sealed.Closed(id)
               }
           }
@@ -290,7 +328,13 @@ final class InMemoryLifecycleStore extends LifecycleStore {
     Right(stored.getOrElse(LifecycleSettings.Default))
 
   def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit] = {
-    stored = Some(settings)
+    // As the SQL store's row, which keeps no rolling: it reads back the default.
+    val s = settings
+    stored = Some(
+      LifecycleSettings
+        .of(s.windows, s.balance, s.settle, s.resolveAt, s.asks, s.weight)
+        .getOrElse(LifecycleSettings.Default)
+    )
     Right(())
   }
 }

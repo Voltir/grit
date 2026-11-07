@@ -164,7 +164,8 @@ object Run {
             slot <- Slot.of(c.origin).toRight("its conversation is no slot's")
             job <- c.origin match {
               case Origin.Task(name, _) => JobName.of(name)
-              case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Direct(_, _) =>
+              case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) |
+                  Origin.Thread(_, _, _) | Origin.Direct(_, _) =>
                 Left("its conversation is no task's")
             }
             opening <- entries.headOption.toRight("its turn has no opening")

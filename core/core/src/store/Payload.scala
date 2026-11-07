@@ -145,6 +145,21 @@ enum Payload {
     case Heard(text) => Some(text)
     case _ => None
   }
+
+  /** How many characters, as Unicode code points, were said in this entry, people's or grit's:
+    * a person's message or heard words, grit's reply (its text blocks, joined by a space) or
+    * post; 0 for any other entry, a draft, a tool call or its result among them.
+    */
+  def spoken: Long = this match {
+    case Message(grit.core.message.Message.User(text)) => Payload.codePoints(text)
+    case Message(grit.core.message.Message.Assistant(blocks, _, _, _, _)) =>
+      Payload.codePoints(
+        blocks.collect { case grit.core.message.AssistantBlock.Text(t) => t }.mkString(" ")
+      )
+    case Heard(text) => Payload.codePoints(text)
+    case Posted(text) => Payload.codePoints(text)
+    case _ => 0L
+  }
 }
 
 object Payload {
@@ -195,4 +210,6 @@ object Payload {
   }
 
   private val Attached = """\[file: [^\]]*\]""".r
+
+  private def codePoints(text: String): Long = text.codePointCount(0, text.length).toLong
 }

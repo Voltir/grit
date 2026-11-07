@@ -25,6 +25,31 @@ object OriginTests extends TestSuite {
     }
 
     test(
+      "a room is its channel's top level, every message open; a thread under it is at its root's place, focused; only a legacy thread is stitched, and only a room rolls"
+    ) {
+      val room = Origin.Room("T1", "C1")
+      val thread = Origin.Thread("T1", "C1", "1.0")
+      val legacy = Origin.Slack("T1", "C1", "1.0")
+      val origins = Vector(room, thread, legacy)
+      origins.map(o => (o.place.written, o.room.written)) ==> Vector(
+        ("slack:T1/C1", "slack:T1/C1"),
+        ("slack:T1/C1/1.0", "slack:T1/C1"),
+        ("slack:T1/C1/1.0", "slack:T1/C1")
+      )
+      origins.map(o => (o.focus(Position.Opening), o.focus(Position.Reply))) ==> Vector(
+        (Focus.Open, Focus.Open),
+        (Focus.Focused, Focus.Focused),
+        (Focus.Open, Focus.Focused)
+      )
+      origins.map(o => (o.stitchable, o.rolls)) ==> Vector(
+        (false, true),
+        (false, false),
+        (true, false)
+      )
+      origins.map(_.edge).distinct ==> Vector(EdgeName.Slack)
+    }
+
+    test(
       "a direct message's room is its account's under direct, its thread below it; its edge is its account's namespace's, its audience one person, and it is never stitched"
     ) {
       val dm = Origin.Direct(TestAccounts.sourced("slack:T/U"), "1712.3")

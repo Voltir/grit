@@ -42,13 +42,18 @@ trait PeriodStore {
     */
   def open()(using Tx^): Either[StoreError, Vector[OpenActivity]]
 
-  /** `period` as its deadline sees it; `None` when it is not open. */
+  /** `period` as its deadline sees it, rolling when its conversation rolls
+    * ([[Origin.rolls]]); `None` when it is not open.
+    */
   def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]]
 
   /** Closes `attempt.period` at `at` for `reason`, with `closing` recorded as its closing
     * entry after everything in the conversation, believed at the meet of the integrity of the
     * period's entries, what its writer was shown ([[grit.core.visibility.Integrity.Untrusted]]
-    * when it has none), if it is open and its newest turn is still `attempt.last`; `Abandoned` otherwise, with nothing written. It takes the next
+    * when it has none), if it is open and its newest turn is still `attempt.last`; `Abandoned` otherwise, with nothing written. A period of a
+    * conversation that rolls ([[Origin.rolls]]) is sealed at `attempt.last` whatever came in
+    * after, abandoned only when no such turn has begun: the turns after it open the next
+    * period, opened when the first of them was written, which opens from this closing. It takes the next
     * [[CloseOrdinal]], and no seal commits before one that took an earlier ordinal.
     */
   def seal(attempt: CloseRef, reason: CloseReason, closing: Closing, at: Instant)(using

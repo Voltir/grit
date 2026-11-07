@@ -29,15 +29,21 @@ object CaseId {
   def of(origin: Origin, entry: EntryId): Option[CaseId] = origin match {
     case Origin.Slack(_, channel, _) =>
       InboundId.source(entry).flatMap((_, source) => make(channel, SourceId.value(source)))
+    case Origin.Room(_, channel) =>
+      InboundId.source(entry).flatMap((_, source) => make(channel, SourceId.value(source)))
+    case Origin.Thread(_, channel, _) =>
+      InboundId.source(entry).flatMap((_, source) => make(channel, SourceId.value(source)))
     case Origin.Tui(_, _) | Origin.Task(_, _) | Origin.Direct(_, _) => None
   }
 
   /** The case of the message that began `origin`'s thread, the thread's root, whose ts names
-    * it; `None` when `origin` is not a Slack thread, or its channel or ts holds a `/`.
+    * it; `None` when `origin` is not a Slack thread (a channel's top level is none), or its
+    * channel or ts holds a `/`.
     */
   def opening(origin: Origin): Option[CaseId] = origin match {
     case Origin.Slack(_, channel, threadTs) => make(channel, threadTs)
-    case Origin.Tui(_, _) | Origin.Task(_, _) | Origin.Direct(_, _) => None
+    case Origin.Thread(_, channel, threadTs) => make(channel, threadTs)
+    case Origin.Room(_, _) | Origin.Tui(_, _) | Origin.Task(_, _) | Origin.Direct(_, _) => None
   }
 
   /** By their written forms. */

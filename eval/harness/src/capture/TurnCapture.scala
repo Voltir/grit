@@ -83,7 +83,8 @@ object TurnCapture {
     val mine = all.filter(_.turnSeq == turn.turnSeq).sortBy(e => EntrySeq.value(e.seq))
     val said: Option[(Entry, Said)] = mine.headOption.flatMap { first =>
       origin match {
-        case Origin.Slack(_, _, _) => CaseId.of(origin, first.id).map(id => first -> Said.Slack(id))
+        case Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) =>
+          CaseId.of(origin, first.id).map(id => first -> Said.Slack(id))
         case Origin.Tui(_, _) => Some(first -> Said.Tui(first.id))
         case Origin.Task(_, _) => Some(first -> Said.Task(first.id))
         // A direct message is its one person's: no case is made of it.

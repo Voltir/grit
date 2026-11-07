@@ -270,7 +270,9 @@ private[engine] final class Recorder(
         SqlRooms
           .label(d)
           .map(now => Option.when(!now.dominates(label))(InboxError.Sealed(d)))
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => Right(None)
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+          Origin.Task(_, _) =>
+        Right(None)
     }
 
   /** What `by`'s words are believed at as they enter grit, before their room's cap

@@ -24,6 +24,12 @@ enum CloseReason {
     */
   case Ran
 
+  /** The period of a conversation that rolls ([[grit.core.store.Origin.rolls]]) that reached
+    * its budget of what was said in it, or was open its most ([[Rolling]]): never asked whether
+    * anyone is waiting, and closed at the turn that reached it ([[Deadline.of]]).
+    */
+  case Rolled
+
   /** Whether its closing is shown outside its own conversation: to another conversation's
     * window, as a stitched exchange's record. False for the [[CloseReason.Unshown]] alone.
     */

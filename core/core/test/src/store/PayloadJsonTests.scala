@@ -519,6 +519,13 @@ object PayloadJsonTests extends TestSuite {
         """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       PayloadJson.read(PayloadJson.write(ran)) ==> Right(ran)
       PayloadJson.readReason("ran", Some(0.5)) ==> Left("a ran close has a confidence")
+      // A room's rolled close (ADR 0060).
+      val rolled = Payload.Closed(PeriodSeq.First, CloseReason.Rolled, closing)
+      PayloadJson.write(rolled).render() ==>
+        """{"kind":"closed","period":1,"reason":"rolled","closing":""" +
+        """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
+      PayloadJson.read(PayloadJson.write(rolled)) ==> Right(rolled)
+      PayloadJson.readReason("rolled", Some(0.5)) ==> Left("a rolled close has a confidence")
       PayloadJson.read(
         ujson.read("""{"kind":"closed","period":0,"reason":"lapsed","closing":{}}""")
       ) ==>

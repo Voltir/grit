@@ -846,6 +846,24 @@ object CloseTests extends TestSuite {
       )
     }
 
+    test(
+      "a room's period open its most closes Rolled at the turn begun by then, by its writer, whatever came after: the later turn opens the next period, from its closing"
+    ) {
+      val w = new World(Origin.Room("T1", "C1"))
+      val week = 7 * 24 * 60L
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      val later = w.say("and prod?", week + 1)
+      w.attempt ==> grit.core.id.CloseRef(p1, TurnSeq(0), at(week))
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(week + 2)))
+      ) ==> "closed: closing:c1:1"
+      w.closingEntry.map(e => (e.turnSeq, e.payload)) ==>
+        Some((TurnSeq(0), Payload.Closed(PeriodSeq.First, CloseReason.Rolled, closing)))
+      given grit.core.store.Tx = TestTx.fake
+      w.periods.opening(later).map(o => (o.first, o.balance)) ==>
+        Right((later.turnSeq, closing.balance))
+    }
+
     test("a close carries the balance its period opened with, the writer's lines added to it") {
       val w = new World
       w.turn("where do we deploy?", "staging", "Chose staging.", 0)

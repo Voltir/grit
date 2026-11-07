@@ -568,7 +568,9 @@ private[dbos] object SqlInbox {
   def undirected(origin: Origin, why: String): Either[InboxError, Unit] =
     origin match {
       case Origin.Direct(_, _) => Left(InboxError.Invalid(why))
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => Right(())
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+          Origin.Task(_, _) =>
+        Right(())
     }
 
   def unavailable(e: Throwable): InboxError.Unavailable =

@@ -200,12 +200,15 @@ object Digest {
   private def why(reason: CloseReason): Option[String] = reason match {
     case CloseReason.Resolved(_) => Some("resolved")
     case CloseReason.Lapsed => Some("lapsed")
+    case CloseReason.Rolled => Some("rolled")
     case CloseReason.Unearned | CloseReason.Ran => None
   }
 
   private def where(origin: Origin): String = origin match {
     case Origin.Tui(_, session) => s"tui $session"
     case Origin.Slack(_, channel, _) => s"slack #$channel"
+    case Origin.Room(_, channel) => s"slack #$channel"
+    case Origin.Thread(_, channel, _) => s"slack #$channel"
     case Origin.Task(name, _) => s"task $name"
     case Origin.Direct(_, _) => "a direct message"
   }

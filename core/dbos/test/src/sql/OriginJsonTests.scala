@@ -31,6 +31,21 @@ object OriginJsonTests extends TestSuite {
         )
     }
 
+    test("room") {
+      SqlConversationStore.originJson(Origin.Room("T1", "C1")) ==>
+        ujson.Obj("kind" -> "room", "team" -> "T1", "channel" -> "C1")
+    }
+
+    test("thread") {
+      SqlConversationStore.originJson(Origin.Thread("T1", "C1", "1700000000.000100")) ==>
+        ujson.Obj(
+          "kind" -> "thread",
+          "team" -> "T1",
+          "channel" -> "C1",
+          "threadTs" -> "1700000000.000100"
+        )
+    }
+
     test("task") {
       SqlConversationStore.originJson(Origin.Task("e2e", "2026-09-23")) ==>
         ujson.Obj("kind" -> "task", "name" -> "e2e", "run" -> "2026-09-23")
@@ -52,6 +67,8 @@ object OriginJsonTests extends TestSuite {
         Vector(
           Origin.Tui(home, "s1"),
           Origin.Slack("T1", "C1", "1.2"),
+          Origin.Room("T1", "C1"),
+          Origin.Thread("T1", "C1", "1.2"),
           Origin.Task("e2e", "r"),
           Origin.Direct(person, "1.2")
         )

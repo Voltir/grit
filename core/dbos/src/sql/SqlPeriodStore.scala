@@ -10,9 +10,11 @@ import grit.core.period.{
   CloseReason,
   Closing,
   Judgement,
+  Pace,
   Period,
   PeriodState,
   Probability,
+  Spoken,
   Verdict
 }
 import grit.core.store.{
@@ -137,7 +139,7 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   ): Either[StoreError, Vector[OpenActivity]] =
     cleared(
       s"""WITH ${SqlClearance.With}
-         |SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
+         |SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked, p.opened_at, s.spoken,
          |       v.at, v.last_turn, v.nobody, v.waiting_person, v.waiting_other,
          |       v.model, v.unanswered, c.origin::text AS origin
          |  FROM grit.periods p
@@ -148,6 +150,22 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
          |          coalesce(max(e.turn_seq), p.first_turn) AS last
          |     FROM grit.entries e
          |    WHERE e.conversation_id = p.conversation_id AND e.turn_seq >= p.first_turn) a
+         |  -- Each turn of a room's period (Origin.rolls), as `turn,micros,chars;...`: its first
+         |  -- entry's time and what was said in it (Payload.spoken: search_text is its words).
+         | CROSS JOIN LATERAL (
+         |   SELECT string_agg(t.turn_seq || ',' || t.micros || ',' || t.chars, ';' ORDER BY t.turn_seq)
+         |            AS spoken
+         |     FROM (SELECT e.turn_seq,
+         |                  (extract(epoch FROM min(e.created_at)) * 1000000)::bigint AS micros,
+         |                  coalesce(sum(length(e.search_text)) FILTER (
+         |                    WHERE e.payload ->> 'kind' IN ('heard', 'posted')
+         |                       OR (e.payload ->> 'kind' = 'message'
+         |                           AND e.payload #>> '{message,role}' IN ('user', 'assistant'))), 0)
+         |                    AS chars
+         |             FROM grit.entries e
+         |            WHERE c.origin ->> 'kind' = 'room'
+         |              AND e.conversation_id = p.conversation_id AND e.turn_seq >= p.first_turn
+         |            GROUP BY e.turn_seq) t) s
          | CROSS JOIN LATERAL (
          |   SELECT count(*) AS asked FROM grit.verdicts
          |    WHERE conversation_id = p.conversation_id AND seq = p.seq) n
@@ -157,16 +175,28 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
          |    ORDER BY at DESC, ordinal DESC LIMIT 1) v ON true
          | WHERE p.closed_at IS NULL AND $where""".stripMargin
     )(bind) { rs =>
-      val activity = Activity(
-        ref(rs),
-        instant(rs, "newest"),
-        TurnSeq(rs.getLong("last")),
-        verdictOf(rs),
-        rs.getInt("asked")
-      )
+      val opened = instant(rs, "opened_at")
+      val spoken = Option(rs.getString("spoken"))
       SqlConversationStore
         .readOrigin(ujson.read(rs.getString("origin")))
-        .map(OpenActivity(activity, _))
+        .flatMap { origin =>
+          val pace =
+            if (!origin.rolls) Right(Pace.Settles)
+            else spokenOf(spoken).map(Pace.Rolls(opened, _))
+          pace.map(p =>
+            OpenActivity(
+              Activity(
+                ref(rs),
+                instant(rs, "newest"),
+                TurnSeq(rs.getLong("last")),
+                verdictOf(rs),
+                rs.getInt("asked"),
+                p
+              ),
+              origin
+            )
+          )
+        }
     }.flatMap(rows =>
       rows.foldLeft[Either[StoreError, Vector[OpenActivity]]](Right(Vector.empty)) { (acc, row) =>
         acc.flatMap(done => row.left.map(StoreError.Invalid(_)).map(done :+ _))
@@ -180,8 +210,13 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
     for {
       next <- entries.lockNext(period.conversationId)
       open <- activity(period)
+      rolls = open.exists(_.pace != Pace.Settles)
       outcome <-
-        if (open.isEmpty || next.turnSeq != attempt.last.next) Right(Sealed.Abandoned)
+        if (
+          open.isEmpty ||
+          (if (rolls) TurnSeq.value(next.turnSeq) <= TurnSeq.value(attempt.last)
+           else next.turnSeq != attempt.last.next)
+        ) Right(Sealed.Abandoned)
         else
           for {
             // Held to commit: a seal that takes an ordinal commits before the next one takes
@@ -234,6 +269,21 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
               ps.setString(6, ConversationId.value(period.conversationId))
               ps.setLong(7, PeriodSeq.value(period.seq))
             }
+            // A rolled cut: the turns after it open the next period, when the first was said.
+            _ <-
+              if (!rolls) Right(0)
+              else
+                update(
+                  """INSERT INTO grit.periods (conversation_id, seq, first_turn, opened_at)
+                    |SELECT e.conversation_id, ?, e.turn_seq, e.created_at
+                    |  FROM grit.entries e
+                    | WHERE e.conversation_id = ?::uuid AND e.turn_seq > ?
+                    | ORDER BY e.seq LIMIT 1""".stripMargin
+                ) { ps =>
+                  ps.setLong(1, PeriodSeq.value(period.seq.next))
+                  ps.setString(2, ConversationId.value(period.conversationId))
+                  ps.setLong(3, TurnSeq.value(attempt.last))
+                }
           } yield Sealed.Closed(period.closingId)
     } yield outcome
   }
@@ -501,6 +551,32 @@ private object SqlPeriodStore {
           case _ => Judgement.Unanswered(Option(rs.getString("unanswered")).getOrElse(""))
         }
       Verdict(at, TurnSeq(rs.getLong("last_turn")), judgement)
+    }
+
+  /** The turns [[activities]] reads of a room's period, from its `turn,micros,chars;...` form;
+    * none when it has no entries.
+    */
+  private def spokenOf(written: Option[String]): Either[String, Vector[Spoken]] =
+    written.filter(_.nonEmpty).fold[Either[String, Vector[Spoken]]](Right(Vector.empty)) { w =>
+      w.split(';').toVector.foldLeft[Either[String, Vector[Spoken]]](Right(Vector.empty)) {
+        (acc, one) =>
+          acc.flatMap { done =>
+            one.split(',').toVector.flatMap(_.toLongOption) match {
+              case Vector(turn, micros, chars) =>
+                Right(
+                  done :+ Spoken(
+                    TurnSeq(turn),
+                    Instant.ofEpochSecond(
+                      Math.floorDiv(micros, 1000000L),
+                      Math.floorMod(micros, 1000000L) * 1000L
+                    ),
+                    chars
+                  )
+                )
+              case _ => Left(s"unreadable turn of a rolling period: $one")
+            }
+          }
+      }
     }
 
   private def ordinalOf(rs: ResultSet): CloseOrdinal =

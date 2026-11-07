@@ -15,7 +15,11 @@ object InMemoryPeriodTests extends PeriodContract {
   private val fake =
     new InMemoryPeriodStore(
       store,
-      c => Origin.Task("contract", ConversationId.value(c)),
+      c => {
+        val name = ConversationId.value(c)
+        if (name.startsWith("room:")) Origin.Room("contract", name.drop(5))
+        else Origin.Task("contract", name)
+      },
       edges,
       delivering,
       acknowledging
@@ -31,6 +35,8 @@ object InMemoryPeriodTests extends PeriodContract {
   protected def conversation(name: String): ConversationId = ConversationId(name)
 
   protected def origin(name: String): Origin = Origin.Task("contract", name)
+
+  protected def room(name: String): ConversationId = ConversationId(s"room:$name")
 
   protected def verdictsOn(period: PeriodRef): Int = fake.verdictsOn(period)
 }

@@ -13,6 +13,8 @@ trait LifecycleStore {
     */
   def current()(using Tx^): Either[StoreError, LifecycleSettings]
 
-  /** Replaces the settings in force with `settings`. */
+  /** Replaces the settings in force with `settings`, all but its `rolling`, which is not kept:
+    * [[current]] reads [[grit.core.period.Rolling.Default]].
+    */
   def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit]
 }

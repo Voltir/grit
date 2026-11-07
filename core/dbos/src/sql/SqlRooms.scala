@@ -20,7 +20,8 @@ private[dbos] object SqlRooms {
           _ <- SqlIdentities.enroll(Set(account))
           asker <- Opener.asker(origin, None)
         } yield asker.fold(Label.Public)(Tx.clearanceOf)
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+          Origin.Task(_, _) =>
         Right(Tx.roomLabel(origin.room))
     }
 }

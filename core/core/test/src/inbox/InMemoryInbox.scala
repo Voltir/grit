@@ -185,7 +185,8 @@ final class InMemoryInbox(
   private def labelOf(origin: Origin): Label = origin match {
     case Origin.Direct(account, _) =>
       Tx.clearanceOf(person(account))(using inForce)
-    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+        Origin.Task(_, _) =>
       Tx.roomLabel(origin.room)(using inForce)
   }
 
@@ -329,7 +330,9 @@ final class InMemoryInbox(
   ): Option[InboxError] = origin match {
     case d @ Origin.Direct(_, _) =>
       known.filter(c => !labelOf(origin).dominates(c.label)).map(_ => InboxError.Sealed(d))
-    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) => None
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) |
+        Origin.Task(_, _) =>
+      None
   }
 
   def overCap(): Either[InboxError, Option[InboxError.OverCap]] =

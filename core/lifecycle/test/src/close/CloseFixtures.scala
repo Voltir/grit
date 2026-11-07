@@ -268,7 +268,7 @@ object CloseFixtures {
     locally {
       val _ = conversations.findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
     }
-    val periods = new InMemoryPeriodStore(entries)
+    val periods = new InMemoryPeriodStore(entries, _ => origin)
     val lifecycle = new InMemoryLifecycleStore
     val principals = new InMemoryPrincipals
     val ledger = new InMemoryUsageLedger

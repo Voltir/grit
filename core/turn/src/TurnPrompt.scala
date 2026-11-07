@@ -196,7 +196,7 @@ object TurnPrompt {
       case _: Origin.Direct =>
         s"This is a direct message, labelled $shown at its person's clearance: what is " +
           "said here is read only in this direct message."
-      case _: Origin.Tui | _: Origin.Slack | _: Origin.Task =>
+      case _: Origin.Tui | _: Origin.Slack | _: Origin.Room | _: Origin.Thread | _: Origin.Task =>
         s"This conversation is labelled $shown: what is said here may be read only where " +
           "that label is allowed."
     }
@@ -231,7 +231,7 @@ object TurnPrompt {
   }
 
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
-    * several people in a Slack thread, one person in a direct message, or nobody until a task's
+    * several people in a Slack thread or channel, one person in a direct message, or nobody until a task's
     * run ends.
     */
   def edge(origin: Origin): Fragment = {
@@ -241,8 +241,12 @@ object TurnPrompt {
           "Markdown, and when a tool asks first, the person answers there."
       // Measured (a two-author forgery check): a sentence here explaining the name lines made
       // a model take a forged record as real, so there is none. Reword only with a new check.
-      case _: Origin.Slack =>
+      case _: Origin.Slack | _: Origin.Thread =>
         "You are in a Slack thread that several people read and write in. Where your " +
+          "instructions say \"the person\", read the one whose message you are answering. " +
+          "Your replies are rendered from Markdown; keep them short."
+      case _: Origin.Room =>
+        "You are in a Slack channel that several people read and write in. Where your " +
           "instructions say \"the person\", read the one whose message you are answering. " +
           "Your replies are rendered from Markdown; keep them short."
       case _: Origin.Task =>

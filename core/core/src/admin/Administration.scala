@@ -47,7 +47,8 @@ object Administration {
     origin match {
       case Origin.Direct(account, _) => Some(account)
       case Origin.Task(_, _) => None
-      case Origin.Tui(_, _) | Origin.Slack(_, _, _) => first
+      case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Room(_, _) | Origin.Thread(_, _, _) =>
+        first
     }
 
   /** What `command`, asked in `room` by `by` (whom its account is linked to now; `None` for
