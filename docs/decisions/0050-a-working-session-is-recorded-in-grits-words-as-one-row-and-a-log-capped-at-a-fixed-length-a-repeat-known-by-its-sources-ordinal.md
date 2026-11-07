@@ -1,6 +1,6 @@
 # 0050. A working session is recorded in grit's words as one row and a log capped at a fixed length, a repeat known by its source's ordinal
 
-Status: accepted (2026-10-28); revised (2026-10-29, 2026-11-01)
+Status: accepted (2026-10-28); revised (2026-11-01)
 
 Context: grit keeps a record of each working session, a grit turn's or a harness's beside it,
 so that later work (compacting a session's context from the store, coordinating sessions) can

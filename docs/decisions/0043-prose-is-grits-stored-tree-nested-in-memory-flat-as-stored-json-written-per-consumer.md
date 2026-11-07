@@ -1,6 +1,6 @@
 # 0043. Prose is grit's stored tree: nested in memory, flat as stored JSON, written per consumer
 
-Status: accepted (2026-10-22), revised (2026-11-06)
+Status: accepted (2026-10-22); revised (2026-11-06)
 
 Context: `grit.prose` began as a reply's structure, markdown in and blocks out for each edge to
 draw. Files, pieces of them and topics now need one form for text grit keeps: a reader turns a
@@ -33,13 +33,13 @@ Decision:
   rebuilds the nesting, and refuses another version, naming it. A keeper's own data that holds
   prose versions itself and stores each doc this way; it never keeps a codec of its own.
 - **Written per consumer.** `Renderer[Out]` is the one writer trait: the terminal's
-  `ProseLook`; Slack's `RichText`. The model's markdown is `Markdown.write`, total over any
-  doc, written for a reader, not to be parsed back (nothing does but a test): each span's
-  text whole and bare (`[Assignment: …]`, `a_b`, `*`), escaping only what would start a block
-  (a line's leading marker, `#` in a heading, `|` in a cell); `Markdown.parse` reads back
-  exactly a doc it made with no inline marker in its text. It becomes a
-  `Renderer` value with its first caller that takes one, as an index's writer will. A
-  renderer is a function of the doc and what it was built with.
+  `ProseLook`; Slack's `RichText`; an index's `IndexText`. The model's markdown is
+  `Markdown.write`, total over any doc, written for a reader: each span's text whole and bare
+  (`[Assignment: …]`, `a_b`, `*`), escaping only what would start a block (a line's leading
+  marker, `#` in a heading, `|` in a cell). `Markdown.writeExact` writes the same but escapes
+  inline markers, and is what `Markdown.parse` reads back (an artifact's body). `write` becomes
+  a `Renderer` value with its first caller that takes one. A renderer is a function of the doc
+  and what it was built with.
 - **What is rendered at keep time stays so.** A document's `body` is its text as the model
   sees it, written when it is kept, since search ranks that text; its tree, when it has one,
   is in its data.

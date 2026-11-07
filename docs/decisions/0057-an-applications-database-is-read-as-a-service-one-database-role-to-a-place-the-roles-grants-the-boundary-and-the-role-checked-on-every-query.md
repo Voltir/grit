@@ -1,6 +1,6 @@
 # 0057. An application's database is read as a service, one database role to a place: the role's grants are the boundary, and the role is checked on every query
 
-Status: accepted (2026-11-04)
+Status: accepted (2026-11-04); revised (2026-11-06)
 
 Context: a deployment's people ask questions an application's own database answers ("the
 latest leads, and why two got no offers"). Answering them needs general SQL, not a few fixed
@@ -37,7 +37,7 @@ Decision:
   statement that changes the role.
 - **Two tools per database**, named for its service: one lists the tables, views and columns
   the role may read, with their types, comments and foreign keys; one runs a statement and
-  answers a text table. A failure reaches the model as a sentence with the server's primary
+  answers a markdown table. A failure reaches the model as a sentence with the server's primary
   message, which general SQL needs to correct itself (`column "x" does not exist`); its code,
   detail and hint (where row values are quoted), and the driver's exception, go to the
   operator's log only.

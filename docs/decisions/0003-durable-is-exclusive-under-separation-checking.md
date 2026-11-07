@@ -1,6 +1,6 @@
 # 0003. `Durable` is an exclusive capability, and separation checking enforces it
 
-Status: accepted (2026-09-23)
+Status: accepted (2026-09-23); revised (2026-10-31)
 
 Context: durable operations run through a `Durable` capability in `grit.core` (a step,
 `transact`, `recv`). A step's body must not use the `Durable` it runs on: a nested step

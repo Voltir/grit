@@ -1,6 +1,6 @@
 # 0055. In an allowlisted tool set the deployment's declared command list stands in for a person's approval, and bounds what `run` starts, not what runs
 
-Status: accepted (2026-11-02); revised (2026-11-02)
+Status: accepted (2026-11-02); revised (2026-11-06)
 
 Context: ADR 0017 has a person approve each `write`, `edit` and `run` before it runs, and a
 deployment with no one to answer (a run with arguments, `grit serve`) offers only the tools that
