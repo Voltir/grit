@@ -451,11 +451,10 @@ object MovesJournal {
       applied: PolicyApplication,
       rewrite: DocText,
       attempt: Declassified.Attempt
-  ): Boolean = recorded match {
-    case s"v3:$_" =>
-      Framings.exists(f => recorded == checkUnder(f, source, revision, applied, rewrite, attempt))
-    case _ => false
-  }
+  ): Boolean =
+    Framings.exists(f =>
+      sameScreening(recorded, checkUnder(f, source, revision, applied, rewrite, attempt))
+    )
 
   /** As [[sameScreening]], for the screen [[baseline]] digests, under any of [[Framings]]. */
   def sameBaseline(
@@ -463,10 +462,8 @@ object MovesJournal {
       source: DocumentVersionId,
       revision: String,
       applied: PolicyApplication
-  ): Boolean = recorded match {
-    case s"v3:$_" => Framings.exists(f => recorded == baselineUnder(f, source, revision, applied))
-    case _ => false
-  }
+  ): Boolean =
+    Framings.exists(f => sameScreening(recorded, baselineUnder(f, source, revision, applied)))
 
   /** As [[sameAsk]], for a rewrite, under any of [[Framings]]: a v1 digest compared under v1's
     * form, which names no revision.
