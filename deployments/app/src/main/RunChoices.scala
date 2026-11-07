@@ -23,10 +23,6 @@ private[main] object RunChoices {
 
   private[main] val AssemblerVar = "GRIT_ASSEMBLER"
 
-  /** The milliseconds in `variable`, or 0 when it is unset. */
-  private[main] def millis(env: Map[String, String], variable: String): Either[String, Long] =
-    whole(env, variable, 0L)
-
   /** The token count in `variable`, or `default` when it is unset. */
   private[main] def tokens(
       env: Map[String, String],
@@ -38,7 +34,7 @@ private[main] object RunChoices {
   /** The non-negative whole number in `variable`, or `default` when it is unset; `Left` naming
     * `variable` for any other text.
     */
-  private def whole(
+  private[main] def whole(
       env: Map[String, String],
       variable: String,
       default: Long

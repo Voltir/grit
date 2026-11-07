@@ -26,11 +26,11 @@ object CountChoiceTests extends TestSuite {
       )
     }
 
-    test("milliseconds: unset is 0; a non-negative whole number, or an error") {
+    test("a whole number: unset is its default; a non-negative whole number, or an error") {
       (
-        RunChoices.millis(Map.empty, "GRIT_STUB_DELAY_MS"),
-        RunChoices.millis(Map("GRIT_STUB_DELAY_MS" -> "250"), "GRIT_STUB_DELAY_MS"),
-        RunChoices.millis(Map("GRIT_STUB_DELAY_MS" -> "soon"), "GRIT_STUB_DELAY_MS")
+        RunChoices.whole(Map.empty, "GRIT_STUB_DELAY_MS", 0L),
+        RunChoices.whole(Map("GRIT_STUB_DELAY_MS" -> "250"), "GRIT_STUB_DELAY_MS", 0L),
+        RunChoices.whole(Map("GRIT_STUB_DELAY_MS" -> "soon"), "GRIT_STUB_DELAY_MS", 0L)
       ) ==> (Right(0L), Right(250L), Left("GRIT_STUB_DELAY_MS is not a non-negative whole number"))
     }
   }

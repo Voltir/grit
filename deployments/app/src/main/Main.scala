@@ -283,7 +283,7 @@ object Main {
     val prefsFile = PrefsEnv.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
-    val stubDelay = exitOnLeft(millis(env, StubDelayVar))
+    val stubDelay = exitOnLeft(whole(env, StubDelayVar, 0L))
     val modelName = secrets.keys.fold(StubProvider.Model)(_ =>
       ModelId.value(deployment.policy.turn.first.assignment.ref.model)
     )
