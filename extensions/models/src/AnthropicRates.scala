@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.{Cost, Tokens, Usage}
 
 /** What Anthropic bills for a call, from the rates its pricing page published on 2026-10-29
   * (USD per million tokens). Pure.
@@ -58,6 +58,28 @@ object AnthropicRates {
     */
   def oneCard(model: String, totalPrompt: Long): Boolean =
     card(model, 0L).exists(c => card(model, totalPrompt).contains(c))
+
+  /** What the thinking of `calls`, each a model's id and its usage, cost together: each call's at
+    * [[thinking]]; at least the priced ones' (`≥ 0` for none) where a call's model has no rates
+    * or its thinking is not reported.
+    */
+  def thinkingCost(calls: Iterable[(String, Usage)]): Cost =
+    calls.foldLeft(Cost.Zero) { case (sum, (model, usage)) =>
+      sum + thinking(model, usage).fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
+    }
+
+  /** What the thinking of calls on `model` whose usage together is `total` cost, when only the
+    * total is known: at the card the shortest prompt takes, exact when every set of prompts of
+    * that total takes one card ([[oneCard]]), else at least that; `≥ 0` for a model with no rates
+    * or no thinking reported. Where exact it is [[thinkingCost]] of the calls; elsewhere below it.
+    */
+  def thinkingCostOfTotal(model: String, total: Usage): Cost =
+    // A sum's input is no call's prompt, which is what picks a card: a sum past the bound may
+    // hold only calls under it.
+    thinkingCost(Vector(model -> total.copy(input = Tokens.Zero))) match {
+      case Cost.Exact(usd) if !oneCard(model, Tokens.value(total.input)) => Cost.AtLeast(usd)
+      case cost => cost
+    }
 
   private def card(model: String, prompt: Long): Option[Card] = {
     def is(id: String) = AnthropicJson.isOrSnapshotOf(model, id)

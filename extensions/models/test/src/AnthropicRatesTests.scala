@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.{Cost, Tokens, Usage}
 
 import utest.*
 
@@ -25,6 +25,45 @@ object AnthropicRatesTests extends TestSuite {
         AnthropicRates.thinking("claude-haiku-5-5", thought(10000, None)),
         AnthropicRates.thinking("gpt-oss", thought(10000, Some(400)))
       ) ==> (Some(BigDecimal("0.0002")), Some(BigDecimal("0.001")), None, None)
+    }
+
+    test(
+      "calls' thinking costs each call at its own model's card, and at least the priced ones' where a call is unpriced"
+    ) {
+      def thought(input: Long, t: Option[Long]) =
+        usage(input, 0, 0, 1000).copy(thinking = t.map(Tokens(_)))
+      // 400 at $0.50 (short) + 400 at $2.50 (long) + 100 at Opus's $20.
+      val priced = Vector(
+        "claude-haiku-5-5" -> thought(10000, Some(400)),
+        "claude-haiku-5-5" -> thought(120000, Some(400)),
+        "claude-opus-5-5" -> thought(10000, Some(100))
+      )
+      (
+        AnthropicRates.thinkingCost(priced),
+        AnthropicRates.thinkingCost(priced :+ ("gpt-oss" -> thought(10000, Some(400)))),
+        AnthropicRates.thinkingCost(Vector.empty)
+      ) ==> (
+        Cost.Exact(BigDecimal("0.0032")),
+        Cost.AtLeast(BigDecimal("0.0032")),
+        Cost.Exact(BigDecimal(0))
+      )
+    }
+
+    test(
+      "a total's thinking is exact at the short card while one card holds, and at least that past the bound"
+    ) {
+      def total(input: Long) = usage(input, 0, 0, 1000).copy(thinking = Some(Tokens(400)))
+      (
+        AnthropicRates.thinkingCostOfTotal("claude-haiku-5-5", total(90000)),
+        AnthropicRates.thinkingCostOfTotal("claude-haiku-5-5", total(450000)),
+        AnthropicRates.thinkingCostOfTotal("claude-opus-5-5", total(450000)),
+        AnthropicRates.thinkingCostOfTotal("gpt-oss", total(90000))
+      ) ==> (
+        Cost.Exact(BigDecimal("0.0002")),
+        Cost.AtLeast(BigDecimal("0.0002")),
+        Cost.Exact(BigDecimal("0.008")),
+        Cost.AtLeast(BigDecimal(0))
+      )
     }
 
     test(

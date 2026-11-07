@@ -66,21 +66,12 @@ object PerPass {
     }
   }
 
-  /** What `t`'s thinking cost at [[AnthropicRates.thinking]], by the trial's model's Anthropic id
-    * ([[Caps.anthropicId]]): at the card a short prompt takes, and at least that when its calls'
-    * inputs together pass a card's bound; `≥ 0` where its model has no rates.
+  /** What `t`'s thinking cost by its summed usage, its calls' not kept
+    * ([[AnthropicRates.thinkingCostOfTotal]]), by the trial's model's Anthropic id
+    * ([[Caps.anthropicId]]).
     */
-  private def thinkingCost(t: TrialRows.Trial): Cost = {
-    val model = Caps.anthropicId(t.model)
-    // A trial keeps its calls' usage summed, and a sum's input is no call's prompt, which is what
-    // picks a card: a sum past the bound may hold only calls under it.
-    AnthropicRates
-      .thinking(model, t.usage.copy(input = Tokens.Zero))
-      .fold(Cost.AtLeast(BigDecimal(0))) { usd =>
-        if (AnthropicRates.oneCard(model, Tokens.value(t.usage.input))) Cost.Exact(usd)
-        else Cost.AtLeast(usd)
-      }
-  }
+  private def thinkingCost(t: TrialRows.Trial): Cost =
+    AnthropicRates.thinkingCostOfTotal(Caps.anthropicId(t.model), t.usage)
 
   /** What a person reads of [[groups]] over `trials`: a column header line, then a line a group,
     * its columns aligned under the header.

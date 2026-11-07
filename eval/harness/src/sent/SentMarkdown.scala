@@ -365,17 +365,18 @@ object SentMarkdown {
   private[sent] def cacheOf(measured: Vector[MeasuredCall]): Option[String] = {
     val rows = measured.flatMap(_.row)
     Option.when(rows.nonEmpty)(
-      s"${percent1(read(rows), input(rows))} hit; misses cost " +
+      s"${readShare(Usage.total(rows.map(_.usage)))} hit; misses cost " +
         s"${missedCost(measured).inCents} of ${Cost.total(rows.map(_.usage)).inCents}"
     )
   }
 
-  private def read(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.cacheRead)).sum
-  private def input(rows: Vector[Spent]): Long = rows.map(r => Tokens.value(r.usage.input)).sum
-
-  private[sent] def percent1(part: Long, whole: Long): String =
-    if (whole <= 0) "0%"
-    else s"${(BigDecimal(part) * 100 / whole).setScale(1, BigDecimal.RoundingMode.HALF_UP)}%"
+  /** Of `u`'s input, the share read from the cache ([[Usage.cacheShare]]), a percentage to one
+    * place, a half rounded up; `0%` with no input.
+    */
+  private[sent] def readShare(u: Usage): String =
+    u.cacheShare.fold("0%")(s =>
+      s"${(BigDecimal(s) * 100).setScale(1, BigDecimal.RoundingMode.HALF_UP)}%"
+    )
 
   private def percent0(part: Tokens, whole: Tokens): String =
     if (Tokens.value(whole) <= 0) "0%"
@@ -410,7 +411,7 @@ object SentMarkdown {
   /** A call's cache, its cache misses, cache breaks and new tokens, as one line; `None` with no row. */
   private def cacheLine(m: MeasuredCall): Option[String] = m.row.map { r =>
     val u = r.usage
-    val share = percent1(Tokens.value(u.cacheRead), Tokens.value(u.input))
+    val share = readShare(u)
     val missed = m.missed.fold(s"cache misses unpriced (no published rates for `${r.model}`)")(c =>
       s"cache misses cost ${Cost.cents(c)}"
     )
@@ -426,8 +427,6 @@ object SentMarkdown {
     */
   private def thinkingLine(measured: Vector[MeasuredCall]): String = {
     val calls = measured.zipWithIndex.flatMap((m, i) => m.row.map(r => (callName(measured, i), r)))
-    def priced(r: Spent): Cost =
-      AnthropicRates.thinking(r.model, r.usage).fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
     val each = calls
       .map((name, r) =>
         r.usage.thinking.fold(s"$name not reported")(t =>
@@ -438,7 +437,7 @@ object SentMarkdown {
     val total = Usage.total(calls.map(_._2.usage))
     total.thinking match {
       case Some(t) =>
-        val cost = calls.map((_, r) => priced(r)).foldLeft(Cost.Zero)(_ + _)
+        val cost = AnthropicRates.thinkingCost(calls.map((_, r) => r.model -> r.usage))
         s"- Thinking: ${Tokens.value(t)} of the turn's ${Tokens.value(total.output)} output " +
           s"tokens, ${cost.inCents}: $each."
       case None if calls.exists(_._2.usage.thinking.isDefined) =>
@@ -468,6 +467,7 @@ object SentMarkdown {
     add("## Where the input went", "")
     val rows = measured.flatMap(_.row)
     if (rows.nonEmpty) {
+      val turn = Usage.total(rows.map(_.usage))
       val most = costliest(measured)
         .map((name, m) =>
           s"$name (${m.missed.fold("unpriced")(Cost.cents)}" +
@@ -475,7 +475,7 @@ object SentMarkdown {
         )
         .mkString(", ")
       add(
-        s"- The cache: ${percent1(read(rows), input(rows))} of the turn's ${input(rows)} input " +
+        s"- The cache: ${readShare(turn)} of the turn's ${Tokens.value(turn.input)} input " +
           s"tokens read from it; cache misses cost ${missedCost(measured).inCents} of " +
           s"${Cost.total(rows.map(_.usage)).inCents}." +
           (if (most.isEmpty) "" else s" Missed most: $most.")

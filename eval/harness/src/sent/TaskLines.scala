@@ -84,7 +84,7 @@ object TaskLines {
       else if (t.dropped.isEmpty) "boundary"
       else s"boundary, DROPPED turns ${t.dropped.map(TurnSeq.value).mkString(", ")}"
     val read = first.fold("first call unmeasured")(r =>
-      s"first call read ${SentMarkdown.percent1(Tokens.value(r.usage.cacheRead), Tokens.value(r.usage.input))}" +
+      s"first call read ${SentMarkdown.readShare(r.usage)}" +
         s" of ${Tokens.value(r.usage.input)}"
     )
     val missed = t.calls.headOption
