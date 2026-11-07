@@ -555,8 +555,7 @@ private[turn] object TurnAssembly {
   ) {
 
     /** What the brief, the task and the longer of the digests cost as shown. */
-    def reserved: Tokens =
-      briefCost + taskCost + logCost(digest(SessionDigest.Window.LacksLastSaid))
+    def reserved: Tokens = costed(SessionDigest.Window.LacksLastSaid)
 
     /** `window`, costing `cost`, with the brief, the task and the digest that fits it, and
       * their cost.
@@ -565,13 +564,15 @@ private[turn] object TurnAssembly {
       val said =
         if (window.entries.exists(previous.contains)) SessionDigest.Window.HoldsLastSaid
         else SessionDigest.Window.LacksLastSaid
-      val shown = digest(said)
-      val added = briefCost + taskCost + logCost(shown)
       Projection.Boundary(
-        window.copy(brief = brief.map(_.version), task = task, sessionLog = shown),
-        cost + added
+        window.copy(brief = brief.map(_.version), task = task, sessionLog = digest(said)),
+        cost + costed(said)
       )
     }
+
+    /** What the brief, the task and the digest `said` picks cost as shown. */
+    private def costed(said: SessionDigest.Window): Tokens =
+      briefCost + taskCost + logCost(digest(said))
 
     private def briefCost = brief.fold(Tokens.Zero)(d => estimator.message(Shown.brief(d)))
 

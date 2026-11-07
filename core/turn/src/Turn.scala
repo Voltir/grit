@@ -353,16 +353,11 @@ object Turn {
   )(using Tx^): Either[String, TurnRecord.Calls] = {
     import TurnJournal.given
     val workflow = WorkflowId.value(turn.workflowId)
-    def output[A](name: String)(using journal: Journaled[A]): Either[String, Option[A]] =
-      steps.find(_.name == name).flatMap(_.output) match {
-        case None => Right(None)
-        case Some(o) => journal.decode(o).map(Some(_)).left.map(why => s"$name: $why")
-      }
     // A step's value, `None` when it is not recorded; `Left` when it recorded a failure.
     def recorded[A](name: String)(using
         Journaled[Either[TurnFailure, A]]
     ): Either[String, Option[A]] =
-      output[Either[TurnFailure, A]](name).flatMap {
+      TurnRecord.read[Either[TurnFailure, A]](steps, name).flatMap {
         case Some(Right(a)) => Right(Some(a))
         case Some(Left(failure)) => Left(s"$name recorded a failure: ${reason(failure)}")
         case None => Right(None)
@@ -384,7 +379,7 @@ object Turn {
       gated = rounds.map(n => n -> Loop.Gate(n).name)
       byRef <- needed[TurnOffer.Recorded](Step.Offer)
       profileId <- needed[TurnProfileId](Step.PinModels)
-      classified <- output[TurnAgenda.Classification](Step.Classify)
+      classified <- TurnRecord.read[TurnAgenda.Classification](steps, Step.Classify)
       profile <- kept("profile", reads.profiles.get(profileId))
         .flatMap(_.toRight(s"no profile kept under ${TurnProfileId.value(profileId)}"))
       offer <- kept("offer", TurnOffer.load(reads.toolSets, reads.prompts, byRef))
@@ -421,7 +416,8 @@ object Turn {
         Right(Vector.empty)
       ) { (acc, n) =>
         acc.flatMap(done =>
-          output[Either[TurnFailure, grit.core.message.Message.Assistant]](Loop.Ask(n).name)
+          TurnRecord
+            .read[Either[TurnFailure, grit.core.message.Message.Assistant]](steps, Loop.Ask(n).name)
             .map(done ++ _.flatMap(_.toOption))
         )
       }

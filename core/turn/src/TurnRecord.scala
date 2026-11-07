@@ -242,14 +242,9 @@ object TurnRecord {
   /** The reply the turn's summary was asked for, as `steps`' `summarise` step recorded it, its
     * usage whole; `None` when no summary was asked, it failed, or its output cannot be read.
     */
-  def summaryReply(steps: Vector[StepRecord]): Option[Message.Assistant] = {
-    val journal = summon[grit.core.durable.Journaled[Either[TurnFailure, Message.Assistant]]]
-    steps
-      .find(s => Turn.Step.family(s.name).contains(Turn.Step.Summarise))
-      .flatMap(_.output)
-      .flatMap(journal.decode(_).toOption)
+  def summaryReply(steps: Vector[StepRecord]): Option[Message.Assistant] =
+    read[Either[TurnFailure, Message.Assistant]](steps, Turn.Step.Summarise).toOption.flatten
       .flatMap(_.toOption)
-  }
 
   /** The tool loop's calls `steps` show given up on, by round and index, each from 0 (the
     * `n` and `j` of `call:n:j`). A call whose edge answered in the end is not among them.
@@ -412,7 +407,10 @@ object TurnRecord {
       .left
       .map(why => s"${s.name}: $why")
 
-  private def read[A](steps: Vector[StepRecord], name: String)(using
+  /** The output `steps` recorded under the step `name`, decoded; `None` when none is recorded,
+    * `Left` naming the step when it does not decode.
+    */
+  private[turn] def read[A](steps: Vector[StepRecord], name: String)(using
       journal: grit.core.durable.Journaled[A]
   ): Either[String, Option[A]] =
     steps.find(_.name == name).flatMap(_.output) match {

@@ -146,7 +146,7 @@ private[turn] object TurnRound {
       val done = replies.lastOption
         .flatMap(TurnLoop.declared(cut, round, _))
         .exists(_.state == TaskStatus.State.Done)
-      cut.cut && round.index >= cut.calls - 2 && !done
+      TurnLoop.asksStatus(cut, round) && !done
     }
 
     private[TurnRound] def gatedBy(gate: Gated): Progress =

@@ -345,7 +345,7 @@ object TurnLoop {
   /** Whether `round` of `budget` may end its turn through [[TaskStatus]]: its limit cut it, and
     * this is its last call with tools or after.
     */
-  private def asksStatus(budget: Rounds, round: Round): Boolean =
+  private[turn] def asksStatus(budget: Rounds, round: Round): Boolean =
     budget.cut && round >= budget.calls - 2
 
   /** What the model is told on the budget's last call ([[notes]]). */
