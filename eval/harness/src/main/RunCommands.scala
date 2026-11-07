@@ -135,9 +135,7 @@ private[main] object RunCommands {
       out = runs.resolve(
         s"${Stamp.format(started.atOffset(ZoneOffset.UTC))}-${Variant.name(variant)}.jsonl"
       )
-      _ <- Try(Files.createDirectories(runs)).toEither.left.map(e =>
-        s"$runs: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(runs)
       _ <- write(
         out,
         (Vector(LogJson.header(header)) ++ ran.rows.map(LogJson.row(_)) :+ LogJson.footer(footer))
@@ -254,9 +252,7 @@ private[main] object RunCommands {
       redrawn: Vector[Redrawn] = read._2
       lines = TaskLines.lines(TaskTurn.all(sent))
       table = if (redraw.isEmpty) Vector.empty else Redrawn.table(redrawn)
-      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
-        s"${out.getParent}: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(out.getParent)
       cut = if (full) Cut.Whole else Cut.Default
       _ <- write(
         out,
@@ -291,9 +287,7 @@ private[main] object RunCommands {
       sources <- file("knowledge.json", Corpora.Empty, KnowledgeJson.read)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       heard <- opened(config)(HeardSent.read(_, entry, persona, sources))
-      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
-        s"${out.getParent}: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(out.getParent)
       _ <- write(out, SentMarkdown.heard(heard, from))
     } yield {
       println(s"written: $out")
@@ -322,9 +316,7 @@ private[main] object RunCommands {
       }
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       sent <- opened(config)(TurnSent.read(_, workflow))
-      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
-        s"${out.getParent}: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(out.getParent)
       _ <- write(out, SentMarkdown.render(sent, from, if (full) Cut.Whole else Cut.Default))
     } yield {
       val requests = sent.requests
@@ -370,9 +362,7 @@ private[main] object RunCommands {
           Review.of(reader, c, manifest.tuning, Variant.recipe(variant), more).map(c -> _)
         )
       )
-      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
-        s"${out.getParent}: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(out.getParent)
       _ <- write(out, shown.map((_, s) => Review.line(s).render() + "\n").mkString)
     } yield {
       def compare(suite: String, pairs: Vector[(Option[Digest], Option[Digest])]): Unit = {

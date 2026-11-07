@@ -4,7 +4,6 @@ import java.nio.file.{Files, Path}
 import java.time.ZoneOffset
 
 import scala.collection.immutable.VectorMap
-import scala.util.Try
 import scala.util.chaining.*
 
 import grit.core.classify.Answer
@@ -151,9 +150,7 @@ private[main] object ScoreCommands {
           .flatMap(_.bOnly)
       )
       order = dir.resolve("order")
-      _ <- Try(Files.createDirectories(order)).toEither.left.map(e =>
-        s"$order: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(order)
       _ <- alone.foldLeft[Either[String, Unit]](Right(()))((done, named) =>
         done.flatMap(_ =>
           write(order.resolve(named._1), named._2.sorted.map(_.written + "\n").mkString)
@@ -229,9 +226,7 @@ private[main] object ScoreCommands {
       name = s"${Day.format(clock.now().atOffset(ZoneOffset.UTC))}-" +
         s"${Target.written(q)}-$how.txt"
       out = dir.resolve("order").resolve(name)
-      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
-        s"${out.getParent}: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(out.getParent)
       _ <- write(out, by.map(_.written + "\n").mkString)
     } yield println(
       s"order: ${by.size} cases on ${Target.written(q)}, " +

@@ -383,7 +383,7 @@ private[main] object LabCommands {
           }
       }
       report = Report.lab(room, jev.model, tuning, runs._1)
-      _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
+      _ <- mkdirs(out)
       file = out.resolve(s"lab-stitch-${room.name}.md")
       _ <- write(file, report)
     } yield {

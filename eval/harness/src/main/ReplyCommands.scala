@@ -63,7 +63,7 @@ private[main] object ReplyCommands {
         ReplyReview.review(capture, picked, at)(t => ReplyReview.read(reader, t, records))
       )
       path = out.resolve(s"replies-$capture-${Stamp.format(at.atOffset(ZoneOffset.UTC))}.md")
-      _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
+      _ <- mkdirs(out)
       text = ReplyReview.render(review)
       _ <- write(path, text)
     } yield {

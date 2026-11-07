@@ -36,9 +36,7 @@ private[main] object Cli {
   private[main] def publish(dir: Path, name: String, report: String): Either[String, Unit] = {
     val reports = dir.resolve("reports")
     for {
-      _ <- Try(Files.createDirectories(reports)).toEither.left.map(e =>
-        s"$reports: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(reports)
       _ <- write(reports.resolve(s"$name.md"), report)
     } yield print(report)
   }
@@ -69,6 +67,12 @@ private[main] object Cli {
       try f(reader)
       finally reader.close()
     } catch { case NonFatal(e) => Left(s"the database could not be read: ${e.getClass.getName}") }
+
+  /** `dir` and its parents created where missing; `Left` naming `dir` and the failure's class. */
+  private[main] def mkdirs(dir: Path): Either[String, Unit] =
+    Try(Files.createDirectories(dir)).toEither.left
+      .map(e => s"$dir: ${e.getClass.getName}")
+      .map(_ => ())
 
   /** Writes `text` to `path` whole: a reader never sees part of it. */
   private[main] def write(path: Path, text: String): Either[String, Unit] =

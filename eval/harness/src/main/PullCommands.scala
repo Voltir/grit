@@ -1,6 +1,6 @@
 package grit.eval.harness.main
 
-import java.nio.file.{Files, Path}
+import java.nio.file.Path
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Try
@@ -140,9 +140,7 @@ private[main] object PullCommands {
             case ShadowLog.Mixed(_, _) => None
           }
         }
-      _ <- Try(Files.createDirectories(runs)).toEither.left.map(e =>
-        s"$runs: ${e.getClass.getName}"
-      )
+      _ <- mkdirs(runs)
       _ <- logs.foldLeft[Either[String, Unit]](Right(()))((done, p: Pulled) =>
         done.flatMap(_ => write(runs.resolve(p.name), p.lines))
       )
