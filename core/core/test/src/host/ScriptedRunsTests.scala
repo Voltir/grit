@@ -12,6 +12,7 @@ object ScriptedRunsTests extends RunsContract {
   protected val slow: Argv = argv("slow")
   protected val later: Argv = argv("later")
   protected val flood: Argv = argv("flood")
+  protected val missing: Argv = argv("missing")
 
   private val scripts = Map(
     quick -> ScriptedRuns.Script("hi\n", "", Some(Duration.Zero), 3),

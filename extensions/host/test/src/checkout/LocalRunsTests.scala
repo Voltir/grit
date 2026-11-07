@@ -15,4 +15,6 @@ object LocalRunsTests extends RunsContract {
   protected val slow: Argv = LocalRunsFilesTests.sh("echo started; exec sleep 30")
   protected val later: Argv = LocalRunsFilesTests.sh("sleep 0.3; echo done")
   protected val flood: Argv = LocalRunsFilesTests.sh("head -c 17000000 /dev/zero")
+  protected val missing: Argv =
+    Argv.of("grit-no-such-program").getOrElse(throw new IllegalArgumentException("missing"))
 }

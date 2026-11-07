@@ -24,6 +24,9 @@ abstract class RunsContract extends TestSuite {
   /** Writes past [[Workspace.MaxFileBytes]] at once, and exits 0. */
   protected def flood: Argv
 
+  /** A program this machine does not have. */
+  protected def missing: Argv
+
   /** A wait a quick command ends within. */
   private val ample = 5.seconds
 
@@ -141,6 +144,38 @@ abstract class RunsContract extends TestSuite {
             (bytes > max, max) ==> (true, Workspace.MaxFileBytes)
           case other => throw new java.lang.AssertionError(s"not too large: $other")
         }
+      }
+    }
+
+    test("a run whose output passed the most is forgotten, so it never pushes an ended run out") {
+      fresh { runs =>
+        val first = runs.start(quick, 10.seconds, ample).toOption.map(_.id)
+        val floods = (1 to Runs.Kept).map(_ => runs.start(flood, 10.seconds, ample))
+        (
+          floods.count {
+            case Left(HostError.TooLarge(_, _, _)) => true
+            case _ => false
+          },
+          first.map(id =>
+            runs
+              .tail(id, Duration.Zero)
+              .map(_.status match {
+                case RunStatus.Ended(ran) => Some((ran.exit, text(ran.output)))
+                case _ => None
+              })
+          )
+        ) ==> (Runs.Kept, Some(Right(Some((3, "hi")))))
+      }
+    }
+
+    test("a program that cannot start is Failed, naming it, and nothing is kept") {
+      fresh { runs =>
+        val failed = runs.start(missing, 10.seconds, ample) match {
+          case Left(HostError.Failed(why)) => why.contains(missing.program)
+          case _ => false
+        }
+        val ids = (1 to Runs.Most).flatMap(_ => runs.start(slow, 10.seconds, brief).toOption)
+        (failed, ids.size) ==> (true, Runs.Most)
       }
     }
   }
