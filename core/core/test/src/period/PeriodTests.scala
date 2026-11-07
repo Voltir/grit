@@ -158,6 +158,13 @@ object PeriodTests extends TestSuite {
         Due(Noon.plusSeconds(86400), CloseReason.Rolled, TurnSeq(1))
     }
 
+    test("a rolling period is never asked, though quiet, unasked and with no verdict") {
+      val quiet = Activity(p1, Noon, TurnSeq(1), None, 0, Pace.Rolls(Noon, Vector.empty))
+      quiet.asks(budget(4000)) ==> None
+      // The same period settling is asked the settle window after its activity.
+      quiet.copy(pace = Pace.Settles).asks(budget(4000)) ==> Some(Noon.plusSeconds(300))
+    }
+
     test("a rolling is refused under one character, with no most, or shown below nothing") {
       val t = grit.core.message.Tokens(1)
       Vector(

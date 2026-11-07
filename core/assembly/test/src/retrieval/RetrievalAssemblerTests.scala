@@ -935,6 +935,55 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
+    test(
+      "a room's section keeps the newest of what the rest of the room said that fits Rolling.shown, the oldest left out"
+    ) {
+      val top = Origin.Room("T", "C")
+      val origins = (c: ConversationId) =>
+        if (c == c1) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      // About 2,300 to 2,600 tokens each, at 4 characters a token: two fit 6,000, three do not.
+      val long = (word: String) => (word + " ") * 1500
+      val _ = said(world, "c1", "and the venue?" -> -200)
+      val a = said(world, "1.0", long("first") -> -30, long("second") -> -40, long("third") -> -50)
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 40000,
+        at = 1,
+        origin = top,
+        stitches = Some(new InMemoryStitchStore(world.entries, origins))
+      ).nearby ==> Vector(
+        Nearby.Along(a, Origin.Thread("T", "C", "1.0").place, seqs(world, "1.0:1", "1.0:2"))
+      )
+    }
+
+    test(
+      "a thread under a channel's top level is shown its room's newest kept closing by its record, then what the room said since"
+    ) {
+      val top = Origin.Room("T", "C")
+      val room = ConversationId("room")
+      val origins = (c: ConversationId) =>
+        if (c == room) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      val _ = closeAgain(world, room, 1, "the freeze is Thursday", "We set the freeze.")
+      val newest = closeAgain(world, room, 2, "the venue is the hall", "We chose the hall.")
+      val _ = said(world, "room", "lunch?" -> -10)
+      val _ = said(world, "c1", "and the date?" -> -100)
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        origin = Origin.Thread("T", "C", "2.0"),
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        others = Vector(Conversation(room, top, Account.Local, Instant.EPOCH, Label.Public))
+      ).nearby ==> Vector(
+        Nearby.Closed(room, top.place, seqs(world, newest)(0)),
+        Nearby.Along(room, top.place, seqs(world, "room:0"))
+      )
+    }
+
     test("a room's period rolls before what was said in it outgrows the default tail") {
       val tail = CharEstimate.text("x" * grit.core.period.Rolling.Default.chars)
       assert(Tokens.value(tail) < Tokens.value(RetrievalAssembler.DefaultTail))
