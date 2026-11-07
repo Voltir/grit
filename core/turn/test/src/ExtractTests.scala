@@ -145,11 +145,15 @@ object ExtractTests extends TestSuite {
 
     test("its description leaves each shape's bounds to the fields that take them, but one_of's") {
       val does = Extract.tool(None, Extract.Unasked).spec.does
-      (does.contains("Shapes:"), does.contains("min to max"), does.split("\\. ").lastOption) ==> (
-        false,
-        false,
-        Some("The one_of shape takes at most 64 options, each at most 80 characters.")
-      )
+      does ==>
+        "It can only answer yes or no, a whole number, a date, one of options you list, or a " +
+        "short code of up to 16 letters, digits, _ or -. It can't give you any other text, such " +
+        "as a title, a name or a sentence: for those, read the item. It asks a question of " +
+        "something your request shows only as a note (\"Hidden here as h1: …\"), without " +
+        "reading it: a separate model, shown only the item and your question, answers, and " +
+        "you are told only that answer, or that the item does not say. Using it never stops " +
+        "you doing anything you can do now. The one_of shape takes at most 64 options, each " +
+        "at most 80 characters."
     }
 
     test("an answer that does not read fails, quoting nothing of it") {

@@ -57,12 +57,24 @@ object ConsumedTests extends TestSuite {
     ) {
       Consumed.of(Streams.at(checkout), checkout).map { c =>
         (
-          c.calls.map(k => (k.id, Tokens.value(k.usage.output))),
+          c.calls.map(k =>
+            (
+              k.id,
+              Tokens.value(k.usage.input),
+              Tokens.value(k.usage.cacheRead),
+              Tokens.value(k.usage.cacheWrite),
+              Tokens.value(k.usage.output)
+            )
+          ),
           c.usage
         )
       } ==> Right(
         (
-          Vector("msg_01a" -> 40L, "msg_01b" -> 20L, "msg_01c" -> 30L),
+          Vector(
+            ("msg_01a", 2003L, 0L, 2000L, 40L),
+            ("msg_01b", 2105L, 2000L, 100L, 20L),
+            ("msg_01c", 2154L, 2100L, 50L, 30L)
+          ),
           Usage(Tokens(6262), Tokens(500), Tokens(4100), Some(BigDecimal("0.0031")), Tokens(2150))
         )
       )

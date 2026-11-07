@@ -96,9 +96,13 @@ object MeasuredCallTests extends TestSuite {
         Vector.empty,
         estimator
       )
-      val resent = (BigDecimal(Tokens.value(estimator.message(thinking))) * 150 /
-        Tokens.value(estimator.request(second))).setScale(0, BigDecimal.RoundingMode.HALF_UP)
-      measured.map(_.fresh) ==> Vector(Some(t(100)), Some(t(50 - resent.toLong)))
+      // The reply is estimated at 10 of the second request's 40, which the ledger counts as
+      // 150: re-sent as 10 * 150 / 40 = 37.5, half up 38, of its 50 more than the first.
+      (
+        estimator.message(thinking),
+        estimator.request(second),
+        measured.map(_.fresh)
+      ) ==> (t(10), t(40), Vector(Some(t(100)), Some(t(12))))
     }
 
     test("a call that does not append has no fresh tokens, and its whole request is scaled") {

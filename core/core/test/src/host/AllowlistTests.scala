@@ -65,7 +65,7 @@ object AllowlistTests extends TestSuite {
       (
         Allowlist.of(Vector.empty, 1.minute),
         Allowlist.of(Vector(gitStatus), 999.millis),
-        Allowlist.of(Vector(gitStatus), Runs.Longest + 1.second).isLeft,
+        Allowlist.of(Vector(gitStatus), Runs.Longest + 1.second),
         Allowlist.of(Vector(gitStatus), Shell.Longest + 1.second).map(_.longest),
         Allowlist.of(Vector(gitStatus), Runs.Longest).map(_.longest)
       ) ==> (
@@ -73,7 +73,9 @@ object AllowlistTests extends TestSuite {
         Left(
           "an allowlist's longest run must be at least a second and at most 60 minutes, not 999 milliseconds"
         ),
-        true,
+        Left(
+          "an allowlist's longest run must be at least a second and at most 60 minutes, not 3601 seconds"
+        ),
         Right(Shell.Longest + 1.second),
         Right(Runs.Longest)
       )

@@ -339,14 +339,23 @@ abstract class InboxContract extends TestSuite {
         store.name(ana, "Ana")
         val task = inbox.ingest(here, SourceId("w"), said("the task"), ana, None)
         val next = inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana)
+        val refused =
+          InboxError.Invalid("a task is continued only by whoever wrote its first message")
         (
           task.map(_.turnSeq),
           next.map(_.turnSeq),
           inbox.continued(here, SourceId("w:2"), TurnSeq.First, 2, WentOn.AtLimit, ana),
           inbox.ingested(here, SourceId("w:2")),
-          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, WentOn.AtLimit, bo).isLeft,
-          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, WentOn.AtLimit, ana).isLeft
-        ) ==> (Right(TurnSeq.First), Right(TurnSeq.First.next), next, next.map(Some(_)), true, true)
+          inbox.continued(here, SourceId("w:3"), TurnSeq.First, 3, WentOn.AtLimit, bo),
+          inbox.continued(here, SourceId("w:4"), TurnSeq(9), 2, WentOn.AtLimit, ana)
+        ) ==> (
+          Right(TurnSeq.First),
+          Right(TurnSeq.First.next),
+          next,
+          next.map(Some(_)),
+          Left(refused),
+          Left(refused)
+        )
         store.written(here) ==> Vector(
           (Payload.Message(said("the task")), Some("Ana")),
           (Payload.Continuation(TurnSeq.First, 2, WentOn.AtLimit), Some("Ana"))

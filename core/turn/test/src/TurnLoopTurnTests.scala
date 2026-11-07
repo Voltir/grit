@@ -729,14 +729,23 @@ object TurnLoopTurnTests extends TestSuite {
       val second = new Scripted((_, _) => Right(said("done")))
       run(continuing(entries, grit.core.id.TurnSeq.First, 2), second)
       val sent = second.requests.headOption.map(_.messages).getOrElse(Vector.empty)
+      // The first turn made five calls, r0 to r4, so r4 is its last reply.
       (
+        first.requests.size,
+        sent.headOption,
         sent.exists(_.isInstanceOf[Message.ToolResult]),
-        sent.collect { case a: Message.Assistant => a.blocks }.size,
+        sent.collect { case a: Message.Assistant => a.blocks },
         sent.lastOption.exists {
           case Message.User(t) => t.endsWith(Shown.Continuing)
           case _ => false
         }
-      ) ==> (false, 1, true)
+      ) ==> (
+        5,
+        Some(Message.User("read them")),
+        false,
+        Vector(Vector(AssistantBlock.Text("r4"))),
+        true
+      )
     }
 
     test(
@@ -813,21 +822,17 @@ object TurnLoopTurnTests extends TestSuite {
     ) {
       val atLimit = grit.core.store.WentOn.AtLimit
       val sent = task(atLimit, atLimit).lastOption.getOrElse(Vector.empty)
-      val noted = sent.collect {
-        case Message.User(text) if text.contains(Shown.Continuing) => text
-      }
+      // The fourth message is the turn's time line, whose wording TurnShown's tests pin.
       (
-        sent.take(2),
-        sent.lift(2).collect { case a: Message.Assistant => a.blocks },
-        replies(sent),
-        noted.size,
-        sent.lastOption.collect { case Message.User(t) => t.endsWith(Shown.Continuing) }
+        sent.take(3),
+        sent.lift(3).collect { case Message.User(t) =>
+          t.startsWith("The message you are answering was said Thu 1970-01-01 00:00 UTC")
+        },
+        sent.drop(4)
       ) ==> (
-        Vector(Message.User("the task"), Shown.Gap),
-        Some(Vector(AssistantBlock.Text("reply 1"))),
-        Vector(Vector(AssistantBlock.Text("reply 1"))),
-        1,
-        Some(true)
+        Vector(Message.User("the task"), Shown.Gap, said("reply 1")),
+        Some(true),
+        Vector(Message.User(Shown.Continuing))
       )
     }
     test(

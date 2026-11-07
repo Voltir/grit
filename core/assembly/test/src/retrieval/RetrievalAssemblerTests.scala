@@ -1872,14 +1872,22 @@ object RetrievalAssemblerTests extends TestSuite {
       "the shipped sizes: a 100,000-token window, and a tail and strand sections as large as they were set under the old estimate"
     ) {
       // The tail was 8,000 and the strand 1,500 at 4 characters a token: 32,000 and 6,000
-      // characters, which grit's estimator now counts as about 14,500 and 2,700.
+      // characters, which grit's estimator now counts as about 14,500 and 2,700, each its
+      // estimate rounded down to the hundred.
+      def hundreds(chars: Int) = Tokens(Tokens.value(CharEstimate.text("x" * chars)) / 100 * 100)
       (
         LinearAssembler.DefaultBudget,
         RetrievalAssembler.DefaultTail,
         Tuning.Default.windowTokens,
-        CharEstimate.text("x" * 32_000),
-        CharEstimate.text("x" * 6_000)
-      ) ==> (Tokens(100_000), Tokens(14_500), Tokens(2_700), Tokens(14_546), Tokens(2_728))
+        hundreds(32_000),
+        hundreds(6_000)
+      ) ==> (
+        Tokens(100_000),
+        Tokens(14_500),
+        Tokens(2_700),
+        RetrievalAssembler.DefaultTail,
+        Tuning.Default.windowTokens
+      )
     }
   }
 }

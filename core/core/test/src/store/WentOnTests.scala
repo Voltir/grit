@@ -29,18 +29,26 @@ object WentOnTests extends TestSuite {
 
     test("a command is refused blank or over 1 KB") {
       (
-        WentOn.Command.of("  ").isLeft,
-        WentOn.Command.of("x" * 1025).isLeft,
+        WentOn.Command.of("  "),
+        WentOn.Command.of("x" * 1025),
         WentOn.Command.of("x" * 1024).map(_.text)
-      ) ==> (true, true, Right("x" * 1024))
+      ) ==> (
+        Left("the check command is empty"),
+        Left("the check command is over 1024 bytes"),
+        Right("x" * 1024)
+      )
     }
 
     test("a stored failed check is refused with exit code 0, or output failed would not keep") {
       (
-        WentOn.CheckFailed.read(make, Some(0), "ok").isLeft,
-        WentOn.CheckFailed.read(make, Some(1), "a\u001b[0m").isLeft,
+        WentOn.CheckFailed.read(make, Some(0), "ok"),
+        WentOn.CheckFailed.read(make, Some(1), "a\u001b[0m"),
         WentOn.CheckFailed.read(make, None, "slow")
-      ) ==> (true, true, Right(WentOn.failed(make, None, "slow")))
+      ) ==> (
+        Left("a failed check's exit code is not 0"),
+        Left("a failed check's output is over its bound or not clean"),
+        Right(WentOn.failed(make, None, "slow"))
+      )
     }
   }
 }
