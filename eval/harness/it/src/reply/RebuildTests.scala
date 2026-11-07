@@ -781,7 +781,8 @@ object RebuildTests extends TestSuite {
             "to-grit",
             "durable",
             "records-hold",
-            "source:tasks"
+            "source:tasks",
+            "for-room"
           ),
           "what is the Falcon budget?"
         )

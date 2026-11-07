@@ -171,8 +171,8 @@ object CaptureTests extends TestSuite {
         val capture = captured()
         capture.cases.map(_.id.written) ==>
           Vector("C1/1000.1", "C1/1000.2", "C1/1000.3", "C1/1000.4", "C1/1000.5")
-        val v6 = "gap,open,to,to-grit,durable,records-hold"
-        capture.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v6, v6, v6)
+        val v7 = "gap,open,to,to-grit,durable,records-hold,for-room"
+        capture.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v7, v7, v7)
         capture.cases.map(_.stitch.map(_.seen)) ==>
           Vector(None, Some(SeenCheck.Match), Some(SeenCheck.Match), None, Some(SeenCheck.Match))
         capture.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(
