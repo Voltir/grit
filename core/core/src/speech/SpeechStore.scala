@@ -23,9 +23,9 @@ trait SpeechStore {
     */
   def reach(turn: TurnRef)(using Tx^): Either[StoreError, Option[Reach]]
 
-  /** Every unprompted turn decided at or after `since`, oldest first, at its stage: none
-    * answered as said to grit ([[Decision.Answering]]), which, as an addressed turn, counts
-    * in no rate.
+  /** Every unprompted turn decided at or after `since`, oldest first, at its stage and
+    * [[venue]]: none answered as said to grit ([[Decision.Answering]]), which, as an addressed
+    * turn, counts in no rate.
     */
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]]
 
@@ -47,6 +47,20 @@ trait SpeechStore {
     * `false` for any other turn, decided on or not.
     */
   def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean]
+
+  /** Where `turn`'s reply goes: the venue its decision placed it at ([[Decision.Drafting]]),
+    * unless [[placing]] moved it since; [[Venue.Thread]] for any other turn, decided on or not.
+    */
+  def venue(turn: TurnRef)(using Tx^): Either[StoreError, Venue]
+
+  /** Where `turn`'s reply goes when it is posted `at`: its [[venue]], unless that is its
+    * room's top level and `rate` is spent there, `rate.count` of its room's other turns decided
+    * within `rate.per` before `at` posted at the top ([[Spoken.atTop]]), or `rate` is `None`;
+    * then its thread, kept so.
+    */
+  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Venue]
 
   /** Keeps what became of the turn `turn`, drafting or answering (`outcome`, settled `at`),
     * with the first [[SpeechStore.Excerpt]] characters of `draft`, its draft or reply. A `Posted` outcome keeps

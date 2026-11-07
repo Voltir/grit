@@ -244,6 +244,32 @@ object Tags {
     )
   }
 
+  /** v7, the question set triage asks since it replaced v6: [[V6]]'s names and `for-room`; the
+    * gate that places a draft at its room's top level ([[grit.core.speech.ToRoom]]).
+    */
+  object V7 {
+
+    /** Whether a reply to a message is for the whole channel rather than its author alone: a
+      * heads-up, something several people asked, a decision the room needs, or an ask to tell
+      * everyone.
+      */
+    val forRoom: QuestionName = named("for-room")
+
+    /** v7's placement gate: `for-room` at least 0.8; or the message opens its thread
+      * ([[Fact.AtTop]]), `for-room` at least 0.6 and the room is calm ([[Fact.Calm]] at least
+      * one half). Each fact sits in a branch of its `AnyOf`, so a fact only adds top-level
+      * posts.
+      */
+    val toRoom: Gate = Gate.either(
+      Gate.Holds(Bound.AtLeast(Reading.Yes(forRoom), Probability.clamped(0.8))),
+      Gate.all(
+        factHolds(Fact.AtTop),
+        Gate.Holds(Bound.AtLeast(Reading.Yes(forRoom), Probability.clamped(0.6))),
+        factHolds(Fact.Calm)
+      )
+    )
+  }
+
   /** The gate that passes where `fact` reads at least one half. */
   def factHolds(fact: Fact): Gate =
     Gate.Holds(Bound.AtLeast(Reading.Fact(fact), Probability.clamped(0.5)))

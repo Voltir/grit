@@ -13,7 +13,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.review.{Candidate, Considered, InMemoryReviews, Reason, Settled}
-import grit.core.speech.{Decision, Heard, Reach, Silence}
+import grit.core.speech.{Decision, Heard, Reach, Silence, Venue}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{
   Bound,
@@ -93,7 +93,7 @@ final class PickedPrompts(inbox: InMemoryInbox) {
               Integrity.Member,
               Cues.Empty
             ),
-            Decision.Drafting(turn),
+            Decision.Drafting(turn, Venue.Thread),
             at
           )
           .flatMap(_ => inbox.speech.drafted(turn, outcome, None, at))

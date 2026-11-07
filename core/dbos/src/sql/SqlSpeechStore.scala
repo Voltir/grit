@@ -9,7 +9,19 @@ import grit.core.identity.Account
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.place.Place
-import grit.core.speech.{Decision, Heard, Outcome, Reach, SpeechJson, SpeechStore, Spoken, Stage}
+import grit.core.speech.{
+  Decision,
+  Heard,
+  Outcome,
+  Rate,
+  Reach,
+  ReplyTo,
+  SpeechJson,
+  SpeechStore,
+  Spoken,
+  Stage,
+  Venue
+}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{Cues, CuesJson}
@@ -26,17 +38,21 @@ final class SqlSpeechStore extends SpeechStore {
       // From the turn's first entry, so only a heard message's turn inserts a row.
       Using.resource(
         conn.prepareStatement(
-          """INSERT INTO grit.heard (entry_id, conversation_id, turn_seq, reply_to, asked)
-            |SELECT id, conversation_id, turn_seq, ?, ?::jsonb FROM (
+          """INSERT INTO grit.heard (entry_id, conversation_id, turn_seq, reply_to, asked, room_to)
+            |SELECT id, conversation_id, turn_seq, ?, ?::jsonb, ? FROM (
             |  SELECT id, conversation_id, turn_seq, payload FROM grit.entries
             |   WHERE conversation_id = ?::uuid AND turn_seq = ? ORDER BY seq LIMIT 1) first
             | WHERE payload ->> 'kind' = 'heard'
             |ON CONFLICT DO NOTHING""".stripMargin
         )
       ) { ps =>
-        reach.replyTo match {
+        reach.replyTo.map(_.thread) match {
           case Some(to) => ps.setString(1, to)
           case None => ps.setNull(1, java.sql.Types.VARCHAR)
+        }
+        reach.replyTo.flatMap(_.room) match {
+          case Some(to) => ps.setString(3, to)
+          case None => ps.setNull(3, java.sql.Types.VARCHAR)
         }
         // As JSON, so no Java array crosses JDBC (separation checking).
         ps.setString(
@@ -45,8 +61,8 @@ final class SqlSpeechStore extends SpeechStore {
             .from(reach.asked.toVector.map(a => ujson.Str(SqlIdentities.written(a))))
             .render()
         )
-        ps.setString(3, ConversationId.value(turn.conversationId))
-        ps.setLong(4, TurnSeq.value(turn.turnSeq))
+        ps.setString(4, ConversationId.value(turn.conversationId))
+        ps.setLong(5, TurnSeq.value(turn.turnSeq))
         ps.executeUpdate()
       }
     }.flatMap { _ =>
@@ -66,7 +82,7 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT reply_to, asked::text FROM grit.heard
+          """SELECT reply_to, asked::text, room_to FROM grit.heard
             | WHERE conversation_id = ?::uuid AND turn_seq = ?""".stripMargin
         )
       ) { ps =>
@@ -78,7 +94,7 @@ final class SqlSpeechStore extends SpeechStore {
               .read(rs.getString(2))
               .arrOpt
               .fold(Vector.empty[String])(_.flatMap(_.strOpt).toVector)
-            (Option(rs.getString(1)), asked)
+            (Option(rs.getString(1)).map(ReplyTo(_, Option(rs.getString(3)))), asked)
           }
         }
       }
@@ -98,7 +114,8 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT workflow, room, decided_at, outcome_kind, posted_seq FROM grit.speech
+          """SELECT workflow, room, decided_at, outcome_kind, posted_seq, room_to IS NOT NULL
+            |  FROM grit.speech
             | WHERE drafting AND NOT answering AND decided_at >= ?
             | ORDER BY decided_at, workflow""".stripMargin
         )
@@ -108,6 +125,7 @@ final class SqlSpeechStore extends SpeechStore {
           val rows = Vector.newBuilder[Either[StoreError, Spoken]]
           while (rs.next()) {
             val workflow = rs.getString(1)
+            val atTop = rs.getBoolean(6)
             val posted = rs.getLong(5)
             val stage =
               if (!rs.wasNull()) Stage.Posted(EntrySeq(posted))
@@ -118,7 +136,13 @@ final class SqlSpeechStore extends SpeechStore {
                 .fromWorkflowId(WorkflowId(workflow))
                 .toRight(StoreError.Invalid(s"speech: $workflow is not a turn"))
               room <- Place.read(rs.getString(2)).left.map(StoreError.Invalid(_))
-            } yield Spoken(turn, room, rs.getObject(3, classOf[OffsetDateTime]).toInstant, stage))
+            } yield Spoken(
+              turn,
+              room,
+              rs.getObject(3, classOf[OffsetDateTime]).toInstant,
+              stage,
+              atTop
+            ))
           }
           rows.result()
         }
@@ -157,8 +181,8 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """INSERT INTO grit.speech (workflow, conversation_id, turn_seq, room, decided_at,
-            |  drafting, silence, answering, cues)
-            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb)
+            |  drafting, silence, answering, cues, room_to)
+            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?)
             |ON CONFLICT (workflow) DO NOTHING""".stripMargin
         )
       ) { ps =>
@@ -168,7 +192,7 @@ final class SqlSpeechStore extends SpeechStore {
         ps.setString(4, heard.room.written)
         ps.setObject(5, at.atOffset(ZoneOffset.UTC))
         decision match {
-          case Decision.Drafting(_) =>
+          case Decision.Drafting(_, _) =>
             ps.setBoolean(6, true)
             ps.setNull(7, java.sql.Types.VARCHAR)
             ps.setBoolean(8, false)
@@ -182,6 +206,11 @@ final class SqlSpeechStore extends SpeechStore {
             ps.setBoolean(8, false)
         }
         ps.setString(9, CuesJson.write(heard.cues).render())
+        decision match {
+          case Decision.Drafting(_, Venue.Room(to)) => ps.setString(10, to)
+          case Decision.Drafting(_, Venue.Thread) | Decision.Answering(_, _) | Decision.Held(_) =>
+            ps.setNull(10, java.sql.Types.VARCHAR)
+        }
         ps.executeUpdate() == 1
       }
     }
@@ -195,6 +224,60 @@ final class SqlSpeechStore extends SpeechStore {
       ) { ps =>
         ps.setString(1, WorkflowId.value(turn.workflowId))
         Using.resource(ps.executeQuery())(_.next())
+      }
+    }
+  }
+
+  def venue(turn: TurnRef)(using tx: Tx^): Either[StoreError, Venue] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT room_to FROM grit.speech WHERE workflow = ? AND room_to IS NOT NULL"
+        )
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        Using.resource(ps.executeQuery()) { rs =>
+          if (rs.next()) Venue.Room(rs.getString(1)) else Venue.Thread
+        }
+      }
+    }
+  }
+
+  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Venue] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      // Its room's other turns posted at the top, decided within the rate's window.
+      val placed = Using.resource(
+        conn.prepareStatement(
+          """SELECT s.room_to, (SELECT count(*) FROM grit.speech o
+            |   WHERE o.room = s.room AND o.room_to IS NOT NULL AND o.posted_seq IS NOT NULL
+            |     AND o.workflow <> s.workflow AND o.decided_at > ?)
+            |  FROM grit.speech s WHERE s.workflow = ? AND s.room_to IS NOT NULL""".stripMargin
+        )
+      ) { ps =>
+        ps.setObject(
+          1,
+          rate.fold(at)(r => at.minusNanos(r.per.toNanos)).atOffset(ZoneOffset.UTC)
+        )
+        ps.setString(2, WorkflowId.value(turn.workflowId))
+        Using.resource(ps.executeQuery()) { rs =>
+          Option.when(rs.next())((rs.getString(1), rs.getInt(2)))
+        }
+      }
+      placed match {
+        case None => Venue.Thread
+        case Some((to, posted)) if rate.exists(posted < _.count) => Venue.Room(to)
+        case Some(_) =>
+          Using.resource(
+            conn.prepareStatement("UPDATE grit.speech SET room_to = NULL WHERE workflow = ?")
+          ) { ps =>
+            ps.setString(1, WorkflowId.value(turn.workflowId))
+            val _ = ps.executeUpdate()
+          }
+          Venue.Thread
       }
     }
   }

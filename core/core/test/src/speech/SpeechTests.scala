@@ -42,7 +42,7 @@ object SpeechTests extends TestSuite {
     EntrySeq(10),
     room,
     now.minusSeconds(60),
-    Reach(Some("C/1"), Set.empty),
+    Reach(Some(ReplyTo("C/1")), Set.empty),
     tags(),
     Integrity.Member,
     Cues.Empty
@@ -65,6 +65,23 @@ object SpeechTests extends TestSuite {
   private val named = heard.copy(tags = Tags.Weighed(directed, "jev", usage))
   private val toGritLimits = limits.copy(drafts = Tags.V3.directed)
   private val toGrit = Speaking.Within(toGritLimits)
+
+  // A placement reading for-room alone, at one post a room in 2 hours, and a message heard with
+  // a room address whose answers pass it.
+  private def forRoom(yes: Double): Tags = Tags.Weighed(
+    Tags.V1
+      .answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.9))
+      .updated(Tags.V7.forRoom, Answer.YesNo(yes)),
+    "jev",
+    usage
+  )
+  private val placing = limits.copy(toRoom =
+    Some(
+      ToRoom(Gate.Holds(Bound.AtLeast(Reading.Yes(Tags.V7.forRoom), p(0.5))), Rate(1, 2.hours))
+    )
+  )
+  private val atTop =
+    heard.copy(reach = Reach(Some(ReplyTo("C/1", Some("C"))), Set.empty), tags = forRoom(0.9))
 
   private def posted(conversation: String, seq: Long, at: Instant, in: Place = room) =
     Spoken(
@@ -97,7 +114,7 @@ object SpeechTests extends TestSuite {
 
   val tests = Tests {
     test("a heard message that passes every check is drafted in its own turn") {
-      assert(decide() == Decision.Drafting(turn))
+      assert(decide() == Decision.Drafting(turn, Venue.Thread))
     }
 
     test("a message heard from below outside starts no unprompted reply; one at outside does") {
@@ -105,7 +122,9 @@ object SpeechTests extends TestSuite {
         decide(heard.copy(integrity = Integrity.Untrusted)) ==
           held(Silence.Below(Integrity.Untrusted))
       )
-      assert(decide(heard.copy(integrity = Integrity.Outside)) == Decision.Drafting(turn))
+      assert(
+        decide(heard.copy(integrity = Integrity.Outside)) == Decision.Drafting(turn, Venue.Thread)
+      )
     }
 
     test("the checks, in order: each holds with its own silence") {
@@ -120,7 +139,12 @@ object SpeechTests extends TestSuite {
         assert(decide(old) == held(Silence.Stale(11.minutes)))
       }
       test("said exactly fresh ago is not stale") {
-        assert(decide(heard.copy(said = now.minusSeconds(10 * 60))) == Decision.Drafting(turn))
+        assert(
+          decide(heard.copy(said = now.minusSeconds(10 * 60))) == Decision.Drafting(
+            turn,
+            Venue.Thread
+          )
+        )
       }
       test("untagged fails closed") {
         val untagged = heard.copy(tags = Tags.Unanswered("down"))
@@ -137,7 +161,9 @@ object SpeechTests extends TestSuite {
         )
       }
       test("helps at exactly the gate's 0.5 is not below") {
-        assert(decide(heard.copy(tags = tags(helps = 0.5))) == Decision.Drafting(turn))
+        assert(
+          decide(heard.copy(tags = tags(helps = 0.5))) == Decision.Drafting(turn, Venue.Thread)
+        )
       }
       test("chatter that would not help: gated on both, chatter first") {
         assert(
@@ -155,7 +181,7 @@ object SpeechTests extends TestSuite {
       }
       test("a message naming someone else is weighed by the gate, not held AskedOf") {
         val asked = heard.copy(
-          reach = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1"))),
+          reach = Reach(Some(ReplyTo("C/1")), Set(TestAccounts.account("slack:T/U1"))),
           cues = Cues.Empty.copy(named = true)
         )
         val unnamed = Gate.all(Gate.Holds(helpful), Tags.factFails(Fact.Named))
@@ -163,7 +189,7 @@ object SpeechTests extends TestSuite {
           decide(asked),
           decide(asked, s = Speaking.Within(limits.copy(drafts = unnamed)))
         ) ==> (
-          Decision.Drafting(turn),
+          Decision.Drafting(turn, Venue.Thread),
           gated(Gate.Failed(Bound.Below(Reading.Fact(Fact.Named), half), p(1.0)))
         )
       }
@@ -243,7 +269,7 @@ object SpeechTests extends TestSuite {
     test("two checks failing: the earlier one's silence holds") {
       val stale = heard.copy(said = now.minusSeconds(11 * 60))
       val capped = Budget(ZoneOffset.UTC, DailyCap.of("1").toOption)
-      val asked = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
+      val asked = Reach(Some(ReplyTo("C/1")), Set(TestAccounts.account("slack:T/U1")))
       val threaded = empty.copy(
         turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))),
         all = Spend(9, Cost.Exact(BigDecimal("1.5")))
@@ -261,13 +287,13 @@ object SpeechTests extends TestSuite {
 
     test("a post outside its rate's window does not count") {
       val l = empty.copy(turns = Vector(posted("c", 3, now.minusSeconds(7 * 60 * 60))))
-      assert(decide(l = l) == Decision.Drafting(turn))
+      assert(decide(l = l) == Decision.Drafting(turn, Venue.Thread))
     }
 
     test("a draft settled without a post does not count") {
       val settled = TurnRef(ConversationId("c"), TurnSeq(3))
       val l = empty.copy(turns = Vector(Spoken(settled, room, now.minusSeconds(60), Stage.Settled)))
-      assert(decide(l = l) == Decision.Drafting(turn))
+      assert(decide(l = l) == Decision.Drafting(turn, Venue.Thread))
     }
 
     test("a draft's score is the weaker of grounded and worth") {
@@ -320,7 +346,7 @@ object SpeechTests extends TestSuite {
     ) {
       val old = named.copy(
         said = now.minusSeconds(11 * 60),
-        reach = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
+        reach = Reach(Some(ReplyTo("C/1")), Set(TestAccounts.account("slack:T/U1")))
       )
       val previous = TurnRef(ConversationId("c"), TurnSeq(3))
       val busy = Ledger(
@@ -402,6 +428,39 @@ object SpeechTests extends TestSuite {
       // The first by time, wherever it was said.
       val ownLater = entry(14, reply, at = now.plusSeconds(10))
       Speech.spoken(root, people :+ ownLater, Vector(after)) ==> Some(Outcome.Spoken(EntryId("s4")))
+    }
+
+    test(
+      "a draft goes at its room's top level when its message has a room address, the placement gate passes, and the room's top-level rate allows; its thread posts do not spend that rate"
+    ) {
+      val l = empty.copy(turns = Vector(posted("a", 1, now.minusSeconds(600))))
+      Vector(Speaking.Within(placing), Speaking.Shadow(placing)).map(decide(atTop, l, _)) ==>
+        Vector.fill(2)(Decision.Drafting(turn, Venue.Room("C")))
+    }
+
+    test(
+      "placement never holds a message: with no placement, no room address, a gate that fails or is unread, or the room's top-level rate spent, the draft goes in its thread"
+    ) {
+      val spent =
+        empty.copy(turns = Vector(posted("a", 1, now.minusSeconds(3600)).copy(atTop = true)))
+      val failing = atTop.copy(tags = forRoom(0.4))
+      val unread = atTop.copy(tags = tags())
+      Vector(
+        decide(atTop, s = within),
+        decide(heard.copy(tags = forRoom(0.9)), s = Speaking.Within(placing)),
+        decide(failing, s = Speaking.Within(placing)),
+        decide(unread, s = Speaking.Within(placing)),
+        decide(atTop, spent, Speaking.Within(placing))
+      ) ==> Vector.fill(5)(Decision.Drafting(turn, Venue.Thread))
+    }
+
+    test("a message put to grit by name is answered in its thread, though placement would pass") {
+      val loud = named.copy(
+        tags = Tags.Weighed(directed.updated(Tags.V7.forRoom, Answer.YesNo(0.9)), "jev", usage),
+        reach = atTop.reach
+      )
+      decide(loud, s = Speaking.Within(toGritLimits.copy(toRoom = placing.toRoom))) ==>
+        Decision.Answering(turn, "C/1")
     }
 
     test("a rate needs a count of at least 1 and a positive window") {

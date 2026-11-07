@@ -25,7 +25,7 @@ import grit.core.period.Probability
 import grit.core.place.{Place, Service}
 import grit.core.prompt.FragmentId
 import grit.core.recipe.{Briefing, ServiceOffer}
-import grit.core.speech.{Outcome, SpeechJson}
+import grit.core.speech.{Outcome, SpeechJson, Venue}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
@@ -676,8 +676,10 @@ private[turn] object TurnJournal {
     * `reached` as none, so every offer recorded before them reads as it did; `"shaped"`
     * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped;
     * `"zoned": {"person": zone id, "deployment": zone id}` when its message was dated in a zone,
-    * `person` absent when not known, none reading as dated in UTC; and `"briefing": "tasked"`
-    * for a turn briefed for one task, none reading as conversing.
+    * `person` absent when not known, none reading as dated in UTC; `"briefing": "tasked"`
+    * for a turn briefed for one task, none reading as conversing; and `"room": address` for a
+    * draft placed at its room's top level ([[grit.core.speech.Venue.Room]]), none reading as
+    * its thread.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(writeRecorded, readRecorded)
@@ -717,6 +719,12 @@ private[turn] object TurnJournal {
     r.briefing match {
       case Briefing.Tasked => o("briefing") = "tasked"
       case Briefing.Conversing => ()
+    }
+    // Written only for a draft placed at its room's top level, so every other offer keeps its
+    // form.
+    r.venue match {
+      case Venue.Room(to) => o("room") = to
+      case Venue.Thread => ()
     }
     o
   }
@@ -815,6 +823,11 @@ private[turn] object TurnJournal {
         case Some(ujson.Str("tasked")) => Right(Briefing.Tasked)
         case Some(other) => Left(s"offer: unknown briefing ${other.render()}")
       }
+      venue <- o.get("room") match {
+        case None => Right(Venue.Thread)
+        case Some(ujson.Str(to)) => Right(Venue.Room(to))
+        case Some(other) => Left(s"offer: room is not an address: ${other.render()}")
+      }
     } yield TurnOffer.Recorded(
       workspace,
       tools,
@@ -824,7 +837,8 @@ private[turn] object TurnJournal {
       reached,
       shaped,
       zoned,
-      briefing
+      briefing,
+      venue
     )
 
   /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",

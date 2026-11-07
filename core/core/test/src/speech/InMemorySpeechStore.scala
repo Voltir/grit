@@ -46,19 +46,19 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
     Right(
       decisions
         .collect {
-          case (h, Decision.Drafting(turn), at) if !at.isBefore(since) =>
+          case (h, Decision.Drafting(turn, venue), at) if !at.isBefore(since) =>
             val stage = outcomes.get(turn) match {
               case None => Stage.Drafting
               case Some((_, _, Some(seq))) => Stage.Posted(seq)
               case Some((_, _, None)) => Stage.Settled
             }
-            Spoken(turn, h.room, at, stage)
+            Spoken(turn, h.room, at, stage, venue != Venue.Thread)
         }
         .sortBy(s => (s.at, WorkflowId.value(s.turn.workflowId)))
     )
 
   def spentOn(day: Day)(using Tx^): Either[StoreError, Spend] = {
-    val drafting = decisions.collect { case (_, Decision.Drafting(t), _) => t.workflowId }.toSet
+    val drafting = decisions.collect { case (_, Decision.Drafting(t, _), _) => t.workflowId }.toSet
     Right(
       ledger.rows
         .filter((entry, workflow, _, _, _, _) =>
@@ -83,6 +83,44 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
       case (_, Decision.Answering(t, _), _) => t == turn
       case _ => false
     })
+
+  def venue(turn: TurnRef)(using Tx^): Either[StoreError, Venue] =
+    Right(
+      decisions
+        .collectFirst { case (_, Decision.Drafting(t, v), _) if t == turn => v }
+        .getOrElse(Venue.Thread)
+    )
+
+  def placing(turn: TurnRef, rate: Option[Rate], at: Instant)(using
+      Tx^
+  ): Either[StoreError, Venue] =
+    decisions.collectFirst {
+      case (h, Decision.Drafting(t, v), _) if t == turn => (h.room, v)
+    } match {
+      case Some((room, Venue.Room(to))) =>
+        spoken(Instant.MIN).map { all =>
+          val spent = rate.forall(r =>
+            all.count(s =>
+              s.atTop && s.room == room && s.turn != turn && s.at.isAfter(
+                at.minusNanos(r.per.toNanos)
+              ) && (s.stage match {
+                case Stage.Posted(_) => true
+                case Stage.Drafting | Stage.Settled => false
+              })
+            ) >= r.count
+          )
+          if (!spent) Venue.Room(to)
+          else {
+            decisions = decisions.map {
+              case (h, Decision.Drafting(t, _), d) if t == turn =>
+                (h, Decision.Drafting(t, Venue.Thread), d)
+              case d => d
+            }
+            Venue.Thread
+          }
+        }
+      case _ => Right(Venue.Thread)
+    }
 
   def drafted(turn: TurnRef, outcome: Outcome, draft: Option[String], at: Instant)(using
       Tx^
@@ -119,7 +157,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
 
   /** The turn `d` started, drafting or answering. */
   private def started(d: Decision): Option[TurnRef] = d match {
-    case Decision.Drafting(t) => Some(t)
+    case Decision.Drafting(t, _) => Some(t)
     case Decision.Answering(t, _) => Some(t)
     case Decision.Held(_) => None
   }

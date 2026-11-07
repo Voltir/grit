@@ -107,7 +107,7 @@ object GateSweep {
       val speaking = Speaking.Shadow(grid.limits.copy(drafts = gate))
       val decided: Vector[(Case, Boolean, Option[Verdict])] = cases.map { c =>
         val drafts = Speech.decide(speaking, c.heard, Empty, Uncapped, c.heard.said) match {
-          case Decision.Drafting(_) => true
+          case Decision.Drafting(_, _) => true
           case Decision.Answering(_, _) | Decision.Held(_) => false
         }
         (c, drafts, verdicts.cases.get(c.id).map(_.verdict))

@@ -315,6 +315,37 @@ object DeploymentTests extends TestSuite {
     }
 
     test(
+      "speaking by a placement gate that reads a question live triage does not ask is refused, naming it; the suggested one is not"
+    ) {
+      def places(toRoom: grit.core.speech.ToRoom) = {
+        val limits = grit.core.speech.Limits
+          .suggested(
+            grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+            grit.lifecycle.triage.TriageQuestions.ShippedSpeak
+          )
+          .copy(toRoom = Some(toRoom))
+        (
+          Deployments.of(speaking = grit.core.speech.Speaking.Within(limits)).map(_ => ()),
+          Deployments.of(speaking = grit.core.speech.Speaking.Shadow(limits)).map(_ => ())
+        )
+      }
+      val chatter = grit.core.triage.Reading.Chosen(grit.core.triage.Tags.V1.kind, "chatter")
+      (
+        places(
+          grit.core.speech.ToRoom.Suggested
+            .copy(gate = grit.lifecycle.triage.TriageQuestions.V1.speak)
+        ),
+        places(grit.core.speech.ToRoom.Suggested)
+      ) ==> (
+        (
+          Left(DeploymentRefusal.PlacementUnread(chatter)),
+          Left(DeploymentRefusal.PlacementUnread(chatter))
+        ),
+        (Right(()), Right(()))
+      )
+    }
+
+    test(
       "live triage that does not ask durable as a yes/no is refused: every period would earn a closing"
     ) {
       import grit.lifecycle.triage.TriageQuestions

@@ -330,10 +330,10 @@ object TriageQuestionsTests extends TestSuite {
 
     // The words are what the classifier is asked: pinned.
     test(
-      "v6 asks records-hold in place of anchor-record, the rest in v5's order and words, and is shipped"
+      "v6 asks records-hold in place of anchor-record, the rest in v5's order and words"
     ) {
       val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.shipped(pip)
+      val set = TriageQuestions.v6(pip)
       val v5 = TriageQuestions.v5(pip).questions(catalog)
       val asked = set.questions(catalog)
       asked.keys.map(QuestionName.value).toVector ==> Vector(
@@ -367,6 +367,37 @@ object TriageQuestionsTests extends TestSuite {
         (Tags.V6.drafts, Tags.V6.drafts, Tags.V6.drafts)
       // Its gate's facts are code's to read: the set asks every reading of it.
       set.unread(set.speak, Corpora.Empty) ==> None
+    }
+
+    test(
+      "v7 asks v6's questions in v6's order and words, then for-room, drafts by v6's gate, reads every reading of the placement gate, and is shipped"
+    ) {
+      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
+      val set = TriageQuestions.shipped(pip)
+      val asked = set.questions(catalog)
+      (
+        asked.removed(n("for-room")),
+        asked.keys.lastOption.map(QuestionName.value),
+        asked.get(n("for-room")),
+        (set.speak, TriageQuestions.ShippedSpeak),
+        (
+          set.unread(Tags.V7.toRoom, Corpora.Empty),
+          TriageQuestions.v6(pip).unread(Tags.V7.toRoom, Corpora.Empty)
+        )
+      ) ==> (
+        TriageQuestions.v6(pip).questions(catalog),
+        Some("for-room"),
+        Some(
+          yesNo(
+            "Read new_message, thread and exchanges_in_channel (when present). Would a reply to " +
+              "new_message be for the whole channel rather than for its author alone: a heads-up " +
+              "others need, an answer several people asked for, a decision the channel has to " +
+              "know, or new_message asking for everyone to be told?"
+          )
+        ),
+        (Tags.V6.drafts, Tags.V6.drafts),
+        (None, Some(Reading.Yes(Tags.V7.forRoom)))
+      )
     }
 
     test("V2 drafts at its bounds: 0.5 passes at least and fails below; a missing answer is None") {

@@ -2,6 +2,8 @@ package grit.core.speech
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
 import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PluginName, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
@@ -73,17 +75,22 @@ abstract class SpeechContract extends TestSuite {
       EntrySeq(0),
       room,
       At,
-      Reach(Some("C/1"), Set.empty),
+      Reach(Some(ReplyTo("C/1")), Set.empty),
       Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.8)), "jev", usage),
       Integrity.Member,
       Cues.Empty
     )
 
   /** A heard message as `c`'s next turn, decided on at `at` as `decision` does to it. */
-  private def decide(c: ConversationId, at: Instant, drafting: Boolean): TurnRef = {
+  private def decide(
+      c: ConversationId,
+      at: Instant,
+      drafting: Boolean,
+      venue: Venue = Venue.Thread
+  ): TurnRef = {
     val turn = next(c, Payload.Heard("is it Thursday?"), s"${ConversationId.value(c)}:h:$at")
     val decision =
-      if (drafting) Decision.Drafting(turn) else Decision.Held(Silence.Unweighed("down"))
+      if (drafting) Decision.Drafting(turn, venue) else Decision.Held(Silence.Unweighed("down"))
     transaction(speech.decided(heardAs(turn), decision, at)) ==> Right(true)
     turn
   }
@@ -104,7 +111,7 @@ abstract class SpeechContract extends TestSuite {
     test("a heard message's reach is kept, the first one standing; none for another turn") {
       val c = conversation("speech-reach")
       val turn = next(c, Payload.Heard("hi"), "speech-reach:h")
-      val first = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
+      val first = Reach(Some(ReplyTo("C/1")), Set(TestAccounts.account("slack:T/U1")))
       transaction(speech.heard(turn, first)) ==> Right(())
       transaction(speech.heard(turn, Reach(None, Set.empty))) ==> Right(())
       transaction(speech.reach(turn)) ==> Right(Some(first))
@@ -137,7 +144,7 @@ abstract class SpeechContract extends TestSuite {
         )
         TurnRef(c, n.turnSeq)
       }
-      val reach = Reach(Some("C/1"), Set.empty)
+      val reach = Reach(Some(ReplyTo("C/1")), Set.empty)
       transaction(speech.heard(turn, reach)) ==> Right(())
       transaction(speech.reach(turn)) ==> Right(Some(reach))
       val period = right(transaction(periods.of(turn)))
@@ -189,7 +196,9 @@ abstract class SpeechContract extends TestSuite {
       transaction(
         speech.decided(heardAs(turn).copy(cues = cues), Decision.Held(Silence.Off), At)
       ) ==> Right(true)
-      transaction(speech.decided(heardAs(plain), Decision.Drafting(plain), At)) ==> Right(true)
+      transaction(
+        speech.decided(heardAs(plain), Decision.Drafting(plain, Venue.Thread), At)
+      ) ==> Right(true)
       (cuesKept(turn), cuesKept(plain), cuesKept(TurnRef(c, TurnSeq(99)))) ==>
         (Some(cues), Some(Cues.Empty), None)
     }
@@ -375,6 +384,65 @@ abstract class SpeechContract extends TestSuite {
         transaction(speech.drafted(answering, Outcome.Failed("late"), None, At)),
         mine(c, At).map(_.turn)
       ) ==> (Right(true), Right(false), Vector(drafting))
+    }
+
+    test(
+      "a draft placed at its room's top level keeps its venue while its room's top-level rate allows; spent, or with no rate, it goes in its thread, kept so; any other turn's venue is the thread"
+    ) {
+      val c = conversation("speech-venue")
+      val hour = Rate(1, 1.hour)
+      val top = decide(c, At, drafting = true, Venue.Room("C//1"))
+      val thread = decide(c, At.plusSeconds(1), drafting = true)
+      val held = decide(c, At.plusSeconds(2), drafting = false)
+      val unrated = decide(c, At.plusSeconds(3), drafting = true, Venue.Room("C//3"))
+      def venues = transaction(Vector(top, thread, held, unrated).map(t => right(speech.venue(t))))
+      val before = (venues, mine(c, At).map(_.atTop))
+      val allowed = transaction(right(speech.placing(top, Some(hour), At.plusSeconds(60))))
+      // Another of its room's drafts posted at the top since: the rate is spent.
+      val other = decide(c, At.plusSeconds(4), drafting = true, Venue.Room("C//4"))
+      transaction {
+        val n = right(entries.lockNext(c))
+        right(
+          entries.insert(
+            Entry(
+              other.replyId,
+              c,
+              other.turnSeq,
+              None,
+              n.seq,
+              Payload.Message(reply),
+              At,
+              Integrity.Member
+            )
+          )
+        )
+      }
+      transaction(right(speech.drafted(other, Outcome.Posted(Cleared.Scored(judged)), None, At)))
+      val placed = transaction(
+        Vector(
+          right(speech.placing(top, Some(hour), At.plusSeconds(60))),
+          right(speech.placing(thread, Some(hour), At.plusSeconds(60))),
+          right(speech.placing(held, Some(hour), At.plusSeconds(60))),
+          right(speech.placing(unrated, None, At.plusSeconds(60)))
+        )
+      )
+      (before, allowed, placed, venues) ==> (
+        (
+          Vector(Venue.Room("C//1"), Venue.Thread, Venue.Thread, Venue.Room("C//3")),
+          Vector(true, false, true)
+        ),
+        Venue.Room("C//1"),
+        Vector.fill(4)(Venue.Thread),
+        Vector.fill(4)(Venue.Thread)
+      )
+    }
+
+    test("a heard message's reach keeps its room address beside its thread's") {
+      val c = conversation("speech-room-reach")
+      val turn = next(c, Payload.Heard("heads up"), "speech-room-reach:h")
+      val reach = Reach(Some(ReplyTo("C/1/1", Some("C//1"))), Set.empty)
+      transaction(right(speech.heard(turn, reach)))
+      transaction(speech.reach(turn)) ==> Right(Some(reach))
     }
   }
 }

@@ -135,7 +135,8 @@ object V6GateTests extends TestSuite {
       } yield (answers(toGrit, recordsHold, asks, open), cues(named, settled, plain))
       val outside =
         Fact.values.toVector.filter(f => without(Tags.V6.drafts, f).reads.contains(Reading.Fact(f)))
-      val addsNothing = Fact.values.toVector.filterNot(f =>
+      val read = Fact.values.toVector.filter(f => Tags.V6.drafts.reads.contains(Reading.Fact(f)))
+      val addsNothing = read.filterNot(f =>
         cases.exists((a, c) =>
           drafts(a, c).contains(true) && !without(Tags.V6.drafts, f).drafts(a, c).contains(true)
         )

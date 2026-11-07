@@ -409,8 +409,34 @@ object TriageQuestions {
     built.fold(why => throw new IllegalStateException(why), identity)
   }
 
-  /** The set live triage asks for a deployment presenting as `persona`: [[v6]]. */
-  def shipped(persona: Persona): TriageQuestions = v6(persona)
+  /** v7, the set that replaced [[v6]], worded with `persona`'s name: v6's questions in v6's
+    * order and words, then `for-room` ([[Tags.V7.forRoom]]), what places a draft at its room's
+    * top level ([[Tags.V7.toRoom]]); gated by [[Tags.V6.drafts]], whatever the name.
+    */
+  def v7(persona: Persona): TriageQuestions = {
+    val six = v6(persona)
+    of(
+      six.first,
+      six.rest :+ Item.One(
+        Tags.V7.forRoom,
+        Question.YesNo(
+          "Read new_message, thread and exchanges_in_channel (when present). Would a reply to " +
+            "new_message be for the whole channel rather than for its author alone: a heads-up " +
+            "others need, an answer several people asked for, a decision the channel has to " +
+            "know, or new_message asking for everyone to be told?",
+          None,
+          None
+        )
+      ),
+      six.speak
+    )
+      // v6's set with one yes/no of a name it lacks, under v6's gate, so no Left is taken;
+      // TriageQuestionsTests builds it.
+      .fold(why => throw new IllegalStateException(why.toString), identity)
+  }
+
+  /** The set live triage asks for a deployment presenting as `persona`: [[v7]]. */
+  def shipped(persona: Persona): TriageQuestions = v7(persona)
 
   /** The gate live triage's set drafts by, the same for every persona: [[Tags.V6.drafts]]. */
   val ShippedSpeak: Gate = Tags.V6.drafts

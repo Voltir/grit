@@ -36,7 +36,8 @@ enum Speaking {
   * cannot decide holds the message, `Unasked`); at most `thread` posts per conversation,
   * `room` per room ([[grit.core.store.Origin.room]]) and `deployment` in all; today's speech
   * spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at or above
-  * `postAt`, and nobody having spoken since its root.
+  * `postAt`, and nobody having spoken since its root. Where it goes: its message's thread, or
+  * its room's top level when `toRoom` places it there ([[Venue]]); `None` is always the thread.
   */
 final case class Limits(
     drafts: Gate,
@@ -45,7 +46,8 @@ final case class Limits(
     thread: Rate,
     room: Rate,
     deployment: Rate,
-    spend: DailyCap
+    spend: DailyCap,
+    toRoom: Option[ToRoom] = None
 ) {
 
   /** The earliest instant any of its rates reaches back to from `now`: what a decision at
@@ -53,7 +55,8 @@ final case class Limits(
     */
   def from(now: Instant): Instant =
     now.minusNanos(
-      Vector(thread, room, deployment).foldLeft(0L)((m, r) => math.max(m, r.per.toNanos))
+      (Vector(thread, room, deployment) ++ toRoom.map(_.rate))
+        .foldLeft(0L)((m, r) => math.max(m, r.per.toNanos))
     )
 }
 
@@ -72,4 +75,20 @@ object Limits {
     Rate(10, 24.hours),
     spend
   )
+}
+
+/** When an unprompted draft is posted at its room's top level instead of its message's thread
+  * ([[Speech.decide]]): its message has a room address ([[ReplyTo.room]]), triage's answers and
+  * the cues pass `gate` ([[Gate.check]]; failing or unread is the thread), and fewer than
+  * `rate.count` of its room's posts were made there within `rate.per`, counted again when the
+  * draft is posted. It never holds a message.
+  */
+final case class ToRoom(gate: Gate, rate: Rate)
+
+object ToRoom {
+
+  /** The placement a deployment starts on: [[grit.core.triage.Tags.V7.toRoom]], and 1 post at
+    * a room's top level in 2 hours.
+    */
+  val Suggested: ToRoom = ToRoom(grit.core.triage.Tags.V7.toRoom, Rate(1, 2.hours))
 }

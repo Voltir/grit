@@ -11,7 +11,7 @@ import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Judgement, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
-import grit.core.speech.{Decision, Heard, Outcome, Reach, Silence, SpeechStore}
+import grit.core.speech.{Decision, Heard, Outcome, Reach, ReplyTo, Silence, SpeechStore, Venue}
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -164,7 +164,7 @@ abstract class ReviewContract extends TestSuite {
       EntrySeq(0),
       room,
       at,
-      Reach(Some("C/1"), Set.empty),
+      Reach(Some(ReplyTo("C/1")), Set.empty),
       Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
       Integrity.Member,
       if (cued) cues(id) else Cues.Empty
@@ -173,13 +173,13 @@ abstract class ReviewContract extends TestSuite {
       live match {
         case Live.Undecided => ()
         case Live.Unsettled =>
-          right(speech.decided(heard, Decision.Drafting(turn), at))
+          right(speech.decided(heard, Decision.Drafting(turn, Venue.Thread), at))
           ()
         case Live.As(Settled.Held(why)) =>
           right(speech.decided(heard, Decision.Held(why), at))
           ()
         case Live.As(Settled.Drafted(outcome)) =>
-          right(speech.decided(heard, Decision.Drafting(turn), at))
+          right(speech.decided(heard, Decision.Drafting(turn, Venue.Thread), at))
           right(speech.drafted(turn, outcome, None, at))
           ()
       }

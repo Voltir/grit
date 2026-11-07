@@ -12,7 +12,7 @@ object GateJsonTests extends TestSuite {
 
   val tests = Tests {
     test("a fact reading round-trips; an old reading reads as before") {
-      val facts = Vector(Fact.Named, Fact.SettledOnPerson, Fact.RecordScore).map(Reading.Fact(_))
+      val facts = Fact.values.toVector.map(Reading.Fact(_))
       val failed = Gate.Failed(
         Bound.AtLeast(Reading.Fact(Fact.RecordScore), Probability.clamped(0.5)),
         Probability.clamped(0.25)
@@ -27,7 +27,9 @@ object GateJsonTests extends TestSuite {
         Vector(
           """{"reads":"fact","fact":"named"}""",
           """{"reads":"fact","fact":"settled_on_person"}""",
-          """{"reads":"fact","fact":"record_score"}"""
+          """{"reads":"fact","fact":"record_score"}""",
+          """{"reads":"fact","fact":"at_top"}""",
+          """{"reads":"fact","fact":"calm"}"""
         ),
         facts.map(Right(_)),
         Right(failed),

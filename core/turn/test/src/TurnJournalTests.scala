@@ -515,6 +515,25 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
+      "an offer placed at its room's top level is written with the room's address, one in its thread as before; an offer recorded without it reads as the thread"
+    ) {
+      // Pinned: record-speech reads this key to post a draft at its room's top level.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      def placed(v: grit.core.speech.Venue): Either[TurnFailure, TurnOffer.Recorded] =
+        Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Heard, venue = v))
+      val (room, thread) =
+        (placed(grit.core.speech.Venue.Room("C//1")), placed(grit.core.speech.Venue.Thread))
+      (j.encode(room), j.encode(thread), j.decode(j.encode(room)), j.decode(j.encode(thread))) ==> (
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard","room":"C//1"}}""",
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard"}}""",
+        Right(room),
+        Right(thread)
+      )
+    }
+
+    test(
       "an offer's reached tools are written with their places, and an offer recorded before them reads as none"
     ) {
       // Pinned: replay reads this key to address each reached tool's calls to its place.

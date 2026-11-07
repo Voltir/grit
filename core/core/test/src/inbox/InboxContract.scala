@@ -23,7 +23,7 @@ import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
 import grit.core.message.{Cost, Message}
 import grit.core.period.{Period, PeriodState}
 import grit.core.place.Place
-import grit.core.speech.Reach
+import grit.core.speech.{Reach, ReplyTo}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload, TestWentOn, WentOn}
 import grit.core.visibility.{
@@ -528,7 +528,7 @@ abstract class InboxContract extends TestSuite {
     test("a heard message keeps the reach it was heard with; heard again, the first stands") {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "reach")
-        val first = Reach(Some("C/1"), Set(TestAccounts.account("task:ben")))
+        val first = Reach(Some(ReplyTo("C/1")), Set(TestAccounts.account("task:ben")))
         inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, first, None) ==> Right(())
         inbox.hear(here, SourceId("m1"), "ask Ben", Account.Local, Said, Reach.Nowhere, None) ==>
           Right(())
@@ -550,7 +550,7 @@ abstract class InboxContract extends TestSuite {
           "ask Ben",
           Account.Local,
           Said,
-          Reach(Some("C/1"), Set(ben)),
+          Reach(Some(ReplyTo("C/1")), Set(ben)),
           None
         ) ==>
           Right(())

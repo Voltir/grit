@@ -8,7 +8,7 @@ import grit.core.edge.Acknowledgement
 import grit.core.id.{ConversationId, EntryId, QuestionName, TriageRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{Judgement, Probability, Verdict}
-import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking}
+import grit.core.speech.{Decision, Limits, Outcome, Silence, Speaking, Venue}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Opening, Stitching, Tuning}
 import grit.core.store.Tx
@@ -28,24 +28,24 @@ object TriageTests extends TestSuite {
 
   private def name(text: String) = QuestionName.read(text).getOrElse(sys.error(text))
 
-  /** v6 answered: gap closes at 0.75; open 0.125, to 0.25, to-grit 0.125, durable 0.875,
-    * records-hold 0.375; any source 0.5.
+  /** v7 answered: gap closes at 0.75; open 0.125, to 0.25, to-grit 0.125, durable 0.875,
+    * records-hold 0.375; any source 0.5, and for-room 0.5.
     */
   private def decided =
     new Scripted(
       Vector(0.0, 0.125, 0.75, 0.0, 0.125),
-      Vector(0.125, 0.25, 0.125, 0.875, 0.375, 0.5)
+      Vector(0.125, 0.25, 0.125, 0.875, 0.375, 0.5, 0.5)
     )
 
-  /** v6 answered: gap asks at 1.0; open 0.9, to 0.125, to-grit 0.125, durable 0.5,
-    * records-hold 0.875: past its gate.
+  /** v7 answered: gap asks at 1.0; open 0.9, to 0.125, to-grit 0.125, durable 0.5,
+    * records-hold 0.875, for-room 0: past its gate, and placed in its thread.
     */
   private def asking =
-    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.875))
+    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.875, 0.0))
 
-  /** v6 answered as [[asking]], but to-grit 0.875: put to grit by name, past its gate. */
+  /** v7 answered as [[asking]], but to-grit 0.875: put to grit by name, past its gate. */
   private def named =
-    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.875, 0.5, 0.875))
+    new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.9, 0.125, 0.875, 0.5, 0.875, 0.0))
 
   private val limits =
     Limits.suggested(
@@ -75,7 +75,8 @@ object TriageTests extends TestSuite {
       name("to") -> Answer.YesNo(0.25),
       name("to-grit") -> Answer.YesNo(0.125),
       Earning.Durable -> Answer.YesNo(0.875),
-      name("records-hold") -> Answer.YesNo(0.375)
+      name("records-hold") -> Answer.YesNo(0.375),
+      name("for-room") -> Answer.YesNo(0.5)
     ),
     "jev-1.13.0",
     Spent
@@ -83,7 +84,7 @@ object TriageTests extends TestSuite {
 
   /** What a triage logs of [[decision]]. */
   private val Decided =
-    "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, records-hold 0.375 (jev-1.13.0)"
+    "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, records-hold 0.375, for-room 0.5 (jev-1.13.0)"
 
   /** Someone a heard message may name. */
   private val Bo = grit.core.identity.TestAccounts.account("test:u-Bo")
@@ -151,7 +152,7 @@ object TriageTests extends TestSuite {
     }
 
     test(
-      "live asks v6: gap among five, open, to, to-grit, durable and records-hold, then one yes/no per source covering the conversation"
+      "live asks v7: gap among five, open, to, to-grit, durable and records-hold, then one yes/no per source covering the conversation, then for-room"
     ) {
       val w = new World
       val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
@@ -169,7 +170,8 @@ object TriageTests extends TestSuite {
         "yes/no",
         "yes/no",
         "yes/no",
-        "github"
+        "github",
+        "yes/no"
       )
       w.tags(t).collect { case Tags.Weighed(answers, _, _) =>
         answers.keys.toVector.map(QuestionName.value)
@@ -181,7 +183,8 @@ object TriageTests extends TestSuite {
           "to-grit",
           "durable",
           "records-hold",
-          "source:github"
+          "source:github",
+          "for-room"
         )
       )
     }
@@ -321,7 +324,7 @@ object TriageTests extends TestSuite {
           Decision.Held(Silence.Continued(entryOf(w, c, second)(using TestTx.fake))),
           at(0).plusSeconds(6)
         ),
-        (second.message, Decision.Drafting(second.message), at(0).plusSeconds(8))
+        (second.message, Decision.Drafting(second.message, Venue.Thread), at(0).plusSeconds(8))
       )
     }
 
@@ -353,7 +356,7 @@ object TriageTests extends TestSuite {
       val (elsewhere, turn, _) = outcome(follows = false)
       (follows, elsewhere) ==> (
         Vector(Decision.Held(Silence.Continued(next))),
-        Vector(Decision.Drafting(turn))
+        Vector(Decision.Drafting(turn, Venue.Thread))
       )
     }
 
@@ -488,9 +491,12 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875, for-room 0.0 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
-      (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
+      (w.started, w.speech.decisions.map(_._2)) ==> (
+        Vector(turn),
+        Vector(Decision.Drafting(turn, Venue.Thread))
+      )
       val history = durable.history(t.workflowId)
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
@@ -517,7 +523,7 @@ object TriageTests extends TestSuite {
         w.speech.decisions.map(_._2),
         w.started
       ) ==> (
-        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875 (jev-1.13.0); drafting, not started: the queue is down",
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, records-hold 0.875, for-room 0.0 (jev-1.13.0); drafting, not started: the queue is down",
         Vector(
           "stitched",
           "ask:triage",
@@ -528,7 +534,7 @@ object TriageTests extends TestSuite {
           "unstarted"
         ),
         Some(Outcome.Failed("not started: the queue is down")),
-        Vector(Decision.Drafting(one), Decision.Drafting(two)),
+        Vector(Decision.Drafting(one, Venue.Thread), Decision.Drafting(two, Venue.Thread)),
         Vector(two)
       )
     }
@@ -594,7 +600,7 @@ object TriageTests extends TestSuite {
         val t = w.hear("Pip, what did we decide about the refi page?", "Ana", 0)
         new InMemoryDurable().run(t.workflowId)(w.body(classifier, 1, speaking))
         val kinds = w.speech.decisions.map(_._2 match {
-          case Decision.Drafting(_) => "drafting"
+          case Decision.Drafting(_, _) => "drafting"
           case Decision.Answering(_, _) => "answering"
           case Decision.Held(_) => "held"
         })
@@ -646,6 +652,38 @@ object TriageTests extends TestSuite {
     }
 
     test(
+      "consider records a message at a channel's top level as at the top, with the messages people said there in the hour before it; one in a thread under it is not at the top; a conversation per thread keeps no pace"
+    ) {
+      def placed(inThread: Boolean): (Boolean, Option[Int]) = {
+        val w = new World
+        val room = w.conversationAt(grit.core.store.Origin.Room("T", "C"))
+        val thread = w.conversationAt(grit.core.store.Origin.Thread("T", "C", "1.0"))
+        w.hear("long ago", "Ed", -61, in = room)
+        w.hear("lunch?", "Bo", 0, in = room, source = Some("1.0"))
+        w.hear("sure", "Cy", 1, in = room)
+        w.reply("Noon.", 2, in = room)
+        w.hear("where?", "Di", 3, in = thread)
+        val t = w.hear("deploy at five", "Ana", 4, in = if (inThread) thread else room)
+        new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
+        w.speech.decisions.map(_._1.cues).map(k => (k.atTop, k.pace)) match {
+          case Vector(one) => one
+          case other => throw new java.lang.AssertionError(s"one decision, not $other")
+        }
+      }
+      val perThread = {
+        val w = new World
+        val t = w.hear("deploy at five", "Ana", 0)
+        new InMemoryDurable().run(t.workflowId)(w.body(asking, 6, within))
+        w.speech.decisions.map(_._1.cues).map(k => (k.atTop, k.pace))
+      }
+      (placed(inThread = false), placed(inThread = true), perThread) ==> (
+        (true, Some(2)),
+        (false, Some(2)),
+        Vector((true, None))
+      )
+    }
+
+    test(
       "in a channel's top level, grit's reply to another message is not the assistant's reply to this one; its reply in the thread under it is"
     ) {
       val (aside, _) = roomSpoken(underReply = false)
@@ -679,7 +717,10 @@ object TriageTests extends TestSuite {
         w.speech.decisions.collect { case (h, _, _) if h.turn.conversationId == b => h.cues }
       ) ==> (
         Right(Vector(c)),
-        Vector(Cues.Empty.copy(continued = Some(entryOf(w, d, next)), settled = Some(settle)))
+        Vector(
+          Cues.Empty
+            .copy(continued = Some(entryOf(w, d, next)), settled = Some(settle), atTop = true)
+        )
       )
     }
 

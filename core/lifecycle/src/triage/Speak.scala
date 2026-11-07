@@ -150,6 +150,20 @@ private[triage] object Speak {
         Cues.Searched,
         heard.createdAt
       )
+      // A room keeps its top level as a conversation of its own only with rooms (ADR 0060).
+      top = conversation.origin match {
+        case Origin.Room(team, channel) => Some(Origin.Room(team, channel).place)
+        case Origin.Thread(team, channel, _) => Some(Origin.Room(team, channel).place)
+        case _ => None
+      }
+      before <- top.fold[Either[StoreError, Vector[grit.core.stitch.Said]]](Right(Vector.empty))(
+        _ =>
+          records.stitches.spokenIn(
+            conversation.origin.room,
+            heard.createdAt.minusNanos(Cues.PaceWindow.toNanos),
+            heard.createdAt
+          )
+      )
     } yield Cues(
       named = reach.asked.nonEmpty,
       spoken = (conversation.origin match {
@@ -168,7 +182,14 @@ private[triage] object Speak {
       }).map(_.by),
       continued = (later.filter(theirs) ++ followers).minByOption(_.createdAt).map(_.id),
       settled = settled,
-      records = hits.headOption.map((h, _) => Cues.Match(h.document.plugin, h.score, hits.size))
+      records = hits.headOption.map((h, _) => Cues.Match(h.document.plugin, h.score, hits.size)),
+      atTop = conversation.origin match {
+        case Origin.Room(_, _) => true
+        case Origin.Thread(_, _, _) => false
+        // A conversation per thread: its first message is said at the top level.
+        case _ => opening
+      },
+      pace = top.map(at => before.count(s => s.place == at && s.entry.payload.said.isDefined))
     )
   }
 

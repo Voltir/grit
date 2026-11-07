@@ -20,8 +20,10 @@ import grit.core.speech.{
   Limits,
   Outcome,
   Reach,
+  ReplyTo,
   Silence,
-  Speaking
+  Speaking,
+  Venue
 }
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{
@@ -174,7 +176,7 @@ object PickingTests extends TestSuite {
         EntrySeq(0),
         room,
         at,
-        Reach(Some("C/1"), Set.empty),
+        Reach(Some(ReplyTo("C/1")), Set.empty),
         Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)), "jev", usage),
         Integrity.Member,
         Cues.Empty
@@ -182,7 +184,7 @@ object PickingTests extends TestSuite {
       live match {
         case Settled.Held(why) => right(speech.decided(heard, Decision.Held(why), at))
         case Settled.Drafted(outcome) =>
-          right(speech.decided(heard, Decision.Drafting(turn), at))
+          right(speech.decided(heard, Decision.Drafting(turn, Venue.Thread), at))
           right(speech.drafted(turn, outcome, None, at))
       }
       right(

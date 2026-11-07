@@ -14,7 +14,7 @@ import grit.core.model.{Grade, ModelRef, Pinned, StrictSchemas, TurnProfile, Tur
 import grit.core.provider.ModelRequest
 import grit.core.route.{Routed, Routing, Uncleared}
 import grit.core.session.{Event, Session}
-import grit.core.speech.{Outcome, Speech, SpeechStore}
+import grit.core.speech.{Outcome, ReplyTo, Speaking, Speech, SpeechStore, Venue}
 import grit.core.stitch.{Along, Strand}
 import grit.core.store.{Entry, EntryStore, ModelProfileStore, Payload, StoreError, Tx, UsageLedger}
 import grit.core.tool.ToolName
@@ -109,9 +109,10 @@ private[turn] object TurnSteps {
       val (ledger, upstream) = (turnEnv.records.ledger, turnEnv.classifier.upstream)
       routed.known
         .flatMap(_ => turnEnv.speech.store.answering(turn))
+        .flatMap(answering => turnEnv.speech.store.venue(turn).map((answering, _)))
         .left
         .map(TurnFailure.ofStore)
-        .flatMap(answering =>
+        .flatMap((answering, venue) =>
           TurnOffer.decide(
             turnEnv.hosting,
             turnEnv.records.entries,
@@ -121,6 +122,7 @@ private[turn] object TurnSteps {
             turn,
             weighed.flatMap(_.answers),
             answering,
+            venue,
             routed.at,
             turnEnv.records.sessions.holder
           )
@@ -599,7 +601,16 @@ private[turn] object TurnSteps {
   /** `record-speech` for a heard-rooted turn's draft ([[recordSpeech]]). */
   val speechSettled: Step[Env, DraftSettled, Either[TurnFailure, Outcome]] =
     Step.transact[Env, DraftSettled, Either[TurnFailure, Outcome]](Names.recordSpeech, onTurn)(r =>
-      in => (tx: Tx^) ?=> recordSpeech(r.env, in.turn, in.settling, in.at.level, r.env.clock.now())
+      in =>
+        (tx: Tx^) ?=>
+          recordSpeech(
+            r.env,
+            in.turn,
+            in.settling,
+            in.at.at.offer.venue,
+            in.at.level,
+            r.env.clock.now()
+          )
     )
 
   /** `summarise`: the summary of the turn whose reply is `answered`, asked of the summary's
@@ -1006,14 +1017,18 @@ private[turn] object TurnSteps {
     * rows are written at ([[TurnRound.believedAt]]), a named one, unless it
     * passes, by [[Speech.postNamed]]), unless the assistant already replied after its root
     * ([[Speech.spoken]]); the judge's cost in the ledger; a posted draft written as the
-    * turn's reply and awaited at the address its heard message was heard with; and the
-    * outcome kept ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no
-    * address to go to is `Failed`.
+    * turn's reply and awaited at the address its heard message was heard with: at its room's
+    * top level when its offer recorded that `venue` and the room's top-level rate
+    * ([[grit.core.speech.ToRoom]]) still allows it, counted again here, else in its thread
+    * ([[grit.core.speech.SpeechStore.placing]]); and the outcome kept
+    * ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no address to go to
+    * is `Failed`.
     */
   private def recordSpeech(
       env: TurnEnv^,
       turn: TurnRef,
       settling: Settling,
+      venue: Venue,
       believed: Option[Integrity],
       at: Instant
   )(using Tx^): Either[TurnFailure, Outcome] = {
@@ -1078,8 +1093,10 @@ private[turn] object TurnSteps {
           .map(TurnFailure.ofStore)
       )
       _ <- (outcome, reach.flatMap(_.replyTo)) match {
-        case (Outcome.Posted(_), Some(to)) =>
+        case (Outcome.Posted(_), Some(replyTo)) =>
           for {
+            to <- placedAt(speaking, store, turn, venue, replyTo, at).left
+              .map(TurnFailure.ofStore)
             next <- entries.lockNext(turn.conversationId).left.map(TurnFailure.ofStore)
             _ <- entries
               .insert(
@@ -1103,6 +1120,31 @@ private[turn] object TurnSteps {
       _ <- store.drafted(turn, outcome, TurnJudge.said(draft), at).left.map(TurnFailure.ofStore)
     } yield outcome
   }
+
+  /** The address `turn`'s posted draft goes to, posted `at`: `venue`'s, at its room's top
+    * level, when `speaking`'s [[grit.core.speech.ToRoom]] rate still allows another post
+    * there ([[SpeechStore.placing]]), else its thread's.
+    */
+  private def placedAt(
+      speaking: Speaking,
+      store: SpeechStore,
+      turn: TurnRef,
+      venue: Venue,
+      replyTo: ReplyTo,
+      at: Instant
+  )(using Tx^): Either[StoreError, String] =
+    venue match {
+      case Venue.Thread => Right(replyTo.thread)
+      case Venue.Room(_) =>
+        val rate = speaking match {
+          case Speaking.Within(limits) => limits.toRoom.map(_.rate)
+          case Speaking.Shadow(_) | Speaking.Off => None
+        }
+        store.placing(turn, rate, at).map {
+          case Venue.Room(to) => to
+          case Venue.Thread => replyTo.thread
+        }
+    }
 
   /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
     * `answered`, after everything already in the conversation, believed as

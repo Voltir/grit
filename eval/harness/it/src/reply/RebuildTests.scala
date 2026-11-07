@@ -28,7 +28,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.speech.{Reach, Speaking}
+import grit.core.speech.{Reach, ReplyTo, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin, Payload}
 import grit.core.tool.Toolbox
@@ -345,7 +345,7 @@ object RebuildTests extends TestSuite {
       text,
       Account.Local,
       now(),
-      Reach(Some(s"C1/$ts/$ts"), Set.empty),
+      Reach(Some(ReplyTo(s"C1/$ts/$ts")), Set.empty),
       None
     ) ==> Right(())
 

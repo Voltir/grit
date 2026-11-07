@@ -9,7 +9,7 @@ import grit.core.id.{ConversationId, EntrySeq, QuestionName, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
-import grit.core.speech.{Decision, Heard, Ledger, Limits, Reach, Silence, Speaking, Speech}
+import grit.core.speech.{Decision, Heard, Ledger, Limits, Reach, ReplyTo, Silence, Speaking, Speech}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.triage.{Cues, Gate, Kind, Reading, Tags}
 import grit.core.visibility.Integrity
@@ -30,7 +30,7 @@ object ShippedGateTests extends TestSuite {
     EntrySeq(10),
     Place.under(Namespace.Slack, Vector("T", "C")),
     now.minusSeconds(60),
-    Reach(Some("C/1"), Set.empty),
+    Reach(Some(ReplyTo("C/1")), Set.empty),
     tags,
     Integrity.Member,
     Cues.Empty
@@ -61,7 +61,7 @@ object ShippedGateTests extends TestSuite {
 
   /** A decision in [[before]]'s terms: a hold's first failed bound, by what it reads. */
   private def after(d: Decision): Option[String] = d match {
-    case Decision.Drafting(_) | Decision.Answering(_, _) => None
+    case Decision.Drafting(_, _) | Decision.Answering(_, _) => None
     case Decision.Held(Silence.Gated(first, _)) =>
       first.bound match {
         case grit.core.triage.Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), _) =>

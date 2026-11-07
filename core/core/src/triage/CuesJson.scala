@@ -8,8 +8,9 @@ import grit.core.period.JudgementJson
   */
 object CuesJson {
 
-  /** `{"named", "spoken"?, "continued"?, "settled"?, "records"?}`, an absent cue left out: the
-    * entry ids as strings, `settled` as [[JudgementJson]] writes it, and `records` as `{"plugin", "score", "matched"}`.
+  /** `{"named", "spoken"?, "continued"?, "settled"?, "records"?, "at_top"?, "pace"?}`, an absent
+    * cue left out (`at_top` when false): the entry ids as strings, `settled` as
+    * [[JudgementJson]] writes it, and `records` as `{"plugin", "score", "matched"}`.
     */
   def write(cues: Cues): ujson.Value = {
     val o = ujson.Obj("named" -> cues.named)
@@ -23,6 +24,8 @@ object CuesJson {
         "matched" -> m.matched
       )
     )
+    if (cues.atTop) o("at_top") = true
+    cues.pace.foreach(n => o("pace") = n)
     o
   }
 
@@ -38,7 +41,20 @@ object CuesJson {
         continued <- entry(o, "continued")
         settled <- o.get("settled").fold(Right(None))(s => JudgementJson.read(s).map(Some(_)))
         records <- o.get("records").fold(Right(None))(r => matched(r).map(Some(_)))
-      } yield Cues(named, spoken, continued, settled, records)
+        atTop <- o
+          .get("at_top")
+          .fold[Either[String, Boolean]](Right(false))(
+            _.boolOpt.toRight("cues: at_top is not a boolean")
+          )
+        pace <- o
+          .get("pace")
+          .fold[Either[String, Option[Int]]](Right(None))(
+            _.numOpt
+              .filter(n => n.isWhole && n >= 0)
+              .map(n => Some(n.toInt))
+              .toRight("cues: pace is not a count")
+          )
+      } yield Cues(named, spoken, continued, settled, records, atTop, pace)
     case _ => Left("cues: expected an object")
   }
 

@@ -18,11 +18,14 @@ import grit.core.visibility.Integrity
   */
 object SpeechJson {
 
-  /** `{"drafting": turn's workflow id}`, `{"answering": turn's workflow id, "to": address}` or
-    * `{"held": silence}`.
+  /** `{"drafting": turn's workflow id, "room"?: address}` (`room` only at [[Venue.Room]]),
+    * `{"answering": turn's workflow id, "to": address}` or `{"held": silence}`.
     */
   def writeDecision(d: Decision): ujson.Value = d match {
-    case Decision.Drafting(turn) => ujson.Obj("drafting" -> WorkflowId.value(turn.workflowId))
+    case Decision.Drafting(turn, Venue.Thread) =>
+      ujson.Obj("drafting" -> WorkflowId.value(turn.workflowId))
+    case Decision.Drafting(turn, Venue.Room(to)) =>
+      ujson.Obj("drafting" -> WorkflowId.value(turn.workflowId), "room" -> to)
     case Decision.Answering(turn, to) =>
       ujson.Obj("answering" -> WorkflowId.value(turn.workflowId), "to" -> to)
     case Decision.Held(why) => ujson.Obj("held" -> writeSilence(why))
@@ -33,7 +36,15 @@ object SpeechJson {
       def turn(id: String) =
         TurnRef.fromWorkflowId(WorkflowId(id)).toRight(s"decision: $id is not a turn")
       (o.get("drafting"), o.get("answering"), o.get("held")) match {
-        case (Some(ujson.Str(id)), None, None) => turn(id).map(Decision.Drafting(_))
+        case (Some(ujson.Str(id)), None, None) =>
+          // A decision written before placement has no room: the thread.
+          for {
+            t <- turn(id)
+            venue <- o.get("room").fold[Either[String, Venue]](Right(Venue.Thread)) {
+              case ujson.Str(to) => Right(Venue.Room(to))
+              case _ => Left("decision: room is not an address")
+            }
+          } yield Decision.Drafting(t, venue)
         case (None, Some(ujson.Str(id)), None) =>
           for {
             t <- turn(id)

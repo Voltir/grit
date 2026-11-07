@@ -66,6 +66,7 @@ import grit.core.place.{Directory, Namespace, Place, Weight}
 import grit.core.plugin.{CacheDocs, CachePosting, DocumentPosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.session.{Event, Session}
+import grit.core.speech.Venue
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject}
 import grit.core.visibility.{Integrity, Provenance, Readers}
@@ -438,7 +439,8 @@ object CollectorLiveTests extends TestSuite {
       grit.core.triage.Cues.Empty
     )
     LiveDb.transaction(config)(
-      new SqlSpeechStore().decided(heard, grit.core.speech.Decision.Drafting(turn), Instant.now())
+      new SqlSpeechStore()
+        .decided(heard, grit.core.speech.Decision.Drafting(turn, Venue.Thread), Instant.now())
     ) ==> Right(true)
   }
 

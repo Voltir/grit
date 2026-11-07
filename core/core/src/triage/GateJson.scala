@@ -50,6 +50,8 @@ object GateJson {
     case Fact.Named => "named"
     case Fact.SettledOnPerson => "settled_on_person"
     case Fact.RecordScore => "record_score"
+    case Fact.AtTop => "at_top"
+    case Fact.Calm => "calm"
   }
 
   /** `{"reading", "bound", "p", "read"}`: what the bound reads, `at_least` or `below` `p`, and

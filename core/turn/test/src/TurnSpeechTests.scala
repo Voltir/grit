@@ -6,7 +6,7 @@ import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.provider.ProviderError
-import grit.core.speech.{Cleared, Judged, Outcome, Speaking, SpeechJson}
+import grit.core.speech.{Cleared, Judged, Limits, Outcome, Speaking, SpeechJson, ToRoom, Venue}
 import grit.core.store.Payload
 import grit.core.triage.InMemoryTriageStore
 import grit.core.visibility.Integrity
@@ -195,6 +195,27 @@ object TurnSpeechTests extends TestSuite {
       (outcome(unanswered), awaited(unanswered)) ==> (
         Some(Outcome.Posted(Cleared.Scored(judged(0.9, 0.9)))),
         Vector((unanswered.turn, "C/1"))
+      )
+    }
+
+    test(
+      "placed at its room's top level, within the room's top-level rate: posted, awaited at the room's address; with placement switched off since, awaited in its thread, kept there"
+    ) {
+      def posting(limits: Limits) = {
+        val w = speechWorld(room = Some("C//1"), venue = Venue.Room("C//1"))
+        run(w, new Judge(Some((0.9, 0.9))), Speaking.Within(limits))
+        (
+          outcome(w).map(SpeechJson.outcomeName),
+          awaited(w).map(_._2),
+          w.store.venue(w.turn)(using TestTx.fake)
+        )
+      }
+      (
+        posting(speechLimits.copy(toRoom = Some(ToRoom.Suggested))),
+        posting(speechLimits)
+      ) ==> (
+        (Some("posted"), Vector("C//1"), Right(Venue.Room("C//1"))),
+        (Some("posted"), Vector("C/1"), Right(Venue.Thread))
       )
     }
 

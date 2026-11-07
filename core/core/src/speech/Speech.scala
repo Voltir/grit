@@ -14,10 +14,23 @@ import grit.core.store.{Entry, Origin, Tx}
 import grit.core.triage.{Cues, Gate, Reading, Tags}
 import grit.core.visibility.Integrity
 
-/** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
+/** Where a reply to a heard message could go, in its edge's own address forms (`None`: it is
   * never answered, as for a past message), and whom it names besides the assistant.
   */
-final case class Reach(replyTo: Option[String], asked: Set[Account])
+final case class Reach(replyTo: Option[ReplyTo], asked: Set[Account])
+
+/** A heard message's reply addresses: in its `thread`, and at its room's top level (`room`),
+  * `None` where its edge has no top level to post at.
+  */
+final case class ReplyTo(thread: String, room: Option[String] = None)
+
+/** Where an unprompted reply is posted: in its message's thread, or at its room's top level, at
+  * `to`, the message's [[ReplyTo.room]].
+  */
+enum Venue {
+  case Thread
+  case Room(to: String)
+}
 
 object Reach {
 
@@ -68,10 +81,16 @@ enum Stage {
   case Settled
 }
 
-/** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), and its
-  * stage.
+/** An unprompted turn decided on: its `turn`, `room`, when it was decided (`at`), its stage,
+  * and whether its reply goes at its room's top level (`atTop`, [[Venue.Room]]).
   */
-final case class Spoken(turn: TurnRef, room: Place, at: Instant, stage: Stage)
+final case class Spoken(
+    turn: TurnRef,
+    room: Place,
+    at: Instant,
+    stage: Stage,
+    atTop: Boolean = false
+)
 
 /** The speech ledger as a decision needs it: the unprompted turns decided within the longest
   * of the limits' windows, and what was spent today on speech (`speech`) and in all (`all`).
@@ -81,8 +100,8 @@ final case class Ledger(turns: Vector[Spoken], speech: Spend, all: Spend)
 /** What grit decided about a heard message. */
 enum Decision {
 
-  /** Draft: `turn`, the heard message's own, runs unprompted. */
-  case Drafting(turn: TurnRef)
+  /** Draft: `turn`, the heard message's own, runs unprompted, its reply to go at `venue`. */
+  case Drafting(turn: TurnRef, venue: Venue)
 
   /** Answer as said to grit: triage read the message as put to grit by name
     * ([[Tags.directed]]), so `turn`, its own, runs as an addressed turn does, its reply
@@ -246,11 +265,12 @@ enum Outcome {
 object Speech {
 
   /** Whether grit drafts after `heard` at `now`, under `speaking`, given `ledger` and the
-    * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`.
-    * Fails closed: an untagged message is `Unweighed`, and one whose answers the gate cannot
-    * read is `Unasked`. A message triage read as put to grit ([[Tags.directed]]) is
-    * `Answering` at its reply address, held only as an addressed one could be: with no
-    * address, by the gate (none under [[Speaking.Off]]), or over the budget.
+    * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`,
+    * at its room's top level when [[Limits.toRoom]] places it there ([[ToRoom]]), else in its
+    * thread. Fails closed: an untagged message is `Unweighed`, and one whose answers the gate
+    * cannot read is `Unasked`. A message triage read as put to grit ([[Tags.directed]]) is
+    * `Answering` at its thread's reply address, held only as an addressed one could be: with
+    * no address, by the gate (none under [[Speaking.Off]]), or over the budget.
     */
   def decide(
       speaking: Speaking,
@@ -267,6 +287,16 @@ object Speech {
         }) && spoken(t) && t.at.isAfter(now.minus(JDuration.ofNanos(rate.per.toNanos)))
       )
     def here(t: Spoken): Boolean = t.turn.conversationId == heard.turn.conversationId
+    // Placement never holds: a gate that fails or is unread, a spent rate or no address is the
+    // thread.
+    def placed(limits: Limits): Venue =
+      (limits.toRoom, heard.reach.replyTo.flatMap(_.room), heard.tags) match {
+        case (Some(r), Some(to), Tags.Weighed(answers, _, _))
+            if r.gate.check(answers, heard.cues) == Gate.Checked.Passes &&
+              within(r.rate, t => t.atTop && t.room == heard.room) < r.rate.count =>
+          Venue.Room(to)
+        case _ => Venue.Thread
+      }
     val checks: Limits => Vector[() => Option[Silence]] = limits =>
       Vector(
         () => Option.when(heard.reach.replyTo.isEmpty)(Silence.NoAddress),
@@ -320,11 +350,16 @@ object Speech {
         limited
           .flatMap(gated(_, heard))
           .orElse(Option.when(!budget.admits(ledger.all))(Silence.OverBudget))
-          .fold(Decision.Answering(heard.turn, to))(Decision.Held(_))
+          .fold(Decision.Answering(heard.turn, to.thread))(Decision.Held(_))
       case (false, _) =>
-        limited
-          .fold(Some(Silence.Off))(checks(_).iterator.map(_()).collectFirst { case Some(s) => s })
-          .fold(Decision.Drafting(heard.turn))(Decision.Held(_))
+        limited match {
+          case None => Decision.Held(Silence.Off)
+          case Some(limits) =>
+            checks(limits).iterator
+              .map(_())
+              .collectFirst { case Some(s) => s }
+              .fold(Decision.Drafting(heard.turn, placed(limits)))(Decision.Held(_))
+        }
     }
   }
 

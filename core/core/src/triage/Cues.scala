@@ -10,15 +10,19 @@ import grit.core.period.{Judgement, Probability}
   * its strand (`continued`); the latest settle verdict on the exchange it follows, made before
   * it (`settled`: its own conversation's for a reply, the followed root's for an opening; `None`
   * when that exchange has no open period or no verdict); and the best document match for its
-  * text and its thread's tail (`records`; `None` when nothing matched). An unanswered verdict is
-  * kept with its words.
+  * text and its thread's tail (`records`; `None` when nothing matched); whether it was said at
+  * its room's top level (`atTop`); and how many messages people said at its room's top level in
+  * the [[Cues.PaceWindow]] before it (`pace`; `None` where its room keeps no top level of its
+  * own, [[grit.core.store.Origin.Room]]). An unanswered verdict is kept with its words.
   */
 final case class Cues(
     named: Boolean,
     spoken: Option[EntryId],
     continued: Option[EntryId],
     settled: Option[Judgement],
-    records: Option[Cues.Match]
+    records: Option[Cues.Match],
+    atTop: Boolean = false,
+    pace: Option[Int] = None
 )
 
 object Cues {
@@ -30,6 +34,10 @@ object Cues {
 
   /** 3: how many of the best record matches a heard message's cue reads. */
   val Searched: Int = 3
+
+  /** 1 hour: how far back from a heard message its room's pace is counted. */
+  val PaceWindow: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.Duration(1, scala.concurrent.duration.HOURS)
 
   /** Nothing read: what a decision kept before cues reads as. */
   val Empty: Cues = Cues(named = false, None, None, None, None)
@@ -56,6 +64,15 @@ enum Fact {
     */
   case RecordScore
 
+  /** 1 when it was said at its room's top level, else 0. */
+  case AtTop
+
+  /** `max(0, 1 - n / Busy)` over `n`, the messages said at its room's top level in the
+    * [[Cues.PaceWindow]] before it: 1 in a silent room, 0 at [[Fact.Busy]] or more, and 0 where
+    * its room's pace was not read.
+    */
+  case Calm
+
   /** Its value read from `cues`. */
   def read(cues: Cues): Probability = this match {
     case Named => if (cues.named) Probability.One else Probability.Zero
@@ -70,6 +87,9 @@ enum Fact {
         if (m.score > 0) Probability.clamped(m.score / (Fact.PlainMatch + m.score))
         else Probability.Zero
       )
+    case AtTop => if (cues.atTop) Probability.One else Probability.Zero
+    case Calm =>
+      cues.pace.fold(Probability.Zero)(n => Probability.clamped(1.0 - n.toDouble / Fact.Busy))
   }
 }
 
@@ -83,4 +103,9 @@ object Fact {
     * and 120 characters quoted from a document at least 31.
     */
   val PlainMatch: Double = 20.0
+
+  /** 10: the messages at a room's top level in its [[Cues.PaceWindow]] at which
+    * [[Fact.Calm]] reads 0, and at 5 one half.
+    */
+  val Busy: Double = 10.0
 }

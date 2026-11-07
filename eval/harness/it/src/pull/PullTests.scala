@@ -12,7 +12,7 @@ import grit.core.durable.Durable
 import grit.core.id.{DocKey, PluginName, QuestionName, ShadowName, SourceId, WorkflowId}
 import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
-import grit.core.speech.{Limits, Reach, Speaking}
+import grit.core.speech.{Limits, Reach, ReplyTo, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
@@ -395,8 +395,8 @@ object PullTests extends TestSuite {
         val someone = Account.read("slack:T1/U2").getOrElse(sys.error("an account"))
         // Each opens its own thread in its own room: neither is the other's next message.
         val heard = Vector(
-          ("C1", "3000.1", Reach(Some("C1/3000.1"), Set(someone)), "falcon release"),
-          ("C2", "3000.2", Reach(Some("C2/3000.2"), Set.empty), "release")
+          ("C1", "3000.1", Reach(Some(ReplyTo("C1/3000.1")), Set(someone)), "falcon release"),
+          ("C2", "3000.2", Reach(Some(ReplyTo("C2/3000.2")), Set.empty), "release")
         )
         heard.zipWithIndex.foreach { case ((channel, ts, reach, what), i) =>
           engine.inbox.hear(

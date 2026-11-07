@@ -46,7 +46,7 @@ import grit.core.place.{Directory, Place, Reaches, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.session.{Event, Session, Sessions}
-import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
+import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach, ReplyTo, Venue}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{InMemoryStitchStore, Tuning}
 import grit.core.store.{
@@ -1987,13 +1987,15 @@ object TurnFixtures {
 
   /** A conversation that begins with a record of its closed period (turn 0) when
     * `recalled`, else with a person's message, then a heard message (the turn), heard with the
-    * reply address `replyTo` and decided on: drafting, or, when `answering`, answered as said
-    * to grit at that address.
+    * reply address `replyTo` and decided on: drafting at `venue`, or, when `answering`, answered
+    * as said to grit at that address; its room address `room`, beside `replyTo`.
     */
   def speechWorld(
       recalled: Boolean = true,
       replyTo: Option[String] = Some("C/1"),
-      answering: Boolean = false
+      answering: Boolean = false,
+      room: Option[String] = None,
+      venue: Venue = Venue.Thread
   ): SpeechWorld = {
     given grit.core.store.Tx = TestTx.fake
     val entries = new InMemoryEntryStore
@@ -2021,7 +2023,7 @@ object TurnFixtures {
     )
     val turn = hear(entries, "is the freeze still on?")
     val store = new InMemorySpeechStore(entries, ledger)
-    store.heard(turn, Reach(replyTo, Set.empty))
+    store.heard(turn, Reach(replyTo.map(ReplyTo(_, room)), Set.empty))
     val p = Probability.clamped(0.9)
     store.decided(
       Heard(
@@ -2029,12 +2031,14 @@ object TurnFixtures {
         EntrySeq(1),
         Place.Everywhere,
         Instant.EPOCH,
-        Reach(replyTo, Set.empty),
+        Reach(replyTo.map(ReplyTo(_, room)), Set.empty),
         Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero),
         Integrity.Member,
         Cues.Empty
       ),
-      replyTo.filter(_ => answering).fold(Decision.Drafting(turn))(Decision.Answering(turn, _)),
+      replyTo
+        .filter(_ => answering)
+        .fold(Decision.Drafting(turn, venue))(Decision.Answering(turn, _)),
       Instant.EPOCH
     )
     SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)

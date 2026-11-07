@@ -34,7 +34,7 @@ import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.Grade
 import grit.core.review.InMemoryReviews
-import grit.core.speech.Reach
+import grit.core.speech.{Reach, ReplyTo}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.store.{InMemoryVoucher, Jot, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{
@@ -329,7 +329,7 @@ object SlackEdgeTests extends TestSuite {
 
     /** Where a reply to the heard message `thread` would go, as its reach keeps it. */
     def to(thread: String): String =
-      reached(thread).flatten.flatMap(_.replyTo).headOption.getOrElse("none")
+      reached(thread).flatten.flatMap(_.replyTo).map(_.thread).headOption.getOrElse("none")
 
     def standing: Vector[grit.core.edge.Acknowledgement] =
       acknowledgements.standing()(using TestTx.fake).getOrElse(Vector.empty)
@@ -466,8 +466,10 @@ object SlackEdgeTests extends TestSuite {
       w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
       w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
       w.reached("2.0") ==> Vector(
-        Some(Reach(Some("C123ABC456/2.0/2.0"), Set(TestAccounts.account(s"slack:$Team/$Ben")))),
-        Some(Reach(Some("C123ABC456/2.0/2.1"), Set.empty))
+        Some(
+          Reach(Some(ReplyTo("C123ABC456/2.0/2.0")), Set(TestAccounts.account(s"slack:$Team/$Ben")))
+        ),
+        Some(Reach(Some(ReplyTo("C123ABC456/2.0/2.1")), Set.empty))
       )
     }
 
@@ -481,7 +483,8 @@ object SlackEdgeTests extends TestSuite {
         .map(c => TurnRef(c.id, grit.core.id.TurnSeq.First))
         .getOrElse(throw new java.lang.AssertionError("not heard"))
       // As record-speech does for a posted draft: awaited at the reach it was heard with.
-      val to = w.reached("2.0").flatten.flatMap(_.replyTo).headOption.getOrElse("none")
+      val to =
+        w.reached("2.0").flatten.flatMap(_.replyTo).map(_.thread).headOption.getOrElse("none")
       w.deliveries.await(heard, to)(using TestTx.fake) ==> Right(())
       w.inbox.finish(heard, Some(reply("We moved it to Thursday.")), "posted")
       w.first.deliver() ==> Right(1)

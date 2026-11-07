@@ -179,7 +179,7 @@ object Triage {
         case (t, Left(why)) => Left(t.said(s"not considered: $why"))
         case (t, Right(Decision.Held(why))) =>
           Left(t.said(s"held: ${SpeechJson.writeSilence(why).render()}"))
-        case (t, Right(Decision.Drafting(turn))) => Right(Starting(t, turn, drafting = true))
+        case (t, Right(Decision.Drafting(turn, _))) => Right(Starting(t, turn, drafting = true))
         // Left unsettled when its start fails: its reply was awaited in `consider`'s
         // transaction, so its edge starts it when it next starts, and an answering row counts
         // in no rate and holds no later message.

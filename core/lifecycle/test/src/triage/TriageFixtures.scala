@@ -25,7 +25,7 @@ import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.recipe.InMemoryRoomReads
-import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
+import grit.core.speech.{InMemorySpeechStore, Reach, ReplyTo, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{InMemoryStitchStore, Opening, Placements, StitchReads, Stitching, Tuning}
 import grit.core.store.{
@@ -295,7 +295,7 @@ object TriageFixtures {
     ): TriageRef = {
       val e =
         insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in, seconds, source)
-      speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), asked))(using TestTx.fake)
+      speech.heard(TurnRef(in, e.turnSeq), Reach(Some(ReplyTo("C/1.0")), asked))(using TestTx.fake)
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
 

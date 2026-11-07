@@ -8,7 +8,7 @@ import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.period.Probability
-import grit.core.speech.Reach
+import grit.core.speech.{Reach, ReplyTo}
 import grit.core.stitch.{Offered, Placed, StitchReads, Stitching, StrandShelf, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.visibility.Subject
@@ -184,7 +184,7 @@ object StitchLab {
               m.text,
               by,
               m.at,
-              Reach(Some(s"${heard.channel}/$root/${heard.tsOf(m.id)}"), Set.empty),
+              Reach(Some(ReplyTo(s"${heard.channel}/$root/${heard.tsOf(m.id)}")), Set.empty),
               None
             )
             .left

@@ -64,6 +64,21 @@ object GateTests extends TestSuite {
       )
     }
 
+    test(
+      "AtTop reads 1 for a message at its room's top level; Calm reads 1 - n/Busy over the room's pace, 0 at Busy or more and 0 unread"
+    ) {
+      def calm(pace: Option[Int]) = read(Fact.Calm, Cues.Empty.copy(pace = pace))
+      (
+        read(Fact.AtTop, Cues.Empty.copy(atTop = true)),
+        read(Fact.AtTop, Cues.Empty),
+        Vector(Some(0), Some(5), Some(10), Some(14), None).map(calm)
+      ) ==> (
+        Some(1.0),
+        Some(0.0),
+        Vector(Some(1.0), Some(0.5), Some(0.0), Some(0.0), Some(0.0))
+      )
+    }
+
     test("a fact is never unread") {
       val gate = Gate.either(
         Gate.bounds(Bound.AtLeast(Reading.Fact(Fact.Named), half)),

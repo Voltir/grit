@@ -8,6 +8,7 @@ import grit.core.id.{ClaimHolder, TurnRef}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Briefing, Offering, Rooted, ServiceOffer}
+import grit.core.speech.Venue
 import grit.core.store.{
   Audience,
   EntryStore,
@@ -63,7 +64,9 @@ object TurnOffer {
     * withheld. `zoned`, the zone its message is dated in; `None` for an offer recorded before
     * zones, whose message was dated in UTC. `briefing`, how its recipe briefs the turn, which
     * decides whether its calls offer [[TaskStatus]] ([[TurnLoop.offered]]); `Conversing` for an
-    * offer recorded before it.
+    * offer recorded before it. `venue`, where a heard-rooted turn's draft is posted, as its
+    * decision placed it ([[grit.core.speech.SpeechStore.venue]]); the thread for any other turn,
+    * and for an offer recorded before placement.
     */
   final case class Recorded(
       workspace: Option[Place],
@@ -74,7 +77,8 @@ object TurnOffer {
       reached: Map[ToolName, Place] = Map.empty,
       shaped: Option[TurnShape] = None,
       zoned: Option[Zoned] = None,
-      briefing: Briefing = Briefing.Conversing
+      briefing: Briefing = Briefing.Conversing,
+      venue: Venue = Venue.Thread
   ) {
 
     /** The width the turn's window is drawn at: its shape's, else the deployed width. */
@@ -145,7 +149,8 @@ object TurnOffer {
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
     * for any other heard message, else `Addressed`; a `ByName` turn is offered, told and
-    * shaped as an `Addressed` one.
+    * shaped as an `Addressed` one. A `Heard` turn records `venue`, where its decision placed
+    * its draft; any other, its thread.
     *
     * `tooling.recipe` shapes it by its root ([[grit.core.recipe.Rooted]]: a heard message at
     * the focus it was said at, [[grit.core.store.Origin.focus]]): the shaping's width is
@@ -169,6 +174,7 @@ object TurnOffer {
       turn: TurnRef,
       weighed: Option[Tags],
       answering: Boolean,
+      venue: Venue,
       at: Classification,
       holder: Origin -> Option[ClaimHolder]
   )(using
@@ -181,9 +187,10 @@ object TurnOffer {
       )
       all <- entries.list(turn.conversationId)
       first = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq)
-      // The root, how a recipe tells it apart, and what it is told of it.
-      (root, rooted, unasked) = first.map(_.payload) match {
-        case Some(Payload.Heard(_)) if answering => (Root.ByName, Rooted.Addressed, None)
+      // The root, how a recipe tells it apart, what it is told of it, and where it posts.
+      (root, rooted, unasked, placed) = first.map(_.payload) match {
+        case Some(Payload.Heard(_)) if answering =>
+          (Root.ByName, Rooted.Addressed, None, Venue.Thread)
         case Some(Payload.Heard(_)) =>
           val opening = all.minByOption(_.seq).map(_.id) == first.map(_.id)
           (
@@ -191,9 +198,10 @@ object TurnOffer {
             Rooted.Heard(
               conversation.origin.focus(if (opening) Position.Opening else Position.Reply)
             ),
-            Some(TurnPrompt.unprompted)
+            Some(TurnPrompt.unprompted),
+            venue
           )
-        case _ => (Root.Addressed, Rooted.Addressed, None)
+        case _ => (Root.Addressed, Rooted.Addressed, None, Venue.Thread)
       }
       shaping = tooling.recipe.at(rooted)
       workspace = workspaceOf(conversation.origin, tooling.worksIn)
@@ -300,7 +308,8 @@ object TurnOffer {
       offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
       Some(TurnShape(shaping.width, whole.id, took)),
       Some(Zoned(person, deployment)),
-      tooling.recipe.briefing
+      tooling.recipe.briefing,
+      placed
     )).left.map(TurnFailure.ofStore)
 
   /** Each service a turn takes tools from, in order, as `offering` decides it by the sources

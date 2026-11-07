@@ -10,7 +10,7 @@ import grit.core.identity.Account
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.{CloseReason, LifecycleSettings, TestClosings}
-import grit.core.speech.{Limits, Reach, Speaking, Stage}
+import grit.core.speech.{Limits, Reach, ReplyTo, Speaking, Stage}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, StoreError}
 import grit.core.visibility.Subject
@@ -136,7 +136,7 @@ object UnpromptedLiveTests extends TestSuite {
       s"where does the refi page's byline go? ${if (named) "" else "~0.4 "}~back:asks",
       Account.Local,
       now,
-      Reach(Some(s"C1/$thread/$thread:1"), Set.empty),
+      Reach(Some(ReplyTo(s"C1/$thread/$thread:1")), Set.empty),
       None
     ) ==> Right(())
     TurnRef(c.id, TurnSeq(1))

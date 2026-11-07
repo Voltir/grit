@@ -38,7 +38,7 @@ import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.Directory
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.speech.{Limits, Reach, Speaking}
+import grit.core.speech.{Limits, Reach, ReplyTo, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Db, Focus, Origin}
@@ -446,7 +446,7 @@ object TurnCaptureTests extends TestSuite {
             text,
             Account.Local,
             now(),
-            Reach(Some(s"C1/$ts/$ts"), Set.empty),
+            Reach(Some(ReplyTo(s"C1/$ts/$ts")), Set.empty),
             None
           ) ==> Right(())
           assert(

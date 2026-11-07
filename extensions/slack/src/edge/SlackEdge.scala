@@ -22,7 +22,7 @@ import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.review.{Prompt, Reviews, Verdict}
-import grit.core.speech.{Rate, Reach}
+import grit.core.speech.{Rate, Reach, ReplyTo}
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
@@ -520,7 +520,7 @@ final class SlackEdge(
               text,
               author,
               m.at,
-              Reach(to, asked),
+              Reach(to.map(ReplyTo(_)), asked),
               linkTo(m.channel, m.thread, m.ts)
             )
             .left

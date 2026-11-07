@@ -27,7 +27,7 @@ import grit.core.period.{
 }
 import grit.core.plugin.Plugin
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.speech.{Limits, Reach, Speaking}
+import grit.core.speech.{Limits, Reach, ReplyTo, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{StrandShelf, Tuning}
 import grit.core.store.{Origin, StoreError, Tx}
@@ -459,7 +459,7 @@ object RehearseLiveTests extends TestSuite {
                 origin,
                 Account.Local,
                 "where does the refi page's byline go? ~0.4",
-                Reach(Some("C1/3.0/3.0:1"), Set.empty)
+                Reach(Some(ReplyTo("C1/3.0/3.0:1")), Set.empty)
               ),
               StandIns.supplied(Map("ask:0" -> "At the bottom of the page.")),
               clock

@@ -21,7 +21,9 @@ object CuesJsonTests extends TestSuite {
         spoken = Some(EntryId("e-reply")),
         continued = Some(EntryId("e-next")),
         settled = Some(Judgement.Weighed(p(0.125), p(0.75), p(0.125), "jev-1")),
-        records = Some(Cues.Match(notes, 2.5, 3))
+        records = Some(Cues.Match(notes, 2.5, 3)),
+        atTop = true,
+        pace = Some(4)
       )
       val unanswered = Cues.Empty.copy(settled = Some(Judgement.Unanswered("settle model down")))
       (
@@ -33,7 +35,7 @@ object CuesJsonTests extends TestSuite {
       ) ==> (
         """{"named":true,"spoken":"e-reply","continued":"e-next",""" +
           """"settled":{"nobody":0.125,"onPerson":0.75,"onOther":0.125,"model":"jev-1"},""" +
-          """"records":{"plugin":"notes","score":2.5,"matched":3}}""",
+          """"records":{"plugin":"notes","score":2.5,"matched":3},"at_top":true,"pace":4}""",
         """{"named":false,"settled":{"unanswered":"settle model down"}}""",
         Vector(Right(weighed), Right(unanswered), Right(Cues.Empty)),
         Right(Cues.Empty),

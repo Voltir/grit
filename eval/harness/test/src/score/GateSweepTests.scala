@@ -19,7 +19,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.period.{Judgement, Probability}
 import grit.core.place.{Namespace, Place}
 import grit.core.review.{Reason, Verdict}
-import grit.core.speech.{Heard, Limits, Reach}
+import grit.core.speech.{Heard, Limits, Reach, ReplyTo}
 import grit.core.spend.DailyCap
 import grit.core.triage.{Bound, Cues, Fact, Gate, Reading, Tags}
 import grit.core.visibility.Integrity
@@ -56,7 +56,7 @@ object GateSweepTests extends TestSuite {
       ts: String,
       room: Place,
       yes: Option[Double],
-      reach: Reach = Reach(Some("addr"), Set.empty),
+      reach: Reach = Reach(Some(ReplyTo("addr")), Set.empty),
       cues: Cues = Cues.Empty
   ): GateSweep.Case =
     GateSweep.Case(
@@ -98,7 +98,7 @@ object GateSweepTests extends TestSuite {
         // No address: held before any gate.
         heard("4.0", roomB, Some(0.9), reach = Reach(None, Set.empty)),
         // Names someone: decided by the gate alone, which reads no fact here.
-        heard("5.0", roomB, Some(0.9), reach = Reach(Some("addr"), Set(rater))),
+        heard("5.0", roomB, Some(0.9), reach = Reach(Some(ReplyTo("addr")), Set(rater))),
         heard("6.0", roomA, Some(0.1)),
         // Its gate's question unanswered: held as unasked by a gate reading it.
         heard("7.0", roomA, None)
@@ -130,7 +130,9 @@ object GateSweepTests extends TestSuite {
         None,
         None,
         Some(Judgement.Weighed(p(0.1), p(0.9), p(0), "settle")),
-        Some(Cues.Match(notes, Fact.PlainMatch, 1))
+        Some(Cues.Match(notes, Fact.PlainMatch, 1)),
+        atTop = true,
+        pace = Some(0)
       )
       val cases =
         Vector(heard("1.0", roomA, Some(0.9), cues = cued), heard("2.0", roomB, Some(0.9)))

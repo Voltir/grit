@@ -840,8 +840,10 @@ CREATE TABLE IF NOT EXISTS grit.triage_shadows (
 CREATE INDEX IF NOT EXISTS idx_triage_shadows_name_at ON grit.triage_shadows (name, at);
 
 -- Where a reply to each heard message could go, and whom it names (grit.core.speech.Reach): its
--- edge's own address, NULL when it is never answered (a past message), and the principals it
--- names besides the assistant. Written by Inbox.hear; the first kept stands.
+-- edge's own address in its thread, NULL when it is never answered (a past message), and at its
+-- room's top level (`room_to`, grit.core.speech.ReplyTo.room; NULL where the edge has none, and
+-- whenever `reply_to` is), and the principals it names besides the assistant. Written by
+-- Inbox.hear; the first kept stands. One row a heard message; an address is a few dozen bytes.
 -- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
 CREATE TABLE IF NOT EXISTS grit.heard (
     entry_id        TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
@@ -849,7 +851,9 @@ CREATE TABLE IF NOT EXISTS grit.heard (
     turn_seq        BIGINT NOT NULL,
     reply_to        TEXT,
     asked           JSONB NOT NULL DEFAULT '[]'::jsonb,
-    UNIQUE (conversation_id, turn_seq)
+    room_to         TEXT,
+    UNIQUE (conversation_id, turn_seq),
+    CONSTRAINT heard_room_to_check CHECK (room_to IS NULL OR reply_to IS NOT NULL)
 );
 
 -- The hosted call whose post a conversation begins with (Inbox.posted): a thread under a
@@ -888,7 +892,10 @@ CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
 -- judge's scores and model (an unprompted draft's; a named draft or a reply is not judged, its
 -- `grounded` and `worth` NULL), an excerpt of the draft or reply, and a posted reply's
 -- position; and the cues code read around the message when it was decided (`cues`,
--- grit.core.triage.Cues; NULL on a decision kept before cues, read as none). Triage's answers
+-- grit.core.triage.Cues; NULL on a decision kept before cues, read as none); and, for a draft
+-- placed at its room's top level (grit.core.speech.Venue.Room), the address it goes to
+-- (`room_to`, NULL in its thread, a few dozen bytes; cleared when the room's rate was spent by
+-- the time it was posted, SpeechStore.toThread). Triage's answers
 -- are in grit.triage. Forms in SpeechJson and CuesJson. No foreign key: it outlives the heard
 -- entry's purge, so the rates and the day's speech spend count every decision, and each post
 -- can be stated with its approval.
@@ -913,6 +920,8 @@ CREATE TABLE IF NOT EXISTS grit.speech (
     judged_at       TIMESTAMPTZ,
     answering       BOOLEAN NOT NULL DEFAULT false,
     cues            JSONB CHECK (cues IS NULL OR jsonb_typeof(cues) = 'object'),
+    room_to         TEXT,
+    CONSTRAINT speech_room_to_check CHECK (room_to IS NULL OR (drafting AND NOT answering)),
     CHECK (drafting = (silence IS NULL)
        AND (drafting OR NOT answering)
        AND (outcome IS NULL) = (outcome_kind IS NULL)

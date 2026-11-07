@@ -31,7 +31,7 @@ import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.plugin.{KeepingCommand, Plugin}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
-import grit.core.speech.Speaking
+import grit.core.speech.{Limits, Speaking}
 import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Tool, ToolName}
@@ -201,6 +201,11 @@ enum DeploymentRefusal {
     */
   case SpeechUnread(reading: Reading)
 
+  /** Speaking's placement gate ([[grit.core.speech.Limits.toRoom]]) reads `reading`, which
+    * live triage does not ask, so no draft would ever go at a room's top level.
+    */
+  case PlacementUnread(reading: Reading)
+
   /** Live triage ([[Deployment.triage]]) does not ask [[Earning.Durable]] as a yes/no,
     * so every period it heard would earn a written closing: a build's mistake, refused for
     * every deployment of it.
@@ -336,6 +341,8 @@ enum DeploymentRefusal {
       s"speaking unprompted needs a classifier to judge each draft, and topics are off: $reason"
     case SpeechUnread(reading) =>
       s"speaking's gate reads $reading, which live triage does not ask, so it would hold every message"
+    case PlacementUnread(reading) =>
+      s"speaking's placement gate reads $reading, which live triage does not ask, so no draft would go at a channel's top level"
     case DurableUnasked =>
       s"live triage does not ask ${QuestionName.value(Earning.Durable)} as a yes/no, so every period it heard would earn a closing"
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
@@ -632,8 +639,10 @@ object Deployment {
       }
       _ <- speaking match {
         // Live triage's answers hold only what it asks: a gate reading more holds everything.
-        case Speaking.Shadow(limits) => unread(live, limits.drafts)
-        case Speaking.Within(limits) => unread(live, limits.drafts)
+        case Speaking.Shadow(limits) =>
+          unread(live, limits.drafts).flatMap(_ => placing(live, limits))
+        case Speaking.Within(limits) =>
+          unread(live, limits.drafts).flatMap(_ => placing(live, limits))
         case Speaking.Off => Right(())
       }
       shadowNames = shadows.map(_.name)
@@ -824,5 +833,12 @@ object Deployment {
     live
       .unread(gate, Corpora.Empty)
       .map(DeploymentRefusal.SpeechUnread(_))
+      .toLeft(())
+
+  /** Whether `live` asks every reading of `limits`' placement gate, when it has one. */
+  private def placing(live: TriageQuestions, limits: Limits): Either[DeploymentRefusal, Unit] =
+    limits.toRoom
+      .flatMap(r => live.unread(r.gate, Corpora.Empty))
+      .map(DeploymentRefusal.PlacementUnread(_))
       .toLeft(())
 }

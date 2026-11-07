@@ -28,6 +28,7 @@ import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
+import grit.core.speech.Venue
 import grit.core.store.{
   Entry,
   InMemoryConversationStore,
@@ -81,6 +82,25 @@ object TurnOfferTests extends TestSuite {
       holder: Origin -> Option[ClaimHolder] = _ => None
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
+    val r = recordedAs(origin, root, persona, weighed, renders, voices, holder)
+    Prompts
+      .prompt(r.prompt)
+      .fold(e => throw new java.lang.AssertionError(e.toString), p => (p.render, r.root))
+  }
+
+  /** What [[offeredAs]] records, the turn decided on as `answering` and placed at `venue`. */
+  private def recordedAs(
+      origin: Origin,
+      root: Payload,
+      persona: Persona = Persona.Grit,
+      weighed: Option[Tags] = None,
+      renders: Map[EdgeName, String] = Map.empty,
+      voices: InMemoryVoiceStore = new InMemoryVoiceStore,
+      holder: Origin -> Option[ClaimHolder] = _ => None,
+      answering: Boolean = false,
+      venue: Venue = Venue.Thread
+  ): TurnOffer.Recorded = {
+    given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
       .findOrCreate(origin, Account.Local, Label.Public)
@@ -126,16 +146,10 @@ object TurnOfferTests extends TestSuite {
         tooling,
         TurnRef(c, TurnSeq.First),
         weighed,
-        answering = false,
+        answering,
+        venue,
         Tx.classification,
         holder
-      )
-      .flatMap(r =>
-        Prompts
-          .prompt(r.prompt)
-          .left
-          .map(e => TurnFailure.Store(e.toString))
-          .map(_.render -> r.root)
       )
       .fold(f => throw new java.lang.AssertionError(f.toString), identity)
   }
@@ -219,6 +233,7 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         answering,
+        Venue.Thread,
         Tx.classification,
         _ => None
       )
@@ -293,6 +308,7 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         false,
+        Venue.Thread,
         Tx.classification,
         _ => None
       )
@@ -383,6 +399,7 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         weighed,
         answering,
+        Venue.Thread,
         Tx.classification,
         _ => None
       )
@@ -549,6 +566,7 @@ object TurnOfferTests extends TestSuite {
         TurnRef(c, TurnSeq.First),
         None,
         answering = false,
+        Venue.Thread,
         Tx.classification,
         _ => None
       )
@@ -751,6 +769,7 @@ object TurnOfferTests extends TestSuite {
             TurnRef(c, TurnSeq.First),
             None,
             answering = false,
+            Venue.Thread,
             Tx.classification,
             _ => None
           )
@@ -1044,6 +1063,18 @@ object TurnOfferTests extends TestSuite {
             )
         )
         .render
+    }
+
+    test(
+      "a heard-rooted turn records the venue its decision placed its draft at; one answered as said to grit, or addressed, its thread"
+    ) {
+      val room = Venue.Room("C//1")
+      val heard = Payload.Heard("heads up: deploy at five")
+      Vector(
+        recordedAs(slack, heard, venue = room).venue,
+        recordedAs(slack, heard, answering = true, venue = room).venue,
+        recordedAs(slack, Payload.Message(Message.User("deploy?")), venue = room).venue
+      ) ==> Vector(room, Venue.Thread, Venue.Thread)
     }
 
     test(

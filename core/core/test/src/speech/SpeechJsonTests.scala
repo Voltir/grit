@@ -70,7 +70,8 @@ object SpeechJsonTests extends TestSuite {
   val tests = Tests {
     test("every decision, silence and outcome reads back as written, through text too") {
       val decisions =
-        Decision.Drafting(turn) +: Decision.Answering(turn, "C/1") +: silences.map(Decision.Held(_))
+        Decision.Drafting(turn, Venue.Thread) +: Decision.Drafting(turn, Venue.Room("C//1")) +:
+          Decision.Answering(turn, "C/1") +: silences.map(Decision.Held(_))
       decisions.map(d =>
         SpeechJson.readDecision(ujson.read(SpeechJson.writeDecision(d).render()))
       ) ==>
@@ -88,7 +89,10 @@ object SpeechJsonTests extends TestSuite {
     }
 
     test("the stored forms") {
-      SpeechJson.writeDecision(Decision.Drafting(turn)).render() ==> """{"drafting":"c:3"}"""
+      SpeechJson.writeDecision(Decision.Drafting(turn, Venue.Thread)).render() ==>
+        """{"drafting":"c:3"}"""
+      SpeechJson.writeDecision(Decision.Drafting(turn, Venue.Room("C//1"))).render() ==>
+        """{"drafting":"c:3","room":"C//1"}"""
       SpeechJson.writeDecision(Decision.Answering(turn, "C/1/2")).render() ==>
         """{"answering":"c:3","to":"C/1/2"}"""
       SpeechJson

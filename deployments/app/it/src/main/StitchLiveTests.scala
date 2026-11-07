@@ -11,7 +11,7 @@ import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.speech.{Limits, Reach, Speaking}
+import grit.core.speech.{Limits, Reach, ReplyTo, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Link, Placed}
 import grit.core.store.{Entry, Nearby, Origin, Payload, StoreError, Tx}
@@ -111,7 +111,7 @@ object StitchLiveTests extends TestSuite {
       text,
       TestAccounts.account(s"slack:T1/$who"),
       Now.minusSeconds(ago),
-      Reach(Some(s"C1/$ts/$ts"), Set.empty),
+      Reach(Some(ReplyTo(s"C1/$ts/$ts")), Set.empty),
       None
     ) ==> Right(())
     val c =
