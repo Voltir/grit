@@ -167,10 +167,12 @@ object ServedTests extends TestSuite {
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
 
-    /** The edge as `serving` makes it, posting at most [[TwoAnHour]], opened; logged in
-      * [[logged]].
+    /** The edge as `serving` makes it, posting at most [[TwoAnHour]], recording in the
+      * conversations `conversations` names, opened; logged in [[logged]].
       */
-    def openPosting(): ServedEdge.Open^{this} =
+    def openPosting(
+        conversations: Conversations = Conversations.PerThread
+    ): ServedEdge.Open^{this} =
       Served
         .serving(
           Grit,
@@ -178,7 +180,7 @@ object ServedTests extends TestSuite {
           Some(TwoAnHour),
           None,
           ReplyNote.Off,
-          Conversations.PerThread,
+          conversations,
           connect,
           Inline
         )
@@ -729,6 +731,24 @@ object ServedTests extends TestSuite {
           Vector((q.slot, Outcome.Done("Posted in #probably-not-skynet."))),
           Vector((Skynet, "the build is green"))
         )
+      } finally open.close()
+    }
+
+    test(
+      "serving with posting and rooms records a post it makes at a channel's top level in that channel's room as it is made"
+    ) {
+      val w = new World(attests = true)
+      w.slack.channelNames = w.slack.channelNames ++ Map(Skynet -> "probably-not-skynet")
+      val open = w.openPosting(Conversations.PerRoom)
+      try {
+        val q = PostingTests.request(ujson.Obj("text" -> "the build is green"), 0)
+        val _ = w.edges.dispatch(Vector(q), Tx.classification(using TestTx.fake))(using TestTx.fake)
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (w.edges.answers.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
+        val room = Origin.Room(Team, ChannelId.value(Skynet))
+        w.inbox.conversations.all.filter(_.origin == room).flatMap { c =>
+          w.inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.payload)
+        } ==> Vector(Payload.Posted("the build is green"))
       } finally open.close()
     }
 
