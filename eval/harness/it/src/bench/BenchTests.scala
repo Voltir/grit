@@ -46,7 +46,7 @@ object BenchTests extends TestSuite {
     )
 
   val tests = Tests {
-    test("keeping past the cap leaves every kept transcript's blob and no other") {
+    test("keeping past the cap leaves every kept trial's transcript and diff blobs and no other") {
       val db = TestPostgres.freshDatabase("bench_keep")
       val engine = LiveEngine.open(db, "test")
       try {
@@ -58,13 +58,14 @@ object BenchTests extends TestSuite {
               trial(s"k-$i"),
               None,
               new ByteArrayInputStream(s"transcript $i".getBytes("UTF-8")),
+              new ByteArrayInputStream(s"diff $i".getBytes("UTF-8")),
               Label.Public
             )
           }
           assert(
             kept.forall(_.isRight),
             blobs.kept().map(_.toSet) == Right(
-              (1 until n).map(i => Sha256.text(s"transcript $i")).toSet
+              (1 until n).flatMap(i => Vector(s"transcript $i", s"diff $i")).map(Sha256.text).toSet
             )
           )
         }

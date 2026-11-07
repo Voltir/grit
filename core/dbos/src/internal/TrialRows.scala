@@ -25,7 +25,7 @@ final class TrialRows(blobs: Blobs^) {
 
   /** `trial` recorded, with `standing`, the standing text whose digest is `trial.standing`, kept
     * as that digest's blob; then every trial but the newest [[TrialRows.MostTrials]] recorded
-    * removed with its transcript's row, never a blob ([[prune]]).
+    * removed with its parts' rows, never a blob ([[prune]]).
     * [[TrialRows.Recorded.Repeat]], writing nothing, when `trial`'s session has a trial already.
     * `Left(Invalid)`, recording nothing, when `standing`'s digest is not `trial.standing`;
     * `Left(DatabaseError)` when it cannot be kept. Waits on any other record or prune until the
@@ -36,36 +36,52 @@ final class TrialRows(blobs: Blobs^) {
   ): Either[StoreError, TrialRows.Recorded] =
     recorded(trial, standing)(_ => Right(()))
 
-  /** As `record(trial, standing)`, with `transcript` kept, `clipped` when the transcript
-    * ran past what was received, kept at `label` joined with this transaction's floor (ADR 0030:
-    * what a transaction writes is kept at least where it writes); on a repeat `transcript` is not
-    * kept. `Left(Invalid)`, recording nothing, also when `transcript` holds more than
-    * [[TrialRows.MostBytes]] bytes.
+  /** As `record(trial, standing)`, with `transcript` and `diff` kept as its
+    * [[TrialRows.Part]]s, each clipped when `clipped` holds its part (it ran past what was
+    * received), kept at `label` joined with this transaction's floor (ADR 0030: what a
+    * transaction writes is kept at least where it writes); on a repeat neither is kept.
+    * `Left(Invalid)`, recording nothing, also when either holds more than [[TrialRows.MostBytes]]
+    * bytes.
     */
   def record(
       trial: TrialRows.Trial,
       standing: Option[String],
       transcript: Pending^,
-      clipped: Boolean,
+      diff: Pending^,
+      clipped: Set[TrialRows.Part],
       label: Label
   )(using
       Tx^
   ): Either[StoreError, TrialRows.Recorded] =
-    if (transcript.bytes > TrialRows.MostBytes)
-      Left(
-        StoreError.Invalid(
-          s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not ${transcript.bytes}"
+    Vector(transcript.bytes, diff.bytes).find(_ > TrialRows.MostBytes) match {
+      case Some(bytes) =>
+        Left(
+          StoreError.Invalid(s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not $bytes")
         )
-      )
-    else
-      recorded(trial, standing) { id => (tx: Tx^) ?=>
-        for {
-          _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
-          _ <- TrialRows.trajectoryRow(id, transcript.sha256, transcript.bytes, clipped, label)(
-            using tx
-          )
-        } yield ()
-      }
+      case None =>
+        recorded(trial, standing) { id => (tx: Tx^) ?=>
+          for {
+            _ <- transcript.keep().left.map(e => StoreError.DatabaseError(s"its transcript: $e"))
+            _ <- diff.keep().left.map(e => StoreError.DatabaseError(s"its diff: $e"))
+            _ <- TrialRows.trajectoryRow(
+              id,
+              TrialRows.Part.Transcript,
+              transcript.sha256,
+              transcript.bytes,
+              clipped(TrialRows.Part.Transcript),
+              label
+            )(using tx)
+            _ <- TrialRows.trajectoryRow(
+              id,
+              TrialRows.Part.Diff,
+              diff.sha256,
+              diff.bytes,
+              clipped(TrialRows.Part.Diff),
+              label
+            )(using tx)
+          } yield ()
+        }
+    }
 
   /** `trial` recorded as `record(trial, standing)` says, with `rest` of its row's id done before
     * the cap is held; on a repeat, `rest` is not done.
@@ -118,10 +134,12 @@ final class TrialRows(blobs: Blobs^) {
         cleared <- blobs.clearPending(before)
       } yield TrialRows.Pruned(removed, cleared)
 
-  /** `session`'s trial's transcript, when it has one this transaction reads. */
-  def transcript(session: SessionId)(using Tx^): Either[StoreError, Option[TrialRows.Transcript]] =
+  /** `session`'s trial's `part`, when it has one this transaction reads. */
+  def kept(session: SessionId, part: TrialRows.Part)(using
+      Tx^
+  ): Either[StoreError, Option[TrialRows.Kept]] =
     SqlTrialRows
-      .transcript(Harness.value(session.harness), session.local)(TrialRows.transcriptOf)
+      .kept(Harness.value(session.harness), session.local, TrialRows.kind(part))(TrialRows.keptOf)
       .flatMap(found => SqlStatements.valid(found.toVector))
       .map(_.headOption)
 }
@@ -232,19 +250,31 @@ object TrialRows {
     }
   }
 
-  /** A trial's transcript as kept: as its harness wrote it, the blob `sha256` of
-    * `bytes` bytes, `clipped` when the transcript ran past [[MostBytes]]; read by whom `label`
-    * clears.
+  /** What a trial keeps beside its row, each a blob of the bench's store: its harness's
+    * transcript as it wrote it, and its diff from its task's base, as the rig measures it.
     */
-  final case class Transcript private[dbos] (
+  enum Part {
+    case Transcript, Diff
+  }
+
+  /** `part` as `bench_trajectories.kind` stores it: a recorded name, never renamed. */
+  private[internal] def kind(part: Part): String = part match {
+    case Part.Transcript => "transcript"
+    case Part.Diff => "diff"
+  }
+
+  /** A trial's part as kept: the blob `sha256` of `bytes` bytes, `clipped` when the part ran past
+    * [[MostBytes]]; read by whom `label` clears.
+    */
+  final case class Kept private[dbos] (
       sha256: Sha256,
       bytes: Long,
       clipped: Boolean,
       label: Label
   ) extends caps.Pure {
 
-    /** [[Integrity.Member]], every transcript's: the repository a trial works in is its
-      * operator's own, as the coding tools' results are.
+    /** [[Integrity.Member]], every part's: the repository a trial works in is its operator's
+      * own, as the coding tools' results are.
       */
     def integrity: Integrity = Integrity.Member
   }
@@ -269,7 +299,7 @@ object TrialRows {
   private def begun(trial: Trial)(using Tx^): Either[StoreError, Option[Long]] =
     lock().flatMap(_ => trialRow(trial))
 
-  /** Every trial but the newest [[MostTrials]] recorded deleted, with its transcript's row; how many. */
+  /** Every trial but the newest [[MostTrials]] recorded deleted, with its parts' rows; how many. */
   private def evict()(using Tx^): Either[StoreError, Int] =
     SqlStatements.update(
       """DELETE FROM grit.bench_trials
@@ -307,21 +337,28 @@ object TrialRows {
       ps.setString(17, trial.standing.map(_.hex).orNull)
     }(_.getLong("id"))
 
-  /** The transcript row of trial `id`, at `label` joined with the transaction's floor. */
-  private def trajectoryRow(id: Long, sha: Sha256, bytes: Long, clipped: Boolean, label: Label)(
-      using tx: Tx^
-  ): Either[StoreError, Unit] = {
+  /** The `part` row of trial `id`, at `label` joined with the transaction's floor. */
+  private def trajectoryRow(
+      id: Long,
+      part: Part,
+      sha: Sha256,
+      bytes: Long,
+      clipped: Boolean,
+      label: Label
+  )(using tx: Tx^): Either[StoreError, Unit] = {
     val kept = label.join(Tx.clearance(tx).floor)
     SqlStatements
       .update(
-        s"""INSERT INTO grit.bench_trajectories (trial_id, sha256, bytes, clipped, classification_id)
-           |VALUES (?, ?, ?, ?, ${SqlLabels.Interned})""".stripMargin
+        s"""INSERT INTO grit.bench_trajectories
+           |       (trial_id, kind, sha256, bytes, clipped, classification_id)
+           |VALUES (?, ?, ?, ?, ?, ${SqlLabels.Interned})""".stripMargin
       ) { ps =>
         ps.setLong(1, id)
-        ps.setString(2, sha.hex)
-        ps.setLong(3, bytes)
-        ps.setBoolean(4, clipped)
-        SqlLabels.bind(ps, 5, kept)
+        ps.setString(2, kind(part))
+        ps.setString(3, sha.hex)
+        ps.setLong(4, bytes)
+        ps.setBoolean(5, clipped)
+        SqlLabels.bind(ps, 6, kept)
       }
       .map(_ => ())
   }
@@ -360,9 +397,9 @@ object TrialRows {
     } yield r
   }
 
-  private def transcriptOf(rs: ResultSet): Either[String, Transcript] =
+  private def keptOf(rs: ResultSet): Either[String, Kept] =
     Sha256
       .read(rs.getString("sha256"))
       .toRight(s"no digest: ${rs.getString("sha256")}")
-      .map(Transcript(_, rs.getLong("bytes"), rs.getBoolean("clipped"), SqlLabels.read(rs)))
+      .map(Kept(_, rs.getLong("bytes"), rs.getBoolean("clipped"), SqlLabels.read(rs)))
 }

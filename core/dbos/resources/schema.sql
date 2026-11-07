@@ -1549,16 +1549,19 @@ CREATE TABLE IF NOT EXISTS grit.bench_trials (
     CHECK ((read_before_edit IS NULL) = (calls_before_edit IS NULL))
 );
 
--- A trial's trajectory: its harness's transcript, kept as a blob of the bench's own store under
--- `sha256`, at most TrialRows.MostBytes (32 MiB) bytes, `clipped` when the transcript ran past
+-- A trial's trajectory, a row a part (`kind`, TrialRows.Part): its harness's transcript, and its
+-- diff from its task's base as the rig measures it, each kept as a blob of the bench's own store
+-- under `sha256`, at most TrialRows.MostBytes (32 MiB) bytes, `clipped` when the part ran past
 -- them. `room_id` is never set: it is there so SqlClearance.kept reads the row by its label.
 -- Retention: capped: with its trial, by cascade; its blob is removed by the next prune once no
--- row names it. Steady state: 60 rows of about 100 bytes; blobs at most 60 × 32 MiB.
+-- row names it. Steady state: 120 rows of about 110 bytes; blobs at most 120 × 32 MiB.
 CREATE TABLE IF NOT EXISTS grit.bench_trajectories (
-    trial_id          BIGINT PRIMARY KEY REFERENCES grit.bench_trials(id) ON DELETE CASCADE,
+    trial_id          BIGINT NOT NULL REFERENCES grit.bench_trials(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL CHECK (kind IN ('transcript', 'diff')),
     sha256            TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     bytes             BIGINT NOT NULL CHECK (bytes BETWEEN 0 AND 33554432),
     clipped           BOOLEAN NOT NULL,
     classification_id SMALLINT NOT NULL REFERENCES grit.classifications(id),
-    room_id           UUID
+    room_id           UUID,
+    PRIMARY KEY (trial_id, kind)
 );

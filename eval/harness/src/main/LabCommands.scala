@@ -62,7 +62,7 @@ private[main] object LabCommands {
     * kept, no key read. Otherwise a coder run under the caps, the key `ANTHROPIC_API_KEY` from
     * the environment ([[DotEnv.loadDefault]]): Claude Code's ([[Rig.trial]], the agent's prompt
     * the file `<file>`), or grit's ([[Rig.gritTrial]]: its standing text the file `<file>`, its turn kept in the database at `<jdbc>` and read back from there), kept with its
-    * transcript in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
+    * transcript and its diff in the database at `--url <jdbc>` and the blobs at `--blobs <dir>`
     * ([[Bench.keep]]), its log at `<work>/<checkout>.log`. Before any run, `<work>` is cleared
     * ([[Rig.cleared]]: every checkout a killed run left, and every log but the newest
     * [[TrialRows.MostTrials]]). Prints what [[Tried.lines]] gives, or each check; never the key.
@@ -205,7 +205,7 @@ private[main] object LabCommands {
           } yield ()
     } yield ()
 
-  /** The trial `run` makes, printed ([[Tried.lines]]) and kept with its transcript in the
+  /** The trial `run` makes, printed ([[Tried.lines]]) and kept with its transcript and diff in the
     * database at `--url` and the blobs at `--blobs` ([[Bench.keep]]), through an engine opened on
     * that database for the purpose; the database's login from `env`.
     */
@@ -230,6 +230,7 @@ private[main] object LabCommands {
                 new ByteArrayInputStream(
                   tried.transcript.mkString("", "\n", "\n").getBytes(StandardCharsets.UTF_8)
                 ),
+                new ByteArrayInputStream(tried.diff.getBytes(StandardCharsets.UTF_8)),
                 Label.Public
               )
             } yield println(s"kept: ${kept._1}; pruned: ${kept._2}")

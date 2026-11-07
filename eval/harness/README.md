@@ -37,7 +37,7 @@ Packages, each importing only those above it:
   Wilson's interval. Pure, naming nothing of grit's. A report shows a price as core's
   `Cost.cents` writes it (`0.29¢`).
 - **`bench`**: the coder bench's keeping: each trial of a harness at a frozen task, its
-  transcript and, for a grit trial, the standing text its brief began with, by digest, kept through `grit.dbos.internal`'s `TrialRows` over a blob store that is the
+  transcript, its diff and, for a grit trial, the standing text its brief began with, by digest, kept through `grit.dbos.internal`'s `TrialRows` over a blob store that is the
   bench's alone, one per bench database; a frozen task (`eval/bench/tasks/<name>/`: its base,
   its commits, its checks and its brief), and its checkout, a repository holding only the base's
   history, through core's `Processes`; the rig, which runs a coder on a task there and measures

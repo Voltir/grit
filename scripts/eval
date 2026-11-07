@@ -376,7 +376,7 @@
 #       commits through its checks, which must pass; nothing is kept.
 #       Otherwise a coder runs the task headless under the caps, all three required: <id> the
 #       Anthropic API's model id (claude-haiku-5-5); --max-budget-usd the most a run may spend,
-#       which it can pass; --max-turns its turns. The trial and its transcript are kept in
+#       which it can pass; --max-turns its turns. The trial, its transcript and its diff are kept in
 #       grit_bench (created when missing) and .local/bench/blobs/grit_bench/, and printed:
 #       tokens per call with cache reads and writes, grit's cost (beside Claude Code's, for its
 #       runs), how the run ended, its denials and its checks. The key is ANTHROPIC_API_KEY, from

@@ -9,11 +9,11 @@ import grit.core.store.{StoreError, Tx}
   */
 private[dbos] object SqlTrialRows {
 
-  /** The transcript of the trial whose session is `harness`'s `local`, read by `read` from its
-    * `sha256`, `bytes` and `clipped` columns and its label's ([[SqlLabels.read]]), when this
-    * transaction reads it.
+  /** The part stored as `kind` of the trial whose session is `harness`'s `local`, read by `read`
+    * from its `sha256`, `bytes` and `clipped` columns and its label's ([[SqlLabels.read]]), when
+    * this transaction reads it.
     */
-  def transcript[A](harness: String, local: String)(read: ResultSet => A)(using
+  def kept[A](harness: String, local: String, kind: String)(read: ResultSet => A)(using
       Tx^
   ): Either[StoreError, Option[A]] =
     SqlStatements
@@ -23,10 +23,13 @@ private[dbos] object SqlTrialRows {
            |  FROM grit.bench_trajectories j
            |  JOIN grit.bench_trials t ON t.id = j.trial_id
            |  JOIN grit.classifications l ON l.id = j.classification_id
-           | WHERE t.harness = ? AND t.local = ? AND ${SqlClearance.kept("j")}""".stripMargin
+           | WHERE t.harness = ? AND t.local = ? AND j.kind = ? AND ${SqlClearance.kept(
+            "j"
+          )}""".stripMargin
       ) { ps =>
         ps.setString(SqlClearance.Params + 1, harness)
         ps.setString(SqlClearance.Params + 2, local)
+        ps.setString(SqlClearance.Params + 3, kind)
       }(read)
       .map(_.headOption)
 }

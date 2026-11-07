@@ -602,6 +602,16 @@ object RigTests extends TestSuite {
       }
     }
 
+    test("a trial keeps its coder's diff from the task's base, whole") {
+      withTask { f =>
+        trial(f, Fake("object A { val y = 2 }")).map(
+          _.diff.linesIterator.filter(l => l.startsWith("+") || l.startsWith("-")).toVector
+        ) ==> Right(
+          Vector("--- a/a.scala", "+++ b/a.scala", "-object A", "+object A { val y = 2 }")
+        )
+      }
+    }
+
     test("a grit trial records its standing text by digest, and a Claude Code trial none") {
       withTask { f =>
         (

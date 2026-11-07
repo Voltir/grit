@@ -28,33 +28,47 @@ object Bench {
     reader.db.read(subject)(TrialRows.trials()).left.map(e => s"the trials: ${e.described}")
 
   /** `trial` kept in `blobs`' rows for `subject`, with `standing`, the standing text whose digest
-    * is `trial.standing` ([[TrialRows.record]]), and `transcript` as its transcript, labelled
-    * `label`, read to [[TrialRows.MostBytes]] bytes and one past them; then the rows pruned of
-    * what this and any earlier keep left ([[TrialRows.prune]], pending blobs [[Abandoned]] by
-    * `clock`'s time). `Left` with the cause, for the operator, when the database, the machine or
-    * the transcript fails, or the database refuses the trial. A trial recorded before a later
-    * failure stays recorded, and the next keep prunes what this one left.
+    * is `trial.standing` ([[TrialRows.record]]), and `transcript` and `diff` as its parts,
+    * labelled `label`, each read to [[TrialRows.MostBytes]] bytes and one past them; then the rows
+    * pruned of what this and any earlier keep left ([[TrialRows.prune]], pending blobs
+    * [[Abandoned]] by `clock`'s time). `Left` with the cause, for the operator, when the
+    * database, the machine, the transcript or the diff fails, or the database refuses the trial.
+    * A trial recorded before a later failure stays recorded, and the next keep prunes what this
+    * one left.
     */
   def keep(jot: Jot^, blobs: Blobs^, clock: Clock^)(
       subject: Subject,
       trial: TrialRows.Trial,
       standing: Option[String],
       transcript: InputStream^,
+      diff: InputStream^,
       label: Label
   ): Either[String, (TrialRows.Recorded, TrialRows.Pruned)] = {
-    // Untracked mutable state, held apart from the stream so `receive`'s body may read it while
-    // `receive` holds the stream. No one else can see it change: it is made in this call,
-    // reaches only this call's Clip and body, and never leaves `keep`; Clip sets it only while
-    // `receive` reads the stream to its end, and the body reads it only after that, on the same
-    // thread, so the body reads the final value.
-    val clipped = new AtomicBoolean(false)
+    // Untracked mutable state, held apart from each stream so `receive`'s body may read it while
+    // `receive` holds the stream. No one else can see it change: each is made in this call,
+    // reaches only this call's Clip and bodies, and never leaves `keep`; its Clip sets it only
+    // while its `receive` reads the stream to its end, and the bodies read it only after that, on
+    // the same thread, so they read the final value.
+    val transcriptClipped = new AtomicBoolean(false)
+    val diffClipped = new AtomicBoolean(false)
     val rows = TrialRows(blobs)
     blobs
-      .receive(Clip(transcript, TrialRows.MostBytes, clipped), TrialRows.MostBytes) { pending =>
-        jot.write(subject)(rows.record(trial, standing, pending, clipped.get, label))
+      .receive(Clip(transcript, TrialRows.MostBytes, transcriptClipped), TrialRows.MostBytes) {
+        kept =>
+          blobs
+            .receive(Clip(diff, TrialRows.MostBytes, diffClipped), TrialRows.MostBytes) { changes =>
+              val clipped = Set(
+                Option.when(transcriptClipped.get)(TrialRows.Part.Transcript),
+                Option.when(diffClipped.get)(TrialRows.Part.Diff)
+              ).flatten
+              jot.write(subject)(rows.record(trial, standing, kept, changes, clipped, label))
+            }
+            .left
+            .map(e => s"the diff: $e")
       }
       .left
       .map(e => s"the transcript: $e")
+      .flatMap(identity)
       .flatMap(_.left.map(e => s"the trial: ${e.described}"))
       .flatMap(r => pruned(jot, blobs, clock)(subject).map((r, _)))
   }

@@ -11,7 +11,7 @@ import grit.core.model.ModelId
 import grit.core.store.StoreError
 import grit.core.visibility.{Clearance, Label, TestLabels}
 import grit.dbos.engine.LiveEngine
-import grit.dbos.sql.{LiveDb, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 
 import utest.*
 
@@ -79,8 +79,27 @@ object TrialRowsTests extends TestSuite {
       label: Label = Label.Public,
       clearance: Clearance = Low
   ): Either[StoreError, TrialRows.Recorded] =
-    ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
-      LiveDb.transaction(config, clearance)(rows.record(t, None, p, clipped = false, label))
+    withParts(blobs, rows, t, text, s"a diff of $text", label = label, clearance = clearance)
+
+  /** `trial` recorded in `db` at `clearance` with `transcript` and `diff` as its parts, neither
+    * clipped, kept in `blobs`.
+    */
+  private def withParts(
+      blobs: Blobs^,
+      rows: TrialRows^{blobs},
+      t: TrialRows.Trial,
+      transcript: String,
+      diff: String,
+      label: Label = Label.Public,
+      clearance: Clearance = Low,
+      db: DbConfig = config,
+      standing: Option[String] = None,
+      clipped: Set[TrialRows.Part] = Set.empty
+  ): Either[StoreError, TrialRows.Recorded] =
+    ok(blobs.receive(bytes(transcript), TrialRows.MostBytes) { p =>
+      ok(blobs.receive(bytes(diff), TrialRows.MostBytes) { d =>
+        LiveDb.transaction(db, clearance)(rows.record(t, standing, p, d, clipped, label))
+      })
     })
 
   private def trials(): Vector[TrialRows.Trial] =
@@ -90,8 +109,8 @@ object TrialRowsTests extends TestSuite {
       rows: TrialRows^,
       t: TrialRows.Trial,
       clearance: Clearance = Low
-  ): Option[TrialRows.Transcript] =
-    LiveDb.transaction(config, clearance)(ok(rows.transcript(t.session)))
+  ): Option[TrialRows.Kept] =
+    LiveDb.transaction(config, clearance)(ok(rows.kept(t.session, TrialRows.Part.Transcript)))
 
   val tests = Tests {
     test("a trial and its transcript recorded are read back as recorded, the blob kept") {
@@ -103,7 +122,7 @@ object TrialRowsTests extends TestSuite {
         assert(
           recorded == Right(TrialRows.Recorded.Fresh(0)),
           trials().filter(_.session == t.session) == Vector(t),
-          transcript(rows, t) == Some(TrialRows.Transcript(sha, 12L, false, Label.Public)),
+          transcript(rows, t) == Some(TrialRows.Kept(sha, 12L, false, Label.Public)),
           blobs.at(sha).isDefined
         )
       }
@@ -131,7 +150,9 @@ object TrialRowsTests extends TestSuite {
         val t = trial("t-long")
         val big = bytes("x".repeat((TrialRows.MostBytes + 1).toInt))
         val refused = ok(blobs.receive(big, TrialRows.MostBytes + 1) { p =>
-          LiveDb.transaction(config, Low)(rows.record(t, None, p, clipped = false, Label.Public))
+          ok(blobs.receive(bytes("a diff"), TrialRows.MostBytes) { d =>
+            LiveDb.transaction(config, Low)(rows.record(t, None, p, d, Set.empty, Label.Public))
+          })
         })
         assert(
           refused == Left(
@@ -158,7 +179,7 @@ object TrialRowsTests extends TestSuite {
     }
 
     test(
-      "recording past the cap removes the oldest recorded with its transcript's row, never its blob"
+      "recording past the cap removes the oldest recorded with its parts' rows, never their blobs"
     ) {
       // A database of its own: the cap counts every trial in it.
       val db = TestPostgres.freshDatabase("bench_cap")
@@ -166,9 +187,7 @@ object TrialRowsTests extends TestSuite {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         val all = Vector.tabulate(TrialRows.MostTrials + 1)(i => trial(s"t-$i"))
-        ok(blobs.receive(bytes("the oldest"), TrialRows.MostBytes) { p =>
-          LiveDb.transaction(db, Low)(rows.record(all(0), None, p, clipped = false, Label.Public))
-        })
+        ok(withParts(blobs, rows, all(0), "the oldest", "the oldest diff", db = db))
         val middle =
           all
             .slice(1, TrialRows.MostTrials)
@@ -178,8 +197,11 @@ object TrialRowsTests extends TestSuite {
           middle.forall(_ == Right(TrialRows.Recorded.Fresh(0))),
           last == Right(TrialRows.Recorded.Fresh(1)),
           LiveDb.transaction(db, Low)(ok(TrialRows.trials())) == all.drop(1),
-          LiveDb.transaction(db, Low)(ok(rows.transcript(all(0).session))) == None,
-          blobs.kept() == Right(Vector(Sha256.text("the oldest")))
+          LiveDb.transaction(db, Low)(ok(rows.kept(all(0).session, TrialRows.Part.Transcript))) ==
+            None,
+          LiveDb.transaction(db, Low)(ok(rows.kept(all(0).session, TrialRows.Part.Diff))) == None,
+          blobs.kept().map(_.toSet) ==
+            Right(Set(Sha256.text("the oldest"), Sha256.text("the oldest diff")))
         )
       }
     }
@@ -206,9 +228,7 @@ object TrialRowsTests extends TestSuite {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         def kept(t: TrialRows.Trial, text: String) =
-          ok(blobs.receive(bytes(text), TrialRows.MostBytes) { p =>
-            LiveDb.transaction(db, Low)(rows.record(t, None, p, clipped = false, Label.Public))
-          })
+          ok(withParts(blobs, rows, t, text, text, db = db))
         kept(trial("p-a"), "shared")
         kept(trial("p-b"), "shared")
         kept(trial("p-c"), "its own")
@@ -259,24 +279,49 @@ object TrialRowsTests extends TestSuite {
       }
     }
 
-    test("a trial pruned past the cap takes its standing text's blob with it") {
+    test("a trial pruned past the cap takes its standing text's and its parts' blobs with it") {
       val db = TestPostgres.freshDatabase("bench_standing_cap")
       LiveEngine.open(db, "test").close()
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
         val oldest = trial("s-0", standing = Some(Sha256.text("the oldest rules")))
-        ok(LiveDb.transaction(db, Low)(rows.record(oldest, Some("the oldest rules"))))
-        val kept = blobs.kept()
+        val texts = Vector("the oldest rules", "its transcript", "its diff")
+        ok(
+          withParts(blobs, rows, oldest, texts(1), texts(2), db = db, standing = Some(texts(0)))
+        )
+        val kept = blobs.kept().map(_.toSet)
         Vector
           .tabulate(TrialRows.MostTrials)(i => trial(s"s-${i + 1}"))
           .foreach(t => ok(LiveDb.transaction(db, Low)(rows.record(t, None))))
         val pruned = LiveDb.transaction(db, Low)(rows.prune(java.time.Instant.EPOCH))
         assert(
-          kept == Right(Vector(Sha256.text("the oldest rules"))),
-          pruned == Right(Right(TrialRows.Pruned(1, 0))),
+          kept == Right(texts.map(Sha256.text).toSet),
+          pruned == Right(Right(TrialRows.Pruned(3, 0))),
           blobs.kept() == Right(Vector.empty)
         )
       }
+    }
+
+    test("a trial's diff is kept beside its transcript, each read back with its own clip") {
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val t = trial("d-kept")
+        val diff = "diff --git a/a.scala b/a.scala\n-object A\n+object A { val x = 1 }\n"
+        val recorded =
+          withParts(blobs, rows, t, "a transcript", diff, clipped = Set(TrialRows.Part.Diff))
+        val read = LiveDb.transaction(config, Low)(ok(rows.kept(t.session, TrialRows.Part.Diff)))
+        assert(
+          recorded == Right(TrialRows.Recorded.Fresh(0)),
+          read == Some(TrialRows.Kept(Sha256.text(diff), diff.length.toLong, true, Label.Public)),
+          transcript(rows, t).map(_.clipped) == Some(false),
+          read.flatMap(k => blobs.at(k.sha256)).map(java.nio.file.Files.readString) == Some(diff)
+        )
+      }
+    }
+
+    test("a part's kind is stored under its recorded name") {
+      // Stored in bench_trajectories.kind: renaming one strands every row kept under it.
+      TrialRows.Part.values.toVector.map(TrialRows.kind) ==> Vector("transcript", "diff")
     }
   }
 }

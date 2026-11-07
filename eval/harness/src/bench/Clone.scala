@@ -40,14 +40,19 @@ object Clone {
     } yield ()
   }
 
-  /** The source lines `dir`'s files change from `base`, files never added included (they are
-    * marked to be added, as `git add -N` does). `Left`, with git's last words, as for [[fresh]].
-    */
+  /** The source lines `dir`'s files change from `base`, read from [[changes]]. */
   def changed(work: Processes)(dir: RelPath, base: Sha): Either[String, DiffLines] =
+    changes(work)(dir, base).map(DiffLines.of)
+
+  /** `dir`'s diff from `base` whole, as `git diff -U0 --no-renames` prints it, files never added
+    * included (they are marked to be added, as `git add -N` does). `Left`, with git's last words,
+    * as for [[fresh]].
+    */
+  def changes(work: Processes)(dir: RelPath, base: Sha): Either[String, String] =
     for {
       _ <- git(work, dir, "add", "-N", ".")
       read <- diff(work)(dir, base, Seq("-U0"), Long.MaxValue)
-    } yield DiffLines.of(read.text)
+    } yield read.text
 
   /** What a coder left at `dir`, as lines to keep once the checkout is gone: `[rig] the coder's
     * commits:` and its commits since `base`, a line each, as `git log --oneline` writes them;

@@ -180,12 +180,14 @@ trait CoderTurns extends caps.SharedCapability {
   def task(): Either[String, GritTurn]
 }
 
-/** A trial, the run's output it was read from, a line a message, what that output gave, the
-  * task's checks as they ran after it, and the arm that ran it.
+/** A trial, the run's output it was read from, a line a message, the coder's diff from the task's
+  * base ([[Clone.changes]]), what that output gave, the task's checks as they ran after it, and
+  * the arm that ran it.
   */
 final case class Tried(
     trial: TrialRows.Trial,
     transcript: Vector[String],
+    diff: String,
     consumed: Consumed,
     checked: Checked,
     stopped: Option[String],
@@ -778,7 +780,8 @@ object Rig {
           _ <- Clone.fresh(work)(repository, task.base, dir)
           checkout <- Clone.ran(work, dir, "pwd", "-P").map(_.trim)
           c <- coded(checkout)
-          changed <- Clone.changed(work)(dir, task.base)
+          diff <- Clone.changes(work)(dir, task.base)
+          changed = DiffLines.of(diff)
           checked <- Checks
             .run(work)(dir, task.checks, Vector(CappedJvm), watch)
             .left
@@ -799,7 +802,7 @@ object Rig {
             )
             .left
             .map(refused => (Tried.spending(c.consumed, arm) :+ refused).mkString("\n"))
-        } yield Tried(trial, c.transcript, c.consumed, checked, c.stopped, arm)
+        } yield Tried(trial, c.transcript, diff, c.consumed, checked, c.stopped, arm)
       )
     } yield tried
 

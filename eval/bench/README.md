@@ -18,7 +18,9 @@ A task is kept only when its commits apply, in order, to its base and give the k
 Every run's checkout is removed as the run ends, passed, failed or refused, and a killed run's at the
 next run's start. Its log, `<checkout>.log` beside it, keeps what is worth keeping: the coder's
 commits and its diff against the base (to 200 KB, with a note when cut), and for grit its output.
-The newest 60 logs are kept, as many as the trials the bench keeps.
+The newest 60 logs are kept, as many as the trials the bench keeps. The trial's row keeps the diff
+whole as well (`git diff -U0`, the diff its distance is measured on), a blob beside its transcript,
+to the transcript's 32 MiB and removed with its trial.
 
 What the bench is improved against is cents per passing trial (`scripts/eval bench --summary`,
 and after every kept run): by task, harness and model, every trial's cost, failed ones included,
