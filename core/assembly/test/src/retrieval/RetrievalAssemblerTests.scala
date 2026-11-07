@@ -1115,6 +1115,38 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
+    test("a thread under grit's own post at a channel's top level is shown that post first") {
+      val top = Origin.Room("T", "C")
+      val room = ConversationId("room")
+      val origins = (c: ConversationId) =>
+        if (c == room) top else Origin.Thread("T", "C", ConversationId.value(c))
+      val world = closed(Vector(Vector(ask)), Vector.empty, origins)
+      given Tx = TestTx.fake
+      val next = world.entries.lockNext(room).getOrElse(sys.error("in-memory store"))
+      val _ = world.periods.openFor(room, next.turnSeq, Instant.EPOCH)
+      val post = Entry(
+        grit.core.inbox.InboundId.of(room, grit.core.id.SourceId("2.0")),
+        room,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Posted("the freeze starts Friday"),
+        Instant.EPOCH,
+        Integrity.Member
+      )
+      val _ = world.entries.insert(post)
+      val w = assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        origin = Origin.Thread("T", "C", "2.0"),
+        stitches = Some(new InMemoryStitchStore(world.entries, origins)),
+        others = Vector(Conversation(room, top, Account.Local, Instant.EPOCH, Label.Public))
+      )
+      w.nearby ==> Vector(Nearby.Asked(room, top.place, Vector(post.seq)))
+    }
+
     test(
       "a stitched conversation's window shows its strand before its own turns: the opening, then the nearest that fit windowTokens"
     ) {

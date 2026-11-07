@@ -643,7 +643,7 @@ final class RetrievalAssembler(
 
   /** The turn that asked for the post `conversation` begins with, made by the call `posted`
     * names: its conversation, place, and the messages of that turn with text (a person's, and
-    * grit's reply). `None` unless `first` (the turn's period is the conversation's first),
+    * grit's reply or post). `None` unless `first` (the turn's period is the conversation's first),
     * both conversations are colleagues' ([[Audience.Colleagues]]), and the asker is kept.
     */
   private def askedOf(
@@ -766,9 +766,9 @@ final class RetrievalAssembler(
     }
   }
 
-  /** Whether `e` is a message with words: a person's, or grit's reply with text. */
+  /** Whether `e` is a message with words: a person's, grit's post, or grit's reply with text. */
   private def spoken(e: Entry): Boolean = e.payload match {
-    case Payload.Message(Message.User(_)) | Payload.Heard(_) => true
+    case Payload.Message(Message.User(_)) | Payload.Heard(_) | Payload.Posted(_) => true
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       blocks.exists {
         case AssistantBlock.Text(t) => t.trim.nonEmpty
