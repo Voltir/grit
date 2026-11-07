@@ -131,7 +131,7 @@ object Clone {
     ).left.map(why => why.replaceFirst("^`git`", s"`git ${args.headOption.getOrElse("")}`"))
 
   /** `program` with `args` run in `dir` to its end: its output when it exits 0, or why not. */
-  private[bench] def ran(
+  private[harness] def ran(
       work: Processes,
       dir: RelPath,
       program: String,
