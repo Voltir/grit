@@ -12,7 +12,7 @@ object Project {
 
   /** These as a project, or why not, every reason joined by `; `: an artifact of another
     * project, two artifacts of one key, a parent or a cite (in its head or its body) that is
-    * none of them, or a parent cycle.
+    * none of them (naming the nearest that are, [[ArtifactKey.near]]), or a parent cycle.
     */
   def of(key: ProjectKey, pin: Pin, artifacts: Vector[Artifact]): Either[String, Project] =
     refusals(key, artifacts) match {
@@ -137,10 +137,14 @@ object Project {
         Option.when(keys.count(_ == k) > 1)(k -> s"${k.value} is two artifacts") ++
         a.head.parent
           .filterNot(keys.contains)
-          .map(p => k -> s"${k.value}'s parent ${p.value} is no artifact of it") ++
+          .map(p =>
+            k -> s"${k.value}'s parent ${p.value} is no artifact of it${ArtifactKey.near(p, keys)}"
+          ) ++
         links
           .filterNot(keys.contains)
-          .map(c => k -> s"${k.value} cites ${c.value}, no artifact of it") ++
+          .map(c =>
+            k -> s"${k.value} cites ${c.value}, no artifact of it${ArtifactKey.near(c, keys)}"
+          ) ++
         Option.when(cycles(k, Set(k)))(k -> s"${k.value} is its own ancestor")
     }.distinct
   }

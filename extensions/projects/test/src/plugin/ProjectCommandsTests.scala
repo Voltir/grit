@@ -202,6 +202,31 @@ object ProjectCommandsTests extends TestSuite {
       assert(store.count == before)
     }
 
+    test("a keep whose parent the project lacks is refused naming its nearest keys") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "plan-c5-runs-turns", "note", "The checkpoint.")
+      kept(projects, store, "zebra", "note", "Far from it.")
+      val keep = (parent: String) =>
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/n",
+          "kind" -> "note",
+          "title" -> "N",
+          "body" -> "Text.",
+          "parent" -> parent
+        )
+      (keep("p/plan-c5"), keep("p/q")) ==> (
+        CommandOutcome.Refused(
+          "p/n's parent p/plan-c5 is no artifact of it (nearest: p/plan-c5-runs-turns)"
+        ),
+        CommandOutcome.Refused("p/n's parent p/q is no artifact of it")
+      )
+    }
+
     test("a write past 20,000 documents is refused") {
       val terms = Projects.Terms
       assert(

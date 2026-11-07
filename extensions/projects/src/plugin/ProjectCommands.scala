@@ -200,7 +200,12 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
                 )
               )
           case (None, None) =>
-            Left(Stop.Refused(s"${args.key.value} is new, so give its kind"))
+            Left(
+              Stop.Refused(
+                s"${args.key.value} is new, so give its kind" +
+                  ArtifactKey.near(args.key, project.artifacts.map(_.head.key))
+              )
+            )
         }
         (kind, state) = placed
         body <- refuse(Body.read(args.body))
@@ -1061,8 +1066,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         view <- viewOf(method, args.role)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         brief <- Brief.of(whole, args.key, view, args.chars).left.map {
-          case BriefRefusal.Unknown(k) =>
-            Stop.Refused(s"project ${ProjectKey.value(k.project)} has no artifact ${k.value}")
+          case BriefRefusal.Unknown(k) => lacking(k, project.artifacts)
           case BriefRefusal.Over(size) =>
             Stop.Refused(
               s"${args.key.value} with what its role always carries is $size characters, " +
@@ -1296,9 +1300,14 @@ private[plugin] object ProjectCommands {
   private def artifact(project: Loaded, key: ArtifactKey): Either[Stop, (Document, Artifact)] =
     project.documents
       .find(_._2.head.key == key)
-      .toRight(
-        Stop.Refused(s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}")
-      )
+      .toRight(lacking(key, project.artifacts))
+
+  /** That `key`'s project has no artifact `key`, naming the nearest of `among`. */
+  private def lacking(key: ArtifactKey, among: Vector[Artifact]): Stop =
+    Stop.Refused(
+      s"project ${ProjectKey.value(key.project)} has no artifact ${key.value}" +
+        ArtifactKey.near(key, among.map(_.head.key))
+    )
 
   /** Nothing, or a refusal naming each of `changed` that a claim live at `at` holds, at any
     * label, and the holder it is claimed for.
