@@ -8,7 +8,7 @@ import grit.dbos.sql.TestTx
 import utest.*
 
 /** A Slack thread's first message, said to grit at a channel's top level, placed by its own
-  * workflow, which the turn waits for before it places its message on the agenda (ADR 0023).
+  * workflow, which the turn waits for before it places its message on the agenda (ADR 0060).
   */
 object TurnStitchTests extends TestSuite {
   import TurnFixtures.*

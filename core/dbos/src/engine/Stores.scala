@@ -149,7 +149,7 @@ class Stores private[engine] (visibility: Visibility) {
   /** Where each conversation happens, as an edge links back to one. */
   val origins: grit.core.edge.Origins = new grit.dbos.sql.SqlOrigins
 
-  /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
+  /** Where each thread's first message was placed among its room's exchanges (ADR 0060). */
   val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
 
   /** What each room said before a time, as a pool reads it. */

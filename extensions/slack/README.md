@@ -4,9 +4,10 @@ Implements `ServedEdge` and `CatchUp`, each its workspace's attester over a `Rea
 its own, and serves `slack_post` as a `Hosted` (what a
 deployment can supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
 
-The Slack edge (ADR 0023): a Slack thread, or a thread of a person's direct message with grit,
-is a conversation, brought into the engine and
-answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE rule 8):
+The Slack edge (ADR 0060): with rooms, a channel's top level is one conversation and each
+thread under it another; before rooms, and in a person's direct message with grit, a thread
+is a conversation. Each is brought into the engine and answered through Postgres alone (ADR
+0002). The Slack SDK's quarantine (STYLE rule 8):
 `com.slack.*` is named in `client/SocketSlack.scala` and nowhere else in grit, and the law's
 `only-slack-imports-*` rules hold it there. Depends on `grit.core`, `grit.prose` and
 `grit.edge` (whose `Server` serves `slack_post`), never the turn

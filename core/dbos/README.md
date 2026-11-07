@@ -34,7 +34,7 @@ this file holds the package order and the rules the code's signatures cannot sta
   triage workflows and a job's run share the turns' queue under the conversation's partition,
   so none runs beside one of its turns; posting is partitioned by plugin, shadows run one at a
   time on a queue of their own, never the turns', and stitch placements one at a time per room
-  in the order queued (ADR 0023). Imports nothing else in dbos.
+  in the order queued (ADR 0060). Imports nothing else in dbos.
 - **`engine`**: both, composed. `Engine` is what `grit.app` starts under the database's one
   engine lock (ADR 0015), refused when the lock is held or its deployment drops a compartment
   the database ran under; closing it, or losing the lock, stops the sweep, then DBOS, waits for

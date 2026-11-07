@@ -863,7 +863,7 @@ CREATE TABLE IF NOT EXISTS grit.posted (
 );
 
 -- Where each stitchable conversation's first message was placed among its room's exchanges
--- (grit.core.stitch.Placed, ADR 0023): it follows `root`'s exchange, begins something new, or
+-- (grit.core.stitch.Placed, ADR 0060): it follows `root`'s exchange, begins something new, or
 -- was not read; `placed` is its StitchJson form, with what the classifier was shown, each
 -- exchange offered and why, and the tuning in force. `root` is set for a follows alone.
 -- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw),

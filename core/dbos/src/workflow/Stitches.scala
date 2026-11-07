@@ -7,7 +7,7 @@ import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
 import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
-/** How an opening's placement is known to DBOS (ADR 0023): the workflow it runs as, and its
+/** How an opening's placement is known to DBOS (ADR 0060): the workflow it runs as, and its
   * own queue, partitioned by room, so a room's openings are placed one at a time, in the order
   * queued, and never hold up a turn.
   */

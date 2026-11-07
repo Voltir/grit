@@ -1,15 +1,13 @@
 # 0011. A conversation is divided into periods that close, each closing carrying the conversation's balance
 
-Status: accepted (2026-09-26); revised (2026-10-06)
+Status: accepted (2026-09-26); revised (2026-11-06)
 
 Context: every entry is kept, append-only, and a conversation never ends. An open-ended log
-grows without bound and has to be carried through every migration. grit also means to derive
-data from conversations (knowledge, digests), through features a deployment opts into and
-that are expected to be replaced. The choices:
+grows without bound and has to be carried through every migration. grit also derives data
+from conversations (knowledge, digests), through features a deployment opts into. The choices:
 
-- **What a period is.** A whole conversation, with a later message starting a new one for the
-  same origin, was turned down: the place (a thread, a session) would then have no row of its
-  own to carry locality and labels.
+- **What a period is.** A whole conversation, a later message starting a new one, was turned
+  down: the place would have no row of its own to carry locality and labels.
 - **What the next period starts from.** The last few per-period summaries were run first: an
   item left open dropped out of view while still open, agenda state was lost with the raw
   entries, and a summary of summaries compounded their loss. A cumulative summary rewritten
@@ -55,19 +53,21 @@ judging off) and `asks` are data (`LifecycleSettings`), and when a period is due
 is asked are defined once (`Deadline`), never mirrored in SQL. A job's run's period (ADR
 0029) is never asked: nobody waits at a task place, and it closes on its idle deadline, its
 closing written with no model from the run's opening and its reply (`CloseReason.Ran`). A
-heard period that earned nothing closes the same way (`CloseReason.Unearned`, ADR 0020).
+heard period that earned nothing closes the same way (`CloseReason.Unearned`, ADR 0020). A
+channel's top level's period (ADR 0060) is never asked and never lapses: it rolls
+(`CloseReason.Rolled`) when what was said in it reaches `Rolling.chars`, at the turn that
+reached it, later turns opening the next, or once open `Rolling.most`.
 
 Consequences:
 
 - An open item stays in view until it is resolved or evicted, and agenda state outlives the
-  purge. A carried line reads the same in its fortieth period as in its first.
+  purge.
 - Storage is bounded: close rate × window × (cap + flows), plus one closing per live
   conversation. Only open periods and kept closings need migrating.
 - A consumer can be swapped, disabled or rebuilt without touching the turn, and no change to
   one needs a patch or an epoch (ADR 0004).
 - What was evicted, and kept by no consumer, is eventually forgotten.
 - A person does nothing to close a period, and one nobody waits on closes within the settle
-  window. Each quiet stretch costs at most one classifier call. A wrong verdict of nobody
-  closes a period early; its next message opens the next period from the closing, as after
-  any close.
+  window. A wrong verdict of nobody closes a period early; its next message opens the next
+  period from the closing, as after any close. A busy room writes a closing per roll.
 - Enforced by `ClosingTests` and the replay gate (`LifecycleReplayTests`).

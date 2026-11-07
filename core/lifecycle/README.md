@@ -28,7 +28,7 @@ keeps their costs in the ledger under itself.
   classifier that fails is a verdict too, so nothing is asked again before new activity.
   ← `transcript`
 - **`stitch`**: the placement of a thread's first message among its room's exchanges, one at a
-  time per room in the order the inbox queued them (ADR 0023). Imports nothing else in
+  time per room in the order the inbox queued them (ADR 0060). Imports nothing else in
   lifecycle.
 - **`triage`**: what a heard message is, asked once per message on the turns' queue, so ahead of
   any later close of it (ADR 0020), and whether grit drafts a reply, or answers one put to it by

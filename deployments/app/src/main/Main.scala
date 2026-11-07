@@ -97,7 +97,7 @@ import Backfills.*
   *     directory is another conversation. Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
   *     directory), never to the screen.
   *   - **`serve` alone: `grit serve`**, the engine of the database and the Slack edge in its
-  *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0023), over Socket Mode with `SLACK_BOT_TOKEN` and
+  *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0060), over Socket Mode with `SLACK_BOT_TOKEN` and
   *     `SLACK_APP_TOKEN`, until stopped. It hears every channel, public or private, its bot is
   *     invited to, what is not said to it included, until the bot is removed. When the bot joins a
   *     channel it hears what was said there before, never answering it: the newest

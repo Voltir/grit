@@ -1,8 +1,8 @@
 # 0042. A strand's document is summarised from its members' raw messages by a dreaming job, one per root at its room's label
 
-Status: revised (2026-10-18)
+Status: accepted (2026-10-18); revised (2026-11-06)
 
-Context: a room's topic is scattered over the threads ADR 0023 stitches into a strand, and a
+Context: a room's topic is scattered over the threads stitched into a strand (ADR 0060), and a
 turn's window ranks those threads one by one. A document per strand, a short summary with
 search terms, lets a window and the relevance judge (ADR 0040) see the topic as one thing, and
 lets the stitch's judge name what a strand's opening never says. Its source had to be chosen.
@@ -52,6 +52,8 @@ Consequences:
   below its room's: the keeper joins with the floor, and the run reads no room above it.
 - A strand that goes quiet past the stitch's horizon keeps its document until its members age
   out, and is found by search, not by the stitch.
+- No strand forms in a channel's top level or a thread under it (ADR 0060): a strand's
+  document is withdrawn as its members, threads recorded before rooms, age out.
 - Enforced by the types (only `Dreaming` offers `scan` and `summarise`; `Strand.Digested` has no
   text) and capture probes (`ActCaptureTests`), and by `MovesContract` against the moves and
   their fake.

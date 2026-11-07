@@ -8,7 +8,7 @@ Beside the cards, a second plugin keeps what each closed conversation settled as
 (`StandingDocuments`, over `standing`).
 
 Strand documents: by a third plugin in the same module, one short document per strand of a
-room's threads (ADR 0023), summarised from what its members said, so a window and the
+room's threads (ADR 0060), summarised from what its members said, so a window and the
 relevance judge see a topic spread over threads as one thing.
 
 Packages, in one-way order (each names only those before it):

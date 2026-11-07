@@ -211,7 +211,7 @@ components:
             "extensions/projects/src", "extensions/projects/src/**",
             "extensions/chat/src/run", "extensions/chat/src/run/**", "extensions/chat/src/host", "extensions/chat/src/host/**",
             "extensions/chat/src/look", "extensions/chat/src/look/**", "extensions/chat/src/settings", "extensions/chat/src/settings/**"]
-  # Every edge extension's main sources: an edge a deployment serves (ADR 0023, ADR 0017). The
+  # Every edge extension's main sources: an edge a deployment serves (ADR 0060, ADR 0017). The
   # kit names none of them (kit-names-no-edge-or-deployment's `only` leaves them out), and
   # scripts/check --milestone --since reports each commit touching one and core together.
   # A new edge extension joins this list.

@@ -11,7 +11,7 @@ import grit.core.visibility.Subject
 
 /** The placement of a stitchable conversation's opening ([[grit.core.stitch.Opening]]): one
   * workflow per opening ([[StitchRef]]), run on a queue of its own one at a time per room, so
-  * every opening is placed after those queued before it in its room (ADR 0023). Each step's
+  * every opening is placed after those queued before it in its room (ADR 0060). Each step's
   * output is recorded, so a placement resumed after a crash never asks the classifier twice.
   *
   *   1. `ask:stitch` — where the opening goes among its room's exchanges

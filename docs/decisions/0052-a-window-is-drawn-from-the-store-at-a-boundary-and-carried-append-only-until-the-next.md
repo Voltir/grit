@@ -57,7 +57,8 @@ Consequences: on every turn after a window's first, the request begins with the 
 prefix, so most of its input is a cache read. Right after a boundary the model sees about half
 what a redrawn window showed, the peak unchanged; a deployment sizes its budget for that. Near
 the limit an append recalls less, and recall never forces a boundary. A strand's and an asking
-thread's sections are as of the boundary. A period's close clears the window, so the
+turn's sections are as of the boundary; a room's section (ADR 0060) grows, each append adding
+what the room said since the last part. A period's close clears the window, so the
 lifecycle's settle time is a chat's cache lifetime: a placer that judges nobody waiting during
 a person's pause clears it. Enforced by the assembly suites, `TurnPrefixTests` (a carried
 request begins with the last) and `TurnLoopTurnTests` (a cut turn's requests keep their tools;

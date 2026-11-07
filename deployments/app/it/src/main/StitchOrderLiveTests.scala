@@ -26,7 +26,7 @@ import grit.turn.Turn
 
 import utest.*
 
-/** The order a room's first messages are placed in, over a live engine (ADR 0023): each is
+/** The order a room's first messages are placed in, over a live engine (ADR 0060): each is
   * placed only once every opening heard before it in its room has been, however long one
   * takes, while replies and closes keep their own order.
   */

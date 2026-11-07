@@ -127,7 +127,8 @@ object SpeechJsonTests extends TestSuite {
     test(
       "an outcome stored as answered, before a person's reply stopped holding a draft, reads as spoken"
     ) {
-      // The stored name of the hold before ADR 0023: rows kept under it must keep reading.
+      // The stored name of the hold while a person's reply held a draft: rows kept under it
+      // must keep reading.
       SpeechJson.readOutcome(ujson.Obj("kind" -> "answered", "by" -> "in:c:m2")) ==>
         Right(Outcome.Spoken(EntryId("in:c:m2")))
     }

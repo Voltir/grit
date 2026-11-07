@@ -1,6 +1,6 @@
 # 0013. A conversation has a place, and every open period, closing and document elsewhere its turn may read is a retrieval candidate, weighted below its own
 
-Status: accepted (2026-09-26); revised (2026-10-21)
+Status: accepted (2026-09-26); revised (2026-11-06)
 
 Context: grit runs in several directories and sessions at once, and in Slack channels and
 threads, and what one conversation is doing is often what another needs. A conversation keyed
@@ -26,13 +26,16 @@ Decision:
 - **Nearness only weights, and never fences**: a window draws on every place its turn may read
   (ADR 0030); its own conversation's candidates are weighted up against those elsewhere. A
   conversation's **room** (the place it shares with its neighbours: a session's directory, a
-  thread's channel, a task's name) is what stitching reads within (ADR 0023), not a limit on
-  recall.
+  thread's channel, a task's name) is what a window is shown the rest of (ADR 0060), not a
+  limit on recall.
 - **Open periods and closings.** The raw entries of other conversations' open periods its turn
-  may read are retrieval candidates. So is each such conversation's kept closings, as one candidate
-  shown as its newest kept record, under its place and close date, with its Standing lines'
-  grounds (ADR 0018). A conversation with open turns among the candidates is shown by those
-  alone. Nothing else a close wrote elsewhere is a candidate.
+  may read are retrieval candidates. So is each such conversation's kept closings: as one
+  candidate shown as its newest kept record, under its place and close date, with its Standing
+  lines' grounds (ADR 0018), except a channel's top level's (ADR 0060), each of whose kept
+  closings is a candidate of its own, its own windows' included but the one a turn opens from,
+  as are its earlier periods' kept turns. A conversation with open turns among the candidates
+  is shown by those alone. Nothing else a close wrote elsewhere is a candidate. A room's or a
+  strand's section's members are never candidates.
 - **One pool.** They rank by BM25 with the conversation's own candidates, whose scores are
   multiplied by a weight (data, at least 1), in one budget with no reserved share. The first
   thirty are judged for relevance, and only those passed or unjudged are packed (ADR 0040).

@@ -54,7 +54,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
-| `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0023) and the Slack SDK's quarantine |
+| `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0060) and the Slack SDK's quarantine |
 | `grit.chat` | `settings`, `look`, `view`, `screen`, `host`, `run` | core, prose, tui, edge, turn | the chat TUI, run by a deployment over `Kit.console` |
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `drive`, `edge` | core, edge | MCP servers and Drive's REST API: a declared service's read-only tools at its service place (ADR 0017) |
 | `grit.databases` | `declare`, `connect`, `edge` | core, edge | an application's Postgres database read as a service, one role to a place (ADR 0057); `connect` its JDBC quarantine |

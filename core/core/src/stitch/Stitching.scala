@@ -71,7 +71,7 @@ final case class Offer private[stitch] (
 )
 
 /** Whether a stitchable conversation's first message continues an exchange in its room
-  * (ADR 0023), and how a reader shows the strand it joins.
+  * (ADR 0060), and how a reader shows the strand it joins.
   */
 object Stitching {
 

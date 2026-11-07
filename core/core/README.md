@@ -87,7 +87,7 @@ In dependency order, each with the core packages it imports:
   `grit.act` and `grit.kit` may name (enola-intent.yaml). ← `visibility`, `durable`
 - **`approval`**: a person's answer to a gated tool call. ← `id`
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
-- **`stitch`**: a Slack thread's first message joined to an exchange in its room (ADR 0023).
+- **`stitch`**: a Slack thread's first message, recorded before rooms, joined to an exchange in its room (ADR 0060).
   ← `id`, `message`, `place`, `period`, `store`, `classify`, `words`
 - **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,

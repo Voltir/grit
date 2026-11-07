@@ -170,7 +170,7 @@ object SpeechJson {
       str(o, "kind").flatMap {
         case "passed" => Right(Outcome.Passed)
         case "nothing_recalled" => Right(Outcome.NothingRecalled)
-        // Stored as answered while a person's reply held a draft (before ADR 0023).
+        // Stored as answered while a person's reply still held a draft.
         case "spoken" | "answered" => str(o, "by").map(b => Outcome.Spoken(EntryId(b)))
         case "withdrawn" => Right(Outcome.Withdrawn)
         case "unjudged" => str(o, "why").map(Outcome.Unjudged(_))

@@ -163,7 +163,7 @@ object SqlStartSlotTests extends TestSuite {
     }
 
     // A run's opening is grit's, at a task's place where nothing interleaves: placing it among
-    // its room's exchanges (ADR 0023) would cost a call for nothing.
+    // its room's exchanges (ADR 0060) would cost a call for nothing.
     test("a run's opening is never placed: starting a slot enqueues no stitch workflow") {
       withEngine { engine =>
         declare(engine, Vector("unplaced" -> SlotRule.Once(Due, hour)), Due)

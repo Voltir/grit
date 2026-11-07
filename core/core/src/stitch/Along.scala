@@ -35,7 +35,7 @@ object Along {
 
   /** What the other conversations of `conversation`'s strand said from `from` until before
     * `until`, oldest first, and its root's opening message however old, read through
-    * `stitches`: only conversations within its room (ADR 0023's stitch rule). A member whose
+    * `stitches`: only conversations within its room (ADR 0060's stitch rule). A member whose
     * first message is gone is named in `gone`, for its record to be shown instead; every
     * member, in its room or not, in `conversations`. Empty for a conversation that is not
     * stitchable.

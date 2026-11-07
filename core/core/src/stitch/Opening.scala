@@ -5,7 +5,7 @@ import grit.core.place.Place
 import grit.core.store.{Conversation, Entry}
 
 /** A stitchable conversation's first message, said by a person: the one message of a
-  * conversation that is placed (ADR 0023), in `room`. Only [[Opening.of]] makes one.
+  * conversation that is placed (ADR 0060), in `room`. Only [[Opening.of]] makes one.
   */
 final case class Opening private (ref: StitchRef, room: Place)
 
