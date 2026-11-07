@@ -126,7 +126,7 @@ object AnthropicJson {
 
   /** [[ProviderHttp.httpError]], its detail `<message> (<type>)`. */
   def error(status: Int, body: String): ProviderError =
-    ProviderHttp.httpError(status, body, describe)
+    ProviderHttp.httpError(status, body, kind)
 
   /** An `error` event sent after the 200, as `model error: <message> (<type>)`:
     * [[ProviderError.Unavailable]] when its type is `overloaded_error` or `api_error`,
@@ -134,8 +134,9 @@ object AnthropicJson {
     */
   def modelError(error: collection.Map[String, ujson.Value]): ProviderError =
     ProviderHttp.modelError(
-      describe(error),
-      error.get("type").flatMap(_.strOpt).exists(t => t == "overloaded_error" || t == "api_error")
+      error,
+      kind,
+      kind(error).exists(t => t == "overloaded_error" || t == "api_error")
     )
 
   private def tool(t: ToolSchema): ujson.Obj = {
@@ -257,7 +258,6 @@ object AnthropicJson {
     Usage(count("input_tokens") + read + write, count("output_tokens"), read, None, write, thinking)
   }
 
-  private def describe(error: collection.Map[String, ujson.Value]): String =
-    ProviderHttp.describe(error, error.get("type").flatMap(_.strOpt))
+  private val kind: ProviderHttp.ErrorKind = _.get("type").flatMap(_.strOpt)
 
 }

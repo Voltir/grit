@@ -147,7 +147,7 @@ object OpenRouterJson {
 
   /** [[ProviderHttp.httpError]], its detail `<message> (<error_type>)`. */
   def error(status: Int, body: String): ProviderError =
-    ProviderHttp.httpError(status, body, describe)
+    ProviderHttp.httpError(status, body, kind)
 
   /** The model error `error`, an OpenRouter error object sent after the 200, as `model
     * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[ProviderHttp.transient]]
@@ -155,7 +155,8 @@ object OpenRouterJson {
     */
   def modelError(error: collection.Map[String, ujson.Value]): ProviderError =
     ProviderHttp.modelError(
-      describe(error),
+      error,
+      kind,
       error
         .get("code")
         .flatMap(_.numOpt)
@@ -169,11 +170,8 @@ object OpenRouterJson {
       case None => Right(())
     }
 
-  private def describe(error: collection.Map[String, ujson.Value]): String =
-    ProviderHttp.describe(
-      error,
-      error.get("metadata").flatMap(_.objOpt).flatMap(_.get("error_type")).flatMap(_.strOpt)
-    )
+  private val kind: ProviderHttp.ErrorKind =
+    _.get("metadata").flatMap(_.objOpt).flatMap(_.get("error_type")).flatMap(_.strOpt)
 
   private def blockList(
       message: collection.Map[String, ujson.Value]

@@ -22,21 +22,18 @@ private[models] object ProviderHttp {
     */
   def transient(status: Int): Boolean = status == 408 || status == 429 || status / 100 == 5
 
-  /** A non-200 response's error, `HTTP <status>: ` then its body's `error` object as `describe`
-    * writes it, else the body trimmed to 200 characters; `Unavailable` when [[transient]].
+  /** A non-200 response's error, `HTTP <status>: ` then its body's `error` object
+    * [[described]] with `kind`, else the body trimmed to 200 characters; `Unavailable` when
+    * [[transient]].
     */
-  def httpError(
-      status: Int,
-      body: String,
-      describe: collection.Map[String, ujson.Value] => String
-  ): ProviderError = {
+  def httpError(status: Int, body: String, kind: ErrorKind): ProviderError = {
     val detail = scala.util
       .Try(ujson.read(body))
       .toOption
       .flatMap(_.objOpt)
       .flatMap(_.get("error"))
       .flatMap(_.objOpt)
-      .map(describe)
+      .map(described(_, kind))
       .getOrElse(body.trim.take(200))
     val cause = s"HTTP $status: $detail"
     if (transient(status)) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
@@ -45,19 +42,24 @@ private[models] object ProviderHttp {
   /** `unreadable response: <why>`. */
   def unreadable(why: String): ProviderError = ProviderError.Refused(s"unreadable response: $why")
 
-  /** An error object's `message` (`no message` when it has none), then ` (<kind>)` when there
-    * is a `kind`.
-    */
-  def describe(error: collection.Map[String, ujson.Value], kind: Option[String]): String = {
+  /** The word a provider's error object gives for its kind, if it gives one. */
+  type ErrorKind = collection.Map[String, ujson.Value] -> Option[String]
+
+  /** `error`'s `message` (`no message` when it has none), then ` (<kind>)` when `kind` gives one. */
+  private def described(error: collection.Map[String, ujson.Value], kind: ErrorKind): String = {
     val message = error.get("message").flatMap(_.strOpt).getOrElse("no message")
-    kind.fold(message)(k => s"$message ($k)")
+    kind(error).fold(message)(k => s"$message ($k)")
   }
 
-  /** An error event sent after the 200, as `model error: <detail>`:
-    * [[ProviderError.Unavailable]] when `transient`, else [[ProviderError.Refused]].
+  /** An error event sent after the 200, as `model error: ` and `error` [[described]] with
+    * `kind`: [[ProviderError.Unavailable]] when `transient`, else [[ProviderError.Refused]].
     */
-  def modelError(detail: String, transient: Boolean): ProviderError = {
-    val cause = s"model error: $detail"
+  def modelError(
+      error: collection.Map[String, ujson.Value],
+      kind: ErrorKind,
+      transient: Boolean
+  ): ProviderError = {
+    val cause = s"model error: ${described(error, kind)}"
     if (transient) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
   }
 
