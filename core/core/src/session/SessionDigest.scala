@@ -4,7 +4,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
 import grit.core.message.Cut
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** A session's digest: what it has done, for an agent going on with it without its transcript. */
 object SessionDigest {

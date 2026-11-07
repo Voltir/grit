@@ -1,7 +1,7 @@
 package grit.mcp.scope
 
-import grit.core.words.Words
 import grit.mcp.wire.{McpTool, Skipped}
+import grit.prose.words.Words
 
 /** Argument values a call must carry to be within a scope: each named argument a JSON string
   * equal to its value, compared exactly, case included.

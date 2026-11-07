@@ -5,8 +5,8 @@ import java.time.{Instant, LocalDate, ZoneOffset}
 import grit.core.document.{DocText, Document}
 import grit.core.id.{ConversationId, DocKey}
 import grit.core.stitch.{Strand, StrandDigest}
-import grit.core.words.Words
 import grit.knowledge.card.CardSummary
+import grit.prose.words.Words
 
 /** A strand's document: its key, its text and its data. */
 object StrandDocument {

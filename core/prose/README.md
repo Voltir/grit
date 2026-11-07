@@ -12,6 +12,8 @@ In dependency order:
 - **`either`** -- `Traversal`: a vector of `Either`s traversed, failing at the first `Left`. It
   holds no prose; it sits here, where every grit module can see it, because prose names nothing
   and core names prose. Imports nothing in prose.
+- **`words`** -- `Words`: the English grit writes alike wherever it writes it, such as a count
+  with its unit. It sits here for the reason `either` does. Imports nothing in prose.
 - **`form`** -- the blocks (`Doc`, `Block`, `Item`, `Level`), a table's `Column`s and typed
   `Cell`s (`Cell.Number.read`, what words read as a number), a `Chart` (numbers compared across
   categories, its data a table, made only by `Chart.of`) and the `fallback` a consumer that

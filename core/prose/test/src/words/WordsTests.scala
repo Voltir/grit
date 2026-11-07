@@ -1,4 +1,4 @@
-package grit.core.words
+package grit.prose.words
 
 import utest.*
 

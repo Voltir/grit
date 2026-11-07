@@ -18,12 +18,12 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.words.Words
 import grit.databases.connect.{Clip, DatabaseReader, OneStatement, QueryRefusal, Relation, Rows}
 import grit.databases.declare.Database
 import grit.edge.{Run, Tools}
 import grit.prose.form.{Block, Cell, Column, Doc, Text}
 import grit.prose.markdown.Markdown
+import grit.prose.words.Words
 
 /** The two tools of `database`'s edge, as `described` describes them, run over `reader`: what
   * the role may read, and one read-only statement's rows. Each answer is at most

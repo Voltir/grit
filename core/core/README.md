@@ -2,7 +2,8 @@
 
 The domain and the traits everything else is written against. No DBOS, no JDBC driver on its
 classpath; implementations live in the modules that need the libraries (CLAUDE.md, rule 8).
-It names one other grit module, `grit.prose`, whose form a file is read into (`files`).
+It names one other grit module, `grit.prose`, whose form a file is read into (`files`) and
+whose words grit writes alike everywhere (`Words`).
 
 Each package's types and their docs are the code's: `scripts/scout area <name>` maps a part of
 grit, and `scripts/scout show <Type>` reads one. This file holds what the code does not say:
@@ -12,8 +13,6 @@ In dependency order, each with the core packages it imports:
 
 - **`json`**: a JSON object's fields read, each refusal naming the object and the field. Imports
   nothing in core.
-- **`words`**: the English grit writes alike wherever it writes it, such as a count with its
-  unit. Imports nothing in core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
 - **`secret`**: a value no label admits: a `Secret`, read from the environment for a
@@ -43,7 +42,7 @@ In dependency order, each with the core packages it imports:
   declares one (ADR 0021). ← `prompt`
 - **`message`**: the model's vocabulary: messages, usage and cost. ← `id`
 - **`schema`**: the JSON Schemas a reply is held to, in the subset every provider's strict mode
-  accepts. ← `model`, `words`
+  accepts. ← `model`
 - **`agenda`**: a conversation's agenda (what it is about, item by item) as recorded events and
   the pure fold over them. ← `id`
 - **`period`**: a conversation's time as periods that close (ADRs 0011, 0012, 0018): the one
@@ -88,14 +87,14 @@ In dependency order, each with the core packages it imports:
 - **`approval`**: a person's answer to a gated tool call. ← `id`
 - **`provider`**: the `Provider` trait the engine plugs a model into. ← `model`, `message`
 - **`stitch`**: a Slack thread's first message, recorded before rooms, joined to an exchange in its room (ADR 0060).
-  ← `id`, `message`, `place`, `period`, `store`, `classify`, `words`
+  ← `id`, `message`, `place`, `period`, `store`, `classify`
 - **`host`**: what a tool may do to the machine, and the bytes kept on it by their digest
   (`Blobs`), as capabilities `grit.host` implements, and the pure rules they share. ← `id`,
-  `place`, `secret`, `words`
+  `place`, `secret`
 - **`session`**: each working session's record, a grit turn's or a harness's: one row of who,
   when and its counters, and a capped log of its events in grit's words, an event recorded again
   known by its source's ordinal, and what a tool's call adds to it (`Event.Unrecorded`). ← `id`, `identity`,
-  `place`, `visibility`, `store`, `words`
+  `place`, `visibility`, `store`
 - **`tool`**: tools as typed data: the spec the model is shown and the reader of its calls,
   hosted descriptions the engine offers and an edge runs (ADR 0017), and the toolbox that binds
   a call, and a cut result fitted to what the model is shown. ← `id`, `place`, `visibility`,
@@ -118,7 +117,7 @@ In dependency order, each with the core packages it imports:
   windows search and label them (`PieceKeeper`, `PieceSearch`); and where a passage lies in a
   file's text, found again after the file changes (`Anchor`). Above `tool` and `document`, so
   a kept file may name the call that reads it. ← `clock`,
-  `id`, `place`, `host`, `visibility`, `store`, `message`, `provider`, `tool`, `document`, `words`
+  `id`, `place`, `host`, `visibility`, `store`, `message`, `provider`, `tool`, `document`
 - **`review`**: what a person says of what grit puts up for review, by one edge path
   (`Reviews`): a verdict on grit's speech decision, asked of a few heard messages a day and kept
   after the message's entry is gone (ADR 0022), and a word on a plugin's document, kept after

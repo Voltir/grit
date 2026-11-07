@@ -19,7 +19,6 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginComman
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
-import grit.core.words.Words
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
 import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView}
 import grit.projects.name.{
@@ -35,6 +34,7 @@ import grit.projects.name.{
 }
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
 import grit.prose.either.Traversal
+import grit.prose.words.Words
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
   * `default`.

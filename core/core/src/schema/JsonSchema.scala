@@ -2,7 +2,7 @@ package grit.core.schema
 
 import grit.core.message.Cut
 import grit.core.model.ArgRepair
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** A JSON Schema in the subset every provider's strict mode accepts, so any upstream can be
   * sent it `strict` and grit's own check means what the provider's does. Read only by

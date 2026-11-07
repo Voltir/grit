@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.id.FileHandle
 import grit.core.store.{StoreError, Tx}
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** Bytes arriving from a source, read once. */
 trait Incoming {

@@ -38,7 +38,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.visibility.Integrity
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** The coding tool set: reading, searching, changing and running things in a checkout. Each
   * tool's description is all the model is told of it, so it states the tool's limits and

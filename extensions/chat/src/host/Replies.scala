@@ -6,7 +6,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.store.{Entry, Payload, WentOn}
 import grit.core.visibility.Subject
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */
 object Replies {

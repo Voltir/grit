@@ -1,4 +1,4 @@
-package grit.core.words
+package grit.prose.words
 
 /** The English grit writes the same way wherever it writes it. */
 object Words {

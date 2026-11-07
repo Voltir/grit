@@ -31,7 +31,7 @@ import grit.core.store.{
   Speakers,
   StoreError
 }
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** One exchange as the classifier is offered it: its `root` (the conversation it began in),
   * the root's `opening` message, its `latest` messages, its newest closing's headline when it

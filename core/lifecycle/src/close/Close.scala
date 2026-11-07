@@ -24,8 +24,8 @@ import grit.core.store.{
 }
 import grit.core.triage.Earning
 import grit.core.visibility.Subject
-import grit.core.words.Words
 import grit.lifecycle.transcript.PeriodTranscript
+import grit.prose.words.Words
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
   * queue under its conversation, so never beside one of its turns. Each step's output is

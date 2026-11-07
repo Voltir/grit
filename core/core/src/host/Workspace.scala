@@ -1,6 +1,6 @@
 package grit.core.host
 
-import grit.core.words.Words
+import grit.prose.words.Words
 
 /** Reading the checkout. A path that is a link is followed, and refused
   * ([[HostError.Outside]]) when it leads outside the checkout or to a secrets file.

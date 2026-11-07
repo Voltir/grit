@@ -11,11 +11,11 @@ import grit.core.need.Exported
 import grit.core.prompt.Tag
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
-import grit.core.words.Words
 import grit.knowledge.card.{CardMoves, CardShelf}
 import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
+import grit.prose.words.Words
 
 /** The job `topics-dream`, version 3, its days reckoned in `zone`, its cards through `cards` when
   * its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its

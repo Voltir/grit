@@ -5,7 +5,7 @@ import grit.chat.view.{AgendaView, SessionView, TurnView}
 import grit.core.agenda.{Agenda, Band}
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
-import grit.core.words.Words
+import grit.prose.words.Words
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
 import grit.tui.model.text.StyledText
