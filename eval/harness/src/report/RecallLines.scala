@@ -2,6 +2,7 @@ package grit.eval.harness.report
 
 import grit.core.id.{DocumentVersionId, WorkflowId}
 import grit.eval.harness.reply.Refound
+import grit.eval.harness.sent.SentMarkdown.table
 import grit.eval.harness.stats.Proportion
 
 /** [[Report.recall]]'s sections. */
@@ -15,9 +16,6 @@ private[report] object RecallLines {
     val found = replayed.collect { case (w, Right(fs)) => w -> fs }
     val failed = replayed.collect { case (w, Left(why)) => w -> why }
     val s = Refound.summary(found)
-    def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
-      Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
-        rows.map(_.mkString("| ", " | ", " |"))
     def row(what: String, a: Refound.At): Vector[String] =
       what +: (a.cuts.values.toVector :+ a.ranked :+ a.recorded).map(rate)
     def followed(f: Refound.Followed): String = {

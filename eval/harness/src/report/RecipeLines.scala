@@ -5,6 +5,7 @@ import grit.core.message.Cost
 import grit.eval.harness.capture.Part
 import grit.eval.harness.reply.Judged
 import grit.eval.harness.score.{Fitted, Priced, Prices, Recipe, Shift}
+import grit.eval.harness.sent.SentMarkdown.table
 import grit.eval.harness.stats.Proportion
 
 /** One variant of a recipes run: its name, its [[Recipe]] against shipped, and each reference
@@ -249,10 +250,6 @@ private[report] object RecipeLines {
           }
         )
     }) ++ Vector("")
-
-  private def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
-    Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
-      rows.map(_.mkString("| ", " | ", " |"))
 
   private def cents(usd: Double): String = Cost.cents(BigDecimal(usd))
 

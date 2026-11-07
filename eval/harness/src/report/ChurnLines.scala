@@ -3,6 +3,7 @@ package grit.eval.harness.report
 import grit.core.id.WorkflowId
 import grit.eval.harness.capture.Support
 import grit.eval.harness.score.Churn
+import grit.eval.harness.sent.SentMarkdown.table
 import grit.eval.harness.stats.{Estimate, Proportion}
 
 /** [[Report.churn]]'s sections. */
@@ -10,9 +11,6 @@ private[report] object ChurnLines {
 
   def of(capture: String, c: Churn): String = {
     import Churn.Reads
-    def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
-      Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
-        rows.map(_.mkString("| ", " | ", " |"))
     def num(d: Double): String = f"$d%.3f"
     def estimate(what: String, e: Option[Estimate]): Vector[String] =
       e.fold(Vector(what, "—", "—", "—", "—")) { x =>

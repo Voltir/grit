@@ -6,6 +6,7 @@ import grit.core.tool.ToolName
 import grit.eval.harness.capture.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.score.{Calls, Paid, Quantiles, Shapes, Slice, Structure, Unreplied, Where}
+import grit.eval.harness.sent.SentMarkdown.table
 import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 
@@ -14,9 +15,6 @@ private[report] object TurnLines {
 
   def of(capture: String, turns: Vector[TurnCase], verdicts: Verdicts): String = {
     val slices = Slice.every.map(s => s -> Structure.of(turns, s, verdicts)).filter(_._2.n > 0)
-    def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
-      Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
-        rows.map(_.mkString("| ", " | ", " |"))
     def bySlice(head: String*)(row: Structure => Vector[String]): Vector[String] =
       table(("slice" +: head)*)(slices.map((s, st) => name(s) +: row(st)))
     val all = Structure.of(turns, Slice.All, verdicts)

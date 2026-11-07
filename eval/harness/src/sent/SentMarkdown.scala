@@ -370,6 +370,11 @@ object SentMarkdown {
     )
   }
 
+  /** A markdown table: `head`'s line, its rule, then a line each of `rows`, cells as given. */
+  def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
+    Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
+      rows.map(_.mkString("| ", " | ", " |"))
+
   /** Of `u`'s input, the share read from the cache ([[Usage.cacheShare]]), a percentage to one
     * place, a half rounded up; `0%` with no input.
     */

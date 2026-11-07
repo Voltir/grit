@@ -135,10 +135,7 @@ object Redrawn {
         s"${r.reread} of ${r.calls}"
       )
     }
-    def line(cells: Vector[String]) = cells.mkString("| ", " | ", " |")
-    Vector(line(head), head.map(_ => "---").mkString("|", "|", "|")) ++ redrawn.map(r =>
-      line(row(r))
-    )
+    SentMarkdown.table(head*)(redrawn.map(row))
   }
 
   /** `turn`'s redrawn first call as markdown for a person to read: a heading, its parts as
