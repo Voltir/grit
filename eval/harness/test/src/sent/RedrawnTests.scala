@@ -1,7 +1,9 @@
 package grit.eval.harness.sent
 
+import grit.assembly.estimate.CharEstimate
+import grit.core.context.Shown
 import grit.core.id.TurnSeq
-import grit.core.message.Tokens
+import grit.core.message.{Message, Tokens}
 import grit.core.provider.ModelRequest
 
 import utest.*
@@ -43,6 +45,36 @@ object RedrawnTests extends TestSuite {
         "|---|---|---|---|---|---|---|---|---|---|",
         "| 10 | 1–9 → 9 | 52.0k → 28.2k | 7.3k → 7.3k | 27.0k → 3.2k | 0.4k → 0.4k | 18.5k → 42.3k | 26.1k → 49.9k | 2.1k | 3 of 8 |"
       )
+    }
+
+    test("a redraw reserves the task as recorded and the digest, each by grit's estimate") {
+      val estimator = new CharEstimate(4.0, 4.0, Tokens.Zero)
+      val task = Vector(Message.User("the task"))
+      (
+        estimator.message(Message.User("the task")),
+        estimator.message(Shown.sessionLog("read a.scala")),
+        Redrawn.reserve(task, Some("read a.scala"), estimator),
+        Redrawn.reserve(task, None, estimator),
+        Redrawn.reserve(Vector.empty, None, estimator)
+      ) ==> (Tokens(6), Tokens(15), Tokens(21), Tokens(6), Tokens.Zero)
+    }
+
+    test("the redrawn call is scaled by the recorded call's measure, not its own") {
+      def first(each: Long, task: Long) =
+        FirstCall(Tokens(each), Tokens(each), Tokens(task), Tokens(each), Tokens.Zero, Tokens.Zero)
+      // The recorded call totals 40 of grit's tokens, which its provider counted as 100: each
+      // part of both calls is read at 2.5 times, the redrawn call's 30 too.
+      val scaled = Redrawn.scaled(first(10, 10), first(10, 0), Tokens(100))
+      (scaled.was, scaled.now) ==> (first(25, 25), first(25, 0))
+    }
+
+    test("a recorded call that totals nothing scales neither call") {
+      val nothing =
+        FirstCall(Tokens.Zero, Tokens.Zero, Tokens.Zero, Tokens.Zero, Tokens.Zero, Tokens.Zero)
+      val redrawn =
+        FirstCall(Tokens(3), Tokens(4), Tokens.Zero, Tokens.Zero, Tokens.Zero, Tokens(5))
+      val scaled = Redrawn.scaled(nothing, redrawn, Tokens(100))
+      (scaled.was, scaled.now) ==> (nothing, redrawn)
     }
   }
 }

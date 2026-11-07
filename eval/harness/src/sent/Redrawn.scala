@@ -156,6 +156,30 @@ object Redrawn {
     }
   }
 
+  /** What a redraw reserves before the part it draws, by `estimator`: the task as recorded,
+    * its messages as shown (`task`), and the digest (`sessionLog`) as one message.
+    */
+  private[sent] def reserve(
+      task: Vector[Message],
+      sessionLog: Option[String],
+      estimator: TokenEstimator
+  ): Tokens =
+    (task ++ sessionLog.map(Shown.sessionLog)).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
+
+  /** `was` and `now` each scaled by one factor, the input its provider counted for `was`
+    * (`input`) over `was`'s total, 1 when that total is 0: `now` is read by `was`'s measure.
+    */
+  private[sent] def scaled(
+      was: FirstCall,
+      now: FirstCall,
+      input: Tokens
+  ): (was: FirstCall, now: FirstCall) = {
+    val scale =
+      if (Tokens.value(was.total) == 0) BigDecimal(1)
+      else BigDecimal(Tokens.value(input)) / Tokens.value(was.total)
+    (was = was.scaled(scale), now = now.scaled(scale))
+  }
+
   /** Each turn of `conversation` whose window was drawn at a boundary, with a first call that a
     * ledger row counted, read through `reader` and redrawn by `assembler`, as the turn asked for
     * it but with nothing carried and reserved what its window record shows before the drawn
@@ -206,9 +230,7 @@ object Redrawn {
                 speakers <- reader.principals.speakers(at.map(_.id))
               } yield at.flatMap(Shown.of(_, speakers))
             })
-            reserved = (held ++ record.sessionLog.map(Shown.sessionLog))
-              .map(estimator.message)
-              .foldLeft(Tokens.Zero)(_ + _)
+            reserved = reserve(held, record.sessionLog, estimator)
             asked = AssemblyRequest(t.turn, offer.width, CarriedWindow.Empty, reserved, record.task)
             projection <- assembler
               .assemble(asked, Packing.Drawn(Querying.Drawn(Vector.empty)))(using reader.db)
@@ -228,10 +250,11 @@ object Redrawn {
               .orElse(calls.answered.map(_.on))
               .toRight(s"$named: no call redrawn")
           } yield {
-            val was = FirstCall.of(first.request, t.calls.window.size, record, estimator)
-            val scale =
-              if (Tokens.value(was.total) == 0) BigDecimal(1)
-              else BigDecimal(Tokens.value(row.usage.input)) / Tokens.value(was.total)
+            val firsts = scaled(
+              FirstCall.of(first.request, t.calls.window.size, record, estimator),
+              FirstCall.of(request, calls.window.size, window, estimator),
+              row.usage.input
+            )
             val own = conversation.entries.filter(_.turnSeq == t.turn.turnSeq)
             val calling = own.flatMap(_.payload match {
               case Payload.Exchange(m) => m.blocks.collect { case c: AssistantBlock.ToolCall => c }
@@ -242,8 +265,8 @@ object Redrawn {
               t.turn.turnSeq,
               turnsOf(record.entries, record.task),
               turnsOf(window.entries, record.task),
-              was.scaled(scale),
-              FirstCall.of(request, calls.window.size, window, estimator).scaled(scale),
+              firsts.was,
+              firsts.now,
               t.requests.lastOption.flatMap((_, reply, _) => t.row(reply)).map(_.usage.input),
               limits.flatMap(_.budget.limit),
               summariesBefore(conversation.entries, t.turn.turnSeq, estimator),
