@@ -5,6 +5,7 @@ import grit.chat.view.{AgendaView, SessionView, TurnView}
 import grit.core.agenda.{Agenda, Band}
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
+import grit.core.words.Words
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
 import grit.tui.model.text.StyledText
@@ -45,8 +46,8 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     view match {
       case None => Vector(row(" reading the conversation…" -> fg(t.faint)))
       case Some(v) =>
-        val turns = if (v.turns == 1) "1 turn" else s"${v.turns} turns"
-        val messages = if (v.messages == 1) "1 message" else s"${v.messages} messages"
+        val turns = Words.counted(v.turns, "turn")
+        val messages = Words.counted(v.messages, "message")
         val recalled =
           if (v.recalled.isEmpty) Vector(row(" recalled " -> fg(t.faint), "none" -> fg(t.faint)))
           else
@@ -86,7 +87,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     view match {
       case None => Vector(row(" reading the conversation…" -> fg(t.faint)))
       case Some(v) =>
-        val count = if (v.items.size == 1) "1 topic" else s"${v.items.size} topics"
+        val count = Words.counted(v.items.size, "topic")
         val rows =
           if (v.items.isEmpty) Vector(row(" none yet" -> fg(t.faint)))
           else
@@ -158,7 +159,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     if (roles.isEmpty) Vector(row(" models   " -> fg(t.faint), "none called yet" -> fg(t.faint)))
     else
       roles.flatMap { r =>
-        val calls = if (r.calls == 1) "1 call" else s"${r.calls} calls"
+        val calls = Words.counted(r.calls, "call")
         row(
           Seq(s" ${r.name.padTo(9, ' ')}" -> fg(t.faint), calls -> fg(t.ink)) ++
             r.spent.map(c => s" · ${c.written}" -> fg(t.ink))*

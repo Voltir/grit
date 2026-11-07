@@ -1,5 +1,6 @@
 package grit.mcp.scope
 
+import grit.core.words.Words
 import grit.mcp.wire.{McpTool, Skipped}
 
 /** Argument values a call must carry to be within a scope: each named argument a JSON string
@@ -216,7 +217,7 @@ object McpScope {
             Right(ujson.Obj.from(attribution.keys.zip(values.map(ujson.Str(_)))))
           else
             Left(
-              s"a result's place has ${values.size} value${if (values.size == 1) "" else "s"}, " +
+              s"a result's place has ${Words.counted(values.size, "value")}, " +
                 s"not one for each of ${attribution.keys.mkString(", ")}"
             )
       }

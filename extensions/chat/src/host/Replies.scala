@@ -6,6 +6,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.store.{Entry, Payload, WentOn}
 import grit.core.visibility.Subject
+import grit.core.words.Words
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */
 object Replies {
@@ -74,7 +75,7 @@ object Replies {
       val lines = content.linesIterator.toVector
       val came =
         if (isError) s"← ${lines.headOption.getOrElse("failed")}"
-        else s"← ${lines.size} ${if (lines.size == 1) "line" else "lines"}"
+        else s"← ${Words.counted(lines.size, "line")}"
       Some(s"$call $came")
     case _ => None
   }

@@ -12,6 +12,8 @@ In dependency order, each with the core packages it imports:
 
 - **`json`**: a JSON object's fields read, each refusal naming the object and the field. Imports
   nothing in core.
+- **`words`**: the English grit writes alike wherever it writes it, such as a count with its
+  unit. Imports nothing in core.
 - **`clock`**: what a function cannot compute: the time, values no one made before, and an
   instant as grit writes it. Imports nothing in core.
 - **`secret`**: a value no label admits: a `Secret`, read from the environment for a

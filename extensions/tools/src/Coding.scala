@@ -38,6 +38,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.visibility.Integrity
+import grit.core.words.Words
 
 /** The coding tool set: reading, searching, changing and running things in a checkout. Each
   * tool's description is all the model is told of it, so it states the tool's limits and
@@ -244,7 +245,7 @@ object Coding {
   lazy val writeHosted: Hosted[WriteArgs] =
     writeAs(Gate.Ask(a => {
       val lines = Clipped.lines(a.content)
-      s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
+      s"Write ${RelPath.value(a.path)} (${Words.counted(lines.size, "line")}):\n" +
         preview(lines, "+ ")
     }))
 
@@ -283,7 +284,7 @@ object Coding {
   private def writing(hosted: Hosted[WriteArgs], edits: Edits^): Tool[WriteArgs]^{edits} =
     hosted.over(a =>
       outcome(edits.write(a.path, a.content))(_ =>
-        s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
+        s"Wrote ${RelPath.value(a.path)}: ${Words.counted(Clipped.lines(a.content).size, "line")}."
       )
     )
 
@@ -294,7 +295,7 @@ object Coding {
         s"@@ edits[$i]\n" + preview(Clipped.lines(e.oldText), "- ") + "\n" +
           preview(Clipped.lines(e.newText), "+ ")
       }
-      s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
+      s"Edit ${RelPath.value(a.path)} (${Words.counted(a.edits.size, "replacement")}):\n" +
         shown.mkString("\n")
     }))
 
@@ -347,7 +348,7 @@ object Coding {
         case Right(done) =>
           val on = done.at.mkString(", ")
           Outcome.Done(
-            s"Edited ${RelPath.value(a.path)}: ${count(done.at.size, "replacement")}, " +
+            s"Edited ${RelPath.value(a.path)}: ${Words.counted(done.at.size, "replacement")}, " +
               s"starting on line${if (done.at.size == 1) "" else "s"} $on."
           )
       }
@@ -652,13 +653,12 @@ object Coding {
   private def outcome[A](result: Either[HostError, A])(done: A -> String): Outcome =
     result.fold(e => Outcome.Failed(e.message), a => Outcome.Done(done(a)))
 
-  private def count(n: Int, noun: String): String = s"$n $noun${if (n == 1) "" else "s"}"
 
   /** At most [[Preview]] of `lines`, each after `mark`, then how many were left out. */
   private def preview(lines: Vector[String], mark: String): String = {
     val kept = lines.take(Preview).map(mark + _)
     val left = lines.size - kept.size
-    (if (left > 0) kept :+ s"  … ${count(left, "more line")}" else kept).mkString("\n")
+    (if (left > 0) kept :+ s"  … ${Words.counted(left, "more line")}" else kept).mkString("\n")
   }
 
 }

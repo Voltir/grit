@@ -5,6 +5,7 @@ import java.time.{Instant, LocalDate, ZoneOffset}
 import grit.core.document.{DocText, Document}
 import grit.core.id.{ConversationId, DocKey}
 import grit.core.stitch.{Strand, StrandDigest}
+import grit.core.words.Words
 import grit.knowledge.card.CardSummary
 
 /** A strand's document: its key, its text and its data. */
@@ -25,8 +26,8 @@ object StrandDocument {
     * line `Terms: ` and its terms separated by `, ` when it has any.
     */
   def text(seen: Strand.Digested, summary: CardSummary): DocText = {
-    val head = s"${counted(seen.members.size, "thread")} in this room, " +
-      s"${counted(seen.said, "message")}, from ${day(seen.since)} to ${day(seen.touched)}."
+    val head = s"${Words.counted(seen.members.size, "thread")} in this room, " +
+      s"${Words.counted(seen.said, "message")}, from ${day(seen.since)} to ${day(seen.touched)}."
     val terms = Option.when(summary.terms.nonEmpty)(s"Terms: ${summary.terms.mkString(", ")}")
     // The head is never blank, so neither is the text.
     DocText
@@ -61,7 +62,6 @@ object StrandDocument {
     } yield (ConversationId(root), digest)
   }
 
-  private def counted(n: Int, one: String): String = if (n == 1) s"1 $one" else s"$n ${one}s"
 
   private def day(at: Instant): String = LocalDate.ofInstant(at, ZoneOffset.UTC).toString
 }

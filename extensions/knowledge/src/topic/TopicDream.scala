@@ -11,6 +11,7 @@ import grit.core.need.Exported
 import grit.core.prompt.Tag
 import grit.core.schema.{JsonSchema, Typed}
 import grit.core.store.{StoreError, Tx}
+import grit.core.words.Words
 import grit.knowledge.card.{CardMoves, CardShelf}
 import grit.knowledge.ref.{Ref, TopicKey}
 import grit.knowledge.topic.TopicScan.{Scanned, Touch}
@@ -373,7 +374,7 @@ object TopicDream {
         "the cards too slight to keep. Name each card shown exactly once."
     else
       "You sort a team's recent discussions and documents into topics: what the team comes " +
-        s"back to across rooms and days. You are shown, in this order, ${count(strands, "discussion")}, " +
+        s"back to across rooms and days. You are shown, in this order, ${Words.counted(strands, "discussion")}, " +
         s"each a `<$Discussion>` of messages under their speakers' names, oldest first, numbered " +
         "from 1 in " +
         "the order shown" +
@@ -393,7 +394,6 @@ object TopicDream {
         "and card shown exactly once."
   }
 
-  private def count(n: Int, what: String): String = if (n == 1) s"1 $what" else s"$n ${what}s"
 
   // The tags the prompts name, as Dreaming.shown fences what an ask is shown.
   private val Discussion = Tag.Discussion.name

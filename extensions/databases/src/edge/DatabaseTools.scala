@@ -18,6 +18,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
+import grit.core.words.Words
 import grit.databases.connect.{Clip, DatabaseReader, OneStatement, QueryRefusal, Relation, Rows}
 import grit.databases.declare.Database
 import grit.edge.{Run, Tools}
@@ -350,8 +351,7 @@ private[edge] object DatabaseTools {
   /** `d` as "10 seconds", or "200 milliseconds" when not whole seconds. */
   private def duration(d: FiniteDuration): String = {
     val ms = d.toMillis
-    if (ms % 1000 == 0) plural(ms / 1000, "second") else plural(ms, "millisecond")
+    if (ms % 1000 == 0) Words.counted(ms / 1000, "second") else Words.counted(ms, "millisecond")
   }
 
-  private def plural(n: Long, unit: String): String = if (n == 1) s"1 $unit" else s"$n ${unit}s"
 }

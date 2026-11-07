@@ -19,6 +19,7 @@ import grit.core.plugin.{CommandBy, CommandOutcome, KeepingCommand, PluginComman
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.visibility.{Integrity, Label}
+import grit.core.words.Words
 import grit.projects.artifact.{Artifact, ArtifactHead, ArtifactJson, Body, Project}
 import grit.projects.method.{ArtifactKind, Method, MoveRefusal, Remap, RoleView}
 import grit.projects.name.{
@@ -979,7 +980,7 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       } yield {
         val n = done.project.artifacts.size
         s"Moved project $p to method ${MethodName.value(target.name)} version " +
-          s"${target.version}, $n artifact${if (n == 1) "" else "s"} kept again; renamed: " +
+          s"${target.version}, ${Words.counted(n, "artifact")} kept again; renamed: " +
           (if (done.renamed.isEmpty) "none." else s"${done.renamed.map(_.value).mkString(", ")}.")
       }
     }
