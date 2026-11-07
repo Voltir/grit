@@ -247,14 +247,26 @@ script_columns() {
 }
 
 # The transcript fills from the top: header row 1, then (1-based) the rule, "first",
-# its reply, the rule, "second", and the thinking line on row 7 while the slow stub
-# (6s) answers it.
+# its reply, the rule, "second", and the thinking line while the slow stub (6s) answers it.
 MODAL_ROWS=24
 MODAL_COLS=120
-# The row of the screen painted so far that holds $1, read off the capture while the app runs
-# (run_one's $out, $rows, $cols), waiting up to 5 s for it; 1, the header, when it never
-# appears, so the click misses and the scenario's checks say so. A click aimed by text
-# survives a line added above its target.
+# Whether the screen painted so far holds $1, read off the capture while the app runs
+# (run_one's $out, $rows, $cols).
+painted() { python3 scripts/tui-gate.py --row "$out" "$rows" "$cols" "$1" > /dev/null; }
+# Wait up to $2 seconds (default 30) until the screen holds $1, or (until_gone) no longer does.
+# A step that waits for what it acts on survives a slow machine; one that sleeps a guess does
+# not. On a timeout the script goes on, and the scenario's checks say what never happened.
+until_painted() {
+  local i
+  for i in $(seq $((${2:-30} * 10))); do painted "$1" && return; sleep 0.1; done
+}
+until_gone() {
+  local i
+  for i in $(seq $((${2:-30} * 10))); do painted "$1" || return; sleep 0.1; done
+}
+# The row of the screen painted so far that holds $1, waiting up to 5 s for it; 1, the
+# header, when it never appears, so the click misses and the scenario's checks say so. A
+# click aimed by text survives a line added above its target.
 row_of() {
   local i
   for i in $(seq 50); do
@@ -264,19 +276,27 @@ row_of() {
   echo 1
 }
 
+# Each step waits for the screen the next one acts on: the engine open, the first turn
+# answered and settled before the second is asked, the dialog open before a key is typed
+# into it and closed before the click behind it, and the pinned turn painted before Escape
+# lets it go. A pin paints "esc: latest" at once, but the turn it names only once the host
+# has read and described it, a poll later: a guessed sleep pressed Escape before then.
 script_turn-modal() {
   local r
-  sleep $APP_STARTUP
-  printf 'first'; sleep 0.3; printf '\r'; sleep 8
-  printf 'second'; sleep 0.3; printf '\r'; sleep 1.5
+  until_painted 'ᛁ idle' 60
+  printf 'first'; sleep 0.3; printf '\r'
+  until_painted 'stub reply to: first'; until_painted 'ᛁ idle'
+  printf 'second'; sleep 0.3; printf '\r'
   r=$(row_of 'grit is thinking')
   printf "%s" "${E}[<0;8;${r}M"; sleep 0.1; printf "%s" "${E}[<0;8;${r}m"   # click the thinking line
-  sleep 0.8; printf 'x'; sleep 0.5                                      # the dialog takes it
-  printf '\033'; sleep 0.8                                              # Escape closes
+  until_painted '╭─ turn 2' 10; printf 'x'; sleep 0.5                    # the dialog takes it
+  printf '\033'; until_gone '╭─ turn' 10                                 # Escape closes
+  until_painted 'TURN 2' 10                                             # the panel's latest
   r=$(row_of 'stub reply to: first')
   printf "%s" "${E}[<0;10;${r}M"; sleep 0.1; printf "%s" "${E}[<0;10;${r}m" # click first's reply
-  sleep 1.2; printf '\033'; sleep 1.2                                   # Escape: the latest
-  printf '\021'; sleep 2
+  until_painted 'TURN 1' 10                                             # the host described it
+  printf '\033'; until_gone 'esc: latest' 10; until_painted 'TURN 2' 10 # Escape: the latest
+  sleep 0.5; printf '\021'; sleep 2
 }
 
 PALETTE_ROWS=30
@@ -361,6 +381,9 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-palette}
     rows=$PALETTE_ROWS cols=$PALETTE_COLS
   fi
+  # Emptied first: a script that reads the capture must not see the previous run's screen
+  # before `script` truncates the file.
+  : > "$out"
   "script_$name" | setsid script -fqc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name" || return 1
   if [ "$name" = palette ]; then
