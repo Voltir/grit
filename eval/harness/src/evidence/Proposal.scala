@@ -62,6 +62,9 @@ object Proposal {
     }
   }
 
+  /** The path of the `n`th of the runs [[of]] is given, counted from 1. */
+  def trajectory(n: Int): RelPath = path(s"trajectories/$n.md")
+
   /** The path of the `n`th of the amendments [[of]] is given, counted from 1. */
   def amendment(n: Int): RelPath = path(s"amendments/$n.md")
 
@@ -84,7 +87,7 @@ object Proposal {
     val trajectories = runs.zipWithIndex.map { (run, i) =>
       val named = s"Run ${i + 1}, session ${run.session.local}." +
         (if (run.kept.clipped) s" $Clipped" else "")
-      path(s"trajectories/${i + 1}.md") ->
+      trajectory(i + 1) ->
         s"$named\n\n${Trajectory.within(Trajectory.deduplicated(run.kept.text), ResultChars)}"
     }
     val earlier = amendments.zipWithIndex.map((text, i) => amendment(i + 1) -> text)

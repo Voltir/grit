@@ -1,5 +1,6 @@
 package grit.eval.harness.main
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
@@ -11,7 +12,7 @@ import grit.core.visibility.Subject
 import grit.dbos.internal.TrialRows
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.bench.{Bench, BenchTask, Standing}
-import grit.eval.harness.evidence.{BlindTask, EvidenceCheckout, Proposal}
+import grit.eval.harness.evidence.{BlindTask, EvidenceCheckout, Proposal, Trajectory}
 import grit.host.blobs.LocalBlobs
 import grit.host.checkout.{LocalProcesses, Redaction}
 
@@ -31,7 +32,8 @@ private[main] object ProposeCommands {
     * `--brief`'s file and each `*.md` in `--amendments`, in order of name, its key its name without
     * `.md` ([[Proposal.of]]), written under `<out>` named for `clock`'s now
     * ([[EvidenceCheckout.write]]), then every checkout there but the newest [[Kept]] removed.
-    * Refused, writing nothing, when a file holds a grade shape, naming the amendment by its key
+    * Prints each trajectory's size as shown and how many turns it renders ([[Trajectory.turns]]):
+    * one with none holds its run's own lines alone. Refused, writing nothing, when a file holds a grade shape, naming the amendment by its key
     * or the file by its path; or when a trial has no transcript. Prints the checkout's path and
     * its said file's.
     */
@@ -96,6 +98,18 @@ private[main] object ProposeCommands {
     } yield {
       val at = out.resolve(RelPath.value(dir))
       println(s"the evidence checkout: $at")
+      read._2.zipWithIndex.foreach { (run, i) =>
+        val file = Proposal.trajectory(i + 1)
+        val bytes = shown.files
+          .collectFirst {
+            case (p, text) if p == file => text.getBytes(StandardCharsets.UTF_8).length
+          }
+          .getOrElse(0)
+        println(
+          f"${RelPath.value(file)}: session ${run.session.local}, $bytes%,d bytes shown, " +
+            s"${Trajectory.turns(run.kept.text)} turns rendered"
+        )
+      }
       println(
         s"its said file: ${at.resolve(EvidenceCheckout.Evidence).resolve(RelPath.value(Proposal.Said))}"
       )

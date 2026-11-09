@@ -409,10 +409,12 @@
 #       (~/.cache/grit-propose/), a checkout propose-<seconds> holding base/, a clone of the
 #       task's base, and evidence/: PROPOSE.md, the brief in --brief's file then a list of what
 #       is shown; task.md, the task's brief; standing.md; trajectories/<n>.md, each trial's
-#       transcript with each tool result cut to 4,000 characters; amendments/<n>.md, each *.md in
+#       transcript, each system prompt, tool set and message shown once and each tool result
+#       cut to 4,000 characters; amendments/<n>.md, each *.md in
 #       --amendments in order of name. Refused, writing nothing, when a file holds the bench's
 #       grading text, naming an amendment by its file's name without .md. Only the newest 3
-#       checkouts are kept. Prints the checkout's path and PROPOSE.md's. No model call.
+#       checkouts are kept. Prints the checkout's path, PROPOSE.md's, and each trajectory's size
+#       as shown and how many turns it renders (none: its run's lines alone). No model call.
 #
 #   scripts/eval summaries <yyyymmdd> --models <id>,<id> --spend <usd> [--first <n>]
 #                          [--dry-run]
