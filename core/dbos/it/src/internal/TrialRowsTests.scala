@@ -166,6 +166,28 @@ object TrialRowsTests extends TestSuite {
       }
     }
 
+    test("a diff past the longest a trajectory keeps is refused, recording nothing") {
+      TempBlobs.around { blobs =>
+        val rows = TrialRows(blobs)
+        val t = trial("t-long-diff")
+        val big = bytes("x".repeat((TrialRows.MostBytes + 1).toInt))
+        val refused = ok(blobs.receive(bytes("a transcript"), TrialRows.MostBytes) { p =>
+          ok(blobs.receive(big, TrialRows.MostBytes + 1) { d =>
+            LiveDb.transaction(config, Low)(rows.record(t, None, p, d, Set.empty, Label.Public))
+          })
+        })
+        assert(
+          refused == Left(
+            StoreError.Invalid(
+              s"a trajectory holds at most ${TrialRows.MostBytes} bytes, not ${TrialRows.MostBytes + 1}"
+            )
+          ),
+          trials().filter(_.session == t.session) == Vector.empty,
+          blobs.kept() == Right(Vector.empty)
+        )
+      }
+    }
+
     test("a transcript kept where a transaction does not read is not read back to it") {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
@@ -266,16 +288,22 @@ object TrialRowsTests extends TestSuite {
       }
     }
 
-    test("a standing text its trial's digest does not name is refused, recording nothing") {
+    test(
+      "a standing text its trial's digest does not name, one with no digest, or a digest with no text, is refused, recording nothing"
+    ) {
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
-        val t = trial("s-other", standing = Some(Sha256.text("the rules")))
-        val recorded = LiveDb.transaction(config, Low)(rows.record(t, Some("other rules")))
+        val cases = Vector(
+          trial("s-other", standing = Some(Sha256.text("the rules"))) -> Some("other rules"),
+          trial("s-undigested") -> Some("the rules"),
+          trial("s-textless", standing = Some(Sha256.text("the rules"))) -> None
+        )
+        val recorded = cases.map((t, text) => LiveDb.transaction(config, Low)(rows.record(t, text)))
         assert(
-          recorded == Left(
-            StoreError.Invalid("a trial's standing text is not the one its digest names")
+          recorded == Vector.fill(3)(
+            Left(StoreError.Invalid("a trial's standing text is not the one its digest names"))
           ),
-          trials().filter(_.session == t.session) == Vector.empty,
+          trials().filter(t => cases.exists(_._1.session == t.session)) == Vector.empty,
           blobs.kept() == Right(Vector.empty)
         )
       }
