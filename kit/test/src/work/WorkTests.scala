@@ -6,10 +6,11 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.clock.{Clock, Fresh}
-import grit.core.id.SourceId
+import grit.core.id.{SourceId, WorkflowId}
 import grit.core.inbox.TurnEnding
 import grit.core.store.{TestWentOn, WentOn}
 import grit.host.checkout.{LocalRuns, Redaction}
+import grit.kit.rehearse.{RehearsalRunner, Rehearsed}
 
 import utest.*
 
@@ -246,6 +247,29 @@ object WorkTests extends TestSuite {
         work.close()
         removed(root)
       }
+    }
+
+    test("a dry run whose first call cannot be shown fails") {
+      val unwritten =
+        "grit.kit.rehearse.Rehearsal$Unwritten: rehearsed step 'offer' could not write"
+      def ran(id: String, came: RehearsalRunner.Came) =
+        Rehearsed.Ran(WorkflowId(id), came, Vector.empty, Vector.empty)
+      (
+        Work.reached(Rehearsed(Vector(ran("c:0", RehearsalRunner.Came.Threw(unwritten))))),
+        Work.reached(Rehearsed(Vector(ran("c:0", RehearsalRunner.Came.Returned("{}"))))),
+        Work.reached(
+          Rehearsed(
+            Vector(
+              ran("p:0", RehearsalRunner.Came.Returned("{}")),
+              ran("c:0", RehearsalRunner.Came.Stopped("ask:0"))
+            )
+          )
+        )
+      ) ==> (
+        Left(s"the dry run showed no first call: c:0 threw $unwritten"),
+        Left("the dry run showed no first call: c:0 returned before making it"),
+        Right(())
+      )
     }
 
     test("GRIT_WORK_TURNS: unset is 8; under 1 or not a whole number is an error") {

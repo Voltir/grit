@@ -19,7 +19,7 @@ import grit.dbos.sql.DbConfig
 import grit.host.checkout.{LocalRuns, LocalShell, Redaction}
 import grit.kit.deployment.Deployment
 import grit.kit.environment.Secrets
-import grit.kit.rehearse.{Rehearse, Rehearsed, Situation, StandIns}
+import grit.kit.rehearse.{RehearsalRunner, Rehearse, Rehearsed, Situation, StandIns}
 import grit.kit.run.Kit
 import grit.turn.TurnStream
 
@@ -424,7 +424,8 @@ object Work {
   }
 
   /** [[Unshaped]], then what `text` said at `origin` would send first ([[rehearsed]]) whole
-    * ([[Rehearsed.written]]), printed through `print`; the refusals are [[rehearsed]]'s.
+    * ([[Rehearsed.written]]), printed through `print`; the refusals are [[rehearsed]]'s, and,
+    * after it is printed, a rehearsal that never [[reached]] the turn's first call.
     */
   def shown(
       config: DbConfig,
@@ -434,10 +435,35 @@ object Work {
       clock: Clock^,
       print: String -> Unit
   ): Either[String, Unit] =
-    rehearsed(config, deployment, origin, text, clock).map { r =>
+    rehearsed(config, deployment, origin, text, clock).flatMap { r =>
       print(Unshaped)
       print(r.written)
+      reached(r)
     }
+
+  /** Whether the rehearsal `r` reached a turn's own first call, which a dry run shows: some
+    * workflow of it stopped there ([[RehearsalRunner.Came.Stopped]]). Why not otherwise, naming
+    * each workflow and how it ended instead: it threw (a step that could not write among them),
+    * or returned before making it.
+    */
+  def reached(r: Rehearsed): Either[String, Unit] =
+    Either.cond(
+      r.workflows.exists(_.came match {
+        case RehearsalRunner.Came.Stopped(_) => true
+        case _ => false
+      }),
+      (),
+      "the dry run showed no first call: " + r.workflows
+        .map { w =>
+          val ended = w.came match {
+            case RehearsalRunner.Came.Threw(why) => s"threw $why"
+            case RehearsalRunner.Came.Returned(_) => "returned before making it"
+            case RehearsalRunner.Came.Stopped(step) => s"stopped at $step"
+          }
+          s"${WorkflowId.value(w.workflow)} $ended"
+        }
+        .mkString("; ")
+    )
 
   /** What `text` said at `origin` would start, rehearsed dry over the database `config` names as
     * it stands, up to the turn's own first call, shown and never sent ([[Rehearse.dry]]); every
