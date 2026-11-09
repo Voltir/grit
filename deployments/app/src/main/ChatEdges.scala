@@ -4,9 +4,9 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks}
 import grit.core.host.Argv
 import grit.core.place.{Directory, Namespace, Place, Reaches, Service}
-import grit.host.checkout.{LocalInstructions, LocalProcesses, Redaction}
+import grit.host.checkout.{LocalProcesses, Redaction}
 import grit.kit.deployment.Offered
-import grit.kit.run.{LocalEdge, LocalTools}
+import grit.kit.run.LocalEdge
 import grit.mcp.client.{McpServer, McpTransport}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
@@ -17,7 +17,7 @@ import grit.mcp.scope.McpScope
 private[main] object ChatEdges {
 
   /** `use` given the edge this process serves for `directory`: the coding tools `offered`
-    * names, run in `root` ([[LocalTools]]), with the instruction files around it, and scout's
+    * names, run in `root` ([[LocalEdge.serving]]), with the instruction files around it, and scout's
     * tools when `scout` declares its server, its program started now. Both are closed once `use`
     * returns or throws, which ends any command the tools left running. Why not, before `use`
     * runs: the coding tools' edge cannot be made, or scout's program cannot start or lists no
@@ -33,22 +33,13 @@ private[main] object ChatEdges {
       fresh: Fresh^
   )(use: Console.Edge^ => A): Either[String, A] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
-    val tools = new LocalTools(offered, redaction, clock, fresh)
-    LocalEdge.over(directory, tools, new LocalInstructions(), log) match {
-      case Left(refused) =>
-        tools.close()
-        Left(refused.refusing("the coding tools"))
-      case Right(coding) =>
-        def served(here: Console.Edge^): Either[String, A] =
-          try Right(use(here))
-          finally tools.close()
+    LocalEdge
+      .serving(directory, offered, redaction, clock, fresh, log) { coding =>
         scout match {
-          case None => served(coding)
+          case None => Right(use(coding))
           case Some(server) =>
             ScoutAt match {
-              case Left(why) =>
-                tools.close()
-                Left(s"$ScoutVar: $why")
+              case Left(why) => Left(s"$ScoutVar: $why")
               case Right(at) =>
                 // scout's program is started now, so a binary that cannot start refuses the start.
                 McpEdge.local(
@@ -59,20 +50,19 @@ private[main] object ChatEdges {
                   Some(ScoutInstructions),
                   line => log.info(line)
                 ) match {
-                  case Left(why) =>
-                    tools.close()
-                    Left(s"$ScoutVar: $why")
+                  case Left(why) => Left(s"$ScoutVar: $why")
                   case Right(local) =>
                     try
-                      served((desks: Desks^) => {
+                      Right(use((desks: Desks^) => {
                         coding.serve(desks)
                         local.serve(desks)
-                      })
+                      }))
                     finally local.close()
                 }
             }
         }
-    }
+      }
+      .flatten
   }
 
   /** The variable naming the absolute path of a scout binary (`~` is not expanded); unset, the

@@ -3,6 +3,7 @@ package grit.kit.run
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Desks}
 import grit.core.host.Instructions
 import grit.core.id.PrincipalId
@@ -10,6 +11,8 @@ import grit.core.place.{Directory, Place}
 import grit.core.prompt.Fragment
 import grit.core.tool.{SetRefusal, ToolSet}
 import grit.edge.{PlaceFragments, Server, Tools}
+import grit.host.checkout.{LocalInstructions, Redaction}
+import grit.kit.deployment.Offered
 
 /** The edge a process serves for its own checkout (ADR 0017). */
 object LocalEdge {
@@ -40,6 +43,29 @@ object LocalEdge {
           serve(desks, Place.of(directory), hosted, instructions, tools, log.warn(_), log.info(_))
         Right(edge)
     }
+
+  /** `use` given the edge this process serves for `directory` ([[over]]): the coding tools
+    * `offered` names, run there ([[LocalTools]]) with what they show cleared by `redaction`,
+    * and the instruction files around it as this machine reads them; the tools closed once
+    * `use` returns or throws, which ends any command they left running. Why not, before `use`
+    * runs: a tool `offered` names cannot be offered with the others.
+    */
+  def serving[A](
+      directory: Directory,
+      offered: Offered,
+      redaction: Redaction,
+      clock: Clock^,
+      fresh: Fresh^,
+      log: org.slf4j.Logger
+  )(use: Console.Edge^ => A): Either[String, A] = {
+    val tools = new LocalTools(offered, redaction, clock, fresh)
+    try
+      over(directory, tools, new LocalInstructions(), log) match {
+        case Left(refused) => Left(refused.refusing("the coding tools"))
+        case Right(coding) => Right(use(coding))
+      }
+    finally tools.close()
+  }
 
   private def serve(
       desks: Desks^,
