@@ -1,7 +1,7 @@
 package grit.chat.host
 
 import grit.chat.screen.ChatScreen
-import grit.core.edge.TurnStatus
+import grit.core.edge.{Reply, TurnStatus}
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}
@@ -106,7 +106,7 @@ object TurnWatch {
 
   private def said1(e: Entry): Option[ChatScreen.Said] = {
     val voice = if (isUser(e)) ChatScreen.Voice.User else ChatScreen.Voice.Reply
-    Replies
+    Reply
       .text(e)
       .map(ChatScreen.Said(voice, _, e.turnSeq))
       .orElse(Replies.settled(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))

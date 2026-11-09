@@ -4,14 +4,14 @@ import scala.concurrent.duration.DurationLong
 
 import grit.app.config.PrefsEnv
 import grit.assembly.estimate.CharEstimate
-import grit.chat.host.{ChatHost, Replies}
 import grit.chat.run.Chat
 import grit.chat.settings.Prefs
 import grit.core.admin.PlaceNames
 import grit.core.clock.{Clock, Fresh}
-import grit.core.edge.{Console, ServedEdge, Variable}
+import grit.core.edge.{Console, Reply, ServedEdge, Variable}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.identity.Account
+import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.model.ModelId
 import grit.core.place.Directory
@@ -480,11 +480,11 @@ object Main {
       } yield turn
     }
     started.collectFirst { case Left(error) => error } match {
-      case Some(error) => Some(ChatHost.notSent(error))
+      case Some(error) => Some(InboxError.told(error))
       case None =>
         started.collect { case Right(turn) => turn }.distinct.foreach { turn =>
           val outcome = engine.awaitTurn(turn)
-          val reply = Replies.of(engine, turn).fold(identity, _.getOrElse("(no reply)"))
+          val reply = Reply.of(engine, turn).fold(identity, _.getOrElse("(no reply)"))
           println(s"[main] ${describe(turn)} -> $outcome: $reply")
         }
         None

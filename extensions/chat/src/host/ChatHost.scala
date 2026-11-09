@@ -16,7 +16,7 @@ import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
-import grit.core.spend.{Budget, Spend, TurnSpend}
+import grit.core.spend.{Spend, TurnSpend}
 import grit.core.store.{Entry, Nearby, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.core.visibility.Subject
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
@@ -457,7 +457,7 @@ final class ChatHost(
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn
-    started.left.foreach(e => mailbox.offer(ChatScreen.Msg.Failed(ChatHost.notSent(e))))
+    started.left.foreach(e => mailbox.offer(ChatScreen.Msg.Failed(InboxError.told(e))))
   }
 
   private def background(work: () => Unit): Unit = {
@@ -472,15 +472,6 @@ final class ChatHost(
 }
 
 object ChatHost {
-
-  /** What a person is told of a message `error` kept from being taken: for one over the
-    * day's cap, the one refusal every edge gives, which names no cost; otherwise that it was
-    * not sent, and why.
-    */
-  def notSent(error: InboxError): String = error match {
-    case InboxError.OverCap(_, _, _) => Budget.Refusal
-    case other => s"not sent: $other"
-  }
 
   /** What each of `conversation`'s turns that `rows` holds the ledger rows of, and that has
     * answered, has spent, where that is not what `shown` says it spent.

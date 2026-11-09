@@ -6,13 +6,12 @@ import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 
-import grit.chat.host.{ChatHost, Replies}
 import grit.core.clock.Clock
-import grit.core.edge.{Console, TurnStatus}
+import grit.core.edge.{Console, Reply, TurnStatus}
 import grit.core.host.{Clipped, HostError, Ran, RunId, RunStatus, Runs}
 import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
-import grit.core.inbox.TurnEnding
+import grit.core.inbox.{InboxError, TurnEnding}
 import grit.core.message.Message
 import grit.core.store.{Origin, Payload, WentOn}
 import grit.core.visibility.Subject
@@ -269,10 +268,10 @@ private[main] object Work {
     console.inbox
       .ingest(origin, source(text), Message.User(text), Account.Local, None)
       .flatMap(turn => console.inbox.startTurn(turn).map(_ => turn)) match {
-      case Left(error) => Left(ChatHost.notSent(error))
+      case Left(error) => Left(InboxError.told(error))
       case Right(task) =>
         def started(next: Either[grit.core.inbox.InboxError, TurnRef]) =
-          next.flatMap(t => console.inbox.startTurn(t).map(_ => t)).left.map(ChatHost.notSent)
+          next.flatMap(t => console.inbox.startTurn(t).map(_ => t)).left.map(InboxError.told)
         def go(turn: TurnRef, n: Int, last: Option[WentOn.CheckFailed]): Either[String, Unit] =
           awaited(console, turn, print).flatMap { outcome =>
             val named = WorkflowId.value(turn.workflowId)
@@ -323,7 +322,7 @@ private[main] object Work {
       origin: Origin,
       source: SourceId
   ): Either[String, Option[(TurnRef, WentOn.CheckFailed)]] =
-    console.inbox.ingested(origin, source).left.map(ChatHost.notSent).flatMap {
+    console.inbox.ingested(origin, source).left.map(InboxError.told).flatMap {
       case None => Right(None)
       case Some(next) =>
         console.db
@@ -351,7 +350,7 @@ private[main] object Work {
       case other => other.toString
     }
     val named = WorkflowId.value(turn.workflowId)
-    Replies.of(console, turn) match {
+    Reply.of(console, turn) match {
       case Left(why) => Left(why)
       case Right(None) => Left(s"the turn $named left no reply: $outcome")
       case Right(Some(reply)) =>

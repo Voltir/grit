@@ -18,7 +18,7 @@ import grit.core.identity.{Account, Principal}
 import grit.core.job.Slot
 import grit.core.message.Message
 import grit.core.speech.Reach
-import grit.core.spend.{DailyCap, Day, Spend}
+import grit.core.spend.{Budget, DailyCap, Day, Spend}
 import grit.core.store.{Entry, Origin, Payload, StoreError, WentOn}
 
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
@@ -264,4 +264,13 @@ object InboxError {
   val SealedReply: String =
     "This thread began when you were cleared for more than you are now, so I can't continue " +
       "it here. Send me a new message, outside this thread."
+
+  /** What a person is told of a message `error` kept from being taken: for one over the
+    * day's cap, the one refusal every edge gives ([[grit.core.spend.Budget.Refusal]]), which
+    * names no cost; otherwise that it was not sent, and why.
+    */
+  def told(error: InboxError): String = error match {
+    case OverCap(_, _, _) => Budget.Refusal
+    case other => s"not sent: $other"
+  }
 }
