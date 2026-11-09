@@ -98,6 +98,10 @@ object Projects {
                 declared.exists(_.kinds.exists(k => k.name == kind && k.all.contains(state)))
               )
               .map(ProjectsRefusal.Unguardable(_, _))
+          case TurnCommands.Proposing(kind) =>
+            Vector(ProjectsRefusal.NoKind(kind)).filterNot(_ =>
+              declared.exists(_.kinds.exists(_.name == kind))
+            )
         }
         (unbenched ++ unguardable).headOption.toLeft(new Projects(declared, default, turns))
     }
@@ -141,4 +145,7 @@ enum ProjectsRefusal extends caps.Pure {
 
   /** A guarded state no method's kind `kind` has, so its guard would hold nothing. */
   case Unguardable(kind: KindName, state: StateName)
+
+  /** A kind to propose that no method declares. */
+  case NoKind(kind: KindName)
 }

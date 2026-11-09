@@ -47,8 +47,18 @@ private[plugin] final class ProjectCommands(
 
   import ProjectCommands.*
 
-  /** Every command, in the order a tool list shows them. */
-  def all: Vector[PluginCommand[?]] =
+  /** Whether turns are offered the shipped commands, not `project_propose` alone. */
+  private val shipped: Boolean = turns match {
+    case TurnCommands.Shipped(_) => true
+    case TurnCommands.Proposing(_) => false
+  }
+
+  /** Every command, in the order a tool list shows them, `project_propose` last when proposing. */
+  def all: Vector[PluginCommand[?]] = {
+    val proposing = turns match {
+      case TurnCommands.Proposing(kind) => Vector(new Propose(kind))
+      case TurnCommands.Shipped(_) => Vector.empty
+    }
     Vector(
       New,
       Keep,
@@ -66,11 +76,12 @@ private[plugin] final class ProjectCommands(
       Withdraw,
       Migrate,
       Stale
-    )
+    ) ++ proposing
+  }
 
   /** `project_new`. */
   object New extends KeepingCommand[Starting] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Starting): String = ProjectKey.value(args.project)
 
     val spec: ToolSpec[Starting] = ToolSpec(
@@ -132,7 +143,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_keep`. */
   object Keep extends KeepingCommand[Keeping] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Keeping): String = args.key.value
 
     val spec: ToolSpec[Keeping] = ToolSpec(
@@ -181,7 +192,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_move`. */
   object Move extends KeepingCommand[Moving] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Moving): String = s"${args.key.value} to ${StateName.value(args.to)}"
 
     val spec: ToolSpec[Moving] = ToolSpec(
@@ -213,6 +224,73 @@ private[plugin] final class ProjectCommands(
       answered(
         alone(own, claims, args.key.project, Step.Move(args), by, at, "move", guard(args, by))
       )
+  }
+
+  /** `project_propose`: a new artifact of `kind`, kept as `project_keep` keeps one. */
+  final class Propose(kind: KindName) extends KeepingCommand[Keeping] {
+    override def offeredToTurns: Boolean = true
+    override def shown(args: Keeping): String = args.key.value
+
+    val spec: ToolSpec[Keeping] = ToolSpec(
+      ToolName("project_propose"),
+      s"Proposes a new ${KindName.value(kind)}: keeps it in its project in its first state, for " +
+        "a person to judge. It never changes anything kept already. Its body is markdown; a " +
+        "link to `artifact:<key>` cites that artifact. Refused, keeping nothing: for a key the " +
+        "project already has; and for a parent or a cite the project lacks, naming the nearest " +
+        "keys it has.",
+      Args
+        .of(
+          (
+            key = Field.text(
+              "Its key, `<project>/<name>`: a name no artifact of the project has, in lower " +
+                "case, words joined by `-`."
+            ),
+            title = Field.text(KeepMeaning.title),
+            body = Field.text(KeepMeaning.body),
+            parent = Field.text("The key of its parent artifact; none if omitted.").optional,
+            cites = Field
+              .texts("The keys of the artifacts it cites; none if omitted.", 0, DocRef.Most)
+              .optional
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            keeping <- Keeping.read(
+              key,
+              Some(KindName.value(kind)),
+              a.title,
+              a.body,
+              a.parent,
+              a.cites,
+              None
+            )
+          } yield keeping
+        )
+    )
+    def run(
+        args: Keeping,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] =
+      answered(
+        alone(own, claims, args.key.project, Step.Keep(args), by, at, "propose", fresh(args))
+      )
+
+    /** Nothing, or a refusal when the project holds `args.key` already. */
+    private def fresh(args: Keeping): Loaded -> Either[Stop, Unit] = project =>
+      project.artifacts.find(_.head.key == args.key) match {
+        case Some(a) =>
+          Left(
+            Stop.Refused(
+              s"${headed(a.head)} is kept already; a proposal is a new artifact: give a key the " +
+                "project does not have"
+            )
+          )
+        case None => Right(())
+      }
   }
 
   /** Nothing, or a refusal of `args` when `by` is a turn and its artifact's kind and the state
@@ -393,7 +471,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_show`. */
   object Show extends ReadingCommand[Showing] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Showing): String = args.keys match {
       case ShowKeys.One(key) => key.value
       case ShowKeys.Several(keys) => keys.map(_.value).mkString(", ")
@@ -487,7 +565,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_history`. */
   object History extends ReadingCommand[Recalling] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Recalling): String = args.key.value
 
     val spec: ToolSpec[Recalling] = ToolSpec(
@@ -568,7 +646,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_list`. */
   object List extends ReadingCommand[Listing] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Listing): String = ProjectKey.value(args.project)
 
     val spec: ToolSpec[Listing] = ToolSpec(
@@ -635,7 +713,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_find`. */
   object Find extends ReadingCommand[Finding] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Finding): String = args.query
 
     val spec: ToolSpec[Finding] = ToolSpec(
@@ -699,7 +777,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_export`. */
   object Export extends ReadingCommand[Exporting] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Exporting): String = ProjectKey.value(args.project)
 
     val spec: ToolSpec[Exporting] = ToolSpec(
@@ -858,7 +936,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_stale`. */
   object Stale extends ReadingCommand[Staling] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Staling): String = ProjectKey.value(args.project)
 
     val spec: ToolSpec[Staling] = ToolSpec(
@@ -1158,7 +1236,7 @@ private[plugin] final class ProjectCommands(
 
   /** `project_brief`. */
   object ProjectBrief extends ReadingCommand[Briefing] {
-    override def offeredToTurns: Boolean = true
+    override def offeredToTurns: Boolean = shipped
     override def shown(args: Briefing): String =
       s"${args.key.value} as ${RoleName.value(args.role)}"
 

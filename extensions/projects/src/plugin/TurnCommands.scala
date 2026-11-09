@@ -12,6 +12,11 @@ enum TurnCommands extends caps.Pure {
     * person moves an artifact there.
     */
   case Shipped(guarded: Set[(KindName, StateName)])
+
+  /** `project_propose` alone, which keeps a new artifact of `kind` in its kind's first state and
+    * changes nothing kept already; every other command is a person's.
+    */
+  case Proposing(kind: KindName)
 }
 
 object TurnCommands {

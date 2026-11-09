@@ -19,6 +19,16 @@ object ProjectCommandsTests extends TestSuite {
   import CommandFixtures.*
   import MethodFixtures.{note, right, state, transitions}
 
+  /** The fixtures' plugin, its turns proposing changes alone. */
+  private def proposing(): Projects =
+    Projects
+      .of(
+        Vector(method() -> Vector.empty),
+        methodName,
+        TurnCommands.Proposing(MethodFixtures.change.name)
+      )
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
   val tests: Tests = Tests {
 
     test("a move whose check fails is refused naming it, and keeps nothing") {
@@ -104,6 +114,66 @@ object ProjectCommandsTests extends TestSuite {
         classOf[CommandOutcome.Done],
         true
       )
+    }
+
+    test("a proposing plugin offers turns project_propose alone") {
+      proposing().commands.filter(_.offeredToTurns).map(c => ToolName.value(c.spec.name)) ==>
+        Vector("project_propose")
+    }
+
+    test(
+      "project_propose keeps a new artifact of its kind in its first state, naming the turn as its writer"
+    ) {
+      val projects = proposing()
+      val store = Store()
+      started(projects, store)
+      val turn = TurnRef(ConversationId("c7"), TurnSeq(5))
+      val answer = askBy(CommandBy.Turn(person, turn))(
+        projects,
+        store,
+        "project_propose",
+        "key" -> "p/idea",
+        "title" -> "An idea",
+        "body" -> "## Why\n\nBecause."
+      )
+      val text = shown(projects, store, "p/idea")
+      (
+        answer,
+        text.contains("kind: change"),
+        text.contains("state: proposed"),
+        text.contains(s"by: \"$by, through grit (turn 5 of conversation c7)\"")
+      ) ==> (CommandOutcome.Done("Kept p/idea (change, proposed)."), true, true, true)
+    }
+
+    test("project_propose refuses a key the project holds, keeping nothing") {
+      val projects = proposing()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Kept by a person.")
+      val before = shown(projects, store, "p/a")
+      val answer = ask(
+        projects,
+        store,
+        "project_propose",
+        "key" -> "p/a",
+        "title" -> "Over it",
+        "body" -> "## Why\n\nBecause."
+      )
+      (answer, shown(projects, store, "p/a")) ==> (
+        CommandOutcome.Refused(
+          "p/a (note, open) is kept already; a proposal is a new artifact: give a key the " +
+            "project does not have"
+        ),
+        before
+      )
+    }
+
+    test("Projects.of refuses proposing a kind no method has") {
+      Projects.of(
+        Vector(method() -> Vector.empty),
+        methodName,
+        TurnCommands.Proposing(MethodFixtures.kind("idea"))
+      ) ==> Left(ProjectsRefusal.NoKind(MethodFixtures.kind("idea")))
     }
 
     test(
