@@ -263,6 +263,7 @@ object WorkLiveTests extends TestSuite {
           secrets,
           origin,
           root,
+          Map.empty,
           Redaction.of(Map.empty),
           scala.concurrent.duration.Duration.Zero,
           {

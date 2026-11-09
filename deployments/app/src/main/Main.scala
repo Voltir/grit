@@ -378,6 +378,7 @@ object Main {
               secrets,
               origin,
               root,
+              sys.env,
               redaction,
               stubDelay.millis,
               _ => Right(())

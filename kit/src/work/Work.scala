@@ -249,8 +249,8 @@ object Work {
     }
 
   /** What a deployment supplies a work run: the `deployment` run over the database `secrets`
-    * names, the `origin` its text is said at, the directory `root` its check runs in with what
-    * it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
+    * names, the `origin` its text is said at, the directory `root` its check runs in under the
+    * environment `env` with what it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
     * waits before it answers (`stubDelay`), and `admit`, whether a run that is not dry may go on
     * given who runs the database's engine (`Left`: why not).
     */
@@ -259,6 +259,7 @@ object Work {
       secrets: Secrets,
       origin: Origin,
       root: Path,
+      env: Map[String, String],
       redaction: Redaction,
       stubDelay: FiniteDuration,
       admit: Console.Runner -> Either[String, Unit]
@@ -288,7 +289,7 @@ object Work {
       if (asked.dry)
         shown(under.secrets.database, under.deployment, under.origin, text, clock, print)
       else {
-        val checks: LocalRuns^ = new LocalRuns(under.root, sys.env, under.redaction, clock, fresh)
+        val checks: LocalRuns^ = new LocalRuns(under.root, under.env, under.redaction, clock, fresh)
         try said(console, under.origin, text, cap, asked.check, checks, print)
         finally checks.close()
       }
