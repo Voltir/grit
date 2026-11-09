@@ -1,5 +1,6 @@
 package grit.projects.render
 
+import grit.core.id.DocumentVersionId
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 
@@ -94,6 +95,28 @@ object ProjectMarkdownTests extends TestSuite {
       val text = "Tagged [edges, projects]: 2 * 3 is six, snake_case [x] done."
       val body = right(Body.read(text))
       assert(Body.markdown(body) == text, Body.read(Body.markdown(body)) == Right(body))
+    }
+
+    test("an artifact as project_show gives it reads back whole, with its version") {
+      // Its body as read does once: markdown normalises in one pass.
+      def normal(a: Artifact): Artifact = Artifact(a.head, right(Body.read(Body.markdown(a.body))))
+      val failing = (0 until 200).iterator
+        .flatMap(seed => ProjectGen.project(seed).artifacts.map(a => seed -> normal(a)))
+        .zipWithIndex
+        .map { case ((seed, a), i) =>
+          val version = DocumentVersionId.of(i.toLong + 1).getOrElse(sys.error("no version"))
+          (seed, a, ProjectMarkdown.readShown(ProjectMarkdown.shown(a, version)), version)
+        }
+        .collectFirst {
+          case (seed, a, read, version) if read != Right((a, version)) =>
+            s"seed $seed, ${a.head.key.value}: $read"
+        }
+      assert(failing == None)
+    }
+
+    test("an exported file, which holds no version, is not read as shown") {
+      val (_, text) = ProjectMarkdown.file(artifact("a", "A", "Body."))
+      assert(ProjectMarkdown.readShown(text).isLeft)
     }
     test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
       val body = right(Body.read("A plan wrapped\nat its source's width,\nas files are."))

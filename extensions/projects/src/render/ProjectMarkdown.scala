@@ -34,10 +34,24 @@ object ProjectMarkdown {
     s"${artifact.head.key.value}.md" -> filed(artifact, None)
 
   /** `artifact` kept as `version`, as `project_show` gives it: [[file]]'s text with a last front
-    * matter line `version: <n>`. [[read]] never reads one back: an export holds no version.
+    * matter line `version: <n>`, which [[readShown]] reads back and [[read]] never does: an export
+    * holds no version.
     */
   def shown(artifact: Artifact, version: DocumentVersionId): String =
     filed(artifact, Some(version))
+
+  /** `text` as [[shown]] writes it, read back: the artifact, and the version it was kept as; or
+    * why not: front matter that is not [[shown]]'s (an exported file's, with no `version`, among
+    * them), a version that is no whole number of 1 or more, or what [[read]] refuses of one artifact's file.
+    */
+  def readShown(text: String): Either[String, (Artifact, DocumentVersionId)] =
+    for {
+      (fields, body) <- split(text, HeadFields :+ "version")
+      version <- fields("version").toLongOption
+        .flatMap(DocumentVersionId.of)
+        .toRight(s"version ${fields("version")} is no version: a whole number, 1 or more")
+      artifact <- headed(fields, body)
+    } yield (artifact, version)
 
   private def filed(artifact: Artifact, version: Option[DocumentVersionId]): String =
     fronted(artifact.head, version) + "\n" + Body.markdown(artifact.body) + "\n"
@@ -129,6 +143,13 @@ object ProjectMarkdown {
         (),
         s"the file of ${key.value} is not ${key.value}.md"
       )
+      read <- headed(fields, body)
+    } yield read
+
+  /** The artifact `fields`, a front matter's [[HeadFields]], and `body` hold, or why not. */
+  private def headed(fields: Fields, body: String): Either[String, Artifact] =
+    for {
+      key <- ArtifactKey.read(fields("key"))
       kind <- KindName.of(fields("kind"))
       state <- StateName.of(fields("state"))
       title <- unquoted("title", fields("title"))
