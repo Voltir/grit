@@ -113,7 +113,7 @@ final class TrialRows(blobs: Blobs^) {
           } yield TrialRows.Recorded.Fresh(removed)
       }
 
-  /** Every blob no transcript or trial's standing text names removed, and every pending blob
+  /** Every blob no trial's part (its transcript or its diff) or standing text names removed, and every pending blob
     * last written before `before` cleared. Waits on any record, and holds records off, until the
     * transaction ends.
     * `Right(Left)` when `blobs` fails: what was removed before it failed stays removed.

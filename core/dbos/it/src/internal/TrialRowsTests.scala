@@ -221,22 +221,24 @@ object TrialRowsTests extends TestSuite {
     }
 
     test(
-      "a prune removes each blob no transcript names and keeps those named, one two trials share included"
+      "a prune removes each blob no transcript or diff names and keeps those named, one two trials share included"
     ) {
       val db = TestPostgres.freshDatabase("bench_prune")
       LiveEngine.open(db, "test").close()
       TempBlobs.around { blobs =>
         val rows = TrialRows(blobs)
-        def kept(t: TrialRows.Trial, text: String) =
-          ok(withParts(blobs, rows, t, text, text, db = db))
-        kept(trial("p-a"), "shared")
-        kept(trial("p-b"), "shared")
-        kept(trial("p-c"), "its own")
+        def kept(t: TrialRows.Trial, transcript: String, diff: String) =
+          ok(withParts(blobs, rows, t, transcript, diff, db = db))
+        kept(trial("p-a"), "shared", "diff a")
+        kept(trial("p-b"), "shared", "diff b")
+        kept(trial("p-c"), "its own", "diff c")
         ok(blobs.receive(bytes("stray"), 10)(_.keep()))
         val pruned = LiveDb.transaction(db, Low)(rows.prune(java.time.Instant.EPOCH))
         assert(
           pruned == Right(Right(TrialRows.Pruned(1, 0))),
-          blobs.kept().map(_.toSet) == Right(Set(Sha256.text("shared"), Sha256.text("its own")))
+          blobs.kept().map(_.toSet) == Right(
+            Set("shared", "its own", "diff a", "diff b", "diff c").map(Sha256.text)
+          )
         )
       }
     }
