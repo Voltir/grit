@@ -116,7 +116,20 @@ object ProjectMarkdownTests extends TestSuite {
 
     test("an exported file, which holds no version, is not read as shown") {
       val (_, text) = ProjectMarkdown.file(artifact("a", "A", "Body."))
-      assert(ProjectMarkdown.readShown(text).isLeft)
+      ProjectMarkdown.readShown(text) ==> Left(
+        "front matter names key, kind, state, title, parent, cites, by, " +
+          "not key, kind, state, title, parent, cites, by, version"
+      )
+    }
+
+    test("a shown file whose version is no whole number of 1 or more is refused, naming it") {
+      val one = DocumentVersionId.of(1).getOrElse(sys.error("no version"))
+      val shown = ProjectMarkdown.shown(artifact("a", "A", "Body."), one)
+      def at(version: String) =
+        ProjectMarkdown.readShown(shown.replace("version: 1\n", s"version: $version\n"))
+      assert(shown.contains("version: 1\n"))
+      at("0") ==> Left("version 0 is no version: a whole number, 1 or more")
+      at("x") ==> Left("version x is no version: a whole number, 1 or more")
     }
     test("a hard-wrapped paragraph is kept as one paragraph with no breaks") {
       val body = right(Body.read("A plan wrapped\nat its source's width,\nas files are."))
