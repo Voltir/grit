@@ -30,9 +30,10 @@ object BlindTaskTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a frozen task as a proposer sees it keeps its name, base and brief, and names none of its commits"
+      "no frozen task's brief names one of its own commits, and a blind task keeps its brief unchanged"
     ) {
       val tasks = frozen()
+      assert(tasks.nonEmpty)
       val blind = tasks.map(BlindTask.of)
       // A commit is named by any prefix git would take for it, 7 hex digits or more.
       val named = blind.zip(tasks).map { (b, t) =>
