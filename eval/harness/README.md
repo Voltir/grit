@@ -70,7 +70,8 @@ Packages, each importing only those above it:
   says its coder will be seen acting on, matched over a kept trajectory's lines. Nothing a grade
   reads reaches a proposer but through `Shown`, whose scan refuses the bench's own grade shapes:
   a file the checkout is to hold is built into one, never written beside it. A proposer's checkout
-  shows each tool result of a run cut where `sent` cuts a call's. ← `bench`, `sent`
+  shows each tool result of a run cut where `sent` cuts a call's; `scripts/eval propose` writes one
+  of one task's chosen grit trials, keeping the newest three. ← `bench`, `sent`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn
   questions by id: each its gold (strings a right reply holds) and its asking in each round. Labels judge the inputs a call was given, verdicts the speech decision at its

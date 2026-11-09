@@ -881,7 +881,7 @@ object Rig {
   /** Removes `dir` and all in it, deepest first, each path in its own `Try` so that one that
     * cannot go does not keep the rest. A symbolic link is removed as a link, never followed.
     */
-  private def removeTree(dir: Path): Unit =
+  private[harness] def removeTree(dir: Path): Unit =
     Try(Files.walk(dir)).foreach { walk =>
       try
         walk.toList.asScala.reverse.foreach { p =>

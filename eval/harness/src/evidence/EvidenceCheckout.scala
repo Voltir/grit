@@ -1,9 +1,14 @@
 package grit.eval.harness.evidence
 
 import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
+import java.time.Instant
+
+import scala.jdk.CollectionConverters.*
+import scala.util.Try
 
 import grit.core.host.{Argv, Processes, RelPath}
-import grit.eval.harness.bench.Clone
+import grit.eval.harness.bench.{Clone, Rig}
 
 /** An evidence checkout: a directory holding a clone of a task's base and, beside it, the files a
   * proposer is shown.
@@ -34,6 +39,41 @@ object EvidenceCheckout {
       _ <- Clone.ran(work, RelPath.Root, "mkdir", RelPath.value(evidence))
       _ <- each(shown.files)((path, text) => written(work, evidence, path, text))
     } yield ()
+
+  /** A checkout's name under the directory proposals are written in, by `at`, when it was
+    * written: `propose-<seconds>`.
+    */
+  def named(at: Instant): RelPath =
+    // A literal and a number: RelPath.of accepts it.
+    RelPath
+      .of(s"propose-${at.getEpochSecond}")
+      .fold(e => throw new IllegalStateException(e.toString), identity)
+
+  /** Every checkout under `root` [[named]] by when it was written, but the newest `kept`, removed
+    * with all in it; how many went, or why `root` could not be read. Any other entry is left, and
+    * a checkout that cannot be removed is left for the next.
+    */
+  def pruned(root: Path)(kept: Int): Either[String, Int] =
+    Try(Files.list(root)).toEither.left
+      .map(e => s"the proposals' directory $root could not be read: ${e.getClass.getName}")
+      .map { listing =>
+        val entries =
+          try listing.iterator.asScala.toVector
+          finally listing.close()
+        val checkouts = entries.flatMap { p =>
+          p.getFileName.toString match {
+            case Named(seconds) => seconds.toLongOption.map(_ -> p)
+            case _ => None
+          }
+        }
+        checkouts.sortBy(-_._1).drop(kept).count { (_, p) =>
+          Rig.removeTree(p)
+          !Files.exists(p)
+        }
+      }
+
+  /** A name [[named]] gives, its seconds captured. */
+  private val Named = raw"propose-(\d+)".r
 
   /** `paths` when each names a file of its own: not the root, not given twice, and none under
     * another; else why not, for the first that fails.

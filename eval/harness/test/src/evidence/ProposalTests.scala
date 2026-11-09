@@ -50,11 +50,17 @@ object ProposalTests extends TestSuite {
   private def call(n: Int, id: String, command: String): Vector[String] =
     Vector("", s"**$n · assistant**", s"- calls `run` (`$id`) with `{\"command\":\"$command\"}`")
 
-  private val verdict: String = Tried.verdict(
+  /** Trial `local` of `harness` on `task`, begun with the standing text `began`, passed at 12. */
+  private def trial(
+      local: String,
+      task: String = "split-reader",
+      harness: String = "grit",
+      began: Option[Standing] = Some(standing)
+  ): TrialRows.Trial =
     got(
       TrialRows.Trial.of(
-        session("graded"),
-        got(TrialRows.TaskName.of("split-reader")),
+        got(SessionId.of(got(Harness.of(harness)), local)),
+        got(TrialRows.TaskName.of(task)),
         ModelId.of("anthropic/claude-opus-5-5").getOrElse(throw new java.lang.AssertionError()),
         Usage(Tokens(100), Tokens(10), Tokens.Zero, None),
         3,
@@ -63,10 +69,11 @@ object ProposalTests extends TestSuite {
         None,
         passed = true,
         Some(12),
-        None
+        began.map(_.sha256)
       )
     )
-  )
+
+  private val verdict: String = Tried.verdict(trial("graded"))
 
   val tests = Tests {
     test(
@@ -91,7 +98,7 @@ object ProposalTests extends TestSuite {
         result(3, "t1", "unit: 430 passed, 0 failed (1 module)") ++
         Vector("", "The tests pass, and all checks green.")).mkString("\n")
       val shown = Proposal.of(task, Vector(run("r1", text)), standing, Vector.empty, "Propose.")
-      shown.map(_.files.toMap.get(rel("evidence/trajectories/1.md"))) ==>
+      shown.map(_.files.toMap.get(rel("trajectories/1.md"))) ==>
         Right(Some(s"Run 1, session r1.\n\n$text"))
     }
     test("each file at its path") {
@@ -105,12 +112,12 @@ object ProposalTests extends TestSuite {
       shown.map(_.files.map(_._1)) ==> Right(
         Vector(
           Proposal.Said,
-          rel("evidence/task.md"),
-          rel("evidence/standing.md"),
-          rel("evidence/trajectories/1.md"),
-          rel("evidence/trajectories/2.md"),
-          rel("evidence/amendments/1.md"),
-          rel("evidence/amendments/2.md")
+          rel("task.md"),
+          rel("standing.md"),
+          rel("trajectories/1.md"),
+          rel("trajectories/2.md"),
+          rel("amendments/1.md"),
+          rel("amendments/2.md")
         )
       )
     }
@@ -122,7 +129,53 @@ object ProposalTests extends TestSuite {
         Vector("fine", s"it did: $verdict"),
         "Propose."
       ) ==>
-        Left(Vector(GradeFound(rel("evidence/amendments/2.md"), Vector(GradeShape.Verdict))))
+        Left(Vector(GradeFound(rel("amendments/2.md"), Vector(GradeShape.Verdict))))
+    }
+    test(
+      "named trials are chosen in the order named, one kept before standing texts were recorded among them; trials of two tasks are refused, naming each"
+    ) {
+      val kept =
+        Vector(
+          trial("a"),
+          trial("b"),
+          trial("unrecorded", began = None),
+          trial("c", task = "other-task")
+        )
+      (
+        Proposal.chosen(kept, Vector("b", "unrecorded", "a"), standing),
+        Proposal.chosen(kept, Vector("a", "c"), standing)
+      ) ==> (
+        Right(Vector(trial("b"), trial("unrecorded", began = None), trial("a"))),
+        Left("the trials are of more than one task: split-reader, other-task")
+      )
+    }
+    test(
+      "a trial is refused, naming it, when none or two are named by its id, it is named twice, or it is not grit's or began with another standing text"
+    ) {
+      val other = got(Standing.of("Something else."))
+      val kept = Vector(
+        trial("a"),
+        trial("cc", harness = "claude-code", began = None),
+        trial("old", began = Some(other)),
+        trial("both"),
+        trial("both", harness = "claude-code")
+      )
+      Vector(
+        Vector(),
+        Vector("missing"),
+        Vector("a", "a"),
+        Vector("cc"),
+        Vector("old"),
+        Vector("both")
+      )
+        .map(Proposal.chosen(kept, _, standing)) ==> Vector(
+        Left("no trial is named"),
+        Left("trial missing is no trial the bench keeps"),
+        Left("trial a is named twice"),
+        Left("trial cc is not grit's, so it began with no standing text"),
+        Left("trial old began with another standing text than the one given"),
+        Left("trial both names more than one trial, of different harnesses")
+      )
     }
     test("the said text is the brief, then the files") {
       val shown = Proposal.of(
@@ -139,7 +192,7 @@ object ProposalTests extends TestSuite {
               |
               |## The evidence
               |
-              |Each path is under this directory.
+              |Each path is under the directory you work in.
               |
               |- `base/`: the repository the coder started from, at the commit the task names.
               |- `evidence/task.md`: the task, as its coder was given it.

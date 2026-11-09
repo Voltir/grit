@@ -113,6 +113,30 @@ object EvidenceCheckoutTests extends TestSuite {
       }
     }
 
+    test(
+      "pruning keeps the newest checkouts by when each was written, and leaves any other entry"
+    ) {
+      val root = Files.createTempDirectory("grit-proposals")
+      try {
+        val written = Vector(1L, 2L, 9L, 10L, 11L).map(s =>
+          RelPath.value(EvidenceCheckout.named(java.time.Instant.ofEpochSecond(s)))
+        )
+        (written :+ "propose-x").foreach { d =>
+          Files.createDirectories(root.resolve(s"$d/base"))
+          Files.writeString(root.resolve(s"$d/base/a.txt"), "a")
+        }
+        Files.writeString(root.resolve("notes.md"), "mine")
+        val went = EvidenceCheckout.pruned(root)(3)
+        (
+          went,
+          Files.list(root).iterator.asScala.map(_.getFileName.toString).toVector.sorted
+        ) ==> (
+          Right(2),
+          Vector("notes.md", "propose-10", "propose-11", "propose-9", "propose-x")
+        )
+      } finally Files.walk(root).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
+    }
+
     test("a checkout into a directory that exists is refused, and what it holds is left alone") {
       withOrigin { (work, root, origin, task) =>
         Files.createDirectory(root.resolve("proposal"))

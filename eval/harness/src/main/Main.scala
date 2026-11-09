@@ -9,6 +9,7 @@ import ReplyCommands.*
 import RebuildCommands.*
 import RecipeCommands.*
 import LabCommands.*
+import ProposeCommands.*
 import RunCommands.*
 import ScoreCommands.*
 import PullCommands.*
@@ -65,6 +66,7 @@ object Main {
       case "synthetic" :: rest => exit(flags(rest).flatMap(synthetic(_, clock)))
       case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
+      case "propose" :: rest => exit(flags(rest).flatMap(propose(_, clock)))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
@@ -78,7 +80,7 @@ object Main {
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
               "replies|reply-labels|turns|churn|recall|rebuild|recipes|synthetic|lab-stitch|" +
-              "integrity-loss|bench (scripts/eval and scripts/integrity-loss say what each takes)"
+              "integrity-loss|bench|propose (scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )
     }
