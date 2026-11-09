@@ -604,10 +604,20 @@ object RigTests extends TestSuite {
 
     test("a trial keeps its coder's diff from the task's base, whole") {
       withTask { f =>
-        trial(f, Fake("object A { val y = 2 }")).map(
-          _.diff.linesIterator.filter(l => l.startsWith("+") || l.startsWith("-")).toVector
-        ) ==> Right(
-          Vector("--- a/a.scala", "+++ b/a.scala", "-object A", "+object A { val y = 2 }")
+        // out/daemon: the fake coder's own leftover, an empty file the diff names too.
+        trial(f, Fake("object A { val y = 2 }")).map(_.diff.linesIterator.toVector) ==> Right(
+          Vector(
+            "diff --git a/a.scala b/a.scala",
+            "index 69c493d..89f0635 100644",
+            "--- a/a.scala",
+            "+++ b/a.scala",
+            "@@ -1 +1 @@",
+            "-object A",
+            "+object A { val y = 2 }",
+            "diff --git a/out/daemon b/out/daemon",
+            "new file mode 100644",
+            "index 0000000..e69de29"
+          )
         )
       }
     }
