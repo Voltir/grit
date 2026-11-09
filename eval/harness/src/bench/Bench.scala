@@ -1,12 +1,16 @@
 package grit.eval.harness.bench
 
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.{CodingErrorAction, StandardCharsets}
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicBoolean
 
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.host.Blobs
+import grit.core.id.SessionId
 import grit.core.store.Jot
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.internal.{Reader, TrialRows}
@@ -71,6 +75,48 @@ object Bench {
       .flatMap(identity)
       .flatMap(_.left.map(e => s"the trial: ${e.described}"))
       .flatMap(r => pruned(jot, blobs, clock)(subject).map((r, _)))
+  }
+
+  /** A trial's transcript as the bench kept it: its text, and whether it was cut at
+    * [[TrialRows.MostBytes]].
+    */
+  final case class Transcript(text: String, clipped: Boolean) extends caps.Pure
+
+  /** `session`'s trial's transcript, read for `subject` from `reader`'s rows and `blobs`, whole;
+    * `None` when the session has no trial, or kept none `subject` may read. `Left` with the
+    * cause, for the operator, when the database fails, or the blob its row names is missing or
+    * not UTF-8.
+    */
+  def trajectory(reader: Reader^, blobs: Blobs^)(
+      subject: Subject,
+      session: SessionId
+  ): Either[String, Option[Transcript]] = {
+    val rows = TrialRows(blobs)
+    reader.db
+      .read(subject)(rows.kept(session, TrialRows.Part.Transcript))
+      .left
+      .map(e => s"the transcript: ${e.described}")
+      .flatMap {
+        case None => Right(None)
+        case Some(kept) =>
+          for {
+            path <- blobs
+              .at(kept.sha256)
+              .toRight(s"the transcript's blob ${kept.sha256.hex} is not kept")
+            text <- scala.util
+              .Try(
+                StandardCharsets.UTF_8
+                  .newDecoder()
+                  .onMalformedInput(CodingErrorAction.REPORT)
+                  .onUnmappableCharacter(CodingErrorAction.REPORT)
+                  .decode(ByteBuffer.wrap(Files.readAllBytes(path)))
+                  .toString
+              )
+              .toEither
+              .left
+              .map(e => s"the transcript's blob ${kept.sha256.hex} does not read as UTF-8: $e")
+          } yield Some(Transcript(text, kept.clipped))
+      }
   }
 
   /** `blobs`' rows pruned for `subject`, pending blobs [[Abandoned]] by `clock`'s time. */

@@ -9,9 +9,9 @@ import grit.core.host.TempBlobs
 import grit.core.id.{Harness, SessionId, Sha256}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{Label, Level, Subject}
 import grit.dbos.engine.LiveEngine
-import grit.dbos.internal.TrialRows
+import grit.dbos.internal.{Reader, TrialRows}
 import grit.dbos.sql.TestPostgres
 
 import utest.*
@@ -68,6 +68,41 @@ object BenchTests extends TestSuite {
               (1 until n).flatMap(i => Vector(s"transcript $i", s"diff $i")).map(Sha256.text).toSet
             )
           )
+        }
+      } finally engine.close()
+    }
+
+    test(
+      "a trial's transcript reads back whole under its row's label; none for a session with no trial or one kept above what is read"
+    ) {
+      val db = TestPostgres.freshDatabase("bench_trajectory")
+      val engine = LiveEngine.open(db, "test")
+      try {
+        TempBlobs.around { blobs =>
+          def keep(local: String, text: String, label: Label) =
+            ok(
+              Bench.keep(engine.jot, blobs, Clock.system())(
+                Subject.Public,
+                trial(local),
+                None,
+                new ByteArrayInputStream(text.getBytes("UTF-8")),
+                new ByteArrayInputStream("diff".getBytes("UTF-8")),
+                label
+              )
+            )
+          val whole = "[main] a call\n```\nits output, é\n```\n"
+          keep("open", whole, Label.Public)
+          keep("kept", "not for the public", Label.at(Level.Internal))
+          val reader = Reader.open(db)
+          try {
+            def read(local: String) =
+              Bench.trajectory(reader, blobs)(Subject.Public, trial(local).session)
+            (read("open"), read("missing"), read("kept")) ==> (
+              Right(Some(Bench.Transcript(whole, clipped = false))),
+              Right(None),
+              Right(None)
+            )
+          } finally reader.close()
         }
       } finally engine.close()
     }
