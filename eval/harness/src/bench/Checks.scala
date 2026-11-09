@@ -2,6 +2,7 @@ package grit.eval.harness.bench
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.*
+import scala.util.matching.Regex
 
 import grit.core.host.{HostError, Processes, RelPath}
 
@@ -17,7 +18,16 @@ final case class Checked(runs: Vector[(String, Boolean)], stopped: Option[String
   /** A line each: `check: <line> passed` or `failed`, then `checks stopped: <why>` when stopped. */
   def lines: Vector[String] =
     runs.map((run, ok) => s"check: $run ${if (ok) "passed" else "failed"}") ++
-      stopped.map(why => s"checks stopped: $why")
+      stopped.map(why => s"${Checked.Stopped}$why")
+}
+
+object Checked {
+
+  /** A whole line of [[Checked.lines]] that gives one check's outcome. */
+  val Outcome: Regex = "check: .+ (passed|failed)".r
+
+  /** What the line of [[Checked.lines]] saying why the checks stopped starts with. */
+  val Stopped: String = "checks stopped: "
 }
 
 /** A task's checks, run in its checkout by the checkout's own scripts. */

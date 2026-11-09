@@ -7,6 +7,7 @@ import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
+import scala.util.matching.Regex
 
 import grit.core.clock.Clock
 import grit.core.host.{Argv, Handing, Memory, Processes, Ran, RelPath, Variables}
@@ -229,6 +230,9 @@ object Tried {
     */
   def verdict(trial: TrialRows.Trial): String =
     s"passed: ${trial.passed}; distance: ${trial.distance.fold("no diff")(d => s"$d lines")}"
+
+  /** What every [[verdict]] holds, found anywhere in a line holding one. */
+  val Verdicts: Regex = "passed: (true|false); distance: ".r
 
   /** What a person reads of what `consumed` spent, a line each: each call's tokens, then its cost
     * in cents by grit's rates ([[Consumed.gritCost]]) and, for a run `arm` is Claude Code's, by

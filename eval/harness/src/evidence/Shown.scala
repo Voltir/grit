@@ -1,9 +1,7 @@
 package grit.eval.harness.evidence
 
-import scala.util.matching.Regex
-
 import grit.core.host.RelPath
-import grit.eval.harness.bench.PerPass
+import grit.eval.harness.bench.{Checked, PerPass, Tried}
 
 /** A shape of the bench's own grading text, as its writer puts it in a line. Every shape the bench
   * writes is a case here, and a new one is added here alone: [[Shown.of]] scans for each case.
@@ -25,9 +23,9 @@ enum GradeShape extends caps.Pure {
 
   /** Whether `line` holds this shape. */
   def in(line: String): Boolean = this match {
-    case Verdict => GradeShape.Verdicts.findFirstIn(line).isDefined
+    case Verdict => Tried.Verdicts.findFirstIn(line).isDefined
     case CheckOutcome =>
-      GradeShape.Outcomes.matches(line.trim) || line.trim.startsWith("checks stopped: ")
+      Checked.Outcome.matches(line.trim) || line.trim.startsWith(Checked.Stopped)
     case Summary =>
       val columns = line.trim.split(" {2,}").toVector
       columns == PerPass.Header || (
@@ -38,8 +36,6 @@ enum GradeShape extends caps.Pure {
 }
 
 object GradeShape {
-  private val Verdicts: Regex = "passed: (true|false); distance: ".r
-  private val Outcomes: Regex = "check: .+ (passed|failed)".r
 
   /** The summary's columns that count trials, each a whole number in every row. */
   private val Counted: Vector[Int] = Vector("trials", "passed").map(PerPass.Header.indexOf)
