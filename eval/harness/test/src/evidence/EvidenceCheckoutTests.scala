@@ -112,5 +112,25 @@ object EvidenceCheckoutTests extends TestSuite {
         )
       }
     }
+
+    test("a checkout into a directory that exists is refused, and what it holds is left alone") {
+      withOrigin { (work, root, origin, task) =>
+        Files.createDirectory(root.resolve("proposal"))
+        Files.writeString(root.resolve("proposal/kept.md"), "mine")
+        val refused =
+          EvidenceCheckout.write(work)(origin, task, shown("brief.md" -> "Do it."), rel("proposal"))
+        // mkdir's own words follow, in the machine's locale.
+        (
+          refused.left.map(_.startsWith("`mkdir` failed: mkdir: ")),
+          Files
+            .list(root.resolve("proposal"))
+            .iterator
+            .asScala
+            .map(_.getFileName.toString)
+            .toVector,
+          Files.readString(root.resolve("proposal/kept.md"))
+        ) ==> (Left(true), Vector("kept.md"), "mine")
+      }
+    }
   }
 }
