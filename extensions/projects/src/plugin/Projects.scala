@@ -8,7 +8,7 @@ import grit.core.id.{DocKey, PluginName}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin, PluginCommand}
 import grit.projects.artifact.ArtifactJson
 import grit.projects.method.{Example, Method, MethodBench}
-import grit.projects.name.{ArtifactKey, MethodName, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
 
 /** The projects plugin (ADR 0049): projects of `methods`, new ones under the latest version of
   * `default` unless another is named, kept under [[Projects.Terms]], and changed only by its
@@ -26,13 +26,16 @@ import grit.projects.name.{ArtifactKey, MethodName, StateName}
   * kept again, renamed as asked), and the reading `project_show`, `project_history`, `project_list`, `project_find`
   * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
   * weeks), `project_export`, `project_claims` and `project_brief`. Each write records its writer
-  * as the artifact's `by`, and a claim its claimer.
+  * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered, and what a
+  * turn may not do with them, is `turns`'s.
   */
-final class Projects private (methods: Vector[Method], default: MethodName) extends Plugin {
+final class Projects private (methods: Vector[Method], default: MethodName, turns: TurnCommands)
+    extends Plugin {
   val name: PluginName = Projects.Name
   val version: Int = 1
   override val documents: Option[Documents] = Some(Projects.Kept)
-  override val commands: Vector[PluginCommand[?]] = new ProjectCommands(methods, default).all
+  override val commands: Vector[PluginCommand[?]] =
+    new ProjectCommands(methods, default, turns).all
 }
 
 object Projects {
@@ -66,12 +69,15 @@ object Projects {
     s"this deployment keeps at most $bound project documents and holds that many already, " +
       "so nothing was kept"
 
-  /** The plugin of these methods, each with its worked examples, or why not: two of one name and
-    * version, `default` not among them, or a method failing its examples ([[MethodBench]]).
+  /** The plugin of these methods, each with its worked examples, its turns offered as `turns`
+    * says, or why not: two of one name and version, `default` not among them, a method failing
+    * its examples ([[MethodBench]]), or a state `turns` guards that no method's kind of that name
+    * has.
     */
   def of(
       methods: Vector[(Method, Vector[Example])],
-      default: MethodName
+      default: MethodName,
+      turns: TurnCommands = TurnCommands.Unguarded
   ): Either[ProjectsRefusal, Projects] = {
     val declared = methods.map(_._1)
     declared.groupBy(m => (m.name, m.version)).collectFirst {
@@ -85,7 +91,15 @@ object Projects {
             val failed = MethodBench.failures(m, examples)
             if (failed.isEmpty) None else Some(ProjectsRefusal.Unbenched(m.name, m.version, failed))
         }
-        unbenched.headOption.toLeft(new Projects(declared, default))
+        val unguardable = turns match {
+          case TurnCommands.Shipped(guarded) =>
+            guarded.toVector
+              .filterNot((kind, state) =>
+                declared.exists(_.kinds.exists(k => k.name == kind && k.all.contains(state)))
+              )
+              .map(ProjectsRefusal.Unguardable(_, _))
+        }
+        (unbenched ++ unguardable).headOption.toLeft(new Projects(declared, default, turns))
     }
   }
 
@@ -97,6 +111,13 @@ object Projects {
 
   /** The states a watch from [[reaching]] was met in: those of its refs that name one. */
   def reached(held: Watched.Held): Set[StateName] = held.refs.flatMap(ArtifactJson.stateOf)
+
+  /** Why a turn's move of `key`, of `kind`, to `state` is refused, when [[TurnCommands]] guards
+    * that state: the one wording, which an edge refusing a person's such move builds on.
+    */
+  def guardedMove(key: ArtifactKey, kind: KindName, state: StateName): String =
+    s"A turn cannot move ${key.value} (${KindName.value(kind)}) to ${StateName.value(state)}: " +
+      "only a person can, and not by asking a turn."
 
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms
@@ -117,4 +138,7 @@ enum ProjectsRefusal extends caps.Pure {
     * move.
     */
   case Unbenched(method: MethodName, version: Int, failed: Vector[MethodBench.Failed])
+
+  /** A guarded state no method's kind `kind` has, so its guard would hold nothing. */
+  case Unguardable(kind: KindName, state: StateName)
 }

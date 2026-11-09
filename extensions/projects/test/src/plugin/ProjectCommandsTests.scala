@@ -73,6 +73,39 @@ object ProjectCommandsTests extends TestSuite {
       assert(text.contains(writer))
     }
 
+    test("a turn's move to a guarded state is refused and a person's is not") {
+      val guarded = Set((MethodFixtures.change.name, state("done")))
+      val projects = Projects
+        .of(Vector(method() -> Vector.empty), methodName, TurnCommands.Shipped(guarded))
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "## Why\n\nBecause.")
+      val turn = CommandBy.Turn(person, TurnRef(ConversationId("c7"), TurnSeq(5)))
+      def move(who: CommandBy, to: String) =
+        askBy(who)(projects, store, "project_move", "key" -> "p/a", "state" -> to)
+      val building = move(turn, "building")
+      val refused = move(turn, "done")
+      val stayed = shown(projects, store, "p/a").contains("state: building")
+      val personal = move(CommandBy.Direct(person), "done")
+      (
+        building.getClass,
+        refused,
+        stayed,
+        personal.getClass,
+        shown(projects, store, "p/a")
+          .contains("state: done")
+      ) ==> (
+        classOf[CommandOutcome.Done],
+        CommandOutcome.Refused(
+          "A turn cannot move p/a (change) to done: only a person can, and not by asking a turn."
+        ),
+        true,
+        classOf[CommandOutcome.Done],
+        true
+      )
+    }
+
     test(
       "a turn is offered the reads, new, keep and move; not batch, withdraw, migrate or claims"
     ) {
@@ -669,6 +702,20 @@ object ProjectCommandsTests extends TestSuite {
           methodName
         ) ==
           Left(ProjectsRefusal.Twice(methodName, 1))
+      )
+    }
+    test("Projects.of refuses a guarded state no kind of that name has, and keeps one it has") {
+      def guarding(kind: String, to: String) =
+        Projects
+          .of(
+            Vector(method() -> Vector.empty),
+            methodName,
+            TurnCommands.Shipped(Set((MethodFixtures.kind(kind), state(to))))
+          )
+          .map(_ => ())
+      (guarding("change", "closed"), guarding("note", "closed")) ==> (
+        Left(ProjectsRefusal.Unguardable(MethodFixtures.kind("change"), state("closed"))),
+        Right(())
       )
     }
     test("a method whose example fails is refused, naming the example and its move") {

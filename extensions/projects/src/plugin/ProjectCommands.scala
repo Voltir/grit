@@ -37,10 +37,13 @@ import grit.prose.either.Traversal
 import grit.prose.words.Words
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
-  * `default`.
+  * `default`, offered to turns as `turns` says.
   */
-private[plugin] final class ProjectCommands(methods: Vector[Method], default: MethodName)
-    extends caps.Pure {
+private[plugin] final class ProjectCommands(
+    methods: Vector[Method],
+    default: MethodName,
+    turns: TurnCommands
+) extends caps.Pure {
 
   import ProjectCommands.*
 
@@ -207,8 +210,24 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(alone(own, claims, args.key.project, Step.Move(args), by, at, "move"))
+      answered(
+        alone(own, claims, args.key.project, Step.Move(args), by, at, "move", guard(args, by))
+      )
   }
+
+  /** Nothing, or a refusal of `args` when `by` is a turn and its artifact's kind and the state
+    * it moves to are among those `turns` guards ([[Projects.guardedMove]]).
+    */
+  private def guard(args: Moving, by: CommandBy): Loaded -> Either[Stop, Unit] = project =>
+    (turns, by) match {
+      case (TurnCommands.Shipped(guarded), CommandBy.Turn(_, _)) =>
+        project.artifacts.find(_.head.key == args.key).map(_.head.kind) match {
+          case Some(kind) if guarded((kind, args.to)) =>
+            Left(Stop.Refused(Projects.guardedMove(args.key, kind, args.to)))
+          case _ => Right(())
+        }
+      case _ => Right(())
+    }
 
   /** `project_batch`. */
   object Batch extends KeepingCommand[Batching] {
@@ -1188,8 +1207,9 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
   private def latest(name: MethodName): Option[Method] =
     methods.filter(_.name == name).maxByOption(_.version)
 
-  /** `step` alone over project `key`, as `project_keep` or `project_move` takes it, saying
-    * `verb` of an artifact kept below this room: its answer, or why it was refused.
+  /** `step` alone over project `key`, as `project_keep` or `project_move` takes it, once
+    * `admits` allows it of the project as loaded, saying `verb` of an artifact kept below this
+    * room: its answer, or why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
@@ -1198,10 +1218,12 @@ private[plugin] final class ProjectCommands(methods: Vector[Method], default: Me
       step: Step,
       by: CommandBy,
       at: Instant,
-      verb: String
+      verb: String,
+      admits: Loaded -> Either[Stop, Unit] = _ => Right(())
   )(using Tx^): Either[Stop, String] =
     for {
       project <- loaded(own, key)
+      _ <- admits(project)
       method <- refuse(declared(project.pin))
       plan = planned(project, method, Vector(step), author(by), onward = false)
       (said, steps) = plan
