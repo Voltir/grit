@@ -65,7 +65,7 @@ object ShownTests extends TestSuite {
         rel("checks.md") ->
           Checked(Vector("check grit.core" -> true), None).lines.mkString("\n"),
         rel("stopped.md") ->
-          Checked(Vector("check grit.core" -> false), Some("the cap")).lines.mkString("\n"),
+          Checked(Vector.empty, Some("the cap")).lines.mkString("\n"),
         rel("summary.md") -> PerPass.lines(trials).mkString("\n"),
         rel("rows.md") -> PerPass.lines(trials).drop(1).mkString("\n")
       )
