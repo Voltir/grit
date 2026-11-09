@@ -59,5 +59,12 @@ In dependency order:
   answered by `StandIns`, and the turn's own call stops the rehearsal (`Stop`). `Rehearse.dry`
   runs a `Situation` so over a database as it stands, and shows each call's input by part as
   `Rehearsed`.
+- **`work`**: `work`, one task said to a deployment in a directory and its turns awaited, a
+  check run after each that answers, or its first model call shown dry (`Work.run`). Each
+  deployment runs it under its own program's name, over its own edge for the directory
+  (`LocalEdge.serving`, with whatever it adds), and says through `Work.Under`'s `admit` whether
+  a run may go on when another process runs the engine: a turn runs on the engine holding the
+  database, so an attached run is offered that engine's deployment's tools, not its own.
+  ← `deployment`, `environment`, `run`, `rehearse`
 
 No source file sits at the module's root, and the test tree mirrors it.

@@ -1,4 +1,4 @@
-package grit.app.main
+package grit.kit.work
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.clock.Clock
+import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.{Console, Reply, TurnStatus}
 import grit.core.host.{Clipped, HostError, Ran, RunId, RunStatus, Runs}
 import grit.core.id.{Sha256, SourceId, TurnRef, WorkflowId}
@@ -16,28 +16,32 @@ import grit.core.message.Message
 import grit.core.store.{Origin, Payload, WentOn}
 import grit.core.visibility.Subject
 import grit.dbos.sql.DbConfig
-import grit.host.checkout.LocalShell
+import grit.host.checkout.{LocalRuns, LocalShell, Redaction}
 import grit.kit.deployment.Deployment
+import grit.kit.environment.Secrets
 import grit.kit.rehearse.{Rehearse, Rehearsed, Situation, StandIns}
+import grit.kit.run.Kit
 import grit.turn.TurnStream
 
-/** `grit work`: one text said to grit in a directory's session and its turn awaited, or the
-  * turn's first model call shown dry, over the console of the deployment's engine.
+/** `work`: one text said to a deployment in a directory's session and its turns awaited, or
+  * the turn's first model call shown dry, over the console of the deployment's engine; `grit
+  * work` is grit's, and a deployment outside grit runs the same under its own program's name.
   */
-private[main] object Work {
+object Work {
 
   /** What `grit work` was asked: the file holding its text, whether it is dry, and the
     * acceptance command `--check` names, when it names one.
     */
   final case class Asked(file: Path, dry: Boolean, check: Option[WentOn.Command])
 
-  /** Why `grit work`'s arguments are refused: its form. */
-  val Usage: String =
-    "grit work takes one file: grit work [--check '<command>'] <file>, or grit work --dry <file>"
+  /** Why `<program> work`'s arguments are refused: its form, as `program` (`grit`) is run. */
+  def usage(program: String): String =
+    s"$program work takes one file: $program work [--check '<command>'] <file>, or " +
+      s"$program work --dry <file>"
 
-  /** Why `grit work --dry` is refused while a model key is set. */
-  val Keyed: String =
-    "grit work --dry calls no model, so it runs only with no model key set: " +
+  /** Why `<program> work --dry` is refused while a model key is set. */
+  def keyed(program: String): String =
+    s"$program work --dry calls no model, so it runs only with no model key set: " +
       "unset ANTHROPIC_API_KEY and OPENROUTER_API_KEY"
 
   /** What a dry run prints above the rehearsal: what it does not show. */
@@ -46,19 +50,19 @@ private[main] object Work {
       "that is not shown: where it marks the prompt cache (after the system prompt, and on the " +
       "last message the next call repeats) and how it encodes each tool."
 
-  /** `rest`, the arguments after `work`, as asked: a file, `--check`, a command and a file, or
-    * `--dry` and a file; [[Usage]] otherwise, and why a command is not one
+  /** `rest`, the arguments after `work` of `program`, as asked: a file, `--check`, a command and
+    * a file, or `--dry` and a file; [[usage]] otherwise, and why a command is not one
     * ([[WentOn.Command.of]]).
     */
-  def asked(rest: Vector[String]): Either[String, Asked] = {
+  def asked(program: String, rest: Vector[String]): Either[String, Asked] = {
     def at(file: String, dry: Boolean, check: Option[WentOn.Command]) =
-      scala.util.Try(Path.of(file)).toOption.map(Asked(_, dry, check)).toRight(Usage)
+      scala.util.Try(Path.of(file)).toOption.map(Asked(_, dry, check)).toRight(usage(program))
     rest match {
       case Vector("--dry", file) => at(file, dry = true, None)
       case Vector("--check", command, file) if !file.startsWith("--") =>
         WentOn.Command.of(command).flatMap(c => at(file, dry = false, Some(c)))
       case Vector(file) if !file.startsWith("--") => at(file, dry = false, None)
-      case _ => Left(Usage)
+      case _ => Left(usage(program))
     }
   }
 
@@ -220,16 +224,16 @@ private[main] object Work {
           .toRight(s"$TurnsVar is a whole number of at least 1, not $raw")
     }
 
-  /** The text of `file`, read as UTF-8; why not, when it cannot be read or holds only
-    * whitespace.
+  /** The text of `file`, read as UTF-8; why not, naming `program`'s `work`: it cannot be read,
+    * or holds only whitespace.
     */
-  def text(file: Path): Either[String, String] =
+  def text(program: String, file: Path): Either[String, String] =
     scala.util
       .Try(Files.readString(file, StandardCharsets.UTF_8))
       .toEither
       .left
-      .map(e => s"grit work cannot read $file: ${e.getMessage}")
-      .filterOrElse(_.trim.nonEmpty, s"grit work was given $file, which is empty")
+      .map(e => s"$program work cannot read $file: ${e.getMessage}")
+      .filterOrElse(_.trim.nonEmpty, s"$program work was given $file, which is empty")
 
   /** `step` run on the console `opener` opens, which is closed after it returns or throws; why
     * not, when it cannot be opened, or as `step` says.
@@ -243,6 +247,65 @@ private[main] object Work {
         try step(console)
         finally console.close()
     }
+
+  /** What a deployment supplies a work run: the `deployment` run over the database `secrets`
+    * names, the `origin` its text is said at, the directory `root` its check runs in with what
+    * it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
+    * waits before it answers (`stubDelay`), and `admit`, whether a run that is not dry may go on
+    * given who runs the database's engine (`Left`: why not).
+    */
+  final case class Under(
+      deployment: Deployment,
+      secrets: Secrets,
+      origin: Origin,
+      root: Path,
+      redaction: Redaction,
+      stubDelay: FiniteDuration,
+      admit: Console.Runner -> Either[String, Unit]
+  )
+
+  /** `asked` run as `under` supplies it, through the console of the deployment's engine
+    * ([[Kit.console]]), `here` served first and each model call printed through `print` as it
+    * goes and once answered: dry, the first model call `text` said would make, shown
+    * ([[shown]]) and nothing said; otherwise, once `under.admit` allows who runs the engine,
+    * `text` said and its turns awaited, up to `cap` ([[said]]), `asked.check` run among runs
+    * in `under.root` ([[checked]]). Why not, and then nothing is said: the database cannot be
+    * reached, `under.admit` refuses (the console is never opened, and an engine lock taken here
+    * is held until the process ends), or as [[shown]] and [[said]] say.
+    */
+  def run(
+      asked: Asked,
+      text: String,
+      cap: Int,
+      under: Under,
+      here: Console.Edge^,
+      clock: Clock^,
+      fresh: Fresh^,
+      print: String -> Unit
+  ): Either[String, Unit] = {
+    // The same composition either way: only the last step differs.
+    val step: Console^ => Either[String, Unit] = console =>
+      if (asked.dry)
+        shown(under.secrets.database, under.deployment, under.origin, text, clock, print)
+      else {
+        val checks: LocalRuns^ = new LocalRuns(under.root, sys.env, under.redaction, clock, fresh)
+        try said(console, under.origin, text, cap, asked.check, checks, print)
+        finally checks.close()
+      }
+    Kit.console(
+      under.deployment,
+      under.secrets,
+      under.stubDelay,
+      clock,
+      here,
+      announced = true
+    ) match {
+      case Left(refused) => Left(refused.message)
+      case Right(opener) =>
+        val admitted = if (asked.dry) Right(()) else under.admit(opener.runner)
+        admitted.flatMap(_ => opened(opener)(step))
+    }
+  }
 
   /** `text` said once through `console` at `origin` as the local person, its turn started (or,
     * said before, the turn it started found) and waited for until its workflow ends; then the

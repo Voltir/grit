@@ -18,11 +18,12 @@ import grit.core.place.Directory
 import grit.core.recipe.TurnRecipe
 import grit.core.store.Origin
 import grit.dbos.engine.{Engine, Link, NotTaken, Unopened}
-import grit.host.checkout.{LocalRuns, Redaction}
+import grit.host.checkout.Redaction
 import grit.host.machine.LocalMachine
 import grit.kit.deployment.{Assembly, Deployment}
 import grit.kit.environment.{DotEnv, Exit, Secrets}
 import grit.kit.run.{Kit, Launch}
+import grit.kit.work.Work
 import grit.mcp.client.KeyFiles
 import grit.models.{OpenRouterConfig, StubProvider}
 import grit.slack.edge.{Backfill, SlackEdge}
@@ -185,6 +186,9 @@ object Main {
   /** The argument runs share one conversation, apart from any TUI session. */
   private[main] val RunOrigin: Origin = Origin.Task("m0", "main")
 
+  /** The program `grit work`'s refusals name: `grit`. */
+  private val Program: String = "grit"
+
   def main(args: Array[String]): Unit = {
     // A refusal before anything runs ends with status 2; a failure once it runs, with 1.
     val exitOnLeft = Exit.process("[main]", 2)
@@ -204,7 +208,8 @@ object Main {
     val reported = cacheReported(args.toVector)
     // `grit work <file>` or `grit work --dry <file>`: one text said in this directory.
     val working: Option[Work.Asked] =
-      if (args.headOption.contains("work")) Some(exitOnLeft(Work.asked(args.toVector.drop(1))))
+      if (args.headOption.contains("work"))
+        Some(exitOnLeft(Work.asked(Program, args.toVector.drop(1))))
       else None
     val env = exitOnLeft(DotEnv.loadDefault(sys.env))
     val log = env.getOrElse(
@@ -363,33 +368,25 @@ object Main {
           .toOption
       else if (working.nonEmpty)
         working.flatMap { asked =>
-          if (asked.dry && secrets.keys.nonEmpty) exitOnLeft(Left(Work.Keyed))
-          val text = exitOnLeft(Work.text(asked.file))
+          if (asked.dry && secrets.keys.nonEmpty) exitOnLeft(Left(Work.keyed(Program)))
+          val text = exitOnLeft(Work.text(Program, asked.file))
           val cap = exitOnLeft(Work.turns(env))
-          // The same composition either way: only the last step differs.
-          val step: Console^ => Either[String, Unit] = console =>
-            if (asked.dry) Work.shown(config, deployment, origin, text, clock, println)
-            else {
-              val checks: LocalRuns^ = new LocalRuns(root, sys.env, redaction, clock, fresh)
-              try Work.said(console, origin, text, cap, asked.check, checks, println)
-              finally checks.close()
-            }
+          // grit work runs on whichever engine holds the database, this process's or another's.
+          val under =
+            Work.Under(
+              deployment,
+              secrets,
+              origin,
+              root,
+              redaction,
+              stubDelay.millis,
+              _ => Right(())
+            )
           // A command the turn left going, or a check, ends with the run; a signal leaves it to
           // the next start's sweep in this directory.
           exitOnLeft(
             ChatEdges.serving(directory, root, offered, scoutServer, redaction, clock, fresh) {
-              here =>
-                Kit.console(
-                  deployment,
-                  secrets,
-                  stubDelay.millis,
-                  clock,
-                  here,
-                  announced = true
-                ) match {
-                  case Left(refused) => Left(refused.message)
-                  case Right(opener) => Work.opened(opener)(step)
-                }
+              here => Work.run(asked, text, cap, under, here, clock, fresh, println)
             }
           ).swap.toOption
         }

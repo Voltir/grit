@@ -1,4 +1,4 @@
-package grit.app.main
+package grit.kit.work
 
 import java.nio.file.{Files, Path}
 
@@ -43,26 +43,49 @@ object WorkTests extends TestSuite {
       "work takes a file, --check, a command and a file, or --dry and a file; anything else is refused with the form"
     ) {
       (
-        Work.asked(Vector("brief.md")),
-        Work.asked(Vector("--dry", "brief.md")),
-        Work.asked(Vector("--check", "make test", "brief.md")),
-        Work.asked(Vector.empty),
-        Work.asked(Vector("brief.md", "--dry")),
-        Work.asked(Vector("a.md", "b.md")),
-        Work.asked(Vector("--check", "make test", "--dry", "brief.md")),
-        Work.asked(Vector("--check", "brief.md")),
-        Work.asked(Vector("--check", " ", "brief.md"))
+        Work.asked("grit", Vector("brief.md")),
+        Work.asked("grit", Vector("--dry", "brief.md")),
+        Work.asked("grit", Vector("--check", "make test", "brief.md")),
+        Work.asked("grit", Vector.empty),
+        Work.asked("grit", Vector("brief.md", "--dry")),
+        Work.asked("grit", Vector("a.md", "b.md")),
+        Work.asked("grit", Vector("--check", "make test", "--dry", "brief.md")),
+        Work.asked("grit", Vector("--check", "brief.md")),
+        Work.asked("grit", Vector("--check", " ", "brief.md"))
       ) ==> (
         Right(Work.Asked(Path.of("brief.md"), dry = false, None)),
         Right(Work.Asked(Path.of("brief.md"), dry = true, None)),
         Right(Work.Asked(Path.of("brief.md"), dry = false, Some(TestWentOn.command("make test")))),
-        Left(Work.Usage),
-        Left(Work.Usage),
-        Left(Work.Usage),
-        Left(Work.Usage),
-        Left(Work.Usage),
+        Left(Work.usage("grit")),
+        Left(Work.usage("grit")),
+        Left(Work.usage("grit")),
+        Left(Work.usage("grit")),
+        Left(Work.usage("grit")),
         Left("the check command is empty")
       )
+    }
+
+    test("work's form and refusals name the program it runs under") {
+      val dir = Files.createTempDirectory("work-named")
+      try {
+        val missing = dir.resolve("missing.md")
+        val blank = Files.writeString(dir.resolve("blank.md"), " \n")
+        (
+          Work.asked("kalandra", Vector.empty),
+          Work.keyed("kalandra"),
+          Work.text("kalandra", missing).left.map(_.takeWhile(_ != ':')),
+          Work.text("kalandra", blank)
+        ) ==> (
+          Left(
+            "kalandra work takes one file: kalandra work [--check '<command>'] <file>, or " +
+              "kalandra work --dry <file>"
+          ),
+          "kalandra work --dry calls no model, so it runs only with no model key set: " +
+            "unset ANTHROPIC_API_KEY and OPENROUTER_API_KEY",
+          Left(s"kalandra work cannot read $missing"),
+          Left(s"kalandra work was given $blank, which is empty")
+        )
+      } finally removed(dir)
     }
 
     test("a task's turn n after its first is said under its text's source and :n") {
