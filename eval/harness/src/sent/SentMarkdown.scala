@@ -676,6 +676,19 @@ object SentMarkdown {
     ((s"$fence$info" +: text.split("\n", -1).toVector) :+ fence).map(indent + _)
   }
 
+  /** A tool result's `content` in a `text` fence ([[fenced]]), cut at `chars` characters (code
+    * points, as a database counts them, never splitting one) when it is longer, with the left-out
+    * mark after the fence: `… <total> chars, <left out> not shown`, then `; ` and `more` when
+    * given.
+    */
+  def within(content: String, chars: Int, more: Option[String]): Vector[String] = {
+    val total = content.codePointCount(0, content.length)
+    if (total <= chars) fenced(content, "text")
+    else
+      fenced(content.substring(0, content.offsetByCodePoints(0, chars)), "text") :+
+        (s"… $total chars, ${total - chars} not shown" + more.fold("")(m => s"; $m"))
+  }
+
   /** Message `n`, `m`, as a numbered block: its role and what it is, then its text. */
   private[sent] def message(n: Int, m: Message, cut: Cut): Vector[String] = m match {
     case Message.User(t) =>
@@ -689,12 +702,8 @@ object SentMarkdown {
         (if (said.isEmpty) Vector.empty else fenced(said, "text")) ++ calls
     case Message.ToolResult(id, content, isError) =>
       val shown = cut match {
-        // Counted in characters (code points), as a database counts them, never split.
-        case Cut.Within(chars) if content.codePointCount(0, content.length) > chars =>
-          val total = content.codePointCount(0, content.length)
-          fenced(content.substring(0, content.offsetByCodePoints(0, chars)), "text") :+
-            s"… $total chars, ${total - chars} not shown; `--full` shows all."
-        case _ => fenced(content, "text")
+        case Cut.Within(chars) => within(content, chars, Some("`--full` shows all."))
+        case Cut.Whole => fenced(content, "text")
       }
       Vector(
         "",

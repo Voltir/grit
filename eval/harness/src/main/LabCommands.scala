@@ -30,6 +30,7 @@ import grit.eval.harness.bench.{
   Standing,
   Tried
 }
+import grit.eval.harness.evidence.{Proposal, Shown}
 import grit.eval.harness.jev.Budget
 import grit.eval.harness.lab.StitchLab
 import grit.eval.harness.log.{Cache, Weights}
@@ -139,7 +140,14 @@ private[main] object LabCommands {
                 for {
                   launcher <- need(f, "grit")
                   javaHome <- need(f, "java-home")
-                  standing <- need(f, "standing").flatMap(s => Standing.read(Path.of(s)))
+                  standing <- need(f, "standing")
+                    .flatMap(s => Standing.read(Path.of(s)))
+                    .flatMap(s =>
+                      Shown
+                        .scanned(s)
+                        .left
+                        .map(Proposal.graded(s"--standing ${f.getOrElse("standing", "")}", _))
+                    )
                   url <- need(f, "coder-url")
                   maxTokens <- need(f, "max-tokens").flatMap(positive("max-tokens"))
                   memoryCap <- f.get("max-memory-gb").fold(Right(MemoryCap.Default))(MemoryCap.of)

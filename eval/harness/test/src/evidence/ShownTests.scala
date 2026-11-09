@@ -7,7 +7,7 @@ import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.model.ModelId
 import grit.dbos.internal.TrialRows
-import grit.eval.harness.bench.{Checked, PerPass, Tried}
+import grit.eval.harness.bench.{Checked, PerPass, Standing, Tried}
 
 import utest.*
 
@@ -88,6 +88,16 @@ object ShownTests extends TestSuite {
     test("a coder's own test output and its word that the checks pass are let through whole") {
       val files = Vector(rel("trajectory.md") -> trajectory, rel("brief.md") -> "Do it.")
       Shown.of(files).map(_.files) ==> Right(files)
+    }
+    test(
+      "a standing text holding a grade shape is refused under standing.md, and one without is kept"
+    ) {
+      val clean = got(Standing.of("Run the checks before you stop."))
+      val graded = got(Standing.of(s"A good run looks like:\n${Tried.verdict(trials(0))}"))
+      (Shown.scanned(clean), Shown.scanned(graded)) ==> (
+        Right(clean),
+        Left(GradeFound(rel("standing.md"), Vector(GradeShape.Verdict)))
+      )
     }
   }
 }

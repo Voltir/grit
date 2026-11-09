@@ -1,7 +1,7 @@
 package grit.eval.harness.evidence
 
 import grit.core.host.RelPath
-import grit.eval.harness.bench.{Checked, PerPass, Tried}
+import grit.eval.harness.bench.{Checked, PerPass, Standing, Tried}
 
 /** A shape of the bench's own grading text, as its writer puts it in a line. Every shape the bench
   * writes is a case here, and a new one is added here alone: [[Shown.of]] scans for each case.
@@ -55,12 +55,30 @@ object Shown {
   /** `files` as an evidence checkout may hold them, or each that holds a grade shape, in order. */
   def of(files: Vector[(RelPath, String)]): Either[Vector[GradeFound], Shown] = {
     val found = files.flatMap { (path, text) =>
-      val lines = text.linesIterator.toVector
-      val shapes = GradeShape.values.toVector.filter(shape => lines.exists(shape.in))
+      val shapes = shapesIn(text)
       Option.when(shapes.nonEmpty)(GradeFound(path, shapes))
     }
     Either.cond(found.isEmpty, files, found)
   }
+
+  /** Each grade shape some line of `text` holds, in [[GradeShape]]'s order. */
+  private def shapesIn(text: String): Vector[GradeShape] = {
+    val lines = text.linesIterator.toVector
+    GradeShape.values.toVector.filter(shape => lines.exists(shape.in))
+  }
+
+  /** `standing`, when it holds none of the bench's grade shapes, so a coder may run under it; or
+    * the shapes found, under [[StandingPath]].
+    */
+  def scanned(standing: Standing): Either[GradeFound, Standing] = {
+    val shapes = shapesIn(standing.text)
+    Either.cond(shapes.isEmpty, standing, GradeFound(StandingPath, shapes))
+  }
+
+  /** The path a standing text's grade shapes are found under: `standing.md`. */
+  val StandingPath: RelPath =
+    // A literal RelPath.of accepts.
+    RelPath.of("standing.md").fold(e => throw new IllegalStateException(e.toString), identity)
 
   extension (shown: Shown) {
 

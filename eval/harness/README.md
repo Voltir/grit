@@ -47,11 +47,6 @@ Packages, each importing only those above it:
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
   through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials
   too, takes distance over passing trials only, and does not score quality yet.
-- **`evidence`**: what a proposer of amendments to the coder's standing text is given to read: a
-  frozen task blind to its grading, an evidence checkout's files, and the patterns an amendment
-  says its coder will be seen acting on, matched over a kept trajectory's lines. Nothing a grade
-  reads reaches a proposer but through `Shown`, whose scan refuses the bench's own grade shapes:
-  a file the checkout is to hold is built into one, never written beside it. ← `bench`
 - **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
   digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
   from a restored database through `Reader` and the turn's own reading of its records, rebuilt
@@ -70,6 +65,12 @@ Packages, each importing only those above it:
   rebuilt under the window drawn afresh, so a change to what a boundary draws is seen in
   tokens before a model is paid to run it.
   ← `stats`, `capture`
+- **`evidence`**: what a proposer of amendments to the coder's standing text is given to read: a
+  frozen task blind to its grading, an evidence checkout's files, and the patterns an amendment
+  says its coder will be seen acting on, matched over a kept trajectory's lines. Nothing a grade
+  reads reaches a proposer but through `Shown`, whose scan refuses the bench's own grade shapes:
+  a file the checkout is to hold is built into one, never written beside it. A proposer's checkout
+  shows each tool result of a run cut where `sent` cuts a call's. ← `bench`, `sent`
 - **`label`**: a person's labels, kept apart from the cases so a recapture keeps them: case
   labels, replies' labels (a person's note is never read into one), review verdicts, and churn
   questions by id: each its gold (strings a right reply holds) and its asking in each round. Labels judge the inputs a call was given, verdicts the speech decision at its
