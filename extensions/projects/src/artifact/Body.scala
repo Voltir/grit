@@ -87,6 +87,24 @@ object Body {
     case Block.Heading(level, text) if level.value == 2 => text.plain.trim
   }
 
+  /** The blocks under its first `##` heading titled `title`, the heading left out, up to the next
+    * heading of rank 2 or less; none when no `##` heading has that title.
+    */
+  def section(b: Body, title: String): Option[Vector[Block[ArtifactKey]]] =
+    sectionsOf(b.blocks).collectFirst { case Section(Some(`title`), blocks) => blocks.drop(1) }
+
+  /** Its markdown above its first rule ([[Block.Rule]]) outside every list and quote, and below
+    * that rule, each as [[markdown]] writes those blocks alone; none when it has no such rule.
+    */
+  def aroundRule(b: Body): Option[(above: String, below: String)] =
+    b.blocks.indexOf(Block.Rule) match {
+      case -1 => None
+      case at =>
+        Some(
+          (above = markdown(Doc(b.blocks.take(at))), below = markdown(Doc(b.blocks.drop(at + 1))))
+        )
+    }
+
   /** `Delta: `: what a `##` heading starts with when its section is a delta to the section named
     * by the rest.
     */
