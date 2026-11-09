@@ -45,6 +45,26 @@ object Cut {
 /** A recorded turn as markdown for a person to read, text and all. */
 object SentMarkdown {
 
+  /** The start of a turn's heading line as [[render]] writes it: `# Turn <seq> of <id>: …`. */
+  val TurnHeading: String = "# Turn "
+
+  /** The start of the heading line over a request's system prompt, as [[render]] writes it. */
+  val SystemHeading: String = "### System prompt ("
+
+  /** The start of the heading line over a request's tools, as [[render]] writes it. */
+  val ToolsHeading: String = "### Tools offered ("
+
+  /** The start of the heading line over a request's messages, as [[render]] writes it. */
+  val MessagesHeading: String = "### Messages ("
+
+  /** A message's heading line as [[render]] writes it, `**<n> · <role>**` then what follows on
+    * the line: its number, its role (`user`, `assistant` or [[ToolResult]]) and the rest captured.
+    */
+  val MessageHeading: scala.util.matching.Regex = raw"\*\*(\d+) · ([a-z ]+)\*\*(.*)".r
+
+  /** A tool result's role in its [[MessageHeading]]. */
+  val ToolResult: String = "tool result"
+
   /** `sent`, read from the database `from`, as markdown: a header (ids, room, when heard,
     * models, calls, its cost in ¢, and that the requests are its recorded inputs through this
     * build's code, the epoch it ran under beside this build's, flagged when they differ); how
@@ -71,7 +91,7 @@ object SentMarkdown {
       else Cost.cents(cost.flatten.sum)
     val models = sent.spent.map(_._2.model).distinct
     add(
-      s"# Turn ${TurnSeq.value(sent.turn.turnSeq)} of ${ConversationId.value(sent.turn.conversationId)}: the context it was sent",
+      s"$TurnHeading${TurnSeq.value(sent.turn.turnSeq)} of ${ConversationId.value(sent.turn.conversationId)}: the context it was sent",
       "",
       s"- Workflow `${grit.core.id.WorkflowId.value(sent.workflow)}`, root ${rootName(sent.root)}",
       s"- Room `${sent.room.written}`" + sent.heard.fold("")(t =>
@@ -157,13 +177,13 @@ object SentMarkdown {
       case None => add("No call of its reply is kept.", "")
       case Some(request) =>
         add(
-          s"### System prompt (${sent.prompt.size} fragments: " +
+          s"$SystemHeading${sent.prompt.size} fragments: " +
             sent.prompt.map(f => s"${f.layer.key}/${f.source}").mkString(", ") + ")",
           ""
         )
         add(fenced(request.system, "text")*)
         add("")
-        add(s"### Tools offered (recorded set `${ToolSetId.value(sent.toolSet)}`)", "")
+        add(s"${ToolsHeading}recorded set `${ToolSetId.value(sent.toolSet)}`)", "")
         if (calls.schemas == TurnRecord.Schemas.Recorded)
           add(
             "The turn's pair enforced strict schemas, which a tool set does not record: each " +
@@ -196,7 +216,7 @@ object SentMarkdown {
           )
           add("", "</details>")
         }
-        add("", s"### Messages (the last call's ${request.messages.size})", "")
+        add("", s"${MessagesHeading}the last call's ${request.messages.size})", "")
         request.messages.zipWithIndex.foreach((m, i) => add(message(i + 1, m, cut)*))
     }
 
@@ -707,7 +727,7 @@ object SentMarkdown {
       }
       Vector(
         "",
-        s"**$n · tool result** for `${ToolCallId.value(id)}`${if (isError) ", an error" else ""}"
+        s"**$n · $ToolResult** for `${ToolCallId.value(id)}`${if (isError) ", an error" else ""}"
       ) ++ shown
   }
 

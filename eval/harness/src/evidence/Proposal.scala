@@ -68,8 +68,9 @@ object Proposal {
   /** `task`'s proposal: [[Said]], `brief` then the list of what follows, each by its path in the
     * checkout; `task.md`, the task's brief; `standing.md`, `standing`; each of `runs` at
     * `trajectories/<n>.md`, numbered from 1 in order, a line naming its session first (and saying
-    * so when the bench clipped it), then its transcript with each tool result cut to
-    * [[ResultChars]] ([[Trajectory.within]]); and each of `amendments`, an amendment's text as
+    * so when the bench clipped it), then its transcript with each part a turn showed before marked
+    * ([[Trajectory.deduplicated]]) and each tool result cut to [[ResultChars]]
+    * ([[Trajectory.within]]); and each of `amendments`, an amendment's text as
     * exported, at [[amendment]]. Or each file holding a grade shape ([[Shown.of]]), an amendment
     * among them.
     */
@@ -84,7 +85,7 @@ object Proposal {
       val named = s"Run ${i + 1}, session ${run.session.local}." +
         (if (run.kept.clipped) s" $Clipped" else "")
       path(s"trajectories/${i + 1}.md") ->
-        s"$named\n\n${Trajectory.within(run.kept.text, ResultChars)}"
+        s"$named\n\n${Trajectory.within(Trajectory.deduplicated(run.kept.text), ResultChars)}"
     }
     val earlier = amendments.zipWithIndex.map((text, i) => amendment(i + 1) -> text)
     val taskFile = path("task.md")

@@ -75,7 +75,70 @@ object ProposalTests extends TestSuite {
 
   private val verdict: String = Tried.verdict(trial("graded"))
 
+  /** Turn `seq`'s request as the renderer writes it: its system prompt, its tools and `messages`. */
+  private def turn(seq: Int, system: String, tools: String, messages: Vector[Vector[String]]) =
+    Vector(
+      s"${SentMarkdown.TurnHeading}$seq of c1: the context it was sent",
+      "",
+      "## The request",
+      ""
+    ) ++
+      (Vector(s"${SentMarkdown.SystemHeading}1 fragments: base/grit)", "") ++
+        SentMarkdown.fenced(system, "text") :+ "") ++
+      Vector(s"${SentMarkdown.ToolsHeading}recorded set `t`)", "", s"- `$tools`: does it.") ++
+      (Vector("", s"${SentMarkdown.MessagesHeading}the last call's ${messages.size})") ++
+        messages.flatten) ++ Vector("## Each call", "", "a call")
+
+  /** Message `n`, a user's `text`, as the renderer writes it. */
+  private def said(n: Int, text: String): Vector[String] =
+    Vector("", s"**$n · user** (a message)") ++ SentMarkdown.fenced(text, "text")
+
   val tests = Tests {
+    test("a turn's system prompt, tools and messages already shown are marked, not repeated") {
+      val first = turn(
+        0,
+        "You are a coder.\n### Tools offered (inside)",
+        "read",
+        Vector(said(1, "Brief."), call(2, "t1", "ls"))
+      )
+      val second = turn(
+        1,
+        "You are a coder.\n### Tools offered (inside)",
+        "read",
+        Vector(said(1, "Brief."), call(2, "t1", "ls"), result(3, "t1", "a.txt"))
+      )
+      Trajectory.deduplicated((first ++ second).mkString("\n")) ==> (first ++ Vector(
+        s"${SentMarkdown.TurnHeading}1 of c1: the context it was sent",
+        "",
+        "## The request",
+        "",
+        s"${SentMarkdown.SystemHeading}1 fragments: base/grit)",
+        "(the same as turn 0's system prompt, shown above)",
+        "",
+        s"${SentMarkdown.ToolsHeading}recorded set `t`)",
+        "(the same as turn 0's tools, shown above)",
+        "",
+        s"${SentMarkdown.MessagesHeading}the last call's 3)",
+        "",
+        "**1 · user** (a message)",
+        "(the same as turn 0's message 1, shown above)",
+        "",
+        "**2 · assistant**",
+        "(the same as turn 0's message 2, shown above)"
+      ) ++ result(3, "t1", "a.txt") ++ Vector("## Each call", "", "a call")).mkString("\n")
+    }
+    test("a message that differs is kept whole") {
+      val first =
+        turn(0, "You are a coder.", "read", Vector(said(1, "Brief."), call(2, "t1", "ls")))
+      val second = turn(
+        1,
+        "You are a tester.",
+        "write",
+        Vector(said(1, "Brief, amended."), call(2, "t1", "ls -a"))
+      )
+      val kept = (first ++ second).mkString("\n")
+      (Trajectory.deduplicated(kept), Trajectory.turns(kept)) ==> (kept, 2)
+    }
     test(
       "a tool result past the cut is clipped with the mark, and the lines around it are kept whole"
     ) {
