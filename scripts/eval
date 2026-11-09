@@ -401,14 +401,16 @@
 #       --dry prints what its first call would send and stops: no key reaches grit, and
 #       nothing is spent or kept.
 #
-#   scripts/eval propose --standing <file> --brief <file> --amendments <dir> [--out <dir>]
-#                        <trial>…
+#   scripts/eval propose --standing <file> --against <n> --brief <file> --amendments <dir>
+#                        [--out <dir>] <trial>…
 #       A proposer's evidence checkout (eval/harness's evidence package): the trials of
 #       grit_bench whose sessions' ids are <trial>, all of one task and each begun with the
-#       standing text in --standing's file, read for the public. Under --out
+#       standing text in --standing's file, read for the public; --against, the version of its
+#       section that text is (bin/kalandra standing prints it), a whole number of 1 or more. Under --out
 #       (~/.cache/grit-propose/), a checkout propose-<seconds> holding base/, a clone of the
 #       task's base, and evidence/: PROPOSE.md, the brief in --brief's file then a list of what
-#       is shown; task.md, the task's brief; standing.md; trajectories/<n>.md, each trial's
+#       is shown (standing.md named with --against's version); task.md, the task's brief;
+#       standing.md; trajectories/<n>.md, each trial's
 #       transcript, each system prompt, tool set and message shown once and each tool result
 #       cut to 4,000 characters; amendments/<n>.md, each *.md in
 #       --amendments in order of name. Refused, writing nothing, when a file holds the bench's
@@ -957,10 +959,11 @@ bench() {
 }
 
 propose() {
-  local standing= brief= amendments= out="$HOME/.cache/grit-propose" trials=()
+  local standing= against= brief= amendments= out="$HOME/.cache/grit-propose" trials=()
   while [ $# -gt 0 ]; do
     case $1 in
       --standing) [ $# -ge 2 ] || usage; standing=$2; shift 2 ;;
+      --against) [ $# -ge 2 ] || usage; against=$2; shift 2 ;;
       --brief) [ $# -ge 2 ] || usage; brief=$2; shift 2 ;;
       --amendments) [ $# -ge 2 ] || usage; amendments=$2; shift 2 ;;
       --out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
@@ -968,9 +971,9 @@ propose() {
       *) trials+=("$1"); shift ;;
     esac
   done
-  [ -n "$standing" ] && [ -n "$brief" ] && [ -n "$amendments" ] && [ ${#trials[@]} -gt 0 ] || usage
+  [ -n "$standing" ] && [ -n "$against" ] && [ -n "$brief" ] && [ -n "$amendments" ] && [ ${#trials[@]} -gt 0 ] || usage
   local IFS=,
-  harness propose --trials "${trials[*]}" --standing "$standing" --brief "$brief" \
+  harness propose --trials "${trials[*]}" --standing "$standing" --against "$against" --brief "$brief" \
     --amendments "$amendments" --out "$out" \
     --tasks "$here/eval/bench/tasks" --repository "$main" \
     --url "jdbc:postgresql://localhost:5432/grit_bench" --blobs "$main/.local/bench/blobs/grit_bench"

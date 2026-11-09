@@ -37,6 +37,8 @@ object ProposalTests extends TestSuite {
 
   private val standing: Standing = got(Standing.of("Read before you edit."))
 
+  private val against: Proposal.Against = got(Proposal.Against.of("2370"))
+
   private def session(local: String): SessionId = got(SessionId.of(got(Harness.of("grit")), local))
 
   private def run(local: String, text: String): Proposal.Run =
@@ -160,7 +162,8 @@ object ProposalTests extends TestSuite {
       val text = (call(2, "t1", "scripts/check grit.core") ++
         result(3, "t1", "unit: 430 passed, 0 failed (1 module)") ++
         Vector("", "The tests pass, and all checks green.")).mkString("\n")
-      val shown = Proposal.of(task, Vector(run("r1", text)), standing, Vector.empty, "Propose.")
+      val shown =
+        Proposal.of(task, Vector(run("r1", text)), standing, against, Vector.empty, "Propose.")
       shown.map(_.files.toMap.get(rel("trajectories/1.md"))) ==>
         Right(Some(s"Run 1, session r1.\n\n$text"))
     }
@@ -169,6 +172,7 @@ object ProposalTests extends TestSuite {
         task,
         Vector(run("r1", "one"), run("r2", "two")),
         standing,
+        against,
         Vector("an amendment", "another"),
         "Propose."
       )
@@ -189,6 +193,7 @@ object ProposalTests extends TestSuite {
         task,
         Vector(run("r1", "one")),
         standing,
+        against,
         Vector("fine", s"it did: $verdict"),
         "Propose."
       ) ==>
@@ -240,11 +245,24 @@ object ProposalTests extends TestSuite {
         Left("trial both names more than one trial, of different harnesses")
       )
     }
+    test("the version a standing text is from is a whole number of 1 or more") {
+      Vector("2370", "0", "-3", "v12", "").map(
+        Proposal.Against.of(_).map(Proposal.Against.version)
+      ) ==>
+        Vector(
+          Right(2370L),
+          Left("--against 0: not a version, a whole number of 1 or more"),
+          Left("--against -3: not a version, a whole number of 1 or more"),
+          Left("--against v12: not a version, a whole number of 1 or more"),
+          Left("--against : not a version, a whole number of 1 or more")
+        )
+    }
     test("the said text is the brief, then the files") {
       val shown = Proposal.of(
         task,
         Vector(run("r1", "one")),
         standing,
+        against,
         Vector.empty,
         "Propose an amendment.\n"
       )
@@ -259,7 +277,7 @@ object ProposalTests extends TestSuite {
               |
               |- `base/`: the repository the coder started from, at the commit the task names.
               |- `evidence/task.md`: the task, as its coder was given it.
-              |- `evidence/standing.md`: the standing text every run began with.
+              |- `evidence/standing.md`: the standing text every run began with, its section's text at version 2370, the version an amendment's Diff is against.
               |- `evidence/trajectories/1.md`: one run of the task, each model call in order. A tool result longer than 4,000 characters is cut there, with a line saying how much was left out.
               |- No amendment has been proposed before.
               |""".stripMargin

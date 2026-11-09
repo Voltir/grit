@@ -22,6 +22,24 @@ object Proposal {
     case Cut.Whole => Int.MaxValue
   }
 
+  /** The version of its section a standing text is the text of, which an amendment's Diff names
+    * as the version it is against.
+    */
+  opaque type Against = Long
+
+  object Against {
+
+    /** `raw` as a version, or why not, naming it as `--against`: it is not a whole number of 1 or
+      * more.
+      */
+    def of(raw: String): Either[String, Against] =
+      raw.toLongOption
+        .filter(_ >= 1)
+        .toRight(s"--against $raw: not a version, a whole number of 1 or more")
+
+    def version(a: Against): Long = a
+  }
+
   /** A run a proposer reads: its session, and its transcript as the bench kept it. */
   final case class Run(session: SessionId, kept: Bench.Transcript) extends caps.Pure
 
@@ -69,7 +87,8 @@ object Proposal {
   def amendment(n: Int): RelPath = path(s"amendments/$n.md")
 
   /** `task`'s proposal: [[Said]], `brief` then the list of what follows, each by its path in the
-    * checkout; `task.md`, the task's brief; `standing.md`, `standing`; each of `runs` at
+    * checkout, `standing.md`'s naming `against`, its section's version; `task.md`, the task's
+    * brief; `standing.md`, `standing`; each of `runs` at
     * `trajectories/<n>.md`, numbered from 1 in order, a line naming its session first (and saying
     * so when the bench clipped it), then its transcript with each part a turn showed before marked
     * ([[Trajectory.deduplicated]]) and each tool result cut to [[ResultChars]]
@@ -81,6 +100,7 @@ object Proposal {
       task: BlindTask,
       runs: Vector[Run],
       standing: Standing,
+      against: Against,
       amendments: Vector[String],
       brief: String
   ): Either[Vector[GradeFound], Shown] = {
@@ -98,7 +118,8 @@ object Proposal {
       s"- `${EvidenceCheckout.Base}/`: the repository the coder started from, at the commit the " +
         "task names.",
       s"- ${at(taskFile)}: the task, as its coder was given it.",
-      s"- ${at(standingFile)}: the standing text every run began with."
+      s"- ${at(standingFile)}: the standing text every run began with, its section's text at " +
+        s"version ${Against.version(against)}, the version an amendment's Diff is against."
     ) ++ trajectories.map((p, _) =>
       s"- ${at(p)}: one run of the task, each model call in order. A tool result longer than " +
         f"$ResultChars%,d characters is cut there, with a line saying how much was left out."

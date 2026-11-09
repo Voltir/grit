@@ -24,7 +24,7 @@ private[main] object ProposeCommands {
   /** The most checkouts kept under `--out`: each `propose` removes all but the newest. */
   val Kept: Int = 3
 
-  /** `propose --trials <id>,… --standing <file> --brief <file> --amendments <dir> --tasks <dir>
+  /** `propose --trials <id>,… --standing <file> --against <n> --brief <file> --amendments <dir> --tasks <dir>
     * --repository <path> --url <jdbc> --blobs <dir> --out <dir>`: the evidence checkout of the
     * bench's trials whose sessions' local ids are `<id>`s ([[Proposal.chosen]]: one task's, each
     * begun with the standing text in `<file>`), their transcripts read for the public from the
@@ -41,6 +41,7 @@ private[main] object ProposeCommands {
     for {
       named <- need(f, "trials").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty))
       standing <- need(f, "standing").flatMap(s => Standing.read(Path.of(s)))
+      against <- need(f, "against").flatMap(Proposal.Against.of)
       brief <- need(f, "brief").flatMap(b => read(Path.of(b)))
       amendments <- need(f, "amendments").flatMap(d => amendmentsIn(Path.of(d)))
       url <- need(f, "url")
@@ -48,7 +49,8 @@ private[main] object ProposeCommands {
       blobsAt <- need(f, "blobs").map(Path.of(_))
       _ <- LocalBlobs.open(blobsAt) match {
         case Left(e) => Left(s"the bench's blobs did not open: $e")
-        case Right(blobs) => checkout(f, clock, config, blobs)(named, standing, brief, amendments)
+        case Right(blobs) =>
+          checkout(f, clock, config, blobs)(named, standing, against, brief, amendments)
       }
     } yield ()
 
@@ -56,6 +58,7 @@ private[main] object ProposeCommands {
   private def checkout(f: Map[String, String], clock: Clock^, config: DbConfig, blobs: Blobs^)(
       named: Vector[String],
       standing: Standing,
+      against: Proposal.Against,
       brief: String,
       amendments: Vector[(String, String)]
   ): Either[String, Unit] =
@@ -77,16 +80,17 @@ private[main] object ProposeCommands {
         } yield (task, runs)
       }
       task <- blind(f, read._1)
-      shown <- Proposal.of(task, read._2, standing, amendments.map(_._2), brief).left.map { found =>
-        val keys = amendments.zipWithIndex.map((a, i) => Proposal.amendment(i + 1) -> a._1).toMap
-        found
-          .map(g =>
-            Proposal.graded(
-              keys.get(g.path).fold(s"the file ${RelPath.value(g.path)}")(k => s"amendment $k"),
-              g
+      shown <- Proposal.of(task, read._2, standing, against, amendments.map(_._2), brief).left.map {
+        found =>
+          val keys = amendments.zipWithIndex.map((a, i) => Proposal.amendment(i + 1) -> a._1).toMap
+          found
+            .map(g =>
+              Proposal.graded(
+                keys.get(g.path).fold(s"the file ${RelPath.value(g.path)}")(k => s"amendment $k"),
+                g
+              )
             )
-          )
-          .mkString("; ")
+            .mkString("; ")
       }
       repository <- need(f, "repository")
       out <- need(f, "out").map(Path.of(_))
