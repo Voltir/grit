@@ -198,9 +198,7 @@ object Work {
     * of its output, each indented under a bar.
     */
   def wentOn(named: String, failed: WentOn.CheckFailed, next: Int, cap: Int): String = {
-    val how = failed.exit.fold(
-      s"it ran past ${WentOn.CheckLongest.toMinutes} minutes and was stopped"
-    )(code => s"exit $code")
+    val how = failed.exit.fold(WentOn.CheckFailed.RanPast)(code => s"exit $code")
     val lines = Clipped.lines(failed.tail).takeRight(PrintedLines).map(l => s"\n  | $l")
     s"[main] $named: the check failed ($how); going on in a fresh turn (turn $next of at most $cap)" +
       lines.mkString

@@ -22,6 +22,11 @@ object WentOn {
 
   object CheckFailed {
 
+    /** What a check with no `exit` did, in the words grit tells it in: `it ran past 30 minutes
+      * and was stopped`, at [[CheckLongest]].
+      */
+    val RanPast: String = s"it ran past ${CheckLongest.toMinutes} minutes and was stopped"
+
     /** A failed check as stored: refused when `exit` is 0, or `tail` is not what [[failed]]
       * keeps of it (over [[TailLines]] lines or [[TailBytes]] bytes, or holding an escape or a
       * control character).

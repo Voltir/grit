@@ -71,9 +71,7 @@ object Shown {
     * fenced as a tool's output, its command as the source.
     */
   def checkFailed(failed: WentOn.CheckFailed): String = {
-    val how = failed.exit.fold(
-      s": it ran past ${WentOn.CheckLongest.toMinutes} minutes and was stopped"
-    )(code => s" with exit code $code")
+    val how = failed.exit.fold(s": ${WentOn.CheckFailed.RanPast}")(code => s" with exit code $code")
     Fenced.noted(
       Vector(
         "Your last reply ended the turn without asking to go on, so grit ran the task's " +
