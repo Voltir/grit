@@ -68,6 +68,14 @@ enum AssistantBlock {
   case ToolCall(id: ToolCallId, name: String, arguments: ujson.Value)
 }
 
+object AssistantBlock {
+
+  /** What `blocks` say: their text blocks, in order, run together with nothing between them,
+    * as a model streams one reply's text in pieces; empty when there are none.
+    */
+  def text(blocks: Vector[AssistantBlock]): String = blocks.collect { case Text(t) => t }.mkString
+}
+
 /** Why a model response ended. `Other` keeps a reason grit has no case for. */
 enum StopReason {
   case EndTurn

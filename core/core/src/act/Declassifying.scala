@@ -146,7 +146,7 @@ object Declassifying {
     * stopped at its length limit is cut short), or is blank.
     */
   def written(reply: Message.Assistant): Either[String, Option[DocText]] = {
-    val text = reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+    val text = AssistantBlock.text(reply.blocks).trim
     reply.stop match {
       case StopReason.MaxTokens => Left(CutShort)
       case StopReason.EndTurn if text == Nothing => Right(None)

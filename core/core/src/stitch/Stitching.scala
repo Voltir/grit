@@ -540,7 +540,7 @@ object Stitching {
   /** `s`'s words, when it is a message: a person's, grit's reply, or grit's post. */
   private[core] def spoken(s: Said): Option[String] = s.entry.payload match {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-      Some(blocks.collect { case AssistantBlock.Text(t) => t }.mkString).filter(_.nonEmpty)
+      Some(AssistantBlock.text(blocks)).filter(_.nonEmpty)
     case Payload.Posted(text) => Some(text).filter(_.nonEmpty)
     case p => p.said
   }

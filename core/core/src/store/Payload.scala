@@ -147,7 +147,8 @@ enum Payload {
   }
 
   /** How many characters, as Unicode code points, were said in this entry, people's or grit's:
-    * a person's message or heard words, grit's reply (its text blocks, joined by a space) or
+    * a person's message or heard words, grit's reply (its text blocks joined by a space, as the
+    * database's `grit.entry_text` joins them for the period store's count) or
     * post; 0 for any other entry, a draft, a tool call or its result among them.
     */
   def spoken: Long = this match {

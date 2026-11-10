@@ -188,7 +188,7 @@ object TurnSummary {
 
   /** The summary in `reply`: its text, trimmed; `None` when it has none. */
   def text(reply: Message.Assistant): Option[String] =
-    Some(reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim)
+    Some(AssistantBlock.text(reply.blocks).trim)
       .filter(_.nonEmpty)
 
   /** `payload`'s line of the transcript among `payloads`, as the parts of its fence: what was

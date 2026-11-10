@@ -104,7 +104,7 @@ object TurnJudge {
     * [[TurnPrompt.Pass]] or nothing.
     */
   def said(draft: Message.Assistant): Option[String] = {
-    val text = draft.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+    val text = AssistantBlock.text(draft.blocks).trim
     Option.when(text.nonEmpty && text.toLowerCase != TurnPrompt.Pass)(text)
   }
 
@@ -219,7 +219,7 @@ object TurnJudge {
       def line(speaker: String, text: String) = Stitching.Line(speaker, text, e.createdAt)
       (e.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-          val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+          val said = AssistantBlock.text(blocks)
           Option.when(said.nonEmpty)(line("Assistant", said))
         case Payload.Posted(text) => Option.when(text.nonEmpty)(line("Assistant", text))
         case p => p.said.map(line(speakers.of(e.id).getOrElse("Someone"), _))

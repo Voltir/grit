@@ -112,7 +112,7 @@ private[grit] object OnceRuns {
       .toOption
       .flatMap(_.reverseIterator.collectFirst {
         case Entry(_, _, _, _, _, Payload.Message(a: Message.Assistant), _, _) =>
-          a.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+          AssistantBlock.text(a.blocks)
       })
   }
 }

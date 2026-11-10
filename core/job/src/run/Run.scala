@@ -310,7 +310,7 @@ object Run {
 
   private def textOf(entry: Entry): String = entry.payload match {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-      blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      AssistantBlock.text(blocks)
     case _ => ""
   }
 

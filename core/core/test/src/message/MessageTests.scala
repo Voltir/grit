@@ -16,5 +16,18 @@ object MessageTests extends TestSuite {
         holding(AssistantBlock.Text("done")).withholds
       ) ==> (true, false, false)
     }
+
+    test(
+      "a reply's text is its text blocks run together in order, its reasoning and calls left out"
+    ) {
+      val blocks = Vector(
+        AssistantBlock.Reasoning("thinking", None),
+        AssistantBlock.Text("Moved a.txt"),
+        AssistantBlock.ToolCall(grit.core.id.ToolCallId("t1"), "peek", ujson.Obj()),
+        AssistantBlock.Text(" and b.txt.")
+      )
+      (AssistantBlock.text(blocks), AssistantBlock.text(blocks.take(1))) ==>
+        ("Moved a.txt and b.txt.", "")
+    }
   }
 }

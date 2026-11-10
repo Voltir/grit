@@ -302,7 +302,7 @@ object ReplyReview {
   }
 
   private def said(m: Message.Assistant): String =
-    m.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+    AssistantBlock.text(m.blocks)
 
   /** One review file's content: a capture's turns as picked, written at `at` under
     * [[ReplyGuide.Current]].

@@ -715,7 +715,7 @@ object SentMarkdown {
     case Message.User(t) =>
       Vector("", s"**$n · user** (${kind(t)})") ++ fenced(t, "text")
     case Message.Assistant(blocks, _, _, _, _) =>
-      val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      val said = AssistantBlock.text(blocks)
       val calls = blocks.collect { case AssistantBlock.ToolCall(id, name, args) =>
         s"- calls `$name` (`${ToolCallId.value(id)}`) with `${ujson.write(args).replace("`", "'")}`"
       }
@@ -743,7 +743,7 @@ object SentMarkdown {
     }
 
   private def text(m: Message.Assistant): String =
-    m.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+    AssistantBlock.text(m.blocks)
 
   private def rootName(root: TurnOffer.Root): String = root match {
     case TurnOffer.Root.Addressed => "addressed (said to grit)"

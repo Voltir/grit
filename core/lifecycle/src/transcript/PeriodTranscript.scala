@@ -212,7 +212,7 @@ object PeriodTranscript {
         Some(said(speakers.of(entry.id).getOrElse("User"), text))
       case Payload.Heard(text) => Some(said(speakers.of(entry.id).getOrElse("Someone"), text))
       case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-        val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+        val text = AssistantBlock.text(blocks).trim
         Option.when(text.nonEmpty)(said("Assistant", text))
       case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(said("Assistant", text.trim))
       case _ => None

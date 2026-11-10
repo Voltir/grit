@@ -468,7 +468,7 @@ object Close {
     }
     val reply = entries.reverse.collectFirst {
       case Entry(_, _, _, _, _, Payload.Message(Message.Assistant(blocks, _, _, _, _)), _, _) =>
-        blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+        AssistantBlock.text(blocks)
     }
     opening
       .orElse(fallback(entries, attempt, first))

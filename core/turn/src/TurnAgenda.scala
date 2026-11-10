@@ -403,7 +403,7 @@ object TurnAgenda {
         _.payload match {
           case Payload.Message(Message.User(text)) => Some(Said(true, text))
           case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-            val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+            val text = AssistantBlock.text(blocks)
             Option.when(text.nonEmpty)(Said(false, text))
           case _ => None
         }

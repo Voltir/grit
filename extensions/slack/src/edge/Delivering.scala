@@ -389,7 +389,7 @@ private[slack] object Delivering {
     */
   private def posts(reply: Option[Message.Assistant], outcome: String): Vector[Post] = {
     val text =
-      reply.map(_.blocks.collect { case AssistantBlock.Text(t) => t }.mkString).getOrElse("")
+      reply.map(r => AssistantBlock.text(r.blocks)).getOrElse("")
     val rendered = RichText.render(Markdown.parse(text))
     if (rendered.nonEmpty) rendered
     else

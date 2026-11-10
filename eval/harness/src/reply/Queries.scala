@@ -100,7 +100,7 @@ object Queries {
           writer.complete(r) match {
             case Left(_) => done.copy(failed = done.failed + 1, budget = done.budget.spend(Usd))
             case Right(m) =>
-              val text = m.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+              val text = AssistantBlock.text(m.blocks)
               val kept =
                 cache.put(k, Cached(text, m.usage, m.model, (clock.millis() - started).millis))
               done.copy(

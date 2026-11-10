@@ -206,7 +206,7 @@ object ClosingSummary {
       asked: Asked,
       transcript: Labelled
   ): Option[Written] = {
-    val whole = reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
+    val whole = AssistantBlock.text(reply.blocks).trim
     val labelled = whole.linesIterator.toVector.foldLeft(Vector.empty[(String, String)]) {
       (acc, line) =>
         line match {

@@ -37,7 +37,7 @@ object Records {
   /** A reply's text; `None` for one with none and every other payload. */
   private def replied(payload: Payload): Option[String] = payload match {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-      Some(blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim).filter(_.nonEmpty)
+      Some(AssistantBlock.text(blocks).trim).filter(_.nonEmpty)
     case _ => None
   }
 }

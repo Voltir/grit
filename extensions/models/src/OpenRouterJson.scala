@@ -89,7 +89,7 @@ object OpenRouterJson {
           "content" -> said(content)
         )
       case Message.Assistant(blocks, _, _, _, _) =>
-        val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+        val text = AssistantBlock.text(blocks)
         val calls = blocks.collect { case AssistantBlock.ToolCall(id, name, arguments) =>
           ujson.Obj(
             "id" -> ToolCallId.value(id),

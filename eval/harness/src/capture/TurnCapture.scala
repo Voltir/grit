@@ -468,7 +468,7 @@ object TurnCapture {
   private def text(m: Message): String = m match {
     case Message.User(t) => t
     case Message.Assistant(blocks, _, _, _, _) =>
-      blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+      AssistantBlock.text(blocks)
     case Message.ToolResult(_, content, _) => content
   }
 }
