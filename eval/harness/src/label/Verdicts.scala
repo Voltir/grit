@@ -22,9 +22,8 @@ final case class Rated(
     at: Instant
 )
 
-/** The verdicts standing on reviewed messages, by case. Kept apart from [[Labels]], never
-  * merged with them: a verdict judges the speech decision at its moment, a label the inputs a
-  * call was given.
+/** The verdicts standing on reviewed messages, by case: each judges the speech decision at its
+  * moment.
   */
 final case class Verdicts(cases: Map[CaseId, Rated])
 

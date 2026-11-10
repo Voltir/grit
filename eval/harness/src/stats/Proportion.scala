@@ -50,8 +50,8 @@ object Proportion {
       else {
         val p = hits.toDouble / n
         val binomial = p * (1 - p) / n
-        // CR1 over the clusters' sums of residuals, as Estimate.clustered takes it of each item
-        // scored 1 or 0: a cluster's sum is its hits less p of its items.
+        // CR1 over the clusters' sums of residuals, each item scored 1 or 0: a cluster's sum is
+        // its hits less p of its items.
         val g = clusters.size.toDouble
         val sums = clusters.values.map((h, of) => h - p * of)
         val clustered = g / (g - 1) * sums.map(s => s * s).sum / (n.toDouble * n)

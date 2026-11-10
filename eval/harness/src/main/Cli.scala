@@ -2,59 +2,20 @@ package grit.eval.harness.main
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
-import java.time.format.DateTimeFormatter
 
 import scala.util.Try
 import scala.util.control.NonFatal
 
-import grit.core.message.Cost
-import grit.core.period.Probability
 import grit.dbos.internal.Reader
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.jev.Budget
-import grit.eval.harness.log.{Codec, Footer, Log, LogJson, Row}
 
 /** What the commands share: flags and their values, files read and written, how a command exits. */
 private[main] object Cli {
-
-  private[main] def chance(what: String)(v: String): Either[String, Probability] =
-    v.toDoubleOption
-      .filter(p => p >= 0 && p <= 1)
-      .map(Probability.clamped)
-      .toRight(s"--$what $v: not a probability")
-
-  private[main] def count(what: String)(v: String): Either[String, Int] =
-    v.toIntOption.filter(_ >= 0).toRight(s"--$what $v: not a whole number")
-
-  /** `log` as its file's lines: header, rows, then its footer when it has one. */
-  private[main] def lines[A: Codec](log: Log[A]): String =
-    (Vector(LogJson.header(log.header)) ++
-      log.rows.map((r: Row[A]) => LogJson.row(r)) ++
-      log.footer.map(LogJson.footer).toVector).map(_ + "\n").mkString
-
-  /** `report` written to `<dir>/reports/<name>.md`, and printed. */
-  private[main] def publish(dir: Path, name: String, report: String): Either[String, Unit] = {
-    val reports = dir.resolve("reports")
-    for {
-      _ <- mkdirs(reports)
-      _ <- write(reports.resolve(s"$name.md"), report)
-    } yield print(report)
-  }
-
-  private[main] val Stamp = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
-
-  private[main] val Day = DateTimeFormatter.ofPattern("yyyyMMdd")
 
   private[main] def read(path: Path): Either[String, String] =
     Try(Files.readString(path, StandardCharsets.UTF_8)).toEither.left.map(e =>
       s"$path unread: ${e.getClass.getName}"
     )
-
-  private[main] def refused(r: Budget.Refused): String =
-    s"refused: estimated ${Cost.cents(r.estimated)} is over the cap ${Cost.cents(r.cap)}"
-
-  private[main] def decimal(what: String)(v: String): Either[String, BigDecimal] =
-    Try(BigDecimal(v)).toOption.filter(_ >= 0).toRight(s"--$what $v: not a non-negative number")
 
   private[main] def positive(what: String)(v: String): Either[String, Int] =
     v.toIntOption.filter(_ > 0).toRight(s"--$what $v: not a positive whole number")
