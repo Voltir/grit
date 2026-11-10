@@ -66,6 +66,18 @@ object AnthropicRatesTests extends TestSuite {
     }
 
     test(
+      "a total is priced exactly while one tier holds for every set of prompts of it: never past Haiku's first step, at any length on Opus, not at all on an unknown model"
+    ) {
+      def total(input: Long) = usage(input, 0, 0, 0)
+      (
+        AnthropicRates.ofTotal("claude-haiku-5-5", total(100000)),
+        AnthropicRates.ofTotal("claude-haiku-5-5", total(100001)),
+        AnthropicRates.ofTotal("claude-opus-5-5", total(5000000)),
+        AnthropicRates.ofTotal("claude-unknown-9", total(1))
+      ) ==> (direct("anthropic/claude-haiku-5-5"), None, direct("anthropic/claude-opus-5-5"), None)
+    }
+
+    test(
       "a model is priced as the seed's profile of it at Anthropic's API, a dated snapshot as its alias, and an unknown model not at all"
     ) {
       (

@@ -84,5 +84,17 @@ object PricingTests extends TestSuite {
         Pricing.flat(short).oneTier(Tokens(10_000_000))
       ) ==> (Some(Tokens(100_000)), None, true, false, true)
     }
+
+    test("an output token costs a millionth of its tier's output rate") {
+      (short.outputPerToken, long.outputPerToken) ==>
+        (BigDecimal("0.0000005"), BigDecimal("0.0000025"))
+    }
+
+    test("a usage priced by a pricing costs what it bills, and nothing known under none") {
+      // 1,000 uncached at 0.10 and 1,000 out at 0.50.
+      val used = usage(1_000, 0, 0, 1_000)
+      (Pricing.priced(used, Some(haiku)).costUsd, Pricing.priced(used, None)) ==>
+        (Some(BigDecimal("0.0006")), used.copy(costUsd = None))
+    }
   }
 }

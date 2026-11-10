@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets
 import scala.util.Try
 
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.model.Pricing
 import grit.core.provider.CallLine
 import grit.models.{AnthropicJson, AnthropicRates}
 
@@ -90,16 +91,17 @@ final case class Consumed(
   def gritCost: Either[String, BigDecimal] = {
     // USD per output token, at the tier the call's prompt took.
     def outputRate(c: Call): Option[BigDecimal] =
-      AnthropicRates.pricing(c.model).map(_.at(c.usage.input).output / BigDecimal(1000000))
+      AnthropicRates.pricing(c.model).map(_.at(c.usage.input).outputPerToken)
     // One model's cost: its calls' costs and its output beyond their events, at their rate when
     // they share one; or, with no call of its in the events, its side calls' totals when one card
     // holds for them.
     def priced(model: String, total: Usage): Either[String, BigDecimal] = {
       val own = calls.filter(c => AnthropicJson.isOrSnapshotOf(c.model, model))
       if (own.isEmpty)
-        if (AnthropicRates.pricing(model).exists(_.oneTier(total.input)))
-          AnthropicRates.pricing(model).map(_.cost(total)).toRight("a model it has no rates for")
-        else Left(s"$model's side calls may straddle a card")
+        AnthropicRates
+          .ofTotal(model, total)
+          .map(_.cost(total))
+          .toRight(s"$model's side calls may straddle a card")
       else {
         val costs = own.flatMap(_.usage.costUsd)
         val remaining = Tokens.value(total.output) - own.map(c => Tokens.value(c.usage.output)).sum
@@ -144,7 +146,7 @@ object Consumed {
   def gritCalls(lines: Vector[String]): Vector[Call] =
     lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
       val m = model.stripPrefix("anthropic/")
-      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.pricing(m).map(_.cost(usage))))
+      Call(s"call-${i + 1}", m, Pricing.priced(usage, AnthropicRates.pricing(m)))
     }
 
   /** The tools of grit's that edit a file. */
@@ -315,7 +317,7 @@ object Consumed {
   private def call(id: String, m: ujson.Obj): Call = {
     val model = text(m, "model").getOrElse("")
     val usage = AnthropicJson.usageOf(obj(m, "usage").map(_.value))
-    Call(id, model, usage.copy(costUsd = AnthropicRates.pricing(model).map(_.cost(usage))))
+    Call(id, model, Pricing.priced(usage, AnthropicRates.pricing(model)))
   }
 
   /** Whether `m` edits a file under `checkout`, or a relative path, which is under it. */

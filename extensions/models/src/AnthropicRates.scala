@@ -37,9 +37,17 @@ object AnthropicRates {
     // A sum's input is no call's prompt, which is what picks a tier: a sum past a step may
     // hold only calls under it.
     thinkingCost(Vector(model -> total.copy(input = Tokens.Zero))) match {
-      case Cost.Exact(usd) if !pricing(model).exists(_.oneTier(total.input)) => Cost.AtLeast(usd)
+      case Cost.Exact(usd) if ofTotal(model, total).isEmpty => Cost.AtLeast(usd)
       case cost => cost
     }
+
+  /** What prices calls on `model` whose usage together is `total` exactly, when only the total
+    * is known: [[pricing]]'s, when every set of prompts of that total takes its first tier
+    * ([[Pricing.oneTier]]); `None` when the calls may straddle a tier, or for a model it does
+    * not price.
+    */
+  def ofTotal(model: String, total: Usage): Option[Pricing] =
+    pricing(model).filter(_.oneTier(total.input))
 
   /** Each priced seed profile at Anthropic's API, by Anthropic's own id. An unreadable seed
     * prices nothing; `CatalogModelsTests` reads the seed, so a build with one fails there.

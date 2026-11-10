@@ -122,7 +122,7 @@ object AnthropicJson {
       Message.Assistant(
         blocks,
         stop(root.get("stop_reason").flatMap(_.strOpt)),
-        counted.copy(costUsd = pricing.map(_.cost(counted))),
+        Pricing.priced(counted, pricing),
         model,
         Some(Upstream.value(Upstream.AnthropicApi))
       )

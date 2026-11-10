@@ -12,7 +12,11 @@ final case class Rates private (
     write: BigDecimal,
     read: BigDecimal,
     output: BigDecimal
-) derives CanEqual
+) derives CanEqual {
+
+  /** What one output token costs at these rates, in USD. */
+  def outputPerToken: BigDecimal = output / Pricing.Million
+}
 
 object Rates {
 
@@ -56,7 +60,7 @@ final case class Pricing private (first: Rates, steps: Vector[Pricing.Tier]) der
     * its thinking is not reported.
     */
   def thinking(usage: Usage): Option[BigDecimal] =
-    usage.thinking.map(t => at(usage.input).output * Tokens.value(t) / Pricing.Million)
+    usage.thinking.map(t => at(usage.input).outputPerToken * Tokens.value(t))
 
   /** The longest prompt billed at `first`, where the price first rises; `None` for one tier. */
   def flatTo: Option[Tokens] = steps.headOption.map(_.past)
@@ -70,7 +74,11 @@ final case class Pricing private (first: Rates, steps: Vector[Pricing.Tier]) der
 
 object Pricing {
 
-  private val Million = BigDecimal(1000000)
+  private[model] val Million = BigDecimal(1000000)
+
+  /** `usage` with its cost what `pricing` bills it ([[Pricing.cost]]); unknown under none. */
+  def priced(usage: Usage, pricing: Option[Pricing]): Usage =
+    usage.copy(costUsd = pricing.map(_.cost(usage)))
 
   /** Rates for a prompt longer than `past`. */
   final case class Tier(past: Tokens, rates: Rates) derives CanEqual
