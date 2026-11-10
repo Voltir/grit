@@ -782,6 +782,28 @@ object RecordTurnHistories {
         limit = Some(grit.core.message.Tokens(2500)),
         recipe = grit.core.recipe.TurnRecipe.Tasked
       ),
+      // A turn briefed for one task whose calls ran out, no limit cutting it: recorded before
+      // a budget's own last calls ended its turn at its limit, its task_status alone on the last
+      // call with tools was refused as early, and its last call answered in text.
+      "loop-tasked-calls-ran-out" -> looping(
+        Vector("move them"),
+        new TurnFixtures.Scripted((_, n) =>
+          Right(
+            if (n < 3) calling(s"moving $n", (s"t$n", "peek", peeking("a.txt")))
+            else if (n == 3)
+              calling(
+                "",
+                (
+                  "status",
+                  "task_status",
+                  ujson.Obj("state" -> "more", "handoff" -> "Moved three; d.txt is left.")
+                )
+              )
+            else calling("Moved three; d.txt is left.")
+          )
+        ),
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      ),
       // A result believed at nothing withholds post, which requires member, from the next
       // round, and the call of it there is answered that it is withheld.
       "gated-withheld" -> looping(Vector("read and post"), gatedScript, gated = true),

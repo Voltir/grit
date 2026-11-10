@@ -139,6 +139,7 @@ object TurnReplayTests extends TestSuite {
       "loop-last-called.json" -> reasoned,
       "loop-last-refused.json" -> reasoned,
       "loop-cut-declared.json" -> reasoned,
+      "loop-tasked-calls-ran-out.json" -> reasoned,
       "heard-reached-read.json" -> reasoned,
       // A channel's top level and a thread under it, likewise; the first searched, its one
       // candidate, a room's closing, judged in the first batch.
@@ -173,7 +174,8 @@ object TurnReplayTests extends TestSuite {
         names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
       // The shapes the gate's rejection, the quiet exit and the carried window made, which no
       // history before them could have, and those recorded in this epoch since: a last reply
-      // that called a tool, before and after its refusal, a tasked turn declaring, and a heard
+      // that called a tool, before and after its refusal, a tasked turn declaring and one whose
+      // calls ran out, and a heard
       // turn calling a reached read tool, and a channel's top level's and a thread's turns.
       val rejected = Set(
         "unneeded.json",
@@ -186,6 +188,7 @@ object TurnReplayTests extends TestSuite {
         "loop-last-called.json",
         "loop-last-refused.json",
         "loop-cut-declared.json",
+        "loop-tasked-calls-ran-out.json",
         "heard-reached-read.json",
         "room-closing-found.json",
         "room-thread-asked.json",
@@ -365,6 +368,7 @@ object TurnReplayTests extends TestSuite {
         "loop-last-called.json",
         "loop-last-refused.json",
         "loop-cut-declared.json",
+        "loop-tasked-calls-ran-out.json",
         "heard-reached-read.json",
         "room-closing-found.json",
         "room-thread-asked.json",
