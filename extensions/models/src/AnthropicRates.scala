@@ -1,7 +1,7 @@
 package grit.models
 
 import grit.core.message.{Cost, Tokens, Usage}
-import grit.core.model.{Catalog, Known, ModelId, Pricing, Upstream}
+import grit.core.model.{Catalog, ModelId, Pricing, Upstream}
 
 /** What Anthropic bills a recorded call, which has no pin: the prices of the [[Seed]]'s profiles
   * of Anthropic's models at its API. A live call is priced by its pin's settings
@@ -55,10 +55,8 @@ object AnthropicRates {
       val id = ModelId.value(p.ref.model)
       val direct = p.ref.upstream.contains(Upstream.AnthropicApi) &&
         id.startsWith(AnthropicProvider.Vendor)
-      p.pricing match {
-        case Known.Of(pricing, _) if direct =>
-          Some(id.stripPrefix(AnthropicProvider.Vendor) -> pricing)
-        case _ => None
-      }
+      p.pricing.toOption
+        .filter(_ => direct)
+        .map(id.stripPrefix(AnthropicProvider.Vendor) -> _)
     }
 }

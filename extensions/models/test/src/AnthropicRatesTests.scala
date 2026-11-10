@@ -23,10 +23,7 @@ object AnthropicRatesTests extends TestSuite {
     ModelId
       .of(model)
       .flatMap(id => seed.profile(ModelRef(id, Some(Upstream.AnthropicApi))))
-      .flatMap(_.pricing match {
-        case Known.Of(p, _) => Some(p)
-        case Known.Unmeasured => None
-      })
+      .flatMap(_.pricing.toOption)
 
   val tests = Tests {
     test(

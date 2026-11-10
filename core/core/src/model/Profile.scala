@@ -135,10 +135,6 @@ object Settings {
     */
   def of(profile: Option[Profile]): Settings = {
     def known[A](setting: Profile => Known[A]): Known[A] = profile.fold(Known.Unmeasured)(setting)
-    def value[A](k: Known[A]): Option[A] = k match {
-      case Known.Of(a, _) => Some(a)
-      case Known.Unmeasured => None
-    }
     Settings(
       known(_.strict).getOr(StrictSchemas.Ignored),
       known(_.replay).getOr(ReasoningReplay.Details),
@@ -147,9 +143,9 @@ object Settings {
       known(_.afterResult).getOr(AfterToolResult.UserMessage),
       known(_.guidance).getOr(ToolGuidance.SchemaOnly),
       profile.isDefined,
-      value(known(_.contextLength)),
-      value(known(_.effectiveContext)),
-      value(known(_.pricing))
+      known(_.contextLength).toOption,
+      known(_.effectiveContext).toOption,
+      known(_.pricing).toOption
     )
   }
 }

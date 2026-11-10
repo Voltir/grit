@@ -41,4 +41,10 @@ enum Known[+A] {
     case Of(value, _) => value
     case Unmeasured => otherwise
   }
+
+  /** The value, or `None` when unmeasured. */
+  def toOption: Option[A] = this match {
+    case Of(value, _) => Some(value)
+    case Unmeasured => None
+  }
 }
