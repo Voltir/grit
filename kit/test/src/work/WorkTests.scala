@@ -260,15 +260,26 @@ object WorkTests extends TestSuite {
         Work.reached(
           Rehearsed(
             Vector(
+              ran("c:0", RehearsalRunner.Came.Stopped("ask:0")),
+              ran("p:0", RehearsalRunner.Came.Returned("{}"))
+            )
+          )
+        ),
+        Work.reached(
+          Rehearsed(
+            Vector(
               ran("p:0", RehearsalRunner.Came.Returned("{}")),
-              ran("c:0", RehearsalRunner.Came.Stopped("ask:0"))
+              ran("c:0", RehearsalRunner.Came.Threw(unwritten))
             )
           )
         )
       ) ==> (
         Left(s"the dry run showed no first call: c:0 threw $unwritten"),
         Left("the dry run showed no first call: c:0 returned before making it"),
-        Right(())
+        Right(()),
+        Left(
+          s"the dry run showed no first call: p:0 returned before making it; c:0 threw $unwritten"
+        )
       )
     }
 
