@@ -1,4 +1,4 @@
-package grit.eval.harness.capture
+package grit.eval.harness.sent
 
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}

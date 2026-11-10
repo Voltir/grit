@@ -41,19 +41,18 @@ Packages, each importing only those above it:
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
   through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials
   too, takes distance over passing trials only, and does not score quality yet.
-- **`capture`**: what `sent` and `loss` share and the declarations `scripts/eval context` reads:
-  how a read through `Reader` failed, said alike by both, and a deployment's persona and
-  corpora, read from a hand-written `persona.json` and `knowledge.json` (grit's database keeps
-  no declaration).
 - **`sent`**: one recorded turn as its model was sent it, text and all, for a person to read
   (`scripts/eval context`), and what Jev was asked of a heard message, rebuilt through the
-  shipped builder since triage keeps no request. It measures each call too: its cache
+  shipped builder since triage keeps no request, worded for a deployment's persona and corpora
+  as a hand-written `persona.json` and `knowledge.json` declare them (grit's database keeps no
+  declaration). It holds too how a read through `Reader` failed, said alike by it and `loss`.
+  It measures each call too: its cache
   misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
   `bench`), its input by part, and what is unreferenced (no later output refers to it), a
   proxy only: a part can steer a model without being quoted, so cutting it and rerunning the
   task decides. A task's boundaries can be redrawn by this build's assembler, each first call
   rebuilt under the window drawn afresh, so a change to what a boundary draws is seen in
-  tokens before a model is paid to run it. ← `capture`
+  tokens before a model is paid to run it.
 - **`evidence`**: what a proposer of amendments to the coder's standing text is given to read: a
   frozen task blind to its grading, an evidence checkout's files, and the patterns an amendment
   says its coder will be seen acting on, matched over a kept trajectory's lines. Nothing a grade
@@ -66,7 +65,7 @@ Packages, each importing only those above it:
   tool withheld, a tool that writes out withheld, and a turn lost, one whose root asks for a
   write out, as Jev judges the root alone, asked only when a write-out tool was withheld; and the
   items each turn left hidden, closing records apart. It reads, never writes, and keeps nothing.
-  ← `stats`, `capture`
+  ← `stats`, `sent`
 - **`main`**: the command line `scripts/eval` and `scripts/integrity-loss` run. ← every package
   above
 

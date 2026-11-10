@@ -7,7 +7,7 @@ import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.store.Tx
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Unread
+import grit.eval.harness.sent.Unread
 import grit.prose.either.Traversal
 
 /** The turns a database recorded in a window, read for the lost-tool measure through

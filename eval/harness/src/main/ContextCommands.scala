@@ -10,11 +10,12 @@ import grit.core.message.Tokens
 import grit.core.persona.Persona
 import grit.core.triage.Corpora
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.capture.{KnowledgeJson, PersonaJson}
 import grit.eval.harness.sent.{
   ConversationSent,
   Cut,
   HeardSent,
+  KnowledgeJson,
+  PersonaJson,
   Redrawn,
   SentMarkdown,
   TaskLines,

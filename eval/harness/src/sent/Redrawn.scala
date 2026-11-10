@@ -16,7 +16,6 @@ import grit.core.provider.{ModelRequest, TokenEstimator}
 import grit.core.store.{Entry, Payload, Tx}
 import grit.core.visibility.Subject
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Unread
 import grit.turn.{Turn, TurnRecord}
 
 /** A boundary's first call by part, in tokens: its system prompt and tools; the task it goes on

@@ -5,7 +5,6 @@ import java.time.Instant
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.store.{Entry, Payload, Tx}
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.Unread
 
 /** A conversation's turns as their models were sent them: `turns`, each [[TurnSent]], oldest
   * first, and `entries`, every entry the conversation keeps, in order.
