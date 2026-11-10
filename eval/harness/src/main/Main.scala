@@ -10,7 +10,8 @@ import ContextCommands.*
 import IntegrityCommands.*
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
-  * takes. It prints counts, ids and field names, never a message's text.
+  * takes. It prints counts, ids and field names, never a message's text: the text `context` and
+  * `propose` show goes only to the review file or the checkout each writes.
   */
 object Main {
 

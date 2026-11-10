@@ -712,7 +712,7 @@ rules:
     forbid_name: outside-dbos-and-harness
     pattern: "* -> grit.dbos.internal.Scratch"
     mode: strict
-    because: "grit.dbos.internal's Scratch creates and drops databases; only grit.dbos (its integration suites' server) and the eval harness, which draws each case in a database of its own, may name it"
+    because: "grit.dbos.internal's Scratch creates and drops databases; only grit.dbos (its integration suites' server) names it; the eval harness is outside this rule's subjects as it is outside the other two rules of 1h, though it names Scratch nowhere"
 
   - id: only-dbos-and-harness-name-dbos-bench-rows
     forbid_name: outside-dbos-and-harness
