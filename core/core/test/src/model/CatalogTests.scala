@@ -254,6 +254,53 @@ object CatalogTests extends TestSuite {
       ) ==> (true, false, false, Right(long), Some(Tokens(131_072)), Right(Some(Tokens(131_072))))
     }
 
+    // The stored form of a pair's effective context and pricing: persisted in the seed and in
+    // every pin, so hashed into catalog versions and turn-profile ids. Rates are JSON numbers,
+    // USD per million tokens.
+    test(
+      "stored form: a pair's effective context and pricing, in its profile and its pin, read back as written"
+    ) {
+      def rates(input: String, write: String, read: String, output: String) =
+        Rates
+          .of(BigDecimal(input), BigDecimal(write), BigDecimal(read), BigDecimal(output))
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+      val pricing = Pricing
+        .of(
+          rates("0.10", "0.125", "0.01", "0.50"),
+          Vector(Pricing.Tier(Tokens(100_000), rates("0.50", "0.625", "0.05", "2.50")))
+        )
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val priced = ossProfile.copy(
+        effectiveContext = Known.Of(Tokens(500_000), nick),
+        pricing = Known.Of(pricing, listed)
+      )
+      val pricingForm =
+        """{"first":{"input":0.1,"write":0.125,"read":0.01,"output":0.5},""" +
+          """"steps":[{"past":100000,"rates":{"input":0.5,"write":0.625,"read":0.05,"output":2.5}}]}"""
+      val profileForm =
+        """{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16",""" +
+          """"strict":{"value":"ignored","source":{"kind":"measured","probe":"exit-task","on":"2026-09-25","runs":3,"held":3}},""" +
+          """"names":{"value":"harmony-cut","source":{"kind":"measured","probe":"exit-task","on":"2026-09-25","runs":3,"held":3}},""" +
+          """"effectiveContext":{"value":500000,"source":{"kind":"declared","by":"nick","on":"2026-09-25"}},""" +
+          s""""pricing":{"value":$pricingForm,"source":{"kind":"advertised","on":"2026-09-25"}}}"""
+      val t = Catalog
+        .of(policy.copy(summary = policy.turn, query = policy.turn), Vector(priced))
+        .pin
+      val settingsForm =
+        """"settings":{"strict":"ignored","replay":"details","names":"harmony-cut","repairs":["quoted-list","quoted-number"],""" +
+          s""""afterResult":"user-message","guidance":"schema-only","profiled":true,"effectiveContext":500000,"pricing":$pricingForm}}"""
+      val pinForm =
+        s"""{"catalog":"${CatalogVersion.value(t.turn.first.version)}",""" +
+          """"assignment":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"low"},""" +
+          settingsForm
+      (
+        CatalogJson.writeProfile(priced).render(),
+        CatalogJson.readProfile(ujson.read(profileForm)),
+        CatalogJson.writePinned(t.turn.first).render(),
+        CatalogJson.readTurn(ujson.read(CatalogJson.writeTurn(t).render())).map(_.turn.first)
+      ) ==> (profileForm, Right(priced), pinForm, Right(t.turn.first))
+    }
+
     test("stored form: a turn profile") {
       val t =
         Catalog.of(policy.copy(summary = policy.turn, query = policy.turn), Vector(ossProfile)).pin

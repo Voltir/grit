@@ -72,7 +72,9 @@ enum ToolGuidance {
 
 /** Everything grit knows about one pair: data, read and stored as is. A call is made under
   * the [[Settings]] a profile resolves to, never the profile itself. `contextLength` is the
-  * most tokens, input and output together, the pair accepts in one request.
+  * most tokens, input and output together, the pair accepts in one request;
+  * `effectiveContext`, the longest prompt (a request's input) it does its best work within;
+  * `pricing`, what it bills a call.
   */
 final case class Profile(
     ref: ModelRef,
@@ -82,7 +84,9 @@ final case class Profile(
     repairs: Known[Set[ArgRepair]] = Known.Unmeasured,
     afterResult: Known[AfterToolResult] = Known.Unmeasured,
     guidance: Known[ToolGuidance] = Known.Unmeasured,
-    contextLength: Known[Tokens] = Known.Unmeasured
+    contextLength: Known[Tokens] = Known.Unmeasured,
+    effectiveContext: Known[Tokens] = Known.Unmeasured,
+    pricing: Known[Pricing] = Known.Unmeasured
 ) {
 
   /** Each of `other`'s settings over this one's where its source ranks higher
@@ -97,13 +101,17 @@ final case class Profile(
       repairs.orOver(other.repairs),
       afterResult.orOver(other.afterResult),
       guidance.orOver(other.guidance),
-      contextLength.orOver(other.contextLength)
+      contextLength.orOver(other.contextLength),
+      effectiveContext.orOver(other.effectiveContext),
+      pricing.orOver(other.pricing)
     )
 }
 
 /** What a call is made under. `profiled` is false when no profile named the pair;
   * `contextLength` is `None` when no profile gives it, and a turn's requests are then bounded
-  * by its window's limit, not a context (`TurnLoop.inputLimit`).
+  * by its window's limit, not a context (`TurnLoop.inputLimit`). `effectiveContext` and
+  * `pricing` are `None` when no profile gives them: a call is then unpriced (`Cost.AtLeast`),
+  * and a turn is bounded by neither.
   */
 final case class Settings(
     strict: StrictSchemas,
@@ -113,7 +121,9 @@ final case class Settings(
     afterResult: AfterToolResult,
     guidance: ToolGuidance,
     profiled: Boolean,
-    contextLength: Option[Tokens] = None
+    contextLength: Option[Tokens] = None,
+    effectiveContext: Option[Tokens] = None,
+    pricing: Option[Pricing] = None
 )
 
 object Settings {
@@ -125,6 +135,10 @@ object Settings {
     */
   def of(profile: Option[Profile]): Settings = {
     def known[A](setting: Profile => Known[A]): Known[A] = profile.fold(Known.Unmeasured)(setting)
+    def value[A](k: Known[A]): Option[A] = k match {
+      case Known.Of(a, _) => Some(a)
+      case Known.Unmeasured => None
+    }
     Settings(
       known(_.strict).getOr(StrictSchemas.Ignored),
       known(_.replay).getOr(ReasoningReplay.Details),
@@ -133,10 +147,9 @@ object Settings {
       known(_.afterResult).getOr(AfterToolResult.UserMessage),
       known(_.guidance).getOr(ToolGuidance.SchemaOnly),
       profile.isDefined,
-      known(_.contextLength) match {
-        case Known.Of(length, _) => Some(length)
-        case Known.Unmeasured => None
-      }
+      value(known(_.contextLength)),
+      value(known(_.effectiveContext)),
+      value(known(_.pricing))
     )
   }
 }

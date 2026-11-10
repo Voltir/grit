@@ -239,8 +239,31 @@ object CatalogJson {
     put("afterResult", p.afterResult, v => ujson.Str(AfterWords.of(v)))
     put("guidance", p.guidance, v => ujson.Str(GuidanceWords.of(v)))
     put("contextLength", p.contextLength, v => ujson.Num(Tokens.value(v).toDouble))
+    put("effectiveContext", p.effectiveContext, v => ujson.Num(Tokens.value(v).toDouble))
+    put("pricing", p.pricing, pricing)
     o
   }
+
+  /** `{"first": rates, "steps": [{"past", "rates"}]}`, each rate a JSON number of USD per
+    * million tokens.
+    */
+  private def pricing(p: Pricing): ujson.Value =
+    ujson.Obj(
+      "first" -> rates(p.first),
+      "steps" -> ujson.Arr.from(
+        p.steps.map(s =>
+          ujson.Obj("past" -> Tokens.value(s.past).toDouble, "rates" -> rates(s.rates))
+        )
+      )
+    )
+
+  private def rates(r: Rates): ujson.Value =
+    ujson.Obj(
+      "input" -> r.input.toDouble,
+      "write" -> r.write.toDouble,
+      "read" -> r.read.toDouble,
+      "output" -> r.output.toDouble
+    )
 
   private def source(s: Source): ujson.Value = s match {
     case Source.Declared(by, on) => ujson.Obj("kind" -> "declared", "by" -> by, "on" -> on.toString)
@@ -270,6 +293,8 @@ object CatalogJson {
     )
     // Written only when known, so every pin kept before context lengths keeps its bytes and id.
     s.contextLength.foreach(l => o("settings")("contextLength") = Tokens.value(l).toDouble)
+    s.effectiveContext.foreach(l => o("settings")("effectiveContext") = Tokens.value(l).toDouble)
+    s.pricing.foreach(p => o("settings")("pricing") = pricing(p))
     o
   }
 
@@ -411,7 +436,9 @@ object CatalogJson {
       after <- readKnown(o, "afterResult", at)(AfterWords.read)
       guidance <- readKnown(o, "guidance", at)(GuidanceWords.read)
       length <- readKnown(o, "contextLength", at)(readLength)
-    } yield Profile(r, strict, replay, names, repairs, after, guidance, length)
+      effective <- readKnown(o, "effectiveContext", at)(readLength)
+      priced <- readKnown(o, "pricing", at)(readPricing)
+    } yield Profile(r, strict, replay, names, repairs, after, guidance, length, effective, priced)
 
   /** A pin [[writePinned]] wrote, or the first thing wrong with it, named by its path from
     * `at`.
@@ -433,16 +460,66 @@ object CatalogJson {
       profiled <- field(so, "profiled", sat).flatMap(
         _.boolOpt.toRight(s"$sat.profiled is not true or false")
       )
-      length <- so.get("contextLength") match {
-        case None => Right(None)
-        case Some(l) => readLength(l, s"$sat.contextLength").map(Some(_))
-      }
+      length <- optional(so, "contextLength", sat)(readLength)
+      effective <- optional(so, "effectiveContext", sat)(readLength)
+      priced <- optional(so, "pricing", sat)(readPricing)
     } yield Pinned(
       CatalogVersion(version),
       grade,
       a,
-      Settings(strict, replay, names, repairs, after, guidance, profiled, length)
+      Settings(strict, replay, names, repairs, after, guidance, profiled, length, effective, priced)
     )
+
+  /** `key`'s value read by `value`, `None` when it is absent. */
+  private def optional[A](o: Fields, key: String, at: String)(
+      value: (ujson.Value, String) => Either[String, A]
+  ): Either[String, Option[A]] =
+    o.get(key) match {
+      case None => Right(None)
+      case Some(v) => value(v, s"$at.$key").map(Some(_))
+    }
+
+  /** What [[pricing]] wrote, or why not: a rate that is no number or below 0, or a step that
+    * does not lengthen or rise ([[Pricing.of]]).
+    */
+  private def readPricing(v: ujson.Value, at: String): Either[String, Pricing] =
+    for {
+      o <- obj(v, at)
+      first <- field(o, "first", at).flatMap(readRates(_, s"$at.first"))
+      steps <- field(o, "steps", at).flatMap(
+        _.arrOpt
+          .toRight(s"$at.steps is not a list")
+          .flatMap(items =>
+            sequence(items.toVector.zipWithIndex.map { (s, i) =>
+              val sat = s"$at.steps[$i]"
+              for {
+                so <- obj(s, sat)
+                past <- field(so, "past", sat).flatMap(readLength(_, s"$sat.past"))
+                r <- field(so, "rates", sat).flatMap(readRates(_, s"$sat.rates"))
+              } yield Pricing.Tier(past, r)
+            })
+          )
+      )
+      p <- Pricing.of(first, steps).left.map(why => s"$at: $why")
+    } yield p
+
+  /** Rates as JSON numbers, read as their decimal digits (`BigDecimal(d.toString)`, as
+    * `OpenRouterJson` reads a cost), so `0.1` is 0.1 exactly.
+    */
+  private def readRates(v: ujson.Value, at: String): Either[String, Rates] = {
+    def rate(o: Fields, key: String) =
+      field(o, key, at).flatMap(
+        _.numOpt.map(d => BigDecimal(d.toString)).toRight(s"$at.$key is not a number")
+      )
+    for {
+      o <- obj(v, at)
+      input <- rate(o, "input")
+      write <- rate(o, "write")
+      read <- rate(o, "read")
+      output <- rate(o, "output")
+      r <- Rates.of(input, write, read, output).left.map(why => s"$at: $why")
+    } yield r
+  }
 
   /** A context length: a whole number of tokens above 0. */
   private def readLength(v: ujson.Value, at: String): Either[String, Tokens] =
