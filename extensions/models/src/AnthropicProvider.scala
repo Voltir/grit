@@ -14,8 +14,8 @@ import grit.core.secret.{Reveal, Secret, Variable}
   * effort ([[AnthropicProvider.DefaultEffort]] when it asks none), thinking adaptive and summarised, earlier thinking sent back as its settings'
   * replay says. Caches `tools` and `system`, and the request's repeated prefixes
   * ([[CacheMarks.marked]]), with a breakpoint after each. Each reply records
-  * [[grit.core.model.Upstream.AnthropicApi]] as the upstream that served it, and its cost from
-  * [[AnthropicRates]].
+  * [[grit.core.model.Upstream.AnthropicApi]] as the upstream that served it, and its cost at
+  * `pinned`'s pricing, unknown when no profile gives one.
   *
   * A failure to connect, a timeout or a connection lost is [[ProviderError.Unavailable]]; an
   * HTTP error is classed as [[AnthropicJson.error]] says, an error event in a stream as
@@ -41,7 +41,7 @@ final class AnthropicProvider(
       ProviderHttp.complete(
         http,
         post(m, request, streamed = false),
-        AnthropicJson.response,
+        AnthropicJson.response(_, pinned.settings.pricing),
         AnthropicJson.error
       )
     }
@@ -58,7 +58,7 @@ final class AnthropicProvider(
         http,
         post(m, request, streamed = true),
         AnthropicStream.fold(_, onDelta),
-        AnthropicJson.response,
+        AnthropicJson.response(_, pinned.settings.pricing),
         AnthropicJson.error
       )
     }

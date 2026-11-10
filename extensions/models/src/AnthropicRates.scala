@@ -1,91 +1,58 @@
 package grit.models
 
 import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.model.{Known, ModelId, Pricing, Upstream}
 
-/** What Anthropic bills for a call, from the rates its pricing page published on 2026-10-29
-  * (USD per million tokens). Pure.
+/** What Anthropic bills a recorded call, which has no pin: the prices of the [[Seed]]'s profiles
+  * of Anthropic's models at its API. A live call is priced by its pin's settings
+  * ([[AnthropicJson.response]]). Pure.
   */
 object AnthropicRates {
 
-  /** What Anthropic bills for `usage` on `model`, in USD, cache writes at the 5-minute rate;
-    * `None` for a model it has no rates for. A dated snapshot (`claude-haiku-5-5-20261001`)
-    * takes its alias's rates. A Claude Haiku 5.5 prompt over 100,000 tokens, its cache reads
-    * and writes counted, takes the long-context card.
+  /** What the seed's profile of `model` at Anthropic's API bills (`model` Anthropic's own id, or
+    * a dated snapshot of one, `claude-haiku-5-5-20261001`, which takes its alias's); `None` for a
+    * model it does not price.
     */
-  /** What `usage`'s thinking cost on `model`, in USD: its thinking tokens at the output rate of
-    * the card [[cost]] takes for it; `None` when its thinking is not reported or the model has no
-    * rates.
-    */
-  def thinking(model: String, usage: Usage): Option[BigDecimal] =
-    usage.thinking.flatMap(t =>
-      card(model, Tokens.value(usage.input)).map(c =>
-        c.output * Tokens.value(t) / BigDecimal(1000000)
-      )
-    )
+  def pricing(model: String): Option[Pricing] =
+    priced.collectFirst { case (id, p) if AnthropicJson.isOrSnapshotOf(model, id) => p }
 
-  def cost(model: String, usage: Usage): Option[BigDecimal] =
-    card(model, Tokens.value(usage.input)).map { c =>
-      val read = Tokens.value(usage.cacheRead)
-      val write = Tokens.value(usage.cacheWrite)
-      val uncached = Tokens.value(usage.input) - read - write
-      (c.input * uncached + c.write * write + c.read * read +
-        c.output * Tokens.value(usage.output)) / BigDecimal(1000000)
-    }
-
-  /** One price list, USD per million tokens. */
-  private final case class Card(
-      input: BigDecimal,
-      write: BigDecimal,
-      read: BigDecimal,
-      output: BigDecimal
-  )
-
-  private val HaikuShort =
-    Card(BigDecimal("0.10"), BigDecimal("0.125"), BigDecimal("0.01"), BigDecimal("0.50"))
-  private val HaikuLong =
-    Card(BigDecimal("0.50"), BigDecimal("0.625"), BigDecimal("0.05"), BigDecimal("2.50"))
-  private val Sonnet =
-    Card(BigDecimal("2"), BigDecimal("2.50"), BigDecimal("0.10"), BigDecimal("10"))
-  private val Opus =
-    Card(BigDecimal("4"), BigDecimal("5"), BigDecimal("0.20"), BigDecimal("20"))
-
-  /** Where Claude Haiku 5.5's long-context card begins: a prompt longer than this. */
-  private val HaikuLongPast = 100000L
-
-  /** Whether every set of prompts on `model` whose lengths sum to at most `totalPrompt` takes one
-    * card: true for a model with a single card, and for Claude Haiku 5.5 when `totalPrompt` is at
-    * most 100,000; false for a model it has no rates for.
-    */
-  def oneCard(model: String, totalPrompt: Long): Boolean =
-    card(model, 0L).exists(c => card(model, totalPrompt).contains(c))
-
-  /** What the thinking of `calls`, each a model's id and its usage, cost together: each call's at
-    * [[thinking]]; at least the priced ones' (`≥ 0` for none) where a call's model has no rates
-    * or its thinking is not reported.
+  /** What the thinking of `calls`, each a model's id and its usage, cost together: each call's
+    * at [[Pricing.thinking]] under [[pricing]]; at least the priced ones' (`≥ 0` for none) where
+    * a call's model has no rates or its thinking is not reported.
     */
   def thinkingCost(calls: Iterable[(String, Usage)]): Cost =
     calls.foldLeft(Cost.Zero) { case (sum, (model, usage)) =>
-      sum + thinking(model, usage).fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
+      sum + pricing(model)
+        .flatMap(_.thinking(usage))
+        .fold(Cost.AtLeast(BigDecimal(0)))(Cost.Exact(_))
     }
 
   /** What the thinking of calls on `model` whose usage together is `total` cost, when only the
-    * total is known: at the card the shortest prompt takes, exact when every set of prompts of
-    * that total takes one card ([[oneCard]]), else at least that; `≥ 0` for a model with no rates
-    * or no thinking reported. Where exact it is [[thinkingCost]] of the calls; elsewhere below it.
+    * total is known: at the first tier's rates, exact when every set of prompts of that total
+    * takes the first tier ([[Pricing.oneTier]]), else at least that; `≥ 0` for a model with no
+    * rates or no thinking reported. Where exact it is [[thinkingCost]] of the calls; elsewhere
+    * below it.
     */
   def thinkingCostOfTotal(model: String, total: Usage): Cost =
-    // A sum's input is no call's prompt, which is what picks a card: a sum past the bound may
+    // A sum's input is no call's prompt, which is what picks a tier: a sum past a step may
     // hold only calls under it.
     thinkingCost(Vector(model -> total.copy(input = Tokens.Zero))) match {
-      case Cost.Exact(usd) if !oneCard(model, Tokens.value(total.input)) => Cost.AtLeast(usd)
+      case Cost.Exact(usd) if !pricing(model).exists(_.oneTier(total.input)) => Cost.AtLeast(usd)
       case cost => cost
     }
 
-  private def card(model: String, prompt: Long): Option[Card] = {
-    def is(id: String) = AnthropicJson.isOrSnapshotOf(model, id)
-    if (is("claude-haiku-5-5")) Some(if (prompt > HaikuLongPast) HaikuLong else HaikuShort)
-    else if (is("claude-sonnet-5-5")) Some(Sonnet)
-    else if (is("claude-opus-5-5")) Some(Opus)
-    else None
-  }
+  /** Each priced seed profile at Anthropic's API, by Anthropic's own id. An unreadable seed
+    * prices nothing; `CatalogModelsTests` reads the seed, so a build with one fails there.
+    */
+  private lazy val priced: Vector[(String, Pricing)] =
+    Seed.catalog.toOption.toVector.flatMap(_.profiles).flatMap { p =>
+      val id = ModelId.value(p.ref.model)
+      val direct = p.ref.upstream.contains(Upstream.AnthropicApi) &&
+        id.startsWith(AnthropicProvider.Vendor)
+      p.pricing match {
+        case Known.Of(pricing, _) if direct =>
+          Some(id.stripPrefix(AnthropicProvider.Vendor) -> pricing)
+        case _ => None
+      }
+    }
 }

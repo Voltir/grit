@@ -88,22 +88,17 @@ final case class Consumed(
     * straddle a card. `Left` alone when the run has no result.
     */
   def gritCost: Either[String, BigDecimal] = {
-    def outputRate(c: Call): Option[BigDecimal] = {
-      def at(n: Long) =
-        AnthropicRates.cost(c.model, c.usage.copy(output = Tokens(n), costUsd = None))
-      for {
-        hi <- at(1000000L)
-        lo <- at(0L)
-      } yield (hi - lo) / BigDecimal(1000000)
-    }
+    // USD per output token, at the tier the call's prompt took.
+    def outputRate(c: Call): Option[BigDecimal] =
+      AnthropicRates.pricing(c.model).map(_.at(c.usage.input).output / BigDecimal(1000000))
     // One model's cost: its calls' costs and its output beyond their events, at their rate when
     // they share one; or, with no call of its in the events, its side calls' totals when one card
     // holds for them.
     def priced(model: String, total: Usage): Either[String, BigDecimal] = {
       val own = calls.filter(c => AnthropicJson.isOrSnapshotOf(c.model, model))
       if (own.isEmpty)
-        if (AnthropicRates.oneCard(model, Tokens.value(total.input)))
-          AnthropicRates.cost(model, total).toRight("a model it has no rates for")
+        if (AnthropicRates.pricing(model).exists(_.oneTier(total.input)))
+          AnthropicRates.pricing(model).map(_.cost(total)).toRight("a model it has no rates for")
         else Left(s"$model's side calls may straddle a card")
       else {
         val costs = own.flatMap(_.usage.costUsd)
@@ -149,7 +144,7 @@ object Consumed {
   def gritCalls(lines: Vector[String]): Vector[Call] =
     lines.flatMap(CallLine.read).zipWithIndex.map { case ((model, usage), i) =>
       val m = model.stripPrefix("anthropic/")
-      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.cost(m, usage)))
+      Call(s"call-${i + 1}", m, usage.copy(costUsd = AnthropicRates.pricing(m).map(_.cost(usage))))
     }
 
   /** The tools of grit's that edit a file. */
@@ -320,7 +315,7 @@ object Consumed {
   private def call(id: String, m: ujson.Obj): Call = {
     val model = text(m, "model").getOrElse("")
     val usage = AnthropicJson.usageOf(obj(m, "usage").map(_.value))
-    Call(id, model, usage.copy(costUsd = AnthropicRates.cost(model, usage)))
+    Call(id, model, usage.copy(costUsd = AnthropicRates.pricing(model).map(_.cost(usage))))
   }
 
   /** Whether `m` edits a file under `checkout`, or a relative path, which is under it. */

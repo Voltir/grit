@@ -447,7 +447,8 @@ object SentMarkdown {
   }
 
   /** The turn's thinking over the calls of `measured` with rows, and each one's, its cost at
-    * [[AnthropicRates.thinking]] (`unpriced` for a model it has no rates for); `not reported`
+    * [[AnthropicRates.pricing]]'s [[grit.core.model.Pricing.thinking]] (`unpriced` for a model
+    * it has no rates for); `not reported`
     * where a call's provider said nothing of it, never an estimate.
     */
   private def thinkingLine(measured: Vector[MeasuredCall]): String = {
@@ -455,7 +456,7 @@ object SentMarkdown {
     val each = calls
       .map((name, r) =>
         r.usage.thinking.fold(s"$name not reported")(t =>
-          s"$name ${Tokens.value(t)} (${AnthropicRates.thinking(r.model, r.usage).fold("unpriced")(Cost.cents)})"
+          s"$name ${Tokens.value(t)} (${AnthropicRates.pricing(r.model).flatMap(_.thinking(r.usage)).fold("unpriced")(Cost.cents)})"
         )
       )
       .mkString(", ")

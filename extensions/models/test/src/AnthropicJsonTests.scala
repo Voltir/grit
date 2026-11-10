@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Effort, ReasoningReplay}
+import grit.core.model.{Effort, Pricing, Rates, ReasoningReplay}
 import grit.core.provider.{ModelRequest, ProviderError, Repeats, ToolSchema, ToolUse}
 
 import utest.*
@@ -306,7 +306,7 @@ object AnthropicJsonTests extends TestSuite {
     test(
       "response: its blocks in order, thinking kept verbatim, input counting reads and writes, cost, served by api.anthropic.com"
     ) {
-      AnthropicJson.response(reply) ==> Right(
+      AnthropicJson.response(reply, AnthropicRates.pricing("claude-haiku-5-5")) ==> Right(
         Message.Assistant(
           Vector(
             AssistantBlock.Reasoning("Read it first.", Some(thinking)),
@@ -333,12 +333,24 @@ object AnthropicJsonTests extends TestSuite {
     ) {
       val detailed = ujson.copy(reply)
       detailed("usage")("output_tokens_details") = ujson.Obj("thinking_tokens" -> 312)
-      def thinking(body: ujson.Value) = AnthropicJson.response(body).map(_.usage.thinking)
+      def thinking(body: ujson.Value) = AnthropicJson.response(body, None).map(_.usage.thinking)
       (thinking(detailed), thinking(reply)) ==> (Right(Some(Tokens(312))), Right(None))
     }
 
+    test("response: its cost is the pricing it is given, and unknown under none") {
+      // 2,000 uncached, 2,000 written, 6,000 read and 1,000 out, each at $1 a million.
+      val dollar = Rates
+        .of(BigDecimal(1), BigDecimal(1), BigDecimal(1), BigDecimal(1))
+        .map(Pricing.flat)
+        .toOption
+      (
+        AnthropicJson.response(reply, dollar).map(_.usage.costUsd),
+        AnthropicJson.response(reply, None).map(_.usage.costUsd)
+      ) ==> (Right(Some(BigDecimal("0.011"))), Right(None))
+    }
+
     test("response: stop reasons map, keeping unknown ones") {
-      def stop(reason: String) = AnthropicJson.response(stopped(reason)).map(_.stop)
+      def stop(reason: String) = AnthropicJson.response(stopped(reason), None).map(_.stop)
       stop("end_turn") ==> Right(StopReason.EndTurn)
       stop("tool_use") ==> Right(StopReason.ToolUse)
       stop("max_tokens") ==> Right(StopReason.MaxTokens)
@@ -349,12 +361,14 @@ object AnthropicJsonTests extends TestSuite {
 
     test("response: a refusal is Refused naming its category, or saying it has none") {
       AnthropicJson.response(
-        stopped("refusal", ujson.Obj("type" -> "refusal", "category" -> "cyber"))
+        stopped("refusal", ujson.Obj("type" -> "refusal", "category" -> "cyber")),
+        None
       ) ==> Left(ProviderError.Refused("the model declined to answer (category: cyber)"))
       AnthropicJson.response(
-        stopped("refusal", ujson.Obj("type" -> "refusal", "category" -> ujson.Null))
+        stopped("refusal", ujson.Obj("type" -> "refusal", "category" -> ujson.Null)),
+        None
       ) ==> Left(ProviderError.Refused("the model declined to answer (no category)"))
-      AnthropicJson.response(stopped("refusal")) ==>
+      AnthropicJson.response(stopped("refusal"), None) ==>
         Left(ProviderError.Refused("the model declined to answer (no category)"))
     }
 

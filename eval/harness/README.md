@@ -42,7 +42,7 @@ Packages, each importing only those above it:
   its commits, its checks and its brief), and its checkout, a repository holding only the base's
   history, through core's `Processes`; the rig, which runs a coder on a task there and measures
   its trial (a Claude Code coder, whose `stream-json` output is the transcript it reads and
-  keeps), priced by `grit.models`' `AnthropicRates`, the one function that prices both arms. Only
+  keeps), priced by the seed's prices (`grit.models`' `AnthropicRates.pricing`), the one pricing of both arms. Only
   `main` names `grit.host`, the harness's composition root (the law's
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
   through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials

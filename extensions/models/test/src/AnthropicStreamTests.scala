@@ -20,7 +20,10 @@ object AnthropicStreamTests extends TestSuite {
   private def folded(lines: Seq[String]) = {
     val told = Vector.newBuilder[Delta]
     val body = AnthropicStream.fold(lines.iterator, d => told += d)
-    (body.flatMap(AnthropicJson.response), told.result())
+    (
+      body.flatMap(AnthropicJson.response(_, AnthropicRates.pricing("claude-haiku-5-5"))),
+      told.result()
+    )
   }
 
   private def event(data: String): Vector[String] = Vector(s"data: $data", "")
@@ -107,9 +110,14 @@ object AnthropicStreamTests extends TestSuite {
       // Saved by AnthropicLiveProbe from Anthropic's API: one Claude Haiku 5.5 request, sent
       // streamed and plain. The two calls' text and ids differ; what is compared does not.
       val lines = resource("/anthropic-live-haiku.sse")
-      val streamed = AnthropicStream.fold(lines.iterator, _ => ()).flatMap(AnthropicJson.response)
+      val streamed = AnthropicStream
+        .fold(lines.iterator, _ => ())
+        .flatMap(AnthropicJson.response(_, AnthropicRates.pricing("claude-haiku-5-5")))
       val plain =
-        AnthropicJson.response(ujson.read(resource("/anthropic-live-haiku.json").mkString("\n")))
+        AnthropicJson.response(
+          ujson.read(resource("/anthropic-live-haiku.json").mkString("\n")),
+          AnthropicRates.pricing("claude-haiku-5-5")
+        )
       // Anthropic's message_delta counts are cumulative: the last one's output is the stream's.
       val lastOutput = lines
         .filter(_.contains("\"message_delta\""))

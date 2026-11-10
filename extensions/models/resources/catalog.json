@@ -31,22 +31,49 @@
     },
     {
       "model": "anthropic/claude-haiku-5.5",
-      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-05" } }
+      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-05" } },
+      "effectiveContext": { "value": 500000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-10" } }
     },
     {
       "model": "anthropic/claude-haiku-5-5",
       "upstream": "api.anthropic.com",
-      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } }
+      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } },
+      "effectiveContext": { "value": 500000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-10" } },
+      "pricing": {
+        "value": {
+          "first": { "input": 0.10, "write": 0.125, "read": 0.01, "output": 0.50 },
+          "steps": [
+            { "past": 100000, "rates": { "input": 0.50, "write": 0.625, "read": 0.05, "output": 2.50 } }
+          ]
+        },
+        "source": { "kind": "advertised", "on": "2026-10-29" }
+      }
     },
     {
       "model": "anthropic/claude-sonnet-5-5",
       "upstream": "api.anthropic.com",
-      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } }
+      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } },
+      "effectiveContext": { "value": 500000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-10" } },
+      "pricing": {
+        "value": {
+          "first": { "input": 2, "write": 2.50, "read": 0.10, "output": 10 },
+          "steps": []
+        },
+        "source": { "kind": "advertised", "on": "2026-10-29" }
+      }
     },
     {
       "model": "anthropic/claude-opus-5-5",
       "upstream": "api.anthropic.com",
-      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } }
+      "contextLength": { "value": 1000000, "source": { "kind": "advertised", "on": "2026-11-10" } },
+      "effectiveContext": { "value": 500000, "source": { "kind": "declared", "by": "nick", "on": "2026-11-10" } },
+      "pricing": {
+        "value": {
+          "first": { "input": 4, "write": 5, "read": 0.20, "output": 20 },
+          "steps": []
+        },
+        "source": { "kind": "advertised", "on": "2026-10-29" }
+      }
     }
   ]
 }

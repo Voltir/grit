@@ -45,6 +45,13 @@ import grit.core.secret.Variable
 object AnthropicLiveProbe {
 
   private val Haiku = "claude-haiku-5-5"
+
+  /** `body` read as a reply, priced as the seed prices the model it names. */
+  private def priced(body: ujson.Value) =
+    AnthropicJson.response(
+      body,
+      body.objOpt.flatMap(_.get("model")).flatMap(_.strOpt).flatMap(AnthropicRates.pricing)
+    )
   private val Sonnet = "claude-sonnet-5-5"
 
   /** No call is made once the calls made have cost this much, in USD: 0.9¢. */
@@ -285,7 +292,7 @@ object AnthropicLiveProbe {
         check(false, s"stream: HTTP ${response.statusCode}: ${lines.mkString("\n")}")
       else {
         save(dir.resolve("anthropic-live-haiku.sse"), lines.mkString("\n") + "\n")
-        val streamed = AnthropicStream.fold(lines.iterator, _ => ()).flatMap(AnthropicJson.response)
+        val streamed = AnthropicStream.fold(lines.iterator, _ => ()).flatMap(priced)
         streamed.foreach(spend("stream, streamed", _))
         val plain =
           sent(key, Haiku, 1024, request, dropBlock = false, "stream, plain", raw = Some(body))
@@ -293,7 +300,7 @@ object AnthropicLiveProbe {
           if (status == 200) save(dir.resolve("anthropic-live-haiku.json"), text + "\n")
         }
         val plainReply = plain match {
-          case Some((200, text)) => AnthropicJson.response(ujson.read(text))
+          case Some((200, text)) => priced(ujson.read(text))
           case Some((status, text)) => Left(ProviderError.Refused(s"HTTP $status: $text"))
           case None => Left(ProviderError.Refused("not sent"))
         }
@@ -327,7 +334,7 @@ object AnthropicLiveProbe {
     sent(key, model, maxTokens, request, dropBlock, label, effort) match {
       case None => None
       case Some((200, text)) =>
-        AnthropicJson.response(ujson.read(text)) match {
+        priced(ujson.read(text)) match {
           case Right(reply) => Some(reply)
           case Left(e) =>
             check(false, s"$label: $e")
@@ -373,7 +380,7 @@ object AnthropicLiveProbe {
         HttpResponse.BodyHandlers.ofString()
       )
       if (response.statusCode == 200)
-        AnthropicJson.response(ujson.read(response.body)).foreach(spend(label, _))
+        priced(ujson.read(response.body)).foreach(spend(label, _))
       (response.statusCode, response.body)
     }
 
@@ -396,7 +403,7 @@ object AnthropicLiveProbe {
   private def outcome(response: Option[(Int, String)]): String = response match {
     case None => "not sent"
     case Some((200, text)) =>
-      AnthropicJson.response(ujson.read(text)).fold(_.toString, r => s"answered, ${kinds(r)}")
+      priced(ujson.read(text)).fold(_.toString, r => s"answered, ${kinds(r)}")
     case Some((status, text)) => AnthropicJson.error(status, text).toString
   }
 

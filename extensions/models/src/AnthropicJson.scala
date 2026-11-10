@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Effort, ReasoningReplay, Upstream}
+import grit.core.model.{Effort, Pricing, ReasoningReplay, Upstream}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** Anthropic's Messages API wire format, both ways. Pure. Checked against platform.claude.com
@@ -97,9 +97,13 @@ object AnthropicJson {
   /** The assistant message in a 200 response, or why there is none: a `refusal` stop reason is
     * [[ProviderError.Refused]] naming its category. Its blocks keep the response's order, each
     * thinking block kept whole as its `replay`; `input` counts uncached, read and written
-    * tokens; its cost is [[AnthropicRates.cost]]'s; its upstream is [[Upstream.AnthropicApi]].
+    * tokens; its cost is `pricing`'s, the pin's, and unknown under none; its upstream is
+    * [[Upstream.AnthropicApi]].
     */
-  def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
+  def response(
+      body: ujson.Value,
+      pricing: Option[Pricing]
+  ): Either[ProviderError, Message.Assistant] =
     for {
       root <- body.objOpt.toRight(ProviderHttp.unreadable("not an object"))
       _ <- refusal(root)
@@ -118,7 +122,7 @@ object AnthropicJson {
       Message.Assistant(
         blocks,
         stop(root.get("stop_reason").flatMap(_.strOpt)),
-        counted.copy(costUsd = AnthropicRates.cost(model, counted)),
+        counted.copy(costUsd = pricing.map(_.cost(counted))),
         model,
         Some(Upstream.value(Upstream.AnthropicApi))
       )

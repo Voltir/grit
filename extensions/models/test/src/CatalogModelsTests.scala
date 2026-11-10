@@ -2,7 +2,7 @@ package grit.models
 
 import java.time.{Instant, LocalDate}
 
-import grit.core.message.Message
+import grit.core.message.{Message, Tokens}
 import grit.core.model.{
   Assignment,
   Catalog,
@@ -13,7 +13,9 @@ import grit.core.model.{
   ModelRef,
   NameRepair,
   Pinned,
+  Pricing,
   Profile,
+  Rates,
   Settings,
   Source,
   Upstream
@@ -101,6 +103,42 @@ object CatalogModelsTests extends TestSuite {
             Source.Advertised(LocalDate.of(2026, 11, 10))
           )
         )
+      )
+    }
+
+    test(
+      "the seed prices Claude Haiku, Sonnet and Opus 5.5 at Anthropic's API from its pricing page, and Nick declares each, routed or not, best within 500,000 tokens"
+    ) {
+      def rates(input: String, write: String, read: String, output: String) =
+        Rates
+          .of(BigDecimal(input), BigDecimal(write), BigDecimal(read), BigDecimal(output))
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+      val page = Source.Advertised(LocalDate.of(2026, 10, 29))
+      val haiku = Pricing
+        .of(
+          rates("0.10", "0.125", "0.01", "0.50"),
+          Vector(Pricing.Tier(Tokens(100_000), rates("0.50", "0.625", "0.05", "2.50")))
+        )
+        .fold(why => throw new java.lang.AssertionError(why), identity)
+      val direct = Vector("haiku", "sonnet", "opus").map(m =>
+        seed.profile(pinned(s"anthropic/claude-$m-5-5", "api.anthropic.com").assignment.ref)
+      )
+      val routed = ModelId
+        .of("anthropic/claude-haiku-5.5")
+        .flatMap(id => seed.profile(ModelRef(id, None)))
+      val best = Known.Of(Tokens(500_000), Source.Declared("nick", LocalDate.of(2026, 11, 10)))
+      (
+        direct.map(_.map(_.pricing)),
+        (direct :+ routed).map(_.map(_.effectiveContext)),
+        routed.map(_.pricing)
+      ) ==> (
+        Vector(
+          Some(Known.Of(haiku, page)),
+          Some(Known.Of(Pricing.flat(rates("2", "2.50", "0.10", "10")), page)),
+          Some(Known.Of(Pricing.flat(rates("4", "5", "0.20", "20")), page))
+        ),
+        Vector.fill(4)(Some(best)),
+        Some(Known.Unmeasured)
       )
     }
 

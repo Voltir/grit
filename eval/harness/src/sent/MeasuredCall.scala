@@ -26,17 +26,15 @@ final case class MeasuredCall(
 object MeasuredCall {
 
   /** What `usage`'s uncached and written input cost on `model` over the same tokens read from
-    * the cache, in USD, at [[AnthropicRates]] (the same card both ways); `None` for a model it
-    * has no rates for.
+    * the cache, in USD, at [[AnthropicRates.pricing]] (the same tier both ways); `None` for a
+    * model it has no rates for.
     */
   def missed(model: String, usage: Usage): Option[BigDecimal] =
-    for {
-      real <- AnthropicRates.cost(model, usage)
-      read <- AnthropicRates.cost(
-        model,
-        usage.copy(cacheRead = usage.input, cacheWrite = Tokens.Zero)
+    AnthropicRates
+      .pricing(model)
+      .map(p =>
+        p.cost(usage) - p.cost(usage.copy(cacheRead = usage.input, cacheWrite = Tokens.Zero))
       )
-    } yield real - read
 
   /** Of what the call before left in the cache (`previous`'s reads and writes), how much the
     * call that used `usage` did not read: 0 when its prefix held.

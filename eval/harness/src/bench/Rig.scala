@@ -22,7 +22,7 @@ import grit.models.{AnthropicRates, ModelRole}
 
 /** What one run may spend: its model, by the Anthropic API's id for it (`claude-haiku-5-5`); the
   * most it may spend, in USD, which a run can pass (Claude Code's run, by Claude Code's own
-  * estimate; grit's, priced by [[grit.models.AnthropicRates]] as each call answers and stopped
+  * estimate; grit's, priced by its pin's pricing, the seed's ([[grit.models.AnthropicRates]]), as each call answers and stopped
   * once its calls reach it, so by at most the call that reached it and one then in flight); and
   * its most turns (grit's tool rounds).
   */
@@ -674,7 +674,7 @@ object Rig {
         s"grit takes at least 2 turns, its first call and one after a tool's; not ${cap.maxTurns}"
       )
       _ <- Either.cond(
-        AnthropicRates.cost(cap.claudeModel, Usage.Zero).isDefined,
+        AnthropicRates.pricing(cap.claudeModel).isDefined,
         (),
         s"grit's rates price no model ${cap.claudeModel}, so its cap could not stop it"
       )
