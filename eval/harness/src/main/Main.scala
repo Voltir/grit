@@ -8,7 +8,7 @@ import CaptureCommands.*
 import ReplyCommands.*
 import RebuildCommands.*
 import RecipeCommands.*
-import LabCommands.*
+import BenchCommands.*
 import ProposeCommands.*
 import RunCommands.*
 import ScoreCommands.*
@@ -62,7 +62,6 @@ object Main {
       case "duplication" :: rest => exit(flags(rest).flatMap(duplication(_, clock)))
       case "summaries" :: rest => exit(flags(rest).flatMap(summaries(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
-      case "lab-stitch" :: rest => exit(flags(rest).flatMap(labStitch(_, clock)))
       case "synthetic" :: rest => exit(flags(rest).flatMap(synthetic(_, clock)))
       case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
@@ -79,7 +78,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns|churn|recall|rebuild|recipes|synthetic|lab-stitch|" +
+              "replies|reply-labels|turns|churn|recall|rebuild|recipes|synthetic|" +
               "integrity-loss|bench|propose (scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )

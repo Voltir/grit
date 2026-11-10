@@ -185,23 +185,6 @@ object Report {
   ): String =
     RecallLines.of(capture, replayed)
 
-  /** The stitch lab's `runs` over `room`, under `model` and `tuning`: the calls asked over all
-    * of them (how many answered from the cache) and what was spent; each measure's mean and
-    * range over the runs ([[grit.eval.harness.score.RoomRepeats]]); then each run under its
-    * label: its proportions, each with its interval (a point estimate under
-    * [[Proportion.MinClusters]] topics), the wrong follows, the confusion, the bursts and the
-    * strands split and mixed, and one row an opening, with its truth, what it got, what it was
-    * offered, and the start of its text: the room's own synthetic text, the one place a report
-    * prints a message's words. Everything before the first run's section holds no room text.
-    */
-  def lab(
-      room: grit.eval.Room,
-      model: String,
-      tuning: grit.core.stitch.Tuning,
-      runs: Vector[LabRun]
-  ): String =
-    RoomLines.lab(room, model, tuning, runs)
-
   /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
     * before shapes and with no offer; their weigh steps by what each recorded, failures by
     * kind.
