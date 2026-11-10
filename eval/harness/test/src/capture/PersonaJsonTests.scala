@@ -4,7 +4,7 @@ import grit.core.persona.Persona
 
 import utest.*
 
-/** A deployment's persona read from the file written beside a capture. */
+/** A deployment's persona read from its hand-written `persona.json`. */
 object PersonaJsonTests extends TestSuite {
 
   val tests = Tests {

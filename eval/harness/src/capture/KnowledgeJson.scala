@@ -8,9 +8,8 @@ import grit.core.place.{Place, Service}
 import grit.core.triage.{Corpora, Corpus}
 import grit.prose.either.Traversal
 
-/** The corpora the deployment that recorded a capture declares, as its
-  * `knowledge.json` holds them: grit's database keeps no declaration, so the file is written
-  * beside the capture from the deployment's.
+/** The corpora a deployment declares, as a `knowledge.json` written by hand from its
+  * declaration holds them: grit's database keeps no declaration.
   */
 object KnowledgeJson {
 

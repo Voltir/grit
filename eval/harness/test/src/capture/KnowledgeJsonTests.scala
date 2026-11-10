@@ -6,7 +6,7 @@ import grit.core.triage.Corpus
 
 import utest.*
 
-/** A deployment's corpora read from the file written beside a capture. */
+/** A deployment's corpora read from its hand-written `knowledge.json`. */
 object KnowledgeJsonTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =

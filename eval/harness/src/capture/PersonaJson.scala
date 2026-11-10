@@ -5,9 +5,8 @@ import scala.util.Try
 import grit.core.json.Fields
 import grit.core.persona.Persona
 
-/** The persona the deployment that recorded a capture declares, as its `persona.json` holds
-  * it: grit's database keeps no declaration, so the file is written beside the capture from
-  * the deployment's.
+/** The persona a deployment declares, as a `persona.json` written by hand from its
+  * declaration holds it: grit's database keeps no declaration.
   */
 object PersonaJson {
 

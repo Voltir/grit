@@ -561,7 +561,7 @@ object grit extends Module {
         super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.assembly, grit.models)
     }
 
-    /* The eval harness: captures of a database, recorded turns as sent, the coder bench. Runs only
+    /* The eval harness: recorded turns as sent, the coder bench, the lost-tool measure. Runs only
      * through scripts/eval, never from a test; its tests test the instrument, not a model.
      * eval/harness/README.md. */
     object harness extends GritModule with Placed {
@@ -577,7 +577,7 @@ object grit extends Module {
           grit.kit
         )
       def mainClass = Some("grit.eval.harness.main.Main")
-      /* So a capture records the build it ran (grit.dbos.buildInfo). */
+      /* So an engine the harness starts records the build it ran (grit.dbos.buildInfo). */
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
       /* The instrument's own code against fixed values: no database, no model. The frozen
@@ -594,7 +594,8 @@ object grit extends Module {
         }
       }
 
-      /* Capture over a live engine's database, triaged by the stub classifier. */
+      /* A recorded turn read back as sent, and the bench's trials kept, over a live engine's
+       * database. */
       object it extends GritTests with LivePostgres {
         def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.models)
       }

@@ -108,7 +108,7 @@ private[main] object ContextCommands {
     }
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request
-    * worded for the persona and corpora in `--declared` (a capture's directory, its
+    * worded for the persona and corpora in `--declared` (a directory holding a hand-written
     * `persona.json` and `knowledge.json`), else grit's and none.
     */
   private def heardContext(f: Map[String, String]): Either[String, Unit] = {

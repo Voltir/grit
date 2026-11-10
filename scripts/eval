@@ -4,19 +4,6 @@
 #
 # Every price is shown in cents (Cost.cents); --max-budget-usd is given in USD.
 #
-#   scripts/eval capture --from <database> [--date <yyyymmdd>]
-#       A capture of <database>'s heard messages, in .local/eval/capture/<date>/ (date: today,
-#       UTC). The first run dumps <database> (pg_dump -Fc, an MVCC read beside a running
-#       engine: source.dump, and its sha256 and time in dump.txt, written once it is restored) and restores it to
-#       grit_eval_<date>, which must not exist yet; a later run reuses both. Each run then
-#       writes capture.json and cases.jsonl, turns.jsonl (every turn the database recorded,
-#       TUI and Slack, by workflow: its offer and the shape its recipe decided, what its
-#       weigh step recorded, its window by part and the documents it held, rounds, ending, spend
-#       and draft's outcome) and verdicts.json (the review verdicts standing), all text-free,
-#       and prints counts. Rerun over the same
-#       restored database by the same build, it writes the same bytes. A failed restore's
-#       errors, which can quote rows, go to .local/eval/review/restore-<date>.log.
-#
 #   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--limit <tokens>]
 #                        [--capture <yyyymmdd>]
 #       One recorded turn as its model was sent it, text and all, written to
@@ -38,7 +25,8 @@
 #       state as recorded with its placement, its question as this build words it, and
 #       triage's request rebuilt through the shipped builder (triage keeps none), its words
 #       for the persona and corpora in .local/eval/capture/<yyyymmdd>/ with --capture
-#       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
+#       (persona.json and knowledge.json, written by hand from the deployment's declaration),
+#       else grit and none, beside the tags triage kept.
 #
 #   scripts/eval context --conversation <conversation-id> --from <database> [--full]
 #                        [--redraw <tokens>]
@@ -118,7 +106,7 @@
 #       as shown and how many turns it renders (none: its run's lines alone). No model call.
 #
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
-# to the database it dumps.
+# to the database it reads a turn from.
 set -euo pipefail
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }

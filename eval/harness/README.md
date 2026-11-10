@@ -1,7 +1,6 @@
 # grit.eval.harness
 
-The eval harness: captures of a database, a recorded turn read back as its model was sent it,
-the coder bench and the proposer of amendments to its standing text, and the lost-tool measure.
+The eval harness: a recorded turn read back as its model was sent it, the coder bench and the proposer of amendments to its standing text, and the lost-tool measure.
 It measures; it gates nothing. It runs only through `scripts/eval` and `scripts/integrity-loss`,
 never from a test or `scripts/check`, and its tests test the instrument, not a model.
 
@@ -15,7 +14,7 @@ Every file it writes is text-free (ids, digests, numbers, lengths and field name
 a person or a proposer to read: the review files `scripts/eval context` writes under
 `.local/eval/review/`, and the checkout `scripts/eval propose` writes, which shows a kept
 trial's tool results. The bench keeps each trial's transcript and diff in its own database and
-blob store. A capture's text stays in Postgres, in the database the capture was restored to.
+blob store.
 
 A heard message's triage request, rebuilt for `scripts/eval context`, reads its pool through
 `Reader`, which reads every row: a restored database records no deployment's groups, so the
@@ -42,17 +41,13 @@ Packages, each importing only those above it:
   `harness-names-host-from-main-alone`). It reports cents per passing trial, reading the trials
   through a read-only `Reader`, and gates nothing. Its summary counts cost over failed trials
   too, takes distance over passing trials only, and does not score quality yet.
-- **`capture`**: a capture, text-free: each heard message's case and each recorded turn, with the
-  digests of the inputs the shipped builders rebuild for them, and the capture's manifest. Read
-  from a restored database through `Reader` and the turn's own reading of its records, rebuilt
-  through the shipped builders, never through SQL of its own. A file of an older format is
-  refused: recapture. The corpora a capture's deployment declares are read from the
-  `knowledge.json` written beside it (grit's database keeps no declaration), and only when the
-  harness asks a turn.
+- **`capture`**: what `sent` and `loss` share and the declarations `scripts/eval context` reads:
+  how a read through `Reader` failed, said alike by both, and a deployment's persona and
+  corpora, read from a hand-written `persona.json` and `knowledge.json` (grit's database keeps
+  no declaration).
 - **`sent`**: one recorded turn as its model was sent it, text and all, for a person to read
   (`scripts/eval context`), and what Jev was asked of a heard message, rebuilt through the
-  shipped builder since triage keeps no request. It reads its own records rather than through
-  `capture`, whose readers keep numbers, never text. It measures each call too: its cache
+  shipped builder since triage keeps no request. It measures each call too: its cache
   misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
   `bench`), its input by part, and what is unreferenced (no later output refers to it), a
   proxy only: a part can steer a model without being quoted, so cutting it and rerunning the
@@ -66,10 +61,6 @@ Packages, each importing only those above it:
   a file the checkout is to hold is built into one, never written beside it. A proposer's checkout
   shows each tool result of a run cut where `sent` cuts a call's; `scripts/eval propose` writes one
   of one task's chosen grit trials, keeping the newest three. ← `bench`, `sent`
-- **`label`**: the review verdicts standing, by case, kept apart from the cases so a recapture
-  keeps them; each judges the speech decision at its moment. ← `capture`
-- **`pull`**: the verdicts a deployment's database keeps standing, each by its case.
-  ← `capture`, `label`
 - **`loss`**: the lost-tool measure (`scripts/integrity-loss`): over a window of a database's
   turns, read from their recorded gate steps by the turn's own codec, which conversations had a
   tool withheld, a tool that writes out withheld, and a turn lost, one whose root asks for a
