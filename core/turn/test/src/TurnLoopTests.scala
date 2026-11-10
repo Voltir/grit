@@ -228,34 +228,7 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "a turn's input limit is its pin's context less its output and a clipped result's room, at most the deployment's own; for a pin of no known context, its window and prefix less that room"
-    ) {
-      def limit(own: Option[Long], context: Option[Long]): Long =
-        Tokens.value(
-          TurnLoop.inputLimit(
-            own = own.map(Tokens(_)),
-            pin = pinned(
-              Profile(
-                pair,
-                contextLength = context.fold(Known.Unmeasured)(c => Known.Of(Tokens(c), said))
-              )
-            ),
-            clipped = Tokens(23_000),
-            drawn = Tokens(37_000)
-          )
-        )
-      Vector(
-        limit(Some(500_000), Some(1_000_000)),
-        limit(None, Some(1_000_000)),
-        limit(Some(500_000), Some(50_000)),
-        limit(Some(500_000), None),
-        limit(Some(10_000), None),
-        limit(None, Some(20_000))
-      ) ==> Vector(500_000L, 972_904L, 22_904L, 14_000L, 10_000L, 1L)
-    }
-
-    test(
-      "a turn's input limit is the least of its pin's context less its output, its effective context and where its price first rises, less a clipped result's room"
+      "a turn's input limit is the least of its pin's context less its output, its effective context and where its price first rises, less a clipped result's room, at most the deployment's own, never below 1; for a pin of no known context, its window and prefix stand in for the context"
     ) {
       def rates(input: Int, output: Int) =
         Rates
@@ -264,32 +237,44 @@ object TurnLoopTests extends TestSuite {
       val stepped = Pricing
         .of(rates(1, 5), Vector(Pricing.Tier(Tokens(100_000), rates(5, 25))))
         .getOrElse(throw new java.lang.AssertionError())
+      val flat = Pricing.flat(rates(1, 5))
       def limit(
           own: Option[Long],
           context: Option[Long],
-          effective: Option[Long],
-          pricing: Pricing
+          effective: Option[Long] = None,
+          pricing: Option[Pricing] = None,
+          drawn: Long = 37_000
       ): Long = {
         def known[A](a: Option[A]): Known[A] = a.fold(Known.Unmeasured)(Known.Of(_, said))
         val profile = Profile(
           pair,
           contextLength = known(context.map(Tokens(_))),
           effectiveContext = known(effective.map(Tokens(_))),
-          pricing = Known.Of(pricing, said)
+          pricing = known(pricing)
         )
         Tokens.value(
-          TurnLoop.inputLimit(own.map(Tokens(_)), pinned(profile), Tokens(23_000), Tokens(37_000))
+          TurnLoop.inputLimit(own.map(Tokens(_)), pinned(profile), Tokens(23_000), Tokens(drawn))
         )
       }
-      val flat = Pricing.flat(rates(1, 5))
-      // 1,000,000 less 4,096 out is 995,904; each bound below it, less 23,000, is the limit.
+      // 1,000,000 less 4,096 out is 995,904; the least bound below it, less 23,000, is the
+      // limit. With no context known, what is drawn (37,000 unless given) stands in for it.
       Vector(
-        limit(None, Some(1_000_000), Some(500_000), stepped),
-        limit(None, Some(1_000_000), Some(500_000), flat),
-        limit(None, Some(1_000_000), Some(200_000), flat),
-        limit(Some(50_000), Some(1_000_000), Some(500_000), stepped),
-        limit(None, None, Some(30_000), flat)
-      ) ==> Vector(77_000L, 477_000L, 177_000L, 50_000L, 7_000L)
+        limit(Some(500_000), Some(1_000_000)),
+        limit(None, Some(1_000_000)),
+        limit(Some(500_000), Some(50_000)),
+        limit(None, Some(20_000)),
+        limit(None, Some(1_000_000), Some(500_000), Some(stepped)),
+        limit(None, Some(1_000_000), Some(500_000), Some(flat)),
+        limit(None, Some(1_000_000), Some(200_000), Some(flat)),
+        limit(Some(50_000), Some(1_000_000), Some(500_000), Some(stepped)),
+        limit(Some(500_000), None),
+        limit(Some(10_000), None),
+        limit(None, None, Some(30_000), Some(flat)),
+        limit(None, None, None, Some(stepped), drawn = 200_000)
+      ) ==> Vector(
+        500_000L, 972_904L, 22_904L, 1L, 77_000L, 477_000L, 177_000L, 50_000L, 14_000L, 10_000L,
+        7_000L, 77_000L
+      )
     }
 
     test("a budget is at least 2 calls") {

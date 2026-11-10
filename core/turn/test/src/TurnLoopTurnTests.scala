@@ -136,18 +136,15 @@ object TurnLoopTurnTests extends TestSuite {
     (provider.requests, said)
   }
 
-  /** What `request` answered the call `id` with, when that was a refusal: its outcome, the
-    * fence the result is shown in looked past.
-    */
-  /** A turn under `recipe` of at most `calls` calls that no limit cuts, call `n` replied
-    * `reply(n)`: each request, and what the turn returned.
+  /** A turn under `recipe` of at most `calls` calls that no limit cuts, kept in `entries`, call
+    * `n` replied `reply(n)`: each request, and what the turn returned.
     */
   private def ranOut(
       recipe: grit.core.recipe.TurnRecipe,
       calls: Int,
-      reply: Int -> Message.Assistant
+      reply: Int -> Message.Assistant,
+      entries: InMemoryEntryStore = new InMemoryEntryStore
   ): (Vector[ModelRequest], String) = {
-    val entries = new InMemoryEntryStore
     val ws = new Files(files)
     val provider = new Scripted((_, n) => Right(reply(n)))
     val turn = say(entries, "move them")
@@ -167,6 +164,9 @@ object TurnLoopTurnTests extends TestSuite {
     (provider.requests, said)
   }
 
+  /** What `request` answered the call `id` with, when that was a refusal: its outcome, the
+    * fence the result is shown in looked past.
+    */
   private def refusedWith(request: ModelRequest, id: String): Option[Outcome] =
     request.messages.collectFirst {
       case Message.ToolResult(c, content, true) if c == ToolCallId(id) =>
@@ -989,17 +989,21 @@ object TurnLoopTurnTests extends TestSuite {
       "a turn briefed for one task whose calls run out is told it is ending, and declaring more ends it at its limit, its handoff the answer"
     ) {
       val handoff = "Moved three; d.txt is left."
+      val entries = new InMemoryEntryStore
       val (requests, said) = ranOut(
         grit.core.recipe.TurnRecipe.Tasked,
         5,
-        n => if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else declaring("more", handoff)
+        n => if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else declaring("more", handoff),
+        entries
       )
       (
         requests.map(r => (told(r, TurnLoop.LimitTools), told(r, TurnLoop.Ending))),
-        grit.core.inbox.Progress.Done(None, said).ending
+        grit.core.inbox.Progress.Done(None, said).ending,
+        texts(entries).filter(_.startsWith("assistant:")).lastOption
       ) ==> (
         Vector((false, false), (false, false), (false, false), (true, false)),
-        grit.core.inbox.TurnEnding.AtLimit
+        grit.core.inbox.TurnEnding.AtLimit,
+        Some(s"assistant: $handoff")
       )
     }
 
@@ -1167,42 +1171,6 @@ object TurnLoopTurnTests extends TestSuite {
         (true, false),
         (true, true)
       )
-    }
-
-    test(
-      "a pin's effective context, or where its price first rises, bounds a turn's input below its context"
-    ) {
-      // Either bound at 100,000, less a clipped result, leaves about 77,000: met at reply 3
-      // (61,000 plus a round's 20,000), where the pin's 1,000,000 context alone is never met.
-      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
-      val said = grit.core.model.Source.Declared("test", java.time.LocalDate.of(2026, 11, 10))
-      def rates(input: Int) = grit.core.model.Rates
-        .of(BigDecimal(input), BigDecimal(input), BigDecimal(input), BigDecimal(input))
-        .getOrElse(throw new java.lang.AssertionError())
-      val stepped = grit.core.model.Pricing
-        .of(rates(1), Vector(grit.core.model.Pricing.Tier(Tokens(100_000), rates(5))))
-        .getOrElse(throw new java.lang.AssertionError())
-      def bounded(profile: grit.core.model.Profile) =
-        limited(
-          window = Tokens(1_000_000),
-          catalog = TurnFixtures.TestCatalog.overlaid(Vector(profile))
-        )._1
-      val wide = grit.core.model.Profile(
-        ref,
-        contextLength = grit.core.model.Known.Of(Tokens(1_000_000), said)
-      )
-      val cut = Vector(
-        (false, false),
-        (false, false),
-        (false, false),
-        (false, false),
-        (true, false),
-        (true, true)
-      )
-      (
-        bounded(wide.copy(effectiveContext = grit.core.model.Known.Of(Tokens(100_000), said))),
-        bounded(wide.copy(pricing = grit.core.model.Known.Of(stepped, said)))
-      ) ==> (cut, cut)
     }
 
     test(
