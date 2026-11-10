@@ -16,7 +16,7 @@ object PerPass {
     * that, when one was not priced), and the `distances` of the passing ones from the task's
     * known diff, in lines, oldest first (a failed trial's distance means nothing for a pass).
     * `thinking` is the tokens of their thinking, `None` where some trial's is not reported, and
-    * `thinkingSpent` what that thinking cost, priced as [[AnthropicRates.thinking]] prices it.
+    * `thinkingSpent` what that thinking cost, priced as [[AnthropicRates.thinkingCost]] prices it.
     */
   final case class Group(
       task: TrialRows.TaskName,

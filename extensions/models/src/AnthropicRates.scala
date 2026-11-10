@@ -1,7 +1,7 @@
 package grit.models
 
 import grit.core.message.{Cost, Tokens, Usage}
-import grit.core.model.{Known, ModelId, Pricing, Upstream}
+import grit.core.model.{Catalog, Known, ModelId, Pricing, Upstream}
 
 /** What Anthropic bills a recorded call, which has no pin: the prices of the [[Seed]]'s profiles
   * of Anthropic's models at its API. A live call is priced by its pin's settings
@@ -45,7 +45,13 @@ object AnthropicRates {
     * prices nothing; `CatalogModelsTests` reads the seed, so a build with one fails there.
     */
   private lazy val priced: Vector[(String, Pricing)] =
-    Seed.catalog.toOption.toVector.flatMap(_.profiles).flatMap { p =>
+    Seed.catalog.toOption.toVector.flatMap(pricedIn)
+
+  /** Each priced profile of `catalog` at Anthropic's API, by Anthropic's own id; a profile of
+    * another upstream, or of a model not Anthropic's, is not among them.
+    */
+  private[models] def pricedIn(catalog: Catalog): Vector[(String, Pricing)] =
+    catalog.profiles.flatMap { p =>
       val id = ModelId.value(p.ref.model)
       val direct = p.ref.upstream.contains(Upstream.AnthropicApi) &&
         id.startsWith(AnthropicProvider.Vendor)
