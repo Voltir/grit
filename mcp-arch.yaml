@@ -53,7 +53,7 @@ ignore:
   # Capture probes (a module's probes/src): test sources, which no rule governs, declaring
   # main packages. enola resolves an import to the first directory declaring its package,
   # and `probes` sorts before `src`, so indexed, a main source's imports would land in them.
-  # Still needed on 0.4.39: indexed, a renamed import (`Label as VisibilityLabel`) or a package
+  # Still needed on 0.5.0: indexed, a renamed import (`Label as VisibilityLabel`) or a package
   # import (`grit.core.route`) resolves into a module's probes and the law reports false breaches.
   - "**/probes/**"
 

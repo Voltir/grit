@@ -17,16 +17,18 @@
 # - a controlled fixture: files of capture syntax beside the same files without it, and a pair
 #   with separation-checking syntax (`consume`, `^` on parameters, `caps.Mutable` and its
 #   `update` methods) beside its plain twin. Each version must extract the same symbols with
-#   the same owners from both sides of a pair, and the new version no fewer than the old;
+#   the same owners from both sides of a pair, and the new version no fewer than the old but
+#   for definitions local to a method (a local listed as its object's member is mis-owned, so
+#   dropping it is a fix), and none mis-owned that the old owned correctly;
 # - grit's import-edge and module facts (they gate): every difference explained;
 # - scripts/enola-plant: every plant caught.
 # The current pin passed all three; the commit that set it records the numbers.
 set -euo pipefail
 
-ENOLA_VERSION=0.4.39
+ENOLA_VERSION=0.5.0
 # The release's published digests, pinned here as well, so a re-uploaded asset fails the check.
-ENOLA_SHA256_AMD64=6f7e3162d29b798f3502bb290aa91c8a6f2dc2e9cf2742d626bd03b1f0923ccd
-ENOLA_SHA256_ARM64=93b928fab533e9fbd5488202d3d818c39a501debd365ec9c2cd1f81d22236927
+ENOLA_SHA256_AMD64=a128191c7475c2411837c3bbe26afaec3e27944904c49a163fc44bfb033a3cad
+ENOLA_SHA256_ARM64=5048cfcd817f5774a070272d1c074821e8c4ccdb764f2b2e8d1e6a8c3691dd47
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dest="$repo_root/tools"
 
