@@ -4,12 +4,11 @@ Status: accepted (2026-10-29); revised (2026-11-10)
 
 Context: a provider caches a request from the front, and current models refuse a history that
 carries thinking blocks once anything before them is edited. Turned down: redrawing the window
-each turn (it misses the cache every turn and, with kept thinking, is refused as edited);
-sliding it at its budget, dropping the oldest turn (its prefix changes every turn once full);
-folding a carried turn's messages into the next part's entries (its dated line would change
-between turns); the assembler reading the carried window itself (what a turn was shown is its
-record, read in its own step); compaction by a model summary (a model call over the whole
-window at each boundary).
+each turn (a cache miss every turn, and refused as edited with kept thinking); sliding it,
+dropping the oldest turn (its prefix changes every turn once full); folding a carried turn's
+messages into the next part (its dated line would change); the assembler reading the carried
+window itself (what a turn was shown is its record, read in its own step); a model summary at
+each boundary (a call over the whole window).
 
 Decision:
 
@@ -37,40 +36,34 @@ Decision:
   width. At the limit, when the carried window and the turns since no longer fit, the window is
   cleared and re-projected, never slid; a carried turn costs what it sent, its tool calls and
   results included, so the turn after one that grew past the budget draws a boundary.
-- **Within a turn, its requests grow to the model's context, not the window.** They are held
-  to `TurnLoop.inputLimit`: the least of what the pin's profile bounds a prompt by, its
-  context length less its output budget, its effective context (the length it does its best
-  work within) and where its price first rises (`Pricing.flatTo`), less room for one clipped
-  tool result; at most the deployment's own input limit (`Rounds.within`), a backstop for a pin
-  whose profile declares no bound below its context. How far a turn should grow is a fact of
-  the model, so it lives with the model's profile: a pin whose price steps up past a prompt
-  length (Claude Haiku 5.5, past 100,000) ends its turn before the step, since the step
-  reprices the whole prompt on every call after it, and the fresh turn drawn at the window
-  costs less than one call past it. A pin whose context no profile gives is held to its window
-  and prompt instead. The limit is read against each reply's input as the
-  provider counted it, never an estimate, so a turn read back cuts where it cut live. **A turn
-  at the limit ends**, its last calls told so, and the next turn draws a boundary: nothing is
-  cleared inside a turn. Turned down: the window bounding the turn too, which held turns to a
-  few reads past their boundary however large the model's context.
+- **Within a turn, its requests grow to the model's context, not the window**, held to
+  `TurnLoop.inputLimit`: the least of the bounds the pin's profile declares (its context less
+  its output budget, its effective context, where its price first rises), at most the
+  deployment's own limit, a backstop for a pin that declares none. How far a turn grows is a
+  fact of the model, kept in its profile: a pin whose price steps up past a prompt length ends
+  before the step, which reprices the whole prompt on every later call. The limit is read
+  against each reply's input as the provider counted it, plus the largest growth one round has
+  added so far (`Rounds.reach`), so a turn read back cuts where it cut live. **A turn at the
+  limit, or whose calls run out, ends** (`TurnEnding.AtLimit`, ADR 0058), its last calls told
+  so, and the next turn draws a boundary: nothing is cleared inside a turn. Turned down: the
+  window bounding the turn too, which held turns to a few reads past their boundary.
 - **A boundary draws within half the limit.** The opening, the recent turns and recall fill to
   that share, and later turns grow the window to the limit. Drawn to the limit, it would leave
   the next turn no room and clear every other turn.
-- **What a turn sends only grows within the turn**, gates included (ADR 0036). Every call of a
-  turn sends the same system prompt, tools and tool choice, its last included: a provider binds
-  a reply's thinking to the tools it was made under, and a changed tool list discards the
-  cached prefix. What a call may not call (a tool its gate withholds, `task_status` before a
-  turn is ending, any tool on its budget's last call) is refused when called, as a tool result,
-  never withdrawn. A turn offers its tool set alone, whatever its gates and classifier decide
-  (`topic` included, and `task_status` on a tasked turn, ADR 0058), so turns of one
-  conversation send the same tools. A gate's notes and stubs are kept in no window record yet,
+- **What a turn sends only grows within the turn**, gates included (ADR 0036). Every call
+  sends the same system prompt, tools and tool choice, its last included: a provider binds a
+  reply's thinking to its tools, and a changed tool list discards the cached prefix. What a
+  call may not call (a tool its gate withholds, `task_status` before a turn is ending, any tool
+  on the last call) is refused when called, as a tool result, never withdrawn. A turn offers
+  its whole tool set whatever its gates decide (`task_status` too on a tasked turn, ADR 0058),
+  so turns of one conversation send the same tools. A gate's notes and stubs are kept in no window record yet,
   so the turn after one whose gate hid an item or wrote a note draws a boundary.
 
 Consequences: on every turn after a window's first, the request begins with the last one's
 prefix, so most of its input is a cache read. Right after a boundary the model sees about half
 what a redrawn window showed, the peak unchanged; a deployment sizes its budget for that. A
-turn that grows toward the context reads its whole prefix back from the cache on every call,
-so the pin's bounds (its effective context and its first price rise), the deployment's own
-input limit, and the day's spend cap bound what a long turn costs. Near
+turn that grows toward the context reads its whole prefix back on every call, so the pin's
+bounds, the deployment's input limit and the day's spend cap bound what it costs. Near
 the limit an append recalls less, and recall never forces a boundary. A strand's and an asking
 turn's sections are as of the boundary; a room's section (ADR 0060) grows, each append adding
 what the room said since the last part. A period's close clears the window, so the

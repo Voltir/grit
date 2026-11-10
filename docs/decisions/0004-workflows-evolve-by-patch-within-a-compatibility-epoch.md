@@ -21,7 +21,8 @@ string (`Turn.Epoch`), and enables DBOS patching (`Engine.open`).
   the body decides from a step's output, not to the steps themselves, may instead grow that
   output: a field the new runs record, its absence reading as the old rule (as
   `record-window`'s `ends-at-limit`). The output says which rule its run took, read back with
-  it, with no marker step and no branch in the flow.
+  it, with no marker step and no branch in the flow. A reader of the epoch that lacks the field
+  ignores it, since a rollback within an epoch resumes those histories.
 - **The epoch changes only for a break a patch cannot carry.** Workflows in flight under the
   old epoch are then never resumed by the new engine; what happens to them is policy, not
   yet decided. A new epoch starts with its first recorded histories.
