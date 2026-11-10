@@ -293,29 +293,24 @@ object Rig {
     * why the root could not be read; an entry that cannot be removed is left for the next.
     */
   def cleared(root: Path)(runs: Int): Either[String, Int] =
-    Try(Files.list(root)).toEither.left
-      .map(e => s"the work root $root could not be read: ${e.getClass.getName}")
-      .map { listing =>
-        val entries =
-          try listing.iterator.asScala.toVector
-          finally listing.close()
-        val runOf = entries.flatMap { p =>
-          p.getFileName.toString match {
-            case RunEntry(stem, seconds, suffix) =>
-              seconds.toLongOption.map(s => (p, (s, stem), suffix == ".log"))
-            case _ => None
-          }
-        }
-        val newest = runOf.map(_._2).distinct.sorted.reverse
-        val logsKept = newest.take(runs).toSet
-        runOf.count { (p, run, log) =>
-          val goes = !log || !logsKept(run)
-          goes && {
-            if (log) Try(Files.deleteIfExists(p)).isSuccess
-            else { removeTree(p); !Files.exists(p) }
-          }
+    listed(root, "work root").map { entries =>
+      val runOf = entries.flatMap { p =>
+        p.getFileName.toString match {
+          case RunEntry(stem, seconds, suffix) =>
+            seconds.toLongOption.map(s => (p, (s, stem), suffix == ".log"))
+          case _ => None
         }
       }
+      val newest = runOf.map(_._2).distinct.sorted.reverse
+      val logsKept = newest.take(runs).toSet
+      runOf.count { (p, run, log) =>
+        val goes = !log || !logsKept(run)
+        goes && {
+          if (log) Try(Files.deleteIfExists(p)).isSuccess
+          else { removeTree(p); !Files.exists(p) }
+        }
+      }
+    }
 
   /** A run's entry under the work root: its stem and when it began, then `-known`, `.log`
     * or nothing.
@@ -877,6 +872,17 @@ object Rig {
   /** Read, written and searched by this user alone. */
   private val Owner =
     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
+
+  /** The entries of the directory `root`, the `what` a prune clears; or why it could not be
+    * read: `the <what> <root> could not be read`, naming the exception's class.
+    */
+  private[harness] def listed(root: Path, what: String): Either[String, Vector[Path]] =
+    Try(Files.list(root)).toEither.left
+      .map(e => s"the $what $root could not be read: ${e.getClass.getName}")
+      .map { listing =>
+        try listing.iterator.asScala.toVector
+        finally listing.close()
+      }
 
   /** Removes `dir` and all in it, deepest first, each path in its own `Try` so that one that
     * cannot go does not keep the rest. A symbolic link is removed as a link, never followed.

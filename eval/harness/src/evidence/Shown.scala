@@ -76,9 +76,7 @@ object Shown {
   }
 
   /** The path a standing text's grade shapes are found under: `standing.md`. */
-  val StandingPath: RelPath =
-    // A literal RelPath.of accepts.
-    RelPath.of("standing.md").fold(e => throw new IllegalStateException(e.toString), identity)
+  val StandingPath: RelPath = Proposal.path("standing.md")
 
   extension (shown: Shown) {
 

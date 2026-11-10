@@ -151,8 +151,10 @@ object Proposal {
   private val Clipped: String =
     "This run's transcript was cut when it was kept, so its end is missing."
 
-  /** `s` as a path: each this object makes, a literal or one with a number in it, is one. */
-  private def path(s: String): RelPath =
+  /** `s` as a path, for the evidence's own names: each, a literal or one with a number in it,
+    * is one. Throws on any other.
+    */
+  private[evidence] def path(s: String): RelPath =
     RelPath
       .of(s)
       .fold(e => throw new IllegalStateException(s"not a relative path: $s ($e)"), identity)
