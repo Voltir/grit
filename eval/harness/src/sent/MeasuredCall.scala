@@ -3,7 +3,6 @@ package grit.eval.harness.sent
 import grit.core.id.EntryId
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.{ModelRequest, TokenEstimator}
-import grit.eval.harness.capture.Spent
 import grit.models.AnthropicRates
 import grit.turn.TurnRecord.WindowMessage
 

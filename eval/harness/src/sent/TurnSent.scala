@@ -15,7 +15,7 @@ import grit.core.store.{Entry, Payload, StoreError, Tx}
 import grit.core.tool.{ToolSet, ToolSetId}
 import grit.core.triage.Tags
 import grit.dbos.internal.Reader
-import grit.eval.harness.capture.{Spent, Unread}
+import grit.eval.harness.capture.Unread
 import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord, TurnSummary}
 
 /** A recorded turn as its model was sent it, with the decisions that led there: its

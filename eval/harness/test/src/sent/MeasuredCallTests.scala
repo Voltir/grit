@@ -4,7 +4,6 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ToolSchema}
-import grit.eval.harness.capture.Spent
 
 import utest.*
 

@@ -4,7 +4,6 @@ import grit.assembly.estimate.CharEstimate
 import grit.core.id.EntryId
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
-import grit.eval.harness.capture.Spent
 import grit.turn.{Turn, TurnLoop, TurnRecord, TurnSummary}
 
 import utest.*

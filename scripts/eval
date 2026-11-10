@@ -140,53 +140,6 @@ harness() {
   JAVA_HOME=$(path_of grit.eval.harness.javaHome) "$launcher" "$@"
 }
 
-capture() {
-  local from= date
-  date=$(date -u +%Y%m%d)
-  while [ $# -gt 0 ]; do
-    case $1 in
-      --from) from=$2; shift 2 ;;
-      --date) date=$2; shift 2 ;;
-      *) usage ;;
-    esac
-  done
-  [ -n "$from" ] || usage
-  [[ $date =~ ^[0-9]{8}$ ]] || { echo "eval: --date is yyyymmdd" >&2; exit 2; }
-  local dir="$main/.local/eval/capture/$date" restored="grit_eval_$date"
-  mkdir -p "$dir"
-  if [ ! -f "$dir/dump.txt" ]; then
-    if [ -e "$dir/source.dump" ] || exists "$restored"; then
-      echo "eval: an earlier capture into $dir did not finish: remove $dir/source.dump and drop $restored" >&2
-      exit 1
-    fi
-    compose pg_dump -U grit -Fc "$from" >"$dir/source.dump"
-    # When the dump finished: every row in it was written before then.
-    local dumped
-    dumped=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    compose createdb -U grit "$restored"
-    # pg_restore's errors can quote the rows it was restoring, so they go where only a person
-    # reads them.
-    local log="$main/.local/eval/review/restore-$date.log"
-    mkdir -p "$(dirname "$log")"
-    compose pg_restore -U grit -d "$restored" --no-owner --exit-on-error \
-      <"$dir/source.dump" 2>"$log" ||
-      { echo "eval: pg_restore failed; its errors are in $log" >&2; exit 1; }
-    printf 'source=%s\nsha256=%s\nat=%s\n' "$from" \
-      "$(sha256sum "$dir/source.dump" | cut -d' ' -f1)" "$dumped" >"$dir/dump.txt"
-    echo "dumped $from and restored it to $restored"
-  else
-    exists "$restored" || { echo "eval: $dir has a dump but $restored is gone" >&2; exit 1; }
-    echo "reusing $dir/source.dump, restored in $restored"
-  fi
-  local source sha at
-  source=$(sed -n 's/^source=//p' "$dir/dump.txt")
-  [ "$source" = "$from" ] || { echo "eval: $dir was dumped from $source, not $from" >&2; exit 1; }
-  sha=$(sed -n 's/^sha256=//p' "$dir/dump.txt")
-  at=$(sed -n 's/^at=//p' "$dir/dump.txt")
-  harness capture --url "jdbc:postgresql://localhost:5432/$restored" --source "$from" \
-    --restored "$restored" --sha256 "$sha" --at "$at" --out "$dir"
-}
-
 context() {
   local id=${1:-} from= full= capture= limit=() conversation= redraw=()
   if [ "$id" = --conversation ]; then conversation=${2:-}; id=$conversation; shift; fi
@@ -316,7 +269,6 @@ propose() {
 }
 
 case $1 in
-  capture) shift; capture "$@" ;;
   context) shift; context "$@" ;;
   bench) shift; bench "$@" ;;
   propose) shift; propose "$@" ;;

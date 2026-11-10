@@ -4,7 +4,6 @@ import grit.core.clock.Clock
 import grit.kit.environment.Exit
 
 import Cli.*
-import CaptureCommands.*
 import BenchCommands.*
 import ProposeCommands.*
 import ContextCommands.*
@@ -19,7 +18,6 @@ object Main {
     val clock: Clock^ = Clock.system() // clock-check: the eval harness's composition root
     val exit = Exit.process("eval:", 1)
     args.toList match {
-      case "capture" :: rest => exit(flags(rest).flatMap(capture))
       case "context" :: rest =>
         exit(
           flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"), clock))
@@ -30,7 +28,7 @@ object Main {
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval capture|context|bench|propose|integrity-loss " +
+            "usage: scripts/eval context|bench|propose|integrity-loss " +
               "(scripts/eval and scripts/integrity-loss say what each takes)"
           )
         )

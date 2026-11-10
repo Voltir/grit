@@ -22,7 +22,6 @@ import grit.core.stitch.{Offered, Placed}
 import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
-import grit.eval.harness.capture.Spent
 import grit.models.AnthropicRates
 import grit.turn.{Turn, TurnJudge, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
 

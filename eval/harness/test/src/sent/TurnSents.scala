@@ -6,7 +6,6 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
 import grit.core.tool.ToolSetId
-import grit.eval.harness.capture.Spent
 import grit.turn.{Turn, TurnLoop, TurnOffer, TurnRecord, TurnSummary}
 
 /** A recorded turn built by hand, for the suites that read one as its markdown ([[SentMarkdown]]). */

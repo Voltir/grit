@@ -7,7 +7,6 @@ import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.core.store.{Entry, Payload}
 import grit.core.visibility.Integrity
-import grit.eval.harness.capture.Spent
 
 import utest.*
 
