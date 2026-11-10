@@ -221,9 +221,7 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(
-        alone(own, claims, args.key.project, Step.Move(args), by, at, "move", guard(args, by))
-      )
+      answered(alone(own, claims, args.key.project, Step.Move(args), by, at, "move"))
   }
 
   /** `project_propose`: a new artifact of `kind`, kept as `project_keep` keeps one. */
@@ -293,19 +291,13 @@ private[plugin] final class ProjectCommands(
       }
   }
 
-  /** Nothing, or a refusal of `args` when `by` is a turn and its artifact's kind and the state
-    * it moves to are among those `turns` guards ([[Projects.guardedMove]]).
+  /** The states, each with a kind, into which `by` may not move an artifact of that kind: those
+    * `turns` guards when `by` is a turn; none for a person.
     */
-  private def guard(args: Moving, by: CommandBy): Loaded -> Either[Stop, Unit] = project =>
-    (turns, by) match {
-      case (TurnCommands.Shipped(guarded), CommandBy.Turn(_, _)) =>
-        project.artifacts.find(_.head.key == args.key).map(_.head.kind) match {
-          case Some(kind) if guarded((kind, args.to)) =>
-            Left(Stop.Refused(Projects.guardedMove(args.key, kind, args.to)))
-          case _ => Right(())
-        }
-      case _ => Right(())
-    }
+  private def guarding(by: CommandBy): Set[(KindName, StateName)] = (turns, by) match {
+    case (TurnCommands.Shipped(guarded), CommandBy.Turn(_, _)) => guarded
+    case _ => Set.empty
+  }
 
   /** `project_batch`. */
   object Batch extends KeepingCommand[Batching] {
@@ -414,7 +406,7 @@ private[plugin] final class ProjectCommands(
       for {
         project <- loaded(own, args.project)
         method <- refuse(declared(project.pin))
-        plan = planned(project, method, args.steps, author(by), onward = args.dry)
+        plan = planned(project, method, args.steps, author(by), guarding(by), onward = args.dry)
         (said, steps) = plan
         answers <- Traversal.traverse(said.zipWithIndex) {
           case (Right(answer), i) => Right(s"${i + 1}. $answer")
@@ -1303,7 +1295,7 @@ private[plugin] final class ProjectCommands(
       project <- loaded(own, key)
       _ <- admits(project)
       method <- refuse(declared(project.pin))
-      plan = planned(project, method, Vector(step), author(by), onward = false)
+      plan = planned(project, method, Vector(step), author(by), guarding(by), onward = false)
       (said, steps) = plan
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
       _ <- settled(claims, project, method, key, steps, at, verb)
@@ -1697,14 +1689,16 @@ private[plugin] object ProjectCommands {
       extends caps.Pure
 
   /** `steps` over `project`, each as its command would take it and seeing what those before it
-    * did, written as `writer`: each step's answer or refusal, in order, and what they made of
-    * it. A refused step changes nothing; past one, the rest are taken only when `onward`.
+    * did, written as `writer`, a move into a state `guarded` pairs with its artifact's kind
+    * refused ([[Projects.guardedMove]]): each step's answer or refusal, in order, and what they
+    * made of it. A refused step changes nothing; past one, the rest are taken only when `onward`.
     */
   private def planned(
       project: Loaded,
       method: Method,
       steps: Vector[Step],
       writer: String,
+      guarded: Set[(KindName, StateName)],
       onward: Boolean
   ): (Vector[Either[Stop, String]], Stepping) =
     steps.foldLeft(
@@ -1713,21 +1707,23 @@ private[plugin] object ProjectCommands {
       val (said, now) = sofar
       if (!onward && said.exists(_.isLeft)) sofar
       else
-        stepped(project, method, now, step, writer) match {
+        stepped(project, method, now, step, writer, guarded) match {
           case Right((next, answer)) => (said :+ Right(answer), next)
           case Left(why) => (said :+ Left(why), now)
         }
     }
 
-  /** `step` taken over `now`, from `project` as loaded, written as `writer`: what it makes of
-    * `now` and its answer, or why it is refused, as `project_keep` or `project_move` refuses.
+  /** `step` taken over `now`, from `project` as loaded, written as `writer`, `guarded` as
+    * [[planned]] takes it: what it makes of `now` and its answer, or why it is refused, as
+    * `project_keep` or `project_move` refuses.
     */
   private def stepped(
       project: Loaded,
       method: Method,
       now: Stepping,
       step: Step,
-      writer: String
+      writer: String,
+      guarded: Set[(KindName, StateName)]
   ): Either[Stop, (Stepping, String)] = {
     def changing(changed: Vector[Artifact]): Stepping = {
       val keys = changed.map(_.head.key)
@@ -1792,6 +1788,11 @@ private[plugin] object ProjectCommands {
         } yield (next, s"Kept ${headed(artifact.head)}.")
       case Step.Move(args) =>
         for {
+          _ <- now.artifacts.find(_.head.key == args.key).map(_.head.kind) match {
+            case Some(kind) if guarded((kind, args.to)) =>
+              Left(Stop.Refused(Projects.guardedMove(args.key, kind, args.to)))
+            case _ => Right(())
+          }
           _ <- Either.cond(
             method.digest == project.pin.digest,
             (),

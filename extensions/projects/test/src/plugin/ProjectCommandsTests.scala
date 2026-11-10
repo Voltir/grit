@@ -116,6 +116,33 @@ object ProjectCommandsTests extends TestSuite {
       )
     }
 
+    test(
+      "a turn's batch moving to a guarded state is refused, naming the step, and keeps nothing"
+    ) {
+      val guarded = Set((MethodFixtures.change.name, state("done")))
+      val projects = Projects
+        .of(Vector(method() -> Vector.empty), methodName, TurnCommands.Shipped(guarded))
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "## Why\n\nBecause.")
+      def step(to: String) = ujson.Obj("command" -> "move", "key" -> "p/a", "state" -> to)
+      val refused = askBy(CommandBy.Turn(person, TurnRef(ConversationId("c7"), TurnSeq(5))))(
+        projects,
+        store,
+        "project_batch",
+        "project" -> "p",
+        "steps" -> ujson.Arr(step("building"), step("done"))
+      )
+      (refused, shown(projects, store, "p/a").contains("state: proposed")) ==> (
+        CommandOutcome.Refused(
+          "Nothing was kept: step 2 of 2 (move p/a to done) was refused: A turn cannot move p/a " +
+            "(change) to done: only a person can, and not by asking a turn."
+        ),
+        true
+      )
+    }
+
     test("a proposing plugin offers turns project_propose alone") {
       proposing().commands.filter(_.offeredToTurns).map(c => ToolName.value(c.spec.name)) ==>
         Vector("project_propose")

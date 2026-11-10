@@ -117,7 +117,7 @@ object Projects {
   def reached(held: Watched.Held): Set[StateName] = held.refs.flatMap(ArtifactJson.stateOf)
 
   /** Why a turn's move of `key`, of `kind`, to `state` is refused, when [[TurnCommands]] guards
-    * that state: the one wording, which an edge refusing a person's such move builds on.
+    * that state.
     */
   def guardedMove(key: ArtifactKey, kind: KindName, state: StateName): String =
     s"A turn cannot move ${key.value} (${KindName.value(kind)}) to ${StateName.value(state)}: " +
