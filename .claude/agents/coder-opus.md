@@ -112,7 +112,7 @@ reading the doc each item names rather than assuming its rule.
 ## Report
 
 Under the length the brief sets (default ~25 lines): branch, worktree, head commit(s), test
-count, each new or strengthened test's red (the quoted failing assertion, and the plant's diff where there was one), the elision table as built (anything that ended up needing a body read), the
+count, each new or strengthened test's red (the quoted failing assertion, and the plant's diff where there was one), the elision table as built (anything that ended up needing a body read, and whether a signature or a doc line fixed it), what `scripts/kb-delta <base>..HEAD` prints, what the change retired, the
 standards and guarantees your change touched and how each holds, the judgement calls you made
 where the brief was silent, how many times you ran each check, the queries that failed you,
 what the reviewer should check first, and Parked.

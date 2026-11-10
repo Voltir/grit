@@ -1,6 +1,6 @@
 ---
 name: overlap-janitor
-description: Read-only review of the production code a range of commits added for overlap with what grit already had — a trait, type, function or step that duplicates an existing one, or one word given a second meaning, or a synonym standing for an idea grit already names. Use over a git range, typically the symbols a milestone added, with one agent per area when the range is large.
+description: Read-only review of the production code a range of commits added, for docs that break STYLE.md rule 10 and for overlap with what grit already had — a trait, type, function or step that duplicates an existing one, or one word given a second meaning, or a synonym standing for an idea grit already names. Use over a git range, typically the symbols a milestone added, with one agent per area when the range is large.
 model: claude-haiku-5-5
 effort: medium
 tools: Read, Grep, Glob, Bash
@@ -39,9 +39,23 @@ new one overlaps with one that already existed. The brief names the range.
 Not overlap: an implementation of an existing trait; a deliberate quarantine copy (STYLE.md
 rule 8) that says so; a test fake.
 
+## Docs of the new symbols
+
+`scripts/kb-delta <range>` gives the range's doc bytes; you have each new symbol's doc from
+`show`. Flag a doc against STYLE.md rule 10's list, which this file does not restate:
+
+| Verdict | Meaning |
+|---|---|
+| restates | says what the name, type or visibility says |
+| narrates | tells how the body works, or a subsystem's behaviour on its entry point |
+| history | what it replaced, when it was added, what was turned down |
+| private-doc | on a private member, saying nothing its body does not show |
+
+A doc flag quotes the line and gives the text that should remain, or "delete".
+
 ## Standard of evidence
 
-- Every flag cites both sides, `file:line` (or the scout query that shows each), and says
+- Every overlap flag cites both sides, `file:line` (or the scout query that shows each), and says
   what differs between them. No second side, no flag.
 - Say what merging them would take in one line: which survives, and what its callers change.
 - When unsure, mark the row `unsure`. Do not inflate; a clean area is a fine answer.
@@ -50,6 +64,7 @@ rule 8) that says so; a test fake.
 
 1. Scope: the range, the new symbols read (count).
 2. Flags, most consequential first: `verdict | new (file:line) | existing (file:line) | what differs | merge in one line`.
+   Doc flags after them: `verdict | file:line | the line | what remains`.
 3. Areas with nothing flagged: "clean".
 
 No preamble, no restating this file.

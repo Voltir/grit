@@ -200,6 +200,21 @@ docs left out):
   about a failure mode is how a doc misleads without lying.
 - **A doc must be true of every value that can exist.** If a type can hold values the doc
   rules out, fix the type or weaken the doc to what is true — never leave the claim.
+- **The first sentence is the contract.** A signature-only view may print no more of a
+  member's doc than that, so it says what a caller gets; failures and constants follow.
+- **An entry point's doc is its caller's contract, not its subsystem's manual.** What
+  `receive` returns and when it fails belongs on `receive`; how the edge behind it routes,
+  retries and records belongs in the module's README, said once.
+- **A private member has a doc only for what its body cannot show a reader already in it:**
+  a failure, a unit, why a constant has its value. The elision test is about callers, and
+  a private member's callers are in the file. Test helpers are the same.
+- **A comment never tells history.** What a thing replaced, when a field was added and
+  what was turned down belong in the commit or a decision record. A comment says what is
+  true of the code beside it.
+
+A sentence added to a doc always passes review, so the pressure runs one way. A reader
+who needed the body is first a sign the signature is wrong (above); a longer doc is the
+last fix, not the first.
 
 ## 11. Escape hatches carry their proof
 
@@ -244,6 +259,14 @@ weak coverage, it is false coverage: it reads as a guarantee and holds none.
     candidate tied, one window standing in for "windows").
 - **Not redundant.** A second test of the same branch with the same kind of assertion is
   weight, not safety. Merge it into the stronger one.
+- **What surrounds a test is shared, not rebuilt.** Before a suite builds a value, a fake
+  or a harness, it looks in its module's fixtures and in core's; when a second suite needs
+  one, it moves there in that change. A private copy per suite is how the same
+  eight-argument `Entry` comes to be written out in file after file, and how a fake escapes
+  the spec that holds it to the real thing.
+- **A name states the contract, not each assertion.** A test that pins three observations
+  of one behaviour is named for the behaviour; a name that lists every clause is a body
+  written twice.
 - **Two kinds of test that look trivial and are not.** A pin of a stored or wire form (a
   row's JSON key, a recorded step name, an escape sequence) is the point: pin it, and say
   why beside it. A compile probe that the type system *rejects* something keeps a type's

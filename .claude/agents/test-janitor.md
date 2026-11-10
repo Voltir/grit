@@ -34,6 +34,8 @@ where scout cannot answer.
 | incidental-pin | pins a detail that is no contract: breaks on a harmless refactor, catches no bug |
 | tests-the-fake | exercises a test double where the name claims production behaviour |
 | name-overclaims | the name promises more than the body checks |
+| name-lists | the name spells out each assertion instead of the one contract (give the name) |
+| local-copy | a value, fake or harness built in the suite that a shared fixture has, or that a second suite also builds (name both) |
 
 Actions: **delete**, **merge** (into which), **strengthen** (with what assertion), **rename**
 (to what), **comment**. A flag may target one assertion rather than the whole test.

@@ -219,7 +219,9 @@ subagents write code beside developer-driven harnesses like Claude Code.
   place instead. A new type's name is searched for its synonyms in the codebase: where one
   names a kin idea, the plan says why grit needs two, or uses the one it has. Of two designs
   that pass the elision test, the one that shares more code wins: one implementation that a
-  turn, a job and a rehearsal all run beats two kept alike by hand.
+  turn, a job and a rehearsal all run beats two kept alike by hand. It ends with **Retires**:
+  what the change makes unnecessary, deleted in the same pull request
+  ([`.claude/plan-checklist.md`](.claude/plan-checklist.md)).
   Mechanical edits, doc corrections and small fixes inside an agreed plan need none of these.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a

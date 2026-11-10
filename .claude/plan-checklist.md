@@ -32,6 +32,14 @@ that applies in its plan; a reviewer checks each against the plan and says which
   `family` of any trait it resembles, `uses` of the nearest candidate), and says why that is not
   reused or extended. Two of a thing that differ only in a type, a failure type or a name are one
   thing; a word already meaning something else in grit is not reused for a new idea.
+- **Retires.** The plan names what the change makes unnecessary and deletes it in the same pull
+  request, tests and data with it: the implementation it replaces, the earlier versions a new
+  version of a question set or stored form stands in for, the recorded histories of an epoch it
+  ends, a command or measurement nothing will run again. Code that compiles and passes its tests
+  never goes red for being unused, so only the plan asks. What must outlive the change is a
+  backlog item saying what it waits for. "Nothing" is an answer, and is written.
+- **Fixtures.** A stage that adds tests names the fixture file they build on. A value, fake or
+  harness a second suite needs is added to that file as part of the stage; that is not widening.
 - **Code by symbol, and each stage carries its reads.** A plan names code as `Owner.member` (a
   place inside a body: the member and a quoted phrase), never by file and line: a line number is
   stale after the first edit, and it sends the coder who builds the plan to `sed` instead of scout.
