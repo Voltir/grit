@@ -14,7 +14,6 @@ The compose Postgres (`docker compose up -d`) holds them.
 | `grit_kalandra` | the deployment that holds grit's own plans (CLAUDE.md, "How grit's work is planned") | read and write only through `bin/kalandra` or its MCP tools; never reset, drop or purge it |
 | `grit_<deployment>` | the proving-ground deployment, run from its own repository against grit's `publishLocal` jars | everything: read, reset, purge, run it; read it by shape, never bulk-dumping message text or payloads, and its schema changes still go to Nick as an `ALTER` |
 | `grit_eval_<yyyymmdd>` | an eval capture, restored by `scripts/eval capture` from a dump of another database | create, read, drop; never run grit on it |
-| `grit_eval_shadow` | a disposable copy of a capture that a shadow run's engine runs on | create, read, reset, drop, run grit on it |
 | `grit_bench` | the coder bench's trials and their transcripts (`scripts/eval bench`) | read; never reset: the trials are the bench's record |
 | `grit_bench_coder` | the database a bench run's grit coder (`grit work`) runs on, one run's rows at a time | create, read, drop, run `grit work` on it |
 | `grit_bench_coder_<yyyymmddhhmmss>` | one bench run's coder database, copied as the run ended (`scripts/eval bench … --keep-coder`) | read, drop; never run grit on it |
