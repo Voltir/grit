@@ -1170,6 +1170,42 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
+      "a pin's effective context, or where its price first rises, bounds a turn's input below its context"
+    ) {
+      // Either bound at 100,000, less a clipped result, leaves about 77,000: met at reply 3
+      // (61,000 plus a round's 20,000), where the pin's 1,000,000 context alone is never met.
+      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
+      val said = grit.core.model.Source.Declared("test", java.time.LocalDate.of(2026, 11, 10))
+      def rates(input: Int) = grit.core.model.Rates
+        .of(BigDecimal(input), BigDecimal(input), BigDecimal(input), BigDecimal(input))
+        .getOrElse(throw new java.lang.AssertionError())
+      val stepped = grit.core.model.Pricing
+        .of(rates(1), Vector(grit.core.model.Pricing.Tier(Tokens(100_000), rates(5))))
+        .getOrElse(throw new java.lang.AssertionError())
+      def bounded(profile: grit.core.model.Profile) =
+        limited(
+          window = Tokens(1_000_000),
+          catalog = TurnFixtures.TestCatalog.overlaid(Vector(profile))
+        )._1
+      val wide = grit.core.model.Profile(
+        ref,
+        contextLength = grit.core.model.Known.Of(Tokens(1_000_000), said)
+      )
+      val cut = Vector(
+        (false, false),
+        (false, false),
+        (false, false),
+        (false, false),
+        (true, false),
+        (true, true)
+      )
+      (
+        bounded(wide.copy(effectiveContext = grit.core.model.Known.Of(Tokens(100_000), said))),
+        bounded(wide.copy(pricing = grit.core.model.Known.Of(stepped, said)))
+      ) ==> (cut, cut)
+    }
+
+    test(
       "a pin's context length bounds a turn's input, less its output budget and a clipped result's room, however wide its window"
     ) {
       // 50,000 tokens less the pin's 4,096 out and a clipped result leaves about 23,000: met at

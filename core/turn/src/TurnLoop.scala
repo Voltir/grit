@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.allot.Allotment
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens}
-import grit.core.model.{AfterToolResult, ToolGuidance}
+import grit.core.model.{AfterToolResult, Pinned, ToolGuidance}
 import grit.core.prompt.{Fenced, Stripped, Tag}
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.recipe.Briefing
@@ -104,22 +104,21 @@ object TurnLoop {
     }
   }
 
-  /** The input a turn's requests are held to ([[Rounds.limit]]): the pin's `contextLength` less
-    * `maxTokens`, its output budget, and `clipped`, room for one clipped tool result the loop
-    * has not yet seen; at most `own`, the deployment's own limit ([[Rounds.within]]), when it
-    * sets one. For a pin whose context length no profile gives, `drawn`, its assembler's limit
-    * plus what its system prompt and tools cost, stands in for it, `clipped` taken from it
-    * alone. Never below one token. With the context known, the window bounds only what a
-    * boundary draws (ADR 0052), not how far the turn grows.
+  /** The input a turn's requests are held to ([[Rounds.limit]]): the least of what `pin` bounds
+    * a prompt by, less `clipped`, room for one clipped tool result the loop has not yet seen; at
+    * most `own`, the deployment's own limit ([[Rounds.within]]), when it sets one. `pin` bounds
+    * a prompt by its context length less its output budget (for a pin whose context no profile
+    * gives, by `drawn`, its assembler's limit plus what its system prompt and tools cost), by
+    * its effective context, and by its pricing's [[grit.core.model.Pricing.flatTo]], where its
+    * price first rises. Never below one token. With the context known, the window bounds only
+    * what a boundary draws (ADR 0052), not how far the turn grows.
     */
-  def inputLimit(
-      own: Option[Tokens],
-      contextLength: Option[Tokens],
-      maxTokens: Int,
-      clipped: Tokens,
-      drawn: Tokens
-  ): Tokens = {
-    val held = contextLength.fold(Tokens.value(drawn))(l => Tokens.value(l) - maxTokens)
+  def inputLimit(own: Option[Tokens], pin: Pinned, clipped: Tokens, drawn: Tokens): Tokens = {
+    val s = pin.settings
+    val ceiling =
+      s.contextLength.fold(Tokens.value(drawn))(l => Tokens.value(l) - pin.assignment.maxTokens)
+    val held = (Vector(ceiling) ++ (s.effectiveContext ++ s.pricing.flatMap(_.flatTo))
+      .map(Tokens.value)).min
     val roomed = math.max(1L, held - Tokens.value(clipped))
     Tokens(own.fold(roomed)(o => math.min(Tokens.value(o), roomed)))
   }

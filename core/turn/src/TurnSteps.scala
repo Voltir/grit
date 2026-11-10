@@ -150,8 +150,7 @@ private[turn] object TurnSteps {
         val budget = TurnLoop.Rounds.allotted(tooling.budget, routed.calls)
         val held = TurnLoop.inputLimit(
           own = budget.limit,
-          contextLength = pin.settings.contextLength,
-          maxTokens = pin.assignment.maxTokens,
+          pin = pin,
           // One clipped tool result, the most a host tool answers with.
           clipped =
             estimator.message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false)),

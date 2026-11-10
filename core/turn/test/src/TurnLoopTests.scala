@@ -2,7 +2,22 @@ package grit.turn
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{AfterToolResult, ToolGuidance}
+import grit.core.model.{
+  AfterToolResult,
+  Assignment,
+  CatalogVersion,
+  Grade,
+  Known,
+  ModelId,
+  ModelRef,
+  Pinned,
+  Pricing,
+  Profile,
+  Rates,
+  Settings,
+  Source,
+  ToolGuidance
+}
 import grit.core.provider.ToolSchema
 import grit.core.recipe.Briefing
 import grit.core.tool.Outcome
@@ -14,6 +29,21 @@ import TurnLoop.{Ended, Next, Pending, Round, Rounds}
   * what each call is told. The steps its rounds make are [[TurnRoundTests]]'.
   */
 object TurnLoopTests extends TestSuite {
+
+  private val pair = ModelRef(
+    ModelId.of("anthropic/claude-haiku-5-5").getOrElse(throw new java.lang.AssertionError()),
+    None
+  )
+  private val said = Source.Declared("test", java.time.LocalDate.of(2026, 11, 10))
+
+  /** A pin of `pair` at 4,096 tokens out, under `profile`'s settings. */
+  private def pinned(profile: Profile): Pinned =
+    Pinned(
+      CatalogVersion("v"),
+      Grade.Standard,
+      Assignment(pair, 4096, None),
+      Settings.of(Some(profile))
+    )
 
   private def budget(n: Int): Rounds = Rounds.of(n) match {
     case Right(b) => b
@@ -204,8 +234,12 @@ object TurnLoopTests extends TestSuite {
         Tokens.value(
           TurnLoop.inputLimit(
             own = own.map(Tokens(_)),
-            contextLength = context.map(Tokens(_)),
-            maxTokens = 4096,
+            pin = pinned(
+              Profile(
+                pair,
+                contextLength = context.fold(Known.Unmeasured)(c => Known.Of(Tokens(c), said))
+              )
+            ),
             clipped = Tokens(23_000),
             drawn = Tokens(37_000)
           )
@@ -218,6 +252,44 @@ object TurnLoopTests extends TestSuite {
         limit(Some(10_000), None),
         limit(None, Some(20_000))
       ) ==> Vector(500_000L, 972_904L, 22_904L, 14_000L, 10_000L, 1L)
+    }
+
+    test(
+      "a turn's input limit is the least of its pin's context less its output, its effective context and where its price first rises, less a clipped result's room"
+    ) {
+      def rates(input: Int, output: Int) =
+        Rates
+          .of(BigDecimal(input), BigDecimal(input), BigDecimal(input), BigDecimal(output))
+          .getOrElse(throw new java.lang.AssertionError())
+      val stepped = Pricing
+        .of(rates(1, 5), Vector(Pricing.Tier(Tokens(100_000), rates(5, 25))))
+        .getOrElse(throw new java.lang.AssertionError())
+      def limit(
+          own: Option[Long],
+          context: Option[Long],
+          effective: Option[Long],
+          pricing: Pricing
+      ): Long = {
+        def known[A](a: Option[A]): Known[A] = a.fold(Known.Unmeasured)(Known.Of(_, said))
+        val profile = Profile(
+          pair,
+          contextLength = known(context.map(Tokens(_))),
+          effectiveContext = known(effective.map(Tokens(_))),
+          pricing = Known.Of(pricing, said)
+        )
+        Tokens.value(
+          TurnLoop.inputLimit(own.map(Tokens(_)), pinned(profile), Tokens(23_000), Tokens(37_000))
+        )
+      }
+      val flat = Pricing.flat(rates(1, 5))
+      // 1,000,000 less 4,096 out is 995,904; each bound below it, less 23,000, is the limit.
+      Vector(
+        limit(None, Some(1_000_000), Some(500_000), stepped),
+        limit(None, Some(1_000_000), Some(500_000), flat),
+        limit(None, Some(1_000_000), Some(200_000), flat),
+        limit(Some(50_000), Some(1_000_000), Some(500_000), stepped),
+        limit(None, None, Some(30_000), flat)
+      ) ==> Vector(77_000L, 477_000L, 177_000L, 50_000L, 7_000L)
     }
 
     test("a budget is at least 2 calls") {
