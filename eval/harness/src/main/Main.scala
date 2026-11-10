@@ -10,9 +10,7 @@ import RebuildCommands.*
 import RecipeCommands.*
 import BenchCommands.*
 import ProposeCommands.*
-import RunCommands.*
-import ScoreCommands.*
-import PullCommands.*
+import ContextCommands.*
 import IntegrityCommands.*
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
@@ -25,22 +23,10 @@ object Main {
     val exit = Exit.process("eval:", 1)
     args.toList match {
       case "capture" :: rest => exit(flags(rest).flatMap(capture))
-      case "run" :: rest =>
-        exit(
-          flags(rest.filterNot(_ == "--no-cache"))
-            .flatMap(run(_, !rest.contains("--no-cache"), clock))
-        )
-      case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
-      case "inputs" :: rest =>
-        exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "context" :: rest =>
         exit(
           flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"), clock))
         )
-      case "score" :: rest => exit(flags(rest).flatMap(score))
-      case "order" :: rest => exit(flags(rest).flatMap(order(_, clock)))
-      case "pull" :: rest => exit(flags(rest).flatMap(pull(_, clock)))
-      case "bounds" :: rest => exit(flags(rest).flatMap(bounds(_, clock)))
       case "replies" :: rest =>
         val switches = Set("--records", "--show")
         exit(
@@ -66,18 +52,10 @@ object Main {
       case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
       case "propose" :: rest => exit(flags(rest).flatMap(propose(_, clock)))
-      case "compare" :: rest =>
-        flags(rest).flatMap(f =>
-          if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
-        ) match {
-          case Right(0) => ()
-          case Right(code) => sys.exit(code)
-          case Left(why) => exit.refuse(why)
-        }
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
+            "usage: scripts/eval capture|context|" +
               "replies|reply-labels|turns|churn|recall|rebuild|recipes|synthetic|" +
               "integrity-loss|bench|propose (scripts/eval and scripts/integrity-loss say what each takes)"
           )
