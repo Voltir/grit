@@ -46,7 +46,9 @@ trait RealmSource {
   * and a source is never asked inside a transaction. Each change an answer makes, and each time
   * a source could not be reached, is told to `report` as it happens, but for a message's
   * account it never answered for, which [[before]] returns, as each method returns a store
-  * failure.
+  * failure. The kit builds one per edge, over the realms the
+  * deployment trusts that edge's attester for: for an edge that attests nothing, it asks
+  * nothing.
   */
 final class Attesting(voucher: Voucher, jot: Jot, report: Attesting.Report => Unit) {
 

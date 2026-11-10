@@ -177,7 +177,8 @@ trait Inbox extends caps.SharedCapability {
     * open ask: it was settled, or its ask's `until` has passed by the database's clock;
     * [[InboxError.NoSuchTurn]] when no turn has that workflow. Of two answers sent before the
     * turn reads either, only the first counts, and the second is still `Right`, so an edge that
-    * reports "confirmed" on `Right` says so to a second click whatever the first was.
+    * reports "confirmed" on `Right` says so to a second click whatever the first was. Its reads
+    * (the ask entry, the asker) are opened for `Subject.Turn` of the workflow's turn.
     */
   def answer(
       workflow: WorkflowId,
