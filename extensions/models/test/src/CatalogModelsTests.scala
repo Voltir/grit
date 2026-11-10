@@ -88,6 +88,23 @@ object CatalogModelsTests extends TestSuite {
     }
 
     test(
+      "the seed knows the 1,000,000-token context of Claude Haiku, Sonnet and Opus 5.5 at Anthropic's API, by the ids that API names them"
+    ) {
+      Vector("haiku", "sonnet", "opus").map(m =>
+        seed
+          .profile(pinned(s"anthropic/claude-$m-5-5", "api.anthropic.com").assignment.ref)
+          .map(_.contextLength)
+      ) ==> Vector.fill(3)(
+        Some(
+          Known.Of(
+            grit.core.message.Tokens(1_000_000),
+            Source.Advertised(LocalDate.of(2026, 11, 10))
+          )
+        )
+      )
+    }
+
+    test(
       "a pin served by api.anthropic.com goes to Anthropic, any other to OpenRouter; one without its key refuses every call naming the variable"
     ) {
       val direct = pinned("anthropic/claude-haiku-5-5", "api.anthropic.com")
