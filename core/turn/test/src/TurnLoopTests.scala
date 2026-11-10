@@ -119,12 +119,33 @@ object TurnLoopTests extends TestSuite {
       val refused = Pending.Refused(status, Outcome.Failed(TaskStatus.Early))
       (
         TurnLoop.next(cutAt5, Briefing.Tasked, round(2), early),
-        TurnLoop.next(budget(5), Briefing.Tasked, round(3), early),
-        TurnLoop.next(budget(5), Briefing.Conversing, round(3), early)
+        TurnLoop.next(budget(5), Briefing.Tasked, round(2), early),
+        TurnLoop.next(budget(5), Briefing.Conversing, round(2), early)
       ) ==> (
         Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
-        Next.Settle(Vector(Pending.Run(call("a")), refused), round(4)),
-        Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(status)), round(4))
+        Next.Settle(Vector(Pending.Run(call("a")), refused), round(3)),
+        Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(status)), round(3))
+      )
+    }
+
+    test(
+      "a turn briefed for one task whose calls run out ends through task_status alone from its last call with tools, as one its limit cut does; a two-call budget's first call is never its ending"
+    ) {
+      val status: AssistantBlock.ToolCall = AssistantBlock.ToolCall(
+        ToolCallId("s"),
+        "task_status",
+        ujson.Obj("state" -> "more", "handoff" -> "Half done.")
+      )
+      val declaring: Message.Assistant =
+        Message.Assistant(Vector(status), StopReason.ToolUse, Usage.Zero, "m")
+      (
+        TurnLoop.next(budget(5), Briefing.Tasked, round(3), declaring),
+        TurnLoop.next(Rounds.Fewest, Briefing.Tasked, round(0), declaring),
+        TurnLoop.notes(Rounds.Fewest, Briefing.Tasked, round(1))
+      ) ==> (
+        answers(declaring.copy(blocks = Vector(AssistantBlock.Text("Half done.")))),
+        Next.Settle(Vector(Pending.Refused(status, Outcome.Failed(TaskStatus.Early))), round(1)),
+        Vector(round(1) -> TurnLoop.Ending)
       )
     }
 
@@ -147,13 +168,13 @@ object TurnLoopTests extends TestSuite {
       (
         (
           TurnLoop.next(cutAt5, Briefing.Tasked, round(3), done),
-          TurnLoop.declared(cutAt5, round(3), done)
+          TurnLoop.declared(cutAt5, Briefing.Tasked, round(3), done)
         ),
         TurnLoop.next(cutAt5, Briefing.Tasked, round(3), mixed),
         TurnLoop.next(cutAt5, Briefing.Tasked, round(3), blank),
-        TurnLoop.declared(cutAt5, round(4), mixed),
+        TurnLoop.declared(cutAt5, Briefing.Tasked, round(4), mixed),
         TurnLoop.next(budget(5), Briefing.Conversing, round(3), done),
-        TurnLoop.declared(budget(5), round(3), done)
+        TurnLoop.declared(budget(5), Briefing.Conversing, round(3), done)
       ) ==> (
         (
           answers(answered),
@@ -305,7 +326,7 @@ object TurnLoopTests extends TestSuite {
     }
 
     test(
-      "the last call with tools and the last are told so, the calls after each keeping its note, whatever the briefing of a turn no limit cut; a first call never is"
+      "the last call with tools and the last are told so, the calls after each keeping its note: that the turn is ending on one briefed for one task, though no limit cut it; a first call never is"
     ) {
       (
         Vector(0, 1, 2, 3).map(n => TurnLoop.notes(budget(4), Briefing.Conversing, round(n))),
@@ -318,7 +339,7 @@ object TurnLoopTests extends TestSuite {
           Vector(round(2) -> TurnLoop.LastTools),
           Vector(round(2) -> TurnLoop.LastTools, round(3) -> TurnLoop.LastCall)
         ),
-        Vector(round(2) -> TurnLoop.LastTools, round(3) -> TurnLoop.LastCall),
+        Vector(round(2) -> TurnLoop.LimitTools, round(3) -> TurnLoop.Ending),
         Vector(round(1) -> TurnLoop.LastCall)
       )
     }

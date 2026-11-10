@@ -17,18 +17,20 @@ import grit.core.tool.{Outcome, ToolName}
 object TurnLoop {
 
   /** How far one turn's loop may go: `calls` model calls, the last told to call no tool (or, on
-    * a turn briefed for one task that `limit` cut, task_status alone), so a turn that keeps
-    * calling tools still ends: a reply to the last call that calls a tool is refused, and that
-    * call made once more, so a turn makes at most `calls + 1`, and a second such reply that says
-    * nothing ends the turn silent ([[next]]); and, with `limit`, the input a request
-    * may reach as its provider counts it, less room for one round's results the turn has not
-    * yet seen: once a reply's input plus the largest growth of a round so far meets `limit`, the
-    * call after it is the last with tools and the one after that the last ([[after]]). A turn
-    * can still pass `limit` when one round grows more than every round before it and the room
-    * kept; a provider that reports no input never meets it. `cut`: whether `limit` cut its
-    * calls short so ([[after]]).
+    * a turn briefed for one task, task_status alone), so a turn that keeps calling tools still
+    * ends: a reply to the last call that calls a tool is refused, and that call made once more,
+    * so a turn makes at most `calls + 1`, and a second such reply that says nothing ends the
+    * turn silent ([[next]]); and, with `limit`, the input a request may reach as its provider
+    * counts it, less room for one round's results the turn has not yet seen: once a reply's
+    * input plus the largest growth of a round so far meets `limit`, the call after it is the
+    * last with tools and the one after that the last ([[after]]). A turn can still pass `limit`
+    * when one round grows more than every round before it and the room kept. Under a provider
+    * that reports no input, `limit` is never met, and `calls` alone ends the turn.
+    * `endsAtLimit`: whether its last two calls end its turn at its limit, its task going on in a
+    * new turn unless it declares done ([[asksStatus]]). Every budget's do; one `record-window`
+    * recorded before that rule (ADR 0004) did only once `limit` cut its calls ([[after]]).
     */
-  final case class Rounds private (calls: Int, limit: Option[Tokens], cut: Boolean = false) {
+  final case class Rounds private (calls: Int, limit: Option[Tokens], endsAtLimit: Boolean) {
 
     /** This budget, its requests' input bounded by `limit`; `Left` when it is not above 0. */
     def within(limit: Tokens): Either[String, Rounds] =
@@ -45,7 +47,8 @@ object TurnLoop {
         Rounds
           .reach(replies.map(_.usage.input))
           .indexWhere(r => Tokens.value(r) >= Tokens.value(bound)) match {
-          case grown if grown >= 0 && grown + 3 < calls => copy(calls = grown + 3, cut = true)
+          case grown if grown >= 0 && grown + 3 < calls =>
+            copy(calls = grown + 3, endsAtLimit = true)
           case _ => this
         }
       }
@@ -53,12 +56,26 @@ object TurnLoop {
 
   object Rounds {
 
-    /** `calls` as a budget, its input unbounded; `Left` when it is under 2, which leaves no
-      * call with tools on.
+    /** `calls` as a budget, its input unbounded, its last two calls ending its turn at its
+      * limit; `Left` when it is under 2, which leaves no call with tools on.
       */
     def of(calls: Int): Either[String, Rounds] =
-      if (calls >= 2) Right(Rounds(calls, None))
+      if (calls >= 2) Right(Rounds(calls, None, endsAtLimit = true))
       else Left(s"a turn's budget is at least 2 model calls, not $calls")
+
+    /** A budget as `record-window` recorded it: `endsAtLimit` false for one recorded before a
+      * budget's last calls ended its turn at its limit. `Left` as [[of]] and [[Rounds.within]]
+      * refuse.
+      */
+    private[turn] def recorded(
+        calls: Int,
+        limit: Option[Tokens],
+        endsAtLimit: Boolean
+    ): Either[String, Rounds] =
+      for {
+        counted <- of(calls)
+        bounded <- limit.fold(Right(counted))(counted.within)
+      } yield bounded.copy(endsAtLimit = endsAtLimit)
 
     /** Each of `inputs`, a turn's requests' inputs as counted, the first first, plus the
       * largest growth from one request's input to the next's up to it (none for the first):
@@ -73,7 +90,7 @@ object TurnLoop {
     }
 
     /** Two calls: the fewest a turn makes, the first with tools on. */
-    val Fewest: Rounds = Rounds(2, None)
+    val Fewest: Rounds = Rounds(2, None, endsAtLimit = true)
 
     /** `default` as `calls` lays over it: `Scaled(n)` is `n` times its calls; its input limit
       * kept.
@@ -82,7 +99,8 @@ object TurnLoop {
       case Allotment.Calls.Default => default
       // Scaled is at least once by construction, so this is at least `default`, at least 2.
       case Allotment.Calls.Scaled(times) => default.copy(calls = default.calls * times)
-      case Allotment.Calls.Fewest => Fewest.copy(limit = default.limit)
+      case Allotment.Calls.Fewest =>
+        Fewest.copy(limit = default.limit, endsAtLimit = default.endsAtLimit)
     }
   }
 
@@ -106,14 +124,14 @@ object TurnLoop {
 
   /** The notes the loop's calls up to `round` add, each at the round it is first sent, as a
     * gate's are ([[TurnShown.loopShape]]): at `budget`'s last call with tools, unless that is the
-    * turn's first, [[LimitTools]] when its limit cut it ([[Rounds.cut]]) on a turn `briefing`
-    * says is for one task, else [[LastTools]]; at its last call, [[Ending]] or [[LastCall]]
-    * alike.
+    * turn's first, [[LimitTools]] when its last calls end it at its limit
+    * ([[Rounds.endsAtLimit]]) on a turn `briefing` says is for one task, else [[LastTools]]; at
+    * its last call, [[Ending]] or [[LastCall]] alike.
     */
   def notes(budget: Rounds, briefing: Briefing, round: Round): Vector[(Round, String)] = {
     val lastTools = budget.calls - 2
     val last = budget.calls - 1
-    val ending = budget.cut && declares(briefing)
+    val ending = budget.endsAtLimit && declares(briefing)
     Vector(
       lastTools -> (if (ending) LimitTools else LastTools),
       last -> (if (ending) Ending else LastCall)
@@ -128,8 +146,8 @@ object TurnLoop {
     )
   )
 
-  /** What the model is told on the last call with tools of a turn briefed for one task that its
-    * limit cut ([[Rounds.cut]]), in place of [[LastTools]].
+  /** What the model is told on the last call with tools of a turn briefed for one task whose
+    * last calls end it at its limit ([[Rounds.endsAtLimit]]), in place of [[LastTools]].
     */
   val LimitTools: String = Fenced.noted(
     Vector(
@@ -141,8 +159,8 @@ object TurnLoop {
     )
   )
 
-  /** What the model is told on the last call of a turn briefed for one task that its limit cut,
-    * in place of [[LastCall]].
+  /** What the model is told on the last call of a turn briefed for one task whose last calls
+    * end it at its limit, in place of [[LastCall]].
     */
   val Ending: String = Fenced.noted(
     Vector(
@@ -276,7 +294,7 @@ object TurnLoop {
   def next(budget: Rounds, briefing: Briefing, round: Round, reply: Message.Assistant): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
     val last = budget.calls - 1
-    val status = declared(budget, round, reply)
+    val status = declared(budget, briefing, round, reply)
     if (status.isDefined) {
       // Its call becomes the reply's text: no tool call reaches the conversation.
       val kept = reply.blocks.filter(_.isInstanceOf[AssistantBlock.Reasoning])
@@ -287,7 +305,7 @@ object TurnLoop {
     else if (round == last) {
       val refusal =
         if (reply.stop == StopReason.MaxTokens) CutOff
-        else if (budget.cut && declares(briefing)) EndingRefused
+        else if (budget.endsAtLimit && declares(briefing)) EndingRefused
         else LastRefused
       Next.Again(calls.map(Pending.Refused(_, refusal)), round + 1, ended(reply))
     } else {
@@ -309,7 +327,7 @@ object TurnLoop {
   }
 
   /** Whether a turn briefed as `briefing` is offered [[TaskStatus]]: one briefed for one task. */
-  private def declares(briefing: Briefing): Boolean = briefing match {
+  private[turn] def declares(briefing: Briefing): Boolean = briefing match {
     case Briefing.Tasked => true
     case Briefing.Conversing => false
   }
@@ -325,12 +343,14 @@ object TurnLoop {
   ): Vector[ToolSchema] =
     if (declares(briefing)) schemas :+ TaskStatus.schema(strict) else schemas
 
-  /** What `reply`, the reply to `round`, declares through [[TaskStatus]] when that ends the
-    * turn: on a budget its limit cut, from its last call with tools on, a reply whose readable
-    * calls to it are its only calls, or any reply to the last call that calls it; else `None`.
+  /** What `reply`, the reply to `round` of a turn briefed as `briefing`, declares through
+    * [[TaskStatus]] when that ends the turn: on a turn briefed for one task, from its budget's
+    * ending on ([[asksStatus]]), a reply whose readable calls to it are its only calls, or any
+    * reply to the last call that calls it; else `None`.
     */
   def declared(
       budget: Rounds,
+      briefing: Briefing,
       round: Round,
       reply: Message.Assistant
   ): Option[TaskStatus.Declared] = {
@@ -338,18 +358,20 @@ object TurnLoop {
     val status = TaskStatus.calls(reply).size
     Option
       .when(
-        asksStatus(budget, round) && status > 0 && (status == calls || round >= budget.calls - 1)
+        declares(briefing) && asksStatus(budget, round) && status > 0 &&
+          (status == calls || round >= budget.calls - 1)
       )(
         TaskStatus.of(reply)
       )
       .flatten
   }
 
-  /** Whether `round` of `budget` may end its turn through [[TaskStatus]]: its limit cut it, and
-    * this is its last call with tools or after.
+  /** Whether `round` of `budget` is its ending, from which a turn briefed for one task may end
+    * through [[TaskStatus]]: its last calls end its turn at its limit ([[Rounds.endsAtLimit]]),
+    * and this is its last call with tools or after, never the turn's first.
     */
   private[turn] def asksStatus(budget: Rounds, round: Round): Boolean =
-    budget.cut && round >= budget.calls - 2
+    budget.endsAtLimit && round >= budget.calls - 2 && round > 0
 
   /** What the model is told on the budget's last call ([[notes]]). */
   val LastCall: String = Fenced.noted(

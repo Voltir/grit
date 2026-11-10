@@ -194,10 +194,32 @@ object TurnJournalTests extends TestSuite {
         roundTrip(plain),
         roundTrip(bounded)
       ) ==> (
-        """{"ok":{"budget":4,"answer-within":5000}}""",
-        """{"ok":{"budget":12,"answer-within":5000,"limit":40000}}""",
+        """{"ok":{"budget":4,"answer-within":5000,"ends-at-limit":true}}""",
+        """{"ok":{"budget":12,"answer-within":5000,"limit":40000,"ends-at-limit":true}}""",
         Right(plain),
         Right(bounded)
+      )
+    }
+
+    test(
+      "a loop's limits recorded before a budget's last calls ended its turn at its limit write back byte for byte, and a turn briefed for one task under them is told its last calls as a conversing one is"
+    ) {
+      val before = """{"ok":{"budget":4,"answer-within":5000}}"""
+      val read = limits.decode(before)
+      val third = TurnLoop.Round.First.next.next
+      (
+        read.map(limits.encode),
+        read.map(_.map(l => TurnLoop.notes(l.budget, grit.core.recipe.Briefing.Tasked, third.next)))
+      ) ==> (
+        Right(before),
+        Right(
+          Right(
+            Vector(
+              third -> TurnLoop.LastTools,
+              third.next -> TurnLoop.LastCall
+            )
+          )
+        )
       )
     }
 

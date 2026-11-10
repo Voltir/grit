@@ -135,18 +135,22 @@ private[turn] object TurnRound {
     /** The loop's budget after the replies so far ([[TurnLoop.Rounds.after]]). */
     def budget: TurnLoop.Rounds = looping.budget.after(replies)
 
-    /** Whether the loop's input limit cut its calls short, this round is the cut's last call
-      * with tools or after, and its reply did not declare the task done
-      * ([[TurnLoop.declared]]): a turn answering here ended at its limit.
+    /** Whether a turn answering here ended at its limit: this round is its budget's ending
+      * ([[TurnLoop.asksStatus]]), on a turn briefed for one task, its last call with tools or
+      * after, and its reply did not declare the task done ([[TurnLoop.declared]]); on a
+      * conversing one, its last call or after.
       */
     def atLimit: Boolean = {
       val cut = budget
+      val briefing = looping.offer.briefing
       // A cut turn that never declared, as where a provider cannot force task_status, goes on:
       // a needless turn costs less than a task left half done as if finished.
       val done = replies.lastOption
-        .flatMap(TurnLoop.declared(cut, round, _))
+        .flatMap(TurnLoop.declared(cut, briefing, round, _))
         .exists(_.state == TaskStatus.State.Done)
-      TurnLoop.asksStatus(cut, round) && !done
+      // A conversing turn answering on its last call with tools was told so and answered.
+      val last = TurnLoop.declares(briefing) || round.index >= cut.calls - 1
+      TurnLoop.asksStatus(cut, round) && last && !done
     }
 
     private[TurnRound] def gatedBy(gate: Gated): Progress =

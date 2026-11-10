@@ -139,6 +139,34 @@ object TurnLoopTurnTests extends TestSuite {
   /** What `request` answered the call `id` with, when that was a refusal: its outcome, the
     * fence the result is shown in looked past.
     */
+  /** A turn under `recipe` of at most `calls` calls that no limit cuts, call `n` replied
+    * `reply(n)`: each request, and what the turn returned.
+    */
+  private def ranOut(
+      recipe: grit.core.recipe.TurnRecipe,
+      calls: Int,
+      reply: Int -> Message.Assistant
+  ): (Vector[ModelRequest], String) = {
+    val entries = new InMemoryEntryStore
+    val ws = new Files(files)
+    val provider = new Scripted((_, n) => Right(reply(n)))
+    val turn = say(entries, "move them")
+    val said = new InMemoryDurable().run(turn.workflowId)(
+      tooledBody(
+        entries,
+        provider,
+        new InMemoryUsageLedger,
+        new StubProvider(),
+        NoClassifier,
+        ws,
+        tools(ws),
+        calls,
+        recipe = recipe
+      )
+    )
+    (provider.requests, said)
+  }
+
   private def refusedWith(request: ModelRequest, id: String): Option[Outcome] =
     request.messages.collectFirst {
       case Message.ToolResult(c, content, true) if c == ToolCallId(id) =>
@@ -958,6 +986,47 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
+      "a turn briefed for one task whose calls run out is told it is ending, and declaring more ends it at its limit, its handoff the answer"
+    ) {
+      val handoff = "Moved three; d.txt is left."
+      val (requests, said) = ranOut(
+        grit.core.recipe.TurnRecipe.Tasked,
+        5,
+        n => if (n < 3) calling(s"r$n", (s"t$n", "peek", "a.txt")) else declaring("more", handoff)
+      )
+      (
+        requests.map(r => (told(r, TurnLoop.LimitTools), told(r, TurnLoop.Ending))),
+        grit.core.inbox.Progress.Done(None, said).ending
+      ) ==> (
+        Vector((false, false), (false, false), (false, false), (true, false)),
+        grit.core.inbox.TurnEnding.AtLimit
+      )
+    }
+
+    test(
+      "a conversing turn is at its limit only when it ends on its last call: one answering on its last call with tools, or on a two-call budget's first, answered"
+    ) {
+      def ending(calls: Int, answersAt: Int): grit.core.inbox.TurnEnding =
+        grit.core.inbox.Progress
+          .Done(
+            None,
+            ranOut(
+              grit.core.recipe.TurnRecipe.Shipped,
+              calls,
+              n =>
+                if (n < answersAt) calling(s"r$n", (s"t$n", "peek", "a.txt"))
+                else TurnFixtures.said(s"r$n")
+            )._2
+          )
+          .ending
+      (ending(5, 3), ending(5, 4), ending(2, 0)) ==> (
+        grit.core.inbox.TurnEnding.Answered,
+        grit.core.inbox.TurnEnding.AtLimit,
+        grit.core.inbox.TurnEnding.Answered
+      )
+    }
+
+    test(
       "a conversing turn its limit cut never offers task_status, and is told its last call with tools and its last as an uncut one is"
     ) {
       val entries = new InMemoryEntryStore
@@ -1004,7 +1073,7 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "an uncut turn's last reply calling a tool is refused once, and the call after it answers in text"
+      "a turn no limit cut whose last reply calls a tool is refused once, and the call after it answers in text, at its limit"
     ) {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
@@ -1020,7 +1089,7 @@ object TurnLoopTurnTests extends TestSuite {
         grows(provider.requests),
         provider.requests.lastOption.flatMap(refusedWith(_, "t2"))
       ) ==> (
-        "replied: reply:c1:0; summarised: summary:c1:0",
+        "replied: reply:c1:0; summarised: summary:c1:0; ended at its limit",
         Some("assistant: r3"),
         4,
         Vector(true, true, true),

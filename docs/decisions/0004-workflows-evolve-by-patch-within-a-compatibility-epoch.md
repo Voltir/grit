@@ -1,6 +1,6 @@
 # 0004. Workflows evolve by patch within a compatibility epoch
 
-Status: accepted (2026-09-23); revised (2026-10-15)
+Status: accepted (2026-09-23); revised (2026-11-10)
 
 Context: DBOS resumes a workflow only on an executor whose application version equals the
 one it was started under, and replays recorded step outputs by position, throwing when a
@@ -17,7 +17,11 @@ string (`Turn.Epoch`), and enables DBOS patching (`Engine.open`).
 
 - **Within an epoch**, a change to a workflow's steps must replay every history recorded
   under it. A change that would not is guarded with `Durable.patch(name)`, the old steps on
-  its false branch, and later retired with `Durable.deprecatePatch(name)`.
+  its false branch, and later retired with `Durable.deprecatePatch(name)`. A change to what
+  the body decides from a step's output, not to the steps themselves, may instead grow that
+  output: a field the new runs record, its absence reading as the old rule (as
+  `record-window`'s `ends-at-limit`). The output says which rule its run took, read back with
+  it, with no marker step and no branch in the flow.
 - **The epoch changes only for a break a patch cannot carry.** Workflows in flight under the
   old epoch are then never resumed by the new engine; what happens to them is policy, not
   yet decided. A new epoch starts with its first recorded histories.

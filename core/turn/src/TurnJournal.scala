@@ -431,9 +431,11 @@ private[turn] object TurnJournal {
     case other => Left(s"kind: unknown ${other.render()}")
   }
 
-  /** A `record-window` step's output: `{"budget": calls, "answer-within": milliseconds}`, and
-    * `"limit": tokens` when the budget bounds its requests' input; absent, as every output
-    * recorded before input limits is, it bounds none.
+  /** A `record-window` step's output: `{"budget": calls, "answer-within": milliseconds}`, with
+    * `"limit": tokens` when the budget bounds its requests' input (absent, as every output
+    * recorded before input limits is, it bounds none), and `"ends-at-limit": true` when its last
+    * two calls end its turn at its limit (absent, as every output recorded before that rule is,
+    * they do only once its limit cuts them: [[TurnLoop.Rounds.endsAtLimit]]).
     */
   given limits: Journaled[Either[TurnFailure, TurnRound.Limits]] =
     outcome(
@@ -441,20 +443,26 @@ private[turn] object TurnJournal {
         val o =
           ujson.Obj("budget" -> l.budget.calls, "answer-within" -> l.answerWithin.toMillis.toDouble)
         l.budget.limit.foreach(g => o("limit") = Tokens.value(g).toDouble)
+        if (l.budget.endsAtLimit) o("ends-at-limit") = true
         o
       },
       v =>
         for {
           o <- v.objOpt.toRight("limits: expected an object")
           calls <- o.get("budget").flatMap(_.numOpt).toRight("limits: no budget")
-          rounds <- TurnLoop.Rounds.of(calls.toInt).left.map(e => s"limits: $e")
-          budget <- o.get("limit") match {
-            case None => Right(rounds)
+          limit <- o.get("limit") match {
+            case None => Right(None)
             case Some(g) =>
-              g.numOpt
-                .toRight("limits: limit is not a number")
-                .flatMap(n => rounds.within(Tokens(n.toLong)).left.map(e => s"limits: $e"))
+              g.numOpt.toRight("limits: limit is not a number").map(n => Some(Tokens(n.toLong)))
           }
+          ends <- o.get("ends-at-limit") match {
+            case None => Right(false)
+            case Some(e) => e.boolOpt.toRight("limits: ends-at-limit is not a boolean")
+          }
+          budget <- TurnLoop.Rounds
+            .recorded(calls.toInt, limit, ends)
+            .left
+            .map(e => s"limits: $e")
           within <- o.get("answer-within").flatMap(_.numOpt).toRight("limits: no answer-within")
         } yield TurnRound.Limits(
           budget,

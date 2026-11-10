@@ -1,6 +1,6 @@
 # 0058. A task longer than one window goes on in turns rooted on grit's own continuation note, started by the edge that drives it
 
-Status: accepted (2026-11-05); revised (2026-11-06)
+Status: accepted (2026-11-05); revised (2026-11-10)
 
 Context: a turn at its window's limit ends, its last calls told so, and the next turn draws a
 boundary (ADR 0052). A task longer than one window (an hour of coding in `grit work`) needs a
@@ -27,8 +27,9 @@ Decision:
 - **Whether the task goes on is the model's declared state.** A turn briefed for one task is
   offered `task_status` on every call (`TurnLoop.offered`): `done` with its answer, or `more`
   with what the next turn needs. The loop never runs it. A call before the turn is ending is
-  refused (`TaskStatus.Early`). On a turn its limit cut, from its last call with tools on, a
-  reply that calls it alone, or any reply to the last call that calls it, ends the turn, its
+  refused (`TaskStatus.Early`). A turn is ending on its budget's last two calls, whether its
+  input limit cut its calls short or they ran out (`Rounds.endsAtLimit`), never on its first
+  call. From its last call with tools on, a reply that calls it alone, or any reply to the last call that calls it, ends the turn, its
   handoff the reply's text, so no tool call reaches the conversation. Every call's tool choice
   is auto (ADR 0052); the last call's note (`Ending`) asks for it in words. `done` ends the
   task; `more`, or no declaration, ends the turn at its limit. Defaulting to "go on" costs at

@@ -4,8 +4,8 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.ToolSchema
 import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 
-/** The `task_status` tool, where a turn briefed for one task that its input limit cut short
-  * says whether its task is done ([[TurnLoop.declared]]). It is offered on every call of such a
+/** The `task_status` tool, where a turn briefed for one task that is ending, its input limit
+  * met or its calls run out, says whether its task is done ([[TurnLoop.declared]]). It is offered on every call of such a
   * turn ([[TurnLoop.offered]]), and never run: a reply that declares ends the turn, its handoff
   * the reply's text; a call before the turn is ending is refused ([[Early]]).
   */
@@ -74,8 +74,8 @@ object TaskStatus {
     "Not recorded. Call task_status alone, with state done or more and a handoff that is not " +
       "blank."
 
-  /** What a call to it is answered before its turn is ending: before the last call with tools
-    * of a turn its limit cut ([[TurnLoop.Rounds.cut]]), or on a turn no limit cut.
+  /** What a call to it is answered before its turn is ending: before its budget's last call
+    * with tools ([[TurnLoop.asksStatus]]).
     */
   val Early: String =
     "Not recorded: task_status is for a turn that is ending, and you will be told when this " +

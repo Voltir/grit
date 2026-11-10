@@ -804,6 +804,26 @@ object RecordTurnHistories {
         ),
         recipe = grit.core.recipe.TurnRecipe.Tasked
       ),
+      // The same turn once a budget's own last calls end its turn at its limit: its
+      // task_status alone on its last call with tools ends it, its handoff the answer.
+      "loop-tasked-calls-ended" -> looping(
+        Vector("move them"),
+        new TurnFixtures.Scripted((_, n) =>
+          Right(
+            if (n < 3) calling(s"moving $n", (s"t$n", "peek", peeking("a.txt")))
+            else
+              calling(
+                "",
+                (
+                  "status",
+                  "task_status",
+                  ujson.Obj("state" -> "more", "handoff" -> "Moved three; d.txt is left.")
+                )
+              )
+          )
+        ),
+        recipe = grit.core.recipe.TurnRecipe.Tasked
+      ),
       // A result believed at nothing withholds post, which requires member, from the next
       // round, and the call of it there is answered that it is withheld.
       "gated-withheld" -> looping(Vector("read and post"), gatedScript, gated = true),

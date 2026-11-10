@@ -27,14 +27,15 @@ enum Progress {
   */
 enum TurnEnding {
 
-  /** Its requests reached their limit, so its last calls were cut short (ADR 0052), and its
-    * model did not declare its task done (ADR 0058): its task goes on in a new turn only when
-    * its driver continues it ([[Inbox.continued]]).
+  /** It ended on its last calls, its requests having reached their limit (ADR 0052) or its
+    * calls run out, and its model did not declare its task done (ADR 0058): its task goes on in
+    * a new turn only when its driver continues it ([[Inbox.continued]]).
     */
   case AtLimit
 
-  /** It ended with a reply and no request to go on: within its limit, declaring its task
-    * done at it, or when its calls ran out. Its driver may check its task (ADR 0058).
+  /** It ended with a reply and no request to go on: before its last call (on a turn briefed
+    * for one task, before its last call with tools), or declaring its task done on them. Its
+    * driver may check its task (ADR 0058).
     */
   case Answered
 
