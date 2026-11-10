@@ -23,7 +23,6 @@ import grit.core.message.Message
 import grit.core.place.Service
 import grit.core.review.{Prompt, Reviews, Verdict}
 import grit.core.speech.{Rate, Reach, ReplyTo}
-import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
@@ -141,7 +140,7 @@ final class SlackEdge(
     * ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them; its turn is
     * started, its reply awaited, and the message marked `:eyes:` until the reply is posted. A new
     * message the inbox refuses over the day's cap is not recorded, and is answered once, in its
-    * thread, with [[Budget.Refusal]]. Not addressed, it is heard ([[grit.core.inbox.Inbox.hear]])
+    * thread, as [[InboxError.told]] tells it. Not addressed, it is heard ([[grit.core.inbox.Inbox.hear]])
     * in the same words under the same name, unmarked, its thread kept as where a reply would go
     * and whom it names besides grit ([[grit.core.speech.Reach]]): grit replies there only when
     * it drafts a reply and the draft is posted (ADR 0022). A direct message to grit
@@ -626,7 +625,7 @@ final class SlackEdge(
         said(
           s"slack: message ${Ts.value(at.answered)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"
         )
-        refuse(at, Budget.Refusal)
+        refuse(at, InboxError.told(over))
       case Left(InboxError.Sealed(_)) =>
         said(
           s"slack: message ${Ts.value(at.answered)} refused: its thread began when its author was cleared for more"
