@@ -167,7 +167,9 @@ object ProposalTests extends TestSuite {
       shown.map(_.files.toMap.get(rel("trajectories/1.md"))) ==>
         Right(Some(s"Run 1, session r1.\n\n$text"))
     }
-    test("each file at its path") {
+    test(
+      "each file at its path: the task with its commit and brief, the standing text, and each amendment as given"
+    ) {
       val shown = Proposal.of(
         task,
         Vector(run("r1", "one"), run("r2", "two")),
@@ -176,15 +178,52 @@ object ProposalTests extends TestSuite {
         Vector("an amendment", "another"),
         "Propose."
       )
-      shown.map(_.files.map(_._1)) ==> Right(
-        Vector(
-          Proposal.Said,
-          rel("task.md"),
-          rel("standing.md"),
-          rel("trajectories/1.md"),
-          rel("trajectories/2.md"),
-          rel("amendments/1.md"),
-          rel("amendments/2.md")
+      val runs = Set(Proposal.Said, rel("trajectories/1.md"), rel("trajectories/2.md"))
+      (
+        shown.map(_.files.map(_._1)),
+        shown.map(_.files.filterNot((p, _) => runs(p)))
+      ) ==> (
+        Right(
+          Vector(
+            Proposal.Said,
+            rel("task.md"),
+            rel("standing.md"),
+            rel("trajectories/1.md"),
+            rel("trajectories/2.md"),
+            rel("amendments/1.md"),
+            rel("amendments/2.md")
+          )
+        ),
+        Right(
+          Vector(
+            // The brief whole, as the bench task gives its coder.
+            rel("task.md") ->
+              ("# The task: split-reader\n\nIts coder started from commit " +
+                "c905203b2f09fb367b42e0476b609fb458ec2bb4. Its brief, as its coder was given " +
+                s"it:\n\n${task.brief}"),
+            rel("standing.md") -> "Read before you edit.",
+            rel("amendments/1.md") -> "an amendment",
+            rel("amendments/2.md") -> "another"
+          )
+        )
+      )
+    }
+
+    test("the said text lists each amendment proposed before, last") {
+      val shown = Proposal.of(
+        task,
+        Vector(run("r1", "one")),
+        standing,
+        against,
+        Vector("an amendment", "another"),
+        "Propose."
+      )
+      shown.map(_.files.headOption.map(_._2.linesIterator.toVector.takeRight(2))) ==> Right(
+        Some(
+          Vector(
+            "- `evidence/amendments/1.md`: an amendment proposed before, with what became of it.",
+            "- `evidence/amendments/2.md`: an amendment proposed before, with what became of it."
+          )
         )
       )
     }
