@@ -561,7 +561,7 @@ object grit extends Module {
         super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.assembly, grit.models)
     }
 
-    /* The eval harness: captures of a database, labelled, run, scored. Runs only
+    /* The eval harness: captures of a database, recorded turns as sent, the coder bench. Runs only
      * through scripts/eval, never from a test; its tests test the instrument, not a model.
      * eval/harness/README.md. */
     object harness extends GritModule with Placed {
@@ -574,9 +574,7 @@ object grit extends Module {
           grit.assembly,
           grit.lifecycle,
           grit.models,
-          grit.kit,
-          grit.knowledge,
-          grit.eval
+          grit.kit
         )
       def mainClass = Some("grit.eval.harness.main.Main")
       /* So a capture records the build it ran (grit.dbos.buildInfo). */

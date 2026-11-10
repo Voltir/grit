@@ -1054,7 +1054,7 @@ rules:
     only: [core-code, eval-code]
     via: imports
     mode: strict
-    because: "the eval's cases are hand-written conversations and how they are laid out in a database, over core's traits; the harness builds its synthetic reference from them, so naming more would reach the harness through them"
+    because: "the eval's cases are hand-written conversations and how they are laid out in a database, over core's traits alone"
 
   - id: harness-names-core-and-models
     allow: harness-code
