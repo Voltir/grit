@@ -251,7 +251,7 @@ object Work {
   /** What a deployment supplies a work run: the `deployment` run over the database `secrets`
     * names, the `origin` its text is said at, the directory `root` its check runs in under the
     * environment `env` with what it shows cleared by `redaction`, how long the stub model, when `secrets` holds no key,
-    * waits before it answers (`stubDelay`), and `admit`, whether a run that is not dry may go on
+    * waits before it answers (`stubDelay`), and `admit`, whether a run, dry or not, may go on
     * given who runs the database's engine (`Left`: why not).
     */
   final case class Under(
@@ -267,10 +267,10 @@ object Work {
 
   /** `asked` run as `under` supplies it, through the console of the deployment's engine
     * ([[Kit.console]]), `here` served first and each model call printed through `print` as it
-    * goes and once answered: dry, the first model call `text` said would make, shown
-    * ([[shown]]) and nothing said; otherwise, once `under.admit` allows who runs the engine,
-    * `text` said and its turns awaited, up to `cap` ([[said]]), `asked.check` run among runs
-    * in `under.root` ([[checked]]). Why not, and then nothing is said: the database cannot be
+    * goes and once answered, once `under.admit` allows who runs the engine: dry, the first
+    * model call `text` said would make, shown ([[shown]]) and nothing said; otherwise `text` said
+    * and its turns awaited, up to `cap` ([[said]]), `asked.check` run among runs in `under.root`
+    * ([[checked]]). Why not, and then nothing is said: the database cannot be
     * reached, `under.admit` refuses (the console is never opened, and an engine lock taken here
     * is held until the process ends), or as [[shown]] and [[said]] say.
     */
@@ -303,8 +303,7 @@ object Work {
     ) match {
       case Left(refused) => Left(refused.message)
       case Right(opener) =>
-        val admitted = if (asked.dry) Right(()) else under.admit(opener.runner)
-        admitted.flatMap(_ => opened(opener)(step))
+        under.admit(opener.runner).flatMap(_ => opened(opener)(step))
     }
   }
 

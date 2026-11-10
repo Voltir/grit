@@ -115,6 +115,70 @@ object WorkLiveTests extends TestSuite {
     )
   }
 
+  /** A run, `dry` or not, whose `admit` refuses either runner, beside an engine already holding
+    * the database: whether the engine's own step ended well, what the run came to, what it
+    * printed, and whether its turn began.
+    */
+  private def admitRefused(
+      dry: Boolean
+  ): (Either[String, Unit], Option[Either[String, Unit]], Vector[String], Option[Boolean]) =
+    checkout { root =>
+      val config = TestPostgres.freshDatabase(if (dry) "work_admit_dry" else "work_admit")
+      val deployment = deployed(root)
+      val origin = Origin.Tui(right(Directory.of(root.toString)), "bench")
+      val secrets =
+        Secrets
+          .of(ServedDeployment.env(config), deployment)
+          .fold(r => sys.error(r.message), identity)
+      val clock = Clock.system()
+      val printed = mutable.ArrayBuffer.empty[String]
+      // Which runner it was asked about is in its refusal: the engine `working` started holds
+      // the database, so the run's own console would attach to it.
+      val under = Work.Under(
+        deployment,
+        secrets,
+        origin,
+        root,
+        Map.empty,
+        Redaction.of(Map.empty),
+        scala.concurrent.duration.Duration.Zero,
+        {
+          case Console.Runner.Here => Left("refused here")
+          case Console.Runner.Elsewhere(_) => Left("refused elsewhere")
+        }
+      )
+      val asked = Work.Asked(root.resolve("task.md"), dry, None)
+      var ran: Option[Either[String, Unit]] = None
+      var begun: Option[Boolean] = None
+      val held = working(root, config, deployment) { console =>
+        ran = ChatEdges
+          .serving(
+            right(Directory.of(root.toString)),
+            root,
+            offered,
+            None,
+            Redaction.of(Map.empty),
+            clock,
+            Fresh.random()
+          )(here =>
+            Work.run(
+              asked,
+              "say hello",
+              Work.DefaultTurns,
+              under,
+              here,
+              clock,
+              Fresh.random(),
+              printed += _
+            )
+          )
+          .toOption
+        begun = console.inbox.begun(origin).toOption
+        Right(())
+      }
+      (held, ran, printed.toVector, begun)
+    }
+
   val tests: Tests = Tests {
 
     test(
@@ -246,67 +310,13 @@ object WorkLiveTests extends TestSuite {
     }
 
     test("a run admit refuses says nothing and starts no turn") {
-      checkout { root =>
-        val config = TestPostgres.freshDatabase("work_admit")
-        val deployment = deployed(root)
-        val origin = Origin.Tui(right(Directory.of(root.toString)), "bench")
-        val secrets =
-          Secrets
-            .of(ServedDeployment.env(config), deployment)
-            .fold(r => sys.error(r.message), identity)
-        val clock = Clock.system()
-        val printed = mutable.ArrayBuffer.empty[String]
-        // Which runner it was asked about is in its refusal: the engine `working` started holds
-        // the database, so the run's own console would attach to it.
-        val under = Work.Under(
-          deployment,
-          secrets,
-          origin,
-          root,
-          Map.empty,
-          Redaction.of(Map.empty),
-          scala.concurrent.duration.Duration.Zero,
-          {
-            case Console.Runner.Here => Left("refused here")
-            case Console.Runner.Elsewhere(_) => Left("refused elsewhere")
-          }
-        )
-        val asked = Work.Asked(root.resolve("task.md"), dry = false, None)
-        var ran: Option[Either[String, Unit]] = None
-        var begun: Option[Boolean] = None
-        val held = working(root, config, deployment) { console =>
-          ran = ChatEdges
-            .serving(
-              right(Directory.of(root.toString)),
-              root,
-              offered,
-              None,
-              Redaction.of(Map.empty),
-              clock,
-              Fresh.random()
-            )(here =>
-              Work.run(
-                asked,
-                "say hello",
-                Work.DefaultTurns,
-                under,
-                here,
-                clock,
-                Fresh.random(),
-                printed += _
-              )
-            )
-            .toOption
-          begun = console.inbox.begun(origin).toOption
-          Right(())
-        }
-        (held, ran, printed.toVector, begun) ==> (
-          Right(()),
-          Some(Left("refused elsewhere")),
-          Vector.empty,
-          Some(false)
-        )
-      }
+      admitRefused(dry = false) ==>
+        (Right(()), Some(Left("refused elsewhere")), Vector.empty, Some(false))
+    }
+
+    test("a dry run admit refuses shows nothing") {
+      admitRefused(dry = true) ==>
+        (Right(()), Some(Left("refused elsewhere")), Vector.empty, Some(false))
     }
 
     test("a dry run's first call carries scout's declared guidance in its system prompt") {
