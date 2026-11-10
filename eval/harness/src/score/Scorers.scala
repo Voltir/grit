@@ -109,7 +109,8 @@ final case class Costed(
     within: Option[Boolean]
 )
 
-object Cost {
+/** A gate's cost over the ratios of a false negative's cost to a false positive's. */
+object CostCurve {
 
   /** 1/16 to 64, by doubling: a ratio is an experiment's parameter, so the curve spans it. */
   val Ratios: Vector[Double] = Vector.tabulate(11)(j => math.pow(2, j - 4))
@@ -117,7 +118,7 @@ object Cost {
   /** For each of [[Ratios]], `judged` decided at the cheapest of [[Sweep.Thresholds]] and
     * `shipped` (the lowest, on a tie) and at `shipped`; empty when `judged` is.
     */
-  def curve(judged: Vector[Judged], shipped: Double): Vector[Costed] =
+  def of(judged: Vector[Judged], shipped: Double): Vector[Costed] =
     if (judged.isEmpty) Vector.empty
     else
       Ratios.map { r =>

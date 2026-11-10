@@ -203,7 +203,7 @@ object ScorersTests extends TestSuite {
       // 2.7764, so the interval reaches below 0: within error.
       val five =
         judged((1, 0.3, true), (2, 0.6, true), (3, 0.9, true), (4, 0.1, false), (5, 0.5, false))
-      val one = Cost.curve(five, 0.5).find(_.ratio == 1.0)
+      val one = CostCurve.of(five, 0.5).find(_.ratio == 1.0)
       one.map(c =>
         (
           r(c.best),
@@ -217,11 +217,11 @@ object ScorersTests extends TestSuite {
       // missed or alarmed, cost 0); shipped .5 misses all ten, 160/11 = 14.545 per case.
       // Differences 16 ×10 and 0: se 1.4545, t on 10 df 2.228: the interval is above 0.
       val eleven = judged((0 until 10).map(n => (n + 10, 0.3, true)) :+ (30, 0.1, false)*)
-      val sixteen = Cost.curve(eleven, 0.5).find(_.ratio == 16.0)
+      val sixteen = CostCurve.of(eleven, 0.5).find(_.ratio == 16.0)
       sixteen.map(c => (r(c.best), c.atBest.exchange.map(e => r(e.mean)), c.within)) ==>
         Some((0.15, Some(0.0), Some(false)))
       sixteen.flatMap(_.atShipped.exchange).foreach(e => near(e.mean, 160.0 / 11))
-      assert(Cost.curve(Vector.empty, 0.5).isEmpty)
+      assert(CostCurve.of(Vector.empty, 0.5).isEmpty)
     }
   }
 

@@ -6,7 +6,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName, WorkflowId}
-import grit.core.message.Cost as MessageCost
+import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Bound, Earning, Gate, Reading}
@@ -24,7 +24,7 @@ import grit.eval.harness.score.{
   Changes,
   Clustered,
   Comparison,
-  Cost,
+  CostCurve,
   Decision,
   Drafts,
   GateSweep,
@@ -463,7 +463,7 @@ object Report {
     Vector(
       s"## Spend and latency${if (which.isEmpty) "" else s": $which"}",
       "",
-      s"spent: ${s.spent.fold("no footer")(MessageCost.cents)}; rows ${s.rows}: answered " +
+      s"spent: ${s.spent.fold("no footer")(Cost.cents)}; rows ${s.rows}: answered " +
         s"${s.counts.answered} (cached ${s.counts.cached}), failed ${s.counts.failed}, " +
         s"skipped ${s.counts.skipped}",
       s"tokens of the rows answered: input ${s.input}, output ${s.output}",
@@ -571,7 +571,7 @@ object Report {
             s"${proportion(p.tpr.exchange)} | ${proportion(p.tnr.exchange)} | " +
             s"${proportion(p.tpr.author)} | ${proportion(p.tnr.author)} |"
         ) ++ shipped.toVector.flatMap { at =>
-        val curve = Cost.curve(judged, at)
+        val curve = CostCurve.of(judged, at)
         Vector(
           "",
           s"### ${Tag.written(t)}: expected cost per case, in false positives",
@@ -754,7 +754,7 @@ object Report {
   private def size(run: String, s: Size): String = {
     def per(p: Option[PerCall], f: Double => String) =
       p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
-    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => MessageCost.cents(BigDecimal(x)))} |"
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => Cost.cents(BigDecimal(x)))} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"
