@@ -104,22 +104,24 @@ object TurnLoop {
     }
   }
 
-  /** The input a turn's requests are held to ([[Rounds.limit]]): `window`, its assembler's limit,
-    * plus `prefix`, what its system prompt and tools cost; capped, when the pin's
-    * `contextLength` is known, by that less `maxTokens`, the pin's output budget; less
-    * `clipped`, room for one clipped tool result the loop has not yet seen. Never below one
-    * token.
+  /** The input a turn's requests are held to ([[Rounds.limit]]): the pin's `contextLength` less
+    * `maxTokens`, its output budget, and `clipped`, room for one clipped tool result the loop
+    * has not yet seen; at most `own`, the deployment's own limit ([[Rounds.within]]), when it
+    * sets one. For a pin whose context length no profile gives, `drawn`, its assembler's limit
+    * plus what its system prompt and tools cost, stands in for it, `clipped` taken from it
+    * alone. Never below one token. With the context known, the window bounds only what a
+    * boundary draws (ADR 0052), not how far the turn grows.
     */
   def inputLimit(
-      window: Tokens,
-      prefix: Tokens,
+      own: Option[Tokens],
       contextLength: Option[Tokens],
       maxTokens: Int,
-      clipped: Tokens
+      clipped: Tokens,
+      drawn: Tokens
   ): Tokens = {
-    val drawn = Tokens.value(window) + Tokens.value(prefix)
-    val held = contextLength.fold(drawn)(l => math.min(drawn, Tokens.value(l) - maxTokens))
-    Tokens(math.max(1L, held - Tokens.value(clipped)))
+    val held = contextLength.fold(Tokens.value(drawn))(l => Tokens.value(l) - maxTokens)
+    val roomed = math.max(1L, held - Tokens.value(clipped))
+    Tokens(own.fold(roomed)(o => math.min(Tokens.value(o), roomed)))
   }
 
   /** The notes the loop's calls up to `round` add, each at the round it is first sent, as a

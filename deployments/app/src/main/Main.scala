@@ -55,7 +55,7 @@ import Backfills.*
   * whose `write`, `edit` and `run` ask no one and whose `run` starts only what
   * [[Offered.ReferenceAllowlist]] lists, ADR 0055) in at most
   * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
-  * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
+  * tools off, each request's input within [[RunChoices.InputLimit]]. The coding tools are hosted (ADR 0017): offered only when an edge serves the
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
   * runs in, with its instruction files; a command it runs sees only the environment
   * `LocalShell` passes. With `GRIT_SCOUT` set to the absolute path of a scout binary, the TUI

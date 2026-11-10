@@ -103,7 +103,7 @@ final case class Profile(
 
 /** What a call is made under. `profiled` is false when no profile named the pair;
   * `contextLength` is `None` when no profile gives it, and a turn's requests are then bounded
-  * by its window's limit alone.
+  * by its window's limit, not a context (`TurnLoop.inputLimit`).
   */
 final case class Settings(
     strict: StrictSchemas,

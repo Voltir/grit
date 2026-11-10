@@ -2,7 +2,7 @@
 
 Status: accepted (2026-11-05); revised (2026-11-10)
 
-Context: a turn at its window's limit ends, its last calls told so, and the next turn draws a
+Context: a turn at its limit ends, its last calls told so, and the next turn draws a
 boundary (ADR 0052). A task longer than one window (an hour of coding in `grit work`) needs a
 next turn, and something must say it. Turned down: the edge saying a fixed line as the person
 (words in a person's mouth, kept as theirs); a model's summary of the turn (ADR 0052 turned it

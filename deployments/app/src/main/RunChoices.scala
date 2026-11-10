@@ -114,16 +114,22 @@ private[main] object RunChoices {
   /** The most model calls a turn makes, the last with tools off. */
   private[main] val DefaultToolRounds = 20
 
+  /** The most input a turn's request may reach, as its provider counts it: 500,000 tokens, below
+    * the context of the models grit pins, where they still do their best work.
+    */
+  private[main] val InputLimit: Tokens = Tokens(500_000)
+
   /** The turn's budget of model calls from `GRIT_TOOL_ROUNDS`, a whole number of at least 2;
-    * [[DefaultToolRounds]] when unset.
+    * [[DefaultToolRounds]] when unset; its requests' input within [[InputLimit]].
     */
   private[main] def toolRounds(env: Map[String, String]): Either[String, TurnLoop.Rounds] =
     env.get(ToolRoundsVar) match {
-      case None => TurnLoop.Rounds.of(DefaultToolRounds)
+      case None => TurnLoop.Rounds.of(DefaultToolRounds).flatMap(_.within(InputLimit))
       case Some(raw) =>
         raw.trim.toIntOption
           .toRight(s"$ToolRoundsVar is not a whole number")
           .flatMap(TurnLoop.Rounds.of(_).left.map(why => s"$ToolRoundsVar: $why"))
+          .flatMap(_.within(InputLimit))
     }
 
   private[main] val ToolsVar = "GRIT_TOOLS"

@@ -197,6 +197,29 @@ object TurnLoopTests extends TestSuite {
       )
     }
 
+    test(
+      "a turn's input limit is its pin's context less its output and a clipped result's room, at most the deployment's own; for a pin of no known context, its window and prefix less that room"
+    ) {
+      def limit(own: Option[Long], context: Option[Long]): Long =
+        Tokens.value(
+          TurnLoop.inputLimit(
+            own = own.map(Tokens(_)),
+            contextLength = context.map(Tokens(_)),
+            maxTokens = 4096,
+            clipped = Tokens(23_000),
+            drawn = Tokens(37_000)
+          )
+        )
+      Vector(
+        limit(Some(500_000), Some(1_000_000)),
+        limit(None, Some(1_000_000)),
+        limit(Some(500_000), Some(50_000)),
+        limit(Some(500_000), None),
+        limit(Some(10_000), None),
+        limit(None, Some(20_000))
+      ) ==> Vector(500_000L, 972_904L, 22_904L, 14_000L, 10_000L, 1L)
+    }
+
     test("a budget is at least 2 calls") {
       Rounds.of(1).isLeft ==> true
       Rounds.of(2).map(_.calls) ==> Right(2)

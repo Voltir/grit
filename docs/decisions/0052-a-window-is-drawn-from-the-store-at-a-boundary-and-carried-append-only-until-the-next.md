@@ -1,6 +1,6 @@
 # 0052. A window is drawn from the store at a boundary and carried, append-only, until the next
 
-Status: accepted (2026-10-29); revised (2026-11-06)
+Status: accepted (2026-10-29); revised (2026-11-10)
 
 Context: a provider caches a request from the front, and current models refuse a history that
 carries thinking blocks once anything before them is edited. Turned down: redrawing the window
@@ -36,10 +36,16 @@ Decision:
 - **The limit is the deployment's `Assembly` budget** (`ContextAssembler.limit`), never a turn's
   width. At the limit, when the carried window and the turns since no longer fit, the window is
   cleared and re-projected, never slid; a carried turn costs what it sent, its tool calls and
-  results included. **Within a turn, a turn at the limit ends**, its last calls told so, and the
-  next turn draws a boundary: nothing is cleared inside a turn. Its requests are held to
-  `TurnLoop.inputLimit`, read against each reply's input as the provider counted it, never an
-  estimate, so a turn read back cuts where it cut live.
+  results included, so the turn after one that grew past the budget draws a boundary.
+- **Within a turn, its requests grow to the model's context, not the window.** They are held
+  to `TurnLoop.inputLimit`: the pin's context length less its output budget and room for one
+  clipped tool result, at most the deployment's own input limit (`Rounds.within`), a token cap
+  set below the context where the model works best. A pin whose context no profile gives is
+  held to its window and prompt instead. The limit is read against each reply's input as the
+  provider counted it, never an estimate, so a turn read back cuts where it cut live. **A turn
+  at the limit ends**, its last calls told so, and the next turn draws a boundary: nothing is
+  cleared inside a turn. Turned down: the window bounding the turn too, which held turns to a
+  few reads past their boundary however large the model's context.
 - **A boundary draws within half the limit.** The opening, the recent turns and recall fill to
   that share, and later turns grow the window to the limit. Drawn to the limit, it would leave
   the next turn no room and clear every other turn.
@@ -55,7 +61,9 @@ Decision:
 
 Consequences: on every turn after a window's first, the request begins with the last one's
 prefix, so most of its input is a cache read. Right after a boundary the model sees about half
-what a redrawn window showed, the peak unchanged; a deployment sizes its budget for that. Near
+what a redrawn window showed, the peak unchanged; a deployment sizes its budget for that. A
+turn that grows toward the context reads its whole prefix back from the cache on every call,
+so a deployment's own input limit, and the day's spend cap, bound what a long turn costs. Near
 the limit an append recalls less, and recall never forces a boundary. A strand's and an asking
 turn's sections are as of the boundary; a room's section (ADR 0060) grows, each append adding
 what the room said since the last part. A period's close clears the window, so the

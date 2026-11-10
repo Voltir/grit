@@ -55,8 +55,8 @@ private[turn] object TurnSteps {
 
     /** The limits a loop offered what `offer` names ([[TurnOffer.load]]), its calls allotted as
       * `routed` says, its model asked about `asked`, runs under, its requests' input held to
-      * [[TurnLoop.inputLimit]] of the assembler's limit, the offer's prompt and tools and
-      * `routed`'s turn pin: `TurnFailure.Store` when the offer's tool set or prompt, or the
+      * [[TurnLoop.inputLimit]] of the deployment's own limit, `routed`'s turn pin, and the
+      * assembler's limit with the offer's prompt and tools: `TurnFailure.Store` when the offer's tool set or prompt, or the
       * profile `routed` names, is not kept, `TurnFailure.Model` when its tools do not make one
       * toolbox ([[TurnShown.offered]]).
       */
@@ -147,17 +147,17 @@ private[turn] object TurnSteps {
         val estimator = turnEnv.records.estimator
         val pin = picked.turn
         val strict = pin.settings.strict == StrictSchemas.Enforced
-        val limit = TurnLoop.inputLimit(
-          turnEnv.assembler.limit,
-          estimator.system(o.system) + estimator.tools(tools.schemas(strict)),
-          pin.settings.contextLength,
-          pin.assignment.maxTokens,
-          // One clipped tool result, the most a host tool answers with.
-          estimator.message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false))
-        )
         val budget = TurnLoop.Rounds.allotted(tooling.budget, routed.calls)
-        val held =
-          budget.limit.fold(limit)(own => Tokens(math.min(Tokens.value(own), Tokens.value(limit))))
+        val held = TurnLoop.inputLimit(
+          own = budget.limit,
+          contextLength = pin.settings.contextLength,
+          maxTokens = pin.assignment.maxTokens,
+          // One clipped tool result, the most a host tool answers with.
+          clipped =
+            estimator.message(Message.ToolResult(ToolCallId(""), "x" * Clipped.MaxBytes, false)),
+          drawn = turnEnv.assembler.limit + estimator.system(o.system) +
+            estimator.tools(tools.schemas(strict))
+        )
         TurnRound.Limits(budget.within(held).getOrElse(budget), tooling.answerWithin)
       }
 

@@ -716,7 +716,7 @@ object TurnLoopTurnTests extends TestSuite {
     }
 
     test(
-      "a turn whose input meets its assembler's limit, less a clipped result's room, is told on its next call that it is the last with tools, and ends in text on the one after"
+      "a turn whose pin has no known context and whose input meets its assembler's limit, less a clipped result's room, is told on its next call that it is the last with tools, and ends in text on the one after"
     ) {
       // Each round's input grows 20,000: reply 1's 21,000 plus that growth meets a 30,000
       // window's limit plus the prefix, less one clipped result (about 23,000 tokens).
@@ -1144,7 +1144,34 @@ object TurnLoopTurnTests extends TestSuite {
       )
     }
 
-    test("a pin's context length caps a larger window's limit, less its output budget") {
+    test("a pin's context length, not a smaller window, bounds a turn's input") {
+      // 100,000 tokens less the pin's 4,096 out and a clipped result leaves about 73,000: met at
+      // reply 3 (61,000 plus a round's 20,000), where a 30,000 window's limit is met at reply 1.
+      val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref
+      val wide = TurnFixtures.TestCatalog.overlaid(
+        Vector(
+          grit.core.model.Profile(
+            ref,
+            contextLength = grit.core.model.Known.Of(
+              Tokens(100_000),
+              grit.core.model.Source.Declared("test", java.time.LocalDate.of(2026, 11, 10))
+            )
+          )
+        )
+      )
+      limited(window = Tokens(30_000), catalog = wide)._1 ==> Vector(
+        (false, false),
+        (false, false),
+        (false, false),
+        (false, false),
+        (true, false),
+        (true, true)
+      )
+    }
+
+    test(
+      "a pin's context length bounds a turn's input, less its output budget and a clipped result's room, however wide its window"
+    ) {
       // 50,000 tokens less the pin's 4,096 out and a clipped result leaves about 23,000: met at
       // reply 1, as a 30,000 window's limit is above. The deployed 100,000 window alone is not.
       val ref = TurnFixtures.TestCatalog.policy.turn.first.assignment.ref

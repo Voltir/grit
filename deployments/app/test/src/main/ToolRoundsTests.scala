@@ -11,6 +11,12 @@ import utest.*
 object ToolRoundsTests extends TestSuite {
 
   val tests = Tests {
+    test("a turn's requests are held to at most 500,000 tokens of input, whatever its calls") {
+      Vector(Map.empty, Map("GRIT_TOOL_ROUNDS" -> "3")).map(env =>
+        RunChoices.toolRounds(env).map(_.limit)
+      ) ==> Vector.fill(2)(Right(Some(grit.core.message.Tokens(500_000))))
+    }
+
     test("GRIT_TOOL_ROUNDS: unset is the default; under 2 or not a number is an error") {
       RunChoices.toolRounds(Map.empty).map(_.calls) ==> Right(RunChoices.DefaultToolRounds)
       RunChoices.toolRounds(Map("GRIT_TOOL_ROUNDS" -> " 3 ")).map(_.calls) ==> Right(3)
