@@ -149,7 +149,7 @@ private[turn] object TurnRound {
         .flatMap(TurnLoop.declared(cut, briefing, round, _))
         .exists(_.state == TaskStatus.State.Done)
       // A conversing turn answering on its last call with tools was told so and answered.
-      val last = TurnLoop.declares(briefing) || round.index >= cut.calls - 1
+      val last = TurnLoop.declares(briefing) || round.index >= cut.last.index
       TurnLoop.asksStatus(cut, round) && last && !done
     }
 

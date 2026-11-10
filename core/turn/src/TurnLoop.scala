@@ -32,6 +32,12 @@ object TurnLoop {
     */
   final case class Rounds private (calls: Int, limit: Option[Tokens], endsAtLimit: Boolean) {
 
+    /** Its last call, told to call no tool. */
+    def last: Round = calls - 1
+
+    /** Its last call with tools, the one before [[last]]. */
+    def lastTools: Round = calls - 2
+
     /** This budget, its requests' input bounded by `limit`; `Left` when it is not above 0. */
     def within(limit: Tokens): Either[String, Rounds] =
       if (Tokens.value(limit) > 0) Right(copy(limit = Some(limit)))
@@ -130,12 +136,10 @@ object TurnLoop {
     * its last call, [[Ending]] or [[LastCall]] alike.
     */
   def notes(budget: Rounds, briefing: Briefing, round: Round): Vector[(Round, String)] = {
-    val lastTools = budget.calls - 2
-    val last = budget.calls - 1
     val ending = budget.endsAtLimit && declares(briefing)
     Vector(
-      lastTools -> (if (ending) LimitTools else LastTools),
-      last -> (if (ending) Ending else LastCall)
+      budget.lastTools -> (if (ending) LimitTools else LastTools),
+      budget.last -> (if (ending) Ending else LastCall)
     ).filter((at, _) => at > 0 && round >= at)
   }
 
@@ -294,7 +298,7 @@ object TurnLoop {
     */
   def next(budget: Rounds, briefing: Briefing, round: Round, reply: Message.Assistant): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
-    val last = budget.calls - 1
+    val last = budget.last
     val status = declared(budget, briefing, round, reply)
     if (status.isDefined) {
       // Its call becomes the reply's text: no tool call reaches the conversation.
@@ -360,7 +364,7 @@ object TurnLoop {
     Option
       .when(
         declares(briefing) && asksStatus(budget, round) && status > 0 &&
-          (status == calls || round >= budget.calls - 1)
+          (status == calls || round >= budget.last)
       )(
         TaskStatus.of(reply)
       )
@@ -372,7 +376,7 @@ object TurnLoop {
     * and this is its last call with tools or after, never the turn's first.
     */
   private[turn] def asksStatus(budget: Rounds, round: Round): Boolean =
-    budget.endsAtLimit && round >= budget.calls - 2 && round > 0
+    budget.endsAtLimit && round >= budget.lastTools && round > 0
 
   /** What the model is told on the budget's last call ([[notes]]). */
   val LastCall: String = Fenced.noted(
