@@ -15,7 +15,7 @@ organisation's systems, data or people. The repository's top-level folders are t
 | `extensions/` | shipped extension | it names a generic protocol, tool or service, and no organisation |
 | `kit/` | kit | a deployment is built against it |
 | `deployments/` | deployment | it names an organisation's systems, data or people, or is one deployment's wiring: `deployments/app` is the reference, grit's own chat, `grit serve` and `grit backfill`; a deployment's own module lives outside grit |
-| `eval/` | none | it measures grit: `eval/it`, the assembly eval, an `it`-only harness the law leaves unruled; `eval/harness`, the eval harness, run only through `scripts/eval`, which names the kit and the modules beneath it, and the knowledge plugin (the module table in [`CLAUDE.md`](../CLAUDE.md) lists them) |
+| `eval/` | none | it measures grit: `eval/it`, the assembly eval, an `it`-only harness the law leaves unruled; `eval/harness`, the eval harness, run only through `scripts/eval`, which names the kit and the modules beneath it (the module table in [`CLAUDE.md`](../CLAUDE.md) lists them) |
 
 `core/edge` is core: it is the edge's half of ADR 0017's routing and names no protocol.
 `core/prose` is core: ADR 0007's edge-neutral form.

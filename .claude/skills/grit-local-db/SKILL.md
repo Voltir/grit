@@ -18,7 +18,6 @@ The compose Postgres (`docker compose up -d`) holds them.
 | `grit_bench` | the coder bench's trials and their transcripts (`scripts/eval bench`) | read; never reset: the trials are the bench's record |
 | `grit_bench_coder` | the database a bench run's grit coder (`grit work`) runs on, one run's rows at a time | create, read, drop, run `grit work` on it |
 | `grit_bench_coder_<yyyymmddhhmmss>` | one bench run's coder database, copied as the run ended (`scripts/eval bench … --keep-coder`) | read, drop; never run grit on it |
-| `grit_eval_synthetic_<i>` | one of the eval's hand-written cases, created and dropped by one `scripts/eval recipes synthetic` run | drop one a failed run left; never run grit on it |
 
 - **`scripts/eval capture --from <db>`** only reads `<db>`: `pg_dump` is an MVCC read, safe
   beside the engine running on it.
