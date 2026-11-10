@@ -15,18 +15,16 @@ import grit.core.visibility.Compartment
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
   * reads turns from, the administration it runs a person's commands through, the joins it
-  * records its bot's memberships through, the accounts it names, the replies it awaits and
-  * what their turns spent (`spending`, read alone), the messages it marks as
-  * being answered while their turns run, the review prompts it posts and the labels their
-  * rater gives, where conversations happen (`origins`, read alone), each plugin's documents put
-  * up for review (`documentReviews`, by plugin), `jot`, the short transactions it writes those
-  * in,
-  * `desks`, where it registers places it hosts tools in, `attesting`, through which its
-  * source says who the accounts of the realms its attester answers for are, `files`, the
-  * file area it keeps the files it fetches in (ADR 0045), `commands`, the plugins' commands
-  * it runs for the people it serves (ADR 0053), `sessions`, where it records the working
-  * sessions of the harness it serves (ADR 0050), and `watch`, what it waits on in the store for
-  * them (ADR 0051).
+  * records its bot's memberships through, the replies it awaits and what their turns spent
+  * (`spending`, read alone), the messages it marks as being answered while their turns run,
+  * the review prompts it posts and the labels their rater gives, where conversations happen
+  * (`origins`, read alone), each plugin's documents put up for review (`documentReviews`),
+  * `jot`, the short transactions it writes those in, `desks`, where it registers places it
+  * hosts tools in, `attesting`, through which its source says who the accounts of the realms
+  * its attester answers for are, `files`, the file area it keeps the files it fetches in
+  * (ADR 0045), `commands`, the plugins' commands it runs (ADR 0053), `sessions`, where it
+  * records the working sessions of the harness it serves (ADR 0050), and `watch`, what it waits
+  * on in the store for them (ADR 0051).
   */
 final case class EdgeStores(
     inbox: Inbox,

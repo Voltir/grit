@@ -11,13 +11,11 @@ import grit.core.visibility.Integrity
 
 /** A tool the loop can offer and run: what the model is told of it, whether a person
   * approves each call, how a call is shown, and what it does. `shown` is what a call acts
-  * on, as a transcript shows it after the tool's name ([[Bound.shown]]). `run` captures the
-  * capabilities it acts through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run`
-  * never throws: every failure is an [[Outcome]]. A tool whose run is told which call it is
-  * comes from [[Hosted.calling]]; one that reads grit's store, from [[Hosted.reading]]; one
-  * that keeps in it, from [[Hosted.keeping]]; one
-  * that requires more than its shape does, or whose results are believed above nothing, from a
-  * [[Hosted]] declaring so.
+  * on, as a transcript shows it after the tool's name ([[Bound.shown]]). `run` never throws:
+  * every failure is an [[Outcome]]. A tool whose run is told which call it is comes from
+  * [[Hosted.calling]]; one that reads grit's store, from [[Hosted.reading]]; one that keeps in
+  * it, from [[Hosted.keeping]]; one that requires more than its shape does, or whose results
+  * are believed above nothing, from a [[Hosted]] declaring so.
   */
 final class Tool[A] private[tool] (
     val spec: ToolSpec[A],

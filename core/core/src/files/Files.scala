@@ -36,7 +36,7 @@ trait Intake extends caps.SharedCapability {
     * kept at the same `item`: put from `origin`'s edge and ref at its revision (never when
     * `origin` names none), its bytes still here. Refused, keeping nothing, by the area's
     * bounds ([[FileArea.Bounds]]): [[FileError.TooLarge]] past the most one file may have
-    * (before a byte is read when `declared` says so); [[FileError.Full]] when the files kept and
+    * (before a byte is read when `incoming.declared` says so); [[FileError.Full]] when the files kept and
     * this one would pass the most they may have together;
     * [[FileError.Fetch]] with the source's words; [[FileError.Disk]] or [[FileError.Store]] when
     * this machine or the database fails; [[FileError.Gone]] when the file under `key` lost its

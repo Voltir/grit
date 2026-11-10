@@ -82,10 +82,10 @@ object CarriedWindow {
   }
 
   /** The window the window record with id `last` showed, read from `all`, its conversation's
-    * entries, as one record kept whole, as a record was before windows were carried: the
-    * entries of each record [[chain]] reads, a carried record's followed by those of its turn's
-    * own entries [[Shown.turn]] shows (`all` may hold other conversations' too), and every record's recalled turns, sections, documents
-    * and pieces, oldest first, with no carry. A record kept with no carry is itself. `None`
+    * entries, as one record kept whole: the entries of each record [[chain]] reads, a carried
+    * record's followed by those of its turn's own entries [[Shown.turn]] shows (`all` may hold
+    * other conversations' too), and every record's recalled turns, sections, documents and
+    * pieces, oldest first, with no carry. A record kept with no carry is itself. `None`
     * when `last` is not among `all` or is not a window record, or its chain is broken.
     */
   def whole(last: EntryId, all: Vector[Entry]): Option[Payload.Window] =

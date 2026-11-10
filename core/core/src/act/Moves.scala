@@ -163,8 +163,7 @@ trait Moves {
     * in `shape` ([[Extraction.reply]]): the answer, or `None` when `from` does not say. The
     * answer is trusted at the acting's integrity ([[Acting.integrity]]) met with
     * [[grit.core.visibility.Integrity.Member]] ([[Extraction.Node]]), whatever `from` is
-    * believed at: an `Authority`
-    * run's is `Member`, never higher. Made, limited and refused as an ask, [[MoveError.Model]]
+    * believed at. Made, limited and refused as an ask, [[MoveError.Model]]
     * when the reply does not read in `shape` after its repair; and [[MoveError.Model]], no move
     * made, when `shape` writes no schema (a reversed range).
     */
@@ -235,9 +234,9 @@ trait Keeping extends Moves {
   /** What `from` asks, done to the acting plugin's pieces of files at the run's floor, in one
     * transaction for the acting's subject, believed at no more than `from` is. For
     * [[Piecing.Read]]: the file admitted as the acting's subject reads it
-    * ([[grit.core.files.Files.admit]]), then opened and read by the area's formats holding no
-    * transaction, cut by [[grit.core.files.Pieces.of]] and kept ([[grit.core.files.PieceKeeper.keep]]); or,
-    * gone or read by no format, [[Pieced.Unread]]. The transaction is not the move's record's,
+    * ([[grit.core.files.Files.admit]]), read by the area's formats, cut into pieces
+    * ([[grit.core.files.Pieces.of]]) and kept; or, gone or read by no format,
+    * [[Pieced.Unread]]. The transaction is not the move's record's,
     * so a rerun cut short by a crash keeps the same pieces again. [[MoveError.Below]] when `from`
     * is believed less than [[grit.core.visibility.Integrity.Outside]]: nothing is read or
     * written. [[MoveError.Store]] when the store fails: nothing is written. Either way the move

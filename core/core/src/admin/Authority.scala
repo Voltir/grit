@@ -17,14 +17,13 @@ object Authority {
     * direct message's room is never relabelled or quieted ([[Refusal.InDirectMessage]]). Then:
     *  - a room's quiet flag, either way: allowed;
     *  - a room's label, where its `access` is not [[RoomAccess.Invited]] (a public room, or one
-    *    not reported): only when `administers` ([[Refusal.PublicRoom]]), since raising a public
-    *    room would make it a destination higher rooms write down to (ADR 0031);
+    *    not reported): only when `administers` ([[Refusal.PublicRoom]]; ADR 0031);
     *  - in an invited room: allowed when the new label dominates the one in force; otherwise a
     *    lower level needs `administers`, each compartment removed needs `administers` or to be
     *    in `stewards`, and replacing the unmapped mark ([[grit.core.visibility.Label.Unmapped]], a room's first label) needs
     *    `administers`, or a new label holding a compartment, each in `stewards`;
     *  - a room's baseline, set, raised, lowered or cleared, in any room: only when `administers`
-    *    ([[Refusal.NotAdministrator]]), since it spends the deployment's budget;
+    *    ([[Refusal.NotAdministrator]]);
     *  - clearing or removing a person for `c`: `administers`, or `c` in `stewards`; and
     *    clearing is refused for a `c` not in `ownGroups` ([[Refusal.NoOwnGroup]]): the
     *    compartments whose own group the deployment declares, granted it.

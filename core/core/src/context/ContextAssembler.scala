@@ -242,8 +242,6 @@ enum Width {
   * holder claimed, a `task`, so the task stays in view however many of its turns the window no
   * longer draws, or a `sessionLog`, what its session had done, as
   * [[grit.core.session.SessionDigest.of]] drew it then.
-  * The brief is kept by its version, as `documents` are, and read back when shown; the session's
-  * log is kept as text, since the log it was drawn from goes on growing.
   */
 final case class Window(
     entries: Vector[EntrySeq],

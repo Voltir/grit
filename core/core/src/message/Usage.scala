@@ -4,9 +4,7 @@ package grit.core.message
   * the provider's prompt cache and `cacheWrite` written to it (0 where the provider does not
   * say). `costUsd` is the provider's own figure, or grit's from its published rates, when
   * either is known. `thinking` is how many of `output` the provider says the model spent
-  * thinking, `None` where it says nothing (never an estimate). `cacheWrite` and `thinking` are
-  * last, after `costUsd`, only so that the many places that build a `Usage` by position need
-  * not name them.
+  * thinking, `None` where it says nothing (never an estimate).
   */
 final case class Usage(
     input: Tokens,
