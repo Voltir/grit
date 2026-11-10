@@ -251,7 +251,12 @@ private[checkout] object LocalProcesses {
   /** Kills `process` and its descendants, and waits for it to end, and for each descendant up to
     * [[DescendantWait]].
     */
-  def kill(process: Process): Unit = killTree(process.toHandle)
+  def kill(process: Process): Unit = {
+    killTree(process.toHandle)
+    // The handle's onExit can complete before the Process records its exit, so isAlive may
+    // still be true just after; waitFor returns only once it has.
+    val _ = process.waitFor()
+  }
 
   /** As [[kill]], for a process this one may not have started: nothing is waited for when it
     * cannot be killed, as one another user runs.
