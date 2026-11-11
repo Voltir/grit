@@ -18,19 +18,66 @@ object AnswerText {
   def heads(heads: Vector[ArtifactHead], none: String): String =
     if (heads.isEmpty) none else heads.map(head).mkString("\n")
 
-  /** One line per artifact, in the order given: its [[heads]] line, then ` · under <parent>`
-    * when it has a parent, then ` · ` and its body's [[Body.lead]] when that is not empty;
-    * `none` when there is none.
+  /** What `project_list` answers of `rows`, every artifact that matched, in the order given.
+    *
+    * A first line counts them, `<n> match: <kind> <n> (<state> <n>, …); …`, each kind and each
+    * state most first, then by name; only the states when `kind` is given (all of one kind),
+    * only the kinds when `state` is, neither when both are; then, when `leftOut` (the ended
+    * artifacts that would otherwise have matched) is above 0, `<leftOut> ended ones not listed;
+    * ended: true lists them.` Then the first `most` rows, one line each: its [[heads]] line,
+    * then ` · under <parent>` when it has a parent, then ` · ` and its body's [[Body.lead]]
+    * when that is not empty. When rows were cut, a last line: `<n> more not shown; <narrow>.`
+    * With no row, the one line `No artifact matches.`, and the ended count after it when above 0.
     */
-  def listed(artifacts: Vector[Artifact], none: String): String =
-    if (artifacts.isEmpty) none
-    else
-      artifacts
-        .map(a =>
-          (head(a.head) +: (a.head.parent.map(p => s"under ${p.value}").toVector ++
-            Vector(Body.lead(a.body)).filter(_.nonEmpty))).mkString(" · ")
+  def listed(
+      rows: Vector[(artifact: Artifact, written: Instant, beneath: Int)],
+      kind: Option[KindName],
+      state: Option[StateName],
+      most: Int,
+      leftOut: Int,
+      narrow: String
+  ): String = {
+    val ended =
+      if (leftOut == 0) ""
+      else if (leftOut == 1) " 1 ended one not listed; ended: true lists it."
+      else s" $leftOut ended ones not listed; ended: true lists them."
+    if (rows.isEmpty) s"No artifact matches.$ended"
+    else {
+      val heads = rows.map(_.artifact.head)
+      // Each name `name` gives among `among` and the heads it gives it to, most first.
+      def split(
+          among: Vector[ArtifactHead],
+          name: ArtifactHead -> String
+      ): Vector[(String, Vector[ArtifactHead])] =
+        among
+          .groupBy(name)
+          .toVector
+          .sortBy((n: String, hs: Vector[ArtifactHead]) => (-hs.size, n))
+      def states(among: Vector[ArtifactHead]): String =
+        split(among, h => StateName.value(h.state))
+          .map((s: String, hs: Vector[ArtifactHead]) => s"$s ${hs.size}")
+          .mkString(", ")
+      val byKind = split(heads, h => KindName.value(h.kind))
+      val counted = (kind, state) match {
+        case (Some(_), Some(_)) => ""
+        case (Some(_), None) => s": ${states(heads)}"
+        case (None, Some(_)) => ": " + byKind.map((k, hs) => s"$k ${hs.size}").mkString("; ")
+        case (None, None) =>
+          ": " + byKind.map((k, hs) => s"$k ${hs.size} (${states(hs)})").mkString("; ")
+      }
+      val lines = rows
+        .take(most)
+        .map(r =>
+          (head(r.artifact.head) +: (r.artifact.head.parent
+            .map(p => s"under ${p.value}")
+            .toVector ++
+            Vector(Body.lead(r.artifact.body)).filter(_.nonEmpty))).mkString(" · ")
         )
-        .mkString("\n")
+      val cut = rows.size - most
+      (s"${rows.size} match$counted.$ended" +: (lines ++
+        Option.when(cut > 0)(s"$cut more not shown; $narrow."))).mkString("\n")
+    }
+  }
 
   private def head(h: ArtifactHead): String =
     s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)}): ${h.title}"

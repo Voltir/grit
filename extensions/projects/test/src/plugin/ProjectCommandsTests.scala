@@ -651,8 +651,8 @@ object ProjectCommandsTests extends TestSuite {
       val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
       val all = done(ask(projects, store, "project_list", "project" -> "p", "ended" -> true))
       // The lead is cut at a word to 120 characters, its heading skipped.
-      (open, all.split("\n").toVector) ==> (
-        "p/a (note, open): Title a · Text.",
+      (open, all.split("\n").toVector.drop(1)) ==> (
+        "1 match: note 1.\np/a (note, open): Title a · Text.",
         Vector(
           "p/a (note, open): Title a · Text.",
           "p/b (note, closed): Title b · The second one.",
@@ -670,12 +670,78 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "note", "Live.")
       kept(projects, store, "b", "note", "Ended.")
       done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
+      // The lines after the count line.
       def list(args: (String, ujson.Value)*): String =
         done(ask(projects, store, "project_list", (("project", ujson.Str("p")) +: args)*))
+          .split("\n")
+          .drop(1)
+          .mkString("\n")
       list() ==> "p/a (note, open): Title a · Live."
       (list("ended" -> true), list("state" -> "closed")) ==> (
         "p/a (note, open): Title a · Live.\np/b (note, closed): Title b · Ended.",
         "p/b (note, closed): Title b · Ended."
+      )
+    }
+
+    test(
+      "project_list answers at most 40, most recently changed first, under a line counting all that match, and says how many were cut"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      (1 to 42).foreach { i =>
+        done(
+          askAt(at.plusSeconds(i))(
+            projects,
+            store,
+            "project_keep",
+            "key" -> f"p/n$i%02d",
+            "kind" -> "note",
+            "title" -> s"Title $i",
+            "body" -> "Body."
+          )
+        )
+      }
+      done(
+        askAt(at.plusSeconds(43))(
+          projects,
+          store,
+          "project_move",
+          "key" -> "p/n01",
+          "state" -> "closed"
+        )
+      )
+      val lines = done(ask(projects, store, "project_list", "project" -> "p")).split("\n").toVector
+      (
+        lines.headOption,
+        lines.size,
+        lines.slice(1, 41).map(_.takeWhile(_ != ' ')),
+        lines.lastOption
+      ) ==> (
+        Some("41 match: note 41 (open 41). 1 ended one not listed; ended: true lists it."),
+        42,
+        (42 to 3 by -1).map(i => f"p/n$i%02d").toVector,
+        Some("1 more not shown; narrow with kind, state or parent.")
+      )
+    }
+
+    test(
+      "project_list counts by state alone when kind is given, and says how many ended ones it left out when nothing else matches"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "change", "## Why\n\nLive.")
+      kept(projects, store, "b", "note", "Ended.")
+      done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
+      val none = done(ask(projects, store, "project_list", "project" -> "p", "kind" -> "note"))
+      kept(projects, store, "c", "note", "Live.")
+      val counted = done(
+        ask(projects, store, "project_list", "project" -> "p", "kind" -> "note", "ended" -> true)
+      )
+      (none, counted.linesIterator.nextOption()) ==> (
+        "No artifact matches. 1 ended one not listed; ended: true lists it.",
+        Some("2 match: closed 1, open 1.")
       )
     }
 
@@ -701,6 +767,7 @@ object ProjectCommandsTests extends TestSuite {
       under("c", "p/b")
       under("d", "p/a")
       done(ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a")) ==>
+        "2 match: note 2 (open 2).\n" +
         "p/b (note, open): Title b · under p/a · Below.\n" +
         "p/d (note, open): Title d · under p/a · Below."
     }

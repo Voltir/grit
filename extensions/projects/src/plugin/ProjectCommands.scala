@@ -643,11 +643,10 @@ private[plugin] final class ProjectCommands(
 
     val spec: ToolSpec[Listing] = ToolSpec(
       ToolName("project_list"),
-      "Lists a project's artifacts, one line each: key, kind, state, title, the artifact it " +
-        "sits under, and the opening words of its text. Only those of a kind, in a state, or " +
-        s"directly under a parent, when given. Leaves out ended ones ($EndedWords) unless " +
-        "`ended` is true or `state` names an end state. Refused for a parent the project " +
-        "lacks, naming the nearest keys it has.",
+      s"Lists a project's artifacts, one line each, most recently changed first, at most " +
+        s"$ListMost. Leaves out ended ones ($EndedWords) unless `ended` is true or `state` " +
+        "names an end state. A first line counts all that match; a last line says how many " +
+        "were cut. Refused for a parent the project lacks, naming the nearest keys it has.",
       Args
         .of(
           (
@@ -697,14 +696,29 @@ private[plugin] final class ProjectCommands(
         }
       } yield {
         val ended = endedOf(project.pin)
-        val listed = project.artifacts
-          .filter(a =>
-            args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state) &&
-              parent.forall(p => a.head.parent.contains(p)) &&
-              (args.ended || args.state.isDefined || !ended(a.head))
+        val counted = (h: ArtifactHead) => args.ended || !ended(h)
+        val beneath = project.artifacts
+          .flatMap(a => a.head.parent.filter(_ => counted(a.head)))
+          .groupMapReduce(identity)(_ => 1)(_ + _)
+        val matching = project.documents.filter((_, a) =>
+          args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state) &&
+            parent.forall(p => a.head.parent.contains(p))
+        )
+        val (listed, left) =
+          matching.partition((_, a) => args.state.isDefined || counted(a.head))
+        val rows = listed
+          .sortBy((d, a) => (-d.written.toEpochMilli, a.head.key.value))
+          .map((d, a) =>
+            (artifact = a, written = d.written, beneath = beneath.getOrElse(a.head.key, 0))
           )
-          .sortBy(_.head.key.value)
-        AnswerText.listed(listed, "No artifact matches.")
+        AnswerText.listed(
+          rows,
+          args.kind,
+          args.state,
+          ListMost,
+          left.size,
+          "narrow with kind, state or parent"
+        )
       }
     }
   }
@@ -1504,6 +1518,9 @@ private[plugin] object ProjectCommands {
       parent: Option[LocalKey],
       ended: Boolean
   ) extends caps.Pure
+
+  /** 40: the most artifacts one `project_list` answer lists. */
+  val ListMost: Int = 40
 
   /** What an ended artifact is, in the words `project_list` and `project_find` describe it. */
   private val EndedWords: String =
