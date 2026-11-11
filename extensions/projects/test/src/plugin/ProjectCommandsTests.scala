@@ -29,6 +29,21 @@ object ProjectCommandsTests extends TestSuite {
       )
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
 
+  /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
+  private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
+    done(
+      ask(
+        projects,
+        store,
+        "project_keep",
+        "key" -> s"p/$local",
+        "kind" -> "note",
+        "title" -> s"Title $local",
+        "body" -> "Below.",
+        "parent" -> parent
+      )
+    )
+
   val tests: Tests = Tests {
 
     test("a move whose check fails is refused naming it, and keeps nothing") {
@@ -797,26 +812,61 @@ object ProjectCommandsTests extends TestSuite {
       val store = Store()
       started(projects, store)
       kept(projects, store, "a", "note", "Top.")
-      val under = (local: String, parent: String) =>
-        done(
-          ask(
-            projects,
-            store,
-            "project_keep",
-            "key" -> s"p/$local",
-            "kind" -> "note",
-            "title" -> s"Title $local",
-            "body" -> "Below.",
-            "parent" -> parent
-          )
-        )
-      under("b", "p/a")
-      under("c", "p/b")
-      under("d", "p/a")
+      under(projects, store, "b", "p/a")
+      under(projects, store, "c", "p/b")
+      under(projects, store, "d", "p/a")
       done(ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a")) ==>
         "2 match: note 2 (open 2).\n" +
         "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
         "p/d (note, open): Title d · 0.1 KB · changed 2026-10-27"
+    }
+
+    test(
+      "project_list with parent and depth lists that many levels under it, each below the first naming what it sits under"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Top.")
+      under(projects, store, "b", "p/a")
+      under(projects, store, "c", "p/b")
+      under(projects, store, "d", "p/a")
+      under(projects, store, "e", "p/c")
+      under(projects, store, "f", "p/a")
+      done(ask(projects, store, "project_move", "key" -> "p/f", "state" -> "closed"))
+      done(
+        ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a", "depth" -> 2)
+      ) ==>
+        "3 match: note 3 (open 3). 1 ended one not listed; ended: true lists it.\n" +
+        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/c (note, open): Title c · under p/b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/d (note, open): Title d · 0.1 KB · changed 2026-10-27"
+    }
+
+    test(
+      "project_list cut below the first level says to use a smaller depth or a parent further down"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Top.")
+      under(projects, store, "b", "p/a")
+      (1 to 41).foreach(i => under(projects, store, f"n$i%02d", "p/b"))
+      done(
+        ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a", "depth" -> 2)
+      ).split("\n").toVector.lastOption ==>
+        Some("2 more not shown; use a smaller depth or a parent further down.")
+    }
+
+    test("project_list refuses depth without a parent") {
+      val read = plugin().commands
+        .find(c => ToolName.value(c.spec.name) == "project_list")
+        .map(_.spec.args.read(ujson.Obj("project" -> "p", "depth" -> 2)).left.map(_.message))
+      read ==> Some(
+        Left(
+          ArgsError.Refused("depth", "depth counts levels under a parent: give parent too.").message
+        )
+      )
     }
 
     test(

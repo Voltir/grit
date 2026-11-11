@@ -657,8 +657,16 @@ private[plugin] final class ProjectCommands(
               .optional,
             parent = Field
               .text(
-                "Only the artifacts directly under this one, `<project>/<artifact>`; not those " +
-                  "under them."
+                "Only the artifacts under this one, `<project>/<artifact>`: those directly " +
+                  "under it, or down to `depth` levels."
+              )
+              .optional,
+            depth = Field
+              .integer(
+                s"With `parent`, how many levels under it to list, from 1 to $DepthMost; 1, " +
+                  "directly under it, when not given.",
+                1,
+                DepthMost
               )
               .optional,
             ended = endedField("list"),
@@ -687,11 +695,25 @@ private[plugin] final class ProjectCommands(
                 )
               )
             }
+            under <- (parent, a.depth) match {
+              case (None, None) => Right(None)
+              case (None, Some(_)) =>
+                Left(
+                  ArgsError
+                    .Refused("depth", "depth counts levels under a parent: give parent too.")
+                )
+              case (Some(local), depth) =>
+                Under
+                  .of(local, depth.fold(1)(_.toInt))
+                  .left
+                  .map(ArgsError.Refused("depth", _))
+                  .map(Some(_))
+            }
           } yield Listing(
             p,
             kind,
             state,
-            parent,
+            under,
             a.ended.getOrElse(false),
             a.opening.getOrElse(false)
           )
@@ -702,25 +724,40 @@ private[plugin] final class ProjectCommands(
     ): Either[StoreError, CommandOutcome] = answered {
       for {
         project <- loaded(own.documents, args.project)
-        parent <- args.parent.fold(Right(None)) { local =>
+        parent <- args.under.fold(Right(None)) { u =>
+          val local = u.parent
           refuse(ArtifactKey.of(args.project, LocalKey.value(local)))
             .flatMap(artifact(project, _))
             .map(found => Some(found._2.head.key))
         }
       } yield {
         val ended = endedOf(project.pin)
+        // What a line's `<n> under it` counts: the lines `parent: <it>` would list under the
+        // same `ended`, of any kind; a `state` naming an end state does not bring ended ones in.
         val counted = (h: ArtifactHead) => args.ended || !ended(h)
         val beneath = project.artifacts
           .flatMap(a => a.head.parent.filter(_ => counted(a.head)))
           .groupMapReduce(identity)(_ => 1)(_ + _)
-        val matching = project.documents.filter((_, a) =>
-          args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state) &&
-            parent.forall(p => a.head.parent.contains(p))
+        def newest(among: Vector[(Document, Artifact)]): Vector[(Document, Artifact)] =
+          among.sortBy((d: Document, a: Artifact) => (-d.written.toEpochMilli, a.head.key.value))
+        val children: Map[ArtifactKey, Vector[(Document, Artifact)]] = project.documents
+          .flatMap((d: Document, a: Artifact) => a.head.parent.map(_ -> (d, a)))
+          .groupMap(_._1)(_._2)
+        // What sits `levels` levels under `from`, each followed by what sits under it.
+        def walk(from: ArtifactKey, levels: Int): Vector[(Document, Artifact)] =
+          if (levels < 1) Vector.empty
+          else
+            newest(children.getOrElse(from, Vector.empty)).flatMap((d: Document, a: Artifact) =>
+              (d, a) +: walk(a.head.key, levels - 1)
+            )
+        val depth = args.under.fold(1)(_.depth)
+        val reached = parent.fold(newest(project.documents))(walk(_, depth))
+        val matching = reached.filter((_, a) =>
+          args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state)
         )
         val (listed, left) =
           matching.partition((_, a) => args.state.isDefined || counted(a.head))
         val rows = listed
-          .sortBy((d, a) => (-d.written.toEpochMilli, a.head.key.value))
           .map((d, a) =>
             (artifact = a, written = d.written, beneath = beneath.getOrElse(a.head.key, 0))
           )
@@ -729,7 +766,9 @@ private[plugin] final class ProjectCommands(
           AnswerText.LineParts(args.kind.isEmpty, args.state.isEmpty, parent, args.opening),
           ListMost,
           left.size,
-          "narrow with kind, state or parent"
+          // Below the first level, a cut drops whole later subtrees, not the stalest.
+          if (depth > 1) "use a smaller depth or a parent further down"
+          else "narrow with kind, state or parent"
         )
       }
     }
@@ -1522,18 +1561,32 @@ private[plugin] object ProjectCommands {
       .toOption
       .toRight(s"`$text` is not an ISO-8601 instant such as 2026-10-27T12:00:00Z")
 
-  /** `project_list`'s arguments; `parent` is a local key of `project`. */
+  /** `project_list`'s arguments; `under`, the artifact of `project` listed beneath, and how deep. */
   final case class Listing(
       project: ProjectKey,
       kind: Option[KindName],
       state: Option[StateName],
-      parent: Option[LocalKey],
+      under: Option[Under],
       ended: Boolean,
       opening: Boolean
   ) extends caps.Pure
 
+  /** An artifact `parent`, by its local key, and the levels below it to list. */
+  final case class Under private (parent: LocalKey, depth: Int) extends caps.Pure
+
+  object Under {
+
+    /** `parent` listed `depth` levels down, or why not: `depth` outside 1 to [[DepthMost]]. */
+    def of(parent: LocalKey, depth: Int): Either[String, Under] =
+      if (depth < 1 || depth > DepthMost) Left(s"depth is $depth, outside 1 to $DepthMost")
+      else Right(new Under(parent, depth))
+  }
+
   /** 40: the most artifacts one `project_list` answer lists. */
   val ListMost: Int = 40
+
+  /** 3: the most levels under a parent one `project_list` lists. */
+  val DepthMost: Int = 3
 
   /** What an ended artifact is, in the words `project_list` and `project_find` describe it. */
   private val EndedWords: String =

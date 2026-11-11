@@ -36,7 +36,8 @@ object AnswerText {
     * state most first, then by name: only the states when `parts` shows no kind, only the
     * kinds when it shows no state, neither when it shows neither; then, when `leftOut` (the
     * ended artifacts that would otherwise have matched) is above 0, `<leftOut> ended ones not
-    * listed; ended: true lists them.` Then the first `most` rows, one line each:
+    * listed; ended: true lists them.` (for one, `1 ended one not listed; ended: true lists
+    * it.`). Then the first `most` rows, one line each:
     * `<key> (<kind>, <state>): <title> · under <parent> · <size> KB · changed <day> · <beneath>
     * under it · <lead>`, leaving out what `parts` does not show, the parent when there is none,
     * and `beneath` when it is 0; `<size>` is its markdown's UTF-8 bytes in KiB, rounded up to a
