@@ -2,6 +2,7 @@ package grit.projects.artifact
 
 import scala.annotation.tailrec
 
+import grit.core.id.ClaimHolder
 import grit.projects.name.{ArtifactKey, Pin, ProjectKey}
 
 /** A project as one value: its key, the method version it pinned, and its artifacts by key. */
@@ -73,6 +74,63 @@ object Project {
         )
       else Right(remainder(project, going, outside, uncite(citers, withdrawing)))
     }
+  }
+
+  /** What [[swept]] leaves: `withdrawn`, its `gone` and `uncited` by key; and `stayed`, by key,
+    * each artifact in `due` that `ended` held of and that stays, and why.
+    */
+  final case class Swept(withdrawn: Withdrawn, stayed: Vector[(artifact: Artifact, why: Stay)])
+      extends caps.Pure
+
+  /** Why an artifact a sweep would withdraw stays. */
+  enum Stay extends caps.Pure {
+    case Claimed(holder: ClaimHolder)
+
+    /** `first` and `rest`, by key: the artifacts that are claimed or not ended citing it. */
+    case Cited(first: ArtifactHead, rest: Vector[ArtifactHead])
+
+    /** `child`, under it by parent, stays: of those that do, the first by key. */
+    case Above(child: ArtifactHead)
+  }
+
+  /** `project` swept: `withdrawn`, the largest set of the artifacts in `due` that `ended` holds
+    * of and `claimed` lacks, such that no artifact that is claimed or that `ended` does not hold
+    * of cites one of them, and every artifact under one by parent is in it. Each artifact left
+    * that cites one of them is rewritten not to, in its head and its body, the words of each link
+    * kept. Every other artifact in `due` that `ended` holds of stays, with the first reason that
+    * holds: claimed, cited, then above one that stays.
+    */
+  def swept(
+      project: Project,
+      due: Set[ArtifactKey],
+      ended: ArtifactHead -> Boolean,
+      claimed: Map[ArtifactKey, ClaimHolder]
+  ): Swept = {
+    val byKey = project.artifacts.sortBy(_.head.key.value)
+    val children = byKey.flatMap(a => a.head.parent.map(_ -> a)).groupMap(_._1)(_._2)
+    val citedBy = byKey
+      .filter(a => !ended(a.head) || claimed.contains(a.head.key))
+      .flatMap(a => a.cites.map(_ -> a.head))
+      .groupMap(_._1)(_._2)
+    def asked(a: Artifact): Boolean = due(a.head.key) && ended(a.head)
+    // Each step down is to a child, and parents form no cycle, so the two end.
+    def stay(a: Artifact): Option[Stay] = {
+      val k = a.head.key
+      claimed
+        .get(k)
+        .map(Stay.Claimed(_))
+        .orElse(citedBy.get(k).collect { case first +: rest => Stay.Cited(first, rest) })
+        .orElse(children.getOrElse(k, Vector()).find(c => !goes(c)).map(c => Stay.Above(c.head)))
+    }
+    def goes(a: Artifact): Boolean = asked(a) && stay(a).isEmpty
+    val fates = byKey.filter(asked).map(a => a -> stay(a))
+    val gone = fates.collect { case (a, None) => a }
+    val going = gone.map(_.head.key).toSet
+    val outside = project.artifacts.filterNot(a => going(a.head.key))
+    Swept(
+      remainder(project, gone, outside, uncite(outside.filter(_.cites.exists(going)), going)),
+      fates.collect { case (a, Some(why)) => (artifact = a, why = why) }
+    )
   }
 
   /** The keys of every artifact of `project` under `key` by parent, at any depth. */
