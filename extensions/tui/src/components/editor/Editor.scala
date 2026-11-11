@@ -8,20 +8,17 @@ import grit.tui.model.text.{Row, Width, Wrap}
 
 /** The prompt editor: multi-line, wrapping, with a caret and a history.
   *
-  * The state is the draft plus where history is being walked; every editing method is
-  * a pure function to the next state, and [[apply]] routes a decoded [[Input]] to
-  * them, returning `None` for anything the *app* owns -- Enter (submit), Tab
-  * (completion), Ctrl-C (interrupt), mouse, focus. Binding stays out of the library
-  * (the `input/` decision); the editor owns only what it means to edit text.
+  * The state is the draft plus where history is being walked; [[apply]] routes a decoded
+  * [[Input]] to the editing methods, returning `None` for anything the *app* owns -- Enter
+  * (submit), Tab (completion), Ctrl-C (interrupt), mouse, focus.
   *
-  * Motion is over **visual rows**: the prompt is the one piece of chrome that wraps
-  * rather than truncates, so Up/Down move one wrapped row and preserve the display
-  * column through [[Width]]. Up from the first visual row recalls history; Down from
-  * the last returns to it, past the recalled entries to the draft you left. Editing a
-  * recalled entry drops you back into draft mode -- history is never rewritten.
+  * Motion is over **visual rows**: the prompt wraps rather than truncates, so Up/Down move
+  * one wrapped row and preserve the display column through [[Width]]. Up from the first
+  * visual row recalls history; Down from the last returns to it, past the recalled entries
+  * to the draft you left. Editing a recalled entry drops you back into draft mode --
+  * history is never rewritten.
   *
-  * Newlines arrive by paste only: Enter is submit, and no terminal sends a
-  * distinguishable newline key. [[measure]] reports the height the draft wants, which
+  * Newlines arrive by paste only: Enter is submit. [[measure]] reports the height the draft wants, which
   * a `Region.Fit` grows the box to and a `Region.Fixed` ignores; either way [[render]]
   * paints exactly the box it is handed. [[render]] draws that bordered box -- a title when
   * focused, none otherwise, and `gutter` (in `gutterStyle`) before the draft's first row,
