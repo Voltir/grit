@@ -19,37 +19,19 @@ import grit.core.visibility.{Integrity, Label}
 import grit.knowledge.card.{Card, CardMoves, CardSummary, Phase, UnitVersion}
 import grit.knowledge.ref.CardKey
 
-/** The job `knowledge-sync`, version 9, over `sources`. A run, for the source its parameters
-  * name, walks it as its [[Source.walk]] says: lists what changed since the cards it holds;
-  * writes a card at its own floor for each new or changed unit (a file's from one summary, with
-  * search terms, of its first 8 KB, the model asked for at most 60 words; any other's as its walk
-  * makes it, at no model cost, one whose read found it unreadable ([[Fetched.Unreadable]])
-  * among them, so it is read again only once it changes), each pointing at the read of its
-  * unit; copies up to
-  * its floor, with no call or ask, the card of an unchanged unit held at another label, and to
-  * its source's place ([[Source.at]]) the card of one kept elsewhere; and
-  * withdraws the cards of units gone from directories it listed in full. Of a source that keeps
-  * files ([[Source.keepsFiles]]), after a file's card is kept, it keeps the pieces of the file
-  * when its read kept all of it in the file area ([[Source.file]]) believed at `Outside` or
-  * above, as its card's key's at its version, believed as its card
-  * ([[grit.core.act.Keeping.piece]]), and otherwise marks the file unread, saying why, so no
-  * earlier revision's pieces stay current; a file's pieces move where its card is copied, and
-  * are withdrawn where it is withdrawn. A file whose card is current at the floor but which has
-  * neither pieces there nor a mark, or whose pieces a format the area no longer reads at that
-  * version made, is read again for its pieces alone, within the run's `perRun` reads, and
-  * counted unchanged. A held card at another label is withdrawn only in the keep that replaces
-  * it, so a run stopped early leaves every card it did not replace current. A card is kept at no less than what its unit's answers were
-  * read at, and believed at the meet of the run and what it read on its unit's way
-  * ([[Step.Fetching.way]]: everything read before it for [[Way.Run]]; for [[Way.Through]], the
-  * listings it was reached through, whose labels its own joins), its source's results (each as
-  * [[grit.core.visibility.Visibility.believed]] believes it, so a repository's cap counts, not
-  * only its service's) and the summaries asked of them; its call's
-  * arguments and its summary's ask are made from the same. A listing or file answered below `Outside` is first checked by the integrity tree
-  * ([[grit.core.act.Moves.vet]]), its paths or its head a window at a time: raised, it is
-  * believed as raised; otherwise its unit is left unwritten, saying why (it holds hidden or
-  * encoded text, it looks written to steer its reader, part of it looks out of place, it could
-  * not be checked, or it is over [[Sync.MostWindows]] windows), and nothing beneath a withheld
-  * directory is reached. Replies [[Synced.line]]: written, relabelled, withdrawn, unchanged, and
+/** The job `knowledge-sync` over `sources`. A run, for the source its parameters name, walks it
+  * as its [[Source.walk]] says: lists what changed since the cards it holds; writes a card at its
+  * own floor for each new or changed unit, each pointing at the read of its unit (a file's from
+  * one summary, with search terms, of its first 8 KB, the model asked for at most 60 words);
+  * copies, with no call or ask, the card of an unchanged unit held at another label or kept
+  * elsewhere; withdraws the cards of units gone from directories it listed in full; and, of a
+  * source that keeps files ([[Source.keepsFiles]]), keeps each file's pieces beside its card or
+  * marks it unread. A run stopped early leaves every card it did not replace current. A card is
+  * kept at no less than what its unit's answers were read at, and a listing or file answered
+  * below `Outside` is first checked by the integrity tree ([[grit.core.act.Moves.vet]]), its unit
+  * left unwritten, saying why, when it is not raised. How a card's belief is reckoned, what a
+  * check withholds, and how pieces are kept and read again: the module's README, "A sync run".
+  * Replies [[Synced.line]]: written, relabelled, withdrawn, unchanged, and
   * left for the next run (past `perRun`, or unwritten), or why it stopped: an ask or a check
   * refused or unread, a call failed (naming the service and why), a keep the store refused,
   * such as a key written by another run meanwhile (naming the card's path), a run believed less

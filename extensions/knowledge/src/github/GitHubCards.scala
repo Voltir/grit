@@ -24,14 +24,13 @@ import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
   * the people a window's cards are shown to, and [[scope]] digests it too.
   *
   * `label` is what the repository contains, `None` for its service place's label: its sync
-  * schedules run at that clearance, and every card is kept at no less. It may be above the
-  * service's (a confidential repository behind an internal service), never below. The head of
-  * each file summarised (8 KB) goes to the catalog's summary model, a third party, whatever
-  * `label` is: declaring the source consents to that.
+  * schedules run at that clearance, and every card is kept at no less; it may be above the
+  * service's, never below (the module's README, "The label rule"). The head of each file
+  * summarised goes to a third-party model whatever `label` is: declaring the source consents to
+  * that (the README, "Data handling").
   *
-  * Windows draw on its cards where a conversation's scope holds `at` (ADR 0028); whether a turn
-  * reads one is its label's business alone. A repository outside the server's own scope is
-  * refused by its edge: every call fails.
+  * Windows draw on its cards where a conversation's scope holds `at` (ADR 0028). A repository
+  * outside the server's own scope is refused by its edge: every call fails.
   */
 final case class GitHubCards private (
     corpus: CorpusName,

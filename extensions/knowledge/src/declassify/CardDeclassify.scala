@@ -17,28 +17,17 @@ import grit.prose.either.Traversal.traverse
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure
 
-/** The job `cards-declassify`, version 4, over the cards `cards` exports. A run reads at most
+/** The job `cards-declassify` over the cards `cards` exports. A run reads at most
   * [[CardDeclassify.Cards]] current cards, most recent first, by their pointers and their files'
   * revisions alone, and the application in force for each
-  * ([[grit.core.document.DocumentKeeper.declassifying]]). In its scan it withdraws every one of
-  * its plugin's own documents but its withholding ([[Withheld]]) whose data does not read as a
-  * rewrite of a card's current version and revision that stands under the application in force
-  * for it ([[Declassified.Made.stands]]: made under its policy version in force, or, until that
-  * version withholds the card, an earlier one it was published to keep), whatever wrote it, and
-  * forgets each entry it withheld that is not at the versions in force. Then it declassifies ([[Dreaming.declassify]], `rewrite-{i}`, from
-  * the card's file's text at its revision) each card in force that has neither a rewrite nor a
+  * ([[grit.core.document.DocumentKeeper.declassifying]]); benches each policy version that needs
+  * it (`bench-{i}`); withdraws its own documents that no longer stand; and declassifies
+  * ([[Dreaming.declassify]], `rewrite-{i}`) each card in force that has neither a rewrite nor a
   * withholding at those versions, at most `perRun` (and at most `perRunMost`), most recent
-  * first, the rest left for the next run: a rewrite made is kept below its floor (`keep-{i}`,
-  * [[grit.core.document.DocumentKeeper.declassified]]), replacing its card's earlier one; one
-  * the check kept back, or the model withheld, is remembered at its floor ([[Withheld]],
-  * `withhold-{i}`) so it is not asked again at those versions, and every earlier rewrite of it
-  * withdrawn in the same step ([[CardDeclassify.withheld]]); one whose file is not yet pieced
-  * at its revision is tried again next run. Before any card, it benches each version over its
-  * cards' applications, in force or the latest draft (a compartment's first version included),
-  * that has no bench of its checks as they are now ([[Dreaming.bench]], `bench-{i}`;
-  * [[grit.core.act.Declassifying.unbenched]]), so a card is rewritten under a version in force
-  * in the same run once its bench passes, and a draft is benched before it is published.
-  * Replies [[Tally.line]]. Its `limits`, so that
+  * first, the rest left for the next run: a rewrite made is kept below its floor (`keep-{i}`),
+  * one kept back remembered at its floor ([[Withheld]], `withhold-{i}`). Which documents it
+  * withdraws, when a version is benched, and what is tried again: the module's README, "A
+  * declassify run". Replies [[Tally.line]]. Its `limits`, so that
   * `perRunMost` declassifies each retried fit beside the benches: asks, twice `perRunMost` (a
   * rewrite and its retry); judgments, nine times (both attempts' screens and their source's,
   * three; and room for the benches' asks, at most seven a version); no calls.

@@ -17,42 +17,17 @@ import grit.knowledge.topic.TopicScan.{Scanned, Touch}
 import grit.knowledge.topic.TopicWrite.{Held, Kept, Today}
 import grit.prose.words.Words
 
-/** The job `topics-dream`, version 3, its days reckoned in `zone`, its cards through `cards` when
-  * its plugin needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its
-  * floor, reading strands as they stood at that day's end (or now, if sooner) and the cards written
-  * by then: scans its topics, the strands of rooms at its floor spoken in within `recent`, and the
-  * cards changed within `cardRecent` ([[TopicParams.SeedReach]] on a night up to its `seedUntil`); withdraws from a topic each passage naming a strand it no
-  * longer reads at its floor (its room at another label now, or its messages gone), the topic
-  * itself when none is left; attaches each strand or card a topic already refers to (a card by the
-  * unit its pointer reads, which a topic refers to when it was written from that card, links it,
-  * or a strand of it links it); pairs each card a strand it takes up links ([[TopicScan.Linked]],
-  * read whatever its age or whether it was set aside) with that strand, to go wherever the strand
-  * goes, the aside included, never shown to the attach ask; and asks (`attach`) where the others
-  * go but a directory's cards and those kept below its floor, which attach only by ref or a
-  * strand's link, at most `perRun` strands and [[TopicScan.Cards]] cards past those already placed, each
-  * numbered in the order shown, as are the topics shown (those attached to, and at most
-  * [[TopicScan.Leads]] more, newest first, each by its lead, its text's head within
-  * [[TopicDream.LeadChars]]). Its reply groups them by the topic they go to: one shown, or a new
-  * one, keyed by the group's first strand; groups naming one topic are one. A new group holding
-  * no strand is set aside, so no card alone opens a topic; shown no strand, the ask is offered
-  * neither discussions nor a new topic to name, and with no topic to show either it is not
-  * made, its cards left for a later run. Those it puts in none are set aside
-  * (`aside`), in a document of its floor under `topic:aside` holding no topic, while within
-  * `recent` or `cardRecent` at the digest or version set aside, and for at most `asideFor`. A
-  * card a reply placing anything names nowhere is set aside too; a discussion it names nowhere
-  * is counted unnamed and offered again. A number or topic not shown is dropped from the reply, its topic's
-  * group with it, and a strand or card it names in two groups, or in a group and the aside, is
-  * dropped from both, so unnamed; each counted dropped. A reply that places nothing it was shown
-  * is asked once more (`attach-again`), and when that one does not either, all are left. Then, for each topic touched, at most `perRun` and at most `perRunMost`, new
-  * topics first, asks once (`write-{i}`) for its new lead and the day's passage, from the strands
-  * and cards attached, the current cards of at most [[TopicScan.Holds]] more units it refers to,
-  * and its current text, and keeps it (`keep-{i}`): the day's passage replacing
-  * one the topic holds for that day, its lineage joined. A topic's version refers to each strand it
-  * was written from, each card's unit and each card unit its strands link (newest first), each
-  * topic it links and the unit of each other link; a ref [[Ref.written]] refuses, or one past
-  * [[grit.core.document.DocRef.Most]] (the oldest units first), is left out and counted. It puts up at most [[TopicDream.Reviewed]] of
-  * the topics it writes for review, new first. A strand or card already in a topic's lineage or set
-  * aside at the same digest or version touches nothing. Replies [[Gathered.line]], which holds no
+/** The job `topics-dream`, its days reckoned in `zone`, its cards through `cards` when its plugin
+  * needs one that exports them. A run for its `day` ([[TopicParams]]), kept at its floor, reading
+  * strands as they stood at that day's end (or now, if sooner) and the cards written by then,
+  * places the strands spoken in within `recent` and the cards changed within `cardRecent` in
+  * topics, by one ask (`attach`, asked once more as `attach-again` when its reply places nothing
+  * it was shown), setting aside (`aside`) for at most `asideFor` those it puts in none; then, for
+  * each topic touched, at most `perRun` and at most `perRunMost`, new topics first, asks once
+  * (`write-{i}`) for its new lead and the day's passage and keeps it (`keep-{i}`). It puts up at
+  * most [[TopicDream.Reviewed]] of the topics it writes for review, new first. What it scans and
+  * withdraws, what each ask is shown, how a reply is read and what a topic's version refers to:
+  * the module's README, "A topics run". Replies [[Gathered.line]], which holds no
   * cost: its asks' cost is read from the spend ledger ([[grit.core.store.UsageLedger]]), each
   * recorded under its run's workflow. Its `limits`: asks `2 + perRunMost`; no calls or judgments.
   */

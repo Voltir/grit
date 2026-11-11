@@ -92,6 +92,91 @@ Packages, in one-way order (each names only those before it):
   plugin's documents share one label and one bound, and a sync holds every current document
   to be a card. Imports every package above.
 
+## A sync run
+
+A file's card is written from one summary of its first 8 KB; any other unit's as its walk makes
+it, at no model cost, one whose read found it unreadable (`Fetched.Unreadable`) among them, so it
+is read again only once it changes. An unchanged unit's card held at another label is copied up
+to the run's floor, and one kept elsewhere to its source's place (`Source.at`).
+
+Of a source that keeps files, after a file's card is kept, `Sync` keeps the pieces of the file
+when its read kept all of it in the file area (`Source.file`) believed at `Outside` or above, as
+its card's key's at its version, believed as its card (`Keeping.piece`), and otherwise marks the
+file unread, saying why, so no earlier revision's pieces stay current; a file's pieces move where
+its card is copied, and are withdrawn where it is withdrawn. A file whose card is current at the
+floor but which has neither pieces there nor a mark, or whose pieces a format the area no longer
+reads at that version made, is read again for its pieces alone, within the run's `perRun` reads,
+and counted unchanged.
+
+A card is believed at the meet of the run and what it read on its unit's way
+(`Step.Fetching.way`: everything read before it for `Way.Run`; for `Way.Through`, the listings it
+was reached through, whose labels its own joins), its source's results (each as
+`Visibility.believed` believes it, so a repository's cap counts, not only its service's) and the
+summaries asked of them; its call's arguments and its summary's ask are made from the same. A
+listing or file answered below `Outside` is checked its paths or its head a window at a time:
+raised, it is believed as raised; otherwise its unit is left unwritten, saying why (it holds
+hidden or encoded text, it looks written to steer its reader, part of it looks out of place, it
+could not be checked, or it is over `Sync.MostWindows` windows), and nothing beneath a withheld
+directory is reached.
+
+## A topics run
+
+`TopicDream` scans its topics, the strands of rooms at its floor spoken in within `recent`, and
+the cards changed within `cardRecent` (`TopicParams.SeedReach` on a night up to its
+`seedUntil`). It withdraws from a topic each passage naming a strand it no longer reads at its
+floor (its room at another label now, or its messages gone), the topic itself when none is left.
+It attaches each strand or card a topic already refers to (a card by the unit its pointer reads,
+which a topic refers to when it was written from that card, links it, or a strand of it links
+it); pairs each card a strand it takes up links (`TopicScan.Linked`, read whatever its age or
+whether it was set aside) with that strand, to go wherever the strand goes, the aside included,
+never shown to the attach ask; and asks (`attach`) where the others go but a directory's cards
+and those kept below its floor, which attach only by ref or a strand's link, at most `perRun`
+strands and `TopicScan.Cards` cards past those already placed, each numbered in the order shown,
+as are the topics shown (those attached to, and at most `TopicScan.Leads` more, newest first,
+each by its lead, its text's head within `TopicDream.LeadChars`).
+
+Its reply groups them by the topic they go to: one shown, or a new one, keyed by the group's
+first strand; groups naming one topic are one. A new group holding no strand is set aside, so no
+card alone opens a topic; shown no strand, the ask is offered neither discussions nor a new topic
+to name, and with no topic to show either it is not made, its cards left for a later run. Those
+it puts in none are set aside (`aside`), in a document of its floor under `topic:aside` holding
+no topic, while within `recent` or `cardRecent` at the digest or version set aside, and for at
+most `asideFor`. A card a reply placing anything names nowhere is set aside too; a discussion it
+names nowhere is counted unnamed and offered again. A number or topic not shown is dropped from
+the reply, its topic's group with it, and a strand or card it names in two groups, or in a group
+and the aside, is dropped from both, so unnamed; each counted dropped. A reply that places
+nothing it was shown is asked once more (`attach-again`), and when that one does not either, all
+are left.
+
+Each topic touched is written (`write-{i}`) from the strands and cards attached, the current
+cards of at most `TopicScan.Holds` more units it refers to, and its current text, and kept
+(`keep-{i}`): the day's passage replacing one the topic holds for that day, its lineage joined.
+A topic's version refers to each strand it was written from, each card's unit and each card unit
+its strands link (newest first), each topic it links and the unit of each other link; a ref
+`Ref.written` refuses, or one past `DocRef.Most` (the oldest units first), is left out and
+counted. A strand or card already in a topic's lineage or set aside at the same digest or
+version touches nothing.
+
+## A declassify run
+
+In its scan `CardDeclassify` withdraws every one of its plugin's own documents but its
+withholding (`Withheld`) whose data does not read as a rewrite of a card's current version and
+revision that stands under the application in force for it (`Declassified.Made.stands`: made
+under its policy version in force, or, until that version withholds the card, an earlier one it
+was published to keep), whatever wrote it, and forgets each entry it withheld that is not at the
+versions in force.
+
+Before any card, it benches each version over its cards' applications, in force or the latest
+draft (a compartment's first version included), that has no bench of its checks as they are now
+(`Dreaming.bench`; `Declassifying.unbenched`), so a card is rewritten under a version in force in
+the same run once its bench passes, and a draft is benched before it is published.
+
+A card is rewritten from its file's text at its revision. A rewrite made replaces its card's
+earlier one (`DocumentKeeper.declassified`); one the check kept back, or the model withheld, is
+remembered so it is not asked again at those versions, and every earlier rewrite of it withdrawn
+in the same step (`CardDeclassify.withheld`); one whose file is not yet pieced at its revision is
+tried again next run.
+
 ## What a deployment declares
 
 A deployment builds each source with `GitHubCards.of` (its corpus, which names it and supplies
