@@ -35,32 +35,45 @@ In dependency order:
   - **Membership** (ADR 0033): it hears every channel its bot is a member of, changed only by
     what `grit.core.edge.Joins` returns. At open it reconciles with Slack's list; joins and
     leaves are recorded as they happen, ordered by when. A message from a channel not recorded
-    a member asks Slack once: the join is recorded first when the bot is in it, the message
-    ignored when not, and left for Slack to send again when Slack cannot be asked. The review's
+    a member asks Slack once: the join is recorded first, as of the message, when the bot is in
+    it, the message ignored when not, and left for Slack to send again when Slack cannot be
+    asked. A join is recorded with the channel's access as Slack reports it and its inviter's
+    account, checked first (`Attesting.before`); a join Slack says the bot is no longer in is
+    not recorded. A channel left or removed from is not heard from then. The review's
     channel is never a member, and nothing said there is heard.
   - **Backfill**: what was said before a join is heard within a `Backfill`, less what the inbox
     has recorded, each message at its own time and never answered, since a past message keeps
     no reply address. A join whose inviter is no full member, made while the day's spend is
     over the cap, or after a day's joins were backfilled, is marked done unheard, and why is
-    logged. Served, backfills run one join at a time on a thread of their own; closing waits
+    logged. Served, backfills run one join at a time on a thread of their own: those pending at
+    open (found then, or left by a crash or a close) as it opens, and each join after from the
+    next delivery; closing waits
     for one under way at most `Backfill.StopWithin`, and one cut short resumes at the next open.
   - **Turns**: a message in a member channel is a turn of its thread's conversation when it
     mentions grit or is in a thread whose root did; otherwise it is heard, an entry with no
-    turn. Each reply is posted in its thread once, found again by its tag after a crash. A
+    turn. With rooms (`Conversations.PerRoom`), a top-level message is recorded in its channel's
+    top level (`Origin.Room`), skipped when a thread recorded before rooms heard it; a reply in
+    a thread recorded before rooms in that thread, addressed as there; any other reply in its
+    own thread (`Origin.Thread`), addressed when its root, a top-level message, was. Each reply
+    is posted in its thread once, found again by its tag after a crash. A
     message is marked `:eyes:` while grit works on it, until its reply is posted or its turn
     ends with nothing to post. A thread under a `slack_post` post begins with that post, read
-    from Slack and recorded as the conversation's opening, so its windows show the turn that
-    asked for it.
+    from Slack and recorded as the conversation's opening, made by the call its tag names, so
+    its windows show the turn that asked for it; when Slack cannot be asked for the root, the
+    message is recorded without it, which is said.
   - **`slack_post`**: served at `service:slack` within one rate across all channels, a writing
     tool (ADR 0031): each channel is offered under its name, with and without `#`, at its own
     place, so a turn is offered only the channels its room may write to, and a quiet room is
-    written to by no one. The edge advertises its channels again after a join, a leave or a
-    room made quiet or not, and the rate's count carries across.
+    written to by no one. The edge advertises its channels again at the next delivery after a
+    join, a leave, a room made quiet or not through its slash command, or a turn delivered whose
+    ask it showed as a card (one made quiet elsewhere is seen at the next such change), and the
+    rate's count carries across.
   - **Review**: a review's place must be a channel of the bot's own team, or the edge does not
     open. A prompt names the message's channel and permalink alone, never its text, a draft's,
     why it was picked or what either gate decided, so the rater answers cold. A crash between
     posting a prompt and keeping it posts it again. Only the rater's reactions, and only the
-    three verdict emoji, are kept. A deployment adds other reviews after triage's
+    three verdict emoji, are kept (a skin tone ignored), each replacing the verdict standing;
+    removing the reaction that stands withdraws it. Any other reaction is ignored. A deployment adds other reviews after triage's
     (`Prompting`, by `SlackReview.also`), over a plugin's documents put up for review: each is
     read for the review's place (`Subject.Room`), its prompt links a conversation it names by
     its thread when the thread is this workspace's, and it is posted and kept only while the
@@ -68,7 +81,8 @@ In dependency order:
   - **Attesting** (ADR 0032): the edge is its workspace's attester. An author is attested
     through core's `Attesting.before` unless Slack answered for them within a minute; one Slack
     cannot answer for and never has is not recorded, so Slack sends the message again, and a
-    backfill stops there. The edge holds no answer, clock or domain of its own: when to ask,
+    backfill stops there. A change Slack reports to a user asks Slack again
+    (`Attesting.changed`). The edge holds no answer, clock or domain of its own: when to ask,
     and which addresses count, are core's. How a deployment trusts the edge:
     [`docs/extending.md`](../../docs/extending.md) (Identities).
   - **Asks** (ADR 0017): a running turn's gated call that asks first is shown to the turn's
@@ -78,8 +92,7 @@ In dependency order:
     shown only to them, in this thread."), once per ask under a tag; a restart shows the card
     again but not that reply. Slack keeps an ephemeral message only in the client it was shown
     in, so a card is gone once its asker reloads Slack, and a card past its time still shows its
-    buttons until clicked. After a turn whose ask was shown as a card, the edge refreshes which
-    rooms `slack_post` posts in. A click is acknowledged at once and answered on
+    buttons until clicked. A click is acknowledged at once and answered on
     a thread of its own, as its clicker's: Apply lets the call run and Cancel declines it, and
     the card is rewritten in place to say so, or to say it expired; a clicker who is not the
     asker is told, beside it, who alone may answer.

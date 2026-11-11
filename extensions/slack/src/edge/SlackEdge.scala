@@ -128,14 +128,14 @@ final class SlackEdge(
       }
     }
 
-  /** One Events API payload. A person's message in a channel grit's bot is a member of (never
-    * the review's channel) is addressed to grit when it mentions grit, or is in a thread whose
-    * root did. It is recorded in its thread's conversation, or with rooms
-    * ([[Conversations.PerRoom]], ADR 0060): a top-level message in its channel's top level
-    * ([[Origin.Room]]), skipped when a thread recorded before rooms heard it; a reply in a
-    * thread recorded before rooms in that thread, addressed as there; any other reply in its
-    * own thread ([[Origin.Thread]]), addressed when its root, a top-level message, was.
-    * Addressed, it is recorded as a turn of that conversation, in the person's
+  /** One Events API payload: `true` once it is handled or needs no handling (a redelivery
+    * included), so the payload may be acknowledged; `false` when Slack or the database could not
+    * be asked, so Slack sends it again (a message racing its channel's join included, so the join
+    * wins on a later try). Which conversation a message is recorded in, and what a join, a leave,
+    * a reaction and a user's change do: the module's README, `edge`.
+    *
+    * A person's message in a member channel, addressed to grit, is recorded as a turn of its
+    * conversation, in the person's
     * words ([[Incoming]]), written through their account in their own team
     * ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them; its turn is
     * started, its reply awaited, and the message marked `:eyes:` until the reply is posted. A new
@@ -146,32 +146,11 @@ final class SlackEdge(
     * it drafts a reply and the draft is posted (ADR 0022). A direct message to grit
     * ([[Event.Told]]) is recorded as an addressed one is, in its author's direct room
     * ([[grit.core.store.Origin.Direct]]); one the inbox refuses as sealed is answered once in its
-    * thread with [[InboxError.SealedReply]], and one over the cap as a channel's is. A group
-    * direct message is ignored. A message from a channel not recorded a member of, as when it
-    * races its channel's join, asks Slack once whether grit's bot is in it ([[Slack.kind]]): if
-    * so, the join is recorded first, as of the message, and the message is taken; if not, it is
-    * ignored. The bot joining a channel ([[Event.Joined]]) is recorded with the channel's access
-    * as Slack reports it, and its inviter's account, checked first ([[Attesting.before]]), so a
-    * join whose inviter is no full member skips its backfill, which is said; leaving or being
-    * removed ([[Event.Left]]) is recorded, and nothing said there after is heard. Each is ordered
-    * by when it happened ([[grit.core.edge.Joins]]); the review's channel is never recorded a
-    * member, and a join Slack says the bot is no longer in is not recorded. A message recorded
-    * or heard that begins its conversation as a reply in a thread whose root the bot posted with
-    * `slack_post` ([[Tag.Sent]]) first records that post, as Slack gives its text, as the
-    * conversation's opening made by the call its tag names ([[grit.core.inbox.Inbox.posted]]);
-    * when Slack cannot be asked for the root, the message is recorded without it, which is said.
-    * A reaction the review's rater adds to a prompt grit posted keeps the verdict it gives
-    * (its prompting's [[Prompting.verdicts]], a skin tone ignored) as the prompt's, replacing the
-    * one standing; removing the reaction that stands withdraws it. Everything else is ignored,
-    * any other reaction included.
+    * thread with [[InboxError.SealedReply]], and one over the cap as a channel's is.
     * Before a message is recorded or heard, its author's account is checked
     * ([[Attesting.before]]): Slack is asked who they are ([[Slack.member]]) unless it answered
     * for them within [[Attesting.Fresh]], so the turn the message starts opens under that
-    * answer; one Slack cannot answer for and never has is not recorded. A change Slack reports
-    * to a user ([[Event.UserChanged]]) asks Slack again ([[Attesting.changed]]). `true` once
-    * that is done or needs no doing (a redelivery included), so the payload may be acknowledged;
-    * `false` when Slack or the database could not be asked, so Slack sends it again (a message
-    * racing its channel's join included, so the join wins on a later try).
+    * answer; one Slack cannot answer for and never has is not recorded.
     */
   def receive(payload: String): Boolean =
     Events.read(payload, self.bot) match {
@@ -812,8 +791,7 @@ final class SlackEdge(
     * ([[grit.core.review.Reviews.unposted]]), when this edge answers a review: for each of
     * [[Reviewing.promptings]] in order, each prompt of a message heard in this workspace's Slack, or of
     * none, is posted at the top of the review's place, linking its message by its permalink
-    * and each conversation it names by its thread's ([[Prompting.doc]]): never a message's text
-    * or a draft's, nor why it was picked or what either gate decided; then given its
+    * and each conversation it names by its thread's ([[Prompting.doc]]); then given its
     * prompting's reactions, which [[receive]] keeps as its verdict; then kept as posted. A
     * prompt of a message Slack no longer has is dropped ([[grit.core.review.Reviews.dropped]]),
     * and that said, once; one Slack will not link or post waits for a later pass; a reaction
@@ -912,23 +890,18 @@ object SlackEdge {
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in a channel its bot is a member of heard (ADR 0020, 0033), one addressed to
     * grit answered in its thread, `command` answered to its asker alone
-    * ([[SlackEdge.command]]), and grit's bot's Slack name logged at open. At open, which
-    * channels the bot is in is read from Slack and recorded ([[SlackEdge.reconcile]]); each
-    * join and leave after is recorded as it happens, and a channel left is not heard from
-    * then. What was said before each join is heard within `backfill`
-    * ([[SlackEdge.backfillJoins]]), on a thread of its own, one join at a time: those pending
-    * at open (found then, or left by a crash or a close) as it opens, and each join after from
-    * the next delivery; closing waits for one under way at most [[Backfill.StopWithin]], and
-    * one cut short is heard from where it stopped at the next open. Refused at open when Slack
-    * will not list its channels. It shows each open ask to its asker alone as a card in its
-    * turn's thread, and sends their click as the answer ([[ServedEdge.Asks.Answered]],
+    * ([[SlackEdge.command]]), and grit's bot's Slack name logged at open. What was said before
+    * each join is heard within `backfill` ([[SlackEdge.backfillJoins]]). Refused at open when
+    * Slack will not list its channels. It shows each open ask to its asker alone as a card in
+    * its turn's thread, and sends their click as the answer ([[ServedEdge.Asks.Answered]],
     * [[SlackEdge.deliver]], [[SlackEdge.click]]). It is the
     * attester [[SlackAccounts.Attester]]: for the realm of its own workspace, when a
     * deployment trusts it there, it says who each account is as Slack states it
     * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists
     * the workspace's users once when any account is due. Each reply it delivers is noted as
     * `note` says ([[ReplyNote]]), and each message recorded in the conversation
-    * `conversations` names for it.
+    * `conversations` names for it. How it keeps its membership and runs backfills: the
+    * module's README, `edge`.
     */
   def serving(
       command: SlackCommand,
@@ -941,9 +914,8 @@ object SlackEdge {
   /** As [[serving]], posting when `posting` is given, and answering `review` when given.
     * With `posting`, it serves `slack_post` at [[PostsAt]]'s place, in every channel its bot is
     * a member of that is not quiet ([[grit.core.store.Tx.quiet]]) and that Slack gives a name,
-    * at most `posting` posts across them, offered again at the next delivery after a join, a
-    * leave, a room made quiet or not through its slash command, or a turn delivered whose ask
-    * it showed as a card (one made quiet elsewhere is seen at the next such change). Each channel is offered under its name, with and without
+    * at most `posting` posts across them, offered again as the module's README says
+    * (`slack_post`). Each channel is offered under its name, with and without
     * `#`, at the place `slack:{team}/{id}`; a turn is offered only those its room may write to.
     * A post is a top-level message, or a reply in a thread its message link names, rendered as
     * a reply is (nothing in it becomes a mention), and one Slack message at most; it never asks
