@@ -561,7 +561,7 @@ object grit extends Module {
         super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.assembly, grit.models)
     }
 
-    /* The eval harness: recorded turns as sent, the coder bench, the lost-tool measure. Runs only
+    /* The eval harness: recorded turns as sent, and the coder bench. Runs only
      * through scripts/eval, never from a test; its tests test the instrument, not a model.
      * eval/harness/README.md. */
     object harness extends GritModule with Placed {

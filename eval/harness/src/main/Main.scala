@@ -7,7 +7,6 @@ import Cli.*
 import BenchCommands.*
 import ProposeCommands.*
 import ContextCommands.*
-import IntegrityCommands.*
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
   * takes. It prints counts, ids and field names, never a message's text: the text `context` and
@@ -23,16 +22,10 @@ object Main {
         exit(
           flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"), clock))
         )
-      case "integrity-loss" :: rest => exit(flags(rest).flatMap(integrityLoss(_, clock)))
       case "bench" :: rest => exit(flags(rest).flatMap(bench(_, clock)))
       case "propose" :: rest => exit(flags(rest).flatMap(propose(_, clock)))
       case _ =>
-        exit(
-          Left(
-            "usage: scripts/eval context|bench|propose|integrity-loss " +
-              "(scripts/eval and scripts/integrity-loss say what each takes)"
-          )
-        )
+        exit(Left("usage: scripts/eval context|bench|propose (scripts/eval says what each takes)"))
     }
   }
 }

@@ -1,13 +1,12 @@
 # grit.eval.harness
 
-The eval harness: a recorded turn read back as its model was sent it, the coder bench and the proposer of amendments to its standing text, and the lost-tool measure.
-It measures; it gates nothing. It runs only through `scripts/eval` and `scripts/integrity-loss`,
-never from a test or `scripts/check`, and its tests test the instrument, not a model.
+The eval harness: a recorded turn read back as its model was sent it, the coder bench and the proposer of amendments to its standing text.
+It measures; it gates nothing. It runs only through `scripts/eval`, never from a test or `scripts/check`, and its tests test the instrument, not a model.
 
 It names grit's code alone (core, `grit.dbos`'s `Reader`, and its `Engine` to keep the bench's
 trials alone, the turn's reading of its records, the assembler's estimate and the shipped
-linear assembler, the lifecycle's triage builders, and the models' Anthropic pricing and Jev
-client), but for the kit's `.env` loader (`DotEnv`), through which a run reads its key, as grit
+linear assembler, the lifecycle's triage builders, and the models' Anthropic pricing and
+provider), but for the kit's `.env` loader (`DotEnv`), through which a run reads its key, as grit
 does, and the local host, which only `main` names.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but those for
@@ -45,7 +44,7 @@ Packages, each importing only those above it:
   (`scripts/eval context`), and what Jev was asked of a heard message, rebuilt through the
   shipped builder since triage keeps no request, worded for a deployment's persona and corpora
   as a hand-written `persona.json` and `knowledge.json` declare them (grit's database keeps no
-  declaration). It holds too how a read through `Reader` failed, said alike by it and `loss`.
+  declaration). It holds too how a read through `Reader` failed, said alike wherever one is.
   It measures each call too: its cache
   misses priced as reads through `grit.models`' `AnthropicRates` (its second namer after
   `bench`), its input by part, and what is unreferenced (no later output refers to it), a
@@ -60,13 +59,6 @@ Packages, each importing only those above it:
   a file the checkout is to hold is built into one, never written beside it. A proposer's checkout
   shows each tool result of a run cut where `sent` cuts a call's; `scripts/eval propose` writes one
   of one task's chosen grit trials, keeping the newest three. ← `bench`, `sent`
-- **`loss`**: the lost-tool measure (`scripts/integrity-loss`): over a window of a database's
-  turns, read from their recorded gate steps by the turn's own codec, which conversations had a
-  tool withheld, a tool that writes out withheld, and a turn lost, one whose root asks for a
-  write out, as Jev judges the root alone, asked only when a write-out tool was withheld; and the
-  items each turn left hidden, closing records apart. It reads, never writes, and keeps nothing.
-  ← `stats`, `sent`
-- **`main`**: the command line `scripts/eval` and `scripts/integrity-loss` run. ← every package
-  above
+- **`main`**: the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

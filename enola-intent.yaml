@@ -176,7 +176,7 @@ components:
   # The harness less its main package, for the rule that keeps grit.host in main, the harness's
   # composition root: every other package takes core's capabilities. A new harness package is
   # added here.
-  - {name: harness-beside-main, kind: module, match: ["eval/harness/src/bench", "eval/harness/src/bench/**", "eval/harness/src/evidence", "eval/harness/src/evidence/**", "eval/harness/src/loss", "eval/harness/src/loss/**", "eval/harness/src/sent", "eval/harness/src/sent/**", "eval/harness/src/stats", "eval/harness/src/stats/**"]}
+  - {name: harness-beside-main, kind: module, match: ["eval/harness/src/bench", "eval/harness/src/bench/**", "eval/harness/src/evidence", "eval/harness/src/evidence/**","eval/harness/src/sent", "eval/harness/src/sent/**", "eval/harness/src/stats", "eval/harness/src/stats/**"]}
   # grit.eval's main sources alone (its cases and their layout), for its rule and the
   # harness's; its integration sources, the assembly eval, are unruled.
   - {name: eval-code,      kind: module, match: ["eval/src", "eval/src/**"]}
