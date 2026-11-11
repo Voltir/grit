@@ -858,6 +858,45 @@ object ProjectCommandsTests extends TestSuite {
         Some("2 more not shown; use a smaller depth or a parent further down.")
     }
 
+    test(
+      "project_list's kind and ended choose the lines of a depth walk without stopping it below the artifacts they leave out"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Top.")
+      done(
+        ask(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/x",
+          "kind" -> "change",
+          "title" -> "Title x",
+          "parent" -> "p/a",
+          "body" -> "## Why\n\nOther kind."
+        )
+      )
+      under(projects, store, "y", "p/x")
+      under(projects, store, "z", "p/a")
+      under(projects, store, "w", "p/z")
+      done(ask(projects, store, "project_move", "key" -> "p/z", "state" -> "closed"))
+      done(
+        ask(
+          projects,
+          store,
+          "project_list",
+          "project" -> "p",
+          "parent" -> "p/a",
+          "depth" -> 2,
+          "kind" -> "note"
+        )
+      ) ==>
+        "2 match: open 2. 1 ended one not listed; ended: true lists it.\n" +
+        "p/y (open): Title y · under p/x · 0.1 KB · changed 2026-10-27\n" +
+        "p/w (open): Title w · under p/z · 0.1 KB · changed 2026-10-27"
+    }
+
     test("project_list refuses depth without a parent") {
       val read = plugin().commands
         .find(c => ToolName.value(c.spec.name) == "project_list")
