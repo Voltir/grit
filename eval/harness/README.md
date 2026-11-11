@@ -27,8 +27,6 @@ the rules each package keeps that its signatures cannot state.
 
 Packages, each importing only those above it:
 
-- **`stats`**: proportions with their intervals, clustered, over Wilson's interval. Pure,
-  naming nothing of grit's.
 - **`bench`**: the coder bench's keeping: each trial of a harness at a frozen task, its
   transcript, its diff and, for a grit trial, the standing text its brief began with, by digest, kept through `grit.dbos.internal`'s `TrialRows` over a blob store that is the
   bench's alone, one per bench database; a frozen task (`eval/bench/tasks/<name>/`: its base,

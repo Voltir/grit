@@ -60,7 +60,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.databases` | `declare`, `connect`, `edge` | core, edge | an application's Postgres database read as a service, one role to a place (ADR 0057); `connect` its JDBC quarantine |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
-| `grit.eval.harness` | `stats` … `main` | core, dbos, turn, assembly, lifecycle, models, kit | the eval harness, run only through `scripts/eval` |
+| `grit.eval.harness` | `bench` … `main` | core, dbos, turn, assembly, lifecycle, models, kit | the eval harness, run only through `scripts/eval` |
 | `grit.kit` | `deployment`, `environment`, `run`, `rehearse`, `work` | core, dbos, act, turn, job, lifecycle, assembly, models, tools, host, edge | what a deployment is built against (ADR 0021) |
 | `grit.app` | `config`, `main` | kit, digest, remind, knowledge, prose, chat, slack, mcp, formats, host, edge | the reference deployment: the chat TUI, `grit serve`, `grit backfill` |
 
