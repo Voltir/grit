@@ -399,26 +399,23 @@ enum DeploymentRefusal {
   }
 }
 
-/** A deployment of grit, declared in code: the edges it serves, which conversations with no
-  * directory work in a service one of them hosts ([[WorksIn]]), which conversations'
-  * addressed turns also reach a service one of them hosts ([[Reaches]]), the plugins it
-  * posts to, the
-  * model policy its calls are made under (laid over by the model settings the database
-  * keeps), what its turns are offered and how their windows are assembled, how messages are
-  * placed on the agenda, the lifecycle's settings, what it may spend a day, whether and within
-  * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
-  * records beside live triage ([[ShadowVariant]]), the corpora its shadows'
-  * question sets ask about ([[Corpora]]), and its turns' offering by the services
-  * they supply, the review of one of them it picks heard messages for ([[ShadowReview]]), how
-  * often its engine sweeps, the `recipe` that shapes each turn by what it answers
-  * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
-  * ([[grit.turn.TurnPrompt.called]]) and `about` reports, and the `jobs` and `schedules` it
-  * declares itself beside its plugins' (ADR 0029), its `visibility`: who may see what
-  * (ADR 0030), and its `identities`: the attester it trusts for each realm, and the email
-  * domains it claims (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
-  * them; how long its file area keeps a file and how much it keeps (`files`, ADR 0045), and the
-  * `formats` every file kept there is read with, by an edge that puts it and by `file_read`
-  * alike (ADR 0044). The database and the model's keys come from the environment
+/** A deployment of grit, declared in code. Of its fields, those their names and types leave
+  * open: `worksIn`, which conversations with no directory work in a service one of its edges
+  * hosts; `reaches`, which conversations' addressed turns also reach one; `plugins`, those it
+  * posts to; `policy`, the model policy its calls are made under, laid over by the model
+  * settings the database keeps; `placer`, how messages are placed on the agenda; `speaking`,
+  * whether and within what it speaks where it was not addressed (ADR 0022); `shadows`, the
+  * variants of triage's question it records beside live triage; `knowledge`, the corpora its
+  * shadows' question sets ask about, and its turns' offering by the services they supply;
+  * `review`, the review of one of those it picks heard messages for; `recipe`, what shapes
+  * each turn by what it answers; `persona`, the name its turns are told
+  * ([[grit.turn.TurnPrompt.called]]) and `about` reports; `jobs` and `schedules`, those it
+  * declares itself beside its plugins' (ADR 0029), and `allJobs` every job, its plugins' and
+  * its own, by name, as its runs find them; `visibility`, who may see what (ADR 0030);
+  * `identities`, the attester it trusts for each realm and the email domains it claims (ADR
+  * 0032); `files`, how long its file area keeps a file and how much (ADR 0045); `formats`,
+  * what every file kept there is read with, by an edge that puts it and by `file_read` alike
+  * (ADR 0044). The database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
   */
