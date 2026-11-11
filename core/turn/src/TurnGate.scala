@@ -73,9 +73,7 @@ final case class Gated(level: Integrity, decided: Vector[Decided], withheld: Vec
 
 object TurnGate {
 
-  /** The source a closing record is recorded under as an [[Item]]: changing it changes what
-    * [[TurnRecord.closing]] reads in every recorded gate.
-    */
+  /** The source a closing record is recorded under as an [[Item]], in every gate's output. */
   private[turn] val ClosingRecord = "a closing record"
 
   /** What the note of the first round whose gate hid an item says ([[TurnShown.gateNotes]]),
