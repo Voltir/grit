@@ -1,6 +1,6 @@
 package grit.projects.plugin
 
-import java.time.Instant
+import java.time.{Instant, LocalDate, ZoneOffset}
 
 import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{
@@ -74,6 +74,7 @@ private[plugin] final class ProjectCommands(
       ProjectClaims,
       ProjectBrief,
       Withdraw,
+      Sweep,
       Migrate,
       Stale
     ) ++ proposing
@@ -1075,30 +1076,118 @@ private[plugin] final class ProjectCommands(
           else Right[Stop, ArtifactHead -> Boolean](_ => false)
         // What is left is a Project, so its export reads back (ADR 0049).
         done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
-        held = project.documents.map((d, a) => a.head.key -> (d, a)).toMap
-        gone = done.gone.flatMap(a => held.get(a.head.key))
-        uncited = done.uncited.flatMap(a => held.get(a.head.key).map((d, _) => d -> a))
-        _ <- unclaimed(claims, gone ++ done.uncited.flatMap(a => held.get(a.head.key)), at)
-        _ <- atTheirLabels(
-          uncited.map((d, a) => d -> s"${a.head.key.value} cites what would be withdrawn, but"),
-          "withdraw"
-        )
-        writer = Some(author(by))
-        _ <- uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
-          so.flatMap(_ => kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at))
-        }
-        _ <- gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
-          so.flatMap(_ =>
-            stored(own.withdraw(d.key, d.label, at)).flatMap(
-              _.toRight(Stop.Refused(s"${a.head.key.value} was withdrawn meanwhile")).map(_ => ())
-            )
-          )
-        }
+        docs = documented(project, done)
+        _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
+        _ <- atTheirLabels(citing(docs), "withdraw")
+        _ <- carried(own, docs, by, at)
       } yield AnswerText.withdrawn(
         done.gone.map(_.head.key),
         done.uncited.map(_.head.key),
         Projects.Terms.retention
       )
+    }
+  }
+
+  /** `project_sweep`. */
+  object Sweep extends KeepingCommand[Sweeping] {
+
+    override def shown(args: Sweeping): String = ProjectKey.value(args.project)
+
+    val spec: ToolSpec[Sweeping] = ToolSpec(
+      ToolName("project_sweep"),
+      "Withdraws a project's old ended artifacts in one call. An artifact goes when all of " +
+        "these hold: its kind is one of `kinds`; it is in an end state of its kind; it was last " +
+        "kept or moved before the day `before` began (UTC; the `changed` day project_list " +
+        "shows); it is not claimed; no artifact that is claimed or has not ended cites it; and " +
+        "everything under it by parent goes too. Each ended artifact left that cites one that " +
+        "goes is kept again without those citations (a new version, written by you, so its " +
+        "changed day becomes today; the words of each link stay in its text). What goes leaves " +
+        "the project and its export; project_show with an `at` before now, and project_history, " +
+        s"still read it for ${Projects.Terms.retention.toDays} days. Answers how many went, by " +
+        "kind and state; how many lost citations; how many old enough stayed, by reason; then " +
+        s"one line each, at most $ListMost, those that stayed first. Call it with dry first: it " +
+        "changes nothing and answers what would go. Refused, changing nothing: `before` is " +
+        "later than today; the project's method is not declared here; a kind is not one of the " +
+        "method's kinds; or an artifact it would withdraw or rewrite is kept at a label below " +
+        "what this room writes.",
+      Args
+        .of(
+          (
+            project = Field.text("The project's key."),
+            kinds = Field.texts(
+              s"The kinds it may withdraw, such as note or checkpoint: 1 to $SweepKinds of the " +
+                "method's kinds.",
+              1,
+              SweepKinds
+            ),
+            before = Field.text(
+              "A day, YYYY-MM-DD, today (UTC) or earlier: an artifact last kept or moved on or " +
+                "after it stays."
+            ),
+            dry = Field
+              .flag(
+                "Whether to change nothing and only answer what would go and what would stay; " +
+                  "false when not given."
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          for {
+            project <- parsed("project", a.project, ProjectKey.of)
+            kinds <- each("kinds", a.kinds.toVector, KindName.of)
+            before <- parsed("before", a.before, day)
+            sweeping <- Sweeping
+              .of(project, kinds.toSet, before, a.dry.getOrElse(false))
+              .left
+              .map(ArgsError.Refused("kinds", _))
+          } yield sweeping
+        )
+    )
+
+    def run(
+        args: Sweeping,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      val today = at.atZone(ZoneOffset.UTC).toLocalDate
+      for {
+        _ <-
+          if (args.before.isAfter(today))
+            Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
+          else Right(())
+        project <- loaded(own, args.project)
+        method <- refuse(declared(project.pin))
+        _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
+          case Vector() => Right(())
+          case unknown =>
+            Left(
+              Stop.Refused(
+                s"${unknown.map(KindName.value).sorted.mkString(", ")}: not among the kinds of " +
+                  s"${MethodName.value(method.name)} version ${method.version}, which are " +
+                  s"${method.kinds.map(k => KindName.value(k.name)).sorted.mkString(", ")}"
+              )
+            )
+        }
+        whole <- refuse(Project.of(args.project, project.pin, project.artifacts))
+        live <- stored(claims.live(at))
+        began = args.before.atStartOfDay(ZoneOffset.UTC).toInstant
+        due = project.documents.collect {
+          case (d, a) if args.kinds(a.head.kind) && d.written.isBefore(began) => a.head.key
+        }.toSet
+        claimed = claimedOf(live, project.documents).map((a, h) => a.head.key -> h).toMap
+        // What is left is a Project, so its export reads back (ADR 0049).
+        swept = Project.swept(whole, due, h => ArtifactKind.ends(method.kinds, h), claimed)
+        docs = documented(project, swept.withdrawn)
+        _ <- atTheirLabels(
+          docs.gone.map((d, a) => d -> s"${a.head.key.value} would be withdrawn, but") ++
+            citing(docs),
+          "withdraw"
+        )
+        _ <- if (args.dry) Right(()) else carried(own, docs, by, at)
+      } yield AnswerText.swept(swept, args.dry, ListMost, Projects.Terms.retention)
     }
   }
 
@@ -1582,7 +1671,7 @@ private[plugin] object ProjectCommands {
       else Right(new Under(parent, depth))
   }
 
-  /** 40: the most artifacts one `project_list` answer lists. */
+  /** 40: the most artifacts one `project_list` answer lists, and one `project_sweep` answer. */
   val ListMost: Int = 40
 
   /** 3: the most levels under a parent one `project_list` lists. */
@@ -1616,6 +1705,39 @@ private[plugin] object ProjectCommands {
 
   /** `project_withdraw`'s arguments. */
   final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
+
+  /** `project_sweep`'s arguments: withdraw what is of `kinds`, ended, and last kept or moved
+    * before `before` began, UTC; when `dry`, answer only, changing nothing.
+    */
+  final case class Sweeping private (
+      project: ProjectKey,
+      kinds: Set[KindName],
+      before: LocalDate,
+      dry: Boolean
+  ) extends caps.Pure
+
+  object Sweeping {
+
+    /** These arguments, or why not: no kind. */
+    def of(
+        project: ProjectKey,
+        kinds: Set[KindName],
+        before: LocalDate,
+        dry: Boolean
+    ): Either[String, Sweeping] =
+      if (kinds.isEmpty) Left("A sweep takes at least one kind.")
+      else Right(new Sweeping(project, kinds, before, dry))
+  }
+
+  /** 20: the most kinds one `project_sweep` names. */
+  private val SweepKinds: Int = 20
+
+  /** `text` as a day, YYYY-MM-DD, or why not. */
+  private def day(text: String): Either[String, LocalDate] =
+    scala.util
+      .Try(LocalDate.parse(text))
+      .toOption
+      .toRight(s"`$text` is not a day such as 2026-10-27")
 
   /** `project_migrate`'s arguments: the version of its method to move `project` to. */
   final case class Migrating(project: ProjectKey, version: Int, remap: Remap) extends caps.Pure
@@ -2002,16 +2124,65 @@ private[plugin] object ProjectCommands {
       Tx^
   ): Either[Stop, Unit] =
     stored(claims.live(at)).flatMap { live =>
-      changed.flatMap((document, artifact) =>
-        live
-          .find(_.subject == document.key)
-          .map(c => s"${artifact.head.key.value} is claimed for ${ClaimHolder.value(c.holder)}")
+      claimedOf(live, changed).map((artifact, holder) =>
+        s"${artifact.head.key.value} is claimed for ${ClaimHolder.value(holder)}"
       ) match {
         case Vector() => Right(())
         case Vector(one) => Left(Stop.Refused(s"$one: release it first"))
         case many => Left(Stop.Refused(s"${many.mkString("; ")}: release them first"))
       }
     }
+
+  /** Each of `documents` that a claim of `live` holds, in the order given, with the holder of the
+    * first such claim.
+    */
+  private def claimedOf(
+      live: Vector[Claim],
+      documents: Vector[(Document, Artifact)]
+  ): Vector[(Artifact, ClaimHolder)] =
+    documents.flatMap((d, a) => live.find(_.subject == d.key).map(c => a -> c.holder))
+
+  /** What a withdrawal changes, each artifact with its document as loaded: those withdrawn, as
+    * they were, and those rewritten, as rewritten.
+    */
+  private final case class Documented(
+      gone: Vector[(Document, Artifact)],
+      uncited: Vector[(Document, Artifact)]
+  ) extends caps.Pure
+
+  /** The documents of what `done` withdraws and rewrites, as `project` loaded them. */
+  private def documented(project: Loaded, done: Project.Withdrawn): Documented = {
+    val held = project.documents.map((d, a) => a.head.key -> d).toMap
+    Documented(
+      done.gone.flatMap(a => held.get(a.head.key).map(_ -> a)),
+      done.uncited.flatMap(a => held.get(a.head.key).map(_ -> a))
+    )
+  }
+
+  /** Each rewritten document of `docs`, with the subject [[atTheirLabels]] names it by. */
+  private def citing(docs: Documented): Vector[(Document, String)] =
+    docs.uncited.map((d, a) => d -> s"${a.head.key.value} cites what would be withdrawn, but")
+
+  /** Keeps each rewrite of `docs`, written by `by`, at its document's label, then withdraws each
+    * document of what goes, at `at`; refused when one was withdrawn meanwhile.
+    */
+  private def carried(own: DocumentKeeper, docs: Documented, by: CommandBy, at: Instant)(using
+      Tx^
+  ): Either[Stop, Unit] = {
+    val writer = Some(author(by))
+    for {
+      _ <- docs.uncited.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
+        so.flatMap(_ => kept(own, Artifact(a.head.copy(by = writer), a.body), Some(d.label), at))
+      }
+      _ <- docs.gone.foldLeft[Either[Stop, Unit]](Right(())) { case (so, (d, a)) =>
+        so.flatMap(_ =>
+          stored(own.withdraw(d.key, d.label, at)).flatMap(
+            _.toRight(Stop.Refused(s"${a.head.key.value} was withdrawn meanwhile")).map(_ => ())
+          )
+        )
+      }
+    } yield ()
+  }
 
   /** The key and label `key`'s versions are kept under: its current document's, or for an
     * artifact of `project` no longer current, the label its newest version `own` reads is at; or

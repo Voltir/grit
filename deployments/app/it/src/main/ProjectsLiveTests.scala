@@ -31,6 +31,27 @@ object ProjectsLiveTests extends TestSuite {
   ): Either[grit.core.edge.CommandError, CommandOutcome] =
     commands.run(by, room, Integrity.Member, name, ujson.Obj.from(args), at)
 
+  /** `project_sweep` of the notes of `p` last changed before the day after [[at]], two days on. */
+  private def sweep(
+      commands: grit.core.edge.PluginCommands^,
+      by: Account,
+      room: Place,
+      dry: Boolean
+  ): Either[grit.core.edge.CommandError, CommandOutcome] =
+    commands.run(
+      by,
+      room,
+      Integrity.Member,
+      ToolName("project_sweep"),
+      ujson.Obj(
+        "project" -> "p",
+        "kinds" -> ujson.Arr("note"),
+        "before" -> "2026-10-28",
+        "dry" -> dry
+      ),
+      at.plusSeconds(2L * 86_400)
+    )
+
   private def keep(
       commands: grit.core.edge.PluginCommands^,
       room: Place,
@@ -99,6 +120,31 @@ object ProjectsLiveTests extends TestSuite {
           kept(config, engine, Projects.Name).map(_._1) ==> Vector("p", "p/a", "p/c")
           cascade(ann, desk).map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
           kept(config, engine, Projects.Name).map(_._1) ==> Vector("p", "p/c")
+      }
+    }
+
+    test(
+      "a sweep is refused, dry or not, changing nothing, naming an artifact it would withdraw kept below what the asker's room writes"
+    ) {
+      CommandRooms.commanding("projects_sweep_floor", _ => Vector(CommandFixtures.plugin())) {
+        (config, engine, commands) =>
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass) ==>
+            Right(classOf[CommandOutcome.Done])
+          keep(commands, desk, "a", "Pruned.") ==> Right(classOf[CommandOutcome.Done])
+          ran(commands, ann, desk, ToolName("project_move"), "key" -> "p/a", "state" -> "closed")
+            .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
+          val refused = Right(
+            CommandOutcome.Refused(
+              "p/a would be withdrawn, but is kept labelled [level: internal], below what this " +
+                "room writes ([level: confidential]): withdraw from a room at its label"
+            )
+          )
+          (sweep(commands, bea, board, dry = true), sweep(commands, bea, board, dry = false)) ==>
+            (refused, refused)
+          kept(config, engine, Projects.Name).map(_._1) ==> Vector("p", "p/a")
+          sweep(commands, ann, desk, dry = false).map(_.getClass) ==>
+            Right(classOf[CommandOutcome.Done])
+          kept(config, engine, Projects.Name).map(_._1) ==> Vector("p")
       }
     }
 

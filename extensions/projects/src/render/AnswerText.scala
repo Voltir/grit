@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.ClaimHolder
-import grit.projects.artifact.{Artifact, ArtifactHead, Body}
+import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
 import grit.projects.name.{ArtifactKey, KindName, StateName}
 
 /** What the projects plugin's commands answer, the same for every edge that asks. */
@@ -59,26 +59,14 @@ object AnswerText {
     if (rows.isEmpty) s"No artifact matches.$ended"
     else {
       val heads = rows.map(_.artifact.head)
-      // Each name `name` gives among `among` and the heads it gives it to, most first.
-      def split(
-          among: Vector[ArtifactHead],
-          name: ArtifactHead -> String
-      ): Vector[(String, Vector[ArtifactHead])] =
-        among
-          .groupBy(name)
-          .toVector
-          .sortBy((n: String, hs: Vector[ArtifactHead]) => (-hs.size, n))
-      def states(among: Vector[ArtifactHead]): String =
-        split(among, h => StateName.value(h.state))
-          .map((s: String, hs: Vector[ArtifactHead]) => s"$s ${hs.size}")
-          .mkString(", ")
-      val byKind = split(heads, h => KindName.value(h.kind))
       val counted = (parts.kind, parts.state) match {
         case (false, false) => ""
         case (false, true) => s": ${states(heads)}"
-        case (true, false) => ": " + byKind.map((k, hs) => s"$k ${hs.size}").mkString("; ")
-        case (true, true) =>
-          ": " + byKind.map((k, hs) => s"$k ${hs.size} (${states(hs)})").mkString("; ")
+        case (true, false) =>
+          ": " + split(heads, h => KindName.value(h.kind))
+            .map((k: String, hs: Vector[ArtifactHead]) => s"$k ${hs.size}")
+            .mkString("; ")
+        case (true, true) => s": ${kindsAndStates(heads)}"
       }
       val lines = rows
         .take(most)
@@ -101,6 +89,33 @@ object AnswerText {
         Option.when(cut > 0)(s"$cut more not shown; $narrow."))).mkString("\n")
     }
   }
+
+  /** Each name `name` gives among `among` and the heads it gives it to, most first, then by name. */
+  private def split(
+      among: Vector[ArtifactHead],
+      name: ArtifactHead -> String
+  ): Vector[(String, Vector[ArtifactHead])] =
+    among
+      .groupBy(name)
+      .toVector
+      .sortBy((n: String, hs: Vector[ArtifactHead]) => (-hs.size, n))
+
+  /** `<state> <n>, …`, most first. */
+  private def states(among: Vector[ArtifactHead]): String =
+    split(among, h => StateName.value(h.state))
+      .map((s: String, hs: Vector[ArtifactHead]) => s"$s ${hs.size}")
+      .mkString(", ")
+
+  /** `<kind> <n> (<state> <n>, …); …`, most first. */
+  private def kindsAndStates(among: Vector[ArtifactHead]): String =
+    split(among, h => KindName.value(h.kind))
+      .map((k: String, hs: Vector[ArtifactHead]) => s"$k ${hs.size} (${states(hs)})")
+      .mkString("; ")
+
+  /** That what was withdrawn stays readable `readable` long, in whole days. */
+  private def readableFor(readable: FiniteDuration): String =
+    s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
+      "before now, and project_history."
 
   /** `<key> (<kind>, <state>): <title>`, the kind and the state each only when asked for, the
     * parentheses only when either is.
@@ -167,8 +182,74 @@ object AnswerText {
       Option.when(uncited.nonEmpty)(
         s"Citations of them dropped from: ${uncited.map(_.value).mkString(", ")}"
       ) :+
-      s"Their history stays readable for ${readable.toDays} days: project_show with an `at` " +
-      "before now, and project_history.").mkString("\n")
+      readableFor(readable)).mkString("\n")
+
+  /** What a sweep answers of `swept`, before it is done when `dry`, else after: `Withdrew <n>:
+    * <kind> <n> (<state> <n>, …); …`, or `Withdrew none.`; `Citations of them dropped from <n>.`
+    * when any was rewritten; `<n> old enough stayed: <reason> <n>; …` when any stayed, reasons
+    * most first, then by name; then at most `most` lines, those that stayed (`<key> (<kind>,
+    * <state>): <title> · stays: <why>`, naming each other artifact with its kind and state), then
+    * those rewritten (`… · rewritten without its citations of what went`), then those withdrawn
+    * (`… · withdrawn`), each part by key; `<n> more not shown.` when lines were cut; and, when
+    * something went, that their history stays readable `readable` long, in whole days. With
+    * `dry`, a first line `Dry run: nothing withdrawn or changed.`, the counts `Would withdraw` and
+    * `Would drop citations of them from`, the lines ending `would be rewritten without its
+    * citations of what goes` and `would be withdrawn`, a cut line `<n> more not shown; fewer
+    * kinds or an earlier before shows fewer.`, and no line on history.
+    */
+  def swept(swept: Project.Swept, dry: Boolean, most: Int, readable: FiniteDuration): String = {
+    val gone = swept.withdrawn.gone
+    val uncited = swept.withdrawn.uncited
+    def other(h: ArtifactHead): String =
+      s"${h.key.value} (${KindName.value(h.kind)}, ${StateName.value(h.state)})"
+    def why(s: Project.Stay): String = s match {
+      case Project.Stay.Claimed(holder) => s"claimed for ${ClaimHolder.value(holder)}"
+      case Project.Stay.Cited(first, rest) =>
+        s"cited by ${(first +: rest).map(other).mkString(", ")}"
+      case Project.Stay.Above(child) => s"${other(child)} under it stays"
+    }
+    def reason(s: Project.Stay): String = s match {
+      case _: Project.Stay.Claimed => "claimed"
+      case _: Project.Stay.Cited => "still cited"
+      case _: Project.Stay.Above => "has one under it that stays"
+    }
+    def line(a: Artifact, end: String): String =
+      s"${head(a.head, kind = true, state = true)} · $end"
+    val withdrew =
+      if (gone.isEmpty) "none." else s"${gone.size}: ${kindsAndStates(gone.map(_.head))}."
+    val counts = Vector(if (dry) s"Would withdraw $withdrew" else s"Withdrew $withdrew") ++
+      Option.when(uncited.nonEmpty)(
+        if (dry) s"Would drop citations of them from ${uncited.size}."
+        else s"Citations of them dropped from ${uncited.size}."
+      ) ++
+      Option.when(swept.stayed.nonEmpty)(
+        s"${swept.stayed.size} old enough stayed: " +
+          swept.stayed
+            .map(s => reason(s.why))
+            .groupMapReduce(identity)(_ => 1)(_ + _)
+            .toVector
+            .sortBy((r: String, n: Int) => (-n, r))
+            .map((r: String, n: Int) => s"$r $n")
+            .mkString("; ") + "."
+      )
+    val lines = swept.stayed.map(s => line(s.artifact, s"stays: ${why(s.why)}")) ++
+      uncited.map(
+        line(
+          _,
+          if (dry) "would be rewritten without its citations of what goes"
+          else "rewritten without its citations of what went"
+        )
+      ) ++
+      gone.sortBy(_.head.key.value).map(line(_, if (dry) "would be withdrawn" else "withdrawn"))
+    val cut = lines.size - most
+    (Option.when(dry)("Dry run: nothing withdrawn or changed.").toVector ++ counts ++
+      lines.take(most) ++
+      Option.when(cut > 0)(
+        if (dry) s"$cut more not shown; fewer kinds or an earlier before shows fewer."
+        else s"$cut more not shown."
+      ) ++
+      Option.when(!dry && gone.nonEmpty)(readableFor(readable))).mkString("\n")
+  }
 
   /** A claim made as a JSON object: `claimed`, the sentence `said`; `brief`, `kept` when its
     * brief was kept, else `none`, with `note`, the sentence `unkept` says why.

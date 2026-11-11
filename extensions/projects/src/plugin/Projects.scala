@@ -22,7 +22,9 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
   * [[grit.core.document.DocRef.BriefChars]],
   * none when over), which a release withdraws, claimed still or not), `project_withdraw` (an artifact no
   * other names, or with what is under it, ended citers rewritten; its history kept as of an
-  * instant), `project_migrate` (a project moved to another version of its method, every artifact
+  * instant), `project_sweep` (a project's old ended artifacts of the kinds named, withdrawn at
+  * once unless claimed or cited by live work, ended citers rewritten; or a dry run of it),
+  * `project_migrate` (a project moved to another version of its method, every artifact
   * kept again, renamed as asked), and the reading `project_show`, `project_history`, `project_list`, `project_find`
   * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
   * weeks), `project_export`, `project_claims` and `project_brief`. Each write records its writer
