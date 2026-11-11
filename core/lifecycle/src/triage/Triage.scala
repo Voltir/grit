@@ -18,35 +18,10 @@ import grit.core.visibility.Subject
 /** The triage: one workflow per heard message ([[TriageRef]]), run on the turns' queue under
   * its conversation, so ahead of any later close of it. Each step's output is recorded, so a
   * triage resumed after a crash never asks the classifier twice. It writes no entry, so it is
-  * never a period's activity and never moves its deadline.
-  *
-  *   1. `stitched` — when the heard message is an [[grit.core.stitch.Opening]], its placement
-  *      waited for ([[grit.act.phase.Placing.placed]]), so the message is asked about with its
-  *      strand, and only once every opening heard before it in its room is placed; then, opening
-  *      or not, until [[Wait]] after it was said. Its conversation's later triages queue
-  *      behind it meanwhile, so its author's next message said by then is seen in `consider`.
-  *   1. `ask:triage` — one classifier call over the heard message, who said it, and the thread
-  *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
-  *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per corpus covering its
-  *      conversation where the set asks so; a move ([[grit.act.moves.Judging]]): admitted
-  *      against the day's cap, so one over it is unanswered; an absent or failing classifier,
-  *      or an answer that does not read, is `Unanswered` tags.
-  *      Nothing is asked when the message cannot be read or is gone, and a message that says
-  *      nothing ([[grit.core.store.Payload.saysNothing]]) is `Unanswered` ("nothing was said")
-  *      unasked. `ask:triage:record` —
-  *      when the classifier replied, its cost in the ledger, charged to the heard message's
-  *      turn; a store that fails it fails the triage.
-  *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
-  *      message is gone or already tagged.
-  *   1. `consider` — when it was tagged now, whether grit drafts a reply to it, or answers it
-  *      as said to grit ([[grit.core.speech.Speech.decide]], against the speech ledger), the
-  *      decision kept, held, drafting or answering, in one transaction, with, when answering,
-  *      its reply awaited and its mark wanted at its reply address; a deployment that does
-  *      not speak keeps none but on a message put to grit.
-  *   1. `start` — when drafting or answering, the heard message's own turn started, a turn
-  *      rooted on it ([[grit.core.store.Payload.Heard]]).
-  *   1. `unstarted` — when drafting and its start failed, the decision settled as failed
-  *      ([[grit.core.speech.SpeechStore.drafted]]).
+  * never a period's activity and never moves its deadline. Its steps, `stitched`,
+  * `ask:triage`, `record`, `consider`, `start` and `unstarted`, and what each decides: the
+  * module's README, "The triage's steps". A store that fails to record the classifier's cost
+  * fails the triage.
   */
 object Triage {
 
