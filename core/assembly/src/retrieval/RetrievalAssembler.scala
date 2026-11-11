@@ -73,35 +73,9 @@ import grit.core.visibility.Subject
   * the turn's own scores times the settings' weight, a document's or a piece's times its plugin's,
   * a tie going to the turn's own, then to entries elsewhere, then to documents. They fill the rest
   * of `budget`, best first, one that does not fit passed over for the next, each costed as it is
-  * shown: a recalled own turn with a gap line ([[Shown.Gap]]), as is a tail that leaves turns out;
-  * a section as [[Shown.section]]; a document as [[Shown.document]]; a piece as [[Shown.piece]]; a
-  * person's message with its author's name line ([[Shown.of]]).
-  *
-  * Own turns join the window in conversation order, never with the request's task
-  * ([[grit.core.context.AssemblyRequest.task]]), which is neither drawn nor found, and of a
-  * continuation's turns only those [[grit.core.context.AssemblyRequest.drawable]] keeps, in its
-  * tail, its gap line paid for first when that leaves turns out, none of the others ever a
-  * candidate; packed documents and pieces in rank order. Turns from elsewhere form one section per
-  * conversation ([[Nearby]]), in the order of its best candidate, its turns in its own order. A
-  * conversation whose closings match is one candidate, shown as its newest kept closing's record
-  * ([[Shown.recorded]]), unless any of its open turns is one: then those alone are its section. The
-  * own closing is never a candidate. A conversation in a strand ([[grit.core.stitch.Strand]], read
-  * through `stitches`) is shown one [[Nearby.Along]] section per other member, after any from afar:
-  * its root's opening message, then the messages nearest the turn, newest first while they fit in
-  * `tuning.windowTokens`, paid after the closing and before the tail; a member whose first message
-  * is gone, by its newest kept closing's record. A conversation that begins with grit's post
-  * ([[grit.core.store.ConversationStore.postedBy]]) is shown first, the turn that asked for it as
-  * one [[Nearby.Asked]] section, while the turn's period is the conversation's first and both
-  * conversations are colleagues' ([[Audience.Colleagues]]): its person's messages and grit's reply
-  * from the first, as many as fit in the strand's allowance, paid from it before the strand.
-  * Neither a strand member nor the asking conversation is ever also a candidate.
-  *
-  * A channel's top level or a thread under it (ADR 0060) reads no strand: each other conversation
-  * of its room is shown one [[Nearby.Along]] section, of what it said since the room's open period
-  * opened, newest first within `Rolling.Default.shown`, and a thread first its room's newest kept
-  * closing and, in its first period, the turn it is under ([[Nearby.Asked]]). An append adds what
-  * the room said since its last part. A room's kept closings are each a candidate, but those the
-  * window shows; so are a top level's earlier periods' turns, as its own.
+  * shown. A strand's sections fit in `tuning.windowTokens`, paid after the closing and before the
+  * tail. The order each kind joins the window in, and the sections a strand, a post grit was asked
+  * for and a channel's room add: the module's README, "What a retrieval window shows".
   *
   * No query is written when the linear window of `budget` holds every earlier turn of the period
   * and nothing elsewhere and no document or piece is to be drawn.

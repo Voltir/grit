@@ -28,8 +28,7 @@ import grit.core.visibility.Subject
   * `estimator`; never their summaries, nor the request's task
   * ([[grit.core.context.AssemblyRequest.task]]), its turn's other messages kept; of a
   * continuation's turns, only those [[grit.core.context.AssemblyRequest.drawable]] keeps, its
-  * gap line paid for first when that leaves turns out. The baseline every smarter assembler
-  * is measured against. It never draws on other conversations.
+  * gap line paid for first when that leaves turns out. It never draws on other conversations.
   *
   * Given a carried window and no task it appends the turns since its last part's turn, every one of them,
   * with no closing and no gap line. Its limit, at which it draws afresh as with nothing
@@ -38,9 +37,8 @@ import grit.core.visibility.Subject
   * spend more than `budget`. A request's width bounds only a boundary, never the limit.
   *
   * The closing entry is paid for first; a budget too small for it leaves it out. Turns are
-  * kept or dropped whole, so a window never opens on a reply without its question, or a tool
-  * result without its call. The first turn back that does not fit ends the window, even if
-  * older turns would: the model never sees a history with holes. A newest turn larger than
+  * kept or dropped whole, and the first turn back that does not fit ends the window, even if
+  * older turns would. A newest turn larger than
   * what is left on its own leaves no turns. A window that leaves turns out is charged one
   * gap line ([[Shown.Gap]]). A person's message is costed with its author's name line
   * ([[Shown.of]]), as it is sent.
