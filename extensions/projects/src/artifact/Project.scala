@@ -20,18 +20,19 @@ object Project {
       case some => Left(some.map(_._2).mkString("; "))
     }
 
-  /** What [[withdrawn]] leaves: `project` without the artifacts withdrawn; `gone`, their keys,
-    * the one named first, then the rest by key; and `uncited`, by key, each ended artifact left
-    * citing one of them as rewritten not to, its `by` as it was.
+  /** What a withdrawal leaves: `project` without the artifacts withdrawn; `gone`, each as it was,
+    * in the order its producer states; and `uncited`, by key, each artifact left citing one of
+    * them as rewritten not to, its `by` as it was.
     */
-  final case class Withdrawn(project: Project, gone: Vector[ArtifactKey], uncited: Vector[Artifact])
+  final case class Withdrawn(project: Project, gone: Vector[Artifact], uncited: Vector[Artifact])
       extends caps.Pure
 
   /** `project` without `key`, or why not, naming each artifact in the way: a `key` it lacks;
     * without `cascade`, any artifact having `key` as its parent or citing it. With `cascade`,
     * without every artifact under `key` by parent too, each artifact `ended` holds of that cites
     * one of them rewritten not to; refused for an artifact under `key` that `ended` does not
-    * hold of, and for one outside them that it does not hold of citing one of them.
+    * hold of, and for one outside them that it does not hold of citing one of them. `gone` is
+    * `key`, then the rest by key.
     */
   def withdrawn(
       project: Project,
@@ -39,25 +40,19 @@ object Project {
       cascade: Boolean,
       ended: ArtifactHead -> Boolean
   ): Either[String, Withdrawn] = {
-    val children = project.artifacts.groupMap(_.head.parent)(_.head.key)
-    @tailrec def under(
-        frontier: Vector[ArtifactKey],
-        found: Vector[ArtifactKey]
-    ): Vector[ArtifactKey] =
-      frontier.flatMap(k => children.getOrElse(Some(k), Vector.empty)) match {
-        case Vector() => found
-        case next => under(next, found ++ next)
-      }
-    val gone = key +: (if (cascade) under(Vector(key), Vector.empty).sortBy(_.value) else Vector())
+    val gone =
+      key +: (if (cascade) beneath(project, key).toVector.sortBy(_.value) else Vector())
     val withdrawing = gone.toSet
     val (inside, outside) = project.artifacts.partition(a => withdrawing(a.head.key))
     val citers = outside.filter(_.cites.exists(withdrawing))
+    val held = inside.map(a => a.head.key -> a).toMap
+    val going = gone.flatMap(held.get)
     def named(as: Vector[Artifact]): String = as.map(_.head.key.value).sorted.mkString(", ")
     if (inside.isEmpty)
       Left(s"project ${ProjectKey.value(project.key)} has no artifact ${key.value}")
     else if (!cascade)
       referrers(key, outside) match {
-        case Vector() => remainder(project, gone, outside, Vector())
+        case Vector() => Right(remainder(project, going, outside, Vector()))
         case some =>
           Left(
             s"${key.value} is named by ${some.map(_.value).mkString(", ")}: withdraw them " +
@@ -76,33 +71,48 @@ object Project {
           s"artifacts not ended cite what would be withdrawn: ${named(live)}: end them, or drop " +
             "their citations, first"
         )
-      else
-        remainder(
-          project,
-          gone,
-          outside,
-          citers
-            .map(a =>
-              Artifact(
-                a.head.copy(cites = a.head.cites.filterNot(withdrawing)),
-                Body.uncited(a.body, withdrawing)
-              )
-            )
-            .sortBy(_.head.key.value)
-        )
+      else Right(remainder(project, going, outside, uncite(citers, withdrawing)))
     }
   }
 
-  /** `outside` as `project`, each of `uncited` in place of the artifact of its key. */
+  /** The keys of every artifact of `project` under `key` by parent, at any depth. */
+  private def beneath(project: Project, key: ArtifactKey): Set[ArtifactKey] = {
+    val children = project.artifacts.groupMap(_.head.parent)(_.head.key)
+    @tailrec def under(frontier: Vector[ArtifactKey], found: Set[ArtifactKey]): Set[ArtifactKey] =
+      frontier.flatMap(k => children.getOrElse(Some(k), Vector.empty)) match {
+        case Vector() => found
+        case next => under(next, found ++ next)
+      }
+    under(Vector(key), Set.empty)
+  }
+
+  /** Each of `citers`, by key, rewritten not to cite any of `gone`, in its head and its body. */
+  private def uncite(citers: Vector[Artifact], gone: Set[ArtifactKey]): Vector[Artifact] =
+    citers
+      .map(a =>
+        Artifact(a.head.copy(cites = a.head.cites.filterNot(gone)), Body.uncited(a.body, gone))
+      )
+      .sortBy(_.head.key.value)
+
+  /** `outside` as `project`, each of `uncited` in place of the artifact of its key. Its callers
+    * pass an `outside` holding no artifact whose parent is in `gone`, and an `uncited` holding
+    * every artifact of `outside` citing one of `gone`.
+    */
   private def remainder(
       project: Project,
-      gone: Vector[ArtifactKey],
+      gone: Vector[Artifact],
       outside: Vector[Artifact],
       uncited: Vector[Artifact]
-  ): Either[String, Withdrawn] = {
+  ): Withdrawn = {
     val rewritten = uncited.map(a => a.head.key -> a).toMap
-    of(project.key, project.pin, outside.map(a => rewritten.getOrElse(a.head.key, a)))
-      .map(Withdrawn(_, gone, uncited))
+    // Built without `of`: `outside` is a subset of a project, so its keys are distinct, its
+    // parents form no cycle, and none is outside it (no parent is in `gone`); and, with each
+    // citer of `gone` rewritten not to cite it, every citation is of an artifact still in it.
+    Withdrawn(
+      new Project(project.key, project.pin, outside.map(a => rewritten.getOrElse(a.head.key, a))),
+      gone,
+      uncited
+    )
   }
 
   /** The keys `among` name as their parents or cite. */

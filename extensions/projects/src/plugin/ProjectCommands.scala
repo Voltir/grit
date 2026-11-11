@@ -1076,7 +1076,7 @@ private[plugin] final class ProjectCommands(
         // What is left is a Project, so its export reads back (ADR 0049).
         done <- refuse(Project.withdrawn(whole, args.key, args.cascade, ended))
         held = project.documents.map((d, a) => a.head.key -> (d, a)).toMap
-        gone = done.gone.flatMap(held.get)
+        gone = done.gone.flatMap(a => held.get(a.head.key))
         uncited = done.uncited.flatMap(a => held.get(a.head.key).map((d, _) => d -> a))
         _ <- unclaimed(claims, gone ++ done.uncited.flatMap(a => held.get(a.head.key)), at)
         _ <- atTheirLabels(
@@ -1095,7 +1095,7 @@ private[plugin] final class ProjectCommands(
           )
         }
       } yield AnswerText.withdrawn(
-        done.gone,
+        done.gone.map(_.head.key),
         done.uncited.map(_.head.key),
         Projects.Terms.retention
       )
