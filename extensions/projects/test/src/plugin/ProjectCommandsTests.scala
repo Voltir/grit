@@ -628,36 +628,85 @@ object ProjectCommandsTests extends TestSuite {
     }
 
     test(
-      "project_list lists the heads of a kind and a state, by key, each with its parent and opening words"
+      "a project_list line leaves out what the arguments fixed, and gives its size, the day it last changed and how many sit under it"
     ) {
       val projects = plugin()
       val store = Store()
       started(projects, store)
-      kept(projects, store, "b", "note", "# Bee\n\nThe second one.\n\nMore after.")
+      val day = 86_400L
+      // c's markdown is 207 bytes: 0.3 KB, rounded up to a tenth.
       kept(projects, store, "a", "note", "Text.")
-      kept(projects, store, "c", "change", "## Goal\n\n" + ("word " * 40).trim)
       done(
-        ask(
+        askAt(at.plusSeconds(day))(
           projects,
           store,
           "project_keep",
           "key" -> "p/c",
+          "kind" -> "change",
           "title" -> "Title c",
           "parent" -> "p/a",
-          "body" -> ("## Goal\n\n" + ("word " * 40).trim)
+          "body" -> ("## Why\n\n" + ("word " * 40).trim)
         )
       )
-      done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
-      val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
-      val all = done(ask(projects, store, "project_list", "project" -> "p", "ended" -> true))
-      // The lead is cut at a word to 120 characters, its heading skipped.
-      (open, all.split("\n").toVector.drop(1)) ==> (
-        "1 match: note 1.\np/a (note, open): Title a · Text.",
-        Vector(
-          "p/a (note, open): Title a · Text.",
-          "p/b (note, closed): Title b · The second one.",
-          "p/c (change, proposed): Title c · under p/a · " + ("word " * 23).trim + " word…"
+      done(
+        askAt(at.plusSeconds(2 * day))(
+          projects,
+          store,
+          "project_keep",
+          "key" -> "p/b",
+          "kind" -> "note",
+          "title" -> "Title b",
+          "parent" -> "p/a",
+          "body" -> "Ended."
         )
+      )
+      done(
+        askAt(at.plusSeconds(2 * day))(
+          projects,
+          store,
+          "project_move",
+          "key" -> "p/b",
+          "state" -> "closed"
+        )
+      )
+      def lines(args: (String, ujson.Value)*): Vector[String] =
+        done(ask(projects, store, "project_list", (("project", ujson.Str("p")) +: args)*))
+          .split("\n")
+          .toVector
+          .drop(1)
+      (
+        lines(),
+        lines("kind" -> "note", "state" -> "open"),
+        lines("state" -> "closed"),
+        lines("parent" -> "p/a", "ended" -> true)
+      ) ==> (
+        Vector(
+          "p/c (change, proposed): Title c · under p/a · 0.3 KB · changed 2026-10-28",
+          "p/a (note, open): Title a · 0.1 KB · changed 2026-10-27 · 1 under it"
+        ),
+        Vector("p/a: Title a · 0.1 KB · changed 2026-10-27 · 1 under it"),
+        Vector("p/b (note): Title b · under p/a · 0.1 KB · changed 2026-10-29"),
+        Vector(
+          "p/b (note, closed): Title b · 0.1 KB · changed 2026-10-29",
+          "p/c (change, proposed): Title c · 0.3 KB · changed 2026-10-28"
+        )
+      )
+    }
+
+    test("project_list with opening ends each line with the opening words of its text") {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "b", "note", "# Bee\n\nThe second one.\n\nMore after.")
+      kept(projects, store, "c", "change", "## Why\n\n" + ("word " * 40).trim)
+      // The lead is cut at a word to 120 characters, its heading skipped.
+      done(ask(projects, store, "project_list", "project" -> "p", "opening" -> true))
+        .split("\n")
+        .toVector
+        .drop(1) ==> Vector(
+        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · The second one.",
+        "p/c (change, proposed): Title c · 0.3 KB · changed 2026-10-27 · " +
+          ("word " * 23).trim + " word…"
       )
     }
 
@@ -670,17 +719,15 @@ object ProjectCommandsTests extends TestSuite {
       kept(projects, store, "a", "note", "Live.")
       kept(projects, store, "b", "note", "Ended.")
       done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
-      // The lines after the count line.
-      def list(args: (String, ujson.Value)*): String =
+      // The keys of the lines after the count line.
+      def list(args: (String, ujson.Value)*): Vector[String] =
         done(ask(projects, store, "project_list", (("project", ujson.Str("p")) +: args)*))
           .split("\n")
+          .toVector
           .drop(1)
-          .mkString("\n")
-      list() ==> "p/a (note, open): Title a · Live."
-      (list("ended" -> true), list("state" -> "closed")) ==> (
-        "p/a (note, open): Title a · Live.\np/b (note, closed): Title b · Ended.",
-        "p/b (note, closed): Title b · Ended."
-      )
+          .map(_.takeWhile(c => c != ' ' && c != ':'))
+      list() ==> Vector("p/a")
+      (list("ended" -> true), list("state" -> "closed")) ==> (Vector("p/a", "p/b"), Vector("p/b"))
     }
 
     test(
@@ -768,8 +815,8 @@ object ProjectCommandsTests extends TestSuite {
       under("d", "p/a")
       done(ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a")) ==>
         "2 match: note 2 (open 2).\n" +
-        "p/b (note, open): Title b · under p/a · Below.\n" +
-        "p/d (note, open): Title d · under p/a · Below."
+        "p/b (note, open): Title b · 0.1 KB · changed 2026-10-27 · 1 under it\n" +
+        "p/d (note, open): Title d · 0.1 KB · changed 2026-10-27"
     }
 
     test(

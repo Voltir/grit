@@ -661,7 +661,13 @@ private[plugin] final class ProjectCommands(
                   "under them."
               )
               .optional,
-            ended = endedField("list")
+            ended = endedField("list"),
+            opening = Field
+              .flag(
+                "Whether each line ends with the opening words of the artifact's text; false " +
+                  "when not given."
+              )
+              .optional
           )
         )
         .refine(a =>
@@ -681,7 +687,14 @@ private[plugin] final class ProjectCommands(
                 )
               )
             }
-          } yield Listing(p, kind, state, parent, a.ended.getOrElse(false))
+          } yield Listing(
+            p,
+            kind,
+            state,
+            parent,
+            a.ended.getOrElse(false),
+            a.opening.getOrElse(false)
+          )
         )
     )
     def run(args: Listing, by: CommandBy, own: PluginReads, at: Instant)(using
@@ -713,8 +726,7 @@ private[plugin] final class ProjectCommands(
           )
         AnswerText.listed(
           rows,
-          args.kind,
-          args.state,
+          AnswerText.LineParts(args.kind.isEmpty, args.state.isEmpty, parent, args.opening),
           ListMost,
           left.size,
           "narrow with kind, state or parent"
@@ -1516,7 +1528,8 @@ private[plugin] object ProjectCommands {
       kind: Option[KindName],
       state: Option[StateName],
       parent: Option[LocalKey],
-      ended: Boolean
+      ended: Boolean,
+      opening: Boolean
   ) extends caps.Pure
 
   /** 40: the most artifacts one `project_list` answer lists. */
