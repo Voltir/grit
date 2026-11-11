@@ -649,7 +649,7 @@ object ProjectCommandsTests extends TestSuite {
       )
       done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
       val open = done(ask(projects, store, "project_list", "project" -> "p", "state" -> "open"))
-      val all = done(ask(projects, store, "project_list", "project" -> "p"))
+      val all = done(ask(projects, store, "project_list", "project" -> "p", "ended" -> true))
       // The lead is cut at a word to 120 characters, its heading skipped.
       (open, all.split("\n").toVector) ==> (
         "p/a (note, open): Title a · Text.",
@@ -658,6 +658,24 @@ object ProjectCommandsTests extends TestSuite {
           "p/b (note, closed): Title b · The second one.",
           "p/c (change, proposed): Title c · under p/a · " + ("word " * 23).trim + " word…"
         )
+      )
+    }
+
+    test(
+      "project_list leaves out ended artifacts unless ended is true or state names an end state"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      started(projects, store)
+      kept(projects, store, "a", "note", "Live.")
+      kept(projects, store, "b", "note", "Ended.")
+      done(ask(projects, store, "project_move", "key" -> "p/b", "state" -> "closed"))
+      def list(args: (String, ujson.Value)*): String =
+        done(ask(projects, store, "project_list", (("project", ujson.Str("p")) +: args)*))
+      list() ==> "p/a (note, open): Title a · Live."
+      (list("ended" -> true), list("state" -> "closed")) ==> (
+        "p/a (note, open): Title a · Live.\np/b (note, closed): Title b · Ended.",
+        "p/b (note, closed): Title b · Ended."
       )
     }
 

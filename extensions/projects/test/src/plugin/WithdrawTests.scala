@@ -153,7 +153,7 @@ object WithdrawTests extends TestSuite {
         answer,
         d.linesIterator.filter(l => l.startsWith("cites:") || l.startsWith("by:")).toVector,
         d.linesIterator.toVector.lastOption,
-        done(ask(projects, store, "project_list", "project" -> "p")).linesIterator
+        done(ask(projects, store, "project_list", "project" -> "p", "ended" -> true)).linesIterator
           .map(_.takeWhile(_ != ' '))
           .toVector,
         ask(projects, store, "project_export", "project" -> "p").getClass

@@ -645,20 +645,24 @@ private[plugin] final class ProjectCommands(
       ToolName("project_list"),
       "Lists a project's artifacts, one line each: key, kind, state, title, the artifact it " +
         "sits under, and the opening words of its text. Only those of a kind, in a state, or " +
-        "directly under a parent, when given. Refused for a parent the project lacks, naming " +
-        "the nearest keys it has.",
+        s"directly under a parent, when given. Leaves out ended ones ($EndedWords) unless " +
+        "`ended` is true or `state` names an end state. Refused for a parent the project " +
+        "lacks, naming the nearest keys it has.",
       Args
         .of(
           (
             project = Field.text("The project's key."),
             kind = Field.text("Only artifacts of this kind.").optional,
-            state = Field.text("Only artifacts in this state.").optional,
+            state = Field
+              .text("Only artifacts in this state; an end state, such as done, needs no `ended`.")
+              .optional,
             parent = Field
               .text(
                 "Only the artifacts directly under this one, `<project>/<artifact>`; not those " +
                   "under them."
               )
-              .optional
+              .optional,
+            ended = endedField("list")
           )
         )
         .refine(a =>
@@ -678,7 +682,7 @@ private[plugin] final class ProjectCommands(
                 )
               )
             }
-          } yield Listing(p, kind, state, parent)
+          } yield Listing(p, kind, state, parent, a.ended.getOrElse(false))
         )
     )
     def run(args: Listing, by: CommandBy, own: PluginReads, at: Instant)(using
@@ -692,10 +696,12 @@ private[plugin] final class ProjectCommands(
             .map(found => Some(found._2.head.key))
         }
       } yield {
+        val ended = endedOf(project.pin)
         val listed = project.artifacts
           .filter(a =>
             args.kind.forall(_ == a.head.kind) && args.state.forall(_ == a.head.state) &&
-              parent.forall(p => a.head.parent.contains(p))
+              parent.forall(p => a.head.parent.contains(p)) &&
+              (args.ended || args.state.isDefined || !ended(a.head))
           )
           .sortBy(_.head.key.value)
         AnswerText.listed(listed, "No artifact matches.")
@@ -712,7 +718,7 @@ private[plugin] final class ProjectCommands(
       ToolName("project_find"),
       s"Finds the artifacts whose titles and bodies best match some words, best first, at " +
         s"most $Found, one line each: only one project's, when given. Leaves out ended " +
-        "artifacts (in an end state of their kind, such as done, dropped or closed) unless " +
+        s"artifacts ($EndedWords) unless " +
         "`ended` is true. Pass `ended: true` when asking what was tried before, what was " +
         "decided against, or why something was decided: dropped notes and ended milestones " +
         "hold the alternatives that were rejected.",
@@ -721,12 +727,7 @@ private[plugin] final class ProjectCommands(
           (
             query = Field.text("The words to find."),
             project = Field.text("Only artifacts of this project.").optional,
-            ended = Field
-              .flag(
-                "Whether to find ended artifacts too: true when asking what was tried, " +
-                  "rejected or decided, and why; false when not given."
-              )
-              .optional
+            ended = endedField("find")
           )
         )
         .refine(a =>
@@ -746,7 +747,6 @@ private[plugin] final class ProjectCommands(
         heads = artifacts
           .map(_.head)
           .filter(h => args.project.forall(_ == h.key.project))
-        // An artifact of a project whose method is not declared here is never left out.
         ends <-
           if (args.ended) Right(Map.empty[ProjectKey, ArtifactHead -> Boolean])
           else
@@ -755,10 +755,7 @@ private[plugin] final class ProjectCommands(
               .distinct
               .foldLeft[Either[Stop, Map[ProjectKey, ArtifactHead -> Boolean]]](Right(Map.empty)) {
                 (so, p) =>
-                  so.flatMap(m =>
-                    pinned(own.documents, p)
-                      .map(pin => ending(pin).toOption.fold(m)(m.updated(p, _)))
-                  )
+                  so.flatMap(m => pinned(own.documents, p).map(pin => m.updated(p, endedOf(pin))))
               }
       } yield AnswerText.heads(
         heads.filterNot(h => ends.get(h.key.project).exists(_(h))).take(Found),
@@ -1315,6 +1312,12 @@ private[plugin] final class ProjectCommands(
     */
   private def ending(pin: Pin): Either[Stop, ArtifactHead -> Boolean] =
     refuse(declared(pin)).map[ArtifactHead -> Boolean](m => h => ArtifactKind.ends(m.kinds, h))
+
+  /** Whether `project_list` and `project_find` leave an artifact of a project holding to `pin`
+    * out as ended: as [[ending]] says, and never when `pin`'s method is not declared here.
+    */
+  private def endedOf(pin: Pin): ArtifactHead -> Boolean =
+    ending(pin).fold(_ => _ => false, identity)
 }
 
 private[plugin] object ProjectCommands {
@@ -1498,8 +1501,22 @@ private[plugin] object ProjectCommands {
       project: ProjectKey,
       kind: Option[KindName],
       state: Option[StateName],
-      parent: Option[LocalKey]
+      parent: Option[LocalKey],
+      ended: Boolean
   ) extends caps.Pure
+
+  /** What an ended artifact is, in the words `project_list` and `project_find` describe it. */
+  private val EndedWords: String =
+    "in an end state of their kind, such as done, dropped or closed"
+
+  /** The `ended` argument of `project_list` and `project_find`, whose answer `verb` says. */
+  private def endedField(verb: String): Field[Option[Boolean]] =
+    Field
+      .flag(
+        s"Whether to $verb ended artifacts too: true when asking what was tried, " +
+          "rejected or decided, and why; false when not given."
+      )
+      .optional
 
   /** `project_find`'s arguments. */
   final case class Finding(query: String, project: Option[ProjectKey], ended: Boolean)
