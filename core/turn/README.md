@@ -34,3 +34,31 @@ The other files are the helpers these steps call: an offer (`TurnOffer`), a rout
 (`TurnRoute`), the agenda, a verdict, a summary, a judge, what a search found judged (`TurnRelevance`), a gate (`TurnGate`), hosted calls
 (`TurnHosted`), the tool calls (`TurnTools`), the loop's pure decisions (`TurnLoop`), and the
 recorded codecs (`TurnJournal`).
+
+## What a turn is offered
+
+`TurnOffer.decide` offers a turn its tools in this order: the hosted tools of its `TurnTooling`
+that the live edge serving its workspace advertises, then the others it advertises that
+`Hosted.advertised` offers, less any whose name one of the tooling's has; then, on an addressed
+turn, the tools advertised at each service `reaches` links its place to that `Hosted.advertised`
+offers, less any whose name an earlier tool has; then the tooling's `conversing` tools unless its
+recipe briefs the turn for one task (`Briefing.Tasked`); then its own `tools`; then its `operator`
+tools when its origin is the operator's (`Audience.operator`); then its `administering` tools when
+its root is `Addressed` or `ByName` and its origin is colleagues' (`Audience.Colleagues`).
+
+Of its own tools a turn is offered, in that order, by four questions: what runs its conversation
+(the recipe's briefing: `conversing`), every turn (`tools`), who reads it (its origin's audience:
+`operator`), and what it answers in which room (its root and audience: `administering`). The coding
+tools, `hosted`, the deployment's `Offered` chose.
+
+Its prompt, in order: the base (`TurnPrompt.TaskBase` when briefed for one task),
+`TurnPrompt.Candour`, `TurnPrompt.Answering`, `TurnPrompt.Security` (not when so briefed),
+`TurnPrompt.Briefed` when it is briefed, its edge's fragment, what its edge says its reply shows
+(`renders`, `TurnPrompt.rendered`), where its reply goes (`TurnPrompt.destination`), what it is
+called (`persona`, `TurnPrompt.called`), `TurnPrompt.unprompted` when its root is heard
+(`TurnPrompt.unpromptedAtTop` when its venue is its room's top level), how its persona sounds
+(`TurnPrompt.voiced`), its own room's label (the transaction's floor, `TurnPrompt.room`), what it
+may reach there, what it reaches besides (`TurnPrompt.reached`, for each reached service offering
+tools), the voice set with `/set voice` at a terminal alone (`Audience.Operator`; none for plain),
+the instruction files the edge read there, and, after them, the instructions each reached
+service's edge declared there, for each reached service offering tools.

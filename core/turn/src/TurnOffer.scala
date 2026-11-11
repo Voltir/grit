@@ -114,18 +114,12 @@ object TurnOffer {
   }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
-    * workspace ([[workspaceOf]]); the hosted tools of `tooling` that the live edge serving
-    * that workspace advertises, then the others it advertises that
-    * [[grit.core.tool.Hosted.advertised]] offers, less any whose name one of `tooling`'s has,
-    * then, on an addressed turn, the tools advertised at each service `tooling.reaches` links
-    * its place to ([[grit.core.place.Reaches.of]]) that [[grit.core.tool.Hosted.advertised]]
-    * offers, less any whose name an earlier tool has (a heard-rooted turn only those of a link
-    * whose `heard` is [[grit.core.place.Reaches.Heard.ReadOnly]], and of them only the
-    * [[grit.core.tool.ToolSet.Entry.readOnly]]), then `tooling`'s conversing tools unless its recipe briefs the turn for one task
-    * ([[grit.core.recipe.Briefing.Tasked]]), then its own, then its operator tools when
-    * its origin is the operator's ([[grit.core.store.Audience.operator]]), then its
-    * administering tools when its root is `Addressed` or `ByName` and its origin is colleagues'
-    * ([[grit.core.store.Audience.Colleagues]]). A service place, its
+    * workspace ([[workspaceOf]]); the tools of `tooling`, of the live edge serving that
+    * workspace and of each service `tooling.reaches` links its place to
+    * ([[grit.core.place.Reaches.of]]), and its prompt's fragments, each in the order the
+    * module's README gives ("What a turn is offered"). Of a reached service, a heard-rooted
+    * turn is offered only the [[grit.core.tool.ToolSet.Entry.readOnly]] tools of a link whose
+    * `heard` is [[grit.core.place.Reaches.Heard.ReadOnly]]. A service place, its
     * workspace or one it reaches, offers nothing when the turn does not read from it
     * ([[grit.core.store.Tx.readsFrom]]): a reached one is not named, and of a workspace an edge
     * serves the prompt says only that its tools are not available ([[TurnPrompt.Serving]]); and its tools that declare
@@ -133,19 +127,8 @@ object TurnOffer {
     * their arguments go to it. An advertised tool that writes
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
     * and not at all when none is; what it sends and writes out is checked at `at`; one the engine describes, only when it writes to all of its
-    * places. Its prompt: the base ([[TurnPrompt.TaskBase]] when briefed for one task),
-    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], [[TurnPrompt.Security]] (not when so
-    * briefed),
-    * [[TurnPrompt.Briefed]] when `holder` names one its conversation's origin works as, its
-    * edge's fragment, what its edge says its reply shows (`tooling.renders`, [[TurnPrompt.rendered]]),
-    * where its reply goes ([[TurnPrompt.destination]]), what it is called
-    * (`tooling.persona`, [[TurnPrompt.called]]), [[TurnPrompt.unprompted]] when its root is
-    * heard ([[TurnPrompt.unpromptedAtTop]] when `venue` is its room's top level), how its persona sounds ([[TurnPrompt.voiced]]), its own room's label (the transaction's floor, [[TurnPrompt.room]]), what it may
-    * reach there, what it reaches besides ([[TurnPrompt.reached]], for each
-    * reached service offering tools), the voice set with `/set voice` at a terminal alone
-    * ([[grit.core.store.Audience.Operator]]; none for plain), the
-    * instruction files the edge read there, and, after them, the instructions each reached
-    * service's edge declared there, for each reached service offering tools. Its root is `ByName` when its first entry in
+    * places. Its prompt is briefed ([[TurnPrompt.Briefed]]) when `holder` names one its
+    * conversation's origin works as. Its root is `ByName` when its first entry in
     * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
     * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
     * for any other heard message, else `Addressed`; a `ByName` turn is offered, told and

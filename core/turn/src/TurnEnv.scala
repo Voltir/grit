@@ -255,10 +255,11 @@ final case class TurnHosting(
     TurnOffer.load(toolSets, prompts, recorded).left.map(TurnFailure.ofStore)
 }
 
-/** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs.
+/** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs; the
+  * order its tools are offered in: the module's README, "What a turn is offered".
   * `tools` run in the turn's own steps and act only through the capabilities `C`;
   * `operator`, too, but are offered only in a conversation with the person running grit
-  * ([[grit.core.store.Audience.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
+  * ([[grit.core.store.Audience.operator]]); `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
   * `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]); `budget`
   * bounds its model calls, the last told to call no tool, and its requests' input when it says so; a call a person approves first
   * waits its tool's own time for their answer ([[grit.core.tool.Gate.Ask]]), at most
@@ -269,18 +270,13 @@ final case class TurnHosting(
   * width, and which of those services' tools it is offered, by the corpora
   * `knowledge` says supply each ([[grit.core.triage.Corpora.supplied]]). `persona`
   * is who the turn is told it is ([[TurnPrompt.called]]); `renders`, what each served edge
-  * says its replies show, by its name ([[grit.core.edge.ServedEdge.renders]]). `administering`, after `operator`,
+  * says its replies show, by its name ([[grit.core.edge.ServedEdge.renders]]). `administering`
   * are offered only on a turn a person put to grit (its root `Addressed` or `ByName`) in a room
   * an edge holds with colleagues ([[grit.core.store.Audience.Colleagues]]), never a heard or
   * unprompted turn, nor one in a direct message, a job's run or a directory's conversation;
   * whatever tools the deployment's `Offered` chose, which governs only the coding and operator
-  * tools. `conversing`, grit's own tools for a conversation with people, are offered before
-  * `tools` unless `recipe` briefs the turn for one task ([[grit.core.recipe.Briefing.Tasked]]).
-  *
-  * Of its own tools a turn is offered, in this order, by four questions: what runs its
-  * conversation (`recipe`'s briefing: `conversing`), every turn (`tools`), who reads it
-  * (its origin's audience: `operator`), and what it answers in which room (its root and
-  * audience: `administering`). The coding tools, `hosted`, the deployment's `Offered` chose.
+  * tools. `conversing`, grit's own tools for a conversation with people, are offered unless
+  * `recipe` briefs the turn for one task ([[grit.core.recipe.Briefing.Tasked]]).
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
