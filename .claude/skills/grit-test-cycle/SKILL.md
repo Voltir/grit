@@ -92,10 +92,10 @@ Build and test with Mill, and read the code with scout, passing the worktree as 
 `scripts/scout --root .`): it answers from the worktree's own compiled output. Metals serves the main checkout
 only. A CLI `./mill` and Metals never block each other (separate build directories).
 
-`./mill` takes file locks (the script says why), so one checkout has one daemon; call Mill
-only through it. Two daemons in one `out/` ("server launch failed") is now a bug to report,
-not to clear. A `-i` or `--no-daemon` call while the daemon is up deletes the daemon's zinc
-worker, and its next compile fails "Connection refused" until `./mill shutdown`.
+Call Mill only through `./mill` (the script says why): it takes file locks, so one checkout
+has one daemon, and a no-daemon call (`-i`, `--no-daemon`) stops the checkout's daemon
+first, after any build it is running. Never two Mill jobs at once in one checkout. Two
+daemons in one `out/` ("server launch failed") is a bug to report, not to clear.
 
 ## JVMs
 

@@ -9,6 +9,23 @@
 # a flagged and an unflagged call in one out/ do not see each other's lock, which is the same
 # breakage. Mill reads it only from the command line, before the tasks.
 #
+# A no-daemon call (MillCliConfig's -i, --interactive, --no-daemon, --no-server) re-creates
+# the zinc worker and wipes its directory, killing a live daemon's worker: that daemon's next
+# compile fails "Connection refused". So such a call stops the daemon first. Every argument is
+# scanned, task arguments too: a stray match costs one needless shutdown, never a broken daemon.
+#
 # The stock bootstrap is scripts/mill-bootstrap, unchanged, so a Mill upgrade replaces that
 # file alone.
-MILL_MAIN_CLI="${MILL_MAIN_CLI:-$0}" exec "$(dirname "$0")/scripts/mill-bootstrap" --use-file-locks "$@"
+boot="$(dirname "$0")/scripts/mill-bootstrap"
+export MILL_MAIN_CLI="${MILL_MAIN_CLI:-$0}"
+for a in "$@"; do
+  case "$a" in -i | --interactive | --no-daemon | --no-server | -[!-]*i*) ;; *) continue ;; esac
+  pid=$(cat "${MILL_OUTPUT_DIR:-out}/mill-daemon/processId" 2>/dev/null) || break
+  kill -0 "$pid" 2>/dev/null || break
+  "$boot" --use-file-locks shutdown >/dev/null 2>&1
+  n=0; while kill -0 "$pid" 2>/dev/null && [ $n -lt 100 ]; do sleep 0.1; n=$((n + 1)); done
+  kill -0 "$pid" 2>/dev/null && { echo "mill: this checkout's daemon (pid $pid) did not stop; not starting a no-daemon run" >&2; exit 1; }
+  echo "mill: stopped this checkout's daemon before a no-daemon run" >&2
+  break
+done
+exec "$boot" --use-file-locks "$@"
