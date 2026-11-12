@@ -646,8 +646,10 @@ private[plugin] final class ProjectCommands(
       ToolName("project_list"),
       s"Lists a project's artifacts, one line each, most recently changed first, at most " +
         s"$ListMost. Leaves out ended ones ($EndedWords) unless `ended` is true or `state` " +
-        "names an end state. A first line counts all that match; a last line says how many " +
-        "were cut. Refused for a parent the project lacks, naming the nearest keys it has.",
+        "names an end state. A first line counts all that match; when more than " +
+        s"$ListMost match, a last line says how many more, the `skip` that shows the next " +
+        s"$ListMost, and which arguments narrow the list. Refused for a parent the project " +
+        "lacks, naming the nearest keys it has.",
       Args
         .of(
           (
@@ -676,7 +678,8 @@ private[plugin] final class ProjectCommands(
                 "Whether each line ends with the opening words of the artifact's text; false " +
                   "when not given."
               )
-              .optional
+              .optional,
+            skip = skipField
           )
         )
         .refine(a =>
@@ -716,7 +719,8 @@ private[plugin] final class ProjectCommands(
             state,
             under,
             a.ended.getOrElse(false),
-            a.opening.getOrElse(false)
+            a.opening.getOrElse(false),
+            a.skip.getOrElse(0)
           )
         )
     )
@@ -765,6 +769,7 @@ private[plugin] final class ProjectCommands(
         AnswerText.listed(
           rows,
           AnswerText.LineParts(args.kind.isEmpty, args.state.isEmpty, parent, args.opening),
+          args.skip,
           ListMost,
           left.size,
           // Below the first level, a cut drops whole later subtrees, not the stalest.
@@ -1650,15 +1655,31 @@ private[plugin] object ProjectCommands {
       .toOption
       .toRight(s"`$text` is not an ISO-8601 instant such as 2026-10-27T12:00:00Z")
 
-  /** `project_list`'s arguments; `under`, the artifact of `project` listed beneath, and how deep. */
+  /** `project_list`'s arguments; `under`, the artifact of `project` listed beneath, and how deep;
+    * `skip`, the lines passed over before those listed.
+    */
   final case class Listing(
       project: ProjectKey,
       kind: Option[KindName],
       state: Option[StateName],
       under: Option[Under],
       ended: Boolean,
-      opening: Boolean
+      opening: Boolean,
+      skip: Int
   ) extends caps.Pure
+
+  /** The `skip` argument of `project_list` and `project_sweep`: 0 to [[Projects.Terms]]' bound,
+    * the most current documents, so the most lines either answers.
+    */
+  private val skipField: Field[Option[Int]] =
+    Field
+      .count(
+        s"How many lines to pass over, to read past the first $ListMost: the last line of a " +
+          "cut answer gives the number; 0 when not given.",
+        0,
+        Projects.Terms.bound
+      )
+      .optional
 
   /** An artifact `parent`, by its local key, and the levels below it to list. */
   final case class Under private (parent: LocalKey, depth: Int) extends caps.Pure

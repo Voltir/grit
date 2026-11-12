@@ -37,17 +37,19 @@ object AnswerText {
     * kinds when it shows no state, neither when it shows neither; then, when `leftOut` (the
     * ended artifacts that would otherwise have matched) is above 0, `<leftOut> ended ones not
     * listed; ended: true lists them.` (for one, `1 ended one not listed; ended: true lists
-    * it.`). Then the first `most` rows, one line each:
+    * it.`). Then, past the first `skip` rows, at most `most`, one line each:
     * `<key> (<kind>, <state>): <title> · under <parent> · <size> KB · changed <day> · <beneath>
     * under it · <lead>`, leaving out what `parts` does not show, the parent when there is none,
     * and `beneath` when it is 0; `<size>` is its markdown's UTF-8 bytes in KiB, rounded up to a
-    * tenth, `<day>` the UTC date it was `written`. When rows were cut, a last line: `<n> more
-    * not shown; <narrow>.` With no row, the one line `No artifact matches.`, then the ended
-    * count when above 0.
+    * tenth, `<day>` the UTC date it was `written`. When rows are left past them, a last line:
+    * `<n> more not shown; skip: <next> shows the next, or <narrow>.` With `skip` at or past the
+    * end, `No line past <n>.` in place of the rows. With no row, the one line `No artifact
+    * matches.`, then the ended count when above 0.
     */
   def listed(
       rows: Vector[(artifact: Artifact, written: Instant, beneath: Int)],
       parts: LineParts,
+      skip: Int,
       most: Int,
       leftOut: Int,
       narrow: String
@@ -69,7 +71,6 @@ object AnswerText {
         case (true, true) => s": ${kindsAndStates(heads)}"
       }
       val lines = rows
-        .take(most)
         .map { r =>
           val h = r.artifact.head
           val bytes = Body.markdown(r.artifact.body).getBytes(StandardCharsets.UTF_8).length.toLong
@@ -84,11 +85,28 @@ object AnswerText {
             Option.when(parts.opening)(Body.lead(r.artifact.body)).filter(_.nonEmpty))
             .mkString(" · ")
         }
-      val cut = rows.size - most
-      (s"${rows.size} match$counted.$ended" +: (lines ++
-        Option.when(cut > 0)(s"$cut more not shown; $narrow."))).mkString("\n")
+      (s"${rows.size} match$counted.$ended" +:
+        paged(lines, skip, most, next => s"; skip: $next shows the next, or $narrow."))
+        .mkString("\n")
     }
   }
+
+  /** The lines of `lines` after the first `skip`, at most `most`; then, when lines are left past
+    * them, `<n> more not shown` and the words `after` gives for the `skip` that shows the next.
+    * With `skip` above 0 and at or past the end, the one line `No line past <n>.`
+    */
+  private def paged(
+      lines: Vector[String],
+      skip: Int,
+      most: Int,
+      after: Int -> String
+  ): Vector[String] =
+    if (skip > 0 && skip >= lines.size) Vector(s"No line past ${lines.size}.")
+    else {
+      val page = lines.slice(skip, skip + most)
+      val left = lines.size - skip - page.size
+      page ++ Option.when(left > 0)(s"$left more not shown${after(skip + page.size)}")
+    }
 
   /** Each name `name` gives among `among` and the heads it gives it to, most first, then by name. */
   private def split(

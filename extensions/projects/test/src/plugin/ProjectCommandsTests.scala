@@ -783,7 +783,55 @@ object ProjectCommandsTests extends TestSuite {
         Some("41 match: note 41 (open 41). 1 ended one not listed; ended: true lists it."),
         42,
         (42 to 3 by -1).map(i => f"p/n$i%02d").toVector,
-        Some("1 more not shown; narrow with kind, state or parent.")
+        Some("1 more not shown; skip: 40 shows the next, or narrow with kind, state or parent.")
+      )
+    }
+
+    test(
+      "project_list with skip lists the 40 after those passed over, under the same count, its cut line naming the skip after them"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      notes(projects, store, 85)
+      val lines =
+        done(ask(projects, store, "project_list", "project" -> "p", "skip" -> 40))
+          .split("\n")
+          .toVector
+      (
+        lines.headOption,
+        lines.size,
+        lines.slice(1, 41).map(_.takeWhile(_ != ' ')),
+        lines.lastOption
+      ) ==> (
+        Some("85 match: note 85 (open 85)."),
+        42,
+        (45 to 6 by -1).map(i => f"p/n$i%02d").toVector,
+        Some("5 more not shown; skip: 80 shows the next, or narrow with kind, state or parent.")
+      )
+    }
+
+    test("project_list's last page has no cut line") {
+      val projects = plugin()
+      val store = Store()
+      notes(projects, store, 85)
+      done(ask(projects, store, "project_list", "project" -> "p", "skip" -> 80))
+        .split("\n")
+        .toVector
+        .map(_.takeWhile(_ != ' ')) ==> ("85" +: (5 to 1 by -1).map(i => f"p/n$i%02d").toVector)
+    }
+
+    test(
+      "project_list with a skip at or past the end answers its count, then that no line is past it"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      notes(projects, store, 3)
+      (
+        done(ask(projects, store, "project_list", "project" -> "p", "skip" -> 3)),
+        refusedArgs(projects, "project_list", "project" -> "p", "skip" -> -1)
+      ) ==> (
+        "3 match: note 3 (open 3).\nNo line past 3.",
+        Some("`skip` takes a whole number from 0 to 20000, not -1.")
       )
     }
 
@@ -855,7 +903,10 @@ object ProjectCommandsTests extends TestSuite {
       done(
         ask(projects, store, "project_list", "project" -> "p", "parent" -> "p/a", "depth" -> 2)
       ).split("\n").toVector.lastOption ==>
-        Some("2 more not shown; use a smaller depth or a parent further down.")
+        Some(
+          "2 more not shown; skip: 40 shows the next, or use a smaller depth or a parent " +
+            "further down."
+        )
     }
 
     test(

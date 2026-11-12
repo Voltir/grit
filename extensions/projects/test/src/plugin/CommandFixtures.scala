@@ -144,4 +144,30 @@ object CommandFixtures {
 
   def shown(projects: Projects, store: Store, key: String): String =
     done(ask(projects, store, "project_show", "key" -> key))
+
+  /** Project `p` holding `n` open notes, `p/n01` to `p/n<n>`, each kept a second after the one
+    * before, from a second after [[at]].
+    */
+  def notes(projects: Projects, store: Store, n: Int): Unit = {
+    started(projects, store)
+    (1 to n).foreach(i =>
+      done(
+        askAt(at.plusSeconds(i))(
+          projects,
+          store,
+          "project_keep",
+          "key" -> f"p/n$i%02d",
+          "kind" -> "note",
+          "title" -> s"Title $i",
+          "body" -> "Body."
+        )
+      )
+    )
+  }
+
+  /** Why `name`'s arguments refuse `args`, or `None` when they read. */
+  def refusedArgs(projects: Projects, name: String, args: (String, ujson.Value)*): Option[String] =
+    projects.commands
+      .find(c => ToolName.value(c.spec.name) == name)
+      .flatMap(_.spec.args.read(ujson.Obj.from(args)).left.toOption.map(_.message))
 }
