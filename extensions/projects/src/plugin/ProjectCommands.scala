@@ -1110,7 +1110,8 @@ private[plugin] final class ProjectCommands(
         "the project and its export; project_show with an `at` before now, and project_history, " +
         s"still read it for ${Projects.Terms.retention.toDays} days. Answers how many went, by " +
         "kind and state; how many lost citations; how many old enough stayed, by reason; then " +
-        s"one line each, at most $ListMost, those that stayed first. Call it with dry first: it " +
+        s"one line each, at most $ListMost, those that stayed first; `show` lists one group " +
+        s"alone and `skip` reads past the first $ListMost. Call it with dry first: it " +
         "changes nothing and answers what would go. Refused, changing nothing: `before` is " +
         "later than today; the project's method is not declared here; a kind is not one of the " +
         "method's kinds; or an artifact it would withdraw or rewrite is kept at a label below " +
@@ -1134,7 +1135,17 @@ private[plugin] final class ProjectCommands(
                 "Whether to change nothing and only answer what would go and what would stay; " +
                   "false when not given."
               )
-              .optional
+              .optional,
+            show = Field
+              .oneOf(
+                "Which lines to list: stayed, rewritten or withdrawn; all three, in that order, " +
+                  "when not given. The counts above them are of everything either way.",
+                "stayed",
+                "rewritten",
+                "withdrawn"
+              )
+              .optional,
+            skip = skipField
           )
         )
         .refine(a =>
@@ -1142,10 +1153,13 @@ private[plugin] final class ProjectCommands(
             project <- parsed("project", a.project, ProjectKey.of)
             kinds <- each("kinds", a.kinds.toVector, KindName.of)
             before <- parsed("before", a.before, day)
+            // `show` reads only as one of the three `oneOf` names, each a group's.
+            show = a.show
+              .flatMap(s => AnswerText.SweptGroup.values.find(_.toString.toLowerCase == s))
             sweeping <- Sweeping
-              .of(project, kinds.toSet, before, a.dry.getOrElse(false))
+              .of(project, kinds.toSet, before, a.dry.getOrElse(false), show, a.skip.getOrElse(0))
               .left
-              .map(ArgsError.Refused("kinds", _))
+              .map(ArgsError.Refused(if (kinds.isEmpty) "kinds" else "skip", _))
           } yield sweeping
         )
     )
@@ -1192,7 +1206,14 @@ private[plugin] final class ProjectCommands(
           "withdraw"
         )
         _ <- if (args.dry) Right(()) else carried(own, docs, by, at)
-      } yield AnswerText.swept(swept, args.dry, ListMost, Projects.Terms.retention)
+      } yield AnswerText.swept(
+        swept,
+        args.dry,
+        args.show,
+        args.skip,
+        ListMost,
+        Projects.Terms.retention
+      )
     }
   }
 
@@ -1728,26 +1749,32 @@ private[plugin] object ProjectCommands {
   final case class Withdrawing(key: ArtifactKey, cascade: Boolean) extends caps.Pure
 
   /** `project_sweep`'s arguments: withdraw what is of `kinds`, ended, and last kept or moved
-    * before `before` began, UTC; when `dry`, answer only, changing nothing.
+    * before `before` began, UTC; when `dry`, answer only, changing nothing; list the lines of
+    * `show` alone when given, past the first `skip`.
     */
   final case class Sweeping private (
       project: ProjectKey,
       kinds: Set[KindName],
       before: LocalDate,
-      dry: Boolean
+      dry: Boolean,
+      show: Option[AnswerText.SweptGroup],
+      skip: Int
   ) extends caps.Pure
 
   object Sweeping {
 
-    /** These arguments, or why not: no kind. */
+    /** These arguments, or why not: no kind, or `skip` under 0. */
     def of(
         project: ProjectKey,
         kinds: Set[KindName],
         before: LocalDate,
-        dry: Boolean
+        dry: Boolean,
+        show: Option[AnswerText.SweptGroup],
+        skip: Int
     ): Either[String, Sweeping] =
       if (kinds.isEmpty) Left("A sweep takes at least one kind.")
-      else Right(new Sweeping(project, kinds, before, dry))
+      else if (skip < 0) Left(s"skip is $skip, under 0")
+      else Right(new Sweeping(project, kinds, before, dry, show, skip))
   }
 
   /** 20: the most kinds one `project_sweep` names. */

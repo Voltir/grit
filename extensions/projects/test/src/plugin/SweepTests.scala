@@ -1,8 +1,10 @@
 package grit.projects.plugin
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 
 import grit.core.plugin.CommandOutcome
+import grit.projects.method.MethodFixtures.{kind, right}
+import grit.projects.name.ProjectKey
 
 import utest.*
 
@@ -238,23 +240,97 @@ object SweepTests extends TestSuite {
         "p/n (note, closed): Title n · stays: p/k (change, done) under it stays"
     }
 
-    test("past 40 lines the answer is cut, saying how many more, and when dry how to see fewer") {
+    test(
+      "past 40 lines the answer is cut, saying how many more, and when dry the skip that shows the next"
+    ) {
       val projects = plugin()
       val store = Store()
       started(projects, store)
       (1 to 42).foreach(i => closed(projects, store, old, f"n$i%02d", "N."))
       val dry = done(swept(projects, store, "dry" -> true)).linesIterator.toVector
+      val one = done(swept(projects, store, "dry" -> true, "show" -> "withdrawn")).linesIterator
       val real = done(swept(projects, store)).linesIterator.toVector
-      (dry.size, dry.lastOption, real.size, real.takeRight(2)) ==> (
+      (dry.size, dry.lastOption, one.toVector.lastOption, real.size, real.takeRight(2)) ==> (
         (
           43,
-          Some("2 more not shown; fewer kinds or an earlier before shows fewer."),
+          Some(
+            "2 more not shown; skip: 40 shows the next, or show one of stayed, rewritten, " +
+              "withdrawn."
+          ),
+          Some("2 more not shown; skip: 40 shows the next."),
           43,
           Vector(
             "2 more not shown.",
             "Their history stays readable for 180 days: project_show with an `at` before now, " +
               "and project_history."
           )
+        )
+      )
+    }
+
+    test("with show, only that group's lines print, under counts of everything") {
+      val projects = plugin()
+      val store = Store()
+      sweeping(projects, store)
+      done(swept(projects, store, "dry" -> true, "show" -> "rewritten")) ==>
+        "Dry run: nothing withdrawn or changed.\n" +
+        "Would withdraw 3: note 3 (closed 3).\n" +
+        "Would drop citations of them from 1.\n" +
+        "3 old enough stayed: claimed 1; has one under it that stays 1; still cited 1.\n" +
+        "p/g (note, closed): Title g · would be rewritten without its citations of what goes"
+    }
+
+    test(
+      "skip passes over that many lines of the group shown, and at or past its end says no line is past it"
+    ) {
+      val projects = plugin()
+      val store = Store()
+      sweeping(projects, store)
+      def counts(lines: String*): String =
+        (Vector(
+          "Dry run: nothing withdrawn or changed.",
+          "Would withdraw 3: note 3 (closed 3).",
+          "Would drop citations of them from 1.",
+          "3 old enough stayed: claimed 1; has one under it that stays 1; still cited 1."
+        ) ++ lines).mkString("\n")
+      (
+        done(swept(projects, store, "dry" -> true, "show" -> "withdrawn", "skip" -> 1)),
+        done(swept(projects, store, "dry" -> true, "show" -> "stayed", "skip" -> 3))
+      ) ==> (
+        (
+          counts(
+            "p/f (note, closed): Title f · would be withdrawn",
+            "p/h (note, closed): Title h · would be withdrawn"
+          ),
+          counts("No line past 3.")
+        )
+      )
+    }
+
+    test("a show none of the three, or a skip under 0, is refused") {
+      val projects = plugin()
+      val args = Vector[(String, ujson.Value)](
+        "project" -> "p",
+        "kinds" -> ujson.Arr("note"),
+        "before" -> "2026-10-28"
+      )
+      (
+        refusedArgs(projects, "project_sweep", (args :+ ("show" -> ujson.Str("kept")))*),
+        refusedArgs(projects, "project_sweep", (args :+ ("skip" -> ujson.Num(-1)))*),
+        ProjectCommands.Sweeping
+          .of(
+            right(ProjectKey.of("p")),
+            Set(kind("note")),
+            LocalDate.parse("2026-10-28"),
+            true,
+            None,
+            -1
+          )
+      ) ==> (
+        (
+          Some("`show` takes one of `stayed`, `rewritten`, `withdrawn`, not \"kept\"."),
+          Some("`skip` takes a whole number from 0 to 20000, not -1."),
+          Left("skip is -1, under 0")
         )
       )
     }

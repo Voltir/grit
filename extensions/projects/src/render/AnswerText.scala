@@ -202,20 +202,36 @@ object AnswerText {
       ) :+
       readableFor(readable)).mkString("\n")
 
+  /** Which lines of a sweep's answer list: those that stayed, were rewritten, or were withdrawn. */
+  enum SweptGroup extends caps.Pure {
+    case Stayed, Rewritten, Withdrawn
+  }
+
   /** What a sweep answers of `swept`, before it is done when `dry`, else after: `Withdrew <n>:
     * <kind> <n> (<state> <n>, …); …`, or `Withdrew none.`; `Citations of them dropped from <n>.`
     * when any was rewritten; `<n> old enough stayed: <reason> <n>; …` when any stayed, reasons
-    * most first, then by name; then at most `most` lines, those that stayed (`<key> (<kind>,
-    * <state>): <title> · stays: <why>`, naming each other artifact with its kind and state), then
-    * those rewritten (`… · rewritten without its citations of what went`), then those withdrawn
-    * (`… · withdrawn`), each part by key; `<n> more not shown.` when lines were cut; and, when
-    * something went, that their history stays readable `readable` long, in whole days. With
-    * `dry`, a first line `Dry run: nothing withdrawn or changed.`, the counts `Would withdraw` and
-    * `Would drop citations of them from`, the lines ending `would be rewritten without its
-    * citations of what goes` and `would be withdrawn`, a cut line `<n> more not shown; fewer
-    * kinds or an earlier before shows fewer.`, and no line on history.
+    * most first, then by name; these count everything, whatever `show` and `skip`. Then the
+    * lines of `show`'s group, or of all three in that order when `None`: those that stayed
+    * (`<key> (<kind>, <state>): <title> · stays: <why>`, naming each other artifact with its kind
+    * and state), those rewritten (`… · rewritten without its citations of what went`), those
+    * withdrawn (`… · withdrawn`), each group by key; past the first `skip`, at most `most`, then
+    * `<n> more not shown.` when lines are left past them, or `No line past <n>.` alone when `skip`
+    * is at or past the end; and, when something went, that their history stays readable
+    * `readable` long, in whole days. With `dry`, a first line `Dry run: nothing withdrawn or
+    * changed.`, the counts `Would withdraw` and `Would drop citations of them from`, the lines
+    * ending `would be rewritten without its citations of what goes` and `would be withdrawn`, a
+    * cut line `<n> more not shown; skip: <next> shows the next, or show one of stayed,
+    * rewritten, withdrawn.` (without its `show` words when `show` is given), and no line on
+    * history.
     */
-  def swept(swept: Project.Swept, dry: Boolean, most: Int, readable: FiniteDuration): String = {
+  def swept(
+      swept: Project.Swept,
+      dry: Boolean,
+      show: Option[SweptGroup],
+      skip: Int,
+      most: Int,
+      readable: FiniteDuration
+  ): String = {
     val gone = swept.withdrawn.gone
     val uncited = swept.withdrawn.uncited
     def other(h: ArtifactHead): String =
@@ -250,22 +266,26 @@ object AnswerText {
             .map((r: String, n: Int) => s"$r $n")
             .mkString("; ") + "."
       )
-    val lines = swept.stayed.map(s => line(s.artifact, s"stays: ${why(s.why)}")) ++
-      uncited.map(
-        line(
-          _,
-          if (dry) "would be rewritten without its citations of what goes"
-          else "rewritten without its citations of what went"
+    def group(g: SweptGroup): Vector[String] = g match {
+      case SweptGroup.Stayed => swept.stayed.map(s => line(s.artifact, s"stays: ${why(s.why)}"))
+      case SweptGroup.Rewritten =>
+        uncited.map(
+          line(
+            _,
+            if (dry) "would be rewritten without its citations of what goes"
+            else "rewritten without its citations of what went"
+          )
         )
-      ) ++
-      gone.sortBy(_.head.key.value).map(line(_, if (dry) "would be withdrawn" else "withdrawn"))
-    val cut = lines.size - most
+      case SweptGroup.Withdrawn =>
+        gone.sortBy(_.head.key.value).map(line(_, if (dry) "would be withdrawn" else "withdrawn"))
+    }
+    val lines = show.fold(SweptGroup.values.toVector.flatMap(group))(group)
+    val after = (next: Int) =>
+      if (!dry) "."
+      else if (show.isDefined) s"; skip: $next shows the next."
+      else s"; skip: $next shows the next, or show one of stayed, rewritten, withdrawn."
     (Option.when(dry)("Dry run: nothing withdrawn or changed.").toVector ++ counts ++
-      lines.take(most) ++
-      Option.when(cut > 0)(
-        if (dry) s"$cut more not shown; fewer kinds or an earlier before shows fewer."
-        else s"$cut more not shown."
-      ) ++
+      paged(lines, skip, most, after) ++
       Option.when(!dry && gone.nonEmpty)(readableFor(readable))).mkString("\n")
   }
 
