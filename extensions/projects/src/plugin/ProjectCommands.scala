@@ -34,7 +34,6 @@ import grit.projects.name.{
 }
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
 import grit.prose.either.Traversal
-import grit.prose.words.Words
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
   * `default`, offered to turns as `turns` says.
@@ -1233,10 +1232,11 @@ private[plugin] final class ProjectCommands(
 
     val spec: ToolSpec[Migrating] = ToolSpec(
       ToolName("project_migrate"),
-      "Moves a project to another version of its method: each artifact is kept again (a new " +
-        "version, written by you; its history still reads), its kind and state renamed as " +
-        "given, and the project then holds to that version. A kind or state not renamed " +
-        "keeps its name. Refused, changing nothing, naming each cause: the version is not " +
+      "Moves a project to another version of its method, each artifact's kind and state " +
+        "renamed as given: an artifact whose kind or state is renamed is kept again (a new " +
+        "version, written by you; its history still reads); every other artifact is left as " +
+        "it is. The project then holds to that version. A kind or state not renamed keeps " +
+        "its name. Refused, changing nothing, naming each cause: the version is not " +
         "declared; an artifact would be of a kind the version lacks, or in a state its kind " +
         "lacks; a renamed artifact is not in the project; it is the project's own version, " +
         "whose rules have changed (declare a new version instead); an artifact is claimed; " +
@@ -1326,17 +1326,22 @@ private[plugin] final class ProjectCommands(
         done <- refuse(target.migrated(whole, args.remap))
         index <- indexed(own, args.project)
         _ <- unclaimed(claims, project.documents, at)
+        renamed = done.renamed.toSet
         _ <- atTheirLabels(
-          (index._1 -> s"project $p") +: project.documents.map((d, a) => d -> a.head.key.value),
+          (index._1 -> s"project $p") +: project.documents.collect {
+            case (d, a) if renamed(a.head.key) => d -> a.head.key.value
+          },
           "migrate"
         )
         writer = Some(author(by))
         labels = project.documents.map((d, a) => a.head.key -> d.label).toMap
-        _ <- done.project.artifacts.foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
-          so.flatMap(_ =>
-            kept(own, Artifact(a.head.copy(by = writer), a.body), labels.get(a.head.key), at)
-          )
-        }
+        _ <- done.project.artifacts
+          .filter(a => renamed(a.head.key))
+          .foldLeft[Either[Stop, Unit]](Right(())) { (so, a) =>
+            so.flatMap(_ =>
+              kept(own, Artifact(a.head.copy(by = writer), a.body), labels.get(a.head.key), at)
+            )
+          }
         rewritten <- refuse(ArtifactJson.index(args.project, done.project.pin, author(by)))
         (key, text, data, refs) = rewritten
         _ <- written(
@@ -1352,12 +1357,7 @@ private[plugin] final class ProjectCommands(
             refs
           )
         )
-      } yield {
-        val n = done.project.artifacts.size
-        s"Moved project $p to method ${MethodName.value(target.name)} version " +
-          s"${target.version}, ${Words.counted(n, "artifact")} kept again; renamed: " +
-          (if (done.renamed.isEmpty) "none." else s"${done.renamed.map(_.value).mkString(", ")}.")
-      }
+      } yield AnswerText.migrated(args.project, done.project.pin, done.renamed, ListMost)
     }
   }
 

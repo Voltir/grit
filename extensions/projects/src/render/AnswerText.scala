@@ -8,7 +8,8 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.claim.{Claim, ClaimRole}
 import grit.core.id.ClaimHolder
 import grit.projects.artifact.{Artifact, ArtifactHead, Body, Project}
-import grit.projects.name.{ArtifactKey, KindName, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
+import grit.prose.words.Words
 
 /** What the projects plugin's commands answer, the same for every edge that asks. */
 object AnswerText {
@@ -201,6 +202,22 @@ object AnswerText {
         s"Citations of them dropped from: ${uncited.map(_.value).mkString(", ")}"
       ) :+
       readableFor(readable)).mkString("\n")
+
+  /** What a migration answers, `project` now holding to `pin`: `Moved project <project> to
+    * method <method> version <version>; <n> artifacts renamed and kept again: <keys>.`, naming
+    * the first `most` of `renamed` in the order given, then `; <n> more not shown.` in place of
+    * the stop when more are left; with none, `…; no artifact renamed, none kept again.`
+    */
+  def migrated(project: ProjectKey, pin: Pin, renamed: Vector[ArtifactKey], most: Int): String = {
+    val moved = s"Moved project ${ProjectKey.value(project)} to method " +
+      s"${MethodName.value(pin.method)} version ${pin.version}; "
+    if (renamed.isEmpty) s"${moved}no artifact renamed, none kept again."
+    else {
+      val (named, cut) = paged(renamed.map(_.value), 0, most, _ => ".").splitAt(most)
+      s"$moved${Words.counted(renamed.size, "artifact")} renamed and kept again: " +
+        named.mkString(", ") + cut.headOption.fold(".")(more => s"; $more")
+    }
+  }
 
   /** Which lines of a sweep's answer list: those that stayed, were rewritten, or were withdrawn;
     * `word`, what `project_sweep`'s `show` names it by.

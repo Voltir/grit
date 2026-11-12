@@ -240,7 +240,7 @@ object ProjectsLiveTests extends TestSuite {
           )
           migrate(ann, desk) ==> Right(
             CommandOutcome.Done(
-              "Moved project p to method grit version 1, 1 artifact kept again; renamed: p/a."
+              "Moved project p to method grit version 1; 1 artifact renamed and kept again: p/a."
             )
           )
           ran(commands, ann, desk, ToolName("project_show"), "key" -> "p/a").map {

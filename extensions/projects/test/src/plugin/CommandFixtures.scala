@@ -9,6 +9,7 @@ import grit.core.need.PluginReads
 import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
 import grit.core.store.Tx
 import grit.core.tool.ToolName
+import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
 import grit.projects.method.{Method, MethodFixtures, TransitionChecks}
 import grit.projects.name.MethodName
@@ -88,8 +89,8 @@ object CommandFixtures {
       args: (String, ujson.Value)*
   ): CommandOutcome = askBy(CommandBy.Direct(who), when)(projects, store, name, args*)
 
-  /** As [[ask]], asked for `who` at `when`. */
-  def askBy(who: CommandBy, when: Instant = at)(
+  /** As [[ask]], asked for `who` at `when`, from a room `cleared` (public unless given). */
+  def askBy(who: CommandBy, when: Instant = at, cleared: Clearance = Clearance.of(Label.Public))(
       projects: Projects,
       store: Store,
       name: String,
@@ -101,7 +102,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, who, store.keeper, store.claims, when))
+            c.run(a, who, store.keeper, store.claims, when)(using TestTx.fake(cleared))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case Some(c: ReadingCommand[a]) =>
@@ -109,7 +110,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            inTx(c.run(a, who, store.reads, when))
+            c.run(a, who, store.reads, when)(using TestTx.fake(cleared))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case _ => throw new java.lang.AssertionError(s"no command $name")

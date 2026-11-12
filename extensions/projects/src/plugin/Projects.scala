@@ -24,8 +24,8 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
   * other names, or with what is under it, ended citers rewritten; its history kept as of an
   * instant), `project_sweep` (a project's old ended artifacts of the kinds named, withdrawn at
   * once unless claimed or cited by live work, ended citers rewritten; or a dry run of it),
-  * `project_migrate` (a project moved to another version of its method, every artifact
-  * kept again, renamed as asked), and the reading `project_show`, `project_history`, `project_list`, `project_find`
+  * `project_migrate` (a project moved to another version of its method, the artifacts it
+  * renames kept again, the rest left as they are), and the reading `project_show`, `project_history`, `project_list`, `project_find`
   * (ended artifacts only when asked), `project_stale` (what no live work names, untouched for
   * weeks), `project_export`, `project_claims` and `project_brief`. Each write records its writer
   * as the artifact's `by`, and a claim its claimer. Which of them a turn is offered, and what a
