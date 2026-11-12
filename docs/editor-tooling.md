@@ -13,7 +13,9 @@ invocations contend with each other. Since Mill 1.2 that takes the
 `mill-separate-bsp-output-dir: true` header at the top of `build.mill`: without it BSP
 shares `out/` and the CLI's daemon, its launcher never notices Metals closing stdin, and a
 Metals cancel mid-request restarts the daemon under every CLI run. With it, each BSP
-connection is its own JVM, which exits when Metals closes stdin or cancels it.
+connection is its own JVM, which exits when Metals closes stdin or cancels it. So BSP's
+launch (`.bsp/mill-bsp.json`, the native binary with `--bsp`, not `./mill`) shares no lock
+with `out/` and runs without `./mill`'s `--use-file-locks`.
 
 **A "compiling" spinner that never resolves is almost never a lock.** It is usually a stale
 Metals progress item -- a failed or superseded compile can orphan the notification, and
