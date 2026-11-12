@@ -54,10 +54,8 @@ trait GritModule extends ScalaModule {
 
   /* The JDK every module compiles, tests and runs on, fetched by Mill through coursier's JVM
    * index on first use: Temurin 26.0.1+8. The scripts ask Mill for it (`javaHome`), so nothing
-   * else names a JDK. The index is pinned with it: Mill 1.3.0-M1's default (0.0.4-162) lists
-   * no JDK 26, and the newest published (0.0.4-198, io.get-coursier.jvm.indices) lists
-   * Temurin 26.0.0 and 26.0.1 but not 26.0.2. A new pin is checked in the index the same way. */
-  def jvmIndexVersion = "0.0.4-198-293bcc"
+   * else names a JDK. The index is Mill's default, which Mill's version pins; a new jvmId is
+   * checked in it (io.get-coursier.jvm.indices) first. */
   def jvmId = "temurin:26.0.1"
 
   /* Every module's tests: utest, forked with the module's own JVM flags. */
