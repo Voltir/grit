@@ -1140,9 +1140,8 @@ private[plugin] final class ProjectCommands(
               .oneOf(
                 "Which lines to list: stayed, rewritten or withdrawn; all three, in that order, " +
                   "when not given. The counts above them are of everything either way.",
-                "stayed",
-                "rewritten",
-                "withdrawn"
+                AnswerText.SweptGroup.Stayed.word,
+                AnswerText.SweptGroup.values.toVector.map(_.word)*
               )
               .optional,
             skip = skipField
@@ -1155,11 +1154,9 @@ private[plugin] final class ProjectCommands(
             before <- parsed("before", a.before, day)
             // `show` reads only as one of the three `oneOf` names, each a group's.
             show = a.show
-              .flatMap(s => AnswerText.SweptGroup.values.find(_.toString.toLowerCase == s))
+              .flatMap(s => AnswerText.SweptGroup.values.find(_.word == s))
             sweeping <- Sweeping
               .of(project, kinds.toSet, before, a.dry.getOrElse(false), show, a.skip.getOrElse(0))
-              .left
-              .map(ArgsError.Refused(if (kinds.isEmpty) "kinds" else "skip", _))
           } yield sweeping
         )
     )
@@ -1763,7 +1760,9 @@ private[plugin] object ProjectCommands {
 
   object Sweeping {
 
-    /** These arguments, or why not: no kind, or `skip` under 0. */
+    /** These arguments, or why not, refusing the argument at fault: `kinds` when there is none,
+      * `skip` when under 0.
+      */
     def of(
         project: ProjectKey,
         kinds: Set[KindName],
@@ -1771,9 +1770,9 @@ private[plugin] object ProjectCommands {
         dry: Boolean,
         show: Option[AnswerText.SweptGroup],
         skip: Int
-    ): Either[String, Sweeping] =
-      if (kinds.isEmpty) Left("A sweep takes at least one kind.")
-      else if (skip < 0) Left(s"skip is $skip, under 0")
+    ): Either[ArgsError, Sweeping] =
+      if (kinds.isEmpty) Left(ArgsError.Refused("kinds", "A sweep takes at least one kind."))
+      else if (skip < 0) Left(ArgsError.Refused("skip", s"skip is $skip, under 0"))
       else Right(new Sweeping(project, kinds, before, dry, show, skip))
   }
 

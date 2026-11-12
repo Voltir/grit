@@ -3,6 +3,7 @@ package grit.projects.plugin
 import java.time.{Instant, LocalDate}
 
 import grit.core.plugin.CommandOutcome
+import grit.core.tool.ArgsError
 import grit.projects.method.MethodFixtures.{kind, right}
 import grit.projects.name.ProjectKey
 
@@ -325,12 +326,15 @@ object SweepTests extends TestSuite {
             true,
             None,
             -1
-          )
+          ),
+        ProjectCommands.Sweeping
+          .of(right(ProjectKey.of("p")), Set(), LocalDate.parse("2026-10-28"), true, None, 0)
       ) ==> (
         (
           Some("`show` takes one of `stayed`, `rewritten`, `withdrawn`, not \"kept\"."),
           Some("`skip` takes a whole number from 0 to 20000, not -1."),
-          Left("skip is -1, under 0")
+          Left(ArgsError.Refused("skip", "skip is -1, under 0")),
+          Left(ArgsError.Refused("kinds", "A sweep takes at least one kind."))
         )
       )
     }

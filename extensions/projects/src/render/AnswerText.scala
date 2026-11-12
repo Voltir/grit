@@ -202,9 +202,13 @@ object AnswerText {
       ) :+
       readableFor(readable)).mkString("\n")
 
-  /** Which lines of a sweep's answer list: those that stayed, were rewritten, or were withdrawn. */
-  enum SweptGroup extends caps.Pure {
-    case Stayed, Rewritten, Withdrawn
+  /** Which lines of a sweep's answer list: those that stayed, were rewritten, or were withdrawn;
+    * `word`, what `project_sweep`'s `show` names it by.
+    */
+  enum SweptGroup(val word: String) extends caps.Pure {
+    case Stayed extends SweptGroup("stayed")
+    case Rewritten extends SweptGroup("rewritten")
+    case Withdrawn extends SweptGroup("withdrawn")
   }
 
   /** What a sweep answers of `swept`, before it is done when `dry`, else after: `Withdrew <n>:
@@ -283,7 +287,9 @@ object AnswerText {
     val after = (next: Int) =>
       if (!dry) "."
       else if (show.isDefined) s"; skip: $next shows the next."
-      else s"; skip: $next shows the next, or show one of stayed, rewritten, withdrawn."
+      else
+        s"; skip: $next shows the next, or show one of " +
+          s"${SweptGroup.values.map(_.word).mkString(", ")}."
     (Option.when(dry)("Dry run: nothing withdrawn or changed.").toVector ++ counts ++
       paged(lines, skip, most, after) ++
       Option.when(!dry && gone.nonEmpty)(readableFor(readable))).mkString("\n")
