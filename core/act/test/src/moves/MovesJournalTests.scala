@@ -267,7 +267,7 @@ object MovesJournalTests extends TestSuite {
         Judging.Posed("kept", Vector(call), Some(Label.at(Level.Internal))),
         s"""{"made":"kept","calls":[$cost],"at":"internal"}"""
       )
-      // A record made before the label was kept, as every history of the epoch before holds.
+      // A record made before the label was kept, as an earlier build wrote it.
       pinned(Judging.Posed("kept", Vector(), None), """{"made":"kept","calls":[]}""")
     }
 

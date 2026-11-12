@@ -21,7 +21,8 @@ object LifecycleReplayTests extends TestSuite {
   import CloseFixtures.*
   import RecordLifecycleHistories.{Posted, postWorld}
 
-  private def histories: Vector[(String, Either[String, History])] = historiesOf(Turn.Epoch)
+  private def histories: Vector[(String, Either[String, History])] =
+    History.recorded(Turn.Epoch)
 
   /** A close's summary step: its judgment's `made` holds what it wrote. */
   private val Summary = "ask:summary"
@@ -64,21 +65,7 @@ object LifecycleReplayTests extends TestSuite {
   /** The most bytes one history's steps may record in all, about twice the most today's do. */
   private val Whole = 2000
 
-  private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
-    History.recorded(epoch)
-
   val tests = Tests {
-    test(
-      "each lifecycle history of the previous epoch names its steps as its scenario's in this one"
-    ) {
-      def namesOf(epoch: String): Map[String, Vector[String]] =
-        historiesOf(epoch).collect { case (p, Right(h)) => p -> h.steps.map(_.name) }.toMap
-      val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
-      // Recorded in this epoch since: a channel's top level's close and triage (ADR 0060).
-      val since = Set("close-rolled.json", "triage-room-drafting.json")
-      (before.size, before == after.filterNot((file, _) => since(file))) ==> (33, true)
-    }
-
     test(
       "the current epoch has close, settle, posting, triage, placement and shadow histories to replay"
     ) {

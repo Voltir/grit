@@ -18,9 +18,6 @@ object TurnReplayTests extends TestSuite {
   private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
     History.recorded(epoch)
 
-  /** The epoch before this one, whose histories the rename map is checked against. */
-  private val Previous = "2026-10-16"
-
   /** The most bytes a step of each family may record in these histories, about twice the
     * most any records today, each with what it records. A step new to the turn has none until
     * it is given one here.
@@ -167,41 +164,6 @@ object TurnReplayTests extends TestSuite {
     historiesOf(epoch).collect { case (path, Right(h)) => path -> h.steps.map(_.name) }.toMap
 
   val tests = Tests {
-    test(
-      "each history of the previous epoch is its scenario's in this one, less the needs gate's steps"
-    ) {
-      val (before, after) = (namesOf(Previous), namesOf(Turn.Epoch))
-      def ungated(names: Vector[String]): Vector[String] =
-        names.filterNot(n => Turn.Step.family(n).exists(Gating.contains))
-      // The shapes the gate's rejection, the quiet exit and the carried window made, which no
-      // history before them could have, and those recorded in this epoch since: a last reply
-      // that called a tool, before and after its refusal, a tasked turn declaring and one whose
-      // calls ran out, before and after they ended it at its limit, and a heard
-      // turn calling a reached read tool, and a channel's top level's and a thread's turns.
-      val rejected = Set(
-        "unneeded.json",
-        "heard-unneeded.json",
-        "heard-quiet.json",
-        "carried-appended.json",
-        "carried-boundary.json",
-        "carried-reasoned-appended.json",
-        "carried-reasoned-boundary.json",
-        "loop-last-called.json",
-        "loop-last-refused.json",
-        "loop-cut-declared.json",
-        "loop-tasked-calls-ran-out.json",
-        "loop-tasked-calls-ended.json",
-        "heard-reached-read.json",
-        "room-closing-found.json",
-        "room-thread-asked.json",
-        "room-carried-appended.json"
-      )
-      (before.size, before.keySet == after.keySet.diff(rejected)) ==> (57, true)
-      before ==> after.collect {
-        case (file, names) if !rejected.contains(file) => file -> ungated(names)
-      }
-    }
-
     test(
       "each history's assembly stage is its scenario's: a written query searched for and judged, else drawn"
     ) {

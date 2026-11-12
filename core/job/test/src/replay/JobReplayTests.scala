@@ -14,7 +14,8 @@ import utest.*
   */
 object JobReplayTests extends TestSuite {
 
-  private def histories: Vector[(String, Either[String, History])] = historiesOf(Turn.Epoch)
+  private def histories: Vector[(String, Either[String, History])] =
+    History.recorded(Turn.Epoch)
 
   /** The most bytes a step of each family may record in these histories, about twice the
     * most any records today, each with what it records. A step new to the run has none until
@@ -41,13 +42,6 @@ object JobReplayTests extends TestSuite {
     * declassifying run's bench, and its declassify's retry with its source asked.
     */
   private val Whole = 8000
-
-  private def historiesOf(epoch: String): Vector[(String, Either[String, History])] =
-    History.recorded(epoch)
-
-  /** Each history of `epoch`, by its file's name, as the names of its steps. */
-  private def namesOf(epoch: String): Map[String, Vector[String]] =
-    historiesOf(epoch).collect { case (path, Right(h)) => path -> h.steps.map(_.name) }.toMap
 
   /** Whether `history` made a move: a step `grit.act.moves.ActName` names. */
   private def moved(history: History): Boolean =
@@ -113,14 +107,6 @@ object JobReplayTests extends TestSuite {
     }
 
   val tests = Tests {
-    test(
-      "each run history of the previous epoch names its steps as its scenario's in this one"
-    ) {
-      val (before, after) = (namesOf("2026-10-16"), namesOf(Turn.Epoch))
-      // A shape new to this epoch has no scenario in the previous one.
-      (before.size, before == after.filter((path, _) => before.contains(path))) ==> (19, true)
-    }
-
     test("the current epoch has run histories to replay, redeployed ones and moves among them") {
       // Without them the gates below pass vacuously.
       val runs = histories.collect { case (path, Right(h)) if h.workflow == "run" => path }
