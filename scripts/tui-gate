@@ -90,7 +90,7 @@ STAMP="gate-$$-$(date +%s)"
 WORK=${TMPDIR:-/tmp}/grit-tui-gate/$STAMP
 mkdir -p "$WORK"
 
-JAVA_OPTS= ./mill grit.tui.examples.compile grit.app.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; rm -rf "$WORK"; exit 1; }
+JAVA_OPTS= ./mill grit.tui.examples.compile + grit.app.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; rm -rf "$WORK"; exit 1; }
 classpath() {
   JAVA_OPTS= ./mill show "$1" 2>/dev/null |
     grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//'
