@@ -180,78 +180,13 @@ object TriageQuestionsTests extends TestSuite {
       request.digest ==> "1e4464d4a98fcdee710e13a41cfe19ec429d3acb0098b7460f0331032696e6a0"
     }
 
-    test("v3 asks V2's words with to-grit after to, naming the persona, and drafts by v3's gate") {
-      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.v3(pip)
-      set.questions(catalog).keys.map(QuestionName.value).toVector ==> Vector(
-        "gap",
-        "open",
-        "to",
-        "to-grit",
-        "durable",
-        "anchor",
-        "source:github",
-        "source:conversations"
-      )
-      val v2 = TriageQuestions.V2.questions(catalog)
-      // Every question but to-grit in V2's words: a v3 answer under a v2 name means what it did.
-      set.questions(catalog).removed(n("to-grit")) ==> v2
-      set.questions(catalog).get(n("to-grit")) ==> Some(
-        Question.YesNo(
-          "Read new_message and thread. Is new_message directed at the assistant, whom people " +
-            "here call Pip, rather than at someone else or at the room? Saying its name to " +
-            "it, or replying to what Assistant said in thread, directs it at the assistant; " +
-            "talking about it does not.",
-          None,
-          None
-        )
-      )
-      (set.speak, TriageQuestions.v3(Persona.Grit).speak) ==> (Tags.V3.drafts, Tags.V3.drafts)
-      set.unread(set.speak, Corpora.Empty) ==> None
-    }
-
-    test(
-      "v4 asks v3's words with anchor-record after anchor, and drafts by v4's gate"
-    ) {
-      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.v4(pip)
-      set.questions(catalog).keys.map(QuestionName.value).toVector ==> Vector(
-        "gap",
-        "open",
-        "to",
-        "to-grit",
-        "durable",
-        "anchor",
-        "anchor-record",
-        "source:github",
-        "source:conversations"
-      )
-      // Every question but anchor-record in v3's words: a v4 answer under a v3 name means what
-      // it did, so v3's gate reads v4's answers.
-      set.questions(catalog).removed(n("anchor-record")) ==>
-        TriageQuestions.v3(pip).questions(catalog)
-      set.questions(catalog).get(n("anchor-record")) ==> Some(
-        Question.YesNo(
-          "Read new_message and thread. Is what new_message asks for something no stored " +
-            "record could supply, such as an opinion, someone's current availability, their " +
-            "own plans or work, or a choice nobody has made yet? A fact asked of a particular " +
-            "person may still be in a record.",
-          None,
-          None
-        )
-      )
-      (set.speak, TriageQuestions.v4(Persona.Grit).speak) ==> (Tags.V4.drafts, Tags.V4.drafts)
-      (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V3.drafts, catalog)) ==>
-        (None, None)
-    }
-
     // The words are what the classifier is asked: pinned.
     test(
-      "v5 asks v4's questions but anchor, gap with states, in plain words"
+      "v6 asks gap with states, open, to, to-grit naming the persona, durable in V2's words, " +
+        "records-hold and a question per source, and drafts by v6's gate"
     ) {
       val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.v5(pip)
-      val v4 = TriageQuestions.v4(pip).questions(catalog)
+      val set = TriageQuestions.v6(pip)
       val asked = set.questions(catalog)
       asked.keys.map(QuestionName.value).toVector ==> Vector(
         "gap",
@@ -259,13 +194,20 @@ object TriageQuestionsTests extends TestSuite {
         "to",
         "to-grit",
         "durable",
-        "anchor-record",
+        "records-hold",
         "source:github",
         "source:conversations"
       )
-      // to-grit and durable keep v4's words: an answer under their names means what it did.
-      val kept = Set("to-grit", "durable").map(n)
-      asked.filter((q, _) => kept(q)) ==> v4.filter((q, _) => kept(q))
+      // durable keeps V2's words: an answer under its name means what it did.
+      asked.get(n("durable")) ==> TriageQuestions.V2.questions(catalog).get(n("durable"))
+      asked.get(n("to-grit")) ==> Some(
+        yesNo(
+          "Read new_message and thread. Is new_message directed at the assistant, whom people " +
+            "here call Pip, rather than at someone else or at the room? Saying its name to " +
+            "it, or replying to what Assistant said in thread, directs it at the assistant; " +
+            "talking about it does not."
+        )
+      )
       // gap, open and to read the earlier exchange too: their answers depend on what came before.
       asked.get(n("open")) ==> Some(
         yesNo(
@@ -298,57 +240,6 @@ object TriageQuestionsTests extends TestSuite {
             "thread they wrote in, does not by itself direct it at them."
         )
       )
-      asked.get(n("anchor-record")) ==> Some(
-        yesNo(
-          "Read new_message and thread. Is what new_message asks for something nobody could " +
-            "find in what the team has written down, such as an opinion, someone's current " +
-            "availability, their own plans or work, or a choice nobody has made yet? A fact " +
-            "asked of a particular person may still be written down somewhere."
-        )
-      )
-      asked.collectFirst { case (q, y) if QuestionName.value(q) == "source:github" => y } ==> Some(
-        yesNo(
-          "Read new_message and thread. Could the source below supply what new_message asks " +
-            "for? The source is the team's GitHub repository: code, issues and pull requests."
-        )
-      )
-      // A message that states, asking nothing, is held: the gate reads gap's asks alone.
-      val states = VectorMap(
-        n("gap") -> Answer.Choice(
-          "states",
-          Vector(w("asks", 0.2), w("states", 0.8)),
-          Answer.confidence(Vector(0.2, 0.8))
-        ),
-        n("open") -> Answer.YesNo(0.9),
-        n("to-grit") -> Answer.YesNo(0.9),
-        n("anchor-record") -> Answer.YesNo(0.1)
-      )
-      (set.speak, set.speak.drafts(states, Cues.Empty)) ==> (Tags.V5.drafts, Some(false))
-      (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V4.drafts, catalog)) ==>
-        (None, None)
-    }
-
-    // The words are what the classifier is asked: pinned.
-    test(
-      "v6 asks records-hold in place of anchor-record, the rest in v5's order and words"
-    ) {
-      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
-      val set = TriageQuestions.v6(pip)
-      val v5 = TriageQuestions.v5(pip).questions(catalog)
-      val asked = set.questions(catalog)
-      asked.keys.map(QuestionName.value).toVector ==> Vector(
-        "gap",
-        "open",
-        "to",
-        "to-grit",
-        "durable",
-        "records-hold",
-        "source:github",
-        "source:conversations"
-      )
-      // Every One but records-hold in v5's words: an answer under a v5 name means what it did.
-      val kept = Set("gap", "open", "to", "to-grit", "durable").map(n)
-      asked.filter((q, _) => kept(q)) ==> v5.filter((q, _) => kept(q))
       asked.get(n("records-hold")) ==> Some(
         yesNo(
           "Read new_message, thread, exchanges_in_channel and records_near (when present). " +

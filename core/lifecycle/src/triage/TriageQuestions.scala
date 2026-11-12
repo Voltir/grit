@@ -163,16 +163,8 @@ object TriageQuestions {
     * open: `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
     * `source:<name>` question per corpus; gated by [[Tags.V2.drafts]].
     */
-  val V2: TriageQuestions = v2With(None, None, Tags.V2.drafts)
+  val V2: TriageQuestions = {
 
-  /** V2's questions with `directed` after `to` and `record` after `anchor`, each when given,
-    * gated by `speak`.
-    */
-  private def v2With(
-      directed: Option[Item.One],
-      record: Option[Item.One],
-      speak: Gate
-  ): TriageQuestions = {
     import Tags.V2.{anchor, gap, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
@@ -201,8 +193,7 @@ object TriageQuestions {
                 "named or the one it replies to, rather than at the room? Mentioning someone, " +
                 "or replying in a thread they wrote in, does not by itself direct it at them."
             )
-          )
-        ) ++ directed ++ Vector(
+          ),
           Durable,
           Item.One(
             anchor,
@@ -211,32 +202,22 @@ object TriageQuestions {
                 "record could supply, such as an opinion, someone's current availability, or " +
                 "a choice nobody has made yet?"
             )
-          )
-        ) ++ record ++ Vector(
+          ),
           Item.PerSource(
             sourcePrefix,
             "Read new_message and thread. Could ",
             " supply what new_message asks for?"
           )
         ),
-        speak
+        Tags.V2.drafts
       ).left.map(_.toString)
     } yield set
-    // Its gap's keys are distinct, its names are distinct (to-grit and anchor-record are none of
-    // V2's) and every bound of V2's, v3's and v4's gates reads a One of its kind, so no Left is
-    // taken;
-    // TriageQuestionsTests builds it.
+    // Its gap's keys are distinct, its names are distinct and every bound of V2's gate reads a
+    // One of its kind, so no Left is taken; TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
 
-  /** v3, the set that replaced [[V2]]: V2's questions in V2's order with `to-grit` after `to`,
-    * worded with `persona`'s name ([[Tags.V3.toGrit]]); gated by [[Tags.V3.drafts]], whatever
-    * the name.
-    */
-  def v3(persona: Persona): TriageQuestions =
-    v2With(Some(toGrit(persona)), None, Tags.V3.drafts)
-
-  /** v3's `to-grit`, worded with `persona`'s name. */
+  /** `to-grit` ([[Tags.V3.toGrit]]), worded with `persona`'s name. */
   private def toGrit(persona: Persona): Item.One =
     Item.One(
       Tags.V3.toGrit,
@@ -250,30 +231,7 @@ object TriageQuestions {
       )
     )
 
-  /** v4, the set that replaced [[v3]]: v3's questions in v3's order and words, worded with
-    * `persona`'s name, and `anchor-record` ([[Tags.V4.anchorRecord]]) after `anchor`; gated by
-    * [[Tags.V4.drafts]], whatever the name.
-    */
-  def v4(persona: Persona): TriageQuestions =
-    v2With(
-      Some(toGrit(persona)),
-      Some(
-        Item.One(
-          Tags.V4.anchorRecord,
-          Question.YesNo(
-            "Read new_message and thread. Is what new_message asks for something no stored " +
-              "record could supply, such as an opinion, someone's current availability, their " +
-              "own plans or work, or a choice nobody has made yet? A fact asked of a " +
-              "particular person may still be in a record.",
-            None,
-            None
-          )
-        )
-      ),
-      Tags.V4.drafts
-    )
-
-  /** v2's to v4's `open`; v5 words its own. */
+  /** V2's `open`; v6 words its own. */
   private def StillOpen: Item.One = Item.One(
     Tags.V2.open,
     Question.YesNo(
@@ -283,7 +241,7 @@ object TriageQuestions {
     )
   )
 
-  /** v2's to v5's `durable`. */
+  /** V2's and v6's `durable`. */
   private def Durable: Item.One = Item.One(
     Tags.V2.durable,
     Question.YesNo(
@@ -296,60 +254,13 @@ object TriageQuestions {
     )
   )
 
-  /** v5, the set that replaced [[v4]], worded with `persona`'s name: v4's questions in v4's
-    * order but `anchor`; `gap` with [[Tags.V5.states]], a statement that asks nothing, before
-    * `nothing`; `open`, `to-grit` and `durable` in v4's words, and `to`, `anchor-record` and
-    * each `source:<name>` in plainer ones; gated by [[Tags.V5.drafts]], whatever the name.
+  /** v6, worded with `persona`'s name: `gap` (V2's keys and [[Tags.V5.states]], a statement
+    * that asks nothing, before `nothing`), `open`, `to`, `to-grit` ([[Tags.V3.toGrit]]),
+    * `durable`, `records-hold` ([[Tags.V6.recordsHold]]), then one `source:<name>` question
+    * per corpus, told to read the records listed; gated by [[Tags.V6.drafts]], whatever the
+    * name.
     */
-  def v5(persona: Persona): TriageQuestions =
-    v5With(
-      persona,
-      Item.One(
-        Tags.V4.anchorRecord,
-        Question.YesNo(
-          "Read new_message and thread. Is what new_message asks for something nobody " +
-            "could find in what the team has written down, such as an opinion, someone's " +
-            "current availability, their own plans or work, or a choice nobody has made " +
-            "yet? A fact asked of a particular person may still be written down somewhere.",
-          None,
-          None
-        )
-      ),
-      "Read new_message and thread. ",
-      Tags.V5.drafts
-    )
-
-  /** v6, the set that replaced [[v5]], worded with `persona`'s name: v5's questions in v5's
-    * order and words, but `records-hold` ([[Tags.V6.recordsHold]]) in place of `anchor-record`,
-    * and each `source:<name>` told to read the records listed; gated by [[Tags.V6.drafts]],
-    * whatever the name.
-    */
-  def v6(persona: Persona): TriageQuestions =
-    v5With(
-      persona,
-      Item.One(
-        Tags.V6.recordsHold,
-        Question.YesNo(
-          "Read new_message, thread, exchanges_in_channel and records_near (when present). " +
-            "Could something the team has written down, such as the records listed, hold an " +
-            "answer to what new_message asks for?",
-          None,
-          None
-        )
-      ),
-      "Read new_message, thread and records_near (when present). ",
-      Tags.V6.drafts
-    )
-
-  /** v5's questions in v5's order, with `record` after `durable` and each `source:<name>` read
-    * after `sourceReads`, gated by `speak`.
-    */
-  private def v5With(
-      persona: Persona,
-      record: Item.One,
-      sourceReads: String,
-      speak: Gate
-  ): TriageQuestions = {
+  def v6(persona: Persona): TriageQuestions = {
     import Tags.V2.{gap, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
@@ -393,19 +304,26 @@ object TriageQuestions {
           ),
           toGrit(persona),
           Durable,
-          record,
+          Item.One(
+            Tags.V6.recordsHold,
+            yesNo(
+              "Read new_message, thread, exchanges_in_channel and records_near (when present). " +
+                "Could something the team has written down, such as the records listed, hold an " +
+                "answer to what new_message asks for?"
+            )
+          ),
           Item.PerSource(
             sourcePrefix,
-            sourceReads + "Could the source below supply what new_message asks for? The " +
-              "source is ",
+            "Read new_message, thread and records_near (when present). Could the source below " +
+              "supply what new_message asks for? The source is ",
             "."
           )
         ),
-        speak
+        Tags.V6.drafts
       ).left.map(_.toString)
     } yield set
-    // Its gap's keys are distinct, its names are distinct and every bound of v5's and v6's gates
-    // reads a One of its kind or a fact, so no Left is taken; TriageQuestionsTests builds both.
+    // Its gap's keys are distinct, its names are distinct and every bound of v6's gate reads a
+    // One of its kind or a fact, so no Left is taken; TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
 
