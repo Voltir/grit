@@ -1,8 +1,7 @@
 # grit.eval
 
 The eval's labelled material, written by hand and read by pure code: conversations whose
-windows must hold (or must not hold) certain entries, and synthetic Slack rooms whose openings
-have a known placement. It depends on core alone, makes no call and reads no database; what
+windows must hold (or must not hold) certain entries. It depends on core alone, makes no call and reads no database; what
 runs it is elsewhere in this folder.
 
 One idea, so one package, `grit.eval`:
@@ -13,9 +12,6 @@ One idea, so one package, `grit.eval`:
   entries by accident.
 - **`Layout`**: a case laid out as rows to write into a database, under its own root place,
   with the entries a window must and must not hold.
-- **`Room`**: a synthetic room read from `resources/rooms/`, and the placement each of its
-  openings should get.
-- **`TopicScore`**: a topics run's placement of a room's openings scored against its truth.
 
 The rest of `eval/`:
 

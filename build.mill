@@ -742,7 +742,6 @@ object grit extends Module {
           grit.dbos.it,
           grit.slack.test,
           grit.mcp.test,
-          grit.eval,
           grit.projects.test
         )
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
