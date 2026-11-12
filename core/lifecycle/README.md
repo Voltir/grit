@@ -34,8 +34,8 @@ keeps their costs in the ledger under itself.
   any later close of it (ADR 0020), and whether grit drafts a reply, or answers one put to it by
   name (ADR 0022). A thread's first message waits for its placement first. A classifier that
   fails leaves unanswered tags, and no draft. It writes no entry, so it never moves a deadline.
-  Each question set it has asked stays in the code (`TriageQuestions`), so recorded tags stay
-  readable; `TriageQuestions.shipped` is the one live triage asks. `Mentions` puts that set to a
+  Recorded tags stay readable by the names and gates of each question set it has asked, kept
+  in core (`Tags`); `TriageQuestions.shipped` is the one live triage asks. `Mentions` puts that set to a
   message said to grit, waiting a bounded time for its placement and its answer, and keeps no
   tags; it also asks a turn's root the task questions (`TaskQuestions`) over the same state, for
   the turn's routing. ← `transcript`
