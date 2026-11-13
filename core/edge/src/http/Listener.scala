@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.{
   ConcurrentHashMap,
+  CountDownLatch,
   ExecutorService,
   Executors,
   ScheduledThreadPoolExecutor,
@@ -34,32 +35,34 @@ final class Listener private (
 ) extends AutoCloseable {
 
   private val closed = new AtomicBoolean(false)
+  private val closedAll = new CountDownLatch(1)
 
   /** Stops it. A request that arrives from now on is answered 503 without `answer`. Those under way
     * are waited for up to [[Listener.CloseWithin]], then their threads are interrupted and given
     * [[Listener.InterruptedWithin]] to answer, and then their connections are closed; the verb and
     * path of each still running is logged at the interrupt and every [[Listener.CloseWithin]] after.
     * Returns once every request has ended, so no call to `answer` is under way or can start: an
-    * `answer` that ignores its interrupt holds it until it returns. Closing again does nothing.
+    * `answer` that ignores its interrupt holds it until it returns. Closing again waits for the
+    * first close and does nothing more.
     */
-  def close(): Unit = if (closed.compareAndSet(false, true)) {
-    handling.closing(at)
-    if (!handling.idleWithin(limits.closeWithin)) {
-      handling.interrupt()
-      handling.idleWithin(limits.interruptedWithin)
-    }
-    server.stop(0)
-    threads.shutdownNow()
-    deadlines.shutdownNow()
-    var interrupted = false
-    var ended = false
-    while (!ended)
+  def close(): Unit =
+    if (closed.compareAndSet(false, true))
       try {
-        ended = threads.awaitTermination(limits.closeWithin.toMillis, TimeUnit.MILLISECONDS)
-        if (!ended) handling.stillRunning()
-      } catch { case _: InterruptedException => interrupted = true }
-    if (interrupted) Thread.currentThread.interrupt()
-  }
+        handling.closing(at)
+        if (!handling.idleWithin(limits.closeWithin)) {
+          handling.interrupt()
+          handling.idleWithin(limits.interruptedWithin)
+        }
+        server.stop(0)
+        threads.shutdownNow()
+        deadlines.shutdownNow()
+        Listener.throughInterrupts {
+          val ended = threads.awaitTermination(limits.closeWithin.toMillis, TimeUnit.MILLISECONDS)
+          if (!ended) handling.stillRunning()
+          ended
+        }
+      } finally closedAll.countDown()
+    else Listener.throughInterrupts { closedAll.await(); true }
 }
 
 object Listener {
@@ -86,6 +89,16 @@ object Listener {
 
   /** 200: the most characters of a path or a throwable's message one log line quotes. */
   val LogMost: Int = 200
+
+  /** Repeats `waited` until it is true, an interrupt meanwhile restored once it is. */
+  private def throughInterrupts(waited: => Boolean): Unit = {
+    var interrupted = false
+    var ended = false
+    while (!ended)
+      try ended = waited
+      catch { case _: InterruptedException => interrupted = true }
+    if (interrupted) Thread.currentThread.interrupt()
+  }
 
   /** Listens at `at` and answers each request with `answer`, given the request and `log` lent for
     * it, each on a virtual thread of its own: `answer` is called on many threads at once and may

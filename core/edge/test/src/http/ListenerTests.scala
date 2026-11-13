@@ -368,6 +368,39 @@ object ListenerTests extends TestSuite {
       }
     }
 
+    test("a second close while the first waits returns only once the listener is closed") {
+      val logged = new Logged
+      val started = new CountDownLatch(1)
+      val release = new CountDownLatch(1)
+      val answer: (Request, String => Unit) => Response = (_, _) => {
+        started.countDown()
+        var waiting = true
+        while (waiting)
+          try { release.await(); waiting = false }
+          catch { case _: InterruptedException => () }
+        Response.text(Status.Ok, "done")
+      }
+      val l = opened("127.0.0.1:0", answer, logged)
+      val client = connect("127.0.0.1", l.at.port)
+      val first = new CountDownLatch(1)
+      val second = new CountDownLatch(1)
+      try {
+        client.getOutputStream.write(get("/held").getBytes(ISO_8859_1))
+        client.getOutputStream.flush()
+        assert(started.await(3, TimeUnit.SECONDS))
+        Thread.ofVirtual().start(() => { l.close(); first.countDown() })
+        assert(logged.closing.await(3, TimeUnit.SECONDS))
+        Thread.ofVirtual().start(() => { l.close(); second.countDown() })
+        val secondHeld = !second.await(500, TimeUnit.MILLISECONDS)
+        release.countDown()
+        val bothReturned =
+          first.await(3, TimeUnit.SECONDS) && second.await(3, TimeUnit.SECONDS)
+        (secondHeld, bothReturned) ==> (true, true)
+      } finally {
+        release.countDown()
+        client.close()
+      }
+    }
     test("after close, nothing is listening; closing again does nothing") {
       val l = opened("127.0.0.1:0", echo, new Logged)
       l.close()
