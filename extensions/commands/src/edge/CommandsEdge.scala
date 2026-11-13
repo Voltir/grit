@@ -46,7 +46,10 @@ final class CommandsEdge private (
 
   /** Listens at `at` once each caller's account is vouched. `Refused` when a guarding own command
     * names no offered plugin command, an added one names an offered command, or `at` cannot be
-    * listened on; `Failed` when a caller's account cannot be vouched.
+    * listened on, each before any account is vouched; `Failed` when a caller's account cannot be
+    * vouched. When the deployment does not trust `attester` for `realm`, nothing is vouched and
+    * it listens all the same: a caller's account no person is linked to is then 403 on every
+    * request ([[grit.core.edge.CommandError.NotVouched]]).
     */
   def open(
       stores: EdgeStores^,

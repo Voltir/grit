@@ -28,12 +28,12 @@ import grit.core.edge.{
 }
 import grit.core.files.NoIntake
 import grit.core.id.{AttesterName, EdgeName}
-import grit.core.identity.{Realm, Standing, TestAccounts, Vouched}
+import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
 import grit.core.plugin.CommandOutcome
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, TestJot}
+import grit.core.store.{InMemoryVoucher, LastWord, StoreError, TestJot, Tx, Voucher}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Visibility}
 import grit.edge.http.{Hosts, Listen}
@@ -66,7 +66,7 @@ object CommandsEdgeTests extends TestSuite {
       None
     )
 
-  private def stores(commands: PluginCommands, voucher: InMemoryVoucher): EdgeStores^ = {
+  private def stores(commands: PluginCommands, voucher: Voucher): EdgeStores^ = {
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
     val jot = new TestJot
     EdgeStores(
@@ -136,13 +136,16 @@ object CommandsEdgeTests extends TestSuite {
       )
     }
 
-    test("open refuses a guard of no offered command, and an added one a plugin offers") {
+    test(
+      "open refuses a guard of no offered command, and an added one a plugin offers, before vouching"
+    ) {
       val commands =
         scripted(Vector(listed("done", reads = false)))((_, _) => Right(CommandOutcome.Done("")))
+      val voucher = new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped)
       def opened(own: OwnCommand) =
         got(edge(own = Vector(own)))
           .open(
-            stores(commands, InMemoryVoucher.none()),
+            stores(commands, voucher),
             Map.empty,
             new SetClock(Now),
             _ => ()
@@ -157,6 +160,33 @@ object CommandsEdgeTests extends TestSuite {
         Some(EdgeRefusal.Refused("the own command absent guards no offered command")),
         Some(EdgeRefusal.Refused("the own command done is added, but a plugin offers it"))
       )
+      voucher.vouched ==> Vector.empty
+    }
+
+    test("open fails when a caller's account cannot be vouched, and listens on nothing") {
+      val unreadable = new Voucher {
+        def realms: Set[Realm] = Set(realm)
+        def vouch(v: Vouched)(using Tx^) = Left(StoreError.DatabaseError("down"))
+        def lastWord(account: Account)(using Tx^): Either[StoreError, LastWord] =
+          Left(StoreError.DatabaseError("down"))
+        def lastWords(r: Realm)(using Tx^) = Left(StoreError.DatabaseError("down"))
+      }
+      val log = new ConcurrentLinkedQueue[String]()
+      got(edge()).open(
+        stores(scripted(Vector.empty)((_, _) => Right(CommandOutcome.Done(""))), unreadable),
+        Map.empty,
+        new SetClock(Now),
+        l => { val _ = log.add(l) }
+      ) match {
+        case Left(refusal) =>
+          refusal ==> EdgeRefusal.Failed(
+            "slack:T1/U-reader is not vouched: Store(DatabaseError(down))"
+          )
+          log.asScala.toVector ==> Vector.empty
+        case Right(open) =>
+          open.close()
+          throw new java.lang.AssertionError("opened over a voucher that cannot be read")
+      }
     }
 
     test(
