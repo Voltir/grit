@@ -487,6 +487,19 @@ object grit extends Module {
     }
   }
 
+  /* The edge a deployment mounts to serve an outside coding harness over HTTP (ADR 0062): its
+   * plugins' commands, at /command and as MCP tools, and waits on the store, each request from
+   * a caller and each worker named by configuration. It names no harness and no plugin, and
+   * writes no files. extensions/commands/README.md. */
+  object commands extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "commands"
+    def moduleDeps = Seq(core, edge, mcp)
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* An application's Postgres database, read as a service: one database role to a place, the
    * role's grants the boundary (ADR 0057). JDBC's second role beside grit.dbos (STYLE rule 8),
    * in its connect package alone; the driver is the deployment's dependency, not this one's.

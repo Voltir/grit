@@ -60,7 +60,7 @@ object Session {
   /** What a session's row begins with, the first time an event is recorded on it. `label` is
     * kept joined with the recording transaction's floor, in that transaction's own room when it
     * has one. `at` is where the session worked, not a room: a harness session's worktree under
-    * `fs`, a turn's conversation's place; it carries no label. `holder` is the claim holder it
+    * `fs` or `worker`, a turn's conversation's place; it carries no label. `holder` is the claim holder it
     * works as, whose claims its work keeps from lapsing ([[grit.core.claim.Claim.lapses]]). A
     * turn's session has one per conversation, beside the [[grit.core.store.Conversation]] it
     * works in, which it does not replace.
