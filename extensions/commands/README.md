@@ -19,6 +19,9 @@ In dependency order, each package importing only those before it:
   (`OwnCommand`), each guarding a plugin's command or added beside them, and lent the request's
   way to run a plugin's command (`Ran`) for that request alone; and the wait on a plugin's
   document `/wait` reads (`HoldingWatch`), so the edge names no plugin.
+- **`events`**: a harness's event lines, private to the module: one JSON object a line in
+  grit's words (ADR 0050), read into one batch of one session's events, each line refused named
+  by its number and why. A harness's adapter maps its hooks onto them; nothing here names one.
 - **`routes`**: the routes, private to the module, and the one table that turns what a command
   came to into a status (`RouteReply`), so the routes cannot disagree. A query parameter or body
   key a route does not read is 400, named. A request `Hosts` does not
