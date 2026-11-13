@@ -11,6 +11,10 @@ names a generic protocol and no organisation, depends on `grit.core` and `grit.e
 named only by a deployment (`mcp-names-core-alone`). The JDK HTTP client's second egress
 beside `grit.models` (STYLE rule 8); neither names the other.
 
+It also holds the server's side of that wire, both eras of it (below, "Serving"): reading a
+request a client posted and writing its answer, pure, for an edge that serves grit's own tools
+over MCP; nothing here listens or runs a tool.
+
 It also holds one client that is not MCP's: Drive's REST API, until Drive's MCP server serves a
 service account (`drive`, below), reusing `client`'s credentials.
 
@@ -18,8 +22,14 @@ In dependency order:
 
 - **`wire`**: the protocol over ujson, pure: the requests grit sends, the results and errors
   read back, a response in an event stream, a call's result as the text the model reads, and
-  `McpCalled`, the exchange a server's `Accounts` reads for its items (ADR 0036). Imports
-  nothing in mcp.
+  `McpCalled`, the exchange a server's `Accounts` reads for its items (ADR 0036). And the
+  server's half: `Rpc.received`, a POST read as one request (`Asked`), only `tools/list` and
+  `tools/call` left to the server, each answered on the case that asked it (`Listing`,
+  `CallResult`); `McpTool.described`, a tool as a server lists it; `Headers.decoded`, a header
+  value as `encoded` wrote it. `Code` is the one table of error codes both halves use. Its
+  reading of a body as one message is a private function apart from the header checks, so a
+  stdio server could share it. It names `grit.edge.http`'s data types (`Request`, `Response`,
+  `Status`) and nothing else of the edge; imports nothing in mcp.
 - **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered, which
   calls are sent and which of their answers' results are shown, `Open` or held `Within` exact
   argument `Bound`s, so a deployment bounds a service at the edge rather than by asking the
@@ -80,13 +90,58 @@ In dependency order:
   start, refused when the program cannot be read or offers nothing, and learns each request's
   directory from its desk (`Desk.origin`). Imports `wire` and `client`.
 
+**Serving.** `Rpc.received` reads one POST in the revision it declares; the wire shapes are the 2026-07-28
+schema's and the 2025 revisions' (the project's notes on them, read from the official pages).
+It lists 2026-07-28, 2025-11-25 and 2025-06-18: 2025-03-26 and older require a server to take
+batches, which this one refuses.
+
+- **Stateless** (2026-07-28) when the request's `params._meta` holds
+  `io.modelcontextprotocol/protocolVersion`, or its `MCP-Protocol-Version` is `2026-07-28`. It
+  is checked in go-sdk's order, the first broken check answered: the header present (`-32020`),
+  `_meta`'s version present (`-32602`), the two equal (`-32020`), `Mcp-Method` the method
+  (`-32020`), for `tools/call` `Mcp-Name` (decoded) `params.name` (`-32020`), `_meta`'s
+  `clientCapabilities` an object (`-32602`), the version 2026-07-28 (`-32022`), each 400; then
+  the method: `server/discover` answered, `tools/list` and `tools/call` to the server, any other
+  (`initialize`, `ping` and `subscriptions/listen` among them) 404 `-32601`. A result carries
+  `resultType: complete`; discover's and a list's say `ttlMs: 0` (the set changes with a
+  deploy, and a loopback list is cheap) and `cacheScope: private` (tools may come to differ per
+  person); the server's name and version are in discover's `_meta`.
+- **Older**, any other request, in the revision its `MCP-Protocol-Version` names; one naming
+  an unlisted revision is 400 `-32602`. With no header it is read as 2025-06-18, the oldest
+  listed, rather than refused: `ping` may precede `initialize`'s answer, and 2025-06-18 differs
+  from the spec's assumed 2025-03-26 only in batches (refused anyway) and optional fields.
+  `initialize` answers the revision it asks for when that is 2025-06-18 or 2025-11-25, else
+  2025-11-25 (2026-07-28 has no `initialize`); `ping` an empty result; any other method
+  `-32601`, and params a list or a call cannot read `-32602`, both at 200, as Claude Code
+  accepts them.
+- **Either era:** a body that is not JSON is 400 `-32700`; one that is not one JSON-RPC 2.0
+  request (an array, which the notes leave without a status; no `"jsonrpc": "2.0"`; a method
+  not a string; `params` not an object; a request with no id) 400 `-32600`. An id is a string
+  or an integer within ±(2^53−1), the largest a double holds exactly, and is echoed as sent;
+  any other id (null, fractional, larger, or of another type) is `-32600` answered to a null
+  id. A notification or a client's response is 202 with no body, in either era; a verb other
+  than POST 405. `-32603` is never sent: an answer that throws is the `Listener`'s 500.
+  `-32022`'s `data.supported`, and the older era's, list all three revisions, newest first.
+- **Not read:** `Origin` (judged by the caller, which knows its listen address),
+  `Authorization`, `Mcp-Session-Id`, and every `Mcp-Param-*`: `McpTool.described` declares no
+  `x-mcp-header`, so a server here expects none and ignores any it is sent.
+
+A tool's own failure is a `tools/call` result with `isError: true`; arguments it could not
+read are such a result from 2025-11-25 and `-32602` in 2025-06-18; a tool not offered and a
+cursor never given are `-32602`, 400 statelessly and 200 before. Each choice above that the
+specification leaves open is pinned in `ServedTests`, and `ServedLawTests` holds the server's
+half to the client's.
+
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
-test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say;
+test JVM (`com.sun.net.httpserver`) that reads every request with `Rpc.received` and checks
+what a hosted server adds past it (its token, its content types, `Mcp-Param-*` mirroring);
 a service account's exchange runs against `FakeTokenServer`, a token endpoint held to what
 Google documents of it, and not yet to Google's own.
-`McpServerContract` is the exchanges a server must answer as the client reads them; the fake
-keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in test sources that
-needs a token and so is no tier, runs it against GitHub's (its doc says how). It passed whole
+`McpServerContract` is the exchanges any server must answer as the client reads them, and
+`McpServerGuardContract` what a hosted one checks beyond them; the fake keeps both in the unit
+tier (`McpServerFakeTests`, `McpServerFakeGuardTests`), grit's own wire keeps the first over a
+`Listener` (`McpServerWireTests`), and `LiveProbe`, a main in test sources that
+needs a token and so is no tier, runs both against GitHub's (its doc says how). It passed whole
 there on 2026-09-30 and again on 2026-10-16, so the fake is held to a real server as of that
 run, and between runs to the spec and go-sdk's source. `GitHubItemsContract` is what
 `GitHubItems` needs of GitHub's answers: the recordings below keep it in the unit tier
@@ -168,3 +223,12 @@ Beside them, the `made-*` files are written by hand, since the recordings hold n
 and `made-children-drive-a.json` and `made-children-folder-3.json`, the listing of each one's own
 files and folders (`'{id}' in parents`, no words), the recorded entries lying there, folders
 first and then by name, each with a `modifiedTime` of its own.
+
+`test/resources/claude-code/handshake-2.1.303.jsonl` holds the six requests Claude Code 2.1.303
+sent an HTTP MCP server on 2026-11-13, as it sent them but for the `Host` (a placeholder port)
+and the tool call's name, arguments and `toolUseId` (neutral stand-ins, `Content-Length`
+recomputed); each answer is kept as its status and its shape alone: every string empty,
+every number 0, every list its first item, and a schema's property names numbered. Beside it,
+`stateless-synthesised-2.1.303.jsonl` holds no recording: the stateless `tools/list` and
+`tools/call` Claude Code is expected to send once `server/discover` is answered, built from
+the recorded discover's `_meta` and headers, until a real-use run records them.
