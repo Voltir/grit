@@ -89,6 +89,17 @@ object CommandRouteTests extends TestSuite {
       commands.ran ==> Vector.empty
     }
 
+    test("a credential is refused before the command's name or body is read") {
+      val commands = scripted(Vector(listed("done", reads = false)))(answering)
+      val r = routes(commands)
+      val credentialed = Vector("Host" -> "localhost:7317", "Authorization" -> "Bearer t0ken")
+      Vector(
+        r.answer(request(Verb.Post, "/command/Absent", headers = credentialed)),
+        r.answer(request(Verb.Post, "/command/done", "[]", headers = credentialed))
+      ).map(_.status) ==> Vector(Status.Forbidden, Status.Forbidden)
+      commands.ran ==> Vector.empty
+    }
+
     test("a caller below an own command's least is refused, and nothing runs") {
       val commands = scripted(Vector(listed("done", reads = false)))(answering)
       val guard = OwnCommand.guarding(

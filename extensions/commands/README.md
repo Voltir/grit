@@ -20,7 +20,7 @@ In dependency order, each package importing only those before it:
   document `/wait` reads (`HoldingWatch`), so the edge names no plugin.
 - **`routes`**: the routes, private to the module, and the one table that turns what a command
   came to into a status (`Answered`), so the routes cannot disagree. A request `Hosts` does not
-  admit is refused before any route; no GET runs a command.
+  admit, or `Callers` finds no caller for, is refused before any route; no GET runs a command.
 - **`edge`**: `CommandsEdge`, the `ServedEdge` a deployment mounts: `of` refuses what cannot be
   served safely (two own commands of one name, a caller outside its realm, no credential beyond
   loopback), and `open` refuses own commands that do not match the plugins' offered ones, vouches

@@ -26,14 +26,14 @@ private[commands] final class Routes(
     server: ServerInfo
 ) {
 
-  /** `request` answered, running nothing first when `hosts` do not admit it (403). At
-    * `/command/<name>`, a POST runs the command `name` with its body, a JSON object (an empty
-    * body: none), as [[Answered.command]] answers it; another verb 405, a body that is no JSON
-    * object 400, no caller 403 ([[Callers.refused]]), each running nothing. At `/mcp`, one MCP
-    * message ([[Rpc.received]]) from a caller: `tools/list` lists every offered plugin command
+  /** `request` answered, running nothing first when `hosts` do not admit it, or it has no caller
+    * ([[Callers.refused]]), each 403 whatever its path. At `/command/<name>`, a POST runs the
+    * command `name` with its body, a JSON object (an empty body: none), as [[Answered.command]]
+    * answers it; another verb 405, a body that is no JSON object 400, each running nothing. At
+    * `/mcp`, one MCP message ([[Rpc.received]]): `tools/list` lists every offered plugin command
     * ([[McpTool.described]]), a guarded one by the plugin's own schema; `tools/call` runs one as
     * `/command` would, its answer a result as [[Answered.call]] reads it, and names no added
-    * command. At `/wait`, a POST from a caller waits on `watch` as [[Waited.watchOf]] reads its
+    * command. At `/wait`, a POST waits on `watch` as [[Waited.watchOf]] reads its
     * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
     * body it does not read 400, each waiting on nothing. Any other path 404.
     */
@@ -41,15 +41,19 @@ private[commands] final class Routes(
     if (!hosts.admit(request))
       Response.text(Status.Forbidden, "refused: the request's Host or Origin is not this edge's")
     else
-      request.path match {
-        case Vector(Routes.Command, raw) => commanded(request, raw)
-        case Vector(Routes.Mcp) => mcp(request)
-        case Vector(Routes.Wait) => waited(request)
-        case _ =>
-          Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
+      callers.from(request) match {
+        case Left(why) => Callers.refused(why)
+        case Right(caller) =>
+          request.path match {
+            case Vector(Routes.Command, raw) => commanded(request, caller, raw)
+            case Vector(Routes.Mcp) => mcp(request, caller)
+            case Vector(Routes.Wait) => waited(request, caller)
+            case _ =>
+              Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
+          }
       }
 
-  private def commanded(request: Request, raw: String): Response =
+  private def commanded(request: Request, caller: Caller, raw: String): Response =
     if (request.verb != Verb.Post)
       Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a command; nothing else runs one")
     else
@@ -59,63 +63,51 @@ private[commands] final class Routes(
           Routes.arguments(request.body) match {
             case Left(why) => Response.text(Status.BadRequest, why)
             case Right(args) =>
-              callers.from(request) match {
-                case Left(why) => Callers.refused(why)
-                case Right(caller) =>
-                  val (status, text) = run(caller, name, args)
-                  Response.text(status, text)
-              }
+              val (status, text) = run(caller, name, args)
+              Response.text(status, text)
           }
       }
 
-  private def mcp(request: Request): Response =
-    callers.from(request) match {
-      case Left(why) => Callers.refused(why)
-      case Right(caller) =>
-        Rpc.received(request, server) match {
-          case Posted.Answered(response) => response
-          case list: Posted.List =>
-            list.answered(
-              if (list.cursor.nonEmpty) Listing.NoSuchCursor
-              else
-                Listing.Tools(
-                  commands.offered.flatMap(l => McpTool.described(l.schema, l.reads).toOption),
-                  None
-                )
+  private def mcp(request: Request, caller: Caller): Response =
+    Rpc.received(request, server) match {
+      case Posted.Answered(response) => response
+      case list: Posted.List =>
+        list.answered(
+          if (list.cursor.nonEmpty) Listing.NoSuchCursor
+          else
+            Listing.Tools(
+              commands.offered.flatMap(l => McpTool.described(l.schema, l.reads).toOption),
+              None
             )
-          case call: Posted.Call =>
-            call.answered(
-              ToolName
-                .of(call.tool)
-                .toOption
-                .filter(n => commands.offered.exists(_.schema.name == ToolName.value(n))) match {
-                case None => CallResult.NoSuchTool
-                case Some(name) => Answered.call(run(caller, name, call.arguments))
-              }
-            )
-        }
+        )
+      case call: Posted.Call =>
+        call.answered(
+          ToolName
+            .of(call.tool)
+            .toOption
+            .filter(n => commands.offered.exists(_.schema.name == ToolName.value(n))) match {
+            case None => CallResult.NoSuchTool
+            case Some(name) => Answered.call(run(caller, name, call.arguments))
+          }
+        )
     }
 
-  private def waited(request: Request): Response =
+  private def waited(request: Request, caller: Caller): Response =
     if (request.verb != Verb.Post)
       Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a watch; nothing else waits")
     else
-      callers.from(request) match {
-        case Left(why) => Callers.refused(why)
-        case Right(caller) =>
-          Routes
-            .arguments(request.body)
-            .flatMap(Waited.watchOf(_, caller.worker, holding, clock.now())) match {
-            case Left(why) => Response.text(Status.BadRequest, why)
-            case Right((what, within)) =>
-              val (status, text) = Waited.watched(
-                what,
-                within,
-                holding,
-                watch.until(caller.account, room, what, within)
-              )
-              Response.text(status, text)
-          }
+      Routes
+        .arguments(request.body)
+        .flatMap(Waited.watchOf(_, caller.worker, holding, clock.now())) match {
+        case Left(why) => Response.text(Status.BadRequest, why)
+        case Right((what, within)) =>
+          val (status, text) = Waited.watched(
+            what,
+            within,
+            holding,
+            watch.until(caller.account, room, what, within)
+          )
+          Response.text(status, text)
       }
 
   /** `name` run for `caller` with `args`: a deployment's own command of that name, guarding or
