@@ -30,11 +30,11 @@ private[commands] final class Routes private (
 
   /** `request` answered, running nothing first when `hosts` do not admit it, or it has no caller
     * ([[Callers.refused]]), each 403 whatever its path. At `/command/<name>`, a POST runs the
-    * command `name` with its body, a JSON object (an empty body: none), as [[Answered.command]]
+    * command `name` with its body, a JSON object (an empty body: none), as [[RouteReply.command]]
     * answers it; another verb 405, a body that is no JSON object 400, each running nothing. At
     * `/mcp`, one MCP message ([[Rpc.received]]): `tools/list` lists every offered plugin command
     * ([[McpTool.described]]), a guarded one by the plugin's own schema; `tools/call` runs one as
-    * `/command` would, its answer a result as [[Answered.call]] reads it, and names no added
+    * `/command` would, its answer a result as [[RouteReply.call]] reads it, and names no added
     * command. At `/wait`, a POST waits on `watch` as [[Waited.watchOf]] reads its
     * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
     * body it does not read 400, each waiting on nothing. Any other path 404.
@@ -85,7 +85,7 @@ private[commands] final class Routes private (
             .toOption
             .filter(n => commands.offered.exists(_.schema.name == ToolName.value(n))) match {
             case None => CallResult.NoSuchTool
-            case Some(name) => Answered.call(run(caller, name, call.arguments))
+            case Some(name) => RouteReply.call(run(caller, name, call.arguments))
           }
         )
     }
@@ -113,9 +113,9 @@ private[commands] final class Routes private (
     */
   private def run(caller: Caller, name: ToolName, args: ujson.Obj) =
     own.find(_.name == name) match {
-      case Some(o) if !caller.believed.dominates(o.least) => Answered.below(name, o.least)
-      case Some(o) => Answered.command(o.run(ran(caller), args))
-      case None => Answered.command(ran(caller)(name, args))
+      case Some(o) if !caller.believed.dominates(o.least) => RouteReply.below(name, o.least)
+      case Some(o) => RouteReply.command(o.run(ran(caller), args))
+      case None => RouteReply.command(ran(caller)(name, args))
     }
 
   private def ran(caller: Caller): Ran = (name, args) =>

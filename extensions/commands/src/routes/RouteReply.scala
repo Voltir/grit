@@ -11,7 +11,7 @@ import grit.mcp.wire.CallResult
 /** What a command came to, as every route that runs one answers it: one table, so `/command` and
   * `/mcp` cannot disagree.
   */
-private[commands] object Answered {
+private[commands] object RouteReply {
 
   /** The command's text 200 when done; its reason 409 when it refused; 404 for a name no
     * enabled plugin's command has; 400 for arguments it does not read; 403 for an account no
