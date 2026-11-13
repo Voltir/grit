@@ -48,6 +48,9 @@ final case class Request private (
     */
   def queryValues(name: String): Vector[String] =
     sentQuery.collect { case (n, v) if n == name => v }
+
+  /** The name of every query parameter sent, each once, in the order first sent. */
+  def queryNames: Vector[String] = sentQuery.map(_._1).distinct
 }
 
 object Request {

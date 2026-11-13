@@ -50,6 +50,10 @@ object RequestTests extends TestSuite {
       )
     }
 
+    test("every query parameter's name is listed once, in the order first sent") {
+      read("/x?b=1&a=2&b=3&flag&A=4").queryNames ==> Vector("b", "a", "flag", "A")
+    }
+
     test("a header is found by its name in any case, every value kept in order") {
       val r = read("/", Vector("Content-Type" -> "text/plain", "X-Trace" -> "1", "x-trace" -> "2"))
       (
