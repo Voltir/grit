@@ -82,5 +82,13 @@ object HostsTests extends TestSuite {
         Some("\"[::1]\" is no host's name")
       )
     }
+
+    test("a name is ASCII labels, each starting and ending with a letter or digit, or IPv6 hex") {
+      val names = Vector(".", "-", "a..b", "-a.example", "a-.example", "١::١", "ｆe80::1")
+      names.map(n => Hosts.of(Vector(n)).left.toOption) ==>
+        names.map(n => Some(s"\"$n\" is no host's name"))
+      Vector("my-host.example", "a", "127.0.0.1", "::1", "FE80::1", "::ffff:127.0.0.1")
+        .map(n => Hosts.of(Vector(n)).isRight) ==> Vector(true, true, true, true, true, true)
+    }
   }
 }
