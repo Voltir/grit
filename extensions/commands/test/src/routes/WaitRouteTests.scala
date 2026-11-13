@@ -67,6 +67,8 @@ object WaitRouteTests extends TestSuite {
       )
       waited(r, ujson.Obj("commit" -> ujson.Obj("holder" -> "desktop/fixer")))
       waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 3600))
+      waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 1e10))
+      waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 1e300))
       script.asked.map(a => (a.by, a.room, a.what, a.within)) ==> Vector(
         (
           Owner.account,
@@ -88,6 +90,18 @@ object WaitRouteTests extends TestSuite {
           EdgeContracts.Room,
           got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
           EdgeWatch.Longest
+        ),
+        (
+          Owner.account,
+          EdgeContracts.Room,
+          got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
+          EdgeWatch.Longest
+        ),
+        (
+          Owner.account,
+          EdgeContracts.Room,
+          got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
+          EdgeWatch.Longest
         )
       )
     }
@@ -100,12 +114,16 @@ object WaitRouteTests extends TestSuite {
         ujson.Obj("commit" -> ujson.Obj("worktree" -> "/a", "holder" -> "h")),
         ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "since" -> "yesterday"),
         ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> -1),
+        ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> 1.5),
+        ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> "60"),
         ujson.Obj("document" -> 7),
         ujson.Obj("nothing" -> true)
       ).map(waited(r, _)) ==> Vector(
         (Status.BadRequest, "worktree is an absolute path"),
         (Status.BadRequest, "commit names a worktree or a holder"),
         (Status.BadRequest, "since is an ISO-8601 instant"),
+        (Status.BadRequest, "within is whole seconds, 0 or more"),
+        (Status.BadRequest, "within is whole seconds, 0 or more"),
         (Status.BadRequest, "within is whole seconds, 0 or more"),
         (Status.BadRequest, "document is a key"),
         (Status.BadRequest, "a watch names a commit, or what this edge's holding watch reads")

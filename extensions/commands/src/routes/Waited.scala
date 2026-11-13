@@ -16,8 +16,8 @@ import grit.edge.http.Status
 /** What `/wait` reads from a body, and how it answers what came of the watch. */
 private[commands] object Waited {
 
-  /** What `body` asks a watch for, and how long it waits, `within` read as whole seconds
-    * ([[Routes.Within]] when absent) and clamped by [[EdgeWatch.bounded]]; or why not:
+  /** What `body` asks a watch for, and how long it waits, `within` read as whole seconds, 0 or
+    * more ([[Routes.Within]] when absent), any count clamped by [[EdgeWatch.bounded]]; or why not:
     *   - `{"commit": {"worktree": "<absolute path>"}}`: a commit in that directory on `worker`
     *     ([[Worktrees.at]]), or `{"commit": {"holder": "<holder>"}}`: one by a session working
     *     as the holder; either at or after `since` (an ISO-8601 instant), by default `now`;
@@ -35,7 +35,7 @@ private[commands] object Waited {
       case Some(w) =>
         w.numOpt
           .filter(s => s >= 0 && s.isWhole)
-          .map(s => EdgeWatch.bounded(s.toLong.seconds))
+          .map(s => EdgeWatch.bounded(s.min(EdgeWatch.Longest.toSeconds.toDouble).toLong.seconds))
           .toRight("within is whole seconds, 0 or more")
     }
     val what: Either[String, WatchFor] = o.get("commit") match {
