@@ -16,7 +16,8 @@ In dependency order, each package importing only those before it:
   credentials per worker change this package and no route.
 - **`declare`**: what a deployment hands the edge as values, pure: its own commands
   (`OwnCommand`), each guarding a plugin's command or added beside them, and lent the request's
-  way to run a plugin's command (`Ran`) for that request alone.
+  way to run a plugin's command (`Ran`) for that request alone; and the wait on a plugin's
+  document `/wait` reads (`HoldingWatch`), so the edge names no plugin.
 - **`routes`**: the routes, private to the module, and the one table that turns what a command
   came to into a status (`Answered`), so the routes cannot disagree. A request `Hosts` does not
   admit is refused before any route; no GET runs a command.

@@ -24,7 +24,17 @@ object McpRouteTests extends TestSuite {
     scripted(Vector(listed("done", reads = false), listed("look", reads = true)))(answering)
 
   private def routes(commands: ScriptedCommands, own: Vector[OwnCommand]): Routes^ =
-    new Routes(commands, new SetClock(Now), EdgeContracts.Room, Hosts.loopback, Owners, own, Server)
+    new Routes(
+      commands,
+      Unwatched,
+      new SetClock(Now),
+      EdgeContracts.Room,
+      Hosts.loopback,
+      Owners,
+      own,
+      None,
+      Server
+    )
 
   /** `method` with `params` posted to `/mcp` in 2025-11-25: the answer's status and JSON body. */
   private def rpc(

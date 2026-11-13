@@ -1,9 +1,11 @@
 package grit.commands.routes
 
+import scala.concurrent.duration.*
+
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.{OwnCommand, Ran}
+import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
 import grit.core.clock.Clock
-import grit.core.edge.PluginCommands
+import grit.core.edge.{EdgeWatch, PluginCommands}
 import grit.core.place.Place
 import grit.core.tool.ToolName
 import grit.edge.http.{Hosts, Request, Response, Status, Verb}
@@ -14,11 +16,13 @@ import grit.mcp.wire.{CallResult, Listing, McpTool, Posted, Rpc, ServerInfo}
   */
 private[commands] final class Routes(
     commands: PluginCommands,
+    watch: EdgeWatch,
     clock: Clock^,
     room: Place,
     hosts: Hosts,
     callers: Callers,
     own: Vector[OwnCommand],
+    holding: Option[HoldingWatch],
     server: ServerInfo
 ) {
 
@@ -29,7 +33,9 @@ private[commands] final class Routes(
     * message ([[Rpc.received]]) from a caller: `tools/list` lists every offered plugin command
     * ([[McpTool.described]]), a guarded one by the plugin's own schema; `tools/call` runs one as
     * `/command` would, its answer a result as [[Answered.call]] reads it, and names no added
-    * command. Any other path 404.
+    * command. At `/wait`, a POST from a caller waits on `watch` as [[Waited.watchOf]] reads its
+    * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
+    * body it does not read 400, each waiting on nothing. Any other path 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -38,6 +44,7 @@ private[commands] final class Routes(
       request.path match {
         case Vector(Routes.Command, raw) => commanded(request, raw)
         case Vector(Routes.Mcp) => mcp(request)
+        case Vector(Routes.Wait) => waited(request)
         case _ =>
           Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
       }
@@ -89,6 +96,28 @@ private[commands] final class Routes(
         }
     }
 
+  private def waited(request: Request): Response =
+    if (request.verb != Verb.Post)
+      Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a watch; nothing else waits")
+    else
+      callers.from(request) match {
+        case Left(why) => Callers.refused(why)
+        case Right(caller) =>
+          Routes
+            .arguments(request.body)
+            .flatMap(Waited.watchOf(_, caller.worker, holding, clock.now())) match {
+            case Left(why) => Response.text(Status.BadRequest, why)
+            case Right((what, within)) =>
+              val (status, text) = Waited.watched(
+                what,
+                within,
+                holding,
+                watch.until(caller.account, room, what, within)
+              )
+              Response.text(status, text)
+          }
+      }
+
   /** `name` run for `caller` with `args`: a deployment's own command of that name, guarding or
     * added, in place of a plugin's.
     */
@@ -110,6 +139,14 @@ private[commands] object Routes {
 
   /** `mcp`: where MCP messages are posted. */
   val Mcp: String = "mcp"
+
+  /** `wait`: where a watch is posted. */
+  val Wait: String = "wait"
+
+  /** 5 minutes: how long a watch waits when its body names no `within`; a client gone meanwhile
+    * holds its place among [[EdgeWatch.Most]] until then.
+    */
+  val Within: FiniteDuration = 5.minutes
 
   /** `body` as a command's arguments: an empty body none, otherwise a JSON object, or why not. */
   def arguments(body: String): Either[String, ujson.Obj] =

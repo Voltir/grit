@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
 import grit.commands.worker.WorkerName
-import grit.core.edge.{CommandError, EdgeContracts, PluginCommands, ScriptedCommands}
+import grit.core.edge.{CommandError, EdgeContracts, EdgeWatch, PluginCommands, ScriptedCommands}
 import grit.core.plugin.CommandOutcome
 import grit.core.provider.ToolSchema
 import grit.core.tool.ToolName
@@ -53,6 +53,9 @@ object RouteFixtures {
       answer: (ToolName, ujson.Value) -> Either[CommandError, CommandOutcome]
   ): ScriptedCommands =
     new ScriptedCommands(offered, Set(Owner.account))(answer)
+
+  /** A watch no test of a command's route reaches. */
+  def Unwatched: EdgeWatch = EdgeWatch.Refusing
 
   val Server: ServerInfo = ServerInfo("commands", "1", None)
 

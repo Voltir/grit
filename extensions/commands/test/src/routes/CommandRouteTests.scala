@@ -33,11 +33,13 @@ object CommandRouteTests extends TestSuite {
   ): Routes^ =
     new Routes(
       commands,
+      Unwatched,
       new SetClock(Now),
       EdgeContracts.Room,
       Hosts.loopback,
       callers,
       own,
+      None,
       Server
     )
 
