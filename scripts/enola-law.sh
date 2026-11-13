@@ -40,14 +40,16 @@ fi
 # quarantine module starts importing without a matching rule may then be imported
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
 # driver, the pool), grit.databases' connect (JDBC), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK), grit.formats
-# (PDFBox) or grit.host (processes) imports must be named by a rule.
+# (PDFBox), grit.edge's http package (the JDK HTTP server) or grit.host (processes) imports must be
+# named by a rule.
 unruled=$( { grep -oE '"name":"core/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql|com\.zaxxer\.hikari)\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/databases/src/connect -\\u003e (java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"extensions/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"extensions/formats/src(/[a-z]+)* -\\u003e org\.apache\.pdfbox\.[^"]*"' .enola/facts.jsonl; } |
+    grep -oE '"name":"extensions/formats/src(/[a-z]+)* -\\u003e org\.apache\.pdfbox\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"core/edge/src/http(/[a-z]+)* -\\u003e com\.sun\.net\.httpserver\.[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
     grep -qF "\"* -> $class\"" enola-intent.yaml || echo "$class"
   done)
@@ -127,6 +129,18 @@ pdfbox=$(names 'org\.apache\.pdfbox' | grep -vE '^extensions/formats/(src|test/s
 if [ -n "$pdfbox" ]; then
   echo "Only grit.formats' pdf package may name PDFBox; these sources do:" >&2
   printf '  %s\n' $pdfbox >&2
+  failed=1
+fi
+
+# TRAP: rule 1c2 sees an import from a listed folder alone. A fully qualified name makes no
+# edge, and a module or package added since the list was written is in no component: grep
+# every production source for the package. Only grit.edge's http package may write it; test
+# fakes may.
+httpserver=$( { grep -lE 'com\.sun\.net\.httpserver' -- "${production[@]}" || true; } |
+  grep -vE '^core/edge/src/http/' || true)
+if [ -n "$httpserver" ]; then
+  echo "Only grit.edge's http package may name com.sun.net.httpserver; these sources do:" >&2
+  printf '  %s\n' $httpserver >&2
   failed=1
 fi
 

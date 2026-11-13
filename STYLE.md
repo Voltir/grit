@@ -151,7 +151,9 @@ java.sql.Connection` — may name it fully-qualified without an `import`; that i
 definition, not an I/O call site.)
 
 The JDK HTTP client lives in `grit.models` (model calls) and `grit.mcp` (MCP servers), each
-an egress of its own; neither names the other.
+an egress of its own; neither names the other. The JDK HTTP server (`com.sun.net.httpserver`)
+lives in `grit.edge`'s `http` package, the one listener every edge serving HTTP shares; the
+rest of `grit.edge` does not name it.
 
 This is the rule most likely to be inconvenient, and the one most worth holding. It is
 also where capture checking will fight hardest; a per-file escape inside a quarantine

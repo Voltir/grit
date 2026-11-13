@@ -3,8 +3,8 @@
 # It enforces these things:
 #   1. Only grit.dbos may import dev.dbos.*, only it and grit.databases' connect JDBC or the
 #      Postgres driver, only
-#      grit.models and grit.mcp the JDK HTTP client, only grit.slack the Slack SDK, and only
-#      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone;
+#      grit.models and grit.mcp the JDK HTTP client, only grit.edge's http package the JDK HTTP
+#      server, only grit.slack the Slack SDK, and only grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone;
 #      and only grit.dbos (besides core's visibility package) names a label's stored parts (ADR 0030)
 #   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (core/prose/README.md); that only its json
@@ -62,6 +62,15 @@ components:
   - name: outside-egress
     kind: dependency
     match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "extensions/knowledge/**", "extensions/projects/**", "core/edge/**", "extensions/slack/**", "extensions/formats/**", "extensions/chat/**", "extensions/databases/**"]
+
+  # Every module's main sources but grit.edge's http package, for the JDK HTTP server's
+  # quarantine (STYLE rule 8). Main sources alone: test fakes serve HTTP with it, and core's
+  # first, a folder, so scripts/enola-plant plants there. grit.edge's root and desk are listed
+  # by folder; a module or a package added outside these is caught meanwhile by enola-law.sh's
+  # grep, which reads every production source.
+  - name: outside-edge-http
+    kind: dependency
+    match: ["core/core/src", "core/core/src/**", "core/edge/src", "core/edge/src/desk", "core/edge/src/desk/**", "core/act/src", "core/act/src/**", "core/assembly/src", "core/assembly/src/**", "core/dbos/src", "core/dbos/src/**", "core/job/src", "core/job/src/**", "core/lifecycle/src", "core/lifecycle/src/**", "core/prose/src", "core/prose/src/**", "core/turn/src", "core/turn/src/**", "deployments/app/src", "deployments/app/src/**", "eval/harness/src", "eval/harness/src/**", "eval/src", "eval/src/**", "extensions/chat/src", "extensions/chat/src/**", "extensions/databases/src", "extensions/databases/src/**", "extensions/digest/src", "extensions/digest/src/**", "extensions/formats/src", "extensions/formats/src/**", "extensions/host/src", "extensions/host/src/**", "extensions/knowledge/src", "extensions/knowledge/src/**", "extensions/mcp/src", "extensions/mcp/src/**", "extensions/models/src", "extensions/models/src/**", "extensions/projects/src", "extensions/projects/src/**", "extensions/remind/src", "extensions/remind/src/**", "extensions/slack/src", "extensions/slack/src/**", "extensions/tools/src", "extensions/tools/src/**", "extensions/tui/examples/src", "extensions/tui/examples/src/**", "extensions/tui/src", "extensions/tui/src/**", "kit/src", "kit/src/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
@@ -437,6 +446,36 @@ rules:
     pattern: "* -> java.net.http.HttpTimeoutException"
     mode: strict
     because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
+
+  # -------------------------------------------------------------------------------------
+  # 1c2. Only grit.edge's http package imports the JDK HTTP server: the one listener every edge
+  # serving HTTP shares. One rule per class it imports, and one for the package, which a
+  # wildcard import makes the edge to. A fully qualified name makes no edge at all:
+  # scripts/enola-law.sh greps every production source for the package's name.
+  # -------------------------------------------------------------------------------------
+  - id: only-edge-http-imports-http-package
+    forbid_name: outside-edge-http
+    pattern: "* -> com.sun.net.httpserver"
+    mode: strict
+    because: "STYLE rule 8: the JDK's HTTP server is quarantined to grit.edge's http package, the one listener every edge serving HTTP shares"
+
+  - id: only-edge-http-imports-http-server
+    forbid_name: outside-edge-http
+    pattern: "* -> com.sun.net.httpserver.HttpServer"
+    mode: strict
+    because: "STYLE rule 8: the JDK's HTTP server is quarantined to grit.edge's http package, the one listener every edge serving HTTP shares"
+
+  - id: only-edge-http-imports-http-exchange
+    forbid_name: outside-edge-http
+    pattern: "* -> com.sun.net.httpserver.HttpExchange"
+    mode: strict
+    because: "STYLE rule 8: the JDK's HTTP server is quarantined to grit.edge's http package, the one listener every edge serving HTTP shares"
+
+  - id: only-edge-http-imports-http-handler
+    forbid_name: outside-edge-http
+    pattern: "* -> com.sun.net.httpserver.HttpHandler"
+    mode: strict
+    because: "STYLE rule 8: the JDK's HTTP server is quarantined to grit.edge's http package, the one listener every edge serving HTTP shares"
 
   # -------------------------------------------------------------------------------------
   # 1d. Only grit.host starts a process: a command runs on the machine, and running things
