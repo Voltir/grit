@@ -9,7 +9,8 @@ deployment's own commands and waits need of a plugin is handed to it as values.
 In dependency order, each package importing only those before it:
 
 - **`worker`**: a worker's name, and where its work is placed: a directory on a worker is the
-  place `worker:<name>/<dir>`.
+  place `worker:<name>/<dir>`; and the claim holder a session there, or an agent it starts,
+  works as (`Holders`), readable in a claims listing and the same whoever computes it.
 - **`caller`**: who a request is from (`Caller`: an account, the integrity its words are
   believed at, its worker), and the deployment's rule for it (`Callers`): today a request with no
   credential is the owner's, and one with a credential is refused. Routes ask `Callers` alone, so
@@ -19,7 +20,8 @@ In dependency order, each package importing only those before it:
   way to run a plugin's command (`Ran`) for that request alone; and the wait on a plugin's
   document `/wait` reads (`HoldingWatch`), so the edge names no plugin.
 - **`routes`**: the routes, private to the module, and the one table that turns what a command
-  came to into a status (`RouteReply`), so the routes cannot disagree. A request `Hosts` does not
+  came to into a status (`RouteReply`), so the routes cannot disagree. A query parameter or body
+  key a route does not read is 400, named. A request `Hosts` does not
   admit, or `Callers` finds no caller for, is refused before any route; no GET runs a command.
 - **`edge`**: `CommandsEdge`, the `ServedEdge` a deployment mounts: `of` refuses what cannot be
   served safely (two own commands of one name, a caller outside its realm, no credential beyond

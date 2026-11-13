@@ -6,6 +6,7 @@ import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeWatch, PluginCommands}
+import grit.core.id.ClaimHolder
 import grit.core.place.Place
 import grit.core.tool.ToolName
 import grit.edge.http.{Hosts, Request, Response, Status, Verb}
@@ -37,7 +38,9 @@ private[commands] final class Routes private (
     * `/command` would, its answer a result as [[RouteReply.call]] reads it, and names no added
     * command. At `/wait`, a POST waits on `watch` as [[Waited.watchOf]] reads its
     * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
-    * body it does not read 400, each waiting on nothing. Any other path 404.
+    * body it does not read 400, each waiting on nothing. At `/holder`, a GET answers, as text, the
+    * holder its query names on the caller's worker ([[Briefing.holderOf]]), touching no store;
+    * another verb 405, a query it does not read 400. Any other path 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -50,6 +53,7 @@ private[commands] final class Routes private (
             case Vector(Routes.Command, raw) => commanded(request, caller, raw)
             case Vector(Routes.Mcp) => mcp(request, caller)
             case Vector(Routes.Wait) => waited(request, caller)
+            case Vector(Briefing.Holder) => holder(request, caller)
             case _ =>
               Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
           }
@@ -89,6 +93,17 @@ private[commands] final class Routes private (
           }
         )
     }
+
+  private def holder(request: Request, caller: Caller): Response =
+    if (request.verb != Verb.Get)
+      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a holder; nothing else reads one")
+    else
+      Briefing
+        .holderOf(request, caller.worker)
+        .fold(
+          Response.text(Status.BadRequest, _),
+          h => Response.text(Status.Ok, ClaimHolder.value(h))
+        )
 
   private def waited(request: Request, caller: Caller): Response =
     if (request.verb != Verb.Post)

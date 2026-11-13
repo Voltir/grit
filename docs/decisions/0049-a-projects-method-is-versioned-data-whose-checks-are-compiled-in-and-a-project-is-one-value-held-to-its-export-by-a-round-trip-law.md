@@ -52,10 +52,18 @@ Decision:
   keep never changes a state; a move is refused once the pinned method's digest has changed.
   Past the bound a write is refused, never a document withdrawn.
   A claim is one of the plugin's claims (`grit.core.claim.Claims`, the table `grit.claims`),
-  never a document, so claiming writes no version: made as a role for a slot (the session or
+  never a document, so claiming writes no version: made as a role for a holder (the session or
   agent its brief is for) at its artifact's label, one live claim per artifact and one artifact
-  per slot at each label. It lapses unless its slot's sessions keep working (ADR 0050), and is
-  deleted by its release, by a claim taking it over once lapsed, or by the sweep.
+  per holder at each label. It lapses unless its holder's sessions keep working (ADR 0050), and
+  is deleted by its release, by a claim taking it over once lapsed, or by the sweep.
+  *Revised:* a harness's holder is one rule, `grit.commands.worker.Holders.of`, computed by the
+  commands edge (ADR 0062) and nowhere else: `<worker>/<directory's last segment>-<hash>` for a
+  session, and `/<agent type>/<starting session's hash>` after it for an agent that session
+  starts, so a claims listing stays readable. A hashed session cannot be written by hand, so
+  `GET /holder` is the one way to learn one, and it is no MCP tool: a harness's adapter has its
+  start hook print the session's holder and the form for an agent type it starts. A manager can
+  still claim before its agent exists: the worker, the directory, the type and its own session
+  are known first.
 
 Consequences:
 

@@ -4,12 +4,13 @@ import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
 import grit.commands.worker.WorkerName
+import grit.core.clock.SetClock
 import grit.core.edge.{CommandError, EdgeContracts, EdgeWatch, PluginCommands, ScriptedCommands}
 import grit.core.plugin.CommandOutcome
 import grit.core.provider.ToolSchema
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.edge.http.{Request, Verb}
+import grit.edge.http.{Hosts, Request, Verb}
 import grit.mcp.wire.ServerInfo
 
 /** What the routes' suites share: the owner, as the contracts' reader, and requests to them. */
@@ -61,4 +62,26 @@ object RouteFixtures {
 
   /** Requests with no credential are [[Owner]]'s. */
   val Owners: Callers = Callers.owner(Owner)
+
+  /** The routes over `commands`, no watch, [[Owners]] on loopback, at [[Now]] in
+    * [[EdgeContracts.Room]], with no own command.
+    */
+  def routed(commands: ScriptedCommands = scripted(Vector.empty)(Unrun)): Routes^ =
+    got(
+      Routes.of(
+        commands,
+        Unwatched,
+        new SetClock(Now),
+        EdgeContracts.Room,
+        Hosts.loopback,
+        Owners,
+        Vector.empty,
+        None,
+        Server
+      )
+    )
+
+  /** What a command no test of a session's route runs answers. */
+  def Unrun(name: ToolName, args: ujson.Value): Either[CommandError, CommandOutcome] =
+    Left(CommandError.Unavailable("no command runs here"))
 }

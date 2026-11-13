@@ -20,10 +20,14 @@ import grit.mcp.wire.ServerInfo
   *   - `POST /mcp` takes one MCP message: `tools/list` lists the plugins' offered commands,
   *     `tools/call` runs one as `/command` would;
   *   - `POST /wait` waits on the store for a commit, or for what `holding` reads, blocking for the
-  *     whole wait.
-  * A request with no caller ([[Callers.from]]) is 403; another verb 405, so no GET runs or waits
-  * on anything; any other path 404. It attests `realm` as `attester`, saying each of `callers`'
-  * accounts is a full member. It holds no conversation, so it asks nothing, and delivers nothing.
+  *     whole wait;
+  *   - `GET /holder?harness=&dir=[&session=&type=]` answers the claim holder a session in `dir`,
+  *     or an agent of `type` that `session` starts, works as on the caller's worker
+  *     ([[grit.commands.worker.Holders.of]]): the one way a claim learns it.
+  * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
+  * GET runs, waits on or writes anything; any other path 404. It attests `realm` as `attester`,
+  * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks
+  * nothing, and delivers nothing.
   */
 final class CommandsEdge private (
     val name: EdgeName,
