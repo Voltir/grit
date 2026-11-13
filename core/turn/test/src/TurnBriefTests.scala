@@ -96,7 +96,7 @@ object TurnBriefTests extends TestSuite {
   /** [[lately]]'s digest as a boundary shows it. */
   private def shownLog =
     Shown.sessionLog(
-      SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
+      SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, SessionDigest.Chars)
     )
 
   /** What a boundary showing both reserves for them. */
@@ -223,7 +223,7 @@ object TurnBriefTests extends TestSuite {
       val documents = new InMemoryDocuments
       val version = brief(documents)
       val digest =
-        SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
+        SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, SessionDigest.Chars)
       run(documents, Some(holder), Some(lately)) ==> (
         Some(Vector(shownBrief, shownLog, answering, Message.User("one"))),
         Vector(bothCost),
@@ -322,7 +322,7 @@ object TurnBriefTests extends TestSuite {
       brief(documents)
       val other = got(ClaimHolder.of("reviewer"))
       val digest =
-        SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, TurnAssembly.DigestChars)
+        SessionDigest.of(lately, SessionDigest.Window.LacksLastSaid, SessionDigest.Chars)
       val (messages, _, recorded, cost) = run(documents, Some(other), Some(lately))
       (messages, recorded, cost) ==> (
         Some(Vector(shownLog, answering, Message.User("one"))),
@@ -339,7 +339,7 @@ object TurnBriefTests extends TestSuite {
       val summary = got(Session.Summary.of("Kept the brief beside the session's log."))
       val closed = lately.copy(session = lately.session.copy(summary = Some(summary)))
       def log(window: SessionDigest.Window) =
-        Shown.sessionLog(SessionDigest.of(closed, window, TurnAssembly.DigestChars))
+        Shown.sessionLog(SessionDigest.of(closed, window, SessionDigest.Chars))
       val lacking = log(SessionDigest.Window.LacksLastSaid)
       val cost = CharEstimate.message(shownBrief) + CharEstimate.message(lacking)
       val (messages, reserved, _, recorded) = run(documents, Some(holder), Some(closed))

@@ -483,9 +483,6 @@ private[turn] object TurnAssembly {
           .map(failed)
       }
 
-  /** 2,500: the most characters a session's digest at a boundary shows. */
-  val DigestChars: Int = 2500
-
   /** What a boundary of `turn`'s window shows before what its assembler draws, read through
     * `db`: the brief of the holder its conversation's origin works as
     * ([[TurnSessions.holder]], [[grit.core.document.DocumentSearch.briefOf]] at its first entry's
@@ -580,7 +577,7 @@ private[turn] object TurnAssembly {
       log.fold(Tokens.Zero)(d => estimator.message(Shown.sessionLog(d)))
 
     private def digest(said: SessionDigest.Window): Option[String] =
-      lately.map(SessionDigest.of(_, said, DigestChars)).filter(_.nonEmpty)
+      lately.map(SessionDigest.of(_, said, SessionDigest.Chars)).filter(_.nonEmpty)
   }
 
   /** `carried` ([[TurnSteps.Env.carried]]). */

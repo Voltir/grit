@@ -21,6 +21,11 @@ object SessionDigest {
   /** 500: the most characters of what the session last said a digest shows. */
   val Said: Int = 500
 
+  /** 2,500: the most characters a session's digest shows where a window or a harness's session
+    * opens.
+    */
+  val Chars: Int = 2500
+
   /** `lately`'s digest for `window`, at most `chars` characters, as markdown lines: a heading;
     * when the session started, was last active and ended if it did, with its counters; that its
     * log is full, when it is ([[Log.HardCap]]); how many commits its agents made, when any; what
