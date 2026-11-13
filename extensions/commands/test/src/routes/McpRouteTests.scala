@@ -115,7 +115,7 @@ object McpRouteTests extends TestSuite {
       val at = OwnCommand.guarding(
         ToolName("done"),
         Integrity.Member,
-        (ran, a) => ran(ToolName("done"), ujson.Obj("text" -> "guarded"))
+        (ran, _) => ran(ToolName("done"), ujson.Obj("text" -> "guarded"))
       )
       (call(routes(strict, Vector(above)), "done"), call(routes(kept, Vector(at)), "done")) ==> (
         Right(("done is given only by a caller believed at authority", true)),

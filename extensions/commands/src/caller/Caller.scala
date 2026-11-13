@@ -1,5 +1,7 @@
 package grit.commands.caller
 
+import scala.annotation.unused
+
 import grit.commands.worker.WorkerName
 import grit.core.edge.{Asked, EdgeRefusal, RealmSource, Variable}
 import grit.core.identity.{Account, Realm, Standing}
@@ -44,7 +46,7 @@ final class Callers private (owner: Caller) extends caps.Pure {
   /** These callers, ready to be asked, with what `env` holds of [[needs]]; never refused while
     * none is read.
     */
-  def opened(env: Map[String, String]): Either[EdgeRefusal, Callers] = Right(this)
+  def opened(@unused env: Map[String, String]): Either[EdgeRefusal, Callers] = Right(this)
 }
 
 object Callers {
