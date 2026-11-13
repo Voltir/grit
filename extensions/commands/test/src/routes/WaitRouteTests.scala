@@ -35,16 +35,18 @@ object WaitRouteTests extends TestSuite {
   )
 
   private def waiting(script: ScriptedWatch.Script, vouched: Boolean = true): Routes^ =
-    new Routes(
-      scripted(Vector.empty)((_, _) => Left(grit.core.edge.CommandError.Unavailable("unused"))),
-      new ScriptedWatch(if (vouched) Set(Owner.account) else Set.empty, script),
-      new SetClock(Now),
-      EdgeContracts.Room,
-      Hosts.loopback,
-      Owners,
-      Vector.empty,
-      Some(holding),
-      Server
+    got(
+      Routes.of(
+        scripted(Vector.empty)((_, _) => Left(grit.core.edge.CommandError.Unavailable("unused"))),
+        new ScriptedWatch(if (vouched) Set(Owner.account) else Set.empty, script),
+        new SetClock(Now),
+        EdgeContracts.Room,
+        Hosts.loopback,
+        Owners,
+        Vector.empty,
+        Some(holding),
+        Server
+      )
     )
 
   private def waited(r: Routes^, body: ujson.Obj) = {

@@ -31,6 +31,7 @@ import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
 import grit.core.plugin.CommandOutcome
+import grit.core.provider.ToolSchema
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
 import grit.core.store.{InMemoryVoucher, LastWord, StoreError, TestJot, Tx, Voucher}
@@ -161,6 +162,25 @@ object CommandsEdgeTests extends TestSuite {
         Some(EdgeRefusal.Refused("the own command done is added, but a plugin offers it"))
       )
       voucher.vouched ==> Vector.empty
+    }
+
+    test("open refuses an offered command that /mcp cannot list") {
+      val odd = PluginCommands.Listed(ToolSchema("odd", "Runs odd.", ujson.Arr()), reads = true)
+      val commands = scripted(Vector(odd))((_, _) => Right(CommandOutcome.Done("")))
+      got(edge()).open(
+        stores(commands, InMemoryVoucher.none()),
+        Map.empty,
+        new SetClock(Now),
+        _ => ()
+      ) match {
+        case Left(refusal) =>
+          refusal ==> EdgeRefusal.Refused(
+            "an offered command cannot be listed at /mcp: odd's parameters are not a JSON object"
+          )
+        case Right(open) =>
+          open.close()
+          throw new java.lang.AssertionError("opened with a command /mcp cannot list")
+      }
     }
 
     test("open fails when a caller's account cannot be vouched, and listens on nothing") {

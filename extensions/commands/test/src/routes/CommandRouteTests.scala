@@ -31,16 +31,18 @@ object CommandRouteTests extends TestSuite {
       own: Vector[OwnCommand] = Vector.empty,
       callers: Callers = Owners
   ): Routes^ =
-    new Routes(
-      commands,
-      Unwatched,
-      new SetClock(Now),
-      EdgeContracts.Room,
-      Hosts.loopback,
-      callers,
-      own,
-      None,
-      Server
+    got(
+      Routes.of(
+        commands,
+        Unwatched,
+        new SetClock(Now),
+        EdgeContracts.Room,
+        Hosts.loopback,
+        callers,
+        own,
+        None,
+        Server
+      )
     )
 
   private def posted(r: Routes^, name: String, body: String = """{"text":"it"}""") = {

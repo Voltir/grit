@@ -45,8 +45,9 @@ final class CommandsEdge private (
   override def attester: Option[AttesterName] = Some(attesterName)
 
   /** Listens at `at` once each caller's account is vouched. `Refused` when a guarding own command
-    * names no offered plugin command, an added one names an offered command, or `at` cannot be
-    * listened on, each before any account is vouched; `Failed` when a caller's account cannot be
+    * names no offered plugin command, an added one names an offered command, or an offered
+    * command cannot be listed at `/mcp`, each before any account is vouched, or when `at` cannot
+    * be listened on; `Failed` when a caller's account cannot be
     * vouched. When the deployment does not trust `attester` for `realm`, nothing is vouched and
     * it listens all the same: a caller's account no person is linked to is then 403 on every
     * request ([[grit.core.edge.CommandError.NotVouched]]).
@@ -69,19 +70,12 @@ final class CommandsEdge private (
         }
         .map(EdgeRefusal.Refused(_))
         .toLeft(())
+      routes <- Routes
+        .of(stores.commands, stores.watch, clock, room, hosts, opened, own, holding, server)
+        .left
+        .map(EdgeRefusal.Refused(_))
       source = opened.source(realm)
       _ <- CommandsEdge.vouched(stores, source, opened.accounts)
-      routes = new Routes(
-        stores.commands,
-        stores.watch,
-        clock,
-        room,
-        hosts,
-        opened,
-        own,
-        holding,
-        server
-      )
       listener <- Listener.open(at, (request, _) => routes.answer(request), log)
     } yield {
       log(s"${EdgeName.value(name)}: serving on http://${listener.at.shown}")

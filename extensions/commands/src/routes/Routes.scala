@@ -12,9 +12,10 @@ import grit.edge.http.{Hosts, Request, Response, Status, Verb}
 import grit.mcp.wire.{CallResult, Listing, McpTool, Posted, Rpc, ServerInfo}
 
 /** The commands edge's routes: each request admitted by `hosts`, its caller asked of `callers`,
-  * and run in `room`, dated by `clock`, through `commands` or, by its name, one of `own`.
+  * and run in `room`, dated by `clock`, through `commands` or, by its name, one of `own`; `tools`,
+  * every offered command as `/mcp` lists it.
   */
-private[commands] final class Routes(
+private[commands] final class Routes private (
     commands: PluginCommands,
     watch: EdgeWatch,
     clock: Clock^,
@@ -23,7 +24,8 @@ private[commands] final class Routes(
     callers: Callers,
     own: Vector[OwnCommand],
     holding: Option[HoldingWatch],
-    server: ServerInfo
+    server: ServerInfo,
+    tools: Vector[ujson.Obj]
 ) {
 
   /** `request` answered, running nothing first when `hosts` do not admit it, or it has no caller
@@ -74,11 +76,7 @@ private[commands] final class Routes(
       case list: Posted.List =>
         list.answered(
           if (list.cursor.nonEmpty) Listing.NoSuchCursor
-          else
-            Listing.Tools(
-              commands.offered.flatMap(l => McpTool.described(l.schema, l.reads).toOption),
-              None
-            )
+          else Listing.Tools(tools, None)
         )
       case call: Posted.Call =>
         call.answered(
@@ -125,6 +123,30 @@ private[commands] final class Routes(
 }
 
 private[commands] object Routes {
+
+  /** The routes, or why not: the first offered command `/mcp` cannot list
+    * ([[McpTool.described]]).
+    */
+  def of(
+      commands: PluginCommands,
+      watch: EdgeWatch,
+      clock: Clock^,
+      room: Place,
+      hosts: Hosts,
+      callers: Callers,
+      own: Vector[OwnCommand],
+      holding: Option[HoldingWatch],
+      server: ServerInfo
+  ): Either[String, Routes^{commands, watch, clock}] =
+    commands.offered
+      .foldLeft[Either[String, Vector[ujson.Obj]]](Right(Vector.empty)) { (done, l) =>
+        done.flatMap(ts => McpTool.described(l.schema, l.reads).map(ts :+ _))
+      }
+      .left
+      .map(why => s"an offered command cannot be listed at /mcp: $why")
+      .map(tools =>
+        new Routes(commands, watch, clock, room, hosts, callers, own, holding, server, tools)
+      )
 
   /** `command`: the first segment of a command's path, its name the second. */
   val Command: String = "command"

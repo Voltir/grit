@@ -23,8 +23,8 @@ In dependency order, each package importing only those before it:
   admit, or `Callers` finds no caller for, is refused before any route; no GET runs a command.
 - **`edge`**: `CommandsEdge`, the `ServedEdge` a deployment mounts: `of` refuses what cannot be
   served safely (two own commands of one name, a caller outside its realm, no credential beyond
-  loopback), and `open` refuses own commands that do not match the plugins' offered ones, vouches
-  each caller's account, and listens.
+  loopback), and `open` refuses own commands that do not match the plugins' offered ones and an
+  offered command `/mcp` cannot list, vouches each caller's account, and listens.
 
 No source file sits at the module's root. The test tree mirrors it.
 
