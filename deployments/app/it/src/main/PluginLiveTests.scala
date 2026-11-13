@@ -337,6 +337,17 @@ object PluginLiveTests extends TestSuite {
       }
     }
 
+    test("an edge's tool list marks list and sneak as reading, and note and twice not") {
+      commanding("command_listed") { (_, _, commands) =>
+        commands.offered.map(l => l.schema.name -> l.reads) ==> Vector(
+          "note" -> false,
+          "list" -> true,
+          "sneak" -> true,
+          "twice" -> false
+        )
+      }
+    }
+
     test("a reading command that writes is Left(Store(DatabaseError))") {
       commanding("command_sneaks") { (config, engine, commands) =>
         val ran = commands.run(ann, desk, Integrity.Member, ToolName("sneak"), note("k", "x"), at)

@@ -1,6 +1,6 @@
 # 0053. A plugin's command is one command whether a person gives it through an edge or a turn calls it, run for the person asking, believed at what the edge or turn gives met with the room's cap, and leaves no audit row
 
-Status: accepted (2026-10-30)
+Status: accepted (2026-10-30); revised (2026-11-13)
 
 Context: some plugins keep records a person changes directly: a project's artifacts, a
 ledger's entries. A person changes one through an edge with no model and no turn; a person
@@ -50,8 +50,8 @@ Consequences:
 
 - A person changes a plugin's records in one transaction at no model cost, or asks a turn to;
   either way through checks the plugin runs itself.
-- An edge offers commands as tools are offered (`PluginCommands.offered`), so one schema reader
-  serves both.
+- An edge offers commands as tools are offered (`PluginCommands.offered`), each marked whether
+  it only reads, so one schema reader serves both.
 - Who asked is recorded only where a plugin's data says so; a turn's write names the turn too.
 - Enforced by the compiler (`Subject.Person` takes a person, never grit; `Hosted.keeping`
   takes no gate), probes in `PluginCaptureTests` and `KeepingToolCaptureTests`, `Deployment.of`,

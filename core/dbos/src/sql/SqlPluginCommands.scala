@@ -21,7 +21,6 @@ import grit.core.plugin.{
   Plugin,
   ReadingCommand
 }
-import grit.core.provider.ToolSchema
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
@@ -46,7 +45,7 @@ private[dbos] final class SqlPluginCommands(
 
   private val commanded: Vector[Commanded] = Commanded.of(plugins)
 
-  def offered: Vector[ToolSchema] = commanded.map(_.command.spec.schema(strict = false))
+  def offered: Vector[PluginCommands.Listed] = commanded.map(PluginCommands.Listed.of)
 
   def run(
       by: Account,

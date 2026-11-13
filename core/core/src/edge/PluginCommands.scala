@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.identity.Account
 import grit.core.place.Place
-import grit.core.plugin.CommandOutcome
+import grit.core.plugin.{CommandOutcome, Commanded}
 import grit.core.provider.ToolSchema
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
@@ -13,8 +13,9 @@ import grit.core.visibility.Integrity
 /** The enabled plugins' commands, as an edge runs them for the people it serves (ADR 0053). */
 trait PluginCommands extends caps.SharedCapability {
 
-  /** Every enabled plugin's commands, as a tool list shows them. */
-  def offered: Vector[ToolSchema]
+  /** Every enabled plugin's commands, as a tool list shows them, each with whether it only reads.
+    */
+  def offered: Vector[PluginCommands.Listed]
 
   /** Runs the command `name` with `args`, given through `by` in `room` at `at`, in one transaction
     * opened for the person `by` is linked to then, in `room`
@@ -39,9 +40,29 @@ trait PluginCommands extends caps.SharedCapability {
 
 object PluginCommands {
 
+  /** A command as a tool list shows it: `schema`, and `reads`, whether it is a
+    * [[grit.core.plugin.ReadingCommand]], which runs in a read-only transaction. A keeping command
+    * is never marked reading, even one that keeps nothing, so a command marked reading never
+    * writes.
+    */
+  final case class Listed(schema: ToolSchema, reads: Boolean)
+
+  object Listed {
+
+    /** `commanded` as listed: reading when it is [[Commanded.Reading]]. */
+    def of(commanded: Commanded): Listed =
+      Listed(
+        commanded.command.spec.schema(strict = false),
+        reads = commanded match {
+          case Commanded.Reading(_, _) => true
+          case Commanded.Keeping(_, _, _) => false
+        }
+      )
+  }
+
   /** Offers no command, and answers every name [[CommandError.Unknown]]. */
   def None: PluginCommands = new PluginCommands {
-    def offered: Vector[ToolSchema] = Vector.empty
+    def offered: Vector[Listed] = Vector.empty
     def run(
         by: Account,
         room: Place,
