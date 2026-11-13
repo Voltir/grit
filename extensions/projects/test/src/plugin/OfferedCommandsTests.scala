@@ -47,7 +47,9 @@ object OfferedCommandsTests extends TestSuite {
         Right(Right(names))
     }
 
-    test("an edge's tool list marks each reading command as reading and each keeping one not") {
+    test(
+      "an edge's tool list marks each command that only reads as reading, project_claims too, and each that keeps not"
+    ) {
       val proposing = Projects
         .of(
           Vector(CommandFixtures.method() -> Vector.empty),
@@ -67,7 +69,8 @@ object OfferedCommandsTests extends TestSuite {
         "project_find",
         "project_export",
         "project_stale",
-        "project_brief"
+        "project_brief",
+        "project_claims"
       )
       val keeping = Set(
         "project_new",
@@ -79,8 +82,7 @@ object OfferedCommandsTests extends TestSuite {
         "project_release",
         "project_withdraw",
         "project_sweep",
-        "project_migrate",
-        "project_claims"
+        "project_migrate"
       )
       listed.toSet ==> (reading.map(_ -> true) ++ keeping.map(_ -> false))
     }

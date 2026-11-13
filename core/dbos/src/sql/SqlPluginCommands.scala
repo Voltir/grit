@@ -29,9 +29,9 @@ import grit.core.visibility.Integrity
   * through `reads`: each run is one transaction on
   * one connection, its asker resolved under [[Subject.Public]] (as [[SqlAdministration]] does)
   * and then the command run under [[Subject.Person]], both opened through `opener`. A reading
-  * command's connection is read-only and always rolled back; a keeping command, handed its
-  * plugin's `keeper` and `claims`, is committed only when it answers
-  * [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
+  * command's connection, and an only-reading keeping one's ([[KeepingCommand.onlyReads]]), is
+  * read-only and always rolled back; any other keeping command, handed its plugin's `keeper` and
+  * `claims`, is committed only when it answers [[CommandOutcome.Done]]. A keeping command of a plugin with no documents,
   * which a deployment refuses, is not offered.
   */
 private[dbos] final class SqlPluginCommands(
@@ -94,7 +94,7 @@ private[dbos] final class SqlPluginCommands(
     command.spec.args.read(args) match {
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
-        transaction(by, room, name, keeps = true) { (person, tx) =>
+        transaction(by, room, name, keeps = !command.onlyReads) { (person, tx) =>
           val asker = CommandBy.Direct(person)
           KeepingCommand.run(
             command,

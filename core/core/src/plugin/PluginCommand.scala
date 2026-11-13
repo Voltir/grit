@@ -45,6 +45,14 @@ trait ReadingCommand[A <: caps.Pure] extends PluginCommand[A] {
   */
 trait KeepingCommand[A <: caps.Pure] extends PluginCommand[A] {
 
+  /** Whether it keeps nothing, being a keeping command only for what a reading command is not
+    * handed (its plugin's [[grit.core.claim.Claims]]): an edge then runs it in a read-only
+    * transaction, always rolled back, where any write it tries fails, and lists it as reading
+    * ([[grit.core.edge.PluginCommands.Listed]]). A turn runs it as any keeping command. False
+    * unless overridden.
+    */
+  def onlyReads: Boolean = false
+
   /** As [[ReadingCommand.run]], keeping through `own`, which believes each document at no more
     * than its asker's words are believed, met with their room's cap ([[KeepingCommand.run]]), and
     * claiming through `claims`, its plugin's: committed only when it answers

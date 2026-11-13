@@ -250,6 +250,16 @@ object PluginLiveTests extends TestSuite {
         .map(ds => CommandOutcome.Done(ds.map(d => DocText.value(d.text)).sorted.mkString(",")))
   }
 
+  /** `peek`: a keeping command that only reads, writing the note anyway. */
+  private object Peeks extends KeepingCommand[Note] {
+    override def onlyReads: Boolean = true
+    val spec: ToolSpec[Note] = noting(ToolName("peek"))
+    def run(args: Note, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+        Tx^
+    ): Either[StoreError, CommandOutcome] =
+      write(own, args.key, args.text, at).map(_ => CommandOutcome.Done("wrote"))
+  }
+
   /** `sneak`: a reading command writing through a keeper it was built with. */
   private final class Sneaks(keeper: DocumentKeeper) extends ReadingCommand[Note] {
     val spec: ToolSpec[Note] = noting(ToolName("sneak"))
@@ -265,7 +275,7 @@ object PluginLiveTests extends TestSuite {
       t <- DocumentTerms.of(l, DocWeight.Unscaled, 1.day, bound, full = full)
     } yield t).fold(e => sys.error(e), identity)
 
-  /** Notes, bound at 10; its commands are `note`, `list` and `sneak` over `sneaking`. */
+  /** Notes, bound at 10; its commands are `note`, `list`, `sneak` over `sneaking`, and `peek`. */
   private final class Notebook(sneaking: DocumentKeeper) extends Plugin {
     val name: PluginName = PluginLiveTests.name("notebook")
     val version = 1
@@ -273,7 +283,8 @@ object PluginLiveTests extends TestSuite {
       val terms: DocumentTerms = notebookTerms
       val posting: Option[DocumentPosting] = None
     })
-    override val commands: Vector[PluginCommand[?]] = Vector(Keeps, Lists, new Sneaks(sneaking))
+    override val commands: Vector[PluginCommand[?]] =
+      Vector(Keeps, Lists, new Sneaks(sneaking), Peeks)
   }
   private val notebookTerms = terms("notes", 10, DocumentTerms.Full.Withdraw)
 
@@ -337,14 +348,26 @@ object PluginLiveTests extends TestSuite {
       }
     }
 
-    test("an edge's tool list marks list and sneak as reading, and note and twice not") {
+    test("an edge's tool list marks list, sneak and peek as reading, and note and twice not") {
       commanding("command_listed") { (_, _, commands) =>
         commands.offered.map(l => l.schema.name -> l.reads) ==> Vector(
           "note" -> false,
           "list" -> true,
           "sneak" -> true,
+          "peek" -> true,
           "twice" -> false
         )
+      }
+    }
+
+    test("a keeping command that only reads and writes is Left(Store(DatabaseError))") {
+      commanding("command_peeks") { (config, engine, commands) =>
+        val ran = commands.run(ann, desk, Integrity.Member, ToolName("peek"), note("k", "x"), at)
+        assertMatch(ran) {
+          case Left(CommandError.Store(_, StoreError.DatabaseError(cause)))
+              if cause.contains("read-only") =>
+        }
+        kept(config, engine, "notebook") ==> Vector()
       }
     }
 

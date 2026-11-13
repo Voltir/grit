@@ -74,6 +74,31 @@ object ProjectsLiveTests extends TestSuite {
 
   val tests: Tests = Tests {
 
+    test("project_claims, run read-only as an edge runs it, lists a claim made through the edge") {
+      CommandRooms.commanding("projects_claims", _ => Vector(CommandFixtures.plugin())) {
+        (_, _, commands) =>
+          val claims = for {
+            _ <- ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+            _ <- keep(commands, desk, "a", "Claimed.")
+            _ <- ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_claim"),
+              "key" -> "p/a",
+              "role" -> "builder",
+              "holder" -> "coder/abc"
+            )
+            listed <- ran(commands, ann, desk, ToolName("project_claims"))
+          } yield listed
+          assertMatch(claims) {
+            case Right(CommandOutcome.Done(said))
+                if ujson.read(said)("claims").arr.map(c => (c("key").str, c("holder").str)) ==
+                  Vector(("p/a", "coder/abc")) =>
+          }
+      }
+    }
+
     test(
       "a projects command keeps at the room's label, believed at no more than the edge gave"
     ) {

@@ -40,22 +40,22 @@ trait PluginCommands extends caps.SharedCapability {
 
 object PluginCommands {
 
-  /** A command as a tool list shows it: `schema`, and `reads`, whether it is a
-    * [[grit.core.plugin.ReadingCommand]], which runs in a read-only transaction. A keeping command
-    * is never marked reading, even one that keeps nothing, so a command marked reading never
-    * writes.
+  /** A command as a tool list shows it: `schema`, and `reads`, whether an edge runs it in a
+    * read-only transaction, so that it never writes.
     */
   final case class Listed(schema: ToolSchema, reads: Boolean)
 
   object Listed {
 
-    /** `commanded` as listed: reading when it is [[Commanded.Reading]]. */
+    /** `commanded` as listed: reading when it is [[Commanded.Reading]], or a keeping command that
+      * [[grit.core.plugin.KeepingCommand.onlyReads]].
+      */
     def of(commanded: Commanded): Listed =
       Listed(
         commanded.command.spec.schema(strict = false),
         reads = commanded match {
           case Commanded.Reading(_, _) => true
-          case Commanded.Keeping(_, _, _) => false
+          case Commanded.Keeping(_, _, command) => command.onlyReads
         }
       )
   }

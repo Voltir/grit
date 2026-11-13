@@ -1365,6 +1365,8 @@ private[plugin] final class ProjectCommands(
     * not handed; it keeps nothing.
     */
   object ProjectClaims extends KeepingCommand[Surveying] {
+    override def onlyReads: Boolean = true
+
     val spec: ToolSpec[Surveying] = ToolSpec(
       ToolName("project_claims"),
       "Lists the artifacts claimed now, only one project's when given, answering a JSON " +
