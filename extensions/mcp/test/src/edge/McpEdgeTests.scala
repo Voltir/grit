@@ -35,7 +35,7 @@ import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
-import grit.edge.PlaceFragments
+import grit.edge.desk.PlaceFragments
 import grit.mcp.client.{Credential, FakeMcpServer, FakeStdioServer, McpServer, McpTransport}
 import grit.mcp.scope.{Bound, McpScope}
 

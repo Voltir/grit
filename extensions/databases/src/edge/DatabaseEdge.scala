@@ -8,7 +8,7 @@ import grit.core.secret.Secret
 import grit.core.store.StoreError
 import grit.databases.connect.{DatabaseReader, OpenRefusal}
 import grit.databases.declare.{Database, Login}
-import grit.edge.{PlaceFragments, Server}
+import grit.edge.desk.{PlaceFragments, Server}
 
 /** An edge serving an application's database at its service's place (ADR 0057). */
 object DatabaseEdge {

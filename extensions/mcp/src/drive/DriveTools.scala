@@ -22,7 +22,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.visibility.Integrity
-import grit.edge.{Run, Tools}
+import grit.edge.desk.{Run, Tools}
 
 /** The requests a Drive edge is sent, run over `rest` wherever they were routed, as
   * [[Run.request]] runs a tool: [[DriveTools.List]], [[DriveTools.Search]] and

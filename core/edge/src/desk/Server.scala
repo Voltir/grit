@@ -1,4 +1,4 @@
-package grit.edge
+package grit.edge.desk
 
 import java.util.concurrent.atomic.AtomicBoolean
 

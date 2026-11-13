@@ -1,4 +1,4 @@
-package grit.edge
+package grit.edge.desk
 
 import grit.core.approval.Approval
 import grit.core.edge.{Permit, ToolRequest}

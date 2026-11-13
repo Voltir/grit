@@ -1,4 +1,4 @@
-package grit.edge
+package grit.edge.desk
 
 import grit.core.host.InstructionFile
 import grit.core.message.{Message, Tokens}

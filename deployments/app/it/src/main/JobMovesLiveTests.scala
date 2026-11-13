@@ -41,7 +41,7 @@ import grit.core.visibility.Integrity
 import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
-import grit.edge.{Server, Tools}
+import grit.edge.desk.{Server, Tools}
 import grit.job.clock.ClockEdge
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets

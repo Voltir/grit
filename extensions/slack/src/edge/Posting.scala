@@ -26,7 +26,7 @@ import grit.core.tool.{
   Writes,
   Writing
 }
-import grit.edge.{Run, Tools}
+import grit.edge.desk.{Run, Tools}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{Slack, SlackError, Tag}
 import grit.slack.event.{ChannelId, MessageLink, TeamId, Ts}

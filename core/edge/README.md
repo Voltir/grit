@@ -5,7 +5,10 @@ requests routed to the places it registers, and the instructions it reads at a p
 core in the sense of [`docs/extending.md`](../../docs/extending.md): it names no protocol, so the
 Slack and MCP edges, the chat and the kit share it. It depends on core alone (its Mill `moduleDeps`).
 
-One idea, so one package, `grit.edge`:
+## `grit.edge.desk`
+
+What works a `Desk` (ADR 0017): the server that claims and runs the tool requests routed to an
+edge's places, one request's run, and what a desk's edge advertises with them.
 
 - **`Server`**: serves a `Desk`'s requests on a thread of its own, each run by the edge's
   `Tools` (what its tools are where a request was routed) on a virtual thread of its own,

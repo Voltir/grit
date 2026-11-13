@@ -48,7 +48,7 @@ service's edge does. Only a turn's asker may answer (ADR 0017).
 | `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | `Knowledge`'s `knowledge-sync` | yes: a plugin's `jobs`, its plugin declaring `documents` |
 | `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
 | `RealmSource` (`grit.core.edge`) | the Slack edge's, of its own workspace | yes: inside an edge that names its `attester`, which its `Identities` trusts (below) |
-| `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
+| `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge.desk`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`, `Cleared`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Placer` chooses |
 | `ContextAssembler` (`grit.core.context`), `TokenEstimator` (`grit.core.provider`) | `LinearAssembler`, `RetrievalAssembler`, `CharEstimate` | no: the kit's `Assembly` chooses; the assemblers are core (`core/assembly`), so a new one is a change to core |

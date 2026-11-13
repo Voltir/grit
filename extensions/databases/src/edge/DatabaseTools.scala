@@ -20,7 +20,7 @@ import grit.core.tool.{
 }
 import grit.databases.connect.{Clip, DatabaseReader, OneStatement, QueryRefusal, Relation, Rows}
 import grit.databases.declare.Database
-import grit.edge.{Run, Tools}
+import grit.edge.desk.{Run, Tools}
 import grit.prose.form.{Block, Cell, Column, Doc, Text}
 import grit.prose.markdown.Markdown
 import grit.prose.words.Words

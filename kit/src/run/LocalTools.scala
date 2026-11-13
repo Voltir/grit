@@ -7,7 +7,7 @@ import grit.core.edge.{Route, ToolRequest}
 import grit.core.host.Allowlisted
 import grit.core.place.Directory
 import grit.core.tool.{Outcome, SetRefusal, ToolSet}
-import grit.edge.{Run, Tools}
+import grit.edge.desk.{Run, Tools}
 import grit.host.checkout.{LocalEdits, LocalRuns, LocalShell, LocalWorkspace, Redaction}
 import grit.kit.deployment.Offered
 import grit.tools.Coding

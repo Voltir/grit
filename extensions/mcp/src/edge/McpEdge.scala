@@ -15,7 +15,7 @@ import grit.core.host.Processes
 import grit.core.id.EdgeName
 import grit.core.place.Service
 import grit.core.prompt.Fragment
-import grit.edge.{PlaceFragments, Server}
+import grit.edge.desk.{PlaceFragments, Server}
 import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer, McpTransport}
 import grit.mcp.wire.{McpError, Skipped}
 

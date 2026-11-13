@@ -35,7 +35,7 @@ import grit.core.visibility.Subject
 import grit.databases.connect.AppDatabase
 import grit.databases.declare.{Database, QueryLimits}
 import grit.dbos.sql.TestTx
-import grit.edge.PlaceFragments
+import grit.edge.desk.PlaceFragments
 
 import utest.*
 

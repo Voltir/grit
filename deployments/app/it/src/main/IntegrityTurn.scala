@@ -16,7 +16,7 @@ import grit.core.store.Origin
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet, Writes}
 import grit.core.triage.Corpora
 import grit.dbos.engine.Engine
-import grit.edge.{Server, Tools}
+import grit.edge.desk.{Server, Tools}
 import grit.mcp.client.{Credential, FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope

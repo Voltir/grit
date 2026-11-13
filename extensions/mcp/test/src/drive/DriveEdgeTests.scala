@@ -57,7 +57,7 @@ import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName}
 import grit.core.visibility.{Integrity, Subject}
 import grit.dbos.sql.TestTx
-import grit.edge.PlaceFragments
+import grit.edge.desk.PlaceFragments
 import grit.mcp.client.Credential
 import grit.prose.form.{Block, Doc, Span, Text}
 

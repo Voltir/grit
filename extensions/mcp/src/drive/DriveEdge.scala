@@ -6,7 +6,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
 import grit.core.prompt.Fragment
-import grit.edge.{PlaceFragments, Server}
+import grit.edge.desk.{PlaceFragments, Server}
 import grit.mcp.client.{Credential, KeyFiles}
 
 /** An edge serving Drive's files at its service's place (ADR 0017). */

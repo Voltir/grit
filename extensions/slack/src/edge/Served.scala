@@ -9,7 +9,7 @@ import grit.core.place.Place
 import grit.core.speech.Rate
 import grit.core.store.{Origin, StoreError}
 import grit.core.tool.ToolSet
-import grit.edge.Server
+import grit.edge.desk.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
 import grit.slack.event.{ChannelId, Event, TeamId, UserId}
 import grit.slack.text.RichText

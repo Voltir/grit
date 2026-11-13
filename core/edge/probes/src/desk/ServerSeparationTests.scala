@@ -1,4 +1,4 @@
-package grit.edge
+package grit.edge.desk
 
 import grit.core.durable.Probes
 
@@ -17,7 +17,7 @@ object ServerSeparationTests extends TestSuite {
       |import grit.core.edge.{Desk, Desks, EdgeRefusal, Route, ServedEdge, ToolRequest}
       |import grit.core.place.Place
       |import grit.core.tool.{Outcome, ToolSet}
-      |import grit.edge.{Server, Tools}
+      |import grit.edge.desk.{Server, Tools}
       |""".stripMargin
 
   private val lent =

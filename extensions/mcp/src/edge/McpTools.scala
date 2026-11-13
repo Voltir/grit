@@ -18,7 +18,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.visibility.Integrity
-import grit.edge.{Run, Tools}
+import grit.edge.desk.{Run, Tools}
 import grit.mcp.client.McpClient
 import grit.mcp.wire.{McpError, McpTool}
 

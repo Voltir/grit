@@ -1,4 +1,4 @@
-package grit.edge
+package grit.edge.desk
 
 import scala.collection.immutable.VectorMap
 

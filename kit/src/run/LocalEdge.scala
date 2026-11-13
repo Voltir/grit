@@ -10,7 +10,7 @@ import grit.core.id.PrincipalId
 import grit.core.place.{Directory, Place}
 import grit.core.prompt.Fragment
 import grit.core.tool.{SetRefusal, ToolSet}
-import grit.edge.{PlaceFragments, Server, Tools}
+import grit.edge.desk.{PlaceFragments, Server, Tools}
 import grit.host.checkout.{LocalInstructions, Redaction}
 import grit.kit.deployment.Offered
 

@@ -308,7 +308,7 @@ give the helper an explicit result type that does not name the parameter.
   nothing; `./mill clean grit.core.compile` shows it.
 - *Cause:* not known; it appeared when `grit.core.edge` called `tools.bind` from a method
   generic in `C^`, compiled in the same run as `Toolbox`.
-- *Fix:* call `bind` from another module: running a request is `grit.edge.Run.request`.
+- *Fix:* call `bind` from another module: running a request is `grit.edge.desk.Run.request`.
 
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.

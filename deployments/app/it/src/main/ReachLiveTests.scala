@@ -18,7 +18,7 @@ import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
-import grit.edge.{Server, Tools}
+import grit.edge.desk.{Server, Tools}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Placer}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
