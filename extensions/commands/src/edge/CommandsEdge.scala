@@ -27,7 +27,14 @@ import grit.mcp.wire.ServerInfo
   *   - `GET /brief?harness=&session=&dir=&start=fresh|resume[&agent=&type=][&part=brief|digest]`
   *     answers, as text, the holder's brief, or with `part=digest` what its newest session did
   *     lately, through the deployment's session record; which start asks for a digest is the
-  *     harness adapter's choice.
+  *     harness adapter's choice;
+  *   - `POST /events?harness=` records one session's event lines, in grit's words
+  *     ([[grit.commands.events.Lines.read]] gives every bound a line is refused for), as the
+  *     caller: 200 names each line refused and keeps the rest; 400 refuses the post whole (lines
+  *     of two sessions among them); 413, over [[grit.edge.http.Listener.BodyMost]], means split
+  *     the batch; on 403 nothing is kept and resending it as it is will not help, so the worker
+  *     keeps a bounded number of bytes of lines, dropping the oldest and saying so; 503 is safe
+  *     to resend.
   * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
   * GET runs, waits on or writes anything; any other path 404. It attests `realm` as `attester`,
   * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks

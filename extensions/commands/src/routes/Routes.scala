@@ -44,7 +44,9 @@ private[commands] final class Routes private (
     * holder its query names on the caller's worker ([[Briefing.holderOf]]), touching no store;
     * at `/brief`, a GET answers what the session its query names opens with
     * ([[Briefing.briefOf]]), as [[Briefing.briefed]] says, writing nothing; each another verb
-    * 405, a query it does not read 400. Any other path 404.
+    * 405, a query it does not read 400. At `/events`, a POST records the lines of its body on
+    * their session as the caller, in `room` ([[Recording.batchOf]]), answered as
+    * [[Recording.recorded]] says; another verb 405. Any other path 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -59,6 +61,7 @@ private[commands] final class Routes private (
             case Vector(Routes.Wait) => waited(request, caller)
             case Vector(Briefing.Holder) => holder(request, caller)
             case Vector(Briefing.Brief) => brief(request, caller)
+            case Vector(Recording.Events) => events(request, caller)
             case _ =>
               Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
           }
@@ -124,6 +127,19 @@ private[commands] final class Routes private (
             now
           )
           Response.text(status, text)
+      }
+
+  private def events(request: Request, caller: Caller): Response =
+    if (request.verb != Verb.Post)
+      Response.text(
+        Status.NotAllowed(Vector(Verb.Post)),
+        "post event lines; nothing else records them"
+      )
+    else
+      Recording.batchOf(request, caller.worker, clock.now()) match {
+        case Left(why) => Response.text(Status.BadRequest, why)
+        case Right(batched) =>
+          Recording.recorded(batched, b => sessions.record(caller.account, room, Vector(b)))
       }
 
   private def waited(request: Request, caller: Caller): Response =
