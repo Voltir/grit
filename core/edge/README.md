@@ -44,6 +44,9 @@ credential). An edge hands `Listener.open` a function from a `Request` to a `Res
   caller's tests use to build requests as the listener reads them.
 - **`Response`**, **`Status`**, **`ContentType`**: what a request is answered with; a status that
   needs a header carries what the header says (`Status.NotAllowed` its verbs).
+- **`Hosts`**: the names a request's `Host` may give a listener, and the same-origin check of
+  its `Origin` and `Sec-Fetch-Site`, which an edge applies before any route, so a page another
+  site serves reaches none.
 - **`Listener`**: the JDK's `HttpServer` behind the bounds its constants name: each request on a
   virtual thread, a body capped and read within a deadline, and a `close` that returns only once
   no request can still call `answer`.

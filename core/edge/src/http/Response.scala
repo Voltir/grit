@@ -10,6 +10,8 @@ enum Status(val code: Int) {
 
   /** 405, sent with an `Allow` header naming `allowed`. */
   case NotAllowed(allowed: Vector[Verb]) extends Status(405)
+  case Timeout extends Status(408)
+  case Conflict extends Status(409)
   case TooLarge extends Status(413)
   case Failed extends Status(500)
   case Unavailable extends Status(503)
