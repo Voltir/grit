@@ -75,6 +75,7 @@ private[commands] object Waited {
   /** What a watch for `what`, waiting `within`, answers when it came to `came`: 200 saying what
     * met it; 408 when nothing did before it lapsed; 503 when [[EdgeWatch.Most]] watches were
     * under way or the database could not be read; 403 for an account no person is linked to.
+    * An HTTP client may retry a 408 on its own, which is harmless: a wait only reads.
     */
   def watched(
       what: WatchFor,
