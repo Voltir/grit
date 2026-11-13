@@ -4,7 +4,7 @@ import grit.commands.caller.Callers
 import grit.commands.declare.{HoldingWatch, OwnCommand}
 import grit.commands.routes.Routes
 import grit.core.clock.Clock
-import grit.core.edge.{EdgeRefusal, EdgeStores, RealmSource, ServedEdge, Variable}
+import grit.core.edge.{Attesting, EdgeRefusal, EdgeStores, RealmSource, ServedEdge, Variable}
 import grit.core.id.{AttesterName, EdgeName}
 import grit.core.identity.{Account, Realm}
 import grit.core.place.Place
@@ -141,7 +141,14 @@ object CommandsEdge {
         stores.attesting
           .before(source, account)
           .left
-          .map(why => EdgeRefusal.Failed(s"${Account.written(account)} is not vouched: $why"))
+          .map {
+            case Attesting.Unchecked.Unattested(_, why) =>
+              EdgeRefusal.Failed(s"${Account.written(account)} is not vouched: $why")
+            case Attesting.Unchecked.Store(error) =>
+              EdgeRefusal.Failed(
+                s"${Account.written(account)} could not be vouched: ${error.described}"
+              )
+          }
       )
     }
 

@@ -200,7 +200,7 @@ object CommandsEdgeTests extends TestSuite {
       ) match {
         case Left(refusal) =>
           refusal ==> EdgeRefusal.Failed(
-            "slack:T1/U-reader is not vouched: Store(DatabaseError(down))"
+            "slack:T1/U-reader could not be vouched: down"
           )
           log.asScala.toVector ==> Vector.empty
         case Right(open) =>
