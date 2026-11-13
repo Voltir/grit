@@ -1,45 +1,25 @@
 package grit.commands.edge
 
-import java.io.{InputStream, OutputStream}
-import java.net.Socket
-import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.OwnCommand
+import grit.commands.declare.{Adapter, OwnCommand}
 import grit.commands.routes.RouteFixtures.*
-import grit.core.admin.InMemoryAdministration
 import grit.core.clock.SetClock
-import grit.core.document.InMemoryDocuments
-import grit.core.edge.{
-  Attesting,
-  EdgeContracts,
-  EdgeRefusal,
-  EdgeStores,
-  EdgeWatch,
-  InMemoryAcknowledgements,
-  InMemoryDeliveries,
-  InMemoryEdges,
-  InMemoryJoins,
-  InMemoryOrigins,
-  PluginCommands
-}
-import grit.core.files.NoIntake
-import grit.core.id.{AttesterName, EdgeName}
+import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands}
+import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
-import grit.core.inbox.InMemoryInbox
 import grit.core.plugin.CommandOutcome
 import grit.core.provider.ToolSchema
-import grit.core.review.InMemoryReviews
-import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, LastWord, StoreError, TestJot, Tx, Voucher}
+import grit.core.store.{InMemoryVoucher, LastWord, StoreError, Tx, Voucher}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Visibility}
 import grit.edge.http.{Hosts, Listen}
 
 import utest.*
+import EdgeFixtures.*
 
 /** [[CommandsEdge]]: what `of` and `open` refuse, and the edge served over a real socket. */
 object CommandsEdgeTests extends TestSuite {
@@ -52,7 +32,8 @@ object CommandsEdgeTests extends TestSuite {
       at: Listen = loopback,
       hosts: Hosts = Hosts.loopback,
       callers: Callers = Owners,
-      own: Vector[OwnCommand] = Vector.empty
+      own: Vector[OwnCommand] = Vector.empty,
+      adapters: Vector[Adapter] = Vector.empty
   ): Either[String, CommandsEdge] =
     CommandsEdge.of(
       EdgeName("commands"),
@@ -64,50 +45,8 @@ object CommandsEdgeTests extends TestSuite {
       callers,
       Server,
       own,
-      None
-    )
-
-  private def stores(commands: PluginCommands, voucher: Voucher): EdgeStores^ = {
-    val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
-    val jot = new TestJot
-    EdgeStores(
-      inbox,
-      InMemoryAdministration.none(),
-      InMemoryJoins.none(),
-      inbox.principals,
-      new InMemoryDeliveries,
-      inbox.ledger,
-      new InMemoryAcknowledgements,
-      InMemoryReviews.over(inbox),
-      new InMemoryOrigins(inbox.conversations),
-      (new InMemoryDocuments).reviews.of,
-      jot,
-      new InMemoryEdges,
-      new Attesting(voucher, jot, _ => ()),
-      new NoIntake,
-      commands = commands,
-      watch = EdgeWatch.Refusing
-    )
-  }
-
-  /** `raw`, an HTTP/1.1 request, sent to `port` on this machine: the status line and the body. */
-  private def sent(port: Int, raw: String): (String, String) = {
-    val socket = new Socket("127.0.0.1", port)
-    try {
-      val out: OutputStream = socket.getOutputStream
-      out.write(raw.getBytes(UTF_8))
-      out.flush()
-      val in: InputStream = socket.getInputStream
-      val whole = new String(in.readAllBytes(), UTF_8)
-      (whole.takeWhile(_ != '\r'), whole.split("\r\n\r\n", 2).lift(1).getOrElse(""))
-    } finally socket.close()
-  }
-
-  private def post(port: Int, host: String, target: String, body: String) =
-    sent(
-      port,
-      s"POST $target HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n" +
-        s"Content-Length: ${body.getBytes(UTF_8).length}\r\n\r\n$body"
+      None,
+      adapters
     )
 
   val tests = Tests {
@@ -135,6 +74,12 @@ object CommandsEdgeTests extends TestSuite {
           "a request with no credential is the owner's, so the edge admits loopback's names alone"
         )
       )
+    }
+
+    test("of refuses two adapters of one harness") {
+      val piLike = got(Harness.of("pi-like"))
+      edge(adapters = Vector(Adapter(piLike, "one"), Adapter(piLike, "two"))).left.toOption ==>
+        Some("two adapters are given for the harness pi-like")
     }
 
     test(

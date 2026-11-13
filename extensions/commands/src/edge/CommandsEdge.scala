@@ -1,11 +1,11 @@
 package grit.commands.edge
 
 import grit.commands.caller.Callers
-import grit.commands.declare.{HoldingWatch, OwnCommand}
+import grit.commands.declare.{Adapter, HoldingWatch, OwnCommand}
 import grit.commands.routes.Routes
 import grit.core.clock.Clock
 import grit.core.edge.{Attesting, EdgeRefusal, EdgeStores, RealmSource, ServedEdge, Variable}
-import grit.core.id.{AttesterName, EdgeName}
+import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm}
 import grit.core.place.Place
 import grit.core.store.StoreError
@@ -34,7 +34,9 @@ import grit.mcp.wire.ServerInfo
   *     of two sessions among them); 413, over [[grit.edge.http.Listener.BodyMost]], means split
   *     the batch; on 403 nothing is kept and resending it as it is will not help, so the worker
   *     keeps a bounded number of bytes of lines, dropping the oldest and saying so; 503 is safe
-  *     to resend.
+  *     to resend;
+  *   - `GET /join/<harness>` answers the join script of the one of `adapters` for that harness,
+  *     as text, or 404.
   * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
   * GET runs, waits on or writes anything; any other path 404. It attests `realm` as `attester`,
   * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks
@@ -50,7 +52,8 @@ final class CommandsEdge private (
     callers: Callers,
     server: ServerInfo,
     own: Vector[OwnCommand],
-    holding: Option[HoldingWatch]
+    holding: Option[HoldingWatch],
+    adapters: Vector[Adapter]
 ) extends ServedEdge {
 
   def needs: Vector[Variable] = callers.needs
@@ -96,6 +99,7 @@ final class CommandsEdge private (
           opened,
           own,
           holding,
+          adapters,
           server
         )
         .left
@@ -112,10 +116,10 @@ final class CommandsEdge private (
 
 object CommandsEdge {
 
-  /** The edge, or why not: two of `own` of one name; a caller's account `realm` does not hold;
-    * or, while `callers` take a request with no credential ([[Callers.uncredentialed]]), `at`
-    * not loopback ([[Listen.loopback]]) or `hosts` other than [[Hosts.loopback]], since then any
-    * process that reaches it is the owner.
+  /** The edge, or why not: two of `own` of one name; two of `adapters` of one harness; a caller's
+    * account `realm` does not hold; or, while `callers` take a request with no credential
+    * ([[Callers.uncredentialed]]), `at` not loopback ([[Listen.loopback]]) or `hosts` other than
+    * [[Hosts.loopback]], since then any process that reaches it is the owner.
     */
   def of(
       name: EdgeName,
@@ -127,13 +131,21 @@ object CommandsEdge {
       callers: Callers,
       server: ServerInfo,
       own: Vector[OwnCommand],
-      holding: Option[HoldingWatch]
+      holding: Option[HoldingWatch],
+      adapters: Vector[Adapter] = Vector.empty
   ): Either[String, CommandsEdge] = {
     val names = own.map(_.name)
     names
       .diff(names.distinct)
       .headOption
       .map(n => s"two own commands are named ${ToolName.value(n)}")
+      .orElse {
+        val harnesses = adapters.map(_.harness)
+        harnesses
+          .diff(harnesses.distinct)
+          .headOption
+          .map(h => s"two adapters are given for the harness ${Harness.value(h)}")
+      }
       .orElse(
         callers.accounts
           .find(a => !realm.holds(a))
@@ -150,7 +162,19 @@ object CommandsEdge {
         )
       )
       .toLeft(
-        new CommandsEdge(name, at, hosts, room, realm, attester, callers, server, own, holding)
+        new CommandsEdge(
+          name,
+          at,
+          hosts,
+          room,
+          realm,
+          attester,
+          callers,
+          server,
+          own,
+          holding,
+          adapters
+        )
       )
   }
 

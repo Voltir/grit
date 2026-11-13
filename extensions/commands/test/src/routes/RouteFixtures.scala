@@ -3,6 +3,7 @@ package grit.commands.routes
 import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
+import grit.commands.declare.Adapter
 import grit.commands.worker.WorkerName
 import grit.core.clock.SetClock
 import grit.core.edge.{
@@ -75,13 +76,14 @@ object RouteFixtures {
   val Owners: Callers = Callers.owner(Owner)
 
   /** The routes over `commands` and the sessions `script` holds for [[Owner]] (or for no one,
-    * unless `vouched`), no watch, [[Owners]] on loopback, at [[Now]] in [[EdgeContracts.Room]],
-    * with no own command.
+    * unless `vouched`), joined by `adapters`, no watch, [[Owners]] on loopback, at [[Now]] in
+    * [[EdgeContracts.Room]], with no own command.
     */
   def routed(
       commands: ScriptedCommands = scripted(Vector.empty)(Unrun),
       script: ScriptedSessions.Script = new ScriptedSessions.Script,
-      vouched: Boolean = true
+      vouched: Boolean = true,
+      adapters: Vector[Adapter] = Vector.empty
   ): Routes^ =
     got(
       Routes.of(
@@ -94,6 +96,7 @@ object RouteFixtures {
         Owners,
         Vector.empty,
         None,
+        adapters,
         Server
       )
     )

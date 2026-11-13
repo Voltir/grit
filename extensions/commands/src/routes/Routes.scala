@@ -3,10 +3,10 @@ package grit.commands.routes
 import scala.concurrent.duration.*
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
+import grit.commands.declare.{Adapter, HoldingWatch, OwnCommand, Ran}
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
-import grit.core.id.ClaimHolder
+import grit.core.id.{ClaimHolder, Harness}
 import grit.core.place.Place
 import grit.core.tool.ToolName
 import grit.edge.http.{Hosts, Request, Response, Status, Verb}
@@ -14,8 +14,8 @@ import grit.mcp.wire.{CallResult, Listing, McpTool, Posted, Rpc, ServerInfo}
 
 /** The commands edge's routes: each request admitted by `hosts`, its caller asked of `callers`,
   * and run in `room`, dated by `clock`, through `commands` or, by its name, one of `own`; a
-  * harness's sessions recorded and briefed through `sessions`; `tools`, every offered command as
-  * `/mcp` lists it.
+  * harness's sessions recorded and briefed through `sessions`, and its join script one of
+  * `adapters`; `tools`, every offered command as `/mcp` lists it.
   */
 private[commands] final class Routes private (
     commands: PluginCommands,
@@ -27,6 +27,7 @@ private[commands] final class Routes private (
     callers: Callers,
     own: Vector[OwnCommand],
     holding: Option[HoldingWatch],
+    adapters: Vector[Adapter],
     server: ServerInfo,
     tools: Vector[ujson.Obj]
 ) {
@@ -46,7 +47,9 @@ private[commands] final class Routes private (
     * ([[Briefing.briefOf]]), as [[Briefing.briefed]] says, writing nothing; each another verb
     * 405, a query it does not read 400. At `/events`, a POST records the lines of its body on
     * their session as the caller, in `room` ([[Recording.batchOf]]), answered as
-    * [[Recording.recorded]] says; another verb 405. Any other path 404.
+    * [[Recording.recorded]] says; another verb 405. At `/join/<harness>`, a GET answers that
+    * harness's join script as text, as its adapter gives it, 404 for a harness `adapters` hold
+    * none for; another verb 405. Any other path 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -62,6 +65,7 @@ private[commands] final class Routes private (
             case Vector(Briefing.Holder) => holder(request, caller)
             case Vector(Briefing.Brief) => brief(request, caller)
             case Vector(Recording.Events) => events(request, caller)
+            case Vector(Routes.Join, harness) => joined(request, harness)
             case _ =>
               Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
           }
@@ -142,6 +146,16 @@ private[commands] final class Routes private (
           Recording.recorded(batched, b => sessions.record(caller.account, room, Vector(b)))
       }
 
+  private def joined(request: Request, harness: String): Response =
+    if (request.verb != Verb.Get)
+      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a join script; it is only read")
+    else
+      adapters
+        .find(a => Harness.value(a.harness) == harness)
+        .fold(Response.text(Status.NotFound, s"no adapter is given for the harness $harness"))(a =>
+          Response.text(Status.Ok, a.join)
+        )
+
   private def waited(request: Request, caller: Caller): Response =
     if (request.verb != Verb.Post)
       Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a watch; nothing else waits")
@@ -189,6 +203,7 @@ private[commands] object Routes {
       callers: Callers,
       own: Vector[OwnCommand],
       holding: Option[HoldingWatch],
+      adapters: Vector[Adapter],
       server: ServerInfo
   ): Either[String, Routes^{commands, watch, sessions, clock}] =
     commands.offered
@@ -208,6 +223,7 @@ private[commands] object Routes {
           callers,
           own,
           holding,
+          adapters,
           server,
           tools
         )
@@ -221,6 +237,9 @@ private[commands] object Routes {
 
   /** `wait`: where a watch is posted. */
   val Wait: String = "wait"
+
+  /** `join`: the first segment of a join script's path, its harness the second. */
+  val Join: String = "join"
 
   /** 5 minutes: how long a watch waits when its body names no `within`; a client gone meanwhile
     * holds its place among [[EdgeWatch.Most]] until then.

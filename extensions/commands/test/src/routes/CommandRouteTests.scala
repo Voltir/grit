@@ -42,6 +42,7 @@ object CommandRouteTests extends TestSuite {
         callers,
         own,
         None,
+        Vector.empty,
         Server
       )
     )

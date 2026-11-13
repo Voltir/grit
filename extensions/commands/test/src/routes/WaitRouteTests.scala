@@ -47,6 +47,7 @@ object WaitRouteTests extends TestSuite {
         Owners,
         Vector.empty,
         Some(holding),
+        Vector.empty,
         Server
       )
     )

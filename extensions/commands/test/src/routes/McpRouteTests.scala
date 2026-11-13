@@ -35,6 +35,7 @@ object McpRouteTests extends TestSuite {
         Owners,
         own,
         None,
+        Vector.empty,
         Server
       )
     )
