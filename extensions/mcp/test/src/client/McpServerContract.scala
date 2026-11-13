@@ -9,12 +9,8 @@ import grit.mcp.wire.{Headers, McpError, McpTool, Rpc}
 
 import utest.*
 
-/** The exchanges an MCP server at revision 2026-07-28 must answer as grit's client reads them,
-  * run against [[FakeMcpServer]] in the unit tier ([[McpServerFakeTests]]). `LiveProbe` runs it
-  * against GitHub's, which holds the fake to a real server as of its last run (the module's
-  * README says when); between runs the fake is held to the spec and to go-sdk's source.
-  */
-abstract class McpServerContract extends TestSuite {
+/** An MCP server at revision 2026-07-28 a contract runs against, and how the contract asks it. */
+trait McpServerAsked {
 
   /** The server under test, declared with no allowlist. */
   protected def server: McpServer[McpTransport.Http]
@@ -22,22 +18,14 @@ abstract class McpServerContract extends TestSuite {
   /** Its credential, opened. */
   protected def authorizer: Authorizer
 
-  /** A token shaped as the server's tokens are that it does not know, so that it is refused
-    * as unknown (401) rather than as malformed, which a server may answer otherwise (GitHub's
-    * answers 400).
-    */
-  protected def unknownToken: String
-
-  /** A tool it lists as read-only that mirrors an argument into a header (`x-mcp-header`), by
-    * its own name, and arguments it answers without error, the mirrored one among them.
-    */
+  /** A tool it lists as read-only, by its own name, and arguments it answers without error. */
   protected def read: (String, ujson.Obj)
 
-  private def client(a: Authorizer = authorizer): McpClient^ =
+  protected def client(a: Authorizer = authorizer): McpClient^ =
     McpClient(server, a, Clock.system())
 
   /** A read-only tool of `server`'s that it does not list. */
-  private val unlisted: Option[McpTool] =
+  protected val unlisted: Option[McpTool] =
     McpTool
       .page(
         ujson.Obj(
@@ -54,12 +42,8 @@ abstract class McpServerContract extends TestSuite {
       .toOption
       .flatMap(_.tools.headOption)
 
-  /** The read tool as listed, when it mirrors an argument into a header. */
-  private def mirroring: Option[McpTool] =
-    client().tools().toOption.flatMap(_.tools.find(t => t.name == read._1 && t.params.nonEmpty))
-
   /** `e`'s JSON-RPC error code, when it is a JSON-RPC error. */
-  private def code(e: McpError): Option[Int] = e match {
+  protected def code(e: McpError): Option[Int] = e match {
     case McpError.Rpc(c, _) => Some(c)
     case _ => None
   }
@@ -67,7 +51,7 @@ abstract class McpServerContract extends TestSuite {
   /** The HTTP status of a POST carrying `sent`, the token and `body`, and its answer read as a
     * refusal ([[Rpc.failure]]).
     */
-  private def answered(sent: Vector[(String, String)], body: ujson.Value): (Int, McpError) = {
+  protected def answered(sent: Vector[(String, String)], body: ujson.Value): (Int, McpError) = {
     val bearer = authorizer
       .bearer(Clock.system())
       .fold(e => throw new java.lang.AssertionError(e.message), identity)
@@ -87,10 +71,20 @@ abstract class McpServerContract extends TestSuite {
   }
 
   /** [[answered]]'s status, and the JSON-RPC error code its answer carries, when it carries one. */
-  private def raw(sent: Vector[(String, String)], body: ujson.Value): (Int, Option[Int]) = {
+  protected def raw(sent: Vector[(String, String)], body: ujson.Value): (Int, Option[Int]) = {
     val (status, e) = answered(sent, body)
     (status, code(e))
   }
+}
+
+/** The exchanges any MCP server at revision 2026-07-28 must answer as grit's client reads them:
+  * kept by [[FakeMcpServer]] in the unit tier ([[McpServerFakeTests]]) and by grit's own server's
+  * wire ([[McpServerWireTests]]). `LiveProbe` runs it against GitHub's, which holds the fake to a
+  * real server as of its last run (the module's README says when); between runs the fake is held
+  * to the spec and to go-sdk's source. What a hosted server checks beyond it is
+  * [[McpServerGuardContract]].
+  */
+abstract class McpServerContract extends TestSuite with McpServerAsked {
 
   val tests = Tests {
     test("the list is read, and offers the read tool") {
@@ -103,30 +97,6 @@ abstract class McpServerContract extends TestSuite {
         .flatMap(_.tools.find(_.name == read._1).toRight(McpError.Unreadable("not listed")))
         .flatMap(c.call(_, read._2))
         .map(a => (a.isError, a.text.nonEmpty)) ==> Right((false, true))
-    }
-
-    test("a call of the read tool without its Mcp-Param headers is rejected: 400 and -32020") {
-      // streamable-http.mdx, Server Behavior for Custom Headers: a client that omits the header
-      // while the value is in the body is non-conforming, and the server must reject it.
-      mirroring.map { t =>
-        val call = Rpc.Call.CallTool(t, read._2)
-        raw(Headers.of(call).filterNot(_._1.startsWith("Mcp-Param-")), Rpc.request(1, call))
-      } ==> Some((400, Some(-32020)))
-    }
-
-    test(
-      "a call of the read tool whose Mcp-Param value is not its argument is rejected: 400 and -32020"
-    ) {
-      // streamable-http.mdx, Server Validation: a header that does not match the body.
-      mirroring.map { t =>
-        val call = Rpc.Call.CallTool(t, read._2)
-        raw(
-          Headers
-            .of(call)
-            .map((k, v) => if (k.startsWith("Mcp-Param-")) (k, s"$v-other") else (k, v)),
-          Rpc.request(1, call)
-        )
-      } ==> Some((400, Some(-32020)))
     }
 
     test("a tool it does not list is rejected: 400 and -32602") {
@@ -183,6 +153,52 @@ abstract class McpServerContract extends TestSuite {
       val _ = body("params")("_meta").obj.remove("io.modelcontextprotocol/clientCapabilities")
       raw(Headers.of(call), body) ==> (400, Some(-32602))
     }
+  }
+}
+
+/** What a hosted MCP server at revision 2026-07-28 checks beyond [[McpServerContract]], as
+  * grit's client reads it: its token, its content types, and the arguments a tool mirrors into
+  * headers. Kept by [[FakeMcpServer]] ([[McpServerFakeGuardTests]]); `LiveProbe` runs it against
+  * GitHub's. grit's own server's wire leaves these to its caller, so it is not held to them.
+  */
+abstract class McpServerGuardContract extends TestSuite with McpServerAsked {
+
+  /** A token shaped as the server's tokens are that it does not know, so that it is refused
+    * as unknown (401) rather than as malformed, which a server may answer otherwise (GitHub's
+    * answers 400).
+    */
+  protected def unknownToken: String
+
+  /** The read tool as listed, when it mirrors an argument into a header (`x-mcp-header`), as
+    * this contract needs it to, with the mirrored argument among [[read]]'s.
+    */
+  private def mirroring: Option[McpTool] =
+    client().tools().toOption.flatMap(_.tools.find(t => t.name == read._1 && t.params.nonEmpty))
+
+  val tests = Tests {
+    test("a call of the read tool without its Mcp-Param headers is rejected: 400 and -32020") {
+      // streamable-http.mdx, Server Behavior for Custom Headers: a client that omits the header
+      // while the value is in the body is non-conforming, and the server must reject it.
+      mirroring.map { t =>
+        val call = Rpc.Call.CallTool(t, read._2)
+        raw(Headers.of(call).filterNot(_._1.startsWith("Mcp-Param-")), Rpc.request(1, call))
+      } ==> Some((400, Some(-32020)))
+    }
+
+    test(
+      "a call of the read tool whose Mcp-Param value is not its argument is rejected: 400 and -32020"
+    ) {
+      // streamable-http.mdx, Server Validation: a header that does not match the body.
+      mirroring.map { t =>
+        val call = Rpc.Call.CallTool(t, read._2)
+        raw(
+          Headers
+            .of(call)
+            .map((k, v) => if (k.startsWith("Mcp-Param-")) (k, s"$v-other") else (k, v)),
+          Rpc.request(1, call)
+        )
+      } ==> Some((400, Some(-32020)))
+    }
 
     test("a request whose Accept lacks text/event-stream is rejected: 400, with no MCP error") {
       // streamable-http.mdx, Sending Messages: a client lists both types it reads. The status is
@@ -220,13 +236,13 @@ abstract class McpServerContract extends TestSuite {
   }
 }
 
-/** The contract, kept by the fake. */
-object McpServerFakeTests extends McpServerContract {
+/** A fake, its server declared and its credential opened, for a contract it keeps. */
+private final class FakeUnderTest {
 
-  private val fake = FakeMcpServer.start()
+  val fake: FakeMcpServer = FakeMcpServer.start()
   fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_file_contents")))
 
-  protected val server: McpServer[McpTransport.Http] =
+  val server: McpServer[McpTransport.Http] =
     McpServer.of(
       "fake",
       fake.endpoint,
@@ -237,7 +253,7 @@ object McpServerFakeTests extends McpServerContract {
       case Left(why) => throw new java.lang.AssertionError(why)
     }
 
-  protected val authorizer: Authorizer =
+  val authorizer: Authorizer =
     Credential.open(
       server.transport.credential,
       Map("FAKE_MCP_TOKEN" -> fake.token),
@@ -247,12 +263,27 @@ object McpServerFakeTests extends McpServerContract {
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
 
-  protected val unknownToken: String = "fake-unknown-token"
-
-  protected val read: (String, ujson.Obj) = (
+  val read: (String, ujson.Obj) = (
     "get_file_contents",
     ujson.Obj("owner" -> "example-org", "repo" -> "widgets", "path" -> "README.md")
   )
+}
 
-  override def utestAfterAll(): Unit = fake.stop()
+/** The contract, kept by the fake. */
+object McpServerFakeTests extends McpServerContract {
+  private val under = new FakeUnderTest
+  protected val server: McpServer[McpTransport.Http] = under.server
+  protected val authorizer: Authorizer = under.authorizer
+  protected val read: (String, ujson.Obj) = under.read
+  override def utestAfterAll(): Unit = under.fake.stop()
+}
+
+/** The guards' contract, kept by the fake. */
+object McpServerFakeGuardTests extends McpServerGuardContract {
+  private val under = new FakeUnderTest
+  protected val server: McpServer[McpTransport.Http] = under.server
+  protected val authorizer: Authorizer = under.authorizer
+  protected val read: (String, ujson.Obj) = under.read
+  protected val unknownToken: String = "fake-unknown-token"
+  override def utestAfterAll(): Unit = under.fake.stop()
 }

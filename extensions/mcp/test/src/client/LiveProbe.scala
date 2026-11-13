@@ -15,7 +15,8 @@ import grit.mcp.wire.{Headers, McpError, McpTool, Rpc, Sse}
   *   ./mill grit.mcp.test.runMain grit.mcp.client.LiveProbe [<owner> <repo> <issue> <pull> [dir]]
   * }}}
   *
-  * GitHub's arm runs [[McpServerContract]] and [[grit.mcp.github.GitHubItemsContract]] against
+  * GitHub's arm runs [[McpServerContract]], [[McpServerGuardContract]] and
+  * [[grit.mcp.github.GitHubItemsContract]] against
   * GitHub's MCP server. Its token comes from `GITHUB_MCP_TOKEN` alone and is never printed.
   * `<owner>/<repo>` is the repository whose `README.md` the read call fetches, `<issue>` an issue
   * of it with a comment and `<pull>` a pull request with a review. With `dir`, the answers to
@@ -82,6 +83,10 @@ object LiveProbe {
       Vector(
         utest.TestRunner
           .runAndPrint(new GitHubContract(server, authorizer, arguments).tests, "LiveProbe"),
+        utest.TestRunner.runAndPrint(
+          new GitHubGuardContract(server, authorizer, arguments).tests,
+          "LiveProbe guards"
+        ),
         utest.TestRunner.runAndPrint(items.tests, "LiveProbe items")
       )
     }
@@ -93,6 +98,17 @@ object LiveProbe {
       a: Authorizer,
       arguments: ujson.Obj
   ) extends McpServerContract {
+    protected def server: McpServer[McpTransport.Http] = s
+    protected def authorizer: Authorizer = a
+    protected def read: (String, ujson.Obj) = ("get_file_contents", arguments)
+  }
+
+  /** The guards' contract against GitHub's server, as [[GitHubContract]]. */
+  private final class GitHubGuardContract(
+      s: McpServer[McpTransport.Http],
+      a: Authorizer,
+      arguments: ujson.Obj
+  ) extends McpServerGuardContract {
     protected def server: McpServer[McpTransport.Http] = s
     protected def authorizer: Authorizer = a
     protected def read: (String, ujson.Obj) = ("get_file_contents", arguments)
