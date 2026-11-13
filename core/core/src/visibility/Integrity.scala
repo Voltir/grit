@@ -126,7 +126,7 @@ object Integrity {
   * that relays others' text, mail or the web, declares [[Integrity.Untrusted]]); an item it does
   * read (a repository's, a folder's or a mailbox's) at its author's level met with the cap at the
   * item's place ([[Visibility.believed]]). A cap may stand above or below the one it lies within. A
-  * cap at a directory under `fs`, a direct message's room or everywhere is refused
+  * cap at a directory under `fs` or `worker`, a direct message's room or everywhere is refused
   * ([[VisibilityRefusal.CapOutside]]).
   */
 final case class Cap(place: Place, integrity: Integrity) derives CanEqual

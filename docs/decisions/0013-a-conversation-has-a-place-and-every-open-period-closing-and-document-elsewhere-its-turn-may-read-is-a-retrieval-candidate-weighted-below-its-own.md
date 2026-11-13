@@ -1,6 +1,6 @@
 # 0013. A conversation has a place, and every open period, closing and document elsewhere its turn may read is a retrieval candidate, weighted below its own
 
-Status: accepted (2026-09-26); revised (2026-11-06)
+Status: accepted (2026-09-26); revised (2026-11-13)
 
 Context: grit runs in several directories and sessions at once, and in Slack channels and
 threads, and what one conversation is doing is often what another needs. A conversation keyed
@@ -17,7 +17,10 @@ Decision:
 
 - **A conversation has a place**: a path in one containment tree whose root is everywhere,
   one namespace per source. A TUI session's place is the real path of the directory it runs
-  in, under `fs`; a Slack thread's is under `slack`, a task's run under `task`. The place is
+  in, under `fs`; a Slack thread's is under `slack`, a task's run under `task`. A directory on
+  another machine or sandbox grit's work is done on is under `worker`, below the worker's name
+  (`worker:desktop/home/a`), so one path on two workers is two places; such a place, like one
+  under `fs`, may be a room and takes no cap. The place is
   a function of the origin, and a TUI session's directory is part of its origin: the same
   session name in another directory is another conversation. A git repository is not a level
   of the tree.

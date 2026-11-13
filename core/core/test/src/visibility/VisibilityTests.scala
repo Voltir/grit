@@ -400,7 +400,7 @@ object VisibilityTests extends TestSuite {
       )
     }
 
-    test("a cap on a directory, a direct message's room or everywhere is refused") {
+    test("a cap on a directory, a worker's, a direct message's room or everywhere is refused") {
       def declaring(at: Place) =
         Visibility.of(
           compartments,
@@ -410,9 +410,11 @@ object VisibilityTests extends TestSuite {
           caps = Vector(Cap(at, Integrity.Outside))
         )
       val directory = place("fs:/home/nick/vendor")
+      val worker = place("worker:desktop/home/nick/vendor")
       val direct = place("direct:slack/T0123/U0456")
-      (declaring(directory), declaring(direct), declaring(Place.Everywhere)) ==> (
+      Vector(directory, worker, direct, Place.Everywhere).map(declaring) ==> Vector(
         Left(VisibilityRefusal.CapOutside(directory)),
+        Left(VisibilityRefusal.CapOutside(worker)),
         Left(VisibilityRefusal.CapOutside(direct)),
         Left(VisibilityRefusal.CapOutside(Place.Everywhere))
       )

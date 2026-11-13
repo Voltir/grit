@@ -221,8 +221,9 @@ $$;
 
 -- Where conversations happen (grit.core.place.Place, ADR 0013): one containment tree whose
 -- root is everywhere. A path runs from its namespace down: {fs,home,nick,Projects,grit},
--- {slack,acme,#grit-dev,1712.3}, {task,m0,main}, {direct,slack,T0123/U0456,1712.3} (a direct
--- message's thread, under its person's account); segments verbatim, never empty or NULL. A
+-- {slack,acme,#grit-dev,1712.3}, {task,m0,main}, {worker,desktop,home,a} (/home/a on the
+-- worker desktop), {direct,slack,T0123/U0456,1712.3} (a direct message's thread, under its
+-- person's account); segments verbatim, never empty or NULL. A
 -- place is recorded with its first conversation, from that conversation's origin
 -- (Origin.place), or with its first grit.rooms row, and never changes; so is a conversation's
 -- room (Origin.room). Which place is within which is Place.within's alone: nothing here tests it.
