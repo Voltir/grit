@@ -17,10 +17,10 @@ object ScriptedCommandsTests extends PluginCommandsContract {
       Commands.commands.map(c => PluginCommands.Listed(c.spec.schema(false), reads = true)),
       Set(Reader)
     )((name, args) =>
-      args.objOpt.flatMap(_.get("text")).flatMap(_.strOpt) match {
-        case None => Left(CommandError.Unread(name, "text is required"))
-        case Some(t) if name == Echo => Right(CommandOutcome.Done(t))
-        case Some(t) => Right(CommandOutcome.Refused(s"not $t"))
+      text.read(args) match {
+        case Left(e) => Left(CommandError.Unread(name, e.message))
+        case Right(Text(t)) if name == Echo => Right(CommandOutcome.Done(t))
+        case Right(Text(t)) => Right(CommandOutcome.Refused(s"not $t"))
       }
     )
 }

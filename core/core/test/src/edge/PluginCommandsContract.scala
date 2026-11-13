@@ -14,7 +14,9 @@ import utest.*
 
 /** What an edge's routes rely on of [[PluginCommands]]: each command's own outcome, and each
   * error a run is refused with. Run by the scripted fake in core and by the SQL commands in
-  * grit.dbos, both offering [[PluginCommandsContract.Commands]]' commands.
+  * grit.dbos, both offering [[PluginCommandsContract.Commands]]' commands. It leaves
+  * [[CommandError.Store]], which only a store's own failure gives, to grit.app's live plugin
+  * suite, and [[CommandError.Unavailable]], a database that cannot be reached, untested.
   */
 abstract class PluginCommandsContract extends TestSuite {
 
@@ -45,10 +47,9 @@ abstract class PluginCommandsContract extends TestSuite {
     }
 
     test("arguments a command does not read are unread, naming it") {
-      run(Echo, ujson.Obj("words" -> "hi")) match {
-        case Left(CommandError.Unread(name, _)) => name ==> Echo
-        case other => throw new java.lang.AssertionError(s"read: $other")
-      }
+      run(Echo, ujson.Obj("words" -> "hi")) ==> Left(
+        CommandError.Unread(Echo, "There is no argument `words`; the arguments there are `text`.")
+      )
     }
 
     test("an account no person is linked to is refused") {
@@ -63,7 +64,9 @@ object PluginCommandsContract {
   val Refuse: ToolName = ToolName("refuse")
 
   final case class Text(text: String) extends caps.Pure
-  private val text = Args.of((text = Field.text("What to say."))).map(a => Text(a.text))
+
+  /** What `echo` and `refuse` read, so a fake reads them as the commands do. */
+  val text: Args[Text] = Args.of((text = Field.text("What to say."))).map(a => Text(a.text))
 
   /** `echo` answers its `text` done; `refuse` refuses it as `not <text>`; both only read. */
   object Commands extends Plugin {

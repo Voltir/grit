@@ -13,7 +13,9 @@ import utest.*
 
 /** What an edge's routes rely on of [[EdgeWatch]]: what met a watch, that an unmet one lapses,
   * and the account it refuses. Run by the scripted fake in core and by the SQL watch in
-  * grit.dbos.
+  * grit.dbos. It leaves [[WatchError.Busy]], which needs [[EdgeWatch.Most]] watches under way,
+  * to the SQL watch's own suite, and [[WatchError.Unavailable]] to the suite of
+  * [[EdgeWatch.Refusing]]; a database that cannot be read is untested.
   */
 abstract class EdgeWatchContract extends TestSuite {
 
