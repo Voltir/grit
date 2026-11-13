@@ -60,8 +60,8 @@ private[dbos] object SqlWatched {
 
   private def committed(c: WatchFor.Committed)(using Tx^): Either[StoreError, Option[Watched]] = {
     val (where, by) = c.by match {
-      case WatchFor.Worker.As(holder) => ("s.holder = ?", ClaimHolder.value(holder))
-      case WatchFor.Worker.At(worktree) =>
+      case WatchFor.Committer.As(holder) => ("s.holder = ?", ClaimHolder.value(holder))
+      case WatchFor.Committer.At(worktree) =>
         (s"e.shape->>'${Event.Shape.Worktree}' = ?", worktree.written)
     }
     SqlStatements

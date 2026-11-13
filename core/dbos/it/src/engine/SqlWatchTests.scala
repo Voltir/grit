@@ -215,14 +215,14 @@ object SqlWatchTests extends TestSuite {
       commit("parent-1", "fixer", "/work/fixer", at, 1L)
       val met = Right(Watched.Committed(session("parent-1"), at, shape("/work/fixer", 1L)))
       val got = watching { w =>
-        def from(by: WatchFor.Worker, since: Instant) =
+        def from(by: WatchFor.Committer, since: Instant) =
           until(w, WatchFor.Committed(by, since), Duration.Zero)
         Vector(
-          from(WatchFor.Worker.At(worktree("/work/fixer")), at),
-          from(WatchFor.Worker.As(ok(ClaimHolder.of("fixer"))), at),
-          from(WatchFor.Worker.At(worktree("/work/parent")), at),
-          from(WatchFor.Worker.As(ok(ClaimHolder.of("other"))), at),
-          from(WatchFor.Worker.At(worktree("/work/fixer")), at.plusSeconds(1))
+          from(WatchFor.Committer.At(worktree("/work/fixer")), at),
+          from(WatchFor.Committer.As(ok(ClaimHolder.of("fixer"))), at),
+          from(WatchFor.Committer.At(worktree("/work/parent")), at),
+          from(WatchFor.Committer.As(ok(ClaimHolder.of("other"))), at),
+          from(WatchFor.Committer.At(worktree("/work/fixer")), at.plusSeconds(1))
         )
       }
       val lapsed = Right(Watched.Lapsed)
@@ -232,7 +232,7 @@ object SqlWatchTests extends TestSuite {
     test("a commit logged after a watch began meets it") {
       val since = t0.plusSeconds(600)
       val got = watching { w =>
-        val f = watched(w, WatchFor.Committed(WatchFor.Worker.At(worktree("/work/late")), since))
+        val f = watched(w, WatchFor.Committed(WatchFor.Committer.At(worktree("/work/late")), since))
         commit("late-1", "late", "/work/late", since.plusSeconds(1), 1L)
         outcome(f)
       }

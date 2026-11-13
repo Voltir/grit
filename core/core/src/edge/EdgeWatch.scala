@@ -79,12 +79,12 @@ object WatchFor {
 
   /** A `commit` event at or after `since` that `by` names, logged on a session the watcher reads.
     */
-  final case class Committed(by: Worker, since: Instant) extends WatchFor
+  final case class Committed(by: Committer, since: Instant) extends WatchFor
 
   /** Who made a commit: a session working as `holder` ([[grit.core.session.Session.holder]]), or
     * any session committing in the worktree `at` ([[Event.Shape.committed]]).
     */
-  enum Worker extends caps.Pure {
+  enum Committer extends caps.Pure {
     case As(holder: ClaimHolder)
     case At(worktree: Place)
   }

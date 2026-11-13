@@ -31,7 +31,7 @@ object EdgeWatchTests extends TestSuite {
       val got = EdgeWatch.Refusing.until(
         TestAccounts.account("slack:T1/U-ann"),
         Place.Everywhere,
-        WatchFor.Committed(WatchFor.Worker.At(Place.Everywhere), java.time.Instant.EPOCH),
+        WatchFor.Committed(WatchFor.Committer.At(Place.Everywhere), java.time.Instant.EPOCH),
         1.second
       )
       assert(got == Left(WatchError.Unavailable("this edge was given no watch")))
