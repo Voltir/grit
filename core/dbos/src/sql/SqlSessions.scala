@@ -295,6 +295,31 @@ private[dbos] object SqlSessions {
       rows <- endedBefore(now.minusMillis(Session.Kept.toMillis), n, logged = false)
     } yield logs.map(Target.SessionEvents(_)) ++ rows.map(Target.Session(_))
 
+  /** The session working as `holder` whose last event is newest (a tie goes to the later
+    * recorded), of any harness, a child session or not, among those the transaction reads other
+    * than `besides`; none when it reads none.
+    */
+  def newest(holder: ClaimHolder, besides: Option[SessionId])(using
+      Tx^
+  ): Either[StoreError, Option[SessionId]] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT s.harness, s.local FROM grit.sessions s
+           | WHERE s.holder = ? AND ${SqlClearance.kept("s")}${besides.fold("")(_ =>
+            "\n   AND (s.harness, s.local) <> (?, ?)"
+          )}
+           | ORDER BY s.last_event_at DESC, s.id DESC LIMIT 1""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, ClaimHolder.value(holder))
+        besides.foreach { id =>
+          ps.setString(SqlClearance.Params + 2, Harness.value(id.harness))
+          ps.setString(SqlClearance.Params + 3, id.local)
+        }
+      }(rs => Harness.of(rs.getString("harness")).flatMap(SessionId.of(_, rs.getString("local"))))
+      .flatMap(SqlStatements.valid)
+      .map(_.headOption)
+
   /** `id`'s log deleted, when it has been kept [[Session.LogKept]] since the session ended at
     * `now`, or the session is gone; `false`, deleting nothing, when it has not.
     */

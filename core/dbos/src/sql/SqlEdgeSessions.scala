@@ -1,15 +1,42 @@
 package grit.dbos.sql
 
-import grit.core.edge.EdgeSessions
-import grit.core.id.SessionId
+import java.time.Instant
+import javax.sql.DataSource
+
+import grit.core.edge.{BriefError, EdgeSessions}
+import grit.core.id.{ClaimHolder, SessionId}
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
 import grit.core.session.Session
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.visibility.Subject
 
-/** [[EdgeSessions]] over [[SqlSessions]], each call one transaction written through `jot`. */
-private[dbos] final class SqlEdgeSessions(jot: Jot) extends EdgeSessions {
+/** [[EdgeSessions]] over [[SqlSessions]], each call one transaction: a record and a session read
+  * written through `jot`; a brief read on `dataSource`, opened through `opener` as its asker
+  * ([[SqlAsking.read]]).
+  */
+private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, opener: Opener)
+    extends EdgeSessions {
+
+  def briefed(
+      by: Account,
+      room: Place,
+      holder: ClaimHolder,
+      besides: Option[SessionId],
+      at: Instant
+  ): Either[BriefError, EdgeSessions.Briefed] =
+    SqlAsking.read(dataSource, opener, by, room)(
+      BriefError.NotVouched(_),
+      BriefError.Unavailable(_)
+    ) { (_, tx) =>
+      (for {
+        brief <- search.briefOf(holder, at)(using tx)
+        newest <- SqlSessions.newest(holder, besides)(using tx)
+        lately <- newest.fold(Right(None))(sessions.lately(_)(using tx))
+      } yield EdgeSessions.Briefed(brief, lately)).left.map(e => BriefError.Unavailable(e.toString))
+    }
+
+  private val search = new SqlDocumentSearch
 
   private val sessions = new SqlSessions
 

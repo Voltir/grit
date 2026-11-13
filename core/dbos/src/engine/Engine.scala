@@ -102,7 +102,8 @@ final class Engine private (
 
   val joins: grit.core.edge.Joins = new grit.dbos.sql.SqlJoins(jot)
 
-  val sessions: grit.core.edge.EdgeSessions = new grit.dbos.sql.SqlEdgeSessions(jot)
+  val sessions: grit.core.edge.EdgeSessions =
+    new grit.dbos.sql.SqlEdgeSessions(jot, dataSource, opener)
 
   private[dbos] val watching: SqlWatch = new SqlWatch(config, dataSource, opener)
 

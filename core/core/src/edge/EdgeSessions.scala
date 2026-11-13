@@ -1,5 +1,8 @@
 package grit.core.edge
 
+import java.time.Instant
+
+import grit.core.document.Document
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
@@ -26,6 +29,26 @@ trait EdgeSessions extends caps.SharedCapability {
     * read. [[StoreError.DatabaseError]] when the database could not open or read it.
     */
   def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]]
+
+  /** What a session working as `holder` opens with: the brief kept for it, current at `at`
+    * ([[grit.core.document.DocumentSearch.briefOf]]), and what the newest other session working as
+    * it did lately ([[grit.core.session.Sessions.lately]]): newest by its last event, of any
+    * harness, a child session or not, and never `besides` (the caller's own session at a fresh
+    * start; `None` on a resume, when the caller's own is the one to go on from). Both are read in
+    * one read-only transaction opened for the person `by` is linked to then, in `room`
+    * ([[grit.core.visibility.Subject.Person]]), so each is the newest that person reads there, and
+    * none when they read none; what it answers may be shown in `room` and nowhere lower.
+    * [[BriefError.NotVouched]] for an account no person is linked to; [[BriefError.Unavailable]]
+    * when the database could not open or read it, or the edge was built without the session
+    * record.
+    */
+  def briefed(
+      by: Account,
+      room: Place,
+      holder: ClaimHolder,
+      besides: Option[SessionId],
+      at: Instant
+  ): Either[BriefError, EdgeSessions.Briefed]
 }
 
 object EdgeSessions {
@@ -51,8 +74,9 @@ object EdgeSessions {
       events: Vector[Event]
   )
 
-  /** Records and reads nothing: every call is `Left(StoreError.Invalid)`, saying the edge was
-    * built without the session record.
+  /** Records and reads nothing: `record` and `lately` answer `Left(StoreError.Invalid)`, and
+    * `briefed` `Left(BriefError.Unavailable)`, each saying the edge was built without the session
+    * record.
     */
   def Refusing: EdgeSessions = new EdgeSessions {
     def record(
@@ -62,7 +86,34 @@ object EdgeSessions {
     ): Either[StoreError, Int] = Left(NoRecord)
     def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]] =
       Left(NoRecord)
+    def briefed(
+        by: Account,
+        room: Place,
+        holder: ClaimHolder,
+        besides: Option[SessionId],
+        at: Instant
+    ): Either[BriefError, Briefed] = Left(BriefError.Unavailable(Unrecorded))
   }
 
-  private val NoRecord = StoreError.Invalid("this edge was given no session record")
+  /** A holder's opening as data: `brief`, its brief, and `lately`, what its newest session did
+    * lately. An edge shows them as a turn's opening does ([[grit.core.context.Shown.brief]], and
+    * [[grit.core.session.SessionDigest.of]] at [[grit.core.session.SessionDigest.Chars]]).
+    */
+  final case class Briefed(brief: Option[Document], lately: Option[Session.Lately])
+      extends caps.Pure
+
+  private val Unrecorded = "this edge was given no session record"
+  private val NoRecord = StoreError.Invalid(Unrecorded)
+}
+
+/** Why [[EdgeSessions.briefed]] read nothing. */
+enum BriefError {
+
+  /** No person is linked to the account `by`. */
+  case NotVouched(by: Account)
+
+  /** The database could not open or read the transaction, or the edge has no session record:
+    * `cause` says why.
+    */
+  case Unavailable(cause: String)
 }

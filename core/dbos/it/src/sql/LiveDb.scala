@@ -191,12 +191,16 @@ object LiveDb {
     * engine's [[grit.core.store.Jot]], over sessions that outlive no engine, for a store a
     * suite keeps after the engine that migrated its database has closed.
     */
-  def jot(config: DbConfig, visibility: Visibility): grit.core.store.Jot = {
+  def jot(config: DbConfig, visibility: Visibility): grit.core.store.Jot =
+    new SqlJot(dataSource(config), new Opener(visibility))
+
+  /** `config`'s database, a new connection for each call, pooling none. */
+  def dataSource(config: DbConfig): javax.sql.DataSource = {
     val ds = new org.postgresql.ds.PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new SqlJot(ds, new Opener(visibility))
+    ds
   }
 
   /** The session `id` in `config`'s engine session record, for a suite outside `grit.dbos`. */
