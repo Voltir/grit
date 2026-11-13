@@ -345,5 +345,102 @@ object ServedTests extends TestSuite {
         Right((200, Some(-32602), ujson.Num(1)))
       )
     }
+
+    test("a list is answered as a page; in 2026-07-28 complete, stale on arrival and private") {
+      // schema 2026-07-28, ListToolsResult and caching; 2025's ListToolsResult.
+      val tool = ujson.Obj("name" -> "read", "inputSchema" -> ujson.Obj("type" -> "object"))
+      def body(r: Response) = (r.status.code, ujson.read(r.body))
+      Vector(
+        body(
+          Asked
+            .List(None, ujson.Num(1), Revision.Jul2026)
+            .answered(
+              Listing.Tools(Vector(tool), Some("next"))
+            )
+        ),
+        body(
+          Asked
+            .List(Some("next"), ujson.Str("a"), Revision.Nov2025)
+            .answered(
+              Listing.Tools(Vector(tool), None)
+            )
+        ),
+        body(Asked.List(Some("x"), ujson.Num(2), Revision.Jul2026).answered(Listing.NoSuchCursor)),
+        body(Asked.List(Some("x"), ujson.Num(2), Revision.Jun2025).answered(Listing.NoSuchCursor))
+      ) ==> Vector(
+        (
+          200,
+          ujson.read(
+            """{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":""" +
+              """[{"name":"read","inputSchema":{"type":"object"}}],"nextCursor":"next",""" +
+              """"ttlMs":0,"cacheScope":"private"}}"""
+          )
+        ),
+        (
+          200,
+          ujson.read(
+            """{"jsonrpc":"2.0","id":"a","result":{"tools":""" +
+              """[{"name":"read","inputSchema":{"type":"object"}}]}}"""
+          )
+        ),
+        (
+          400,
+          ujson.read(
+            """{"jsonrpc":"2.0","id":2,"error":{"code":-32602,""" +
+              """"message":"no page of tools has that cursor"}}"""
+          )
+        ),
+        (
+          200,
+          ujson.read(
+            """{"jsonrpc":"2.0","id":2,"error":{"code":-32602,""" +
+              """"message":"no page of tools has that cursor"}}"""
+          )
+        )
+      )
+    }
+
+    test("a call is answered as text; arguments it cannot read are a result from 2025-11-25") {
+      // 2025-11-25 and later: an argument failing validation is a result with isError, not
+      // a protocol error; an unknown tool stays an error. 2026-07-28 marks a result complete.
+      def answer(revision: Revision, result: CallResult) = {
+        val r = Asked.Call("read", ujson.Obj(), ujson.Num(3), revision).answered(result)
+        (r.status.code, ujson.read(r.body))
+      }
+      def text(said: String, isError: Boolean, complete: Boolean) = {
+        val result = ujson.Obj(
+          "content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> said)),
+          "isError" -> isError
+        )
+        if (complete) result("resultType") = "complete"
+        (200, ujson.Obj("jsonrpc" -> "2.0", "id" -> 3, "result" -> result))
+      }
+      def error(status: Int, said: String) =
+        (
+          status,
+          ujson.Obj(
+            "jsonrpc" -> "2.0",
+            "id" -> 3,
+            "error" -> ujson.Obj("code" -> -32602, "message" -> said)
+          )
+        )
+      Vector(
+        answer(Revision.Jul2026, CallResult.Done("ok")),
+        answer(Revision.Jun2025, CallResult.Failed("down")),
+        answer(Revision.Jul2026, CallResult.BadArguments("q is a number")),
+        answer(Revision.Nov2025, CallResult.BadArguments("q is a number")),
+        answer(Revision.Jun2025, CallResult.BadArguments("q is a number")),
+        answer(Revision.Jul2026, CallResult.NoSuchTool),
+        answer(Revision.Nov2025, CallResult.NoSuchTool)
+      ) ==> Vector(
+        text("ok", false, complete = true),
+        text("down", true, complete = false),
+        text("q is a number", true, complete = true),
+        text("q is a number", true, complete = false),
+        error(200, "q is a number"),
+        error(400, "no tool is named read"),
+        error(200, "no tool is named read")
+      )
+    }
   }
 }

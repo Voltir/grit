@@ -143,7 +143,7 @@ object Rpc {
   }
 
   /** A JSON-RPC error answering the request `id`, `ujson.Null` when it could not be read. */
-  private final case class Refusal(
+  private[wire] final case class Refusal(
       id: ujson.Value,
       code: Int,
       text: String,
@@ -299,7 +299,7 @@ object Rpc {
   }
 
   /** The status -32602 is sent with in `revision`: 400 in 2026-07-28, 200 before. */
-  private def invalidStatus(revision: Revision): Status =
+  private[wire] def invalidStatus(revision: Revision): Status =
     if (revision == Revision.Jul2026) Status.BadRequest else Status.Ok
 
   /** -32022's data, and the older era's -32602's, for a request naming `requested`. */
@@ -350,7 +350,7 @@ object Rpc {
   }
 
   /** `refusal` as a JSON-RPC error, sent with `status`. */
-  private def refused(refusal: Refusal, status: Status): Response = {
+  private[wire] def refused(refusal: Refusal, status: Status): Response = {
     val error = ujson.Obj("code" -> refusal.code, "message" -> refusal.text)
     refusal.data.foreach(d => error("data") = d)
     Response.json(status, ujson.Obj("jsonrpc" -> "2.0", "id" -> refusal.id, "error" -> error))

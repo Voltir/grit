@@ -1,6 +1,7 @@
 package grit.mcp.wire
 
 import grit.core.message.Cut
+import grit.core.provider.ToolSchema
 import grit.core.tool.{ToolName, Writes}
 
 /** A tool a server listed that grit may offer: marked read-only (`readOnlyHint: true`), its
@@ -92,6 +93,22 @@ object McpTool {
       Page(read.collect { case Right(t) => t }, read.collect { case Left(s) => s }, next, ttl)
     }
   }
+
+  /** `schema` as `tools/list` lists a tool: its name, its description, its parameters as
+    * `inputSchema`, and `readOnlyHint: reads`; it mirrors no argument into a header. Left,
+    * naming the tool, when its parameters are not a JSON object.
+    */
+  def described(schema: ToolSchema, reads: Boolean): Either[String, ujson.Obj] =
+    schema.parameters.objOpt
+      .toRight(s"${schema.name}'s parameters are not a JSON object")
+      .map(parameters =>
+        ujson.Obj(
+          "name" -> schema.name,
+          "description" -> schema.description,
+          "inputSchema" -> ujson.Obj.from(parameters),
+          "annotations" -> ujson.Obj("readOnlyHint" -> reads)
+        )
+      )
 
   private def tool(entry: ujson.Value, prefix: String): Either[Skipped, McpTool] =
     for {

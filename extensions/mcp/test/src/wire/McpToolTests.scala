@@ -394,5 +394,33 @@ object McpToolTests extends TestSuite {
         "search_code is not offered: its server's scope cannot hold it to its bounds"
       )
     }
+
+    test(
+      "described lists a tool by the spec's Tool, read-only as said; parameters not an object, Left"
+    ) {
+      // schema, Tool: name and inputSchema required, description optional, readOnlyHint a hint.
+      val parameters = ujson.Obj("type" -> "object", "additionalProperties" -> false)
+      Vector(
+        McpTool.described(grit.core.provider.ToolSchema("read", "Reads.", parameters), true),
+        McpTool.described(grit.core.provider.ToolSchema("write", "Writes.", parameters), false),
+        McpTool.described(grit.core.provider.ToolSchema("bad", "", ujson.Arr()), true)
+      ) ==> Vector(
+        Right(
+          ujson.read(
+            """{"name":"read","description":"Reads.","inputSchema":""" +
+              """{"type":"object","additionalProperties":false},""" +
+              """"annotations":{"readOnlyHint":true}}"""
+          )
+        ),
+        Right(
+          ujson.read(
+            """{"name":"write","description":"Writes.","inputSchema":""" +
+              """{"type":"object","additionalProperties":false},""" +
+              """"annotations":{"readOnlyHint":false}}"""
+          )
+        ),
+        Left("bad's parameters are not a JSON object")
+      )
+    }
   }
 }
