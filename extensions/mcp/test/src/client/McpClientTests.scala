@@ -444,7 +444,7 @@ object McpClientTests extends TestSuite {
         val gone = c.tools().toOption.flatMap(_.tools.find(_.name == "gone"))
         fake.lists(Vector(tool("a")), ttlMs = Vector(Some(60000L)))
         gone.map(c.call(_, ujson.Obj())) ==>
-          Some(Left(McpError.Rpc(-32602, "Unknown tool: gone")))
+          Some(Left(McpError.Rpc(-32602, "no tool is named gone")))
         offered(c.tools()) ==> Right(Vector("fake_a"))
         fake.count("tools/list") ==> 2
       }

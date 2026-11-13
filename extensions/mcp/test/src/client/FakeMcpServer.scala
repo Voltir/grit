@@ -2,27 +2,27 @@ package grit.mcp.client
 
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.Base64
 import java.util.concurrent.{CountDownLatch, Executors}
 
 import scala.jdk.CollectionConverters.*
 
+import grit.edge.http.{Request, Response, Verb}
+import grit.mcp.wire.{Asked, CallResult, Headers, Listing, Rpc, ServerInfo}
+
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** An MCP server at revision 2026-07-28 in this JVM, over Streamable HTTP on a loopback port,
-  * held to [[McpServerContract]]. It checks every request as the spec's server
-  * rules say (`streamable-http.mdx` §Server Validation, `basic/index.mdx` §`_meta`), in the
-  * order go-sdk's stateless server does, and rejects one that breaks them: `401` without its
-  * token; `415` for a `Content-Type` other than `application/json`; `400` in plain text for an
-  * `Accept` lacking either type it answers in, or a body that is not JSON; `400` with `-32020`
-  * for a missing `MCP-Protocol-Version`, or one, an `Mcp-Method` or an `Mcp-Name` that does
-  * not match the body, or for a call an `Mcp-Param-*` header missing, unexpected or not
-  * matching its argument, as the listed tool's `x-mcp-header` annotations say; `400` with `-32602` for `_meta` without its protocol version or client
-  * capabilities; and `400` with `-32022` for a version it does not [[speaks]]. It answers
-  * `tools/list` from [[lists]], a page at a time, and `tools/call` from [[answers]] or
-  * [[answering]] (an unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON
-  * or, after [[streams]], an event stream with a comment and a notification before the
-  * response. Every request it was sent is kept, in [[received]].
+  * held to [[McpServerContract]]. It reads every request as grit's server does
+  * ([[grit.mcp.wire.Rpc.received]]), after the checks that leaves to its caller, in the order
+  * go-sdk's stateless server makes them: `401` without its token; `415` for a `Content-Type`
+  * other than `application/json`; `400` in plain text for an `Accept` lacking either type it
+  * answers in. Past the reader, a version it does not [[speaks]] is `400` with `-32022`, and a
+  * call with an `Mcp-Param-*` header missing, unexpected or not matching its argument, as the
+  * listed tool's `x-mcp-header` annotations say, `400` with `-32020`. It answers `tools/list`
+  * from [[lists]], a page at a time, and `tools/call` from [[answers]] or [[answering]] (an
+  * unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON or, after
+  * [[streams]], an event stream with a comment and a notification before the response. Every
+  * request it was sent is kept, in [[received]].
   */
 final class FakeMcpServer private (val token: String) {
   import FakeMcpServer.*
@@ -145,15 +145,18 @@ final class FakeMcpServer private (val token: String) {
         else
           script.refusal match {
             case Some(r) => Reply(r.status, r.headers, r.body)
-            case None => answer(headers, message, script)
+            case None => answer(headers, body, message, script)
           }
       if (script.stalled && reply.status == 200) stall(exchange)
       else send(exchange, reply, script.sse)
     } finally exchange.close()
 
-  /** The reply to a request with `headers` and `message`, as the spec's server rules say. */
+  /** The reply to a request with `headers`, `body` and `message`: what grit's server reads
+    * ([[Rpc.received]]) after what that leaves to its caller, and the script.
+    */
   private def answer(
       headers: Map[String, String],
+      body: String,
       message: Option[collection.Map[String, ujson.Value]],
       script: Script
   ): Reply = {
@@ -167,99 +170,76 @@ final class FakeMcpServer private (val token: String) {
         ujson.write(ujson.Obj("jsonrpc" -> "2.0", "id" -> id, "error" -> e))
       )
     }
+    def sent(r: Response): Reply =
+      Reply(r.status.code, Vector("Content-Type" -> r.contentType.header), r.body)
+    // A version it was told it does not speak, as go-sdk answers one: after every other check.
+    def unspoken: Option[Reply] =
+      Option.when(!script.versions.contains(Rpc.Version))(
+        error(
+          400,
+          -32022,
+          s"Unsupported protocol version: ${Rpc.Version}",
+          Some(
+            ujson.Obj("supported" -> ujson.Arr.from(script.versions), "requested" -> Rpc.Version)
+          )
+        )
+      )
     val accept = headers.getOrElse("accept", "")
     val contentType = headers.getOrElse("content-type", "").takeWhile(_ != ';').trim.toLowerCase
-    // go-sdk's order (streamable.go: serveStateless, servePOST; server.go: handle).
+    // go-sdk's order (streamable.go: serveStateless, servePOST).
     if (contentType != "application/json")
       plain(415, "Content-Type must be 'application/json'")
     else if (!(accept.contains("application/json") && accept.contains("text/event-stream")))
       plain(400, "Accept must contain both 'application/json' and 'text/event-stream'")
     else
-      message match {
-        case None => plain(400, "malformed payload")
-        case Some(m) =>
-          val method = m.get("method").flatMap(_.strOpt)
-          val params = m.get("params").flatMap(_.objOpt)
-          val meta = params.flatMap(_.get("_meta")).flatMap(_.objOpt)
-          val version =
-            meta.flatMap(_.get("io.modelcontextprotocol/protocolVersion")).flatMap(_.strOpt)
-          val capabilities =
-            meta.flatMap(_.get("io.modelcontextprotocol/clientCapabilities")).flatMap(_.objOpt)
-          val name = params.flatMap(_.get("name")).flatMap(_.strOpt)
-          val header = headers.get("mcp-protocol-version")
-          (header, version) match {
-            case (None, _) =>
-              error(400, -32020, "MCP-Protocol-Version header is required")
-            case (_, None) =>
-              error(400, -32602, "Invalid params: _meta lacks its protocolVersion")
-            case (Some(h), Some(v)) if h != v =>
-              error(
-                400,
-                -32020,
-                s"Header mismatch: MCP-Protocol-Version $h does not match _meta's $v"
-              )
-            case _ if method.isEmpty || headers.get("mcp-method") != method =>
-              error(400, -32020, "Header mismatch: Mcp-Method does not match the body's method")
-            case _
-                if method.contains("tools/call") && headers.get("mcp-name").map(decoded) != name =>
-              error(400, -32020, "Header mismatch: Mcp-Name does not match the body's params.name")
-            case _ if capabilities.isEmpty =>
-              error(400, -32602, "Invalid params: _meta lacks its clientCapabilities")
-            case (_, Some(v)) if !script.versions.contains(v) =>
-              error(
-                400,
-                -32022,
-                s"Unsupported protocol version: $v",
-                Some(ujson.Obj("supported" -> ujson.Arr.from(script.versions), "requested" -> v))
-              )
-            case _ =>
-              method match {
-                case Some("tools/list") =>
-                  val cursor = params.flatMap(_.get("cursor")).flatMap(_.strOpt)
-                  val pages = script.tools.grouped(script.perPage).toVector
-                  val at =
-                    cursor.fold(Some(0))(c => pages.indices.find(i => i > 0 && Cursor(i) == c))
-                  at match {
-                    case None => error(400, -32602, "Invalid params: unknown cursor")
-                    case Some(i) =>
-                      val result = ujson.Obj(
-                        "resultType" -> "complete",
-                        "tools" -> ujson.Arr.from(pages.lift(i).getOrElse(Vector.empty))
-                      )
-                      script.ttls.lift(i).orElse(script.ttls.lastOption).flatten.foreach { t =>
-                        result("ttlMs") = ujson.Num(t.toDouble)
-                      }
-                      if (i + 1 < pages.size) result("nextCursor") = Cursor(i + 1)
-                      ok(id, result)
-                  }
-                case Some("tools/call") =>
-                  val listed = name.flatMap(n =>
-                    script.tools.find(_.obj.get("name").contains(ujson.Str(n))).map(t => (n, t))
-                  )
-                  val arguments = params.flatMap(_.get("arguments")).getOrElse(ujson.Obj())
-                  listed.map((n, t) => (n, mismatch(t, arguments, headers))) match {
-                    case None => error(400, -32602, s"Unknown tool: ${name.getOrElse("")}")
-                    case Some((_, Some(why))) => error(400, -32020, why)
-                    case Some((n, None)) =>
-                      ok(
-                        id,
-                        script.results
-                          .get(n)
-                          .map(_(arguments))
-                          .getOrElse(
-                            ujson.Obj(
-                              "content" -> ujson.Arr(
-                                ujson.Obj(
-                                  "type" -> "text",
-                                  "text" -> s"called $n with ${ujson.write(arguments)}"
-                                )
+      Request.of(Verb.Post, "/mcp", headers, body).map(Rpc.received(_, Info)) match {
+        case Left(why) => plain(400, why)
+        case Right(Asked.Answered(r)) => sent(r)
+        case Right(list: Asked.List) =>
+          unspoken.getOrElse {
+            val pages = script.tools.grouped(script.perPage).toVector
+            val at =
+              list.cursor.fold(Some(0))(c => pages.indices.find(i => i > 0 && Cursor(i) == c))
+            at match {
+              case None => sent(list.answered(Listing.NoSuchCursor))
+              case Some(i) =>
+                val result = ujson.Obj(
+                  "resultType" -> "complete",
+                  "tools" -> ujson.Arr.from(pages.lift(i).getOrElse(Vector.empty))
+                )
+                script.ttls.lift(i).orElse(script.ttls.lastOption).flatten.foreach { t =>
+                  result("ttlMs") = ujson.Num(t.toDouble)
+                }
+                if (i + 1 < pages.size) result("nextCursor") = Cursor(i + 1)
+                ok(id, result)
+            }
+          }
+        case Right(call: Asked.Call) =>
+          unspoken.getOrElse {
+            script.tools.find(_.obj.get("name").contains(ujson.Str(call.tool))) match {
+              case None => sent(call.answered(CallResult.NoSuchTool))
+              case Some(t) =>
+                mismatch(t, call.arguments, headers) match {
+                  case Some(why) => error(400, -32020, why)
+                  case None =>
+                    ok(
+                      id,
+                      script.results
+                        .get(call.tool)
+                        .map(_(call.arguments))
+                        .getOrElse(
+                          ujson.Obj(
+                            "content" -> ujson.Arr(
+                              ujson.Obj(
+                                "type" -> "text",
+                                "text" -> s"called ${call.tool} with ${ujson.write(call.arguments)}"
                               )
                             )
                           )
-                      )
-                  }
-                case _ => error(404, -32601, s"Method not found: ${method.getOrElse("")}")
-              }
+                        )
+                    )
+                }
+            }
           }
       }
   }
@@ -300,7 +280,7 @@ final class FakeMcpServer private (val token: String) {
           case (Some(_), None) =>
             Some(s"header mismatch: missing $name header for parameter \"$where\"")
           case (Some(value), Some(h)) =>
-            val decodedHeader = decoded(h)
+            val decodedHeader = Headers.decoded(h)
             val same = value match {
               case ujson.Str(v) => decodedHeader == v
               case ujson.Bool(v) => decodedHeader == v.toString
@@ -440,23 +420,8 @@ object FakeMcpServer {
 
   private def Cursor(page: Int): String = s"page-$page"
 
-  private val Open = "=?base64?"
-  private val Close = "?="
-
-  /** A header value as the spec's Value Encoding reads it. */
-  private def decoded(value: String): String =
-    if (
-      value.startsWith(Open) && value.endsWith(Close) && value.length >= Open.length + Close.length
-    )
-      scala.util
-        .Try(
-          new String(
-            Base64.getDecoder.decode(value.drop(Open.length).dropRight(Close.length)),
-            UTF_8
-          )
-        )
-        .getOrElse(value)
-    else value
+  /** What it says of itself at `server/discover`. */
+  private val Info = ServerInfo("fake", "1", None)
 
   private final case class Reply(status: Int, headers: Vector[(String, String)], body: String)
 
