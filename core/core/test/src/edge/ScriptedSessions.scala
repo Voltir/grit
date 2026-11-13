@@ -6,14 +6,15 @@ import grit.core.document.{DocText, Document, Placement}
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.Place
-import grit.core.session.Session
+import grit.core.session.{Event, Session}
 import grit.core.store.StoreError
 import grit.core.visibility.{Integrity, Label}
 
 /** An [[EdgeSessions]] over the sessions and briefs `script` holds, for the accounts in
   * `vouched`. Held to [[EdgeSessionsContract]]; it reads no labels or rooms, so every session
-  * and brief is every vouched account's, and what a session did lately is its record alone, with
-  * no commits, edits or reads. While the script is failing, every call fails as a database that
+  * and brief is every vouched account's, and what a session did lately is its record alone (its
+  * summary the newest closing it logged, its counters its events'), with no commits, edits or
+  * reads; it never ends a session. While the script is failing, every call fails as a database that
   * cannot be read does. Every call is recorded in the script.
   */
 final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Script)
@@ -169,13 +170,15 @@ object ScriptedSessions {
         if (fresh.isEmpty) logged
         else {
           ordinals = ordinals.updated(b.id, seen ++ fresh.map(_.n))
+          val said = fresh.sortBy(_.n).collect { case Event(_, _, Event.Kind.Closing(s), _) => s }
           sessions = sessions.find(_.id == b.id) match {
-            case Some(s) =>
+            case Some(_) =>
               sessions.map(o =>
                 if (o.id != b.id) o
                 else
                   o.copy(
                     lastEvent = (o.lastEvent +: fresh.map(_.at)).max,
+                    summary = said.lastOption.orElse(o.summary),
                     counters = o.counters + Session.Counters.of(fresh),
                     holder = o.holder.orElse(b.holder)
                   )
@@ -190,7 +193,7 @@ object ScriptedSessions {
                 fresh.map(_.at).min,
                 None,
                 fresh.map(_.at).max,
-                None,
+                said.lastOption,
                 Session.Counters.of(fresh),
                 false,
                 b.holder

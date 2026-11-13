@@ -16,6 +16,12 @@ object Holders {
   /** An agent of type `kind`, as its harness names it, that the session `session` starts. */
   final case class Agent(kind: String, session: SessionId)
 
+  /** The session an agent that `session` starts is recorded as, `agent` its harness's own id for
+    * it: `<session's id>/<agent>`, of `session`'s harness; or why not ([[SessionId.of]]).
+    */
+  def agentSession(session: SessionId, agent: String): Either[String, SessionId] =
+    SessionId.of(session.harness, s"${session.local}/$agent")
+
   /** The holder a session in `dir` on `worker` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:
     * `<worker>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last

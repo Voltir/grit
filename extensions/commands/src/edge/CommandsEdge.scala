@@ -23,7 +23,11 @@ import grit.mcp.wire.ServerInfo
   *     whole wait;
   *   - `GET /holder?harness=&dir=[&session=&type=]` answers the claim holder a session in `dir`,
   *     or an agent of `type` that `session` starts, works as on the caller's worker
-  *     ([[grit.commands.worker.Holders.of]]): the one way a claim learns it.
+  *     ([[grit.commands.worker.Holders.of]]): the one way a claim learns it;
+  *   - `GET /brief?harness=&session=&dir=&start=fresh|resume[&agent=&type=][&part=brief|digest]`
+  *     answers, as text, the holder's brief, or with `part=digest` what its newest session did
+  *     lately, through the deployment's session record; which start asks for a digest is the
+  *     harness adapter's choice.
   * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
   * GET runs, waits on or writes anything; any other path 404. It attests `realm` as `attester`,
   * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks
@@ -75,7 +79,18 @@ final class CommandsEdge private (
         .map(EdgeRefusal.Refused(_))
         .toLeft(())
       routes <- Routes
-        .of(stores.commands, stores.watch, clock, room, hosts, opened, own, holding, server)
+        .of(
+          stores.commands,
+          stores.watch,
+          stores.sessions,
+          clock,
+          room,
+          hosts,
+          opened,
+          own,
+          holding,
+          server
+        )
         .left
         .map(EdgeRefusal.Refused(_))
       source = opened.source(realm)

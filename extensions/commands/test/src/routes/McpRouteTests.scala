@@ -28,6 +28,7 @@ object McpRouteTests extends TestSuite {
       Routes.of(
         commands,
         Unwatched,
+        Unrecorded,
         new SetClock(Now),
         EdgeContracts.Room,
         Hosts.loopback,

@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
 import grit.core.clock.Clock
-import grit.core.edge.{EdgeWatch, PluginCommands}
+import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
 import grit.core.id.ClaimHolder
 import grit.core.place.Place
 import grit.core.tool.ToolName
@@ -13,12 +13,14 @@ import grit.edge.http.{Hosts, Request, Response, Status, Verb}
 import grit.mcp.wire.{CallResult, Listing, McpTool, Posted, Rpc, ServerInfo}
 
 /** The commands edge's routes: each request admitted by `hosts`, its caller asked of `callers`,
-  * and run in `room`, dated by `clock`, through `commands` or, by its name, one of `own`; `tools`,
-  * every offered command as `/mcp` lists it.
+  * and run in `room`, dated by `clock`, through `commands` or, by its name, one of `own`; a
+  * harness's sessions recorded and briefed through `sessions`; `tools`, every offered command as
+  * `/mcp` lists it.
   */
 private[commands] final class Routes private (
     commands: PluginCommands,
     watch: EdgeWatch,
+    sessions: EdgeSessions,
     clock: Clock^,
     room: Place,
     hosts: Hosts,
@@ -40,7 +42,9 @@ private[commands] final class Routes private (
     * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
     * body it does not read 400, each waiting on nothing. At `/holder`, a GET answers, as text, the
     * holder its query names on the caller's worker ([[Briefing.holderOf]]), touching no store;
-    * another verb 405, a query it does not read 400. Any other path 404.
+    * at `/brief`, a GET answers what the session its query names opens with
+    * ([[Briefing.briefOf]]), as [[Briefing.briefed]] says, writing nothing; each another verb
+    * 405, a query it does not read 400. Any other path 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -54,6 +58,7 @@ private[commands] final class Routes private (
             case Vector(Routes.Mcp) => mcp(request, caller)
             case Vector(Routes.Wait) => waited(request, caller)
             case Vector(Briefing.Holder) => holder(request, caller)
+            case Vector(Briefing.Brief) => brief(request, caller)
             case _ =>
               Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
           }
@@ -105,6 +110,22 @@ private[commands] final class Routes private (
           h => Response.text(Status.Ok, ClaimHolder.value(h))
         )
 
+  private def brief(request: Request, caller: Caller): Response =
+    if (request.verb != Verb.Get)
+      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a brief; nothing else reads one")
+    else
+      Briefing.briefOf(request, caller.worker) match {
+        case Left(why) => Response.text(Status.BadRequest, why)
+        case Right(asked) =>
+          val now = clock.now()
+          val (status, text) = Briefing.briefed(
+            asked,
+            sessions.briefed(caller.account, room, asked.holder, asked.besides, now),
+            now
+          )
+          Response.text(status, text)
+      }
+
   private def waited(request: Request, caller: Caller): Response =
     if (request.verb != Verb.Post)
       Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a watch; nothing else waits")
@@ -145,6 +166,7 @@ private[commands] object Routes {
   def of(
       commands: PluginCommands,
       watch: EdgeWatch,
+      sessions: EdgeSessions,
       clock: Clock^,
       room: Place,
       hosts: Hosts,
@@ -152,7 +174,7 @@ private[commands] object Routes {
       own: Vector[OwnCommand],
       holding: Option[HoldingWatch],
       server: ServerInfo
-  ): Either[String, Routes^{commands, watch, clock}] =
+  ): Either[String, Routes^{commands, watch, sessions, clock}] =
     commands.offered
       .foldLeft[Either[String, Vector[ujson.Obj]]](Right(Vector.empty)) { (done, l) =>
         done.flatMap(ts => McpTool.described(l.schema, l.reads).map(ts :+ _))
@@ -160,7 +182,19 @@ private[commands] object Routes {
       .left
       .map(why => s"an offered command cannot be listed at /mcp: $why")
       .map(tools =>
-        new Routes(commands, watch, clock, room, hosts, callers, own, holding, server, tools)
+        new Routes(
+          commands,
+          watch,
+          sessions,
+          clock,
+          room,
+          hosts,
+          callers,
+          own,
+          holding,
+          server,
+          tools
+        )
       )
 
   /** `command`: the first segment of a command's path, its name the second. */

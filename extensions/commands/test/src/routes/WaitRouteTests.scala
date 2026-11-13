@@ -40,6 +40,7 @@ object WaitRouteTests extends TestSuite {
       Routes.of(
         scripted(Vector.empty)((_, _) => Left(grit.core.edge.CommandError.Unavailable("unused"))),
         new ScriptedWatch(if (vouched) Set(Owner.account) else Set.empty, script),
+        Unrecorded,
         new SetClock(Now),
         EdgeContracts.Room,
         Hosts.loopback,
