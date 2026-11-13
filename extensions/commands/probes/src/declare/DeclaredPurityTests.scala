@@ -59,12 +59,12 @@ object DeclaredPurityTests extends TestSuite {
       |""".stripMargin
 
   private val watchReading =
-    """def f() = HoldingWatch(_ => None, (h, held) => s"held at ${held.version}")
+    """def f() = HoldingWatch(Set.empty, _ => None, (h, held) => s"held at ${held.version}")
       |""".stripMargin
 
   private val watchHoldingStores =
     """def f(stores: EdgeStores^) =
-      |  HoldingWatch(_ => None, (h, held) => s"held among ${stores.commands.offered.size}")
+      |  HoldingWatch(Set.empty, _ => None, (h, held) => s"held among ${stores.commands.offered.size}")
       |""".stripMargin
 
   private lazy val compiled = Probes.batch(

@@ -23,6 +23,7 @@ object WaitRouteTests extends TestSuite {
 
   /** Reads `{"document": "<key>"}` as a wait for it to hold [[Review]]. */
   private val holding = HoldingWatch(
+    Set("document"),
     body =>
       body.value.get("document").map { d =>
         d.strOpt
@@ -127,6 +128,8 @@ object WaitRouteTests extends TestSuite {
         ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> -1),
         ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> 1.5),
         ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "within" -> "60"),
+        ujson.Obj("commit" -> ujson.Obj("holder" -> "h"), "sinse" -> Now.toString),
+        ujson.Obj("document" -> "grit/plan", "since" -> Now.toString),
         ujson.Obj("document" -> 7),
         ujson.Obj("nothing" -> true)
       ).map(waited(r, _)) ==> Vector(
@@ -136,6 +139,8 @@ object WaitRouteTests extends TestSuite {
         (Status.BadRequest, "within is whole seconds, 0 or more"),
         (Status.BadRequest, "within is whole seconds, 0 or more"),
         (Status.BadRequest, "within is whole seconds, 0 or more"),
+        (Status.BadRequest, "this watch reads no sinse: only commit, since, within"),
+        (Status.BadRequest, "this watch reads no since: only document, within"),
         (Status.BadRequest, "document is a key"),
         (Status.BadRequest, "a watch names a commit, or what this edge's holding watch reads")
       )

@@ -22,6 +22,7 @@ private[commands] object Waited {
     *     ([[Worktrees.at]]), or `{"commit": {"holder": "<holder>"}}`: one by a session working
     *     as the holder; either at or after `since` (an ISO-8601 instant), by default `now`;
     *   - anything else, as `holding` reads it, when there is one.
+    * A key the watch it names does not read is refused, naming it.
     */
   def watchOf(
       body: ujson.Obj,
@@ -69,7 +70,14 @@ private[commands] object Waited {
           .flatMap(_.read(body))
           .getOrElse(Left("a watch names a commit, or what this edge's holding watch reads"))
     }
-    what.flatMap(w => within.map(w -> _))
+    val reads: Set[String] =
+      if (o.contains("commit")) Set("commit", "since", "within")
+      else holding.fold(Set.empty[String])(_.keys) + "within"
+    val known: Either[String, Unit] = o.keys
+      .find(k => !reads.contains(k))
+      .map(k => s"this watch reads no $k: only ${reads.toVector.sorted.mkString(", ")}")
+      .toLeft(())
+    for { w <- what; _ <- known; d <- within } yield (w, d)
   }
 
   /** What a watch for `what`, waiting `within`, answers when it came to `came`: 200 saying what
