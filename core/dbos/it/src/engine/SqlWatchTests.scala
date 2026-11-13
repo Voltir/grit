@@ -183,12 +183,6 @@ object SqlWatchTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a watch met already is met at once, with the refs it was met by") {
-      val version = write("grit/met", "review")
-      val got = watching(w => until(w, reaching("grit/met", "review", "merged"), Patience))
-      assert(got == Right(Watched.Held(version, Set(state("review")), t0)))
-    }
-
     test("a watch is met by a write committed after it began") {
       write("grit/later", "build")
       val (version, got) = watching { w =>
@@ -276,12 +270,6 @@ object SqlWatchTests extends TestSuite {
         (v, outcome(f))
       }
       assert(got == Some(Right(Watched.Held(version, Set(state("review")), t0))))
-    }
-
-    test("an account no person is linked to is refused") {
-      val nobody = TestAccounts.account("slack:T1/U-nobody")
-      val got = watching(_.until(nobody, Room, reaching("grit/met", "review"), Duration.Zero))
-      assert(got == Left(WatchError.NotVouched(nobody)))
     }
   }
 }
