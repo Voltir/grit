@@ -230,6 +230,20 @@ object ListenerTests extends TestSuite {
         logged.all.filter(_.contains("secret")) ==> Vector.empty
       } finally l.close()
     }
+    test("an answer that throws a LinkageError is answered 500 and logged") {
+      val logged = new Logged
+      val answer: (Request, String => Unit) => Response =
+        (_, _) => throw new NoClassDefFoundError("gone/Missing")
+      val l = opened("127.0.0.1:0", answer, logged)
+      try {
+        (
+          got(send(l.at.port, get("/x"))).status,
+          logged.all.filter(
+            _.contains("GET /x failed: java.lang.NoClassDefFoundError: gone/Missing")
+          )
+        ) ==> (500, Vector("GET /x failed: java.lang.NoClassDefFoundError: gone/Missing"))
+      } finally l.close()
+    }
 
     test("an answer's 405 carries Allow, naming its verbs") {
       val answer: (Request, String => Unit) => Response =

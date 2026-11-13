@@ -17,7 +17,6 @@ import java.util.concurrent.{
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import scala.util.control.NonFatal
 
 import grit.core.edge.EdgeRefusal
 
@@ -256,7 +255,7 @@ private final class Handling(
   private def answered(request: Request, named: String): Response =
     try answer(request, log)
     catch {
-      case e: Throwable if NonFatal(e) || e.isInstanceOf[InterruptedException] =>
+      case e: Throwable if !e.isInstanceOf[VirtualMachineError] =>
         val message = Option(e.getMessage).getOrElse("").take(Listener.LogMost)
         log(s"$named failed: ${e.getClass.getName}: $message")
         Response.text(Status.Failed, "the request failed")
