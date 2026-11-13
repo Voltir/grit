@@ -17,7 +17,8 @@ organisation's systems, data or people. The repository's top-level folders are t
 | `deployments/` | deployment | it names an organisation's systems, data or people, or is one deployment's wiring: `deployments/app` is the reference, grit's own chat, `grit serve` and `grit backfill`; a deployment's own module lives outside grit |
 | `eval/` | none | it measures grit: `eval/it`, the assembly eval, an `it`-only harness the law leaves unruled; `eval/harness`, the eval harness, run only through `scripts/eval`, which names the kit and the modules beneath it (the module table in [`CLAUDE.md`](../CLAUDE.md) lists them) |
 
-`core/edge` is core: it is the edge's half of ADR 0017's routing and names no protocol.
+`core/edge` is core: it is what every edge shares and no one protocol owns: ADR 0017's routing
+(`desk`) and the one HTTP listener (`http`), which names the transport and nothing carried over it.
 `core/prose` is core: ADR 0007's edge-neutral form.
 
 A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.eval`

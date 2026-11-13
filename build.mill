@@ -469,7 +469,7 @@ object grit extends Module {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
     }
 
-    /* What separation checking rejects of a server's tools and its log. */
+    /* What separation checking rejects of a server's tools, a listener's answer, and their logs. */
     object probes extends GritProbes {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
     }

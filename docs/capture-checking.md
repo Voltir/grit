@@ -66,6 +66,22 @@ only a nested `step`.
   read as asking for a pure one.
 - *Fix:* `caps.unsafe.unsafeAssumePure(arr)`, with a comment saying the callee only reads
   it. Only in quarantine modules and tests (`Main`, `SqlInbox`, `SeparationTests`).
+  Where the array is only read, wrapping it in a `ByteBuffer` at the Java call that returned
+  it avoids the hatch (`grit.edge.http.Listener` reads a body so).
+
+**A Java method's parameter takes a capturing object untracked.**
+
+- *Symptom:* none, which is the trap. A lambda capturing `answer` *ascribed* to a Java
+  interface is refused (`Found: HttpHandler^{answer, log}  Required: HttpHandler`), but the same
+  lambda, or a Scala class holding `answer` that implements the interface, passed straight to a
+  Java method (`server.createContext("/", handling)`, `new Thread(run)`) compiles with no
+  `caps.unsafe`, and `scripts/unsafe-check` cannot see it.
+- *Cause:* Java signatures are read as taking any capture set; the callee may keep the object
+  past the scope its captures are valid in.
+- *Fix:* none from the compiler. Keep the same object in the Scala value that owns the Java
+  one, so its type carries the captures, and write the proof beside the call as rule 11 asks:
+  what ends the Java side's use of it before that value's scope does (`grit.edge.http.Listener`'s
+  `createContext`, `grit.edge.desk.Server`'s thread).
 
 **A function stored in a value must match its capture set.**
 

@@ -52,7 +52,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.models` | `grit.models` | core | `Provider`s and `Classifier`s |
 | `grit.formats` | `limits`, `tree`, `ooxml`, `google`, `pdf`, `choice` | core | the readers of PDF, Word, Excel and Google Slides files (ADR 0044), and PDFBox's quarantine |
 | `grit.host` | `checkout`, `machine`, `blobs` | core | `grit.core.host`'s capabilities over this machine |
-| `grit.edge` | `desk` | core | an edge's side of the engine, over core's traits alone |
+| `grit.edge` | `desk`, `http` | core | an edge's side of the engine, over core's traits alone, and the one HTTP listener edges share |
 | `grit.tools` | `grit.tools` | core | the coding tool set and grit's own tools |
 | `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0060) and the Slack SDK's quarantine |
 | `grit.chat` | `settings`, `look`, `view`, `screen`, `host`, `run` | core, prose, tui, edge, turn | the chat TUI, run by a deployment over `Kit.console` |
