@@ -6,6 +6,7 @@ import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.edge.http.Status
+import grit.mcp.wire.CallResult
 
 /** What a command came to, as every route that runs one answers it: one table, so `/command` and
   * `/mcp` cannot disagree.
@@ -28,6 +29,16 @@ private[commands] object Answered {
     case Left(CommandError.Store(_, error)) => (Status.Failed, s"nothing was kept: $error")
     case Left(CommandError.Unavailable(cause)) =>
       (Status.Unavailable, s"the database is unavailable: $cause")
+  }
+
+  /** `answered` as an MCP `tools/call` result: 200 its text, 404 no such tool, 400 arguments the
+    * command does not read, anything else its text as a failed result.
+    */
+  def call(answered: (Status, String)): CallResult = answered match {
+    case (Status.Ok, text) => CallResult.Done(text)
+    case (Status.NotFound, _) => CallResult.NoSuchTool
+    case (Status.BadRequest, why) => CallResult.BadArguments(why)
+    case (_, text) => CallResult.Failed(text)
   }
 
   /** 403, for a caller not believed at `least`, which a deployment's own command requires. */

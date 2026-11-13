@@ -10,6 +10,7 @@ import grit.core.provider.ToolSchema
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
 import grit.edge.http.{Request, Verb}
+import grit.mcp.wire.ServerInfo
 
 /** What the routes' suites share: the owner, as the contracts' reader, and requests to them. */
 object RouteFixtures {
@@ -52,6 +53,8 @@ object RouteFixtures {
       answer: (ToolName, ujson.Value) -> Either[CommandError, CommandOutcome]
   ): ScriptedCommands =
     new ScriptedCommands(offered, Set(Owner.account))(answer)
+
+  val Server: ServerInfo = ServerInfo("commands", "1", None)
 
   /** Requests with no credential are [[Owner]]'s. */
   val Owners: Callers = Callers.owner(Owner)

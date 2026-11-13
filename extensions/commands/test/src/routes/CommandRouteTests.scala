@@ -31,7 +31,15 @@ object CommandRouteTests extends TestSuite {
       own: Vector[OwnCommand] = Vector.empty,
       callers: Callers = Owners
   ): Routes^ =
-    new Routes(commands, new SetClock(Now), EdgeContracts.Room, Hosts.loopback, callers, own)
+    new Routes(
+      commands,
+      new SetClock(Now),
+      EdgeContracts.Room,
+      Hosts.loopback,
+      callers,
+      own,
+      Server
+    )
 
   private def posted(r: Routes^, name: String, body: String = """{"text":"it"}""") = {
     val got = r.answer(request(Verb.Post, s"/command/$name", body))
