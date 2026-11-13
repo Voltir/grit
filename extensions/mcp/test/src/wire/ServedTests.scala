@@ -11,24 +11,24 @@ object ServedTests extends TestSuite {
 
   private val info = ServerInfo("example", "1", Some("Example instructions."))
 
-  private def received(verb: Verb, headers: Vector[(String, String)], body: String): Asked =
+  private def received(verb: Verb, headers: Vector[(String, String)], body: String): Posted =
     Request.of(verb, "/mcp", headers, body) match {
       case Right(r) => Rpc.received(r, info)
       case Left(why) => throw new java.lang.AssertionError(why)
     }
 
-  private def post(headers: (String, String)*)(body: String): Asked =
+  private def post(headers: (String, String)*)(body: String): Posted =
     received(Verb.Post, headers.toVector, body)
 
   /** An answer's status and its body as JSON, `ujson.Null` when it has none; or what was asked. */
-  private def answered(asked: Asked): Either[Asked, (Int, ujson.Value)] = asked match {
-    case Asked.Answered(r) =>
+  private def answered(asked: Posted): Either[Posted, (Int, ujson.Value)] = asked match {
+    case Posted.Answered(r) =>
       Right((r.status.code, if (r.body.isEmpty) ujson.Null else ujson.read(r.body)))
     case other => Left(other)
   }
 
   /** An answer's status, error code and id; or what was asked. */
-  private def refused(asked: Asked): Either[Asked, (Int, Option[Int], ujson.Value)] =
+  private def refused(asked: Posted): Either[Posted, (Int, Option[Int], ujson.Value)] =
     answered(asked).map { (status, body) =>
       val o = body.objOpt
       (
@@ -100,7 +100,7 @@ object ServedTests extends TestSuite {
     test("a verb other than POST is 405, allowing POST alone") {
       Vector(Verb.Get, Verb.Delete).map(v =>
         received(v, Vector("Accept" -> "text/event-stream"), "") match {
-          case Asked.Answered(r) => Some(r.status)
+          case Posted.Answered(r) => Some(r.status)
           case _ => None
         }
       ) ==> Vector.fill(2)(Some(Status.NotAllowed(Vector(Verb.Post))))
@@ -303,20 +303,20 @@ object ServedTests extends TestSuite {
         // no header and no _meta: 2025-06-18; arguments absent
         post()("""{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"read"}}""")
       ) ==> Vector(
-        Asked.List(None, ujson.Str("é-1"), Revision.Jul2026),
-        Asked.List(Some(""), ujson.Str(""), Revision.Jul2026),
-        Asked.List(Some("page 2"), ujson.Num(0), Revision.Jul2026),
-        Asked.List(None, ujson.Num(-5), Revision.Jul2026),
-        Asked.List(None, ujson.Num(9007199254740991d), Revision.Jul2026),
-        Asked.Call("read", ujson.Obj("q" -> 1), ujson.Num(7), Revision.Jul2026),
-        Asked.List(None, ujson.Num(1), Revision.Nov2025),
-        Asked.Call(
+        Posted.List(None, ujson.Str("é-1"), Revision.Jul2026),
+        Posted.List(Some(""), ujson.Str(""), Revision.Jul2026),
+        Posted.List(Some("page 2"), ujson.Num(0), Revision.Jul2026),
+        Posted.List(None, ujson.Num(-5), Revision.Jul2026),
+        Posted.List(None, ujson.Num(9007199254740991d), Revision.Jul2026),
+        Posted.Call("read", ujson.Obj("q" -> 1), ujson.Num(7), Revision.Jul2026),
+        Posted.List(None, ujson.Num(1), Revision.Nov2025),
+        Posted.Call(
           "example_read",
           ujson.Obj("topic" -> "example"),
           ujson.Num(2),
           Revision.Nov2025
         ),
-        Asked.Call("read", ujson.Obj(), ujson.Num(8), Revision.Jun2025)
+        Posted.Call("read", ujson.Obj(), ujson.Num(8), Revision.Jun2025)
       )
     }
 
@@ -352,21 +352,21 @@ object ServedTests extends TestSuite {
       def body(r: Response) = (r.status.code, ujson.read(r.body))
       Vector(
         body(
-          Asked
+          Posted
             .List(None, ujson.Num(1), Revision.Jul2026)
             .answered(
               Listing.Tools(Vector(tool), Some("next"))
             )
         ),
         body(
-          Asked
+          Posted
             .List(Some("next"), ujson.Str("a"), Revision.Nov2025)
             .answered(
               Listing.Tools(Vector(tool), None)
             )
         ),
-        body(Asked.List(Some("x"), ujson.Num(2), Revision.Jul2026).answered(Listing.NoSuchCursor)),
-        body(Asked.List(Some("x"), ujson.Num(2), Revision.Jun2025).answered(Listing.NoSuchCursor))
+        body(Posted.List(Some("x"), ujson.Num(2), Revision.Jul2026).answered(Listing.NoSuchCursor)),
+        body(Posted.List(Some("x"), ujson.Num(2), Revision.Jun2025).answered(Listing.NoSuchCursor))
       ) ==> Vector(
         (
           200,
@@ -404,7 +404,7 @@ object ServedTests extends TestSuite {
       // 2025-11-25 and later: an argument failing validation is a result with isError, not
       // a protocol error; an unknown tool stays an error. 2026-07-28 marks a result complete.
       def answer(revision: Revision, result: CallResult) = {
-        val r = Asked.Call("read", ujson.Obj(), ujson.Num(3), revision).answered(result)
+        val r = Posted.Call("read", ujson.Obj(), ujson.Num(3), revision).answered(result)
         (r.status.code, ujson.read(r.body))
       }
       def text(said: String, isError: Boolean, complete: Boolean) = {

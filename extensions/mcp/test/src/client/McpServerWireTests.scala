@@ -4,7 +4,7 @@ import grit.core.edge.Variable
 import grit.core.provider.ToolSchema
 import grit.edge.http.{Listen, Listener, Request, Response}
 import grit.mcp.scope.McpScope
-import grit.mcp.wire.{Asked, CallResult, Listing, McpTool, Rpc, ServerInfo}
+import grit.mcp.wire.{CallResult, Listing, McpTool, Posted, Rpc, ServerInfo}
 
 /** [[McpServerContract]], kept by grit's own server's wire over a [[Listener]] on a loopback
   * port: each request read by [[Rpc.received]], one read-only tool listed by
@@ -28,12 +28,12 @@ object McpServerWireTests extends McpServerContract {
 
   private def answer(request: Request): Response =
     Rpc.received(request, ServerInfo("wire", "1", None)) match {
-      case Asked.Answered(response) => response
-      case list: Asked.List =>
+      case Posted.Answered(response) => response
+      case list: Posted.List =>
         list.answered(
           if (list.cursor.isEmpty) Listing.Tools(listed, None) else Listing.NoSuchCursor
         )
-      case call: Asked.Call =>
+      case call: Posted.Call =>
         call.answered(
           if (call.tool == tool.name)
             CallResult.Done(s"called ${call.tool} with ${ujson.write(call.arguments)}")

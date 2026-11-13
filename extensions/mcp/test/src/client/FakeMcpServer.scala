@@ -7,7 +7,7 @@ import java.util.concurrent.{CountDownLatch, Executors}
 import scala.jdk.CollectionConverters.*
 
 import grit.edge.http.{Request, Response, Verb}
-import grit.mcp.wire.{Asked, CallResult, Headers, Listing, Rpc, ServerInfo}
+import grit.mcp.wire.{CallResult, Headers, Listing, Posted, Rpc, ServerInfo}
 
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
@@ -194,8 +194,8 @@ final class FakeMcpServer private (val token: String) {
     else
       Request.of(Verb.Post, "/mcp", headers, body).map(Rpc.received(_, Info)) match {
         case Left(why) => plain(400, why)
-        case Right(Asked.Answered(r)) => sent(r)
-        case Right(list: Asked.List) =>
+        case Right(Posted.Answered(r)) => sent(r)
+        case Right(list: Posted.List) =>
           unspoken.getOrElse {
             val pages = script.tools.grouped(script.perPage).toVector
             val at =
@@ -214,7 +214,7 @@ final class FakeMcpServer private (val token: String) {
                 ok(id, result)
             }
           }
-        case Right(call: Asked.Call) =>
+        case Right(call: Posted.Call) =>
           unspoken.getOrElse {
             script.tools.find(_.obj.get("name").contains(ujson.Str(call.tool))) match {
               case None => sent(call.answered(CallResult.NoSuchTool))

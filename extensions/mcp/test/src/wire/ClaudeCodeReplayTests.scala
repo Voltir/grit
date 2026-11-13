@@ -23,7 +23,7 @@ object ClaudeCodeReplayTests extends TestSuite {
       .toVector
 
   /** A recorded or synthesised request, read by the server. */
-  private def received(line: ujson.Value): Asked = {
+  private def received(line: ujson.Value): Posted = {
     val verb = line("verb").str match {
       case "POST" => Verb.Post
       case "GET" => Verb.Get
@@ -71,11 +71,11 @@ object ClaudeCodeReplayTests extends TestSuite {
   )
 
   /** What the server sends for `asked`: a list answered with [[tool]], a call with a text. */
-  private def answered(asked: Asked): Response = asked match {
-    case Asked.Answered(r) => r
-    case l: Asked.List =>
+  private def answered(asked: Posted): Response = asked match {
+    case Posted.Answered(r) => r
+    case l: Posted.List =>
       l.answered(Listing.Tools(McpTool.described(tool, reads = true).toOption.toVector, None))
-    case c: Asked.Call => c.answered(CallResult.Done("an example"))
+    case c: Posted.Call => c.answered(CallResult.Done("an example"))
   }
 
   val tests = Tests {
@@ -105,8 +105,8 @@ object ClaudeCodeReplayTests extends TestSuite {
 
     test("the stateless list and call, synthesised from the recorded discover, reach the server") {
       lines("stateless-synthesised-2.1.303.jsonl").map(received) ==> Vector(
-        Asked.List(None, ujson.Num(1), Revision.Jul2026),
-        Asked.Call("example_read", ujson.Obj("topic" -> "example"), ujson.Num(2), Revision.Jul2026)
+        Posted.List(None, ujson.Num(1), Revision.Jul2026),
+        Posted.Call("example_read", ujson.Obj("topic" -> "example"), ujson.Num(2), Revision.Jul2026)
       )
     }
   }

@@ -108,7 +108,7 @@ object Rpc {
 
   /** `request`, posted to an MCP endpoint, read as one JSON-RPC message in the revision it
     * declares (the module's README, "Serving"). Only `tools/list` and `tools/call` are left to
-    * the server; anything else is [[Asked.Answered]]: `server/discover`, `initialize` (in the
+    * the server; anything else is [[Posted.Answered]]: `server/discover`, `initialize` (in the
     * revision asked for when it is 2025-06-18 or 2025-11-25, else 2025-11-25) and `ping` from
     * `server`; a notification or a client's response, 202 with no body; a verb other than POST,
     * 405; and, with the error and status its revision gives, a body that is not one JSON-RPC 2.0
@@ -116,15 +116,15 @@ object Rpc {
     * not listed, an unknown method, and a `tools/list` or `tools/call` whose params cannot be
     * read. `Origin`, `Authorization`, `Mcp-Session-Id` and `Mcp-Param-*` are not read.
     */
-  def received(request: Request, server: ServerInfo): Asked =
+  def received(request: Request, server: ServerInfo): Posted =
     if (request.verb != Verb.Post)
-      Asked.Answered(
+      Posted.Answered(
         Response.text(Status.NotAllowed(Vector(Verb.Post)), "post one JSON-RPC message")
       )
     else
       message(request.body) match {
-        case Left(refusal) => Asked.Answered(refused(refusal, Status.BadRequest))
-        case Right(Message.Notice) => Asked.Answered(Response.text(Status.Accepted, ""))
+        case Left(refusal) => Posted.Answered(refused(refusal, Status.BadRequest))
+        case Right(Message.Notice) => Posted.Answered(Response.text(Status.Accepted, ""))
         case Right(m: Message.Call) =>
           val meta = m.params.get("_meta").flatMap(_.objOpt)
           if (
@@ -206,11 +206,11 @@ object Rpc {
       m: Message.Call,
       meta: Option[collection.Map[String, ujson.Value]],
       server: ServerInfo
-  ): Asked = {
+  ): Posted = {
     val header = request.header("MCP-Protocol-Version")
     val version = meta.flatMap(_.get(VersionKey)).flatMap(_.strOpt)
     def refuse(status: Status, code: Int, text: String, data: Option[ujson.Value] = None) =
-      Asked.Answered(refused(Refusal(m.id, code, text, data), status))
+      Posted.Answered(refused(Refusal(m.id, code, text, data), status))
     (header, version) match {
       case (None, _) =>
         refuse(Status.BadRequest, Code.HeaderMismatch, "the MCP-Protocol-Version header is missing")
@@ -241,7 +241,7 @@ object Rpc {
       case _ =>
         m.method match {
           case "server/discover" =>
-            Asked.Answered(answer(m.id, Revision.Jul2026, discovered(server)))
+            Posted.Answered(answer(m.id, Revision.Jul2026, discovered(server)))
           case "tools/list" | "tools/call" => asked(m, Revision.Jul2026)
           case other =>
             refuse(Status.NotFound, Code.MethodNotFound, s"no method is named $other")
@@ -252,9 +252,9 @@ object Rpc {
   /** `m`, a request declaring no 2026-07-28, in the revision its header names, 2025-06-18 when
     * it has none; `initialize` in the revision it asks for.
     */
-  private def older(request: Request, m: Message.Call, server: ServerInfo): Asked = {
+  private def older(request: Request, m: Message.Call, server: ServerInfo): Posted = {
     def refuse(status: Status, code: Int, text: String, data: Option[ujson.Value] = None) =
-      Asked.Answered(refused(Refusal(m.id, code, text, data), status))
+      Posted.Answered(refused(Refusal(m.id, code, text, data), status))
     request.header("MCP-Protocol-Version") match {
       case Some(h) if Revision.named(h).isEmpty =>
         refuse(
@@ -268,8 +268,8 @@ object Rpc {
         m.method match {
           case "initialize" =>
             val asked = m.params.get("protocolVersion").flatMap(_.strOpt).flatMap(Revision.named)
-            Asked.Answered(answer(m.id, revision, initialized(asked, server)))
-          case "ping" => Asked.Answered(answer(m.id, revision, ujson.Obj()))
+            Posted.Answered(answer(m.id, revision, initialized(asked, server)))
+          case "ping" => Posted.Answered(answer(m.id, revision, ujson.Obj()))
           case "tools/list" | "tools/call" => asked(m, revision)
           case other => refuse(Status.Ok, Code.MethodNotFound, s"no method is named $other")
         }
@@ -279,20 +279,20 @@ object Rpc {
   /** `m`, a `tools/list` or a `tools/call` read in `revision`, for the server; or -32602 when its
     * params cannot be read.
     */
-  private def asked(m: Message.Call, revision: Revision): Asked = {
+  private def asked(m: Message.Call, revision: Revision): Posted = {
     def invalid(why: String) =
-      Asked.Answered(refused(Refusal(m.id, Code.InvalidParams, why), invalidStatus(revision)))
+      Posted.Answered(refused(Refusal(m.id, Code.InvalidParams, why), invalidStatus(revision)))
     if (m.method == "tools/list")
       m.params.get("cursor") match {
-        case None | Some(ujson.Null) => Asked.List(None, m.id, revision)
-        case Some(ujson.Str(c)) => Asked.List(Some(c), m.id, revision)
+        case None | Some(ujson.Null) => Posted.List(None, m.id, revision)
+        case Some(ujson.Str(c)) => Posted.List(Some(c), m.id, revision)
         case Some(_) => invalid("a cursor is a string")
       }
     else
       (m.params.get("name"), m.params.get("arguments")) match {
         case (Some(ujson.Str(tool)), None | Some(ujson.Null)) =>
-          Asked.Call(tool, ujson.Obj(), m.id, revision)
-        case (Some(ujson.Str(tool)), Some(a: ujson.Obj)) => Asked.Call(tool, a, m.id, revision)
+          Posted.Call(tool, ujson.Obj(), m.id, revision)
+        case (Some(ujson.Str(tool)), Some(a: ujson.Obj)) => Posted.Call(tool, a, m.id, revision)
         case (Some(ujson.Str(_)), Some(_)) => invalid("a tool's arguments are a JSON object")
         case _ => invalid("tools/call names its tool")
       }

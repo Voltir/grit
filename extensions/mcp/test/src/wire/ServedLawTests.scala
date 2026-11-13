@@ -7,7 +7,7 @@ import grit.edge.http.{Request, Response, Verb}
 import utest.*
 
 /** The law tying the wire's two halves: what grit's client sends, [[Rpc.received]] reads as
-  * sent, and what [[Asked.List.answered]] and [[Asked.Call.answered]] write, the client reads
+  * sent, and what [[Posted.List.answered]] and [[Posted.Call.answered]] write, the client reads
   * as the server meant it. [[ServedTests]] holds the server to literal wire text; this holds the
   * halves to each other.
   */
@@ -24,7 +24,7 @@ object ServedLawTests extends TestSuite {
       call: Rpc.Call,
       edit: ujson.Obj => Unit = _ => (),
       version: String = Rpc.Version
-  ): Asked = {
+  ): Posted = {
     val body = Rpc.request(id, call)
     edit(body)
     val headers =
@@ -91,7 +91,7 @@ object ServedLawTests extends TestSuite {
     val asked = cursor(random)
     val listId = random.nextLong(9007199254740991L)
     val listing = sent(listId, Rpc.Call.ListTools(asked)) match {
-      case l @ Asked.List(c, id, Revision.Jul2026)
+      case l @ Posted.List(c, id, Revision.Jul2026)
           if c == asked && id == ujson.Num(listId.toDouble) =>
         Right(l)
       case other => Left(s"list $listId from $asked read as $other")
@@ -122,7 +122,7 @@ object ServedLawTests extends TestSuite {
       val callId = random.nextLong(9007199254740991L)
       val answer = result(random)
       sent(callId, Rpc.Call.CallTool(t, arguments)) match {
-        case c @ Asked.Call(name, args, id, Revision.Jul2026)
+        case c @ Posted.Call(name, args, id, Revision.Jul2026)
             if name == t.name && args == arguments && id == ujson.Num(callId.toDouble) =>
           val got =
             read(callId, c.answered(answer)).flatMap(Answer.of(_)).map(a => (a.text, a.isError))
@@ -148,15 +148,15 @@ object ServedLawTests extends TestSuite {
     test("the server's refusals are read by the client as the errors they are") {
       val list = Rpc.Call.ListTools(None)
       val version = "io.modelcontextprotocol/protocolVersion"
-      def refusal(asked: Asked) = asked match {
-        case Asked.Answered(r) => read(1, r)
+      def refusal(asked: Posted) = asked match {
+        case Posted.Answered(r) => read(1, r)
         case other => Right(ujson.Obj("asked" -> other.toString))
       }
       Vector(
         refusal(sent(1, list, _("params")("_meta")(version) = "2099-01-01", "2099-01-01")),
         refusal(sent(1, list, _("method") = "resources/list")),
         refusal(sent(1, list, _("params")("_meta").obj.remove(version))),
-        read(1, Asked.List(None, ujson.Num(1), Revision.Jul2026).answered(Listing.NoSuchCursor))
+        read(1, Posted.List(None, ujson.Num(1), Revision.Jul2026).answered(Listing.NoSuchCursor))
       ) ==> Vector(
         Left(McpError.Unsupported(Vector("2026-07-28", "2025-11-25", "2025-06-18"))),
         Left(McpError.Rpc(-32020, "Mcp-Method does not match the method")),

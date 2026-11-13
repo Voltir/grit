@@ -8,19 +8,19 @@ import grit.edge.http.Response
 final case class ServerInfo(name: String, version: String, instructions: Option[String])
 
 /** What a POST to an MCP endpoint, read by [[Rpc.received]], leaves its server to do. */
-sealed trait Asked
+sealed trait Posted
 
-object Asked {
+object Posted {
 
   /** Nothing more: send `response`. */
-  final case class Answered(response: Response) extends Asked
+  final case class Answered(response: Response) extends Posted
 
   /** `tools/list` from `cursor`, `None` for the first page. */
   final case class List private[wire] (
       cursor: Option[String],
       private[wire] val id: ujson.Value,
       private[wire] val revision: Revision
-  ) extends Asked {
+  ) extends Posted {
 
     /** The answer to this `tools/list`: `Tools` a page, in 2026-07-28 with `ttlMs: 0` and a
       * private `cacheScope`; `NoSuchCursor` error -32602.
@@ -48,7 +48,7 @@ object Asked {
       arguments: ujson.Obj,
       private[wire] val id: ujson.Value,
       private[wire] val revision: Revision
-  ) extends Asked {
+  ) extends Posted {
 
     /** The answer to this `tools/call`: `Done` a text result, `Failed` one with `isError: true`;
       * `BadArguments` that error result, saying `why`, from 2025-11-25 and error -32602 in

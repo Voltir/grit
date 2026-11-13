@@ -23,7 +23,7 @@ In dependency order:
 - **`wire`**: the protocol over ujson, pure: the requests grit sends, the results and errors
   read back, a response in an event stream, a call's result as the text the model reads, and
   `McpCalled`, the exchange a server's `Accounts` reads for its items (ADR 0036). And the
-  server's half: `Rpc.received`, a POST read as one request (`Asked`), only `tools/list` and
+  server's half: `Rpc.received`, a POST read as one request (`Posted`), only `tools/list` and
   `tools/call` left to the server, each answered on the case that asked it (`Listing`,
   `CallResult`); `McpTool.described`, a tool as a server lists it; `Headers.decoded`, a header
   value as `encoded` wrote it. `Code` is the one table of error codes both halves use. Its
