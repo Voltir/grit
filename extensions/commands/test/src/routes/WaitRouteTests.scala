@@ -106,6 +106,15 @@ object WaitRouteTests extends TestSuite {
       )
     }
 
+    test("a GET is 405, and nothing is waited on") {
+      val script = new ScriptedWatch.Script
+      val got = waiting(script).answer(
+        request(Verb.Get, "/wait", ujson.write(ujson.Obj("commit" -> ujson.Obj("holder" -> "h"))))
+      )
+      got.status ==> Status.NotAllowed(Vector(Verb.Post))
+      script.asked ==> Vector.empty
+    }
+
     test("a body this edge does not read is 400, saying why, and nothing is waited on") {
       val script = new ScriptedWatch.Script
       val r = waiting(script)
