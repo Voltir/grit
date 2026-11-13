@@ -29,6 +29,38 @@ object UnrecordedTests extends TestSuite {
         .map(s => ujson.read(Event.Shape.value(s)).obj.get(Event.Shape.Subject).flatMap(_.strOpt))
       cut ==> Right(Some(("fixes " * 40).trim + "…"))
     }
+    test("a commit's shape keeps every other key it is given while its subject is cut") {
+      val at = Place.under(Namespace.Fs, Vector("/w"))
+      val besides = ujson.Obj(
+        Event.Shape.Child -> true,
+        Event.Shape.Replaces -> ujson.Arr("0123456789ab"),
+        Event.Shape.Sha -> "not-this-one"
+      )
+      val shape = Event.Shape
+        .committed(at, "1a2b3c4d5e6f", Some("fixes " * 60), besides)
+        .map(s => ujson.read(Event.Shape.value(s)).obj)
+      val subject = shape.map(_.get(Event.Shape.Subject).flatMap(_.strOpt).map(_.takeRight(6)))
+      (
+        shape.map(o => o.keys.toVector),
+        shape.map(_.get(Event.Shape.Sha).map(_.str)),
+        shape.map(_.get(Event.Shape.Replaces)),
+        subject
+      ) ==> (
+        Right(
+          Vector(
+            Event.Shape.Worktree,
+            Event.Shape.Sha,
+            Event.Shape.Child,
+            Event.Shape.Replaces,
+            Event.Shape.Subject
+          )
+        ),
+        Right(Some("1a2b3c4d5e6f")),
+        Right(Some(ujson.Arr("0123456789ab"))),
+        Right(Some("fixes…"))
+      )
+    }
+
     test("a commit's shape keeps its sha and cuts its subject to fit, ending …") {
       val sha = "1a2b3c4d5e6f"
       val at = Place.under(Namespace.Fs, Vector("/w"))

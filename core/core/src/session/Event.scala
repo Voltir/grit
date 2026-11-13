@@ -106,15 +106,24 @@ object Event {
     /** 12: how many leading characters of a rewritten commit's sha [[Replaces]] holds. */
     val ReplacedChars: Int = 12
 
+    private val Own = Set(Worktree, Sha, Subject)
+
     /** A commit's shape: the worktree `at` it was made in under [[Worktree]], `sha` under
-      * [[Sha]], and `subject` under [[Subject]], cut as [[Cut.head]] cuts it to fit [[Longest]], or
-      * left out when not even `…` fits; `Left` when the worktree and `sha` alone do not fit.
+      * [[Sha]], every key of `besides` but those three (such as [[Child]] and [[Replaces]]), and
+      * `subject` under [[Subject]], cut as [[Cut.head]] cuts it to fit [[Longest]], or left out
+      * when not even `…` fits; `Left` when the rest alone do not fit.
       */
-    def committed(at: Place, sha: String, subject: Option[String]): Either[String, Shape] = {
+    def committed(
+        at: Place,
+        sha: String,
+        subject: Option[String],
+        besides: ujson.Obj = ujson.Obj()
+    ): Either[String, Shape] = {
+      val others = besides.value.toSeq.filterNot((k, _) => Own.contains(k))
       def shaped(s: Option[String]) =
         of(
           ujson.Obj.from(
-            Seq(Worktree -> ujson.Str(at.written), Sha -> ujson.Str(sha)) ++
+            Seq(Worktree -> ujson.Str(at.written), Sha -> ujson.Str(sha)) ++ others ++
               s.map(Subject -> ujson.Str(_))
           )
         )

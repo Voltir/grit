@@ -180,18 +180,21 @@ object Shown {
   }
 
   /** A brief, the document [[grit.core.document.DocumentSearch.briefOf]] found, as one user
-    * message: its text fenced in [[Tag.Brief]], with `briefed`, the UTC date it was written.
+    * message: its [[briefText]].
     */
-  def brief(document: Document): Message =
-    Message.User(
-      Fenced
-        .in(
-          Tag.Brief,
-          DocText.value(document.text),
-          "briefed" -> document.written.atOffset(ZoneOffset.UTC).toLocalDate.toString
-        )
-        .rendered
-    )
+  def brief(document: Document): Message = Message.User(briefText(document))
+
+  /** A brief's text as a window or a harness's session opens with it: fenced in [[Tag.Brief]],
+    * with `briefed`, the UTC date it was written.
+    */
+  def briefText(document: Document): String =
+    Fenced
+      .in(
+        Tag.Brief,
+        DocText.value(document.text),
+        "briefed" -> document.written.atOffset(ZoneOffset.UTC).toLocalDate.toString
+      )
+      .rendered
 
   /** A session's digest ([[grit.core.session.SessionDigest]]) as one user message, fenced in
     * [[Tag.SessionLog]].
