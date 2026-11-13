@@ -26,7 +26,7 @@ object McpServerWireTests extends McpServerContract {
   private val listed: Vector[ujson.Obj] =
     McpTool.described(tool, reads = true).toOption.toVector
 
-  private def answer(request: Request, log: String => Unit): Response =
+  private def answer(request: Request): Response =
     Rpc.received(request, ServerInfo("wire", "1", None)) match {
       case Asked.Answered(response) => response
       case list: Asked.List =>
@@ -48,7 +48,9 @@ object McpServerWireTests extends McpServerContract {
   private val listener: Listener^ =
     Listen
       .parse("127.0.0.1:0")
-      .flatMap(at => Listener.open(at, answer, _ => ()).left.map(_.message)) match {
+      .flatMap(at =>
+        Listener.open(at, (request, _) => answer(request), _ => ()).left.map(_.message)
+      ) match {
       case Right(l) => l
       case Left(why) => throw new java.lang.AssertionError(why)
     }
