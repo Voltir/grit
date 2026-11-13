@@ -10,6 +10,10 @@ In dependency order, each package importing only those before it:
 
 - **`worker`**: a worker's name, and where its work is placed: a directory on a worker is the
   place `worker:<name>/<dir>`.
+- **`caller`**: who a request is from (`Caller`: an account, the integrity its words are
+  believed at, its worker), and the deployment's rule for it (`Callers`): today a request with no
+  credential is the owner's, and one with a credential is refused. Routes ask `Callers` alone, so
+  credentials per worker change this package and no route.
 
 No source file sits at the module's root. The test tree mirrors it.
 

@@ -27,7 +27,9 @@ Decision:
 - **Through an edge** (`PluginCommands`, in `EdgeStores`, in the edge's process over the store,
   ADR 0002) it runs by name in one transaction for the person behind an account, in their
   room (`Subject.Person`); an account no person is linked to runs nothing. Its answer
-  (`CommandOutcome`) is that person's alone.
+  (`CommandOutcome`) is that person's alone. The account and the integrity its words are
+  believed at are the edge's to say: a Slack message's sender, or an outside harness's request's
+  `Caller` (ADR 0062).
 - **Through a turn** a command its plugin offers turns (`offeredToTurns`) is a tool under the
   same spec (`CommandTools`), run for the person the turn answers; a turn answering no person
   (a job's run, grit's own) runs nothing. A reading command reads in the turn's reads, bounded
