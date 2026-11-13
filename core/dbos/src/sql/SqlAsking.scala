@@ -1,6 +1,7 @@
 package grit.dbos.sql
 
 import java.sql.Connection
+import javax.sql.DataSource
 
 import grit.core.identity.{Account, Principal}
 import grit.core.place.Place
@@ -33,4 +34,15 @@ private[dbos] object SqlAsking {
         }
       case Right(_) => Left(notVouched(by))
     }
+
+  /** [[as]] on a connection of `dataSource`, read-only and always rolled back: `unavailable` also
+    * of why the database could not give the connection or read on it.
+    */
+  def read[E, A](dataSource: DataSource, opener: Opener, by: Account, room: Place)(
+      notVouched: Account -> E,
+      unavailable: String -> E
+  )(body: (Principal.Person, Tx^) => Either[E, A]): Either[E, A] =
+    SqlDb.rolledBack(dataSource)(conn => as(conn, opener, by, room)(notVouched, unavailable)(body))(
+      e => unavailable(e.cause)
+    )
 }
