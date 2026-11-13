@@ -232,7 +232,7 @@ private final class Handling(
         Option(exchange.getRequestHeaders.getFirst("Content-Length")).flatMap(_.trim.toLongOption)
       if (declared.exists(_ > limits.bodyMost)) send(exchange, tooLarge, head)
       else
-        read(exchange) match {
+        read(exchange, named) match {
           case None => ()
           case Some(Left(())) => send(exchange, tooLarge, head)
           case Some(Right(body)) =>
@@ -265,7 +265,7 @@ private final class Handling(
   /** The body, or Left when it is over the cap, its text None when not UTF-8; None when the client
     * was dropped for sending it too slowly, or went.
     */
-  private def read(exchange: HttpExchange): Option[Either[Unit, Option[String]]] = {
+  private def read(exchange: HttpExchange, named: String): Option[Either[Unit, Option[String]]] = {
     val phase = new AtomicInteger(Reading)
     val reader = Thread.currentThread
     val deadline = deadlines.schedule(
@@ -279,7 +279,7 @@ private final class Handling(
     deadline.cancel(false)
     if (!phase.compareAndSet(Reading, Answering)) {
       Thread.interrupted()
-      log(s"${exchange.getRequestMethod} dropped: its body took longer than ${limits.readWithin}")
+      log(s"$named dropped: its body took longer than ${limits.readWithin}")
       None
     } else
       bytes.map { read =>

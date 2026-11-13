@@ -191,7 +191,8 @@ object ListenerTests extends TestSuite {
       val answer: (Request, String => Unit) => Response = (r, said) => {
         calls.incrementAndGet(); echo(r, said)
       }
-      val l = opened("127.0.0.1:0", answer, new Logged)
+      val logged = new Logged
+      val l = opened("127.0.0.1:0", answer, logged)
       try {
         val stalled = connect("127.0.0.1", l.at.port)
         try {
@@ -204,6 +205,10 @@ object ListenerTests extends TestSuite {
             try { readAll(stalled); true }
             catch { case _: SocketException => true }
           (other.status, ended, calls.get) ==> (200, true, 1)
+          l.close() // every request has ended, so its log lines are written
+          logged.all.filter(_.contains("dropped")) ==> Vector(
+            "POST /p dropped: its body took longer than 300 milliseconds"
+          )
         } finally stalled.close()
       } finally l.close()
     }
