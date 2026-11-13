@@ -69,6 +69,54 @@ object HeadersTests extends TestSuite {
       )
     }
 
+    test(
+      "a value is read as the spec's table wrote it; a sentinel around no UTF-8 Base64, as it is"
+    ) {
+      // streamable-http.mdx, Value Encoding: the table's five rows, read back; then a sentinel
+      // around text that is not Base64, and around Base64 of bytes that are not UTF-8.
+      Vector(
+        "us-west1",
+        "=?base64?SGVsbG8sIOS4lueVjA==?=",
+        "=?base64?IHBhZGRlZCA=?=",
+        "=?base64?bGluZTEKbGluZTI=?=",
+        "=?base64?PT9iYXNlNjQ/bGl0ZXJhbD89?=",
+        "=?base64?not base64!?=",
+        "=?base64?/w==?=",
+        "=?base64?=",
+        "=?base64??="
+      ).map(Headers.decoded) ==> Vector(
+        "us-west1",
+        "Hello, 世界",
+        " padded ",
+        "line1\nline2",
+        "=?base64?literal?=",
+        "=?base64?not base64!?=",
+        "=?base64?/w==?=",
+        "=?base64?=",
+        ""
+      )
+    }
+
+    test("decoded undoes encoded, for any text") {
+      // Code points a header value is plain in, or must be encoded for: visible ASCII, a space
+      // and a tab (plain only inside), controls, non-ASCII within and beyond the BMP, and the
+      // sentinel's own characters.
+      val alphabet = Vector(0x41, 0x7a, 0x30, 0x21, 0x7e, 0x20, 0x09, 0x0a, 0x00, 0x7f, 0xe9,
+        0x4e16, 0x1f600, 0x3d, 0x3f)
+      val seed = 20261113L
+      val random = new scala.util.Random(seed)
+      val texts = Vector.fill(500) {
+        val sentinel = random.nextInt(4) == 0
+        val inner = Vector
+          .fill(random.nextInt(12))(alphabet(random.nextInt(alphabet.size)))
+          .map(Character.toString)
+          .mkString
+        if (sentinel) s"=?base64?$inner?=" else inner
+      }
+      (seed, texts.filter(t => Headers.decoded(Headers.encoded(t)) != t).take(3)) ==>
+        (seed, Vector())
+    }
+
     test("every request names its method and protocol version, and a call its tool") {
       // streamable-http.mdx: Sending Messages 2, Protocol Version Header, Standard Request Headers.
       Headers.of(Rpc.Call.ListTools(Some("c"))) ==> Vector(

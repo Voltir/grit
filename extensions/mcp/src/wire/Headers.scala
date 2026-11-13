@@ -15,13 +15,36 @@ object Headers {
     def blank(c: Char) = c == ' ' || c == '\t'
     val plain = raw.forall(c => visible(c) || blank(c)) &&
       !raw.headOption.exists(blank) && !raw.lastOption.exists(blank) &&
-      !(raw.startsWith(Open) && raw.endsWith(Close) && raw.length >= Open.length + Close.length)
+      !wrapped(raw)
     if (plain) raw
     else s"$Open${Base64.getEncoder.encodeToString(raw.getBytes(UTF_8))}$Close"
   }
 
+  /** `value` as [[encoded]] wrote it: the UTF-8 text of the Base64 inside `=?base64?…?=`, else
+    * `value` as it is, a sentinel around Base64 that is not valid, or not UTF-8, included.
+    */
+  def decoded(value: String): String =
+    if (!wrapped(value)) value
+    else
+      scala.util
+        .Try(
+          UTF_8
+            .newDecoder()
+            .decode(
+              java.nio.ByteBuffer.wrap(
+                Base64.getDecoder.decode(value.substring(Open.length, value.length - Close.length))
+              )
+            )
+            .toString
+        )
+        .getOrElse(value)
+
   private val Open = "=?base64?"
   private val Close = "?="
+
+  /** Whether `value` has the sentinel's shape, `=?base64?…?=`. */
+  private def wrapped(value: String): Boolean =
+    value.startsWith(Open) && value.endsWith(Close) && value.length >= Open.length + Close.length
 
   /** The headers of a request making `call`: the content types grit sends and reads, the
     * protocol version ([[Rpc.Version]]), its method, and for a `tools/call` its tool's name as
