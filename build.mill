@@ -498,6 +498,11 @@ object grit extends Module {
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
     }
+
+    /* That what a deployment declares holds no capability: it is lent what it runs through. */
+    object probes extends GritProbes {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.probes)
+    }
   }
 
   /* An application's Postgres database, read as a service: one database role to a place, the

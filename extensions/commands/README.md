@@ -14,6 +14,12 @@ In dependency order, each package importing only those before it:
   believed at, its worker), and the deployment's rule for it (`Callers`): today a request with no
   credential is the owner's, and one with a credential is refused. Routes ask `Callers` alone, so
   credentials per worker change this package and no route.
+- **`declare`**: what a deployment hands the edge as values, pure: its own commands
+  (`OwnCommand`), each guarding a plugin's command or added beside them, and lent the request's
+  way to run a plugin's command (`Ran`) for that request alone.
+- **`routes`**: the routes, private to the module, and the one table that turns what a command
+  came to into a status (`Answered`), so the routes cannot disagree. A request `Hosts` does not
+  admit is refused before any route; no GET runs a command.
 
 No source file sits at the module's root. The test tree mirrors it.
 
