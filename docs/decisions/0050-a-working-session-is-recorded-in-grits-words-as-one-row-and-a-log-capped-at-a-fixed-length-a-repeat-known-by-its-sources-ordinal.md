@@ -40,6 +40,14 @@ Decision:
   back only as `EdgeSessions.lately` does, in a transaction opened in its room, or as
   `EdgeSessions.briefed` does: a holder's brief and newest session, in one read-only
   transaction opened for the person its account is linked to.
+- **An outside harness posts its sessions already in grit's words** to the commands edge
+  (ADR 0062), one line an event, one session a post: its adapter maps its hooks and tool names
+  onto grit's kinds, and nothing in grit reads a harness's own vocabulary. The edge takes the
+  harness from the request, never a line; works out the holder itself, from the worker, the
+  session's directory and an agent's type; places each worktree on the caller's worker; and
+  refuses a line dated more than a small skew past its own clock, since a session's last event
+  keeps its holder's claims from lapsing. A line refused is named and the rest kept, so one bad
+  line loses nothing else.
 - **Both are deleted by the collector** (ADR 0014): the sweep writes a tombstone on a session's
   log a month after it ends and on its row half a year after, and the collector spares one
   recorded on since.
