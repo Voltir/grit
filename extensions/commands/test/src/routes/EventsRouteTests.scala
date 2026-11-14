@@ -85,7 +85,6 @@ object EventsRouteTests extends TestSuite {
           script,
           Vector(line("1"), line("2", "agent" -> "a-1", "type" -> "t")).mkString("\n")
         ),
-        posted(script, line("0")),
         recorded(script)
       ) ==> (
         (Status.BadRequest, "no harness"),
@@ -95,13 +94,21 @@ object EventsRouteTests extends TestSuite {
           Status.BadRequest,
           "line 2 is session made-up:s-1/a-1, not made-up:s-1: post each session's lines apart"
         ),
+        Vector.empty
+      )
+    }
+
+    test("a post whose every line is refused is 200 naming each, and records nothing") {
+      val script = new ScriptedSessions.Script
+      (posted(script, Vector(line("0"), line("x")).mkString("\n")), recorded(script)) ==> (
         (
-          Status.BadRequest,
+          Status.Ok,
           ujson.write(
             ujson.Obj(
               "recorded" -> 0,
               "refused" -> ujson.Arr(
-                ujson.Obj("line" -> 1, "why" -> "n: an event's ordinal is above 0: 0")
+                ujson.Obj("line" -> 1, "why" -> "n: an event's ordinal is above 0: 0"),
+                ujson.Obj("line" -> 2, "why" -> "n: a decimal string, not \"x\"")
               )
             )
           )

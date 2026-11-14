@@ -28,8 +28,8 @@ private[commands] object Recording {
 
   /** What `/events` answers for `batched` once recording its batch came to `came`:
     *   - 200 `{"recorded": <lines logged>, "refused": [{"line": <its number>, "why": ...}]}`,
-    *     the lines refused left out and the rest kept, a line sent again not logged twice;
-    *   - 400 the same, recording nothing, when no line was read;
+    *     the lines refused left out and the rest kept, a line sent again not logged twice, so
+    *     `recorded` is 0 and nothing is recorded when every line was refused;
     *   - 403 when the store refused the batch ([[StoreError.Invalid]]: no person is linked to the
     *     caller, or the session is kept where the caller does not read), nothing kept: not
     *     resent as it is, since it would be refused again;
@@ -50,7 +50,7 @@ private[commands] object Recording {
       )
     )
     batched.batch match {
-      case None => answer(Status.BadRequest, 0)
+      case None => answer(Status.Ok, 0)
       case Some(batch) =>
         came(batch) match {
           case Right(logged) => answer(Status.Ok, logged)

@@ -30,11 +30,20 @@ import grit.mcp.wire.ServerInfo
   *     harness adapter's choice;
   *   - `POST /events?harness=` records one session's event lines, in grit's words
   *     ([[grit.commands.events.Lines.read]] gives every bound a line is refused for), as the
-  *     caller: 200 names each line refused and keeps the rest; 400 refuses the post whole (lines
-  *     of two sessions among them); 413, over [[grit.edge.http.Listener.BodyMost]], means split
-  *     the batch; on 403 nothing is kept and resending it as it is will not help, so the worker
-  *     keeps a bounded number of bytes of lines, dropping the oldest and saying so; 503 is safe
-  *     to resend;
+  *     caller, answering:
+  *     - 200 `{"recorded": <lines logged>, "refused": [{"line": <its number>, "why": ...}]}`:
+  *       every line read is kept, a line sent before not logged twice, and each refused line
+  *       named, `recorded` 0 when every line was; a refused line is refused again as it is, so
+  *       the worker drops it, saying why, rather than resending it;
+  *     - 400 the post refused whole, nothing kept: no `harness`, another query parameter,
+  *       grit's own harness, no line, or lines of two sessions; the worker posts each session's
+  *       lines apart;
+  *     - 403 nothing kept, the store refusing the caller or the session: resending as it is
+  *       will not help, so the worker keeps a bounded number of bytes of lines, dropping the
+  *       oldest and saying so;
+  *     - 413, over [[grit.edge.http.Listener.BodyMost]], nothing kept: split the batch;
+  *     - 503 nothing kept, the database not written: resending is safe;
+  *     - 500 nothing kept, any other store failure: kept as on 403;
   *   - `GET /join/<harness>` answers the join script of the one of `adapters` for that harness,
   *     as text, or 404.
   * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
