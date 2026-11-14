@@ -255,14 +255,17 @@ main() {
   if [ "$undo" = 1 ]; then
     undo_join "$settings" "$hooks" "$mcp"
   else
-    join "$settings" "$hooks" "$edge" "$mcp"
+    # core.hooksPath may name a directory other repositories share, or one the checkout tracks.
+    local own=0
+    if [ "$hooks" = "$common/hooks" ]; then own=1; fi
+    join "$settings" "$hooks" "$edge" "$mcp" "$own"
   fi
 }
 
-# Joins the checkout: the hook, its handlers in the settings $1, git's hooks in $2, and the MCP
-# entry $4 at the edge $3.
+# Joins the checkout: the hook, its handlers in the settings $1, git's hooks in $2 when $5 is 1
+# (they are the repository's own, not core.hooksPath's), and the MCP entry $4 at the edge $3.
 join() {
-  local settings=$1 hooks=$2 edge=$3 mcp=$4 c groups drop='[]' f new count qh qe qH
+  local settings=$1 hooks=$2 edge=$3 mcp=$4 own=$5 c groups drop='[]' f new count qh qe qH
   local -a removed=() lines=() written=() foreign=() commands=()
 
   # Everything that can fail is worked out before the first file is written.
@@ -278,7 +281,9 @@ join() {
   done
 
   for f in post-commit post-rewrite; do
-    if [ ! -e "$hooks/$f" ] || ours_file "$hooks/$f"; then
+    if [ "$own" != 1 ]; then
+      continue
+    elif [ ! -e "$hooks/$f" ] || ours_file "$hooks/$f"; then
       written+=("$f")
     elif retired_file "$hooks/$f"; then
       while IFS= read -r c || [ -n "$c" ]; do
@@ -334,11 +339,16 @@ exec $qH rewrite \"\$@\"
     2) printf '  git       post-commit and post-rewrite in %s, shared by this repository'\''s worktrees\n' "$hooks" ;;
     1) printf '  git       %s in %s, shared by this repository'\''s worktrees\n' "${written[0]}" "$hooks" ;;
   esac
+  # A line to add has no `exec`: in a hook of its own, it would end that hook at the line.
   for f in "${foreign[@]+"${foreign[@]}"}"; do
-    # No `exec`: in a hook of its own, it would end that hook at this line.
     if [ "$f" = post-commit ]; then c="$qH commit"; else c="$qH rewrite \"\$@\""; fi
     printf '  git       %s/%s is not ours and is left as it is; add the line: %s\n' "$hooks" "$f" "$c"
   done
+  if [ "$own" != 1 ]; then
+    printf '  git       %s is core.hooksPath, which the join does not write; add these lines\n' "$hooks"
+    printf '  git       post-commit: %s commit\n' "$qH"
+    printf '  git       post-rewrite: %s rewrite "$@"\n' "$qH"
+  fi
 
   local add="claude mcp add --transport http --scope local $mcp $edge/mcp" old=''
   if command -v claude > /dev/null 2>&1; then

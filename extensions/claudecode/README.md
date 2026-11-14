@@ -72,8 +72,10 @@ before the first file is written (an undo, too, reads every other worktree's set
   | SessionEnd | `event` | |
 
 - **git's hooks**, `post-commit` (`exec '<hook>' commit`) and `post-rewrite` (`exec '<hook>' rewrite
-  "$@"`) in `git rev-parse --git-path hooks`, so `core.hooksPath` holds, each marked by the line
-  `# grit claude-code join`: written when the file is absent, ours, or every command line of it
+  "$@"`) in `<git common dir>/hooks`, each marked by the line `# grit claude-code join`. When
+  `core.hooksPath` names another directory (one other repositories share, or one the checkout
+  tracks), the join writes nothing there and prints the two lines to add. Written when the file is
+  absent, ours, or every command line of it
   runs a program under a retired directory; otherwise left as it is, with the line to add printed
   (`'<hook>' commit`, with no `exec`, which would end that hook at the line).
   The repository's worktrees share them.
@@ -102,7 +104,15 @@ Undo: curl -fsS http://127.0.0.1:7317/join/claude-code | bash -s -- --undo --mcp
 
 with a `  removed   <command>` line for each retired one, `, replacing <name> at <url>` after the
 MCP entry it replaced, and `  git       <file> is not ours and is left as it is; add the line:
-<line>` for a foreign git hook. An undo prints:
+<line>` for a foreign git hook. Under `core.hooksPath`, the `git` line is three:
+
+```
+  git       /work/shared-hooks is core.hooksPath, which the join does not write; add these lines
+  git       post-commit: '/work/proj/.git/grit/claude-code/hook' commit
+  git       post-rewrite: '/work/proj/.git/grit/claude-code/hook' rewrite "$@"
+```
+
+An undo prints:
 
 ```
 grit claude-code: undid the join in /work/proj

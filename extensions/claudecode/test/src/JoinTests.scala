@@ -526,6 +526,31 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test(
+      "under core.hooksPath, global or tracked, the join writes no git hook and prints the lines to add"
+    ) {
+      JoinFixtures { f =>
+        val (global, tracked) = (f.checkout("global"), f.checkout("tracked"))
+        val shared = f.home.resolve("githooks")
+        val _ = f.sh(global, s"git config --global core.hooksPath '$shared'")
+        val _ = f.sh(tracked, "git config core.hooksPath .githooks")
+        val printed = Vector(global -> shared, tracked -> tracked.toRealPath().resolve(".githooks"))
+          .map { (dir, hooks) =>
+            f.joined(dir).out.filter(_.startsWith("  git")) == Vector(
+              s"  git       $hooks is core.hooksPath, which the join does not write; add these lines",
+              s"  git       post-commit: '${f.hook(dir)}' commit",
+              s"  git       post-rewrite: '${f.hook(dir)}' rewrite \"$$@\""
+            )
+          }
+        (
+          printed,
+          Files.exists(shared),
+          Files.exists(tracked.resolve(".githooks")),
+          Files.exists(f.common(global).resolve("hooks/post-commit"))
+        ) ==> ((Vector(true, true), false, false, false))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")
