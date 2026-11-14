@@ -227,6 +227,15 @@ gives SessionEnd's hooks by default (docs `#sessionend`).
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
 an address they refuse makes the hook ask nothing and say so (`holder` exits 1).
 
+## Smoke run
+
+`SmokeEdge`, in the test sources, serves the edge on a free port over scripted sessions on the
+system's clock: `java -cp <grit.claudecode.test's runClasspath> grit.claudecode.SmokeEdge
+<checkout> <brief>` prints its address, keeps `<brief>` as a session's brief in `<checkout>`, and
+prints what it recorded at each line on its stdin. Join a scratch checkout to it (with a `HOME` of
+its own, or no `claude` on PATH, so the join leaves the person's `~/.claude.json` alone), then run
+`claude -p --setting-sources project,local` there with a cheap model and `--max-turns`.
+
 ## Claude Code's hook contract
 
 What the scripts rest on, each fact tagged by its source: **docs**, the anchor of
@@ -269,7 +278,8 @@ a trial and not kept.
   the person, another exit a hook-error notice (docs `#exit-code-2-behavior-per-event`).
 - `timeout` is in seconds; an event's matching hooks run in parallel; `async: true` runs a
   command hook in the background, its timeout unenforced, killed at a `-p` session's teardown
-  (docs `#timeouts`, `#configure-an-async-hook`). A `matcher` holding a character beyond letters,
+  (docs `#timeouts`, `#configure-an-async-hook`); so a `-p` session's async Stop post did not
+  arrive, and it recorded no closing (observed, in a smoke run). A `matcher` holding a character beyond letters,
   digits, `_`, `-`, space, comma and `|` is an unanchored regular expression (docs
   `#hook-locations`), so the join anchors its own.
 - Hooks of user, project and local settings all run; settings are reloaded when a file changes
