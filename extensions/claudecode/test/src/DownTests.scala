@@ -72,6 +72,18 @@ object DownTests extends TestSuite {
       }
     }
     test(
+      "with an edge that accepts and never answers, holder exits 1 within its bound, saying so"
+    ) {
+      HookFixtures { f =>
+        HookFixtures.silent { port =>
+          val env = Map("CLAUDE_CODE_SESSION_ID" -> "s-1", "GRIT_EDGE" -> s"http://127.0.0.1:$port")
+          val (holder, ms) = f.timed("holder", "", env)
+          (holder.exit, holder.out, holder.err.linesIterator.size) ==> (1, Vector.empty, 1)
+          assert(ms < 3500)
+        }
+      }
+    }
+    test(
       "a store that cannot be read gives a start's brief the edge's status, in context and on stderr"
     ) {
       HookFixtures { f =>

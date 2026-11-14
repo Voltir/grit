@@ -55,10 +55,10 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
     timeout -k 0.2 "$bound" bash -- "$self" "$@"
   rc=$?
   case $rc in
+    0) exit 0 ;;
     124 | 137) say "${1-} ran past its bound and was stopped" ;;
   esac
-  [ "$failed" = 1 ] && exit "$rc"
-  exit 0
+  exit "$failed"
 fi
 
 started=$GRIT_HOOK_STARTED
