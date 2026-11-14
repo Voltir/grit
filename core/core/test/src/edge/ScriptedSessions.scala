@@ -32,7 +32,15 @@ final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Scr
           case None => Left(StoreError.Invalid(s"no person is linked to ${Account.written(by)}"))
           case Some(p) =>
             batches
-              .flatMap(b => EdgeSessions.refused(b.id))
+              .flatMap(b =>
+                EdgeSessions
+                  .refused(b.id)
+                  .orElse(
+                    Option.when(script.session(b.id).exists(_.by != p))(
+                      EdgeSessions.notTheirs(b.id)
+                    )
+                  )
+              )
               .headOption
               .toLeft(script.log(p, batches))
         }

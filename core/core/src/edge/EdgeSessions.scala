@@ -17,10 +17,11 @@ trait EdgeSessions extends caps.SharedCapability {
     * ([[grit.core.visibility.Subject.Room]]): every batch is kept, or none. A session new to the
     * record begins with the person `by` is linked to then as its runner, the transaction's floor
     * as its label, its batch's `parent`, `at` and `holder`, and no room. How many lines were logged,
-    * overflow lines included. [[StoreError.Invalid]] when no person is linked to `by`, or when a
-    * session is kept where the transaction does not read, or when a batch's session is grit's
-    * own ([[EdgeSessions.refused]]); [[StoreError.DatabaseError]] when the database could not
-    * open, write or commit it.
+    * overflow lines included. [[StoreError.Invalid]] when no person is linked to `by`, when a
+    * batch's session is grit's own ([[EdgeSessions.refused]]), or when it was begun by another
+    * person than the one `by` is linked to, or is kept where the transaction does not read
+    * ([[EdgeSessions.notTheirs]]); [[StoreError.DatabaseError]] when the database could not open,
+    * write or commit it.
     */
   def record(by: Account, room: Place, batches: Vector[EdgeSessions.Batch]): Either[StoreError, Int]
 
@@ -61,6 +62,14 @@ object EdgeSessions {
       StoreError.Invalid(
         s"session ${id.written} is grit's own: only its turns record it"
       )
+    )
+
+  /** Why a person may not record on the session `id`: someone else began it, or it is kept where
+    * they do not read, told alike.
+    */
+  def notTheirs(id: SessionId): StoreError =
+    StoreError.Invalid(
+      s"the session ${id.written} was begun by someone else; only whoever began a session records on it"
     )
 
   /** `events` of the session `id`, a child of `parent` when it has one, worked at `at`, as the

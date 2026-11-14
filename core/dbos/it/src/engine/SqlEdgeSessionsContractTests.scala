@@ -20,7 +20,7 @@ import grit.dbos.sql.{
 }
 
 /** The sessions contract, kept by the SQL sessions against a real Postgres, on a database whose
-  * reader is enrolled once.
+  * two readers are enrolled once, each as a person of their own.
   */
 object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
 
@@ -32,7 +32,7 @@ object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
     val c = TestPostgres.freshDatabase("sql_edge_sessions_contract")
     LiveEngine.open(c, "test").close()
     LiveDb
-      .transaction(c)(SqlIdentities.enroll(Set(Reader)))
+      .transaction(c)(SqlIdentities.enroll(Set(Reader, Other)))
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)
     c
   }

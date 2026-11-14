@@ -17,8 +17,9 @@ import utest.*
   */
 abstract class EdgeSessionsContract extends TestSuite {
 
-  /** `body` lent the sessions of a store where [[EdgeContracts.Reader]] is linked to a person and
-    * [[EdgeContracts.Stranger]] is not, holding what [[brief]] put there.
+  /** `body` lent the sessions of a store where [[EdgeContracts.Reader]] and [[EdgeContracts.Other]]
+    * are linked to two persons and [[EdgeContracts.Stranger]] to none, holding what [[brief]] put
+    * there.
     */
   protected def recording[A](body: EdgeSessions^ => A): A
 
@@ -80,6 +81,23 @@ abstract class EdgeSessionsContract extends TestSuite {
         Left(
           StoreError.Invalid("session grit:contract-own is grit's own: only its turns record it")
         ),
+        Right(1)
+      )
+    }
+
+    test(
+      "a batch on a session another person began is refused, keeping none of its call's batches"
+    ) {
+      val (begun, theirs) = (session("begun"), session("theirs"))
+      (
+        record(Reader, batch(begun, None, 1)),
+        record(Other, batch(theirs, None, 1), batch(begun, None, 2)),
+        record(Other, batch(theirs, None, 1)),
+        record(Reader, batch(begun, None, 1, 2))
+      ) ==> (
+        Right(1),
+        Left(EdgeSessions.notTheirs(begun)),
+        Right(1),
         Right(1)
       )
     }

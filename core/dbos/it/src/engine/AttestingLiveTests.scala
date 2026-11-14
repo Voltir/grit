@@ -138,6 +138,19 @@ object AttestingLiveTests extends TestSuite {
       )
     }
 
+    test("two accounts said to be full members with no email are vouched as two persons") {
+      val realm = Vouchings.realm("slack", "TB7")
+      val (a, b) = (TestAccounts.account("slack:TB7/U1"), TestAccounts.account("slack:TB7/U2"))
+      val source = new Scripted
+      source.says = Map(a -> Standing.Full(None), b -> Standing.Full(None))
+      val checks = attesting(realm, new ConcurrentLinkedQueue[Attesting.Report])
+      (
+        checks.before(source, a),
+        checks.before(source, b),
+        Set(LiveDb.principal(config, a), LiveDb.principal(config, b)).size
+      ) ==> (Right(()), Right(()), 2)
+    }
+
     test("an answer just under Fresh old spares the account; one just over it is asked") {
       val realm = Vouchings.realm("slack", "TB2")
       val young = TestAccounts.account("slack:TB2/U-young")

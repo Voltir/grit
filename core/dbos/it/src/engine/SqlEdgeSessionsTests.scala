@@ -271,7 +271,9 @@ object SqlEdgeSessionsTests extends TestSuite {
       )
       assert(
         refused == Left(
-          StoreError.Invalid("session claude-code:s-3 is kept where this transaction does not read")
+          StoreError.Invalid(
+            "the session claude-code:s-3 was begun by someone else; only whoever began a session records on it"
+          )
         ),
         read("s-4") == None
       )

@@ -40,6 +40,19 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
 
   private val sessions = new SqlSessions
 
+  /** Whether `batch`'s session, read back once recorded, was begun by `person`: read after, not
+    * before, since recording waits on any other recording of that session, so of two first
+    * records the read sees whichever won. A batch of no events begins no session.
+    */
+  private def begunBy(batch: EdgeSessions.Batch, person: Principal.Person)(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    sessions.read(batch.id).flatMap {
+      case Some(s) if s.by == person => Right(())
+      case None if batch.events.isEmpty => Right(())
+      case _ => Left(EdgeSessions.notTheirs(batch.id))
+    }
+
   // Jot opens read-write transactions alone; this one only reads.
   def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]] =
     jot.write(Subject.Room(room))(sessions.lately(id))
@@ -70,7 +83,14 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
                       ),
                       batch.events
                     )
-                    .map(logged + _.logged)
+                    // The session store's one refusal of a header is a session kept where the
+                    // transaction does not read, told as one begun by someone else.
+                    .left
+                    .map {
+                      case StoreError.Invalid(_) => EdgeSessions.notTheirs(batch.id)
+                      case other => other
+                    }
+                    .flatMap(recorded => begunBy(batch, person).map(_ => logged + recorded.logged))
                 )
             }
           }

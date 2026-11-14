@@ -11,6 +11,9 @@ object EdgeContracts {
   /** Linked to a person wherever a contract runs. */
   val Reader: Account = TestAccounts.account("slack:T1/U-reader")
 
+  /** Linked to a person other than [[Reader]]'s, wherever a contract that names it runs. */
+  val Other: Account = TestAccounts.account("slack:T1/U-other")
+
   /** Linked to no one. */
   val Stranger: Account = TestAccounts.account("slack:T1/U-stranger")
 
