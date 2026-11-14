@@ -26,9 +26,29 @@ it. The unit tests run them too, with no skip, and `ssh-keygen`, to sign a commi
 ## The join
 
 ```
-curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--mcp-name <name>] [--retire <dir>]...
+curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--credential <file>] [--mcp-name <name>] [--retire <dir>]...
 curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
 ```
+
+An edge that takes credentials answers every request, `/join` too, only to one; the script is
+then fetched with the credential read from its file by the shell, never on a command line:
+
+```
+curl -fsS -H @<(printf 'Authorization: Bearer %s' "$(<~/.config/grit/credential)") <edge>/join/claude-code \
+  | bash -s -- <edge> --credential ~/.config/grit/credential
+```
+
+**A credential** is one line in a file of the person's, mode 0600, that whoever runs the edge gave
+them for this machine ([the commands edge](../commands/README.md#credentials)). With
+`--credential <file>` the join refuses, changing nothing, a file others may read or write (`make it
+0600 first`), one that is not one line of at least 32 characters of letters, digits and `-._~+/`
+(`=` only at the end), and one the edge refuses, which it asks with a GET of `/join/claude-code`.
+It then writes the file's absolute path into the hook as `credential='<file>'`, in place of
+`GRIT_EDGE`'s override, and registers the MCP entry with `claude mcp add-json` so that Claude Code
+asks the hook for the entry's header (`headersHelper: '<hook>' header`). The credential is kept in
+neither `~/.claude.json` nor any session's environment; every request the hook makes bears it as
+`Authorization: Bearer`, written to curl through a pipe (`-H @<(…)`), and it goes only to the edge
+the join was given.
 
 A script piped into bash runs as it arrives, a command at a time, and a top-level word cut short
 is a command of its own (`program` cut to `pro` runs a program of that name). So the script
@@ -43,8 +63,8 @@ the hook posts commits; outside a git checkout; a git whose `git worktree list` 
 (below 2.36), as an undo reads every worktree's settings from that list; an address other than
 `http://` or `https://`, a host (a name, or an IPv6 address in brackets) and an optional port,
 nothing after; plain `http://` to a host that is not loopback (`localhost`, `127.x.x.x`,
-`[::1]`), since posts carry a session's replies and summaries in clear until requests carry
-credentials; a checkout or hook path holding a control character; settings that are a symbolic
+`[::1]`), since posts carry a session's replies and summaries, and a credential, in clear; a
+`--credential` as above; a checkout or hook path holding a control character; settings that are a symbolic
 link, not a JSON object, or whose `hooks` is not an object of lists of groups; an info/exclude
 that cannot be read, or that is a symbolic link the join would write; a git that cannot say
 whether it tracks or ignores the settings; `--retire` of something that is not a directory, or of
@@ -58,7 +78,8 @@ every other worktree's settings and `~/.claude.json` first).
 
 - **The hook**, `<git common dir>/grit/claude-code/hook` (absolute, by `git rev-parse
   --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
-  `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
+  `edge=${GRIT_EDGE:-$edge}` (with a credential, `credential='<file>'` in its place), then
+  `hook.sh`. git never tracks or shows it, and the repository's
   worktrees share it. `GRIT_EDGE` comes from the session's environment, past every check the join
   made of its address, so the hook checks it with the join's own patterns, and does nothing when
   it fails them ([the hook](#the-hook)).
@@ -98,7 +119,9 @@ every other worktree's settings and `~/.claude.json` first).
   directory, and left as it is, with the line to add printed, when not (`'<hook>' commit`, with no
   `exec`, which would end that hook at the line). The repository's worktrees share them.
 - **The MCP entry**: with `claude` on PATH, `claude mcp remove --scope local <name>` (its failure
-  ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp`; the entry it
+  ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp` (with a
+  credential, `claude mcp add-json --scope local <name>
+  '{"type":"http","url":"<edge>/mcp","headersHelper":"'\''<hook>'\'' header"}'`); the entry it
   replaces is read from `~/.claude.json` first and printed, a URL as its scheme, host and path
   alone (no credentials, query or fragment), a stdio entry as `the command <program>`. An add that
   fails prints the command and exits 1. Without `claude`, the command is printed. The entry
@@ -176,6 +199,7 @@ session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has 
 | `brief` | SessionStart | `source` (docs, recorded) | `GET /brief`, `start=fresh` at `startup` and `clear`, `start=resume` at `resume`, `compact` and `fork` (a fork has a new id and goes on from its window) | the brief as context; nothing when it is empty |
 | `brief` | SubagentStart | `agent_id`, `agent_type` (recorded) | `GET /brief…&agent&type&start=fresh` | the brief as context; nothing for an agent of no type |
 | `opening` | SessionStart | `source` | `GET /holder`; then after `compact` `part=digest&start=resume`, after `clear` `part=digest&start=fresh`, and at no other start | the holder lines, then the digest, as context |
+| `header` | Claude Code's MCP entry, as its `headersHelper` | the credential's file | nothing | `{"Authorization":"Bearer <credential>"}`; exit 1, printing nothing, for a checkout joined with none |
 | `holder [<type> --dir <dir> --session <id>]` | a Bash tool | `CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID` (recorded: a Bash tool has only the second) | `GET /holder`, with `session` and `type` for an agent's | the holder, one line; exit 1 when the edge did not give it |
 | `event` | PostToolUse, PostToolUseFailure | `tool_name`, `tool_input`; PostToolUse's `tool_response` (recorded; a failure carries `error` and none, so it posts `ok: false` and 0 bytes) | `POST /events`: Read, `read` `{path, worktree?, ok}`, `bytes` those of `tool_response.file.content`; Edit, Write, MultiEdit, NotebookEdit, `edited` `{path, worktree?, ok}`; Bash, `ran` `{program, ok}`; an MCP tool, `read` `{named?, tool, ok}`, `bytes` those of its text blocks (recorded), with nothing named for scout's `find` and `area`; any other tool, nothing | nothing |
 | `event` | SessionStart | `source` | `started` `{source}` | nothing |
@@ -247,7 +271,15 @@ as git returns from a commit only once its hooks end.
 
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
 an address they refuse makes the hook ask nothing and say so, without the address, which may hold
-credentials (`holder` exits 1). A loopback edge is asked with `--noproxy '*'`, so a proxy the
+credentials (`holder` exits 1). In a checkout joined with a credential, a `GRIT_EDGE` other than
+the joined edge makes the hook ask nothing, saying so, as the credential goes to that edge alone.
+
+**Its credential.** Read once a run from its file, its form checked; a file it cannot read, or
+one holding no credential, makes it ask nothing: `cannot read the credential in <file>; it did
+nothing`. A 401 is said as `the edge at <edge> refused this machine's credential (401) for
+<what>: <the answer's first line>; ask whoever runs the edge for this credential and put it in
+<file>`, or, joined with none, `… needs a credential (401) …; ask whoever runs the edge for one,
+and join again with --credential <file>`. A loopback edge is asked with `--noproxy '*'`, so a proxy the
 environment names (`http_proxy`, `all_proxy`, …) never carries its requests off the machine.
 Every request is curl's with `-q`, so no `~/.curlrc` changes what it sends or how its answer is
 read.

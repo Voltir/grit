@@ -38,6 +38,9 @@ final class JoinFixtures(val root: Path) {
          |  'mcp add --transport http --scope local')
          |    [ -z "$${FAKE_CLAUDE_ADD_FAILS:-}" ] && ! has "$$7" || exit 1
          |    keep --arg n "$$7" --arg u "$$8" '.projects[$$p].mcpServers[$$n] = {type: "http", url: $$u}' ;;
+         |  'mcp add-json --scope local '*)
+         |    [ -z "$${FAKE_CLAUDE_ADD_FAILS:-}" ] && ! has "$$5" || exit 1
+         |    keep --arg n "$$5" --arg j "$$6" '.projects[$$p].mcpServers[$$n] = ($$j | fromjson)' ;;
          |  'mcp remove --scope local '*)
          |    has "$$5" || exit 1
          |    keep --arg n "$$5" 'del(.projects[$$p].mcpServers[$$n])' ;;

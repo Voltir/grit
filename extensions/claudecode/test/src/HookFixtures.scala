@@ -3,12 +3,14 @@ package grit.claudecode
 import java.io.IOException
 import java.net.{InetSocketAddress, ServerSocket, Socket}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
+import java.nio.file.{Files, Path}
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
 
+import grit.commands.caller.Callers
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
 import grit.commands.routes.RouteFixtures.*
 import grit.commands.worker.Holders
@@ -123,10 +125,37 @@ object HookFixtures {
     }
   }
 
-  /** `body` given the port of the edge serving [[ClaudeCode.adapter]] on this machine, as
-    * `clock` tells the time, over the sessions `script` holds for the routes' owner; closed after.
+  /** As [[apply]], the edge taking [[Credentialed]]'s credentials alone, and `proj` joined with
+    * the credential file [[credentialOf]] holding `text`, mode 0600.
     */
-  def served[A](script: ScriptedSessions.Script, clock: Clock^)(body: Int => A): A = {
+  def credentialed[A](text: String)(body: HookFixtures => A): A = JoinFixtures { machine =>
+    val script = new ScriptedSessions.Script
+    served(script, new SetClock(Instant.now()), Credentialed) { port =>
+      val proj = machine.checkout("proj")
+      val file = credentialOf(machine, text)
+      val joined = machine.join(
+        proj,
+        Seq(s"http://127.0.0.1:$port", "--credential", file.toString, "--mcp-name", machine.Name)
+      )
+      if (joined.exit != 0) throw new java.lang.AssertionError(s"the join failed: ${joined.err}")
+      body(new HookFixtures(machine, port, script, proj))
+    }
+  }
+
+  /** `machine`'s credential file, `~/.config/grit/credential`, holding `text` alone, mode 0600. */
+  def credentialOf(machine: JoinFixtures, text: String): Path = {
+    val file = machine.write(machine.home.resolve(".config/grit/credential"), text)
+    Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"))
+    file
+  }
+
+  /** `body` given the port of the edge serving [[ClaudeCode.adapter]] on this machine to
+    * `callers`, as `clock` tells the time, over the sessions `script` holds for the routes'
+    * owner; closed after.
+    */
+  def served[A](script: ScriptedSessions.Script, clock: Clock^, callers: Callers = Owners)(
+      body: Int => A
+  ): A = {
     val realm = got(Realm.of("slack", "T1"))
     val log = new ConcurrentLinkedQueue[String]()
     val open = got(
@@ -137,7 +166,7 @@ object HookFixtures {
         EdgeContracts.Room,
         realm,
         AttesterName("desk"),
-        Owners,
+        callers,
         Server,
         Vector.empty,
         None,

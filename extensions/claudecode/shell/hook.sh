@@ -1,17 +1,19 @@
 # grit's hook for Claude Code: one program, a subcommand per role, that the join script installs
-# after a shebang and the lines setting `harness` and `edge` (GRIT_EDGE, when set, overriding
-# `edge`). Each role is a hook registered in the checkout's .claude/settings.local.json or git's
-# post-commit and post-rewrite, or the holder a Bash tool asks for:
+# after a shebang and the lines setting `harness`, `edge` and either `credential`, the file holding
+# the credential every request bears, or no credential and GRIT_EDGE, when set, overriding `edge`.
+# Each role is a hook registered in the checkout's .claude/settings.local.json or git's
+# post-commit and post-rewrite, or what a Bash tool or Claude Code's MCP entry asks for:
 #
 #   hook brief | opening | event          a Claude Code hook, the event's JSON on stdin
 #   hook commit | rewrite <amend|rebase>  a git hook
 #   hook holder [<type> --dir <dir> --session <id>]
+#   hook header                           the MCP entry's headersHelper
 #
 # What each reads, asks, posts and prints: README.md. A hook never fails a session: every role
-# but `holder` exits 0 whatever happens, saying on stderr what it could not do, and the whole run
-# is bounded by one deadline, 3 s from its start, past which a watchdog stops it (a SessionEnd's
-# requests, 1.2 s; a commit's and a rewrite's, 1 s). Only `brief` and `opening` print, and only
-# Claude Code's hook JSON.
+# but `holder` and `header` exits 0 whatever happens, saying on stderr what it could not do, and
+# the whole run is bounded by one deadline, 3 s from its start, past which a watchdog stops it (a
+# SessionEnd's requests, 1.2 s; a commit's and a rewrite's, 1 s). Only `brief` and `opening`
+# print, and only Claude Code's hook JSON; `header` prints the credential's header as JSON.
 
 set -uo pipefail
 
@@ -31,7 +33,7 @@ bound=3
 # program it started at the bound, and exits 0 (`holder`, with its status).
 if [ -z "${GRIT_HOOK_STARTED-}" ]; then
   failed=0
-  [ "${1-}" = holder ] && failed=1
+  case ${1-} in holder | header) failed=1 ;; esac
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     say "needs bash 5 or later; it did nothing"
     exit "$failed"
@@ -48,6 +50,10 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
   fi
   if [[ $edge == http://* ]] && ! [[ $edge =~ $loopback ]]; then
     say "the edge's address${GRIT_EDGE:+ in GRIT_EDGE} is plain http beyond this machine, where its posts would be read in clear; it did nothing"
+    exit "$failed"
+  fi
+  if [ -n "${credential-}" ] && [ -n "${GRIT_EDGE-}" ] && [ "$GRIT_EDGE" != "$edge" ]; then
+    say "GRIT_EDGE names $GRIT_EDGE, but this checkout's credential is sent only to the edge it was joined to, $edge; it did nothing"
     exit "$failed"
   fi
   self=${BASH_SOURCE[0]}
@@ -74,6 +80,33 @@ id='^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$'
 # machine.
 direct=()
 [[ ! $edge =~ $loopback ]] || direct=(--noproxy '*')
+# The credential's text, read once; never on a command line, but written to curl through a pipe.
+credential=${credential-}
+token=''
+if [ -n "$credential" ]; then
+  { token=$(< "$credential"); } 2> /dev/null && [[ $token =~ ^[A-Za-z0-9._~+/-]+=*$ ]] || {
+    say "cannot read the credential in $credential; it did nothing"
+    exit 1
+  }
+fi
+
+# The request header bearing the credential, as curl's -H @file reads it: none without one.
+authorization() {
+  [ -z "$token" ] || printf 'Authorization: Bearer %s\n' "$token"
+}
+
+# Says the edge's answer $2, not 200, to the request for $1, its body $3; a 401 says what to do
+# about the credential.
+answered() {
+  local first=${3%%$'\n'*}
+  if [ "$2" != 401 ]; then
+    say "the edge at $edge answered $2 for $1: $first"
+  elif [ -n "$credential" ]; then
+    say "the edge at $edge refused this machine's credential (401) for $1: $first; ask whoever runs the edge for this credential and put it in $credential"
+  else
+    say "the edge at $edge needs a credential (401) for $1: $first; ask whoever runs the edge for one, and join again with --credential <file>"
+  fi
+}
 
 # $1 single-quoted, as any POSIX shell reads it back.
 sq() {
@@ -98,7 +131,7 @@ ask() {
   local -a query=()
   for kv in "$@"; do query+=(--data-urlencode "$kv"); done
   left || return 1
-  out=$(curl -q -sG "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
+  out=$(curl -q -sG "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H @<(authorization) -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
     return 1
   status=${out##*$'\n'}
   answer=${out%$'\n'*}
@@ -173,7 +206,7 @@ brief() {
     say "the edge at $edge did not answer for the brief"
     context "$event" "grit: grit's server at $edge did not answer. This $who starts without its brief, and what it does is not recorded until the server answers."
   elif [ "$status" != 200 ]; then
-    say "the edge at $edge answered $status for the brief: ${answer%%$'\n'*}"
+    answered "the brief" "$status" "$answer"
     context "$event" "grit: grit's server at $edge answered $status when asked for this $who's brief, so it starts without one."
   elif [ -n "$answer" ]; then
     context "$event" "$answer"
@@ -190,7 +223,7 @@ opening() {
     say "the edge at $edge did not answer for the holder"
     return 0
   elif [ "$status" != 200 ]; then
-    say "the edge at $edge answered $status for the holder: ${answer%%$'\n'*}"
+    answered "the holder" "$status" "$answer"
     return 0
   fi
   holder=$answer
@@ -205,7 +238,7 @@ grit: an agent this session starts has its own claim holder. This prints it, wit
     if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" "start=$part" part=digest; then
       say "the edge at $edge did not answer for the digest"
     elif [ "$status" != 200 ]; then
-      say "the edge at $edge answered $status for the digest: ${answer%%$'\n'*}"
+      answered "the digest" "$status" "$answer"
     elif [ -n "$answer" ]; then
       text+=$'\n\n'$answer
     fi
@@ -256,11 +289,24 @@ holder() {
   if ! ask /holder "harness=$harness" "dir=$d" "${more[@]+"${more[@]}"}"; then
     say "holder: the edge at $edge did not answer"
     return 1
+  elif [ "$status" = 401 ]; then
+    answered "the holder" "$status" "$answer"
+    return 1
   elif [ "$status" != 200 ]; then
     say "holder: the edge at $edge answered $status: ${answer%%$'\n'*}"
     return 1
   fi
   printf '%s\n' "$answer"
+}
+
+# The header bearing the credential, as Claude Code's headersHelper reads it, on stdout; exit 1,
+# printing nothing, when the checkout was joined with none.
+header() {
+  [ -n "$token" ] || {
+    say "header: this checkout was joined with no credential"
+    return 1
+  }
+  printf '{"Authorization":"Bearer %s"}\n' "$token"
 }
 
 # Sets `n` and `at` from one reading of the clock: `n` its microseconds times 1000 plus this
@@ -285,7 +331,7 @@ send() {
     say "$2 $3 dropped: no time was left for its post"
     return 0
   fi
-  out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
+  out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H @<(authorization) -H 'Content-Type: application/x-ndjson' \
     --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
     say "$2 $3 dropped: the edge at $edge did not answer"
     return 0
@@ -297,6 +343,7 @@ send() {
       [ -z "$why" ] || while IFS= read -r out; do say "$2: $out"; done <<< "$why"
       ;;
     413) say "$2 $3 dropped: the edge at $edge took its post as too long (413)" ;;
+    401) answered "$2" 401 "$answer" ;;
     *) say "the edge at $edge answered $code to $2, keeping nothing: ${answer%%$'\n'*}" ;;
   esac
 }
@@ -519,6 +566,10 @@ case $role in
   rewrite) rewrite "$@" ;;
   holder)
     holder "$@"
+    exit
+    ;;
+  header)
+    header
     exit
     ;;
   *) say "no role ${role:-given}; it did nothing" ;;

@@ -1,8 +1,11 @@
 # grit's join script for Claude Code, served by the commands edge at /join/<harness> after the
 # lines setting `harness` and `hook` (the hook's text). A person pipes it into bash in a checkout:
 #
-#   curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--mcp-name <name>] [--retire <dir>]...
+#   curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--credential <file>] [--mcp-name <name>] [--retire <dir>]...
 #   curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
+#
+# (An edge that takes credentials answers /join only to one: `curl -fsS -H @<(printf
+# 'Authorization: Bearer %s' "$(<file)") …`, which keeps the credential off every command line.)
 #
 # What it refuses, writes and prints: README.md. bash runs a script it reads as it arrives, one
 # command at a time, and a top-level word cut short is a command (`program` cut to `pro` runs
@@ -223,6 +226,31 @@ text_of() {
   IFS= read -r -d '' text < "$1" || true # read fails at the end of a file with no NUL
 }
 
+# Checks the credential file `credential` before anything is written, refusing when it is readable
+# by others, holds no credential (one line of at least 32 characters a bearer token holds), or the
+# edge $1 does not take it. Its text is never on a command line: curl reads the header from a pipe.
+credentialed() {
+  local mode token status
+  local -a direct=()
+  [[ ! $1 =~ $loopback ]] || direct=(--noproxy '*')
+  controlled "$credential" && refuse "--credential's path holds a control character, which a hook cannot carry"
+  [ -f "$credential" ] && [ -r "$credential" ] || refuse "cannot read --credential $credential; nothing was changed"
+  mode=$(stat -c %a -- "$credential" 2> /dev/null || stat -f %Lp -- "$credential" 2> /dev/null) ||
+    refuse "cannot read --credential $credential's mode; nothing was changed"
+  [[ $mode == *00 ]] || refuse "--credential $credential is readable by others; make it 0600 first"
+  token=$(< "$credential")
+  [[ $token =~ ^[A-Za-z0-9._~+/-]{32,}=*$ ]] ||
+    refuse "--credential $credential holds no credential: one line, at least 32 characters of letters, digits and -._~+/"
+  status=$(curl -q -s "${direct[@]+"${direct[@]}"}" -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 10 \
+    -H @<(printf 'Authorization: Bearer %s\n' "$token") -- "$1/join/$harness") ||
+    refuse "the edge at $1 did not answer to check the credential in $credential; nothing was changed"
+  case $status in
+    200) ;;
+    401) refuse "the edge at $1 refused the credential in $credential (401); nothing was changed" ;;
+    *) refuse "the edge at $1 answered $status to check the credential in $credential; nothing was changed" ;;
+  esac
+}
+
 # Our groups, one per event, as a JSON array of {event, group}.
 our_groups() {
   local h
@@ -263,9 +291,16 @@ main() {
 
   local edge='' undo=0 mcp=grit dir r home
   retire=()
+  credential=''
   while [ "$#" -gt 0 ]; do
     case $1 in
       --undo) undo=1 ;;
+      --credential)
+        [ "$#" -ge 2 ] || refuse "--credential needs a file"
+        credential=$2
+        [[ $credential == /* ]] || credential=$PWD/$credential
+        shift
+        ;;
       --mcp-name)
         [ "$#" -ge 2 ] || refuse "--mcp-name needs a name"
         mcp=$2
@@ -295,13 +330,15 @@ main() {
   if [ "$undo" = 1 ]; then
     [ -z "$edge" ] || refuse "--undo takes no address"
     [ "${#retire[@]}" = 0 ] || refuse "--undo takes no --retire: nothing retired is restored"
+    [ -z "$credential" ] || refuse "--undo takes no --credential"
   else
-    [ -n "$edge" ] || refuse "usage: bash -s -- <edge's address> [--mcp-name <name>] [--retire <dir>]... | --undo [--mcp-name <name>]"
+    [ -n "$edge" ] || refuse "usage: bash -s -- <edge's address> [--credential <file>] [--mcp-name <name>] [--retire <dir>]... | --undo [--mcp-name <name>]"
     [[ $edge =~ $address ]] ||
       refuse "$edge is not an address: http:// or https://, a host and a port, nothing after"
     if [[ $edge == http://* ]] && ! [[ $edge =~ $loopback ]]; then
       refuse "$edge is plain http beyond this machine, where a hook's posts would be read in clear; use https"
     fi
+    [ -z "$credential" ] || credentialed "$edge"
   fi
 
   top=$(git rev-parse --show-toplevel 2> /dev/null) || refuse "not inside a git checkout; run the join in one"
@@ -406,12 +443,26 @@ join() {
   qh=$(sq "$harness")
   qe=$(sq "$edge")
   qH=$(sq "$H")
+  local entry=''
+  if [ -n "$credential" ]; then
+    entry=$(jq -nc --arg u "$edge/mcp" --arg h "$qH header" '{type: "http", url: $u, headersHelper: $h}') ||
+      refuse "jq failed; nothing was changed"
+  fi
 
-  put "$H" 0755 "#!/usr/bin/env bash
+  # A credential is sent only to the edge it was joined to, so GRIT_EDGE does not override it.
+  if [ -n "$credential" ]; then
+    put "$H" 0755 "#!/usr/bin/env bash
+harness=$qh
+edge=$qe
+credential=$(sq "$credential")
+$hook"
+  else
+    put "$H" 0755 "#!/usr/bin/env bash
 harness=$qh
 edge=$qe
 edge=\${GRIT_EDGE:-\$edge}
 $hook"
+  fi
   put_kept "$settings" 0644 "$new
 "
   [ -z "$excluding" ] || put_kept "$exclude" 0644 "$excluding"
@@ -455,10 +506,19 @@ exec $qH rewrite \"\$@\"
     printf '  git       post-rewrite: %s rewrite "$@"\n' "$qH"
   fi
 
+  [ -z "$credential" ] || printf '  credential %s, sent with every request\n' "$credential"
+
+  # With a credential, Claude Code asks the hook for the MCP entry's header (its headersHelper),
+  # so the credential is kept in neither ~/.claude.json nor any session's environment.
   local add="claude mcp add --transport http --scope local $mcp $edge/mcp"
+  local -a adding=(mcp add --transport http --scope local "$mcp" "$edge/mcp")
+  if [ -n "$credential" ]; then
+    adding=(mcp add-json --scope local "$mcp" "$entry")
+    add="claude mcp add-json --scope local $mcp $(sq "$entry")"
+  fi
   if command -v claude > /dev/null 2>&1; then
     claude mcp remove --scope local "$mcp" > /dev/null 2>&1 || true
-    if ! claude mcp add --transport http --scope local "$mcp" "$edge/mcp" > /dev/null 2>&1; then
+    if ! claude "${adding[@]}" > /dev/null 2>&1; then
       if [ -n "$old" ]; then
         printf 'grit %s: claude mcp add failed, and %s at %s is removed; run: %s\n' \
           "$harness" "$mcp" "$old" "$add" >&2
