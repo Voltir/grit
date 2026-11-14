@@ -145,13 +145,12 @@ object() {
 
 # The settings on stdin with our handlers and the commands of the JSON array $1 removed, and the
 # groups of the JSON array $2 appended, each to its event. Groups and events left empty by a
-# removal go.
+# removal go, and so does a `hooks` left empty.
 rewrite_settings() {
   jq --arg ours "$ours" --argjson drop "$1" --argjson add "$2" '
     def gone: (.command? // null) as $c
       | ($c | type) == "string" and (($c | startswith($ours)) or any($drop[]; . == $c));
-    has("hooks") as $had
-    | (.hooks // {}) as $was
+    (.hooks // {}) as $was
     | .hooks = ($was | with_entries(.value |= map(
         if (.hooks | type) == "array" then
           (.hooks | length) as $n | .hooks |= map(select(gone | not))
@@ -159,7 +158,7 @@ rewrite_settings() {
         else . end)))
     | reduce $add[] as $a (.; .hooks[$a.event] = ((.hooks[$a.event] // []) + [$a.group]))
     | .hooks |= with_entries(select((.value | length) > 0 or (($was[.key] // []) | length) == 0))
-    | if (.hooks | length) == 0 and ($had | not) then del(.hooks) else . end'
+    | if (.hooks | length) == 0 then del(.hooks) else . end'
 }
 
 # The checkout's local MCP entry $1 in ~/.claude.json, as `<ours><where>`: <ours> is 1 when it

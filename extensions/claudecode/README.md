@@ -97,7 +97,9 @@ handlers (rewriting the settings only when it held one) and its MCP entry, but o
 join would have written, an `http://` or `https://` host and port with the path `/mcp` and nothing
 after, as a checkout never joined may hold another (printed, and left as it is); the hook and the git
 hooks it marked go too, unless another worktree's settings still name the hook, when they are
-kept and the worktree named. Nothing retired is restored.
+kept and the worktree named. Nothing retired is restored. A `hooks` the removal leaves empty goes,
+but a settings file the join made is left as `{}`: with no state file the undo cannot tell it from
+a person's own `{}`, and Claude Code reads the two alike.
 
 A join prints, for a first join (paths as they are on the machine):
 

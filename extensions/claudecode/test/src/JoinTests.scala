@@ -670,6 +670,19 @@ object JoinTests extends TestSuite {
       }
     }
 
+    // Without a state file the undo cannot tell settings the join made from a person's `{}`.
+    test("undo drops the hooks it leaves empty, and leaves settings the join made as {}") {
+      JoinFixtures { f =>
+        val (bare, mine) = (f.checkout("bare"), f.checkout("mine"))
+        val _ = f.write(f.settings(mine), "{\"model\": \"x\"}\n")
+        val _ = (f.joined(bare), f.joined(mine), f.undone(bare), f.undone(mine))
+        (f.read(f.settings(bare)), f.read(f.settings(mine))) ==> ((
+          Some("{}\n"),
+          Some("{\n  \"model\": \"x\"\n}\n")
+        ))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")
