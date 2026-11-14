@@ -335,7 +335,8 @@ exec $qH rewrite \"\$@\"
     1) printf '  git       %s in %s, shared by this repository'\''s worktrees\n' "${written[0]}" "$hooks" ;;
   esac
   for f in "${foreign[@]+"${foreign[@]}"}"; do
-    if [ "$f" = post-commit ]; then c="exec $qH commit"; else c="exec $qH rewrite \"\$@\""; fi
+    # No `exec`: in a hook of its own, it would end that hook at this line.
+    if [ "$f" = post-commit ]; then c="$qH commit"; else c="$qH rewrite \"\$@\""; fi
     printf '  git       %s/%s is not ours and is left as it is; add the line: %s\n' "$hooks" "$f" "$c"
   done
 
@@ -423,6 +424,11 @@ undo_join() {
       1) printf '  git       %s removed\n' "${gone[0]}" ;;
       0) printf '  git       none of ours to remove\n' ;;
     esac
+    for f in post-commit post-rewrite; do
+      if [ -f "$hooks/$f" ] && grep -qF -- "$H" "$hooks/$f"; then
+        printf '  git       %s/%s is not ours and still names %s; remove that line\n' "$hooks" "$f" "$H"
+      fi
+    done
   fi
   if command -v claude > /dev/null 2>&1; then
     if claude mcp remove --scope local "$mcp" > /dev/null 2>&1; then

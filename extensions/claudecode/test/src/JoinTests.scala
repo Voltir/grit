@@ -167,7 +167,7 @@ object JoinTests extends TestSuite {
             Vector(
               s"  removed   post-rewrite: exec $retired/spool-hook.sh --rewrite \"$$@\"",
               s"  git       post-rewrite in $hooks, shared by this repository's worktrees",
-              s"  git       $hooks/post-commit is not ours and is left as it is; add the line: exec '${f.hook(dir)}' commit"
+              s"  git       $hooks/post-commit is not ours and is left as it is; add the line: '${f.hook(dir)}' commit"
             )
           )
         )
@@ -523,6 +523,23 @@ object JoinTests extends TestSuite {
           Map("PATH" -> tools.toString)
         )
         (done.exit, done.err) ==> ((1, "grit claude-code: needs jq on PATH\n"))
+      }
+    }
+
+    test("undo says which foreign git hook still names the hook it removed") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val _ = f.write(
+          f.gitHook(dir, "post-commit"),
+          s"#!/bin/sh\nmake lint\n'${f.hook(dir)}' commit\n",
+          executable = true
+        )
+        val _ = f.joined(dir)
+        val hooks = f.common(dir).resolve("hooks")
+        f.undone(dir).out.filter(_.startsWith("  git")) ==> Vector(
+          "  git       post-rewrite removed",
+          s"  git       $hooks/post-commit is not ours and still names ${f.hook(dir)}; remove that line"
+        )
       }
     }
 

@@ -74,7 +74,8 @@ before the first file is written (an undo, too, reads every other worktree's set
 - **git's hooks**, `post-commit` (`exec '<hook>' commit`) and `post-rewrite` (`exec '<hook>' rewrite
   "$@"`) in `git rev-parse --git-path hooks`, so `core.hooksPath` holds, each marked by the line
   `# grit claude-code join`: written when the file is absent, ours, or every command line of it
-  runs a program under a retired directory; otherwise left as it is, with the line to add printed.
+  runs a program under a retired directory; otherwise left as it is, with the line to add printed
+  (`'<hook>' commit`, with no `exec`, which would end that hook at the line).
   The repository's worktrees share them.
 - **The MCP entry**: with `claude` on PATH, `claude mcp remove --scope local <name>` (its failure
   ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp`; the entry it
@@ -113,7 +114,9 @@ Nothing retired was restored.
 ```
 
 or `  hook      <hook> kept: the worktree <dir> still names it` and `  git       post-commit and
-post-rewrite kept, as the hook is` while another worktree is joined.
+post-rewrite kept, as the hook is` while another worktree is joined; and, for a foreign git hook
+that still names the hook removed, `  git       <file> is not ours and still names <hook>; remove
+that line`.
 
 ## Claude Code's hook contract
 
