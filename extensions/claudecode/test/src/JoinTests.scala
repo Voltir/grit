@@ -551,6 +551,26 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test(
+      "run from a subdirectory, --retire reads from there and a relative program from the checkout"
+    ) {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val sub = Files.createDirectories(dir.resolve("sub"))
+        val _ = Files.createDirectories(dir.resolve("tools/old"))
+        val _ = f.write(
+          f.settings(dir),
+          """{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "tools/old/spool.sh"}, """ +
+            """{"type": "command", "command": "./tools/old/stop.sh --now"}]}]}}"""
+        )
+        val done = f.join(sub, Seq(f.Edge, "--mcp-name", f.Name, "--retire", "../tools/old"))
+        (done.exit, done.out.filter(_.startsWith("  removed"))) ==> ((
+          0,
+          Vector("  removed   ./tools/old/stop.sh --now", "  removed   tools/old/spool.sh")
+        ))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

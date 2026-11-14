@@ -228,6 +228,9 @@ main() {
   fi
 
   top=$(git rev-parse --show-toplevel 2> /dev/null) || refuse "not inside a git checkout; run the join in one"
+  # From here on, as a hook runs: a relative program in the settings is read from the checkout,
+  # and `claude mcp --scope local` keys its entry by it.
+  cd -- "$top" || refuse "cannot enter $top"
   git worktree list --porcelain -z > /dev/null 2>&1 ||
     refuse "needs git 2.36 or later, whose git worktree list takes -z"
   local common hooks

@@ -58,7 +58,8 @@ before the first file is written (an undo, too, reads every other worktree's set
   file's mode, as it may hold tokens (0644 for a file the join makes): one jq program
   removes every handler whose command is the hook's and every one whose program (its first word,
   one layer of quotes removed, after `exec`, with `$CLAUDE_PROJECT_DIR` and `~` expanded,
-  canonicalised) is under a `--retire` directory; drops the groups and events that removal left
+  canonicalised, a relative one from the checkout's top, as a hook runs) is under a `--retire`
+  directory (a relative one read from where the join is run); drops the groups and events that removal left
   empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`. Their
   timeouts are 5 s, SessionEnd's 2 s; the hooks bound themselves below them. Everything else keeps
   its order, and a second join writes the same bytes.
