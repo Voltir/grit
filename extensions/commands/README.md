@@ -12,9 +12,9 @@ In dependency order, each package importing only those before it:
   place `worker:<name>/<dir>`; and the claim holder a session there, or an agent it starts,
   works as (`Holders`), readable in a claims listing and the same whoever computes it.
 - **`caller`**: who a request is from (`Caller`: an account, the integrity its words are
-  believed at, its worker), and the deployment's rule for it (`Callers`): today a request with no
-  credential is the owner's, and one with a credential is refused. Routes ask `Callers` alone, so
-  credentials per worker change this package and no route.
+  believed at, and the machine it is on), and the deployment's rule for it (`Callers`): every
+  request the owner's while none bears a credential (`Callers.owner`), or each the caller of the
+  credential it bears (`Callers.of`, [below](#credentials)). Routes ask `Callers` alone.
 - **`declare`**: what a deployment hands the edge as values, pure: its own commands
   (`OwnCommand`), each guarding a plugin's command or added beside them, and lent the request's
   way to run a plugin's command (`Ran`) for that request alone; and the wait on a plugin's
@@ -29,15 +29,38 @@ In dependency order, each package importing only those before it:
   parameter it does not read is 400, named (`/command`, `/mcp`, `/wait` and `/join` read none), and
   so is a key of `/wait`'s body; a command's arguments are its plugin's to refuse, and an event
   line's unread key refuses that line alone. A request `Hosts` does not
-  admit, or `Callers` finds no caller for, is refused before any route; no GET runs a command.
+  admit (403), or `Callers` finds no caller for (401), is refused before any route, and no route
+  sees its `Authorization` header; no GET runs a command. The listener's own answers, 413, 400
+  and 503, come before the caller is read.
 - **`edge`**: `CommandsEdge`, the `ServedEdge` a deployment mounts: `of` refuses what cannot be
-  served safely (two own commands of one name, a caller outside its realm, no credential beyond
-  loopback), and `open` refuses own commands that do not match the plugins' offered ones and an
-  offered command `/mcp` cannot list, vouches each caller's account, and listens.
+  served safely (two own commands of one name, a caller outside its realm, an address beyond
+  loopback, and without credentials a name beyond loopback's), and `open` refuses own commands
+  that do not match the plugins' offered ones and an offered command `/mcp` cannot list, vouches
+  each caller's account, and listens.
 
 No source file sits at the module's root. The test tree mirrors it.
+
+## Credentials
+
+A deployment that serves more than its owner gives each person's machine a credential, and
+configures the edge with `Callers.of`, one `Callers.Token(digest, caller)` for each: the
+credential's SHA-256 digest, never its text, and the caller a request bearing it is from. A
+digest is no secret, so it may sit in the deployment's code or its configuration; the text is
+the person's alone. Whoever runs the edge makes a credential and its digest so, the text never on
+a command line:
+
+```
+umask 077; head -c 32 /dev/urandom | base64 | tr -d '=\n' | tr '+/' '-_' > ~/.config/grit/credential
+tr -d '\n' < ~/.config/grit/credential | sha256sum | cut -d' ' -f1
+```
+
+and hands the file to the person whose machine it is, who joins with it
+([the Claude Code adapter](../claudecode/README.md#the-join)). One account may be given two
+credentials: one for the person's own command line, believed in full, and one for the sessions
+they start, believed lower, which then write as that person at that integrity; or one on each
+of two machines, whose directories are then two places.
 
 ## What the code cannot say
 
 - **Serve writes no files.** Everything a harness is told it is told in an answer.
-- **A worker is named by configuration, never by a host.** No hostname is read or stored.
+- **A machine is named by configuration, never by a host.** No hostname is read or stored.
