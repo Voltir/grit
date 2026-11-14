@@ -919,7 +919,6 @@ private[plugin] final class ProjectCommands(
         _ <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
-        whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         claimed <- stored(
           claims.claim(document.key, args.holder, args.role, by.person, document.label, at)
         )
@@ -948,6 +947,10 @@ private[plugin] final class ProjectCommands(
               )
             )
         }
+        // Loaded again: the claim waits at its row for a keep that holds it, and the brief must
+        // show what that keep left, not the project as it was before the wait.
+        after <- loaded(own, args.key.project)
+        whole <- refuse(Project.of(args.key.project, after.pin, after.artifacts))
         // The role has a view and the artifact is the project's, so the claim has its brief.
         unkept <- rendered(method, whole, Vector(made)).headOption
           .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
