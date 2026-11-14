@@ -20,7 +20,8 @@ resource to read; a script over 60 KB, or holding a NUL, fails the build.
 ## Requires
 
 bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils, on the machine the join runs
-on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without it. The unit tests run them too, with no skip.
+on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
+it. The unit tests run them too, with no skip.
 
 ## The join
 
@@ -38,30 +39,34 @@ line, `</dev/null main "$@"`; `main` sets bash's options itself, and what it sta
 
 **Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq or
 curl on PATH; outside a git checkout; a git whose `git worktree list` takes no `-z` (below 2.36),
-as an undo reads every worktree's settings from that list; an address other than `http://` or `https://`, a host (a
-name, or an IPv6 address in brackets) and an optional port, nothing after; plain `http://` to a
-host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts carry a session's
-replies and summaries in clear until requests carry credentials; a checkout or hook path holding a
-control character; settings that are a symbolic link, not a JSON object, or whose `hooks` is not
-an object of lists of groups; `--retire` of something that is not a directory, or of `HOME`,
-the checkout or an ancestor of either; an `--mcp-name` other than 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or
-digit (so it is never read as an option); any jq call that fails, or
-a rewrite of the settings that is not one JSON object, as everything that can fail is worked out
-before the first file is written (an undo, too, reads every other worktree's settings first).
+as an undo reads every worktree's settings from that list; an address other than `http://` or
+`https://`, a host (a name, or an IPv6 address in brackets) and an optional port, nothing after;
+plain `http://` to a host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts
+carry a session's replies and summaries in clear until requests carry credentials; a checkout or
+hook path holding a control character; settings that are a symbolic link, not a JSON object, or
+whose `hooks` is not an object of lists of groups; `--retire` of something that is not a
+directory, or of `HOME`, the checkout or an ancestor of either; an `--mcp-name` other than 1 to 64
+letters, digits, `_`, `.` or `-`, starting with a letter or digit (so it is never read as an
+option); and any jq call that fails, or a rewrite of the settings that is not one JSON object, as
+everything that can fail is worked out before the first file is written (an undo, too, reads
+every other worktree's settings and `~/.claude.json` first).
 
 **Writes**, each file through a temporary one moved into place:
 
 - **The hook**, `<git common dir>/grit/claude-code/hook` (absolute, by `git rev-parse
   --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
   `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
-  worktrees share it.
+  worktrees share it. `GRIT_EDGE` comes from the session's environment, past every check the join
+  made of its address, so the hook must check it as the join checks an address (owed by the
+  hook's build).
 - **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent), keeping the
   file's mode, as it may hold tokens (0644 for a file the join makes). One jq program removes
   every handler whose command is the hook's, and every one whose program is under a `--retire`
   directory (a relative one read from where the join is run); drops the groups and events that
-  removal left empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`. Their
-  timeouts are 5 s, SessionEnd's 2 s; the hooks bound themselves below them. Everything else keeps
-  its order, and a second join writes the same bytes.
+  removal left empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`.
+  Their timeouts are 5 s, SessionEnd's 2 s; the hooks bound themselves below them. Everything else
+  keeps its order, and a second join writes the same bytes; but jq writes the whole file in its
+  own layout, two-space indented, so the first join re-indents a file laid out otherwise.
 
   A handler's program is its command's first word after `exec`, as a shell reads it with its
   quotes removed: `$CLAUDE_PROJECT_DIR` or `${CLAUDE_PROJECT_DIR}` at its start is the checkout
@@ -80,26 +85,29 @@ before the first file is written (an undo, too, reads every other worktree's set
 - **git's hooks**, `post-commit` (`exec '<hook>' commit`) and `post-rewrite` (`exec '<hook>' rewrite
   "$@"`) in `<git common dir>/hooks`, each marked by the line `# grit claude-code join`. When
   `core.hooksPath` names another directory (one other repositories share, or one the checkout
-  tracks), the join writes nothing there and prints the two lines to add. Written when the file is
-  absent, ours, or every command line of it
-  runs a program under a retired directory; otherwise left as it is, with the line to add printed
-  (`'<hook>' commit`, with no `exec`, which would end that hook at the line).
-  The repository's worktrees share them.
+  tracks), the join writes nothing there and prints the two lines to add. Otherwise each is written
+  when the file is absent, ours, or every command line of it runs a program under a retired
+  directory, and left as it is, with the line to add printed, when not (`'<hook>' commit`, with no
+  `exec`, which would end that hook at the line). The repository's worktrees share them.
 - **The MCP entry**: with `claude` on PATH, `claude mcp remove --scope local <name>` (its failure
   ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp`; the entry it
   replaces is read from `~/.claude.json` first and printed, a URL as its scheme, host and path
   alone (no credentials, query or fragment), a stdio entry as `the command <program>`. An add that
-  fails prints the command and exits 1. Without `claude`, the command is printed. The entry belongs to the checkout's
-  directory, so each worktree joins its own.
+  fails prints the command and exits 1. Without `claude`, the command is printed. The entry
+  belongs to the checkout's directory, so each worktree joins its own.
 
-Every removed command and git hook line is printed as it was. **Undo** removes the checkout's
-handlers (rewriting the settings only when it held one) and its MCP entry, but only an entry the
-join would have written, an `http://` or `https://` host and port with the path `/mcp` and nothing
-after, as a checkout never joined may hold another (printed, and left as it is); the hook and the git
-hooks it marked go too, unless another worktree's settings still name the hook, when they are
-kept and the worktree named. Nothing retired is restored. A `hooks` the removal leaves empty goes,
-but a settings file the join made is left as `{}`: with no state file the undo cannot tell it from
-a person's own `{}`, and Claude Code reads the two alike.
+Every removed command and git hook line is printed as it was. The hook's path and the MCP entry's
+key are the checkout's path at the join: **a repository moved after a join** keeps handlers naming
+the old hook, and a join at the new path adds a second set, so run the undo before moving it.
+
+**Undo** removes the checkout's handlers (rewriting the settings only when it held one) and its
+MCP entry, but only an entry the join would have written, an `http://` or `https://` host and
+port with the path `/mcp` and nothing after, as a checkout never joined may hold another (printed,
+and left as it is); the hook and the git hooks it marked go too, unless another worktree's
+settings still name the hook, when they are kept and the worktree named. Nothing retired is
+restored. A `hooks` the removal leaves empty goes, but a settings file the join made is left as
+`{}`: with no state file the undo cannot tell it from a person's own `{}`, and Claude Code reads
+the two alike.
 
 A join prints, for a first join (paths as they are on the machine):
 
@@ -137,7 +145,9 @@ Nothing retired was restored.
 or `  hook      <hook> kept: the worktree <dir> still names it` and `  git       post-commit and
 post-rewrite kept, as the hook is` while another worktree is joined; and, for a foreign git hook
 that still names the hook removed, `  git       <file> is not ours and still names <hook>; remove
-that line`.
+that line`. The `mcp` line is `  mcp       <name> at <where> is not an edge's /mcp and is left
+as it is` for an entry the join would not have written, and `  mcp       no entry <name> in local
+scope` when there is none.
 
 ## Claude Code's hook contract
 
