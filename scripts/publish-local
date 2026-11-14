@@ -8,12 +8,22 @@
 #   scripts/publish-local --repo DIR      # into DIR in place of ~/.ivy2/local
 #
 # Refuses, naming each reason, when the version is not plain X.Y.Z (a -SNAPSHOT is never
-# published by it); when a tracked file is modified or staged (untracked files do not count);
-# when HEAD is not tagged v<version>, or is not an ancestor of origin/main as last fetched; and
-# when any module already has that version in the repository. It publishes into a scratch
-# repository beside the repository, on the same filesystem, checks that every module is
-# there, then moves each module's version directory in by rename; if a move fails, those
-# already moved are moved back, so a version is in the repository whole or not at all.
+# published by it); when a tracked file is modified or staged, or an untracked or ignored
+# .scala, .java or resources file sits under a module folder (Mill would compile it into the
+# jars; other untracked files do not count); when HEAD is not tagged v<version>, or is not an
+# ancestor of origin/main as last fetched; when a Mill query fails; and when any module already
+# has that version in the repository. It publishes into a scratch repository beside the
+# repository, on the same filesystem, checks that every module is there, then moves each
+# module's version directory in by rename.
+#
+# A failure the script can catch leaves nothing behind: a failed move, or an INT or TERM during
+# the move, moves back every version directory already moved into the repository (removing one
+# that cannot be moved back), exits non-zero, and says so on stderr. A kill -9 or a power loss
+# mid-move can leave a partial version: some modules' <version> directories in the repository
+# and not others, and a .publish-local.* scratch directory beside it. --check then refuses,
+# naming the modules that hold the version. To clear it by hand, remove each
+# <repo>/dev.grit/<artifact>/<version> directory it names and any .publish-local.* directory
+# beside <repo>; the next run then publishes the version.
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +39,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "publish-local: unknown argument $1 (see --help)" >&2; exit 2 ;;
@@ -37,13 +47,68 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-mill() { ./mill --color false --ticker false "$@" 2>/dev/null; }
+errlog=$(mktemp)
+scratch=""
+moving=false
 
-version=$(mill show grit.core.publishVersion | tr -d '"[:space:]')
-modules=$(mill resolve __.publishVersion | sed 's/\.publishVersion$//' | sort)
+# Moves back every module's version directory this run moved into the repository. A directory
+# that cannot be moved back is removed; one that cannot be removed is reported, with its path.
+undo_moves() {
+  local a in_repo back left=()
+  for a in $artifacts; do
+    in_repo="$repo/dev.grit/$a/$version"
+    back="$scratch/dev.grit/$a/$version"
+    [ -e "$in_repo" ] || continue
+    if mkdir -p "$scratch/dev.grit/$a" && mv -T "$in_repo" "$back"; then
+      continue
+    fi
+    if rm -rf "$in_repo"; then
+      echo "publish-local: could not move $a back to $scratch; removed $in_repo" >&2
+    else
+      left+=("$in_repo")
+    fi
+  done
+  if [ ${#left[@]} -gt 0 ]; then
+    echo "publish-local: could not undo the partial move; still in the repository: ${left[*]}" >&2
+  else
+    echo "publish-local: undid the partial move; no $version module is left in $repo/dev.grit" >&2
+  fi
+  return 0
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  if $moving; then undo_moves; fi
+  if [ -n "$scratch" ]; then rm -rf "$scratch"; fi
+  rm -f "$errlog"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'echo "publish-local: interrupted" >&2; exit 130' INT
+trap 'echo "publish-local: terminated" >&2; exit 143' TERM
+
+# mill_query WHAT ARGS...: sets $answer to Mill's stdout. On failure, refuses, naming WHAT and
+# the end of Mill's stderr.
+mill_query() {
+  local what=$1 detail
+  shift
+  if answer=$(./mill --color false --ticker false "$@" 2>"$errlog"); then
+    return 0
+  fi
+  detail=$(tail -n 3 "$errlog" | paste -sd' ' -)
+  echo "publish-local: refused, publishing nothing: Mill failed $what${detail:+: $detail}" >&2
+  exit 1
+}
+
+mill_query "reading build.mill's publishVersion" show grit.core.publishVersion
+version=$(echo "$answer" | tr -d '"[:space:]')
+mill_query "listing the published modules" resolve __.publishVersion
+modules=$(echo "$answer" | sed 's/\.publishVersion$//' | sort)
 [ -n "$modules" ] || { echo "publish-local: Mill listed no published module" >&2; exit 1; }
 selector="{$(echo "$modules" | sed 's/^grit\.//' | paste -sd, -)}"
-artifacts=$(mill show "grit.$selector.artifactId" | sed -n 's/^ *"[^"]*": *"\([^"]*\)",\{0,1\}$/\1/p' | sort)
+mill_query "naming the artifacts" show "grit.$selector.artifactId"
+artifacts=$(echo "$answer" | sed -n 's/^ *"[^"]*": *"\([^"]*\)",\{0,1\}$/\1/p' | sort)
 [ "$(echo "$artifacts" | wc -l)" -eq "$(echo "$modules" | wc -l)" ] ||
   { echo "publish-local: Mill named no artifact for some published module" >&2; exit 1; }
 
@@ -54,6 +119,17 @@ fi
 dirty=$(git status --porcelain --untracked-files=no)
 if [ -n "$dirty" ]; then
   refusals+=("tracked files are modified or staged: $(echo "$dirty" | awk '{print $NF}' | paste -sd' ' -)")
+fi
+source_roots=(core extensions kit deployments eval)
+untracked=$(git ls-files --others --exclude-standard -- "${source_roots[@]}")
+ignored=$(git ls-files --others --ignored --exclude-standard -- "${source_roots[@]}")
+sources=$(printf '%s\n%s\n' "$untracked" "$ignored" | grep -E '(\.scala|\.java)$|(^|/)resources/' | sort -u || true)
+if [ -n "$sources" ]; then
+  count=$(echo "$sources" | wc -l)
+  shown=$(echo "$sources" | head -n 5 | paste -sd' ' -)
+  more=""
+  if [ "$count" -gt 5 ]; then more=" (and $((count - 5)) more)"; fi
+  refusals+=("untracked or ignored sources under a module folder would be compiled into the jars: $shown$more")
 fi
 head=$(git rev-parse HEAD)
 tagged=$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)
@@ -89,7 +165,6 @@ fi
 
 mkdir -p "$repo/dev.grit"
 scratch=$(mktemp -d "$(dirname "$repo")/.publish-local.XXXXXX")
-trap 'rm -rf "$scratch"' EXIT
 if [ "$(stat -c %d "$scratch")" != "$(stat -c %d "$repo/dev.grit")" ]; then
   echo "publish-local: $scratch is not on $repo's filesystem; publishing nothing" >&2
   exit 1
@@ -106,15 +181,14 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 
 moved=()
+moving=true
 for a in $artifacts; do
   if mkdir -p "$repo/dev.grit/$a" && mv -T "$scratch/dev.grit/$a/$version" "$repo/dev.grit/$a/$version"; then
     moved+=("$a")
   else
-    echo "publish-local: moving $a failed; moving back the ${#moved[@]} moved" >&2
-    for m in "${moved[@]}"; do
-      mv -T "$repo/dev.grit/$m/$version" "$scratch/dev.grit/$m/$version"
-    done
+    echo "publish-local: moving $a failed; undoing the ${#moved[@]} moved" >&2
     exit 1
   fi
 done
+moving=false
 echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from v$version ($(git rev-parse --short HEAD))"
