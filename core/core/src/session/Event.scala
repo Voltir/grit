@@ -47,6 +47,32 @@ object Event {
     }
   }
 
+  object Kind {
+
+    /** Every kind's [[Kind.name]], in the order the kinds are declared. */
+    val Names: Vector[String] =
+      Vector("started", "read", "edited", "ran", "commit", "closing", "ended")
+
+    /** The kind whose [[Kind.name]] is `name`, a read's count of bytes from `bytes` and a
+      * closing's summary from `summary`, each asked for only by its own kind; `None` when no kind
+      * is so named.
+      */
+    def named[E](
+        name: String,
+        bytes: => Either[E, Long],
+        summary: => Either[E, Session.Summary]
+    ): Option[Either[E, Kind]] = name match {
+      case "started" => Some(Right(Started))
+      case "read" => Some(bytes.map(Read(_)))
+      case "edited" => Some(Right(Edited))
+      case "ran" => Some(Right(Ran))
+      case "commit" => Some(Right(Commit))
+      case "closing" => Some(summary.map(Closing(_)))
+      case "ended" => Some(Right(Ended))
+      case _ => None
+    }
+  }
+
   /** What an event was, never its content (a path, an exit code, not a file's text): a JSON
     * object of at most [[Shape.Longest]] UTF-8 bytes as written.
     */

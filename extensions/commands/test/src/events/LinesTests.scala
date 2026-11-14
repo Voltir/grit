@@ -122,6 +122,8 @@ object LinesTests extends TestSuite {
         line("event" -> "read"),
         line("event" -> "closing"),
         line("text" -> "said"),
+        line("bytes" -> 3),
+        line("n" -> "٣"),
         line("agent" -> "a-1"),
         line("dir" -> "work/grit"),
         line("shape" -> ujson.Obj("path" -> "p" * 300)),
@@ -137,10 +139,12 @@ object LinesTests extends TestSuite {
         Some(
           s"at: later than ${Lines.Skew.toSeconds}s past this edge's clock: ${Now.plusMillis(Lines.Skew.toMillis + 1)}"
         ),
-        Some("event: started, read, edited, ran, commit, closing or ended, not PostToolUse"),
+        Some("event: one of started, read, edited, ran, commit, closing, ended, not PostToolUse"),
         Some("bytes: a read's count of bytes, missing"),
         Some("text: a closing's summary, missing"),
         Some("text: a closing's alone"),
+        Some("bytes: a read's alone"),
+        Some("n: a decimal string, not \"٣\""),
         Some("agent and type come together: an agent's own id, and its type"),
         Some("dir: not an absolute path: work/grit"),
         Some("shape: an event's shape is 311 bytes, over 300"),

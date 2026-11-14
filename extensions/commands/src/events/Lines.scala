@@ -66,11 +66,11 @@ private[commands] object Lines {
     *   - `dir`, the session's directory (the starting session's for an agent), whose holder it
     *     works as ([[Holders.of]]); `worktree`, where it worked, by default `dir`; each absolute,
     *     each placed on `worker` ([[Worktrees.at]]);
-    *   - `n`, its ordinal, a decimal string above 0, unique within the session, so a line sent
+    *   - `n`, its ordinal, a string of ASCII digits above 0, unique within the session, so a line sent
     *     again is known; `at`, an ISO-8601 instant no later than [[Skew]] past `now`;
-    *   - `event`, its kind by its grit name ([[Event.Kind.name]]): `started`, `read` (with
+    *   - `event`, its kind by its grit name ([[Event.Kind.named]]): `started`, `read` (with
     *     `bytes`, a count of 0 or more), `edited`, `ran`, `commit`, `closing` (with `text`, its
-    *     summary, [[Session.Summary.of]]), `ended`;
+    *     summary, [[Session.Summary.of]]), `ended`; `bytes` and `text` on no other kind;
     *   - `shape`, a JSON object of what it was, never its content, by default `{}`, at most
     *     [[Event.Shape.Longest]] bytes: a commit's names its sha under [[Event.Shape.Sha]] and keeps
     *     every other key, its worktree written under [[Event.Shape.Worktree]] and its subject cut
@@ -100,7 +100,7 @@ private[commands] object Lines {
       dir <- directory(o, "dir")
       worktree <- if (o.contains("worktree")) directory(o, "worktree") else Right(dir)
       n <- o.get("n") match {
-        case Some(ujson.Str(s)) if s.nonEmpty && s.forall(_.isDigit) =>
+        case Some(ujson.Str(s)) if s.nonEmpty && s.forall(c => c >= '0' && c <= '9') =>
           s.toLongOption.toRight(s"n: over ${Long.MaxValue}: $s")
         case Some(other) => Left(s"n: a decimal string, not ${ujson.write(other)}")
         case None => Left("n: missing")
@@ -119,6 +119,11 @@ private[commands] object Lines {
         !o.contains("text") || kind.isInstanceOf[Event.Kind.Closing],
         (),
         "text: a closing's alone"
+      )
+      _ <- Either.cond(
+        !o.contains("bytes") || kind.isInstanceOf[Event.Kind.Read],
+        (),
+        "bytes: a read's alone"
       )
       sent <- o.get("shape") match {
         case None => Right(ujson.Obj())
@@ -195,29 +200,23 @@ private[commands] object Lines {
       named: String,
       o: collection.Map[String, ujson.Value]
   ): Either[String, Event.Kind] =
-    named match {
-      case k if k == Event.Kind.Started.name => Right(Event.Kind.Started)
-      case k if k == Event.Kind.Read(0).name =>
+    Event.Kind
+      .named(
+        named,
         o.get("bytes") match {
           case Some(ujson.Num(b)) if b >= 0 && b == b.floor && b <= Long.MaxValue.toDouble =>
-            Right(Event.Kind.Read(b.toLong))
+            Right(b.toLong)
           case Some(other) =>
             Left(s"bytes: a read's count of bytes, 0 or more, not ${ujson.write(other)}")
           case None => Left("bytes: a read's count of bytes, missing")
-        }
-      case k if k == Event.Kind.Edited.name => Right(Event.Kind.Edited)
-      case k if k == Event.Kind.Ran.name => Right(Event.Kind.Ran)
-      case k if k == Event.Kind.Commit.name => Right(Event.Kind.Commit)
-      case k if k == Event.Kind.Ended.name => Right(Event.Kind.Ended)
-      case "closing" =>
+        },
         o.get("text") match {
-          case Some(ujson.Str(t)) =>
-            Session.Summary.of(t).map(Event.Kind.Closing(_)).left.map(w => s"text: $w")
+          case Some(ujson.Str(t)) => Session.Summary.of(t).left.map(w => s"text: $w")
           case Some(_) => Left("text: a closing's summary, a string")
           case None => Left("text: a closing's summary, missing")
         }
-      case other => Left(s"event: started, read, edited, ran, commit, closing or ended, not $other")
-    }
+      )
+      .getOrElse(Left(s"event: one of ${Event.Kind.Names.mkString(", ")}, not $named"))
 
   /** `sent` as `kind`'s shape at `place` on `worker`. */
   private def shaped(
