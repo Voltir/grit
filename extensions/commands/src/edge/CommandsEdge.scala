@@ -26,7 +26,8 @@ import grit.mcp.wire.ServerInfo
   *     ([[grit.commands.worker.Holders.of]]): the one way a claim learns it;
   *   - `GET /brief?harness=&session=&dir=&start=fresh|resume[&agent=&type=][&part=brief|digest]`
   *     answers, as text, the holder's brief, or with `part=digest` what its newest session did
-  *     lately, through the deployment's session record; which start asks for a digest is the
+  *     lately, through the deployment's session record, empty when that session last did
+  *     something over 24 hours ago (`Briefing.Recent`); which start asks for a digest is the
   *     harness adapter's choice;
   *   - `POST /events?harness=` records one session's event lines, in grit's words
   *     ([[grit.commands.events.Lines.read]] gives every bound a line is refused for), as the
