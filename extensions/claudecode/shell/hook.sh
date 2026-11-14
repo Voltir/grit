@@ -418,7 +418,7 @@ commits() {
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
   for i in "$@"; do shas+=("${i%% *}"); done
-  subjects=$(git log --no-walk=unsorted --format=%s "${shas[@]}" --) || {
+  subjects=$(git log --no-show-signature --no-walk=unsorted --format=%s "${shas[@]}" --) || {
     say "git could not read the commits made; they were not posted"
     return 0
   }

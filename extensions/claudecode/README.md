@@ -21,7 +21,7 @@ resource to read; a script over 60 KB, or holding a NUL, fails the build.
 
 bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils (the hook's watchdog is its
 `timeout`), on the machine the join runs on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
-it. The unit tests run them too, with no skip.
+it. The unit tests run them too, with no skip, and `ssh-keygen`, to sign a commit.
 
 ## The join
 

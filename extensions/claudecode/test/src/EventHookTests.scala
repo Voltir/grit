@@ -259,6 +259,23 @@ object EventHookTests extends TestSuite {
     }
 
     test(
+      "a signed commit's subject is its own under log.showSignature, not the signature's check"
+    ) {
+      HookFixtures { f =>
+        // An SSH key signs a commit with no GPG keyring to make.
+        val made = bashTool(
+          f,
+          f.proj,
+          "ssh-keygen -q -t ed25519 -N '' -f ../key > /dev/null && git config log.showSignature true" +
+            s" && $Git -c gpg.format=ssh -c user.signingKey=../key.pub commit -q -S --allow-empty -m signed"
+        )
+        val shapes =
+          f.recorded.flatMap(_.events).map(e => ujson.read(Event.Shape.value(e.shape)))
+        (made.exit, made.err, shapes.map(_("subject").str)) ==> ((0, "", Vector("signed")))
+      }
+    }
+
+    test(
       "a commit in a session's Bash records its sha, subject and worktree; outside a session or mid-rebase, none"
     ) {
       HookFixtures { f =>
