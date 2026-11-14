@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Publishes every published module (build.mill's GritPublished) to the local ivy repository,
+# all at the one version build.mill names, and only a version never published there: a version
+# names one commit, so a later fix is the next patch version, never a republish.
+#
+#   scripts/publish-local                 # publish, or say every reason it will not
+#   scripts/publish-local --check         # every refusal, and what would be published; publishes nothing
+#   scripts/publish-local --repo DIR      # into DIR in place of ~/.ivy2/local
+#
+# Refuses, naming each reason, when the version is not plain X.Y.Z (a -SNAPSHOT is never
+# published by it); when a tracked file is modified or staged (untracked files do not count);
+# when HEAD is not tagged v<version>, or is not an ancestor of origin/main as last fetched; and
+# when any module already has that version in the repository. It publishes into a scratch
+# repository beside the repository, on the same filesystem, checks that every module is
+# there, then moves each module's version directory in by rename; if a move fails, those
+# already moved are moved back, so a version is in the repository whole or not at all.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+check=false
+repo="$HOME/.ivy2/local"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) check=true ;;
+    --repo)
+      [ $# -ge 2 ] || { echo "publish-local: --repo takes a directory" >&2; exit 2; }
+      repo="$2"
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "publish-local: unknown argument $1 (see --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+mill() { ./mill --color false --ticker false "$@" 2>/dev/null; }
+
+version=$(mill show grit.core.publishVersion | tr -d '"[:space:]')
+modules=$(mill resolve __.publishVersion | sed 's/\.publishVersion$//' | sort)
+[ -n "$modules" ] || { echo "publish-local: Mill listed no published module" >&2; exit 1; }
+selector="{$(echo "$modules" | sed 's/^grit\.//' | paste -sd, -)}"
+artifacts=$(mill show "grit.$selector.artifactId" | sed -n 's/^ *"[^"]*": *"\([^"]*\)",\{0,1\}$/\1/p' | sort)
+[ "$(echo "$artifacts" | wc -l)" -eq "$(echo "$modules" | wc -l)" ] ||
+  { echo "publish-local: Mill named no artifact for some published module" >&2; exit 1; }
+
+refusals=()
+if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  refusals+=("the version is $version, not plain X.Y.Z: build.mill's publishVersion names a release")
+fi
+dirty=$(git status --porcelain --untracked-files=no)
+if [ -n "$dirty" ]; then
+  refusals+=("tracked files are modified or staged: $(echo "$dirty" | awk '{print $NF}' | paste -sd' ' -)")
+fi
+head=$(git rev-parse HEAD)
+tagged=$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)
+if [ -z "$tagged" ]; then
+  refusals+=("HEAD ($(git rev-parse --short HEAD)) is not tagged v$version: tag the commit to publish first")
+elif [ "$tagged" != "$head" ]; then
+  refusals+=("v$version tags $(git rev-parse --short "$tagged"), not HEAD ($(git rev-parse --short HEAD))")
+fi
+if ! git rev-parse -q --verify origin/main >/dev/null; then
+  refusals+=("there is no origin/main to hold HEAD")
+elif ! git merge-base --is-ancestor HEAD origin/main; then
+  refusals+=("HEAD ($(git rev-parse --short HEAD)) is not on origin/main as last fetched")
+fi
+published=()
+for a in $artifacts; do
+  if [ -e "$repo/dev.grit/$a/$version" ]; then published+=("$a"); fi
+done
+if [ ${#published[@]} -gt 0 ]; then
+  refusals+=("$version is in $repo/dev.grit already, for ${published[*]}: a fix is the next patch version")
+fi
+
+if [ ${#refusals[@]} -gt 0 ]; then
+  echo "publish-local: refused, publishing nothing:" >&2
+  printf '  - %s\n' "${refusals[@]}" >&2
+  exit 1
+fi
+
+if $check; then
+  echo "publish-local: would publish $version of $(echo "$artifacts" | wc -l) modules into $repo/dev.grit:"
+  echo "$artifacts" | sed 's/^/  /'
+  exit 0
+fi
+
+mkdir -p "$repo/dev.grit"
+scratch=$(mktemp -d "$(dirname "$repo")/.publish-local.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+if [ "$(stat -c %d "$scratch")" != "$(stat -c %d "$repo/dev.grit")" ]; then
+  echo "publish-local: $scratch is not on $repo's filesystem; publishing nothing" >&2
+  exit 1
+fi
+
+./mill --color false --ticker false __.publishLocal --local-ivy-repo "$scratch"
+missing=()
+for a in $artifacts; do
+  [ -f "$scratch/dev.grit/$a/$version/ivys/ivy.xml" ] || missing+=("$a")
+done
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "publish-local: not published, so nothing moved into $repo: ${missing[*]}" >&2
+  exit 1
+fi
+
+moved=()
+for a in $artifacts; do
+  if mkdir -p "$repo/dev.grit/$a" && mv -T "$scratch/dev.grit/$a/$version" "$repo/dev.grit/$a/$version"; then
+    moved+=("$a")
+  else
+    echo "publish-local: moving $a failed; moving back the ${#moved[@]} moved" >&2
+    for m in "${moved[@]}"; do
+      mv -T "$repo/dev.grit/$m/$version" "$scratch/dev.grit/$m/$version"
+    done
+    exit 1
+  fi
+done
+echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from v$version ($(git rev-parse --short HEAD))"
