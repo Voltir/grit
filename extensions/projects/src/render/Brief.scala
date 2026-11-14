@@ -24,8 +24,8 @@ enum BriefRefusal extends caps.Pure {
   * `## Cited` section with each artifact its role view reaches, nearest first, under its own
   * `### <key> — <title>` heading, whole or, past the budget, as a pointer line
   * `- <key> (<kind>, <title>, <n> chars)`; artifacts at the same distance in key order. A function
-  * of the project's value, not of the order its artifacts were read in: the hook file (written at
-  * the claim) and `project_brief` show the same text for the project as it stood at the claim.
+  * of the project's value, not of the order its artifacts were read in: the brief kept for a
+  * claim, after every command that changes its project, and `project_brief` show the same text.
   *
   * The header line is `<key> | <kind> | <state> | <title> | <method> v<version> | pin <digest>`,
   * the digest its first [[PinDigits]] hex characters. `n` in a pointer, and the size [[BriefRefusal.Over]]

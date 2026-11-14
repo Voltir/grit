@@ -45,14 +45,6 @@ object ClaimTests extends TestSuite {
   private def claimedKept(said: String): CommandOutcome =
     CommandOutcome.Done(ujson.write(ujson.Obj("claimed" -> said, "brief" -> "kept")))
 
-  /** The brief kept for `holder`, as a window would find it just after the claims here. */
-  private def briefOf(store: Store, holder: String): Option[Document] = {
-    inTx(store.documents.declare(Vector(Projects.Name -> Projects.Terms)))
-      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-    inTx(store.documents.briefOf(right(ClaimHolder.of(holder)), at.plusSeconds(1)))
-      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-  }
-
   /** A project `p` holding two notes, `p/a` and `p/b`. */
   private def holding(projects: Projects, store: Store): Unit = {
     started(projects, store)
@@ -218,25 +210,7 @@ object ClaimTests extends TestSuite {
     test(
       "a keep of an artifact a claimed brief carries is refused when that brief would pass the budget"
     ) {
-      val view = MethodFixtures.right(
-        grit.projects.method.RoleView.of(
-          MethodFixtures.role("manager"),
-          Set(MethodFixtures.note.name),
-          1,
-          Set(MethodFixtures.right(grit.projects.name.LocalKey.of("process")))
-        )
-      )
-      val carrying = grit.projects.method.Method
-        .of(
-          methodName,
-          1,
-          Vector(MethodFixtures.change, MethodFixtures.note),
-          MethodFixtures.transitions,
-          Vector(view),
-          grit.projects.method.TransitionChecks.all
-        )
-        .fold(why => throw new java.lang.AssertionError(why.toString), identity)
-      val projects = plugin(carrying)
+      val projects = plugin(managing)
       val store = Store()
       started(projects, store)
       kept(projects, store, "m", "note", "The manager's note.")

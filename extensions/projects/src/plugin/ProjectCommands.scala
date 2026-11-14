@@ -437,6 +437,7 @@ private[plugin] final class ProjectCommands(
                 case failed => failed
               }
               .flatMap(_ => wrote(own, project, steps, at))
+              .flatMap(_ => rebriefed(own, claims, args.project, at))
               .map(_ => s"Every step is done:\n$lines")
           case (None, true) =>
             settled(claims, project, method, args.project, steps, at, "change it").left
@@ -914,15 +915,15 @@ private[plugin] final class ProjectCommands(
       for {
         project <- loaded(own, args.key.project)
         method <- refuse(declared(project.pin))
-        view <- viewOf(method, args.role)
+        _ <- viewOf(method, args.role)
         found <- artifact(project, args.key)
         (document, a) = found
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         claimed <- stored(
           claims.claim(document.key, args.holder, args.role, by.person, document.label, at)
         )
-        _ <- claimed match {
-          case Claimed.Made(_) => Right(())
+        made <- claimed match {
+          case Claimed.Made(c) => Right(c)
           case Claimed.Taken(first) =>
             Left(
               Stop.Refused(
@@ -946,13 +947,10 @@ private[plugin] final class ProjectCommands(
               )
             )
         }
-        unkept <- briefed(
-          own,
-          Brief.of(whole, args.key, view, DocRef.BriefChars),
-          args,
-          document,
-          at
-        )
+        // The role has a view and the artifact is the project's, so the claim has its brief.
+        unkept <- rendered(method, whole, Vector(made)).headOption
+          .toRight(Stop.Refused(s"$key has no brief as ${RoleName.value(args.role)}"))
+          .flatMap(briefed(own, _, document.place, at))
       } yield AnswerText.claimed(
         s"Claimed ${headed(a.head)} as ${RoleName.value(args.role)} for $holder.",
         unkept
@@ -1084,6 +1082,7 @@ private[plugin] final class ProjectCommands(
         _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
         _ <- atTheirLabels(citing(docs), "withdraw")
         _ <- carried(own, docs, by, at)
+        _ <- rebriefed(own, claims, args.key.project, at)
       } yield AnswerText.withdrawn(
         done.gone.map(_.head.key),
         done.uncited.map(_.head.key),
@@ -1201,7 +1200,9 @@ private[plugin] final class ProjectCommands(
             citing(docs),
           "withdraw"
         )
-        _ <- if (args.dry) Right(()) else carried(own, docs, by, at)
+        _ <-
+          if (args.dry) Right(())
+          else carried(own, docs, by, at).flatMap(_ => rebriefed(own, claims, args.project, at))
       } yield AnswerText.swept(
         swept,
         args.dry,
@@ -1476,7 +1477,39 @@ private[plugin] final class ProjectCommands(
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
       _ <- settled(claims, project, method, key, steps, at, verb)
       _ <- wrote(own, project, steps, at)
+      _ <- rebriefed(own, claims, key, at)
     } yield answer
+
+  /** Keeps again ([[briefed]]) the brief of each claim live at `at` on an artifact of project
+    * `key` and kept at this transaction's floor, as the project now stands, each claim renewed
+    * first ([[renewed]]): of two commands changing one project, the second to reach a claim waits
+    * for the first to end, then renders what both kept. A claim kept below the floor is passed
+    * over: a command changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing
+    * that brief shows changed. Nothing when the project's method is not declared here.
+    */
+  private def rebriefed(own: DocumentKeeper, claims: Claims, key: ProjectKey, at: Instant)(using
+      tx: Tx^
+  ): Either[Stop, Unit] =
+    for {
+      live <- stored(claims.live(at))
+      here = live.filter(c =>
+        c.label == Tx.floor(tx) &&
+          ArtifactKey.read(DocKey.value(c.subject)).exists(_.project == key)
+      )
+      held <- Traversal.traverse(here)(renewed(claims, _, at)).map(_.flatten)
+      project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
+      briefs = project.toVector.flatMap(p =>
+        (for {
+          method <- declared(p.pin)
+          whole <- Project.of(key, p.pin, p.artifacts)
+        } yield rendered(method, whole, held).flatMap(r =>
+          p.documents.find(_._2.head.key == r.key).map(d => r -> d._1.place)
+        )).getOrElse(Vector.empty)
+      )
+      _ <- Traversal
+        .traverse(briefs)((r, place) => briefed(own, r, place, at))
+        .map((_: Vector[Option[String]]) => ())
+    } yield ()
 
   /** The method version `pin` names, or why not. */
   private def declared(pin: Pin): Either[String, Method] =
@@ -1914,31 +1947,51 @@ private[plugin] object ProjectCommands {
       .find(_._2.head.key == key)
       .toRight(lacking(key, project.artifacts))
 
-  /** Nothing, or a refusal naming each claim of `live` on an artifact of `after` whose brief, at
-    * most [[DocRef.BriefChars]] characters, `after` puts over that budget when `before` did not,
-    * or makes longer than `before` did (`before` none: as if it did not), and the characters to
-    * cut from those of `changed` the brief holds whole (the claimed artifact, or one its role
-    * carries); a claim whose role `method` shows no view of is passed over.
+  /** A live claim on artifact `key` of a project, and the brief [[Brief.of]] gives it within
+    * [[DocRef.BriefChars]] under the view its role is shown, or how long it would be.
+    */
+  private final case class Rendered(
+      claim: Claim,
+      key: ArtifactKey,
+      view: RoleView,
+      brief: Either[BriefRefusal.Over, Brief]
+  )
+
+  /** Each claim of `live` on an artifact of `project` whose role `method` shows a view of, in the
+    * order given, with its brief.
+    */
+  private def rendered(method: Method, project: Project, live: Vector[Claim]): Vector[Rendered] =
+    live.flatMap { c =>
+      for {
+        key <- ArtifactKey.read(DocKey.value(c.subject)).toOption
+        if key.project == project.key
+        view <- method.views.find(_.role == c.role)
+        brief <- Brief.of(project, key, view, DocRef.BriefChars) match {
+          case Right(b) => Some(Right(b))
+          case Left(over: BriefRefusal.Over) => Some(Left(over))
+          case Left(BriefRefusal.Unknown(_)) => None
+        }
+      } yield Rendered(c, key, view, brief)
+    }
+
+  /** Nothing, or a refusal naming each of `after` over its budget when, rendered over `before`
+    * under `method`, it was not or was shorter (`before` none: as if it was not), and the
+    * characters to cut from those of `changed` the brief holds whole (the claimed artifact, or one
+    * its role carries).
     */
   private def within(
       method: Method,
       before: Option[Project],
-      after: Project,
-      live: Vector[Claim],
+      after: Vector[Rendered],
       changed: Vector[ArtifactKey]
   ): Either[Stop, Unit] = {
-    def over(p: Project, key: ArtifactKey, view: RoleView): Option[Int] =
-      Brief.of(p, key, view, DocRef.BriefChars).left.toOption.collect {
-        case BriefRefusal.Over(size) => size
-      }
-    live.flatMap { c =>
+    lazy val was = before.fold(Vector.empty[Rendered])(rendered(method, _, after.map(_.claim)))
+    after.flatMap { r =>
       for {
-        key <- ArtifactKey.read(DocKey.value(c.subject)).toOption
-        if key.project == after.key
-        view <- method.views.find(_.role == c.role)
-        size <- over(after, key, view)
-        if before.flatMap(over(_, key, view)).forall(_ < size)
+        size <- r.brief.left.toOption.map(_.size)
+        if was.find(_.claim == r.claim).flatMap(_.brief.left.toOption).forall(_.size < size)
       } yield {
+        val (c, key, view) = (r.claim, r.key, r.view)
         val held = changed.filter(k => k == key || view.carried.contains(k.local))
         val cut = size - DocRef.BriefChars
         f"the brief of ${key.value}, claimed as ${ClaimRole.value(c.role)} for " +
@@ -2105,8 +2158,7 @@ private[plugin] object ProjectCommands {
       _ <- within(
         method,
         Project.of(key, project.pin, project.artifacts).toOption,
-        after,
-        live,
+        rendered(method, after, live),
         steps.changed
       )
       _ <- atTheirLabels(
@@ -2277,43 +2329,65 @@ private[plugin] object ProjectCommands {
   private def briefKey(artifact: ArtifactKey): Either[String, DocKey] =
     DocKey.of(s"${artifact.value}#brief")
 
-  /** Keeps `rendered`, the claimed artifact's brief, through `own` beside `claimed` (at its label
-    * and place), as the brief of `args.holder` ([[DocRef.brief]]), its data naming the holder:
-    * `None` when one was kept, else why none was: it is over [[DocRef.BriefChars]], or the
-    * plugin is full; then any brief kept before for the artifact is withdrawn.
+  /** Keeps `r`'s brief through `own`, at its claim's label and at `place`, as the brief of the
+    * claim's holder ([[DocRef.brief]]), its data naming the holder, unless the one current there
+    * holds that text for that holder: `None` when it is current, else why none is, the one current
+    * there withdrawn: it is over [[DocRef.BriefChars]], or the plugin is full.
     */
-  private def briefed(
-      own: DocumentKeeper,
-      rendered: Either[BriefRefusal, Brief],
-      args: Claiming,
-      claimed: Document,
-      at: Instant
-  )(using Tx^): Either[Stop, Option[String]] = {
+  private def briefed(own: DocumentKeeper, r: Rendered, place: Place, at: Instant)(using
+      Tx^
+  ): Either[Stop, Option[String]] = {
     val over =
       f"it is over ${DocRef.BriefChars}%,d characters; shorten the artifact or what its role carries"
-    val written = for {
-      brief <- rendered.left.map(_ => over)
-      key <- briefKey(args.key)
-      text <- DocText.of(brief.text).left.map(_ => over)
-    } yield own.write(
-      key,
-      claimed.label,
-      Integrity.Authority,
-      claimed.place,
-      text,
-      ujson.Obj(BriefHolder -> ClaimHolder.value(args.holder)),
-      None,
-      at,
-      Set(DocRef.brief(args.holder))
+    val (label, holder) = (r.claim.label, r.claim.holder)
+    val data = ujson.Obj(BriefHolder -> ClaimHolder.value(holder))
+    briefKey(r.key).fold(
+      _ => Right(Some(s"No brief was kept: $over.")),
+      key =>
+        stored(own.current(key, label)).flatMap { was =>
+          def none(why: String): Either[Stop, Option[String]] =
+            stored(
+              was.fold[Either[StoreError, Option[DocumentVersionId]]](Right(None))(_ =>
+                own.withdraw(key, label, at)
+              )
+            ).map(_ => Some(s"No brief was kept: $why."))
+          r.brief.left.map(_ => over).flatMap(b => DocText.of(b.text).left.map(_ => over)) match {
+            case Left(why) => none(why)
+            case Right(text) if was.exists(d => d.text == text && d.data == data) => Right(None)
+            case Right(text) =>
+              own.write(
+                key,
+                label,
+                Integrity.Authority,
+                place,
+                text,
+                data,
+                None,
+                at,
+                Set(DocRef.brief(holder))
+              ) match {
+                case Right(_) => Right(None)
+                case Left(StoreError.Full(bound)) => none(Projects.full(bound))
+                case Left(other) => Left(Stop.Store(other))
+              }
+          }
+        }
     )
-    def none(why: String) = unbriefed(own, args.key, at).map(_ => Some(s"No brief was kept: $why."))
-    written match {
-      case Right(Right(_)) => Right(None)
-      case Right(Left(StoreError.Full(bound))) => none(Projects.full(bound))
-      case Right(Left(other)) => Left(Stop.Store(other))
-      case Left(why) => none(why)
-    }
   }
+
+  /** `c` renewed through `claims` as it was read, so that of two transactions renewing one claim
+    * the second waits for the first to end ([[Claims.claim]] in the store): `None` when it is held
+    * no longer, its subject or holder taken since, or released since, a claim the renewal made
+    * anew then released again.
+    */
+  private def renewed(claims: Claims, c: Claim, at: Instant)(using
+      Tx^
+  ): Either[Stop, Option[Claim]] =
+    stored(claims.claim(c.subject, c.holder, c.role, c.by, c.label, at)).flatMap {
+      case Claimed.Made(made) if made.made == c.made => Right(Some(made))
+      case Claimed.Made(made) => stored(claims.release(made.subject, made.label)).map(_ => None)
+      case Claimed.Taken(_) | Claimed.Holding(_) => Right(None)
+    }
 
   /** Withdraws `artifact`'s brief at every label it is current at that the transaction reads:
     * the holder the newest of them was for, `None` when there was none.

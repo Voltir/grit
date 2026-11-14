@@ -3,7 +3,8 @@ package grit.projects.plugin
 import java.time.Instant
 
 import grit.core.claim.{Claims, InMemoryClaims}
-import grit.core.document.{DocumentKeeper, DocumentTerms, InMemoryDocuments}
+import grit.core.document.{Document, DocumentKeeper, DocumentTerms, InMemoryDocuments}
+import grit.core.id.ClaimHolder
 import grit.core.identity.{Principal, TestAccounts}
 import grit.core.need.PluginReads
 import grit.core.plugin.{CommandBy, CommandOutcome, InMemoryPlugins, KeepingCommand, ReadingCommand}
@@ -11,8 +12,8 @@ import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.{Clearance, Label}
 import grit.dbos.sql.TestTx
-import grit.projects.method.{Method, MethodFixtures, TransitionChecks}
-import grit.projects.name.MethodName
+import grit.projects.method.{Method, MethodFixtures, RoleView, TransitionChecks}
+import grit.projects.name.{LocalKey, MethodName}
 
 /** A projects plugin over an in-memory store, and its commands asked as an edge asks them, for
   * the plugin package's suites.
@@ -47,6 +48,37 @@ object CommandFixtures {
     Method
       .of(methodName, 1, Vector(change, note), moves, views, TransitionChecks.all)
       .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+
+  /** [[method]]'s kinds and moves, its one role a manager, shown notes to depth 1 and always
+    * carrying `<project>/process`.
+    */
+  val managing: Method = Method
+    .of(
+      methodName,
+      1,
+      Vector(change, note),
+      transitions,
+      Vector(
+        MethodFixtures.right(
+          RoleView.of(
+            MethodFixtures.role("manager"),
+            Set(note.name),
+            1,
+            Set(MethodFixtures.right(LocalKey.of("process")))
+          )
+        )
+      ),
+      TransitionChecks.all
+    )
+    .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+
+  /** The brief kept for `holder`, as a window would find it at `when`. */
+  def briefOf(store: Store, holder: String, when: Instant = at.plusSeconds(1)): Option[Document] = {
+    inTx(store.documents.declare(Vector(Projects.Name -> Projects.Terms)))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+    inTx(store.documents.briefOf(MethodFixtures.right(ClaimHolder.of(holder)), when))
+      .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+  }
 
   def plugin(m: Method = method()): Projects =
     Projects
@@ -95,6 +127,27 @@ object CommandFixtures {
       store: Store,
       name: String,
       args: (String, ujson.Value)*
+  ): CommandOutcome = askThrough(store.keeper, store.claims, who, when, cleared)(
+    projects,
+    store,
+    name,
+    args*
+  )
+
+  /** As [[askBy]], a keeping command writing through `keeper` and claiming through `claims` in
+    * place of `store`'s.
+    */
+  def askThrough(
+      keeper: DocumentKeeper,
+      claims: Claims,
+      who: CommandBy = CommandBy.Direct(person),
+      when: Instant = at,
+      cleared: Clearance = Clearance.of(Label.Public)
+  )(
+      projects: Projects,
+      store: Store,
+      name: String,
+      args: (String, ujson.Value)*
   ): CommandOutcome =
     projects.commands.find(c => ToolName.value(c.spec.name) == name) match {
       case Some(c: KeepingCommand[a]) =>
@@ -102,7 +155,7 @@ object CommandFixtures {
         read.fold(
           e => throw new java.lang.AssertionError(e.message),
           a =>
-            c.run(a, who, store.keeper, store.claims, when)(using TestTx.fake(cleared))
+            c.run(a, who, keeper, claims, when)(using TestTx.fake(cleared))
               .fold(e => throw new java.lang.AssertionError(e.toString), identity)
         )
       case Some(c: ReadingCommand[a]) =>

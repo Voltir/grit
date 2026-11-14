@@ -20,7 +20,8 @@ import grit.projects.name.{ArtifactKey, KindName, MethodName, StateName}
   * never a document, so the artifact keeps its version; a claim keeps the artifact's brief for its
   * holder as a document of its own ([[grit.core.document.DocRef.brief]], at most
   * [[grit.core.document.DocRef.BriefChars]],
-  * none when over), which a release withdraws, claimed still or not), `project_withdraw` (an artifact no
+  * none when over), kept again by every command that changes what it shows, which a release
+  * withdraws, claimed still or not), `project_withdraw` (an artifact no
   * other names, or with what is under it, ended citers rewritten; its history kept as of an
   * instant), `project_sweep` (a project's old ended artifacts of the kinds named, withdrawn at
   * once unless claimed or cited by live work, ended citers rewritten; or a dry run of it),

@@ -1,12 +1,19 @@
 package grit.app.main
 
 import java.time.Instant
+import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+
+import scala.concurrent.duration.*
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.util.Using
 
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
+import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
+import grit.dbos.sql.LiveDb
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
 
@@ -276,6 +283,101 @@ object ProjectsLiveTests extends TestSuite {
             ("p", "internal", "member"),
             ("p/a", "internal", "member")
           )
+      }
+    }
+
+    test(
+      "a keep changing a claimed brief while another command keeps it waits for that one, then keeps it again"
+    ) {
+      CommandRooms.commanding(
+        "projects_briefs",
+        _ => Vector(CommandFixtures.plugin(CommandFixtures.managing))
+      ) { (config, _, commands) =>
+        ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+        keep(commands, desk, "c", "Cited.")
+        keep(commands, desk, "process", "How work is run.")
+        keep(commands, desk, "m", "The manager's note.", "cites" -> ujson.Arr("p/c"))
+        ran(
+          commands,
+          ann,
+          desk,
+          ToolName("project_claim"),
+          "key" -> "p/m",
+          "role" -> "manager",
+          "holder" -> "coder-opus/abc"
+        )
+        val pool = Executors.newFixedThreadPool(2)
+        given ExecutionContext = ExecutionContext.fromExecutorService(pool)
+        val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
+        try {
+          // Another command's transaction, mid-way: it has renewed the claim and kept its brief
+          // again, and has not yet ended.
+          val other = Future {
+            LiveDb.transaction(config) { (tx: Tx^) ?=>
+              val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+              def run(sql: String, args: Any*): Vector[Long] =
+                Using.resource(conn.prepareStatement(sql)) { ps =>
+                  args.zipWithIndex.foreach((a, i) => ps.setObject(i + 1, a))
+                  if (sql.contains("RETURNING")) Using.resource(ps.executeQuery()) { rs =>
+                    Iterator.continually(rs).takeWhile(_.next()).map(_.getLong(1)).toVector
+                  }
+                  else Vector(ps.executeUpdate().toLong)
+                }
+              run(
+                "UPDATE grit.claims SET role = role WHERE plugin = 'projects' AND subject = 'p/m'"
+              )
+              val was = run(
+                "UPDATE grit.documents SET superseded_at = now() WHERE plugin = 'projects' " +
+                  "AND key = 'p/m#brief' AND superseded_at IS NULL RETURNING version"
+              )
+              val now = run(
+                "INSERT INTO grit.documents (plugin, key, place, body, data, pointer, written_at, " +
+                  "last_placed, classification_id, room_id, integrity_id) SELECT plugin, key, " +
+                  "place, 'A brief another command kept.', data, pointer, now(), now(), " +
+                  "classification_id, room_id, integrity_id FROM grit.documents WHERE version = ? " +
+                  "RETURNING version",
+                was*
+              )
+              run(
+                "INSERT INTO grit.document_refs (version, kind, ref) SELECT ?, kind, ref " +
+                  "FROM grit.document_refs WHERE version = ?",
+                (now ++ was)*
+              )
+              holding.countDown()
+              go.await(30, TimeUnit.SECONDS)
+              Right(())
+            }
+          }
+          holding.await(30, TimeUnit.SECONDS)
+          val keeping = Future(keep(commands, desk, "c", "Cited, rewritten."))
+          val waited = scala.util.Try(Await.ready(keeping, 1.second)).isFailure
+          go.countDown()
+          val (ended, kept) = (Await.result(other, 30.seconds), Await.result(keeping, 30.seconds))
+          val rendered = ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_brief"),
+            "key" -> "p/m",
+            "role" -> "manager",
+            "chars" -> 9500
+          ).map { case CommandOutcome.Done(text) => text; case refused => refused.toString }
+          val current = LiveDb.transaction(config) { (tx: Tx^) ?=>
+            val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+            Using.resource(
+              conn.prepareStatement(
+                "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = 'p/m#brief' " +
+                  "AND superseded_at IS NULL"
+              )
+            )(ps =>
+              Using.resource(ps.executeQuery())(rs =>
+                Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
+              )
+            )
+          }
+          (waited, ended, kept, current.map(Right(_)), rendered.map(_.contains("rewritten"))) ==>
+            (true, Right(()), Right(classOf[CommandOutcome.Done]), Vector(rendered), Right(true))
+        } finally pool.shutdownNow()
       }
     }
   }
