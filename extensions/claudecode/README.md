@@ -86,12 +86,15 @@ before the first file is written (an undo, too, reads every other worktree's set
   The repository's worktrees share them.
 - **The MCP entry**: with `claude` on PATH, `claude mcp remove --scope local <name>` (its failure
   ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp`; the entry it
-  replaces is read from `~/.claude.json` first and printed. An add that fails prints the command
-  and exits 1. Without `claude`, the command is printed. The entry belongs to the checkout's
+  replaces is read from `~/.claude.json` first and printed, a URL as its scheme, host and path
+  alone (no credentials, query or fragment), a stdio entry as `the command <program>`. An add that
+  fails prints the command and exits 1. Without `claude`, the command is printed. The entry belongs to the checkout's
   directory, so each worktree joins its own.
 
 Every removed command and git hook line is printed as it was. **Undo** removes the checkout's
-handlers (rewriting the settings only when it held one) and its MCP entry; the hook and the git
+handlers (rewriting the settings only when it held one) and its MCP entry, but only an entry the
+join would have written, an `http://` or `https://` host and port with the path `/mcp` and nothing
+after, as a checkout never joined may hold another (printed, and left as it is); the hook and the git
 hooks it marked go too, unless another worktree's settings still name the hook, when they are
 kept and the worktree named. Nothing retired is restored.
 
@@ -124,7 +127,7 @@ grit claude-code: undid the join in /work/proj
   settings  .claude/settings.local.json: 11 handlers of ours removed
   hook      /work/proj/.git/grit/claude-code/hook removed
   git       post-commit and post-rewrite removed
-  mcp       grit removed from local scope
+  mcp       grit at http://127.0.0.1:7317/mcp removed from local scope
 Nothing retired was restored.
 ```
 

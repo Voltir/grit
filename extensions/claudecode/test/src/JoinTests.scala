@@ -245,7 +245,7 @@ object JoinTests extends TestSuite {
               "  settings  .claude/settings.local.json: 11 handlers of ours removed",
               s"  hook      ${f.hook(dir)} removed",
               "  git       post-commit and post-rewrite removed",
-              s"  mcp       ${f.Name} removed from local scope",
+              s"  mcp       ${f.Name} at ${f.Edge}/mcp removed from local scope",
               "Nothing retired was restored."
             )
           )
@@ -617,6 +617,48 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("a replaced MCP entry is printed as its scheme, host and path alone") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val top = dir.toRealPath().toString
+        val _ = f.write(
+          f.home.resolve(".claude.json"),
+          s"""{"projects":{"$top":{"mcpServers":{"${f.Name}":{"type":"http","url":"https://u:secret@h.example:8443/mcp?token=abc#frag"}}}}}"""
+        )
+        f.joined(dir).out.filter(_.startsWith("  mcp")) ==> Vector(
+          s"  mcp       ${f.Name} at ${f.Edge}/mcp, local scope, replacing ${f.Name} at https://h.example:8443/mcp"
+        )
+      }
+    }
+
+    test("undo removes an MCP entry only when it is an edge's /mcp, printing where each pointed") {
+      JoinFixtures { f =>
+        val entries = Vector(
+          "edge" -> """{"type":"http","url":"http://127.0.0.1:9/mcp"}""",
+          "query" -> """{"type":"http","url":"https://u:pw@h.example/mcp?token=abc"}""",
+          "stdio" -> """{"type":"stdio","command":"/opt/x/server","args":["--token","abc"]}""",
+          "none" -> ""
+        ).map((name, entry) => (f.checkout(name).toRealPath(), entry))
+        val projects = entries
+          .collect {
+            case (dir, entry) if entry.nonEmpty =>
+              s""""$dir":{"mcpServers":{"${f.Name}":$entry}}"""
+          }
+          .mkString(",")
+        val _ = f.write(f.home.resolve(".claude.json"), s"""{"projects":{$projects}}""")
+        val printed = entries.flatMap((dir, _) => f.undone(dir).out.filter(_.startsWith("  mcp")))
+        (printed, f.claudeCalls) ==> ((
+          Vector(
+            s"  mcp       ${f.Name} at http://127.0.0.1:9/mcp removed from local scope",
+            s"  mcp       ${f.Name} at https://h.example/mcp is not an edge's /mcp and is left as it is",
+            s"  mcp       ${f.Name} at the command /opt/x/server is not an edge's /mcp and is left as it is",
+            s"  mcp       no entry ${f.Name} in local scope"
+          ),
+          Vector(s"mcp remove --scope local ${f.Name}")
+        ))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")
@@ -684,6 +726,7 @@ object JoinTests extends TestSuite {
         val retired = Files.createDirectories(f.root.resolve("old-hooks")).toRealPath()
         val _ = f.write(f.settings(dir), foreign(retired))
         val calls = f.root.resolve("jq-calls")
+        val _ = f.write(f.home.resolve(".claude.json"), "{}\n") // read by every run counted
         val failing = f.write(
           f.root.resolve("failing/jq"),
           "#!/bin/sh\nn=$(($(cat \"$JQ_CALLS\" 2> /dev/null || echo 0) + 1))\n" +

@@ -7,7 +7,8 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
 /** A temporary machine for the join: a `HOME` of its own, a `bin` holding a fake `claude` that
-  * notes each call's arguments in `claude.log` and reads all of its input, and a git checkout.
+  * notes each call's arguments in `claude.log`, reads all of its input and keeps its MCP entries
+  * in `~/.claude.json` as claude does, and a git checkout.
   */
 final class JoinFixtures(val root: Path) {
 
@@ -20,11 +21,29 @@ final class JoinFixtures(val root: Path) {
   /** The MCP name every join here registers: no deployment's. */
   val Name: String = "work-edge"
 
+  // As claude keeps a local-scope entry: in ~/.claude.json under the directory it runs in, an add
+  // refused for a name there and a remove for a name not there. Its jq is the system's.
   locally {
     write(
       bin.resolve("claude"),
-      "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$HOME/claude.log\"\ncat > /dev/null\n" +
-        "[ \"$1 $2\" = 'mcp add' ] && [ -n \"${FAKE_CLAUDE_ADD_FAILS:-}\" ] && exit 1\nexit 0\n",
+      s"""#!/bin/sh
+         |PATH='${Bash.SystemPath}'
+         |printf '%s\\n' "$$*" >> "$$HOME/claude.log"
+         |cat > /dev/null
+         |f=$$HOME/.claude.json
+         |[ -f "$$f" ] || echo '{}' > "$$f"
+         |has() { jq -e --arg p "$$(pwd -P)" --arg n "$$1" '.projects[$$p].mcpServers[$$n] != null' "$$f" > /dev/null; }
+         |keep() { jq --arg p "$$(pwd -P)" "$$@" "$$f" > "$$f.new" && mv "$$f.new" "$$f"; }
+         |case "$$1 $$2 $$3 $$4 $$5 $$6" in
+         |  'mcp add --transport http --scope local')
+         |    [ -z "$${FAKE_CLAUDE_ADD_FAILS:-}" ] && ! has "$$7" || exit 1
+         |    keep --arg n "$$7" --arg u "$$8" '.projects[$$p].mcpServers[$$n] = {type: "http", url: $$u}' ;;
+         |  'mcp remove --scope local '*)
+         |    has "$$5" || exit 1
+         |    keep --arg n "$$5" 'del(.projects[$$p].mcpServers[$$n])' ;;
+         |esac
+         |exit 0
+         |""".stripMargin,
       executable = true
     )
   }

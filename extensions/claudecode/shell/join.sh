@@ -162,6 +162,25 @@ rewrite_settings() {
     | if (.hooks | length) == 0 and ($had | not) then del(.hooks) else . end'
 }
 
+# The checkout's local MCP entry $1 in ~/.claude.json, as `<ours><where>`: <ours> is 1 when it
+# is an edge's /mcp, an address the join would write, else 0; <where> is its URL's scheme, host
+# and path alone (no credentials, query or fragment), or `the command <program>`. Empty when
+# there is none; fails when jq cannot read the file.
+mcp_entry() {
+  [ -f "$HOME/.claude.json" ] || return 0
+  jq -r --arg p "$top" --arg n "$1" --arg ours "${address%'$'}/mcp\$" '
+    .projects[$p].mcpServers[$n] as $e
+    | def shown: gsub("[[:cntrl:]]"; "?");
+    if ($e | type) != "object" then empty
+    elif ($e.url | type) == "string" then
+      ([$e.url | capture("^(?<s>[A-Za-z][A-Za-z0-9+.-]*://)([^@/?#]*@)?(?<h>[^/?#]*)(?<p>[^?#]*)")]
+        | first // null) as $m
+      | (if ($e.url | test($ours)) then "1" else "0" end)
+        + (if $m then ($m.s + $m.h + $m.p | shown) else "an address that is not a URL" end)
+    elif ($e.command | type) == "string" then "0the command " + ($e.command | shown)
+    else "0an entry of another kind" end' "$HOME/.claude.json"
+}
+
 # Our groups, one per event, as a JSON array of {event, group}.
 our_groups() {
   local h
@@ -223,7 +242,7 @@ main() {
     shift
   done
   local named='^[A-Za-z0-9_-]{1,64}$'
-  local address='^https?://(\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$'
+  address='^https?://(\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$'
   local loopback='^http://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])(:[0-9]+)?$'
   [[ $mcp =~ $named ]] || refuse "--mcp-name $mcp is not 1 to 64 letters, digits, _ or -"
   if [ "$undo" = 1 ]; then
@@ -279,7 +298,7 @@ main() {
 # Joins the checkout: the hook, its handlers in the settings $1, git's hooks in $2 when $5 is 1
 # (they are the repository's own, not core.hooksPath's), and the MCP entry $4 at the edge $3.
 join() {
-  local settings=$1 hooks=$2 edge=$3 mcp=$4 own=$5 c groups drop='[]' f new count qh qe qH
+  local settings=$1 hooks=$2 edge=$3 mcp=$4 own=$5 c groups drop='[]' f new count qh qe qH old
   local -a removed=() lines=() written=() foreign=() commands=()
 
   # Everything that can fail is worked out before the first file is written.
@@ -318,6 +337,8 @@ join() {
   fi
   object "$new" || refuse "jq wrote no settings object; nothing was changed"
   count=$(jq '[.[].group.hooks | length] | add' <<< "$groups") || refuse "jq failed; nothing was changed"
+  old=$(mcp_entry "$mcp") || refuse "jq could not read ~/.claude.json; nothing was changed"
+  old=${old#?}
   qh=$(sq "$harness")
   qe=$(sq "$edge")
   qH=$(sq "$H")
@@ -364,13 +385,8 @@ exec $qH rewrite \"\$@\"
     printf '  git       post-rewrite: %s rewrite "$@"\n' "$qH"
   fi
 
-  local add="claude mcp add --transport http --scope local $mcp $edge/mcp" old=''
+  local add="claude mcp add --transport http --scope local $mcp $edge/mcp"
   if command -v claude > /dev/null 2>&1; then
-    if [ -f "$HOME/.claude.json" ]; then
-      old=$(jq -r --arg p "$top" --arg n "$mcp" \
-        '.projects[$p].mcpServers[$n] | if type == "object" then (.url // .command // "") else "" end' \
-        "$HOME/.claude.json" 2> /dev/null) || old=''
-    fi
     claude mcp remove --scope local "$mcp" > /dev/null 2>&1 || true
     if ! claude mcp add --transport http --scope local "$mcp" "$edge/mcp" > /dev/null 2>&1; then
       if [ -n "$old" ]; then
@@ -396,7 +412,7 @@ exec $qH rewrite \"\$@\"
 # Undoes the join of the checkout: its handlers in the settings $1 and its MCP entry $3; and,
 # unless another worktree's settings still name the hook, the hook and git's hooks in $2.
 undo_join() {
-  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' new
+  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' new entry
   local -a gone=() entries=()
 
   # Everything that can fail is worked out before the first file is changed.
@@ -409,6 +425,7 @@ undo_join() {
     new=$(rewrite_settings '[]' '[]' < "$settings") || refuse "jq could not rewrite $settings; nothing was changed"
     object "$new" || refuse "jq wrote no settings object; nothing was changed"
   fi
+  entry=$(mcp_entry "$mcp") || refuse "jq could not read ~/.claude.json; nothing was changed"
   mapfile -d '' -t entries < <(git worktree list --porcelain -z)
   wait "$!" || refuse "git worktree list failed; nothing was changed"
   for f in "${entries[@]+"${entries[@]}"}"; do
@@ -454,14 +471,18 @@ undo_join() {
       fi
     done
   fi
-  if command -v claude > /dev/null 2>&1; then
-    if claude mcp remove --scope local "$mcp" > /dev/null 2>&1; then
-      printf '  mcp       %s removed from local scope\n' "$mcp"
-    else
-      printf '  mcp       no entry %s in local scope\n' "$mcp"
-    fi
-  else
+  # Only an entry the join would have written goes: a checkout never joined may hold another.
+  if [ -z "$entry" ]; then
+    printf '  mcp       no entry %s in local scope\n' "$mcp"
+  elif [ "${entry:0:1}" != 1 ]; then
+    printf '  mcp       %s at %s is not an edge'\''s /mcp and is left as it is\n' "$mcp" "${entry#?}"
+  elif ! command -v claude > /dev/null 2>&1; then
     printf '  mcp       claude not found; run: claude mcp remove --scope local %s\n' "$mcp"
+  elif claude mcp remove --scope local "$mcp" > /dev/null 2>&1; then
+    printf '  mcp       %s at %s removed from local scope\n' "$mcp" "${entry#?}"
+  else
+    printf '  mcp       %s at %s: claude mcp remove failed; run: claude mcp remove --scope local %s\n' \
+      "$mcp" "${entry#?}" "$mcp"
   fi
   printf 'Nothing retired was restored.\n'
 }
