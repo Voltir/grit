@@ -1,4 +1,4 @@
-# 0062. An outside harness reaches a deployment over HTTP through an edge that writes no files, each request from a caller and each worker named by its credential
+# 0062. An outside harness reaches a deployment over HTTP through an edge that writes no files, each request from a caller and each machine named by its credential
 
 Status: accepted (2026-11-13); revised (2026-11-14)
 
@@ -46,7 +46,7 @@ Decision:
   keeps tells their words from its) or on two machines; one machine may carry two accounts.
   Only what cannot be told apart is refused: two credentials of one digest.
 - **A machine is named by its credential's configuration**, never by a host. A directory on a
-  machine is the place `worker:<name>/<dir>` (ADR 0013), so one path on two machines is two
+  machine is the place `machine:<name>/<dir>` (ADR 0013), so one path on two machines is two
   places, and a credential for the machine an owner's sessions run on reuses its name.
 - **Only whoever began a session records on it.** A batch of events on a session another person
   began, or one kept where the caller does not read, is refused alike (403 at `/events`), so a

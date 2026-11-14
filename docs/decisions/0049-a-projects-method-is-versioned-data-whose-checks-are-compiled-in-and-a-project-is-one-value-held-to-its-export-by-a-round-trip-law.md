@@ -56,13 +56,13 @@ Decision:
   agent its brief is for) at its artifact's label, one live claim per artifact and one artifact
   per holder at each label. It lapses unless its holder's sessions keep working (ADR 0050), and
   is deleted by its release, by a claim taking it over once lapsed, or by the sweep.
-  *Revised:* a harness's holder is one rule, `grit.commands.worker.Holders.of`, computed by the
-  commands edge (ADR 0062) and nowhere else: `<worker>/<directory's last segment>-<hash>` for a
+  *Revised:* a harness's holder is one rule, `grit.commands.machine.Holders.of`, computed by the
+  commands edge (ADR 0062) and nowhere else: `<machine>/<directory's last segment>-<hash>` for a
   session, and `/<agent type>/<starting session's hash>` after it for an agent that session
   starts, so a claims listing stays readable. A hashed session cannot be written by hand, so
   `GET /holder` is the one way to learn one, and it is no MCP tool: a harness's adapter has its
   start hook print the session's holder and the form for an agent type it starts. A manager can
-  still claim before its agent exists: the worker, the directory, the type and its own session
+  still claim before its agent exists: the machine, the directory, the type and its own session
   are known first.
 
 Consequences:

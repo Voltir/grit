@@ -18,8 +18,8 @@ Decision:
 - **A conversation has a place**: a path in one containment tree whose root is everywhere,
   one namespace per source. A TUI session's place is the real path of the directory it runs
   in, under `fs`; a Slack thread's is under `slack`, a task's run under `task`. A directory on
-  another machine or sandbox grit's work is done on is under `worker`, below the worker's name
-  (`worker:desktop/home/a`), so one path on two workers is two places; such a place, like one
+  another machine or sandbox grit's work is done on is under `machine`, below the machine's name
+  (`machine:desktop/home/a`), so one path on two machines is two places; such a place, like one
   under `fs`, may be a room and takes no cap. The place is
   a function of the origin, and a TUI session's directory is part of its origin: the same
   session name in another directory is another conversation. A git repository is not a level

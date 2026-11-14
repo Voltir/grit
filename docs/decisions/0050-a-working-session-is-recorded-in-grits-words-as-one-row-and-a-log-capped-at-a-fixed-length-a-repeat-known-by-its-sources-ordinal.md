@@ -43,8 +43,8 @@ Decision:
 - **An outside harness posts its sessions already in grit's words** to the commands edge
   (ADR 0062), one line an event, one session a post: its adapter maps its hooks and tool names
   onto grit's kinds, and nothing in grit reads a harness's own vocabulary. The edge takes the
-  harness from the request, never a line; works out the holder itself, from the worker, the
-  session's directory and an agent's type; places each worktree on the caller's worker; and
+  harness from the request, never a line; works out the holder itself, from the machine, the
+  session's directory and an agent's type; places each worktree on the caller's machine; and
   refuses a line dated more than a small skew past its own clock, since a session's last event
   keeps its holder's claims from lapsing. A line refused is named and the rest kept, so one bad
   line loses nothing else.

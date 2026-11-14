@@ -1,7 +1,7 @@
 # grit.claudecode
 
 Claude Code's adapter for the commands edge
-([ADR 0062](../../docs/decisions/0062-an-outside-harness-reaches-a-deployment-over-http-through-an-edge-that-writes-no-files-each-request-from-a-caller-and-each-worker-named-by-its-credential.md)):
+([ADR 0062](../../docs/decisions/0062-an-outside-harness-reaches-a-deployment-over-http-through-an-edge-that-writes-no-files-each-request-from-a-caller-and-each-machine-named-by-its-credential.md)):
 one value, `ClaudeCode.adapter`, core's `Adapter` for the harness `claude-code`, which a
 deployment hands `CommandsEdge.of`. The edge serves its join script at `GET /join/claude-code`; a
 person runs it in a checkout. It names core alone (`claudecode-names-core-alone`), never

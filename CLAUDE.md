@@ -57,7 +57,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.slack` | `event`, `text`, `client`, `edge` | core, prose, edge | the Slack edge (ADR 0060) and the Slack SDK's quarantine |
 | `grit.chat` | `settings`, `look`, `view`, `screen`, `host`, `run` | core, prose, tui, edge, turn | the chat TUI, run by a deployment over `Kit.console` |
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `drive`, `edge` | core, edge | MCP servers and Drive's REST API: a declared service's read-only tools at its service place (ADR 0017) |
-| `grit.commands` | `worker`, `caller`, `declare`, `routes`, `edge` | core, edge, mcp | the edge a deployment mounts to serve an outside coding harness over HTTP (ADR 0062); names `grit.mcp`'s wire alone |
+| `grit.commands` | `machine`, `caller`, `declare`, `routes`, `edge` | core, edge, mcp | the edge a deployment mounts to serve an outside coding harness over HTTP (ADR 0062); names `grit.mcp`'s wire alone |
 | `grit.claudecode` | `grit.claudecode` | core | Claude Code's adapter for the commands edge: its join script and hooks (ADR 0062) |
 | `grit.databases` | `declare`, `connect`, `edge` | core, edge | an application's Postgres database read as a service, one role to a place (ADR 0057); `connect` its JDBC quarantine |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
