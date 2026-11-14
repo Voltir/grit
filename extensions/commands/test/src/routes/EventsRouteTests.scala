@@ -75,6 +75,26 @@ object EventsRouteTests extends TestSuite {
       )
     }
 
+    test(
+      "one account's credentials on one machine place a directory at one place, and on two machines two"
+    ) {
+      val script = new ScriptedSessions.Script
+      val r = routed(script = script, callers = Credentialed)
+      val statuses = Vector(OwnText, AgentText, AwayText).map(text =>
+        r.answer(
+          request(Verb.Post, "/events?harness=made-up", line("1"), headers = bearing(text))
+        ).status
+      )
+      val dir = got(Directory.of("/work/grit"))
+      val places = script.called.collect { case ScriptedSessions.Call.Recorded(_, _, batches) =>
+        batches.map(_.at)
+      }
+      (statuses, places.flatten) ==> (
+        Vector.fill(3)(Status.Ok),
+        Vector(Worktrees.at(Worker, dir), Worktrees.at(Worker, dir), Worktrees.at(Laptop, dir))
+      )
+    }
+
     test("a post refused whole is 400, and records nothing") {
       val script = new ScriptedSessions.Script
       (

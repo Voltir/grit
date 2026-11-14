@@ -8,7 +8,7 @@ import grit.core.plugin.CommandOutcome
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.edge.http.{Hosts, Status, Verb}
+import grit.edge.http.{Challenge, Hosts, Status, Verb}
 
 import utest.*
 import RouteFixtures.*
@@ -88,7 +88,7 @@ object CommandRouteTests extends TestSuite {
       ).map(_.status) ==> Vector(
         Status.NotAllowed(Vector(Verb.Post)),
         Status.Forbidden,
-        Status.Forbidden
+        Status.Unauthorized(Challenge.Refused)
       )
       commands.ran ==> Vector.empty
     }
@@ -100,7 +100,7 @@ object CommandRouteTests extends TestSuite {
       Vector(
         r.answer(request(Verb.Post, "/command/Absent", headers = credentialed)),
         r.answer(request(Verb.Post, "/command/done", "[]", headers = credentialed))
-      ).map(_.status) ==> Vector(Status.Forbidden, Status.Forbidden)
+      ).map(_.status) ==> Vector.fill(2)(Status.Unauthorized(Challenge.Refused))
       commands.ran ==> Vector.empty
     }
 
@@ -114,6 +114,37 @@ object CommandRouteTests extends TestSuite {
       posted(routes(commands, Vector(guard)), "done") ==>
         (Status.Forbidden, "done is given only by a caller believed at authority")
       commands.ran ==> Vector.empty
+    }
+
+    test(
+      "a person's own credential is given an own command their agents' is refused, and each runs at its own integrity"
+    ) {
+      val commands = scripted(Vector("done", "refused").map(listed(_, reads = false)))(answering)
+      val done = ToolName("done")
+      val guard = OwnCommand.guarding(done, Integrity.Authority, (ran, a) => ran(done, a))
+      val r = routes(commands, Vector(guard), Credentialed)
+      def sent(text: String, name: String) = {
+        val got = r.answer(
+          request(Verb.Post, s"/command/$name", """{"text":"it"}""", headers = bearing(text))
+        )
+        (got.status, got.body)
+      }
+      Vector(
+        sent(OwnText, "done"),
+        sent(AgentText, "done"),
+        sent(OwnText, "refused"),
+        sent(AgentText, "refused")
+      ) ==> Vector(
+        (Status.Ok, "did it"),
+        (Status.Forbidden, "done is given only by a caller believed at authority"),
+        (Status.Conflict, "not today"),
+        (Status.Conflict, "not today")
+      )
+      commands.ran.map(c => (c.by, ToolName.value(c.name), c.believed)) ==> Vector(
+        (Owner.account, "done", Integrity.Authority),
+        (Owner.account, "refused", Integrity.Authority),
+        (Owner.account, "refused", Integrity.Member)
+      )
     }
 
     test("an own command runs in place of a plugin's, and what it runs runs as the caller") {

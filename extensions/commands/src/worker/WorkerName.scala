@@ -2,9 +2,9 @@ package grit.commands.worker
 
 import grit.core.id.Slug
 
-/** A worker's name: the machine or sandbox a credential is for, by the deployment's
-  * configuration until credentials are; a slug ([[Slug.check]], a leading digit allowed) of at
-  * most [[WorkerName.Longest]] characters. Never read from a host's name.
+/** The name of a machine, a computer or sandbox that holds files and runs commands, as the
+  * deployment's configuration gives it to a credential; a slug ([[Slug.check]], a leading digit
+  * allowed) of at most [[WorkerName.Longest]] characters. Never read from a host's name.
   */
 opaque type WorkerName = String
 

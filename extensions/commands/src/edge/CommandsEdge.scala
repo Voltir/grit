@@ -48,7 +48,7 @@ import grit.mcp.wire.ServerInfo
   *     - 500 nothing kept, any other store failure: kept as on 403;
   *   - `GET /join/<harness>` answers the join script of the one of `adapters` for that harness,
   *     as text, or 404.
-  * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
+  * A request with no caller ([[Callers.from]]) is 401, carrying its challenge; another verb than its route's 405, so no
   * GET runs, waits on or writes anything; a query parameter its route does not read (on
   * `/command`, `/mcp`, `/wait` and `/join`, any) 400, naming it; any other path 404. It attests `realm` as `attester`,
   * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks
@@ -68,7 +68,7 @@ final class CommandsEdge private (
     adapters: Vector[Adapter]
 ) extends ServedEdge {
 
-  def needs: Vector[Variable] = callers.needs
+  def needs: Vector[Variable] = Vector.empty
 
   def asks: ServedEdge.Asks = ServedEdge.Asks.Never
 
@@ -90,7 +90,6 @@ final class CommandsEdge private (
   ): Either[EdgeRefusal, ServedEdge.Open^{stores, clock, log, caps.any}] = {
     val offered = stores.commands.offered.map(_.schema.name).toSet
     for {
-      opened <- callers.opened(env)
       _ <- own
         .collectFirst {
           case o if o.guards && !offered.contains(ToolName.value(o.name)) =>
@@ -108,7 +107,7 @@ final class CommandsEdge private (
           clock,
           room,
           hosts,
-          opened,
+          callers,
           own,
           holding,
           adapters,
@@ -116,8 +115,8 @@ final class CommandsEdge private (
         )
         .left
         .map(EdgeRefusal.Refused(_))
-      source = opened.source(realm)
-      _ <- CommandsEdge.vouched(stores, source, opened.accounts)
+      source = callers.source(realm)
+      _ <- CommandsEdge.vouched(stores, source, callers.accounts)
       listener <- Listener.open(at, (request, _) => routes.answer(request), log)
     } yield {
       log(s"${EdgeName.value(name)}: serving on http://${listener.at.shown}")
@@ -129,9 +128,10 @@ final class CommandsEdge private (
 object CommandsEdge {
 
   /** The edge, or why not: two of `own` of one name; two of `adapters` of one harness; a caller's
-    * account `realm` does not hold; or, while `callers` take a request with no credential
-    * ([[Callers.uncredentialed]]), `at` not loopback ([[Listen.loopback]]) or `hosts` other than
-    * [[Hosts.loopback]], since then any process that reaches it is the owner.
+    * account `realm` does not hold; `at` not loopback ([[Listen.loopback]]), since a credential
+    * crosses it in clear and any process reaching an uncredentialed edge is its owner; or, while
+    * `callers` take a request with no credential ([[Callers.uncredentialed]]), `hosts` other than
+    * [[Hosts.loopback]].
     */
   def of(
       name: EdgeName,
@@ -164,8 +164,11 @@ object CommandsEdge {
           .map(a => s"${Account.written(a)} is no account of ${realm.namespace}:${realm.within}/")
       )
       .orElse(
-        Option.when(callers.uncredentialed && !at.loopback)(
-          s"a request with no credential is the owner's, so the edge listens on loopback alone, not ${at.shown}"
+        Option.when(!at.loopback)(
+          if (callers.uncredentialed)
+            s"a request with no credential is the owner's, so the edge listens on loopback alone, not ${at.shown}"
+          else
+            s"a credential crosses the network in clear, so the edge listens on loopback alone, not ${at.shown}"
         )
       )
       .orElse(

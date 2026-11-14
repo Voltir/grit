@@ -9,7 +9,7 @@ import grit.commands.declare.OwnCommand
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
 import grit.core.edge.Adapter
-import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands}
+import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands, Variable}
 import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.plugin.CommandOutcome
@@ -18,6 +18,9 @@ import grit.core.store.{InMemoryVoucher, LastWord, StoreError, Tx, Voucher}
 import grit.core.tool.ToolName
 import grit.core.visibility.{Integrity, Visibility}
 import grit.edge.http.{Hosts, Listen}
+import grit.mcp.client.{Credential, KeyFiles, McpClient, McpServer}
+import grit.mcp.scope.McpScope
+import grit.mcp.wire.McpError
 
 import utest.*
 import EdgeFixtures.*
@@ -52,7 +55,7 @@ object CommandsEdgeTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "of refuses two own commands of one name, a caller outside its realm, and no credential beyond loopback"
+      "of refuses two own commands of one name, a caller outside its realm, an address beyond loopback, and with no credential a name beyond loopback's"
     ) {
       val twice = Vector(
         OwnCommand.added(ToolName("hello"), Integrity.Member, (ran, a) => ran(done, a)),
@@ -64,7 +67,9 @@ object CommandsEdgeTests extends TestSuite {
         edge(own = twice),
         edge(callers = outsider),
         edge(at = got(Listen.parse("0.0.0.0:7317"))),
-        edge(hosts = got(Hosts.of(Vector("localhost", "box.lan"))))
+        edge(hosts = got(Hosts.of(Vector("localhost", "box.lan")))),
+        edge(at = got(Listen.parse("0.0.0.0:7317")), callers = Credentialed),
+        edge(hosts = got(Hosts.of(Vector("localhost", "box.lan"))), callers = Credentialed)
       ).map(_.left.toOption) ==> Vector(
         Some("two own commands are named hello"),
         Some("slack:T2/U9 is no account of slack:T1/"),
@@ -73,7 +78,11 @@ object CommandsEdgeTests extends TestSuite {
         ),
         Some(
           "a request with no credential is the owner's, so the edge admits loopback's names alone"
-        )
+        ),
+        Some(
+          "a credential crosses the network in clear, so the edge listens on loopback alone, not 0.0.0.0:7317"
+        ),
+        None
       )
     }
 
@@ -191,6 +200,63 @@ object CommandsEdgeTests extends TestSuite {
           p
         } finally open.close()
       assert(scala.util.Try(sent(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")).isFailure)
+    }
+
+    test(
+      "grit's own MCP client lists the edge's tools bearing a credential, and is refused 401 bearing none or another"
+    ) {
+      val commands = scripted(Vector(listed("done", reads = true))) { (_, args) =>
+        Right(CommandOutcome.Done(s"did ${args("text").str}"))
+      }
+      val voucher = new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped)
+      val log = new ConcurrentLinkedQueue[String]()
+      val open = got(edge(callers = Credentialed))
+        .open(
+          stores(commands, voucher),
+          Map.empty,
+          new SetClock(Now),
+          l => { val _ = log.add(l) }
+        ) match {
+        case Right(o) => o
+        case Left(r) => throw new java.lang.AssertionError(r.toString)
+      }
+      try {
+        val port = log.asScala
+          .collectFirst {
+            case l if l.startsWith("commands: serving on http://127.0.0.1:") =>
+              l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
+          }
+          .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
+        val token = Variable("COMMANDS_TOKEN")
+        val server = got(
+          McpServer.of(
+            "commands",
+            s"http://127.0.0.1:$port/mcp",
+            Credential.static(token),
+            McpScope.Open,
+            Set("done")
+          )
+        )
+        def listed(env: Map[String, String]): Either[McpError, Vector[String]] =
+          Credential
+            .open(server.transport.credential, env, KeyFiles.Local)
+            .fold(
+              r => throw new java.lang.AssertionError(r.message),
+              a => McpClient(server, a, new SetClock(Now)).tools().map(_.tools.map(_.name))
+            )
+        Vector(
+          listed(Map("COMMANDS_TOKEN" -> AgentText)),
+          listed(Map("COMMANDS_TOKEN" -> "another-0123456789abcdefghijklmnopqrstuvwxyz"))
+        ) ==> Vector(
+          Right(Vector("done")),
+          Left(McpError.Unauthorized(Some("Bearer error=\"invalid_token\"")))
+        )
+        post(port, s"127.0.0.1:$port", "/command/done", """{"text":"it"}""") ==>
+          (
+            "HTTP/1.1 401 Unauthorized",
+            "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
+          )
+      } finally open.close()
     }
   }
 }

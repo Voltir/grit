@@ -15,6 +15,7 @@ import grit.core.edge.{
   ScriptedCommands,
   ScriptedSessions
 }
+import grit.core.id.Sha256
 import grit.core.plugin.CommandOutcome
 import grit.core.provider.ToolSchema
 import grit.core.tool.ToolName
@@ -75,15 +76,47 @@ object RouteFixtures {
   /** Requests with no credential are [[Owner]]'s. */
   val Owners: Callers = Callers.owner(Owner)
 
+  /** A second machine. */
+  val Laptop: WorkerName = got(WorkerName.of("laptop"))
+
+  /** [[Owner]]'s account at their own command line, believed at authority, on [[Worker]]. */
+  val Own: Caller = Owner.copy(believed = Integrity.Authority)
+
+  /** [[Owner]]'s account as their agents on [[Laptop]] work, believed at member. */
+  val Away: Caller = Owner.copy(worker = Laptop)
+
+  /** The credentials' texts: [[Own]]'s, [[Owner]]'s (the sessions the owner starts on
+    * [[Worker]]) and [[Away]]'s.
+    */
+  val OwnText: String = "own-0123456789abcdefghijklmnopqrstuvwxyz"
+  val AgentText: String = "agent-0123456789abcdefghijklmnopqrstuvwxyz"
+  val AwayText: String = "away-0123456789abcdefghijklmnopqrstuvwxyz"
+
+  /** One person's three credentials: [[OwnText]] is [[Own]], [[AgentText]] [[Owner]] and
+    * [[AwayText]] [[Away]].
+    */
+  val Credentialed: Callers = got(
+    Callers.of(
+      Callers.Token(Sha256.text(OwnText), Own),
+      Callers.Token(Sha256.text(AgentText), Owner),
+      Callers.Token(Sha256.text(AwayText), Away)
+    )
+  )
+
+  /** A request's headers from this machine, bearing `text`. */
+  def bearing(text: String): Vector[(String, String)] =
+    Vector("Host" -> "localhost:7317", "Authorization" -> s"Bearer $text")
+
   /** The routes over `commands` and the sessions `script` holds for [[Owner]] (or for no one,
-    * unless `vouched`), joined by `adapters`, no watch, [[Owners]] on loopback, at [[Now]] in
+    * unless `vouched`), joined by `adapters`, no watch, `callers` on loopback, at [[Now]] in
     * [[EdgeContracts.Room]], with no own command.
     */
   def routed(
       commands: ScriptedCommands = scripted(Vector.empty)(Unrun),
       script: ScriptedSessions.Script = new ScriptedSessions.Script,
       vouched: Boolean = true,
-      adapters: Vector[Adapter] = Vector.empty
+      adapters: Vector[Adapter] = Vector.empty,
+      callers: Callers = Owners
   ): Routes^ =
     got(
       Routes.of(
@@ -93,7 +126,7 @@ object RouteFixtures {
         new SetClock(Now),
         EdgeContracts.Room,
         Hosts.loopback,
-        Owners,
+        callers,
         Vector.empty,
         None,
         adapters,

@@ -24,6 +24,22 @@ object HolderRouteTests extends TestSuite {
       )
     }
 
+    test(
+      "one account's credentials on one machine compute one holder, and on two machines two"
+    ) {
+      val r = routed(callers = Credentialed)
+      Vector(OwnText, AgentText, AwayText).map { text =>
+        val got = r.answer(
+          request(Verb.Get, "/holder?harness=made-up&dir=/work/grit", headers = bearing(text))
+        )
+        (got.status, got.body)
+      } ==> Vector(
+        (Status.Ok, "desktop/grit-dcfe7476"),
+        (Status.Ok, "desktop/grit-dcfe7476"),
+        (Status.Ok, "laptop/grit-dcfe7476")
+      )
+    }
+
     test("an agent's empty type, sent with or without '=', is answered as its hash alone") {
       Vector(
         "/holder?harness=made-up&dir=/work/grit&session=s-1&type=",

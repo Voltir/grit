@@ -136,7 +136,7 @@ object McpRouteTests extends TestSuite {
         ujson.Obj(),
         Vector("Authorization" -> "Bearer t0ken")
       )._1 ==>
-        grit.edge.http.Status.Forbidden
+        grit.edge.http.Status.Unauthorized(grit.edge.http.Challenge.Refused)
       commands.ran ==> Vector.empty
     }
   }

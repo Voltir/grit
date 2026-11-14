@@ -33,8 +33,9 @@ private[commands] final class Routes private (
     tools: Vector[ujson.Obj]
 ) {
 
-  /** `request` answered, running nothing first when `hosts` do not admit it, or it has no caller
-    * ([[Callers.refused]]), each 403 whatever its path. At `/command/<name>`, a POST runs the
+  /** `request` answered, running nothing first when `hosts` do not admit it (403), or it has no
+    * caller ([[Callers.refused]], 401), each whatever its path; past that, no route sees its
+    * `Authorization` header. At `/command/<name>`, a POST runs the
     * command `name` with its body, a JSON object (an empty body: none), as [[RouteReply.command]]
     * answers it; another verb 405, a body that is no JSON object 400, each running nothing. At
     * `/mcp`, one MCP message ([[Rpc.received]]): `tools/list` lists every offered plugin command
@@ -60,19 +61,22 @@ private[commands] final class Routes private (
     else
       callers.from(request) match {
         case Left(why) => Callers.refused(why)
-        case Right(caller) =>
-          request.path match {
-            case Vector(Routes.Command, raw) => unqueried(request)(commanded(request, caller, raw))
-            case Vector(Routes.Mcp) => unqueried(request)(mcp(request, caller))
-            case Vector(Routes.Wait) => unqueried(request)(waited(request, caller))
-            case Vector(Briefing.Holder) => holder(request, caller)
-            case Vector(Briefing.Brief) => brief(request, caller)
-            case Vector(Recording.Events) => events(request, caller)
-            case Vector(Routes.Join, harness) => unqueried(request)(joined(request, harness))
-            case _ =>
-              Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
-          }
+        case Right(caller) => routed(request.without("Authorization"), caller)
       }
+
+  /** `request` answered as `caller`'s, by its path. */
+  private def routed(request: Request, caller: Caller): Response =
+    request.path match {
+      case Vector(Routes.Command, raw) => unqueried(request)(commanded(request, caller, raw))
+      case Vector(Routes.Mcp) => unqueried(request)(mcp(request, caller))
+      case Vector(Routes.Wait) => unqueried(request)(waited(request, caller))
+      case Vector(Briefing.Holder) => holder(request, caller)
+      case Vector(Briefing.Brief) => brief(request, caller)
+      case Vector(Recording.Events) => events(request, caller)
+      case Vector(Routes.Join, harness) => unqueried(request)(joined(request, harness))
+      case _ =>
+        Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
+    }
 
   /** `answer`, unless `request` sends a query parameter, which a route reading none refuses. */
   private def unqueried(request: Request)(answer: => Response): Response =
