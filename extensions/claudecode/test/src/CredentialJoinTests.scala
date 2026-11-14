@@ -113,6 +113,54 @@ object CredentialJoinTests extends TestSuite {
     }
 
     test(
+      "a join made with a credential prints an undo that, run as printed, fetches the script with the credential's file and undoes the join"
+    ) {
+      JoinFixtures { machine =>
+        HookFixtures.served(
+          new ScriptedSessions.Script,
+          new SetClock(Instant.now()),
+          Credentialed
+        ) { port =>
+          val proj = machine.checkout("proj")
+          val file = HookFixtures.credentialOf(machine, AgentText)
+          val joined = machine.join(
+            proj,
+            Seq(
+              s"http://127.0.0.1:$port",
+              "--credential",
+              file.toString,
+              "--mcp-name",
+              machine.Name
+            )
+          )
+          val undo = joined.out
+            .collectFirst { case l if l.startsWith("Undo: ") => l.stripPrefix("Undo: ") }
+            .getOrElse(throw new java.lang.AssertionError(s"no undo printed: ${joined.out}"))
+          val ran = Bash.run(proj, machine.home, machine.bin, Seq("-c", undo))
+          (
+            ran.exit,
+            ran.err,
+            Files.exists(machine.hook(proj)),
+            machine.read(machine.settings(proj)),
+            machine.claudeCalls.lastOption,
+            undo.contains(s"'$file'"),
+            undo.contains(AgentText)
+          ) ==> (
+            (
+              0,
+              "",
+              false,
+              Some("{}\n"),
+              Some(s"mcp remove --scope local ${machine.Name}"),
+              true,
+              false
+            )
+          )
+        }
+      }
+    }
+
+    test(
       "the join refuses a credential others may read, one that is no credential, and one the edge refuses, changing nothing"
     ) {
       JoinFixtures { machine =>

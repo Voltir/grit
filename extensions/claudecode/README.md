@@ -36,6 +36,8 @@ then fetched with the credential read from its file by the shell, never on a com
 ```
 curl -fsS -H @<(printf 'Authorization: Bearer %s' "$(<~/.config/grit/credential)") <edge>/join/claude-code \
   | bash -s -- <edge> --credential ~/.config/grit/credential
+curl -fsS -H @<(printf 'Authorization: Bearer %s' "$(<~/.config/grit/credential)") <edge>/join/claude-code \
+  | bash -s -- --undo
 ```
 
 **A credential** is one line in a file of the person's, mode 0600, that whoever runs the edge gave
@@ -152,6 +154,16 @@ grit claude-code: joined /work/proj to http://127.0.0.1:7317
 Sessions pick the hooks up at once; run /mcp in a running session to connect grit.
 Undo: curl -fsS http://127.0.0.1:7317/join/claude-code | bash -s -- --undo --mcp-name grit
 ```
+
+A join with `--credential <file>` prints `  credential <file>, sent with every request` before the
+`mcp` line, and an `Undo:` line that fetches the script with the credential, read from its file
+by the shell, never on a command line, and the path quoted so the line can be pasted as printed:
+
+```
+Undo: curl -fsS -H @<(printf 'Authorization: Bearer %s' "$(<'/home/me/.config/grit/credential')") http://127.0.0.1:7317/join/claude-code | bash -s -- --undo --mcp-name grit
+```
+
+The undo itself asks the edge for nothing, so it takes no `--credential`.
 
 with a `  removed   <command>` line for each retired one, `, replacing <name> at <url>` after the
 MCP entry it replaced, and `  git       <file> is not ours and is left as it is; add the line:

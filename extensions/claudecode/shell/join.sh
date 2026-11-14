@@ -536,7 +536,12 @@ exec $qH rewrite \"\$@\"
     printf '  mcp       claude not found; run: %s\n' "$add"
   fi
   printf 'Sessions pick the hooks up at once; run /mcp in a running session to connect %s.\n' "$mcp"
-  printf 'Undo: curl -fsS %s/join/%s | bash -s -- --undo --mcp-name %s\n' "$edge" "$harness" "$mcp"
+  # An edge that takes credentials answers /join only to one; the undo reads it from its file.
+  local bearing=''
+  if [ -n "$credential" ]; then
+    bearing="-H @<(printf 'Authorization: Bearer %s' \"\$(<$(sq "$credential"))\") "
+  fi
+  printf 'Undo: curl -fsS %s%s/join/%s | bash -s -- --undo --mcp-name %s\n' "$bearing" "$edge" "$harness" "$mcp"
 }
 
 # Undoes the join of the checkout: its handlers in the settings $1 and its MCP entry $3; and,
