@@ -1,0 +1,27 @@
+{
+  "session_id": "22222222-2222-4222-8222-222222222222",
+  "transcript_path": "/home/u/.claude/projects/-work-proj/22222222-2222-4222-8222-222222222222.jsonl",
+  "cwd": "/work/proj/.claude/worktrees/agent-a2222222222222222",
+  "prompt_id": "44444444-4444-4444-8444-444444444444",
+  "permission_mode": "default",
+  "agent_id": "a2222222222222222",
+  "agent_type": "general-purpose",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "printenv | grep -E ^CLAUDE | cut -d= -f1 | sort > bashenv-agent.txt",
+    "description": "List CLAUDE env var names into scratchpad file"
+  },
+  "tool_response": {
+    "stdout": "",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "toolu_01AAAAAAAAAAAAAAAAAAAAAAAA",
+  "duration_ms": 76
+}
