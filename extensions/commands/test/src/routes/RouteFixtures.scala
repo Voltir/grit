@@ -3,10 +3,10 @@ package grit.commands.routes
 import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.Adapter
 import grit.commands.worker.WorkerName
 import grit.core.clock.SetClock
 import grit.core.edge.{
+  Adapter,
   CommandError,
   EdgeContracts,
   EdgeSessions,

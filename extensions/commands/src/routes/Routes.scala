@@ -3,8 +3,9 @@ package grit.commands.routes
 import scala.concurrent.duration.*
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.{Adapter, HoldingWatch, OwnCommand, Ran}
+import grit.commands.declare.{HoldingWatch, OwnCommand, Ran}
 import grit.core.clock.Clock
+import grit.core.edge.Adapter
 import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
 import grit.core.id.{ClaimHolder, Harness}
 import grit.core.place.Place

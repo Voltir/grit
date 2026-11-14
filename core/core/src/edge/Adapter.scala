@@ -1,4 +1,4 @@
-package grit.commands.declare
+package grit.core.edge
 
 import grit.core.id.Harness
 

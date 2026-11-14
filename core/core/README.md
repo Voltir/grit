@@ -151,7 +151,8 @@ In dependency order, each with the core packages it imports:
   removes; a place a service shares is labelled from any room (`Command.At`), named as the
   deployment's `PlaceNames` read a person's words. ← `place`, `identity`, `model`, `visibility`, `store`
 - **`edge`**: what an edge and the engine share (ADRs 0002, 0017, 0021, 0032): served edges,
-  attesting, joins, deliveries, tool requests, and a turn's reply read back. Named for the same idea as the `grit.edge`
+  attesting, joins, deliveries, tool requests, a turn's reply read back, and an outside
+  harness's adapter (ADR 0062). Named for the same idea as the `grit.edge`
   module: this package is the types every side agrees on, that module the loop an edge runs
   over them. ← `clock`, `id`, `place`, `identity`, `visibility`, `prompt`, `store`, `model`,
   `message`, `approval`, `tool`, `admin`, `secret` (it re-exports `Variable`)

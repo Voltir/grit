@@ -5,9 +5,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.declare.{Adapter, OwnCommand}
+import grit.commands.declare.OwnCommand
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
+import grit.core.edge.Adapter
 import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands}
 import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}

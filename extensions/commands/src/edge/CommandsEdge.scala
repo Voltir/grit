@@ -1,9 +1,10 @@
 package grit.commands.edge
 
 import grit.commands.caller.Callers
-import grit.commands.declare.{Adapter, HoldingWatch, OwnCommand}
+import grit.commands.declare.{HoldingWatch, OwnCommand}
 import grit.commands.routes.Routes
 import grit.core.clock.Clock
+import grit.core.edge.Adapter
 import grit.core.edge.{Attesting, EdgeRefusal, EdgeStores, RealmSource, ServedEdge, Variable}
 import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm}
