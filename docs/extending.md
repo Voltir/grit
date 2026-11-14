@@ -299,7 +299,7 @@ holds them on imports.
 
 `scripts/publish-local` publishes every `GritPublished` module to the local ivy repository,
 together and each version once (its header says what it refuses), as
-`dev.grit::grit-<name>:0.1.0-SNAPSHOT`, `grit.tui` among them; `grit.app`, `grit.eval` and
+`dev.grit::grit-<name>:<version>`, `grit.tui` among them; `grit.app`, `grit.eval` and
 `grit.tui.examples` are never published. A deployment is a module of its own, on Scala 3.9.0 or later (to read grit's
 TASTy), depending on `grit-kit` and the extensions it names. Code that only calls grit
 compiles without capture or separation checking.
@@ -311,8 +311,8 @@ import mill.*, scalalib.*
 object `package` extends ScalaModule {
   def scalaVersion = "3.9.0"
   def mvnDeps = Seq(
-    mvn"dev.grit::grit-kit:0.1.0-SNAPSHOT",
-    mvn"dev.grit::grit-slack:0.1.0-SNAPSHOT"
+    mvn"dev.grit::grit-kit:0.2.0",
+    mvn"dev.grit::grit-slack:0.2.0"
   )
 }
 ```

@@ -90,13 +90,14 @@ trait GritModule extends ScalaModule {
   }
 }
 
-/* A module a deployment outside grit compiles against (ADR 0021): `./mill __.publishLocal`
+/* A module a deployment outside grit compiles against (ADR 0021): `scripts/publish-local`
  * writes each to the local ivy repository (~/.ivy2/local/dev.grit/grit-<module>_3). Every
  * module the kit reaches, grit.slack for a deployment that serves Slack, grit.mcp and the
  * grit.edge it depends on for one that serves an MCP server's tools, and grit.tui for a
- * terminal of its own; never grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
+ * terminal of its own; never grit.app. A plain semantic version, published once, by the
+ * script, from the commit tagged v<version>: a fix is the next patch version. */
 trait GritPublished extends GritModule with PublishModule {
-  def publishVersion = "0.1.0-SNAPSHOT"
+  def publishVersion = "0.2.0"
   def pomSettings = PomSettings(
     description = "grit, an LLM agent harness: " + artifactName(),
     organization = "dev.grit",
