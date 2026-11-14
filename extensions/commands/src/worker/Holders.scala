@@ -1,6 +1,6 @@
 package grit.commands.worker
 
-import grit.core.id.{ClaimHolder, Harness, SessionId, Sha256}
+import grit.core.id.{ClaimHolder, SessionId, Sha256}
 import grit.core.place.Directory
 
 /** The claim holder a harness's session works as, so a claim can name it before the session's
@@ -38,8 +38,7 @@ object Holders {
       s"${WorkerName.value(worker)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
     val text = agent.fold(head) { a =>
       val kind = if (slug(a.kind).take(Slugged) == a.kind) a.kind else named(a.kind, a.kind)
-      val session = s"${Harness.value(a.session.harness)}:${a.session.local}"
-      s"$head/$kind/${hash(session, 12)}"
+      s"$head/$kind/${hash(a.session.written, 12)}"
     }
     // At most 32 + 1 + 49 + 1 + 49 + 1 + 12 = 145 characters of one line, which ClaimHolder takes.
     ClaimHolder.of(text).fold(why => throw new IllegalStateException(why), identity)

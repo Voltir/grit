@@ -137,7 +137,7 @@ object Target {
   /** `target`'s stored key, beside its kind's name: `{conversation}:{period}` for a period's,
     * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's, `{version}`
     * for a document's, its id for a schedule's, its handle's number for a file's, its number for
-    * a piece set's, `{harness}:{local}` for a session's.
+    * a piece set's, [[grit.core.id.SessionId.written]] for a session's.
     */
   def key(target: Target): String = target match {
     case Raw(p) => period(p)
@@ -151,8 +151,8 @@ object Target {
     case Schedule(id) => ScheduleId.value(id)
     case File(handle) => FileHandle.value(handle).toString
     case PieceSet(set) => PieceSetId.value(set).toString
-    case SessionEvents(id) => session(id)
-    case Session(id) => session(id)
+    case SessionEvents(id) => id.written
+    case Session(id) => id.written
   }
 
   /** The target of `kind` stored under `key`, or why it is none. */
@@ -221,5 +221,4 @@ object Target {
   private def period(p: PeriodRef): String =
     s"${ConversationId.value(p.conversationId)}:${PeriodSeq.value(p.seq)}"
 
-  private def session(id: SessionId): String = s"${Harness.value(id.harness)}:${id.local}"
 }

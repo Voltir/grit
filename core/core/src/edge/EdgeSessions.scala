@@ -59,7 +59,7 @@ object EdgeSessions {
   def refused(id: SessionId): Option[StoreError] =
     Option.when(id.harness == Harness.Grit)(
       StoreError.Invalid(
-        s"session ${Harness.value(id.harness)}:${id.local} is grit's own: only its turns record it"
+        s"session ${id.written} is grit's own: only its turns record it"
       )
     )
 

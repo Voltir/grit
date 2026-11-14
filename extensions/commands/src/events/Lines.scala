@@ -166,7 +166,7 @@ private[commands] object Lines {
         case Some((_, first)) =>
           ok.collectFirst {
             case (i, l) if l.id != first.id =>
-              s"line $i is session ${written(l.id)}, not ${written(first.id)}: post each session's lines apart"
+              s"line $i is session ${l.id.written}, not ${first.id.written}: post each session's lines apart"
           }.toLeft(
             Batched(
               Some(
@@ -180,8 +180,6 @@ private[commands] object Lines {
   }
 
   private val AgentAndType = "agent and type come together: an agent's own id, and its type"
-
-  private def written(id: SessionId): String = s"${Harness.value(id.harness)}:${id.local}"
 
   private def text(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
     o.get(key) match {

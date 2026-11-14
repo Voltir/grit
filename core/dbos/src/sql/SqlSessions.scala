@@ -199,7 +199,7 @@ private[dbos] final class SqlSessions extends Sessions {
       .flatMap(
         _.headOption.flatten.toRight(
           StoreError.Invalid(
-            s"session ${Harness.value(id.harness)}:${id.local} is kept where this transaction does not read"
+            s"session ${id.written} is kept where this transaction does not read"
           )
         )
       )

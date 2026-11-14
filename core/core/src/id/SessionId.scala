@@ -24,7 +24,13 @@ object Harness {
 /** A working session, by its harness and the harness's own id for it, `local`: one line of 1
   * to 200 characters. A grit turn's `local` is its conversation's id.
   */
-final case class SessionId private (harness: Harness, local: String)
+final case class SessionId private (harness: Harness, local: String) {
+
+  /** `<harness>:<local>`, as a session is written in text: a store's keys, its reasons, a
+    * holder's hash.
+    */
+  def written: String = s"${Harness.value(harness)}:$local"
+}
 
 object SessionId {
 
