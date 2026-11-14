@@ -311,8 +311,8 @@ import mill.*, scalalib.*
 object `package` extends ScalaModule {
   def scalaVersion = "3.9.0"
   def mvnDeps = Seq(
-    mvn"dev.grit::grit-kit:0.2.0",
-    mvn"dev.grit::grit-slack:0.2.0"
+    mvn"dev.grit::grit-kit:0.3.0",
+    mvn"dev.grit::grit-slack:0.3.0"
   )
 }
 ```
