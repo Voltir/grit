@@ -163,6 +163,39 @@ session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has 
 | `brief` | SubagentStart | `agent_id`, `agent_type` (recorded) | `GET /brief…&agent&type&start=fresh` | the brief as context; nothing for an agent of no type |
 | `opening` | SessionStart | `source` | `GET /holder`; then after `compact` `part=digest&start=resume`, after `clear` `part=digest&start=fresh`, and at no other start | the holder lines, then the digest, as context |
 | `holder [<type> --dir <dir> --session <id>]` | a Bash tool | `CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID` (recorded: a Bash tool has only the second) | `GET /holder`, with `session` and `type` for an agent's | the holder, one line; exit 1 when the edge did not give it |
+| `event` | PostToolUse, PostToolUseFailure | `tool_name`, `tool_input`; PostToolUse's `tool_response` (recorded; a failure carries `error` and none, so it posts `ok: false` and 0 bytes) | `POST /events`: Read, `read` `{path, worktree?, ok}`, `bytes` those of `tool_response.file.content`; Edit, Write, MultiEdit, NotebookEdit, `edited` `{path, worktree?, ok}`; Bash, `ran` `{program, ok}`; an MCP tool, `read` `{named?, tool, ok}`, `bytes` those of its text blocks (recorded), with nothing named for scout's `find` and `area`; any other tool, nothing | nothing |
+| `event` | SessionStart | `source` | `started` `{source}` | nothing |
+| `event` | SubagentStart, SubagentStop | `agent_id`, `agent_type` | `started`, `ended`, on the agent | nothing |
+| `event` | Stop | `last_assistant_message` (docs, recorded) | `closing`, `text` its first 2,000 characters; nothing when it is empty | nothing |
+| `event` | PostCompact | `compact_summary`, `trigger` (docs, recorded) | `closing`, `text` the summary's first 2,000 characters, `{trigger}` | nothing |
+| `event` | SessionEnd | `reason` | `ended` `{reason}` | nothing |
+| `commit` | git's post-commit | `CLAUDE_CODE_SESSION_ID` | `commit` `{sha, subject}` | nothing |
+| `rewrite amend\|rebase` | git's post-rewrite | its stdin, a line `<old> <new>` a commit (docs: githooks) | one post, a line per commit it left, in order, `{sha, subject, replaces}` | nothing |
+
+**An event line** is `session`, `agent` and `type` for an agent's, `dir`, `worktree` (the top of
+the checkout `cwd` is in, else `cwd`), `n`, `at`, `event`, and a read's `bytes`, a closing's
+`text` and `shape`, as `/events` reads them. `n` is the microseconds of one reading of the clock
+times 1000 plus the process's id modulo 1000, and `at` that instant; a rewrite's commits take
+`n`, `n+1`, …. Every string is cut to fit the line's bounds, control characters written `?`: a
+path is relative to its file's checkout, which is named under `worktree` when it is not the line's
+and holds at most 100 bytes, else to `cwd` (outside it, the file's name alone), and keeps its last
+120 bytes; a program is a command's first word after any leading `cd <dir> &&` or `;` and any
+`NAME=value`, its last path segment, 40 bytes; `named` is a scout query's first symbol, suite,
+target or pattern, 120 bytes; a subject 100 characters; a summary 2,000 characters as grit counts
+them (UTF-16). So a payload of any size posts a line of a few hundred bytes, a closing's under
+13 KB, and a rewrite's lines go a thousand to a post.
+
+An agent whose `agent_type` is empty posts and asks nothing: it is a compaction's, which no
+SubagentStart announced (recorded). A commit's `dir` is `CLAUDE_PROJECT_DIR`, else the commit's
+checkout, as a Bash tool has none; outside a Claude Code session (no `CLAUDE_CODE_SESSION_ID`)
+or mid-rebase (the rewrite posts it) it posts nothing. It carries no `child`: there is no source
+telling an agent's commit from its session's (`CLAUDE_CODE_CHILD_SESSION`, below), so a commit is
+its session's. An amend is posted twice, as made and as replacing the commit it rewrote; the
+record leaves out a commit a later one replaces. A commit can be a session's first line when the
+edge was down at its start, and the session's holder is then its checkout's.
+
+The join registers PostToolUse, PostToolUseFailure, Stop, PostCompact, SubagentStop and
+SessionStart's `event` as async, so they never hold a session up.
 
 Context is printed as Claude Code reads it, one JSON object on stdout,
 `{"hookSpecificOutput":{"hookEventName":<event>,"additionalContext":<text>}}`. The holder lines
@@ -181,11 +214,15 @@ an agent's id (recorded).
 line, what it could not do. When the edge does not answer a start, `brief` alone gives one line of
 context, `grit: the edge at <edge> did not answer; this session opens without its brief.` (`this
 agent` at an agent's), and `opening` prints nothing; an answer other than 200 gives `… answered
-<status> for the brief; this session opens without it.` Nothing is retried.
+<status> for the brief; this session opens without it.` Each post is sent once: one the edge did
+not answer, or answered other than 200 (a 413, a 503, any other), is dropped, and a line it
+refused is named with its reason. Nothing is kept to resend, so while the edge is down a
+session's events, closings and commits are lost.
 
 **Bounds.** A whole run of the hook is stopped 3 s after it starts, by `timeout`, which stops what
 it started too; each request is given what is left of that, less a quarter second, and connects
-within 0.3 s.
+within 0.3 s. A SessionEnd's requests end 1.2 s after the start, within the 1.5 s Claude Code
+gives SessionEnd's hooks by default (docs `#sessionend`).
 
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
 an address they refuse makes the hook ask nothing and say so (`holder` exits 1).

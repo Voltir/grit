@@ -12,7 +12,7 @@ import scala.jdk.CollectionConverters.*
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
 import grit.commands.routes.RouteFixtures.*
 import grit.commands.worker.Holders
-import grit.core.clock.SetClock
+import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.host.Argv
 import grit.core.id.{AttesterName, ClaimHolder, EdgeName, Harness, SessionId}
@@ -115,6 +115,18 @@ object HookFixtures {
     */
   def apply[A](body: HookFixtures => A): A = JoinFixtures { machine =>
     val script = new ScriptedSessions.Script
+    served(script, new SetClock(Instant.now())) { port =>
+      val proj = machine.checkout("proj")
+      val joined = machine.join(proj, Seq(s"http://127.0.0.1:$port", "--mcp-name", machine.Name))
+      if (joined.exit != 0) throw new java.lang.AssertionError(s"the join failed: ${joined.err}")
+      body(new HookFixtures(machine, port, script, proj))
+    }
+  }
+
+  /** `body` given the port of the edge serving [[ClaudeCode.adapter]] on this machine, as
+    * `clock` tells the time, over the sessions `script` holds for the routes' owner; closed after.
+    */
+  def served[A](script: ScriptedSessions.Script, clock: Clock^)(body: Int => A): A = {
     val realm = got(Realm.of("slack", "T1"))
     val log = new ConcurrentLinkedQueue[String]()
     val open = got(
@@ -138,7 +150,7 @@ object HookFixtures {
         new ScriptedSessions(Set(Owner.account), script)
       ),
       Map.empty,
-      new SetClock(Instant.now()),
+      clock,
       l => { val _ = log.add(l) }
     ) match {
       case Right(o) => o
@@ -151,10 +163,7 @@ object HookFixtures {
             l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
         }
         .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
-      val proj = machine.checkout("proj")
-      val joined = machine.join(proj, Seq(s"http://127.0.0.1:$port", "--mcp-name", machine.Name))
-      if (joined.exit != 0) throw new java.lang.AssertionError(s"the join failed: ${joined.err}")
-      body(new HookFixtures(machine, port, script, proj))
+      body(port)
     } finally open.close()
   }
 
