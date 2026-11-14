@@ -30,8 +30,8 @@ private[commands] object Briefing {
   /** The holder `/holder`'s query names on `worker` ([[Holders.of]]), or why not:
     *   - `harness`, the harness's name ([[Harness.of]]), and `dir`, the session's directory
     *     ([[Directory.of]]), each sent;
-    *   - for an agent, its `type` and the `session` (the harness's own id) that starts it, sent
-    *     together, `dir` being that session's directory;
+    *   - for an agent, its `type` and the `session` (the harness's own id, [[Holders.session]])
+    *     that starts it, sent together, `dir` being that session's directory;
     *   - no other parameter, and none sent twice.
     */
   def holderOf(request: Request, worker: WorkerName): Either[String, ClaimHolder] =
@@ -39,7 +39,7 @@ private[commands] object Briefing {
       q <- Queried.of(request, Vector("harness", "dir", "session", "type"))
       harness <- q.need("harness")(Harness.of)
       dir <- q.need("dir")(Directory.of)
-      session <- q.read("session")(SessionId.of(harness, _))
+      session <- q.read("session")(Holders.session(harness, _))
       kind <- q.read("type")(Right(_))
       agent <- (kind, session) match {
         case (Some(k), Some(s)) => Right(Some(Holders.Agent(k, s)))
@@ -88,7 +88,7 @@ private[commands] object Briefing {
         Vector("harness", "session", "dir", "agent", "type", "start", "part")
       )
       harness <- q.need("harness")(Harness.of)
-      session <- q.need("session")(SessionId.of(harness, _))
+      session <- q.need("session")(Holders.session(harness, _))
       dir <- q.need("dir")(Directory.of)
       agent <- q.read("agent")(Right(_))
       kind <- q.read("type")(Right(_))

@@ -1,6 +1,6 @@
 package grit.commands.worker
 
-import grit.core.id.{ClaimHolder, SessionId, Sha256}
+import grit.core.id.{ClaimHolder, Harness, SessionId, Sha256}
 import grit.core.place.Directory
 
 /** The claim holder a harness's session works as, so a claim can name it before the session's
@@ -16,11 +16,19 @@ object Holders {
   /** An agent of type `kind`, as its harness names it, that the session `session` starts. */
   final case class Agent(kind: String, session: SessionId)
 
+  /** The session `local` of `harness`, as a request names a harness's own session, or why not:
+    * `local` holds `/`, which only an agent's session does ([[agentSession]]), so that no two
+    * requests' ids name one session; or [[SessionId.of]].
+    */
+  def session(harness: Harness, local: String): Either[String, SessionId] =
+    unparted(local).flatMap(SessionId.of(harness, _))
+
   /** The session an agent that `session` starts is recorded as, `agent` its harness's own id for
-    * it: `<session's id>/<agent>`, of `session`'s harness; or why not ([[SessionId.of]]).
+    * it: `<session's id>/<agent>`, of `session`'s harness; or why not: `agent` holds `/`, or
+    * [[SessionId.of]].
     */
   def agentSession(session: SessionId, agent: String): Either[String, SessionId] =
-    SessionId.of(session.harness, s"${session.local}/$agent")
+    unparted(agent).flatMap(a => SessionId.of(session.harness, s"${session.local}/$a"))
 
   /** The agent `session` starts, as a request names it by its own id `agent` and its `kind`,
     * sent together: the session it is recorded as ([[agentSession]]) and the agent; `None` when
@@ -87,6 +95,13 @@ object Holders {
       .replaceAll("[^a-z0-9]+", "-")
       .stripPrefix("-")
       .stripSuffix("-")
+
+  private def unparted(id: String): Either[String, String] =
+    Either.cond(
+      !id.contains('/'),
+      id,
+      s"holds '/', which parts an agent's session from the session starting it: $id"
+    )
 
   /** Whether a type is kept as sent: [[named]] never gives it, so no hashed type equals it. */
   private def literal(kind: String): Boolean =

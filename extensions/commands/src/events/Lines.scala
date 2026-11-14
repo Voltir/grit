@@ -60,7 +60,7 @@ private[commands] object Lines {
   final case class Batched(batch: Option[EdgeSessions.Batch], refused: Vector[(Int, String)])
 
   /** `line` as `harness` sent it from `worker`, read at `now`, or why not. A line holds:
-    *   - `session`, the harness's own id for the session ([[SessionId.of]]); for an agent's line,
+    *   - `session`, the harness's own id for the session ([[Holders.session]]); for an agent's line,
     *     `agent`, the agent's own id, and `type`, its type, together: the line is then on the
     *     session `session/agent` ([[Holders.agentSession]]), a child of `session`;
     *   - `dir`, the session's directory (the starting session's for an agent), whose holder it
@@ -91,7 +91,9 @@ private[commands] object Lines {
         .find(k => !Keys.contains(k))
         .map(k => s"no key $k is read in a line; these are: ${Keys.mkString(", ")}")
         .toLeft(())
-      session <- text(o, "session").flatMap(SessionId.of(harness, _).left.map(w => s"session: $w"))
+      session <- text(o, "session").flatMap(
+        Holders.session(harness, _).left.map(w => s"session: $w")
+      )
       a <- optional(o, "agent")
       t <- optional(o, "type")
       agent <- Holders.agent(session, a, t)

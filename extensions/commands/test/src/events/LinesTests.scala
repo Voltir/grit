@@ -148,6 +148,18 @@ object LinesTests extends TestSuite {
       )
     }
 
+    test("a session or an agent holding '/' is refused, so no two lines' ids make one session") {
+      Vector(
+        line("session" -> "a/b"),
+        line("session" -> "a", "agent" -> "b/c", "type" -> "coder")
+      ).map(read(_).left.toOption) ==> Vector(
+        Some(
+          "session: holds '/', which parts an agent's session from the session starting it: a/b"
+        ),
+        Some("agent: holds '/', which parts an agent's session from the session starting it: b/c")
+      )
+    }
+
     test(
       "a post is one batch of one session's lines, place and holder from its first, each line refused named by number"
     ) {

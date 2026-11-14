@@ -149,6 +149,24 @@ object BriefRouteTests extends TestSuite {
       script.called ==> Vector.empty
     }
 
+    test("a session or an agent holding '/' is 400, so no two queries name one session") {
+      val script = new ScriptedSessions.Script
+      Vector(
+        "/brief?harness=made-up&session=s-1/a-1&dir=/work/grit&start=fresh",
+        s"$Fresh&agent=a-1/b&type=coder"
+      ).map(asked(script, _)) ==> Vector(
+        (
+          Status.BadRequest,
+          "session: holds '/', which parts an agent's session from the session starting it: s-1/a-1"
+        ),
+        (
+          Status.BadRequest,
+          "agent: holds '/', which parts an agent's session from the session starting it: a-1/b"
+        )
+      )
+      script.called ==> Vector.empty
+    }
+
     test("an account no person is linked to is 403, and a database that cannot be read 503") {
       val script = new ScriptedSessions.Script
       val stranger = asked(script, Fresh, vouched = false)

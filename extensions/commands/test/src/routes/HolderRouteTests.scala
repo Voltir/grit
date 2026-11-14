@@ -33,6 +33,13 @@ object HolderRouteTests extends TestSuite {
       )
     }
 
+    test("a session holding '/' is 400, since an agent's session is written so") {
+      asked("/holder?harness=made-up&dir=/work/grit&session=s-1/a-1&type=coder") ==> (
+        Status.BadRequest,
+        "session: holds '/', which parts an agent's session from the session starting it: s-1/a-1"
+      )
+    }
+
     test("a query it does not read is 400 naming why") {
       Vector(
         "/holder?harness=made-up&dir=/work/grit&slot=x",
