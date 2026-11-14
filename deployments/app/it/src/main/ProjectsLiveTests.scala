@@ -7,12 +7,16 @@ import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Using
 
+import grit.core.document.{DocRef, DocText}
+import grit.core.id.DocKey
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.plugin.CommandOutcome
+import grit.core.store.StoreError
 import grit.core.store.Tx
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
+import grit.core.visibility.{Clearance, Label, Level}
 import grit.dbos.sql.LiveDb
 import grit.projects.method.{ArtifactKind, Method, MethodFixtures, TransitionChecks}
 import grit.projects.plugin.{CommandFixtures, Projects}
@@ -404,7 +408,7 @@ object ProjectsLiveTests extends TestSuite {
       CommandRooms.commanding(
         "projects_briefs",
         _ => Vector(CommandFixtures.plugin(CommandFixtures.managing))
-      ) { (config, _, commands) =>
+      ) { (config, engine, commands) =>
         ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
         keep(commands, desk, "c", "Cited.")
         keep(commands, desk, "process", "How work is run.")
@@ -422,42 +426,37 @@ object ProjectsLiveTests extends TestSuite {
         given ExecutionContext = ExecutionContext.fromExecutorService(pool)
         val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
         try {
-          // Another command's transaction, mid-way: it has renewed the claim and kept its brief
-          // again, and has not yet ended.
+          // Another command's transaction, mid-way: it holds the claim and has kept its brief
+          // again, through the plugin's own claims and keeper, and has not yet ended.
+          val internal = Label.at(Level.Internal)
           val other = Future {
-            LiveDb.transaction(config) { (tx: Tx^) ?=>
-              val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-              def run(sql: String, args: Any*): Vector[Long] =
-                Using.resource(conn.prepareStatement(sql)) { ps =>
-                  args.zipWithIndex.foreach((a, i) => ps.setObject(i + 1, a))
-                  if (sql.contains("RETURNING")) Using.resource(ps.executeQuery()) { rs =>
-                    Iterator.continually(rs).takeWhile(_.next()).map(_.getLong(1)).toVector
-                  }
-                  else Vector(ps.executeUpdate().toLong)
-                }
-              run(
-                "UPDATE grit.claims SET role = role WHERE plugin = 'projects' AND subject = 'p/m'"
-              )
-              val was = run(
-                "UPDATE grit.documents SET superseded_at = now() WHERE plugin = 'projects' " +
-                  "AND key = 'p/m#brief' AND superseded_at IS NULL RETURNING version"
-              )
-              val now = run(
-                "INSERT INTO grit.documents (plugin, key, place, body, data, pointer, written_at, " +
-                  "last_placed, classification_id, room_id, integrity_id) SELECT plugin, key, " +
-                  "place, 'A brief another command kept.', data, pointer, now(), now(), " +
-                  "classification_id, room_id, integrity_id FROM grit.documents WHERE version = ? " +
-                  "RETURNING version",
-                was*
-              )
-              run(
-                "INSERT INTO grit.document_refs (version, kind, ref) SELECT ?, kind, ref " +
-                  "FROM grit.document_refs WHERE version = ?",
-                (now ++ was)*
-              )
-              holding.countDown()
-              go.await(30, TimeUnit.SECONDS)
-              Right(())
+            LiveDb.transaction(config, Clearance.inRoom(desk, internal, internal)) {
+              val (claims, keeper) =
+                (engine.claims(Projects.Name), engine.keeper(Projects.Name, Projects.Terms))
+              for {
+                live <- claims.live(at)
+                claim <- live.headOption.toRight(StoreError.Invalid("no live claim"))
+                held <- claims.held(claim).flatMap(_.toRight(StoreError.Invalid("not held")))
+                key <- DocKey.of("p/m#brief").left.map(StoreError.Invalid(_))
+                was <- keeper
+                  .current(key, held.label)
+                  .flatMap(_.toRight(StoreError.Invalid("no brief")))
+                text <- DocText.of("A brief another command kept.").left.map(StoreError.Invalid(_))
+                _ <- keeper.write(
+                  key,
+                  held.label,
+                  Integrity.Authority,
+                  was.place,
+                  text,
+                  was.data,
+                  None,
+                  at,
+                  Set(DocRef.brief(held.holder))
+                )
+              } yield {
+                holding.countDown()
+                val _ = go.await(30, TimeUnit.SECONDS)
+              }
             }
           }
           holding.await(30, TimeUnit.SECONDS)
