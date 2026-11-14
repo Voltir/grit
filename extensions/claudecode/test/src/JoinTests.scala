@@ -683,6 +683,34 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test(
+      "with a realpath lacking -e and -m, --retire is refused with one line and a join without it goes ahead"
+    ) {
+      JoinFixtures { f =>
+        val (dir, other) = (f.checkout("work"), f.checkout("other"))
+        val retired = Files.createDirectories(f.root.resolve("old-hooks"))
+        val bsd = f.write(
+          f.root.resolve("bsd/realpath"),
+          "#!/bin/sh\ncase $1 in -e | -m) echo \"realpath: illegal option -- ${1#-}\" >&2; exit 1 ;; esac\n" +
+            s"PATH='${Bash.SystemPath}' exec realpath \"$$@\"\n",
+          executable = true
+        )
+        val path = Map("PATH" -> s"${bsd.getParent}:${f.bin}:${Bash.SystemPath}")
+        val refused = f.join(dir, Seq(f.Edge, "--retire", retired.toString), path)
+        (
+          refused.exit,
+          refused.err,
+          Files.exists(f.hook(dir)),
+          f.join(other, Seq(f.Edge), path).exit
+        ) ==> ((
+          1,
+          "grit claude-code: --retire needs GNU realpath, for its -e and -m, which this one lacks\n",
+          false,
+          0
+        ))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

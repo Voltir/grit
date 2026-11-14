@@ -89,6 +89,7 @@ program() {
 # Whether the command line $1 runs a program under a retired directory.
 retired() {
   local p c d
+  [ "${#retire[@]}" -gt 0 ] || return 1
   p=$(program "$1")
   [ -n "$p" ] || return 1
   c=$(realpath -m -- "$p") || return 1
@@ -206,13 +207,14 @@ main() {
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     refuse "needs bash 5 or later; this is bash ${BASH_VERSION-unknown}"
   fi
-  local tool
+  local tool gnu=0
   for tool in git jq curl; do
     command -v "$tool" > /dev/null 2>&1 || refuse "needs $tool on PATH"
   done
+  # Only --retire needs GNU realpath's -e and -m; BSD's and older busybox's lack them.
+  if realpath -e -- / > /dev/null 2>&1 && realpath -m -- /nowhere/x > /dev/null 2>&1; then gnu=1; fi
 
   local edge='' undo=0 mcp=grit dir r home
-  home=$(realpath -m -- "$HOME") || refuse "cannot resolve HOME, $HOME"
   retire=()
   while [ "$#" -gt 0 ]; do
     case $1 in
@@ -226,6 +228,8 @@ main() {
         [ "$#" -ge 2 ] || refuse "--retire needs a directory"
         dir=$2
         shift
+        [ "$gnu" = 1 ] || refuse "--retire needs GNU realpath, for its -e and -m, which this one lacks"
+        home=$(realpath -m -- "$HOME") || refuse "cannot resolve HOME, $HOME"
         r=$(realpath -e -- "$dir" 2> /dev/null) && [ -d "$r" ] || refuse "--retire $dir is not a directory"
         if [ "$r" = / ] || [ "$r" = "$home" ]; then
           refuse "--retire $dir would retire every program under it; name the directory of the old hooks"
