@@ -1481,11 +1481,12 @@ private[plugin] final class ProjectCommands(
     } yield answer
 
   /** Keeps again ([[briefed]]) the brief of each claim live at `at` on an artifact of project
-    * `key` and kept at this transaction's floor, as the project now stands, each claim renewed
-    * first ([[renewed]]): of two commands changing one project, the second to reach a claim waits
-    * for the first to end, then renders what both kept. A claim kept below the floor is passed
-    * over: a command changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing
-    * that brief shows changed. Nothing when the project's method is not declared here.
+    * `key` and kept at this transaction's floor, as the project now stands, under the claim as
+    * held ([[Claims.held]]): of two commands changing one project, the second to reach a claim
+    * waits for the first to end, then renders what both kept; a claim gone or made anew since
+    * it was read keeps no brief here. A claim kept below the floor is passed over: a command
+    * changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing that brief shows
+    * changed. Nothing when the project's method is not declared here.
     */
   private def rebriefed(own: DocumentKeeper, claims: Claims, key: ProjectKey, at: Instant)(using
       tx: Tx^
@@ -1496,7 +1497,7 @@ private[plugin] final class ProjectCommands(
         c.label == Tx.floor(tx) &&
           ArtifactKey.read(DocKey.value(c.subject)).exists(_.project == key)
       )
-      held <- Traversal.traverse(here)(renewed(claims, _, at)).map(_.flatten)
+      held <- Traversal.traverse(here)(c => stored(claims.held(c))).map(_.flatten)
       project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
       briefs = project.toVector.flatMap(p =>
         (for {
@@ -2374,20 +2375,6 @@ private[plugin] object ProjectCommands {
         }
     )
   }
-
-  /** `c` renewed through `claims` as it was read, so that of two transactions renewing one claim
-    * the second waits for the first to end ([[Claims.claim]] in the store): `None` when it is held
-    * no longer, its subject or holder taken since, or released since, a claim the renewal made
-    * anew then released again.
-    */
-  private def renewed(claims: Claims, c: Claim, at: Instant)(using
-      Tx^
-  ): Either[Stop, Option[Claim]] =
-    stored(claims.claim(c.subject, c.holder, c.role, c.by, c.label, at)).flatMap {
-      case Claimed.Made(made) if made.made == c.made => Right(Some(made))
-      case Claimed.Made(made) => stored(claims.release(made.subject, made.label)).map(_ => None)
-      case Claimed.Taken(_) | Claimed.Holding(_) => Right(None)
-    }
 
   /** Withdraws `artifact`'s brief at every label it is current at that the transaction reads:
     * the holder the newest of them was for, `None` when there was none.

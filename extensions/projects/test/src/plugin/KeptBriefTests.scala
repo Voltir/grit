@@ -2,7 +2,7 @@ package grit.projects.plugin
 
 import java.time.Instant
 
-import grit.core.claim.{Claim, Claimed, Claims}
+import grit.core.claim.{Claim, ClaimRole, Claimed, Claims}
 import grit.core.document.{DocRef, DocText, Document, DocumentKeeper}
 import grit.core.id.{ClaimHolder, DocKey}
 import grit.core.identity.Principal
@@ -10,7 +10,7 @@ import grit.core.place.Place
 import grit.core.plugin.{CommandBy, CommandOutcome}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{Clearance, Integrity, Label, TestLabels}
-import grit.projects.method.MethodFixtures
+import grit.projects.method.{Method, MethodFixtures, RoleView}
 
 import utest.*
 
@@ -57,20 +57,76 @@ object KeptBriefTests extends TestSuite {
       store: Store,
       key: String,
       forHolder: String = holder,
-      when: Instant = at
+      when: Instant = at,
+      role: String = "manager"
   ) =
     askAt(when)(
       projects,
       store,
       "project_claim",
       "key" -> key,
-      "role" -> "manager",
+      "role" -> role,
       "holder" -> forHolder
     )
 
-  /** What `project_brief` renders for `key` as a manager. */
-  private def rendered(projects: Projects, store: Store, key: String = "p/m"): String =
-    done(ask(projects, store, "project_brief", "key" -> key, "role" -> "manager", "chars" -> 9500))
+  /** What `project_brief` renders for `key` as `role`. */
+  private def rendered(
+      projects: Projects,
+      store: Store,
+      key: String = "p/m",
+      role: String = "manager"
+  ): String =
+    done(ask(projects, store, "project_brief", "key" -> key, "role" -> role, "chars" -> 9500))
+
+  /** [[managing]], with a reviewer shown notes to depth 1 and carrying nothing. */
+  private val reviewing: Method = Method
+    .of(
+      managing.name,
+      managing.version,
+      managing.kinds,
+      managing.transitions,
+      managing.views :+ right(
+        RoleView.of(MethodFixtures.role("reviewer"), Set(MethodFixtures.note.name), 1)
+      ),
+      managing.checks
+    )
+    .fold(why => throw new java.lang.AssertionError(why.toString), identity)
+
+  /** The claims live in `store` at [[at]]. */
+  private def liveNow(store: Store): Vector[Claim] =
+    inTx(store.claims.live(at)).fold(failed, identity)
+
+  /** `project_keep` of `p/m`, rewritten, a minute after [[at]], by a command whose read of the
+    * live claims was `read`: as one reads them when another command commits between its read and
+    * its hold on them.
+    */
+  private def keptAfter(projects: Projects, store: Store, read: Vector[Claim]): CommandOutcome = {
+    val before: Claims = new Claims {
+      def claim(
+          subject: DocKey,
+          holder: ClaimHolder,
+          role: ClaimRole,
+          by: Principal.Person,
+          label: Label,
+          at: Instant
+      )(using Tx^): Either[StoreError, Claimed] =
+        store.claims.claim(subject, holder, role, by, label, at)
+      def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
+        store.claims.release(subject, label)
+      def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
+      def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
+        store.claims.held(claim)
+    }
+    askThrough(store.keeper, before, when = at.plusSeconds(60))(
+      projects,
+      store,
+      "project_keep",
+      "key" -> "p/m",
+      "title" -> "Title m",
+      "body" -> "The note, rewritten.",
+      "cites" -> ujson.Arr("p/c")
+    )
+  }
 
   private def briefText(
       store: Store,
@@ -93,9 +149,10 @@ object KeptBriefTests extends TestSuite {
     */
   private def claimedProject(
       body: String = "The manager's note.",
-      claimedAt: Instant = at
+      claimedAt: Instant = at,
+      method: Method = managing
   ): (Projects, Store) = {
-    val projects = plugin(managing)
+    val projects = plugin(method)
     val store = Store()
     started(projects, store)
     kept(projects, store, "c", "note", "Cited.")
@@ -266,35 +323,39 @@ object KeptBriefTests extends TestSuite {
     }
     test("a claim released after a keep read it is not made again, and keeps no brief") {
       val (projects, store) = claimedProject()
-      val read = inTx(store.claims.live(at)).fold(failed, identity)
+      val read = liveNow(store)
       done(ask(projects, store, "project_release", "key" -> "p/m"))
-      // Claims as a keep reads them when a release commits between its read and its claim.
-      val stale: Claims = new Claims {
-        def claim(
-            subject: DocKey,
-            holder: ClaimHolder,
-            role: grit.core.claim.ClaimRole,
-            by: Principal.Person,
-            label: Label,
-            at: Instant
-        )(using Tx^): Either[StoreError, Claimed] =
-          store.claims.claim(subject, holder, role, by, label, at)
-        def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
-          store.claims.release(subject, label)
-        def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
-        def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
-          store.claims.held(claim)
-      }
-      val answer = askThrough(store.keeper, stale, when = at.plusSeconds(60))(
-        projects,
-        store,
-        "project_keep",
-        "key" -> "p/m",
-        "title" -> "Title m",
-        "body" -> "Kept as the claim went."
-      )
-      (answer, inTx(store.claims.live(at)).fold(failed, identity), current(store)) ==>
+      val answer = keptAfter(projects, store, read)
+      (answer, liveNow(store), current(store)) ==>
         (CommandOutcome.Done("Kept p/m (note, open)."), Vector(), None)
+    }
+
+    test("a claim released and made again after a keep read it is left as it was made") {
+      val (projects, store) = claimedProject()
+      val read = liveNow(store)
+      done(ask(projects, store, "project_release", "key" -> "p/m"))
+      done(claim(projects, store, "p/m", when = at.plusSeconds(30)))
+      val again = liveNow(store)
+      val answer = keptAfter(projects, store, read)
+      (answer, liveNow(store).map(_.made), again.map(_.made)) ==>
+        (
+          CommandOutcome.Done("Kept p/m (note, open)."),
+          Vector(at.plusSeconds(30)),
+          Vector(
+            at.plusSeconds(30)
+          )
+        )
+    }
+
+    test("a claim made again as another role after a keep read it keeps that role, briefed so") {
+      val (projects, store) = claimedProject(method = reviewing)
+      val read = liveNow(store)
+      done(claim(projects, store, "p/m", role = "reviewer"))
+      done(keptAfter(projects, store, read))
+      val now = rendered(projects, store, role = "reviewer")
+      val brief = briefText(store, when = at.plusSeconds(61))
+      (liveNow(store).map(c => ClaimRole.value(c.role)), brief, now.contains("rewritten")) ==>
+        (Vector("reviewer"), Some(now), true)
     }
     test("a withdraw of an artifact a claimed brief's role carries keeps the brief again") {
       val (projects, store) = claimedProject()
