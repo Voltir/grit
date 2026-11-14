@@ -51,6 +51,16 @@ final case class Request private (
 
   /** The name of every query parameter sent, each once, in the order first sent. */
   def queryNames: Vector[String] = sentQuery.map(_._1).distinct
+
+  /** This request with no header named `header`, matched without regard to case. */
+  def without(header: String): Request =
+    copy(sentHeaders = sentHeaders.filterNot(_._1.equalsIgnoreCase(header)))
+
+  /** Its verb, its path and the names of its headers: never a header's value, which may be a
+    * credential, nor its query or body.
+    */
+  override def toString: String =
+    s"Request(${verb.name} /${path.mkString("/")}, headers: ${sentHeaders.map(_._1).mkString(", ")})"
 }
 
 object Request {

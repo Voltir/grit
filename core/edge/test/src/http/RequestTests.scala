@@ -65,6 +65,24 @@ object RequestTests extends TestSuite {
         (Some("text/plain"), Some("text/plain"), Vector("1", "2"), None)
     }
 
+    test("a request shown names its headers and not their values, its query or its body") {
+      val r = Request.of(
+        Verb.Post,
+        "/events?harness=s3cr3tq",
+        Vector("Authorization" -> "Bearer s3cr3tv", "Host" -> "localhost"),
+        "s3cr3tb"
+      )
+      r.map(_.toString) ==> Right("Request(POST /events, headers: Authorization, Host)")
+    }
+
+    test("a request without a header has none of that name, in any case, and keeps the rest") {
+      val r = read(
+        "/",
+        Vector("Authorization" -> "Bearer a", "authorization" -> "Bearer b", "Host" -> "x")
+      ).without("AUTHORIZATION")
+      (r.headerValues("Authorization"), r.header("Host")) ==> (Vector.empty, Some("x"))
+    }
+
     test(
       "a target not starting with /, or with an escape that is not two hex digits of UTF-8, is refused"
     ) {
