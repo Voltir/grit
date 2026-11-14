@@ -194,6 +194,56 @@ abstract class ClaimsContract extends TestSuite {
       assert(renewed == Claimed.Made(one), live(c, hour) == Vector(one))
     }
 
+    test("held answers a live claim as it is, and leaves it as it was") {
+      val c = claims(plugin("claims-held"))
+      claim(c, "p/a", "held-1")
+      val read = live(c, at)
+      val held = read.map(r => opened(Low)(ok(c.held(r))))
+      assert(held == Vector(Some(made("p/a", "held-1"))), live(c, at) == read)
+    }
+
+    test("held answers none for a claim released since") {
+      val c = claims(plugin("claims-held-gone"))
+      claim(c, "p/a", "gone-1")
+      val read = live(c, at)
+      release(c, "p/a")
+      assert(read.map(r => opened(Low)(ok(c.held(r)))) == Vector(None))
+    }
+
+    test("held answers none for a claim released and made again since, and the new one") {
+      val c = claims(plugin("claims-held-again"))
+      claim(c, "p/a", "again-1")
+      val first = live(c, at)
+      release(c, "p/a")
+      claim(c, "p/a", "again-1", when = hour)
+      val second = live(c, hour)
+      assert(
+        first.map(r => opened(Low)(ok(c.held(r)))) == Vector(None),
+        second.map(r => opened(Low)(ok(c.held(r)))) == Vector(
+          Some(made("p/a", "again-1", when = hour))
+        )
+      )
+    }
+
+    test("held answers a claim renewed since under the role it has now") {
+      val c = claims(plugin("claims-held-role"))
+      val reviewer = ok(ClaimRole.of("reviewer"))
+      claim(c, "p/a", "role-1")
+      val read = live(c, at)
+      claim(c, "p/a", "role-1", role = reviewer)
+      assert(
+        read.map(r => opened(Low)(ok(c.held(r)))) ==
+          Vector(Some(made("p/a", "role-1").copy(role = reviewer)))
+      )
+    }
+
+    test("held answers none for a claim this transaction does not read") {
+      val c = claims(plugin("claims-held-unread"))
+      claim(c, "p/a", "unread-1", TestLabels.Trial, High)
+      val read = opened(High)(ok(c.live(at)))
+      assert(read.map(r => opened(Low)(ok(c.held(r)))) == Vector(None))
+    }
+
     test("a claim unreleased at its label frees its holder once lapsed") {
       val c = claims(plugin("claims-relabel"))
       claim(c, "p/a", "relabel-1")

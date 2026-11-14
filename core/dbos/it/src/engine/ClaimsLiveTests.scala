@@ -151,6 +151,39 @@ object ClaimsLiveTests extends TestSuite {
       assert(early == 1L, held("forgotten-1") == 0L)
     }
 
+    test("of two transactions holding one claim, the second waits, then finds it released") {
+      val c = new SqlClaims(ok(PluginName.of("claims-held-raced")))
+      val made = claim(c, "p/held", "held-1", at) match {
+        case Claimed.Made(m) => m
+        case other => throw new java.lang.AssertionError(s"$other")
+      }
+      val released = new CountDownLatch(1)
+      val commit = new CountDownLatch(1)
+      val pool = Executors.newFixedThreadPool(2)
+      try {
+        val first = pool.submit(new Callable[Boolean] {
+          def call(): Boolean = LiveDb.transaction(config, Clearance.of(Label.Public)) {
+            val held = ok(c.held(made)).isDefined
+            val gone = ok(c.release(made.subject, made.label)).isDefined
+            released.countDown()
+            val _ = commit.await(10, TimeUnit.SECONDS)
+            held && gone
+          }
+        })
+        assert(released.await(10, TimeUnit.SECONDS))
+        val second = pool.submit(new Callable[Either[StoreError, Option[Boolean]]] {
+          def call(): Either[StoreError, Option[Boolean]] =
+            LiveDb.transaction(config, Clearance.of(Label.Public))(
+              c.held(made).map(_.map(_ => true))
+            )
+        })
+        val waited = waiting()
+        commit.countDown()
+        (waited, first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)) ==>
+          ((true, true, Right(None)))
+      } finally pool.shutdownNow()
+    }
+
     test("of two transactions claiming one subject at once, the second waits and is refused") {
       val c = new SqlClaims(ok(PluginName.of("claims-raced")))
       val made = new CountDownLatch(1)

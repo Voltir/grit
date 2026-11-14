@@ -282,6 +282,8 @@ object KeptBriefTests extends TestSuite {
         def release(subject: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Claim]] =
           store.claims.release(subject, label)
         def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]] = Right(read)
+        def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
+          store.claims.held(claim)
       }
       val answer = askThrough(store.keeper, stale, when = at.plusSeconds(60))(
         projects,

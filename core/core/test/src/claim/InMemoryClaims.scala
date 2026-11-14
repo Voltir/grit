@@ -79,6 +79,18 @@ final class InMemoryClaims {
           .map(read)
           .sortBy(c => (DocKey.value(c.subject), c.made))
       )
+
+    // Nothing here runs at once, so there is nothing to lock.
+    def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
+      Right(
+        rows
+          .find(r =>
+            r.plugin == plugin && r.claim.subject == claim.subject &&
+              r.claim.holder == claim.holder && r.claim.made == claim.made &&
+              r.claim.label == claim.label && reads(r)
+          )
+          .map(read)
+      )
   }
 
   private def reads(r: Row)(using tx: Tx^): Boolean =

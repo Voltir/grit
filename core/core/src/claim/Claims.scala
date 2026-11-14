@@ -85,6 +85,16 @@ trait Claims extends caps.Pure {
     * claim from lapsing.
     */
   def live(at: Instant)(using Tx^): Either[StoreError, Vector[Claim]]
+
+  /** `claim`, as [[live]] answered it, as this transaction now reads it, locked until this
+    * transaction ends: a second transaction asking for it, renewing it or releasing it waits
+    * until this one ends, then finds what it left. Its role is the one it has now, renewed since
+    * or not, and its `active` as this transaction reads sessions; one lapsed since is still
+    * answered. `None` when it is gone (released, or taken over once lapsed), when its holder's
+    * claim on its subject at its label is now another, made since, or when this transaction does
+    * not read it. It writes nothing.
+    */
+  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]]
 }
 
 object Claims {

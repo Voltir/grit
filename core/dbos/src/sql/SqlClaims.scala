@@ -24,6 +24,20 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
       by: Principal.Person,
       label: Label,
       at: Instant
+  )(using tx: Tx^): Either[StoreError, Claimed] =
+    claiming(subject, holder, role, by, label, at, again = true)
+
+  /** [[claim]]; when the holder's own claim it found is released before its renewal, it claims
+    * once more when `again`, else fails.
+    */
+  private def claiming(
+      subject: DocKey,
+      holder: ClaimHolder,
+      role: ClaimRole,
+      by: Principal.Person,
+      label: Label,
+      at: Instant,
+      again: Boolean
   )(using tx: Tx^): Either[StoreError, Claimed] = {
     val clearance = Tx.clearance(tx)
     val kept = label.join(clearance.floor)
@@ -52,7 +66,17 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         }(SqlDocuments.instant(_, "active"))
       claimed <- inserted.headOption match {
         case Some(active) => Right(Claimed.Made(Claim(subject, holder, role, by, at, kept, active)))
-        case None => conflict(subject, holder, role, id)
+        case None =>
+          conflict(subject, holder, role, id).flatMap {
+            case Some(met) => Right(met)
+            case None if again => claiming(subject, holder, role, by, label, at, again = false)
+            case None =>
+              Left(
+                StoreError.Invalid(
+                  s"the claim on ${DocKey.value(subject)} was released twice while renewed"
+                )
+              )
+          }
       }
     } yield claimed
   }
@@ -83,11 +107,12 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
 
   /** What a claim of `subject` for `holder` as `role` at the label whose id is `label` met: the
     * holder's own claim on the subject renewed when the transaction reads it, else a claim on
-    * the subject before one by the holder, each named only when the transaction reads it.
+    * the subject before one by the holder, each named only when the transaction reads it;
+    * `None` when the holder's own claim it read was released before it was renewed.
     */
   private def conflict(subject: DocKey, holder: ClaimHolder, role: ClaimRole, label: Int)(using
       Tx^
-  ): Either[StoreError, Claimed] =
+  ): Either[StoreError, Option[Claimed]] =
     SqlStatements
       .cleared(
         s"""WITH ${SqlClearance.With}
@@ -109,26 +134,30 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         )
       )
       .flatMap {
-        case (c, true, true) if c.holder == holder => renew(c, role, label).map(Claimed.Made(_))
+        case (c, true, true) if c.holder == holder =>
+          renew(c, role, label).map(_.map(Claimed.Made(_)))
         case (c, taken, shown) =>
           val named = Option.when(shown)(c)
-          Right(if (taken) Claimed.Taken(named) else Claimed.Holding(named))
+          Right(Some(if (taken) Claimed.Taken(named) else Claimed.Holding(named)))
       }
 
-  /** `claim`, kept at the label whose id is `label`, made `role`. */
+  /** `claim`, kept at the label whose id is `label`, made `role`: `None` when it is gone. */
   private def renew(claim: Claim, role: ClaimRole, label: Int)(using
       Tx^
-  ): Either[StoreError, Claim] =
+  ): Either[StoreError, Option[Claim]] =
     SqlStatements
       .update(
-        "UPDATE grit.claims SET role = ? WHERE plugin = ? AND subject = ? AND classification_id = ?"
+        "UPDATE grit.claims SET role = ? WHERE plugin = ? AND subject = ? AND holder = ? " +
+          "AND made_at = ? AND classification_id = ?"
       ) { ps =>
         ps.setString(1, ClaimRole.value(role))
         ps.setString(2, PluginName.value(plugin))
         ps.setString(3, DocKey.value(claim.subject))
-        ps.setInt(4, label)
+        ps.setString(4, ClaimHolder.value(claim.holder))
+        ps.setObject(5, SqlDocuments.utc(claim.made))
+        ps.setInt(6, label)
       }
-      .map(_ => claim.copy(role = role))
+      .map(n => Option.when(n > 0)(claim.copy(role = role)))
 
   def release(subject: DocKey, label: Label)(using tx: Tx^): Either[StoreError, Option[Claim]] =
     SqlStatements
@@ -164,6 +193,29 @@ private[dbos] final class SqlClaims(plugin: PluginName) extends Claims {
         ps.setObject(SqlClearance.Params + 2, SqlDocuments.utc(leased(at)))
       }(claimOf)
       .flatMap(SqlStatements.valid)
+
+  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
+    SqlStatements
+      .cleared(
+        s"""WITH ${SqlClearance.With},
+           |locked AS (
+           |  SELECT c.* FROM grit.claims c
+           |   WHERE c.plugin = ? AND c.subject = ? AND c.holder = ? AND c.made_at = ?
+           |     AND c.classification_id = $LabelId AND ${SqlClearance.kept("c")}
+           |     FOR UPDATE OF c)
+           |SELECT $Columns
+           |  FROM (SELECT k.*, ${SqlLabels.columns("l")}
+           |          FROM locked k JOIN grit.classifications l ON l.id = k.classification_id) c
+           |  JOIN grit.principals p ON p.id = c.principal_id""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+        ps.setString(SqlClearance.Params + 2, DocKey.value(claim.subject))
+        ps.setString(SqlClearance.Params + 3, ClaimHolder.value(claim.holder))
+        ps.setObject(SqlClearance.Params + 4, SqlDocuments.utc(claim.made))
+        SqlLabels.bind(ps, SqlClearance.Params + 5, claim.label)
+      }(claimOf)
+      .flatMap(SqlStatements.valid)
+      .map(_.headOption)
 }
 
 private[dbos] object SqlClaims {

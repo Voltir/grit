@@ -175,6 +175,8 @@ object PluginCaptureTests extends TestSuite {
       |    db.read(Subject.Public)(Right(None))
       |  def live(at: java.time.Instant)(using Tx^): Either[StoreError, Vector[Claim]] =
       |    Right(Vector.empty)
+      |  def held(claim: Claim)(using Tx^): Either[StoreError, Option[Claim]] =
+      |    Right(None)
       |}
       |""".stripMargin
 
