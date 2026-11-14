@@ -44,6 +44,7 @@ service's edge does. Only a turn's asker may answer (ADR 0017).
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving`, `DriveEdge.serving`, `DatabaseEdge.serving`, `CommandsEdge.of` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
+| `Adapter` (`grit.core.edge`), an outside harness's join script, served by the commands edge | `ClaudeCode.adapter` | yes: `CommandsEdge.of(adapters = …)` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest`, `Reminders`, `Knowledge` | yes: `Deployment.of(plugins = …)` |
 | `PlainJob`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
 | `KeepingJob` (`grit.core.job`), a plugin's job that keeps its documents | `Knowledge`'s `knowledge-sync` | yes: a plugin's `jobs`, its plugin declaring `documents` |
@@ -270,7 +271,8 @@ since a plugin that reads another takes it in its constructor; it never names th
 edge extension or a deployment. The chat (`grit.chat`) also names `grit.turn`, for a turn
 read back from the steps it recorded, and the terminal UI it draws with, `grit.tui`. An edge
 extension that serves MCP may name `grit.mcp`'s wire, the protocol, and nothing else of
-`grit.mcp`: the commands edge (`grit.commands`) does. A Java library lives only in the extension whose job needs
+`grit.mcp`: the commands edge (`grit.commands`) does. A harness's adapter (`grit.claudecode`)
+names core alone, never the commands edge it is handed to. A Java library lives only in the extension whose job needs
 it ([STYLE.md](../STYLE.md), rule 8). Only the kit, a deployment, a plugin extension and the chat
 name an extension, and the kit names no plugin, no edge extension, no terminal UI and no
 deployment: a plugin reaches it as a `Plugin` value and an edge as a `ServedEdge` value. Mill's `moduleDeps` hold each of these on the

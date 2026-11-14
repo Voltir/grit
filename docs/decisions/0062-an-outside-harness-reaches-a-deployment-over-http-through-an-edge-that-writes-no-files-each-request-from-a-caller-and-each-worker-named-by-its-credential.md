@@ -41,7 +41,15 @@ Decision:
   name (offered at `/mcp` with the plugin's schema, refusing a caller below its integrity, and
   otherwise running what it wraps), and one added beside them, at `/command` alone. The edge
   refuses to open when a guard names no offered command or an added one collides.
-- **Serve writes no files.**
+- **A harness's words live in its adapter**, one module a harness (`grit.claudecode` for Claude
+  Code), naming core alone. An adapter is pure data a deployment hands the edge: core's
+  `Adapter`, the harness's name and its join script. The edge serves the script at
+  `GET /join/<harness>` as text and runs nothing of it; a person runs it in a checkout, where it
+  installs the harness's hooks, which translate the harness's events into the edge's routes
+  (`/brief`, `/holder`, `/events`), and registers the edge's `/mcp`. The deployment's address
+  reaches the script as its argument, never as a path into another repository.
+- **Serve writes no files.** A join writes the harness's files in the person's checkout, never
+  the edge.
 
 Consequences:
 
@@ -50,5 +58,7 @@ Consequences:
 - Anyone who can run a process on the owner's machine acts as the owner until credentials are
   added; the edge refuses to listen beyond loopback while it takes uncredentialed requests.
 - A guard is an interim home for an integrity check its plugin should make itself.
-- Enforced by the law (`commands-names-core-edge-and-mcp-wire`), `CommandsEdge.of`'s refusals,
-  and `HostsTests`.
+- A join script is piped into a shell, so it is written to change nothing when cut short and to
+  refuse a plain `http://` address beyond loopback while requests carry no credential.
+- Enforced by the law (`commands-names-core-edge-and-mcp-wire`, `claudecode-names-core-alone`),
+  `CommandsEdge.of`'s refusals, and `HostsTests`.

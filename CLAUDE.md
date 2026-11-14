@@ -58,6 +58,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 | `grit.chat` | `settings`, `look`, `view`, `screen`, `host`, `run` | core, prose, tui, edge, turn | the chat TUI, run by a deployment over `Kit.console` |
 | `grit.mcp` | `wire`, `scope`, `github`, `client`, `drive`, `edge` | core, edge | MCP servers and Drive's REST API: a declared service's read-only tools at its service place (ADR 0017) |
 | `grit.commands` | `worker`, `caller`, `declare`, `routes`, `edge` | core, edge, mcp | the edge a deployment mounts to serve an outside coding harness over HTTP (ADR 0062); names `grit.mcp`'s wire alone |
+| `grit.claudecode` | `grit.claudecode` | core | Claude Code's adapter for the commands edge: its join script and hooks (ADR 0062) |
 | `grit.databases` | `declare`, `connect`, `edge` | core, edge | an application's Postgres database read as a service, one role to a place (ADR 0057); `connect` its JDBC quarantine |
 | `grit.assembly` | `estimate`, `linear`, `retrieval` | core | the `ContextAssembler`s |
 | `grit.eval` | `grit.eval` | core (its `it`: dbos, assembly, models) | the eval's labelled cases; its `it`, the assembly eval, reports and gates nothing |
@@ -131,7 +132,8 @@ __.sources`. Everything else, and the procedure: the `grit-test-cycle` and `grit
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
-**Three kinds of suite.** `test` modules need nothing outside the JVM; `it` modules run
+**Three kinds of suite.** `test` modules need nothing outside the JVM but `grit.claudecode`'s,
+which run bash 5, jq, curl and git, with no skip; `it` modules run
 against Postgres and DBOS through `scripts/it`, which needs Docker, with no skip; `probes`
 modules pin what capture and separation checking reject.
 

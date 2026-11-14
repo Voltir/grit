@@ -505,6 +505,45 @@ object grit extends Module {
     }
   }
 
+  /* Claude Code's adapter for the commands edge (ADR 0062): the join script a person pipes into
+   * bash, and the hook it installs. Names only core. extensions/claudecode/README.md. */
+  object claudecode extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "claudecode"
+    def moduleDeps = Seq(core)
+
+    def shell = Task.Source(moduleDir / "shell")
+
+    /* `Scripts`, each of `shell`'s scripts as one string constant, so the adapter is a pure value
+     * with no resource to read. A script over 60 KB fails the build (a class file's string
+     * constant holds at most 64 KB of UTF-8), and so does one holding a NUL, which no shell word
+     * can hold. */
+    def generatedSources = Task {
+      val scripts = Seq("Hook" -> "hook.sh", "Join" -> "join.sh").map { (name, file) =>
+        val text = os.read(shell().path / file)
+        val bytes = text.getBytes("UTF-8").length
+        if (bytes > 60 * 1024) throw new Exception(s"$file is $bytes bytes, over 60 KB")
+        if (text.contains('\u0000')) throw new Exception(s"$file holds a NUL")
+        s"  /** shell/$file's text. */\n  val $name: String = ${ujson.write(ujson.Str(text))}"
+      }
+      os.write(
+        Task.dest / "Scripts.scala",
+        "package grit.claudecode\n\n/** The scripts under extensions/claudecode/shell, as text. */\n" +
+          s"private[claudecode] object Scripts {\n${scripts.mkString("\n\n")}\n}\n"
+      )
+      super.generatedSources() :+ PathRef(Task.dest)
+    }
+
+    /* Runs bash 5, jq, curl and git through grit.host, against the commands edge itself. The
+     * scripts' folder rides in the environment, for the test that Scripts holds their text. */
+    object test extends GritTests {
+      def moduleDeps =
+        super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.commands.test, grit.host)
+      def forkEnv = Task {
+        super.forkEnv() ++ Map("GRIT_CLAUDECODE_SHELL" -> shell().path.toString)
+      }
+    }
+  }
+
   /* An application's Postgres database, read as a service: one database role to a place, the
    * role's grants the boundary (ADR 0057). JDBC's second role beside grit.dbos (STYLE rule 8),
    * in its connect package alone; the driver is the deployment's dependency, not this one's.
