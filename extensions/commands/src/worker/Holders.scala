@@ -43,7 +43,13 @@ object Holders {
       val kind = if (literal(a.kind)) a.kind else named(a.kind, a.kind)
       s"$head/$kind/${hash(a.session.written, 12)}"
     }
-    // At most 32 + 1 + 49 + 1 + 49 + 1 + 12 = 145 characters of one line, which ClaimHolder takes.
+    // The Left is unreachable, so this throw never runs (STYLE.md rule 3): ClaimHolder.of refuses
+    // only text that is empty, over ClaimHolder.Longest (160) characters, or holds a control
+    // character. `text` starts with the worker's name, a slug of 1 to WorkerName.Longest (32)
+    // characters; every other part is a slug ([a-z0-9-]), hex digits or `/`, so it holds no
+    // control character; and it is at most 32 + 1 + 49 (a segment: Slugged 40, `-`, 8 hex) + 1
+    // + 49 (a type: kept as sent at most Slugged 40, hashed at most 49) + 1 + 12 (the session's
+    // hash) = 145 characters.
     ClaimHolder.of(text).fold(why => throw new IllegalStateException(why), identity)
   }
 
