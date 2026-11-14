@@ -3,7 +3,8 @@ package grit.commands.routes
 import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.OwnCommand
 import grit.core.clock.SetClock
-import grit.core.edge.{CommandError, EdgeContracts, ScriptedCommands}
+import grit.core.edge.{Adapter, CommandError, EdgeContracts, ScriptedCommands}
+import grit.core.id.Harness
 import grit.core.plugin.CommandOutcome
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
@@ -145,6 +146,28 @@ object CommandRouteTests extends TestSuite {
         (Owner.account, "refused", Integrity.Authority),
         (Owner.account, "refused", Integrity.Member)
       )
+    }
+
+    test(
+      "with credentials, a request bearing none is 401 at every path, /join and an unknown one included, running nothing"
+    ) {
+      val commands = scripted(Vector(listed("done", reads = false)))(answering)
+      val r = routed(
+        commands,
+        adapters = Vector(Adapter(got(Harness.of("made-up")), "#!/bin/sh\n")),
+        callers = Credentialed
+      )
+      Vector(
+        request(Verb.Post, "/command/done", """{"text":"it"}"""),
+        request(Verb.Post, "/mcp", "{}"),
+        request(Verb.Post, "/wait", "{}"),
+        request(Verb.Get, "/holder?harness=made-up&dir=/work/grit"),
+        request(Verb.Get, "/brief?harness=made-up&session=s-1&dir=/work/grit&start=fresh"),
+        request(Verb.Post, "/events?harness=made-up", ""),
+        request(Verb.Get, "/join/made-up"),
+        request(Verb.Get, "/nowhere")
+      ).map(r.answer(_).status) ==> Vector.fill(8)(Status.Unauthorized(Challenge.Asked))
+      commands.ran ==> Vector.empty
     }
 
     test("an own command runs in place of a plugin's, and what it runs runs as the caller") {
