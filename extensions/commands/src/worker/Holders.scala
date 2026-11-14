@@ -22,6 +22,25 @@ object Holders {
   def agentSession(session: SessionId, agent: String): Either[String, SessionId] =
     SessionId.of(session.harness, s"${session.local}/$agent")
 
+  /** The agent `session` starts, as a request names it by its own id `agent` and its `kind`,
+    * sent together: the session it is recorded as ([[agentSession]]) and the agent; `None` when
+    * neither is sent; or why not: one sent without the other, or `agent: ` and why
+    * [[agentSession]] refuses it.
+    */
+  def agent(
+      session: SessionId,
+      agent: Option[String],
+      kind: Option[String]
+  ): Either[String, Option[(SessionId, Agent)]] =
+    (agent, kind) match {
+      case (None, None) => Right(None)
+      case (Some(a), Some(k)) =>
+        agentSession(session, a).left
+          .map(w => s"agent: $w")
+          .map(id => Some((id, Agent(k, session))))
+      case _ => Left("agent and type come together: an agent's own id, and its type")
+    }
+
   /** The holder a session in `dir` on `worker` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:
     * `<worker>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last

@@ -92,12 +92,7 @@ private[commands] object Briefing {
       dir <- q.need("dir")(Directory.of)
       agent <- q.read("agent")(Right(_))
       kind <- q.read("type")(Right(_))
-      own <- (agent, kind) match {
-        case (Some(a), Some(k)) =>
-          Holders.agentSession(session, a).map(s => (s, Some(Holders.Agent(k, session))))
-        case (None, None) => Right((session, None))
-        case _ => Left(AgentAndType)
-      }
+      started <- Holders.agent(session, agent, kind)
       fresh <- q.need("start") {
         case "fresh" => Right(true)
         case "resume" => Right(false)
@@ -109,8 +104,8 @@ private[commands] object Briefing {
         case other => Left(s"brief or digest, not $other")
       }
     } yield Asked(
-      Holders.of(worker, dir, own._2),
-      Option.when(fresh)(own._1),
+      Holders.of(worker, dir, started.map(_._2)),
+      Option.when(fresh)(started.fold(session)(_._1)),
       if (fresh) SessionDigest.Window.LacksLastSaid else SessionDigest.Window.HoldsLastSaid,
       part.getOrElse(Part.Brief)
     )
@@ -146,6 +141,4 @@ private[commands] object Briefing {
 
   private val TypeAndSession =
     "type and session come together: an agent's type, and the session starting it"
-
-  private val AgentAndType = "agent and type come together: an agent's own id, and its type"
 }

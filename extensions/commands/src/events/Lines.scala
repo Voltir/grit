@@ -92,16 +92,9 @@ private[commands] object Lines {
         .map(k => s"no key $k is read in a line; these are: ${Keys.mkString(", ")}")
         .toLeft(())
       session <- text(o, "session").flatMap(SessionId.of(harness, _).left.map(w => s"session: $w"))
-      agent <- (o.get("agent"), o.get("type")) match {
-        case (None, None) => Right(None)
-        case (Some(a), Some(t)) =>
-          for {
-            a <- a.strOpt.toRight("agent: a string")
-            t <- t.strOpt.toRight("type: a string")
-            id <- Holders.agentSession(session, a).left.map(w => s"agent: $w")
-          } yield Some((id, Holders.Agent(t, session)))
-        case _ => Left(AgentAndType)
-      }
+      a <- optional(o, "agent")
+      t <- optional(o, "type")
+      agent <- Holders.agent(session, a, t)
       dir <- directory(o, "dir")
       worktree <- if (o.contains("worktree")) directory(o, "worktree") else Right(dir)
       n <- o.get("n") match {
@@ -179,13 +172,17 @@ private[commands] object Lines {
       }
   }
 
-  private val AgentAndType = "agent and type come together: an agent's own id, and its type"
-
   private def text(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
+    optional(o, key).flatMap(_.toRight(s"$key: missing"))
+
+  private def optional(
+      o: collection.Map[String, ujson.Value],
+      key: String
+  ): Either[String, Option[String]] =
     o.get(key) match {
-      case Some(ujson.Str(s)) => Right(s)
+      case Some(ujson.Str(s)) => Right(Some(s))
       case Some(_) => Left(s"$key: a string")
-      case None => Left(s"$key: missing")
+      case None => Right(None)
     }
 
   private def directory(o: collection.Map[String, ujson.Value], key: String) =
