@@ -404,6 +404,7 @@ private[plugin] final class ProjectCommands(
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       val n = args.steps.size
       for {
+        held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
         project <- loaded(own, args.project)
         method <- refuse(declared(project.pin))
         plan = planned(project, method, args.steps, author(by), guarding(by), onward = args.dry)
@@ -437,7 +438,7 @@ private[plugin] final class ProjectCommands(
                 case failed => failed
               }
               .flatMap(_ => wrote(own, project, steps, at))
-              .flatMap(_ => rebriefed(own, claims, args.project, at))
+              .flatMap(_ => rebriefed(own, held, args.project, at))
               .map(_ => s"Every step is done:\n$lines")
           case (None, true) =>
             settled(claims, project, method, args.project, steps, at, "change it").left
@@ -1071,6 +1072,7 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] = answered {
       for {
+        held <- holding(claims, args.key.project, at)
         project <- loaded(own, args.key.project)
         whole <- refuse(Project.of(args.key.project, project.pin, project.artifacts))
         ended <-
@@ -1082,7 +1084,7 @@ private[plugin] final class ProjectCommands(
         _ <- unclaimed(claims, docs.gone ++ docs.uncited, at)
         _ <- atTheirLabels(citing(docs), "withdraw")
         _ <- carried(own, docs, by, at)
-        _ <- rebriefed(own, claims, args.key.project, at)
+        _ <- rebriefed(own, held, args.key.project, at)
       } yield AnswerText.withdrawn(
         done.gone.map(_.head.key),
         done.uncited.map(_.head.key),
@@ -1172,6 +1174,7 @@ private[plugin] final class ProjectCommands(
           if (args.before.isAfter(today))
             Left(Stop.Refused(s"before is ${args.before}, later than today, $today (UTC)"))
           else Right(())
+        held <- if (args.dry) Right(Vector.empty) else holding(claims, args.project, at)
         project <- loaded(own, args.project)
         method <- refuse(declared(project.pin))
         _ <- args.kinds.filterNot(k => method.kinds.exists(_.name == k)).toVector match {
@@ -1202,7 +1205,7 @@ private[plugin] final class ProjectCommands(
         )
         _ <-
           if (args.dry) Right(())
-          else carried(own, docs, by, at).flatMap(_ => rebriefed(own, claims, args.project, at))
+          else carried(own, docs, by, at).flatMap(_ => rebriefed(own, held, args.project, at))
       } yield AnswerText.swept(
         swept,
         args.dry,
@@ -1469,6 +1472,7 @@ private[plugin] final class ProjectCommands(
       admits: Loaded -> Either[Stop, Unit] = _ => Right(())
   )(using Tx^): Either[Stop, String] =
     for {
+      held <- holding(claims, key, at)
       project <- loaded(own, key)
       _ <- admits(project)
       method <- refuse(declared(project.pin))
@@ -1477,27 +1481,38 @@ private[plugin] final class ProjectCommands(
       answer <- said.headOption.toRight(Stop.Refused("nothing was asked")).flatten
       _ <- settled(claims, project, method, key, steps, at, verb)
       _ <- wrote(own, project, steps, at)
-      _ <- rebriefed(own, claims, key, at)
+      _ <- rebriefed(own, held, key, at)
     } yield answer
 
-  /** Keeps again ([[briefed]]) the brief of each claim live at `at` on an artifact of project
-    * `key` and kept at this transaction's floor, as the project now stands, under the claim as
-    * held ([[Claims.held]]): of two commands changing one project, the second to reach a claim
-    * waits for the first to end, then renders what both kept; a claim gone or made anew since
-    * it was read keeps no brief here. A claim kept below the floor is passed over: a command
-    * changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing that brief shows
-    * changed. Nothing when the project's method is not declared here.
+  /** Each claim live at `at` on an artifact of project `key` and kept at this transaction's
+    * floor, as held ([[Claims.held]]) until it ends, in the order [[Claims.live]] gives: taken
+    * before a command loads the project, so that of two commands changing one project, the
+    * second waits here for the first to end, then loads and checks what both kept. A claim gone
+    * or made anew since it was read is left out. A claim kept below the floor is passed over: a
+    * command changes only artifacts kept at its floor ([[atTheirLabels]]), so nothing that
+    * brief shows changes.
     */
-  private def rebriefed(own: DocumentKeeper, claims: Claims, key: ProjectKey, at: Instant)(using
+  private def holding(claims: Claims, key: ProjectKey, at: Instant)(using
       tx: Tx^
-  ): Either[Stop, Unit] =
+  ): Either[Stop, Vector[Claim]] =
     for {
       live <- stored(claims.live(at))
       here = live.filter(c =>
         c.label == Tx.floor(tx) &&
           ArtifactKey.read(DocKey.value(c.subject)).exists(_.project == key)
       )
-      held <- Traversal.traverse(here)(c => stored(claims.held(c))).map(_.flatten)
+      held <- Traversal.traverse(here)(c => stored(claims.held(c)))
+    } yield held.flatten
+
+  /** Keeps again ([[briefed]]) the brief of each of `held` ([[holding]]), claims on artifacts of
+    * project `key`, as the project now stands. Nothing when the project's method is not declared
+    * here. A brief already over its budget before the command is withdrawn ([[briefed]]); one
+    * the command would have put over it, [[settled]] has refused, `held` taken first.
+    */
+  private def rebriefed(own: DocumentKeeper, held: Vector[Claim], key: ProjectKey, at: Instant)(
+      using Tx^
+  ): Either[Stop, Unit] =
+    for {
       project <- if (held.isEmpty) Right(None) else loaded(own, key).map(Some(_))
       briefs = project.toVector.flatMap(p =>
         (for {

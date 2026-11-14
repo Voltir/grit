@@ -59,6 +59,22 @@ object ProjectsLiveTests extends TestSuite {
       at.plusSeconds(2L * 86_400)
     )
 
+  /** The text of each current version of `p/m`'s brief, as the database holds it. */
+  private def currentBrief(config: grit.dbos.sql.DbConfig): Vector[String] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = 'p/m#brief' " +
+            "AND superseded_at IS NULL"
+        )
+      )(ps =>
+        Using.resource(ps.executeQuery())(rs =>
+          Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
+        )
+      )
+    }
+
   private def keep(
       commands: grit.core.edge.PluginCommands^,
       room: Place,
@@ -287,6 +303,102 @@ object ProjectsLiveTests extends TestSuite {
     }
 
     test(
+      "of two keeps that each leave a claimed brief within its budget and together past it, the second is refused"
+    ) {
+      CommandRooms.commanding(
+        "projects_brief_budget",
+        _ => Vector(CommandFixtures.plugin(CommandFixtures.managing))
+      ) { (config, _, commands) =>
+        ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+        keep(commands, desk, "c", "Cited.")
+        keep(commands, desk, "process", "How work is run.")
+        keep(commands, desk, "m", "The manager's note.", "cites" -> ujson.Arr("p/c"))
+        ran(
+          commands,
+          ann,
+          desk,
+          ToolName("project_claim"),
+          "key" -> "p/m",
+          "role" -> "manager",
+          "holder" -> "coder-opus/abc"
+        )
+        val pool = Executors.newFixedThreadPool(3)
+        given ExecutionContext = ExecutionContext.fromExecutorService(pool)
+        val (holding, go) = (new CountDownLatch(1), new CountDownLatch(1))
+        try {
+          // Holds the claimed brief's current row, so the first keep stops at its brief, its
+          // project's change made and not yet committed.
+          val brief = Future {
+            LiveDb.transaction(config) { (tx: Tx^) ?=>
+              val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+              Using.resource(
+                conn.prepareStatement(
+                  "SELECT version FROM grit.documents WHERE plugin = 'projects' " +
+                    "AND key = 'p/m#brief' AND superseded_at IS NULL FOR UPDATE"
+                )
+              )(ps => Using.resource(ps.executeQuery())(rs => rs.next()))
+              holding.countDown()
+              go.await(30, TimeUnit.SECONDS)
+            }
+          }
+          holding.await(30, TimeUnit.SECONDS)
+          val first = Future(
+            keep(commands, desk, "m", "The note, grown. " * 300, "cites" -> ujson.Arr("p/c"))
+          )
+          val stopped = scala.util.Try(Await.ready(first, 1.second)).isFailure
+          val second = Future(
+            ran(
+              commands,
+              ann,
+              desk,
+              ToolName("project_keep"),
+              "key" -> "p/process",
+              "kind" -> "note",
+              "title" -> "Title process",
+              "body" -> "How work is run, grown. " * 210
+            )
+          )
+          val waited = scala.util.Try(Await.ready(second, 1.second)).isFailure
+          go.countDown()
+          val (held, kept, refused) = (
+            Await.result(brief, 30.seconds),
+            Await.result(first, 30.seconds),
+            Await.result(second, 30.seconds)
+          )
+          val rendered = ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_brief"),
+            "key" -> "p/m",
+            "role" -> "manager",
+            "chars" -> 9500
+          ).map { case CommandOutcome.Done(text) => text; case other => other.toString }
+          (
+            stopped,
+            waited,
+            held,
+            kept,
+            refused.map {
+              case CommandOutcome.Refused(why) => why.contains("over the 9,500 a brief holds")
+              case done => done
+            },
+            rendered.map(r => (r.contains("The note, grown."), r.contains("run, grown."))),
+            currentBrief(config).map(Right(_))
+          ) ==> (
+            true,
+            true,
+            true,
+            Right(classOf[CommandOutcome.Done]),
+            Right(true),
+            Right((true, false)),
+            Vector(rendered)
+          )
+        } finally pool.shutdownNow()
+      }
+    }
+
+    test(
       "a keep changing a claimed brief while another command keeps it waits for that one, then keeps it again"
     ) {
       CommandRooms.commanding(
@@ -362,19 +474,7 @@ object ProjectsLiveTests extends TestSuite {
             "role" -> "manager",
             "chars" -> 9500
           ).map { case CommandOutcome.Done(text) => text; case refused => refused.toString }
-          val current = LiveDb.transaction(config) { (tx: Tx^) ?=>
-            val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-            Using.resource(
-              conn.prepareStatement(
-                "SELECT body FROM grit.documents WHERE plugin = 'projects' AND key = 'p/m#brief' " +
-                  "AND superseded_at IS NULL"
-              )
-            )(ps =>
-              Using.resource(ps.executeQuery())(rs =>
-                Iterator.continually(rs).takeWhile(_.next()).map(_.getString(1)).toVector
-              )
-            )
-          }
+          val current = currentBrief(config)
           (waited, ended, kept, current.map(Right(_)), rendered.map(_.contains("rewritten"))) ==>
             (true, Right(()), Right(classOf[CommandOutcome.Done]), Vector(rendered), Right(true))
         } finally pool.shutdownNow()
