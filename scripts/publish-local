@@ -1,28 +1,43 @@
 #!/usr/bin/env bash
 # Publishes every published module (build.mill's GritPublished) to the local ivy repository,
-# all at the one version build.mill names, and only a version never published there: a version
-# names one commit, so a later fix is the next patch version, never a republish.
+# all at the one version build.mill names. That version is one of two kinds:
+#
+#   X.Y.Z-SNAPSHOT  a snapshot, while a milestone's work is landing: published again as grit
+#                   changes, each run replacing the snapshot already in the repository whole
+#   X.Y.Z           a release, at a milestone's close: set in its own commit, tagged v<version>,
+#                   and published once; a later fix is the next patch version, never a republish
 #
 #   scripts/publish-local                 # publish, or say every reason it will not
 #   scripts/publish-local --check         # every refusal, and what would be published; publishes nothing
 #   scripts/publish-local --repo DIR      # into DIR in place of ~/.ivy2/local
 #
-# Refuses, naming each reason, when the version is not plain X.Y.Z (a -SNAPSHOT is never
-# published by it); when a tracked file is modified or staged, or an untracked or ignored
-# .scala, .java or resources file sits under a module folder (Mill would compile it into the
-# jars; other untracked files do not count); when HEAD is not tagged v<version>, or is not an
-# ancestor of origin/main as last fetched; when a Mill query fails; and when any module already
-# has that version in the repository. It publishes into a scratch repository beside the
-# repository, on the same filesystem, checks that every module is there, then moves each
-# module's version directory in by rename.
+# Refuses, naming each reason, when the version is of neither kind; when a tracked file is
+# modified or staged, or an untracked or ignored .scala, .java or resources file sits under a
+# module folder (Mill would compile it into the jars; other untracked files do not count); when
+# HEAD is not an ancestor of origin/main as last fetched (either kind names a commit of main);
+# and when a Mill query fails. A release is refused too when HEAD is not tagged v<version>, and
+# when any module already has that version in the repository. A snapshot is refused too when a
+# .publish-local.* scratch directory sits beside the repository (a run was killed mid-move, or
+# another is running).
 #
-# A failure the script can catch leaves nothing behind: a failed move, or an INT or TERM during
-# the move, moves back every version directory already moved into the repository (removing one
-# that cannot be moved back), exits non-zero, and says so on stderr. A kill -9 or a power loss
-# mid-move can leave a partial version: some modules' <version> directories in the repository
-# and not others, and a .publish-local.* scratch directory beside it. --check then refuses,
-# naming the modules that hold the version. To clear it by hand, remove each
-# <repo>/dev.grit/<artifact>/<version> directory it names and any .publish-local.* directory
+# A snapshot's commit is kept in one marker, <repo>/dev.grit/.publish-local-<version>, holding
+# the full hash of the commit it was published from; --check prints it. A release has none: its
+# tag names its commit.
+#
+# It publishes into a scratch repository beside the repository, on the same filesystem, checks
+# that every module is there, then moves each module's version directory in by rename, a
+# snapshot's previous one first moved aside into the scratch repository, and last renames the
+# marker in.
+#
+# A failure the script can catch leaves the repository as it found it: a failed move, or an INT
+# or TERM during the move, moves back every version directory already moved in (removing one
+# that cannot be moved back), moves each previous snapshot module and the previous marker back,
+# exits non-zero, and says so on stderr. A kill -9 or a power loss mid-move can leave a partial
+# version: some modules' <version> directories in the repository and not others, and a
+# .publish-local.* scratch directory beside it, which holds any previous snapshot modules moved
+# aside. --check then refuses, naming the modules that hold the version. To clear it by hand,
+# remove each <repo>/dev.grit/<artifact>/<version> directory it names, the marker
+# <repo>/dev.grit/.publish-local-<version> if there is one, and each .publish-local.* directory
 # beside <repo>; the next run then publishes the version.
 set -euo pipefail
 
@@ -49,29 +64,45 @@ done
 
 errlog=$(mktemp)
 scratch=""
+keep_scratch=false
 moving=false
 
-# Moves back every module's version directory this run moved into the repository. A directory
-# that cannot be moved back is removed; one that cannot be removed is reported, with its path.
+# Puts the repository back as this run found it. A module whose new version directory is out of
+# the scratch repository was moved in, and is moved back (removed if it cannot be; reported if it
+# cannot be removed); a previous snapshot module moved aside is moved back, as is the previous
+# marker. A previous module that cannot be moved back stays in the scratch repository, which is
+# then kept, and is reported with its path.
 undo_moves() {
-  local a in_repo back left=()
+  local a in_repo new old left=() kept=()
   for a in $artifacts; do
     in_repo="$repo/dev.grit/$a/$version"
-    back="$scratch/dev.grit/$a/$version"
-    [ -e "$in_repo" ] || continue
-    if mkdir -p "$scratch/dev.grit/$a" && mv -T "$in_repo" "$back"; then
-      continue
+    new="$scratch/dev.grit/$a/$version"
+    old="$scratch/previous/$a"
+    if [ ! -e "$new" ] && [ -e "$in_repo" ]; then
+      if ! { mkdir -p "$scratch/dev.grit/$a" && mv -T "$in_repo" "$new"; }; then
+        if rm -rf "$in_repo"; then
+          echo "publish-local: could not move $a back to $scratch; removed $in_repo" >&2
+        else
+          left+=("$in_repo")
+        fi
+      fi
     fi
-    if rm -rf "$in_repo"; then
-      echo "publish-local: could not move $a back to $scratch; removed $in_repo" >&2
-    else
-      left+=("$in_repo")
-    fi
+    if [ -e "$old" ] && ! mv -T "$old" "$in_repo"; then kept+=("$old"); fi
   done
+  if [ -e "$scratch/previous.marker" ]; then
+    mv -T "$scratch/previous.marker" "$marker" || kept+=("$scratch/previous.marker")
+  elif [ "$kind" = snapshot ]; then
+    rm -f "$marker" || left+=("$marker")
+  fi
+  if [ ${#kept[@]} -gt 0 ]; then
+    keep_scratch=true
+    echo "publish-local: could not move back the previous $version, kept here: ${kept[*]}" >&2
+  fi
   if [ ${#left[@]} -gt 0 ]; then
     echo "publish-local: could not undo the partial move; still in the repository: ${left[*]}" >&2
-  else
-    echo "publish-local: undid the partial move; no $version module is left in $repo/dev.grit" >&2
+  fi
+  if [ ${#kept[@]} -eq 0 ] && [ ${#left[@]} -eq 0 ]; then
+    echo "publish-local: undid the partial move; $repo/dev.grit holds the $version it held before" >&2
   fi
   return 0
 }
@@ -80,7 +111,7 @@ cleanup() {
   local status=$?
   trap - EXIT INT TERM
   if $moving; then undo_moves; fi
-  if [ -n "$scratch" ]; then rm -rf "$scratch"; fi
+  if [ -n "$scratch" ] && ! $keep_scratch; then rm -rf "$scratch"; fi
   rm -f "$errlog"
   exit "$status"
 }
@@ -111,10 +142,16 @@ mill_query "naming the artifacts" show "grit.$selector.artifactId"
 artifacts=$(echo "$answer" | sed -n 's/^ *"[^"]*": *"\([^"]*\)",\{0,1\}$/\1/p' | sort)
 [ "$(echo "$artifacts" | wc -l)" -eq "$(echo "$modules" | wc -l)" ] ||
   { echo "publish-local: Mill named no artifact for some published module" >&2; exit 1; }
+marker="$repo/dev.grit/.publish-local-$version"
 
 refusals=()
-if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  refusals+=("the version is $version, not plain X.Y.Z: build.mill's publishVersion names a release")
+kind=""
+if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  kind=release
+elif [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]]; then
+  kind=snapshot
+else
+  refusals+=("the version is $version, neither a release X.Y.Z nor a snapshot X.Y.Z-SNAPSHOT")
 fi
 dirty=$(git status --porcelain --untracked-files=no)
 if [ -n "$dirty" ]; then
@@ -132,23 +169,49 @@ if [ -n "$sources" ]; then
   refusals+=("untracked or ignored sources under a module folder would be compiled into the jars: $shown$more")
 fi
 head=$(git rev-parse HEAD)
-tagged=$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)
-if [ -z "$tagged" ]; then
-  refusals+=("HEAD ($(git rev-parse --short HEAD)) is not tagged v$version: tag the commit to publish first")
-elif [ "$tagged" != "$head" ]; then
-  refusals+=("v$version tags $(git rev-parse --short "$tagged"), not HEAD ($(git rev-parse --short HEAD))")
+short=$(git rev-parse --short HEAD)
+if [ "$kind" != snapshot ]; then
+  tagged=$(git rev-parse -q --verify "refs/tags/v$version^{commit}" || true)
+  if [ -z "$tagged" ]; then
+    refusals+=("HEAD ($short) is not tagged v$version: tag the commit to publish first")
+  elif [ "$tagged" != "$head" ]; then
+    refusals+=("v$version tags $(git rev-parse --short "$tagged"), not HEAD ($short)")
+  fi
 fi
 if ! git rev-parse -q --verify origin/main >/dev/null; then
   refusals+=("there is no origin/main to hold HEAD")
 elif ! git merge-base --is-ancestor HEAD origin/main; then
-  refusals+=("HEAD ($(git rev-parse --short HEAD)) is not on origin/main as last fetched")
+  refusals+=("HEAD ($short) is not on origin/main as last fetched")
 fi
 published=()
 for a in $artifacts; do
   if [ -e "$repo/dev.grit/$a/$version" ]; then published+=("$a"); fi
 done
-if [ ${#published[@]} -gt 0 ]; then
+if [ "$kind" = snapshot ]; then
+  stale=$(compgen -G "$(dirname "$repo")/.publish-local.*" | paste -sd' ' - || true)
+  if [ -n "$stale" ]; then
+    refusals+=("$stale beside $repo: a run was killed mid-move or is running; if none is running, clear by hand each $version directory of ${published[*]:-no module} under $repo/dev.grit, $marker, and $stale")
+  fi
+elif [ ${#published[@]} -gt 0 ]; then
   refusals+=("$version is in $repo/dev.grit already, for ${published[*]}: a fix is the next patch version")
+fi
+
+# What the repository holds of this snapshot now: the commit its marker names, or that it has
+# none.
+if $check && [ "$kind" = snapshot ]; then
+  if [ -f "$marker" ]; then
+    from=$(head -n 1 "$marker")
+    named=$(git log -1 --format='%h %s' "$from" 2>/dev/null || echo "$from, a commit this clone lacks")
+    if [ -n "$stale" ]; then
+      echo "publish-local: the $version in $repo/dev.grit may be partial; its marker names $named"
+    else
+      echo "publish-local: the $version in $repo/dev.grit was published from $named"
+    fi
+  elif [ ${#published[@]} -gt 0 ]; then
+    echo "publish-local: the $version in $repo/dev.grit has no marker, so names no commit: ${published[*]}"
+  else
+    echo "publish-local: $repo/dev.grit holds no $version"
+  fi
 fi
 
 if [ ${#refusals[@]} -gt 0 ]; then
@@ -158,7 +221,9 @@ if [ ${#refusals[@]} -gt 0 ]; then
 fi
 
 if $check; then
-  echo "publish-local: would publish $version of $(echo "$artifacts" | wc -l) modules into $repo/dev.grit:"
+  replacing=""
+  if [ ${#published[@]} -gt 0 ]; then replacing=", replacing the $version there"; fi
+  echo "publish-local: would publish $version of $(echo "$artifacts" | wc -l) modules from $short into $repo/dev.grit$replacing:"
   echo "$artifacts" | sed 's/^/  /'
   exit 0
 fi
@@ -180,15 +245,30 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
+if [ -e "$marker" ]; then cp -p "$marker" "$scratch/previous.marker"; fi
+mkdir -p "$scratch/previous"
 moved=()
 moving=true
 for a in $artifacts; do
-  if mkdir -p "$repo/dev.grit/$a" && mv -T "$scratch/dev.grit/$a/$version" "$repo/dev.grit/$a/$version"; then
+  in_repo="$repo/dev.grit/$a/$version"
+  if [ -e "$in_repo" ] && ! mv -T "$in_repo" "$scratch/previous/$a"; then
+    echo "publish-local: moving the previous $a aside failed; undoing the ${#moved[@]} moved" >&2
+    exit 1
+  fi
+  if mkdir -p "$repo/dev.grit/$a" && mv -T "$scratch/dev.grit/$a/$version" "$in_repo"; then
     moved+=("$a")
   else
     echo "publish-local: moving $a failed; undoing the ${#moved[@]} moved" >&2
     exit 1
   fi
 done
+if [ "$kind" = snapshot ]; then
+  echo "$head" >"$scratch/marker"
+  mv -T "$scratch/marker" "$marker"
+fi
 moving=false
-echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from v$version ($(git rev-parse --short HEAD))"
+if [ "$kind" = snapshot ]; then
+  echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from $(git log -1 --format='%h %s' HEAD)"
+else
+  echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from v$version ($short)"
+fi

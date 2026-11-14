@@ -298,9 +298,12 @@ holds them on imports.
 ## Outside grit
 
 `scripts/publish-local` publishes every `GritPublished` module to the local ivy repository,
-together and each version once (its header says what it refuses), as
-`dev.grit::grit-<name>:<version>`, `grit.tui` among them; `grit.app`, `grit.eval` and
-`grit.tui.examples` are never published. A deployment is a module of its own, on Scala 3.9.0 or later (to read grit's
+together, from a commit of `main` (its header says what it refuses), as
+`dev.grit::grit-<name>:<version>`, `grit.tui` among them. While a milestone's work is landing,
+`build.mill`'s version is a snapshot, `X.Y.Z-SNAPSHOT`, which a deployment pins and the script
+publishes again as grit changes, replacing the one there. At the milestone's close the release
+`X.Y.Z` is set in its own commit, tagged `v<X.Y.Z>`, and published once. `grit.app`,
+`grit.eval` and `grit.tui.examples` are never published. A deployment is a module of its own, on Scala 3.9.0 or later (to read grit's
 TASTy), depending on `grit-kit` and the extensions it names. Code that only calls grit
 compiles without capture or separation checking.
 
