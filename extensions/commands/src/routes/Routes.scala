@@ -49,7 +49,9 @@ private[commands] final class Routes private (
     * their session as the caller, in `room` ([[Recording.batchOf]]), answered as
     * [[Recording.recorded]] says; another verb 405. At `/join/<harness>`, a GET answers that
     * harness's join script as text, as its adapter gives it, 404 for a harness `adapters` hold
-    * none for; another verb 405. Any other path 404.
+    * none for; another verb 405. `/command`, `/mcp`, `/wait` and `/join` read no query: a
+    * parameter sent to one is 400, naming it, before it runs or waits on anything. Any other path
+    * 404.
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))
@@ -59,17 +61,21 @@ private[commands] final class Routes private (
         case Left(why) => Callers.refused(why)
         case Right(caller) =>
           request.path match {
-            case Vector(Routes.Command, raw) => commanded(request, caller, raw)
-            case Vector(Routes.Mcp) => mcp(request, caller)
-            case Vector(Routes.Wait) => waited(request, caller)
+            case Vector(Routes.Command, raw) => unqueried(request)(commanded(request, caller, raw))
+            case Vector(Routes.Mcp) => unqueried(request)(mcp(request, caller))
+            case Vector(Routes.Wait) => unqueried(request)(waited(request, caller))
             case Vector(Briefing.Holder) => holder(request, caller)
             case Vector(Briefing.Brief) => brief(request, caller)
             case Vector(Recording.Events) => events(request, caller)
-            case Vector(Routes.Join, harness) => joined(request, harness)
+            case Vector(Routes.Join, harness) => unqueried(request)(joined(request, harness))
             case _ =>
               Response.text(Status.NotFound, s"no route /${request.path.mkString("/")}")
           }
       }
+
+  /** `answer`, unless `request` sends a query parameter, which a route reading none refuses. */
+  private def unqueried(request: Request)(answer: => Response): Response =
+    Queried.of(request, Vector.empty).fold(Response.text(Status.BadRequest, _), _ => answer)
 
   private def commanded(request: Request, caller: Caller, raw: String): Response =
     if (request.verb != Verb.Post)

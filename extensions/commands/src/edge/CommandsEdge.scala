@@ -48,7 +48,8 @@ import grit.mcp.wire.ServerInfo
   *   - `GET /join/<harness>` answers the join script of the one of `adapters` for that harness,
   *     as text, or 404.
   * A request with no caller ([[Callers.from]]) is 403; another verb than its route's 405, so no
-  * GET runs, waits on or writes anything; any other path 404. It attests `realm` as `attester`,
+  * GET runs, waits on or writes anything; a query parameter its route does not read (on
+  * `/command`, `/mcp`, `/wait` and `/join`, any) 400, naming it; any other path 404. It attests `realm` as `attester`,
   * saying each of `callers`' accounts is a full member. It holds no conversation, so it asks
   * nothing, and delivers nothing.
   */

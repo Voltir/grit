@@ -23,6 +23,7 @@ private[commands] object Queried {
   def of(request: Request, reads: Vector[String]): Either[String, Queried] =
     request.queryNames
       .collectFirst {
+        case n if reads.isEmpty => s"no parameter $n is read here; this route reads none"
         case n if !reads.contains(n) =>
           s"no parameter $n is read here; these are: ${reads.mkString(", ")}"
         case n if request.queryValues(n).size > 1 => s"$n is sent twice"
