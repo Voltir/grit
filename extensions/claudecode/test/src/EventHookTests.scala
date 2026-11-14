@@ -343,10 +343,10 @@ object EventHookTests extends TestSuite {
       }
     }
     test(
-      "a rewrite of commits whose lines pass a megabyte records every one, in posts the edge takes"
+      "a rewrite of commits whose lines pass one post's bound records every one, in several posts"
     ) {
       HookFixtures { f =>
-        val count = 300
+        val count = 120
         // fast-import makes the commits in one process; each subject is 100 characters of 3 bytes.
         val stream = (1 to count).map { i =>
           val subject = f"$i%03d " + "語" * 120
@@ -362,7 +362,7 @@ object EventHookTests extends TestSuite {
         )
         val old = "0123456789abcdef0123456789abcdef01234567"
         val rewritten = made.out.map(sha => s"$old $sha").mkString("\n") + "\n"
-        // A deep starting directory, so each line holds some 3.5 KB and 300 pass 1 MiB.
+        // A deep starting directory, so each line holds some 3.5 KB and 120 pass a post's 256 KiB.
         val deep = f.proj.toString + ("/" + "d" * 200) * 15
         val run = f.run(
           "rewrite",
