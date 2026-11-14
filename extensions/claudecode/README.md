@@ -181,8 +181,8 @@ times 1000 plus the process's id modulo 1000, and `at` that instant; a rewrite's
 path is relative to its file's checkout, which is named under `worktree` when it is not the line's
 and holds at most 100 bytes, else to `cwd` (outside it, the file's name alone), and keeps its last
 120 bytes; a program is a command's first word after any leading `cd <dir> &&` or `;` and any
-`NAME=value`, its last path segment, 40 bytes; `named` is a scout query's first symbol, suite,
-target or pattern, 120 bytes; a subject 100 characters; a summary 2,000 characters as grit counts
+`NAME=value`, its last path segment, 40 bytes; `named` is a scout query's first symbol, suite
+or target, 120 bytes; a subject 100 characters; a summary 2,000 characters as grit counts
 them (UTF-16). So a payload of any size posts a line of a few hundred bytes, a closing's under
 13 KB, and a rewrite's lines go in posts of at most 256 KiB, well under the edge's 1 MiB
 bound on a body.

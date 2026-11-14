@@ -420,7 +420,7 @@ object EventHookTests extends TestSuite {
       }
     }
     test(
-      "with the edge's port closed, an event and a commit end at once, each saying so in one line"
+      "with the edge's port closed, an event, a commit and a rewrite end at once, each saying in one line what it dropped"
     ) {
       HookFixtures { f =>
         val edge = s"http://127.0.0.1:${HookFixtures.closedPort}"
@@ -430,13 +430,26 @@ object EventHookTests extends TestSuite {
           f.proj,
           f.machine.home,
           f.machine.bin,
-          Seq("-c", s"$Git commit -q --allow-empty -m down"),
+          Seq("-c", s"$Git commit -q --allow-empty -m down && git rev-parse HEAD HEAD~1"),
           env = Map("CLAUDE_CODE_SESSION_ID" -> First, "GRIT_EDGE" -> edge)
         )
+        val rewritten = made.out.map(sha => s"$sha $sha").mkString("\n")
+        val rewrite = f.run(
+          "rewrite",
+          rewritten,
+          Map("CLAUDE_CODE_SESSION_ID" -> First, "GRIT_EDGE" -> edge),
+          args = Seq("rebase")
+        )
+        val down = s"dropped: the edge at $edge did not answer\n"
         (
           (run.exit, run.out, run.err.linesIterator.size),
-          (made.exit, made.err.linesIterator.size)
-        ) ==> ((0, Vector.empty, 1), (0, 1))
+          (made.exit, made.err),
+          (rewrite.exit, rewrite.err)
+        ) ==> (
+          (0, Vector.empty, 1),
+          (0, s"grit claude-code hook: the commit made was $down"),
+          (0, s"grit claude-code hook: the 2 commits made were $down")
+        )
         // At once: well short of the 3 s bound a request that waited would reach.
         assert(ms < 2500)
       }

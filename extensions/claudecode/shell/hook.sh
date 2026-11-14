@@ -67,7 +67,8 @@ self=$GRIT_HOOK_SELF
 unset GRIT_HOOK_STARTED GRIT_HOOK_SELF
 export TZ=UTC
 deadline=$((10#$started + bound * 1000000))
-# A session's and an agent's id, and an agent's type, as the hook sends them.
+# The session and agent ids the hook sends; one that does not match is never sent. An agent's type
+# is sent as the payload has it, as a query parameter or a JSON string.
 id='^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$'
 # A loopback edge is asked directly: a proxy the environment names would take its posts off the
 # machine.
@@ -276,16 +277,16 @@ toplevel() {
 }
 
 # Posts the event lines $1 to the edge, each line's fate said on stderr when it was not kept, $2
-# naming them. Nothing is kept to resend.
+# naming them and $3 its verb, `was` or `were`. Nothing is kept to resend.
 send() {
   local out code answer secs why
   if ! left; then
-    say "no time was left to post $2; it was dropped"
+    say "$2 $3 dropped: no time was left for its post"
     return 0
   fi
   out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
     --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
-    say "the edge at $edge did not answer; $2 was dropped"
+    say "$2 $3 dropped: the edge at $edge did not answer"
     return 0
   }
   code=${out##*$'\n'} answer=${out%$'\n'*}
@@ -294,7 +295,7 @@ send() {
       why=$(jq -r '.refused[]? | "line \(.line) refused: \(.why)"' <<< "$answer" 2> /dev/null) || why=''
       [ -z "$why" ] || while IFS= read -r out; do say "$2: $out"; done <<< "$why"
       ;;
-    413) say "the edge at $edge took $2 as too long (413); it was dropped" ;;
+    413) say "$2 $3 dropped: the edge at $edge took its post as too long (413)" ;;
     *) say "the edge at $edge answered $code to $2, keeping nothing: ${answer%%$'\n'*}" ;;
   esac
 }
@@ -356,7 +357,7 @@ lined() {
            | {event: "read", bytes: ($out | answer | utf8bytelength),
               shape: ((if $t == "find" or $t == "area" then {}
                        else {named: ($in
-                         | [(.symbols | if type == "array" then .[0] else null end), .suite, .target, .pattern]
+                         | [(.symbols | if type == "array" then .[0] else null end), .suite, .target]
                          | map(strings) | (.[0] // "") | head(120))}
                        end) + {tool: ($t | head(40)), ok: $ok})}
          else empty
@@ -395,7 +396,7 @@ event() {
     say "could not read $event as an event; it was dropped"
     return 0
   }
-  [ -z "$line" ] || send "$line" "$event"
+  [ -z "$line" ] || send "$line" "$event" was
 }
 
 # Whether a rebase is in progress in this worktree.
@@ -411,15 +412,16 @@ rebasing() {
 # the edge's 1 MiB bound on a body. One line is far smaller: its strings are cut but `dir` and
 # `worktree`, an environment variable (128 KiB at most, as Linux passes one) and a path.
 commits() {
-  local top subjects lines line post='' i
+  local top subjects lines line post='' i k=0 what were
   local -a shas=() subject=() args=()
   # git returns from a commit only once its hooks end, so their requests end 1 s after the start.
   deadline=$((10#$started + 1000000))
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
   for i in "$@"; do shas+=("${i%% *}"); done
+  counted "$#" "$#"
   subjects=$(git log --no-show-signature --no-walk=unsorted --format=%s "${shas[@]}" --) || {
-    say "git could not read the commits made; they were not posted"
+    say "$what $were not posted: git log failed"
     return 0
   }
   mapfile -t subject <<< "$subjects"
@@ -440,19 +442,34 @@ commits() {
         | if .posts == [] or .size + $k > 262144 then .posts += [[$l]] | .size = $k
           else .posts[(.posts | length) - 1] += [$l] | .size += $k end)
     | .posts[] | (.[], "")' --args "${args[@]}") || {
-    say "could not write the commits made as event lines; they were not posted"
+    say "$what $were not posted: jq could not write their event lines"
     return 0
   }
   while IFS= read -r line; do
     if [ -n "$line" ]; then
       post+=$line$'\n'
+      k=$((k + 1))
     elif [ -n "$post" ]; then
-      send "$post" "the commits made"
-      post=''
+      counted "$k" "$#"
+      send "$post" "$what" "$were"
+      post='' k=0
     fi
   done <<< "$lines"
   # The command substitution dropped the last post's empty line.
-  [ -z "$post" ] || send "$post" "the commits made"
+  [ -z "$post" ] || { counted "$k" "$#" && send "$post" "$what" "$were"; }
+}
+
+# Sets `what` to the $1 of the $2 commits made, as a line on stderr names them, and `were` to its
+# verb.
+counted() {
+  if [ "$1" != "$2" ]; then
+    what="$1 of the $2 commits made"
+  elif [ "$1" = 1 ]; then
+    what='the commit made'
+  else
+    what="the $1 commits made"
+  fi
+  if [ "$1" = 1 ]; then were=was; else were=were; fi
 }
 
 # git's post-commit: the commit just made, for the Claude Code session whose Bash tool made it.
