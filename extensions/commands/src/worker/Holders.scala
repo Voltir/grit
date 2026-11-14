@@ -26,8 +26,11 @@ object Holders {
     * works as, `dir` then being the starting session's directory, not the agent's own:
     * `<worker>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last
     * segment and `type` the agent's, each slugged (lower case, every run of other characters one
-    * `-`) and cut to [[Slugged]]; a type slugging or cutting changed is followed by `-` and its
-    * own hash, so two types never share a holder; either, slugged to nothing, is its hash alone.
+    * `-`) and cut to [[Slugged]]. A type is kept as it is sent only when it is not empty, slugging
+    * and cutting leave it unchanged, and it is not 8 hex digits alone nor ends in `-` and 8 hex
+    * digits; any other is slugged, cut and followed by `-` and its own hash, or is that hash alone
+    * when it slugs to nothing, as a segment is. So two types never share a holder, short of a
+    * hash collision.
     * A directory's or a type's hash is the first 8 hex digits of its SHA-256, a session's the
     * first 12 of `<harness>:<id>`'s. Equal inputs give equal holders; one directory on two
     * workers, two.
@@ -37,7 +40,7 @@ object Holders {
     val head =
       s"${WorkerName.value(worker)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
     val text = agent.fold(head) { a =>
-      val kind = if (slug(a.kind).take(Slugged) == a.kind) a.kind else named(a.kind, a.kind)
+      val kind = if (literal(a.kind)) a.kind else named(a.kind, a.kind)
       s"$head/$kind/${hash(a.session.written, 12)}"
     }
     // At most 32 + 1 + 49 + 1 + 49 + 1 + 12 = 145 characters of one line, which ClaimHolder takes.
@@ -59,6 +62,13 @@ object Holders {
       .replaceAll("[^a-z0-9]+", "-")
       .stripPrefix("-")
       .stripSuffix("-")
+
+  /** Whether a type is kept as sent: [[named]] never gives it, so no hashed type equals it. */
+  private def literal(kind: String): Boolean =
+    kind.nonEmpty && slug(kind).take(Slugged) == kind && !Hashed.matches(kind)
+
+  /** What [[named]] gives: 8 hex digits, after a slug and `-` or alone. */
+  private val Hashed = "(?:.*-)?[0-9a-f]{8}".r
 
   private def hash(text: String, digits: Int): String = Sha256.text(text).hex.take(digits)
 }

@@ -24,6 +24,15 @@ object HolderRouteTests extends TestSuite {
       )
     }
 
+    test("an agent's empty type, sent with or without '=', is answered as its hash alone") {
+      Vector(
+        "/holder?harness=made-up&dir=/work/grit&session=s-1&type=",
+        "/holder?harness=made-up&dir=/work/grit&session=s-1&type"
+      ).map(asked(_)) ==> Vector.fill(2)(
+        (Status.Ok, "desktop/grit-dcfe7476/e3b0c442/5704e74050f4")
+      )
+    }
+
     test("a query it does not read is 400 naming why") {
       Vector(
         "/holder?harness=made-up&dir=/work/grit&slot=x",
