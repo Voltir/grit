@@ -406,10 +406,12 @@ rebasing() {
 }
 
 # Posts, for the session `session` in this checkout, the commits $@ in order, each
-# `<sha>[ <replaced sha>…]`, with ordinals one apart, a thousand lines to a post.
+# `<sha>[ <replaced sha>…]`, with ordinals one apart, in posts of at most 256 KiB, a quarter of
+# the edge's 1 MiB bound on a body. One line is far smaller: its strings are cut but `dir` and
+# `worktree`, an environment variable (128 KiB at most, as Linux passes one) and a path.
 commits() {
-  local top subjects lines i
-  local -a shas=() subject=() args=() all=()
+  local top subjects lines line post='' i
+  local -a shas=() subject=() args=()
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
   for i in "$@"; do shas+=("${i%% *}"); done
@@ -422,21 +424,32 @@ commits() {
   for ((i = 0; i < $#; i++)); do
     args+=("${shas[i]}" "${@:i+1:1}" "${subject[i]-}" "$((n + i))")
   done
-  lines=$(jq -nc --arg session "$session" --arg dir "$dir" --arg w "$top" --arg at "$at" '
+  # Each post's lines, then an empty line: a line is a JSON object, never empty.
+  lines=$(jq -nr --arg session "$session" --arg dir "$dir" --arg w "$top" --arg at "$at" '
     def head($k): if type == "string" then gsub("[[:cntrl:]]"; "?") | .[:$k] else "" end;
-    $ARGS.positional | range(0; length; 4) as $i | .[$i:$i + 4] as [$sha, $was, $subject, $n]
-    | ($was | split(" ") | .[1:] | map(select(length > 0) | .[:12]) | .[:4]) as $replaces
-    | {session: $session, dir: $dir, worktree: $w, n: $n, at: $at, event: "commit",
-       shape: ({sha: $sha, subject: ($subject | head(100))}
-         + (if $replaces == [] then {} else {replaces: $replaces} end))}' --args "${args[@]}") || {
+    reduce ($ARGS.positional | range(0; length; 4) as $i | .[$i:$i + 4] as [$sha, $was, $subject, $n]
+      | ($was | split(" ") | .[1:] | map(select(length > 0) | .[:12]) | .[:4]) as $replaces
+      | {session: $session, dir: $dir, worktree: $w, n: $n, at: $at, event: "commit",
+         shape: ({sha: $sha, subject: ($subject | head(100))}
+           + (if $replaces == [] then {} else {replaces: $replaces} end))}
+      | tojson) as $l ({posts: [], size: 0};
+        ($l | utf8bytelength + 1) as $k
+        | if .posts == [] or .size + $k > 262144 then .posts += [[$l]] | .size = $k
+          else .posts[(.posts | length) - 1] += [$l] | .size += $k end)
+    | .posts[] | (.[], "")' --args "${args[@]}") || {
     say "could not write the commits made as event lines; they were not posted"
     return 0
   }
-  mapfile -t all <<< "$lines"
-  for ((i = 0; i < ${#all[@]}; i += 1000)); do
-    printf -v lines '%s\n' "${all[@]:i:1000}"
-    send "$lines" "the commits made"
-  done
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      post+=$line$'\n'
+    elif [ -n "$post" ]; then
+      send "$post" "the commits made"
+      post=''
+    fi
+  done <<< "$lines"
+  # The command substitution dropped the last post's empty line.
+  [ -z "$post" ] || send "$post" "the commits made"
 }
 
 # git's post-commit: the commit just made, for the Claude Code session whose Bash tool made it.

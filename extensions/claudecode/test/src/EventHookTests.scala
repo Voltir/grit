@@ -294,6 +294,45 @@ object EventHookTests extends TestSuite {
         )
       }
     }
+    test(
+      "a rewrite of commits whose lines pass a megabyte records every one, in posts the edge takes"
+    ) {
+      HookFixtures { f =>
+        val count = 300
+        // fast-import makes the commits in one process; each subject is 100 characters of 3 bytes.
+        val stream = (1 to count).map { i =>
+          val subject = f"$i%03d " + "語" * 120
+          val bytes = subject.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+          s"commit refs/heads/many\ncommitter t <t@example.invalid> $i +0000\ndata $bytes\n$subject\n"
+        }.mkString
+        val made = Bash.run(
+          f.proj,
+          f.machine.home,
+          f.machine.bin,
+          Seq("-c", "git fast-import --quiet && git rev-list --reverse refs/heads/many"),
+          stream
+        )
+        val old = "0123456789abcdef0123456789abcdef01234567"
+        val rewritten = made.out.map(sha => s"$old $sha").mkString("\n") + "\n"
+        // A deep starting directory, so each line holds some 3.5 KB and 300 pass 1 MiB.
+        val deep = f.proj.toString + ("/" + "d" * 200) * 15
+        val run = f.run(
+          "rewrite",
+          rewritten,
+          Map("CLAUDE_CODE_SESSION_ID" -> First, "CLAUDE_PROJECT_DIR" -> deep),
+          args = Seq("rebase")
+        )
+        val recorded = f.recorded
+        (
+          (made.exit, made.out.size, run.exit, run.err),
+          recorded.size > 1,
+          recorded
+            .flatMap(_.events)
+            .map(e => ujson.read(Event.Shape.value(e.shape))("subject").str.take(3))
+        ) ==> ((0, count, 0, ""), true, (1 to count).map(i => f"$i%03d").toVector)
+      }
+    }
+
     test("an amend records the commit as made, and again as replacing the one it rewrote") {
       HookFixtures { f =>
         val made = bashTool(

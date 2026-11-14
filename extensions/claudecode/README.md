@@ -171,7 +171,7 @@ session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has 
 | `event` | PostCompact | `compact_summary`, `trigger` (docs, recorded) | `closing`, `text` the summary's first 2,000 characters, `{trigger}` | nothing |
 | `event` | SessionEnd | `reason` | `ended` `{reason}` | nothing |
 | `commit` | git's post-commit | `CLAUDE_CODE_SESSION_ID` | `commit` `{sha, subject}` | nothing |
-| `rewrite amend\|rebase` | git's post-rewrite | its stdin, a line `<old> <new>` a commit (docs: githooks) | one post, a line per commit it left, in order, `{sha, subject, replaces}` | nothing |
+| `rewrite amend\|rebase` | git's post-rewrite | its stdin, a line `<old> <new>` a commit (docs: githooks) | a line per commit it left, in order, in posts of at most 256 KiB, `{sha, subject, replaces}` | nothing |
 
 **An event line** is `session`, `agent` and `type` for an agent's, `dir`, `worktree` (the top of
 the checkout `cwd` is in, else `cwd`), `n`, `at`, `event`, and a read's `bytes`, a closing's
@@ -184,7 +184,8 @@ and holds at most 100 bytes, else to `cwd` (outside it, the file's name alone), 
 `NAME=value`, its last path segment, 40 bytes; `named` is a scout query's first symbol, suite,
 target or pattern, 120 bytes; a subject 100 characters; a summary 2,000 characters as grit counts
 them (UTF-16). So a payload of any size posts a line of a few hundred bytes, a closing's under
-13 KB, and a rewrite's lines go a thousand to a post.
+13 KB, and a rewrite's lines go in posts of at most 256 KiB, well under the edge's 1 MiB
+bound on a body.
 
 An agent whose `agent_type` is empty posts and asks nothing: it is a compaction's, which no
 SubagentStart announced (recorded). A commit's `dir` is `CLAUDE_PROJECT_DIR`, else the commit's
