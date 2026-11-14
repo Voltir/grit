@@ -24,18 +24,21 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       claimedBy: Option[(EdgeId, Int)]
   )
 
-  // Replaced whole by the fake's own methods, which the test calls on its one thread.
-  @caps.unsafe.untrackedCaptures
+  // Every var is replaced whole, by the fake's methods, inside `synchronized`: a served desk's
+  // server calls them from its own thread and answers from a virtual thread per request, all
+  // at once with the test's. The public ones are volatile, so a test reading one between calls
+  // sees the last write.
+  @volatile @caps.unsafe.untrackedCaptures
   var rows = Vector.empty[Row]
 
   /** Each live edge's current session. */
-  @caps.unsafe.untrackedCaptures
+  @volatile @caps.unsafe.untrackedCaptures
   var live = Map.empty[EdgeId, Int]
 
-  @caps.unsafe.untrackedCaptures
+  @volatile @caps.unsafe.untrackedCaptures
   var adverts = Map.empty[(EdgeId, Place), Advert]
 
-  @caps.unsafe.untrackedCaptures
+  @volatile @caps.unsafe.untrackedCaptures
   var answers = Vector.empty[(CallSlot, Outcome)]
 
   @caps.unsafe.untrackedCaptures
@@ -45,23 +48,25 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   @caps.unsafe.untrackedCaptures
   private var registered = Map.empty[EdgeId, Int]
 
-  // Each conversation's origin, as `originates` set it: written and read on the test's thread.
+  // Each conversation's origin, as `originates` set it.
   @caps.unsafe.untrackedCaptures
   private var origins = Map.empty[grit.core.id.ConversationId, grit.core.store.Origin]
 
   /** `conversation`'s origin is `origin`, as the conversation store holds one. */
   def originates(conversation: grit.core.id.ConversationId, origin: grit.core.store.Origin): Unit =
-    origins = origins.updated(conversation, origin)
+    synchronized { origins = origins.updated(conversation, origin) }
 
-  private def row(slot: CallSlot): Either[StoreError, Row] =
+  private def row(slot: CallSlot): Either[StoreError, Row] = synchronized {
     rows.find(_.request.slot == slot).toRight(StoreError.Invalid(s"no tool request ${slot.key}"))
+  }
 
-  private def update(slot: CallSlot)(f: Row => Row): Unit =
+  private def update(slot: CallSlot)(f: Row => Row): Unit = synchronized {
     rows = rows.map(r => if (r.request.slot == slot) f(r) else r)
+  }
 
   def dispatch(requests: Vector[ToolRequest], at: Classification)(using
       Tx^
-  ): Either[StoreError, Unit] = {
+  ): Either[StoreError, Unit] = synchronized {
     requests.foreach { q =>
       if (!rows.exists(_.request.slot == q.slot)) {
         val state = ToolRequests.refusal(q, at).fold(InMemoryEdges.Open)(RequestState.Answered(_))
@@ -71,7 +76,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
     Right(())
   }
 
-  def settle(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] =
+  def settle(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] = synchronized {
     row(slot).map { r =>
       (r.state, r.claimedBy) match {
         case (InMemoryEdges.Open, None) =>
@@ -81,8 +86,9 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
         case (s: RequestState, _) => s
       }
     }
+  }
 
-  def abandon(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] =
+  def abandon(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] = synchronized {
     row(slot).map { r =>
       r.state match {
         case a: RequestState.Answered => a
@@ -91,6 +97,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
           RequestState.Expired
       }
     }
+  }
 
   def answered(slot: CallSlot)(using Tx^): Either[StoreError, Option[Outcome]] =
     row(slot).map(_.state match {
@@ -98,7 +105,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       case _ => None
     })
 
-  def serving(place: Place)(using Tx^): Either[StoreError, Option[Advert]] =
+  def serving(place: Place)(using Tx^): Either[StoreError, Option[Advert]] = synchronized {
     Right(
       adverts
         .collect { case ((edge, at), advert) if at == place && live.contains(edge) => advert }
@@ -106,22 +113,24 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
         .sortBy(a => EdgeId.value(a.edge))
         .headOption
     )
+  }
 
   /** Deletes the requests of `conversation`'s turns `first` to `last`, as a purge does. */
   def forget(
       conversation: grit.core.id.ConversationId,
       first: grit.core.id.TurnSeq,
       last: grit.core.id.TurnSeq
-  ): Unit =
+  ): Unit = synchronized {
     rows = rows.filterNot { r =>
       val t = r.request.slot.turn
       t.conversationId == conversation &&
       grit.core.id.TurnSeq.value(t.turnSeq) >= grit.core.id.TurnSeq.value(first) &&
       grit.core.id.TurnSeq.value(t.turnSeq) <= grit.core.id.TurnSeq.value(last)
     }
+  }
 
   /** A live edge for `principal` hosting `places`, and its desk. */
-  def desk(places: Set[Place], principal: PrincipalId = PrincipalId.Local): Desk^ = {
+  def desk(places: Set[Place], principal: PrincipalId = PrincipalId.Local): Desk^ = synchronized {
     sessions += 1
     val edge = EdgeId(f"edge-$sessions%04d")
     live = live.updated(edge, sessions)
@@ -135,21 +144,24 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   /** A live edge for `principal` hosting `places`, without a desk: [[claimAs]], [[answerAs]]
     * and [[advertiseAs]] act as its desk would.
     */
-  def register(places: Set[Place], principal: PrincipalId = PrincipalId.Local): Registration = {
-    sessions += 1
-    val edge = EdgeId(f"edge-$sessions%04d")
-    live = live.updated(edge, sessions)
-    registered = registered.updated(edge, sessions)
-    Registration(edge, principal, places)
-  }
+  def register(places: Set[Place], principal: PrincipalId = PrincipalId.Local): Registration =
+    synchronized {
+      sessions += 1
+      val edge = EdgeId(f"edge-$sessions%04d")
+      live = live.updated(edge, sessions)
+      registered = registered.updated(edge, sessions)
+      Registration(edge, principal, places)
+    }
 
   /** `q` claimed for `reg`'s session, as its desk would; whether the claim won. */
-  def claimAs(reg: Registration, q: ToolRequest): Boolean =
+  def claimAs(reg: Registration, q: ToolRequest): Boolean = synchronized {
     registered.get(reg.edge).exists(session => claim(reg, session, q))
+  }
 
   /** The request at `slot` answered by `reg`'s session, as its desk would. */
-  def answerAs(reg: Registration, slot: CallSlot, outcome: Outcome): Boolean =
+  def answerAs(reg: Registration, slot: CallSlot, outcome: Outcome): Boolean = synchronized {
     registered.get(reg.edge).exists(session => answer(reg, session, slot, outcome))
+  }
 
   /** What `reg`'s edge offers in `place`, as its desk would advertise it. */
   def advertiseAs(
@@ -161,37 +173,41 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
     advertise(reg, place, tools, fragments)
 
   /** Ends `edge` as a crash would: it is no longer live. */
-  def kill(edge: EdgeId): Unit = live = live - edge
+  def kill(edge: EdgeId): Unit = synchronized { live = live - edge }
 
-  private[edge] def open(reg: Registration): Vector[ToolRequest] =
+  private[edge] def open(reg: Registration): Vector[ToolRequest] = synchronized {
     rows.collect { case Row(q, InMemoryEdges.Open, None) if reg.places.contains(q.workspace) => q }
+  }
 
   private[edge] def claim(reg: Registration, session: Int, q: ToolRequest): Boolean =
-    rows.find(_.request.slot == q.slot) match {
-      case Some(Row(_, InMemoryEdges.Open, None)) =>
-        update(q.slot)(_.copy(claimedBy = Some((reg.edge, session))))
-        true
-      case _ => false
+    synchronized {
+      rows.find(_.request.slot == q.slot) match {
+        case Some(Row(_, InMemoryEdges.Open, None)) =>
+          update(q.slot)(_.copy(claimedBy = Some((reg.edge, session))))
+          true
+        case _ => false
+      }
     }
 
   private[edge] def origin(
       reg: Registration,
       session: Int,
       q: ToolRequest
-  ): Option[grit.core.store.Origin] =
+  ): Option[grit.core.store.Origin] = synchronized {
     rows
       .find(r =>
         r.request.slot == q.slot && r.state == InMemoryEdges.Open &&
           r.claimedBy.contains((reg.edge, session))
       )
       .flatMap(r => origins.get(r.request.conversation))
+  }
 
   private[edge] def answer(
       reg: Registration,
       session: Int,
       slot: CallSlot,
       outcome: Outcome
-  ): Boolean =
+  ): Boolean = synchronized {
     rows.find(_.request.slot == slot) match {
       case Some(Row(_, InMemoryEdges.Open, Some(by))) if by == (reg.edge, session) =>
         update(slot)(_.copy(state = RequestState.Answered(outcome)))
@@ -199,8 +215,9 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
         true
       case _ => false
     }
+  }
 
-  private[edge] def orphans(reg: Registration, session: Int): Vector[ToolRequest] = {
+  private[edge] def orphans(reg: Registration, session: Int): Vector[ToolRequest] = synchronized {
     val found = rows.collect {
       case Row(q, InMemoryEdges.Open, Some((edge, s)))
           if reg.places.contains(q.workspace) && !live.get(edge).contains(s) =>
@@ -224,8 +241,9 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       place: Place,
       tools: ToolSet,
       fragments: Vector[Fragment]
-  ): Unit =
+  ): Unit = synchronized {
     adverts = adverts.updated((reg.edge, place), Advert(reg.edge, tools.id, fragments.map(_.id)))
+  }
 }
 
 object InMemoryEdges {

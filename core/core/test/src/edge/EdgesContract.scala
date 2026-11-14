@@ -387,5 +387,26 @@ abstract class EdgesContract extends TestSuite {
       dispatched(r)
       d.await(10.seconds) ==> true
     }
+
+    // A server answers each request on a thread of its own, so a desk is answered from many
+    // threads at once: every answer is kept, none overwritten by another's.
+    test("answers a desk gives from many threads at once are each kept") {
+      val here = place("together")
+      val d = desk(Set(here))
+      val rs = (0 until 64).map(i => request("together", i, here))
+      dispatched(rs*)
+      rs.map(d.claim) ==> rs.map(_ => Right(true))
+      val go = new java.util.concurrent.CountDownLatch(1)
+      val threads = rs.zipWithIndex.map { (r, i) =>
+        Thread.ofPlatform().start { () =>
+          go.await()
+          val _ = d.answer(r.slot, Outcome.Done(s"$i"))
+        }
+      }
+      go.countDown()
+      threads.foreach(_.join())
+      rs.map(r => transaction(requests.answered(r.slot))) ==>
+        rs.indices.map(i => Right(Some(Outcome.Done(s"$i"))))
+    }
   }
 }
