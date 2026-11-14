@@ -6,7 +6,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Try
 
-import grit.commands.worker.{Holders, WorkerName, Worktrees}
+import grit.commands.machine.{Holders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.{Directory, Place}
@@ -22,7 +22,7 @@ private[commands] object Lines {
   val Longest: Int = 16384
 
   /** 1 minute: how far past this edge's clock a line's `at` may be. A session's last event keeps
-    * its holder's claims from lapsing, so a worker's clock running ahead would otherwise extend
+    * its holder's claims from lapsing, so a machine's clock running ahead would otherwise extend
     * its own claims.
     */
   val Skew: FiniteDuration = 1.minute
@@ -59,13 +59,13 @@ private[commands] object Lines {
     */
   final case class Batched(batch: Option[EdgeSessions.Batch], refused: Vector[(Int, String)])
 
-  /** `line` as `harness` sent it from `worker`, read at `now`, or why not. A line holds:
+  /** `line` as `harness` sent it from `machine`, read at `now`, or why not. A line holds:
     *   - `session`, the harness's own id for the session ([[Holders.session]]); for an agent's line,
     *     `agent`, the agent's own id, and `type`, its type, together: the line is then on the
     *     session `session/agent` ([[Holders.agentSession]]), a child of `session`;
     *   - `dir`, the session's directory (the starting session's for an agent), whose holder it
     *     works as ([[Holders.of]]); `worktree`, where it worked, by default `dir`; each absolute,
-    *     each placed on `worker` ([[Worktrees.at]]);
+    *     each placed on `machine` ([[Worktrees.at]]);
     *   - `n`, its ordinal, a string of ASCII digits above 0, unique within the session, so a line sent
     *     again is known; `at`, an ISO-8601 instant no later than [[Skew]] past `now`;
     *   - `event`, its kind by its grit name ([[Event.Kind.named]]): `started`, `read` (with
@@ -75,11 +75,16 @@ private[commands] object Lines {
     *     [[Event.Shape.Longest]] bytes: a commit's names its sha under [[Event.Shape.Sha]] and keeps
     *     every other key, its worktree written under [[Event.Shape.Worktree]] and its subject cut
     *     to fit ([[Event.Shape.committed]]); any other's [[Event.Shape.Worktree]], an absolute
-    *     path, is written as its place on `worker`.
+    *     path, is written as its place on `machine`.
     * Refused: a line over [[Longest]] bytes, no JSON object, a key not in [[Keys]], or any value
     * above that is missing or out of its bound; the reason names the key.
     */
-  def read(line: String, harness: Harness, worker: WorkerName, now: Instant): Either[String, Line] =
+  def read(
+      line: String,
+      harness: Harness,
+      machine: MachineName,
+      now: Instant
+  ): Either[String, Line] =
     for {
       _ <- Either.cond(
         line.getBytes(StandardCharsets.UTF_8).length <= Longest,
@@ -130,18 +135,18 @@ private[commands] object Lines {
         case Some(s: ujson.Obj) => Right(s)
         case Some(_) => Left("shape: a JSON object")
       }
-      place = Worktrees.at(worker, worktree)
-      shape <- shaped(kind, sent, place, worker).left.map(w => s"shape: $w")
+      place = Worktrees.at(machine, worktree)
+      shape <- shaped(kind, sent, place, machine).left.map(w => s"shape: $w")
       event <- Event.of(n, at, kind, shape).left.map(w => s"n: $w")
     } yield Line(
       agent.fold(session)(_._1),
       agent.map(_ => session),
-      Holders.of(worker, dir, agent.map(_._2)),
+      Holders.of(machine, dir, agent.map(_._2)),
       place,
       event
     )
 
-  /** `body`'s lines, one a line and blank ones skipped, as `harness` sent them from `worker`, read
+  /** `body`'s lines, one a line and blank ones skipped, as `harness` sent them from `machine`, read
     * at `now` ([[read]]): one batch of every line read, on their session, at the first's place and
     * as its holder; or why not, the whole post refused: `harness` is grit's own, `body` holds no
     * line, or two lines read are on two sessions.
@@ -149,13 +154,13 @@ private[commands] object Lines {
   def batch(
       body: String,
       harness: Harness,
-      worker: WorkerName,
+      machine: MachineName,
       now: Instant
   ): Either[String, Batched] = {
     val lines = body.split('\n').toVector.zipWithIndex.collect {
       case (l, i) if l.trim.nonEmpty => (i + 1, l)
     }
-    val reads = lines.map((i, l) => (i, read(l, harness, worker, now)))
+    val reads = lines.map((i, l) => (i, read(l, harness, machine, now)))
     val ok = reads.collect { case (i, Right(l)) => (i, l) }
     if (harness == Harness.Grit)
       Left("the harness grit is grit's own: only its turns record its sessions")
@@ -218,12 +223,12 @@ private[commands] object Lines {
       )
       .getOrElse(Left(s"event: one of ${Event.Kind.Names.mkString(", ")}, not $named"))
 
-  /** `sent` as `kind`'s shape at `place` on `worker`. */
+  /** `sent` as `kind`'s shape at `place` on `machine`. */
   private def shaped(
       kind: Event.Kind,
       sent: ujson.Obj,
       place: Place,
-      worker: WorkerName
+      machine: MachineName
   ): Either[String, Event.Shape] =
     kind match {
       case Event.Kind.Commit =>
@@ -249,7 +254,8 @@ private[commands] object Lines {
                 Event.Shape.of(
                   ujson.Obj.from(
                     sent.value.toSeq.map((k, v) =>
-                      if (k == Event.Shape.Worktree) k -> ujson.Str(Worktrees.at(worker, d).written)
+                      if (k == Event.Shape.Worktree)
+                        k -> ujson.Str(Worktrees.at(machine, d).written)
                       else k -> v
                     )
                   )

@@ -1,6 +1,6 @@
 package grit.commands.routes
 
-import grit.commands.worker.{Holders, Worktrees}
+import grit.commands.machine.{Holders, Worktrees}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.id.{Harness, SessionId}
 import grit.core.place.Directory
@@ -65,8 +65,8 @@ object EventsRouteTests extends TestSuite {
               EdgeSessions.Batch(
                 got(SessionId.of(MadeUp, "s-1")),
                 None,
-                Worktrees.at(Worker, dir),
-                Some(Holders.of(Worker, dir, None)),
+                Worktrees.at(Machine, dir),
+                Some(Holders.of(Machine, dir, None)),
                 Vector(1L, 2L).map(n => got(Event.of(n, At, Event.Kind.Edited, Event.Shape.Empty)))
               )
             )
@@ -91,7 +91,7 @@ object EventsRouteTests extends TestSuite {
       }
       (statuses, places.flatten) ==> (
         Vector.fill(3)(Status.Ok),
-        Vector(Worktrees.at(Worker, dir), Worktrees.at(Worker, dir), Worktrees.at(Laptop, dir))
+        Vector(Worktrees.at(Machine, dir), Worktrees.at(Machine, dir), Worktrees.at(Laptop, dir))
       )
     }
 

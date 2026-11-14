@@ -44,7 +44,7 @@ private[commands] final class Routes private (
     * command. At `/wait`, a POST waits on `watch` as [[Waited.watchOf]] reads its
     * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
     * body it does not read 400, each waiting on nothing. At `/holder`, a GET answers, as text, the
-    * holder its query names on the caller's worker ([[Briefing.holderOf]]), touching no store;
+    * holder its query names on the caller's machine ([[Briefing.holderOf]]), touching no store;
     * at `/brief`, a GET answers what the session its query names opens with
     * ([[Briefing.briefOf]]), as [[Briefing.briefed]] says, writing nothing; each another verb
     * 405, a query it does not read 400. At `/events`, a POST records the lines of its body on
@@ -122,7 +122,7 @@ private[commands] final class Routes private (
       Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a holder; nothing else reads one")
     else
       Briefing
-        .holderOf(request, caller.worker)
+        .holderOf(request, caller.machine)
         .fold(
           Response.text(Status.BadRequest, _),
           h => Response.text(Status.Ok, ClaimHolder.value(h))
@@ -132,7 +132,7 @@ private[commands] final class Routes private (
     if (request.verb != Verb.Get)
       Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a brief; nothing else reads one")
     else
-      Briefing.briefOf(request, caller.worker) match {
+      Briefing.briefOf(request, caller.machine) match {
         case Left(why) => Response.text(Status.BadRequest, why)
         case Right(asked) =>
           val now = clock.now()
@@ -151,7 +151,7 @@ private[commands] final class Routes private (
         "post event lines; nothing else records them"
       )
     else
-      Recording.batchOf(request, caller.worker, clock.now()) match {
+      Recording.batchOf(request, caller.machine, clock.now()) match {
         case Left(why) => Response.text(Status.BadRequest, why)
         case Right(batched) =>
           Recording.recorded(batched, b => sessions.record(caller.account, room, Vector(b)))
@@ -173,7 +173,7 @@ private[commands] final class Routes private (
     else
       Routes
         .arguments(request.body)
-        .flatMap(Waited.watchOf(_, caller.worker, holding, clock.now())) match {
+        .flatMap(Waited.watchOf(_, caller.machine, holding, clock.now())) match {
         case Left(why) => Response.text(Status.BadRequest, why)
         case Right((what, within)) =>
           val (status, text) = Waited.watched(

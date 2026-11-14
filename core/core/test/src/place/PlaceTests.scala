@@ -79,7 +79,7 @@ object PlaceTests extends TestSuite {
     test("a place that does not read names why") {
       Place.read("home/nick") ==>
         Left("no namespace in home/nick: write it as fs:/a/path, slack:team/channel or task:name")
-      Place.read("git:grit") ==> Left("no namespace git: fs, slack, task, service, direct, worker")
+      Place.read("git:grit") ==> Left("no namespace git: fs, slack, task, service, direct, machine")
     }
 
     test("each origin's place, a field holding / split like the rest") {
@@ -89,9 +89,9 @@ object PlaceTests extends TestSuite {
         Place.under(Namespace.Task, Vector("eval", "recent-fact", "plain"))
     }
 
-    test("a worker's directory reads back to itself and is no directory of grit's own machine") {
-      Place.read("worker:desktop/home/a").map(p => (p.written, p.directory)) ==>
-        Right(("worker:desktop/home/a", None))
+    test("a machine's directory reads back to itself and is no directory of grit's own machine") {
+      Place.read("machine:desktop/home/a").map(p => (p.written, p.directory)) ==>
+        Right(("machine:desktop/home/a", None))
     }
 
     test("a room: a thread's channel, a session's directory, a task's name") {

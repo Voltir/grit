@@ -136,8 +136,8 @@ object EdgeSessionsContract {
   /** The contracted harness's session `local`. */
   def session(local: String): SessionId = got(SessionId.of(Contracted, local))
 
-  /** A worktree on a worker, where every session and brief here is. */
-  val Worktree: Place = Place.under(Namespace.Worker, Vector("desk", "/work/c"))
+  /** A worktree on a machine, where every session and brief here is. */
+  val Worktree: Place = Place.under(Namespace.Machine, Vector("desk", "/work/c"))
 
   /** `id`'s edits at each of `seconds` after [[EdgeContracts.At]], each its own ordinal, at
     * [[Worktree]], as `holder` when given.

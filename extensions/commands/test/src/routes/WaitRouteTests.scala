@@ -3,7 +3,7 @@ package grit.commands.routes
 import scala.concurrent.duration.*
 
 import grit.commands.declare.HoldingWatch
-import grit.commands.worker.Worktrees
+import grit.commands.machine.Worktrees
 import grit.core.clock.SetClock
 import grit.core.document.DocRef
 import grit.core.edge.{EdgeContracts, EdgeWatch, ScriptedWatch, WatchError, WatchFor}
@@ -58,7 +58,7 @@ object WaitRouteTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a commit is waited on in a worktree at the caller's worker's place, or by a holder") {
+    test("a commit is waited on in a worktree at the caller's machine's place, or by a holder") {
       val script = new ScriptedWatch.Script
       val r = waiting(script)
       val since = Now.minusSeconds(60)
@@ -79,7 +79,7 @@ object WaitRouteTests extends TestSuite {
           Owner.account,
           EdgeContracts.Room,
           WatchFor.Committed(
-            WatchFor.Committer.At(Worktrees.at(Worker, got(Directory.of("/work/c")))),
+            WatchFor.Committer.At(Worktrees.at(Machine, got(Directory.of("/work/c")))),
             since
           ),
           Duration.Zero
@@ -153,7 +153,7 @@ object WaitRouteTests extends TestSuite {
       "what met a watch is answered: a commit by its sha, subject and worktree, a holding as met says"
     ) {
       val script = new ScriptedWatch.Script
-      val worktree = Worktrees.at(Worker, got(Directory.of("/work/c")))
+      val worktree = Worktrees.at(Machine, got(Directory.of("/work/c")))
       val session = got(SessionId.of(got(Harness.of("made-up")), "s1"))
       script.commit(
         session,
@@ -170,7 +170,7 @@ object WaitRouteTests extends TestSuite {
       ) ==> (
         (
           Status.Ok,
-          s"committed 0123456789ab feat: a thing in worker:desktop/work/c, on session s1 at $Now"
+          s"committed 0123456789ab feat: a thing in machine:desktop/work/c, on session s1 at $Now"
         ),
         (Status.Ok, s"grit/plan holds review at version $version")
       )

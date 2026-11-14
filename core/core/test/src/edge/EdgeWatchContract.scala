@@ -60,7 +60,7 @@ abstract class EdgeWatchContract extends TestSuite {
     test("a commit meets a watch on its worktree or its holder from its time on, never after") {
       val session = got(SessionId.of(got(Harness.of("contract")), "committing"))
       val holder = got(ClaimHolder.of("contract/committer"))
-      val worktree = Place.under(grit.core.place.Namespace.Worker, Vector("desk", "/work/c"))
+      val worktree = Place.under(grit.core.place.Namespace.Machine, Vector("desk", "/work/c"))
       val shape = commit(session, holder, worktree, At)
       Vector(
         until(WatchFor.Committed(WatchFor.Committer.At(worktree), At)),

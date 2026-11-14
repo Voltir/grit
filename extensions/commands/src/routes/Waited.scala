@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.commands.declare.HoldingWatch
-import grit.commands.worker.{WorkerName, Worktrees}
+import grit.commands.machine.{MachineName, Worktrees}
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.id.ClaimHolder
 import grit.core.identity.Account
@@ -18,7 +18,7 @@ private[commands] object Waited {
 
   /** What `body` asks a watch for, and how long it waits, `within` read as whole seconds, 0 or
     * more ([[Routes.Within]] when absent), any count clamped by [[EdgeWatch.bounded]]; or why not:
-    *   - `{"commit": {"worktree": "<absolute path>"}}`: a commit in that directory on `worker`
+    *   - `{"commit": {"worktree": "<absolute path>"}}`: a commit in that directory on `machine`
     *     ([[Worktrees.at]]), or `{"commit": {"holder": "<holder>"}}`: one by a session working
     *     as the holder; either at or after `since` (an ISO-8601 instant), by default `now`;
     *   - anything else, as `holding` reads it, when there is one.
@@ -26,7 +26,7 @@ private[commands] object Waited {
     */
   def watchOf(
       body: ujson.Obj,
-      worker: WorkerName,
+      machine: MachineName,
       holding: Option[HoldingWatch],
       now: Instant
   ): Either[String, (WatchFor, FiniteDuration)] = {
@@ -47,7 +47,7 @@ private[commands] object Waited {
               m.get("worktree")
                 .flatMap(_.strOpt)
                 .flatMap(Directory.of(_).toOption)
-                .map(dir => WatchFor.Committer.At(Worktrees.at(worker, dir)))
+                .map(dir => WatchFor.Committer.At(Worktrees.at(machine, dir)))
                 .toRight("worktree is an absolute path")
             case Some(m) if m.keySet == Set("holder") =>
               m.get("holder")

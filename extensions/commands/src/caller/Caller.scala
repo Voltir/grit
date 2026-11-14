@@ -1,6 +1,6 @@
 package grit.commands.caller
 
-import grit.commands.worker.WorkerName
+import grit.commands.machine.MachineName
 import grit.core.edge.{Asked, RealmSource}
 import grit.core.id.Sha256
 import grit.core.identity.{Account, Realm, Standing}
@@ -8,9 +8,10 @@ import grit.core.visibility.Integrity
 import grit.edge.http.{Challenge, Request, Response, Status}
 
 /** Who a request is from and which machine it is on, two facts its credential names apart:
-  * `account`, whose words are believed at `believed`, on the machine `worker`.
+  * `account`, whose words are believed at `believed`, on the machine `machine`.
   */
-final case class Caller(account: Account, believed: Integrity, worker: WorkerName) extends caps.Pure
+final case class Caller(account: Account, believed: Integrity, machine: MachineName)
+    extends caps.Pure
 
 /** Who each request to an edge is from, by the deployment's configuration. */
 final class Callers private (rule: Callers.Rule) extends caps.Pure {

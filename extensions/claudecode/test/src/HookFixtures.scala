@@ -12,8 +12,8 @@ import scala.jdk.CollectionConverters.*
 
 import grit.commands.caller.Callers
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
+import grit.commands.machine.Holders
 import grit.commands.routes.RouteFixtures.*
-import grit.commands.worker.Holders
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.host.Argv
@@ -86,7 +86,7 @@ final class HookFixtures(
 
   /** The holder a session in `proj` works as, or an agent of `kind` that `local` starts. */
   def holderOf(agent: Option[(String, String)] = None): ClaimHolder =
-    Holders.of(Worker, dir, agent.map((kind, local) => Holders.Agent(kind, session(local))))
+    Holders.of(Machine, dir, agent.map((kind, local) => Holders.Agent(kind, session(local))))
 
   /** Every batch the edge recorded, first first. */
   def recorded: Vector[EdgeSessions.Batch] =

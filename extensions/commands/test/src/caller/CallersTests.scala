@@ -1,6 +1,6 @@
 package grit.commands.caller
 
-import grit.commands.worker.WorkerName
+import grit.commands.machine.MachineName
 import grit.core.edge.Asked
 import grit.core.id.Sha256
 import grit.core.identity.{Realm, Standing, TestAccounts}
@@ -16,12 +16,12 @@ object CallersTests extends TestSuite {
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   private val realm = got(Realm.of("desk", "home"))
-  private val desktop = got(WorkerName.of("desktop"))
+  private val desktop = got(MachineName.of("desktop"))
   private val owner = Caller(TestAccounts.account("desk:home/owner"), Integrity.Member, desktop)
   private val callers = Callers.owner(owner)
 
   private val own = owner.copy(believed = Integrity.Authority)
-  private val laptop = owner.copy(worker = got(WorkerName.of("laptop")))
+  private val laptop = owner.copy(machine = got(MachineName.of("laptop")))
   private val ownText = "own-0123456789abcdefghijklmnopqrstuvwxyz"
   private val agentText = "agent-0123456789abcdefghijklmnopqrstuvwxyz"
   private val laptopText = "laptop-0123456789abcdefghijklmnopqrstuvwxyz"

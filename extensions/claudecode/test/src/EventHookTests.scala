@@ -3,8 +3,8 @@ package grit.claudecode
 import java.nio.file.{Files, Path}
 import java.time.Instant
 
-import grit.commands.routes.RouteFixtures.{Worker, got}
-import grit.commands.worker.Holders
+import grit.commands.machine.Holders
+import grit.commands.routes.RouteFixtures.{Machine, got}
 import grit.core.edge.EdgeSessions
 import grit.core.place.Directory
 import grit.core.session.{Event, Session}
@@ -552,7 +552,7 @@ object EventHookTests extends TestSuite {
           f.payload("post-tool-use-edit.json").replace(f.proj.toString, other.toString),
           Map("CLAUDE_PROJECT_DIR" -> other.toString)
         )
-        val holder = Holders.of(Worker, got(Directory.of(other.toString)), None)
+        val holder = Holders.of(Machine, got(Directory.of(other.toString)), None)
         (
           joined.exit,
           command,

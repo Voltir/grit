@@ -2,7 +2,7 @@ package grit.commands.events
 
 import java.time.Instant
 
-import grit.commands.worker.{Holders, WorkerName, Worktrees}
+import grit.commands.machine.{Holders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
 import grit.core.id.{Harness, SessionId}
 import grit.core.place.Directory
@@ -17,7 +17,7 @@ object LinesTests extends TestSuite {
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   private val MadeUp: Harness = got(Harness.of("made-up"))
-  private val Desktop: WorkerName = got(WorkerName.of("desktop"))
+  private val Desktop: MachineName = got(MachineName.of("desktop"))
   private val Now: Instant = Instant.parse("2026-11-13T12:00:00Z")
   private val At: Instant = Now.minusSeconds(30)
 
@@ -42,7 +42,7 @@ object LinesTests extends TestSuite {
   private def shape(o: ujson.Obj): Event.Shape = got(Event.Shape.of(o))
 
   val tests = Tests {
-    test("a line is its session's event, at its worktree on the worker, as its holder") {
+    test("a line is its session's event, at its worktree on the machine, as its holder") {
       read(line("worktree" -> "/work/fixer", "shape" -> ujson.Obj("path" -> "src/A.scala"))) ==>
         Right(
           Lines.Line(
@@ -91,7 +91,7 @@ object LinesTests extends TestSuite {
     }
 
     test(
-      "an edit's own worktree is written as a place on the worker; a read counts its bytes; a closing's text is its summary"
+      "an edit's own worktree is written as a place on the machine; a read counts its bytes; a closing's text is its summary"
     ) {
       (
         read(line("shape" -> ujson.Obj("path" -> "A.scala", "worktree" -> "/work/b")))

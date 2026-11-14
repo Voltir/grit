@@ -4,8 +4,8 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
+import grit.commands.machine.Holders
 import grit.commands.routes.RouteFixtures.got
-import grit.commands.worker.Holders
 import grit.core.edge.ScriptedSessions
 
 import utest.*

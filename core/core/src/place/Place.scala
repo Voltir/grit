@@ -23,12 +23,12 @@ enum Namespace(val key: String) {
   case Direct extends Namespace("direct")
 
   /** Directories on other machines or sandboxes grit's work is done on, each named by its
-    * worker: `worker:desktop/home/a` is `/home/a` on the worker `desktop`, so one path on two
-    * workers is two places. As under `fs`, what is said there is a person's own work with grit:
+    * machine: `machine:desktop/home/a` is `/home/a` on the machine `desktop`, so one path on two
+    * machines is two places. As under `fs`, what is said there is a person's own work with grit:
     * a room label may be declared at one, a cap may not
     * ([[grit.core.visibility.VisibilityRefusal.CapOutside]]).
     */
-  case Worker extends Namespace("worker")
+  case Machine extends Namespace("machine")
 }
 
 object Namespace {

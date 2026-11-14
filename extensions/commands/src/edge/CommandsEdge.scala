@@ -23,8 +23,8 @@ import grit.mcp.wire.ServerInfo
   *   - `POST /wait` waits on the store for a commit, or for what `holding` reads, blocking for the
   *     whole wait;
   *   - `GET /holder?harness=&dir=[&session=&type=]` answers the claim holder a session in `dir`,
-  *     or an agent of `type` that `session` starts, works as on the caller's worker
-  *     ([[grit.commands.worker.Holders.of]]): the one way a claim learns it;
+  *     or an agent of `type` that `session` starts, works as on the caller's machine
+  *     ([[grit.commands.machine.Holders.of]]): the one way a claim learns it;
   *   - `GET /brief?harness=&session=&dir=&start=fresh|resume[&agent=&type=][&part=brief|digest]`
   *     answers, as text, the holder's brief, or with `part=digest` what its newest session did
   *     lately, through the deployment's session record, empty when that session last did
@@ -36,12 +36,12 @@ import grit.mcp.wire.ServerInfo
   *     - 200 `{"recorded": <lines logged>, "refused": [{"line": <its number>, "why": ...}]}`:
   *       every line read is kept, a line sent before not logged twice, and each refused line
   *       named, `recorded` 0 when every line was; a refused line is refused again as it is, so
-  *       the worker drops it, saying why, rather than resending it;
+  *       the machine drops it, saying why, rather than resending it;
   *     - 400 the post refused whole, nothing kept: no `harness`, another query parameter,
-  *       grit's own harness, no line, or lines of two sessions; the worker posts each session's
+  *       grit's own harness, no line, or lines of two sessions; the machine posts each session's
   *       lines apart;
   *     - 403 nothing kept, the store refusing the caller or the session: resending as it is
-  *       will not help, so the worker keeps a bounded number of bytes of lines, dropping the
+  *       will not help, so the machine keeps a bounded number of bytes of lines, dropping the
   *       oldest and saying so;
   *     - 413, over [[grit.edge.http.Listener.BodyMost]], nothing kept: split the batch;
   *     - 503 nothing kept, the database not written: resending is safe;

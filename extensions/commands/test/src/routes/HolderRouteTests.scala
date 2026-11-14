@@ -5,7 +5,7 @@ import grit.edge.http.{Status, Verb}
 import utest.*
 import RouteFixtures.*
 
-/** `GET /holder`: the holder a session, or an agent it starts, works as on the caller's worker. */
+/** `GET /holder`: the holder a session, or an agent it starts, works as on the caller's machine. */
 object HolderRouteTests extends TestSuite {
 
   private def asked(target: String, verb: Verb = Verb.Get) = {
@@ -14,7 +14,7 @@ object HolderRouteTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a session's holder, and an agent's, are answered as text on the caller's worker") {
+    test("a session's holder, and an agent's, are answered as text on the caller's machine") {
       (
         asked("/holder?harness=made-up&dir=/work/grit"),
         asked("/holder?harness=made-up&dir=/work/grit&session=s-1&type=coder-opus")

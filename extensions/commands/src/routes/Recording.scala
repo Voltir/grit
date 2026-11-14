@@ -3,7 +3,7 @@ package grit.commands.routes
 import java.time.Instant
 
 import grit.commands.events.Lines
-import grit.commands.worker.WorkerName
+import grit.commands.machine.MachineName
 import grit.core.edge.EdgeSessions
 import grit.core.id.Harness
 import grit.core.store.StoreError
@@ -15,15 +15,15 @@ private[commands] object Recording {
   /** `events`: where a harness's event lines are posted. */
   val Events: String = "events"
 
-  /** The batch `request` posts from `worker` at `now`, or why not, the post refused whole: a
+  /** The batch `request` posts from `machine` at `now`, or why not, the post refused whole: a
     * query other than `harness`, the harness's name ([[Harness.of]]), sent once; or what
     * [[Lines.batch]] refuses whole.
     */
-  def batchOf(request: Request, worker: WorkerName, now: Instant): Either[String, Lines.Batched] =
+  def batchOf(request: Request, machine: MachineName, now: Instant): Either[String, Lines.Batched] =
     for {
       q <- Queried.of(request, Vector("harness"))
       harness <- q.need("harness")(Harness.of)
-      batched <- Lines.batch(request.body, harness, worker, now)
+      batched <- Lines.batch(request.body, harness, machine, now)
     } yield batched
 
   /** What `/events` answers for `batched` once recording its batch came to `came`:

@@ -57,7 +57,7 @@ object CommandRouteTests extends TestSuite {
     test("each outcome and refusal of a command is answered by its status, and its words") {
       val commands = scripted(Names.map(listed(_, reads = false)))(answering)
       val r = routes(commands)
-      val stranger = Caller(EdgeContracts.Stranger, Integrity.Member, Worker)
+      val stranger = Caller(EdgeContracts.Stranger, Integrity.Member, Machine)
       (Names :+ "absent").map(posted(r, _)) :+ posted(r, "done", "[1]") :+
         posted(routes(commands, callers = Callers.owner(stranger)), "done") ==> Vector(
           (Status.Ok, "did it"),

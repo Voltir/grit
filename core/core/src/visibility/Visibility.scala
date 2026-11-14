@@ -92,7 +92,7 @@ object Visibility {
     * group not declared
     * (`NoSuchGroup`) or through another compartment's own group (`StewardsThroughCompartment`),
     * or one compartment stewarded twice (`StewardedTwice`), is refused too. So is a cap at a
-    * directory under `fs` or `worker`, a direct message's room or everywhere (`CapOutside`), a place capped
+    * directory under `fs` or `machine`, a direct message's room or everywhere (`CapOutside`), a place capped
     * twice (`CappedTwice`), or a cap naming a compartment `compartments` does not declare
     * (`Undeclared`, by [[Namer.CapOf]]).
     * `invited` are places a service shares only with the people it names ([[invites]]); one
@@ -170,7 +170,7 @@ object Visibility {
           case c
               if c.place == Place.Everywhere || c.place.direct ||
                 c.place.within(Place.under(Namespace.Fs, Vector.empty)) ||
-                c.place.within(Place.under(Namespace.Worker, Vector.empty)) =>
+                c.place.within(Place.under(Namespace.Machine, Vector.empty)) =>
             VisibilityRefusal.CapOutside(c.place)
         })
         .orElse(capped.left.toOption)
@@ -262,7 +262,7 @@ enum VisibilityRefusal {
   /** Two caps are declared at `place`. */
   case CappedTwice(place: Place)
 
-  /** A [[Cap]] is declared at `place`: a directory under `fs` or `worker`, a direct message's
+  /** A [[Cap]] is declared at `place`: a directory under `fs` or `machine`, a direct message's
     * room or everywhere, each holding a person's own conversations with grit, which no cap lowers.
     */
   case CapOutside(place: Place)

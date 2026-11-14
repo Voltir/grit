@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.commands.worker.{Holders, WorkerName}
+import grit.commands.machine.{Holders, MachineName}
 import grit.core.context.Shown
 import grit.core.edge.{BriefError, EdgeSessions}
 import grit.core.id.{ClaimHolder, Harness, SessionId}
@@ -27,14 +27,14 @@ private[commands] object Briefing {
     */
   val Recent: FiniteDuration = 24.hours
 
-  /** The holder `/holder`'s query names on `worker` ([[Holders.of]]), or why not:
+  /** The holder `/holder`'s query names on `machine` ([[Holders.of]]), or why not:
     *   - `harness`, the harness's name ([[Harness.of]]), and `dir`, the session's directory
     *     ([[Directory.of]]), each sent;
     *   - for an agent, its `type` and the `session` (the harness's own id, [[Holders.session]])
     *     that starts it, sent together, `dir` being that session's directory;
     *   - no other parameter, and none sent twice.
     */
-  def holderOf(request: Request, worker: WorkerName): Either[String, ClaimHolder] =
+  def holderOf(request: Request, machine: MachineName): Either[String, ClaimHolder] =
     for {
       q <- Queried.of(request, Vector("harness", "dir", "session", "type"))
       harness <- q.need("harness")(Harness.of)
@@ -46,7 +46,7 @@ private[commands] object Briefing {
         case (None, None) => Right(None)
         case _ => Left(TypeAndSession)
       }
-    } yield Holders.of(worker, dir, agent)
+    } yield Holders.of(machine, dir, agent)
 
   /** Which part of what a session opens with `/brief` answers. */
   enum Part {
@@ -68,7 +68,7 @@ private[commands] object Briefing {
       part: Part
   )
 
-  /** What `/brief`'s query asks for on `worker`, or why not:
+  /** What `/brief`'s query asks for on `machine`, or why not:
     *   - `harness`, `session` (the harness's own id for the caller's session) and `dir`, its
     *     directory, as `/holder` reads them ([[holderOf]]);
     *   - for an agent's start, `agent`, its own id, and `type`, sent together: its holder is the one
@@ -81,7 +81,7 @@ private[commands] object Briefing {
     *   - `part`: `brief` (the default) or `digest`, so each fits in its own answer;
     *   - no other parameter, and none sent twice.
     */
-  def briefOf(request: Request, worker: WorkerName): Either[String, Asked] =
+  def briefOf(request: Request, machine: MachineName): Either[String, Asked] =
     for {
       q <- Queried.of(
         request,
@@ -104,7 +104,7 @@ private[commands] object Briefing {
         case other => Left(s"brief or digest, not $other")
       }
     } yield Asked(
-      Holders.of(worker, dir, started.map(_._2)),
+      Holders.of(machine, dir, started.map(_._2)),
       Option.when(fresh)(started.fold(session)(_._1)),
       if (fresh) SessionDigest.Window.LacksLastSaid else SessionDigest.Window.HoldsLastSaid,
       part.getOrElse(Part.Brief)

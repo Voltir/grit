@@ -62,7 +62,7 @@ object CommandsEdgeTests extends TestSuite {
         OwnCommand.guarding(ToolName("hello"), Integrity.Member, (ran, a) => ran(done, a))
       )
       val outsider =
-        Callers.owner(Caller(TestAccounts.account("slack:T2/U9"), Integrity.Member, Worker))
+        Callers.owner(Caller(TestAccounts.account("slack:T2/U9"), Integrity.Member, Machine))
       Vector(
         edge(own = twice),
         edge(callers = outsider),

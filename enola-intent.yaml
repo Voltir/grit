@@ -218,7 +218,7 @@ components:
             "extensions/mcp/src/drive", "extensions/mcp/src/drive/**",
             "extensions/databases/src/declare", "extensions/databases/src/declare/**",
             "extensions/databases/src/edge", "extensions/databases/src/edge/**",
-            "extensions/commands/src/worker", "extensions/commands/src/worker/**",
+            "extensions/commands/src/machine", "extensions/commands/src/machine/**",
             "extensions/commands/src/caller", "extensions/commands/src/caller/**",
             "extensions/commands/src/declare", "extensions/commands/src/declare/**",
             "extensions/commands/src/edge", "extensions/commands/src/edge/**",

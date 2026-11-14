@@ -3,7 +3,7 @@ package grit.commands.routes
 import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
-import grit.commands.worker.WorkerName
+import grit.commands.machine.MachineName
 import grit.core.clock.SetClock
 import grit.core.edge.{
   Adapter,
@@ -29,10 +29,10 @@ object RouteFixtures {
   def got[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
-  val Worker: WorkerName = got(WorkerName.of("desktop"))
+  val Machine: MachineName = got(MachineName.of("desktop"))
 
-  /** The contracts' reader, believed at member, on [[Worker]]. */
-  val Owner: Caller = Caller(EdgeContracts.Reader, Integrity.Member, Worker)
+  /** The contracts' reader, believed at member, on [[Machine]]. */
+  val Owner: Caller = Caller(EdgeContracts.Reader, Integrity.Member, Machine)
 
   val Now: Instant = EdgeContracts.At
 
@@ -77,16 +77,16 @@ object RouteFixtures {
   val Owners: Callers = Callers.owner(Owner)
 
   /** A second machine. */
-  val Laptop: WorkerName = got(WorkerName.of("laptop"))
+  val Laptop: MachineName = got(MachineName.of("laptop"))
 
-  /** [[Owner]]'s account at their own command line, believed at authority, on [[Worker]]. */
+  /** [[Owner]]'s account at their own command line, believed at authority, on [[Machine]]. */
   val Own: Caller = Owner.copy(believed = Integrity.Authority)
 
   /** [[Owner]]'s account as their agents on [[Laptop]] work, believed at member. */
-  val Away: Caller = Owner.copy(worker = Laptop)
+  val Away: Caller = Owner.copy(machine = Laptop)
 
   /** The credentials' texts: [[Own]]'s, [[Owner]]'s (the sessions the owner starts on
-    * [[Worker]]) and [[Away]]'s.
+    * [[Machine]]) and [[Away]]'s.
     */
   val OwnText: String = "own-0123456789abcdefghijklmnopqrstuvwxyz"
   val AgentText: String = "agent-0123456789abcdefghijklmnopqrstuvwxyz"

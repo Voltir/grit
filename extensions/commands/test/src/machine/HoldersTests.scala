@@ -1,4 +1,4 @@
-package grit.commands.worker
+package grit.commands.machine
 
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.Directory
@@ -11,21 +11,21 @@ object HoldersTests extends TestSuite {
   private def got[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
-  private val Desktop = got(WorkerName.of("desktop"))
+  private val Desktop = got(MachineName.of("desktop"))
   private val Grit = got(Directory.of("/work/grit"))
   private val Session = got(Harness.of("made-up").flatMap(SessionId.of(_, "s-1")))
 
   private def holder(
-      worker: WorkerName = Desktop,
+      machine: MachineName = Desktop,
       dir: Directory = Grit,
       agent: Option[Holders.Agent] = None
-  ): String = ClaimHolder.value(Holders.of(worker, dir, agent))
+  ): String = ClaimHolder.value(Holders.of(machine, dir, agent))
 
   val tests = Tests {
-    test("a session's holder is its worker, then its directory's last segment and hash") {
+    test("a session's holder is its machine, then its directory's last segment and hash") {
       Vector(
         holder(),
-        holder(worker = got(WorkerName.of("laptop"))),
+        holder(machine = got(MachineName.of("laptop"))),
         holder(dir = got(Directory.of("/home/nick/Projects/Grit Worktree"))),
         holder(dir = got(Directory.of("/")))
       ) ==> Vector(
@@ -68,7 +68,7 @@ object HoldersTests extends TestSuite {
 
     test("the longest inputs give a holder that fits, each part cut to its slug's length") {
       val longest = holder(
-        got(WorkerName.of("w" * WorkerName.Longest)),
+        got(MachineName.of("w" * MachineName.Longest)),
         got(Directory.of("/" + "d" * 200)),
         Some(
           Holders.Agent(
@@ -78,7 +78,7 @@ object HoldersTests extends TestSuite {
         )
       )
       longest.split('/').toVector.map(_.length) ==>
-        Vector(WorkerName.Longest, Holders.Slugged + 9, Holders.Slugged + 9, 12)
+        Vector(MachineName.Longest, Holders.Slugged + 9, Holders.Slugged + 9, 12)
     }
   }
 }

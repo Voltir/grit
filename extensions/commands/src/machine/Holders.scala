@@ -1,4 +1,4 @@
-package grit.commands.worker
+package grit.commands.machine
 
 import grit.core.id.{ClaimHolder, Harness, SessionId, Sha256}
 import grit.core.place.Directory
@@ -49,9 +49,9 @@ object Holders {
       case _ => Left("agent and type come together: an agent's own id, and its type")
     }
 
-  /** The holder a session in `dir` on `worker` works as, or, given `agent`, the one that agent
+  /** The holder a session in `dir` on `machine` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:
-    * `<worker>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last
+    * `<machine>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last
     * segment and `type` the agent's, each slugged (lower case, every run of other characters one
     * `-`) and cut to [[Slugged]]. A type is kept as it is sent only when it is not empty, slugging
     * and cutting leave it unchanged, and it is not 8 hex digits alone nor ends in `-` and 8 hex
@@ -60,19 +60,19 @@ object Holders {
     * hash collision.
     * A directory's or a type's hash is the first 8 hex digits of its SHA-256, a session's the
     * first 12 of `<harness>:<id>`'s. Equal inputs give equal holders; one directory on two
-    * workers, two.
+    * machines, two.
     */
-  def of(worker: WorkerName, dir: Directory, agent: Option[Agent]): ClaimHolder = {
+  def of(machine: MachineName, dir: Directory, agent: Option[Agent]): ClaimHolder = {
     val path = Directory.value(dir)
     val head =
-      s"${WorkerName.value(worker)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
+      s"${MachineName.value(machine)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
     val text = agent.fold(head) { a =>
       val kind = if (literal(a.kind)) a.kind else named(a.kind, a.kind)
       s"$head/$kind/${hash(a.session.written, 12)}"
     }
     // The Left is unreachable, so this throw never runs (STYLE.md rule 3): ClaimHolder.of refuses
     // only text that is empty, over ClaimHolder.Longest (160) characters, or holds a control
-    // character. `text` starts with the worker's name, a slug of 1 to WorkerName.Longest (32)
+    // character. `text` starts with the machine's name, a slug of 1 to MachineName.Longest (32)
     // characters; every other part is a slug ([a-z0-9-]), hex digits or `/`, so it holds no
     // control character; and it is at most 32 + 1 + 49 (a segment: Slugged 40, `-`, 8 hex) + 1
     // + 49 (a type: kept as sent at most Slugged 40, hashed at most 49) + 1 + 12 (the session's

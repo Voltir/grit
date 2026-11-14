@@ -42,7 +42,7 @@ object BriefRouteTests extends TestSuite {
         EdgeSessions.Batch(
           id(local),
           None,
-          Place.under(grit.core.place.Namespace.Worker, Vector("desktop", "/work/grit")),
+          Place.under(grit.core.place.Namespace.Machine, Vector("desktop", "/work/grit")),
           Some(holder),
           Vector(
             got(Event.of(1, at.minusSeconds(60), Event.Kind.Started, Event.Shape.Empty)),
