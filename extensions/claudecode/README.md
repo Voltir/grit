@@ -55,14 +55,18 @@ before the first file is written (an undo, too, reads every other worktree's set
   `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
   worktrees share it.
 - **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent), keeping the
-  file's mode, as it may hold tokens (0644 for a file the join makes): one jq program
-  removes every handler whose command is the hook's and every one whose program (its first word,
-  one layer of quotes removed, after `exec`, with `$CLAUDE_PROJECT_DIR` and `~` expanded,
-  canonicalised, a relative one from the checkout's top, as a hook runs) is under a `--retire`
-  directory (a relative one read from where the join is run); drops the groups and events that removal left
-  empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`. Their
+  file's mode, as it may hold tokens (0644 for a file the join makes). One jq program removes
+  every handler whose command is the hook's, and every one whose program is under a `--retire`
+  directory (a relative one read from where the join is run); drops the groups and events that
+  removal left empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`. Their
   timeouts are 5 s, SessionEnd's 2 s; the hooks bound themselves below them. Everything else keeps
   its order, and a second join writes the same bytes.
+
+  A handler's program is its command's first word after `exec`, as a shell reads it with its
+  quotes removed: `$CLAUDE_PROJECT_DIR` or `${CLAUDE_PROJECT_DIR}` at its start is the checkout
+  unless single-quoted, `~/` is `HOME` unless quoted, a relative path is read from the checkout's
+  top (as a hook runs), and the path is canonicalised, symbolic links resolved. A first word with
+  no `/` (`bash x.sh`, `FOO=1 x.sh`) names no program under a directory, and its handler stays.
 
   | Event | Handlers | |
   |---|---|---|

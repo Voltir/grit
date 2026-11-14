@@ -571,6 +571,52 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test(
+      "a handler goes when its program, as a shell reads its first word, is under a retired directory"
+    ) {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val root = f.root.toRealPath()
+        val hooks = Files.createDirectories(root.resolve("a/hooks"))
+        val link = Files.createSymbolicLink(root.resolve("link"), hooks)
+        val _ = Files.createDirectories(root.resolve("a/hooks2"))
+        val _ = Files.createDirectories(f.home.resolve("old"))
+        val _ = Files.createDirectories(dir.resolve("tools/old"))
+        val gone = Vector(
+          s"$hooks/x.sh",
+          s"$link/y.sh --flag",
+          s"exec $hooks/w.sh",
+          "~/old/t.sh",
+          "\"$CLAUDE_PROJECT_DIR/tools/old/q.sh\" --x",
+          "\"$CLAUDE_PROJECT_DIR\"/tools/old/c.sh",
+          "${CLAUDE_PROJECT_DIR}/tools/old/b.sh",
+          "\"${CLAUDE_PROJECT_DIR}/tools/old/d.sh\"",
+          s"'$hooks/s.sh'"
+        )
+        val kept = Vector(
+          s"$root/a/hooks2/z.sh",
+          s"bash $hooks/x.sh",
+          s"FOO=1 $hooks/x.sh",
+          "'$CLAUDE_PROJECT_DIR/tools/old/e.sh'",
+          "$CLAUDE_PROJECT_DIRX/tools/old/f.sh"
+        )
+        val handlers = (gone ++ kept)
+          .map(c => s"""{"type": "command", "command": "${c.replace("\"", "\\\"")}"}""")
+          .mkString(", ")
+        val _ = f.write(f.settings(dir), s"""{"hooks": {"Stop": [{"hooks": [$handlers]}]}}""")
+        val done = f.joined(
+          dir,
+          Seq(link, f.home.resolve("old"), dir.resolve("tools/old")).flatMap(d =>
+            Seq("--retire", d.toString)
+          )*
+        )
+        (
+          done.exit,
+          f.sh(dir, "jq -r '.hooks.Stop[0].hooks[].command' .claude/settings.local.json")
+        ) ==> ((0, kept))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

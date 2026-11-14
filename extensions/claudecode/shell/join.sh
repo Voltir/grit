@@ -52,23 +52,34 @@ put_kept() {
   mv -f -- "$tmp" "$1"
 }
 
-# The program a command line runs: its first word, one layer of quotes removed, after an `exec`;
-# `$CLAUDE_PROJECT_DIR` and `~` at its start expanded. Empty for a word with no `/`.
+# The program a command line runs: its first word after an `exec`, as a shell reads it with its
+# quotes removed, and `$CLAUDE_PROJECT_DIR` or `${CLAUDE_PROJECT_DIR}` at its start expanded
+# unless single-quoted, `~/` unless quoted. Empty for a word with no `/`.
 program() {
-  local s=$1 w
+  local s=$1 w='' q='' c i lead=''
   s=${s#"${s%%[![:space:]]*}"}
   case $s in
     exec[[:space:]]*) s=${s#exec} && s=${s#"${s%%[![:space:]]*}"} ;;
   esac
-  case $s in
-    '"$CLAUDE_PROJECT_DIR"'*) s=$top${s#'"$CLAUDE_PROJECT_DIR"'} ;;
-    '$CLAUDE_PROJECT_DIR'*) s=$top${s#'$CLAUDE_PROJECT_DIR'} ;;
-    '~/'*) s=$HOME/${s#'~/'} ;;
-  esac
-  case $s in
-    "'"*) s=${s#"'"} && w=${s%%"'"*} ;;
-    '"'*) s=${s#'"'} && w=${s%%'"'*} ;;
-    *) w=${s%%[[:space:]]*} ;;
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    if [ -n "$q" ]; then
+      if [ "$c" = "$q" ]; then q=''; else w+=$c; fi
+    else
+      case $c in
+        [[:space:]]) break ;;
+        "'" | '"')
+          q=$c
+          [ "$i" -gt 0 ] || lead=$c
+          ;;
+        *) w+=$c ;;
+      esac
+    fi
+  done
+  case $lead$w in
+    '$CLAUDE_PROJECT_DIR/'* | '"$CLAUDE_PROJECT_DIR/'*) w=$top${w#'$CLAUDE_PROJECT_DIR'} ;;
+    '${CLAUDE_PROJECT_DIR}/'* | '"${CLAUDE_PROJECT_DIR}/'*) w=$top${w#'${CLAUDE_PROJECT_DIR}'} ;;
+    '~/'*) w=$HOME/${w#'~/'} ;;
   esac
   case $w in
     */*) printf '%s' "$w" ;;
