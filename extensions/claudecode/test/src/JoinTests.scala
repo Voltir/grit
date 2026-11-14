@@ -526,6 +526,20 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("settings keep their mode through a join and an undo; settings the join makes are 0644") {
+      JoinFixtures { f =>
+        import java.nio.file.attribute.PosixFilePermissions.{fromString, toString as shown}
+        val (kept, made) = (f.checkout("kept"), f.checkout("made"))
+        val _ = f.write(f.settings(kept), "{\"model\": \"x\"}\n")
+        val _ = Files.setPosixFilePermissions(f.settings(kept), fromString("rw-------"))
+        val mode = (dir: Path) => shown(Files.getPosixFilePermissions(f.settings(dir)))
+        val _ = (f.joined(kept), f.joined(made))
+        val joined = (mode(kept), mode(made))
+        val _ = f.undone(kept)
+        (joined, mode(kept)) ==> ((("rw-------", "rw-r--r--"), "rw-------"))
+      }
+    }
+
     test("a git whose worktree list has no -z refuses the join and the undo, naming the version") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

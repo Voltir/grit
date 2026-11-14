@@ -39,6 +39,19 @@ put() {
   mv -f -- "$tmp" "$1"
 }
 
+# As put, but a file that exists keeps its mode (settings may hold tokens); $2 is a new one's.
+put_kept() {
+  local tmp
+  [ -e "$1" ] || {
+    put "$@"
+    return
+  }
+  tmp=$(mktemp -- "${1%/*}/.grit-join.XXXXXX")
+  cp -p -- "$1" "$tmp"
+  printf '%s' "$3" > "$tmp"
+  mv -f -- "$tmp" "$1"
+}
+
 # The program a command line runs: its first word, one layer of quotes removed, after an `exec`;
 # `$CLAUDE_PROJECT_DIR` and `~` at its start expanded. Empty for a word with no `/`.
 program() {
@@ -295,7 +308,7 @@ harness=$qh
 edge=$qe
 edge=\${GRIT_EDGE:-\$edge}
 $hook"
-  put "$settings" 0644 "$new
+  put_kept "$settings" 0644 "$new
 "
   for f in "${written[@]+"${written[@]}"}"; do
     if [ "$f" = post-commit ]; then
@@ -385,7 +398,7 @@ undo_join() {
   done
 
   if [ "$n" -gt 0 ]; then
-    put "$settings" 0644 "$new
+    put_kept "$settings" 0644 "$new
 "
   fi
 

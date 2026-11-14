@@ -54,7 +54,8 @@ before the first file is written (an undo, too, reads every other worktree's set
   --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
   `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
   worktrees share it.
-- **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent): one jq program
+- **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent), keeping the
+  file's mode, as it may hold tokens (0644 for a file the join makes): one jq program
   removes every handler whose command is the hook's and every one whose program (its first word,
   one layer of quotes removed, after `exec`, with `$CLAUDE_PROJECT_DIR` and `~` expanded,
   canonicalised) is under a `--retire` directory; drops the groups and events that removal left
