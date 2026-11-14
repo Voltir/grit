@@ -20,7 +20,7 @@ object ClaudeCode {
     */
   val adapter: Adapter = Adapter(
     Named,
-    s"#!/usr/bin/env bash\nharness=${Argv.quote(Harness.value(Named))}\n" +
-      s"hook=${Argv.quote(Scripts.Hook)}\n" + Scripts.Join
+    s"#!/usr/bin/env bash\n{\nharness=${Argv.quote(Harness.value(Named))}\n" +
+      s"hook=${Argv.quote(Scripts.Hook)}\n" + Scripts.Join + "}\n"
   )
 }

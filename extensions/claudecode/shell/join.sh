@@ -4,16 +4,11 @@
 #   curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--mcp-name <name>] [--retire <dir>]...
 #   curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
 #
-# What it refuses, writes and prints: README.md. It is read as it arrives, so everything here
-# defines and nothing runs until its last line, which a download cut short never completes; and
-# it runs with its input from /dev/null, so nothing it starts reads the rest of the script.
-set -euo pipefail
-
-# The tools a Claude Code hook event is posted for: an exact match, as a matcher holding `.` or
-# `*` is an unanchored regular expression. The MCP ones are read-only tools, posted as reads.
-tools_matcher='^(Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__scout__.*)$'
-
-marker="# grit $harness join"
+# What it refuses, writes and prints: README.md. bash runs a script it reads as it arrives, one
+# command at a time, and a top-level word cut short is a command (`program` cut to `pro` runs
+# one), so the adapter wraps this body in one `{ … }` group, which bash runs only once its closing
+# brace has arrived. Inside it everything defines but the last line, and `set` waits for `main`;
+# `main` runs with its input from /dev/null, so nothing it starts reads the rest of the script.
 
 refuse() {
   printf 'grit %s: %s\n' "$harness" "$1" >&2
@@ -146,6 +141,11 @@ our_groups() {
 }
 
 main() {
+  set -euo pipefail
+  # The tools a Claude Code hook event is posted for: an exact match, as a matcher holding `.`
+  # or `*` is an unanchored regular expression. The MCP ones are read-only tools, posted as reads.
+  tools_matcher='^(Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__scout__.*)$'
+  marker="# grit $harness join"
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     refuse "needs bash 5 or later; this is bash ${BASH_VERSION-unknown}"
   fi

@@ -10,8 +10,8 @@ person runs it in a checkout. It names core alone (`claudecode-names-core-alone`
 One idea, one package, `grit.claudecode`. Its scripts are text, under `shell/`:
 
 - **`hook.sh`**: the hook, one program with a subcommand per role, which the join installs.
-- **`join.sh`**: the join script's body. The script served is a shebang, `harness=claude-code`,
-  `hook=<hook.sh, single-quoted>`, then this body, so the harness's name has one home, in Scala,
+- **`join.sh`**: the join script's body. The script served is a shebang, then one group: `{`,
+  `harness=claude-code`, `hook=<hook.sh, single-quoted>`, this body and `}`, so the harness's name has one home, in Scala,
   and the hook rides in the join with no delimiter to collide with.
 
 The build reads them into `Scripts` as string constants, so the adapter is a pure value with no
@@ -29,9 +29,12 @@ curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--mcp-name <name>] [--ret
 curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
 ```
 
-A script piped into bash runs as it arrives, so `join.sh` only defines until its last line,
-`</dev/null main "$@"`, with no newline after it: no proper prefix of the script runs `main` with
-its arguments, and what it starts reads `/dev/null`, never the rest of the script.
+A script piped into bash runs as it arrives, a command at a time, and a top-level word cut short
+is a command of its own (`program` cut to `pro` runs a program of that name). So the script
+served is one `{ … }` group, which bash runs only once the closing brace has arrived: a download
+cut short is a syntax error and runs nothing. Inside it `join.sh` only defines until its last
+line, `</dev/null main "$@"`; `main` sets bash's options itself, and what it starts reads
+`/dev/null`, never the rest of the script.
 
 **Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq or
 curl on PATH; outside a git checkout; an address other than `http://` or `https://`, a host (a

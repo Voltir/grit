@@ -306,34 +306,42 @@ object JoinTests extends TestSuite {
       }
     }
 
-    test("every proper prefix of the join, piped into bash, changes nothing") {
+    // Every byte of each line at the top level (not indented, a comment or a closing brace),
+    // where a cut could leave a statement that runs, and every line end; a sweep of every byte
+    // would run bash some 16,000 times.
+    test(
+      "a prefix of the join cut at a line end or inside a top-level line prints and changes nothing"
+    ) {
       JoinFixtures { f =>
         val dir = f.checkout("work")
         val join = ClaudeCode.adapter.join
-        val lastLine = join.stripSuffix("\n").lastIndexOf('\n') + 1
-        val cuts =
-          (join.indices.filter(i => join(i) == '\n').map(_ + 1) ++ (lastLine until join.length))
-            .filter(_ < join.length)
-            .distinct
-            .sorted
+        val starts = 0 +: join.indices.filter(i => join(i) == '\n').map(_ + 1)
+        val topLevel = starts
+          .filter(s => s < join.length && !" \t#}\n".contains(join(s)))
+          .flatMap { s =>
+            val end = join.indexOf('\n', s)
+            (s + 1) to (if (end < 0) join.length else end + 1)
+          }
+        val cuts = (starts ++ topLevel).filter(_ < join.length).distinct.sorted
         val prefixes = f.root.resolve("prefixes")
         Files.createDirectories(prefixes)
         cuts.foreach(n => f.write(prefixes.resolve(f"$n%06d"), join.take(n)))
         val before = (f.tree(dir), f.tree(f.home))
-        val _ = Bash.run(
+        val printed = Bash.run(
           dir,
           f.home,
           f.bin,
           Seq(
             "-c",
-            s"""for p in '$prefixes'/*; do bash -s -- '${f.Edge}' < "$$p" > /dev/null 2>&1; done; true"""
+            s"""for p in '$prefixes'/*; do bash -s -- '${f.Edge}' < "$$p" 2> /dev/null; done; true"""
           ),
           within = 60.seconds
         )
         val after = (f.tree(dir), f.tree(f.home))
         val whole = f.joined(dir)
-        (cuts.size > 100, after == before, whole.exit, f.tree(dir) == before._1) ==> ((
+        (cuts.size > 400, printed.out, after == before, whole.exit, f.tree(dir) == before._1) ==> ((
           true,
+          Vector.empty,
           true,
           0,
           false
