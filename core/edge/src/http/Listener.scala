@@ -318,6 +318,9 @@ private final class Handling(
     if (response.body.nonEmpty) headers.set("Content-Type", response.contentType.header)
     response.status match {
       case Status.NotAllowed(allowed) => headers.set("Allow", allowed.map(_.name).mkString(", "))
+      case Status.Unauthorized(Challenge.Asked) => headers.set("WWW-Authenticate", "Bearer")
+      case Status.Unauthorized(Challenge.Refused) =>
+        headers.set("WWW-Authenticate", "Bearer error=\"invalid_token\"")
       case _ => ()
     }
     try {

@@ -5,6 +5,9 @@ enum Status(val code: Int) {
   case Ok extends Status(200)
   case Accepted extends Status(202)
   case BadRequest extends Status(400)
+
+  /** 401, sent with a `WWW-Authenticate` header holding `challenge`. */
+  case Unauthorized(challenge: Challenge) extends Status(401)
   case Forbidden extends Status(403)
   case NotFound extends Status(404)
 
@@ -15,6 +18,14 @@ enum Status(val code: Int) {
   case TooLarge extends Status(413)
   case Failed extends Status(500)
   case Unavailable extends Status(503)
+}
+
+/** What a 401 asks for: a bearer credential (RFC 6750), naming no authorization server.
+  * `Asked`: none usable was sent (`WWW-Authenticate: Bearer`). `Refused`: the one sent is not
+  * taken (`Bearer error="invalid_token"`).
+  */
+enum Challenge {
+  case Asked, Refused
 }
 
 /** What a response's body is. */

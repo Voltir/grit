@@ -255,6 +255,28 @@ object ListenerTests extends TestSuite {
       } finally l.close()
     }
 
+    test("a 401 carries WWW-Authenticate: Bearer, and a refused one invalid_token") {
+      val answer: (Request, String => Unit) => Response = (request, _) =>
+        Response.text(
+          Status.Unauthorized(
+            if (request.path == Vector("refused")) Challenge.Refused else Challenge.Asked
+          ),
+          "refused"
+        )
+      val l = opened("127.0.0.1:0", answer, new Logged)
+      try {
+        val asked = got(send(l.at.port, get("/asked")))
+        val refused = got(send(l.at.port, get("/refused")))
+        (
+          (asked.status, asked.headers.get("www-authenticate")),
+          (refused.status, refused.headers.get("www-authenticate"))
+        ) ==> (
+          (401, Some("Bearer")),
+          (401, Some("Bearer error=\"invalid_token\""))
+        )
+      } finally l.close()
+    }
+
     test("two requests on one kept-alive connection are both answered") {
       val l = opened("127.0.0.1:0", echo, new Logged)
       try {
