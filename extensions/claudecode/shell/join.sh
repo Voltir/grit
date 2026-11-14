@@ -101,6 +101,15 @@ retired() {
   return 1
 }
 
+# Whether the directory $1 is $2 or an ancestor of it, both canonical.
+covers() {
+  [ "$1" = / ] && return 0
+  case $2/ in
+    "$1"/*) return 0 ;;
+  esac
+  return 1
+}
+
 # Whether the git hook $1 is ours: it holds the join's marker line.
 ours_file() {
   [ -f "$1" ] && grep -qxF -- "$marker" "$1"
@@ -231,9 +240,6 @@ main() {
         [ "$gnu" = 1 ] || refuse "--retire needs GNU realpath, for its -e and -m, which this one lacks"
         home=$(realpath -m -- "$HOME") || refuse "cannot resolve HOME, $HOME"
         r=$(realpath -e -- "$dir" 2> /dev/null) && [ -d "$r" ] || refuse "--retire $dir is not a directory"
-        if [ "$r" = / ] || [ "$r" = "$home" ]; then
-          refuse "--retire $dir would retire every program under it; name the directory of the old hooks"
-        fi
         retire+=("$r")
         ;;
       -*) refuse "unknown option $1" ;;
@@ -264,6 +270,11 @@ main() {
   # From here on, as a hook runs: a relative program in the settings is read from the checkout,
   # and `claude mcp --scope local` keys its entry by it.
   cd -- "$top" || refuse "cannot enter $top"
+  for r in "${retire[@]+"${retire[@]}"}"; do
+    if covers "$r" "$home" || covers "$r" "$top"; then
+      refuse "--retire $r holds HOME or this checkout, and would retire every program in it; name the directory of the old hooks"
+    fi
+  done
   git worktree list --porcelain -z > /dev/null 2>&1 ||
     refuse "needs git 2.36 or later, whose git worktree list takes -z"
   local common hooks

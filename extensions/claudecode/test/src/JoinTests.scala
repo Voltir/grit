@@ -480,11 +480,19 @@ object JoinTests extends TestSuite {
       }
     }
 
-    test("a retired directory that is the root or HOME is refused, with nothing changed") {
+    test(
+      "a retired directory that is HOME, the checkout or an ancestor of either is refused, with nothing changed"
+    ) {
       JoinFixtures { f =>
         val dir = f.checkout("work")
-        Vector("/", f.home.toString).map(d => f.joined(dir, "--retire", d).exit) ==> Vector(1, 1)
-        Files.exists(f.hook(dir)) ==> false
+        val inside = Files.createDirectories(f.home.resolve("tools/old"))
+        val refused = Vector("/", f.root.toString, f.home.toString, dir.toString, s"$dir/.")
+          .map(d => f.joined(dir, "--retire", d).exit)
+        (refused, Files.exists(f.hook(dir)), f.joined(dir, "--retire", inside.toString).exit) ==> ((
+          Vector(1, 1, 1, 1, 1),
+          false,
+          0
+        ))
       }
     }
 
