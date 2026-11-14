@@ -171,10 +171,10 @@ brief() {
   esac
   if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" "start=$start" "${more[@]+"${more[@]}"}"; then
     say "the edge at $edge did not answer for the brief"
-    context "$event" "grit: the edge at $edge did not answer; this $who opens without its brief."
+    context "$event" "grit: grit's server at $edge did not answer. This $who starts without its brief, and what it does is not recorded until the server answers."
   elif [ "$status" != 200 ]; then
     say "the edge at $edge answered $status for the brief: ${answer%%$'\n'*}"
-    context "$event" "grit: the edge at $edge answered $status for the brief; this $who opens without it."
+    context "$event" "grit: grit's server at $edge answered $status when asked for this $who's brief, so it starts without one."
   elif [ -n "$answer" ]; then
     context "$event" "$answer"
   fi
@@ -194,8 +194,9 @@ opening() {
     return 0
   fi
   holder=$answer
-  text="grit: this session works as the claim holder $holder.
-grit: an agent of type <type> that this session starts works as the claim holder this command prints: $(sq "$self") holder <type> --dir $(sq "$dir") --session $(sq "$session")"
+  # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
+  text="grit: this session's claim holder is $holder.
+grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
   case $source in
     compact) part=resume ;;
     clear) part=fresh ;;

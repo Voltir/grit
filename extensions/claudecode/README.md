@@ -221,18 +221,20 @@ are in `opening`, not `brief`, as a brief may come near the 10,000-character cap
 has; they are, with `'<hook>'`, `'<dir>'` and `'<session>'` single-quoted for a shell:
 
 ```
-grit: this session works as the claim holder <holder>.
-grit: an agent of type <type> that this session starts works as the claim holder this command prints: '<hook>' holder <type> --dir '<dir>' --session '<session>'
+grit: this session's claim holder is <holder>.
+grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: '<hook>' holder TYPE --dir '<dir>' --session '<session>'
 ```
 
 `--dir` and `--session` are written out because a Bash tool has neither `CLAUDE_PROJECT_DIR` nor
-an agent's id (recorded).
+an agent's id (recorded). The type's place is `TYPE`, not `<type>`, which a shell the line is
+pasted into would read as a redirect.
 
 **The edge down.** Every role but `holder` exits 0 whatever happens, and says on stderr, in one
 line, what it could not do. When the edge does not answer a start, `brief` alone gives one line of
-context, `grit: the edge at <edge> did not answer; this session opens without its brief.` (`this
-agent` at an agent's), and `opening` prints nothing; an answer other than 200 gives `… answered
-<status> for the brief; this session opens without it.` Each post is sent once: one the edge did
+context, `grit: grit's server at <edge> did not answer. This session starts without its brief,
+and what it does is not recorded until the server answers.` (`This agent` at an agent's), and
+`opening` prints nothing; an answer other than 200 gives `grit: grit's server at <edge> answered
+<status> when asked for this session's brief, so it starts without one.` Each post is sent once: one the edge did
 not answer, or answered other than 200 (a 413, a 503, any other), is dropped, and a line it
 refused is named with its reason. Nothing is kept to resend, so while the edge is down a
 session's events, closings and commits are lost.

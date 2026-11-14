@@ -23,7 +23,8 @@ object DownTests extends TestSuite {
   private def unanswered(edge: String): ujson.Value =
     context(
       "SessionStart",
-      s"grit: the edge at $edge did not answer; this session opens without its brief."
+      s"grit: grit's server at $edge did not answer. This session starts without its brief, " +
+        "and what it does is not recorded until the server answers."
     )
 
   val tests = Tests {
@@ -99,7 +100,8 @@ object DownTests extends TestSuite {
           0,
           context(
             "SessionStart",
-            s"grit: the edge at ${f.edge} answered 503 for the brief; this session opens without it."
+            s"grit: grit's server at ${f.edge} answered 503 when asked for this session's brief, " +
+              "so it starts without one."
           ),
           1,
           true

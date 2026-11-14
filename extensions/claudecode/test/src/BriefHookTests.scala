@@ -34,9 +34,9 @@ object BriefHookTests extends TestSuite {
 
   /** The lines `opening` gives a session in the fixtures' checkout working as `holder`. */
   private def holderLines(f: HookFixtures, session: String, holder: String): String =
-    s"grit: this session works as the claim holder $holder.\n" +
-      "grit: an agent of type <type> that this session starts works as the claim holder this " +
-      s"command prints: '${f.hook}' holder <type> --dir '${f.proj}' --session '$session'"
+    s"grit: this session's claim holder is $holder.\n" +
+      "grit: an agent this session starts has its own claim holder. This prints it, with the " +
+      s"agent's type in place of TYPE: '${f.hook}' holder TYPE --dir '${f.proj}' --session '$session'"
 
   /** The session `First` recorded as having closed saying `Wrote the notes.` a minute ago. */
   private def worked(f: HookFixtures): Unit = {
