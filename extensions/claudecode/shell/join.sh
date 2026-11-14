@@ -100,17 +100,30 @@ commands_of() {
   jq -j '[(.hooks // {})[][] | (.hooks // [])[] | .command? | strings] | unique | .[] | . + "\u0000"' "$1"
 }
 
-# Whether the settings $1 hold a command of ours.
+# Whether the settings $1 hold a command of ours; refused when jq cannot read them.
 names_hook() {
-  [ -f "$1" ] && jq -e --arg ours "$ours" \
+  local rc=0
+  [ -f "$1" ] || return 1
+  jq -e --arg ours "$ours" \
     '[(.hooks // {})[][] | (.hooks // [])[] | .command? | strings | select(startswith($ours))] | length > 0' \
-    "$1" > /dev/null 2>&1
+    "$1" > /dev/null 2>&1 || rc=$?
+  case $rc in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) refuse "jq could not read $1; nothing was changed" ;;
+  esac
 }
 
-# The settings $1 with our handlers and the commands of the JSON array $2 removed, and the groups
-# of the JSON array $3 appended, each to its event. Groups and events left empty by a removal go.
+# Whether $1 is the text of one JSON object.
+object() {
+  [ -n "$1" ] && jq -e 'type == "object"' <<< "$1" > /dev/null 2>&1
+}
+
+# The settings on stdin with our handlers and the commands of the JSON array $1 removed, and the
+# groups of the JSON array $2 appended, each to its event. Groups and events left empty by a
+# removal go.
 rewrite_settings() {
-  jq --arg ours "$ours" --argjson drop "$2" --argjson add "$3" '
+  jq --arg ours "$ours" --argjson drop "$1" --argjson add "$2" '
     def gone: (.command? // null) as $c
       | ($c | type) == "string" and (($c | startswith($ours)) or any($drop[]; . == $c));
     has("hooks") as $had
@@ -122,12 +135,14 @@ rewrite_settings() {
         else . end)))
     | reduce $add[] as $a (.; .hooks[$a.event] = ((.hooks[$a.event] // []) + [$a.group]))
     | .hooks |= with_entries(select((.value | length) > 0 or (($was[.key] // []) | length) == 0))
-    | if (.hooks | length) == 0 and ($had | not) then del(.hooks) else . end' "$1"
+    | if (.hooks | length) == 0 and ($had | not) then del(.hooks) else . end'
 }
 
 # Our groups, one per event, as a JSON array of {event, group}.
 our_groups() {
-  jq -n --arg h "$(sq "$H")" --arg m "$tools_matcher" '
+  local h
+  h=$(sq "$H")
+  jq -n --arg h "$h" --arg m "$tools_matcher" '
     def c($s): {type: "command", command: ($h + " " + $s), timeout: 5};
     def a($s): c($s) + {async: true};
     [ {event: "SessionStart", group: {hooks: [c("brief"), c("opening"), a("event")]}},
@@ -154,7 +169,8 @@ main() {
     command -v "$tool" > /dev/null 2>&1 || refuse "needs $tool on PATH"
   done
 
-  local edge='' undo=0 mcp=grit dir r
+  local edge='' undo=0 mcp=grit dir r home
+  home=$(realpath -m -- "$HOME") || refuse "cannot resolve HOME, $HOME"
   retire=()
   while [ "$#" -gt 0 ]; do
     case $1 in
@@ -169,7 +185,7 @@ main() {
         dir=$2
         shift
         r=$(realpath -e -- "$dir" 2> /dev/null) && [ -d "$r" ] || refuse "--retire $dir is not a directory"
-        if [ "$r" = / ] || [ "$r" = "$(realpath -m -- "$HOME")" ]; then
+        if [ "$r" = / ] || [ "$r" = "$home" ]; then
           refuse "--retire $dir would retire every program under it; name the directory of the old hooks"
         fi
         retire+=("$r")
@@ -231,17 +247,20 @@ main() {
 # Joins the checkout: the hook, its handlers in the settings $1, git's hooks in $2, and the MCP
 # entry $4 at the edge $3.
 join() {
-  local settings=$1 hooks=$2 edge=$3 mcp=$4 c groups drop='[]' f
-  local -a removed=() lines=() written=() foreign=()
+  local settings=$1 hooks=$2 edge=$3 mcp=$4 c groups drop='[]' f new count qh qe qH
+  local -a removed=() lines=() written=() foreign=() commands=()
 
+  # Everything that can fail is worked out before the first file is written.
   if [ -e "$settings" ]; then
-    while IFS= read -r -d '' c; do
-      if [[ $c != "$ours"* ]] && retired "$c"; then
-        removed+=("$c")
-        drop=$(jq -c --arg c "$c" '. + [$c]' <<< "$drop")
-      fi
-    done < <(commands_of "$settings")
+    mapfile -d '' -t commands < <(commands_of "$settings")
+    wait "$!" || refuse "jq could not read $settings; nothing was changed"
   fi
+  for c in "${commands[@]+"${commands[@]}"}"; do
+    if [[ $c != "$ours"* ]] && retired "$c"; then
+      removed+=("$c")
+      drop=$(jq -c --arg c "$c" '. + [$c]' <<< "$drop") || refuse "jq failed; nothing was changed"
+    fi
+  done
 
   for f in post-commit post-rewrite; do
     if [ ! -e "$hooks/$f" ] || ours_file "$hooks/$f"; then
@@ -257,36 +276,42 @@ join() {
     fi
   done
 
+  groups=$(our_groups) || refuse "jq failed; nothing was changed"
+  if [ -e "$settings" ]; then
+    new=$(rewrite_settings "$drop" "$groups" < "$settings") || refuse "jq could not rewrite $settings; nothing was changed"
+  else
+    new=$(rewrite_settings "$drop" "$groups" <<< '{}') || refuse "jq could not write the settings; nothing was changed"
+  fi
+  object "$new" || refuse "jq wrote no settings object; nothing was changed"
+  count=$(jq '[.[].group.hooks | length] | add' <<< "$groups") || refuse "jq failed; nothing was changed"
+  qh=$(sq "$harness")
+  qe=$(sq "$edge")
+  qH=$(sq "$H")
+
   put "$H" 0755 "#!/usr/bin/env bash
-harness=$(sq "$harness")
-edge=$(sq "$edge")
+harness=$qh
+edge=$qe
 edge=\${GRIT_EDGE:-\$edge}
 $hook"
-
-  groups=$(our_groups)
-  local before='{}'
-  [ -e "$settings" ] && before=$(cat -- "$settings")
-  put "$settings" 0644 "$(rewrite_settings <(printf '%s' "$before") "$drop" "$groups")
+  put "$settings" 0644 "$new
 "
-
   for f in "${written[@]+"${written[@]}"}"; do
     if [ "$f" = post-commit ]; then
       put "$hooks/$f" 0755 "#!/usr/bin/env bash
 $marker
-exec $(sq "$H") commit
+exec $qH commit
 "
     else
       put "$hooks/$f" 0755 "#!/usr/bin/env bash
 $marker
-exec $(sq "$H") rewrite \"\$@\"
+exec $qH rewrite \"\$@\"
 "
     fi
   done
 
   printf 'grit %s: joined %s to %s\n' "$harness" "$top" "$edge"
   printf '  hook      %s, shared by this repository'\''s worktrees\n' "$H"
-  printf '  settings  .claude/settings.local.json: %s handlers of ours\n' \
-    "$(jq '[.[].group.hooks | length] | add' <<< "$groups")"
+  printf '  settings  .claude/settings.local.json: %s handlers of ours\n' "$count"
   for c in "${removed[@]+"${removed[@]}"}" "${lines[@]+"${lines[@]}"}"; do
     printf '  removed   %s\n' "$c"
   done
@@ -295,7 +320,7 @@ exec $(sq "$H") rewrite \"\$@\"
     1) printf '  git       %s in %s, shared by this repository'\''s worktrees\n' "${written[0]}" "$hooks" ;;
   esac
   for f in "${foreign[@]+"${foreign[@]}"}"; do
-    if [ "$f" = post-commit ]; then c="exec $(sq "$H") commit"; else c="exec $(sq "$H") rewrite \"\$@\""; fi
+    if [ "$f" = post-commit ]; then c="exec $qH commit"; else c="exec $qH rewrite \"\$@\""; fi
     printf '  git       %s/%s is not ours and is left as it is; add the line: %s\n' "$hooks" "$f" "$c"
   done
 
@@ -331,20 +356,22 @@ exec $(sq "$H") rewrite \"\$@\"
 # Undoes the join of the checkout: its handlers in the settings $1 and its MCP entry $3; and,
 # unless another worktree's settings still name the hook, the hook and git's hooks in $2.
 undo_join() {
-  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' before
-  local -a gone=()
+  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' new
+  local -a gone=() entries=()
+
+  # Everything that can fail is worked out before the first file is changed.
   if [ -e "$settings" ]; then
     n=$(jq --arg ours "$ours" \
       '[(.hooks // {})[][] | (.hooks // [])[] | .command? | strings | select(startswith($ours))] | length' \
-      "$settings")
+      "$settings") || refuse "jq could not read $settings; nothing was changed"
   fi
   if [ "$n" -gt 0 ]; then
-    before=$(cat -- "$settings")
-    put "$settings" 0644 "$(rewrite_settings <(printf '%s' "$before") '[]' '[]')
-"
+    new=$(rewrite_settings '[]' '[]' < "$settings") || refuse "jq could not rewrite $settings; nothing was changed"
+    object "$new" || refuse "jq wrote no settings object; nothing was changed"
   fi
-
-  while IFS= read -r -d '' f; do
+  mapfile -d '' -t entries < <(git worktree list --porcelain -z)
+  wait "$!" || refuse "git worktree list failed; nothing was changed"
+  for f in "${entries[@]+"${entries[@]}"}"; do
     case $f in
       'worktree '*)
         w=${f#worktree }
@@ -353,7 +380,12 @@ undo_join() {
         fi
         ;;
     esac
-  done < <(git worktree list --porcelain -z)
+  done
+
+  if [ "$n" -gt 0 ]; then
+    put "$settings" 0644 "$new
+"
+  fi
 
   printf 'grit %s: undid the join in %s\n' "$harness" "$top"
   printf '  settings  .claude/settings.local.json: %s handlers of ours removed\n' "$n"

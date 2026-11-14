@@ -525,5 +525,60 @@ object JoinTests extends TestSuite {
         (done.exit, done.err) ==> ((1, "grit claude-code: needs jq on PATH\n"))
       }
     }
+
+    test("a jq failing at any one call of a join or an undo leaves everything as it was") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val retired = Files.createDirectories(f.root.resolve("old-hooks")).toRealPath()
+        val _ = f.write(f.settings(dir), foreign(retired))
+        val calls = f.root.resolve("jq-calls")
+        val failing = f.write(
+          f.root.resolve("failing/jq"),
+          "#!/bin/sh\nn=$(($(cat \"$JQ_CALLS\" 2> /dev/null || echo 0) + 1))\n" +
+            "echo \"$n\" > \"$JQ_CALLS\"\n[ \"$n\" = \"$JQ_FAILS_AT\" ] && exit 5\n" +
+            s"PATH='${Bash.SystemPath}' exec jq \"$$@\"\n",
+          executable = true
+        )
+        val env = (at: Int) =>
+          Map(
+            "PATH" -> s"${failing.getParent}:${f.bin}:${Bash.SystemPath}",
+            "JQ_CALLS" -> calls.toString,
+            "JQ_FAILS_AT" -> at.toString
+          )
+        val joining = Seq(f.Edge, "--mcp-name", f.Name, "--retire", retired.toString)
+        val undoing = Seq("--undo", "--mcp-name", f.Name)
+        // The calls a run that fails none makes, counted in a twin checkout.
+        val twin = f.checkout("twin")
+        val _ = f.write(f.settings(twin), foreign(retired))
+        def count(args: Seq[String]): Int = {
+          val _ = Files.deleteIfExists(calls)
+          val _ = f.join(twin, args, env(0))
+          f.read(calls).fold(0)(_.trim.toInt)
+        }
+        val (joinCalls, undoCalls) = (count(joining), count(undoing))
+        // The calls whose failure let the run exit 0 or change something.
+        def sweep(dir: Path, args: Seq[String], made: Int): Vector[Int] = {
+          val before = (f.tree(dir), f.tree(f.home))
+          (1 to made).toVector.filter { n =>
+            val _ = Files.deleteIfExists(calls)
+            f.join(dir, args, env(n)).exit == 0 || (f.tree(dir), f.tree(f.home)) != before
+          }
+        }
+        val joined = f.checkout("joined")
+        val _ = f.write(f.settings(joined), foreign(retired))
+        val _ = f.join(joined, joining)
+        (
+          joinCalls > 3,
+          sweep(dir, joining, joinCalls),
+          undoCalls > 1,
+          sweep(joined, undoing, undoCalls)
+        ) ==> ((
+          true,
+          Vector.empty,
+          true,
+          Vector.empty
+        ))
+      }
+    }
   }
 }
