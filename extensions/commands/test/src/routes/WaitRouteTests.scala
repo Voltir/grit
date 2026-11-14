@@ -154,7 +154,7 @@ object WaitRouteTests extends TestSuite {
     ) {
       val script = new ScriptedWatch.Script
       val worktree = Worktrees.at(Worker, got(Directory.of("/work/c")))
-      val session = got(SessionId.of(got(Harness.of("pi-like")), "s1"))
+      val session = got(SessionId.of(got(Harness.of("made-up")), "s1"))
       script.commit(
         session,
         None,

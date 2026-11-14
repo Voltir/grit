@@ -20,13 +20,13 @@ import grit.edge.http.{Hosts, Listen}
 import utest.*
 import EdgeFixtures.*
 
-/** A harness no code here names, `pi-like`, joining the edge and working through it with plain
+/** A harness no code here names, `made-up`, joining the edge and working through it with plain
   * HTTP: what the edge serves any harness, given its adapter.
   */
 object MadeUpHarnessTests extends TestSuite {
 
-  private val PiLike: Harness = got(Harness.of("pi-like"))
-  private val Join = "#!/bin/sh\n# sets pi-like up to post its events to the edge at $1\n"
+  private val MadeUp: Harness = got(Harness.of("made-up"))
+  private val Join = "#!/bin/sh\n# sets made-up up to post its events to the edge at $1\n"
 
   private def encoded(s: String) = URLEncoder.encode(s, UTF_8)
 
@@ -47,7 +47,7 @@ object MadeUpHarnessTests extends TestSuite {
           Server,
           Vector.empty,
           None,
-          Vector(Adapter(PiLike, Join))
+          Vector(Adapter(MadeUp, Join))
         )
       ).open(
         stores(
@@ -70,25 +70,25 @@ object MadeUpHarnessTests extends TestSuite {
           }
           .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
         val host = s"localhost:$port"
-        val dir = encoded("/work/pi")
+        val dir = encoded("/work/made-up")
         val at = Now.minusSeconds(30)
         def line(n: Int, event: String, extra: String = "") =
-          s"""{"session":"p-1","dir":"/work/pi","n":"$n","at":"$at","event":"$event"$extra}"""
+          s"""{"session":"p-1","dir":"/work/made-up","n":"$n","at":"$at","event":"$event"$extra}"""
         val events = Vector(
           line(1, "started"),
           line(2, "edited", ""","shape":{"path":"notes.md"}"""),
           line(3, "closing", ""","text":"Wrote the notes."""")
         ).mkString("\n")
-        val brief = s"/brief?harness=pi-like&session=p-2&dir=$dir&start=fresh&part=digest"
+        val brief = s"/brief?harness=made-up&session=p-2&dir=$dir&start=fresh&part=digest"
         val answered = (
-          get(port, host, "/join/pi-like"),
-          get(port, host, "/join/claude-code"),
-          get(port, host, s"/holder?harness=pi-like&dir=$dir"),
-          post(port, host, "/events?harness=pi-like", events),
+          get(port, host, "/join/made-up"),
+          get(port, host, "/join/unknown-harness"),
+          get(port, host, s"/holder?harness=made-up&dir=$dir"),
+          post(port, host, "/events?harness=made-up", events),
           get(port, host, brief)
         )
         val worked = script
-          .session(got(SessionId.of(PiLike, "p-1")))
+          .session(got(SessionId.of(MadeUp, "p-1")))
           .map(s => Session.Lately(s, Vector.empty, 0, Vector.empty, Vector.empty))
         (
           answered,
@@ -96,8 +96,8 @@ object MadeUpHarnessTests extends TestSuite {
         ) ==> (
           (
             ("HTTP/1.1 200 OK", Join),
-            ("HTTP/1.1 404 Not Found", "no adapter is given for the harness claude-code"),
-            ("HTTP/1.1 200 OK", "desktop/pi-689beccf"),
+            ("HTTP/1.1 404 Not Found", "no adapter is given for the harness unknown-harness"),
+            ("HTTP/1.1 200 OK", "desktop/made-up-f8acfd55"),
             ("HTTP/1.1 200 OK", """{"recorded":3,"refused":[]}"""),
             (
               "HTTP/1.1 200 OK",

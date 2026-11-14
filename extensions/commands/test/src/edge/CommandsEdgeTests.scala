@@ -77,9 +77,9 @@ object CommandsEdgeTests extends TestSuite {
     }
 
     test("of refuses two adapters of one harness") {
-      val piLike = got(Harness.of("pi-like"))
-      edge(adapters = Vector(Adapter(piLike, "one"), Adapter(piLike, "two"))).left.toOption ==>
-        Some("two adapters are given for the harness pi-like")
+      val madeUp = got(Harness.of("made-up"))
+      edge(adapters = Vector(Adapter(madeUp, "one"), Adapter(madeUp, "two"))).left.toOption ==>
+        Some("two adapters are given for the harness made-up")
     }
 
     test(

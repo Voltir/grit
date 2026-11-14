@@ -16,13 +16,13 @@ object LinesTests extends TestSuite {
   private def got[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
-  private val PiLike: Harness = got(Harness.of("pi-like"))
+  private val MadeUp: Harness = got(Harness.of("made-up"))
   private val Desktop: WorkerName = got(WorkerName.of("desktop"))
   private val Now: Instant = Instant.parse("2026-11-13T12:00:00Z")
   private val At: Instant = Now.minusSeconds(30)
 
   private def dir(path: String): Directory = got(Directory.of(path))
-  private def id(local: String): SessionId = got(SessionId.of(PiLike, local))
+  private def id(local: String): SessionId = got(SessionId.of(MadeUp, local))
 
   private def line(fields: (String, ujson.Value)*): String =
     ujson.write(
@@ -37,7 +37,7 @@ object LinesTests extends TestSuite {
       )
     )
 
-  private def read(text: String) = Lines.read(text, PiLike, Desktop, Now)
+  private def read(text: String) = Lines.read(text, MadeUp, Desktop, Now)
 
   private def shape(o: ujson.Obj): Event.Shape = got(Event.Shape.of(o))
 
@@ -157,7 +157,7 @@ object LinesTests extends TestSuite {
         line("n" -> "0"),
         line("n" -> "2", "worktree" -> "/work/b")
       ).mkString("\n")
-      Lines.batch(body, PiLike, Desktop, Now) ==> Right(
+      Lines.batch(body, MadeUp, Desktop, Now) ==> Right(
         Lines.Batched(
           Some(
             EdgeSessions.Batch(
@@ -180,15 +180,15 @@ object LinesTests extends TestSuite {
       (
         Lines.batch(
           Vector(line(), line("agent" -> "a-1", "type" -> "t")).mkString("\n"),
-          PiLike,
+          MadeUp,
           Desktop,
           Now
         ),
-        Lines.batch("\n\n", PiLike, Desktop, Now),
+        Lines.batch("\n\n", MadeUp, Desktop, Now),
         Lines.batch(line(), Harness.Grit, Desktop, Now),
-        Lines.batch("{", PiLike, Desktop, Now)
+        Lines.batch("{", MadeUp, Desktop, Now)
       ) ==> (
-        Left("line 2 is session pi-like:s-1/a-1, not pi-like:s-1: post each session's lines apart"),
+        Left("line 2 is session made-up:s-1/a-1, not made-up:s-1: post each session's lines apart"),
         Left("the body holds no line"),
         Left("the harness grit is grit's own: only its turns record its sessions"),
         Right(Lines.Batched(None, Vector(1 -> "no JSON object")))

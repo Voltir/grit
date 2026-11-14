@@ -13,7 +13,7 @@ object HoldersTests extends TestSuite {
 
   private val Desktop = got(WorkerName.of("desktop"))
   private val Grit = got(Directory.of("/work/grit"))
-  private val Session = got(Harness.of("claude-code").flatMap(SessionId.of(_, "s-1")))
+  private val Session = got(Harness.of("made-up").flatMap(SessionId.of(_, "s-1")))
 
   private def holder(
       worker: WorkerName = Desktop,
@@ -42,9 +42,9 @@ object HoldersTests extends TestSuite {
       Vector("coder-opus", "Plan Mode", "日本").map(t =>
         holder(agent = Some(Holders.Agent(t, Session)))
       ) ==> Vector(
-        "desktop/grit-dcfe7476/coder-opus/0e77e4b3dbc2",
-        "desktop/grit-dcfe7476/plan-mode-412d7e24/0e77e4b3dbc2",
-        "desktop/grit-dcfe7476/cf2abf0c/0e77e4b3dbc2"
+        "desktop/grit-dcfe7476/coder-opus/5704e74050f4",
+        "desktop/grit-dcfe7476/plan-mode-412d7e24/5704e74050f4",
+        "desktop/grit-dcfe7476/cf2abf0c/5704e74050f4"
       )
     }
 

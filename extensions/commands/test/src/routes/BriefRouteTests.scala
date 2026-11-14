@@ -13,15 +13,15 @@ import RouteFixtures.*
 /** `GET /brief`: a holder's brief, or the digest of what its newest other session did lately. */
 object BriefRouteTests extends TestSuite {
 
-  private val ClaudeCode: Harness = got(Harness.of("claude-code"))
+  private val MadeUp: Harness = got(Harness.of("made-up"))
   private val Holder: ClaimHolder = got(ClaimHolder.of("desktop/grit-dcfe7476"))
   private val Agent: ClaimHolder = got(
-    ClaimHolder.of("desktop/grit-dcfe7476/coder-opus/0e77e4b3dbc2")
+    ClaimHolder.of("desktop/grit-dcfe7476/coder-opus/5704e74050f4")
   )
-  private val Fresh = "/brief?harness=claude-code&session=s-1&dir=/work/grit&start=fresh"
-  private val Resume = "/brief?harness=claude-code&session=s-1&dir=/work/grit&start=resume"
+  private val Fresh = "/brief?harness=made-up&session=s-1&dir=/work/grit&start=fresh"
+  private val Resume = "/brief?harness=made-up&session=s-1&dir=/work/grit&start=resume"
 
-  private def id(local: String): SessionId = got(SessionId.of(ClaudeCode, local))
+  private def id(local: String): SessionId = got(SessionId.of(MadeUp, local))
 
   /** The session `local`, working as `holder`, last active `ago` seconds before [[Now]], having
     * said `said` as it closed.
@@ -135,9 +135,9 @@ object BriefRouteTests extends TestSuite {
         s"$Fresh&part=all",
         s"$Fresh&agent=a-1",
         s"$Fresh&type=coder-opus",
-        "/brief?harness=claude-code&session=s-1&dir=/work/grit&start=later",
-        "/brief?harness=claude-code&session=s-1&dir=/work/grit",
-        "/brief?harness=claude-code&dir=/work/grit&start=fresh"
+        "/brief?harness=made-up&session=s-1&dir=/work/grit&start=later",
+        "/brief?harness=made-up&session=s-1&dir=/work/grit",
+        "/brief?harness=made-up&dir=/work/grit&start=fresh"
       ).map(asked(script, _)) ==> Vector(
         (Status.BadRequest, "part: brief or digest, not all"),
         (Status.BadRequest, "agent and type come together: an agent's own id, and its type"),

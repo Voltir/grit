@@ -13,7 +13,7 @@ import RouteFixtures.*
 /** `POST /events`: a harness's lines recorded on their session as the caller, each refused named. */
 object EventsRouteTests extends TestSuite {
 
-  private val PiLike: Harness = got(Harness.of("pi-like"))
+  private val MadeUp: Harness = got(Harness.of("made-up"))
   private val At = Now.minusSeconds(30)
 
   private def line(n: String, fields: (String, ujson.Value)*): String =
@@ -32,7 +32,7 @@ object EventsRouteTests extends TestSuite {
   private def posted(
       script: ScriptedSessions.Script,
       body: String,
-      target: String = "/events?harness=pi-like",
+      target: String = "/events?harness=made-up",
       vouched: Boolean = true
   ) = {
     val got = routed(script = script, vouched = vouched).answer(request(Verb.Post, target, body))
@@ -63,7 +63,7 @@ object EventsRouteTests extends TestSuite {
             EdgeContracts.Room,
             Vector(
               EdgeSessions.Batch(
-                got(SessionId.of(PiLike, "s-1")),
+                got(SessionId.of(MadeUp, "s-1")),
                 None,
                 Worktrees.at(Worker, dir),
                 Some(Holders.of(Worker, dir, None)),
@@ -79,7 +79,7 @@ object EventsRouteTests extends TestSuite {
       val script = new ScriptedSessions.Script
       (
         posted(script, line("1"), "/events"),
-        posted(script, line("1"), "/events?harness=pi-like&session=s-1"),
+        posted(script, line("1"), "/events?harness=made-up&session=s-1"),
         posted(script, line("1"), "/events?harness=grit"),
         posted(
           script,
@@ -93,7 +93,7 @@ object EventsRouteTests extends TestSuite {
         (Status.BadRequest, "the harness grit is grit's own: only its turns record its sessions"),
         (
           Status.BadRequest,
-          "line 2 is session pi-like:s-1/a-1, not pi-like:s-1: post each session's lines apart"
+          "line 2 is session made-up:s-1/a-1, not made-up:s-1: post each session's lines apart"
         ),
         (
           Status.BadRequest,
@@ -125,7 +125,7 @@ object EventsRouteTests extends TestSuite {
 
     test("only a POST is answered: a GET records nothing") {
       val script = new ScriptedSessions.Script
-      val get = routed(script = script).answer(request(Verb.Get, "/events?harness=pi-like"))
+      val get = routed(script = script).answer(request(Verb.Get, "/events?harness=made-up"))
       (get.status, script.called) ==> (Status.NotAllowed(Vector(Verb.Post)), Vector.empty)
     }
   }

@@ -16,23 +16,23 @@ object HolderRouteTests extends TestSuite {
   val tests = Tests {
     test("a session's holder, and an agent's, are answered as text on the caller's worker") {
       (
-        asked("/holder?harness=claude-code&dir=/work/grit"),
-        asked("/holder?harness=claude-code&dir=/work/grit&session=s-1&type=coder-opus")
+        asked("/holder?harness=made-up&dir=/work/grit"),
+        asked("/holder?harness=made-up&dir=/work/grit&session=s-1&type=coder-opus")
       ) ==> (
         (Status.Ok, "desktop/grit-dcfe7476"),
-        (Status.Ok, "desktop/grit-dcfe7476/coder-opus/0e77e4b3dbc2")
+        (Status.Ok, "desktop/grit-dcfe7476/coder-opus/5704e74050f4")
       )
     }
 
     test("a query it does not read is 400 naming why") {
       Vector(
-        "/holder?harness=claude-code&dir=/work/grit&slot=x",
-        "/holder?harness=claude-code&dir=/work/grit&dir=/work/b",
-        "/holder?harness=claude-code&dir=/work/grit&type=coder-opus",
-        "/holder?harness=claude-code&dir=/work/grit&session=s-1",
-        "/holder?harness=claude-code&dir=work/grit",
+        "/holder?harness=made-up&dir=/work/grit&slot=x",
+        "/holder?harness=made-up&dir=/work/grit&dir=/work/b",
+        "/holder?harness=made-up&dir=/work/grit&type=coder-opus",
+        "/holder?harness=made-up&dir=/work/grit&session=s-1",
+        "/holder?harness=made-up&dir=work/grit",
         "/holder?dir=/work/grit",
-        "/holder?harness=Claude&dir=/work/grit"
+        "/holder?harness=Made-Up&dir=/work/grit"
       ).map(asked(_)) ==> Vector(
         (
           Status.BadRequest,
@@ -51,7 +51,7 @@ object HolderRouteTests extends TestSuite {
         (Status.BadRequest, "no harness"),
         (
           Status.BadRequest,
-          "harness: a harness's name holds 'C', not a lowercase letter, a digit or '-': Claude"
+          "harness: a harness's name holds 'M', not a lowercase letter, a digit or '-': Made-Up"
         )
       )
     }
@@ -59,8 +59,8 @@ object HolderRouteTests extends TestSuite {
     test("only a GET is answered, and it runs nothing") {
       val commands = scripted(Vector(listed("holder", reads = false)))(Unrun)
       val r = routed(commands)
-      val get = r.answer(request(Verb.Get, "/holder?harness=claude-code&dir=/work/grit"))
-      val post = r.answer(request(Verb.Post, "/holder?harness=claude-code&dir=/work/grit"))
+      val get = r.answer(request(Verb.Get, "/holder?harness=made-up&dir=/work/grit"))
+      val post = r.answer(request(Verb.Post, "/holder?harness=made-up&dir=/work/grit"))
       (get.status, post.status, commands.ran) ==>
         (Status.Ok, Status.NotAllowed(Vector(Verb.Get)), Vector.empty)
     }
