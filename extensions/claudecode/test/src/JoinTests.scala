@@ -534,6 +534,48 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("without timeout on PATH, the join is refused with one line, changing nothing") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val tools = Files.createDirectories(f.root.resolve("tools"))
+        Vector("bash", "git", "curl", "jq").foreach(t =>
+          Files.createSymbolicLink(tools.resolve(t), Path.of(s"/usr/bin/$t"))
+        )
+        val before = f.tree(dir)
+        val done = Bash.run(
+          dir,
+          f.home,
+          f.bin,
+          Seq("-s", "--", f.Edge),
+          ClaudeCode.adapter.join,
+          Map("PATH" -> tools.toString)
+        )
+        (done.exit, done.err, f.tree(dir) == before) ==>
+          ((1, "grit claude-code: needs timeout on PATH\n", true))
+      }
+    }
+
+    test("a jq without --args, as before 1.6, refuses the join with one line, changing nothing") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val old = f.write(
+          f.root.resolve("old/jq"),
+          "#!/bin/sh\nfor a; do [ \"$a\" = --args ] && exit 2; done\n" +
+            "[ \"$1\" = --version ] && { echo jq-1.5; exit 0; }\n" +
+            s"PATH='${Bash.SystemPath}' exec jq \"$$@\"\n",
+          executable = true
+        )
+        val before = f.tree(dir)
+        val done =
+          f.join(dir, Seq(f.Edge), Map("PATH" -> s"${old.getParent}:${f.bin}:${Bash.SystemPath}"))
+        (done.exit, done.err, f.tree(dir) == before) ==> ((
+          1,
+          "grit claude-code: needs jq 1.6 or later, whose --args the hook uses; this is jq-1.5\n",
+          true
+        ))
+      }
+    }
+
     test(
       "under core.hooksPath, global or tracked, the join writes no git hook and prints the lines to add"
     ) {
