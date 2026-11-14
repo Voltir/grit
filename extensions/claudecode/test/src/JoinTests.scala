@@ -491,6 +491,14 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("a test's join never reaches a repository enclosing its temporary root") {
+      JoinFixtures { f =>
+        val _ = f.sh(f.root, "git init -q .")
+        val dir = Files.createDirectories(f.root.resolve("plain"))
+        (f.joined(dir).exit, Files.exists(f.root.resolve(".git/grit"))) ==> ((1, false))
+      }
+    }
+
     test("without jq on PATH, the join is refused with one line") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

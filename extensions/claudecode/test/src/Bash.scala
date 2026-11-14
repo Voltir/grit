@@ -22,7 +22,8 @@ object Bash {
   val SystemPath: String = "/usr/local/bin:/usr/bin:/bin"
 
   /** bash with `args`, in `dir`, reading `input`, given `within` to end, else failing the test.
-    * `env` gets `PATH` with `bin` first, and `HOME`, when it names neither.
+    * `env` gets `PATH` with `bin` first, `HOME`, and `GIT_CEILING_DIRECTORIES` as `HOME`'s parent
+    * (a test's temporary root), so git never finds a repository above it, when it names none.
     */
   def run(
       dir: Path,
@@ -33,7 +34,11 @@ object Bash {
       env: Map[String, String] = Map.empty,
       within: FiniteDuration = 10.seconds
   ): Done = {
-    val vars = (Map("PATH" -> s"$bin:$SystemPath", "HOME" -> home.toString) ++ env).toVector.sorted
+    val vars = (Map(
+      "PATH" -> s"$bin:$SystemPath",
+      "HOME" -> home.toString,
+      "GIT_CEILING_DIRECTORIES" -> home.getParent.toString
+    ) ++ env).toVector.sorted
       .map((k, v) => s"$k=$v")
     val argv = Argv.of("/usr/bin/env", (("-i" +: vars) ++ ("bash" +: args))*) match {
       case Right(a) => a
