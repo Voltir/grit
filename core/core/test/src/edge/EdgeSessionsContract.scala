@@ -48,6 +48,23 @@ abstract class EdgeSessionsContract extends TestSuite {
       (record(Reader, b), record(Reader, b)) ==> (Right(2), Right(0))
     }
 
+    test("a batch partly recorded before logs only its new events") {
+      val id = session("partly")
+      (record(Reader, batch(id, None, 1, 2)), record(Reader, batch(id, None, 1, 2, 3, 4))) ==>
+        (Right(2), Right(2))
+    }
+
+    test("a session recorded again as another holder keeps its first") {
+      val (first, later) =
+        (got(ClaimHolder.of("contract/first")), got(ClaimHolder.of("contract/later")))
+      worked("kept", first, 1)
+      worked("kept", later, 2)
+      (opening(first, None), opening(later, None)) ==> (
+        Right((None, Some(session("kept")))),
+        Right((None, None))
+      )
+    }
+
     test("an account no person is linked to, or grit's own session, records nothing") {
       val own = got(SessionId.of(Harness.Grit, "contract-own"))
       (
