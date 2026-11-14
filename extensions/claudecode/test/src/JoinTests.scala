@@ -526,6 +526,36 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("a git whose worktree list has no -z refuses the join and the undo, naming the version") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val _ = f.joined(dir)
+        val old = f.write(
+          f.root.resolve("old-git/git"),
+          "#!/bin/sh\n[ \"$1 $2\" = 'worktree list' ] && case \" $* \" in *' -z '*) " +
+            "echo 'error: unknown switch z' >&2; exit 129 ;; esac\n" +
+            s"PATH='${Bash.SystemPath}' exec git \"$$@\"\n",
+          executable = true
+        )
+        val path = Map("PATH" -> s"${old.getParent}:${f.bin}:${Bash.SystemPath}")
+        val before = (f.tree(dir), f.tree(f.home))
+        val runs = Vector(
+          f.join(dir, Seq(f.Edge, "--mcp-name", f.Name), path),
+          f.join(
+            dir,
+            Seq("--undo", "--mcp-name", f.Name),
+            path
+          )
+        ).map(d => (d.exit, d.err))
+        (runs, (f.tree(dir), f.tree(f.home)) == before) ==> ((
+          Vector.fill(2)(
+            (1, "grit claude-code: needs git 2.36 or later, whose git worktree list takes -z\n")
+          ),
+          true
+        ))
+      }
+    }
+
     test("a jq failing at any one call of a join or an undo leaves everything as it was") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

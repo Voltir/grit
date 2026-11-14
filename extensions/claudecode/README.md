@@ -37,7 +37,8 @@ line, `</dev/null main "$@"`; `main` sets bash's options itself, and what it sta
 `/dev/null`, never the rest of the script.
 
 **Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq or
-curl on PATH; outside a git checkout; an address other than `http://` or `https://`, a host (a
+curl on PATH; outside a git checkout; a git whose `git worktree list` takes no `-z` (below 2.36),
+as an undo reads every worktree's settings from that list; an address other than `http://` or `https://`, a host (a
 name, or an IPv6 address in brackets) and an optional port, nothing after; plain `http://` to a
 host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts carry a session's
 replies and summaries in clear until requests carry credentials; a checkout or hook path holding a

@@ -215,6 +215,8 @@ main() {
   fi
 
   top=$(git rev-parse --show-toplevel 2> /dev/null) || refuse "not inside a git checkout; run the join in one"
+  git worktree list --porcelain -z > /dev/null 2>&1 ||
+    refuse "needs git 2.36 or later, whose git worktree list takes -z"
   local common hooks
   common=$(git rev-parse --path-format=absolute --git-common-dir) || refuse "git cannot name this checkout's repository"
   hooks=$(git rev-parse --path-format=absolute --git-path hooks) || refuse "git cannot name this checkout's hooks"
