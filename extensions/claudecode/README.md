@@ -39,16 +39,18 @@ line, `</dev/null main "$@"`; `main` sets bash's options itself, and what it sta
 
 **Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq, curl
 or `timeout` on PATH (the last the hook's watchdog); a jq without `--args` (below 1.6), with which
-the hook posts commits; outside a git checkout; a git whose `git worktree list` takes no `-z` (below 2.36),
-as an undo reads every worktree's settings from that list; an address other than `http://` or
-`https://`, a host (a name, or an IPv6 address in brackets) and an optional port, nothing after;
-plain `http://` to a host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts
-carry a session's replies and summaries in clear until requests carry credentials; a checkout or
-hook path holding a control character; settings that are a symbolic link, not a JSON object, or
-whose `hooks` is not an object of lists of groups; `--retire` of something that is not a
-directory, or of `HOME`, the checkout or an ancestor of either; an `--mcp-name` other than 1 to 64
-letters, digits, `_`, `.` or `-`, starting with a letter or digit (so it is never read as an
-option); and any jq call that fails, or a rewrite of the settings that is not one JSON object, as
+the hook posts commits; outside a git checkout; a git whose `git worktree list` takes no `-z`
+(below 2.36), as an undo reads every worktree's settings from that list; an address other than
+`http://` or `https://`, a host (a name, or an IPv6 address in brackets) and an optional port,
+nothing after; plain `http://` to a host that is not loopback (`localhost`, `127.x.x.x`,
+`[::1]`), since posts carry a session's replies and summaries in clear until requests carry
+credentials; a checkout or hook path holding a control character; settings that are a symbolic
+link, not a JSON object, or whose `hooks` is not an object of lists of groups; an info/exclude
+that cannot be read, or that is a symbolic link the join would write; a git that cannot say
+whether it tracks or ignores the settings; `--retire` of something that is not a directory, or of
+`HOME`, the checkout or an ancestor of either; an `--mcp-name` other than 1 to 64 letters,
+digits, `_`, `.` or `-`, starting with a letter or digit (so it is never read as an option); and
+any jq call that fails, or a rewrite of the settings that is not one JSON object, as
 everything that can fail is worked out before the first file is written (an undo, too, reads
 every other worktree's settings and `~/.claude.json` first).
 
@@ -83,6 +85,11 @@ every other worktree's settings and `~/.claude.json` first).
   | Stop, PostCompact, SubagentStop | `event` | async |
   | SessionEnd | `event` | |
 
+- **info/exclude**, `<git common dir>/info/exclude`, gains two lines, `# grit claude-code join`
+  and `/.claude/settings.local.json`, when git neither tracks the settings nor ignores them
+  already, so `git add -A` never stages a file that may hold tokens (a trailing comment would be
+  part of a pattern, so the marker is a line of its own). Settings git tracks are left so, and
+  the join says that `git add -A` stages what it wrote. The repository's worktrees share it.
 - **git's hooks**, `post-commit` (`exec '<hook>' commit`) and `post-rewrite` (`exec '<hook>' rewrite
   "$@"`) in `<git common dir>/hooks`, each marked by the line `# grit claude-code join`. When
   `core.hooksPath` names another directory (one other repositories share, or one the checkout
@@ -104,9 +111,9 @@ the old hook, and a join at the new path adds a second set, so run the undo befo
 **Undo** removes the checkout's handlers (rewriting the settings only when it held one) and its
 MCP entry, but only an entry the join would have written, an `http://` or `https://` host and
 port with the path `/mcp` and nothing after, as a checkout never joined may hold another (printed,
-and left as it is); the hook and the git hooks it marked go too, unless another worktree's
-settings still name the hook, when they are kept and the worktree named. Nothing retired is
-restored. A `hooks` the removal leaves empty goes, but a settings file the join made is left as
+and left as it is); the hook, the git hooks it marked and its two lines in info/exclude go too,
+unless another worktree's settings still name the hook, when they are kept and the worktree
+named. Nothing retired is restored. A `hooks` the removal leaves empty goes, but a settings file the join made is left as
 `{}`: with no state file the undo cannot tell it from a person's own `{}`, and Claude Code reads
 the two alike.
 
@@ -116,6 +123,7 @@ A join prints, for a first join (paths as they are on the machine):
 grit claude-code: joined /work/proj to http://127.0.0.1:7317
   hook      /work/proj/.git/grit/claude-code/hook, shared by this repository's worktrees
   settings  .claude/settings.local.json: 11 handlers of ours
+  ignore    .claude/settings.local.json in /work/proj/.git/info/exclude, shared by this repository's worktrees
   git       post-commit and post-rewrite in /work/proj/.git/hooks, shared by this repository's worktrees
   mcp       grit at http://127.0.0.1:7317/mcp, local scope
 Sessions pick the hooks up at once; run /mcp in a running session to connect grit.
@@ -124,7 +132,10 @@ Undo: curl -fsS http://127.0.0.1:7317/join/claude-code | bash -s -- --undo --mcp
 
 with a `  removed   <command>` line for each retired one, `, replacing <name> at <url>` after the
 MCP entry it replaced, and `  git       <file> is not ours and is left as it is; add the line:
-<line>` for a foreign git hook. Under `core.hooksPath`, the `git` line is three:
+<line>` for a foreign git hook. The `ignore` line is `  ignore    .claude/settings.local.json is
+ignored already` when another rule ignores the settings, and `  ignore
+.claude/settings.local.json is tracked, so git add -A stages what the join wrote; it is left so`
+when git tracks them. Under `core.hooksPath`, the `git` line is three:
 
 ```
   git       /work/shared-hooks is core.hooksPath, which the join does not write; add these lines
@@ -139,12 +150,14 @@ grit claude-code: undid the join in /work/proj
   settings  .claude/settings.local.json: 11 handlers of ours removed
   hook      /work/proj/.git/grit/claude-code/hook removed
   git       post-commit and post-rewrite removed
+  ignore    .claude/settings.local.json's lines removed from /work/proj/.git/info/exclude
   mcp       grit at http://127.0.0.1:7317/mcp removed from local scope
 Nothing retired was restored.
 ```
 
 or `  hook      <hook> kept: the worktree <dir> still names it` and `  git       post-commit and
-post-rewrite kept, as the hook is` while another worktree is joined; and, for a foreign git hook
+post-rewrite kept, as the hook is` (and, when the join wrote its lines, `  ignore
+.claude/settings.local.json kept in <exclude>, as the hook is`) while another worktree is joined; and, for a foreign git hook
 that still names the hook removed, `  git       <file> is not ours and still names <hook>; remove
 that line`. The `mcp` line is `  mcp       <name> at <where> is not an edge's /mcp and is left
 as it is` for an entry the join would not have written, and `  mcp       no entry <name> in local

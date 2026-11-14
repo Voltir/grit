@@ -67,6 +67,7 @@ object JoinTests extends TestSuite {
               s"grit claude-code: joined $top to ${f.Edge}",
               s"  hook      $h, shared by this repository's worktrees",
               "  settings  .claude/settings.local.json: 11 handlers of ours",
+              s"  ignore    .claude/settings.local.json in ${f.common(dir)}/info/exclude, shared by this repository's worktrees",
               s"  git       post-commit and post-rewrite in $hooks, shared by this repository's worktrees",
               s"  mcp       ${f.Name} at ${f.Edge}/mcp, local scope",
               s"Sessions pick the hooks up at once; run /mcp in a running session to connect ${f.Name}.",
@@ -245,6 +246,7 @@ object JoinTests extends TestSuite {
               "  settings  .claude/settings.local.json: 11 handlers of ours removed",
               s"  hook      ${f.hook(dir)} removed",
               "  git       post-commit and post-rewrite removed",
+              s"  ignore    .claude/settings.local.json's lines removed from ${f.common(dir)}/info/exclude",
               s"  mcp       ${f.Name} at ${f.Edge}/mcp removed from local scope",
               "Nothing retired was restored."
             )
@@ -460,7 +462,7 @@ object JoinTests extends TestSuite {
         val kept = (Files.exists(f.hook(dir)), Files.exists(f.gitHook(dir, "post-commit")))
         val last = f.undone(dir)
         (
-          first.out.filter(l => l.startsWith("  hook") || l.startsWith("  git")),
+          first.out.filter(l => Vector("  hook", "  git", "  ignore").exists(l.startsWith)),
           kept,
           last.exit,
           Files.exists(f.hook(dir)),
@@ -469,7 +471,8 @@ object JoinTests extends TestSuite {
           (
             Vector(
               s"  hook      ${f.hook(dir)} kept: the worktree ${dir.toRealPath()} still names it",
-              "  git       post-commit and post-rewrite kept, as the hook is"
+              "  git       post-commit and post-rewrite kept, as the hook is",
+              s"  ignore    .claude/settings.local.json kept in ${f.common(dir)}/info/exclude, as the hook is"
             ),
             (true, true),
             0,
@@ -874,6 +877,91 @@ object JoinTests extends TestSuite {
           Vector.empty,
           true,
           Vector.empty
+        ))
+      }
+    }
+
+    test(
+      "the join keeps its settings out of git add -A by a marked line in info/exclude, which undo removes"
+    ) {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val exclude = f.common(dir).resolve("info/exclude")
+        val before = f.read(exclude).getOrElse("")
+        val joined = f.joined(dir)
+        val status = f.sh(dir, "git status --porcelain --untracked-files=all")
+        val added = f.read(exclude)
+        val undo = f.undone(dir)
+        (
+          joined.out.filter(_.startsWith("  ignore")),
+          status,
+          added,
+          undo.out.filter(_.startsWith("  ignore")),
+          f.read(exclude).getOrElse("")
+        ) ==> (
+          Vector(
+            s"  ignore    .claude/settings.local.json in $exclude, shared by this repository's worktrees"
+          ),
+          Vector.empty,
+          Some(before + "# grit claude-code join\n/.claude/settings.local.json\n"),
+          Vector(s"  ignore    .claude/settings.local.json's lines removed from $exclude"),
+          before
+        )
+      }
+    }
+
+    test("settings git ignores already, or tracks, are left to git, the join saying which") {
+      JoinFixtures { f =>
+        val ignored = f.checkout("ignored")
+        val _ = f.write(ignored.resolve(".gitignore"), ".claude/\n")
+        val tracked = f.checkout("tracked")
+        val _ = f.write(f.settings(tracked), "{}\n")
+        val _ = f.sh(
+          tracked,
+          "git add .claude && git -c user.name=t -c user.email=t@example.invalid commit -qm settings"
+        )
+        val excludes =
+          Vector(ignored, tracked).map(d => f.read(f.common(d).resolve("info/exclude")))
+        val runs = Vector(ignored, tracked).map(d => f.joined(d))
+        (
+          runs.map(r => (r.exit, r.out.filter(_.startsWith("  ignore")))),
+          Vector(ignored, tracked).map(d => f.read(f.common(d).resolve("info/exclude")))
+        ) ==> (
+          Vector(
+            (0, Vector("  ignore    .claude/settings.local.json is ignored already")),
+            (
+              0,
+              Vector(
+                "  ignore    .claude/settings.local.json is tracked, so git add -A stages what the join wrote; it is left so"
+              )
+            )
+          ),
+          excludes
+        )
+      }
+    }
+
+    test(
+      "a git that cannot say whether the settings are ignored refuses the join, changing nothing"
+    ) {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val failing = f.write(
+          f.root.resolve("failing/git"),
+          "#!/bin/sh\ncase $1 in check-ignore | ls-files) exit 128 ;; esac\n" +
+            s"PATH='${Bash.SystemPath}' exec git \"$$@\"\n",
+          executable = true
+        )
+        val before = (f.tree(dir), f.tree(f.home))
+        val done = f.join(
+          dir,
+          Seq(f.Edge, "--mcp-name", f.Name),
+          Map("PATH" -> s"${failing.getParent}:${f.bin}:${Bash.SystemPath}")
+        )
+        (done.exit, done.err, (f.tree(dir), f.tree(f.home)) == before) ==> ((
+          1,
+          "grit claude-code: git could not say whether .claude/settings.local.json is tracked or ignored; nothing was changed\n",
+          true
         ))
       }
     }

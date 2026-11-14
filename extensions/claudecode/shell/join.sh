@@ -190,6 +190,39 @@ mcp_entry() {
     else "0an entry of another kind" end' "$HOME/.claude.json"
 }
 
+# How git treats the settings, `.claude/settings.local.json` under the checkout's top, where
+# info/exclude holds $1: `tracked`; `ours` when the join's lines in info/exclude ignore it;
+# `ignored` by any other rule; or `open`. Fails when git cannot say.
+settings_kept() {
+  local listed rc=0
+  listed=$(git ls-files -- .claude/settings.local.json) || return 1
+  if [ -n "$listed" ]; then
+    printf tracked
+    return 0
+  fi
+  case $1 in
+    *"$marker"$'\n'"$excluded"$'\n'*)
+      printf ours
+      return 0
+      ;;
+  esac
+  git check-ignore -q -- .claude/settings.local.json || rc=$?
+  case $rc in
+    0) printf ignored ;;
+    1) printf open ;;
+    *) return 1 ;;
+  esac
+}
+
+# Sets `text` to the file $1's bytes, every one kept (it holds no NUL), empty when there is none;
+# refused when it cannot be read.
+text_of() {
+  text=''
+  [ -e "$1" ] || return 0
+  [ -f "$1" ] && [ -r "$1" ] || refuse "cannot read $1; nothing was changed"
+  IFS= read -r -d '' text < "$1" || true # read fails at the end of a file with no NUL
+}
+
 # Our groups, one per event, as a JSON array of {event, group}.
 our_groups() {
   local h
@@ -213,6 +246,8 @@ main() {
   # or `*` is an unanchored regular expression. The MCP ones are read-only tools, posted as reads.
   tools_matcher='^(Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__scout__.*)$'
   marker="# grit $harness join"
+  # The line, after the marker, that keeps the settings out of `git add -A` in every worktree.
+  excluded=/.claude/settings.local.json
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     refuse "needs bash 5 or later; this is bash ${BASH_VERSION-unknown}"
   fi
@@ -283,8 +318,10 @@ main() {
   local common hooks
   common=$(git rev-parse --path-format=absolute --git-common-dir) || refuse "git cannot name this checkout's repository"
   hooks=$(git rev-parse --path-format=absolute --git-path hooks) || refuse "git cannot name this checkout's hooks"
+  exclude=$(git rev-parse --path-format=absolute --git-path info/exclude) ||
+    refuse "git cannot name this checkout's info/exclude"
   H=$common/grit/$harness/hook
-  if controlled "$top" || controlled "$H" || controlled "$hooks"; then
+  if controlled "$top" || controlled "$H" || controlled "$hooks" || controlled "$exclude"; then
     refuse "this checkout's path holds a control character, which a hook command cannot carry"
   fi
   ours="$(sq "$H") "
@@ -356,6 +393,16 @@ join() {
   count=$(jq '[.[].group.hooks | length] | add' <<< "$groups") || refuse "jq failed; nothing was changed"
   old=$(mcp_entry "$mcp") || refuse "jq could not read ~/.claude.json; nothing was changed"
   old=${old#?}
+  # The settings are the person's own, and may hold tokens: `git add -A` must not stage them.
+  local kept text excluding=''
+  text_of "$exclude"
+  kept=$(settings_kept "$text") ||
+    refuse "git could not say whether .claude/settings.local.json is tracked or ignored; nothing was changed"
+  if [ "$kept" = open ]; then
+    [ ! -L "$exclude" ] || refuse "$exclude is a symbolic link; the join writes no file it does not own"
+    [ -z "$text" ] || [[ $text == *$'\n' ]] || text+=$'\n'
+    excluding=$text$marker$'\n'$excluded$'\n'
+  fi
   qh=$(sq "$harness")
   qe=$(sq "$edge")
   qH=$(sq "$H")
@@ -367,6 +414,7 @@ edge=\${GRIT_EDGE:-\$edge}
 $hook"
   put_kept "$settings" 0644 "$new
 "
+  [ -z "$excluding" ] || put_kept "$exclude" 0644 "$excluding"
   for f in "${written[@]+"${written[@]}"}"; do
     if [ "$f" = post-commit ]; then
       put "$hooks/$f" 0755 "#!/usr/bin/env bash
@@ -384,6 +432,11 @@ exec $qH rewrite \"\$@\"
   printf 'grit %s: joined %s to %s\n' "$harness" "$top" "$edge"
   printf '  hook      %s, shared by this repository'\''s worktrees\n' "$H"
   printf '  settings  .claude/settings.local.json: %s handlers of ours\n' "$count"
+  case $kept in
+    tracked) printf '  ignore    .claude/settings.local.json is tracked, so git add -A stages what the join wrote; it is left so\n' ;;
+    ignored) printf '  ignore    .claude/settings.local.json is ignored already\n' ;;
+    *) printf '  ignore    .claude/settings.local.json in %s, shared by this repository'\''s worktrees\n' "$exclude" ;;
+  esac
   for c in "${removed[@]+"${removed[@]}"}" "${lines[@]+"${lines[@]}"}"; do
     printf '  removed   %s\n' "$c"
   done
@@ -456,6 +509,14 @@ undo_join() {
     esac
   done
 
+  # The join's two lines in info/exclude, the first of them if a person copied them.
+  local text excluding=''
+  text_of "$exclude"
+  case $text in
+    *"$marker"$'\n'"$excluded"$'\n'*) excluding=${text/"$marker"$'\n'"$excluded"$'\n'/} ;;
+    *) text='' ;;
+  esac
+
   if [ "$n" -gt 0 ]; then
     put_kept "$settings" 0644 "$new
 "
@@ -466,7 +527,13 @@ undo_join() {
   if [ -n "$other" ]; then
     printf '  hook      %s kept: the worktree %s still names it\n' "$H" "$other"
     printf '  git       post-commit and post-rewrite kept, as the hook is\n'
+    if [ -n "$text" ]; then
+      printf '  ignore    .claude/settings.local.json kept in %s, as the hook is\n' "$exclude"
+    fi
   else
+    if [ -n "$text" ]; then
+      put_kept "$exclude" 0644 "$excluding"
+    fi
     rm -f -- "$H"
     rmdir -- "${H%/*}" 2> /dev/null || true
     rmdir -- "${H%/*/*}" 2> /dev/null || true
@@ -482,6 +549,9 @@ undo_join() {
       1) printf '  git       %s removed\n' "${gone[0]}" ;;
       0) printf '  git       none of ours to remove\n' ;;
     esac
+    if [ -n "$text" ]; then
+      printf '  ignore    .claude/settings.local.json'\''s lines removed from %s\n' "$exclude"
+    fi
     for f in post-commit post-rewrite; do
       if [ -f "$hooks/$f" ] && grep -qF -- "$H" "$hooks/$f"; then
         printf '  git       %s/%s is not ours and still names %s; remove that line\n' "$hooks" "$f" "$H"
