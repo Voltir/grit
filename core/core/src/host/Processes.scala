@@ -7,10 +7,10 @@ import scala.concurrent.duration.FiniteDuration
 /** A program and its arguments, run as given: no shell reads them. */
 final case class Argv private (program: String, args: List[String]) extends caps.Pure {
 
-  /** As a person would type it at a shell, each word holding a space, a quote or a character a
-    * shell reads specially, or nothing, single-quoted: for showing, never for running.
+  /** As a person would type it at a shell, each word as [[Argv.quote]] writes it: for showing,
+    * never for running.
     */
-  def written: String = (program :: args).map(Argv.quoted).mkString(" ")
+  def written: String = (program :: args).map(Argv.quote).mkString(" ")
 }
 
 object Argv {
@@ -23,11 +23,19 @@ object Argv {
     else Right(new Argv(program, args.toList))
   }
 
-  /** The characters a shell reads in a word as something other than itself. */
-  private val Special: Set[Char] = " \t\n'\"\\$`|&;<>()*?[]{}~#!".toSet
+  /** The characters a word may hold to be written unquoted: none of them is one a shell reads as
+    * other than itself, wherever it stands in a word.
+    */
+  private val Plain: Set[Char] =
+    (('A' to 'Z') ++ ('a' to 'z') ++ ('0' to '9')).toSet ++ "_@%+:,./-".toSet
 
-  private def quoted(word: String): String =
-    if (word.nonEmpty && !word.exists(Special.contains)) word
+  /** `word` as a POSIX shell reads it back unchanged: as it is when not empty and made only of
+    * ASCII letters, digits and `_@%+:,./-`, else single-quoted, each `'` in it written `'\''`. A
+    * NUL cannot be written into a shell word: a shell drops it, so a word holding one does not read
+    * back unchanged (`of` refuses one).
+    */
+  def quote(word: String): String =
+    if (word.nonEmpty && word.forall(Plain.contains)) word
     else "'" + word.replace("'", "'\\''") + "'"
 }
 
