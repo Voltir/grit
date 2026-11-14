@@ -228,10 +228,11 @@ gives SessionEnd's hooks by default (docs `#sessionend`); a commit's and a rewri
 as git returns from a commit only once its hooks end.
 
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
-an address they refuse makes the hook ask nothing and say so (`holder` exits 1). A loopback edge
-is asked with `--noproxy '*'`, so a proxy the environment names (`http_proxy`, `all_proxy`, …)
-never carries its requests off the machine. Every request is curl's with `-q`, so no `~/.curlrc`
-changes what it sends or how its answer is read.
+an address they refuse makes the hook ask nothing and say so, without the address, which may hold
+credentials (`holder` exits 1). A loopback edge is asked with `--noproxy '*'`, so a proxy the
+environment names (`http_proxy`, `all_proxy`, …) never carries its requests off the machine.
+Every request is curl's with `-q`, so no `~/.curlrc` changes what it sends or how its answer is
+read.
 
 ## Smoke run
 

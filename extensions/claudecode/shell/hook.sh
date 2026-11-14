@@ -43,11 +43,11 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
     }
   done
   if ! [[ $edge =~ $address ]]; then
-    say "the edge's address $edge is not http:// or https://, a host and a port, nothing after; it did nothing"
+    say "the edge's address${GRIT_EDGE:+ in GRIT_EDGE} is not http:// or https://, a host and a port, nothing after; it did nothing"
     exit "$failed"
   fi
   if [[ $edge == http://* ]] && ! [[ $edge =~ $loopback ]]; then
-    say "the edge's address $edge is plain http beyond this machine, where its posts would be read in clear; it did nothing"
+    say "the edge's address${GRIT_EDGE:+ in GRIT_EDGE} is plain http beyond this machine, where its posts would be read in clear; it did nothing"
     exit "$failed"
   fi
   self=${BASH_SOURCE[0]}

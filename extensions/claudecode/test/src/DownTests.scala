@@ -107,10 +107,15 @@ object DownTests extends TestSuite {
       }
     }
     test(
-      "an edge's address the join would refuse makes the hook ask nothing, saying so; holder exits 1"
+      "an edge's address the join would refuse makes the hook ask nothing, saying so without the address; holder exits 1"
     ) {
       HookFixtures { f =>
-        val refused = Vector("http://192.0.2.7:7317", s"${f.edge}/x", "ftp://127.0.0.1:7317")
+        val refused = Vector(
+          "http://192.0.2.7:7317",
+          s"${f.edge}/x",
+          "ftp://127.0.0.1:7317",
+          "https://user:secret@127.0.0.1:7317"
+        )
         val runs = refused.map { edge =>
           val env = f.claude + ("GRIT_EDGE" -> edge)
           (
@@ -120,8 +125,12 @@ object DownTests extends TestSuite {
         }
         (
           runs.map((b, h) => (b.exit, b.out, b.err.linesIterator.size, h.exit, h.out)),
+          // GRIT_EDGE may hold credentials, so no line repeats it.
+          refused.zip(runs).collect {
+            case (edge, (b, h)) if b.err.contains(edge) || h.err.contains(edge) => edge
+          },
           f.script.called
-        ) ==> (refused.map(_ => (0, Vector.empty, 1, 1, Vector.empty)), Vector.empty)
+        ) ==> (refused.map(_ => (0, Vector.empty, 1, 1, Vector.empty)), Vector.empty, Vector.empty)
       }
     }
     test("an edge's address the join would refuse makes event and commit post nothing, saying so") {
