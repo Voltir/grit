@@ -102,6 +102,6 @@ object RouteFixtures {
     )
 
   /** What a command no test of a session's route runs answers. */
-  def Unrun(name: ToolName, args: ujson.Value): Either[CommandError, CommandOutcome] =
-    Left(CommandError.Unavailable("no command runs here"))
+  val Unrun: (ToolName, ujson.Value) -> Either[CommandError, CommandOutcome] =
+    (_, _) => Left(CommandError.Unavailable("no command runs here"))
 }
