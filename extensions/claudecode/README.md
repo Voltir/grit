@@ -19,8 +19,8 @@ resource to read; a script over 60 KB, or holding a NUL, fails the build.
 
 ## Requires
 
-bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils, on the machine the join runs
-on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
+bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils (the hook's watchdog is its
+`timeout`), on the machine the join runs on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
 it. The unit tests run them too, with no skip.
 
 ## The join
@@ -57,8 +57,8 @@ every other worktree's settings and `~/.claude.json` first).
   --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
   `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
   worktrees share it. `GRIT_EDGE` comes from the session's environment, past every check the join
-  made of its address, so the hook must check it as the join checks an address (owed by the
-  hook's build).
+  made of its address, so the hook checks it with the join's own patterns, and does nothing when
+  it fails them ([the hook](#the-hook)).
 - **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent), keeping the
   file's mode, as it may hold tokens (0644 for a file the join makes). One jq program removes
   every handler whose command is the hook's, and every one whose program is under a `--retire`
@@ -148,6 +148,47 @@ that still names the hook removed, `  git       <file> is not ours and still nam
 that line`. The `mcp` line is `  mcp       <name> at <where> is not an edge's /mcp and is left
 as it is` for an entry the join would not have written, and `  mcp       no entry <name> in local
 scope` when there is none.
+
+## The hook
+
+`<hook> <role>`, one program the join installs, a role per handler. Every query carries
+`harness=claude-code`, the payload's `session_id` as `session`, and as `dir` the starting
+session's directory, `CLAUDE_PROJECT_DIR` (recorded: an agent in a worktree has the worktree as
+`cwd`), else the payload's `cwd`; an agent's adds its `agent_id` and `agent_type` as `agent` and
+`type`. A session's or agent's id is sent only when it matches `^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$`.
+
+| Role | Run at | Reads | Asks | Prints |
+|---|---|---|---|---|
+| `brief` | SessionStart | `source` (docs, recorded) | `GET /brief`, `start=fresh` at `startup` and `clear`, `start=resume` at `resume`, `compact` and `fork` (a fork has a new id and goes on from its window) | the brief as context; nothing when it is empty |
+| `brief` | SubagentStart | `agent_id`, `agent_type` (recorded) | `GET /brief…&agent&type&start=fresh` | the brief as context; nothing for an agent of no type |
+| `opening` | SessionStart | `source` | `GET /holder`; then after `compact` `part=digest&start=resume`, after `clear` `part=digest&start=fresh`, and at no other start | the holder lines, then the digest, as context |
+| `holder [<type> --dir <dir> --session <id>]` | a Bash tool | `CLAUDE_PROJECT_DIR`, `CLAUDE_CODE_SESSION_ID` (recorded: a Bash tool has only the second) | `GET /holder`, with `session` and `type` for an agent's | the holder, one line; exit 1 when the edge did not give it |
+
+Context is printed as Claude Code reads it, one JSON object on stdout,
+`{"hookSpecificOutput":{"hookEventName":<event>,"additionalContext":<text>}}`. The holder lines
+are in `opening`, not `brief`, as a brief may come near the 10,000-character cap a hook's context
+has; they are, with `'<hook>'`, `'<dir>'` and `'<session>'` single-quoted for a shell:
+
+```
+grit: this session works as the claim holder <holder>.
+grit: an agent of type <type> that this session starts works as the claim holder this command prints: '<hook>' holder <type> --dir '<dir>' --session '<session>'
+```
+
+`--dir` and `--session` are written out because a Bash tool has neither `CLAUDE_PROJECT_DIR` nor
+an agent's id (recorded).
+
+**The edge down.** Every role but `holder` exits 0 whatever happens, and says on stderr, in one
+line, what it could not do. When the edge does not answer a start, `brief` alone gives one line of
+context, `grit: the edge at <edge> did not answer; this session opens without its brief.` (`this
+agent` at an agent's), and `opening` prints nothing; an answer other than 200 gives `… answered
+<status> for the brief; this session opens without it.` Nothing is retried.
+
+**Bounds.** A whole run of the hook is stopped 3 s after it starts, by `timeout`, which stops what
+it started too; each request is given what is left of that, less a quarter second, and connects
+within 0.3 s.
+
+**Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
+an address they refuse makes the hook ask nothing and say so (`holder` exits 1).
 
 ## Claude Code's hook contract
 
