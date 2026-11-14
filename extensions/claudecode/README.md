@@ -190,9 +190,12 @@ bound on a body.
 An agent whose `agent_type` is empty posts and asks nothing: it is a compaction's, which no
 SubagentStart announced (recorded). A commit's `dir` is `CLAUDE_PROJECT_DIR`, else the commit's
 checkout, as a Bash tool has none; outside a Claude Code session (no `CLAUDE_CODE_SESSION_ID`)
-or mid-rebase (the rewrite posts it) it posts nothing. It carries no `child`: there is no source
-telling an agent's commit from its session's (`CLAUDE_CODE_CHILD_SESSION`, below), so a commit is
-its session's. An amend is posted twice, as made and as replacing the commit it rewrote; the
+or mid-rebase it posts nothing, as the rebase's post-rewrite posts the commits it rewrote. So
+**two kinds of commit are never posted**: a merge `git merge` makes, as git runs no post-commit
+for one (a merge concluded by `git commit` after a conflict is posted), and a new commit made at
+a rebase's `edit` stop, which the rebase did not rewrite and so does not list. A commit carries no
+`child`: there is no source telling an agent's commit from its session's
+(`CLAUDE_CODE_CHILD_SESSION`, below), so a commit is its session's. An amend is posted twice, as made and as replacing the commit it rewrote; the
 record leaves out a commit a later one replaces. A commit can be a session's first line when the
 edge was down at its start, and the session's holder is then its checkout's.
 
