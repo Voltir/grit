@@ -19,8 +19,94 @@ resource to read; a script over 60 KB, or holding a NUL, fails the build.
 
 ## Requires
 
-bash 5, jq 1.6 or later, curl, git 2.31 or later, and coreutils, on the machine the join runs
+bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils, on the machine the join runs
 on. The unit tests run them too, with no skip.
+
+## The join
+
+```
+curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--mcp-name <name>] [--retire <dir>]...
+curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
+```
+
+A script piped into bash runs as it arrives, so `join.sh` only defines until its last line,
+`</dev/null main "$@"`, with no newline after it: no proper prefix of the script runs `main` with
+its arguments, and what it starts reads `/dev/null`, never the rest of the script.
+
+**Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq or
+curl on PATH; outside a git checkout; an address other than `http://` or `https://`, a host (a
+name, or an IPv6 address in brackets) and an optional port, nothing after; plain `http://` to a
+host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts carry a session's
+replies and summaries in clear until requests carry credentials; a checkout or hook path holding a
+control character; settings that are a symbolic link, not a JSON object, or whose `hooks` is not
+an object of lists of groups; `--retire` of something that is not a directory, of `/` or of
+`HOME`; an `--mcp-name` other than 1 to 64 letters, digits, `_` or `-`.
+
+**Writes**, each file through a temporary one moved into place:
+
+- **The hook**, `<git common dir>/grit/claude-code/hook` (absolute, by `git rev-parse
+  --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
+  `edge=${GRIT_EDGE:-$edge}`, then `hook.sh`. git never tracks or shows it, and the repository's
+  worktrees share it.
+- **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent): one jq program
+  removes every handler whose command is the hook's and every one whose program (its first word,
+  one layer of quotes removed, after `exec`, with `$CLAUDE_PROJECT_DIR` and `~` expanded,
+  canonicalised) is under a `--retire` directory; drops the groups and events that removal left
+  empty; and appends one group per event, 11 handlers in all, each `'<hook>' <role>`. Their
+  timeouts are 5 s, SessionEnd's 2 s; the hooks bound themselves below them. Everything else keeps
+  its order, and a second join writes the same bytes.
+
+  | Event | Handlers | |
+  |---|---|---|
+  | SessionStart | `brief`, `opening`, `event` | `event` async |
+  | SubagentStart | `brief`, `event` | |
+  | PostToolUse, PostToolUseFailure | `event` | async; matcher `^(Read\|Edit\|Write\|MultiEdit\|NotebookEdit\|Bash\|mcp__scout__.*)$` |
+  | Stop, PostCompact, SubagentStop | `event` | async |
+  | SessionEnd | `event` | |
+
+- **git's hooks**, `post-commit` (`exec '<hook>' commit`) and `post-rewrite` (`exec '<hook>' rewrite
+  "$@"`) in `git rev-parse --git-path hooks`, so `core.hooksPath` holds, each marked by the line
+  `# grit claude-code join`: written when the file is absent, ours, or every command line of it
+  runs a program under a retired directory; otherwise left as it is, with the line to add printed.
+  The repository's worktrees share them.
+- **The MCP entry**: with `claude` on PATH, `claude mcp remove --scope local <name>` (its failure
+  ignored), then `claude mcp add --transport http --scope local <name> <edge>/mcp`; the entry it
+  replaces is read from `~/.claude.json` first and printed. An add that fails prints the command
+  and exits 1. Without `claude`, the command is printed. The entry belongs to the checkout's
+  directory, so each worktree joins its own.
+
+Every removed command and git hook line is printed as it was. **Undo** removes the checkout's
+handlers (rewriting the settings only when it held one) and its MCP entry; the hook and the git
+hooks it marked go too, unless another worktree's settings still name the hook, when they are
+kept and the worktree named. Nothing retired is restored.
+
+A join prints, for a first join (paths as they are on the machine):
+
+```
+grit claude-code: joined /work/proj to http://127.0.0.1:7317
+  hook      /work/proj/.git/grit/claude-code/hook, shared by this repository's worktrees
+  settings  .claude/settings.local.json: 11 handlers of ours
+  git       post-commit and post-rewrite in /work/proj/.git/hooks, shared by this repository's worktrees
+  mcp       grit at http://127.0.0.1:7317/mcp, local scope
+Sessions pick the hooks up at once; run /mcp in a running session to connect grit.
+Undo: curl -fsS http://127.0.0.1:7317/join/claude-code | bash -s -- --undo --mcp-name grit
+```
+
+with a `  removed   <command>` line for each retired one, `, replacing <name> at <url>` after the
+MCP entry it replaced, and `  git       <file> is not ours and is left as it is; add the line:
+<line>` for a foreign git hook. An undo prints:
+
+```
+grit claude-code: undid the join in /work/proj
+  settings  .claude/settings.local.json: 11 handlers of ours removed
+  hook      /work/proj/.git/grit/claude-code/hook removed
+  git       post-commit and post-rewrite removed
+  mcp       grit removed from local scope
+Nothing retired was restored.
+```
+
+or `  hook      <hook> kept: the worktree <dir> still names it` and `  git       post-commit and
+post-rewrite kept, as the hook is` while another worktree is joined.
 
 ## Claude Code's hook contract
 

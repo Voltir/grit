@@ -1,0 +1,115 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' brief",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "'/HOOK' opening",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' brief",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__scout__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^(Read|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__scout__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/HOOK' event",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}
