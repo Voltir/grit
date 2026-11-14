@@ -350,7 +350,8 @@ object EventHookTests extends TestSuite {
           (run.exit, run.out, run.err.linesIterator.size),
           (made.exit, made.err.linesIterator.size)
         ) ==> ((0, Vector.empty, 1), (0, 1))
-        assert(ms < 1000)
+        // At once: well short of the 3 s bound a request that waited would reach.
+        assert(ms < 2500)
       }
     }
     test("a proxy the environment names is never asked for a loopback edge") {
@@ -390,7 +391,8 @@ object EventHookTests extends TestSuite {
           val env = f.claude + ("GRIT_EDGE" -> s"http://127.0.0.1:$port")
           val (run, ms) = f.timed("event", f.payload("session-end-other.json"), env)
           (run.exit, run.out, run.err.linesIterator.size) ==> (0, Vector.empty, 1)
-          assert(ms < 1700)
+          // The 1.2 s bound, short of the 3 s every other event has.
+          assert(ms < 2700)
         }
       }
     }

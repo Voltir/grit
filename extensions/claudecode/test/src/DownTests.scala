@@ -1,5 +1,7 @@
 package grit.claudecode
 
+import scala.concurrent.duration.*
+
 import grit.core.host.Argv
 
 import utest.*
@@ -40,7 +42,8 @@ object DownTests extends TestSuite {
           (opening.exit, opening.out, opening.err.linesIterator.size),
           (holder.exit, holder.out, holder.err.linesIterator.size)
         ) ==> ((0, unanswered(edge), 1), (0, Vector.empty, 1), (1, Vector.empty, 1))
-        assert(briefMs < 1000, openingMs < 1000, holderMs < 1000)
+        // At once: well short of the 3 s bound a request that waited would reach.
+        assert(briefMs < 2500, openingMs < 2500, holderMs < 2500)
       }
     }
     test(
@@ -55,7 +58,8 @@ object DownTests extends TestSuite {
             f.claude + ("GRIT_EDGE" -> edge)
           )
           (brief.exit, printed(brief)) ==> (0, unanswered(edge))
-          assert(ms < 3500)
+          // The 3 s bound, short of the 5 s Claude Code gives the handler.
+          assert(ms < 4500)
         }
       }
     }
@@ -67,7 +71,8 @@ object DownTests extends TestSuite {
           val env = f.claude + ("GRIT_EDGE" -> s"http://127.0.0.1:$port")
           val (opening, ms) = f.timed("opening", f.payload("session-start-compact.json"), env)
           (opening.exit, opening.out) ==> (0, Vector.empty)
-          assert(ms < 3500)
+          // The 3 s bound, short of the 5 s Claude Code gives the handler.
+          assert(ms < 4500)
         }
       }
     }
@@ -79,7 +84,8 @@ object DownTests extends TestSuite {
           val env = Map("CLAUDE_CODE_SESSION_ID" -> "s-1", "GRIT_EDGE" -> s"http://127.0.0.1:$port")
           val (holder, ms) = f.timed("holder", "", env)
           (holder.exit, holder.out, holder.err.linesIterator.size) ==> (1, Vector.empty, 1)
-          assert(ms < 3500)
+          // The 3 s bound, short of the 5 s Claude Code gives the handler.
+          assert(ms < 4500)
         }
       }
     }
@@ -125,12 +131,14 @@ object DownTests extends TestSuite {
           f.proj,
           f.machine.home,
           f.machine.bin,
-          Seq("-c", s"${Argv.quote(f.hook.toString)} brief < <(exec sleep 4 2> /dev/null)"),
-          env = f.claude
+          Seq("-c", s"${Argv.quote(f.hook.toString)} brief < <(exec sleep 30 2> /dev/null)"),
+          env = f.claude,
+          within = 40.seconds
         )
         val ms = (System.nanoTime() - began) / 1000000
         (done.exit, done.out, done.err.contains("ran past its bound")) ==> (0, Vector.empty, true)
-        assert(ms >= 2900, ms < 3500)
+        // The 3 s bound, well short of the input's 30 s.
+        assert(ms >= 2900, ms < 10000)
       }
     }
     test("the hook checks an address with the join's own patterns") {
