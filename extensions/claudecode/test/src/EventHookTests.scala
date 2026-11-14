@@ -227,6 +227,37 @@ object EventHookTests extends TestSuite {
         )
       }
     }
+    test("a session id holding a / or a quote posts nothing, saying so on stderr") {
+      HookFixtures { f =>
+        val runs = Vector("a/b", "a'b", "a\"b").map { id =>
+          val p = ujson.read(f.payload("post-tool-use-read.json"))
+          p("session_id") = id
+          f.run("event", ujson.write(p))
+        }
+        (
+          runs.map(r => (r.exit, r.out, r.err.linesIterator.size, r.err.contains("no session id"))),
+          f.recorded
+        ) ==> (runs.map(_ => (0, Vector.empty, 1, true)), Vector.empty)
+      }
+    }
+
+    test("a commit's subject holding quotes, $(…) and backticks is recorded as it was written") {
+      HookFixtures { f =>
+        val subject = "It's \"done\" $(touch pwned) `touch pwned` $HOME \\n"
+        val message = f.machine.write(f.machine.root.resolve("message"), subject + "\n")
+        val made = bashTool(f, f.proj, s"$Git commit -q --allow-empty -F '$message'")
+        val shapes =
+          f.recorded.flatMap(_.events).map(e => ujson.read(Event.Shape.value(e.shape)))
+        (
+          made.exit,
+          made.err,
+          shapes.map(_("subject").str),
+          Files.exists(f.proj.resolve("pwned"))
+        ) ==>
+          ((0, "", Vector(subject), false))
+      }
+    }
+
     test(
       "a commit in a session's Bash records its sha, subject and worktree; outside a session or mid-rebase, none"
     ) {

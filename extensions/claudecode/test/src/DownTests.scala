@@ -124,6 +124,30 @@ object DownTests extends TestSuite {
         ) ==> (refused.map(_ => (0, Vector.empty, 1, 1, Vector.empty)), Vector.empty)
       }
     }
+    test("an edge's address the join would refuse makes event and commit post nothing, saying so") {
+      HookFixtures { f =>
+        // 127.1 is this machine to curl, but not an address the join's loopback rule takes.
+        val env = Map("CLAUDE_CODE_SESSION_ID" -> "s-1", "GRIT_EDGE" -> s"http://127.1:${f.port}")
+        val event = f.run("event", f.payload("post-tool-use-read.json"), f.claude ++ env)
+        val commit = Bash.run(
+          f.proj,
+          f.machine.home,
+          f.machine.bin,
+          Seq(
+            "-c",
+            "git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m x"
+          ),
+          env = env
+        )
+        (
+          Vector(event, commit).map(r =>
+            (r.exit, r.err.linesIterator.size, r.err.contains("did nothing"))
+          ),
+          f.recorded
+        ) ==> (Vector((0, 1, true), (0, 1, true)), Vector.empty)
+      }
+    }
+
     test("input that never ends is stopped at the hook's bound, which exits 0 saying so") {
       HookFixtures { f =>
         val began = System.nanoTime()
