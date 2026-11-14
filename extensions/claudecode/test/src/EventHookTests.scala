@@ -371,6 +371,19 @@ object EventHookTests extends TestSuite {
       }
     }
 
+    test("a ~/.curlrc changes neither what the hook prints nor what it records") {
+      HookFixtures { f =>
+        val _ = f.machine.write(f.machine.home.resolve(".curlrc"), "-i\n")
+        val holder = f.run("holder", env = Map("CLAUDE_CODE_SESSION_ID" -> First))
+        val event = f.run("event", f.payload("post-tool-use-read.json"))
+        (
+          (holder.exit, holder.out, holder.err),
+          (event.exit, event.err),
+          f.recorded.flatMap(_.events).map(_.kind.name)
+        ) ==> ((0, Vector(f.holderOf().toString), ""), (0, ""), Vector("read"))
+      }
+    }
+
     test("with an edge that never answers, a session's end ends within its 1.2 s bound") {
       HookFixtures { f =>
         HookFixtures.silent { port =>

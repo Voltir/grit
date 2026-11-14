@@ -96,7 +96,7 @@ ask() {
   local -a query=()
   for kv in "$@"; do query+=(--data-urlencode "$kv"); done
   left || return 1
-  out=$(curl -sG "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
+  out=$(curl -q -sG "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
     return 1
   status=${out##*$'\n'}
   answer=${out%$'\n'*}
@@ -282,7 +282,7 @@ send() {
     say "no time was left to post $2; it was dropped"
     return 0
   fi
-  out=$(curl -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
+  out=$(curl -q -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
     --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
     say "the edge at $edge did not answer; $2 was dropped"
     return 0
