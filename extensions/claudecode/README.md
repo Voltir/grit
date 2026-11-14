@@ -44,7 +44,8 @@ host that is not loopback (`localhost`, `127.x.x.x`, `[::1]`), since posts carry
 replies and summaries in clear until requests carry credentials; a checkout or hook path holding a
 control character; settings that are a symbolic link, not a JSON object, or whose `hooks` is not
 an object of lists of groups; `--retire` of something that is not a directory, of `/` or of
-`HOME`; an `--mcp-name` other than 1 to 64 letters, digits, `_` or `-`; any jq call that fails, or
+`HOME`; an `--mcp-name` other than 1 to 64 letters, digits, `_`, `.` or `-`, starting with a letter or
+digit (so it is never read as an option); any jq call that fails, or
 a rewrite of the settings that is not one JSON object, as everything that can fail is worked out
 before the first file is written (an undo, too, reads every other worktree's settings first).
 

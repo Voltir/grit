@@ -659,6 +659,17 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("an MCP name starts with a letter or digit and holds only letters, digits, _, . and -") {
+      JoinFixtures { f =>
+        val dir = f.checkout("work")
+        val exits = (name: String) => f.join(dir, Seq(f.Edge, "--mcp-name", name)).exit
+        (
+          Vector("a.b", "9x", "a_b-c", "x" * 64).map(exits),
+          Vector("_x", ".x", "-x", "a b", "a/b", "x" * 65, "").map(exits)
+        ) ==> ((Vector(0, 0, 0, 0), Vector(1, 1, 1, 1, 1, 1, 1)))
+      }
+    }
+
     test("undo says which foreign git hook still names the hook it removed") {
       JoinFixtures { f =>
         val dir = f.checkout("work")

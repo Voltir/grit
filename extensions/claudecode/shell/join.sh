@@ -241,10 +241,10 @@ main() {
     esac
     shift
   done
-  local named='^[A-Za-z0-9_-]{1,64}$'
+  local named='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
   address='^https?://(\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$'
   local loopback='^http://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])(:[0-9]+)?$'
-  [[ $mcp =~ $named ]] || refuse "--mcp-name $mcp is not 1 to 64 letters, digits, _ or -"
+  [[ $mcp =~ $named ]] || refuse "--mcp-name $mcp is not 1 to 64 letters, digits, _, . or -, starting with a letter or digit"
   if [ "$undo" = 1 ]; then
     [ -z "$edge" ] || refuse "--undo takes no address"
     [ "${#retire[@]}" = 0 ] || refuse "--undo takes no --retire: nothing retired is restored"
