@@ -424,6 +424,35 @@ object EventHookTests extends TestSuite {
       }
     }
 
+    test("with an edge that never answers, a commit and a rewrite end within their 1 s bound") {
+      HookFixtures { f =>
+        HookFixtures.silent { port =>
+          val env = Map("CLAUDE_CODE_SESSION_ID" -> First, "GRIT_EDGE" -> s"http://127.0.0.1:$port")
+          val began = System.nanoTime()
+          val made = Bash.run(
+            f.proj,
+            f.machine.home,
+            f.machine.bin,
+            Seq("-c", s"$Git commit -q --allow-empty -m held && git rev-parse HEAD"),
+            env = env
+          )
+          val commitMs = (System.nanoTime() - began) / 1000000
+          val sha = made.out.lastOption.getOrElse("")
+          val (rewrite, rewriteMs) = {
+            val at = System.nanoTime()
+            val run = f.run("rewrite", s"$sha $sha\n", env, args = Seq("rebase"))
+            (run, (System.nanoTime() - at) / 1000000)
+          }
+          (
+            (made.exit, made.err.linesIterator.size),
+            (rewrite.exit, rewrite.err.linesIterator.size)
+          ) ==> ((0, 1), (0, 1))
+          // The 1 s bound, with git's own work, short of the 3 s every other role has.
+          assert(commitMs < 2200, rewriteMs < 2200)
+        }
+      }
+    }
+
     test("with an edge that never answers, a session's end ends within its 1.2 s bound") {
       HookFixtures { f =>
         HookFixtures.silent { port =>

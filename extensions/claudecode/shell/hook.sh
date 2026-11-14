@@ -10,7 +10,8 @@
 # What each reads, asks, posts and prints: README.md. A hook never fails a session: every role
 # but `holder` exits 0 whatever happens, saying on stderr what it could not do, and the whole run
 # is bounded by one deadline, 3 s from its start, past which a watchdog stops it (a SessionEnd's
-# requests, 1.2 s). Only `brief` and `opening` print, and only Claude Code's hook JSON.
+# requests, 1.2 s; a commit's and a rewrite's, 1 s). Only `brief` and `opening` print, and only
+# Claude Code's hook JSON.
 
 set -uo pipefail
 
@@ -412,6 +413,8 @@ rebasing() {
 commits() {
   local top subjects lines line post='' i
   local -a shas=() subject=() args=()
+  # git returns from a commit only once its hooks end, so their requests end 1 s after the start.
+  deadline=$((10#$started + 1000000))
   top=$(git rev-parse --show-toplevel 2> /dev/null) || return 0
   dir=${CLAUDE_PROJECT_DIR:-$top}
   for i in "$@"; do shas+=("${i%% *}"); done

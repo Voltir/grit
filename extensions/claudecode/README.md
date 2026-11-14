@@ -224,7 +224,8 @@ session's events, closings and commits are lost.
 **Bounds.** A whole run of the hook is stopped 3 s after it starts, by `timeout`, which stops what
 it started too; each request is given what is left of that, less a quarter second, and connects
 within 0.3 s. A SessionEnd's requests end 1.2 s after the start, within the 1.5 s Claude Code
-gives SessionEnd's hooks by default (docs `#sessionend`).
+gives SessionEnd's hooks by default (docs `#sessionend`); a commit's and a rewrite's 1 s after it,
+as git returns from a commit only once its hooks end.
 
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
 an address they refuse makes the hook ask nothing and say so (`holder` exits 1). A loopback edge
