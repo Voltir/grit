@@ -225,7 +225,9 @@ within 0.3 s. A SessionEnd's requests end 1.2 s after the start, within the 1.5 
 gives SessionEnd's hooks by default (docs `#sessionend`).
 
 **Its address.** `GRIT_EDGE`, when set, is checked with the join's own patterns and loopback rule;
-an address they refuse makes the hook ask nothing and say so (`holder` exits 1).
+an address they refuse makes the hook ask nothing and say so (`holder` exits 1). A loopback edge
+is asked with `--noproxy '*'`, so a proxy the environment names (`http_proxy`, `all_proxy`, …)
+never carries its requests off the machine.
 
 ## Smoke run
 

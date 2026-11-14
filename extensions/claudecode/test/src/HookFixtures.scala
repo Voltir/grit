@@ -182,7 +182,10 @@ object HookFixtures {
   }
 
   /** `body` given the port of a listener that accepts every connection and never answers. */
-  def silent[A](body: Int => A): A = {
+  def silent[A](body: Int => A): A = holding((port, _) => body(port))
+
+  /** As [[silent]], `body` also given how many connections the listener has accepted so far. */
+  def holding[A](body: (Int, () => Int) => A): A = {
     val server = loopback(50)
     val held = new ConcurrentLinkedQueue[Socket]()
     val accepting = new Thread(() =>
@@ -191,7 +194,7 @@ object HookFixtures {
     )
     accepting.setDaemon(true)
     accepting.start()
-    try body(server.getLocalPort)
+    try body(server.getLocalPort, () => held.size)
     finally {
       server.close()
       held.forEach(_.close())

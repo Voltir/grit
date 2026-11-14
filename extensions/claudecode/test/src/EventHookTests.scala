@@ -353,6 +353,24 @@ object EventHookTests extends TestSuite {
         assert(ms < 1000)
       }
     }
+    test("a proxy the environment names is never asked for a loopback edge") {
+      HookFixtures { f =>
+        HookFixtures.holding { (port, asked) =>
+          val proxy = s"http://127.0.0.1:$port"
+          val env = f.claude ++ Vector("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
+            .map(_ -> proxy)
+          val brief = f.run("brief", f.payload("session-start-startup.json"), env)
+          val event = f.run("event", f.payload("post-tool-use-read.json"), env)
+          (
+            (brief.exit, brief.err, event.exit, event.err),
+            f.briefed.size,
+            f.recorded.size,
+            asked()
+          ) ==> ((0, "", 0, ""), 1, 1, 0)
+        }
+      }
+    }
+
     test("with an edge that never answers, a session's end ends within its 1.2 s bound") {
       HookFixtures { f =>
         HookFixtures.silent { port =>

@@ -68,6 +68,10 @@ export TZ=UTC
 deadline=$((10#$started + bound * 1000000))
 # A session's and an agent's id, and an agent's type, as the hook sends them.
 id='^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$'
+# A loopback edge is asked directly: a proxy the environment names would take its posts off the
+# machine.
+direct=()
+[[ ! $edge =~ $loopback ]] || direct=(--noproxy '*')
 
 # $1 single-quoted, as any POSIX shell reads it back.
 sq() {
@@ -92,7 +96,7 @@ ask() {
   local -a query=()
   for kv in "$@"; do query+=(--data-urlencode "$kv"); done
   left || return 1
-  out=$(curl -sG --connect-timeout 0.3 --max-time "$secs" -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
+  out=$(curl -sG "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -w '\n%{http_code}' "${query[@]}" -- "$edge$path") ||
     return 1
   status=${out##*$'\n'}
   answer=${out%$'\n'*}
@@ -278,7 +282,7 @@ send() {
     say "no time was left to post $2; it was dropped"
     return 0
   fi
-  out=$(curl -s --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
+  out=$(curl -s "${direct[@]+"${direct[@]}"}" --connect-timeout 0.3 --max-time "$secs" -H 'Content-Type: application/x-ndjson' \
     --data-binary @- -w '\n%{http_code}' -- "$edge/events?harness=$harness" <<< "$1") || {
     say "the edge at $edge did not answer; $2 was dropped"
     return 0
