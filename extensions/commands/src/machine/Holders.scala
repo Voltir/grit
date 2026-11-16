@@ -1,6 +1,6 @@
 package grit.commands.machine
 
-import grit.core.id.{ClaimHolder, Harness, SessionId, Sha256}
+import grit.core.id.{ClaimHolder, Harness, SessionId, ShortHash}
 import grit.core.place.Directory
 
 /** The claim holder a harness's session works as, so a claim can name it before the session's
@@ -79,7 +79,7 @@ object Holders {
       s"${MachineName.value(machine)}/${named(path.split('/').lastOption.getOrElse(""), path)}"
     val text = agent.fold(head) { a =>
       val kind = if (literal(a.kind)) a.kind else named(a.kind, a.kind)
-      s"$head/$kind/${hash(a.session.written, 12)}"
+      s"$head/$kind/${ShortHash.of(a.session.written, 12)}"
     }
     // The Left is unreachable, so this throw never runs (STYLE.md rule 3): ClaimHolder.of refuses
     // only text that is empty, over ClaimHolder.Longest (160) characters, or holds a control
@@ -96,7 +96,7 @@ object Holders {
     */
   private def named(text: String, hashed: String): String = {
     val s = slug(text).take(Slugged).stripSuffix("-")
-    val h = hash(hashed, 8)
+    val h = ShortHash.of(hashed, 8)
     if (s.isEmpty) h else s"$s-$h"
   }
 
@@ -120,6 +120,4 @@ object Holders {
 
   /** What [[named]] gives: 8 hex digits, after a slug and `-` or alone. */
   private val Hashed = "(?:.*-)?[0-9a-f]{8}".r
-
-  private def hash(text: String, digits: Int): String = Sha256.text(text).hex.take(digits)
 }

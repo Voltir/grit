@@ -2,7 +2,7 @@ package grit.core.host
 
 import scala.concurrent.duration.*
 
-import grit.core.id.Sha256
+import grit.core.id.ShortHash
 
 /** A command [[Runs]] started: 8 lowercase hex digits. One from before a restart names nothing,
   * because the new process's `Runs` knows only what it started.
@@ -20,7 +20,7 @@ object RunId {
   /** The id made from a [[grit.core.clock.Fresh]] nonce: the first 8 hex digits of its
     * SHA-256.
     */
-  def of(nonce: String): RunId = Sha256.text(nonce).hex.take(8)
+  def of(nonce: String): RunId = ShortHash.of(nonce, 8)
 
   extension (id: RunId) {
 
