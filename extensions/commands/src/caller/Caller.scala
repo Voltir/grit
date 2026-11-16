@@ -7,8 +7,9 @@ import grit.core.identity.{Account, Realm, Standing}
 import grit.core.visibility.Integrity
 import grit.edge.http.{Challenge, Request}
 
-/** Who a request is from and which machine it is on, two facts its credential names apart:
-  * `account`, whose words are believed at `believed`, on the machine `machine`.
+/** Who a request is from, and the machine it is on: `account`, whose words are believed at
+  * `believed`, on the machine `machine`. What its credential says, before the store resolves the
+  * account to a [[grit.core.identity.Principal]], the person linked to it.
   */
 final case class Caller(account: Account, believed: Integrity, machine: MachineName)
     extends caps.Pure
