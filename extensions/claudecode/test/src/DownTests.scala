@@ -170,15 +170,5 @@ object DownTests extends TestSuite {
         assert(ms >= 2900, ms < 10000)
       }
     }
-    test("the hook checks an address with the join's own patterns") {
-      def patterns(script: String) =
-        script.linesIterator
-          .filter(l => l.trim.startsWith("address=") || l.trim.matches("(local )?loopback=.*"))
-          .map(
-            _.trim.stripPrefix("local ")
-          )
-          .toVector
-      (patterns(Scripts.Hook), patterns(Scripts.Hook).size) ==> (patterns(Scripts.Join), 2)
-    }
   }
 }

@@ -521,7 +521,8 @@ object grit extends Module {
      * constant holds at most 64 KB of UTF-8), and so does one holding a NUL, which no shell word
      * can hold. */
     def generatedSources = Task {
-      val scripts = Seq("Hook" -> "hook.sh", "Join" -> "join.sh").map { (name, file) =>
+      val files = Seq("Shared" -> "shared.sh", "Hook" -> "hook.sh", "Join" -> "join.sh")
+      val scripts = files.map { (name, file) =>
         val text = os.read(shell().path / file)
         val bytes = text.getBytes("UTF-8").length
         if (bytes > 60 * 1024) throw new Exception(s"$file is $bytes bytes, over 60 KB")

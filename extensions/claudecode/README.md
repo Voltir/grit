@@ -9,10 +9,13 @@ person runs it in a checkout. It names core alone (`claudecode-names-core-alone`
 
 One idea, one package, `grit.claudecode`. Its scripts are text, under `shell/`:
 
+- **`shared.sh`**: what the join and the hook both check (the edge's address patterns), put
+  before each.
 - **`hook.sh`**: the hook, one program with a subcommand per role, which the join installs.
 - **`join.sh`**: the join script's body. The script served is a shebang, then one group: `{`,
-  `harness=claude-code`, a shellcheck directive, `hook=<hook.sh, single-quoted>`, this body and `}`, so the harness's name has one home, in Scala,
-  and the hook rides in the join with no delimiter to collide with.
+  `harness=claude-code`, a shellcheck directive, `hook=<shared.sh and hook.sh, single-quoted>`,
+  `shared.sh`, this body and `}`, so the harness's name has one home, in Scala, and the hook
+  rides in the join with no delimiter to collide with.
 
 The build reads them into `Scripts` as string constants, so the adapter is a pure value with no
 resource to read; a script over 60 KB, or holding a NUL, fails the build.
@@ -85,7 +88,7 @@ every other worktree's settings and `~/.claude.json` first).
 - **The hook**, `<git common dir>/grit/claude-code/hook` (absolute, by `git rev-parse
   --path-format=absolute`), executable: a shebang, `harness='claude-code'`, `edge='<edge>'`,
   `edge=${GRIT_EDGE:-$edge}` (with a credential, `credential='<file>'` in its place), then
-  `hook.sh`. git never tracks or shows it, and the repository's
+  `shared.sh` and `hook.sh`. git never tracks or shows it, and the repository's
   worktrees share it. `GRIT_EDGE` comes from the session's environment, past every check the join
   made of its address, so the hook checks it with the join's own patterns, and does nothing when
   it fails them ([the hook](#the-hook)).

@@ -1,6 +1,7 @@
 # grit's hook for Claude Code: one program, a subcommand per role, that the join script installs
-# after a shebang and the lines setting `harness`, `edge` and either `credential`, the file holding
-# the credential every request bears, or no credential and GRIT_EDGE, when set, overriding `edge`.
+# after a shebang, the lines setting `harness`, `edge` and either `credential`, the file holding
+# the credential every request bears, or no credential and GRIT_EDGE, when set, overriding `edge`,
+# and shared.sh.
 # Each role is a hook registered in the checkout's .claude/settings.local.json or git's
 # post-commit and post-rewrite, or what a Bash tool or Claude Code's MCP entry asks for:
 #
@@ -20,11 +21,6 @@ set -uo pipefail
 say() {
   printf 'grit %s hook: %s\n' "$harness" "${1//[[:cntrl:]]/?}" >&2
 }
-
-# The edge's address, as the join checks it: GRIT_EDGE comes from the session's environment, past
-# every check the join made.
-address='^https?://(\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$'
-loopback='^http://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])(:[0-9]+)?$'
 
 # The bound on a whole run, in seconds.
 bound=3

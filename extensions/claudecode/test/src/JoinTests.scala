@@ -91,7 +91,7 @@ object JoinTests extends TestSuite {
             true,
             Some(
               "#!/usr/bin/env bash\nharness='claude-code'\nedge='http://127.0.0.1:7317'\n" +
-                "edge=${GRIT_EDGE:-$edge}\n" + Scripts.Hook
+                "edge=${GRIT_EDGE:-$edge}\n" + Scripts.Shared + Scripts.Hook
             )
           )
         )

@@ -1,5 +1,6 @@
 # grit's join script for Claude Code, served by the commands edge at /join/<harness> after the
-# lines setting `harness` and `hook` (the hook's text). A person pipes it into bash in a checkout:
+# lines setting `harness` and `hook` (the hook's text), and shared.sh. A person pipes it into bash
+# in a checkout:
 #
 #   curl -fsS <edge>/join/claude-code | bash -s -- <edge> [--credential <file>] [--mcp-name <name>] [--retire <dir>]...
 #   curl -fsS <edge>/join/claude-code | bash -s -- --undo [--mcp-name <name>]
@@ -325,8 +326,6 @@ main() {
     shift
   done
   local named='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
-  address='^https?://(\[[0-9a-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]+)?$'
-  local loopback='^http://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])(:[0-9]+)?$'
   [[ $mcp =~ $named ]] || refuse "--mcp-name $mcp is not 1 to 64 letters, digits, _, . or -, starting with a letter or digit"
   if [ "$undo" = 1 ]; then
     [ -z "$edge" ] || refuse "--undo takes no address"
