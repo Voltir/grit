@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.document.DocRef
-import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
+import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, Harness, PluginName, SessionId}
 import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.session.Event
@@ -106,7 +106,10 @@ object ScriptedWatch {
                 case WatchFor.Committer.At(worktree) => c.worktree == worktree
               }
             )
-            .sortBy(c => (c.at.getEpochSecond, c.at.getNano, c.session.local))
+            // As grit.dbos' SqlWatched: by time, harness, session, then the order logged in.
+            .sortBy(c =>
+              (c.at.getEpochSecond, c.at.getNano, Harness.value(c.session.harness), c.session.local)
+            )
             .headOption
             .map(c => Watched.Committed(c.session, c.at, c.shape))
       }

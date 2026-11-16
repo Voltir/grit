@@ -74,6 +74,37 @@ abstract class EdgeWatchContract extends TestSuite {
       )
     }
 
+    test("a holding is read from its key's newest version alone") {
+      val key = got(DocKey.of("contract/newest"))
+      val _ = hold(key, Review, At)
+      val newest = hold(key, Merged, At)
+      (
+        until(got(WatchFor.Holding.of(Plugin, key, Set(Review, Merged)))),
+        until(got(WatchFor.Holding.of(Plugin, key, Set(Review))))
+      ) ==> (Right(Watched.Held(newest, Set(Merged), At)), Right(Watched.Lapsed))
+    }
+
+    test(
+      "of two commits, the earliest meets a watch; at one time, the first by harness, then session"
+    ) {
+      def session(harness: String, local: String) =
+        got(SessionId.of(got(Harness.of(harness)), local))
+      val holder = got(ClaimHolder.of("contract/twice"))
+      val worktree = Place.under(grit.core.place.Namespace.Machine, Vector("desk", "/work/two"))
+      val early = session("contract-b", "early")
+      val _ = commit(session("contract-b", "a-later"), holder, worktree, At)
+      val tied = session("contract-a", "z-later")
+      val tiedShape = commit(tied, holder, worktree, At)
+      val earlyShape = commit(early, holder, worktree, At.minusSeconds(1))
+      (
+        until(WatchFor.Committed(WatchFor.Committer.At(worktree), At.minusSeconds(1))),
+        until(WatchFor.Committed(WatchFor.Committer.As(holder), At))
+      ) ==> (
+        Right(Watched.Committed(early, At.minusSeconds(1), earlyShape)),
+        Right(Watched.Committed(tied, At, tiedShape))
+      )
+    }
+
     test("an account no person is linked to is refused") {
       watching(
         _.until(Stranger, Room, WatchFor.Committed(WatchFor.Committer.At(Room), At), Duration.Zero)
