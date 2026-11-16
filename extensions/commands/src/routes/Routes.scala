@@ -82,10 +82,12 @@ private[commands] final class Routes private (
   private def unqueried(request: Request)(answer: => Response): Response =
     Queried.of(request, Vector.empty).fold(Response.text(Status.BadRequest, _), _ => answer)
 
+  /** `answer` for `verb`; otherwise 405 allowing `verb` alone, saying `refusal`. */
+  private def only(request: Request, verb: Verb, refusal: String)(answer: => Response): Response =
+    if (request.verb != verb) Response.text(Status.NotAllowed(Vector(verb)), refusal) else answer
+
   private def commanded(request: Request, caller: Caller, raw: String): Response =
-    if (request.verb != Verb.Post)
-      Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a command; nothing else runs one")
-    else
+    only(request, Verb.Post, "post a command; nothing else runs one") {
       ToolName.of(raw) match {
         case Left(_) => Response.text(Status.NotFound, s"no command is named $raw")
         case Right(name) =>
@@ -96,6 +98,7 @@ private[commands] final class Routes private (
               Response.text(status, text)
           }
       }
+    }
 
   private def mcp(request: Request, caller: Caller): Response =
     Rpc.received(request, server) match {
@@ -118,20 +121,17 @@ private[commands] final class Routes private (
     }
 
   private def holder(request: Request, caller: Caller): Response =
-    if (request.verb != Verb.Get)
-      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a holder; nothing else reads one")
-    else
+    only(request, Verb.Get, "get a holder; nothing else reads one") {
       Briefing
         .holderOf(request, caller.machine)
         .fold(
           Response.text(Status.BadRequest, _),
           h => Response.text(Status.Ok, ClaimHolder.value(h))
         )
+    }
 
   private def brief(request: Request, caller: Caller): Response =
-    if (request.verb != Verb.Get)
-      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a brief; nothing else reads one")
-    else
+    only(request, Verb.Get, "get a brief; nothing else reads one") {
       Briefing.briefOf(request, caller.machine) match {
         case Left(why) => Response.text(Status.BadRequest, why)
         case Right(asked) =>
@@ -143,34 +143,28 @@ private[commands] final class Routes private (
           )
           Response.text(status, text)
       }
+    }
 
   private def events(request: Request, caller: Caller): Response =
-    if (request.verb != Verb.Post)
-      Response.text(
-        Status.NotAllowed(Vector(Verb.Post)),
-        "post event lines; nothing else records them"
-      )
-    else
+    only(request, Verb.Post, "post event lines; nothing else records them") {
       Recording.batchOf(request, caller.machine, clock.now()) match {
         case Left(why) => Response.text(Status.BadRequest, why)
         case Right(batched) =>
           Recording.recorded(batched, b => sessions.record(caller.account, room, Vector(b)))
       }
+    }
 
   private def joined(request: Request, harness: String): Response =
-    if (request.verb != Verb.Get)
-      Response.text(Status.NotAllowed(Vector(Verb.Get)), "get a join script; it is only read")
-    else
+    only(request, Verb.Get, "get a join script; it is only read") {
       adapters
         .find(a => Harness.value(a.harness) == harness)
         .fold(Response.text(Status.NotFound, s"no adapter is given for the harness $harness"))(a =>
           Response.text(Status.Ok, a.join)
         )
+    }
 
   private def waited(request: Request, caller: Caller): Response =
-    if (request.verb != Verb.Post)
-      Response.text(Status.NotAllowed(Vector(Verb.Post)), "post a watch; nothing else waits")
-    else
+    only(request, Verb.Post, "post a watch; nothing else waits") {
       Routes
         .arguments(request.body)
         .flatMap(Waited.watchOf(_, caller.machine, holding, clock.now())) match {
@@ -184,6 +178,7 @@ private[commands] final class Routes private (
           )
           Response.text(status, text)
       }
+    }
 
   /** `name` run for `caller` with `args`: a deployment's own command of that name, guarding or
     * added, in place of a plugin's.
