@@ -17,7 +17,8 @@ import utest.*
 /** `machine-from-worker.sql`, the one-off that rewrites stored places from the key `worker` to
   * `machine`, run on a database holding a harness's session as the commands edge wrote it before
   * the rename: its row at a worktree under `worker`, its log's shapes naming it, two of them at
-  * the 300-byte bound, a place row and a visibility change at it.
+  * the 300-byte bound, a place row, a visibility change, a document, a file and a piece set at
+  * it.
   */
 object MachineFromWorkerTests extends TestSuite {
 
@@ -39,6 +40,10 @@ object MachineFromWorkerTests extends TestSuite {
 
   /** [[At]] as the code before the rename wrote it. */
   private val Was: String = "worker:" + At.written.stripPrefix("machine:")
+
+  /** [[At]]'s segments as the code before the rename stored them, as an SQL array. */
+  private val WasArray: String =
+    ("worker" +: At.segments.drop(1)).map(s => s"'$s'").mkString("ARRAY[", ", ", "]")
 
   private val Id: SessionId = ok(Harness.of("claude-code").flatMap(SessionId.of(_, "s1")))
 
@@ -94,11 +99,18 @@ object MachineFromWorkerTests extends TestSuite {
       c,
       s"""UPDATE grit.sessions SET place[1] = 'worker';
          |INSERT INTO grit.session_events (session, seq, n, at, kind, shape) VALUES $lines;
-         |INSERT INTO grit.places (path)
-         |  VALUES (ARRAY[${("worker" +: At.segments.drop(1)).map(s => s"'$s'").mkString(", ")}]);
+         |INSERT INTO grit.places (path) VALUES ($WasArray);
          |INSERT INTO grit.visibility_changes (at, by, change)
          |  SELECT now(), account, '{"kind":"quiet","room":"$Was"}'::jsonb
-         |    FROM grit.identities ORDER BY account LIMIT 1;""".stripMargin
+         |    FROM grit.identities ORDER BY account LIMIT 1;
+         |INSERT INTO grit.documents (plugin, key, place, written_at, last_placed, integrity_id)
+         |  VALUES ('notes', 'a', $WasArray, now(), now(), 1);
+         |INSERT INTO grit.files
+         |  (sha256, bytes, name, edge, ref, fetched_at, expires_at, place, vouched_id)
+         |  VALUES (sha256('a'::bytea), 1, 'a.txt', 'local', 'a.txt', now(), now(), $WasArray, 1);
+         |INSERT INTO grit.piece_sets (plugin, ref, name, revision, place, classification_id,
+         |    integrity_id, written_at, last_placed, unread)
+         |  VALUES ('notes', 'a', 'a', '1', $WasArray, 1, 1, now(), now(), 'unread');""".stripMargin
     )
     c
   }
@@ -146,15 +158,18 @@ object MachineFromWorkerTests extends TestSuite {
         config,
         "SELECT array_to_string(path, '|') FROM grit.places WHERE path[2] = 'desktop'"
       ) ++
+      Vector("documents", "files", "piece_sets").flatMap(t =>
+        column(config, s"SELECT array_to_string(place, '|') FROM grit.$t")
+      ) ++
       column(config, "SELECT change ->> 'room' FROM grit.visibility_changes") ++
       column(config, "SELECT shape::text FROM grit.session_events WHERE seq > 1 ORDER BY seq")
 
   private val FirstRun: Map[String, Long] = Map(
     "grit.places rewritten" -> 1,
     "grit.sessions rewritten" -> 1,
-    "grit.documents rewritten" -> 0,
-    "grit.files rewritten" -> 0,
-    "grit.piece_sets rewritten" -> 0,
+    "grit.documents rewritten" -> 1,
+    "grit.files rewritten" -> 1,
+    "grit.piece_sets rewritten" -> 1,
     "grit.visibility_changes rewritten" -> 1,
     "grit.session_events rewritten" -> 3,
     "grit.session_events rewritten without their subject" -> 1,
@@ -176,7 +191,7 @@ object MachineFromWorkerTests extends TestSuite {
       val c = before("machine_from_worker_run")
       run(c, "COMMIT") ==> FirstRun
       val segments = At.segments.mkString("|")
-      stored(c) ==> Vector(segments, segments, At.written) ++ Vector(
+      stored(c) ==> Vector.fill(5)(segments) ++ Vector(At.written) ++ Vector(
         Event.Shape.committed(At, ShortSha, Some(ShortSubject)),
         Event.Shape.committed(At, LongSha, None),
         Event.Shape.of(ujson.Obj("path" -> Edited, "worktree" -> At.written))
