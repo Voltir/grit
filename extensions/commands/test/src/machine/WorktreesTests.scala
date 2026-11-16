@@ -17,11 +17,17 @@ object WorktreesTests extends TestSuite {
         Vector("machine:desktop/home/a/repo", "machine:7-sandbox/home/a/repo")
     }
 
-    test("a machine's name is a slug of at most 32 characters") {
-      Vector("a" * 32, "a" * 33, "Desktop", "", "-desk").map(
-        MachineName.of(_).toOption.map(MachineName.value)
-      ) ==>
-        Vector(Some("a" * 32), None, None, None, None)
+    test("a machine's name is a slug of at most 32 characters, which may start with a digit") {
+      Vector("a" * 32, "7desk", "a" * 33, "Desktop", "", "-desk").map(
+        MachineName.of(_).map(MachineName.value)
+      ) ==> Vector(
+        Right("a" * 32),
+        Right("7desk"),
+        Left(s"a machine's name is over 32 characters: ${"a" * 33}"),
+        Left("a machine's name holds 'D', not a lowercase letter, a digit or '-': Desktop"),
+        Left("a machine's name is empty"),
+        Left("a machine's name starts with '-': -desk")
+      )
     }
   }
 }
