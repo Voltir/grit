@@ -109,6 +109,20 @@ object HookFixtures {
 
   val Claude: Harness = got(Harness.of("claude-code"))
 
+  /** Two Claude Code session ids, as its payloads write them. */
+  val First = "11111111-1111-4111-8111-111111111111"
+  val Forked = "22222222-2222-4222-8222-222222222222"
+
+  /** Claude Code's hook JSON adding `text` to the window at `event`. */
+  def context(event: String, text: String): ujson.Value =
+    ujson.Obj(
+      "hookSpecificOutput" -> ujson.Obj("hookEventName" -> event, "additionalContext" -> text)
+    )
+
+  /** What `done` printed, read as JSON; `null` when it printed nothing. */
+  def printed(done: Bash.Done): ujson.Value =
+    if (done.out.isEmpty) ujson.Null else ujson.read(done.out.mkString("\n"))
+
   /** The test resource `name`, under `payloads/`. */
   def resource(name: String): String =
     new String(getClass.getResourceAsStream(s"/payloads/$name").readAllBytes(), UTF_8)

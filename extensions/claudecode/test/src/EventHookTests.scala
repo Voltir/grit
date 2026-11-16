@@ -17,8 +17,7 @@ import utest.*
   */
 object EventHookTests extends TestSuite {
 
-  private val First = "11111111-1111-4111-8111-111111111111"
-  private val Forked = "22222222-2222-4222-8222-222222222222"
+  import HookFixtures.{First, Forked}
 
   /** An event as a test compares it: its kind's name, a read's bytes or a closing's summary, and
     * its shape.

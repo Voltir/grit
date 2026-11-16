@@ -11,13 +11,7 @@ import utest.*
   */
 object DownTests extends TestSuite {
 
-  private def context(event: String, text: String): ujson.Value =
-    ujson.Obj(
-      "hookSpecificOutput" -> ujson.Obj("hookEventName" -> event, "additionalContext" -> text)
-    )
-
-  private def printed(done: Bash.Done): ujson.Value =
-    if (done.out.isEmpty) ujson.Null else ujson.read(done.out.mkString("\n"))
+  import HookFixtures.{context, printed}
 
   /** The line a start's brief gives when the edge at `edge` did not answer. */
   private def unanswered(edge: String): ujson.Value =
