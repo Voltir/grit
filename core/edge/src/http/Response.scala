@@ -26,6 +26,16 @@ enum Status(val code: Int) {
   */
 enum Challenge {
   case Asked, Refused
+
+  /** This 401, its body one line saying what to send. */
+  def refused: Response = Response.text(
+    Status.Unauthorized(this),
+    this match {
+      case Asked =>
+        "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
+      case Refused => "refused: the credential sent is not one this edge knows"
+    }
+  )
 }
 
 /** What a response's body is. */

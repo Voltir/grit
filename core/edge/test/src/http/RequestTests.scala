@@ -115,5 +115,18 @@ object RequestTests extends TestSuite {
         )
       Verb.of("PROPFIND").name ==> "PROPFIND"
     }
+    test("the bearer credential is the one Authorization header's, its scheme in any case") {
+      def bearer(values: String*) = read("/", values.toVector.map("Authorization" -> _)).bearer
+      (
+        bearer("Bearer t0ken"),
+        bearer("bEARER   t0ken"),
+        bearer(),
+        bearer("Bearer a", "Bearer a"),
+        bearer("Basic t0ken"),
+        bearer("Bearer "),
+        read("/").credentialed,
+        read("/", Vector("authorization" -> "Basic x")).credentialed
+      ) ==> (Some("t0ken"), Some("t0ken"), None, None, None, None, false, true)
+    }
   }
 }

@@ -5,7 +5,7 @@ import grit.core.edge.{Asked, RealmSource}
 import grit.core.id.Sha256
 import grit.core.identity.{Account, Realm, Standing}
 import grit.core.visibility.Integrity
-import grit.edge.http.{Challenge, Request, Response, Status}
+import grit.edge.http.{Challenge, Request}
 
 /** Who a request is from and which machine it is on, two facts its credential names apart:
   * `account`, whose words are believed at `believed`, on the machine `machine`.
@@ -16,15 +16,16 @@ final case class Caller(account: Account, believed: Integrity, machine: MachineN
 /** Who each request to an edge is from, by the deployment's configuration. */
 final class Callers private (rule: Callers.Rule) extends caps.Pure {
 
-  /** The request's caller, as [[Callers.of]] or [[Callers.owner]] reads it, or the challenge its
-    * 401 carries.
+  /** The request's caller, or the challenge its 401 carries: under [[Callers.of]], the caller of
+    * the token whose digest is that of its [[Request.bearer]], [[Challenge.Asked]] when it has
+    * none, and [[Challenge.Refused]] when no token's digest is that of it; under
+    * [[Callers.owner]], as that says.
     */
   def from(request: Request): Either[Challenge, Caller] = rule match {
     case Callers.Rule.Owner(owner) =>
-      if (request.headerValues(Callers.Authorization).isEmpty) Right(owner)
-      else Left(Challenge.Refused)
+      if (request.credentialed) Left(Challenge.Refused) else Right(owner)
     case Callers.Rule.Tokens(tokens) =>
-      Callers.bearer(request).toRight(Challenge.Asked).flatMap { text =>
+      request.bearer.toRight(Challenge.Asked).flatMap { text =>
         val sent = Sha256.text(text).bytes
         // Every token is compared, none skipped once one matches, and each over all 32 bytes
         // with no early exit, so how long an answer takes says nothing of which matched or how
@@ -73,11 +74,8 @@ object Callers {
     */
   def owner(owner: Caller): Callers = new Callers(Rule.Owner(owner))
 
-  /** A request is from the caller of the token whose digest is that of its `Authorization:
-    * Bearer` text, the scheme matched without regard to case; none, two, another scheme or an
-    * empty text is [[Challenge.Asked]]; a text no token's digest is that of,
-    * [[Challenge.Refused]]. Or why not: two tokens of one digest. Two tokens may name one account,
-    * at two integrities or on two machines, and one machine two accounts.
+  /** Each token names its caller; or why not: two tokens of one digest. Two tokens may name one
+    * account, at two integrities or on two machines, and one machine two accounts.
     */
   def of(first: Token, rest: Token*): Either[String, Callers] = {
     val tokens = first +: rest.toVector
@@ -94,34 +92,6 @@ object Callers {
     * text is never configured.
     */
   final case class Token(digest: Sha256, caller: Caller) extends caps.Pure
-
-  /** 401 carrying `why`, its body one line saying what to send. */
-  def refused(why: Challenge): Response = why match {
-    case Challenge.Asked =>
-      Response.text(
-        Status.Unauthorized(why),
-        "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
-      )
-    case Challenge.Refused =>
-      Response.text(
-        Status.Unauthorized(why),
-        "refused: the credential sent is not one this edge knows"
-      )
-  }
-
-  /** `Authorization`: the header a credential is sent in. */
-  private val Authorization: String = "Authorization"
-
-  /** The text of the one `Authorization` header `request` sends, when its scheme is `Bearer`
-    * in any case and its text is not empty.
-    */
-  private def bearer(request: Request): Option[String] =
-    request.headerValues(Authorization) match {
-      case Vector(value) =>
-        val (scheme, rest) = value.span(_ != ' ')
-        Option.when(scheme.equalsIgnoreCase("Bearer"))(rest.dropWhile(_ == ' ')).filter(_.nonEmpty)
-      case _ => None
-    }
 
   /** Whom a request is from: the owner when it sends no credential, or the caller of the token
     * it bears.

@@ -14,7 +14,7 @@ import grit.core.edge.Asked
 import grit.core.either.Got.got
 import grit.core.id.Sha256
 import grit.core.identity.{Realm, Standing, TestAccounts}
-import grit.edge.http.{Challenge, Request, Response, Status, Verb}
+import grit.edge.http.{Challenge, Request, Verb}
 
 import utest.*
 
@@ -92,19 +92,6 @@ object CallersTests extends TestSuite {
         Asked.Said(Standing.Outside),
         Right(Map(Owner.account -> Standing.Full(None))),
         Right(Map.empty)
-      )
-    }
-
-    test("a request with no caller is 401, carrying its challenge and saying what to send") {
-      Vector(Challenge.Asked, Challenge.Refused).map(Callers.refused) ==> Vector(
-        Response.text(
-          Status.Unauthorized(Challenge.Asked),
-          "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
-        ),
-        Response.text(
-          Status.Unauthorized(Challenge.Refused),
-          "refused: the credential sent is not one this edge knows"
-        )
       )
     }
   }

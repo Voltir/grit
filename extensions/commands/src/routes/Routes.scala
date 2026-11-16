@@ -34,7 +34,7 @@ private[commands] final class Routes private (
 ) {
 
   /** `request` answered, running nothing first when `hosts` do not admit it (403), or it has no
-    * caller ([[Callers.refused]], 401), each whatever its path; past that, no route sees its
+    * caller ([[grit.edge.http.Challenge.refused]], 401), each whatever its path; past that, no route sees its
     * `Authorization` header. At `/command/<name>`, a POST runs the
     * command `name` with its body, a JSON object (an empty body: none), as [[RouteReply.command]]
     * answers it; another verb 405, a body that is no JSON object 400, each running nothing. At
@@ -60,7 +60,7 @@ private[commands] final class Routes private (
       Response.text(Status.Forbidden, "refused: the request's Host or Origin is not this edge's")
     else
       callers.from(request) match {
-        case Left(why) => Callers.refused(why)
+        case Left(why) => why.refused
         case Right(caller) => routed(request.without("Authorization"), caller)
       }
 

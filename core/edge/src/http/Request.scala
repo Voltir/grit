@@ -40,6 +40,19 @@ final case class Request private (
   def headerValues(name: String): Vector[String] =
     sentHeaders.collect { case (n, v) if n.equalsIgnoreCase(name) => v }
 
+  /** The credential of its one `Authorization` header in the `Bearer` scheme, matched without
+    * regard to case; `None` for no such header, two, another scheme or an empty credential.
+    */
+  def bearer: Option[String] = headerValues("Authorization") match {
+    case Vector(value) =>
+      val (scheme, rest) = value.span(_ != ' ')
+      Option.when(scheme.equalsIgnoreCase("Bearer"))(rest.dropWhile(_ == ' ')).filter(_.nonEmpty)
+    case _ => None
+  }
+
+  /** Whether it sends any `Authorization` header. */
+  def credentialed: Boolean = headerValues("Authorization").nonEmpty
+
   /** The first value of the query parameter `name`, matched exactly. */
   def query(name: String): Option[String] = queryValues(name).headOption
 
