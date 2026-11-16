@@ -25,7 +25,8 @@ object ClaimHolders {
 
   /** The session an agent that `session` starts is recorded as, `agent` its harness's own id for
     * it: `<session's id>/<agent>`, of `session`'s harness; or why not: `agent` holds `/`, or
-    * [[SessionId.of]].
+    * [[SessionId.of]]. Its parent is recorded apart ([[grit.core.edge.EdgeSessions.Batch]]'s
+    * `parent`), never read back from the id.
     */
   def agentSession(session: SessionId, agent: String): Either[String, SessionId] =
     unparted(agent).flatMap(a => SessionId.of(session.harness, s"${session.local}/$a"))
