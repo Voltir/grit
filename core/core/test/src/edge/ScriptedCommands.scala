@@ -21,6 +21,7 @@ final class ScriptedCommands(
 )(answer: (ToolName, ujson.Value) -> Either[CommandError, CommandOutcome])
     extends PluginCommands {
 
+  // Replaced whole by `run`, under this fake's lock, and read whole by `ran`; nothing else holds it.
   @caps.unsafe.untrackedCaptures
   private var runs: Vector[ScriptedCommands.Ran] = Vector.empty
 

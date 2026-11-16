@@ -12,7 +12,6 @@ import grit.core.edge.{
   EdgeContracts,
   EdgeSessions,
   EdgeWatch,
-  PluginCommands,
   ScriptedCommands,
   ScriptedSessions
 }
