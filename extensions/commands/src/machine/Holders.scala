@@ -40,14 +40,25 @@ object Holders {
       agent: Option[String],
       kind: Option[String]
   ): Either[String, Option[(SessionId, Agent)]] =
-    (agent, kind) match {
-      case (None, None) => Right(None)
-      case (Some(a), Some(k)) =>
-        agentSession(session, a).left
-          .map(w => s"agent: $w")
-          .map(id => Some((id, Agent(k, session))))
-      case _ => Left("agent and type come together: an agent's own id, and its type")
-    }
+    paired(agent, kind, "agent and type come together: an agent's own id, and its type")
+      .flatMap {
+        case None => Right(None)
+        case Some((a, k)) =>
+          agentSession(session, a).left
+            .map(w => s"agent: $w")
+            .map(id => Some((id, Agent(k, session))))
+      }
+
+  /** Both or neither: `None` for neither, the pair for both, `apart` for one alone. */
+  private[commands] def paired[A, B](
+      a: Option[A],
+      b: Option[B],
+      apart: String
+  ): Either[String, Option[(A, B)]] = (a, b) match {
+    case (None, None) => Right(None)
+    case (Some(x), Some(y)) => Right(Some((x, y)))
+    case _ => Left(apart)
+  }
 
   /** The holder a session in `dir` on `machine` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:

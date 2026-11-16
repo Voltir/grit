@@ -40,11 +40,7 @@ private[commands] object Briefing {
       dir <- q.need("dir")(Directory.of)
       session <- q.read("session")(Holders.session(harness, _))
       kind <- q.read("type")(Right(_))
-      agent <- (kind, session) match {
-        case (Some(k), Some(s)) => Right(Some(Holders.Agent(k, s)))
-        case (None, None) => Right(None)
-        case _ => Left(TypeAndSession)
-      }
+      agent <- Holders.paired(kind, session, TypeAndSession).map(_.map(Holders.Agent(_, _)))
     } yield Holders.of(machine, dir, agent)
 
   /** Which part of what a session opens with `/brief` answers. */
