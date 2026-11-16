@@ -278,6 +278,9 @@ main() {
   marker="# grit $harness join"
   # The line, after the marker, that keeps the settings out of `git add -A` in every worktree.
   excluded=/.claude/settings.local.json
+  # The `$schema` that settings the join makes start with: its mark that it made them, so an undo
+  # that leaves them holding only that removes the file.
+  made=https://json.schemastore.org/claude-code-settings.json
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     refuse "needs bash 5 or later; this is bash ${BASH_VERSION-unknown}"
   fi
@@ -423,7 +426,7 @@ join() {
   if [ -e "$settings" ]; then
     new=$(rewrite_settings "$drop" "$groups" < "$settings") || refuse "jq could not rewrite $settings; nothing was changed"
   else
-    new=$(rewrite_settings "$drop" "$groups" <<< '{}') || refuse "jq could not write the settings; nothing was changed"
+    new=$(rewrite_settings "$drop" "$groups" <<< "{\"\$schema\": \"$made\"}") || refuse "jq could not write the settings; nothing was changed"
   fi
   object "$new" || refuse "jq wrote no settings object; nothing was changed"
   count=$(jq '[.[].group.hooks | length] | add' <<< "$groups") || refuse "jq failed; nothing was changed"
@@ -546,7 +549,7 @@ exec $qH rewrite \"\$@\"
 # Undoes the join of the checkout: its handlers in the settings $1 and its MCP entry $3; and,
 # unless another worktree's settings still name the hook, the hook and git's hooks in $2.
 undo_join() {
-  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' new entry
+  local settings=$1 hooks=$2 mcp=$3 n=0 f w other='' new entry unmade=''
   local -a gone=() entries=()
 
   # Everything that can fail is worked out before the first file is changed.
@@ -558,6 +561,8 @@ undo_join() {
   if [ "$n" -gt 0 ]; then
     new=$(rewrite_settings '[]' '[]' < "$settings") || refuse "jq could not rewrite $settings; nothing was changed"
     object "$new" || refuse "jq wrote no settings object; nothing was changed"
+    # jq's layout of the object holding the join's mark alone.
+    [ "$new" != $'{\n  "$schema": "'"$made"$'"\n}' ] || unmade=', and the file, which the join made'
   fi
   entry=$(mcp_entry "$mcp") || refuse "jq could not read ~/.claude.json; nothing was changed"
   mapfile -d '' -t entries < <(git worktree list --porcelain -z)
@@ -581,13 +586,15 @@ undo_join() {
     *) text='' ;;
   esac
 
-  if [ "$n" -gt 0 ]; then
+  if [ -n "$unmade" ]; then
+    rm -f -- "$settings"
+  elif [ "$n" -gt 0 ]; then
     put_kept "$settings" 0644 "$new
 "
   fi
 
   printf 'grit %s: undid the join in %s\n' "$harness" "$top"
-  printf '  settings  .claude/settings.local.json: %s handlers of ours removed\n' "$n"
+  printf '  settings  .claude/settings.local.json: %s handlers of ours removed%s\n' "$n" "$unmade"
   if [ -n "$other" ]; then
     printf '  hook      %s kept: the worktree %s still names it\n' "$H" "$other"
     printf '  git       post-commit and post-rewrite kept, as the hook is\n'

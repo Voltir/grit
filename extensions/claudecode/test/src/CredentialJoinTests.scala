@@ -149,7 +149,7 @@ object CredentialJoinTests extends TestSuite {
               0,
               "",
               false,
-              Some("{}\n"),
+              None,
               Some(s"mcp remove --scope local ${machine.Name}"),
               true,
               false

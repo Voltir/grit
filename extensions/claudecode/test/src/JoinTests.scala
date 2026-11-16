@@ -243,7 +243,7 @@ object JoinTests extends TestSuite {
             0,
             Vector(
               s"grit claude-code: undid the join in ${dir.toRealPath()}",
-              "  settings  .claude/settings.local.json: 11 handlers of ours removed",
+              "  settings  .claude/settings.local.json: 11 handlers of ours removed, and the file, which the join made",
               s"  hook      ${f.hook(dir)} removed",
               "  git       post-commit and post-rewrite removed",
               s"  ignore    .claude/settings.local.json's lines removed from ${f.common(dir)}/info/exclude",
@@ -713,15 +713,22 @@ object JoinTests extends TestSuite {
     }
 
     // Without a state file the undo cannot tell settings the join made from a person's `{}`.
-    test("undo drops the hooks it leaves empty, and leaves settings the join made as {}") {
+    test(
+      "undo removes settings the join made, and leaves a person's, even {}, without the hooks it emptied"
+    ) {
       JoinFixtures { f =>
-        val (bare, mine) = (f.checkout("bare"), f.checkout("mine"))
-        val _ = f.write(f.settings(mine), "{\"model\": \"x\"}\n")
-        val _ = (f.joined(bare), f.joined(mine), f.undone(bare), f.undone(mine))
-        (f.read(f.settings(bare)), f.read(f.settings(mine))) ==> ((
-          Some("{}\n"),
-          Some("{\n  \"model\": \"x\"\n}\n")
-        ))
+        val (bare, mine, empty) = (f.checkout("bare"), f.checkout("mine"), f.checkout("empty"))
+        val _ = (
+          f.write(f.settings(mine), "{\"model\": \"x\"}\n"),
+          f.write(f.settings(empty), "{}\n")
+        )
+        val all = Vector(bare, mine, empty)
+        val _ = (all.map(f.joined(_)), all.map(f.undone(_)))
+        all.map(d => f.read(f.settings(d))) ==> Vector(
+          None,
+          Some("{\n  \"model\": \"x\"\n}\n"),
+          Some("{}\n")
+        )
       }
     }
 

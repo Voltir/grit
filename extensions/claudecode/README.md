@@ -94,7 +94,9 @@ every other worktree's settings and `~/.claude.json` first).
   worktrees share it. `GRIT_EDGE` comes from the session's environment, past every check the join
   made of its address, so the hook checks it with the join's own patterns, and does nothing when
   it fails them ([the hook](#the-hook)).
-- **The settings**, the checkout's `.claude/settings.local.json` (`{}` when absent), keeping the
+- **The settings**, the checkout's `.claude/settings.local.json` (when absent, made holding
+  `"$schema": "https://json.schemastore.org/claude-code-settings.json"`, the join's mark that it
+  made the file, and a key Claude Code's settings document), keeping the
   file's mode, as it may hold tokens (0644 for a file the join makes). One jq program removes
   every handler whose command is the hook's, and every one whose program is under a `--retire`
   directory (a relative one read from where the join is run); drops the groups and events that
@@ -147,9 +149,10 @@ MCP entry, but only an entry the join would have written, an `http://` or `https
 port with the path `/mcp` and nothing after, as a checkout never joined may hold another (printed,
 and left as it is); the hook, the git hooks it marked and its two lines in info/exclude go too,
 unless another worktree's settings still name the hook, when they are kept and the worktree
-named. Nothing retired is restored. A `hooks` the removal leaves empty goes, but a settings file the join made is left as
-`{}`: with no state file the undo cannot tell it from a person's own `{}`, and Claude Code reads
-the two alike.
+named. Nothing retired is restored. A `hooks` the removal leaves empty goes, and settings left
+holding the join's mark alone are removed; any other file, a person's own `{}` among them, stays.
+Settings a person made holding nothing but that same `$schema` go too, as the undo cannot tell
+them from the join's; Claude Code reads them as it reads no file.
 
 A join prints, for a first join (paths as they are on the machine):
 
@@ -191,7 +194,7 @@ An undo prints:
 
 ```
 grit claude-code: undid the join in /work/proj
-  settings  .claude/settings.local.json: 11 handlers of ours removed
+  settings  .claude/settings.local.json: 11 handlers of ours removed, and the file, which the join made
   hook      /work/proj/.git/grit/claude-code/hook removed
   git       post-commit and post-rewrite removed
   ignore    .claude/settings.local.json's lines removed from /work/proj/.git/info/exclude
@@ -199,7 +202,8 @@ grit claude-code: undid the join in /work/proj
 Nothing retired was restored.
 ```
 
-or `  hook      <hook> kept: the worktree <dir> still names it` and `  git       post-commit and
+(`, and the file, which the join made` only when the file goes), or `  hook      <hook> kept: the
+worktree <dir> still names it` and `  git       post-commit and
 post-rewrite kept, as the hook is` (and, when the join wrote its lines, `  ignore
 .claude/settings.local.json kept in <exclude>, as the hook is`) while another worktree is joined; and, for a foreign git hook
 that still names the hook removed, `  git       <file> is not ours and still names <hook>; remove
