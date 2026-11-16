@@ -51,7 +51,10 @@ def main() -> int:
     base = git("merge-base", base, head or "HEAD").strip()
     head = head or "HEAD"
     totals = {"production code": 0, "production comments": 0, "tests": 0}
-    for path in git("diff", "--name-only", base, head, "--", "*.scala").split("\n"):
+    # --no-renames: a renamed file is its old path, gone at head, and its new one, absent at base,
+    # so its size is taken out where it was and put back where it is, which a rename listed by its
+    # new path alone (git's default) would count as wholly added.
+    for path in git("diff", "--no-renames", "--name-only", base, head, "--", "*.scala").split("\n"):
         if not path:
             continue
         (code0, doc0), (code1, doc1) = sizes(base, path), sizes(head, path)
