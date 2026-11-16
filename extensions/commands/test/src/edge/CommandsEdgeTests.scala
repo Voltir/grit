@@ -9,7 +9,7 @@ import grit.commands.declare.OwnCommand
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
 import grit.core.edge.Adapter
-import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands, Variable}
+import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands, ScriptedCommands, Variable}
 import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.plugin.CommandOutcome
@@ -120,7 +120,10 @@ object CommandsEdgeTests extends TestSuite {
     }
 
     test("open refuses an offered command that /mcp cannot list") {
-      val odd = PluginCommands.Listed(ToolSchema("odd", "Runs odd.", ujson.Arr()), reads = true)
+      val odd = ScriptedCommands.Offered(
+        PluginCommands.Listed(ToolSchema("odd", "Runs odd.", ujson.Arr()), reads = true),
+        Said
+      )
       val commands = scripted(Vector(odd))((_, _) => Right(CommandOutcome.Done("")))
       got(edge()).open(
         stores(commands, InMemoryVoucher.none()),

@@ -55,6 +55,12 @@ abstract class PluginCommandsContract extends TestSuite {
     test("an account no person is linked to is refused") {
       run(Echo, ujson.Obj("text" -> "hi"), Stranger) ==> Left(CommandError.NotVouched(Stranger))
     }
+
+    test("unread arguments are refused before an account no person is linked to") {
+      run(Echo, ujson.Obj("words" -> "hi"), Stranger) ==> Left(
+        CommandError.Unread(Echo, "There is no argument `words`; the arguments there are `text`.")
+      )
+    }
   }
 }
 
@@ -65,8 +71,8 @@ object PluginCommandsContract {
 
   final case class Text(text: String) extends caps.Pure
 
-  /** What `echo` and `refuse` read, so a fake reads them as the commands do. */
-  val text: Args[Text] = Args.of((text = Field.text("What to say."))).map(a => Text(a.text))
+  /** What `echo` and `refuse` read. */
+  private val text: Args[Text] = Args.of((text = Field.text("What to say."))).map(a => Text(a.text))
 
   /** `echo` answers its `text` done; `refuse` refuses it as `not <text>`; both only read. */
   object Commands extends Plugin {

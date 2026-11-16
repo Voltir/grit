@@ -17,8 +17,7 @@ import grit.core.edge.{
 }
 import grit.core.id.Sha256
 import grit.core.plugin.CommandOutcome
-import grit.core.provider.ToolSchema
-import grit.core.tool.ToolName
+import grit.core.tool.{Args, Field, ToolName, ToolSpec}
 import grit.core.visibility.Integrity
 import grit.edge.http.{Hosts, Request, Verb}
 import grit.mcp.wire.ServerInfo
@@ -44,23 +43,15 @@ object RouteFixtures {
       headers: Vector[(String, String)] = Vector("Host" -> "localhost:7317")
   ): Request = got(Request.of(verb, target, headers, body))
 
-  /** A command offered by its name, which reads `text`. */
-  def listed(name: String, reads: Boolean): PluginCommands.Listed =
-    PluginCommands.Listed(
-      ToolSchema(
-        name,
-        s"Runs $name.",
-        ujson.Obj(
-          "type" -> "object",
-          "properties" -> ujson.Obj("text" -> ujson.Obj("type" -> "string")),
-          "required" -> ujson.Arr("text")
-        )
-      ),
-      reads
-    )
+  /** What every scripted command reads: one `text`. */
+  val Said: Args[String] = Args.of((text = Field.text("What to say."))).map(_.text)
+
+  /** A command offered by its name, which reads [[Said]]. */
+  def listed(name: String, reads: Boolean): ScriptedCommands.Offered =
+    ScriptedCommands.Offered.of(ToolSpec(got(ToolName.of(name)), s"Runs $name.", Said), reads)
 
   /** `offered`, run for [[Owner]] alone, each answering `answer`. */
-  def scripted(offered: Vector[PluginCommands.Listed])(
+  def scripted(offered: Vector[ScriptedCommands.Offered])(
       answer: (ToolName, ujson.Value) -> Either[CommandError, CommandOutcome]
   ): ScriptedCommands =
     new ScriptedCommands(offered, Set(Owner.account))(answer)

@@ -14,13 +14,11 @@ object ScriptedCommandsTests extends PluginCommandsContract {
 
   private def fake: ScriptedCommands =
     new ScriptedCommands(
-      Commands.commands.map(c => PluginCommands.Listed(c.spec.schema(false), reads = true)),
+      Commands.commands.map(c => ScriptedCommands.Offered.of(c.spec, reads = true)),
       Set(Reader)
-    )((name, args) =>
-      text.read(args) match {
-        case Left(e) => Left(CommandError.Unread(name, e.message))
-        case Right(Text(t)) if name == Echo => Right(CommandOutcome.Done(t))
-        case Right(Text(t)) => Right(CommandOutcome.Refused(s"not $t"))
-      }
-    )
+    )((name, args) => {
+      val said = args.objOpt.flatMap(_.get("text")).flatMap(_.strOpt).getOrElse("")
+      if (name == Echo) Right(CommandOutcome.Done(said))
+      else Right(CommandOutcome.Refused(s"not $said"))
+    })
 }
