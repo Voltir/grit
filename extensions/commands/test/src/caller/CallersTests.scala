@@ -1,11 +1,19 @@
 package grit.commands.caller
 
-import grit.commands.machine.MachineName
+import grit.commands.routes.RouteFixtures.{
+  AgentText,
+  Away,
+  AwayText,
+  Credentialed,
+  Own,
+  OwnText,
+  Owner,
+  Owners
+}
 import grit.core.edge.Asked
 import grit.core.either.Got.got
 import grit.core.id.Sha256
 import grit.core.identity.{Realm, Standing, TestAccounts}
-import grit.core.visibility.Integrity
 import grit.edge.http.{Challenge, Request, Response, Status, Verb}
 
 import utest.*
@@ -13,23 +21,7 @@ import utest.*
 /** [[Callers]]: who a request is from, the owner whatever it is or the caller its credential names. */
 object CallersTests extends TestSuite {
 
-  private val realm = got(Realm.of("desk", "home"))
-  private val desktop = got(MachineName.of("desktop"))
-  private val owner = Caller(TestAccounts.account("desk:home/owner"), Integrity.Member, desktop)
-  private val callers = Callers.owner(owner)
-
-  private val own = owner.copy(believed = Integrity.Authority)
-  private val laptop = owner.copy(machine = got(MachineName.of("laptop")))
-  private val ownText = "own-0123456789abcdefghijklmnopqrstuvwxyz"
-  private val agentText = "agent-0123456789abcdefghijklmnopqrstuvwxyz"
-  private val laptopText = "laptop-0123456789abcdefghijklmnopqrstuvwxyz"
-  private val credentialed = got(
-    Callers.of(
-      Callers.Token(Sha256.text(ownText), own),
-      Callers.Token(Sha256.text(agentText), owner),
-      Callers.Token(Sha256.text(laptopText), laptop)
-    )
-  )
+  private val realm = got(Realm.of("slack", "T1"))
 
   private def request(headers: (String, String)*): Request =
     got(Request.of(Verb.Post, "/command/x", headers.toVector, ""))
@@ -37,17 +29,17 @@ object CallersTests extends TestSuite {
   val tests = Tests {
     test("a request with no credential is the owner's; one carrying any is refused") {
       (
-        callers.from(request("Host" -> "localhost")),
-        callers.from(request("Authorization" -> "Bearer t0ken"))
-      ) ==> (Right(owner), Left(Challenge.Refused))
+        Owners.from(request("Host" -> "localhost")),
+        Owners.from(request("Authorization" -> "Bearer t0ken"))
+      ) ==> (Right(Owner), Left(Challenge.Refused))
     }
 
     test("a credential's bearer is its caller, the scheme read in any case") {
       Vector(
-        request("Authorization" -> s"Bearer $ownText"),
-        request("authorization" -> s"bearer $agentText"),
-        request("Authorization" -> s"BEARER $laptopText")
-      ).map(credentialed.from) ==> Vector(Right(own), Right(owner), Right(laptop))
+        request("Authorization" -> s"Bearer $OwnText"),
+        request("authorization" -> s"bearer $AgentText"),
+        request("Authorization" -> s"BEARER $AwayText")
+      ).map(Credentialed.from) ==> Vector(Right(Own), Right(Owner), Right(Away))
     }
 
     test(
@@ -55,13 +47,13 @@ object CallersTests extends TestSuite {
     ) {
       Vector(
         request("Host" -> "localhost"),
-        request("Authorization" -> s"Bearer $ownText", "Authorization" -> s"Bearer $ownText"),
-        request("Authorization" -> s"Basic $ownText"),
+        request("Authorization" -> s"Bearer $OwnText", "Authorization" -> s"Bearer $OwnText"),
+        request("Authorization" -> s"Basic $OwnText"),
         request("Authorization" -> "Bearer "),
         request("Authorization" -> "Bearer unknown-0123456789abcdefghijklmnopqrstuvwxyz"),
-        request("Authorization" -> s"Bearer ${ownText}x"),
-        request("Authorization" -> s"Bearer ${ownText.dropRight(1)}")
-      ).map(credentialed.from) ==> Vector(
+        request("Authorization" -> s"Bearer ${OwnText}x"),
+        request("Authorization" -> s"Bearer ${OwnText.dropRight(1)}")
+      ).map(Credentialed.from) ==> Vector(
         Left(Challenge.Asked),
         Left(Challenge.Asked),
         Left(Challenge.Asked),
@@ -75,30 +67,30 @@ object CallersTests extends TestSuite {
     test(
       "two credentials of one digest are refused; one account at two integrities and on two machines is one account"
     ) {
-      val digest = Sha256.text(ownText)
+      val digest = Sha256.text(OwnText)
       (
-        Callers.of(Callers.Token(digest, own), Callers.Token(digest, laptop)).map(_.accounts),
-        credentialed.accounts,
-        (callers.uncredentialed, credentialed.uncredentialed)
+        Callers.of(Callers.Token(digest, Own), Callers.Token(digest, Away)).map(_.accounts),
+        Credentialed.accounts,
+        (Owners.uncredentialed, Credentialed.uncredentialed)
       ) ==> (
         Left(s"two credentials have the digest ${digest.hex}: give each its own"),
-        Vector(owner.account),
+        Vector(Owner.account),
         (true, false)
       )
     }
 
     test("the source says the owner is a full member of the realm, and no one else is") {
-      val source = callers.source(realm)
-      val other = TestAccounts.account("desk:home/other")
+      val source = Owners.source(realm)
+      val other = TestAccounts.account("slack:T1/U-other")
       (
-        source.ask(owner.account),
+        source.ask(Owner.account),
         source.ask(other),
         source.all(realm),
-        source.all(got(Realm.of("desk", "elsewhere")))
+        source.all(got(Realm.of("slack", "T2")))
       ) ==> (
         Asked.Said(Standing.Full(None)),
         Asked.Said(Standing.Outside),
-        Right(Map(owner.account -> Standing.Full(None))),
+        Right(Map(Owner.account -> Standing.Full(None))),
         Right(Map.empty)
       )
     }
