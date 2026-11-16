@@ -1,0 +1,11 @@
+{"version": "2.1.303",
+ "recorded": "each step: `claude <args>` run in a fresh git checkout ($CHECKOUT, its path as pwd -P prints it) with HOME an empty directory, its exit status, and ~/.claude.json's projects after it, each project's mcpServers alone",
+ "steps": [
+  {"args":["mcp","add","--transport","http","--scope","local","grit","http://127.0.0.1:7317/mcp"],"exit":0,"projects":{"$CHECKOUT":{"mcpServers":{"grit":{"type":"http","url":"http://127.0.0.1:7317/mcp"}}}}},
+  {"args":["mcp","add","--transport","http","--scope","local","grit","http://127.0.0.1:7317/mcp"],"exit":1,"projects":{"$CHECKOUT":{"mcpServers":{"grit":{"type":"http","url":"http://127.0.0.1:7317/mcp"}}}}},
+  {"args":["mcp","add-json","--scope","local","gritc","{\"type\":\"http\",\"url\":\"http://127.0.0.1:7317/mcp\",\"headersHelper\":\"/x/hook.sh header\"}"],"exit":0,"projects":{"$CHECKOUT":{"mcpServers":{"grit":{"type":"http","url":"http://127.0.0.1:7317/mcp"},"gritc":{"type":"http","url":"http://127.0.0.1:7317/mcp","headersHelper":"/x/hook.sh header"}}}}},
+  {"args":["mcp","add-json","--scope","local","gritc","{\"type\":\"http\",\"url\":\"http://127.0.0.1:7317/mcp\",\"headersHelper\":\"/x/hook.sh header\"}"],"exit":1,"projects":{"$CHECKOUT":{"mcpServers":{"grit":{"type":"http","url":"http://127.0.0.1:7317/mcp"},"gritc":{"type":"http","url":"http://127.0.0.1:7317/mcp","headersHelper":"/x/hook.sh header"}}}}},
+  {"args":["mcp","remove","--scope","local","absent"],"exit":1,"projects":{"$CHECKOUT":{"mcpServers":{"grit":{"type":"http","url":"http://127.0.0.1:7317/mcp"},"gritc":{"type":"http","url":"http://127.0.0.1:7317/mcp","headersHelper":"/x/hook.sh header"}}}}},
+  {"args":["mcp","remove","--scope","local","grit"],"exit":0,"projects":{"$CHECKOUT":{"mcpServers":{"gritc":{"type":"http","url":"http://127.0.0.1:7317/mcp","headersHelper":"/x/hook.sh header"}}}}},
+  {"args":["mcp","remove","--scope","local","gritc"],"exit":0,"projects":{"$CHECKOUT":{"mcpServers":{}}}}
+ ]}

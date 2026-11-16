@@ -23,6 +23,7 @@ final class JoinFixtures(val root: Path) {
 
   // As claude keeps a local-scope entry: in ~/.claude.json under the directory it runs in, an add
   // refused for a name there and a remove for a name not there. Its jq is the system's.
+  // FakeClaudeTests holds it to the real CLI's recorded calls, test resource claude/mcp-local.json.
   locally {
     write(
       bin.resolve("claude"),
