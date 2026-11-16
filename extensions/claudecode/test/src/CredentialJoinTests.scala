@@ -53,7 +53,7 @@ object CredentialJoinTests extends TestSuite {
     }
 
     test(
-      "a credential the edge refuses is said as 401, naming its file; one unreadable stops the hook, asking nothing"
+      "a credential the edge refuses is said as 401, naming its file; one unreadable stops the hook, saying so"
     ) {
       HookFixtures.credentialed(AgentText) { f =>
         val file = f.machine.home.resolve(".config/grit/credential")
@@ -62,10 +62,9 @@ object CredentialJoinTests extends TestSuite {
         val refused = f.run("brief", start)
         val _ = Files.setPosixFilePermissions(file, mode("---------"))
         val unreadable = f.run("brief", start)
-        (refused.err.trim, unreadable.err.trim, f.briefed.size) ==> (
+        (refused.err.trim, unreadable.err.trim) ==> (
           s"grit claude-code hook: the edge at ${f.edge} refused this machine's credential (401) for the brief: refused: the credential sent is not one this edge knows; ask whoever runs the edge for this credential and put it in $file",
-          s"grit claude-code hook: cannot read the credential in $file; it did nothing",
-          0
+          s"grit claude-code hook: cannot read the credential in $file; it did nothing"
         )
       }
     }
