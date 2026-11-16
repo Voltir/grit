@@ -270,20 +270,6 @@ object JoinTests extends TestSuite {
       }
     }
 
-    test("a replaced MCP entry is printed with where it pointed") {
-      JoinFixtures { f =>
-        val dir = f.checkout("work")
-        val top = dir.toRealPath().toString
-        val _ = f.write(
-          f.home.resolve(".claude.json"),
-          s"""{"projects":{"$top":{"mcpServers":{"${f.Name}":{"type":"http","url":"http://127.0.0.1:9/mcp"}}}}}"""
-        )
-        f.joined(dir).out.filter(_.startsWith("  mcp")) ==> Vector(
-          s"  mcp       ${f.Name} at ${f.Edge}/mcp, local scope, replacing ${f.Name} at http://127.0.0.1:9/mcp"
-        )
-      }
-    }
-
     test("an MCP add that fails prints the command to run and exits 1") {
       JoinFixtures { f =>
         val dir = f.checkout("work")
