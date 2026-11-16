@@ -8,7 +8,6 @@ import grit.commands.declare.HoldingWatch
 import grit.commands.machine.{MachineName, Worktrees}
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.id.ClaimHolder
-import grit.core.identity.Account
 import grit.core.place.Directory
 import grit.core.session.Event
 import grit.edge.http.Status
@@ -108,9 +107,7 @@ private[commands] object Waited {
       (Status.Failed, s"the watch was met by what it did not ask for: $other")
     case (_, Left(WatchError.Busy)) =>
       (Status.Unavailable, s"${EdgeWatch.Most} watches are under way already: wait for one to end")
-    case (_, Left(WatchError.NotVouched(by))) =>
-      (Status.Forbidden, s"no person is linked to ${Account.written(by)}")
-    case (_, Left(WatchError.Unavailable(cause))) =>
-      (Status.Unavailable, s"the database is unavailable: $cause")
+    case (_, Left(WatchError.NotVouched(by))) => RouteReply.notVouched(by)
+    case (_, Left(WatchError.Unavailable(cause))) => RouteReply.unavailable(cause)
   }
 }

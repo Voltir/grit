@@ -8,7 +8,6 @@ import grit.commands.machine.{Holders, MachineName}
 import grit.core.context.Shown
 import grit.core.edge.{BriefError, EdgeSessions}
 import grit.core.id.{ClaimHolder, Harness, SessionId}
-import grit.core.identity.Account
 import grit.core.place.Directory
 import grit.core.session.SessionDigest
 import grit.edge.http.{Request, Status}
@@ -121,10 +120,8 @@ private[commands] object Briefing {
       came: Either[BriefError, EdgeSessions.Briefed],
       now: Instant
   ): (Status, String) = came match {
-    case Left(BriefError.NotVouched(by)) =>
-      (Status.Forbidden, s"no person is linked to ${Account.written(by)}")
-    case Left(BriefError.Unavailable(cause)) =>
-      (Status.Unavailable, s"the database is unavailable: $cause")
+    case Left(BriefError.NotVouched(by)) => RouteReply.notVouched(by)
+    case Left(BriefError.Unavailable(cause)) => RouteReply.unavailable(cause)
     case Right(b) =>
       asked.part match {
         case Part.Brief => (Status.Ok, b.brief.fold("")(Shown.briefText))

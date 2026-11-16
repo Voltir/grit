@@ -24,12 +24,18 @@ private[commands] object RouteReply {
     case Left(CommandError.Unknown(name)) =>
       (Status.NotFound, s"no command is named ${ToolName.value(name)}")
     case Left(CommandError.Unread(_, reason)) => (Status.BadRequest, reason)
-    case Left(CommandError.NotVouched(by)) =>
-      (Status.Forbidden, s"no person is linked to ${Account.written(by)}")
+    case Left(CommandError.NotVouched(by)) => notVouched(by)
     case Left(CommandError.Store(_, error)) => (Status.Failed, s"nothing was kept: $error")
-    case Left(CommandError.Unavailable(cause)) =>
-      (Status.Unavailable, s"the database is unavailable: $cause")
+    case Left(CommandError.Unavailable(cause)) => unavailable(cause)
   }
+
+  /** 403: no person is linked to `by`. */
+  def notVouched(by: Account): (Status, String) =
+    (Status.Forbidden, s"no person is linked to ${Account.written(by)}")
+
+  /** 503: the database is unavailable, for `cause`. */
+  def unavailable(cause: String): (Status, String) =
+    (Status.Unavailable, s"the database is unavailable: $cause")
 
   /** `answered` as an MCP `tools/call` result: 200 its text, 404 no such tool, 400 arguments the
     * command does not read, anything else its text as a failed result.
