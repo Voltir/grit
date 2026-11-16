@@ -163,10 +163,7 @@ object Visibility {
               .filter(_ != c)
               .map(_ => VisibilityRefusal.StewardsThroughCompartment(c, st.group))
         }.headOption)
-        .orElse {
-          val stewarded = stewards.map(_.compartment)
-          firstRepeat(stewarded).map(VisibilityRefusal.StewardedTwice(_))
-        }
+        .orElse(firstRepeat(stewards.map(_.compartment)).map(VisibilityRefusal.StewardedTwice(_)))
         .orElse(caps.collectFirst {
           case c
               if c.place == Place.Everywhere || c.place.direct ||

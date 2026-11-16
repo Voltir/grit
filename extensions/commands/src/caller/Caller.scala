@@ -81,8 +81,7 @@ object Callers {
     */
   def of(first: Token, rest: Token*): Either[String, Callers] = {
     val tokens = first +: rest.toVector
-    val digests = tokens.map(_.digest)
-    firstRepeat(digests)
+    firstRepeat(tokens.map(_.digest))
       .map(d => s"two credentials have the digest ${d.hex}: give each its own")
       .toLeft(new Callers(Rule.Tokens(tokens)))
   }

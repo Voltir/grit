@@ -148,14 +148,12 @@ object CommandsEdge {
       holding: Option[HoldingWatch],
       adapters: Vector[Adapter] = Vector.empty
   ): Either[String, CommandsEdge] = {
-    val names = own.map(_.name)
-    firstRepeat(names)
+    firstRepeat(own.map(_.name))
       .map(n => s"two own commands are named ${ToolName.value(n)}")
-      .orElse {
-        val harnesses = adapters.map(_.harness)
-        firstRepeat(harnesses)
+      .orElse(
+        firstRepeat(adapters.map(_.harness))
           .map(h => s"two adapters are given for the harness ${Harness.value(h)}")
-      }
+      )
       .orElse(
         callers.accounts
           .find(a => !realm.holds(a))
