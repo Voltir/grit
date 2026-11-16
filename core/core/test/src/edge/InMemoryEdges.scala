@@ -48,6 +48,10 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   @caps.unsafe.untrackedCaptures
   private var registered = Map.empty[EdgeId, Int]
 
+  /** How many open requests were dispatched to each place: what wakes a desk's await. */
+  @caps.unsafe.untrackedCaptures
+  private var rung = Map.empty[Place, Long]
+
   // Each conversation's origin, as `originates` set it.
   @caps.unsafe.untrackedCaptures
   private var origins = Map.empty[grit.core.id.ConversationId, grit.core.store.Origin]
@@ -71,10 +75,33 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       if (!rows.exists(_.request.slot == q.slot)) {
         val state = ToolRequests.refusal(q, at).fold(InMemoryEdges.Open)(RequestState.Answered(_))
         rows = rows :+ Row(q, state, None)
+        if (state == InMemoryEdges.Open) {
+          rung = rung.updated(q.workspace, rung.getOrElse(q.workspace, 0L) + 1)
+        }
       }
     }
+    notifyAll()
     Right(())
   }
+
+  /** How many open requests were dispatched to `places`, as a desk counts what it heard. */
+  private[edge] def rungIn(places: Set[Place]): Long = synchronized {
+    places.toVector.map(rung.getOrElse(_, 0L)).sum
+  }
+
+  /** Waits up to `within` for [[rungIn]] `places` to pass `heard`, as the Postgres desk waits
+    * for a notice; the count it reached, `heard` on timeout.
+    */
+  private[edge] def ringing(places: Set[Place], heard: Long, within: FiniteDuration): Long =
+    synchronized {
+      val until = System.nanoTime() + within.toNanos
+      var now = rungIn(places)
+      while (now == heard && until - System.nanoTime() > 0) {
+        java.util.concurrent.TimeUnit.NANOSECONDS.timedWait(this, until - System.nanoTime())
+        now = rungIn(places)
+      }
+      now
+    }
 
   def settle(slot: CallSlot)(using Tx^): Either[StoreError, RequestState] = synchronized {
     row(slot).map { r =>
@@ -254,7 +281,20 @@ object InMemoryEdges {
   /** A desk on `edges` for `registration`'s edge under `session`. */
   final class Fake(edges: InMemoryEdges, val registration: Registration, session: Int)
       extends Desk {
-    def await(within: FiniteDuration): Boolean = edges.open(registration).nonEmpty
+    // Only the desk's own thread awaits: a server's, or the test's.
+    @caps.unsafe.untrackedCaptures
+    private var heard = edges.rungIn(registration.places)
+    def await(within: FiniteDuration): Boolean = {
+      val before = heard
+      heard =
+        try edges.ringing(registration.places, before, within)
+        catch {
+          case _: InterruptedException =>
+            Thread.currentThread().interrupt()
+            before
+        }
+      heard != before
+    }
     def open(): Either[DeskError, Vector[ToolRequest]] = Right(edges.open(registration))
     def claim(request: ToolRequest): Either[DeskError, Boolean] =
       Right(edges.claim(registration, session, request))

@@ -383,7 +383,10 @@ abstract class EdgesContract extends TestSuite {
       val here = place("await")
       val r = request("await", 0, here)
       val d = desk(Set(here))
+      val began = System.nanoTime()
       d.await(200.millis) ==> false
+      val waited = (System.nanoTime() - began).nanos
+      assert(waited >= 200.millis)
       dispatched(r)
       d.await(10.seconds) ==> true
     }
