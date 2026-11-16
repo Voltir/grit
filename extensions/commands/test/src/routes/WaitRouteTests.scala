@@ -71,9 +71,6 @@ object WaitRouteTests extends TestSuite {
         )
       )
       waited(r, ujson.Obj("commit" -> ujson.Obj("holder" -> "desktop/fixer")))
-      waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 3600))
-      waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 1e10))
-      waited(r, ujson.Obj("document" -> "grit/plan", "within" -> 1e300))
       script.asked.map(a => (a.by, a.room, a.what, a.within)) ==> Vector(
         (
           Owner.account,
@@ -89,25 +86,22 @@ object WaitRouteTests extends TestSuite {
           EdgeContracts.Room,
           WatchFor.Committed(WatchFor.Committer.As(got(ClaimHolder.of("desktop/fixer"))), Now),
           Routes.Within
-        ),
-        (
-          Owner.account,
-          EdgeContracts.Room,
-          got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
-          EdgeWatch.Longest
-        ),
-        (
-          Owner.account,
-          EdgeContracts.Room,
-          got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
-          EdgeWatch.Longest
-        ),
-        (
-          Owner.account,
-          EdgeContracts.Room,
-          got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review))),
-          EdgeWatch.Longest
         )
+      )
+    }
+
+    test("a watch waits the whole seconds `within` asks, at most the longest a watch waits") {
+      val script = new ScriptedWatch.Script
+      val r = waiting(script)
+      Vector(60, 3600, 1e10, 1e300).foreach(s =>
+        waited(r, ujson.Obj("document" -> "grit/plan", "within" -> s))
+      )
+      val plan = got(WatchFor.Holding.of(Plugin, got(DocKey.of("grit/plan")), Set(Review)))
+      script.asked.map(a => (a.what, a.within)) ==> Vector(
+        plan -> 60.seconds,
+        plan -> EdgeWatch.Longest,
+        plan -> EdgeWatch.Longest,
+        plan -> EdgeWatch.Longest
       )
     }
 
