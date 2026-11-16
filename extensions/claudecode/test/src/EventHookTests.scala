@@ -3,7 +3,7 @@ package grit.claudecode
 import java.nio.file.{Files, Path}
 import java.time.Instant
 
-import grit.commands.machine.Holders
+import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.Machine
 import grit.core.edge.EdgeSessions
 import grit.core.either.Got.got
@@ -100,19 +100,19 @@ object EventHookTests extends TestSuite {
         )
         recorded.map(batch) ==> Vector(
           (
-            got(Holders.agentSession(f.session(Forked), "a2222222222222222")),
+            got(ClaimHolders.agentSession(f.session(Forked), "a2222222222222222")),
             Some(f.session(Forked)),
             Some(f.holderOf(Some("general-purpose" -> Forked))),
             Vector(("ran", None, None, obj("program" -> "printenv", "ok" -> true)))
           ),
           (
-            got(Holders.agentSession(f.session(First), "a1111111111111111")),
+            got(ClaimHolders.agentSession(f.session(First), "a1111111111111111")),
             Some(f.session(First)),
             Some(f.holderOf(Some("general-purpose" -> First))),
             Vector(("started", None, None, obj()))
           ),
           (
-            got(Holders.agentSession(f.session(First), "a1111111111111111")),
+            got(ClaimHolders.agentSession(f.session(First), "a1111111111111111")),
             Some(f.session(First)),
             Some(f.holderOf(Some("general-purpose" -> First))),
             Vector(("ended", None, None, obj()))
@@ -552,7 +552,7 @@ object EventHookTests extends TestSuite {
           f.payload("post-tool-use-edit.json").replace(f.proj.toString, other.toString),
           Map("CLAUDE_PROJECT_DIR" -> other.toString)
         )
-        val holder = Holders.of(Machine, got(Directory.of(other.toString)), None)
+        val holder = ClaimHolders.of(Machine, got(Directory.of(other.toString)), None)
         (
           joined.exit,
           command,

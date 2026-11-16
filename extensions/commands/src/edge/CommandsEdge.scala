@@ -24,7 +24,7 @@ import grit.mcp.wire.ServerInfo
   *     whole wait;
   *   - `GET /holder?harness=&dir=[&session=&type=]` answers the claim holder a session in `dir`,
   *     or an agent of `type` that `session` starts, works as on the caller's machine
-  *     ([[grit.commands.machine.Holders.of]]): the one way a claim learns it;
+  *     ([[grit.commands.machine.ClaimHolders.of]]): the one way a claim learns it;
   *   - `GET /brief?harness=&session=&dir=&start=fresh|resume[&agent=&type=][&part=brief|digest]`
   *     answers, as text, the holder's brief, or with `part=digest` what its newest session did
   *     lately, through the deployment's session record, empty when that session last did

@@ -56,7 +56,7 @@ Decision:
   agent its brief is for) at its artifact's label, one live claim per artifact and one artifact
   per holder at each label. It lapses unless its holder's sessions keep working (ADR 0050), and
   is deleted by its release, by a claim taking it over once lapsed, or by the sweep.
-  *Revised:* a harness's holder is one rule, `grit.commands.machine.Holders.of`, computed by the
+  *Revised:* a harness's holder is one rule, `grit.commands.machine.ClaimHolders.of`, computed by the
   commands edge (ADR 0062) and nowhere else: `<machine>/<directory's last segment>-<hash>` for a
   session, and `/<agent type>/<starting session's hash>` after it for an agent that session
   starts, so a claims listing stays readable. A hashed session cannot be written by hand, so

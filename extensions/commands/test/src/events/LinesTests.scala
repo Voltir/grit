@@ -2,7 +2,7 @@ package grit.commands.events
 
 import java.time.Instant
 
-import grit.commands.machine.{Holders, MachineName, Worktrees}
+import grit.commands.machine.{ClaimHolders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
 import grit.core.either.Got.got
 import grit.core.id.{Harness, SessionId}
@@ -46,7 +46,7 @@ object LinesTests extends TestSuite {
           Lines.Line(
             id("s-1"),
             None,
-            Holders.of(Desktop, dir("/work/grit"), None),
+            ClaimHolders.of(Desktop, dir("/work/grit"), None),
             Worktrees.at(Desktop, dir("/work/fixer")),
             got(Event.of(1, At, Event.Kind.Edited, shape(ujson.Obj("path" -> "src/A.scala"))))
           )
@@ -61,7 +61,8 @@ object LinesTests extends TestSuite {
           Lines.Line(
             id("s-1/a-1"),
             Some(id("s-1")),
-            Holders.of(Desktop, dir("/work/grit"), Some(Holders.Agent("coder", id("s-1")))),
+            ClaimHolders
+              .of(Desktop, dir("/work/grit"), Some(ClaimHolders.Agent("coder", id("s-1")))),
             Worktrees.at(Desktop, dir("/work/grit")),
             got(Event.of(1, At, Event.Kind.Started, Event.Shape.Empty))
           )
@@ -187,7 +188,7 @@ object LinesTests extends TestSuite {
               id("s-1"),
               None,
               Worktrees.at(Desktop, dir("/work/a")),
-              Some(Holders.of(Desktop, dir("/work/grit"), None)),
+              Some(ClaimHolders.of(Desktop, dir("/work/grit"), None)),
               Vector(
                 got(Event.of(1, At, Event.Kind.Edited, Event.Shape.Empty)),
                 got(Event.of(2, At, Event.Kind.Edited, Event.Shape.Empty))

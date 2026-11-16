@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.commands.machine.{Holders, MachineName}
+import grit.commands.machine.{ClaimHolders, MachineName}
 import grit.core.context.Shown
 import grit.core.edge.{BriefError, EdgeSessions}
 import grit.core.id.{ClaimHolder, Harness, SessionId}
@@ -26,10 +26,10 @@ private[commands] object Briefing {
     */
   val Recent: FiniteDuration = 24.hours
 
-  /** The holder `/holder`'s query names on `machine` ([[Holders.of]]), or why not:
+  /** The holder `/holder`'s query names on `machine` ([[ClaimHolders.of]]), or why not:
     *   - `harness`, the harness's name ([[Harness.of]]), and `dir`, the session's directory
     *     ([[Directory.of]]), each sent;
-    *   - for an agent, its `type` and the `session` (the harness's own id, [[Holders.session]])
+    *   - for an agent, its `type` and the `session` (the harness's own id, [[ClaimHolders.session]])
     *     that starts it, sent together, `dir` being that session's directory;
     *   - no other parameter, and none sent twice.
     */
@@ -38,10 +38,12 @@ private[commands] object Briefing {
       q <- Queried.of(request, Vector("harness", "dir", "session", "type"))
       harness <- q.need("harness")(Harness.of)
       dir <- q.need("dir")(Directory.of)
-      session <- q.read("session")(Holders.session(harness, _))
+      session <- q.read("session")(ClaimHolders.session(harness, _))
       kind <- q.read("type")(Right(_))
-      agent <- Holders.paired(kind, session, TypeAndSession).map(_.map(Holders.Agent(_, _)))
-    } yield Holders.of(machine, dir, agent)
+      agent <- ClaimHolders
+        .paired(kind, session, TypeAndSession)
+        .map(_.map(ClaimHolders.Agent(_, _)))
+    } yield ClaimHolders.of(machine, dir, agent)
 
   /** Which part of what a session opens with `/brief` answers. */
   enum Part {
@@ -68,7 +70,7 @@ private[commands] object Briefing {
     *     directory, as `/holder` reads them ([[holderOf]]);
     *   - for an agent's start, `agent`, its own id, and `type`, sent together: its holder is the one
     *     `session` starts of that type, and its own session `session/agent`
-    *     ([[Holders.agentSession]]);
+    *     ([[ClaimHolders.agentSession]]);
     *   - `start`: `fresh` when the caller's window holds nothing of its session (a start, a
     *     clear, an agent's start), so the newest session besides its own is shown, with what it
     *     last said; or `resume` when it goes on (a resume, a compaction), so its own session may be
@@ -83,11 +85,11 @@ private[commands] object Briefing {
         Vector("harness", "session", "dir", "agent", "type", "start", "part")
       )
       harness <- q.need("harness")(Harness.of)
-      session <- q.need("session")(Holders.session(harness, _))
+      session <- q.need("session")(ClaimHolders.session(harness, _))
       dir <- q.need("dir")(Directory.of)
       agent <- q.read("agent")(Right(_))
       kind <- q.read("type")(Right(_))
-      started <- Holders.agent(session, agent, kind)
+      started <- ClaimHolders.agent(session, agent, kind)
       fresh <- q.need("start") {
         case "fresh" => Right(true)
         case "resume" => Right(false)
@@ -99,7 +101,7 @@ private[commands] object Briefing {
         case other => Left(s"brief or digest, not $other")
       }
     } yield Asked(
-      Holders.of(machine, dir, started.map(_._2)),
+      ClaimHolders.of(machine, dir, started.map(_._2)),
       Option.when(fresh)(started.fold(session)(_._1)),
       if (fresh) SessionDigest.Window.LacksLastSaid else SessionDigest.Window.HoldsLastSaid,
       part.getOrElse(Part.Brief)

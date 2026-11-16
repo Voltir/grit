@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.io.StdIn
 
-import grit.commands.machine.Holders
+import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.Machine
 import grit.core.clock.Clock
 import grit.core.edge.ScriptedSessions
@@ -23,7 +23,7 @@ object SmokeEdge {
   def main(args: Array[String]): Unit = args match {
     case Array(checkout, brief) =>
       val script = new ScriptedSessions.Script
-      val holder = Holders.of(Machine, got(Directory.of(checkout)), None)
+      val holder = ClaimHolders.of(Machine, got(Directory.of(checkout)), None)
       script.brief(holder, ScriptedSessions.document(brief, Instant.now().minusSeconds(60)))
       HookFixtures.served(script, Clock.system()) { port =>
         println(s"http://127.0.0.1:$port")

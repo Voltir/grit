@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import grit.commands.caller.Callers
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
-import grit.commands.machine.Holders
+import grit.commands.machine.ClaimHolders
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
@@ -81,11 +81,15 @@ final class HookFixtures(
   def dir: Directory = got(Directory.of(proj.toString))
 
   /** The session `local` of Claude Code. */
-  def session(local: String): SessionId = got(Holders.session(HookFixtures.Claude, local))
+  def session(local: String): SessionId = got(ClaimHolders.session(HookFixtures.Claude, local))
 
   /** The holder a session in `proj` works as, or an agent of `kind` that `local` starts. */
   def holderOf(agent: Option[(String, String)] = None): ClaimHolder =
-    Holders.of(Machine, dir, agent.map((kind, local) => Holders.Agent(kind, session(local))))
+    ClaimHolders.of(
+      Machine,
+      dir,
+      agent.map((kind, local) => ClaimHolders.Agent(kind, session(local)))
+    )
 
   /** Every batch the edge recorded, first first. */
   def recorded: Vector[EdgeSessions.Batch] =

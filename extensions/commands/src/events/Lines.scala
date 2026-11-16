@@ -6,7 +6,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Try
 
-import grit.commands.machine.{Holders, MachineName, Worktrees}
+import grit.commands.machine.{ClaimHolders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.{Directory, Place}
@@ -60,11 +60,11 @@ private[commands] object Lines {
   final case class Batched(batch: Option[EdgeSessions.Batch], refused: Vector[(Int, String)])
 
   /** `line` as `harness` sent it from `machine`, read at `now`, or why not. A line holds:
-    *   - `session`, the harness's own id for the session ([[Holders.session]]); for an agent's line,
+    *   - `session`, the harness's own id for the session ([[ClaimHolders.session]]); for an agent's line,
     *     `agent`, the agent's own id, and `type`, its type, together: the line is then on the
-    *     session `session/agent` ([[Holders.agentSession]]), a child of `session`;
+    *     session `session/agent` ([[ClaimHolders.agentSession]]), a child of `session`;
     *   - `dir`, the session's directory (the starting session's for an agent), whose holder it
-    *     works as ([[Holders.of]]); `worktree`, where it worked, by default `dir`; each absolute,
+    *     works as ([[ClaimHolders.of]]); `worktree`, where it worked, by default `dir`; each absolute,
     *     each placed on `machine` ([[Worktrees.at]]);
     *   - `n`, its ordinal, a string of ASCII digits above 0, unique within the session, so a line sent
     *     again is known; `at`, an ISO-8601 instant no later than [[Skew]] past `now`;
@@ -97,11 +97,11 @@ private[commands] object Lines {
         .map(k => s"no key $k is read in a line; these are: ${Keys.mkString(", ")}")
         .toLeft(())
       session <- text(o, "session").flatMap(
-        Holders.session(harness, _).left.map(w => s"session: $w")
+        ClaimHolders.session(harness, _).left.map(w => s"session: $w")
       )
       a <- optional(o, "agent")
       t <- optional(o, "type")
-      agent <- Holders.agent(session, a, t)
+      agent <- ClaimHolders.agent(session, a, t)
       dir <- directory(o, "dir")
       worktree <- if (o.contains("worktree")) directory(o, "worktree") else Right(dir)
       n <- o.get("n") match {
@@ -141,7 +141,7 @@ private[commands] object Lines {
     } yield Line(
       agent.fold(session)(_._1),
       agent.map(_ => session),
-      Holders.of(machine, dir, agent.map(_._2)),
+      ClaimHolders.of(machine, dir, agent.map(_._2)),
       place,
       event
     )

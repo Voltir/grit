@@ -6,7 +6,7 @@ import grit.core.place.Directory
 /** The claim holder a harness's session works as, so a claim can name it before the session's
   * work begins (ADR 0049), and the session's events keep that claim from lapsing (ADR 0050).
   */
-object Holders {
+object ClaimHolders {
 
   /** 40: the most characters of a directory's last segment, or of an agent's type, a holder
     * keeps, slugged.

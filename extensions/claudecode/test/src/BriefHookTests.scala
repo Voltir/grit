@@ -4,7 +4,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
-import grit.commands.machine.Holders
+import grit.commands.machine.ClaimHolders
 import grit.core.edge.ScriptedSessions
 import grit.core.either.Got.got
 
@@ -84,7 +84,7 @@ object BriefHookTests extends TestSuite {
           ScriptedSessions.document("Agents read this.", Instant.now().minusSeconds(3600))
         )
         val run = f.run("brief", f.payload("subagent-start-worktree.json"))
-        val agentSession = got(Holders.agentSession(f.session(First), Agent))
+        val agentSession = got(ClaimHolders.agentSession(f.session(First), Agent))
         (
           run.exit,
           printed(run)("hookSpecificOutput")("hookEventName").str,

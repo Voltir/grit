@@ -6,8 +6,8 @@ import grit.core.place.Directory
 
 import utest.*
 
-/** [[Holders.of]]: the holder a session or an agent it starts works as, readable and total. */
-object HoldersTests extends TestSuite {
+/** [[ClaimHolders.of]]: the holder a session or an agent it starts works as, readable and total. */
+object ClaimHoldersTests extends TestSuite {
 
   private val Desktop = got(MachineName.of("desktop"))
   private val Grit = got(Directory.of("/work/grit"))
@@ -16,8 +16,8 @@ object HoldersTests extends TestSuite {
   private def holder(
       machine: MachineName = Desktop,
       dir: Directory = Grit,
-      agent: Option[Holders.Agent] = None
-  ): String = ClaimHolder.value(Holders.of(machine, dir, agent))
+      agent: Option[ClaimHolders.Agent] = None
+  ): String = ClaimHolder.value(ClaimHolders.of(machine, dir, agent))
 
   val tests = Tests {
     test("a session's holder is its machine, then its directory's last segment and hash") {
@@ -38,7 +38,7 @@ object HoldersTests extends TestSuite {
       "an agent's holder adds its type, by its own hash when slugging changed it, and its starting session's hash"
     ) {
       Vector("coder-opus", "Plan Mode", "日本").map(t =>
-        holder(agent = Some(Holders.Agent(t, Session)))
+        holder(agent = Some(ClaimHolders.Agent(t, Session)))
       ) ==> Vector(
         "desktop/grit-dcfe7476/coder-opus/5704e74050f4",
         "desktop/grit-dcfe7476/plan-mode-412d7e24/5704e74050f4",
@@ -48,7 +48,7 @@ object HoldersTests extends TestSuite {
 
     test("a type written as another's hashed form is hashed itself, so the two holders differ") {
       Vector("Plan Mode", "plan-mode-412d7e24", "", "e3b0c442").map(t =>
-        holder(agent = Some(Holders.Agent(t, Session)))
+        holder(agent = Some(ClaimHolders.Agent(t, Session)))
       ) ==> Vector(
         "desktop/grit-dcfe7476/plan-mode-412d7e24/5704e74050f4",
         "desktop/grit-dcfe7476/plan-mode-412d7e24-ceee9634/5704e74050f4",
@@ -62,14 +62,14 @@ object HoldersTests extends TestSuite {
         got(MachineName.of("w" * MachineName.Longest)),
         got(Directory.of("/" + "d" * 200)),
         Some(
-          Holders.Agent(
+          ClaimHolders.Agent(
             "t" * 300,
             got(SessionId.of(got(Harness.of("h" * Harness.Longest)), "s" * SessionId.Longest))
           )
         )
       )
       longest.split('/').toVector.map(_.length) ==>
-        Vector(MachineName.Longest, Holders.Slugged + 9, Holders.Slugged + 9, 12)
+        Vector(MachineName.Longest, ClaimHolders.Slugged + 9, ClaimHolders.Slugged + 9, 12)
     }
   }
 }

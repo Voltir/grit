@@ -1,6 +1,6 @@
 package grit.commands.routes
 
-import grit.commands.machine.{Holders, Worktrees}
+import grit.commands.machine.{ClaimHolders, Worktrees}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.id.{Harness, SessionId}
@@ -67,7 +67,7 @@ object EventsRouteTests extends TestSuite {
                 got(SessionId.of(MadeUp, "s-1")),
                 None,
                 Worktrees.at(Machine, dir),
-                Some(Holders.of(Machine, dir, None)),
+                Some(ClaimHolders.of(Machine, dir, None)),
                 Vector(1L, 2L).map(n => got(Event.of(n, At, Event.Kind.Edited, Event.Shape.Empty)))
               )
             )
