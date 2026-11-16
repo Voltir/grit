@@ -40,7 +40,6 @@ object Corpora {
 
   /** `all`, or the name two of them share. */
   def of(all: Vector[Corpus]): Either[CorpusName, Corpora] = {
-    val names = all.map(_.name)
-    firstRepeat(names).toLeft(new Corpora(all))
+    firstRepeat(all.map(_.name)).toLeft(new Corpora(all))
   }
 }

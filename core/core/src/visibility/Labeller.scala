@@ -87,8 +87,7 @@ object RoomLabels {
       otherwise: Labelled,
       open: Option[Labelled] = None
   ): Either[Place, RoomLabels] = {
-    val places = declared.map(_._1)
-    firstRepeat(places)
+    firstRepeat(declared.map(_._1))
       .toLeft(new RoomLabels(declared, otherwise, open.getOrElse(otherwise)))
   }
 }

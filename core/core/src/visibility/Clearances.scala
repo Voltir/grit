@@ -24,7 +24,6 @@ object Clearances {
 
   /** `declared`, or the first party declared twice. */
   def of(declared: Vector[Cleared]): Either[Party, Clearances] = {
-    val parties = declared.map(_.party)
-    firstRepeat(parties).toLeft(new Clearances(declared))
+    firstRepeat(declared.map(_.party)).toLeft(new Clearances(declared))
   }
 }

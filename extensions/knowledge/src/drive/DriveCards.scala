@@ -207,9 +207,10 @@ object DriveCards {
       _ <- Either.cond(maxUnits >= 1, (), s"maxUnits is at least 1, not $maxUnits")
       _ <- Either.cond(syncs.nonEmpty, (), "a source has at least one sync schedule")
       _ <- firstRepeat(syncs.map(_.key))
-        .fold(Right(()))(key =>
-          Left(s"a source's sync schedules have one key each: ${ScheduleKey.value(key)} is two")
+        .map(key =>
+          s"a source's sync schedules have one key each: ${ScheduleKey.value(key)} is two"
         )
+        .toLeft(())
     } yield new DriveCards(
       corpus.name,
       service,

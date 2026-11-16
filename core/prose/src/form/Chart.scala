@@ -110,8 +110,6 @@ object Chart {
     def category(row: Vector[Cell[Nothing]]): String =
       row.headOption.map(_.printed.plain.trim).getOrElse("")
     def first[X](xs: Vector[X]): Option[X] = xs.headOption
-    def repeated(xs: Vector[String]): Option[String] =
-      firstRepeat(xs)
     val names = columns.drop(1)
     val categories = rows.map(category)
     def number(name: String, at: Int, row: Vector[Cell[Nothing]]): Either[Unfit, Cell.Number] =
@@ -129,8 +127,8 @@ object Chart {
       _ <- first(rows.filter(_.length != columns.length))
         .map(r => Unfit.Ragged(category(r)))
         .toLeft(())
-      _ <- repeated(categories).map(Unfit.SameCategory(_)).toLeft(())
-      _ <- repeated(names).map(Unfit.SameName(_)).toLeft(())
+      _ <- firstRepeat(categories).map(Unfit.SameCategory(_)).toLeft(())
+      _ <- firstRepeat(names).map(Unfit.SameName(_)).toLeft(())
       series <- traverse(names.zipWithIndex)((name, k) =>
         traverse(rows)(number(name, k + 1, _)).map(Series(name, _))
       )

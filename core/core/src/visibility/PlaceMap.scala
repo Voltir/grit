@@ -20,7 +20,6 @@ private[visibility] object PlaceMap {
 
   /** `pairs` as a map, or the first place declared twice. */
   def of[V](pairs: Vector[(Place, V)]): Either[Place, PlaceMap[V]] = {
-    val places = pairs.map(_._1)
-    firstRepeat(places).toLeft(new PlaceMap(pairs.toMap))
+    firstRepeat(pairs.map(_._1)).toLeft(new PlaceMap(pairs.toMap))
   }
 }

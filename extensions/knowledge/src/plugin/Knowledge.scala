@@ -97,9 +97,8 @@ object Knowledge {
     for {
       _ <- Either.cond(sources.nonEmpty, (), "a knowledge plugin has at least one source")
       _ <- firstRepeat(corpora)
-        .toLeft(())
-        .left
         .map(c => s"two sources are the corpus ${CorpusName.value(c)}")
+        .toLeft(())
       declaring <- cards.foldLeft[Either[String, Vector[Declaring]]](Right(Vector.empty))(
         (acc, c) => acc.flatMap(done => declared(c, visibility).map(done ++ _))
       )

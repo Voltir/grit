@@ -8,5 +8,4 @@ JSON) stays with that idea. Names no other grit module and no library.
 - **`either`** -- `Traversal`: a vector of `Either`s traversed, failing at the first `Left`.
 - **`collect`** -- `Collect.firstRepeat`: the first element a sequence holds a second time.
 
-`either` and `collect` name nothing of each other.
-No source file sits at the module's root, and the test tree mirrors it.
+`either` and `collect` name nothing of each other. No source file sits at the module's root, and the test tree mirrors it.

@@ -130,8 +130,7 @@ object McpServer {
           read.flatMap { _ =>
             if (tools.contains(tool)) Left(s"$name's $tool looks itself up")
             else
-              firstRepeat(tools)
-                .fold(Right(()))(t => Left(s"$name's $tool looks up $t twice"))
+              firstRepeat(tools).map(t => s"$name's $tool looks up $t twice").toLeft(())
           }
       }
     } yield new McpServer(name, reached, scope, allow, accounts, lookups, directoryArgument)

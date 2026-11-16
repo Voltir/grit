@@ -24,9 +24,8 @@ private[plugin] object DreamSchedules {
     for {
       _ <- Either.cond(labels.nonEmpty, (), s"the $what plugin is declared at a label at least")
       _ <- firstRepeat(labels)
-        .toLeft(())
-        .left
         .map(l => s"the $what plugin is declared at ${Label.written(l)} twice")
+        .toLeft(())
       _ <- labels
         .flatMap(l => visibility.compartments.undeclared(l).map(_ => l))
         .headOption
