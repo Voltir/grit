@@ -150,6 +150,15 @@ object LinesTests extends TestSuite {
       )
     }
 
+    test(
+      "a line of the longest bytes, its at the skew past the clock, is read as its bounds allow"
+    ) {
+      val atBound = line("at" -> Now.plusMillis(Lines.Skew.toMillis).toString)
+      val longest = atBound.dropRight(1) + " " * (Lines.Longest - atBound.length) + "}"
+      (longest.getBytes("UTF-8").length, read(longest).isRight, read(longest)) ==>
+        (Lines.Longest, true, read(atBound))
+    }
+
     test("a session or an agent holding '/' is refused, so no two lines' ids make one session") {
       Vector(
         line("session" -> "a/b"),
