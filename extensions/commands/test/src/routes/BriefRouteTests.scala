@@ -1,6 +1,7 @@
 package grit.commands.routes
 
 import grit.core.context.Shown
+import grit.core.document.DocRef
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, Harness, SessionId}
@@ -117,6 +118,14 @@ object BriefRouteTests extends TestSuite {
         (Status.Ok, Shown.briefText(brief)),
         (Status.Ok, Shown.briefText(brief))
       )
+    }
+
+    test("a brief of DocRef.BriefChars characters, the most one holds, is answered whole") {
+      val script = new ScriptedSessions.Script
+      val brief =
+        ScriptedSessions.document("x" * (DocRef.BriefChars - 1) + "y", Now.minusSeconds(3600))
+      script.brief(Holder, brief)
+      asked(script, s"$Fresh&part=brief") ==> (Status.Ok, Shown.briefText(brief))
     }
 
     test("a digest of a session last active longer ago than Recent is left out") {

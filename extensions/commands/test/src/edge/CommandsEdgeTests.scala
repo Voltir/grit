@@ -151,7 +151,13 @@ object CommandsEdgeTests extends TestSuite {
         def lastWords(r: Realm)(using Tx^) = Left(StoreError.DatabaseError("down"))
       }
       val log = new ConcurrentLinkedQueue[String]()
-      got(edge()).open(
+      // A port free a moment ago, so that a listener left open there would answer the probe.
+      val port = {
+        val probe = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress)
+        try probe.getLocalPort
+        finally probe.close()
+      }
+      got(edge(at = got(Listen.parse(s"127.0.0.1:$port")))).open(
         stores(scripted(Vector.empty)((_, _) => Right(CommandOutcome.Done(""))), unreadable),
         Map.empty,
         new SetClock(Now),
@@ -162,6 +168,7 @@ object CommandsEdgeTests extends TestSuite {
             "slack:T1/U-reader could not be vouched: down"
           )
           log.asScala.toVector ==> Vector.empty
+          assert(scala.util.Try(sent(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")).isFailure)
         case Right(open) =>
           open.close()
           throw new java.lang.AssertionError("opened over a voucher that cannot be read")

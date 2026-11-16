@@ -368,7 +368,12 @@ object JoinTests extends TestSuite {
           "https://example.com:7317\nhttps://example.com"
         )
         val before = f.tree(dir)
-        bad.map(e => f.join(dir, Seq(e)).exit) ==> bad.map(_ => 1)
+        bad.map(e => f.join(dir, Seq(e))).map(d => (d.exit, d.err)) ==> bad.map(e =>
+          (
+            1,
+            s"grit claude-code: $e is not an address: http:// or https://, a host and a port, nothing after\n"
+          )
+        )
         (f.tree(dir) == before, Files.exists(f.hook(dir))) ==> ((true, false))
       }
     }
@@ -378,9 +383,9 @@ object JoinTests extends TestSuite {
     ) {
       JoinFixtures { f =>
         val dir = f.checkout("work")
-        val refused =
+        val beyond =
           Vector("http://example.com:7317", "http://10.0.0.2", "http://127.0.0.1.example.com")
-            .map(e => f.join(dir, Seq(e)).exit)
+        val refused = beyond.map(e => f.join(dir, Seq(e))).map(d => (d.exit, d.err))
         val joined = Vector(
           "http://localhost:7317",
           "http://[::1]:7317",
@@ -388,7 +393,15 @@ object JoinTests extends TestSuite {
           "https://example.com"
         )
           .map(e => f.join(dir, Seq(e, "--mcp-name", f.Name)).exit)
-        (refused, joined) ==> ((Vector(1, 1, 1), Vector(0, 0, 0, 0)))
+        (refused, joined) ==> ((
+          beyond.map(e =>
+            (
+              1,
+              s"grit claude-code: $e is plain http beyond this machine, where a hook's posts would be read in clear; use https\n"
+            )
+          ),
+          Vector(0, 0, 0, 0)
+        ))
       }
     }
 
@@ -413,8 +426,9 @@ object JoinTests extends TestSuite {
       JoinFixtures { f =>
         val dir = f.checkout("work\nthere")
         val done = f.joined(dir)
-        (done.exit, Files.exists(f.hook(dir)), Files.exists(f.settings(dir))) ==> ((
+        (done.exit, done.err, Files.exists(f.hook(dir)), Files.exists(f.settings(dir))) ==> ((
           1,
+          "grit claude-code: this checkout's path holds a control character, which a hook command cannot carry\n",
           false,
           false
         ))
@@ -475,10 +489,15 @@ object JoinTests extends TestSuite {
       JoinFixtures { f =>
         val dir = f.checkout("work")
         val inside = Files.createDirectories(f.home.resolve("tools/old"))
-        val refused = Vector("/", f.root.toString, f.home.toString, dir.toString, s"$dir/.")
-          .map(d => f.joined(dir, "--retire", d).exit)
+        val retired = Vector("/", f.root.toString, f.home.toString, dir.toString, s"$dir/.")
+        val refused = retired.map(d => f.joined(dir, "--retire", d)).map(d => (d.exit, d.err))
         (refused, Files.exists(f.hook(dir)), f.joined(dir, "--retire", inside.toString).exit) ==> ((
-          Vector(1, 1, 1, 1, 1),
+          retired.map(d =>
+            (
+              1,
+              s"grit claude-code: --retire ${java.nio.file.Paths.get(d).toRealPath()} holds HOME or this checkout, and would retire every program in it; name the directory of the old hooks\n"
+            )
+          ),
           false,
           0
         ))
