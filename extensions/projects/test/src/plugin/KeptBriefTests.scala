@@ -337,14 +337,8 @@ object KeptBriefTests extends TestSuite {
       done(claim(projects, store, "p/m", when = at.plusSeconds(30)))
       val again = liveNow(store)
       val answer = keptAfter(projects, store, read)
-      (answer, liveNow(store).map(_.made), again.map(_.made)) ==>
-        (
-          CommandOutcome.Done("Kept p/m (note, open)."),
-          Vector(at.plusSeconds(30)),
-          Vector(
-            at.plusSeconds(30)
-          )
-        )
+      (answer, again.map(_.made), liveNow(store)) ==>
+        (CommandOutcome.Done("Kept p/m (note, open)."), Vector(at.plusSeconds(30)), again)
     }
 
     test("a claim made again as another role after a keep read it keeps that role, briefed so") {
