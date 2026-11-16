@@ -19,10 +19,13 @@ object EventKindTests extends TestSuite {
 
   val tests: Tests = Tests {
     test("every kind is read back by its name, and Names lists each name in order") {
+      // The names are stored (grit.session_events.kind): a change here is a change of data.
+      val stored = Vector("started", "read", "edited", "ran", "commit", "closing", "ended")
       (
-        Every.map(k => Event.Kind.named[String](k.name, Right(3L), Right(Said))),
+        stored.map(n => Event.Kind.named[String](n, Right(3L), Right(Said))),
+        Every.map(_.name),
         Event.Kind.Names
-      ) ==> (Every.map(k => Some(Right(k))), Every.map(_.name))
+      ) ==> (Every.map(k => Some(Right(k))), stored, stored)
     }
 
     test("only a read asks for its bytes and only a closing for its summary; no other name reads") {
