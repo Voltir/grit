@@ -5,6 +5,7 @@ import java.time.{Instant, LocalTime, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
+import grit.core.either.Got.got
 import grit.core.id.{
   Declarer,
   JobName,
@@ -318,8 +319,6 @@ object ScheduleContract {
   /** `text`, an instant, or a time on 2026-10-07 (UTC). */
   private[job] def at(text: String): Instant =
     if (text.contains('T')) Instant.parse(text) else Instant.parse(s"2026-10-07T$text:00Z")
-
-  private[job] def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
 
   /** `job` booked by a plugin whose only job it is. */
   def booking[P <: caps.Pure](job: Job[P]): Booking[P] =

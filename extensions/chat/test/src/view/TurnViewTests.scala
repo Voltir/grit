@@ -7,6 +7,7 @@ import grit.core.context.Shown
 import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.durable.StepRecord
 import grit.core.edge.RecordedStep
+import grit.core.either.Got.got
 import grit.core.files.{FormatName, KeptPiece, Locus, Piece, TestPieces}
 import grit.core.id.{
   ConversationId,
@@ -426,7 +427,6 @@ object TurnViewTests extends TestSuite {
     }
 
     test("a window's documents are counted as the model was shown them, each under its label") {
-      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val board = got(Place.read("slack:T1/C1"))
       def document(version: Long, text: String) = Document(
         DocumentVersionId.of(version).getOrElse(sys.error("version")),
@@ -487,7 +487,6 @@ object TurnViewTests extends TestSuite {
     }
 
     test("a window's pieces are counted as the model was shown them, each under its label") {
-      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val board = got(Place.read("slack:T1/C1"))
       def piece(id: Long, text: String) = KeptPiece(
         PieceId.of(id).getOrElse(sys.error("id")),

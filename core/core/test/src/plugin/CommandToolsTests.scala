@@ -14,6 +14,7 @@ import grit.core.document.{
   DocumentTerms,
   InMemoryDocuments
 }
+import grit.core.either.Got.got
 import grit.core.flow.TestTainted
 import grit.core.id.{DocKey, PluginName, TestCallSlots, ToolCallId}
 import grit.core.identity.{Principal, TestAccounts}
@@ -30,9 +31,6 @@ import utest.*
 
 /** [[CommandTools]]: a plugin's command as a turn's tool, run for the person the turn answers. */
 object CommandToolsTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private val plugin = got(PluginName.of("notes"))
   private val terms =

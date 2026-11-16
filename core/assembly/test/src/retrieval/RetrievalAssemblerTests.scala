@@ -43,6 +43,7 @@ import grit.core.document.{
   Shelved,
   Written
 }
+import grit.core.either.Got.got
 import grit.core.files.{
   FormatName,
   InMemoryPieces,
@@ -295,8 +296,6 @@ object RetrievalAssemblerTests extends TestSuite {
     def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       under.lockNext(conversation)
   }
-
-  private def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
 
   private def plugin(name: String): PluginName = got(PluginName.of(name))
 

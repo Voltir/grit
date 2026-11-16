@@ -25,6 +25,7 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.InMemoryDurable
+import grit.core.either.Got.got
 import grit.core.id.{
   ClaimHolder,
   ConversationId,
@@ -52,8 +53,6 @@ import utest.*
 object TurnBriefTests extends TestSuite {
   import TurnFixtures.*
 
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
   private def ok[A](e: Either[StoreError, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why.toString), identity)
 

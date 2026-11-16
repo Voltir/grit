@@ -16,6 +16,7 @@ import grit.commands.machine.Holders
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.{Clock, SetClock}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
+import grit.core.either.Got.got
 import grit.core.host.Argv
 import grit.core.id.{AttesterName, ClaimHolder, EdgeName, Harness, SessionId}
 import grit.core.identity.Realm

@@ -9,6 +9,7 @@ import scala.jdk.CollectionConverters.*
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
 import grit.core.edge.{Adapter, EdgeContracts, ScriptedSessions}
+import grit.core.either.Got.got
 import grit.core.id.{AttesterName, EdgeName, Harness, SessionId}
 import grit.core.identity.Realm
 import grit.core.session.{Session, SessionDigest}

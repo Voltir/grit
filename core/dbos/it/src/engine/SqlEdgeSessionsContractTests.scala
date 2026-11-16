@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocRef, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.edge.{EdgeContracts, EdgeSessions, EdgeSessionsContract}
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, PluginName}
 import grit.core.visibility.{Clearance, Integrity, Label, Visibility}
 import grit.dbos.sql.{
@@ -25,7 +26,6 @@ import grit.dbos.sql.{
 object SqlEdgeSessionsContractTests extends EdgeSessionsContract {
 
   import EdgeContracts.*
-  import EdgeSessionsContract.got
 
   // Opening an engine applies schema.sql; nothing here launches DBOS.
   private lazy val config = {

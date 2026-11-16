@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocRef, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.edge.{EdgeContracts, EdgeWatch, EdgeWatchContract}
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, SessionId}
 import grit.core.identity.Principal
 import grit.core.place.Place
@@ -20,7 +21,6 @@ import grit.dbos.sql.{LiveDb, Opener, Pool, SqlDocuments, SqlIdentities, SqlSess
 object SqlEdgeWatchTests extends EdgeWatchContract {
 
   import EdgeContracts.*
-  import EdgeWatchContract.got
 
   private lazy val config = {
     val c = TestPostgres.freshDatabase("sql_edge_watch")

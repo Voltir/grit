@@ -1,14 +1,12 @@
 package grit.commands.machine
 
+import grit.core.either.Got.got
 import grit.core.place.Directory
 
 import utest.*
 
 /** [[Worktrees.at]] and [[MachineName.of]]: a directory is placed by the machine it is on. */
 object WorktreesTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   val tests = Tests {
     test("one path on two machines is two places, each under its machine") {

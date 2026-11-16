@@ -1,11 +1,11 @@
 package grit.core.id
 
+import grit.core.either.Got.got
+
 import utest.*
 
 /** [[SessionId.written]]: the one spelling of a session in text. */
 object SessionIdTests extends TestSuite {
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   val tests: Tests = Tests {
     test("a session is written as its harness, a colon, then its own id as sent") {

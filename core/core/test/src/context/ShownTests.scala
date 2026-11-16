@@ -3,6 +3,7 @@ package grit.core.context
 import java.time.Instant
 
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
+import grit.core.either.Got.got
 import grit.core.files.{Anchor, FormatName, KeptPiece, Locus, Piece, PiecedFile}
 import grit.core.host.{RelPath, Replace}
 import grit.core.id.{
@@ -792,8 +793,6 @@ object ShownTests extends TestSuite {
     test(
       "a document is one user message under its label, its plugin's, its place and the day it was written, its text pasted"
     ) {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
       val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
       val document = Document(
         got(DocumentVersionId.of(7).toRight("version")),
@@ -819,8 +818,6 @@ object ShownTests extends TestSuite {
     test(
       "a brief is one user message fenced in <brief> with the day it was briefed, a closing tag inside it escaped"
     ) {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
       val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
       val brief = Document(
         got(DocumentVersionId.of(9).toRight("version")),
@@ -850,8 +847,6 @@ object ShownTests extends TestSuite {
     }
 
     test("a document with a pointer shows its read line under its text, as compact JSON") {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
       val pointer = got(
         Pointer.of(
           ToolName("github_get_file_contents"),
@@ -884,7 +879,6 @@ object ShownTests extends TestSuite {
       "a piece is one user message under its label, its file, heading path, pages, place and day, its text as markdown, and how many more of its file matched"
     ) {
       val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
-      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       def on(page: Int, s: String): grit.prose.form.Text[Locus] =
         grit.prose.form.Text(Vector(grit.prose.form.Span(s, Set.empty, Vector(Locus.Page(page)))))
       val kept = KeptPiece(

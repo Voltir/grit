@@ -2,6 +2,7 @@ package grit.commands.caller
 
 import grit.commands.machine.MachineName
 import grit.core.edge.Asked
+import grit.core.either.Got.got
 import grit.core.id.Sha256
 import grit.core.identity.{Realm, Standing, TestAccounts}
 import grit.core.visibility.Integrity
@@ -11,9 +12,6 @@ import utest.*
 
 /** [[Callers]]: who a request is from, the owner whatever it is or the caller its credential names. */
 object CallersTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   private val realm = got(Realm.of("desk", "home"))
   private val desktop = got(MachineName.of("desktop"))

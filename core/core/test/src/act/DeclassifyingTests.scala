@@ -11,6 +11,7 @@ import grit.core.document.{
   InMemoryDocuments,
   Pointer
 }
+import grit.core.either.Got.got
 import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.message.Message
 import grit.core.place.Place
@@ -27,8 +28,6 @@ import utest.*
   * floor first, then the policy's signals.
   */
 object DeclassifyingTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
 
   /** Checks whose every signal and example holds `marker`, as a policy's row holds them. */
   private def markedJson(marker: String): ujson.Value =

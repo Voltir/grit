@@ -3,6 +3,7 @@ package grit.commands.routes
 import grit.commands.declare.OwnCommand
 import grit.core.clock.SetClock
 import grit.core.edge.{CommandError, EdgeContracts, ScriptedCommands}
+import grit.core.either.Got.got
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity

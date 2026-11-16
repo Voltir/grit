@@ -12,6 +12,7 @@ import grit.core.document.{
   DocumentTerms,
   InMemoryDocuments
 }
+import grit.core.either.Got.got
 import grit.core.id.{ConversationId, DocKey, EntryId, PluginName, PrincipalId}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -55,9 +56,6 @@ object PoolReadTests extends TestSuite {
 
   private def right[A](e: Either[StoreError, A]): A =
     e.fold(x => throw new java.lang.AssertionError(s"store failed: $x"), identity)
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private final class World {
     given Tx = TestTx.fake

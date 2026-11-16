@@ -2,6 +2,7 @@ package grit.eval.harness.bench
 
 import scala.concurrent.duration.DurationInt
 
+import grit.core.either.Got.got
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.model.ModelId
@@ -11,9 +12,6 @@ import utest.*
 
 /** Cents per passing trial over the bench's trials ([[PerPass]]). */
 object PerPassTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Trial `id`, of `harness` on `task` with `model`, costing `usd` (unpriced when `None`). */
   private def trial(

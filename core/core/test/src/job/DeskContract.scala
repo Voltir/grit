@@ -4,6 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.act.Moves
 import grit.core.clock.SetClock
+import grit.core.either.Got.got
 import grit.core.flow.Trusted
 import grit.core.id.{CallSlot, EdgeName, JobName, PluginName, ScheduleId, TestCallSlots}
 import grit.core.identity.{Account, TestAccounts}
@@ -13,7 +14,7 @@ import grit.core.visibility.{Integrity, Label, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
-import ScheduleContract.{Under, at, booking, got, hour}
+import ScheduleContract.{Under, at, booking, hour}
 
 /** The contract every [[ScheduleDesk]] keeps, over the store it writes, run against the
   * in-memory fake in core and the SQL store in grit.dbos. Each test starts from an empty store

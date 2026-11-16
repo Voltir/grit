@@ -2,6 +2,7 @@ package grit.commands.routes
 
 import grit.core.context.Shown
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.Place
 import grit.core.session.{Event, Session, SessionDigest}

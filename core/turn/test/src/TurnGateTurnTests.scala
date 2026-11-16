@@ -15,6 +15,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.InMemoryDurable
+import grit.core.either.Got.got
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -163,8 +164,6 @@ object TurnGateTurnTests extends TestSuite {
       } yield CommandOutcome.Done(s"noted ${args.word}")
   }
 
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
   private val notes = got(PluginName.of("notes"))
   private val noteKey = got(DocKey.of("note"))
   private val noteTerms =

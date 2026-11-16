@@ -26,6 +26,7 @@ import grit.core.document.{
   Written
 }
 import grit.core.durable.{Durable, FlowFixtures, InMemoryDurable}
+import grit.core.either.Got.got
 import grit.core.files.{FormatName, InMemoryPieces, Locus, Piece, PieceKeeper, TestPieces}
 import grit.core.id.{
   ConversationId,
@@ -65,8 +66,6 @@ import utest.*
 object TurnDocumentsTests extends TestSuite {
   import TurnFixtures.*
 
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
   private def ok[A](e: Either[StoreError, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"$err"), identity)
 

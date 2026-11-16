@@ -2,6 +2,7 @@ package grit.commands.routes
 
 import grit.commands.machine.{Holders, Worktrees}
 import grit.core.edge.{EdgeContracts, EdgeSessions, ScriptedSessions}
+import grit.core.either.Got.got
 import grit.core.id.{Harness, SessionId}
 import grit.core.place.Directory
 import grit.core.session.Event

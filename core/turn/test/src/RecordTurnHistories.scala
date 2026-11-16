@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.act.MovesFixtures.FakeDb as LabelledDb
 import grit.core.durable.{History, InMemoryDurable}
+import grit.core.either.Got.got
 import grit.core.id.{EntrySeq, TurnRef}
 import grit.core.model.{Grade, ModelRef}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
@@ -432,7 +433,6 @@ object RecordTurnHistories {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val documents = new grit.core.document.InMemoryDocuments
-      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val digest = got(grit.core.id.PluginName.of("digest"))
       val terms = got(
         grit.core.document.DocumentTerms.of(

@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocText, DocWeight, Document, DocumentTerms}
 import grit.core.durable.Durable
+import grit.core.either.Got.got
 import grit.core.id.{DocKey, PluginName, WorkflowId}
 import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{DocumentPosting, Documents, Plugin}
@@ -21,9 +22,6 @@ import utest.*
 object DocumentsLiveTests extends TestSuite {
 
   private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private def name(s: String): PluginName = got(PluginName.of(s))
 

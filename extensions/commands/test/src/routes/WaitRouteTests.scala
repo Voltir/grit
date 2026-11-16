@@ -7,6 +7,7 @@ import grit.commands.machine.Worktrees
 import grit.core.clock.SetClock
 import grit.core.document.DocRef
 import grit.core.edge.{EdgeContracts, EdgeWatch, ScriptedWatch, WatchError, WatchFor}
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.place.Directory
 import grit.core.session.Event

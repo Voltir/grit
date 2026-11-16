@@ -1,6 +1,7 @@
 package grit.core.document
 
 import grit.core.classify.Answer
+import grit.core.either.Got.got
 import grit.core.flow.TestDowngrades
 import grit.core.id.{DocKey, DocumentVersionId, PluginName}
 import grit.core.place.Place
@@ -27,8 +28,6 @@ object TestDeclassified {
       applied: PolicyApplication,
       attempt: Declassified.Attempt = Declassified.Attempt.First
   ): Declassified = {
-    def got[A](e: Either[String, A]): A =
-      e.fold(why => throw new java.lang.AssertionError(why), identity)
     val screened = Screen
       .read(Screen.Shape(0, Vector(Must.Absent)), Vector(Answer.YesNo(0.0)))
       .fold(e => throw new java.lang.AssertionError(e.toString), identity)

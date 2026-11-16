@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import scala.util.{Try, Using}
 
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
+import grit.core.either.Got.got
 import grit.core.id.{DocKey, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.StoreError
@@ -28,9 +29,6 @@ object SqlSavepointsTests extends TestSuite {
     LiveEngine.open(c, "test").close()
     c
   }
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private val plugin = got(PluginName.of("raced"))
   private val terms =

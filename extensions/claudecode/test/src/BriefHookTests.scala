@@ -5,8 +5,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
 import grit.commands.machine.Holders
-import grit.commands.routes.RouteFixtures.got
 import grit.core.edge.ScriptedSessions
+import grit.core.either.Got.got
 
 import utest.*
 

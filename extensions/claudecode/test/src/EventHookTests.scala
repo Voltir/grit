@@ -4,8 +4,9 @@ import java.nio.file.{Files, Path}
 import java.time.Instant
 
 import grit.commands.machine.Holders
-import grit.commands.routes.RouteFixtures.{Machine, got}
+import grit.commands.routes.RouteFixtures.Machine
 import grit.core.edge.EdgeSessions
+import grit.core.either.Got.got
 import grit.core.place.Directory
 import grit.core.session.{Event, Session}
 

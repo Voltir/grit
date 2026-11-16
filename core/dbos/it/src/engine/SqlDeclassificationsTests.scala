@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocWeight, DocumentTerms, Pointer, TestDeclassified, Written}
+import grit.core.either.Got.got
 import grit.core.id.PluginName
 import grit.core.place.{Namespace, Place}
 import grit.core.tool.ToolName
@@ -29,9 +30,6 @@ object SqlDeclassificationsTests extends TestSuite {
     LiveEngine.open(c, "test").close()
     c
   }
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private def run(sql: String)(bind: java.sql.PreparedStatement => Unit): Unit =
     LiveDb

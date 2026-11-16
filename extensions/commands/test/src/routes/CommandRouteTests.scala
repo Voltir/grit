@@ -4,6 +4,7 @@ import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.OwnCommand
 import grit.core.clock.SetClock
 import grit.core.edge.{Adapter, CommandError, EdgeContracts, ScriptedCommands}
+import grit.core.either.Got.got
 import grit.core.id.Harness
 import grit.core.plugin.CommandOutcome
 import grit.core.store.StoreError

@@ -15,6 +15,7 @@ import grit.core.edge.{
   ScriptedCommands,
   ScriptedSessions
 }
+import grit.core.either.Got.got
 import grit.core.id.Sha256
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.{Args, Field, ToolName, ToolSpec}
@@ -24,9 +25,6 @@ import grit.mcp.wire.ServerInfo
 
 /** What the routes' suites share: the owner, as the contracts' reader, and requests to them. */
 object RouteFixtures {
-
-  def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   val Machine: MachineName = got(MachineName.of("desktop"))
 

@@ -3,6 +3,7 @@ package grit.core.edge
 import java.time.Instant
 
 import grit.core.document.{DocText, Document, Placement}
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, SessionId}
 import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.place.Place
@@ -99,8 +100,6 @@ object ScriptedSessions {
     * `written`.
     */
   def document(text: String, written: Instant): Document = {
-    def got[A](e: Either[String, A]): A =
-      e.fold(why => throw new java.lang.AssertionError(why), a => a)
     Document(
       got(DocumentVersionId.of(1).toRight("a version is numbered from 1")),
       got(PluginName.of("contracted")),

@@ -2,6 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.{Namespace, Place}
 import grit.core.session.Event
@@ -153,6 +154,4 @@ object EdgeSessionsContract {
       )
     )
 
-  def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 }

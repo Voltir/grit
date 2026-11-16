@@ -3,6 +3,7 @@ package grit.core.edge
 import java.time.Instant
 
 import grit.core.document.DocRef
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, SessionId}
 import grit.core.place.Place
 import grit.core.session.Event
@@ -24,7 +25,7 @@ object ScriptedWatchTests extends EdgeWatchContract {
       worktree: Place,
       at: Instant
   ): Event.Shape = {
-    val shape = EdgeWatchContract.got(Event.Shape.committed(worktree, "c0ffee", None))
+    val shape = got(Event.Shape.committed(worktree, "c0ffee", None))
     script.commit(session, Some(holder), worktree, at, shape)
     shape
   }

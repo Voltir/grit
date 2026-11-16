@@ -4,6 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import scala.concurrent.duration.*
 
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, PluginName, Sha256, ShortHash}
 import grit.core.identity.TestAccounts
 import grit.core.place.{Namespace, Place}
@@ -120,8 +121,6 @@ abstract class DocumentContract extends TestSuite {
 
   private def ok[A](e: Either[StoreError, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"$err"), identity)
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private def name(s: String): PluginName = got(PluginName.of(s))
   private def key(s: String): DocKey = got(DocKey.of(s))

@@ -1,5 +1,6 @@
 package grit.commands.machine
 
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, Harness, SessionId}
 import grit.core.place.Directory
 
@@ -7,9 +8,6 @@ import utest.*
 
 /** [[Holders.of]]: the holder a session or an agent it starts works as, readable and total. */
 object HoldersTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   private val Desktop = got(MachineName.of("desktop"))
   private val Grit = got(Directory.of("/work/grit"))

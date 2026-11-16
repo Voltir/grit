@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.Duration
 
 import grit.core.document.DocRef
+import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, DocumentVersionId, Harness, PluginName, SessionId}
 import grit.core.place.Place
 import grit.core.session.Event
@@ -87,6 +88,4 @@ object EdgeWatchContract {
   val Review: DocRef = got(DocRef.of("state", "review"))
   val Merged: DocRef = got(DocRef.of("state", "merged"))
 
-  def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 }

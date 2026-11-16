@@ -2,6 +2,7 @@ package grit.eval.harness.evidence
 
 import scala.concurrent.duration.DurationInt
 
+import grit.core.either.Got.got
 import grit.core.host.RelPath
 import grit.core.id.{Harness, SessionId}
 import grit.core.message.{Tokens, Usage}
@@ -15,9 +16,6 @@ import utest.*
   * written by the bench's own writer of it.
   */
 object ShownTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private def rel(s: String): RelPath =
     RelPath.of(s).fold(e => throw new java.lang.AssertionError(e.toString), identity)

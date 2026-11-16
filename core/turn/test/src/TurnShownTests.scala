@@ -4,6 +4,7 @@ import java.time.{Instant, ZoneId, ZoneOffset}
 
 import grit.core.context.{Shown, Window}
 import grit.core.document.{DocLabel, DocText, Document, Placement}
+import grit.core.either.Got.got
 import grit.core.id.{
   ConversationId,
   DocKey,
@@ -39,9 +40,6 @@ object TurnShownTests extends TestSuite {
     s"People here give times in their own zone, not UTC: read the times the person gives as $short " +
       s"unless they say otherwise, and answer with times in $short. Times grit shows you in your " +
       "view are UTC."
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** A brief, version 7, as a boundary of a claim holder's turn holds it. */
   private val brief = Document(

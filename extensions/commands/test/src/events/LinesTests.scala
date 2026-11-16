@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.commands.machine.{Holders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
+import grit.core.either.Got.got
 import grit.core.id.{Harness, SessionId}
 import grit.core.place.Directory
 import grit.core.session.{Event, Session}
@@ -12,9 +13,6 @@ import utest.*
 
 /** [[Lines]]: a harness's event lines read in grit's words, and a post's lines as one batch. */
 object LinesTests extends TestSuite {
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
   private val MadeUp: Harness = got(Harness.of("made-up"))
   private val Desktop: MachineName = got(MachineName.of("desktop"))

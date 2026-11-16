@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentSearch, DocumentTerms, Shelved}
+import grit.core.either.Got.got
 import grit.core.id.{DocKey, PluginName}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
@@ -28,9 +29,6 @@ object DocumentScaleTests extends TestSuite {
   }
 
   private val documents = new SqlDocuments(new SqlTombstones)
-
-  private def got[A](e: Either[String, A]): A =
-    e.fold(why => throw new java.lang.AssertionError(why), identity)
 
   private def ok[A](e: Either[StoreError, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"$err"), identity)

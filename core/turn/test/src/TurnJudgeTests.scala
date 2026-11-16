@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.classify.StateJson
 import grit.core.context.Window
 import grit.core.document.{DocLabel, DocText, Document, Placement, Pointer}
+import grit.core.either.Got.got
 import grit.core.files.{FormatName, KeptPiece, Locus, Piece, TestPieces}
 import grit.core.id.{
   ConversationId,
@@ -289,8 +290,6 @@ object TurnJudgeTests extends TestSuite {
     test(
       "a document the window held is recalled under its label, place and date, its read line left out"
     ) {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
       val card = Document(
         got(DocumentVersionId.of(7).toRight("version")),
         got(PluginName.of("cards")),
@@ -320,8 +319,6 @@ object TurnJudgeTests extends TestSuite {
     test(
       "a piece the window held is recalled under its label, place, heading path and date, with the count of its file's other matches"
     ) {
-      def got[A](e: Either[String, A]): A =
-        e.fold(why => throw new java.lang.AssertionError(why), identity)
       val label = got(DocLabel.of("Drive files"))
       val shown = KeptPiece(
         PieceId.of(12L).getOrElse(sys.error("id")),

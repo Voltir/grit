@@ -10,6 +10,7 @@ import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
 import grit.core.edge.Adapter
 import grit.core.edge.{EdgeContracts, EdgeRefusal, PluginCommands, ScriptedCommands, Variable}
+import grit.core.either.Got.got
 import grit.core.id.{AttesterName, EdgeName, Harness}
 import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
 import grit.core.plugin.CommandOutcome

@@ -5,9 +5,10 @@ import java.time.Instant
 import scala.io.StdIn
 
 import grit.commands.machine.Holders
-import grit.commands.routes.RouteFixtures.{Machine, got}
+import grit.commands.routes.RouteFixtures.Machine
 import grit.core.clock.Clock
 import grit.core.edge.ScriptedSessions
+import grit.core.either.Got.got
 import grit.core.id.ClaimHolder
 import grit.core.place.Directory
 import grit.core.session.Event
