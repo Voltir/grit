@@ -48,13 +48,6 @@ object HoldersTests extends TestSuite {
       )
     }
 
-    test("an empty type is its hash alone, as a type slugging to nothing is") {
-      Vector("", "日本").map(t => holder(agent = Some(Holders.Agent(t, Session)))) ==> Vector(
-        "desktop/grit-dcfe7476/e3b0c442/5704e74050f4",
-        "desktop/grit-dcfe7476/cf2abf0c/5704e74050f4"
-      )
-    }
-
     test("a type written as another's hashed form is hashed itself, so the two holders differ") {
       Vector("Plan Mode", "plan-mode-412d7e24", "", "e3b0c442").map(t =>
         holder(agent = Some(Holders.Agent(t, Session)))
