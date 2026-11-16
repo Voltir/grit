@@ -732,6 +732,27 @@ object JoinTests extends TestSuite {
       }
     }
 
+    test("undo removes the .claude directory the join made, once the settings it made are gone") {
+      JoinFixtures { f =>
+        val dir = f.checkout("bare")
+        val _ = f.joined(dir)
+        val _ = f.undone(dir)
+        Files.exists(dir.resolve(".claude")) ==> false
+      }
+    }
+
+    test("undo keeps the .claude directory and a file of a person's in it") {
+      JoinFixtures { f =>
+        val dir = f.checkout("mine")
+        val _ = f.joined(dir)
+        val _ = f.write(dir.resolve(".claude/notes.md"), "kept\n")
+        val _ = f.undone(dir)
+        (Files.isDirectory(dir.resolve(".claude")), f.read(dir.resolve(".claude/notes.md"))) ==> (
+          (true, Some("kept\n"))
+        )
+      }
+    }
+
     test(
       "with a realpath lacking -e and -m, --retire is refused with one line and a join without it goes ahead"
     ) {

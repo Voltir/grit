@@ -588,6 +588,8 @@ undo_join() {
 
   if [ -n "$unmade" ]; then
     rm -f -- "$settings"
+    # The directory goes only when it is empty: a person's file in it keeps it.
+    rmdir -- "${settings%/*}" 2> /dev/null || :
   elif [ "$n" -gt 0 ]; then
     put_kept "$settings" 0644 "$new
 "
