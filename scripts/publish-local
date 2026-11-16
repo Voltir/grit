@@ -23,7 +23,8 @@
 # A snapshot removes the same version of each module grit no longer publishes (a directory
 # <repo>/dev.grit/<artifact>/<version> whose artifact no published module names), so a deployment
 # cannot resolve a module grit no longer has; --check names them. Nothing else in the repository
-# is removed: no other version, and nothing outside dev.grit.
+# is removed: no other version, and nothing outside dev.grit; a departed module's artifact
+# directory goes too, once empty.
 #
 # A snapshot's commit is kept in one marker, <repo>/dev.grit/.publish-local-<version>, holding
 # the full hash of the commit it was published from; --check prints it. A release has none: its
@@ -297,6 +298,10 @@ if [ "$kind" = snapshot ]; then
   mv -T "$scratch/marker" "$marker"
 fi
 moving=false
+# Each departed module's artifact directory is removed when its version was its only content.
+for a in "${departed[@]+"${departed[@]}"}"; do
+  rmdir -- "$repo/dev.grit/$a" 2>/dev/null || true
+done
 if [ "$kind" = snapshot ]; then
   echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from $(git log -1 --format='%h %s' HEAD)"
   if [ ${#departed[@]} -gt 0 ]; then
