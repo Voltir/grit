@@ -2,6 +2,8 @@ package grit.claudecode
 
 import java.nio.file.{Files, Path}
 
+import grit.commands.routes.RouteFixtures.AgentText
+
 import utest.*
 
 /** The pinned shellcheck (bash scripts/fetch-shellcheck.sh) over the scripts as they run: the join
@@ -33,6 +35,11 @@ object ShellcheckTests extends TestSuite {
         val dir = f.checkout("proj")
         f.joined(dir).exit ==> 0
         findings(f.root, Files.readString(f.hook(dir))) ==> Vector.empty
+      }
+    }
+    test("shellcheck finds nothing in the hook as a join with a credential installs it") {
+      HookFixtures.credentialed(AgentText) { f =>
+        findings(f.machine.root, Files.readString(f.hook)) ==> Vector.empty
       }
     }
   }
