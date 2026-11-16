@@ -1,13 +1,11 @@
 package grit.commands.routes
 
 import grit.commands.declare.OwnCommand
-import grit.core.clock.SetClock
-import grit.core.edge.{CommandError, EdgeContracts, ScriptedCommands}
-import grit.core.either.Got.got
+import grit.core.edge.{CommandError, ScriptedCommands}
 import grit.core.plugin.CommandOutcome
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.edge.http.{Hosts, Verb}
+import grit.edge.http.Verb
 
 import utest.*
 import RouteFixtures.*
@@ -23,23 +21,6 @@ object McpRouteTests extends TestSuite {
 
   private def offered: ScriptedCommands =
     scripted(Vector(listed("done", reads = false), listed("look", reads = true)))(answering)
-
-  private def routes(commands: ScriptedCommands, own: Vector[OwnCommand]): Routes^ =
-    got(
-      Routes.of(
-        commands,
-        Unwatched,
-        Unrecorded,
-        new SetClock(Now),
-        EdgeContracts.Room,
-        Hosts.loopback,
-        Owners,
-        own,
-        None,
-        Vector.empty,
-        Server
-      )
-    )
 
   /** `method` with `params` posted to `/mcp` in 2025-11-25: the answer's status and JSON body. */
   private def rpc(r: Routes^, method: String, params: ujson.Obj): (Status, ujson.Value) = {
@@ -74,7 +55,7 @@ object McpRouteTests extends TestSuite {
     test("tools/list lists each offered command with whether it only reads, an added one not") {
       val added =
         OwnCommand.added(ToolName("hello"), Integrity.Member, (ran, a) => ran(ToolName("done"), a))
-      val (_, listed) = rpc(routes(offered, Vector(added)), "tools/list", ujson.Obj())
+      val (_, listed) = rpc(routed(offered, own = Vector(added)), "tools/list", ujson.Obj())
       listed.objOpt
         .flatMap(_.get("result"))
         .fold(Vector.empty[(String, Boolean)])(
@@ -95,7 +76,7 @@ object McpRouteTests extends TestSuite {
         }
       val added =
         OwnCommand.added(ToolName("hello"), Integrity.Member, (ran, a) => ran(ToolName("done"), a))
-      val r = routes(commands, Vector(added))
+      val r = routed(commands, own = Vector(added))
       Vector(call(r, "done"), call(r, "refuse"), call(r, "hello"), call(r, "absent")) ==> Vector(
         Right(("did it", false)),
         Right(("not today", true)),
@@ -117,7 +98,10 @@ object McpRouteTests extends TestSuite {
         Integrity.Member,
         (ran, _) => ran(ToolName("done"), ujson.Obj("text" -> "guarded"))
       )
-      (call(routes(strict, Vector(above)), "done"), call(routes(kept, Vector(at)), "done")) ==> (
+      (
+        call(routed(strict, own = Vector(above)), "done"),
+        call(routed(kept, own = Vector(at)), "done")
+      ) ==> (
         Right(("done is given only by a caller believed at authority", true)),
         Right(("did guarded", false))
       )

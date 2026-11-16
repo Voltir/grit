@@ -2,15 +2,14 @@ package grit.commands.routes
 
 import grit.commands.caller.{Caller, Callers}
 import grit.commands.declare.OwnCommand
-import grit.core.clock.SetClock
-import grit.core.edge.{Adapter, CommandError, EdgeContracts, ScriptedCommands}
+import grit.core.edge.{Adapter, CommandError, EdgeContracts}
 import grit.core.either.Got.got
 import grit.core.id.Harness
 import grit.core.plugin.CommandOutcome
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.core.visibility.Integrity
-import grit.edge.http.{Challenge, Hosts, Status, Verb}
+import grit.edge.http.{Challenge, Status, Verb}
 
 import utest.*
 import RouteFixtures.*
@@ -28,27 +27,6 @@ object CommandRouteTests extends TestSuite {
     case _ => Left(CommandError.Unavailable("connection refused"))
   }
 
-  private def routes(
-      commands: ScriptedCommands,
-      own: Vector[OwnCommand] = Vector.empty,
-      callers: Callers = Owners
-  ): Routes^ =
-    got(
-      Routes.of(
-        commands,
-        Unwatched,
-        Unrecorded,
-        new SetClock(Now),
-        EdgeContracts.Room,
-        Hosts.loopback,
-        callers,
-        own,
-        None,
-        Vector.empty,
-        Server
-      )
-    )
-
   private def posted(r: Routes^, name: String, body: String = """{"text":"it"}""") = {
     val got = r.answer(request(Verb.Post, s"/command/$name", body))
     (got.status, got.body)
@@ -57,10 +35,10 @@ object CommandRouteTests extends TestSuite {
   val tests = Tests {
     test("each outcome and refusal of a command is answered by its status, and its words") {
       val commands = scripted(Names.map(listed(_, reads = false)))(answering)
-      val r = routes(commands)
+      val r = routed(commands)
       val stranger = Caller(EdgeContracts.Stranger, Integrity.Member, Machine)
       (Names :+ "absent").map(posted(r, _)) :+ posted(r, "done", "[1]") :+
-        posted(routes(commands, callers = Callers.owner(stranger)), "done") ==> Vector(
+        posted(routed(commands, callers = Callers.owner(stranger)), "done") ==> Vector(
           (Status.Ok, "did it"),
           (Status.Conflict, "not today"),
           (Status.BadRequest, "text is required"),
@@ -74,7 +52,7 @@ object CommandRouteTests extends TestSuite {
 
     test("a GET and a request from another site each run nothing") {
       val commands = scripted(Vector(listed("done", reads = false)))(answering)
-      val r = routes(commands)
+      val r = routed(commands)
       Vector(
         r.answer(request(Verb.Get, "/command/done")),
         r.answer(
@@ -86,7 +64,7 @@ object CommandRouteTests extends TestSuite {
 
     test("a credential is refused before the command's name, the body or an MCP message is read") {
       val commands = scripted(Vector(listed("done", reads = false)))(answering)
-      val r = routes(commands)
+      val r = routed(commands)
       val credentialed = Vector("Host" -> "localhost:7317", "Authorization" -> "Bearer t0ken")
       Vector(
         r.answer(request(Verb.Post, "/command/Absent", headers = credentialed)),
@@ -110,7 +88,7 @@ object CommandRouteTests extends TestSuite {
         Integrity.Authority,
         (ran, a) => ran(ToolName("done"), a)
       )
-      posted(routes(commands, Vector(guard)), "done") ==>
+      posted(routed(commands, own = Vector(guard)), "done") ==>
         (Status.Forbidden, "done is given only by a caller believed at authority")
       commands.ran ==> Vector.empty
     }
@@ -121,7 +99,7 @@ object CommandRouteTests extends TestSuite {
       val commands = scripted(Vector("done", "refused").map(listed(_, reads = false)))(answering)
       val done = ToolName("done")
       val guard = OwnCommand.guarding(done, Integrity.Authority, (ran, a) => ran(done, a))
-      val r = routes(commands, Vector(guard), Credentialed)
+      val r = routed(commands, callers = Credentialed, own = Vector(guard))
       def sent(text: String, name: String) = {
         val got = r.answer(
           request(Verb.Post, s"/command/$name", """{"text":"it"}""", headers = bearing(text))
@@ -177,7 +155,7 @@ object CommandRouteTests extends TestSuite {
         (ran, a) => ran(done, ujson.Obj("text" -> s"guarded ${a("text").str}"))
       )
       val added = OwnCommand.added(ToolName("hello"), Integrity.Member, (ran, a) => ran(done, a))
-      val r = routes(commands, Vector(guard, added))
+      val r = routed(commands, own = Vector(guard, added))
       (posted(r, "done"), posted(r, "hello")) ==> (
         (Status.Ok, "did guarded it"),
         (Status.Ok, "did it")

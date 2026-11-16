@@ -3,6 +3,7 @@ package grit.commands.routes
 import java.time.Instant
 
 import grit.commands.caller.{Caller, Callers}
+import grit.commands.declare.{HoldingWatch, OwnCommand}
 import grit.commands.machine.MachineName
 import grit.core.clock.SetClock
 import grit.core.edge.{
@@ -96,28 +97,31 @@ object RouteFixtures {
   def bearing(text: String): Vector[(String, String)] =
     Vector("Host" -> "localhost:7317", "Authorization" -> s"Bearer $text")
 
-  /** The routes over `commands` and the sessions `script` holds for [[Owner]] (or for no one,
-    * unless `vouched`), joined by `adapters`, no watch, `callers` on loopback, at [[Now]] in
-    * [[EdgeContracts.Room]], with no own command.
+  /** The routes over `commands`, `watch` and the sessions `script` holds for [[Owner]] (or for no
+    * one, unless `vouched`), joined by `adapters`, `callers` on loopback, at [[Now]] in
+    * [[EdgeContracts.Room]], with `own` commands and `holding`'s watch.
     */
   def routed(
       commands: ScriptedCommands = scripted(Vector.empty)(Unrun),
       script: ScriptedSessions.Script = new ScriptedSessions.Script,
       vouched: Boolean = true,
       adapters: Vector[Adapter] = Vector.empty,
-      callers: Callers = Owners
+      callers: Callers = Owners,
+      own: Vector[OwnCommand] = Vector.empty,
+      watch: EdgeWatch = Unwatched,
+      holding: Option[HoldingWatch] = None
   ): Routes^ =
     got(
       Routes.of(
         commands,
-        Unwatched,
+        watch,
         new ScriptedSessions(if (vouched) Set(Owner.account) else Set.empty, script),
         new SetClock(Now),
         EdgeContracts.Room,
         Hosts.loopback,
         callers,
-        Vector.empty,
-        None,
+        own,
+        holding,
         adapters,
         Server
       )

@@ -4,14 +4,13 @@ import scala.concurrent.duration.*
 
 import grit.commands.declare.HoldingWatch
 import grit.commands.machine.Worktrees
-import grit.core.clock.SetClock
 import grit.core.document.DocRef
 import grit.core.edge.{EdgeContracts, EdgeWatch, ScriptedWatch, WatchError, WatchFor}
 import grit.core.either.Got.got
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
 import grit.core.place.Directory
 import grit.core.session.Event
-import grit.edge.http.{Hosts, Status, Verb}
+import grit.edge.http.{Status, Verb}
 
 import utest.*
 import RouteFixtures.*
@@ -37,20 +36,9 @@ object WaitRouteTests extends TestSuite {
   )
 
   private def waiting(script: ScriptedWatch.Script, vouched: Boolean = true): Routes^ =
-    got(
-      Routes.of(
-        scripted(Vector.empty)((_, _) => Left(grit.core.edge.CommandError.Unavailable("unused"))),
-        new ScriptedWatch(if (vouched) Set(Owner.account) else Set.empty, script),
-        Unrecorded,
-        new SetClock(Now),
-        EdgeContracts.Room,
-        Hosts.loopback,
-        Owners,
-        Vector.empty,
-        Some(holding),
-        Vector.empty,
-        Server
-      )
+    routed(
+      watch = new ScriptedWatch(if (vouched) Set(Owner.account) else Set.empty, script),
+      holding = Some(holding)
     )
 
   private def waited(r: Routes^, body: ujson.Obj) = {
