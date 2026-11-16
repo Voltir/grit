@@ -167,7 +167,9 @@ object ScriptedSessions {
         .maxByOption(_.lastEvent)
     }
 
-    /** Logs each batch's events new to its session, as `by`: how many. */
+    /** Logs each batch's events new to its session, as `by`: how many. A batch with none begins
+      * no session, but gives one with no holder the batch's, as grit.dbos' sessions do.
+      */
     private[ScriptedSessions] def log(
         by: Principal.Person,
         batches: Vector[EdgeSessions.Batch]
@@ -175,8 +177,12 @@ object ScriptedSessions {
       batches.foldLeft(0) { (logged, b) =>
         val seen = ordinals.getOrElse(b.id, Set.empty)
         val fresh = b.events.filterNot(e => seen.contains(e.n)).distinctBy(_.n)
-        if (fresh.isEmpty) logged
-        else {
+        if (fresh.isEmpty) {
+          if (b.events.nonEmpty)
+            sessions =
+              sessions.map(o => if (o.id == b.id) o.copy(holder = o.holder.orElse(b.holder)) else o)
+          logged
+        } else {
           ordinals = ordinals.updated(b.id, seen ++ fresh.map(_.n))
           val said = fresh.sortBy(_.n).collect { case Event(_, _, Event.Kind.Closing(s), _) => s }
           sessions = sessions.find(_.id == b.id) match {

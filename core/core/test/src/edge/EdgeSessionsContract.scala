@@ -13,8 +13,9 @@ import utest.*
 /** What an edge's routes rely on of [[EdgeSessions]]: a batch recorded once, the sessions it
   * refuses, and the brief and newest session a holder opens with, besides the one named. Run by
   * the scripted fake in core and by the SQL sessions in grit.dbos. It leaves labels and rooms,
-  * which the fake does not read, to the SQL sessions' own suite, and what a session did lately,
-  * past which session it is, to the session store's; a database that cannot be read is untested.
+  * which the fake does not read, to the SQL sessions' own suite, and what a session did lately
+  * past its record (its commits, edits and reads) to the session store's; a database that cannot
+  * be read is untested.
   */
 abstract class EdgeSessionsContract extends TestSuite {
 
@@ -64,6 +65,49 @@ abstract class EdgeSessionsContract extends TestSuite {
       (opening(first, None), opening(later, None)) ==> (
         Right((None, Some(session("kept")))),
         Right((None, None))
+      )
+    }
+
+    test(
+      "a batch with no new events begins no session, but gives a session with no holder its own"
+    ) {
+      val (none, late) =
+        (got(ClaimHolder.of("contract/unbegun")), got(ClaimHolder.of("contract/late")))
+      (
+        record(Reader, batch(session("unbegun"), Some(none))),
+        record(Reader, batch(session("holderless"), None, 1)),
+        record(Reader, batch(session("holderless"), Some(late), 1)),
+        opening(none, None),
+        opening(late, None)
+      ) ==> (
+        Right(0),
+        Right(1),
+        Right(0),
+        Right((None, None)),
+        Right((None, Some(session("holderless"))))
+      )
+    }
+
+    test("lately answers a recorded session as it was recorded, and none for one never recorded") {
+      val h = got(ClaimHolder.of("contract/lately"))
+      val _ = worked("lately", h, 1, 2)
+      (
+        recording(_.lately(Room, session("lately"))).map(
+          _.map(l => (l.session.id, l.session.holder, l.session.counters, l.session.at))
+        ),
+        recording(_.lately(Room, session("never")))
+      ) ==> (
+        Right(
+          Some(
+            (
+              session("lately"),
+              Some(h),
+              grit.core.session.Session.Counters.of(batch(session("lately"), None, 1, 2).events),
+              Worktree
+            )
+          )
+        ),
+        Right(None)
       )
     }
 
