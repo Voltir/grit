@@ -420,7 +420,7 @@ object EventHookTests extends TestSuite {
       }
     }
     test(
-      "with the edge's port closed, an event, a commit and a rewrite end at once, each saying in one line what it dropped"
+      "with the edge's port closed, an event ends at once; it, a commit and a rewrite each say in one line what they dropped"
     ) {
       HookFixtures { f =>
         val edge = s"http://127.0.0.1:${HookFixtures.closedPort}"
