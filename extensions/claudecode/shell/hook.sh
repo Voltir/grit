@@ -34,12 +34,11 @@ if [ -z "${GRIT_HOOK_STARTED-}" ]; then
     say "needs bash 5 or later; it did nothing"
     exit "$failed"
   fi
-  for tool in jq curl git timeout; do
-    command -v "$tool" > /dev/null 2>&1 || {
-      say "needs $tool on PATH; it did nothing"
-      exit "$failed"
-    }
-  done
+  lacks=$(missing)
+  if [ -n "$lacks" ]; then
+    say "needs $lacks on PATH; it did nothing"
+    exit "$failed"
+  fi
   if ! [[ $edge =~ $address ]]; then
     say "the edge's address${GRIT_EDGE:+ in GRIT_EDGE} is not http:// or https://, a host and a port, nothing after; it did nothing"
     exit "$failed"

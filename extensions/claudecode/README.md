@@ -26,8 +26,9 @@ it is absent. A finding the scripts mean is disabled beside it, with its reason.
 
 ## Requires
 
-bash 5, jq 1.6 or later, curl, git 2.36 or later, and coreutils (the hook's watchdog is its
-`timeout`), on the machine the join runs on; `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
+bash 5, jq 1.6 or later, curl, git 2.36 or later, grep, and coreutils' `cat`, `chmod`, `cp`,
+`mkdir`, `mktemp`, `mv`, `rm`, `rmdir`, `stat`, `timeout` (the hook's watchdog) and `tr`, on the
+machine the join runs on (`shared.sh`'s `missing` is their one list); `--retire` needs GNU coreutils' `realpath`, for its `-e` and `-m`, and is refused without
 it. The unit tests run them too, with no skip, and `ssh-keygen`, to sign a commit.
 
 ## The join
@@ -66,8 +67,9 @@ cut short is a syntax error and runs nothing. Inside it `join.sh` only defines u
 line, `</dev/null main "$@"`; `main` sets bash's options itself, and what it starts reads
 `/dev/null`, never the rest of the script.
 
-**Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; no git, jq, curl
-or `timeout` on PATH (the last the hook's watchdog); a jq without `--args` (below 1.6), with which
+**Refused**, with exit 1, one line on stderr and nothing changed: bash below 5; any of the programs
+above missing from PATH (`needs jq, rmdir on PATH`, naming each, and the hook, as it starts, does
+nothing, saying the same); a jq without `--args` (below 1.6), with which
 the hook posts commits; outside a git checkout; a git whose `git worktree list` takes no `-z`
 (below 2.36), as an undo reads every worktree's settings from that list; an address other than
 `http://` or `https://`, a host (a name, or an IPv6 address in brackets) and an optional port,

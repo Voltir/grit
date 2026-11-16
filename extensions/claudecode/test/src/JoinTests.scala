@@ -523,32 +523,16 @@ object JoinTests extends TestSuite {
       }
     }
 
-    test("without jq on PATH, the join is refused with one line") {
+    test(
+      "without a program the scripts run on PATH, the join is refused with one line naming each missing, changing nothing"
+    ) {
       JoinFixtures { f =>
         val dir = f.checkout("work")
         val tools = Files.createDirectories(f.root.resolve("tools"))
-        Vector("bash", "git", "curl").foreach(t =>
-          Files.createSymbolicLink(tools.resolve(t), Path.of(s"/usr/bin/$t"))
-        )
-        val done = Bash.run(
-          dir,
-          f.home,
-          f.bin,
-          Seq("-s", "--", f.Edge),
-          ClaudeCode.adapter.join,
-          Map("PATH" -> tools.toString)
-        )
-        (done.exit, done.err) ==> ((1, "grit claude-code: needs jq on PATH\n"))
-      }
-    }
-
-    test("without timeout on PATH, the join is refused with one line, changing nothing") {
-      JoinFixtures { f =>
-        val dir = f.checkout("work")
-        val tools = Files.createDirectories(f.root.resolve("tools"))
-        Vector("bash", "git", "curl", "jq").foreach(t =>
-          Files.createSymbolicLink(tools.resolve(t), Path.of(s"/usr/bin/$t"))
-        )
+        // Every program the join and the hook run but jq, and rmdir, which only an undo runs.
+        Vector("bash", "git", "curl", "cat", "chmod", "cp", "grep", "mkdir", "mktemp", "mv", "rm")
+          .appendedAll(Vector("stat", "timeout", "tr"))
+          .foreach(t => Files.createSymbolicLink(tools.resolve(t), Path.of(s"/usr/bin/$t")))
         val before = f.tree(dir)
         val done = Bash.run(
           dir,
@@ -559,7 +543,7 @@ object JoinTests extends TestSuite {
           Map("PATH" -> tools.toString)
         )
         (done.exit, done.err, f.tree(dir) == before) ==>
-          ((1, "grit claude-code: needs timeout on PATH\n", true))
+          ((1, "grit claude-code: needs jq, rmdir on PATH\n", true))
       }
     }
 

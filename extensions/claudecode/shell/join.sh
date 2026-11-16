@@ -281,11 +281,10 @@ main() {
   if [ -z "${BASH_VERSINFO-}" ] || [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     refuse "needs bash 5 or later; this is bash ${BASH_VERSION-unknown}"
   fi
-  local tool gnu=0
-  # The hook's tools too: its watchdog is `timeout`, and it posts commits through jq's --args.
-  for tool in git jq curl timeout; do
-    command -v "$tool" > /dev/null 2>&1 || refuse "needs $tool on PATH"
-  done
+  local lacks gnu=0
+  lacks=$(missing)
+  [ -z "$lacks" ] || refuse "needs $lacks on PATH"
+  # The hook posts commits through jq's --args.
   [ "$(jq -nr '$ARGS.positional[0]' --args ok 2> /dev/null)" = ok ] ||
     refuse "needs jq 1.6 or later, whose --args the hook uses; this is $(jq --version 2> /dev/null | tr -cd '[:print:]')"
   # Only --retire needs GNU realpath's -e and -m; BSD's and older busybox's lack them.
