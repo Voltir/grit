@@ -2,7 +2,7 @@ package grit.app.config
 
 import grit.chat.settings.Lifecycle
 import grit.core.period.LifecycleSettings
-import grit.prose.either.Traversal.traverse
+import grit.std.either.Traversal.traverse
 
 /** The lifecycle's settings as the environment declares them, read on every start; `/set`
   * changes them until the next ([[Lifecycle]]).

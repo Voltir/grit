@@ -12,7 +12,7 @@ import grit.core.need.Exported
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
 import grit.knowledge.card.{CardMoves, CardShelf, NotWritten, UnitVersion}
-import grit.prose.either.Traversal.traverse
+import grit.std.either.Traversal.traverse
 
 /** What a declassify run is told: at most how many cards it rewrites. */
 final case class DeclassifyParams(perRun: Int) extends caps.Pure

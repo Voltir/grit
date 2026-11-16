@@ -11,7 +11,7 @@ import grit.core.plugin.DocumentPosting
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.visibility.Label
-import grit.prose.either.Traversal.traverse
+import grit.std.either.Traversal.traverse
 
 /** What each earned closing ([[grit.core.period.CloseReason.shownElsewhere]]) of a conversation
   * settled, kept as one document (ADR 0028) so a window elsewhere can find it once the

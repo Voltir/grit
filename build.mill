@@ -162,8 +162,9 @@ object grit extends Module {
   object core extends GritPublished with Placed {
     def folder = os.sub / "core" / "core"
 
-    /* grit.prose for its form, what a file is read into (grit.core.files), and its words. */
-    def moduleDeps = Seq(prose)
+    /* grit.prose for its form, what a file is read into (grit.core.files), and its words; grit.std
+     * for what has nothing to do with grit. */
+    def moduleDeps = Seq(std, prose)
 
     def mvnDeps = Seq(
       mvn"com.lihaoyi::upickle:4.4.3"
@@ -659,11 +660,20 @@ object grit extends Module {
     }
   }
 
+  /* What has nothing to do with grit: pure functions over the standard library's types, each
+   * called by two modules or more. Names no other module and no library. core/std/README.md. */
+  object std extends GritPublished with Placed {
+    def folder = os.sub / "core" / "std"
+
+    object test extends GritTests
+  }
+
   /* Prose: grit's stored tree as edge-neutral blocks (the form), read from markdown and
-   * stored as JSON. Names no other module; each consumer renders the form its own way. ujson
+   * stored as JSON. Names grit.std alone; each consumer renders the form its own way. ujson
    * is its one library, for its json package alone. core/prose/README.md. */
   object prose extends GritPublished with Placed {
     def folder = os.sub / "core" / "prose"
+    def moduleDeps = Seq(std)
 
     def mvnDeps = Seq(
       mvn"com.lihaoyi::ujson:4.4.3"

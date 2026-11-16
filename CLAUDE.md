@@ -36,9 +36,10 @@ area`, and the README in its folder (package order, and what the code cannot say
 
 | Module | Packages | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.*` | prose | the domain and the traits; no DBOS, no JDBC driver on its classpath |
+| `grit.std` | `either` | — | what has nothing to do with grit: pure functions over standard-library types that two modules or more call |
+| `grit.core` | `grit.core.*` | std, prose | the domain and the traits; no DBOS, no JDBC driver on its classpath |
 | `grit.dbos` | `sql`, `workflow`, `engine`, `internal` | core | the DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `internal` is lent to the eval harness alone |
-| `grit.prose` | `either`, `words`, `form`, `markdown`, `json`, `index` | — | prose as edge-neutral blocks, read from markdown; each edge renders them |
+| `grit.prose` | `words`, `form`, `markdown`, `json`, `index` | std | prose as edge-neutral blocks, read from markdown; each edge renders them |
 | `grit.tui` | `model`, `components`, `wire`, `runtime` | core | the terminal UI library; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos |
 | `grit.act` | `phase`, `moves` | core | what an actor's moves do (ADR 0034), the steps the turn, jobs and the lifecycle share; names core (and prose) alone |

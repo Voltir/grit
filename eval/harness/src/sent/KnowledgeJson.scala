@@ -6,7 +6,7 @@ import grit.core.id.CorpusName
 import grit.core.json.Fields
 import grit.core.place.{Place, Service}
 import grit.core.triage.{Corpora, Corpus}
-import grit.prose.either.Traversal
+import grit.std.either.Traversal
 
 /** The corpora a deployment declares, as a `knowledge.json` written by hand from its
   * declaration holds them: grit's database keeps no declaration.

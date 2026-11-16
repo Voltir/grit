@@ -1,6 +1,6 @@
 package grit.prose.form
 
-import grit.prose.either.Traversal.traverse
+import grit.std.either.Traversal.traverse
 
 /** Numbers compared across categories, drawn as `kind`. Its data is a table ([[table]]): the
   * categories down the first column under `axis`, a column of numbers per series. `values`

@@ -33,7 +33,7 @@ import grit.projects.name.{
   StateName
 }
 import grit.projects.render.{AnswerText, Brief, BriefRefusal, ProjectMarkdown}
-import grit.prose.either.Traversal
+import grit.std.either.Traversal
 
 /** The projects plugin's commands over `methods`, new projects under the latest version of
   * `default`, offered to turns as `turns` says.

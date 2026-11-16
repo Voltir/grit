@@ -1,4 +1,4 @@
-package grit.prose.either
+package grit.std.either
 
 import utest.*
 

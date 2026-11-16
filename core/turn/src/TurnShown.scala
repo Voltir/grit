@@ -26,7 +26,7 @@ import grit.core.store.{
 }
 import grit.core.tool.{Tool, ToolName, ToolSet, Toolbox}
 import grit.core.visibility.Subject
-import grit.prose.either.Traversal.traverse
+import grit.std.either.Traversal.traverse
 
 import TurnLoop.Round
 

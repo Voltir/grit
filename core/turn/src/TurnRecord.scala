@@ -21,7 +21,7 @@ import grit.core.store.{
 }
 import grit.core.tool.ToolSets
 import grit.core.visibility.Label
-import grit.prose.either.Traversal.sequence
+import grit.std.either.Traversal.sequence
 
 import TurnJournal.given
 

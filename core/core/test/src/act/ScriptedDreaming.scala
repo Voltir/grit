@@ -21,7 +21,7 @@ import grit.core.screen.{Screen, Screened}
 import grit.core.stitch.{Strand, StrandShelf}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity, Label, Recorded}
-import grit.prose.either.Traversal.sequence
+import grit.std.either.Traversal.sequence
 
 /** [[Dreaming]] for a job's tests: [[ScriptedKeeping]], scripted as it is, whose scans read
   * `reads`' strands and `plugin`'s needs beside its documents, and whose summaries read what

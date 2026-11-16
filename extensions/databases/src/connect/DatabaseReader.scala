@@ -6,7 +6,7 @@ import java.util.Properties
 
 import grit.core.secret.{Reveal, Secret, Variable}
 import grit.databases.declare.{Database, DatabaseRole, Login, QueryLimits}
-import grit.prose.either.Traversal
+import grit.std.either.Traversal
 
 /** A connection to a [[Database]] as its role alone, read-only. Its calls run one at a time. */
 final class DatabaseReader private (

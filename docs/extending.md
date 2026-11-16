@@ -19,7 +19,8 @@ organisation's systems, data or people. The repository's top-level folders are t
 
 `core/edge` is core: it is what every edge shares and no one protocol owns: ADR 0017's routing
 (`desk`) and the one HTTP listener (`http`), which names the transport and nothing carried over it.
-`core/prose` is core: ADR 0007's edge-neutral form.
+`core/prose` is core: ADR 0007's edge-neutral form. `core/std` is core: what every module may
+name, naming nothing of grit's (`core/std/README.md`).
 
 A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.eval`
 (`eval/harness`, inside it, is `grit.eval.harness`). Its Mill module, its package and its published artifact are all
@@ -265,7 +266,7 @@ is served nothing it may not read.
 
 ## What an extension may import
 
-An extension names core alone; core includes `grit.prose` and `grit.edge`, which is how
+An extension names core alone; core includes `grit.std`, `grit.prose` and `grit.edge`, which is how
 `grit.slack` and `grit.mcp` name them. A plugin extension may also name plugin extensions,
 since a plugin that reads another takes it in its constructor; it never names the kit, an
 edge extension or a deployment. The chat (`grit.chat`) also names `grit.turn`, for a turn

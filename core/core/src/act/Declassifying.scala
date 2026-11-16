@@ -13,7 +13,7 @@ import grit.core.provider.ModelRequest
 import grit.core.screen.{Bench, Benched, Checks, Fired, Screen, Screened, Signal}
 import grit.core.store.{StoreError, Tx}
 import grit.core.visibility.{DeclassificationPolicy, Integrity}
-import grit.prose.either.Traversal
+import grit.std.either.Traversal
 
 /** What [[Dreaming.declassify]] asks and comes to: the rewrite's text for the model, the check's
   * for the classifier, and the declassification it is lowered by.

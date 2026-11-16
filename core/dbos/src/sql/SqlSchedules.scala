@@ -41,7 +41,7 @@ import grit.core.job.{
 import grit.core.retention.Target
 import grit.core.store.{Jot, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Integrity, Label, Subject}
-import grit.prose.either.Traversal
+import grit.std.either.Traversal
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the principal whose

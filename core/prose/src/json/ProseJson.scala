@@ -4,8 +4,8 @@ import java.time.{LocalDate, LocalDateTime}
 
 import scala.util.Try
 
-import grit.prose.either.Traversal.traverse
 import grit.prose.form.{Block, Cell, Chart, Column, Doc, Item, Level, Mark, Span, Text}
+import grit.std.either.Traversal.traverse
 
 /** Prose as grit stores it: a flat list of blocks, a list item's level and kind as fields, under
   * a schema version (`"v"`), read back to the doc it was written from. Notes are written by
