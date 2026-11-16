@@ -11,11 +11,15 @@ One idea, one package, `grit.claudecode`. Its scripts are text, under `shell/`:
 
 - **`hook.sh`**: the hook, one program with a subcommand per role, which the join installs.
 - **`join.sh`**: the join script's body. The script served is a shebang, then one group: `{`,
-  `harness=claude-code`, `hook=<hook.sh, single-quoted>`, this body and `}`, so the harness's name has one home, in Scala,
+  `harness=claude-code`, a shellcheck directive, `hook=<hook.sh, single-quoted>`, this body and `}`, so the harness's name has one home, in Scala,
   and the hook rides in the join with no delimiter to collide with.
 
 The build reads them into `Scripts` as string constants, so the adapter is a pure value with no
 resource to read; a script over 60 KB, or holding a NUL, fails the build.
+
+`ShellcheckTests` lint the join as served and the hook as a join installs it with the pinned
+shellcheck (`bash scripts/fetch-shellcheck.sh`, into `tools/`), every check on, and fail when
+it is absent. A finding the scripts mean is disabled beside it, with its reason.
 
 ## Requires
 

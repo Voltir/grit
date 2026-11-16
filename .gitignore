@@ -22,6 +22,7 @@ CLAUDE.local.md
 # directory, so a slash form makes the negation below unreachable.
 tools/enola
 tools/scalafmt
+tools/shellcheck
 .enola/*
 !.enola/suppressions.yaml
 **/.enola/*

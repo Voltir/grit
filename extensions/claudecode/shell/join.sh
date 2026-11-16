@@ -79,6 +79,7 @@ program() {
       esac
     fi
   done
+  # shellcheck disable=SC2016,SC2088 # the words as a handler's command holds them, unexpanded
   case $lead$w in
     '$CLAUDE_PROJECT_DIR/'* | '"$CLAUDE_PROJECT_DIR/'*) w=$top${w#'$CLAUDE_PROJECT_DIR'} ;;
     '${CLAUDE_PROJECT_DIR}/'* | '"${CLAUDE_PROJECT_DIR}/'*) w=$top${w#'${CLAUDE_PROJECT_DIR}'} ;;

@@ -17,6 +17,7 @@ object ClaudeCode {
   val adapter: Adapter = Adapter(
     Named,
     s"#!/usr/bin/env bash\n{\nharness=${Argv.quote(Harness.value(Named))}\n" +
+      "# shellcheck disable=SC1003,SC2016 # the hook's text, linted as the join installs it\n" +
       s"hook=${Argv.quote(Scripts.Hook)}\n" + Scripts.Join + "}\n"
   )
 }
