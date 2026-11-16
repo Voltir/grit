@@ -71,37 +71,34 @@ object CommandRouteTests extends TestSuite {
         )
     }
 
-    test("a GET, a request from another site and one carrying a credential each run nothing") {
+    test("a GET and a request from another site each run nothing") {
       val commands = scripted(Vector(listed("done", reads = false)))(answering)
       val r = routes(commands)
       Vector(
         r.answer(request(Verb.Get, "/command/done")),
         r.answer(
           request(Verb.Post, "/command/done", headers = Vector("Host" -> "rebound.example:7317"))
-        ),
-        r.answer(
-          request(
-            Verb.Post,
-            "/command/done",
-            headers = Vector("Host" -> "localhost:7317", "Authorization" -> "Bearer t0ken")
-          )
         )
-      ).map(_.status) ==> Vector(
-        Status.NotAllowed(Vector(Verb.Post)),
-        Status.Forbidden,
-        Status.Unauthorized(Challenge.Refused)
-      )
+      ).map(_.status) ==> Vector(Status.NotAllowed(Vector(Verb.Post)), Status.Forbidden)
       commands.ran ==> Vector.empty
     }
 
-    test("a credential is refused before the command's name or body is read") {
+    test("a credential is refused before the command's name, the body or an MCP message is read") {
       val commands = scripted(Vector(listed("done", reads = false)))(answering)
       val r = routes(commands)
       val credentialed = Vector("Host" -> "localhost:7317", "Authorization" -> "Bearer t0ken")
       Vector(
         r.answer(request(Verb.Post, "/command/Absent", headers = credentialed)),
-        r.answer(request(Verb.Post, "/command/done", "[]", headers = credentialed))
-      ).map(_.status) ==> Vector.fill(2)(Status.Unauthorized(Challenge.Refused))
+        r.answer(request(Verb.Post, "/command/done", "[]", headers = credentialed)),
+        r.answer(
+          request(
+            Verb.Post,
+            "/mcp",
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}""",
+            headers = credentialed
+          )
+        )
+      ).map(_.status) ==> Vector.fill(3)(Status.Unauthorized(Challenge.Refused))
       commands.ran ==> Vector.empty
     }
 

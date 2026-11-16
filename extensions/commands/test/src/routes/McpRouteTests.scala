@@ -41,19 +41,14 @@ object McpRouteTests extends TestSuite {
     )
 
   /** `method` with `params` posted to `/mcp` in 2025-11-25: the answer's status and JSON body. */
-  private def rpc(
-      r: Routes^,
-      method: String,
-      params: ujson.Obj,
-      more: Vector[(String, String)] = Vector.empty
-  ): (Status, ujson.Value) = {
+  private def rpc(r: Routes^, method: String, params: ujson.Obj): (Status, ujson.Value) = {
     val body =
       ujson.write(ujson.Obj("jsonrpc" -> "2.0", "id" -> 7, "method" -> method, "params" -> params))
     val headers = Vector(
       "Host" -> "localhost:7317",
       "Content-Type" -> "application/json",
       "MCP-Protocol-Version" -> "2025-11-25"
-    ) ++ more
+    )
     val got = r.answer(request(Verb.Post, "/mcp", body, headers))
     (got.status, scala.util.Try(ujson.read(got.body)).getOrElse(ujson.Str(got.body)))
   }
@@ -126,18 +121,6 @@ object McpRouteTests extends TestSuite {
         Right(("did guarded", false))
       )
       (strict.ran.size, kept.ran.size) ==> (0, 1)
-    }
-
-    test("a request carrying a credential is refused before any message is read") {
-      val commands = offered
-      rpc(
-        routes(commands, Vector.empty),
-        "tools/list",
-        ujson.Obj(),
-        Vector("Authorization" -> "Bearer t0ken")
-      )._1 ==>
-        grit.edge.http.Status.Unauthorized(grit.edge.http.Challenge.Refused)
-      commands.ran ==> Vector.empty
     }
   }
 }
