@@ -17,11 +17,12 @@ import grit.mcp.wire.ServerInfo
 /** The commands edge (ADR 0062): an outside harness's way to a deployment's plugins over HTTP at
   * `at`, each request in `room`. Every request is first admitted by `hosts`, or answered 403; then
   *   - `POST /command/<name>` runs the command `name` (a plugin's, or one of `own`) with its body,
-  *     a JSON object, as the request's caller;
+  *     a JSON object (an empty body: none; any other, 400), as the request's caller, answered
+  *     as [[grit.commands.routes.RouteReply.command]] says;
   *   - `POST /mcp` takes one MCP message: `tools/list` lists the plugins' offered commands,
   *     `tools/call` runs one as `/command` would;
   *   - `POST /wait` waits on the store for a commit, or for what `holding` reads, blocking for the
-  *     whole wait;
+  *     whole wait, a body it does not read 400 ([[grit.commands.routes.Waited.watchOf]]);
   *   - `GET /holder?harness=&dir=[&session=&type=]` answers the claim holder a session in `dir`,
   *     or an agent of `type` that `session` starts, works as on the caller's machine
   *     ([[grit.commands.machine.ClaimHolders.of]]): the one way a claim learns it;

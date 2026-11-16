@@ -34,27 +34,8 @@ private[commands] final class Routes private (
     tools: Vector[ujson.Obj]
 ) {
 
-  /** `request` answered, running nothing first when `hosts` do not admit it (403), or it has no
-    * caller ([[grit.edge.http.Challenge.refused]], 401), each whatever its path; past that, no route sees its
-    * `Authorization` header. At `/command/<name>`, a POST runs the
-    * command `name` with its body, a JSON object (an empty body: none), as [[RouteReply.command]]
-    * answers it; another verb 405, a body that is no JSON object 400, each running nothing. At
-    * `/mcp`, one MCP message ([[Rpc.received]]): `tools/list` lists every offered plugin command
-    * ([[McpTool.described]]), a guarded one by the plugin's own schema; `tools/call` runs one as
-    * `/command` would, its answer a result as [[RouteReply.call]] reads it, and names no added
-    * command. At `/wait`, a POST waits on `watch` as [[Waited.watchOf]] reads its
-    * body, blocking for the whole wait, answered as [[Waited.watched]] says; another verb 405, a
-    * body it does not read 400, each waiting on nothing. At `/holder`, a GET answers, as text, the
-    * holder its query names on the caller's machine ([[Briefing.holderOf]]), touching no store;
-    * at `/brief`, a GET answers what the session its query names opens with
-    * ([[Briefing.briefOf]]), as [[Briefing.briefed]] says, writing nothing; each another verb
-    * 405, a query it does not read 400. At `/events`, a POST records the lines of its body on
-    * their session as the caller, in `room` ([[Recording.batchOf]]), answered as
-    * [[Recording.recorded]] says; another verb 405. At `/join/<harness>`, a GET answers that
-    * harness's join script as text, as its adapter gives it, 404 for a harness `adapters` hold
-    * none for; another verb 405. `/command`, `/mcp`, `/wait` and `/join` read no query: a
-    * parameter sent to one is 400, naming it, before it runs or waits on anything. Any other path
-    * 404.
+  /** `request` answered: admitted by `hosts`, its caller read, then routed by its path, no route
+    * seeing its `Authorization` header; what each route answers: [[grit.commands.edge.CommandsEdge]].
     */
   def answer(request: Request): Response =
     if (!hosts.admit(request))

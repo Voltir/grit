@@ -63,16 +63,10 @@ object ClaimHolders {
 
   /** The holder a session in `dir` on `machine` works as, or, given `agent`, the one that agent
     * works as, `dir` then being the starting session's directory, not the agent's own:
-    * `<machine>/<segment>-<dir's hash>[/<type>/<session's hash>]`. `segment` is `dir`'s last
-    * segment and `type` the agent's, each slugged (lower case, every run of other characters one
-    * `-`) and cut to [[Slugged]]. A type is kept as it is sent only when it is not empty, slugging
-    * and cutting leave it unchanged, and it is not 8 hex digits alone nor ends in `-` and 8 hex
-    * digits; any other is slugged, cut and followed by `-` and its own hash, or is that hash alone
-    * when it slugs to nothing, as a segment is. So two types never share a holder, short of a
-    * hash collision.
-    * A directory's or a type's hash is the first 8 hex digits of its SHA-256, a session's the
-    * first 12 of `<harness>:<id>`'s. Equal inputs give equal holders; one directory on two
-    * machines, two.
+    * `<machine>/<segment>-<dir's hash>[/<type>/<session's hash>]`, `segment` being `dir`'s last
+    * segment and `type` the agent's, each slugged ([[Slug.slugged]]) to at most [[Slugged]]
+    * characters. Equal inputs give equal holders; one directory on two machines, two; two types,
+    * two, short of a hash collision.
     */
   def of(machine: MachineName, dir: Directory, agent: Option[Agent]): ClaimHolder = {
     val path = Directory.value(dir)
@@ -92,9 +86,11 @@ object ClaimHolders {
     ClaimHolder.of(text).fold(why => throw new IllegalStateException(why), identity)
   }
 
-  /** `text` slugged and cut, then `-` and the hash of `hashed`; the hash alone when the slug is
-    * empty.
-    */
+  // A segment, and a type that is not kept as sent, is its slug, `-` and the first 8 hex digits of
+  // its SHA-256, or that hash alone when it slugs to nothing; a session's hash is the first 12 of
+  // `<harness>:<id>`'s. A type is kept as sent only when it is not empty, slugging leaves it
+  // unchanged, and it is neither 8 hex digits alone nor ends in `-` and 8 hex digits, so no
+  // hashed type equals a kept one.
   private def named(text: String, hashed: String): String = {
     val s = Slug.slugged(text, Slugged)
     val h = ShortHash.of(hashed, 8)
@@ -112,6 +108,5 @@ object ClaimHolders {
   private def literal(kind: String): Boolean =
     kind.nonEmpty && Slug.slugged(kind, Slugged) == kind && !Hashed.matches(kind)
 
-  /** What [[named]] gives: 8 hex digits, after a slug and `-` or alone. */
   private val Hashed = "(?:.*-)?[0-9a-f]{8}".r
 }

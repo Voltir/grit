@@ -11,12 +11,8 @@ object ClaudeCode {
     Harness.of("claude-code").fold(why => throw new IllegalStateException(why), identity)
 
   /** For the harness `claude-code`. Its join script, run in a git checkout as `bash -s --
-    * <edge's address> [--mcp-name <name>] [--retire <dir>]…`, installs the hook that briefs
-    * Claude Code's sessions and agents from the edge and posts what they do to it; registers it
-    * in `.claude/settings.local.json` and git's `post-commit` and `post-rewrite`, removing the
-    * handlers whose program is under a retired directory; and registers the edge's `/mcp` as
-    * `<name>` (`grit` by default). `--undo` removes what it added. What it refuses, writes and
-    * prints, and what each hook asks, posts and prints: extensions/claudecode/README.md.
+    * <edge's address> [--credential <file>] [--mcp-name <name>] [--retire <dir>]…`, or `bash -s
+    * -- --undo [--mcp-name <name>]`. What it does: extensions/claudecode/README.md.
     */
   val adapter: Adapter = Adapter(
     Named,
