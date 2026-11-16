@@ -16,7 +16,7 @@ import utest.*
 
 /** `machine-from-worker.sql`, the one-off that rewrites stored places from the key `worker` to
   * `machine`, run on a database holding a harness's session as the commands edge wrote it before
-  * the rename: its row at a worktree under `worker`, its log's shapes naming it, two of them at
+  * the rename: its row at a worktree under `worker`, its log's shapes naming it, three of them at
   * the 300-byte bound, a place row, a visibility change, a document, a file and a piece set at
   * it.
   */
@@ -69,7 +69,8 @@ object MachineFromWorkerTests extends TestSuite {
     (2, "commit", shape(Vector("worktree" -> Was, "sha" -> ShortSha, "subject" -> ShortSubject))),
     (3, "commit", shape(Vector("worktree" -> Was, "sha" -> LongSha), Some("subject" -> 300))),
     (4, "edited", shape(Vector("path" -> Edited, "worktree" -> Was))),
-    (5, "edited", shape(Vector("worktree" -> Was), Some("path" -> 300)))
+    (5, "edited", shape(Vector("worktree" -> Was), Some("path" -> 300))),
+    (6, "commit", shape(Vector("worktree" -> Was), Some("sha" -> 300)))
   )
 
   /** A fresh database holding the session and rows of this suite's doc, as written before. */
@@ -173,7 +174,7 @@ object MachineFromWorkerTests extends TestSuite {
     "grit.visibility_changes rewritten" -> 1,
     "grit.session_events rewritten" -> 3,
     "grit.session_events rewritten without their subject" -> 1,
-    "grit.session_events deleted, too long to rewrite" -> 1
+    "grit.session_events deleted, too long to rewrite" -> 2
   )
 
   val tests = Tests {
@@ -186,7 +187,7 @@ object MachineFromWorkerTests extends TestSuite {
     }
 
     test(
-      "the run rewrites each place under worker to machine as the code writes it, a commit at the bound without its subject, an edit at the bound deleted"
+      "the run rewrites each place under worker to machine as the code writes it, a commit at the bound without its subject, an edit and a commit with no subject to lose at the bound deleted"
     ) {
       val c = before("machine_from_worker_run")
       run(c, "COMMIT") ==> FirstRun
@@ -206,6 +207,24 @@ object MachineFromWorkerTests extends TestSuite {
         Some(Vector(LongSha -> None, ShortSha -> Some(ShortSubject))),
         Some(Vector(Session.Lately.Touched(Edited, Some(At))))
       )
+    }
+
+    test(
+      "a shape naming its worktree in a form other than the compact one raises, changing nothing"
+    ) {
+      val c = before("machine_from_worker_loose")
+      sql(
+        c,
+        s"""INSERT INTO grit.session_events (session, seq, n, at, kind, shape)
+           |  SELECT id, 7, 7, now(), 'edited', '{"worktree": "$Was"}'
+           |    FROM grit.sessions WHERE local = 's1'""".stripMargin
+      )
+      val was = stored(c)
+      val raised = scala.util.Try(run(c, "COMMIT")).failed.toOption
+      raised.flatMap(e => Option(e.getMessage)).flatMap(_.linesIterator.nextOption()) ==> Some(
+        "ERROR: 6 shapes name a worktree under worker, but only 5 in the compact form grit writes"
+      )
+      stored(c) ==> was
     }
 
     test("a second run changes nothing, and prints that it changed nothing") {
