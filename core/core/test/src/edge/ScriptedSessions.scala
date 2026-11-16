@@ -57,17 +57,17 @@ final class ScriptedSessions(vouched: Set[Account], script: ScriptedSessions.Scr
       by: Account,
       room: Place,
       holder: ClaimHolder,
-      besides: Option[SessionId],
+      own: SessionId,
       at: Instant
   ): Either[BriefError, EdgeSessions.Briefed] =
-    script.called(ScriptedSessions.Call.Briefed(by, room, holder, besides, at)) match {
+    script.called(ScriptedSessions.Call.Briefed(by, room, holder, own, at)) match {
       case Some(cause) => Left(BriefError.Unavailable(cause))
       case None if person(by).isEmpty => Left(BriefError.NotVouched(by))
       case None =>
         Right(
           EdgeSessions.Briefed(
             script.briefOf(holder, at),
-            script.newest(holder, besides).map(ScriptedSessions.lately)
+            script.session(own).map(ScriptedSessions.lately)
           )
         )
     }
@@ -88,7 +88,7 @@ object ScriptedSessions {
         by: Account,
         room: Place,
         holder: ClaimHolder,
-        besides: Option[SessionId],
+        own: SessionId,
         at: Instant
     )
   }
@@ -157,15 +157,6 @@ object ScriptedSessions {
       synchronized {
         briefs.collect { case (h, d) if h == holder && !d.written.isAfter(at) => d }.lastOption
       }
-
-    private[ScriptedSessions] def newest(
-        holder: ClaimHolder,
-        besides: Option[SessionId]
-    ): Option[Session] = synchronized {
-      sessions
-        .filter(s => s.holder.contains(holder) && !besides.contains(s.id))
-        .maxByOption(_.lastEvent)
-    }
 
     /** Logs each batch's events new to its session, as `by`: how many. A batch with none begins
       * no session, but gives one with no holder the batch's, as grit.dbos' sessions do.

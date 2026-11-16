@@ -38,7 +38,7 @@ Decision:
   session, the floor of a transaction opened in the edge's room labels it, and that
   transaction has no room of its own. An edge never holds a transaction; it reads a session
   back only as `EdgeSessions.lately` does, in a transaction opened in its room, or as
-  `EdgeSessions.briefed` does: a holder's brief and newest session, in one read-only
+  `EdgeSessions.briefed` does: a holder's brief and the asking session's own, in one read-only
   transaction opened for the person its account is linked to.
 - **An outside harness posts its sessions already in grit's words** to the commands edge
   (ADR 0062), one line an event, one session a post: its adapter maps its hooks and tool names

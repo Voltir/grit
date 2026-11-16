@@ -41,7 +41,7 @@ object BriefHookTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a session's brief is asked fresh at startup and clear, resumed at resume, compact and fork, and printed as Claude Code's hook JSON"
+      "a session's brief is asked for its own session at every start, and printed as Claude Code's hook JSON"
     ) {
       HookFixtures { f =>
         f.script.brief(
@@ -57,19 +57,13 @@ object BriefHookTests extends TestSuite {
         )
         val runs =
           sources.map((source, _) => f.run("brief", f.payload(s"session-start-$source.json")))
-        val asked = f.briefed.map(b => (b.holder, b.besides))
+        val asked = f.briefed.map(b => (b.holder, b.own))
         val brief = f.get(
           s"/brief?harness=claude-code&session=$First&dir=${encoded(f.proj.toString)}&start=resume"
         )
         (runs.map(r => (r.exit, printed(r), r.err)), asked) ==> (
           sources.map(_ => (0, context("SessionStart", brief._2), "")),
-          Vector(
-            (f.holderOf(), Some(f.session(First))),
-            (f.holderOf(), Some(f.session(Cleared))),
-            (f.holderOf(), None),
-            (f.holderOf(), None),
-            (f.holderOf(), None)
-          )
+          sources.map((_, id) => (f.holderOf(), f.session(id)))
         )
         assert(brief._2.contains("Read the plan first."))
       }
@@ -88,11 +82,11 @@ object BriefHookTests extends TestSuite {
         (
           run.exit,
           printed(run)("hookSpecificOutput")("hookEventName").str,
-          f.briefed.map(b => (b.holder, b.besides))
+          f.briefed.map(b => (b.holder, b.own))
         ) ==> (
           0,
           "SubagentStart",
-          Vector((holder, Some(agentSession)))
+          Vector((holder, agentSession))
         )
         assert(
           printed(run)("hookSpecificOutput")("additionalContext").str.contains("Agents read this.")
@@ -117,7 +111,7 @@ object BriefHookTests extends TestSuite {
       }
     }
     test(
-      "opening prints the holder lines at every start, and the digest only after a compaction, resumed, and after a clear, fresh"
+      "opening prints the holder lines at every start, and its own session's digest only after a compaction"
     ) {
       HookFixtures { f =>
         worked(f)
@@ -130,12 +124,10 @@ object BriefHookTests extends TestSuite {
         )
         val runs =
           sources.map((source, _) => f.run("opening", f.payload(s"session-start-$source.json")))
-        val asked = f.briefed.map(_.besides)
+        val asked = f.briefed.map(_.own)
         val dir = encoded(f.proj.toString)
         val resumed =
           f.get(s"/brief?harness=claude-code&session=$First&dir=$dir&start=resume&part=digest")._2
-        val fresh =
-          f.get(s"/brief?harness=claude-code&session=$Cleared&dir=$dir&start=fresh&part=digest")._2
         val holder = f.holderOf().toString
         (runs.map(r => (r.exit, printed(r), r.err)), asked) ==> (
           Vector(
@@ -143,15 +135,14 @@ object BriefHookTests extends TestSuite {
             (0, context("SessionStart", holderLines(f, First, holder)), ""),
             (0, context("SessionStart", holderLines(f, Forked, holder)), ""),
             (0, context("SessionStart", holderLines(f, First, holder) + "\n\n" + resumed), ""),
-            (0, context("SessionStart", holderLines(f, Cleared, holder) + "\n\n" + fresh), "")
+            (0, context("SessionStart", holderLines(f, Cleared, holder)), "")
           ),
-          Vector(None, Some(f.session(Cleared)))
+          Vector(f.session(First))
         )
-        // A compacted window holds what its session last said; a cleared one does not.
+        // A compacted window holds what its session last said.
         assert(
-          resumed.nonEmpty,
-          !resumed.contains("Wrote the notes."),
-          fresh.contains("Wrote the notes.")
+          resumed.startsWith("## This session so far\n"),
+          !resumed.contains("Wrote the notes.")
         )
       }
     }

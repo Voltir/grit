@@ -22,7 +22,7 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
       by: Account,
       room: Place,
       holder: ClaimHolder,
-      besides: Option[SessionId],
+      own: SessionId,
       at: Instant
   ): Either[BriefError, EdgeSessions.Briefed] =
     SqlAsking.read(dataSource, opener, by, room)(
@@ -31,8 +31,7 @@ private[dbos] final class SqlEdgeSessions(jot: Jot, dataSource: DataSource, open
     ) { (_, tx) =>
       (for {
         brief <- search.briefOf(holder, at)(using tx)
-        newest <- SqlSessions.newest(holder, besides)(using tx)
-        lately <- newest.fold(Right(None))(sessions.lately(_)(using tx))
+        lately <- sessions.lately(own)(using tx)
       } yield EdgeSessions.Briefed(brief, lately)).left.map(e => BriefError.Unavailable(e.toString))
     }
 

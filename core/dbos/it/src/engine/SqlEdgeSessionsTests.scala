@@ -195,16 +195,14 @@ object SqlEdgeSessionsTests extends TestSuite {
     )
   }
 
-  /** The keys of `holder`'s brief and newest session as Nick opens it in `room`, besides
-    * `besides`.
-    */
+  /** The keys of `holder`'s brief and of the session `own` as Nick opens it in `room`. */
   private def opening(
       room: Place,
       holder: ClaimHolder,
-      besides: Option[SessionId] = None
+      own: SessionId
   ): Either[BriefError, (Option[String], Option[SessionId])] =
     briefing
-      .briefed(Nick, room, holder, besides, t0.plusSeconds(1000))
+      .briefed(Nick, room, holder, own, t0.plusSeconds(1000))
       .map(b => (b.brief.map(d => DocKey.value(d.key)), b.lately.map(_.session.id)))
 
   val tests = Tests {
@@ -320,7 +318,7 @@ object SqlEdgeSessionsTests extends TestSuite {
     }
 
     test(
-      "briefed answers a holder's brief and the newest of its sessions by last event, of any harness, never another holder's"
+      "briefed answers a holder's brief and what the session named did lately, of any harness, though another of the holder's was active since"
     ) {
       val _ = nick
       val (h, other) = (holder("brief/one"), holder("brief/two"))
@@ -328,7 +326,6 @@ object SqlEdgeSessionsTests extends TestSuite {
       worked("o-early", h, Workshop)(1, 50)
       worked("o-late", h, Workshop)(10, 20)
       worked("o-other", other, Workshop)(100)
-      val byEvent = opening(Workshop, h)
       ok(
         LiveDb.transaction(config, Low)(
           store.record(
@@ -338,20 +335,20 @@ object SqlEdgeSessionsTests extends TestSuite {
         )
       )
       assert(
-        byEvent == Right((Some("one#brief"), Some(id("o-early")))),
-        opening(Workshop, h) == Right((Some("one#brief"), Some(own("o-grit"))))
+        opening(Workshop, h, id("o-late")) == Right((Some("one#brief"), Some(id("o-late")))),
+        opening(Workshop, h, id("o-early")) == Right((Some("one#brief"), Some(id("o-early")))),
+        opening(Workshop, h, own("o-grit")) == Right((Some("one#brief"), Some(own("o-grit"))))
       )
     }
 
-    test("briefed besides the caller's own session answers the newest other, a child among them") {
+    test("briefed answers a parent's session for the parent and a child's for the child") {
       val _ = nick
       val h = holder("brief/besides")
       worked("b-parent", h, Workshop)(1)
       worked("b-child", h, Workshop, Some(id("b-parent")))(5)
       assert(
-        opening(Workshop, h) == Right((None, Some(id("b-child")))),
-        opening(Workshop, h, Some(id("b-child"))) == Right((None, Some(id("b-parent")))),
-        opening(Workshop, h, Some(id("b-parent"))) == Right((None, Some(id("b-child"))))
+        opening(Workshop, h, id("b-parent")) == Right((None, Some(id("b-parent")))),
+        opening(Workshop, h, id("b-child")) == Right((None, Some(id("b-child"))))
       )
     }
 
@@ -361,14 +358,14 @@ object SqlEdgeSessionsTests extends TestSuite {
       brief("only#brief", briefOnly, Low, t0)
       worked("l-session", sessionOnly, Workshop)(1)
       assert(
-        opening(Workshop, briefOnly) == Right((Some("only#brief"), None)),
-        opening(Workshop, sessionOnly) == Right((None, Some(id("l-session")))),
-        opening(Workshop, holder("brief/neither")) == Right((None, None))
+        opening(Workshop, briefOnly, id("l-never")) == Right((Some("only#brief"), None)),
+        opening(Workshop, sessionOnly, id("l-session")) == Right((None, Some(id("l-session")))),
+        opening(Workshop, holder("brief/neither"), id("l-never")) == Right((None, None))
       )
     }
 
     test(
-      "briefed reads as the account's person: a brief or newest session it may not read is none, and an older one it reads is answered"
+      "briefed reads as the account's person: a brief or session it may not read is none, and an older brief it reads is answered"
     ) {
       val _ = nick
       val h = holder("brief/labelled")
@@ -378,14 +375,15 @@ object SqlEdgeSessionsTests extends TestSuite {
       worked("lab-low", h, elsewhere)(1)
       worked("lab-high", h, Workshop)(10)
       assert(
-        opening(Workshop, h) == Right((Some("high#brief"), Some(id("lab-high")))),
-        opening(elsewhere, h) == Right((Some("low#brief"), Some(id("lab-low"))))
+        opening(Workshop, h, id("lab-high")) == Right((Some("high#brief"), Some(id("lab-high")))),
+        opening(elsewhere, h, id("lab-high")) == Right((Some("low#brief"), None)),
+        opening(elsewhere, h, id("lab-low")) == Right((Some("low#brief"), Some(id("lab-low"))))
       )
     }
 
     test("briefed for an account no person is linked to is NotVouched") {
       val stranger = TestAccounts.account("workshop:local/stranger-briefed")
-      briefing.briefed(stranger, Workshop, holder("brief/one"), None, t0) ==>
+      briefing.briefed(stranger, Workshop, holder("brief/one"), id("o-stranger"), t0) ==>
         Left(BriefError.NotVouched(stranger))
     }
   }

@@ -11,7 +11,7 @@ import grit.core.store.StoreError
 import utest.*
 
 /** What an edge's routes rely on of [[EdgeSessions]]: a batch recorded once, the sessions it
-  * refuses, and the brief and newest session a holder opens with, besides the one named. Run by
+  * refuses, and the brief of a holder and the record of the session that opens with it. Run by
   * the scripted fake in core and by the SQL sessions in grit.dbos. It leaves labels and rooms,
   * which the fake does not read, to the SQL sessions' own suite, and what a session did lately
   * past its record (its commits, edits and reads) to the session store's; a database that cannot
@@ -39,8 +39,11 @@ abstract class EdgeSessionsContract extends TestSuite {
   private def worked(local: String, holder: ClaimHolder, seconds: Long*) =
     record(Reader, batch(session(local), Some(holder), seconds*))
 
-  private def opening(holder: ClaimHolder, besides: Option[SessionId]) =
-    recording(_.briefed(Reader, Room, holder, besides, At.plusSeconds(1000)))
+  // The holder the session `id` works as, when it has a record.
+  private def holderOf(id: SessionId) = recording(_.lately(Room, id)).map(_.map(_.session.holder))
+
+  private def opening(holder: ClaimHolder, own: SessionId) =
+    recording(_.briefed(Reader, Room, holder, own, At.plusSeconds(1000)))
       .map(b =>
         (b.brief.map(d => grit.core.document.DocText.value(d.text)), b.lately.map(_.session.id))
       )
@@ -62,10 +65,7 @@ abstract class EdgeSessionsContract extends TestSuite {
         (got(ClaimHolder.of("contract/first")), got(ClaimHolder.of("contract/later")))
       worked("kept", first, 1)
       worked("kept", later, 2)
-      (opening(first, None), opening(later, None)) ==> (
-        Right((None, Some(session("kept")))),
-        Right((None, None))
-      )
+      holderOf(session("kept")) ==> Right(Some(Some(first)))
     }
 
     test(
@@ -77,14 +77,14 @@ abstract class EdgeSessionsContract extends TestSuite {
         record(Reader, batch(session("unbegun"), Some(none))),
         record(Reader, batch(session("holderless"), None, 1)),
         record(Reader, batch(session("holderless"), Some(late), 1)),
-        opening(none, None),
-        opening(late, None)
+        holderOf(session("unbegun")),
+        holderOf(session("holderless"))
       ) ==> (
         Right(0),
         Right(1),
         Right(0),
-        Right((None, None)),
-        Right((None, Some(session("holderless"))))
+        Right(None),
+        Right(Some(Some(late)))
       )
     }
 
@@ -148,7 +148,7 @@ abstract class EdgeSessionsContract extends TestSuite {
     }
 
     test(
-      "briefed answers the holder's brief and its newest session by last event, besides the one named"
+      "briefed answers the holder's brief and what the session named did lately, whatever else ran"
     ) {
       val (h, other) =
         (got(ClaimHolder.of("contract/briefed")), got(ClaimHolder.of("contract/other")))
@@ -157,18 +157,20 @@ abstract class EdgeSessionsContract extends TestSuite {
       worked("late", h, 10, 20)
       worked("another", other, 100)
       (
-        opening(h, None),
-        opening(h, Some(session("early"))),
-        opening(other, Some(session("another")))
+        opening(h, session("late")),
+        opening(h, session("early")),
+        opening(other, session("never"))
       ) ==> (
-        Right((Some("Do the contracted thing."), Some(session("early")))),
         Right((Some("Do the contracted thing."), Some(session("late")))),
+        Right((Some("Do the contracted thing."), Some(session("early")))),
         Right((None, None))
       )
     }
 
     test("briefed for an account no person is linked to is NotVouched") {
-      recording(_.briefed(Stranger, Room, got(ClaimHolder.of("contract/briefed")), None, At)) ==>
+      recording(
+        _.briefed(Stranger, Room, got(ClaimHolder.of("contract/briefed")), session("asked"), At)
+      ) ==>
         Left(BriefError.NotVouched(Stranger))
     }
   }

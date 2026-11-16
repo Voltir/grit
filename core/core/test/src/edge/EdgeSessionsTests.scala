@@ -33,7 +33,7 @@ object EdgeSessionsTests extends TestSuite {
         TestAccounts.account("workshop:local/nick"),
         Place.under(Namespace.Task, Vector("workshop")),
         holder,
-        None,
+        session(Harness.of("claude-code").fold(sys.error, identity)),
         Instant.parse("2026-11-13T10:00:00Z")
       ) ==> Left(BriefError.Unavailable("this edge was given no session record"))
     }

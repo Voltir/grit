@@ -120,7 +120,7 @@ private[commands] final class Routes private (
           val now = clock.now()
           val (status, text) = Briefing.briefed(
             asked,
-            sessions.briefed(caller.account, room, asked.holder, asked.besides, now),
+            sessions.briefed(caller.account, room, asked.holder, asked.session, now),
             now
           )
           Response.text(status, text)

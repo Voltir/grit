@@ -12,7 +12,7 @@ import grit.edge.http.{Status, Verb}
 import utest.*
 import RouteFixtures.*
 
-/** `GET /brief`: a holder's brief, or the digest of what its newest other session did lately. */
+/** `GET /brief`: a holder's brief, or the digest of what the caller's own session did lately. */
 object BriefRouteTests extends TestSuite {
 
   private val MadeUp: Harness = got(Harness.of("made-up"))
@@ -72,37 +72,29 @@ object BriefRouteTests extends TestSuite {
   }
 
   private def briefedAs(script: ScriptedSessions.Script) = script.called.collect {
-    case ScriptedSessions.Call.Briefed(by, room, holder, besides, at) =>
-      (by, room, holder, besides, at)
+    case ScriptedSessions.Call.Briefed(by, room, holder, own, at) =>
+      (by, room, holder, own, at)
   }
 
   extension [A](a: A) private def pipe[B](f: A => B): B = f(a)
 
   val tests = Tests {
     test(
-      "a fresh start's digest is the newest other session's, with what it said; a resume's is its own, without"
+      "a resume's digest is its own session's, without what it said, though another of its holder's was active since; a fresh start has none"
     ) {
       val script = new ScriptedSessions.Script
-      worked(script, "s-0", 600, "Did the earlier thing.")
-      worked(script, "s-1", 60, "Did this one.")
-      (
-        asked(script, s"$Fresh&part=digest"),
-        asked(script, s"$Resume&part=digest"),
-        briefedAs(script)
-      ) ==> (
-        (Status.Ok, digest(script, "s-0", SessionDigest.Window.LacksLastSaid).getOrElse("")),
-        (Status.Ok, digest(script, "s-1", SessionDigest.Window.HoldsLastSaid).getOrElse("")),
-        Vector(
-          (Owner.account, EdgeContracts.Room, Holder, Some(id("s-1")), Now),
-          (Owner.account, EdgeContracts.Room, Holder, None, Now)
-        )
+      worked(script, "s-1", 600, "Did this one.")
+      worked(script, "s-0", 60, "Did the other thing.")
+      (asked(script, s"$Fresh&part=digest"), asked(script, s"$Resume&part=digest")) ==> (
+        (Status.Ok, ""),
+        (Status.Ok, digest(script, "s-1", SessionDigest.Window.HoldsLastSaid).getOrElse(""))
       )
     }
 
     test("an agent is briefed as its holder, its own session being session/agent") {
       val script = new ScriptedSessions.Script
       val _ = asked(script, s"$Fresh&agent=a-1&type=coder-opus")
-      briefedAs(script).map(c => (c._3, c._4)) ==> Vector((Agent, Some(id("s-1/a-1"))))
+      briefedAs(script).map(c => (c._3, c._4)) ==> Vector((Agent, id("s-1/a-1")))
     }
 
     test(
@@ -129,13 +121,12 @@ object BriefRouteTests extends TestSuite {
     }
 
     test("a digest of a session last active longer ago than Recent is left out") {
-      val script = new ScriptedSessions.Script
-      worked(script, "s-0", Briefing.Recent.toSeconds + 1, "Did the old thing.")
-      val old = asked(script, s"$Fresh&part=digest")
-      worked(script, "s-2", Briefing.Recent.toSeconds, "Did the recent thing.")
-      (old, asked(script, s"$Fresh&part=digest")) ==> (
+      val (old, recent) = (new ScriptedSessions.Script, new ScriptedSessions.Script)
+      worked(old, "s-1", Briefing.Recent.toSeconds + 1, "Did the old thing.")
+      worked(recent, "s-1", Briefing.Recent.toSeconds, "Did the recent thing.")
+      (asked(old, s"$Resume&part=digest"), asked(recent, s"$Resume&part=digest")) ==> (
         (Status.Ok, ""),
-        (Status.Ok, digest(script, "s-2", SessionDigest.Window.LacksLastSaid).getOrElse(""))
+        (Status.Ok, digest(recent, "s-1", SessionDigest.Window.HoldsLastSaid).getOrElse(""))
       )
     }
 

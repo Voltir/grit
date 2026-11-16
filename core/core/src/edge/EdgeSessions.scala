@@ -31,23 +31,21 @@ trait EdgeSessions extends caps.SharedCapability {
     */
   def lately(room: Place, id: SessionId): Either[StoreError, Option[Session.Lately]]
 
-  /** What a session working as `holder` opens with: the brief kept for it, current at `at`
-    * ([[grit.core.document.DocumentSearch.briefOf]]), and what the newest other session working as
-    * it did lately ([[grit.core.session.Sessions.lately]]): newest by its last event, of any
-    * harness, a child session or not, and never `besides` (the caller's own session at a fresh
-    * start; `None` on a resume, when the caller's own is the one to go on from). Both are read in
-    * one read-only transaction opened for the person `by` is linked to then, in `room`
-    * ([[grit.core.visibility.Subject.Person]]), so each is the newest that person reads there, and
-    * none when they read none; what it answers may be shown in `room` and nowhere lower.
-    * [[BriefError.NotVouched]] for an account no person is linked to; [[BriefError.Unavailable]]
-    * when the database could not open or read it, or the edge was built without the session
-    * record.
+  /** What the session `own`, working as `holder`, opens with: the brief kept for `holder`, current
+    * at `at` ([[grit.core.document.DocumentSearch.briefOf]]), and what `own` itself did lately
+    * ([[grit.core.session.Sessions.lately]]), whichever other sessions work as `holder`; none when
+    * it has no record. Both are read in one read-only transaction opened for the person `by` is
+    * linked to then, in `room` ([[grit.core.visibility.Subject.Person]]), so each is one that
+    * person reads there, and none when they read none; what it answers may be shown in `room` and
+    * nowhere lower. [[BriefError.NotVouched]] for an account no person is linked to;
+    * [[BriefError.Unavailable]] when the database could not open or read it, or the edge was built
+    * without the session record.
     */
   def briefed(
       by: Account,
       room: Place,
       holder: ClaimHolder,
-      besides: Option[SessionId],
+      own: SessionId,
       at: Instant
   ): Either[BriefError, EdgeSessions.Briefed]
 }
@@ -99,13 +97,13 @@ object EdgeSessions {
         by: Account,
         room: Place,
         holder: ClaimHolder,
-        besides: Option[SessionId],
+        own: SessionId,
         at: Instant
     ): Either[BriefError, Briefed] = Left(BriefError.Unavailable(Unrecorded))
   }
 
-  /** A holder's opening as data: `brief`, its brief, and `lately`, what its newest session did
-    * lately. An edge shows them as a turn's opening does ([[grit.core.context.Shown.brief]], and
+  /** A session's opening as data: `brief`, its holder's brief, and `lately`, what the session
+    * itself did lately. An edge shows them as a turn's opening does ([[grit.core.context.Shown.brief]], and
     * [[grit.core.session.SessionDigest.of]] at [[grit.core.session.SessionDigest.Chars]]).
     */
   final case class Briefed(brief: Option[Document], lately: Option[Session.Lately])

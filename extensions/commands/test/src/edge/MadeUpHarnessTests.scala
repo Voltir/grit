@@ -62,7 +62,7 @@ object MadeUpHarnessTests extends TestSuite {
           line(2, "edited", ""","shape":{"path":"notes.md"}"""),
           line(3, "closing", ""","text":"Wrote the notes."""")
         ).mkString("\n")
-        val brief = s"/brief?harness=made-up&session=p-2&dir=$dir&start=fresh&part=digest"
+        val brief = s"/brief?harness=made-up&session=p-1&dir=$dir&start=resume&part=digest"
         val answered = (
           get(port, host, "/join/made-up"),
           get(port, host, "/join/unknown-harness"),
@@ -85,13 +85,13 @@ object MadeUpHarnessTests extends TestSuite {
             (
               "HTTP/1.1 200 OK",
               worked.fold("")(
-                SessionDigest.of(_, SessionDigest.Window.LacksLastSaid, SessionDigest.Chars)
+                SessionDigest.of(_, SessionDigest.Window.HoldsLastSaid, SessionDigest.Chars)
               )
             )
           ),
           1
         )
-        assert(answered._5._2.contains("Last said: Wrote the notes."))
+        assert(answered._5._2.startsWith("## This session so far\nStarted "))
       }
     }
   }

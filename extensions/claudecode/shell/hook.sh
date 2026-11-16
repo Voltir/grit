@@ -209,9 +209,10 @@ brief() {
 }
 
 # What a session opens with besides its brief: the claim holder it works as, how an agent it
-# starts learns its own, and after a compaction or a clear the digest of what it did lately.
+# starts learns its own, and after a compaction the digest of what it did lately. A session that
+# starts afresh (a clear among them) has none: its brief is the handover.
 opening() {
-  local holder text part=''
+  local holder text
   payload || return 0
   [ "$event" = SessionStart ] || return 0
   if ! ask /holder "harness=$harness" "dir=$dir"; then
@@ -225,12 +226,8 @@ opening() {
   # TYPE, not <type>: pasted into a shell, `<type>` would be a redirect.
   text="grit: this session's claim holder is $holder.
 grit: an agent this session starts has its own claim holder. This prints it, with the agent's type in place of TYPE: $(sq "$self") holder TYPE --dir $(sq "$dir") --session $(sq "$session")"
-  case $source in
-    compact) part=resume ;;
-    clear) part=fresh ;;
-  esac
-  if [ -n "$part" ]; then
-    if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" "start=$part" part=digest; then
+  if [ "$source" = compact ]; then
+    if ! ask /brief "harness=$harness" "session=$session" "dir=$dir" start=resume part=digest; then
       say "the edge at $edge did not answer for the digest"
     elif [ "$status" != 200 ]; then
       answered "the digest" "$status" "$answer"

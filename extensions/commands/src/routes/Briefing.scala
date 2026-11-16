@@ -51,19 +51,19 @@ private[commands] object Briefing {
     /** The holder's brief, fenced as a window shows it ([[Shown.briefText]]). */
     case Brief
 
-    /** What the holder's newest session did lately ([[SessionDigest.of]]). */
+    /** What the caller's own session did lately ([[SessionDigest.of]]), without what it last
+      * said, which its window holds.
+      */
     case Digest
+
+    /** Nothing: the digest asked at a fresh start, where the brief is the handover. */
+    case Neither
   }
 
-  /** What `/brief` asks [[EdgeSessions.briefed]] for: `holder`'s opening, `besides` the caller's
-    * own session, and which `part` of it to answer, a digest shown for `window`.
+  /** What `/brief` asks [[EdgeSessions.briefed]] for: the opening of `session`, the caller's own,
+    * working as `holder`, and which `part` of it to answer.
     */
-  final case class BriefRequest(
-      holder: ClaimHolder,
-      besides: Option[SessionId],
-      window: SessionDigest.Window,
-      part: Part
-  )
+  final case class BriefRequest(holder: ClaimHolder, session: SessionId, part: Part)
 
   /** What `/brief`'s query asks for on `machine`, or why not:
     *   - `harness`, `session` (the harness's own id for the caller's session) and `dir`, its
@@ -72,9 +72,8 @@ private[commands] object Briefing {
     *     `session` starts of that type, and its own session `session/agent`
     *     ([[ClaimHolders.agentSession]]);
     *   - `start`: `fresh` when the caller's window holds nothing of its session (a start, a
-    *     clear, an agent's start), so the newest session besides its own is shown, with what it
-    *     last said; or `resume` when it goes on (a resume, a compaction), so its own session may be
-    *     shown, without what it last said, which its window holds;
+    *     clear, an agent's start), so no digest is shown ([[Part.Neither]]); or `resume` when it
+    *     goes on (a resume, a compaction), so its own session's is;
     *   - `part`: `brief` (the default) or `digest`, so each fits in its own answer;
     *   - no other parameter, and none sent twice.
     */
@@ -102,9 +101,11 @@ private[commands] object Briefing {
       }
     } yield BriefRequest(
       ClaimHolders.of(machine, dir, started.map(_._2)),
-      Option.when(fresh)(started.fold(session)(_._1)),
-      if (fresh) SessionDigest.Window.LacksLastSaid else SessionDigest.Window.HoldsLastSaid,
-      part.getOrElse(Part.Brief)
+      started.fold(session)(_._1),
+      part match {
+        case Some(Part.Digest) if fresh => Part.Neither
+        case other => other.getOrElse(Part.Brief)
+      }
     )
 
   /** What `/brief` answers for `asked` once briefed `came` to that, at `now`: 200 with the part
@@ -129,8 +130,11 @@ private[commands] object Briefing {
             Status.Ok,
             b.lately
               .filterNot(_.session.lastEvent.isBefore(since))
-              .fold("")(SessionDigest.of(_, asked.window, SessionDigest.Chars))
+              .fold("")(
+                SessionDigest.of(_, SessionDigest.Window.HoldsLastSaid, SessionDigest.Chars)
+              )
           )
+        case Part.Neither => (Status.Ok, "")
       }
   }
 
