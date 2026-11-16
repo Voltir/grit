@@ -82,5 +82,11 @@ object OriginJsonTests extends TestSuite {
         ujson.Obj("kind" -> "tui", "directory" -> "home", "session" -> "s1")
       ) ==> Left("not an absolute path: home")
     }
+    test("a stored terminal origin whose directory holds a control character reads as it is") {
+      SqlConversationStore
+        .readOrigin(ujson.Obj("kind" -> "tui", "directory" -> "/home/a\nb", "session" -> "s1"))
+        .map { case o: Origin.Tui => Directory.value(o.directory); case o => o.toString } ==>
+        Right("/home/a\nb")
+    }
   }
 }

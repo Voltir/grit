@@ -207,7 +207,7 @@ private[dbos] object SqlConversationStore {
           for {
             raw <- str(o, "directory")
             session <- str(o, "session")
-            directory <- Directory.of(raw)
+            directory <- Directory.stored(raw)
           } yield Origin.Tui(directory, session)
         case "slack" =>
           for {

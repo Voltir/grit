@@ -75,6 +75,21 @@ object PlaceTests extends TestSuite {
       Directory.of("/home/nick/") ==> Left("not a normalized path (an empty segment): /home/nick/")
       Directory.of("/").map(Directory.value) ==> Right("/")
     }
+    test(
+      "a directory holding a control character is refused; a stored place holding one is its directory"
+    ) {
+      (
+        Directory.of("/work/a\nb"),
+        Directory.of("/work/\u007f"),
+        Directory.of("/work/\u0085b"),
+        place("fs:/work/a\nb").directory.map(Directory.value)
+      ) ==> (
+        Left("holds a control character (U+000A): /work/a?b"),
+        Left("holds a control character (U+007F): /work/?"),
+        Left("holds a control character (U+0085): /work/?b"),
+        Some("/work/a\nb")
+      )
+    }
 
     test("a place that does not read names why") {
       Place.read("home/nick") ==>

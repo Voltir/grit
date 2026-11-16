@@ -46,7 +46,7 @@ final case class Place private (segments: Vector[String]) extends caps.Pure {
   def directory: Option[Directory] =
     segments.headOption
       .filter(_ == Namespace.Fs.key)
-      .flatMap(_ => Directory.of("/" + segments.drop(1).mkString("/")).toOption)
+      .flatMap(_ => Directory.stored("/" + segments.drop(1).mkString("/")).toOption)
 
   /** The service this place is, when it is `service:{name}` with `name` a service's
     * ([[Service.of]]); `None` for any other place.

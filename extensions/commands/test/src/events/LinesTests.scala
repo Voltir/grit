@@ -125,6 +125,7 @@ object LinesTests extends TestSuite {
         line("n" -> "٣"),
         line("agent" -> "a-1"),
         line("dir" -> "work/grit"),
+        line("dir" -> "/work/gr\nit"),
         line("shape" -> ujson.Obj("path" -> "p" * 300)),
         line("event" -> "commit", "shape" -> ujson.Obj("subject" -> "no sha"))
       ).map(read(_).left.toOption) ==> Vector(
@@ -146,6 +147,7 @@ object LinesTests extends TestSuite {
         Some("n: a decimal string, not \"٣\""),
         Some("agent and type come together: an agent's own id, and its type"),
         Some("dir: not an absolute path: work/grit"),
+        Some("dir: holds a control character (U+000A): /work/gr?it"),
         Some("shape: an event's shape is 311 bytes, over 300"),
         Some("shape: a commit's sha, missing")
       )
