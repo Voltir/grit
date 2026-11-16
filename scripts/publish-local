@@ -20,19 +20,25 @@
 # .publish-local.* scratch directory sits beside the repository (a run was killed mid-move, or
 # another is running).
 #
+# A snapshot removes the same version of each module grit no longer publishes (a directory
+# <repo>/dev.grit/<artifact>/<version> whose artifact no published module names), so a deployment
+# cannot resolve a module grit no longer has; --check names them. Nothing else in the repository
+# is removed: no other version, and nothing outside dev.grit.
+#
 # A snapshot's commit is kept in one marker, <repo>/dev.grit/.publish-local-<version>, holding
 # the full hash of the commit it was published from; --check prints it. A release has none: its
 # tag names its commit.
 #
 # It publishes into a scratch repository beside the repository, on the same filesystem, checks
 # that every module is there, then moves each module's version directory in by rename, a
-# snapshot's previous one first moved aside into the scratch repository, and last renames the
-# marker in.
+# snapshot's previous one first moved aside into the scratch repository, moves each departed
+# module's version directory aside there too, and last renames the marker in; the scratch
+# repository, and with it what was moved aside, is then removed.
 #
 # A failure the script can catch leaves the repository as it found it: a failed move, or an INT
 # or TERM during the move, moves back every version directory already moved in (removing one
 # that cannot be moved back), moves each previous snapshot module and the previous marker back,
-# exits non-zero, and says so on stderr. A kill -9 or a power loss mid-move can leave a partial
+# and each departed module's version back, exits non-zero, and says so on stderr. A kill -9 or a power loss mid-move can leave a partial
 # version: some modules' <version> directories in the repository and not others, and a
 # .publish-local.* scratch directory beside it, which holds any previous snapshot modules moved
 # aside. --check then refuses, naming the modules that hold the version. To clear it by hand,
@@ -88,6 +94,10 @@ undo_moves() {
       fi
     fi
     if [ -e "$old" ] && ! mv -T "$old" "$in_repo"; then kept+=("$old"); fi
+  done
+  for a in "${departed[@]+"${departed[@]}"}"; do
+    old="$scratch/departed/$a"
+    if [ -e "$old" ] && ! mv -T "$old" "$repo/dev.grit/$a/$version"; then kept+=("$old"); fi
   done
   if [ -e "$scratch/previous.marker" ]; then
     mv -T "$scratch/previous.marker" "$marker" || kept+=("$scratch/previous.marker")
@@ -187,6 +197,15 @@ published=()
 for a in $artifacts; do
   if [ -e "$repo/dev.grit/$a/$version" ]; then published+=("$a"); fi
 done
+# This version of each module grit no longer publishes, which a snapshot removes.
+departed=()
+if [ "$kind" = snapshot ]; then
+  for d in "$repo/dev.grit"/*/"$version"; do
+    [ -d "$d" ] || continue
+    a=$(basename "$(dirname "$d")")
+    grep -qxF -- "$a" <<<"$artifacts" || departed+=("$a")
+  done
+fi
 if [ "$kind" = snapshot ]; then
   stale=$(compgen -G "$(dirname "$repo")/.publish-local.*" | paste -sd' ' - || true)
   if [ -n "$stale" ]; then
@@ -212,6 +231,9 @@ if $check && [ "$kind" = snapshot ]; then
   else
     echo "publish-local: $repo/dev.grit holds no $version"
   fi
+  if [ ${#departed[@]} -gt 0 ]; then
+    echo "publish-local: $repo/dev.grit holds $version of modules grit no longer publishes, which a publish removes: ${departed[*]}"
+  fi
 fi
 
 if [ ${#refusals[@]} -gt 0 ]; then
@@ -223,6 +245,7 @@ fi
 if $check; then
   replacing=""
   if [ ${#published[@]} -gt 0 ]; then replacing=", replacing the $version there"; fi
+  if [ ${#departed[@]} -gt 0 ]; then replacing+=", removing the $version of ${departed[*]}"; fi
   echo "publish-local: would publish $version of $(echo "$artifacts" | wc -l) modules from $short into $repo/dev.grit$replacing:"
   echo "$artifacts" | sed 's/^/  /'
   exit 0
@@ -262,6 +285,13 @@ for a in $artifacts; do
     exit 1
   fi
 done
+mkdir -p "$scratch/departed"
+for a in "${departed[@]+"${departed[@]}"}"; do
+  if ! mv -T "$repo/dev.grit/$a/$version" "$scratch/departed/$a"; then
+    echo "publish-local: moving the departed $a aside failed; undoing the ${#moved[@]} moved" >&2
+    exit 1
+  fi
+done
 if [ "$kind" = snapshot ]; then
   echo "$head" >"$scratch/marker"
   mv -T "$scratch/marker" "$marker"
@@ -269,6 +299,9 @@ fi
 moving=false
 if [ "$kind" = snapshot ]; then
   echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from $(git log -1 --format='%h %s' HEAD)"
+  if [ ${#departed[@]} -gt 0 ]; then
+    echo "publish-local: removed the $version of modules grit no longer publishes: ${departed[*]}"
+  fi
 else
   echo "publish-local: published $version of ${#moved[@]} modules into $repo/dev.grit, from v$version ($short)"
 fi
