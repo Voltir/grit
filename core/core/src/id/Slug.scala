@@ -5,6 +5,18 @@ package grit.core.id
   */
 object Slug {
 
+  /** `text` lower-cased, each run of characters other than ASCII letters and digits one `-`, cut
+    * to `longest` characters, with no `-` at either end; empty when it holds no ASCII letter or
+    * digit, and possibly led by a digit, so not always what [[check]] passes.
+    */
+  def slugged(text: String, longest: Int): String =
+    text
+      .toLowerCase(java.util.Locale.ROOT)
+      .replaceAll("[^a-z0-9]+", "-")
+      .stripPrefix("-")
+      .take(longest)
+      .stripSuffix("-")
+
   /** `s`, or why it is not `what`: empty, over `longest` characters when there is a cap,
     * starting with `-`, or with a digit unless `leadingDigit`, or holding a character other than
     * a lowercase ASCII letter, a digit or `-`.

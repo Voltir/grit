@@ -1,6 +1,6 @@
 package grit.commands.machine
 
-import grit.core.id.{ClaimHolder, Harness, SessionId, ShortHash}
+import grit.core.id.{ClaimHolder, Harness, SessionId, ShortHash, Slug}
 import grit.core.place.Directory
 
 /** The claim holder a harness's session works as, so a claim can name it before the session's
@@ -95,17 +95,10 @@ object ClaimHolders {
     * empty.
     */
   private def named(text: String, hashed: String): String = {
-    val s = slug(text).take(Slugged).stripSuffix("-")
+    val s = Slug.slugged(text, Slugged)
     val h = ShortHash.of(hashed, 8)
     if (s.isEmpty) h else s"$s-$h"
   }
-
-  private def slug(text: String): String =
-    text
-      .toLowerCase(java.util.Locale.ROOT)
-      .replaceAll("[^a-z0-9]+", "-")
-      .stripPrefix("-")
-      .stripSuffix("-")
 
   private def unparted(id: String): Either[String, String] =
     Either.cond(
@@ -116,7 +109,7 @@ object ClaimHolders {
 
   /** Whether a type is kept as sent: [[named]] never gives it, so no hashed type equals it. */
   private def literal(kind: String): Boolean =
-    kind.nonEmpty && slug(kind).take(Slugged) == kind && !Hashed.matches(kind)
+    kind.nonEmpty && Slug.slugged(kind, Slugged) == kind && !Hashed.matches(kind)
 
   /** What [[named]] gives: 8 hex digits, after a slug and `-` or alone. */
   private val Hashed = "(?:.*-)?[0-9a-f]{8}".r

@@ -24,5 +24,13 @@ object SlugTests extends TestSuite {
       Slug.check("a state's name", "in_review", None, leadingDigit = true) ==>
         Left("a state's name holds '_', not a lowercase letter, a digit or '-': in_review")
     }
+    test("slugged text is lower case, each other run one '-', cut, with no '-' at either end") {
+      (
+        Slug.slugged("-Plan Mode!!2-", 40),
+        Slug.slugged("abc def", 4),
+        Slug.slugged("Ünïcode", 40),
+        Slug.slugged("--", 40)
+      ) ==> ("plan-mode-2", "abc", "n-code", "")
+    }
   }
 }
