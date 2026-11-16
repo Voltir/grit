@@ -197,7 +197,7 @@ object CommandsEdgeTests extends TestSuite {
     }
 
     test(
-      "grit's own MCP client lists the edge's tools bearing a credential, and is refused 401 bearing none or another"
+      "grit's own MCP client, bearing a credential, lists the edge's tools at /mcp and calls one; bearing another it is 401, and a request bearing none is 401"
     ) {
       val commands = scripted(Vector(listed("done", reads = true))) { (_, args) =>
         Right(CommandOutcome.Done(s"did ${args("text").str}"))
@@ -215,21 +215,39 @@ object CommandsEdgeTests extends TestSuite {
               Set("done")
             )
           )
-          def listed(env: Map[String, String]): Either[McpError, Vector[String]] =
+          def client(bearer: String): McpClient^ =
             Credential
-              .open(server.transport.credential, env, KeyFiles.Local)
-              .fold(
-                r => throw new java.lang.AssertionError(r.message),
-                a => McpClient(server, a, new SetClock(Now)).tools().map(_.tools.map(_.name))
-              )
-          Vector(
-            listed(Map("COMMANDS_TOKEN" -> AgentText)),
-            listed(Map("COMMANDS_TOKEN" -> "another-0123456789abcdefghijklmnopqrstuvwxyz"))
-          ) ==> Vector(
+              .open(
+                server.transport.credential,
+                Map("COMMANDS_TOKEN" -> bearer),
+                KeyFiles.Local
+              ) match {
+              case Left(r) => throw new java.lang.AssertionError(r.message)
+              case Right(a) => McpClient(server, a, new SetClock(Now))
+            }
+          val agent = client(AgentText)
+          val listed = agent.tools().map(_.tools)
+          val called = listed.flatMap(
+            _.headOption
+              .toRight(McpError.Unreadable("unlisted"))
+              .flatMap(agent.call(_, ujson.Obj("text" -> "it")))
+              .map(a => (a.text, a.isError))
+          )
+          (
+            listed.map(_.map(_.name)),
+            called,
+            client("another-0123456789abcdefghijklmnopqrstuvwxyz").tools().map(_.tools.map(_.name))
+          ) ==> (
             Right(Vector("done")),
+            Right(("did it", false)),
             Left(McpError.Unauthorized(Some("Bearer error=\"invalid_token\"")))
           )
-          post(port, s"127.0.0.1:$port", "/command/done", """{"text":"it"}""") ==>
+          post(
+            port,
+            s"127.0.0.1:$port",
+            "/mcp",
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"""
+          ) ==>
             (
               "HTTP/1.1 401 Unauthorized",
               "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
