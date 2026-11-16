@@ -98,7 +98,7 @@ trait GritModule extends ScalaModule {
  * landing, published again as it changes; a release, X.Y.Z, at its close, in its own commit,
  * published once from the commit tagged v<version> (the script's header says each rule). */
 trait GritPublished extends GritModule with PublishModule {
-  def publishVersion = "0.3.0-SNAPSHOT"
+  def publishVersion = "0.3.0"
   def pomSettings = PomSettings(
     description = "grit, an LLM agent harness: " + artifactName(),
     organization = "dev.grit",
