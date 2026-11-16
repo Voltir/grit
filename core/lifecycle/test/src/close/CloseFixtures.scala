@@ -37,7 +37,6 @@ import grit.core.store.{
   InMemoryPrincipals,
   InMemoryTombstones,
   InMemoryUsageLedger,
-  Jot,
   OpenActivity,
   OpenPeriod,
   Origin,
@@ -221,13 +220,6 @@ object CloseFixtures {
   }
 
   /** Writes straight through to the in-memory stores, never rolled back. */
-  final class FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
-
   object FakeDb extends Db {
     def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using

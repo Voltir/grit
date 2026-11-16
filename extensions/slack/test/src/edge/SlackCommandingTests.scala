@@ -29,7 +29,7 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.place.Place
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Origin, StoreError, TestJot}
 import grit.core.visibility.TestLabels.{compartment, group, place}
 import grit.core.visibility.{
   Compartments,
@@ -39,10 +39,8 @@ import grit.core.visibility.{
   Level,
   RoomLabels,
   Steward,
-  Subject,
   Visibility
 }
-import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, SlackError}
 import grit.slack.event.{Payloads, ResponseUrl, TeamId, UserId}
 
@@ -53,13 +51,6 @@ import utest.*
   */
 object SlackCommandingTests extends TestSuite {
   import Payloads.*
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
 
   private val Grit: SlackCommand =
     SlackCommand.of("/grit").fold(e => throw new java.lang.AssertionError(e), identity)
@@ -176,9 +167,9 @@ object SlackCommandingTests extends TestSuite {
           InMemoryReviews.over(inbox),
           new InMemoryOrigins(inbox.conversations),
           (new InMemoryDocuments).reviews.of,
-          FakeJot,
+          TestJot(),
           new InMemoryEdges,
-          new Attesting(voucher, FakeJot, _ => ()),
+          new Attesting(voucher, TestJot(), _ => ()),
           new NoIntake
         ),
         None,

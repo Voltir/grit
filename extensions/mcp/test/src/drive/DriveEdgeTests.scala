@@ -53,10 +53,9 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.place.Service
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, TestJot}
 import grit.core.tool.{Outcome, Retry, ToolName}
-import grit.core.visibility.{Integrity, Subject}
-import grit.dbos.sql.TestTx
+import grit.core.visibility.Integrity
 import grit.edge.desk.PlaceFragments
 import grit.mcp.client.Credential
 import grit.prose.form.{Block, Doc, Span, Text}
@@ -70,11 +69,6 @@ object DriveEdgeTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), identity)
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
 
   private val Token = Variable("FAKE_DRIVE_TOKEN")
   private val Env = Map(Variable.value(Token) -> FakeDriveServer.Token)
@@ -108,9 +102,9 @@ object DriveEdgeTests extends TestSuite {
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
       (new InMemoryDocuments).reviews.of,
-      FakeJot,
+      TestJot(),
       edges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
       new NoIntake
     )
     val log = new ConcurrentLinkedQueue[String]()
@@ -178,7 +172,7 @@ object DriveEdgeTests extends TestSuite {
       body: FileArea^ => A
   ): A =
     TempBlobs.around(blobs =>
-      body(new FileArea(new InMemoryFileCatalog, blobs, FakeJot, Clock.system(), formats, bounds))
+      body(new FileArea(new InMemoryFileCatalog, blobs, TestJot(), Clock.system(), formats, bounds))
     )
 
   /** How many of `fake`'s requests asked for a file's bytes. */

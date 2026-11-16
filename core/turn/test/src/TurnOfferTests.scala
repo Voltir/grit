@@ -37,6 +37,7 @@ import grit.core.store.{
   InMemoryVoiceStore,
   Origin,
   Payload,
+  TestJot,
   Tx
 }
 import grit.core.tool.{
@@ -65,7 +66,7 @@ import utest.*
 
 /** [[TurnOffer.decide]]: the prompt a turn is offered, by where it happens. */
 object TurnOfferTests extends TestSuite {
-  import TurnFixtures.{FakeJot, Prompts, ToolSets, budget}
+  import TurnFixtures.{Prompts, ToolSets, budget}
 
   private val slack = Origin.Slack("T1", "C1", "1.0")
 
@@ -119,7 +120,7 @@ object TurnOfferTests extends TestSuite {
       Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d.toString), identity),
       Toolbox.Empty,
       Vector.empty,
-      new FakeJot,
+      new TestJot,
       budget(5),
       persona = persona,
       renders = renders
@@ -203,7 +204,7 @@ object TurnOfferTests extends TestSuite {
       box(tool(ToolName("about"), asks = false)),
       box(tool(ToolName("propose"), asks = true), tool(ToolName("probe"), asks = true)),
       Vector.empty,
-      new FakeJot,
+      new TestJot,
       budget(5),
       administering =
         box(tool(ToolName("label_room"), asks = true), tool(ToolName("quiet_room"), asks = true))
@@ -294,7 +295,7 @@ object TurnOfferTests extends TestSuite {
       box(tool(ToolName("about"), asks = false)),
       Toolbox.Empty,
       Vector(described("fetch")),
-      new FakeJot,
+      new TestJot,
       budget(5),
       worksIn = links
     )
@@ -369,7 +370,7 @@ object TurnOfferTests extends TestSuite {
       box(tool(ToolName("about"), asks = false)),
       Toolbox.Empty,
       Vector.empty,
-      new FakeJot,
+      new TestJot,
       budget(5),
       worksIn = Vector(WorksIn(slackTeams, github)),
       reaches = Vector(Reaches(slackTeams, elsewhere, heard)),
@@ -538,7 +539,7 @@ object TurnOfferTests extends TestSuite {
       box(tool(ToolName("about"), asks = false)),
       Toolbox.Empty,
       hosted,
-      new FakeJot,
+      new TestJot,
       budget(5),
       worksIn = worksIn,
       reaches = reaches
@@ -753,7 +754,7 @@ object TurnOfferTests extends TestSuite {
           box(tool(ToolName("digest"), asks = false)),
           Toolbox.Empty,
           Vector.empty,
-          new FakeJot,
+          new TestJot,
           budget(5),
           recipe = recipe,
           conversing =
@@ -1143,7 +1144,7 @@ object TurnOfferTests extends TestSuite {
         box(tool(ToolName("about"), asks = false)),
         Toolbox.Empty,
         Vector.empty,
-        new FakeJot,
+        new TestJot,
         budget(5)
       )
       val rebuilt = TurnOffer.toolbox(tooling, offer)

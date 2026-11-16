@@ -31,9 +31,8 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.place.{Directory, Place, Service}
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Origin, TestJot, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
-import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.edge.desk.PlaceFragments
 import grit.mcp.client.{Credential, FakeMcpServer, FakeStdioServer, McpServer, McpTransport}
@@ -43,13 +42,6 @@ import utest.*
 
 /** [[McpEdge]] opened over in-memory stores against [[FakeMcpServer]]. */
 object McpEdgeTests extends TestSuite {
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
 
   private val Token = Variable("FAKE_MCP_TOKEN")
 
@@ -95,9 +87,9 @@ object McpEdgeTests extends TestSuite {
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
       (new InMemoryDocuments).reviews.of,
-      FakeJot,
+      TestJot(),
       if (reachable) edges else Unreachable,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
       new NoIntake
     )
     val log = new ConcurrentLinkedQueue[String]()

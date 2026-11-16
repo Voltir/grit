@@ -2,6 +2,7 @@ package grit.lifecycle.replay
 
 import grit.core.durable.{History, InMemoryDurable, RecordedSizes}
 import grit.core.period.ClosingJson
+import grit.core.store.TestJot
 import grit.core.triage.{ShadowAnswers, Shadowed, ShadowedJson}
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -123,7 +124,7 @@ object LifecycleReplayTests extends TestSuite {
                       w.plugins.posting,
                       new grit.core.document.InMemoryDocuments().keeper,
                       new grit.core.store.InMemoryTombstones,
-                      new FakeJot,
+                      new TestJot,
                       new CloseFixtures.SetClock(java.time.Instant.EPOCH)
                     )
                   )

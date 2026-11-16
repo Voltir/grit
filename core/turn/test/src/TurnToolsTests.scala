@@ -21,7 +21,17 @@ import grit.core.identity.Principal
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Place, Service}
 import grit.core.session.{Event, Session}
-import grit.core.store.{Askers, Entry, EntryStore, InMemoryEntryStore, Jot, Payload, StoreError, Tx}
+import grit.core.store.{
+  Askers,
+  Entry,
+  EntryStore,
+  InMemoryEntryStore,
+  Jot,
+  Payload,
+  StoreError,
+  TestJot,
+  Tx
+}
 import grit.core.tool.{
   Args,
   Believed,
@@ -74,7 +84,7 @@ object TurnToolsTests extends TestSuite {
   ): Either[TurnFailure, TurnTools.Settled] = {
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
-    val settling = settlingIn(new FakeJot, entries)
+    val settling = settlingIn(new TestJot, entries)
     TurnTools.read(tools(ws), pending, Repairs.All, PublicReads, Integrity.Authority) match {
       case Left(outcome) =>
         val unrun = Left(Integrity.Untrusted)
@@ -157,7 +167,7 @@ object TurnToolsTests extends TestSuite {
     val entries = new InMemoryEntryStore
     val turn = say(entries, "go")
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
-    val settling = settlingIn(new FakeJot, entries)
+    val settling = settlingIn(new TestJot, entries)
     val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
     val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
     TurnTools.read(box, sent, Repairs.All, PublicReads, Integrity.Authority) match {
@@ -217,7 +227,7 @@ object TurnToolsTests extends TestSuite {
     val turn = if (said) say(entries, "go") else TurnRef(conversation, TurnSeq.First)
     val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val sessions = TurnSessions(spy, _ => Some(holder))
-    val settling = settlingIn(new FakeJot, entries, sessions, hosting().copy(askers = askers))
+    val settling = settlingIn(new TestJot, entries, sessions, hosting().copy(askers = askers))
     val box = Toolbox.of[{}](tool).fold(d => throw new java.lang.AssertionError(d), identity)
     val sent = Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), "said", ujson.Obj("p" -> "x")))
     val runs = Vector.fill(if (again) 2 else 1)(
@@ -257,7 +267,7 @@ object TurnToolsTests extends TestSuite {
         .fold(e => throw new java.lang.AssertionError(s"$e"), identity)
       val entries = new InMemoryEntryStore
       val turn = say(entries, "go")
-      val settling = settlingIn(new FakeJot(visibility = declaring), entries)
+      val settling = settlingIn(new TestJot(visibility = declaring), entries)
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
       val hosted =
         settling.answer(
@@ -272,7 +282,7 @@ object TurnToolsTests extends TestSuite {
       val other = new InMemoryEntryStore
       val otherTurn = say(other, "go")
       val otherSlot = TurnTools.Slot(TestCallSlots.at(otherTurn))
-      settlingIn(new FakeJot, other)
+      settlingIn(new TestJot, other)
         .answer(
           otherSlot,
           ToolCallId("c"),
@@ -306,7 +316,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "go")
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
-      settlingIn(new FakeJot(visibility = declaring), entries)
+      settlingIn(new TestJot(visibility = declaring), entries)
         .answer(
           slot,
           ToolCallId("c"),

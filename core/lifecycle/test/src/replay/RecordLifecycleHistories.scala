@@ -15,6 +15,7 @@ import grit.core.store.{
   InMemoryPeriodStore,
   Payload,
   StoreError,
+  TestJot,
   Tx
 }
 import grit.core.visibility.Integrity
@@ -92,7 +93,7 @@ object RecordLifecycleHistories {
             w.plugins.posting,
             new grit.core.document.InMemoryDocuments().keeper,
             new grit.core.store.InMemoryTombstones,
-            new FakeJot,
+            new TestJot,
             new CloseFixtures.SetClock(java.time.Instant.EPOCH)
           )
         )

@@ -21,7 +21,7 @@ import grit.core.id.{EdgeName, FileHandle, TestCallSlots, ToolCallId}
 import grit.core.identity.Email
 import grit.core.message.AssistantBlock
 import grit.core.place.Place
-import grit.core.store.{Db, Jot, StoreError, Tx}
+import grit.core.store.{Db, StoreError, TestJot, Tx}
 import grit.core.tool.{ArgsError, Bound, CallError, Outcome, Repairs, Toolbox}
 import grit.core.visibility.{
   Accounted,
@@ -50,11 +50,6 @@ object FileReadingTests extends TestSuite {
     )
   )
 
-  private def jot: Jot = new Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
-
   /** `body` over an area of 10-minute files, dated by a clock at [[Start]]. */
   private def area[A](body: (FileArea, SetClock) => A): A =
     TempBlobs.around { blobs =>
@@ -63,7 +58,7 @@ object FileReadingTests extends TestSuite {
         new FileArea(
           new InMemoryFileCatalog,
           blobs,
-          jot,
+          TestJot(),
           clock,
           PagedText.formats,
           FileArea.Bounds(10.minutes, 1024, 4096)

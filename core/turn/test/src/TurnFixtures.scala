@@ -70,6 +70,7 @@ import grit.core.store.{
   PeriodStore,
   Principals,
   StoreError,
+  TestJot,
   Tx,
   UsageLedger,
   VoiceStore
@@ -579,18 +580,6 @@ object TurnFixtures {
   ): TurnTools.Settling^{jot} =
     new TurnTools.Settling(jot, entries, sessions, hosted.conversations, hosted.askers)
 
-  /** Writes straight through to the in-memory store, never rolled back, each write at what
-    * `clearance` says then, under `visibility`.
-    */
-  final class FakeJot(
-      clearance: () -> grit.core.visibility.Clearance = () =>
-        grit.core.visibility.Clearance.of(Label.Public),
-      visibility: Visibility = Visibility.Shipped
-  ) extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake(clearance(), visibility))
-  }
-
   /** A checkout with nothing in it: every read fails as not found. */
   object NoCheckout extends Workspace {
     def read(path: RelPath, lines: Lines): Either[HostError, Clipped] =
@@ -952,7 +941,7 @@ object TurnFixtures {
       askers: Askers = LocalAsker,
       db: Db^ = FakeDb,
       catalog: Catalog = TestCatalog,
-      jot: Jot^ = new FakeJot,
+      jot: Jot^ = new TestJot,
       administering: Toolbox[{}] = Toolbox.Empty
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
@@ -1655,7 +1644,7 @@ object TurnFixtures {
       ledger: UsageLedger = new InMemoryUsageLedger,
       routing: TurnRouting^ = noRouting(),
       seen: Pinnings = new Pinnings,
-      jot: Jot^ = new FakeJot
+      jot: Jot^ = new TestJot
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       turnEnv(
@@ -1748,7 +1737,7 @@ object TurnFixtures {
         tools,
         Toolbox.Empty,
         Vector.empty,
-        new FakeJot,
+        new TestJot,
         budget(5),
         reaches = reaches,
         recipe = recipe
@@ -1806,7 +1795,7 @@ object TurnFixtures {
         noTools,
         Toolbox.Empty,
         Vector.empty,
-        new FakeJot,
+        new TestJot,
         budget(5),
         persona = persona
       )
@@ -2166,7 +2155,7 @@ object TurnFixtures {
     )(
       speech,
       stitching,
-      new FakeJot
+      new TestJot
     )(id)
 
   /** As [[tooledBody]], over tools acting through any capabilities `C`, writing through `jot`. */
@@ -2299,7 +2288,7 @@ object TurnFixtures {
         noTriage(),
         noRouting()
       ),
-      TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
+      TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, Vector.empty, new TestJot, budget(calls))
     )(id)
 
   def runTurn(

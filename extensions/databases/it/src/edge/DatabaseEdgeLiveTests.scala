@@ -29,12 +29,10 @@ import grit.core.id.{CallSlot, ConversationId, EdgeId, EdgeName, PrincipalId, Tu
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, TestJot}
 import grit.core.tool.{Outcome, Retry, ToolName}
-import grit.core.visibility.Subject
 import grit.databases.connect.AppDatabase
 import grit.databases.declare.{Database, QueryLimits}
-import grit.dbos.sql.TestTx
 import grit.edge.desk.PlaceFragments
 
 import utest.*
@@ -54,11 +52,6 @@ object DatabaseEdgeLiveTests extends TestSuite {
 
   private lazy val reader = db.login("reader", Grants)
 
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
-
   private def stores(edges: InMemoryEdges): EdgeStores^ = {
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
     EdgeStores(
@@ -72,9 +65,9 @@ object DatabaseEdgeLiveTests extends TestSuite {
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
       (new InMemoryDocuments).reviews.of,
-      FakeJot,
+      TestJot(),
       edges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
       new NoIntake
     )
   }

@@ -32,10 +32,10 @@ import grit.core.store.{
   InMemoryEntryStore,
   InMemoryPeriodStore,
   InMemoryUsageLedger,
-  Jot,
   Origin,
   Payload,
   StoreError,
+  TestJot,
   Tx
 }
 import grit.core.triage.{
@@ -51,7 +51,7 @@ import grit.core.triage.{
   Tags
 }
 import grit.core.visibility.Integrity
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Deployments, ShadowReview}
 import grit.lifecycle.shadow.ShadowVariant
@@ -63,11 +63,6 @@ import utest.*
   * [[TriageQuestions.V2]], at fixed instants.
   */
 object PickingTests extends TestSuite {
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
 
   /** Midnight in Los Angeles is 07:00 UTC in October. */
   private val budget = Budget(ZoneId.of("America/Los_Angeles"), None)
@@ -206,7 +201,7 @@ object PickingTests extends TestSuite {
     }
 
     def round(review: ShadowReview, now: Instant): Either[StoreError, Int] =
-      Picking.round(review, reviews, FakeJot, budget, now)
+      Picking.round(review, reviews, TestJot(), budget, now)
 
     /** What every round so far made of each message considered. */
     def considered: Map[EntryId, Considered] = {

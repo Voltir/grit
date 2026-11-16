@@ -18,8 +18,7 @@ import grit.core.id.EntryId
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
-import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
-import grit.core.visibility.Subject
+import grit.core.store.{InMemoryVoucher, Origin, StoreError, TestJot, Tx}
 import grit.dbos.sql.TestTx
 import grit.prose.form.{Block, Doc, Mark, Span, Text}
 import grit.slack.client.{FakeSlack, Self, Tag}
@@ -33,13 +32,6 @@ import utest.*
   */
 object ReviewingTests extends TestSuite {
   import Payloads.*
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
 
   private val C = ChannelId("C123ABC456")
 
@@ -128,9 +120,9 @@ object ReviewingTests extends TestSuite {
         watched,
         new InMemoryOrigins(inbox.conversations),
         (new InMemoryDocuments).reviews.of,
-        FakeJot,
+        TestJot(),
         new InMemoryEdges,
-        new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+        new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
         new NoIntake
       ),
       Some(Review),

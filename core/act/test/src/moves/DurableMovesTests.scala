@@ -60,7 +60,7 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Models}
 import grit.core.spend.{Budget, DailyCap, Day, Spend, Spending, TurnSpend}
 import grit.core.stitch.StrandWorld
-import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, Tx}
+import grit.core.store.{Askers, InMemoryToolSets, InMemoryUsageLedger, Jot, StoreError, TestJot, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 import grit.core.visibility.{
   Cap,
@@ -73,7 +73,6 @@ import grit.core.visibility.{
   Provenance,
   Readers,
   RoomLabels,
-  Subject,
   Visibility
 }
 import grit.dbos.sql.TestTx
@@ -331,10 +330,7 @@ final class MovesWorld(
   val keeper: DocumentKeeper = documents.keeper(Notes, NotesTerms)
 
   /** Short write transactions, each opened at `floor`. */
-  val jot: Jot = new Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake(Clearance.of(floor), visibility))
-  }
+  val jot: Jot = TestJot(() => Clearance.of(floor), visibility)
 
   /** [[env]], and a keeping job's: piece moves reading `files` and writing through [[jot]]. */
   def kept(models: Models^, files: Files^ = MovesWorld.Fileless): KeepingEnv^ =

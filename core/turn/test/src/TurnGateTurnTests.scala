@@ -53,6 +53,7 @@ import grit.core.store.{
   Nearby,
   Payload,
   StoreError,
+  TestJot,
   Tx
 }
 import grit.core.tool.{Args, Believed, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
@@ -236,7 +237,7 @@ object TurnGateTurnTests extends TestSuite {
         )(
           quiet(),
           unstitched(),
-          new FakeJot(() => room)
+          new TestJot(() => room)
         )
       )
       docs

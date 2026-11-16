@@ -12,7 +12,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
-import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
+import grit.core.store.{InMemoryEntryStore, InMemoryToolSets, TestJot}
 import grit.core.tool.{Believed, CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
 import grit.core.visibility.{
   Accounts,
@@ -409,7 +409,7 @@ object TurnHostedTests extends TestSuite {
           worksIn = Vector(WorksIn(Place.Everywhere, github)),
           db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(internal), githubInternal),
           catalog = RoutedCatalog,
-          jot = new FakeJot(() => rising.now, githubInternal)
+          jot = new TestJot(() => rising.now, githubInternal)
         )
       )
       val slot = TurnTools.Slot(TestCallSlots.at(turn))
@@ -448,7 +448,7 @@ object TurnHostedTests extends TestSuite {
           worksIn = Vector(WorksIn(Place.Everywhere, github)),
           db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(internal), githubInternal),
           catalog = RoutedCatalog,
-          jot = new FakeJot(() => rising.now, githubInternal)
+          jot = new TestJot(() => rising.now, githubInternal)
         )
       )
       (
@@ -989,7 +989,7 @@ object TurnHostedTests extends TestSuite {
             worksIn = Vector(WorksIn(Place.Everywhere, github)),
             db = grit.core.act.MovesFixtures.FakeDb(Clearance.of(at), visibility),
             catalog = RoutedCatalog,
-            jot = new FakeJot(() => Clearance.of(at), visibility)
+            jot = new TestJot(() => Clearance.of(at), visibility)
           )
         )
         val kept = entries

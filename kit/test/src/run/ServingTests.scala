@@ -20,9 +20,7 @@ import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
-import grit.core.visibility.Subject
-import grit.dbos.sql.TestTx
+import grit.core.store.{InMemoryVoucher, StoreError, TestJot}
 
 import utest.*
 
@@ -34,15 +32,9 @@ object ServingTests extends TestSuite {
   /** A clock for an edge opened here; none of them reads it. */
   private def stopped(): Clock^ = new SetClock(java.time.Instant.EPOCH)
 
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
-
-  private val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
-  private val stores =
+  // Fresh for each use: a suite object cannot hold a capability as a field.
+  private def stores: EdgeStores^ = {
+    val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
     EdgeStores(
       inbox,
       InMemoryAdministration.none(),
@@ -54,11 +46,12 @@ object ServingTests extends TestSuite {
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
       (new InMemoryDocuments).reviews.of,
-      FakeJot,
+      TestJot(),
       new InMemoryEdges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
       new NoIntake
     )
+  }
 
   /** An edge named `called` that records, in `seen`, each open, deliver, look and close; it
     * refuses to open when `refuse` is set, its deliveries fail when `unreadable`, and its looks
@@ -107,10 +100,11 @@ object ServingTests extends TestSuite {
       val seen = log()
       val refused = EdgeRefusal.Refused("no")
       val edges = List(new Fake("a", seen), new Fake("b", seen), new Fake("c", seen, Some(refused)))
-      val failure = Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
-        case Left(f) => Some(f)
-        case Right(_) => None
-      }
+      val failure =
+        Serving.open(edges, { val s = stores; _ => s }, Map.empty, stopped(), _ => ()) match {
+          case Left(f) => Some(f)
+          case Right(_) => None
+        }
       (failure, seen.asScala.toVector) ==> (
         Some(KitFailure.Edge(EdgeName("c"), refused)),
         Vector("open a", "open b", "close b", "close a")
@@ -123,7 +117,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val warned = log()
       val edges = List(new Fake("a", seen, unreadable = true), new Fake("b", seen))
-      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
+      Serving.open(edges, { val s = stores; _ => s }, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           val rounds = new java.util.concurrent.atomic.AtomicInteger(2)
@@ -157,7 +151,7 @@ object ServingTests extends TestSuite {
       val seen = log()
       val warned = log()
       val edges = List(new Fake("a", seen, unattestable = true), new Fake("b", seen))
-      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
+      Serving.open(edges, { val s = stores; _ => s }, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           opened.attest(w => { val _ = warned.add(w) })
@@ -172,7 +166,7 @@ object ServingTests extends TestSuite {
     test("delivering asks for a look before each round its look says is due, and only then") {
       val seen = log()
       val edges = List(new Fake("a", seen))
-      Serving.open(edges, _ => stores, Map.empty, stopped(), _ => ()) match {
+      Serving.open(edges, { val s = stores; _ => s }, Map.empty, stopped(), _ => ()) match {
         case Left(f) => throw new java.lang.AssertionError(f.message)
         case Right(opened) =>
           val rounds = new java.util.concurrent.atomic.AtomicInteger(3)
@@ -202,7 +196,7 @@ object ServingTests extends TestSuite {
       val edges = List(new Fake("a", seen), new Fake("b", seen))
       val opened = Serving.open(
         edges,
-        e => { val _ = built.add(EdgeName.value(e.name)); stores },
+        { val s = stores; e => { val _ = built.add(EdgeName.value(e.name)); s } },
         Map.empty,
         stopped(),
         _ => ()

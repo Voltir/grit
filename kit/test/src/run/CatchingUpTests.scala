@@ -37,14 +37,13 @@ import grit.core.place.{Namespace, Place}
 import grit.core.plugin.PostRef
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, TestJot, Tx}
 import grit.core.visibility.{
   Compartments,
   Label,
   Labelled,
   Level,
   RoomLabels,
-  Subject,
   TestLabels,
   Visibility
 }
@@ -71,14 +70,10 @@ object CatchingUpTests extends TestSuite {
     0
   )
 
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
-
   private val budget = Budget(java.time.ZoneOffset.UTC, None)
-  private val inbox = InMemoryInbox.fresh(budget)
-  private val stores =
+  // Fresh for each use: a suite object cannot hold a capability as a field.
+  private def stores: EdgeStores^ = {
+    val inbox = InMemoryInbox.fresh(budget)
     EdgeStores(
       inbox,
       InMemoryAdministration.none(),
@@ -90,11 +85,12 @@ object CatchingUpTests extends TestSuite {
       InMemoryReviews.over(inbox),
       new InMemoryOrigins(inbox.conversations),
       (new InMemoryDocuments).reviews.of,
-      FakeJot,
+      TestJot(),
       new InMemoryEdges,
-      new Attesting(InMemoryVoucher.none(), FakeJot, _ => ()),
+      new Attesting(InMemoryVoucher.none(), TestJot(), _ => ()),
       new NoIntake
     )
+  }
 
   private def room(channel: String): Place = Place.under(Namespace.Slack, Vector("T1", channel))
 

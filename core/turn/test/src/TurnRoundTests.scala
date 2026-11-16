@@ -9,7 +9,7 @@ import grit.core.context.Window
 import grit.core.durable.{Flows, InMemoryDurable}
 import grit.core.id.{EntryId, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.store.{InMemoryEntryStore, Jot, Tx}
+import grit.core.store.{InMemoryEntryStore, Jot, TestJot, Tx}
 import grit.core.tool.{Bound, ToolSet}
 import grit.core.visibility.Integrity
 
@@ -131,7 +131,7 @@ object TurnRoundTests extends TestSuite {
   ): (String, Vector[String]) = {
     val entries = new InMemoryEntryStore
     val turn = say(entries, "go")
-    val env = new Scripted(new FakeJot, entries, script, levels, kept)
+    val env = new Scripted(new TestJot, entries, script, levels, kept)
     val looping = TurnRound.Looping(
       turn,
       offer,

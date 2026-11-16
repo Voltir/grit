@@ -21,8 +21,8 @@ import grit.core.identity.{Account, Email, Realm, Standing, TestAccounts, Vouche
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.store.{InMemoryVoucher, Origin, TestJot}
+import grit.core.visibility.Visibility
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, SlackError}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
@@ -35,13 +35,6 @@ import utest.*
   */
 object SlackAttestingTests extends TestSuite {
   import Payloads.*
-
-  private object FakeJot extends Jot {
-    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
-  }
 
   private val C = ChannelId("C123ABC456")
 
@@ -98,9 +91,9 @@ object SlackAttestingTests extends TestSuite {
           InMemoryReviews.over(inbox),
           new InMemoryOrigins(inbox.conversations),
           (new InMemoryDocuments).reviews.of,
-          FakeJot,
+          TestJot(),
           new InMemoryEdges,
-          new Attesting(voucher, FakeJot, r => reported = reported :+ r),
+          new Attesting(voucher, TestJot(), r => reported = reported :+ r),
           new NoIntake
         ),
         None,
