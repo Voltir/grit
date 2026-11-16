@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.place.Place
+import grit.std.collect.Collect.firstRepeat
 
 /** What a mapping made of something it labels. */
 enum Labelled {
@@ -87,9 +88,7 @@ object RoomLabels {
       open: Option[Labelled] = None
   ): Either[Place, RoomLabels] = {
     val places = declared.map(_._1)
-    places
-      .diff(places.distinct)
-      .headOption
+    firstRepeat(places)
       .toLeft(new RoomLabels(declared, otherwise, open.getOrElse(otherwise)))
   }
 }

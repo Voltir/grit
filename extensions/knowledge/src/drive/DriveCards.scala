@@ -13,6 +13,7 @@ import grit.core.visibility.Label
 import grit.knowledge.card.UnitVersion
 import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
+import grit.std.collect.Collect.firstRepeat
 
 /** The files of every shared drive its service reads that it [[cards]], top level and one
   * folder deep, listed with `list` and read with `read` (`drive_list` and `drive_read`, as the
@@ -205,10 +206,7 @@ object DriveCards {
         )
       _ <- Either.cond(maxUnits >= 1, (), s"maxUnits is at least 1, not $maxUnits")
       _ <- Either.cond(syncs.nonEmpty, (), "a source has at least one sync schedule")
-      _ <- syncs
-        .map(_.key)
-        .diff(syncs.map(_.key).distinct)
-        .headOption
+      _ <- firstRepeat(syncs.map(_.key))
         .fold(Right(()))(key =>
           Left(s"a source's sync schedules have one key each: ${ScheduleKey.value(key)} is two")
         )

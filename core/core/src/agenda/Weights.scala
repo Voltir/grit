@@ -1,5 +1,7 @@
 package grit.core.agenda
 
+import grit.std.collect.Collect.firstRepeat
+
 /** How much a placed message belongs to each item it could name, and the part `elsewhere`
   * that belongs to none. Every share is non-negative and together they sum to 1; there is
   * always an item. Only [[Weights]]' constructors make one.
@@ -67,9 +69,7 @@ object Weights {
       case lead +: others =>
         val items = byItem.map(_.item)
         val sum = byItem.map(_.weight).sum + elsewhere
-        items
-          .diff(items.distinct)
-          .headOption
+        firstRepeat(items)
           .map(WeightsError.Repeated(_))
           .orElse(byItem.collectFirst {
             case s if !s.weight.isFinite => WeightsError.NotFinite(Some(s.item))

@@ -1,5 +1,7 @@
 package grit.core.visibility
 
+import grit.std.collect.Collect.firstRepeat
+
 /** The deployment clears `party` for `clearance`: what grit sends it is classified at most this. */
 final case class Cleared(party: Party, clearance: Label) derives CanEqual
 
@@ -23,6 +25,6 @@ object Clearances {
   /** `declared`, or the first party declared twice. */
   def of(declared: Vector[Cleared]): Either[Party, Clearances] = {
     val parties = declared.map(_.party)
-    parties.diff(parties.distinct).headOption.toLeft(new Clearances(declared))
+    firstRepeat(parties).toLeft(new Clearances(declared))
   }
 }

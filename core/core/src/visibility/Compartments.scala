@@ -1,5 +1,7 @@
 package grit.core.visibility
 
+import grit.std.collect.Collect.firstRepeat
+
 /** The compartments a deployment declares: the only ones a label may hold beside the unmapped
   * mark ([[Label.Unmapped]]), which every deployment has and none declares.
   */
@@ -37,8 +39,5 @@ object Compartments {
 
   /** These, or the one named twice. */
   def of(declared: Vector[Compartment]): Either[Compartment, Compartments] =
-    declared.diff(declared.distinct).headOption match {
-      case Some(twice) => Left(twice)
-      case None => Right(new Compartments(declared.toSet))
-    }
+    firstRepeat(declared).toLeft(new Compartments(declared.toSet))
 }

@@ -1,5 +1,7 @@
 package grit.mcp.scope
 
+import grit.std.collect.Collect.firstRepeat
+
 /** How a tool's answers name each result's place, so a scope can show only the results within
   * its bounds. An answer holds a JSON object ([[McpScope.shown]] says where) whose array at
   * `items` holds the results, and whose number at `count`, when the attribution names one,
@@ -30,9 +32,7 @@ object Attribution {
     else if (keys.isEmpty) Left("an attribution names no key")
     else if (keys.exists(_.isBlank)) Left("an attribution's key is blank")
     else
-      keys
-        .diff(keys.distinct)
-        .headOption
+      firstRepeat(keys)
         .map(k => s"an attribution names $k twice")
         .toLeft(new Attribution(items, count, keys, unsent, place))
 }

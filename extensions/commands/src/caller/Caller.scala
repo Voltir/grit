@@ -6,6 +6,7 @@ import grit.core.id.Sha256
 import grit.core.identity.{Account, Realm, Standing}
 import grit.core.visibility.Integrity
 import grit.edge.http.{Challenge, Request}
+import grit.std.collect.Collect.firstRepeat
 
 /** Who a request is from, and the machine it is on: `account`, whose words are believed at
   * `believed`, on the machine `machine`. What its credential says, before the store resolves the
@@ -81,9 +82,7 @@ object Callers {
   def of(first: Token, rest: Token*): Either[String, Callers] = {
     val tokens = first +: rest.toVector
     val digests = tokens.map(_.digest)
-    digests
-      .diff(digests.distinct)
-      .headOption
+    firstRepeat(digests)
       .map(d => s"two credentials have the digest ${d.hex}: give each its own")
       .toLeft(new Callers(Rule.Tokens(tokens)))
   }

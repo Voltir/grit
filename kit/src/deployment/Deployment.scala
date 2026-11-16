@@ -40,6 +40,7 @@ import grit.core.visibility.{Compartment, Label, Visibility}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.JevClassifier
+import grit.std.collect.Collect.firstRepeat
 import grit.tools.{Coding, Names}
 import grit.turn.{Turn, TurnLoop, TurnVerdict}
 
@@ -504,7 +505,7 @@ object Deployment {
       Names.all ++ Vector(TurnVerdict.Name) ++ plugins.flatMap(_.tools.map(_.described.name))
     val commandNames = plugins.flatMap(_.commands.map(_.spec.name))
     for {
-      _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
+      _ <- firstRepeat(names).map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
       // One edge per attester: two would leave which source answers to chance.
       _ <- edges
         .flatMap(e => e.attester.map(_ -> e.name))
@@ -527,9 +528,7 @@ object Deployment {
         .find(!identities.realms.contains(_))
         .map(DeploymentRefusal.RealmUnvouched(_))
         .toLeft(())
-      _ <- pluginNames
-        .diff(pluginNames.distinct)
-        .headOption
+      _ <- firstRepeat(pluginNames)
         .map(DeploymentRefusal.PluginRepeated(_))
         .toLeft(())
       _ <- plugins
@@ -541,9 +540,7 @@ object Deployment {
         )
         .headOption
         .toLeft(())
-      _ <- toolNames
-        .diff(toolNames.distinct)
-        .headOption
+      _ <- firstRepeat(toolNames)
         .map(DeploymentRefusal.ToolRepeated(_))
         .toLeft(())
       _ <- commandNames
@@ -606,10 +603,7 @@ object Deployment {
       cleared = declared(plugins, schedules).map((by, s) => (s.id(by), s.clearance))
       _ <- undeclared(visibility, plugins, edges, cleared).toLeft(())
       ids = declared(plugins, schedules).map((by, s) => (s.id(by), s.job))
-      _ <- ids
-        .map(_._1)
-        .diff(ids.map(_._1).distinct)
-        .headOption
+      _ <- firstRepeat(ids.map(_._1))
         .map(DeploymentRefusal.ScheduleRepeated(_))
         .toLeft(())
       // A run finds its job by name: a schedule holding another job of that name would have
@@ -643,9 +637,7 @@ object Deployment {
         case Speaking.Off => Right(())
       }
       shadowNames = shadows.map(_.name)
-      _ <- shadowNames
-        .diff(shadowNames.distinct)
-        .headOption
+      _ <- firstRepeat(shadowNames)
         .map(DeploymentRefusal.ShadowRepeated(_))
         .toLeft(())
       _ <- placer match {

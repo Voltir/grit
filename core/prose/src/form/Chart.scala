@@ -1,5 +1,6 @@
 package grit.prose.form
 
+import grit.std.collect.Collect.firstRepeat
 import grit.std.either.Traversal.traverse
 
 /** Numbers compared across categories, drawn as `kind`. Its data is a table ([[table]]): the
@@ -110,7 +111,7 @@ object Chart {
       row.headOption.map(_.printed.plain.trim).getOrElse("")
     def first[X](xs: Vector[X]): Option[X] = xs.headOption
     def repeated(xs: Vector[String]): Option[String] =
-      xs.diff(xs.distinct).headOption
+      firstRepeat(xs)
     val names = columns.drop(1)
     val categories = rows.map(category)
     def number(name: String, at: Int, row: Vector[Cell[Nothing]]): Either[Unfit, Cell.Number] =

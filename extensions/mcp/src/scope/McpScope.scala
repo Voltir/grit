@@ -2,6 +2,7 @@ package grit.mcp.scope
 
 import grit.mcp.wire.{McpTool, Skipped}
 import grit.prose.words.Words
+import grit.std.collect.Collect.firstRepeat
 
 /** Argument values a call must carry to be within a scope: each named argument a JSON string
   * equal to its value, compared exactly, case included.
@@ -35,7 +36,7 @@ object Bound {
         case (name, _) if name.isBlank => "a bound's argument has a blank name"
         case (name, value) if value.isBlank => s"a bound's $name is blank"
       }
-      .orElse(names.diff(names.distinct).headOption.map(n => s"a bound names $n twice"))
+      .orElse(firstRepeat(names).map(n => s"a bound names $n twice"))
       .toLeft(new Bound(values))
   }
 }

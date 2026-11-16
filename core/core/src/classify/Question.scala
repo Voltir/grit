@@ -1,5 +1,7 @@
 package grit.core.classify
 
+import grit.std.collect.Collect.firstRepeat
+
 /** One question as a classifier receives it, in plain text as it reaches the model. Built
   * through [[Ask]], or as itself ([[Question.choice]], [[Question.score]], `YesNo`) for
   * [[Ask.answer]].
@@ -18,9 +20,7 @@ object Question {
       rest: Key*
   ): Either[Ask.DuplicateKey, Question.Choice] = {
     val keys = (first +: second +: rest.toVector).map(_.name)
-    keys
-      .diff(keys.distinct)
-      .headOption
+    firstRepeat(keys)
       .map(Ask.DuplicateKey(_))
       .toLeft(Choice(instructions, first, second, rest.toVector))
   }

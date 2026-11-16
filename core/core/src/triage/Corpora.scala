@@ -4,6 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
+import grit.std.collect.Collect.firstRepeat
 
 /** Something a deployment says could supply what a message asks for, named `name`,
   * described to the classifier by `line` (a noun phrase: "the team's GitHub repository:
@@ -40,6 +41,6 @@ object Corpora {
   /** `all`, or the name two of them share. */
   def of(all: Vector[Corpus]): Either[CorpusName, Corpora] = {
     val names = all.map(_.name)
-    names.diff(names.distinct).headOption.toLeft(new Corpora(all))
+    firstRepeat(names).toLeft(new Corpora(all))
   }
 }

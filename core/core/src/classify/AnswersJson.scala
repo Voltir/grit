@@ -3,6 +3,7 @@ package grit.core.classify
 import scala.collection.immutable.VectorMap
 
 import grit.core.id.QuestionName
+import grit.std.collect.Collect.firstRepeat
 
 /** How a classifier's answers are stored: a choice as `{"choice", "weights": [{"key", "p"}]}`,
   * with `"confidence"` after them only when the confidence differs from
@@ -119,11 +120,9 @@ object AnswersJson {
           )
         }
         .flatMap { read =>
-          val names = read.map(_._1)
-          names.diff(names.distinct).headOption match {
-            case Some(twice) => Left(s"answers: ${QuestionName.value(twice)} is named twice")
-            case None => Right(VectorMap.from(read))
-          }
+          firstRepeat(read.map(_._1))
+            .map(twice => s"answers: ${QuestionName.value(twice)} is named twice")
+            .toLeft(VectorMap.from(read))
         }
     }
 }

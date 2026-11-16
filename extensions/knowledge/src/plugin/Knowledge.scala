@@ -10,6 +10,7 @@ import grit.core.plugin.{DocumentPosting, Documents, Exports}
 import grit.core.visibility.{Label, Party, Room, Visibility}
 import grit.knowledge.card.CardShelf
 import grit.knowledge.sync.{Held, Source, Sync, SyncParams, SyncSchedule}
+import grit.std.collect.Collect.firstRepeat
 
 /** The knowledge plugin: one card per unit of each of its sources, by its job [[Sync]] on each
   * source's sync schedules, the source's `_` written `-` in each key. A GitHub source's are
@@ -95,9 +96,7 @@ object Knowledge {
     val corpora = sources.map(_.corpus)
     for {
       _ <- Either.cond(sources.nonEmpty, (), "a knowledge plugin has at least one source")
-      _ <- corpora
-        .diff(corpora.distinct)
-        .headOption
+      _ <- firstRepeat(corpora)
         .toLeft(())
         .left
         .map(c => s"two sources are the corpus ${CorpusName.value(c)}")

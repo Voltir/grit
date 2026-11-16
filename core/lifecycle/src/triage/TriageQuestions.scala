@@ -6,6 +6,7 @@ import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Q
 import grit.core.id.QuestionName
 import grit.core.persona.Persona
 import grit.core.triage.{Corpora, Gate, Kind, Reading, Tags}
+import grit.std.collect.Collect.firstRepeat
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -112,7 +113,7 @@ object TriageQuestions {
       case Item.One(name, _) => name
       case Item.PerSource(prefix, _, _) => prefix
     }
-    names.diff(names.distinct).headOption.map(Refusal.NameRepeated(_)) match {
+    firstRepeat(names).map(Refusal.NameRepeated(_)) match {
       case Some(repeated) => Left(repeated)
       case None =>
         val set = new TriageQuestions(first, rest, speak)

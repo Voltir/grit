@@ -8,6 +8,7 @@ import grit.core.host.Argv
 import grit.core.visibility.Accounts
 import grit.mcp.scope.McpScope
 import grit.mcp.wire.McpCalled
+import grit.std.collect.Collect.firstRepeat
 
 /** An MCP server grit reaches by `transport` at [[grit.mcp.wire.Rpc.Version]]: its tools are
   * offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any and
@@ -129,9 +130,7 @@ object McpServer {
           read.flatMap { _ =>
             if (tools.contains(tool)) Left(s"$name's $tool looks itself up")
             else
-              tools
-                .diff(tools.distinct)
-                .headOption
+              firstRepeat(tools)
                 .fold(Right(()))(t => Left(s"$name's $tool looks up $t twice"))
           }
       }

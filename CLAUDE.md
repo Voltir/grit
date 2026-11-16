@@ -36,7 +36,7 @@ area`, and the README in its folder (package order, and what the code cannot say
 
 | Module | Packages | Depends on | Holds |
 |---|---|---|---|
-| `grit.std` | `either` | — | what has nothing to do with grit: pure functions over standard-library types that two modules or more call |
+| `grit.std` | `either`, `collect` | — | what has nothing to do with grit: pure functions over standard-library types that two modules or more call |
 | `grit.core` | `grit.core.*` | std, prose | the domain and the traits; no DBOS, no JDBC driver on its classpath |
 | `grit.dbos` | `sql`, `workflow`, `engine`, `internal` | core | the DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `internal` is lent to the eval harness alone |
 | `grit.prose` | `words`, `form`, `markdown`, `json`, `index` | std | prose as edge-neutral blocks, read from markdown; each edge renders them |

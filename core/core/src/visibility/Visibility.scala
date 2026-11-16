@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.place.{Namespace, Place, Service}
+import grit.std.collect.Collect.firstRepeat
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
   * compartments, the labeller of its rooms, its groups and what each group's members are
@@ -138,7 +139,7 @@ object Visibility {
             .map(VisibilityRefusal.Undeclared(Namer.Rooms, _))
         )
         .orElse(grants.flatMap(g => undeclared(Namer.Granted(g.group), g.label)).headOption)
-        .orElse(names.diff(names.distinct).headOption.map(VisibilityRefusal.GroupTwice(_)))
+        .orElse(firstRepeat(names).map(VisibilityRefusal.GroupTwice(_)))
         .orElse(
           grants
             .find(g => !names.contains(g.group))
@@ -164,7 +165,7 @@ object Visibility {
         }.headOption)
         .orElse {
           val stewarded = stewards.map(_.compartment)
-          stewarded.diff(stewarded.distinct).headOption.map(VisibilityRefusal.StewardedTwice(_))
+          firstRepeat(stewarded).map(VisibilityRefusal.StewardedTwice(_))
         }
         .orElse(caps.collectFirst {
           case c

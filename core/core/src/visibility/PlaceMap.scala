@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.place.Place
+import grit.std.collect.Collect.firstRepeat
 
 /** Values declared at places, read for a place by the deepest declared place it is or lies
   * within.
@@ -20,6 +21,6 @@ private[visibility] object PlaceMap {
   /** `pairs` as a map, or the first place declared twice. */
   def of[V](pairs: Vector[(Place, V)]): Either[Place, PlaceMap[V]] = {
     val places = pairs.map(_._1)
-    places.diff(places.distinct).headOption.toLeft(new PlaceMap(pairs.toMap))
+    firstRepeat(places).toLeft(new PlaceMap(pairs.toMap))
   }
 }

@@ -6,6 +6,7 @@ import grit.core.id.ShortHash
 import grit.core.place.Place
 import grit.core.store.Tx
 import grit.core.visibility.{Classification, Integrity}
+import grit.std.collect.Collect.firstRepeat
 
 /** A tool set as offered to one turn: each tool's name, description, schema, whether it asks
   * a person first, and its retry, in the order offered. Equal sets have equal ids
@@ -102,7 +103,7 @@ object ToolSet {
     */
   def of(entries: Vector[Entry]): Either[SetRefusal, ToolSet] = {
     val names = entries.map(_.name)
-    names.diff(names.distinct).headOption match {
+    firstRepeat(names) match {
       case Some(repeated) => Left(DuplicateName(repeated))
       case None =>
         entries.find(e => Writes.declared(e.parameters)) match {

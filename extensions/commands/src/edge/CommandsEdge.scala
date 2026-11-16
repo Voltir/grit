@@ -13,6 +13,7 @@ import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.edge.http.{Hosts, Listen, Listener}
 import grit.mcp.wire.ServerInfo
+import grit.std.collect.Collect.firstRepeat
 
 /** The commands edge (ADR 0062): an outside harness's way to a deployment's plugins over HTTP at
   * `at`, each request in `room`. Every request is first admitted by `hosts`, or answered 403; then
@@ -148,15 +149,11 @@ object CommandsEdge {
       adapters: Vector[Adapter] = Vector.empty
   ): Either[String, CommandsEdge] = {
     val names = own.map(_.name)
-    names
-      .diff(names.distinct)
-      .headOption
+    firstRepeat(names)
       .map(n => s"two own commands are named ${ToolName.value(n)}")
       .orElse {
         val harnesses = adapters.map(_.harness)
-        harnesses
-          .diff(harnesses.distinct)
-          .headOption
+        firstRepeat(harnesses)
           .map(h => s"two adapters are given for the harness ${Harness.value(h)}")
       }
       .orElse(

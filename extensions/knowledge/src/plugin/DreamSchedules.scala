@@ -4,6 +4,7 @@ import grit.core.document.{Document, DocumentTerms}
 import grit.core.id.ScheduleKey
 import grit.core.plugin.{DocumentPosting, Documents}
 import grit.core.visibility.{Label, Visibility}
+import grit.std.collect.Collect.firstRepeat
 
 /** What a plugin running one dreaming job per label shares: its schedules' keys and its
   * documents, each kept at one of those labels.
@@ -22,9 +23,7 @@ private[plugin] object DreamSchedules {
   ): Either[String, Vector[(ScheduleKey, Label)]] =
     for {
       _ <- Either.cond(labels.nonEmpty, (), s"the $what plugin is declared at a label at least")
-      _ <- labels
-        .diff(labels.distinct)
-        .headOption
+      _ <- firstRepeat(labels)
         .toLeft(())
         .left
         .map(l => s"the $what plugin is declared at ${Label.written(l)} twice")

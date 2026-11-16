@@ -18,6 +18,7 @@ import grit.core.prompt.Fragment
 import grit.edge.desk.{PlaceFragments, Server}
 import grit.mcp.client.{Authorizer, Credential, KeyFiles, McpClient, McpServer, McpTransport}
 import grit.mcp.wire.{McpError, Skipped}
+import grit.std.collect.Collect.firstRepeat
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
 object McpEdge {
@@ -45,7 +46,7 @@ object McpEdge {
     val names = servers.map(_.name)
     if (servers.isEmpty) Left(s"the MCP edge for ${service.place.written} names no server")
     else
-      names.diff(names.distinct).headOption match {
+      firstRepeat(names) match {
         case Some(repeated) => Left(s"two MCP servers are named $repeated")
         case None =>
           declared(service, instructions).map(new Edge(service, servers, _))

@@ -1,6 +1,7 @@
 package grit.core.period
 
 import grit.core.id.{LineId, PeriodSeq}
+import grit.std.collect.Collect.firstRepeat
 
 /** A section of a conversation's balance, by the key its lines are stored and hashed under. */
 enum Section(val key: String) {
@@ -304,10 +305,9 @@ object Balance {
 
   /** The balance of `lines`, in order, or why not: two lines share an id. */
   private[period] def of(lines: Vector[Line]): Either[String, Balance] =
-    lines.map(_.id).diff(lines.map(_.id).distinct).headOption match {
-      case Some(dup) => Left(s"two lines share the id ${LineId.value(dup)}")
-      case None => Right(grouped(lines))
-    }
+    firstRepeat(lines.map(_.id))
+      .map(dup => s"two lines share the id ${LineId.value(dup)}")
+      .toLeft(grouped(lines))
 
   /** `lines` grouped by section, in [[Section]]'s order, each section's in theirs. */
   private def grouped(lines: Vector[Line]): Balance = new Balance(lines.sortBy(_.section.ordinal))

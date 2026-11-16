@@ -12,6 +12,7 @@ import grit.core.visibility.Label
 import grit.knowledge.card.Scope
 import grit.knowledge.ref.CardKey
 import grit.knowledge.sync.{Fetched, Held, Source, Step, SyncSchedule, Walk}
+import grit.std.collect.Collect.firstRepeat
 
 /** A repository whose units become cards. `corpus` names it and `service` is the one its corpus
   * supplies, whose place its MCP server serves; `owner`/`repo` at `ref` are read with
@@ -151,10 +152,7 @@ object GitHubCards {
       _ <- Either.cond(!keeps.isBlank, (), "what a repository's cards keep is not blank")
       _ <- Either.cond(maxUnits >= 1, (), s"maxUnits is at least 1, not $maxUnits")
       _ <- Either.cond(syncs.nonEmpty, (), "a source has at least one sync schedule")
-      _ <- syncs
-        .map(_.key)
-        .diff(syncs.map(_.key).distinct)
-        .headOption
+      _ <- firstRepeat(syncs.map(_.key))
         .fold(Right(()))(key =>
           Left(s"a source's sync schedules have one key each: ${ScheduleKey.value(key)} is two")
         )

@@ -12,6 +12,7 @@ import grit.knowledge.ref.TopicKey
 import grit.prose.form.{Block, Doc, Level, Mark, Span, Text}
 import grit.prose.json.ProseJson
 import grit.prose.markdown.Markdown
+import grit.std.collect.Collect.firstRepeat
 import grit.std.either.Traversal.traverse
 
 /** [[Topic]]'s data and text. Version 2: its lead and each passage's body stored as
@@ -77,7 +78,7 @@ private object TopicJson {
       case TopicNote.Claimed(c) => c
     }.distinct
     val ids = claims.map(_.id)
-    val twice = ids.diff(ids.distinct).headOption
+    val twice = firstRepeat(ids)
     val dangling = claims.iterator
       .flatMap(c => c.relations.map(r => (c.id, r.to)))
       .find((_, to) => to.topic == key && !ids.contains(to.claim))
