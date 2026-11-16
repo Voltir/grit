@@ -2,10 +2,23 @@ package grit.core.edge
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
+import grit.core.claim.Claims
+import grit.core.document.{DocLabel, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.id.PluginName
 import grit.core.identity.Account
 import grit.core.need.PluginReads
-import grit.core.plugin.{CommandBy, CommandOutcome, Plugin, PluginCommand, ReadingCommand}
+import grit.core.plugin.{
+  CommandBy,
+  CommandOutcome,
+  DocumentPosting,
+  Documents,
+  KeepingCommand,
+  Plugin,
+  PluginCommand,
+  ReadingCommand
+}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Args, Field, ToolName, ToolSpec}
 import grit.core.visibility.Integrity
@@ -34,7 +47,7 @@ abstract class PluginCommandsContract extends TestSuite {
   val tests = Tests {
     test("every command is offered by its name, with whether it only reads") {
       commanding(_.offered.map(l => (l.schema.name, l.reads))) ==>
-        Vector(("echo", true), ("refuse", true))
+        Vector(("echo", true), ("refuse", true), ("keep", false))
     }
 
     test("a command's own outcome is answered, done or refused") {
@@ -74,13 +87,31 @@ object PluginCommandsContract {
   /** What `echo` and `refuse` read. */
   private val text: Args[Text] = Args.of((text = Field.text("What to say."))).map(a => Text(a.text))
 
-  /** `echo` answers its `text` done; `refuse` refuses it as `not <text>`; both only read. */
+  val Keep: ToolName = ToolName("keep")
+
+  /** `echo` answers its `text` done and `refuse` refuses it as `not <text>`, both only reading;
+    * `keep` may keep the plugin's notes, and answers its `text` done keeping none.
+    */
   object Commands extends Plugin {
     val name: PluginName = PluginName.of("contracted").fold(e => throw new Error(e), n => n)
     val version: Int = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms =
+        DocLabel
+          .of("notes")
+          .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 10))
+          .fold(e => throw new Error(e), t => t)
+      val posting: Option[DocumentPosting] = None
+    })
     override val commands: Vector[PluginCommand[?]] = Vector(
       answering(Echo, t => CommandOutcome.Done(t)),
-      answering(Refuse, t => CommandOutcome.Refused(s"not $t"))
+      answering(Refuse, t => CommandOutcome.Refused(s"not $t")),
+      new KeepingCommand[Text] {
+        val spec: ToolSpec[Text] = ToolSpec(Keep, "Keeps its text.", text)
+        def run(args: Text, by: CommandBy, own: DocumentKeeper, claims: Claims, at: Instant)(using
+            Tx^
+        ): Either[StoreError, CommandOutcome] = Right(CommandOutcome.Done(args.text))
+      }
     )
   }
 
