@@ -12,7 +12,7 @@ import grit.core.edge.{Adapter, EdgeContracts, ScriptedSessions}
 import grit.core.either.Got.got
 import grit.core.id.{AttesterName, EdgeName, Harness, SessionId}
 import grit.core.identity.Realm
-import grit.core.session.{Session, SessionDigest}
+import grit.core.session.SessionDigest
 import grit.core.store.InMemoryVoucher
 import grit.core.visibility.Visibility
 import grit.edge.http.{Hosts, Listen}
@@ -89,7 +89,7 @@ object MadeUpHarnessTests extends TestSuite {
         )
         val worked = script
           .session(got(SessionId.of(MadeUp, "p-1")))
-          .map(s => Session.Lately(s, Vector.empty, 0, Vector.empty, Vector.empty))
+          .map(s => ScriptedSessions.lately(s))
         (
           answered,
           script.called.count(_.isInstanceOf[ScriptedSessions.Call.Recorded])

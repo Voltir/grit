@@ -93,7 +93,8 @@ object ScriptedSessions {
     )
   }
 
-  private def lately(s: Session): Session.Lately =
+  /** What `s` did lately, as the fake answers it: its record alone, no commits, edits or reads. */
+  def lately(s: Session): Session.Lately =
     Session.Lately(s, Vector.empty, 0, Vector.empty, Vector.empty)
 
   /** A public brief holding `text`, kept at [[EdgeSessionsContract.Worktree]], written at

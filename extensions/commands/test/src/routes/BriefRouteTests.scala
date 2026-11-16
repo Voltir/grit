@@ -59,7 +59,7 @@ object BriefRouteTests extends TestSuite {
       .session(id(local))
       .map(s =>
         SessionDigest.of(
-          Session.Lately(s, Vector.empty, 0, Vector.empty, Vector.empty),
+          ScriptedSessions.lately(s),
           window,
           SessionDigest.Chars
         )
