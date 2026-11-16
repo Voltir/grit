@@ -2,9 +2,6 @@ package grit.commands.edge
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.concurrent.ConcurrentLinkedQueue
-
-import scala.jdk.CollectionConverters.*
 
 import grit.commands.routes.RouteFixtures.*
 import grit.core.clock.SetClock
@@ -34,8 +31,7 @@ object MadeUpHarnessTests extends TestSuite {
     test("a made-up harness joins, learns its holder, posts its events and is briefed on them") {
       val script = new ScriptedSessions.Script
       val realm = got(Realm.of("slack", "T1"))
-      val log = new ConcurrentLinkedQueue[String]()
-      val open = got(
+      val edge = got(
         CommandsEdge.of(
           EdgeName("commands"),
           got(Listen.parse("127.0.0.1:0")),
@@ -49,26 +45,13 @@ object MadeUpHarnessTests extends TestSuite {
           None,
           Vector(Adapter(MadeUp, Join))
         )
-      ).open(
-        stores(
-          scripted(Vector.empty)(Unrun),
-          new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped),
-          new ScriptedSessions(Set(Owner.account), script)
-        ),
-        Map.empty,
-        new SetClock(Now),
-        l => { val _ = log.add(l) }
-      ) match {
-        case Right(o) => o
-        case Left(r) => throw new java.lang.AssertionError(r.toString)
-      }
-      try {
-        val port = log.asScala
-          .collectFirst {
-            case l if l.startsWith("commands: serving on http://127.0.0.1:") =>
-              l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
-          }
-          .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
+      )
+      val opened = stores(
+        scripted(Vector.empty)(Unrun),
+        new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped),
+        new ScriptedSessions(Set(Owner.account), script)
+      )
+      served(edge, opened, new SetClock(Now)) { port =>
         val host = s"localhost:$port"
         val dir = encoded("/work/made-up")
         val at = Now.minusSeconds(30)
@@ -109,7 +92,7 @@ object MadeUpHarnessTests extends TestSuite {
           1
         )
         assert(answered._5._2.contains("Last said: Wrote the notes."))
-      } finally open.close()
+      }
     }
   }
 }

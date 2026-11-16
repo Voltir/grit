@@ -3,8 +3,12 @@ package grit.commands.edge
 import java.io.{InputStream, OutputStream}
 import java.net.Socket
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.concurrent.ConcurrentLinkedQueue
+
+import scala.jdk.CollectionConverters.*
 
 import grit.core.admin.InMemoryAdministration
+import grit.core.clock.Clock
 import grit.core.document.InMemoryDocuments
 import grit.core.edge.{
   Attesting,
@@ -26,6 +30,25 @@ import grit.core.store.{TestJot, Voucher}
 
 /** What the edge's suites share: the stores it is opened over, and plain HTTP to its socket. */
 object EdgeFixtures {
+
+  /** `body` given the port `edge` listens on, opened over `stores` as `clock` tells the time with
+    * no environment, failing the test when it does not open or logs no address; closed after.
+    */
+  def served[A](edge: CommandsEdge, stores: EdgeStores^, clock: Clock^)(body: Int => A): A = {
+    val log = new ConcurrentLinkedQueue[String]()
+    val open = edge.open(stores, Map.empty, clock, l => { val _ = log.add(l) }) match {
+      case Right(o) => o
+      case Left(r) => throw new java.lang.AssertionError(r.toString)
+    }
+    try {
+      val serving = "commands: serving on http://127.0.0.1:"
+      body(
+        log.asScala
+          .collectFirst { case l if l.startsWith(serving) => l.stripPrefix(serving).toInt }
+          .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
+      )
+    } finally open.close()
+  }
 
   /** In-memory stores with `commands`, `sessions` and `voucher`'s attesting, and no watch. */
   def stores(

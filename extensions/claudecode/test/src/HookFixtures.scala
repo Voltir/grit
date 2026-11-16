@@ -8,8 +8,6 @@ import java.nio.file.{Files, Path}
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
-import scala.jdk.CollectionConverters.*
-
 import grit.commands.caller.Callers
 import grit.commands.edge.{CommandsEdge, EdgeFixtures}
 import grit.commands.machine.Holders
@@ -172,8 +170,7 @@ object HookFixtures {
       body: Int => A
   ): A = {
     val realm = got(Realm.of("slack", "T1"))
-    val log = new ConcurrentLinkedQueue[String]()
-    val open = got(
+    val edge = got(
       CommandsEdge.of(
         EdgeName("commands"),
         got(Listen.parse("127.0.0.1:0")),
@@ -187,28 +184,13 @@ object HookFixtures {
         None,
         Vector(ClaudeCode.adapter)
       )
-    ).open(
-      EdgeFixtures.stores(
-        scripted(Vector.empty)(Unrun),
-        new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped),
-        new ScriptedSessions(Set(Owner.account), script)
-      ),
-      Map.empty,
-      clock,
-      l => { val _ = log.add(l) }
-    ) match {
-      case Right(o) => o
-      case Left(r) => throw new java.lang.AssertionError(r.toString)
-    }
-    try {
-      val port = log.asScala
-        .collectFirst {
-          case l if l.startsWith("commands: serving on http://127.0.0.1:") =>
-            l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
-        }
-        .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
-      body(port)
-    } finally open.close()
+    )
+    val stores = EdgeFixtures.stores(
+      scripted(Vector.empty)(Unrun),
+      new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped),
+      new ScriptedSessions(Set(Owner.account), script)
+    )
+    EdgeFixtures.served(edge, stores, clock)(body)
   }
 
   /** A socket listening on a free port of 127.0.0.1, holding `backlog` connections. */

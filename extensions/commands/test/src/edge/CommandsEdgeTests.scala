@@ -175,34 +175,17 @@ object CommandsEdgeTests extends TestSuite {
         Right(CommandOutcome.Done(s"did ${args("text").str}"))
       }
       val voucher = new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped)
-      val log = new ConcurrentLinkedQueue[String]()
-      val open = got(edge())
-        .open(
-          stores(commands, voucher),
-          Map.empty,
-          new SetClock(Now),
-          l => { val _ = log.add(l) }
-        ) match {
-        case Right(o) => o
-        case Left(r) => throw new java.lang.AssertionError(r.toString)
+      val port = served(got(edge()), stores(commands, voucher), new SetClock(Now)) { p =>
+        (
+          post(p, s"127.0.0.1:$p", "/command/done", """{"text":"it"}"""),
+          post(p, s"rebound.example:$p", "/command/done", """{"text":"it"}""")
+        ) ==> (
+          ("HTTP/1.1 200 OK", "did it"),
+          ("HTTP/1.1 403 Forbidden", "refused: the request's Host or Origin is not this edge's")
+        )
+        voucher.vouched ==> Vector(Vouched(EdgeContracts.Reader, Standing.Full(None)))
+        p
       }
-      val port =
-        try {
-          val port = log.asScala.collectFirst {
-            case l if l.startsWith("commands: serving on http://127.0.0.1:") =>
-              l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
-          }
-          val p = port.getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
-          (
-            post(p, s"127.0.0.1:$p", "/command/done", """{"text":"it"}"""),
-            post(p, s"rebound.example:$p", "/command/done", """{"text":"it"}""")
-          ) ==> (
-            ("HTTP/1.1 200 OK", "did it"),
-            ("HTTP/1.1 403 Forbidden", "refused: the request's Host or Origin is not this edge's")
-          )
-          voucher.vouched ==> Vector(Vouched(EdgeContracts.Reader, Standing.Full(None)))
-          p
-        } finally open.close()
       assert(scala.util.Try(sent(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")).isFailure)
     }
 
@@ -213,54 +196,38 @@ object CommandsEdgeTests extends TestSuite {
         Right(CommandOutcome.Done(s"did ${args("text").str}"))
       }
       val voucher = new InMemoryVoucher(Set(realm), Set.empty, Visibility.Shipped)
-      val log = new ConcurrentLinkedQueue[String]()
-      val open = got(edge(callers = Credentialed))
-        .open(
-          stores(commands, voucher),
-          Map.empty,
-          new SetClock(Now),
-          l => { val _ = log.add(l) }
-        ) match {
-        case Right(o) => o
-        case Left(r) => throw new java.lang.AssertionError(r.toString)
-      }
-      try {
-        val port = log.asScala
-          .collectFirst {
-            case l if l.startsWith("commands: serving on http://127.0.0.1:") =>
-              l.stripPrefix("commands: serving on http://127.0.0.1:").toInt
-          }
-          .getOrElse(throw new java.lang.AssertionError(s"no address logged: $log"))
-        val token = Variable("COMMANDS_TOKEN")
-        val server = got(
-          McpServer.of(
-            "commands",
-            s"http://127.0.0.1:$port/mcp",
-            Credential.static(token),
-            McpScope.Open,
-            Set("done")
-          )
-        )
-        def listed(env: Map[String, String]): Either[McpError, Vector[String]] =
-          Credential
-            .open(server.transport.credential, env, KeyFiles.Local)
-            .fold(
-              r => throw new java.lang.AssertionError(r.message),
-              a => McpClient(server, a, new SetClock(Now)).tools().map(_.tools.map(_.name))
+      served(got(edge(callers = Credentialed)), stores(commands, voucher), new SetClock(Now)) {
+        port =>
+          val token = Variable("COMMANDS_TOKEN")
+          val server = got(
+            McpServer.of(
+              "commands",
+              s"http://127.0.0.1:$port/mcp",
+              Credential.static(token),
+              McpScope.Open,
+              Set("done")
             )
-        Vector(
-          listed(Map("COMMANDS_TOKEN" -> AgentText)),
-          listed(Map("COMMANDS_TOKEN" -> "another-0123456789abcdefghijklmnopqrstuvwxyz"))
-        ) ==> Vector(
-          Right(Vector("done")),
-          Left(McpError.Unauthorized(Some("Bearer error=\"invalid_token\"")))
-        )
-        post(port, s"127.0.0.1:$port", "/command/done", """{"text":"it"}""") ==>
-          (
-            "HTTP/1.1 401 Unauthorized",
-            "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
           )
-      } finally open.close()
+          def listed(env: Map[String, String]): Either[McpError, Vector[String]] =
+            Credential
+              .open(server.transport.credential, env, KeyFiles.Local)
+              .fold(
+                r => throw new java.lang.AssertionError(r.message),
+                a => McpClient(server, a, new SetClock(Now)).tools().map(_.tools.map(_.name))
+              )
+          Vector(
+            listed(Map("COMMANDS_TOKEN" -> AgentText)),
+            listed(Map("COMMANDS_TOKEN" -> "another-0123456789abcdefghijklmnopqrstuvwxyz"))
+          ) ==> Vector(
+            Right(Vector("done")),
+            Left(McpError.Unauthorized(Some("Bearer error=\"invalid_token\"")))
+          )
+          post(port, s"127.0.0.1:$port", "/command/done", """{"text":"it"}""") ==>
+            (
+              "HTTP/1.1 401 Unauthorized",
+              "refused: this edge needs a credential: send Authorization: Bearer <your credential>"
+            )
+      }
     }
   }
 }
