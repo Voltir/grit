@@ -58,7 +58,7 @@ private[commands] object Briefing {
   /** What `/brief` asks [[EdgeSessions.briefed]] for: `holder`'s opening, `besides` the caller's
     * own session, and which `part` of it to answer, a digest shown for `window`.
     */
-  final case class Asked(
+  final case class BriefRequest(
       holder: ClaimHolder,
       besides: Option[SessionId],
       window: SessionDigest.Window,
@@ -78,7 +78,7 @@ private[commands] object Briefing {
     *   - `part`: `brief` (the default) or `digest`, so each fits in its own answer;
     *   - no other parameter, and none sent twice.
     */
-  def briefOf(request: Request, machine: MachineName): Either[String, Asked] =
+  def briefOf(request: Request, machine: MachineName): Either[String, BriefRequest] =
     for {
       q <- Queried.of(
         request,
@@ -100,7 +100,7 @@ private[commands] object Briefing {
         case "digest" => Right(Part.Digest)
         case other => Left(s"brief or digest, not $other")
       }
-    } yield Asked(
+    } yield BriefRequest(
       ClaimHolders.of(machine, dir, started.map(_._2)),
       Option.when(fresh)(started.fold(session)(_._1)),
       if (fresh) SessionDigest.Window.LacksLastSaid else SessionDigest.Window.HoldsLastSaid,
@@ -114,7 +114,7 @@ private[commands] object Briefing {
     * linked to; 503 when the database could not be read.
     */
   def briefed(
-      asked: Asked,
+      asked: BriefRequest,
       came: Either[BriefError, EdgeSessions.Briefed],
       now: Instant
   ): (Status, String) = came match {
