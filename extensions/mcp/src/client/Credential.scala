@@ -19,6 +19,7 @@ import scala.util.control.NonFatal
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, Variable}
 import grit.core.identity.Email
+import grit.core.json.Fields
 import grit.mcp.wire.McpError
 
 /** How a server's requests are authorised: where the secret is read, never the secret. */
@@ -227,7 +228,7 @@ final class Authorizer private[client] (private[client] val source: Either[Accou
       }
     answered
       .flatMap { response =>
-        val body = Try(ujson.read(response.body())).toOption.flatMap(_.objOpt)
+        val body = Fields.objectOf(response.body()).map(_.value)
         def str(name: String) = body.flatMap(_.get(name)).flatMap(_.strOpt)
         if (response.statusCode != 200) {
           val said =

@@ -1,6 +1,7 @@
 package grit.core.approval
 
 import grit.core.id.ToolCallId
+import grit.core.json.Fields
 
 /** A person's answer to a gated tool call. */
 enum Approval {
@@ -33,7 +34,7 @@ object Approval {
 
   /** The approval `message` carries, as [[encode]] wrote it; or why it carries none. */
   def decode(message: String): Either[String, Approval] =
-    scala.util.Try(ujson.read(message)).toOption.flatMap(_.objOpt) match {
+    Fields.objectOf(message).map(_.value) match {
       case None => Left("not a JSON object")
       case Some(o) =>
         (o.get("answer").flatMap(_.strOpt), o.get("reason")) match {

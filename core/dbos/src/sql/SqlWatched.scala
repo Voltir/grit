@@ -5,6 +5,7 @@ import scala.util.Try
 import grit.core.document.DocRef
 import grit.core.edge.{WatchFor, Watched}
 import grit.core.id.{ClaimHolder, DocKey, Harness, PluginName, SessionId}
+import grit.core.json.Fields
 import grit.core.session.Event
 import grit.core.store.{StoreError, Tx}
 
@@ -79,9 +80,10 @@ private[dbos] object SqlWatched {
         for {
           harness <- Harness.of(rs.getString("harness"))
           session <- SessionId.of(harness, rs.getString("local"))
-          shape <- Try(ujson.read(rs.getString("shape")).obj).toOption
+          shape <- Fields
+            .objectOf(rs.getString("shape"))
             .toRight("a commit's shape is no JSON object")
-            .flatMap(o => Event.Shape.of(ujson.Obj.from(o)))
+            .flatMap(Event.Shape.of)
         } yield Watched.Committed(session, instant(rs, "at"), shape)
       }
       .flatMap(SqlStatements.valid)

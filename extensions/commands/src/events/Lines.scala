@@ -9,6 +9,7 @@ import scala.util.Try
 import grit.commands.machine.{ClaimHolders, MachineName, Worktrees}
 import grit.core.edge.EdgeSessions
 import grit.core.id.{ClaimHolder, Harness, SessionId}
+import grit.core.json.Fields
 import grit.core.place.{Directory, Place}
 import grit.core.session.{Event, Session}
 
@@ -91,7 +92,7 @@ private[commands] object Lines {
         (),
         s"a line over $Longest bytes"
       )
-      o <- Try(ujson.read(line)).toOption.flatMap(_.objOpt).toRight("no JSON object")
+      o <- Fields.objectOf(line).map(_.value).toRight("no JSON object")
       _ <- o.keys
         .find(k => !Keys.contains(k))
         .map(k => s"no key $k is read in a line; these are: ${Keys.mkString(", ")}")

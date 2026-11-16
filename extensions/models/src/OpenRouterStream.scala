@@ -2,6 +2,7 @@ package grit.models
 
 import scala.collection.mutable
 
+import grit.core.json.Fields
 import grit.core.provider.{Delta, ProviderError}
 
 /** OpenRouter's streamed chat completion, server-sent events, folded back into the body a
@@ -43,7 +44,7 @@ object OpenRouterStream {
         val data = line.drop(5).trim
         if (data == "[DONE]") outcome = Some(Right(()))
         else
-          scala.util.Try(ujson.read(data)).toOption.flatMap(_.objOpt) match {
+          Fields.objectOf(data).map(_.value) match {
             case None => outcome = Some(Left(unreadable("a chunk is not a JSON object")))
             case Some(chunk) =>
               chunk.get("error").flatMap(_.objOpt) match {

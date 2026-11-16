@@ -3,6 +3,7 @@ package grit.turn
 import grit.act.phase.{Heard as Hearer, Hearing}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.durable.StreamWriter
+import grit.core.json.Fields
 import grit.core.provider.Delta
 
 /** What a turn tells edges while its model answers: the stream [[Key]] of its workflow,
@@ -31,7 +32,7 @@ object TurnStream {
 
   /** The chunk `raw` encodes, or why it encodes none. */
   def decode(raw: String): Either[String, Chunk] =
-    scala.util.Try(ujson.read(raw)).toOption.flatMap(_.objOpt) match {
+    Fields.objectOf(raw).map(_.value) match {
       case None => Left("a chunk is not a JSON object")
       case Some(o) =>
         val field = (k: String) => o.get(k).flatMap(_.strOpt)

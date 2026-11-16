@@ -2,6 +2,7 @@ package grit.models
 
 import scala.collection.mutable
 
+import grit.core.json.Fields
 import grit.core.provider.{Delta, ProviderError}
 
 /** Anthropic's streamed message, server-sent events, folded back into the body a plain call
@@ -38,7 +39,7 @@ object AnthropicStream {
       val line = lines.next()
       // `event:` lines repeat the data's own `type`; blank lines separate events.
       if (line.startsWith("data:")) {
-        scala.util.Try(ujson.read(line.drop(5).trim)).toOption.flatMap(_.objOpt) match {
+        Fields.objectOf(line.drop(5).trim).map(_.value) match {
           case None => outcome = Some(Left(unreadable("an event is not a JSON object")))
           case Some(event) =>
             def str(v: Option[ujson.Value]) = v.flatMap(_.strOpt)

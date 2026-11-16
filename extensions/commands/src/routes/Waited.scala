@@ -8,6 +8,7 @@ import grit.commands.declare.HoldingWatch
 import grit.commands.machine.{MachineName, Worktrees}
 import grit.core.edge.{EdgeWatch, WatchError, WatchFor, Watched}
 import grit.core.id.ClaimHolder
+import grit.core.json.Fields
 import grit.core.place.Directory
 import grit.core.session.Event
 import grit.edge.http.Status
@@ -95,7 +96,7 @@ private[commands] object Waited {
         (Status.Ok, w.met(h, held))
       )
     case (_, Right(Watched.Committed(session, at, shape))) =>
-      val shown = scala.util.Try(ujson.read(Event.Shape.value(shape)).obj).toOption
+      val shown = Fields.objectOf(Event.Shape.value(shape)).map(_.value)
       def field(k: String) = shown.flatMap(_.get(k)).flatMap(_.strOpt)
       val commit =
         (field(Event.Shape.Sha).map(_.take(12)) ++ field(Event.Shape.Subject)).mkString(" ")

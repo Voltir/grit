@@ -1,5 +1,6 @@
 package grit.mcp.wire
 
+import grit.core.json.Fields
 import grit.edge.http.{Request, Response, Status, Verb}
 
 /** What JSON-RPC carries for grit, at revision [[Rpc.Version]]. */
@@ -86,7 +87,7 @@ object Rpc {
       case 401 => McpError.Unauthorized(challenge)
       case 403 => McpError.Forbidden(challenge)
       case _ =>
-        scala.util.Try(ujson.read(body)).toOption.flatMap(_.objOpt).flatMap(_.get("error")) match {
+        Fields.objectOf(body).flatMap(_.value.get("error")) match {
           case Some(e) => error(e)
           case None if status >= 400 && status < 500 => McpError.Rejected(status, line(body))
           case None => McpError.Status(status)

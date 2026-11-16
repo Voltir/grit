@@ -10,6 +10,7 @@ import scala.util.Try
 
 import grit.core.clock.Clock
 import grit.core.host.{Processes, RelPath, Started}
+import grit.core.json.Fields
 import grit.mcp.wire.{McpError, Rpc}
 
 /** stdio under a client: `transport`'s program started by `processes` at their root, by one
@@ -165,7 +166,7 @@ private[client] final class StdioConnection(
             case Started.Next.Quiet => ()
             case Started.Next.Ended => got = Some(Answer.Ended)
             case Started.Next.Line(text) =>
-              Try(ujson.read(text)).toOption.flatMap(_.objOpt) match {
+              Fields.objectOf(text).map(_.value) match {
                 case Some(o) if o.contains("method") =>
                   // A request of the server's is refused; a notification is passed over.
                   o.get("id")

@@ -65,6 +65,10 @@ final case class Fields(what: String, v: ujson.Value) {
 
 object Fields {
 
+  /** `text` read as JSON, when it is an object; `None` when it is not JSON or not an object. */
+  def objectOf(text: String): Option[ujson.Obj] =
+    Try(ujson.read(text)).toOption.collect { case o: ujson.Obj => o }
+
   def str(what: String, v: ujson.Value): Either[String, String] =
     v.strOpt.toRight(s"$what is not a string")
 

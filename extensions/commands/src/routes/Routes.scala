@@ -8,6 +8,7 @@ import grit.core.clock.Clock
 import grit.core.edge.Adapter
 import grit.core.edge.{EdgeSessions, EdgeWatch, PluginCommands}
 import grit.core.id.{ClaimHolder, Harness}
+import grit.core.json.Fields
 import grit.core.place.Place
 import grit.core.tool.ToolName
 import grit.edge.http.{Hosts, Request, Response, Status, Verb}
@@ -256,9 +257,6 @@ private[commands] object Routes {
   def arguments(body: String): Either[String, ujson.Obj] =
     if (body.trim.isEmpty) Right(ujson.Obj())
     else
-      scala.util.Try(ujson.read(body)).toOption match {
-        case Some(o: ujson.Obj) => Right(o)
-        case _ => Left("the body is no JSON object of the command's arguments")
-      }
+      Fields.objectOf(body).toRight("the body is no JSON object of the command's arguments")
 
 }
