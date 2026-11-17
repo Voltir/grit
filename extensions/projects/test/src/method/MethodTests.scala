@@ -139,16 +139,14 @@ object MethodTests extends TestSuite {
       )
     }
 
-    test("a transition anyone makes digests as before; one only people make changes the digest") {
+    test("a transition only people make changes the digest") {
+      // That one anyone makes adds nothing is pinned by "a method's digest is pinned".
       def digest(ts: Vector[Transition]) =
         right(
           Method.of(method, 1, kinds, ts, views, TransitionChecks.all).left.map(_.toString)
         ).digest
       val people = transitions.map(_.copy(movers = Movers.People))
-      (digest(transitions).hex, digest(people) == digest(transitions)) ==> (
-        "f49dd63d8bcf94b8f37cf4b2ed0768c1945cc7381a6f6fe43523eb29c597c1c8",
-        false
-      )
+      assert(digest(people) != digest(transitions))
     }
   }
 }

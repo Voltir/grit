@@ -244,7 +244,7 @@ object WithdrawTests extends TestSuite {
           "See [b](artifact:p/b)."
         )
       )
-      // Seven artifacts' documents, and p/h's brief, kept at its claim.
+      // Seven artifacts' documents, p/h's brief kept at its claim, and the method's document.
       before ==> Seen(9, Vector("One.", "Under a.", "See [c](artifact:p/c) and [a](artifact:p/a)."))
     }
 

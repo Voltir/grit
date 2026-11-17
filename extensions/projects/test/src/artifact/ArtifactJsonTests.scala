@@ -19,7 +19,7 @@ import grit.core.place.Place
 import grit.core.store.Tx
 import grit.core.visibility.{Integrity, Label}
 import grit.dbos.sql.TestTx
-import grit.projects.name.{ArtifactKey, KindName, ProjectKey, StateName}
+import grit.projects.name.{ArtifactKey, KindName, MethodName, Pin, ProjectKey, StateName}
 import grit.projects.plugin.Projects
 import grit.projects.render.ProjectGen
 import grit.prose.form.{Block, Doc, Span, Text}
@@ -186,10 +186,15 @@ object ArtifactJsonTests extends TestSuite {
       }
     }
     test("data whose artifacts are another project's is not that project, saying why") {
-      val data = ArtifactJson.projectData(ProjectGen.project(1))
+      val pin = right(Pin.read(right(MethodName.of("grit")), 1, "0" * 64))
+      val body = right(Body.read("Text."))
+      val project = right(
+        Project.of(p, pin, Vector(Artifact(head("a"), body), Artifact(head("b"), body)))
+      )
+      val data = ArtifactJson.projectData(project)
       data("key") = "elsewhere"
-      val why = (0 to 4).map(i => s"p85/a$i is not of project elsewhere").mkString("; ")
-      assert(ArtifactJson.projectFrom(data) == Left(why))
+      ArtifactJson.projectFrom(data) ==>
+        Left("p/a is not of project elsewhere; p/b is not of project elsewhere")
     }
   }
 }

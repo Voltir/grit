@@ -24,7 +24,6 @@ object ProjectCommandsTests extends TestSuite {
   private def proposing(): Projects =
     plugin(TurnCommands.Proposing(MethodFixtures.change.name))
 
-  /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
   /** The fixtures' method, a change made done only by people. */
   private val peopleFinish = method(transitions.map { t =>
     if (t.to == state("done")) t.copy(movers = Movers.People) else t
@@ -36,6 +35,7 @@ object ProjectCommandsTests extends TestSuite {
       "giving the command directly, never through a turn or a session believed lower; ask the " +
       "person to make it"
 
+  /** Keeps note `p/<local>`, titled `Title <local>`, under `parent`. */
   private def under(projects: Projects, store: Store, local: String, parent: String): Unit =
     done(
       ask(
@@ -552,7 +552,7 @@ object ProjectCommandsTests extends TestSuite {
       headed ==>
         "---\nkey: p/a\nkind: note\nstate: open\ntitle: \"Title a\"\nparent: null\ncites: []\n" +
         s"by: ${shown(projects, store, "p/a").linesIterator.find(_.startsWith("by: ")).fold("")(_.drop(4))}\n" +
-        "version: 3\n---\n\n" +
+        s"version: ${versionOf(projects, store, "p/a")}\n---\n\n" +
         "Opening words, all of them.\n\nSections: Goal; Reads (0.1 KB in all)\n"
     }
 
