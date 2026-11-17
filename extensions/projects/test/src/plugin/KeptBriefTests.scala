@@ -186,6 +186,25 @@ object KeptBriefTests extends TestSuite {
       val now = rendered(projects, store)
       (briefText(store), now.contains("The note, rewritten.")) ==> (Some(now), true)
     }
+    test(
+      "an edit of a claimed artifact's body keeps its brief again, as project_brief renders it"
+    ) {
+      val (projects, store) = claimedProject()
+      val read = versionOf(projects, store, "p/m")
+      done(
+        ask(
+          projects,
+          store,
+          "project_edit",
+          "key" -> "p/m",
+          "version" -> read,
+          "old" -> "manager's note",
+          "new" -> "note, edited"
+        )
+      )
+      val now = rendered(projects, store)
+      (briefText(store), now.contains("The note, edited.")) ==> (Some(now), true)
+    }
     test("a keep that changes only an artifact the claimed brief cites keeps it again") {
       val (projects, store) = claimedProject()
       done(keep(projects, store, "c", "Cited, rewritten."))

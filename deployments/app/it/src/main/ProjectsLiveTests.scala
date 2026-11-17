@@ -340,6 +340,44 @@ object ProjectsLiveTests extends TestSuite {
       }
     }
 
+    test("an edit through the edge keeps the body changed, answering the version it is kept at") {
+      CommandRooms.commanding("projects_edit", _ => Vector(atInternal)) { (_, _, commands) =>
+        declared(commands)
+        ran(commands, ann, desk, ToolName("project_new"), "project" -> "p")
+        keep(commands, desk, "a", "Lead.\n\n## Goal\n\nOne.")
+        val show = () =>
+          ran(commands, ann, desk, ToolName("project_show"), "key" -> "p/a") match {
+            case Right(CommandOutcome.Done(text)) => text
+            case other => other.toString
+          }
+        val version = (text: String) =>
+          text.linesIterator.collectFirst {
+            case l if l.startsWith("version: ") => l.drop(9)
+          }
+        val read = version(show()).getOrElse("")
+        val answer = ran(
+          commands,
+          ann,
+          desk,
+          ToolName("project_edit"),
+          "key" -> "p/a",
+          "version" -> read.toLong,
+          "section" -> "Goal",
+          "body" -> "Two."
+        )
+        val after = show()
+        (answer, after.endsWith("\n## Goal\n\nTwo.\n"), version(after) != Some(read)) ==> (
+          Right(
+            CommandOutcome.Done(
+              s"Kept p/a (note, open). Now at version ${version(after).getOrElse("")}."
+            )
+          ),
+          true,
+          true
+        )
+      }
+    }
+
     test(
       "a cascade is refused, withdrawing nothing, naming a citer kept below what the asker's room writes"
     ) {

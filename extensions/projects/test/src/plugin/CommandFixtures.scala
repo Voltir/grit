@@ -220,6 +220,13 @@ object CommandFixtures {
   def shown(projects: Projects, store: Store, key: String): String =
     done(ask(projects, store, "project_show", "key" -> key))
 
+  /** The version `project_show` gives `key` at, 0 when it gives none. */
+  def versionOf(projects: Projects, store: Store, key: String): Long =
+    shown(projects, store, key).linesIterator
+      .collectFirst { case l if l.startsWith("version: ") => l.drop(9).toLongOption }
+      .flatten
+      .getOrElse(0L)
+
   /** Project `p` holding `n` open notes, `p/n01` to `p/n<n>`, each kept a second after the one
     * before, from a second after [[at]].
     */

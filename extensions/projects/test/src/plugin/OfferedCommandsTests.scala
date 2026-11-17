@@ -70,6 +70,7 @@ object OfferedCommandsTests extends TestSuite {
       val keeping = Set(
         "project_new",
         "project_keep",
+        "project_edit",
         "project_move",
         "project_propose",
         "project_batch",

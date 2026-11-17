@@ -75,6 +75,16 @@ object ProjectMarkdown {
         } ($kb%.1f KB in all)\n"
   }
 
+  /** `artifact` kept as `version` with one section of its body: [[shown]]'s front matter, then
+    * the section titled `title` ([[Body.section]]); or why that section is refused.
+    */
+  def section(
+      artifact: Artifact,
+      version: DocumentVersionId,
+      title: String
+  ): Either[String, String] =
+    Body.section(artifact.body, title).map(fronted(artifact.head, Some(version)) + "\n" + _ + "\n")
+
   /** `h` as front matter, `version` its last line when given. */
   private def fronted(h: ArtifactHead, version: Option[DocumentVersionId]): String =
     front(

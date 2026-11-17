@@ -73,6 +73,7 @@ private[plugin] final class ProjectCommands(
     Vector(
       New,
       Keep,
+      Edit,
       Move,
       Batch,
       Show,
@@ -196,7 +197,97 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(alone(own, claims, args.key.project, Step.Keep(args), by, at, "keep"))
+      answered(alone(own, claims, args.key.project, by, at, "keep")(_ => Right(Step.Keep(args))))
+  }
+
+  /** `project_edit`: part of an artifact's body changed, kept as `project_keep` keeps it. */
+  object Edit extends KeepingCommand[Editing] {
+    override def offeredToTurns: Boolean = shipped
+    override def shown(args: Editing): String = args.key.value
+
+    val spec: ToolSpec[Editing] = ToolSpec(
+      ToolName("project_edit"),
+      "Changes part of an artifact's body and keeps it as project_keep does, its title, kind, " +
+        "state, parent and cites as they are. Give old and new to replace one exact text, " +
+        "copied from project_show, which the body must hold exactly once; or section and body " +
+        "to replace what follows one `##` heading, up to the next, keeping the heading. Give " +
+        "the version project_show shows. Answers with the version it is kept at. Refused, " +
+        "keeping nothing: for a version that is not the artifact's current one, naming the one " +
+        "it is at; for old text held twice or not at all; for a section no heading names, or " +
+        s"a heading several sections share; and as project_keep refuses. ${KeepMeaning.size}",
+      Args
+        .of(
+          (
+            key = Field.text("The artifact's key, `<project>/<artifact>`."),
+            version = Field.integer(
+              "The version project_show gave; refused when it has been kept since.",
+              1,
+              Long.MaxValue
+            ),
+            old = Field
+              .text("The exact text to replace, as project_show gives it, held once.")
+              .optional,
+            `new` = Field.text("What replaces old.").optional,
+            section = Field
+              .text("The `##` heading whose section to replace, as written after the `## `.")
+              .optional,
+            body = Field
+              .text(
+                "The section's new text as markdown, under its heading, which is kept; it may " +
+                  "hold no `#` or `##` heading. Blank leaves the heading alone."
+              )
+              .optional
+          )
+        )
+        .refine(a =>
+          for {
+            key <- parsed("key", a.key, ArtifactKey.read)
+            version <- DocumentVersionId
+              .of(a.version)
+              .toRight(ArgsError.Refused("version", "A version is at least 1."))
+            edit <- (a.old, a.`new`, a.section, a.body) match {
+              case (Some(o), Some(n), None, None) => Right(Body.Edit.Text(o, n))
+              case (None, None, Some(s), Some(b)) => Right(Body.Edit.Section(s, b))
+              case (None, None, None, None) =>
+                Left(ArgsError.Missing("old", "old and new, or section and body"))
+              case _ =>
+                Left(
+                  ArgsError.Refused(
+                    "old",
+                    "Give old and new together, or section and body together, not both."
+                  )
+                )
+            }
+          } yield Editing(key, version, edit)
+        )
+    )
+    def run(
+        args: Editing,
+        by: CommandBy,
+        own: DocumentKeeper,
+        claims: Claims,
+        at: Instant
+    )(using Tx^): Either[StoreError, CommandOutcome] = answered {
+      val key = args.key
+      for {
+        said <- alone(own, claims, key.project, by, at, "edit") { project =>
+          for {
+            current <- artifact(project, key)
+            _ <- unchanged(key, Some(args.version), Some(current), project.artifacts)
+            body <- Body
+              .edited(current._2.body, args.edit)
+              .left
+              .map(why => Stop.Refused(s"${key.value} cannot be edited: $why"))
+          } yield Step.Keep(
+            Keeping(key, None, current._2.head.title, body, None, None, Some(args.version))
+          )
+        }
+        docKey <- refuse(DocKey.of(key.value))
+        labels <- stored(own.labels(docKey))
+        label <- labels.headOption.toRight(Stop.Refused(s"${key.value} was kept, then not found"))
+        now <- stored(own.current(docKey, label))
+      } yield now.fold(said)(d => s"$said Now at version ${DocumentVersionId.value(d.version)}.")
+    }
   }
 
   /** `project_move`. */
@@ -230,7 +321,7 @@ private[plugin] final class ProjectCommands(
         claims: Claims,
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
-      answered(alone(own, claims, args.key.project, Step.Move(args), by, at, "move"))
+      answered(alone(own, claims, args.key.project, by, at, "move")(_ => Right(Step.Move(args))))
   }
 
   /** `project_propose`: a new artifact of `kind`, kept as `project_keep` keeps one. */
@@ -283,7 +374,9 @@ private[plugin] final class ProjectCommands(
         at: Instant
     )(using Tx^): Either[StoreError, CommandOutcome] =
       answered(
-        alone(own, claims, args.key.project, Step.Keep(args), by, at, "propose", fresh(args))
+        alone(own, claims, args.key.project, by, at, "propose")(p =>
+          fresh(args)(p).map(_ => Step.Keep(args))
+        )
       )
 
     /** Nothing, or a refusal when the project holds `args.key` already. */
@@ -475,8 +568,10 @@ private[plugin] final class ProjectCommands(
     val spec: ToolSpec[Showing] = ToolSpec(
       ToolName("project_show"),
       "Shows artifacts by key: each one's key, kind, state, title, parent, cites, author and " +
-        "version (what project_keep's version takes), then its text as markdown. With head, only those lines, its opening paragraph and " +
-        "the names of its sections: enough to tell what it is without reading it all.",
+        "version (what project_keep's and project_edit's version takes), then its text as " +
+        "markdown. With head, only those lines, its opening paragraph and the names of its " +
+        "sections: enough to tell what it is without reading it all. With section, those lines " +
+        "and that one section alone; refused when no section has that name, or several do.",
       Args
         .of(
           (
@@ -490,6 +585,12 @@ private[plugin] final class ProjectCommands(
               .optional,
             head = Field
               .flag("Show each one's head and opening paragraph only, not its whole text.")
+              .optional,
+            section = Field
+              .text(
+                "Show only the section of each one under this `##` heading, its text as " +
+                  "written after the `## `."
+              )
               .optional,
             at = Field
               .text(
@@ -510,7 +611,14 @@ private[plugin] final class ProjectCommands(
               case (None, None) => Left(ArgsError.Missing("key", "an artifact's key, or give keys"))
             }
             when <- a.at.fold(Right(None))(t => parsed("at", t, instant).map(Some(_)))
-          } yield Showing(keys, when, a.head.getOrElse(false))
+            part <- (a.head.getOrElse(false), a.section) match {
+              case (true, Some(_)) =>
+                Left(ArgsError.Refused("section", "Give head or section, not both."))
+              case (true, None) => Right(ShowPart.Head)
+              case (false, Some(title)) => Right(ShowPart.Section(title))
+              case (false, None) => Right(ShowPart.Whole)
+            }
+          } yield Showing(keys, when, part)
         )
     )
     def run(args: Showing, by: CommandBy, own: PluginReads, at: Instant)(using
@@ -528,12 +636,19 @@ private[plugin] final class ProjectCommands(
               version <- refuse(readable(document))
             } yield (document, version)
         }
-      def rendered(kept: (Document, Artifact)): String =
-        if (args.head) ProjectMarkdown.head(kept._2, kept._1.version)
-        else ProjectMarkdown.shown(kept._2, kept._1.version)
+      def rendered(key: ArtifactKey)(kept: (Document, Artifact)): Either[Stop, String] =
+        args.part match {
+          case ShowPart.Whole => Right(ProjectMarkdown.shown(kept._2, kept._1.version))
+          case ShowPart.Head => Right(ProjectMarkdown.head(kept._2, kept._1.version))
+          case ShowPart.Section(title) =>
+            ProjectMarkdown
+              .section(kept._2, kept._1.version, title)
+              .left
+              .map(why => Stop.Refused(s"${key.value}: $why"))
+        }
       args.keys match {
         case ShowKeys.One(key) =>
-          loaded(own.documents, key.project).flatMap(version(_, key)).map(rendered)
+          loaded(own.documents, key.project).flatMap(version(_, key)).flatMap(rendered(key))
         case ShowKeys.Several(keys) =>
           // Each project read once, however many of its keys are asked for.
           val projects = keys.map(_.project).distinct.map(p => p -> loaded(own.documents, p)).toMap
@@ -546,7 +661,7 @@ private[plugin] final class ProjectCommands(
                     Left(Stop.Refused(s"no project ${ProjectKey.value(key.project)}"))
                   )
                   .flatMap(version(_, key))
-                  .map(rendered) match {
+                  .flatMap(rendered(key)) match {
                   case Right(text) => Right(done :+ text)
                   case Left(Stop.Refused(why)) => Right(done :+ s"$why\n")
                   case Left(failed) => Left(failed)
@@ -1453,24 +1568,22 @@ private[plugin] final class ProjectCommands(
     }
   }
 
-  /** `step` alone over project `key`, as `project_keep` or `project_move` takes it, once
-    * `admits` allows it of the project as loaded, saying `verb` of an artifact kept below this
-    * room: its answer, or why it was refused.
+  /** The step `stepping` makes of project `key` as loaded, taken alone, as `project_keep` or
+    * `project_move` takes it, saying `verb` of an artifact kept below this room: its answer, or
+    * why it was refused.
     */
   private def alone(
       own: DocumentKeeper,
       claims: Claims,
       key: ProjectKey,
-      step: Step,
       by: CommandBy,
       at: Instant,
-      verb: String,
-      admits: Loaded -> Either[Stop, Unit] = _ => Right(())
-  )(using Tx^): Either[Stop, String] =
+      verb: String
+  )(stepping: Loaded -> Either[Stop, Step])(using Tx^): Either[Stop, String] =
     for {
       held <- holding(claims, key, at)
       project <- loaded(own, key)
-      _ <- admits(project)
+      step <- stepping(project)
       method <- declared(own, project.pin)
       plan = planned(project, method, Vector(step), author(by), moverOf(by), onward = false)
       (said, steps) = plan
@@ -1599,6 +1712,10 @@ private[plugin] object ProjectCommands {
       } yield Keeping(key, kind, title, body, parent, cites, version)
   }
 
+  /** `project_edit`'s arguments: `edit` made to `key`'s body, read at `version`. */
+  final case class Editing(key: ArtifactKey, version: DocumentVersionId, edit: Body.Edit)
+      extends caps.Pure
+
   /** `project_batch`'s arguments. */
   final case class Batching private (project: ProjectKey, steps: Vector[Step], dry: Boolean)
       extends caps.Pure
@@ -1662,7 +1779,12 @@ private[plugin] object ProjectCommands {
   private object KeepMeaning {
     val kind: String = "Its kind, for a new artifact."
     val title: String = "Its title."
-    val body: String = "Its body, as markdown."
+    val body: String = s"Its body, as markdown. $size"
+
+    /** The size a body is refused past, said before it is sent. */
+    val size: String =
+      f"A body is refused when its stored form passes ${Body.StoredMost}%,d bytes, which " +
+        "takes up to about one and a half times its markdown's size, most for tables."
     val parent: String =
       "The key of its parent artifact, or \"\" for none; left as it is if omitted."
     val cites: String = "The keys of the artifacts it cites; left as they are if omitted."
@@ -1685,10 +1807,18 @@ private[plugin] object ProjectCommands {
   /** `project_move`'s arguments. */
   final case class Moving(key: ArtifactKey, to: StateName) extends caps.Pure
 
-  /** `project_show`'s arguments: one key, refused when not kept, or several, each not kept said
-    * in its place; whole, or heads when `head`; as of `at`, or current.
+  /** `project_show`'s arguments: one key, refused when not kept, or several, each not kept or
+    * refused its part said in its place; as of `at`, or current.
     */
-  final case class Showing(keys: ShowKeys, at: Option[Instant], head: Boolean) extends caps.Pure
+  final case class Showing(keys: ShowKeys, at: Option[Instant], part: ShowPart) extends caps.Pure
+
+  /** What of each artifact `project_show` shows: all of it, its head, or its head and the `##`
+    * section titled `title` ([[ProjectMarkdown.section]]).
+    */
+  enum ShowPart extends caps.Pure {
+    case Whole, Head
+    case Section(title: String)
+  }
 
   /** Which artifacts `project_show` shows. */
   enum ShowKeys extends caps.Pure {
