@@ -137,6 +137,7 @@ object EditTests extends TestSuite {
 
     test("an edit takes old and new, or section and body, and not both") {
       val projects = plugin()
+      val apart = "Give old and new together, or section and body together, not both."
       val refused = (args: Seq[(String, ujson.Value)]) =>
         refusedArgs(
           projects,
@@ -146,10 +147,16 @@ object EditTests extends TestSuite {
       (
         refused(Seq("old" -> "a", "new" -> "b")),
         refused(Seq("section" -> "Goal", "body" -> "b")),
-        refused(Seq("old" -> "a", "new" -> "b", "section" -> "Goal", "body" -> "b")).isDefined,
-        refused(Seq("old" -> "a")).isDefined,
-        refused(Seq()).isDefined
-      ) ==> (None, None, true, true, true)
+        refused(Seq("old" -> "a", "new" -> "b", "section" -> "Goal", "body" -> "b")),
+        refused(Seq("old" -> "a")),
+        refused(Seq())
+      ) ==> (
+        None,
+        None,
+        Some(apart),
+        Some(apart),
+        Some("`old` is missing: it takes old and new, or section and body.")
+      )
     }
   }
 }
