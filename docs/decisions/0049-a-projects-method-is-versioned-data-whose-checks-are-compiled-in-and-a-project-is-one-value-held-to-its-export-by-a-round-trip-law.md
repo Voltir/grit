@@ -1,6 +1,6 @@
 # 0049. A project's method is versioned data whose checks are compiled in, and a project is one value held to its export by a round-trip law
 
-Status: accepted (2026-10-27); revised (2026-10-29)
+Status: accepted (2026-10-27); revised (2026-10-29, 2026-11-17)
 
 Context: the projects plugin keeps a project's artifacts (a change, a design, a task) and moves
 each from state to state as the project's methodology allows. Methodologies differ by team and
@@ -35,21 +35,31 @@ Decision:
   each named check's name and version, so a check whose decision changes under its name
   changes the digest. A project pins its method's name, version and digest (`Pin`).
 - **A method is declared with worked examples** (`Example`): a starting project, then moves,
-  each expected allowed or refused by a named check; `Projects.of` refuses a method its replay
-  (`MethodBench`) does not bear out. A replay and a live move make one move (`Method.move`).
+  each expected allowed or refused by a named check; a method its replay (`MethodBench`) does
+  not bear out is refused. A replay and a live move make one move (`Method.move`).
+  *Revised:* a method is kept in the store, not in code. `project_declare` takes a version as
+  JSON (`MethodJson`), from a caller giving it directly and believed at `Authority`, and accepts
+  it once its examples replay; each version is a document of the plugin's own under
+  `<name>@<version>`, never changed (the same version again is a no-op under its digest, refused
+  under another) and never withdrawn or swept. `Projects.of` takes only the compiled checks and
+  the default method's name, and every command reads the version its project pins in its own
+  transaction, so a process change is a declaration, with no rebuild and no restart.
 - **A project is one value** (`Project`): its key, its pin and its artifacts, each a head
   (key, kind, state, title, parent, cites, author) and a body, with no link to an artifact it
   lacks and no parent cycle. A key is an id, never a title. A body is prose referring by key,
   so a rename breaks no sentence (`ProseJson`).
-- **It has one export and one reader of it** (`ProjectMarkdown`): a file per artifact, front
+- **A project has its export and its reader** (`ProjectMarkdown`): a file per artifact, front
   matter then markdown, and a file holding the project's key and pin. The round-trip law holds
   them together: read after render keeps every head and link, and after one pass is a fixed
-  point (markdown normalises once).
+  point (markdown normalises once). *Revised:* a method has its own export and reader
+  (`MethodJson`, which `project_methods` gives and `project_declare` takes), held together by a
+  round-trip law of its own (`MethodJsonTests`: an equal digest and equal examples).
 - **A project lives in the plugin's ledger documents** (ADR 0028), no table of its own: one per
   artifact, under its key, its head and stored body as data and refs naming its project, kind,
   state, parent and cites; and an index under the project's key holding its pin. Only the
   plugin's commands write them (ADR 0053), each in one transaction and recording its writer. A
-  keep never changes a state; a move is refused once the pinned method's digest has changed.
+  keep never changes a state; a move is refused when the pinned version is not declared, or its
+  digest is not the pin's.
   Past the bound a write is refused, never a document withdrawn.
   A claim is one of the plugin's claims (`grit.core.claim.Claims`, the table `grit.claims`),
   never a document, so claiming writes no version: made as a role for a holder (the session or
@@ -70,10 +80,13 @@ Consequences:
 - A team changes its method by declaring a new version, not by releasing grit; a project keeps
   its pinned version until `project_migrate` moves it, renaming kinds and states as asked.
 - A check needing a parameter is a compiled check of its own until checks take arguments.
-- OpenSpec and the elephant-goldfish model, written as method data, show what it cannot say:
-  who may move (the edge's and the room's to hold), a section by pattern, a merge removing a
-  section or below `##`, and a goldfish's freshness.
-- Export, import and restore are one function pair, so a backup is checked by reading it.
+- OpenSpec and the elephant-goldfish model, written as method data, show what it cannot say: a
+  section by pattern, a merge removing a section or below `##`, and a goldfish's freshness. Who
+  may make a transition becomes method data in its turn (a transition only a caller believed at
+  `Authority` makes); until then a deployment guards states through `TurnCommands`.
+- Export, import and restore are one function pair for a project, and one for a method, so a
+  backup is checked by reading it. A restore declares the methods first, from their files, then
+  restores the projects that pin them.
 - Enforced by the compiler (private constructors, `caps.Pure`), a probe
-  (`TransitionCheckPurityTests`), the law rule `plugins-name-core-and-plugins`, and
-  `ProjectMarkdownTests`.
+  (`TransitionCheckPurityTests`), the law rule `plugins-name-core-and-plugins`,
+  `ProjectMarkdownTests`, `MethodJsonTests` and `DeclareTests`.
