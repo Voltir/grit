@@ -77,7 +77,12 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = false)((person, tx) =>
-          command.run(a, CommandBy.Direct(person, believed), reads(plugin), at)(using tx)
+          command.run(
+            a,
+            CommandBy.Direct(person, believedAt(tx, room, believed)),
+            reads(plugin),
+            at
+          )(using tx)
         )
     }
 
@@ -96,21 +101,28 @@ private[dbos] final class SqlPluginCommands(
       case Left(e) => Left(CommandError.Unread(name, e.message))
       case Right(a) =>
         transaction(by, room, name, keeps = !command.onlyReads) { (person, tx) =>
-          val asker = CommandBy.Direct(person, believed)
+          val most = believedAt(tx, room, believed)
           KeepingCommand.run(
             command,
             a,
-            asker,
+            CommandBy.Direct(person, most),
             keeper(plugin, terms),
             claims(plugin),
             room,
-            believed,
+            most,
             at
           )(using
             tx
           )
         }
     }
+
+  /** The integrity a caller's words are believed at in `room`: `believed`, no more than the
+    * room's declared cap ([[grit.core.visibility.Visibility.capOf]], ADR 0036). The keeper and
+    * the command's [[grit.core.plugin.CommandBy]] both take this value, so they agree.
+    */
+  private def believedAt(tx: Tx^, room: Place, believed: Integrity): Integrity =
+    Tx.visibility(tx).capOf(room).fold(believed)(believed.meet)
 
   /** `body` run for the person `by` is linked to, in `room`, on one connection: read-only and
     * rolled back unless `keeps`, and then committed only on [[CommandOutcome.Done]]. A store call of

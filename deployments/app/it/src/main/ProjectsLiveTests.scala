@@ -262,6 +262,62 @@ object ProjectsLiveTests extends TestSuite {
     }
 
     test(
+      "a person-only move or a declaration is refused for a caller believed at Authority in a room capped below it, and made in an uncapped one"
+    ) {
+      CommandRooms.commanding("projects_capped", _ => Vector(atInternal)) { (_, _, commands) =>
+        val people = CommandFixtures.method(MethodFixtures.transitions.map { t =>
+          if (t.to == MethodFixtures.state("done")) t.copy(movers = Movers.People) else t
+        })
+        def declare(room: Place) = commands.run(
+          ann,
+          room,
+          Integrity.Authority,
+          ToolName("project_declare"),
+          ujson.Obj(CommandFixtures.declaring(people)),
+          at
+        )
+        def move(room: Place) = commands.run(
+          ann,
+          room,
+          Integrity.Authority,
+          ToolName("project_move"),
+          ujson.Obj("key" -> "p/a", "state" -> "done"),
+          at
+        )
+        val declareRefused = CommandOutcome.Refused(
+          "A method is declared only by a caller believed at Authority, giving the command " +
+            "directly; never through a turn, or by a session believed lower."
+        )
+        val moveRefused = CommandOutcome.Refused(
+          "p/a cannot move to done here: that move is made only by someone believed at " +
+            "Authority giving the command directly, never through a turn or a session " +
+            "believed lower; ask the person to make it"
+        )
+        declare(team) ==> Right(declareRefused)
+        declared(commands, people)
+        (
+          ran(commands, ann, desk, ToolName("project_new"), "project" -> "p").map(_.getClass),
+          ran(
+            commands,
+            ann,
+            desk,
+            ToolName("project_keep"),
+            "key" -> "p/a",
+            "kind" -> "change",
+            "title" -> "A",
+            "body" -> "## Why\n\nBecause."
+          ).map(_.getClass)
+        ) ==> (Right(classOf[CommandOutcome.Done]), Right(classOf[CommandOutcome.Done]))
+        ran(commands, ann, desk, ToolName("project_move"), "key" -> "p/a", "state" -> "building")
+          .map(_.getClass) ==> Right(classOf[CommandOutcome.Done])
+        (move(team), move(desk)) ==> (
+          Right(moveRefused),
+          Right(CommandOutcome.Done("Moved p/a (change, done)."))
+        )
+      }
+    }
+
+    test(
       "a projects command keeps at the room's label, believed at no more than the edge gave"
     ) {
       CommandRooms.commanding("projects_keeps", _ => Vector(atInternal)) {

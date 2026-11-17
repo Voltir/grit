@@ -91,8 +91,8 @@ object KeepingCommand {
   */
 enum CommandBy extends caps.Pure {
 
-  /** `believed`: the integrity its caller's words are believed at, met with nothing: the room's
-    * cap is the keeper's.
+  /** The integrity its caller's words are believed at, met with their room's declared cap (ADR
+    * 0036).
     */
   case Direct(person: Principal.Person, believed: Integrity)
   case Turn(person: Principal.Person, turn: TurnRef)
