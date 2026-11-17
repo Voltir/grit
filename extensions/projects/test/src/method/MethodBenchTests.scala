@@ -105,5 +105,35 @@ object MethodBenchTests extends TestSuite {
       )
       assert(MethodBench.failures(people, examples) == Vector.empty)
     }
+
+    test(
+      "a move expected refused as only people's fails when it is allowed, or refused by a check"
+    ) {
+      val allowed = Move(key("p/why"), state("building"), Expect.RefusedPersonOnly)
+      val checked = Move(key("p/bare"), state("done"), Expect.RefusedPersonOnly)
+      val examples = Vector(
+        Example("expects anyone's move refused", project(why), Vector(allowed)),
+        Example(
+          "expects a check's refusal as only people's",
+          project(bare),
+          Vector(Move(key("p/bare"), state("building"), Expect.Allowed), checked)
+        )
+      )
+      MethodBench.failures(declared, examples) ==> Vector(
+        MethodBench.Failed("expects anyone's move refused", 1, allowed, None),
+        MethodBench.Failed(
+          "expects a check's refusal as only people's",
+          2,
+          checked,
+          Some(
+            MoveRefusal.Unheld(
+              bare.head.copy(state = state("building")),
+              state("done"),
+              Vector(check("sections-present") -> "its body lacks ## Why")
+            )
+          )
+        )
+      )
+    }
   }
 }
